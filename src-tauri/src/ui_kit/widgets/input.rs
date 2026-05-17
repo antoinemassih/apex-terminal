@@ -192,14 +192,14 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
         // of dissolving into it.
         let bg_fill = theme.surface_raised();
 
-        let radius = CornerRadius::same(4);
+        let radius = CornerRadius::same(st::radius_sm() as u8);
 
         // ── Paint background + border ──
         if ui.is_rect_visible(rect) {
             let painter = ui.painter_at(rect);
             let bg = if disabled { st::color_alpha(bg_fill, 128) } else { bg_fill };
             painter.rect_filled(rect, radius, bg);
-            painter.rect_stroke(rect, radius, Stroke::new(1.0, border_col), StrokeKind::Inside);
+            painter.rect_stroke(rect, radius, Stroke::new(st::stroke_std(), border_col), StrokeKind::Inside);
         }
 
         // ── Layout content left→right and right→left to compute editor span ──

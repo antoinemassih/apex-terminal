@@ -163,7 +163,7 @@ pub(crate) fn draw(
     );
     // Subtle background tint so the trigger reads as a button even at rest.
     painter.rect_filled(mode_rect,
-        egui::CornerRadius::same(3),
+        egui::CornerRadius::same(3), // TODO: off-token
         color_alpha(t.toolbar_border, alpha_subtle()));
     {
         // Action enum so item_render and trigger_render get a real value to
@@ -341,7 +341,7 @@ pub(crate) fn draw(
     // neutral Secondary with shield-style icon. Tooltip explains the state.
     let armw = inner.right() - cx - 1.0;
     let arm_rect = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(armw, r1h));
-    let arm_radius = egui::CornerRadius::same(4);
+    let arm_radius = egui::CornerRadius::same(radius_sm() as u8);
     let arm_resp = ui.allocate_rect(arm_rect, egui::Sense::click());
     if *dom_armed {
         // Filled red bg, white icon, subtle border.

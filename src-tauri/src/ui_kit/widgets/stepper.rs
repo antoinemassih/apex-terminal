@@ -212,7 +212,7 @@ fn paint_circle(
     } else if idx == current {
         // Current: filled accent, white number, slightly larger ring.
         painter.circle_filled(center, r, accent);
-        painter.circle_stroke(center, r + 1.5, Stroke::new(1.5, st::color_alpha(accent, 120)));
+        painter.circle_stroke(center, r + 1.5, Stroke::new(st::stroke_bold(), st::color_alpha(accent, 120)));
         painter.text(
             center,
             egui::Align2::CENTER_CENTER,
@@ -222,7 +222,7 @@ fn paint_circle(
         );
     } else {
         // Future: transparent fill, dim border, dim number.
-        painter.circle_stroke(center, r, Stroke::new(1.0, dim));
+        painter.circle_stroke(center, r, Stroke::new(st::stroke_std(), dim));
         painter.text(
             center,
             egui::Align2::CENTER_CENTER,

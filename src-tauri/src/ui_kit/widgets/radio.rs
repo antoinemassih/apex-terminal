@@ -133,7 +133,7 @@ fn paint_radio<T: PartialEq + Copy>(
 
     let painter = ui.painter_at(rect);
     painter.circle_filled(center, radius, bg_final);
-    painter.circle_stroke(center, radius, Stroke::new(1.0, border_final));
+    painter.circle_stroke(center, radius, Stroke::new(st::stroke_std(), border_final));
 
     // Inner dot — diameter = outer - 6px → radius - 3.
     if on_t > 0.001 {

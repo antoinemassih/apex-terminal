@@ -124,7 +124,7 @@ impl<'a> Widget for PaneTimeframeBadge<'a> {
         ui.add(
             KitButton::new(label_ref)
                 .variant(Variant::Secondary)
-                .corner_radius(9.0)
+                .corner_radius(9.0) // TODO: off-token
                 .active(self.active)
                 .fg(fg),
         )
@@ -823,7 +823,7 @@ impl<'a> AccountStrip<'a> {
                         if ui.add(
                             egui::Button::new(RichText::new("CANCEL ALL").monospace().size(font_sm()).strong().color(Color32::WHITE))
                                 .fill(color_alpha(t.bear, 120))
-                                .corner_radius(3.0)
+                                .corner_radius(3.0) // TODO: off-token
                                 .min_size(egui::vec2(0.0, 22.0))
                                 .stroke(Stroke::new(stroke_std(), t.bear)),
                         ).clicked() {
@@ -833,7 +833,7 @@ impl<'a> AccountStrip<'a> {
                         if ui.add(
                             egui::Button::new(RichText::new("FLATTEN").monospace().size(font_sm()).strong().color(Color32::WHITE))
                                 .fill(color_alpha(t.bear, 180))
-                                .corner_radius(3.0)
+                                .corner_radius(3.0) // TODO: off-token
                                 .min_size(egui::vec2(0.0, 22.0))
                                 .stroke(Stroke::new(stroke_std(), t.bear)),
                         ).clicked() {

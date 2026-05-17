@@ -6,7 +6,7 @@ use egui::Context;
 use crate::chart_renderer::gpu::{Theme, Chart, render_order_entry_body};
 use crate::chart_renderer::trading::{OrderSide, OrderLevel, OrderStatus, OrderState, AccountSummary, Position, IbOrder};
 use crate::chart_renderer::gpu::Watchlist;
-use crate::chart_renderer::ui::style::{color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, cursor, gap_xs, gap_sm, gap_lg, gap_2xl, font_xs, font_sm, font_md, stroke_std};
+use crate::chart_renderer::ui::style::{color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, cursor, gap_xs, gap_sm, gap_lg, gap_2xl, font_xs, font_sm, font_md, radius_sm, radius_lg, stroke_std};
 use crate::chart_renderer::ui::widgets::frames::PopupFrame;
 use crate::ui_kit::icons::Icon;
 
@@ -44,7 +44,7 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
                 .colors(color_alpha(c.t.toolbar_bg, 235), color_alpha(c.t.toolbar_border, 100))
                 .ctx(c.ctx)
                 .inner_margin(egui::Margin { left: gap_lg() as i8, right: gap_lg() as i8, top: gap_sm() as i8, bottom: gap_sm() as i8 })
-                .corner_radius(12.0)
+                .corner_radius(radius_lg())
                 .build())
             .show(c.ctx, |ui| {
                 let resp = ui.horizontal(|ui| {
@@ -75,7 +75,7 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
             .fill(c.t.toolbar_bg)
             .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
             .stroke(egui::Stroke::new(stroke_std(), color_alpha(c.t.toolbar_border, 100)))
-            .corner_radius(4.0))
+            .corner_radius(radius_sm()))
         .show(c.ctx, |ui| {
             // ── Header bar ──
             let header_resp = ui.horizontal(|ui| {

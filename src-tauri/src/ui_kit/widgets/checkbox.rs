@@ -171,9 +171,9 @@ fn paint_checkbox(ui: &mut Ui, theme: &dyn ComponentTheme, mut cb: Checkbox<'_>)
     }
 
     let painter = ui.painter_at(rect);
-    let cr = CornerRadius::same(3);
+    let cr = CornerRadius::same(3); // TODO: off-token
     painter.rect_filled(box_rect, cr, bg_final);
-    painter.rect_stroke(box_rect, cr, Stroke::new(1.0, border_final), StrokeKind::Inside);
+    painter.rect_stroke(box_rect, cr, Stroke::new(st::stroke_std(), border_final), StrokeKind::Inside);
 
     // Mark — only when state implies one.
     match state {
@@ -184,7 +184,7 @@ fn paint_checkbox(ui: &mut Ui, theme: &dyn ComponentTheme, mut cb: Checkbox<'_>)
             let p1 = Pos2::new(c.x - s * 0.25, c.y + s * 0.02);
             let p2 = Pos2::new(c.x - s * 0.05, c.y + s * 0.20);
             let p3 = Pos2::new(c.x + s * 0.28, c.y - s * 0.18);
-            let stroke = Stroke::new(1.6, fg_mark);
+            let stroke = Stroke::new(1.6, fg_mark); // TODO: off-token
             painter.line_segment([p1, p2], stroke);
             painter.line_segment([p2, p3], stroke);
         }
@@ -193,7 +193,7 @@ fn paint_checkbox(ui: &mut Ui, theme: &dyn ComponentTheme, mut cb: Checkbox<'_>)
             let s = bs;
             let p1 = Pos2::new(c.x - s * 0.28, c.y);
             let p2 = Pos2::new(c.x + s * 0.28, c.y);
-            painter.line_segment([p1, p2], Stroke::new(1.8, fg_mark));
+            painter.line_segment([p1, p2], Stroke::new(1.8, fg_mark)); // TODO: off-token
         }
         CheckState::Off => {}
     }

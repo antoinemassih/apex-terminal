@@ -552,7 +552,7 @@ impl<'a, T: PartialEq + Copy> SegmentedControl<'a, T> {
                         (false, false) => egui::CornerRadius::ZERO,
                     }
                 } else {
-                    egui::CornerRadius::same(99)
+                    egui::CornerRadius::same(radius_pill() as u8)
                 };
 
                 let resp = ui.add(

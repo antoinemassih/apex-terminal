@@ -111,9 +111,9 @@ impl Alert {
 
         if ui.is_rect_visible(rect) {
             let painter = ui.painter_at(rect);
-            let cr = CornerRadius::same(6);
+            let cr = CornerRadius::same(st::radius_md() as u8);
             painter.rect_filled(rect, cr, st::color_alpha(color, 32));
-            painter.rect_stroke(rect, cr, Stroke::new(1.0, st::color_alpha(color, 200)), StrokeKind::Inside);
+            painter.rect_stroke(rect, cr, Stroke::new(st::stroke_std(), st::color_alpha(color, 200)), StrokeKind::Inside);
 
             // Leading icon
             let icon_center = Pos2::new(rect.left() + pad + icon_size * 0.5, rect.top() + pad + icon_size * 0.5);
