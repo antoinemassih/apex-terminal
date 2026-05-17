@@ -1321,6 +1321,10 @@ impl ApertureOrderTicket {
                 ui.add_space(gap_sm());
                 let premium = last;
                 let mult    = if s.is_option { 100.0_f32 } else { 1.0_f32 };
+                // TODO: Input migration deferred — order-form numeric fields
+                // below (notional/limit/stop/trail/tp/sl) need right- and
+                // center-aligned text for price/qty legibility; ui_kit::Input
+                // doesn't expose horizontal_align on the inner TextEdit.
                 ui.add(egui::TextEdit::singleline(s.order_notional_amount)
                     .desired_width(70.0).font(mono_sm()).hint_text("Amount"));
                 let notional: f32 = s.order_notional_amount.parse().unwrap_or(0.0);

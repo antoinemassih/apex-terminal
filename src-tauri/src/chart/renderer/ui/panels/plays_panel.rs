@@ -557,6 +557,9 @@ fn pct_stepper(ui: &mut egui::Ui, pct_str: &mut String, t: &Theme) {
         .min_size(BTN_ICON_SM).fill(color_alpha(t.toolbar_border, alpha_faint()))).clicked() {
         val = val.saturating_sub(step).max(5);
     }
+    // TODO: Input migration deferred — micro stepper field (22px wide,
+    // center-aligned, mono_xs). ui_kit::Input enforces min sizes/padding
+    // for legibility and doesn't expose horizontal_align.
     ui.add(egui::TextEdit::singleline(pct_str)
         .desired_width(22.0).font(mono_xs())
         .horizontal_align(egui::Align::Center));

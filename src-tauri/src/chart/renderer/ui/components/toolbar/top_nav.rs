@@ -1398,10 +1398,11 @@ pub(crate) fn render(
                     // Save as new
                     ui.add_space(gap_sm());
                     ui.horizontal(|ui| {
-                        ui.add(egui::TextEdit::singleline(&mut watchlist.workspace_save_name)
-                            .hint_text("New workspace…")
-                            .desired_width(130.0)
-                            .font(egui::FontId::monospace(font_sm())));
+                        crate::ui_kit::widgets::Input::new(&mut watchlist.workspace_save_name)
+                            .placeholder("New workspace…")
+                            .min_width(130.0)
+                            .size(crate::ui_kit::widgets::Size::Sm)
+                            .show(ui, t);
                         let can_save = !watchlist.workspace_save_name.trim().is_empty();
                         if can_save {
                             if crate::chart_renderer::ui::style::cursor::click_widget(ui,
@@ -2040,9 +2041,12 @@ pub(crate) fn render(
                 let m = 10.0;
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    let resp = ui.add(egui::TextEdit::singleline(&mut panes[ap].new_group_name)
-                        .hint_text("Group name...").desired_width(230.0 - m * 2.0).font(mono_sm()));
-                    resp.request_focus();
+                    let resp = crate::ui_kit::widgets::Input::new(&mut panes[ap].new_group_name)
+                        .placeholder("Group name...")
+                        .min_width(230.0 - m * 2.0)
+                        .size(crate::ui_kit::widgets::Size::Sm)
+                        .show(ui, t);
+                    ui.memory_mut(|m| m.request_focus(resp.editor_id));
                 });
                 ui.add_space(gap_lg());
                 ui.horizontal(|ui| {
