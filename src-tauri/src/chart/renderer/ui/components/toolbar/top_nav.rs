@@ -107,7 +107,7 @@ use crate::chart_renderer::gpu::{
 use crate::chart_renderer::ui::style::{
     color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, hex_to_color, segmented_control,
     contrast_fg,
-    dialog_window_themed, dialog_header,
+    dialog_window_themed,
     STROKE_STD, STROKE_THIN,
     ALPHA_FAINT, ALPHA_GHOST, ALPHA_DIM, ALPHA_HEAVY,
     BTN_ICON_SM, BTN_ICON_LG,
@@ -2037,7 +2037,7 @@ pub(crate) fn render(
         let mut close_gm = false;
         dialog_window_themed(ctx, "group_manager", egui::pos2(200.0, 100.0), 250.0, t.toolbar_bg, t.toolbar_border, None)
             .show(ctx, |ui| {
-                if dialog_header(ui, "NEW GROUP", t.dim) { close_gm = true; }
+                if crate::ui_kit::widgets::Header::dialog("NEW GROUP").closable(true).show(ui, t).close_clicked { close_gm = true; }
                 ui.add_space(gap_xl());
                 let m = 10.0;
                 ui.horizontal(|ui| {

@@ -294,7 +294,7 @@ fn draw_play_editor(
             ui.add_space(gap_xs());
 
             ui.horizontal(|ui| {
-                section_label(ui, "LEGS", t.dim);
+                crate::ui_kit::widgets::Header::section("LEGS").show(ui, t);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if !watchlist.play_editor_has_t2 && pt != PlayType::Scalp {
                         if Button::small_action("+ Add Target").tint(t.accent).show(ui, t).clicked() {
