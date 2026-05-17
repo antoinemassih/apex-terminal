@@ -8,10 +8,12 @@
 //! `OrderManager` now holds an `Arc<dyn Broker>`. Submit/cancel/modify
 //! delegate to the broker; the manager does state, dedup, and risk only.
 //!
-//! Multi-leg variants (bracket, OCO, conditional, combo, options-trigger)
-//! still call `reqwest` inline — their HTTP shapes diverge enough that a
-//! single `submit` signature can't cover them, and tests don't exercise
-//! those paths through the trait. They remain available for a follow-up.
+//! Wave 4 connectivity refactor: multi-leg variants (bracket, OCO,
+//! conditional, combo, options-trigger) are now ALSO behind the trait. The
+//! trait surface is complete — `OrderManager` no longer calls `reqwest`
+//! inline for any submit path. Each multi-leg shape has its own typed args
+//! struct because the HTTP bodies diverge enough that a single `submit`
+//! signature can't carry them.
 
 use std::sync::Mutex;
 
@@ -50,6 +52,117 @@ pub(crate) struct SubmitArgs<'a> {
     pub outside_rth: bool,
 }
 
+// ─── Multi-leg arg/response shapes (Wave 4) ────────────────────────────────
+
+/// Inputs for a 3-leg bracket order (entry + take-profit + stop-loss).
+/// All three legs go to the backend atomically through `POST /orders/bracket`.
+#[derive(Debug, Clone)]
+pub(crate) struct BracketSubmitArgs {
+    pub symbol: String,
+    pub side: String,                  // "buy" / "sell" (entry side)
+    pub qty: u32,
+    pub entry_order_type: String,      // "market" | "limit" | "stop" | "stop_limit"
+    pub entry_price: f32,              // limit/stop price for entry leg; 0 for market
+    pub take_profit_price: f32,
+    pub stop_loss_price: f32,
+    pub idempotency_key: String,
+}
+
+/// Backend IDs returned from a successful bracket submission. The TP/SL ids
+/// are optional because some brokers only echo the parent on the synchronous
+/// reply and the children come back through reconciliation.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct BracketSubmitResponse {
+    pub parent_backend_id: Option<String>,
+    pub take_profit_backend_id: Option<String>,
+    pub stop_loss_backend_id: Option<String>,
+}
+
+/// A single leg of an OCO (one-cancels-other) group, in wire shape.
+#[derive(Debug, Clone)]
+pub(crate) struct OcoLeg {
+    pub symbol: String,
+    pub side: String,         // "BUY" / "SELL"
+    pub qty: u32,
+    pub order_type: String,   // "market" | "limit" | "stop" | "stop_limit"
+    pub price: f32,
+    pub stop_price: f32,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct OcoSubmitArgs {
+    pub legs: Vec<OcoLeg>,
+    pub oca_group: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct OcoSubmitResponse {
+    /// Backend ids per leg, in the same order as `args.legs`. May be shorter
+    /// than `legs.len()` if the server skipped legs (e.g. failed conId lookup).
+    pub leg_backend_ids: Vec<String>,
+}
+
+/// One price-trigger condition watched by a conditional order.
+#[derive(Debug, Clone)]
+pub(crate) struct ConditionalCondition {
+    pub con_id: i64,
+    pub exchange: String,
+    pub is_more: bool,
+    pub price: Price,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ConditionalSubmitArgs {
+    pub symbol: String,
+    pub side: String,                  // "BUY" / "SELL"
+    pub qty: u32,
+    pub order_type: String,            // "market" | "limit" | ...
+    pub price: f32,                    // limit price (0 for non-limit)
+    pub conditions: Vec<ConditionalCondition>,
+    pub conditions_logic: String,      // "and" | "or"
+    pub conditions_cancel_order: bool,
+    pub idempotency_key: String,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct OptionsTriggerArgs {
+    pub underlying: String,
+    pub option_type: String,           // "call" / "put"
+    pub strike: f32,
+    pub expiration: String,
+    pub qty: u32,
+    pub entry_price: f32,
+    pub entry_direction: String,
+    pub exit_price: f32,
+    pub exit_direction: String,
+    pub idempotency_key: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct OptionsTriggerResponse {
+    pub entry_backend_id: Option<String>,
+    pub option_con_id: Option<i64>,
+}
+
+/// One leg of a multi-leg combo / spread / pairs order.
+#[derive(Debug, Clone)]
+pub(crate) struct ComboLeg {
+    pub con_id: i64,
+    pub ratio: i32,
+    pub side: String,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ComboSubmitArgs {
+    pub symbol: String,
+    pub side: String,                  // "buy" / "sell" on the combo as a whole
+    pub qty: u32,
+    pub order_type: String,            // "market" | "limit"
+    pub limit_price: Option<f32>,
+    pub legs: Vec<ComboLeg>,
+    pub idempotency_key: String,
+}
+
 /// Broker contract.
 ///
 /// All methods are synchronous and may block on HTTP — callers spawn threads
@@ -80,6 +193,30 @@ pub(crate) trait Broker: Send + Sync {
     fn kill(&self) -> Result<(), String> { Ok(()) }
     fn halt(&self) -> Result<(), String> { Ok(()) }
     fn resume(&self) -> Result<(), String> { Ok(()) }
+
+    // ── Multi-leg paths (Wave 4) ────────────────────────────────────────────
+
+    /// Submit a 3-leg bracket (entry + TP + SL). The entry's backend id is
+    /// returned in `parent_backend_id`; TP/SL ids come back when the broker
+    /// echoes them on the synchronous reply (may be `None` for brokers that
+    /// only return the parent up-front).
+    fn submit_bracket(&self, args: &BracketSubmitArgs) -> Result<BracketSubmitResponse, String>;
+
+    /// Submit an OCO (one-cancels-other) group. Returns the backend id of
+    /// each leg, in the same order as `args.legs`.
+    fn submit_oco(&self, args: &OcoSubmitArgs) -> Result<OcoSubmitResponse, String>;
+
+    /// Submit a conditional order — primary order that activates only when
+    /// one or more price triggers fire on watched contracts.
+    fn submit_conditional(&self, args: &ConditionalSubmitArgs) -> Result<String, String>;
+
+    /// Submit an options-trigger order — entry + exit on an option contract
+    /// driven by underlying price levels.
+    fn submit_options_trigger(&self, args: &OptionsTriggerArgs) -> Result<OptionsTriggerResponse, String>;
+
+    /// Submit a multi-leg combo / spread / pairs order. All legs fill
+    /// atomically via the broker's native combo mechanism.
+    fn submit_combo(&self, args: &ComboSubmitArgs) -> Result<String, String>;
 }
 
 // ─── LiveBroker — real HTTP ─────────────────────────────────────────────────
@@ -225,6 +362,175 @@ impl Broker for LiveBroker {
             .map(|_| ())
             .map_err(|e| format!("resume http: {e}"))
     }
+
+    // ── Multi-leg paths (Wave 4) ────────────────────────────────────────────
+
+    fn submit_bracket(&self, args: &BracketSubmitArgs) -> Result<BracketSubmitResponse, String> {
+        let client = reqwest::blocking::Client::new();
+        let con_id = Self::resolve_con_id(&client, &args.symbol)
+            .ok_or_else(|| format!("[bracket] no conId for {}", args.symbol))?;
+
+        let mut entry_leg = serde_json::json!({"orderType": args.entry_order_type});
+        match args.entry_order_type.as_str() {
+            "limit" => { entry_leg["limitPrice"] = serde_json::json!(args.entry_price); }
+            "stop"  => { entry_leg["stopPrice"]  = serde_json::json!(args.entry_price); }
+            "stop_limit" => {
+                entry_leg["limitPrice"] = serde_json::json!(args.entry_price);
+                entry_leg["stopPrice"]  = serde_json::json!(args.entry_price);
+            }
+            _ => {} // market
+        }
+        let body = serde_json::json!({
+            "conId": con_id, "side": args.side, "quantity": args.qty,
+            "entry": entry_leg,
+            "takeProfit": {"orderType": "limit", "limitPrice": args.take_profit_price},
+            "stopLoss":   {"orderType": "stop",  "stopPrice":  args.stop_loss_price},
+            "tif": "day",
+            "idempotencyKey": args.idempotency_key,
+        });
+        let resp = client.post(format!("{}/orders/bracket", APEXIB_URL))
+            .json(&body).timeout(std::time::Duration::from_secs(5)).send()
+            .map_err(|e| format!("bracket http: {e}"))?;
+        let json: serde_json::Value = resp.json()
+            .map_err(|e| format!("bracket json: {e}"))?;
+        let pick = |k: &str| -> Option<String> {
+            json[k].as_str().map(|s| s.to_string())
+                .or_else(|| json[k].as_i64().map(|n| n.to_string()))
+        };
+        Ok(BracketSubmitResponse {
+            parent_backend_id:      pick("parentOrderId"),
+            take_profit_backend_id: pick("takeProfitOrderId"),
+            stop_loss_backend_id:   pick("stopLossOrderId"),
+        })
+    }
+
+    fn submit_oco(&self, args: &OcoSubmitArgs) -> Result<OcoSubmitResponse, String> {
+        let client = reqwest::blocking::Client::new();
+        let mut oco_orders = Vec::new();
+        for leg in &args.legs {
+            let con_id = match Self::resolve_con_id(&client, &leg.symbol) {
+                Some(c) => c, None => continue,
+            };
+            let mut order_json = serde_json::json!({
+                "conId": con_id, "side": leg.side, "quantity": leg.qty,
+                "orderType": leg.order_type, "tif": "day",
+            });
+            match leg.order_type.as_str() {
+                "limit" => { order_json["limitPrice"] = serde_json::json!(leg.price); }
+                "stop"  => {
+                    order_json["stopPrice"] = serde_json::json!(
+                        if leg.stop_price != 0.0 { leg.stop_price } else { leg.price }
+                    );
+                }
+                "stop_limit" => {
+                    order_json["limitPrice"] = serde_json::json!(leg.price);
+                    order_json["stopPrice"]  = serde_json::json!(leg.stop_price);
+                }
+                _ => {}
+            }
+            oco_orders.push(order_json);
+        }
+        let body = serde_json::json!({ "orders": oco_orders, "ocaGroup": args.oca_group });
+        let resp = client.post(format!("{}/orders/oco", APEXIB_URL))
+            .json(&body).timeout(std::time::Duration::from_secs(5)).send()
+            .map_err(|e| format!("oco http: {e}"))?;
+        let json: serde_json::Value = resp.json()
+            .map_err(|e| format!("oco json: {e}"))?;
+        let mut leg_backend_ids = Vec::new();
+        if let Some(arr) = json["orderIds"].as_array() {
+            for bid in arr {
+                if let Some(s) = bid.as_str() { leg_backend_ids.push(s.to_string()); }
+                else if let Some(n) = bid.as_i64() { leg_backend_ids.push(n.to_string()); }
+            }
+        }
+        Ok(OcoSubmitResponse { leg_backend_ids })
+    }
+
+    fn submit_conditional(&self, args: &ConditionalSubmitArgs) -> Result<String, String> {
+        let client = reqwest::blocking::Client::new();
+        let con_id = Self::resolve_con_id(&client, &args.symbol)
+            .ok_or_else(|| format!("[conditional] no conId for {}", args.symbol))?;
+        let conds_json: Vec<serde_json::Value> = args.conditions.iter().map(|c| {
+            serde_json::json!({
+                "type": "price",
+                "conId": c.con_id,
+                "exchange": c.exchange,
+                "isMore": c.is_more,
+                "price": c.price.to_f32(),
+                "triggerMethod": "default",
+            })
+        }).collect();
+        let mut body = serde_json::json!({
+            "conId": con_id, "side": args.side, "quantity": args.qty,
+            "orderType": args.order_type, "tif": "day",
+            "conditions": conds_json,
+            "conditionsLogic": args.conditions_logic,
+            "conditionsCancelOrder": args.conditions_cancel_order,
+            "outsideRth": true,
+            "idempotencyKey": args.idempotency_key,
+        });
+        if args.order_type == "limit" {
+            body["limitPrice"] = serde_json::json!(args.price);
+        }
+        let resp = client.post(format!("{}/orders/conditional", APEXIB_URL))
+            .json(&body).timeout(std::time::Duration::from_secs(5)).send()
+            .map_err(|e| format!("conditional http: {e}"))?;
+        let json: serde_json::Value = resp.json()
+            .map_err(|e| format!("conditional json: {e}"))?;
+        Self::extract_order_id(&json)
+            .ok_or_else(|| "conditional: broker returned no orderId".into())
+    }
+
+    fn submit_options_trigger(&self, args: &OptionsTriggerArgs) -> Result<OptionsTriggerResponse, String> {
+        let client = reqwest::blocking::Client::new();
+        let body = serde_json::json!({
+            "underlying": args.underlying,
+            "optionType": args.option_type,
+            "strike": args.strike,
+            "expiration": args.expiration,
+            "quantity": args.qty,
+            "entryPrice": args.entry_price,
+            "entryDirection": args.entry_direction,
+            "exitPrice": args.exit_price,
+            "exitDirection": args.exit_direction,
+            "exitOrderType": "market",
+            "idempotencyKey": args.idempotency_key,
+        });
+        let resp = client.post(format!("{}/orders/options-trigger", APEXIB_URL))
+            .json(&body).timeout(std::time::Duration::from_secs(5)).send()
+            .map_err(|e| format!("options-trigger http: {e}"))?;
+        let json: serde_json::Value = resp.json()
+            .map_err(|e| format!("options-trigger json: {e}"))?;
+        Ok(OptionsTriggerResponse {
+            entry_backend_id: json["entryOrderId"].as_str().map(|s| s.to_string()),
+            option_con_id:    json["optionConId"].as_i64(),
+        })
+    }
+
+    fn submit_combo(&self, args: &ComboSubmitArgs) -> Result<String, String> {
+        let client = reqwest::blocking::Client::new();
+        let legs_json: Vec<serde_json::Value> = args.legs.iter().map(|l| {
+            serde_json::json!({
+                "conId": l.con_id,
+                "ratio": l.ratio,
+                "side":  l.side,
+            })
+        }).collect();
+        let mut url = format!(
+            "{}/orders/combo?symbol={}&side={}&quantity={}&orderType={}&tif=day&idempotencyKey={}",
+            APEXIB_URL, args.symbol, args.side, args.qty, args.order_type, args.idempotency_key
+        );
+        if let Some(lp) = args.limit_price {
+            url.push_str(&format!("&limitPrice={}", lp));
+        }
+        let resp = client.post(&url).json(&legs_json)
+            .timeout(std::time::Duration::from_secs(5)).send()
+            .map_err(|e| format!("combo http: {e}"))?;
+        let json: serde_json::Value = resp.json()
+            .map_err(|e| format!("combo json: {e}"))?;
+        Self::extract_order_id(&json)
+            .ok_or_else(|| "combo: broker returned no orderId".into())
+    }
 }
 
 // ─── PaperBroker — local simulator ──────────────────────────────────────────
@@ -251,6 +557,38 @@ impl Broker for PaperBroker {
         // return NotFound so the manager marks the orphan rejected.
         BrokerOrderState::NotFound
     }
+
+    // ── Multi-leg paths (Wave 4): synthetic acks, no HTTP ──────────────────
+
+    fn submit_bracket(&self, args: &BracketSubmitArgs) -> Result<BracketSubmitResponse, String> {
+        Ok(BracketSubmitResponse {
+            parent_backend_id:      Some(format!("paper:{}:entry", args.idempotency_key)),
+            take_profit_backend_id: Some(format!("paper:{}:tp",    args.idempotency_key)),
+            stop_loss_backend_id:   Some(format!("paper:{}:sl",    args.idempotency_key)),
+        })
+    }
+
+    fn submit_oco(&self, args: &OcoSubmitArgs) -> Result<OcoSubmitResponse, String> {
+        let ids = (0..args.legs.len())
+            .map(|i| format!("paper:{}:{}", args.oca_group, i))
+            .collect();
+        Ok(OcoSubmitResponse { leg_backend_ids: ids })
+    }
+
+    fn submit_conditional(&self, args: &ConditionalSubmitArgs) -> Result<String, String> {
+        Ok(format!("paper:{}", args.idempotency_key))
+    }
+
+    fn submit_options_trigger(&self, args: &OptionsTriggerArgs) -> Result<OptionsTriggerResponse, String> {
+        Ok(OptionsTriggerResponse {
+            entry_backend_id: Some(format!("paper:{}", args.idempotency_key)),
+            option_con_id: None,
+        })
+    }
+
+    fn submit_combo(&self, args: &ComboSubmitArgs) -> Result<String, String> {
+        Ok(format!("paper:{}", args.idempotency_key))
+    }
 }
 
 // ─── MockBroker — for unit tests ────────────────────────────────────────────
@@ -263,6 +601,12 @@ pub(crate) enum MockCall {
     Cancel { backend_id: String, client_order_id: String },
     Modify { backend_id: String, client_order_id: String, new_price: Price, new_qty: u32 },
     Lookup { client_order_id: String },
+    // Multi-leg paths (Wave 4)
+    Bracket(BracketSubmitArgs),
+    Oco(OcoSubmitArgs),
+    Conditional(ConditionalSubmitArgs),
+    OptionsTrigger(OptionsTriggerArgs),
+    Combo(ComboSubmitArgs),
 }
 
 /// Pre-canned response a test wants the next `submit` call to return.
@@ -361,5 +705,42 @@ impl Broker for MockBroker {
     fn lookup_by_client_id(&self, client_order_id: &str) -> BrokerOrderState {
         self.record(MockCall::Lookup { client_order_id: client_order_id.into() });
         self.take_lookup_response().unwrap_or(BrokerOrderState::NotFound)
+    }
+
+    // ── Multi-leg paths (Wave 4): record + synthetic Ok ─────────────────────
+
+    fn submit_bracket(&self, args: &BracketSubmitArgs) -> Result<BracketSubmitResponse, String> {
+        self.record(MockCall::Bracket(args.clone()));
+        Ok(BracketSubmitResponse {
+            parent_backend_id:      Some(format!("mock:{}:entry", args.idempotency_key)),
+            take_profit_backend_id: Some(format!("mock:{}:tp",    args.idempotency_key)),
+            stop_loss_backend_id:   Some(format!("mock:{}:sl",    args.idempotency_key)),
+        })
+    }
+
+    fn submit_oco(&self, args: &OcoSubmitArgs) -> Result<OcoSubmitResponse, String> {
+        let ids = (0..args.legs.len())
+            .map(|i| format!("mock:{}:{}", args.oca_group, i))
+            .collect();
+        self.record(MockCall::Oco(args.clone()));
+        Ok(OcoSubmitResponse { leg_backend_ids: ids })
+    }
+
+    fn submit_conditional(&self, args: &ConditionalSubmitArgs) -> Result<String, String> {
+        self.record(MockCall::Conditional(args.clone()));
+        Ok(format!("mock:{}", args.idempotency_key))
+    }
+
+    fn submit_options_trigger(&self, args: &OptionsTriggerArgs) -> Result<OptionsTriggerResponse, String> {
+        self.record(MockCall::OptionsTrigger(args.clone()));
+        Ok(OptionsTriggerResponse {
+            entry_backend_id: Some(format!("mock:{}", args.idempotency_key)),
+            option_con_id: None,
+        })
+    }
+
+    fn submit_combo(&self, args: &ComboSubmitArgs) -> Result<String, String> {
+        self.record(MockCall::Combo(args.clone()));
+        Ok(format!("mock:{}", args.idempotency_key))
     }
 }
