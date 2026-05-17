@@ -33,6 +33,9 @@ pub fn show_text_note_editor(c: TextNoteCtx<'_>) -> TextNoteOutput {
         .fixed_pos(egui::pos2(c.x, c.y))
         .order(egui::Order::Foreground)
         .show(c.ctx, |ui| {
+            // TODO: Input migration deferred — canvas overlay needs custom
+            // font size (from drawing object) + WHITE text color override
+            // that ui_kit::Input doesn't expose.
             let resp = ui.add(egui::TextEdit::singleline(c.text_buf)
                 .font(egui::FontId::proportional(c.font_size))
                 .desired_width(200.0)

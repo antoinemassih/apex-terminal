@@ -498,9 +498,11 @@ fn draw_trading(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                 let id = egui::Id::new("apex_data_url_edit");
                 let mut buf: String = ui.data_mut(|d|
                     d.get_temp::<String>(id).unwrap_or_else(|| crate::apex_data::apex_url()));
-                let resp = ui.add(egui::TextEdit::singleline(&mut buf).desired_width(340.0));
-                if resp.changed() { ui.data_mut(|d| d.insert_temp(id, buf.clone())); }
-                if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                let resp = crate::ui_kit::widgets::Input::new(&mut buf)
+                    .min_width(340.0)
+                    .show(ui, t);
+                if resp.response.changed() { ui.data_mut(|d| d.insert_temp(id, buf.clone())); }
+                if resp.submitted {
                     crate::apex_data::set_apex_url(buf.trim().to_string());
                 }
             });
@@ -512,12 +514,12 @@ fn draw_trading(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                 let id = egui::Id::new("apex_data_token_edit");
                 let mut buf: String = ui.data_mut(|d|
                     d.get_temp::<String>(id).unwrap_or_else(|| crate::apex_data::apex_token().unwrap_or_default()));
-                let mut te = egui::TextEdit::singleline(&mut buf).desired_width(340.0);
-                if cx.password { te = te.password(true); }
-                if let Some(h) = cx.hint { te = te.hint_text(h); }
-                let resp = ui.add(te);
-                if resp.changed() { ui.data_mut(|d| d.insert_temp(id, buf.clone())); }
-                if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                let mut input = crate::ui_kit::widgets::Input::new(&mut buf).min_width(340.0);
+                if cx.password { input = input.password(true); }
+                if let Some(h) = cx.hint { input = input.placeholder(h); }
+                let resp = input.show(ui, t);
+                if resp.response.changed() { ui.data_mut(|d| d.insert_temp(id, buf.clone())); }
+                if resp.submitted {
                     let tok = buf.trim();
                     crate::apex_data::set_apex_token(if tok.is_empty() { None } else { Some(tok.to_string()) });
                 }

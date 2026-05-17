@@ -57,6 +57,11 @@ pub struct InputResponse {
     pub response: Response,
     pub clear_clicked: bool,
     pub submitted: bool,
+    /// `egui::Id` of the internal `TextEdit`. Use this with
+    /// `ui.memory_mut(|m| m.request_focus(resp.editor_id))` when a
+    /// caller needs to programmatically focus the field (e.g. when
+    /// the input first appears inside a popup / dialog).
+    pub editor_id: egui::Id,
 }
 
 impl<'a> Input<'a> {
@@ -384,10 +389,10 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
             row_resp.mark_changed();
         }
 
-        (row_resp, submitted)
+        (row_resp, submitted, edit_id)
     });
 
-    let (row_resp, submitted) = outer.inner;
+    let (row_resp, submitted, editor_id) = outer.inner;
 
     // ── Helper text below ──
     if let Some(helper) = &helper_text {
@@ -411,5 +416,6 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
         response: row_resp,
         clear_clicked,
         submitted,
+        editor_id,
     }
 }
