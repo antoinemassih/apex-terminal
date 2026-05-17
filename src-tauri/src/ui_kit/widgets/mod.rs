@@ -88,6 +88,8 @@ pub mod panel_divider;
 pub mod panel_list_row;
 pub mod panel_card;
 pub mod panel_key_value_row;
+// Foundation extension wave 2 (Agent V)
+pub mod panel_sub_section;
 
 pub use panel::{Panel, PanelCtx, PanelResponse};
 pub use header::{Header, HeaderVariant, HeaderResponse};
@@ -99,6 +101,11 @@ pub use panel_empty::PanelEmpty;
 pub use panel_loading::PanelLoading;
 pub use panel_divider::panel_divider;
 pub use panel_list_row::PanelListRow;
+// Foundation extension wave 2 (Agent V)
+// NOTE: Agent U is also adding re-exports in this file — merge conflict
+// expected here and trivial to resolve.
+pub use panel_sub_section::PanelSubSection;
+pub use panel_list_row::{Column as PanelColumn, ColAlign as PanelColAlign};
 pub use panel_card::PanelCard;
 pub use panel_key_value_row::PanelKeyValueRow;
 pub use range_slider::RangeSlider;

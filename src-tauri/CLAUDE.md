@@ -139,6 +139,57 @@ Floating panels (settings, news, connection): use `Header::dialog` + `Modal`, no
 
 Body primitives (PanelSection/PanelEmpty/PanelLoading/PanelListRow/PanelCard/PanelKeyValueRow/PanelDivider) — see Agent K's foundation PR.
 
+### Foundation extension wave 2 (Agent V)
+
+Two additions driven by gaps real panel migrations surfaced. No panel
+migrations were done in this PR — adoption is a separate sweep.
+
+**`PanelSubSection`** — collapsible category grouping nested INSIDE a
+`PanelSection` body (or anywhere a panel needs sub-grouping). Caret +
+uppercase title + count chip header with a hairline rule below
+(painted in both expanded and collapsed states). Persistent expanded
+state via `&mut bool`. Clicking anywhere on the header toggles. Body
+indents `gap_md()` when expanded.
+
+```rust
+PanelSubSection::new("trend", "TREND INDICATORS")
+    .count(8)
+    .expanded(&mut group.expanded)
+    .show(ui, t, |ui, t| { /* body */ });
+```
+
+| Hand-rolled pattern | Replace with |
+|---|---|
+| `indicators_panel.rs` LIBRARY category headers (caret + UPPER title + chip + inter-category divider) | `PanelSubSection` |
+| `object_tree.rs` folder rows | `PanelSubSection` |
+| Generic non-categorical disclosure with proportional title in `t.text` | `Disclosure` (unchanged) |
+
+**`PanelListRow::columns(&[Column...])`** — alternate row layout for
+streaming-data panels (tape T&S, scanner T&S, journal). Switches the
+row to a free-form N-column layout, ignoring
+`.primary()` / `.secondary()` / `.leading()` / `.trailing()`. Selected
++ hover backgrounds still apply. Slice-based API — no per-cell heap
+allocations (important: tape can emit ~200 rows/frame).
+
+```rust
+PanelListRow::new("print_123")
+    .columns(&[
+        Column::left("09:31:42.123").color(t.dim),
+        Column::right("$145.32").color(t.bull),
+        Column::right("250").color(t.text),
+    ])
+    .show(ui, t);
+```
+
+Re-exported as `PanelColumn` / `PanelColAlign` from `ui_kit::widgets`
+to avoid clashing with `Table`'s `Column` / `ColAlign`.
+
+| Hand-rolled pattern | Replace with |
+|---|---|
+| `tape_panel.rs` free-form 3-column print rows | `PanelListRow::columns(&[...])` |
+| `scanner_panel.rs` T&S column rows | `PanelListRow::columns(&[...])` |
+| Journal table rows (date / pnl / R / notes) | `PanelListRow::columns(&[...])` |
+
 ### Shell API contract (open flag, pane alignment)
 
 `SidePanelShell::show` / `SidePanelShell::tabs::show` / `SplitSectionPanel::show`
