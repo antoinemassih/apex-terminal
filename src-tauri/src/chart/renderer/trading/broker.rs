@@ -239,6 +239,7 @@ impl LiveBroker {
 }
 
 impl Broker for LiveBroker {
+    #[tracing::instrument(skip(self, args), level = "debug", fields(symbol = %args.symbol, side = %args.side, qty = args.qty, client_order_id = %args.client_order_id))]
     fn submit(&self, args: &SubmitArgs) -> Result<String, String> {
         let client = reqwest::blocking::Client::new();
         let con_id = Self::resolve_con_id(&client, args.symbol)
@@ -286,6 +287,7 @@ impl Broker for LiveBroker {
         Self::extract_order_id(&json).ok_or_else(|| "broker returned no orderId".into())
     }
 
+    #[tracing::instrument(skip(self), level = "debug", fields(backend_id))]
     fn cancel(&self, backend_id: &str, _client_order_id: &str) -> Result<(), String> {
         let client = reqwest::blocking::Client::new();
         client.delete(format!("{}/orders/{}", APEXIB_URL, backend_id))
@@ -294,6 +296,7 @@ impl Broker for LiveBroker {
             .map_err(|e| format!("cancel http: {e}"))
     }
 
+    #[tracing::instrument(skip(self), level = "debug", fields(backend_id, new_price = ?new_price))]
     fn modify(&self, backend_id: &str, _client_order_id: &str, new_price: Price, _new_qty: u32) -> Result<(), String> {
         // Caller is responsible for choosing limitPrice vs stopPrice — we
         // can't know the order type without re-fetching. Use limitPrice as
@@ -365,6 +368,7 @@ impl Broker for LiveBroker {
 
     // ── Multi-leg paths (Wave 4) ────────────────────────────────────────────
 
+    #[tracing::instrument(skip(self, args), level = "debug", fields(symbol = %args.symbol, qty = args.qty, tp = args.take_profit_price, sl = args.stop_loss_price))]
     fn submit_bracket(&self, args: &BracketSubmitArgs) -> Result<BracketSubmitResponse, String> {
         let client = reqwest::blocking::Client::new();
         let con_id = Self::resolve_con_id(&client, &args.symbol)
@@ -404,6 +408,7 @@ impl Broker for LiveBroker {
         })
     }
 
+    #[tracing::instrument(skip(self, args), level = "debug", fields(oca_group = %args.oca_group, n_legs = args.legs.len()))]
     fn submit_oco(&self, args: &OcoSubmitArgs) -> Result<OcoSubmitResponse, String> {
         let client = reqwest::blocking::Client::new();
         let mut oco_orders = Vec::new();
@@ -446,6 +451,7 @@ impl Broker for LiveBroker {
         Ok(OcoSubmitResponse { leg_backend_ids })
     }
 
+    #[tracing::instrument(skip(self, args), level = "debug", fields(symbol = %args.symbol, qty = args.qty, n_conds = args.conditions.len()))]
     fn submit_conditional(&self, args: &ConditionalSubmitArgs) -> Result<String, String> {
         let client = reqwest::blocking::Client::new();
         let con_id = Self::resolve_con_id(&client, &args.symbol)
@@ -481,6 +487,7 @@ impl Broker for LiveBroker {
             .ok_or_else(|| "conditional: broker returned no orderId".into())
     }
 
+    #[tracing::instrument(skip(self, args), level = "debug", fields(underlying = %args.underlying, strike = args.strike, qty = args.qty))]
     fn submit_options_trigger(&self, args: &OptionsTriggerArgs) -> Result<OptionsTriggerResponse, String> {
         let client = reqwest::blocking::Client::new();
         let body = serde_json::json!({
@@ -507,6 +514,7 @@ impl Broker for LiveBroker {
         })
     }
 
+    #[tracing::instrument(skip(self, args), level = "debug", fields(symbol = %args.symbol, n_legs = args.legs.len(), qty = args.qty))]
     fn submit_combo(&self, args: &ComboSubmitArgs) -> Result<String, String> {
         let client = reqwest::blocking::Client::new();
         let legs_json: Vec<serde_json::Value> = args.legs.iter().map(|l| {

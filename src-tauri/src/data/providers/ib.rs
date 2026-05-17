@@ -36,7 +36,44 @@ impl Connection for IbProvider {
         // can plumb the connect/disconnect events through here.
         ConnectionState::Idle
     }
-    fn metrics(&self) -> ConnectionMetrics { ConnectionMetrics::default() }
+    fn metrics(&self) -> ConnectionMetrics {
+        feed_metrics_snapshot(
+            &crate::data::feeds::ib_ws::MESSAGES_IN,
+            &crate::data::feeds::ib_ws::PARSE_ERRORS,
+            &crate::data::feeds::ib_ws::RECONNECT_COUNT,
+            &crate::data::feeds::ib_ws::LAST_MESSAGE_AT_MS,
+        )
+    }
+}
+
+/// Build a `ConnectionMetrics` from a feed's atomic counters. Shared across
+/// the ib / crypto / signals adapters since they all use the same shape.
+pub(super) fn feed_metrics_snapshot(
+    msgs_in:  &std::sync::atomic::AtomicU64,
+    parse_e:  &std::sync::atomic::AtomicU64,
+    recon:    &std::sync::atomic::AtomicU32,
+    last_ms:  &std::sync::atomic::AtomicI64,
+) -> ConnectionMetrics {
+    use std::sync::atomic::Ordering;
+    let last = last_ms.load(Ordering::Relaxed);
+    let last_message_at = if last > 0 {
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(last);
+        let age = (now_ms - last).max(0) as u64;
+        std::time::Instant::now().checked_sub(std::time::Duration::from_millis(age))
+    } else {
+        None
+    };
+    ConnectionMetrics {
+        messages_in:     msgs_in.load(Ordering::Relaxed),
+        messages_out:    0,
+        parse_errors:    parse_e.load(Ordering::Relaxed),
+        reconnect_count: recon.load(Ordering::Relaxed),
+        last_message_at,
+        queue_depth:     None,
+    }
 }
 
 #[async_trait::async_trait]

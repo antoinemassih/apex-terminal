@@ -70,6 +70,7 @@ impl SubscriptionManager {
 
     /// First subscriber spins up the upstream pump; subsequent subscribers
     /// just get a fresh `broadcast::Receiver` on the existing fanout.
+    #[tracing::instrument(skip(self), level = "debug", fields(symbol, timeframe))]
     pub fn subscribe_bars(
         &self,
         symbol: &str,
@@ -111,6 +112,7 @@ impl SubscriptionManager {
         Ok(recv_out)
     }
 
+    #[tracing::instrument(skip(self), level = "debug", fields(symbol, timeframe))]
     pub fn unsubscribe_bars(&self, symbol: &str, timeframe: &str) {
         let key = (symbol.to_string(), timeframe.to_string());
         let mut map = self.bars.lock().expect("bars map");
@@ -122,6 +124,7 @@ impl SubscriptionManager {
         }
     }
 
+    #[tracing::instrument(skip(self), level = "debug", fields(symbol))]
     pub fn subscribe_quotes(
         &self,
         symbol: &str,
@@ -152,6 +155,7 @@ impl SubscriptionManager {
         Ok(recv_out)
     }
 
+    #[tracing::instrument(skip(self), level = "debug", fields(symbol))]
     pub fn unsubscribe_quotes(&self, symbol: &str) {
         let mut map = self.quotes.lock().expect("quotes map");
         if let Some(sub) = map.get(symbol) {
@@ -162,6 +166,7 @@ impl SubscriptionManager {
         }
     }
 
+    #[tracing::instrument(skip(self), level = "debug", fields(symbol))]
     pub fn subscribe_trades(
         &self,
         symbol: &str,
@@ -192,6 +197,7 @@ impl SubscriptionManager {
         Ok(recv_out)
     }
 
+    #[tracing::instrument(skip(self), level = "debug", fields(symbol))]
     pub fn unsubscribe_trades(&self, symbol: &str) {
         let mut map = self.trades.lock().expect("trades map");
         if let Some(sub) = map.get(symbol) {
@@ -202,6 +208,7 @@ impl SubscriptionManager {
         }
     }
 
+    #[tracing::instrument(skip(self), level = "debug", fields(underlying))]
     pub fn subscribe_chain(
         &self,
         underlying: &str,
@@ -232,6 +239,7 @@ impl SubscriptionManager {
         Ok(recv_out)
     }
 
+    #[tracing::instrument(skip(self), level = "debug", fields(underlying))]
     pub fn unsubscribe_chain(&self, underlying: &str) {
         let mut map = self.chain.lock().expect("chain map");
         if let Some(sub) = map.get(underlying) {
@@ -244,6 +252,7 @@ impl SubscriptionManager {
 
     /// Replay bars from the last-seen timestamp through the existing fanout.
     /// Call when the upstream provider signals a reconnect.
+    #[tracing::instrument(skip(self), level = "debug", fields(symbol, timeframe))]
     pub async fn gap_fill_on_reconnect(
         &self,
         symbol: &str,

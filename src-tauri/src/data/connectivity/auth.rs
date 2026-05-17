@@ -29,11 +29,13 @@ pub trait Authenticated: Send + Sync {
 /// HTTP 401, we ask the provider to refresh and call `f` exactly once more
 /// with the new token. Anything other than auth-failure propagates
 /// immediately — this helper does NOT replace a general retry strategy.
+#[tracing::instrument(skip(auth, f), level = "debug", fields(has_token))]
 pub async fn with_auth_retry<T, F, Fut>(auth: &dyn Authenticated, f: F) -> Result<T, ApiError>
 where
     F: Fn(String) -> Fut,
     Fut: Future<Output = Result<T, ApiError>>,
 {
+    tracing::Span::current().record("has_token", auth.current_token().is_some());
     let token = auth
         .current_token()
         .ok_or_else(|| ApiError::Auth(AuthError::MissingCredentials))?;

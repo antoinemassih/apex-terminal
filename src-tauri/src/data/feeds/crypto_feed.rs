@@ -4,8 +4,21 @@
 //! Pushes UpdateLastBar / AppendBar / WatchlistPrice to the chart renderer.
 
 use std::sync::{Arc, Mutex, OnceLock};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, Ordering};
 use std::time::Duration;
+
+// ── Wave 6: per-feed metrics counters ────────────────────────────────────────
+pub(crate) static MESSAGES_IN:        AtomicU64 = AtomicU64::new(0);
+pub(crate) static PARSE_ERRORS:       AtomicU64 = AtomicU64::new(0);
+pub(crate) static RECONNECT_COUNT:    AtomicU32 = AtomicU32::new(0);
+pub(crate) static LAST_MESSAGE_AT_MS: AtomicI64 = AtomicI64::new(0);
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
 use crate::chart_renderer::{self, ChartCommand, Bar};
 use crate::data::connectivity::{self, errors_sink::{report, ErrorLevel}, Backoff};
 
@@ -32,8 +45,11 @@ pub fn start() {
         rt.block_on(async {
             // Infinite reconnect — never give up on crypto.
             let mut backoff = Backoff::new().with_max_attempts(None);
+            let mut first = true;
             loop {
                 if shutdown.load(Ordering::SeqCst) { break; }
+                if !first { RECONNECT_COUNT.fetch_add(1, Ordering::Relaxed); }
+                first = false;
                 match run_feed().await {
                     Ok(()) => { backoff.reset(); }
                     Err(e) => {
@@ -90,10 +106,13 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if !msg.is_text() { continue; }
         let text = msg.to_text()?;
 
+        MESSAGES_IN.fetch_add(1, Ordering::Relaxed);
+        LAST_MESSAGE_AT_MS.store(now_ms(), Ordering::Relaxed);
+
         // Parse trade tape entries
         let json: serde_json::Value = match serde_json::from_str(text) {
             Ok(v) => v,
-            Err(_) => continue,
+            Err(_) => { PARSE_ERRORS.fetch_add(1, Ordering::Relaxed); continue; }
         };
 
         if let Some(trade) = json.get("trade") {

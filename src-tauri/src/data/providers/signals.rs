@@ -31,7 +31,14 @@ impl Default for SignalsProvider {
 impl Connection for SignalsProvider {
     fn name(&self) -> &str { "signals" }
     fn state(&self) -> ConnectionState { ConnectionState::Idle }
-    fn metrics(&self) -> ConnectionMetrics { ConnectionMetrics::default() }
+    fn metrics(&self) -> ConnectionMetrics {
+        super::ib::feed_metrics_snapshot(
+            &crate::data::feeds::signals_feed::MESSAGES_IN,
+            &crate::data::feeds::signals_feed::PARSE_ERRORS,
+            &crate::data::feeds::signals_feed::RECONNECT_COUNT,
+            &crate::data::feeds::signals_feed::LAST_MESSAGE_AT_MS,
+        )
+    }
 }
 
 #[async_trait::async_trait]
