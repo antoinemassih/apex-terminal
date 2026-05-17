@@ -118,7 +118,7 @@ impl<'a, T> Table<'a, T> {
             egui::vec2(avail_w, avail_h),
         );
 
-        let default_t = &crate::chart_renderer::gpu::THEMES[0];
+        let default_t: &Theme = self.theme_handle.expect("Table requires a theme — call `.theme(t)` before `.show()`");
         let dim = self.theme_dim.unwrap_or(default_t.dim);
         let fg = self.theme_fg.unwrap_or(default_t.text);
         let accent = self.theme_accent.unwrap_or(default_t.accent);
@@ -196,11 +196,8 @@ impl<'a, T> Table<'a, T> {
             egui::pos2(rect.left(), header_rect.bottom()),
             rect.max,
         );
-        // Resolve a theme handle for RowShell — fall back to first theme.
-        let theme_for_shell: &Theme = match self.theme_handle {
-            Some(t) => t,
-            None => &crate::chart_renderer::gpu::THEMES[0],
-        };
+        // Theme handle (already validated above).
+        let theme_for_shell: &Theme = default_t;
         let select_col = self.select_col;
         let row_height = self.row_height;
         let striping = self.striping;

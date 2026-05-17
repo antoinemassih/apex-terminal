@@ -59,12 +59,11 @@ impl<'a> NewsRow<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response {
-        let default_t = &crate::chart_renderer::gpu::THEMES[0];
-        let theme_ref: &Theme = self.theme.unwrap_or(default_t);
-        let bull = self.theme_bull.unwrap_or(default_t.bull);
-        let bear = self.theme_bear.unwrap_or(default_t.bear);
-        let dim = self.theme_dim.unwrap_or(default_t.dim);
-        let accent = self.theme_accent.unwrap_or(default_t.accent);
+        let theme_ref: &Theme = self.theme.expect("NewsRow requires a theme — call `.theme(t)` before `.show()`");
+        let bull = self.theme_bull.unwrap_or(theme_ref.bull);
+        let bear = self.theme_bear.unwrap_or(theme_ref.bear);
+        let dim = self.theme_dim.unwrap_or(theme_ref.dim);
+        let accent = self.theme_accent.unwrap_or(theme_ref.accent);
         let headline_fg = theme_ref.text;
 
         let headline = self.headline;

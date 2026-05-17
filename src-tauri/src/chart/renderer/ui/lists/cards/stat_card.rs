@@ -28,7 +28,7 @@ impl<'a> StatCard<'a> {
     pub fn theme(mut self, t: &'a Theme) -> Self { self.theme = Some(t); self }
 
     pub fn show(self, ui: &mut Ui) {
-        let t = self.theme.unwrap_or(&crate::chart_renderer::gpu::THEMES[0]);
+        let t = self.theme.expect("StatCard requires a theme — call `.theme(t)` before `.show()`");
         let bull = t.bull;
         let bear = t.bear;
         let dim  = t.dim;

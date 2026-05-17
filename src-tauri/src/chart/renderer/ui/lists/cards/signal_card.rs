@@ -37,8 +37,7 @@ impl<'a> SignalCard<'a> {
             .padding(Margin::same(gap_lg() as i8))
             .body(move |ui| {
                 ui.add_space(gap_xs());
-                let fallback = &crate::chart_renderer::gpu::THEMES[0];
-                let t_ref = theme.unwrap_or(fallback);
+                let t_ref = theme.expect("SignalCard requires a theme — call `.theme(t)` before `.show()`");
                 let color = if score >= 0.0 { t_ref.bull } else { t_ref.bear };
                 ui.label(RichText::new(format!("{:+.2}", score))
                     .monospace().size(font_xl()).strong().color(color));
