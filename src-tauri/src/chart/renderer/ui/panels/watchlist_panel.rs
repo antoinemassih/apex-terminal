@@ -216,7 +216,7 @@ if watchlist.open {
                     }).inner;
                     // Filter button (right portion)
                     let filter_active = watchlist.filter_preset != "All" || !watchlist.filter_text.is_empty();
-                    let icon_col = if filter_active { t.accent } else if watchlist.filter_open { t.accent } else { t.dim.gamma_multiply(0.4) };
+                    let icon_col = if filter_active { t.accent } else if watchlist.filter_open { t.accent } else { color_dim(t.dim) };
                     let btn_rect = egui::Rect::from_min_size(egui::pos2(full_rect.right() - btn_w, full_rect.top()), egui::vec2(btn_w, search_h));
                     let filter_btn_rect = btn_rect; // capture for popup anchor
                     ui.painter().text(btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::FUNNEL, egui::FontId::proportional(font_sm()), icon_col);
@@ -225,7 +225,7 @@ if watchlist.open {
                     crate::chart_renderer::ui::style::cursor::clickable(ui, &btn_resp);
                     // Columns config button (sliders icon)
                     let col_btn_rect = egui::Rect::from_min_size(egui::pos2(btn_rect.left() - btn_w, full_rect.top()), egui::vec2(btn_w, search_h));
-                    let col_icon_col = if watchlist.wl_columns_open { t.accent } else { t.dim.gamma_multiply(0.4) };
+                    let col_icon_col = if watchlist.wl_columns_open { t.accent } else { color_dim(t.dim) };
                     ui.painter().text(col_btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::SLIDERS, egui::FontId::proportional(font_sm()), col_icon_col);
                     let col_resp = ui.interact(col_btn_rect, egui::Id::new("wl_columns_btn"), egui::Sense::click());
                     if col_resp.clicked() { watchlist.wl_columns_open = !watchlist.wl_columns_open; }
@@ -329,7 +329,7 @@ if watchlist.open {
                                     let visible = watchlist.wl_columns.contains(&s.id);
                                     ui.horizontal(|ui| {
                                         let icon = if visible { Icon::EYE } else { Icon::EYE_SLASH };
-                                        let col = if visible { t.accent } else { t.dim.gamma_multiply(0.3) };
+                                        let col = if visible { t.accent } else { color_very_dim(t.dim) };
                                         if ui.add(Button::icon(icon).variant(Variant::Chrome).glyph_color(col).size(Size::Sm)
                                             .frameless(true).min_size(egui::vec2(18.0, 16.0))).clicked() {
                                             if visible {
@@ -339,7 +339,7 @@ if watchlist.open {
                                                 watchlist.wl_columns.push(s.id);
                                             }
                                         }
-                                        let lbl_col = if visible { t.text } else { t.dim.gamma_multiply(0.4) };
+                                        let lbl_col = if visible { t.text } else { color_dim(t.dim) };
                                         ui.add(MonospaceCode::new(s.label).size_px(font_xs()).color(lbl_col));
                                     });
                                 }
@@ -613,7 +613,7 @@ if watchlist.open {
 
                                     // Collapse chevron (keep visible during rename)
                                     let chevron = if sec_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
-                                    ui.add(Button::icon(chevron).variant(Variant::TextOnly).glyph_color(t.dim.gamma_multiply(0.6)).size(Size::Sm));
+                                    ui.add(Button::icon(chevron).variant(Variant::TextOnly).glyph_color(color_muted(t.dim)).size(Size::Sm));
 
                                     let te = super::super::widgets::inputs::TextInput::new(&mut watchlist.rename_buf)
                                         .width((ui.available_width() - 10.0).max(40.0)).font_size(9.0).show(ui);
@@ -730,7 +730,7 @@ if watchlist.open {
                                             ui.add(MonospaceCode::new(&item_sym).size_px(font_sm()).strong(true).color(sym_color));
                                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                                 // X button
-                                                if ui.add(Button::icon(Icon::X).variant(Variant::TextOnly).glyph_color(t.dim.gamma_multiply(0.3)).size(Size::Sm)).clicked() {
+                                                if ui.add(Button::icon(Icon::X).variant(Variant::TextOnly).glyph_color(color_very_dim(t.dim)).size(Size::Sm)).clicked() {
                                                     remove_sym = Some(item_sym.clone());
                                                 }
                                                 // Bid x Ask (or price fallback)
@@ -999,7 +999,7 @@ if watchlist.open {
                         ui.add_space(gap_md());
                         ui.horizontal(|ui| {
                             let add_sec_lbl = format!("{} Section", Icon::PLUS);
-                            if ui.add(Button::new(add_sec_lbl.as_str()).variant(Variant::TextOnly).size(Size::Sm).fg(t.dim.gamma_multiply(0.4))).clicked() {
+                            if ui.add(Button::new(add_sec_lbl.as_str()).variant(Variant::TextOnly).size(Size::Sm).fg(color_dim(t.dim))).clicked() {
                                 watchlist.add_section("New Section");
                                 watchlist.persist();
                             }
@@ -1175,7 +1175,7 @@ if watchlist.open {
                                         if item_bid > 0.0 || item_ask > 0.0 {
                                             painter.text(egui::pos2(rect.right() - 6.0, y_c), egui::Align2::RIGHT_CENTER,
                                                 &format!("{:.2} x {:.2}", item_bid, item_ask),
-                                                mono_lg(), color.gamma_multiply(0.7));
+                                                mono_lg(), color_subtle(color));
                                         }
                                         // Faint separator
                                         painter.line_segment(
@@ -1221,7 +1221,7 @@ if watchlist.open {
                             ui.add_space(gap_md());
                             ui.horizontal(|ui| {
                                 let add_opt_sec_lbl = format!("{} Section", Icon::PLUS);
-                                if ui.add(Button::new(add_opt_sec_lbl.as_str()).variant(Variant::TextOnly).size(Size::Sm).fg(t.dim.gamma_multiply(0.4))).clicked() {
+                                if ui.add(Button::new(add_opt_sec_lbl.as_str()).variant(Variant::TextOnly).size(Size::Sm).fg(color_dim(t.dim))).clicked() {
                                     watchlist.add_option_section("New Options");
                                     watchlist.persist();
                                 }
@@ -1404,7 +1404,7 @@ if watchlist.open {
                     ui.horizontal(|ui| {
                         // ui.set_min_width removed — was preventing sidebar resize
                         ui.spacing_mut().item_spacing.x = gap;
-                        let hdr_color = t.dim.gamma_multiply(0.4);
+                        let hdr_color = color_dim(t.dim);
                         ui.add_space(col_chk);
                         ui.allocate_ui(egui::vec2(col_stk, 14.0), |ui| { dim_label(ui, "STK", hdr_color); });
                         ui.allocate_ui(egui::vec2(col_bid, 14.0), |ui| { dim_label(ui, "BID", hdr_color); });
@@ -1468,7 +1468,7 @@ if watchlist.open {
                             else { format!("{}", row.oi) };
                         let oi_x = x;
                         painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                            &oi_str, mono_sm(), t.dim.gamma_multiply(0.5));
+                            &oi_str, mono_sm(), color_half(t.dim));
 
                         // IV indicator — left edge strip on the row
                         if row.iv > 0.0 {
@@ -1706,7 +1706,7 @@ if watchlist.open {
                             // Near / Mid / Far toggles
                             NmfToggle::new(&mut watchlist.chain_0_nmf).theme(t).show(ui);
                             // Freeze + arrows
-                            let fr_col = if watchlist.chain_0_frozen { t.accent } else { t.dim.gamma_multiply(0.4) };
+                            let fr_col = if watchlist.chain_0_frozen { t.accent } else { color_dim(t.dim) };
                             let fr_icon_0 = if watchlist.chain_0_frozen { Icon::PAUSE } else { Icon::PLAY };
                             if ui.add(Button::icon(fr_icon_0).variant(Variant::Chrome).glyph_color(fr_col).size(Size::Sm).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).clicked() {
                                 watchlist.chain_0_frozen = !watchlist.chain_0_frozen;
@@ -1758,7 +1758,7 @@ if watchlist.open {
                             ui.add(MonospaceCode::new(&format!("{}", watchlist.chain_far_num_strikes)).size_px(font_xs()).color(t.dim));
                             if ui.add(Button::new("+").variant(Variant::Chrome).size(Size::Sm).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_num_strikes += 1; }
                             NmfToggle::new(&mut watchlist.chain_far_nmf).theme(t).show(ui);
-                            let fr_col = if watchlist.chain_far_frozen { t.accent } else { t.dim.gamma_multiply(0.4) };
+                            let fr_col = if watchlist.chain_far_frozen { t.accent } else { color_dim(t.dim) };
                             let fr_icon_far = if watchlist.chain_far_frozen { Icon::PAUSE } else { Icon::PLAY };
                             if ui.add(Button::icon(fr_icon_far).variant(Variant::Chrome).glyph_color(fr_col).size(Size::Sm).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).clicked() {
                                 watchlist.chain_far_frozen = !watchlist.chain_far_frozen;

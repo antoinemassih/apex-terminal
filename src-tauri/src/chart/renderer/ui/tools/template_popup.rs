@@ -68,7 +68,7 @@ pub(crate) fn draw(
                                 (super::super::super::gpu::PaneType::Spreadsheet, "Spreadsheet", "\u{229E}"),
                             ] {
                                 let active = panes[pi].pane_type == ptype;
-                                let fg = if active { t.accent } else { t.dim.gamma_multiply(0.5) };
+                                let fg = if active { t.accent } else { color_half(t.dim) };
                                 let bg = if active { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
                                 if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new(format!("{} {}", icon, label))
                                     .monospace().size(font_xs()).color(fg))
@@ -86,7 +86,7 @@ pub(crate) fn draw(
 
                         // Template list
                         if watchlist.pane_templates.is_empty() {
-                            ui.add(BodyLabel::new("No saved templates").color(t.dim.gamma_multiply(0.5)));
+                            ui.add(BodyLabel::new("No saved templates").color(color_half(t.dim)));
                             ui.add_space(gap_sm());
                         } else {
                             egui::ScrollArea::vertical()
@@ -118,12 +118,12 @@ pub(crate) fn draw(
                                                     ui.add(BodyLabel::new(Icon::STAR).size(font_sm()).color(t.accent));
                                                     ui.add(BodyLabel::new(name).size(font_sm()).monospace(true).strong(true).color(TEXT_PRIMARY));
                                                 });
-                                                ui.add(BodyLabel::new(&summary).size(font_xs()).monospace(true).color(t.dim.gamma_multiply(0.6)));
+                                                ui.add(BodyLabel::new(&summary).size(font_xs()).monospace(true).color(color_muted(t.dim)));
                                             });
 
                                             // Delete button (right side)
                                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                                if icon_btn(ui, Icon::TRASH, t.dim.gamma_multiply(0.4), font_sm())
+                                                if icon_btn(ui, Icon::TRASH, color_dim(t.dim), font_sm())
                                                     .on_hover_text("Delete template").clicked()
                                                 {
                                                     delete_idx = Some(i);

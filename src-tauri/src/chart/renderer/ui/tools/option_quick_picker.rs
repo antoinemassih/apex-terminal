@@ -96,7 +96,7 @@ pub(crate) fn draw(
                             ui.add_space(gap_md());
                             // Back arrow
                             let can_back = dte_idx > 0;
-                            let back_col = if can_back { t.accent } else { t.dim.gamma_multiply(0.3) };
+                            let back_col = if can_back { t.accent } else { color_very_dim(t.dim) };
                             if icon_btn(ui, Icon::CARET_LEFT, back_col, font_lg()).clicked() && can_back {
                                 panes[pi].option_quick_dte_idx = dte_idx - 1;
                                 let new_dte = DTE_LIST[dte_idx - 1];
@@ -109,7 +109,7 @@ pub(crate) fn draw(
                             });
                             // Forward arrow
                             let can_fwd = dte_idx < DTE_LIST.len() - 1;
-                            let fwd_col = if can_fwd { t.accent } else { t.dim.gamma_multiply(0.3) };
+                            let fwd_col = if can_fwd { t.accent } else { color_very_dim(t.dim) };
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 ui.add_space(gap_md());
                                 if icon_btn(ui, Icon::CARET_RIGHT, fwd_col, font_lg()).clicked() && can_fwd {
@@ -189,9 +189,9 @@ pub(crate) fn draw(
                         // Column headers: CALL | STRIKE | PUT
                         ui.horizontal(|ui| {
                             let cw = 250.0 / 3.0;
-                            col_header(ui, "CALL",   cw, t.dim.gamma_multiply(0.5), false);
-                            col_header(ui, "STRIKE", cw, t.dim.gamma_multiply(0.5), false);
-                            col_header(ui, "PUT",    cw, t.dim.gamma_multiply(0.5), false);
+                            col_header(ui, "CALL",   cw, color_half(t.dim), false);
+                            col_header(ui, "STRIKE", cw, color_half(t.dim), false);
+                            col_header(ui, "PUT",    cw, color_half(t.dim), false);
                         });
                         separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
 
@@ -243,7 +243,7 @@ pub(crate) fn draw(
                                             }
                                             ui.painter().text(crect.center(), egui::Align2::CENTER_CENTER,
                                                 &call_text, egui::FontId::monospace(font_sm()),
-                                                if call_row.is_some() { t.bull } else { t.dim.gamma_multiply(0.4) });
+                                                if call_row.is_some() { t.bull } else { color_dim(t.dim) });
                                             if cresp.clicked() && call_row.is_some() {
                                                 pending_load = Some((*strike, true));
                                             }
@@ -269,7 +269,7 @@ pub(crate) fn draw(
                                             }
                                             ui.painter().text(prect.center(), egui::Align2::CENTER_CENTER,
                                                 &put_text, egui::FontId::monospace(font_sm()),
-                                                if put_row.is_some() { t.bear } else { t.dim.gamma_multiply(0.4) });
+                                                if put_row.is_some() { t.bear } else { color_dim(t.dim) });
                                             if presp.clicked() && put_row.is_some() {
                                                 pending_load = Some((*strike, false));
                                             }

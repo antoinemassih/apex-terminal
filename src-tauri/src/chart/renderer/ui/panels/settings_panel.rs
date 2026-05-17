@@ -234,13 +234,13 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                                 name, mono_sm(), name_col);
 
                             let type_label = if is_mono[i.min(is_mono.len()-1)] { "mono" } else { "sans" };
-                            let type_col = t.dim.gamma_multiply(0.4);
+                            let type_col = color_dim(t.dim);
                             ui.painter().text(
                                 egui::pos2(r.left() + 8.0, r.bottom() - 12.0),
                                 egui::Align2::LEFT_CENTER,
                                 type_label, mono_sm(), type_col);
 
-                            let sample_col = if sel { TEXT_PRIMARY } else { t.dim.gamma_multiply(0.7) };
+                            let sample_col = if sel { TEXT_PRIMARY } else { color_subtle(t.dim) };
                             ui.painter().text(
                                 egui::pos2(r.right() - 8.0, r.bottom() - 12.0),
                                 egui::Align2::RIGHT_CENTER,
@@ -321,7 +321,7 @@ fn draw_chart(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Chart, t
     let is_crypto = crate::data::is_crypto(&chart.symbol);
     PanelSection::new("SESSIONS").show(ui, t, |ui, t| {
         if is_crypto {
-            ui.add(BodyLabel::new("N/A for crypto (24/7 market)").color(t.dim.gamma_multiply(0.5)));
+            ui.add(BodyLabel::new("N/A for crypto (24/7 market)").color(color_half(t.dim)));
         } else {
             setting_toggle_described(ui, "Session Shading",
                 Some("Visually distinguish regular and extended trading hours on the chart."),
@@ -367,7 +367,7 @@ fn draw_chart(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Chart, t
                 let (sh, sm2, eh, em2) = (chart.rth_start_minutes / 60, chart.rth_start_minutes % 60,
                     chart.rth_end_minutes / 60, chart.rth_end_minutes % 60);
                 ui.add(SectionLabel::new(&format!("RTH: {:02}:{:02} – {:02}:{:02} ET", sh, sm2, eh, em2))
-                    .tiny().color(t.dim.gamma_multiply(0.4)));
+                    .tiny().color(color_dim(t.dim)));
             }
         }
     });
@@ -540,9 +540,9 @@ fn draw_shortcuts(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
     // Column header (uses the body inset, no per-row indent).
     ui.horizontal(|ui| {
         ui.allocate_ui(egui::vec2(220.0, 16.0), |ui| {
-            ui.add(SectionLabel::new("ACTION").tiny().color(t.dim.gamma_multiply(0.4)));
+            ui.add(SectionLabel::new("ACTION").tiny().color(color_dim(t.dim)));
         });
-        ui.add(SectionLabel::new("SHORTCUT").tiny().color(t.dim.gamma_multiply(0.4)));
+        ui.add(SectionLabel::new("SHORTCUT").tiny().color(color_dim(t.dim)));
     });
     separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
     ui.add_space(gap_xs());

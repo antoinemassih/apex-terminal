@@ -51,12 +51,12 @@ if panes[ap].overlay_editing {
                     }
                     // Candle toggle
                     let candle_icon = if ov_candles { Icon::CHART_BAR } else { Icon::CHART_LINE };
-                    let candle_col = if ov_candles { t.accent } else { t.dim.gamma_multiply(0.5) };
+                    let candle_col = if ov_candles { t.accent } else { color_half(t.dim) };
                     if ui.add(Button::icon(candle_icon).variant(Variant::Ghost).glyph_color(candle_col).size(KitSize::Sm)).clicked() {
                         panes[ap].symbol_overlays[oi].show_candles = !panes[ap].symbol_overlays[oi].show_candles;
                     }
                     // Delete
-                    if ui.add(Button::icon(Icon::X).variant(Variant::Ghost).glyph_color(t.bear.gamma_multiply(0.5)).size(KitSize::Sm)).clicked() {
+                    if ui.add(Button::icon(Icon::X).variant(Variant::Ghost).glyph_color(color_half(t.bear)).size(KitSize::Sm)).clicked() {
                         delete_idx = Some(oi);
                     }
                 });
@@ -70,7 +70,7 @@ if panes[ap].overlay_editing {
             }
 
             // ── Add new overlay ──
-            dialog_section(ui, "ADD OVERLAY", m, t.dim.gamma_multiply(0.5));
+            dialog_section(ui, "ADD OVERLAY", m, color_half(t.dim));
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.add_space(m);

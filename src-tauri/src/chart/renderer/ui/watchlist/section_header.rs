@@ -73,7 +73,7 @@ impl<'a> SectionHeader<'a> {
                 Button::icon(chevron)
                     .variant(Variant::Ghost)
                     .size(Size::Sm)
-                    .glyph_color(self.dim.gamma_multiply(0.6))
+                    .glyph_color(color_muted(self.dim))
                     .frameless(true),
             ).clicked() {
                 chevron_clicked = true;
@@ -102,7 +102,7 @@ impl<'a> SectionHeader<'a> {
                         Button::icon(Icon::X)
                             .variant(Variant::Ghost)
                             .size(Size::Sm)
-                            .glyph_color(self.dim.gamma_multiply(0.3))
+                            .glyph_color(color_very_dim(self.dim))
                             .frameless(true),
                     ).clicked() {
                         delete_clicked = true;

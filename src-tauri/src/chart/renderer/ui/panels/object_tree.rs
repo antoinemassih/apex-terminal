@@ -319,7 +319,7 @@ fn draw_drawings_section(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &s
                         let vis_icon = if is_hidden { Icon::EYE_SLASH } else { Icon::EYE };
                         if Button::icon(vis_icon)
                             .variant(Variant::Ghost)
-                            .glyph_color(if is_hidden { t.dim.gamma_multiply(0.3) } else { t.dim })
+                            .glyph_color(if is_hidden { color_very_dim(t.dim) } else { t.dim })
                             .size(KitSize::Xs)
                             .show(ui, t)
                             .on_hover_text("Show / hide group")
@@ -385,7 +385,7 @@ fn draw_drawings_section(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &s
                                 let lock_icon = if locked { Icon::LOCK } else { Icon::LOCK_OPEN };
                                 if Button::icon(lock_icon)
                                     .variant(Variant::Ghost)
-                                    .glyph_color(if locked { t.dim } else { t.dim.gamma_multiply(0.5) })
+                                    .glyph_color(if locked { t.dim } else { color_half(t.dim) })
                                     .size(KitSize::Xs)
                                     .show(ui, t)
                                     .on_hover_text("Lock / unlock")
@@ -396,7 +396,7 @@ fn draw_drawings_section(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &s
                                 let eye_icon = if is_hidden { Icon::EYE_SLASH } else { Icon::EYE };
                                 if Button::icon(eye_icon)
                                     .variant(Variant::Ghost)
-                                    .glyph_color(if is_hidden { t.dim.gamma_multiply(0.3) } else { t.dim })
+                                    .glyph_color(if is_hidden { color_very_dim(t.dim) } else { t.dim })
                                     .size(KitSize::Xs)
                                     .show(ui, t)
                                     .on_hover_text("Show / hide group")
@@ -652,7 +652,7 @@ fn draw_indicators_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
                 let eye = if visible { Icon::EYE } else { Icon::EYE_SLASH };
                 if Button::icon(eye)
                     .variant(Variant::Ghost)
-                    .glyph_color(if visible { t.dim } else { t.dim.gamma_multiply(0.3) })
+                    .glyph_color(if visible { t.dim } else { color_very_dim(t.dim) })
                     .size(KitSize::Xs)
                     .show(ui, t)
                     .on_hover_text("Show / hide")
@@ -718,7 +718,7 @@ fn draw_overlays_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
                 let eye = if visible { Icon::EYE } else { Icon::EYE_SLASH };
                 if Button::icon(eye)
                     .variant(Variant::Ghost)
-                    .glyph_color(if visible { t.dim } else { t.dim.gamma_multiply(0.3) })
+                    .glyph_color(if visible { t.dim } else { color_very_dim(t.dim) })
                     .size(KitSize::Xs)
                     .show(ui, t)
                     .on_hover_text("Show / hide")
@@ -763,7 +763,7 @@ fn draw_widgets_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
     let snaps: Vec<(usize, &'static str, bool, f32, egui::Color32)> = chart.chart_widgets.iter()
         .enumerate()
         .map(|(wi, w)| {
-            let dot_col = if w.visible { t.accent } else { t.dim.gamma_multiply(0.3) };
+            let dot_col = if w.visible { t.accent } else { color_very_dim(t.dim) };
             (wi, w.kind.label(), w.visible, w.opacity, dot_col)
         })
         .collect();
@@ -794,7 +794,7 @@ fn draw_widgets_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
                 let eye = if vis { Icon::EYE } else { Icon::EYE_SLASH };
                 if Button::icon(eye)
                     .variant(Variant::Ghost)
-                    .glyph_color(if vis { t.dim } else { t.dim.gamma_multiply(0.3) })
+                    .glyph_color(if vis { t.dim } else { color_very_dim(t.dim) })
                     .size(KitSize::Xs)
                     .show(ui, t)
                     .on_hover_text("Show / hide")

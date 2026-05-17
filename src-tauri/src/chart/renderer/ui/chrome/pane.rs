@@ -977,7 +977,7 @@ impl<'a> FloatingOrderPaneChrome<'a> {
 
             // Armed toggle
             let armed_icon  = if armed { Icon::SHIELD_WARNING } else { Icon::PLAY };
-            let armed_color = if armed { accent } else { dim.gamma_multiply(0.4) };
+            let armed_color = if armed { accent } else { color_dim(dim) };
             let armed_resp  = ui.add(
                 egui::Button::new(egui::RichText::new(armed_icon).size(font_xs() + 3.0).color(armed_color))
                     .fill(if armed { color_alpha(accent, alpha_soft()) } else { Color32::TRANSPARENT })
@@ -1024,7 +1024,7 @@ impl<'a> FloatingOrderPaneChrome<'a> {
                 let exp_icon = if advanced { Icon::MINUS } else { Icon::PLUS };
                 let exp_resp = ui.add(
                     egui::Button::new(
-                        egui::RichText::new(exp_icon).size(font_xs_plus()).color(dim.gamma_multiply(0.5)),
+                        egui::RichText::new(exp_icon).size(font_xs_plus()).color(color_half(dim)),
                     )
                     .fill(Color32::TRANSPARENT)
                     .min_size(egui::vec2(20.0, 18.0))
