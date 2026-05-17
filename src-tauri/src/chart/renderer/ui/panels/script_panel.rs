@@ -596,13 +596,7 @@ fn action_button(ui: &mut egui::Ui, label: &str, color: egui::Color32, t: &Theme
 /// Tab button for Output / Backtest result tabs.
 fn result_tab_btn(ui: &mut egui::Ui, label: &str, tab: ScriptResultTab, active: &mut ScriptResultTab, t: &Theme) {
     let is_active = *active == tab;
-    let fg = if is_active { t.accent } else { color_half(t.dim) };
-    let bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
-    let border = if is_active { color_alpha(t.accent, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_muted()) };
-
-    let resp = Button::new(label).variant(Variant::Chrome).size(Size::Sm).fg(fg)
-        .fill(bg)
-        .stroke(egui::Stroke::new(stroke_thin(), border))
+    let resp = Button::toggle(label, is_active)
         .corner_radius(crate::chart_renderer::ui::style::current().r_md as f32)
         .show(ui, t);
     if resp.clicked() {

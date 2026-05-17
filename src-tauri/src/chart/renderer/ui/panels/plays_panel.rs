@@ -406,12 +406,10 @@ fn draw_play_editor(
             ui.horizontal_wrapped(|ui| {
                 for tag in TAG_PRESETS {
                     let active = watchlist.play_editor_tags.iter().any(|t| t == tag);
-                    let fg = if active { t.accent } else { color_dim(t.dim) };
-                    let bg = if active { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
-                    if ui.add(Button::new(*tag).variant(Variant::Chrome).size(Size::Xs).fg(fg)
-                        .fill(bg).corner_radius(current().r_md as f32)
-                        .stroke(egui::Stroke::new(stroke_thin(), if active { color_alpha(t.accent, alpha_line()) } else { color_alpha(t.toolbar_border, alpha_muted()) }))
-                        .min_size(egui::vec2(0.0, 16.0))).clicked() {
+                    if Button::toggle(*tag, active)
+                        .corner_radius(current().r_md as f32)
+                        .min_size(egui::vec2(0.0, 16.0))
+                        .show(ui, t).clicked() {
                         if active { watchlist.play_editor_tags.retain(|x| x != tag); }
                         else { watchlist.play_editor_tags.push(tag.to_string()); }
                     }
