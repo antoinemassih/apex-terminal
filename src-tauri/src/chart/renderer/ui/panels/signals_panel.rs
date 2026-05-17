@@ -7,6 +7,7 @@ use super::super::super::gpu::{Watchlist, Chart, Theme, SplitSection};
 use super::super::widgets::headers::PanelHeaderWithClose;
 use crate::chart_renderer::SignalsTab;
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::widgets::Button;
 
 const ALL_TABS: &[(SignalsTab, &str)] = &[
     (SignalsTab::Alerts, "Alerts"),
@@ -139,7 +140,7 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let label = if demo_on { "Stop Demo" } else { "Start Demo" };
             let color = if demo_on { t.bear } else { t.accent };
-            if small_action_btn(ui, label, color) { chart.signal_demo_toggle = true; }
+            if Button::small_action(label).tint(color).show(ui, t).clicked() { chart.signal_demo_toggle = true; }
         });
     });
     ui.add_space(gap_sm());

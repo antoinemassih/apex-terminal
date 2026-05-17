@@ -513,7 +513,7 @@ pub(crate) fn render(
         // "fx" tag
         p.text(egui::pos2(fbar_rect.left() + 6.0, fbar_rect.center().y),
             egui::Align2::LEFT_CENTER, "fx",
-            egui::FontId::monospace(font_xs()), t.accent);
+            mono_xs(), t.accent);
     }
     // Sync formula buffer with selection (only when not focused)
     if let Some((r, c)) = chart.spreadsheet_selected {
@@ -553,10 +553,10 @@ pub(crate) fn render(
         let p = ui.painter_at(empty_rect);
         p.text(egui::pos2(empty_rect.center().x, empty_rect.center().y - 8.0),
             egui::Align2::CENTER_CENTER, "No cells",
-            egui::FontId::monospace(font_lg()), t.dim.gamma_multiply(0.6));
+            mono_lg(), color_muted(t.dim));
         p.text(egui::pos2(empty_rect.center().x, empty_rect.center().y + 8.0),
             egui::Align2::CENTER_CENTER, "Add a row to start",
-            egui::FontId::monospace(font_sm()), t.dim.gamma_multiply(0.4));
+            mono_sm(), color_dim(t.dim));
         let bw = 80.0; let bh = 20.0;
         let br = egui::Rect::from_center_size(
             egui::pos2(empty_rect.center().x, empty_rect.center().y + 28.0),
@@ -568,7 +568,8 @@ pub(crate) fn render(
             egui::Stroke::new(stroke_thin(), color_alpha(t.accent, alpha_line())),
             egui::epaint::StrokeKind::Middle);
         p2.text(br.center(), egui::Align2::CENTER_CENTER, "Add row",
-            egui::FontId::monospace(font_xs()), t.accent);
+            mono_xs(), t.accent);
+        crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
         if resp.clicked() {
             let cols = chart.spreadsheet_cols.max(1);
             chart.spreadsheet_cols = cols;
@@ -613,7 +614,7 @@ pub(crate) fn render(
             let r = egui::Rect::from_min_size(egui::pos2(x, header_rect.top()),
                 egui::vec2(w, HEADER_H));
             p.text(r.center(), egui::Align2::CENTER_CENTER, col_label(c),
-                egui::FontId::monospace(font_xs()), t.dim.gamma_multiply(0.7));
+                mono_xs(), t.dim.gamma_multiply(0.7));
             p.line_segment([
                 egui::pos2(x, header_rect.top()),
                 egui::pos2(x, header_rect.bottom())],
@@ -669,7 +670,7 @@ pub(crate) fn render(
                     egui::pos2(resp_rect.left(), y), egui::vec2(GUTTER_W, ROW_H));
                 p.text(num_rect.center(), egui::Align2::CENTER_CENTER,
                     format!("{}", r + 1),
-                    egui::FontId::monospace(font_xs()), t.dim.gamma_multiply(0.6));
+                    mono_xs(), color_muted(t.dim));
                 p.line_segment([
                     egui::pos2(resp_rect.left(), y + ROW_H),
                     egui::pos2(resp_rect.left() + total_w, y + ROW_H)],
@@ -730,7 +731,7 @@ pub(crate) fn render(
                             pp.text(
                                 egui::pos2(cell_rect.left() + 4.0, cell_rect.center().y),
                                 egui::Align2::LEFT_CENTER, &val,
-                                egui::FontId::monospace(font_sm()),
+                                mono_sm(),
                                 TEXT_PRIMARY);
                         }
                         if selected_here {
