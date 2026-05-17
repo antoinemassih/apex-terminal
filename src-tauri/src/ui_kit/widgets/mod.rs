@@ -76,6 +76,11 @@ pub mod form_row;
 pub mod form_section;
 pub mod panel;
 pub mod header;
+// Outer side-panel chrome (Agent J)
+pub mod side_panel_shell;
+pub mod split_section_panel;
+pub mod panel_footer;
+// Body content primitives (Agent K)
 pub mod panel_section;
 pub mod panel_empty;
 pub mod panel_loading;
@@ -86,6 +91,9 @@ pub mod panel_key_value_row;
 
 pub use panel::{Panel, PanelCtx, PanelResponse};
 pub use header::{Header, HeaderVariant, HeaderResponse};
+pub use side_panel_shell::{SidePanelShell, SidePanelShellTabs, Width};
+pub use split_section_panel::SplitSectionPanel;
+pub use panel_footer::{PanelFooter, Tone as PanelFooterTone};
 pub use panel_section::{PanelSection, SectionResponse, Tone as PanelTone};
 pub use panel_empty::PanelEmpty;
 pub use panel_loading::PanelLoading;

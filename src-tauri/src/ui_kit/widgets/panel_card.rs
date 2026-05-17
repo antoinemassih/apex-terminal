@@ -39,7 +39,7 @@ use egui::{Color32, CornerRadius, Frame, Margin, Pos2, Rect, Stroke, Ui};
 
 use super::panel_section::Tone;
 use crate::chart::renderer::ui::style::{
-    gap_md, radius_md, shadow_card_themed,
+    color_layer_up, gap_md, radius_md, shadow_card_themed,
 };
 use crate::chart_renderer::gpu::Theme;
 
@@ -130,29 +130,10 @@ impl PanelCard {
     }
 }
 
-/// L2 card surface. TODO: replace with `color_layer_up(t, 1)` once Agent J
-/// merges that helper into `style.rs`. Until then, inline a small uniform
-/// lift of `t.toolbar_bg` toward `t.text` (~4%) — works for both dark and
-/// light themes because we move toward the theme's foreground, not toward
-/// hardcoded white/black.
+/// L2 card surface — routes through the canonical `color_layer_up` helper
+/// in `style.rs` so every L2 surface in the app (cards, sub-sections,
+/// active-tab bodies) lands at the same lift from L1 / `t.toolbar_bg`.
 fn card_surface(t: &Theme) -> Color32 {
-    // TODO: replace with color_layer_up(t, 1) once Agent J merges
-    let bg = t.toolbar_bg;
-    let fg = t.text;
-    blend(bg, fg, 0.04)
+    color_layer_up(t, 1)
 }
 
-fn blend(a: Color32, b: Color32, w: f32) -> Color32 {
-    let w = w.clamp(0.0, 1.0);
-    let lerp = |x: u8, y: u8| -> u8 {
-        let xf = x as f32;
-        let yf = y as f32;
-        (xf + (yf - xf) * w).round().clamp(0.0, 255.0) as u8
-    };
-    Color32::from_rgba_unmultiplied(
-        lerp(a.r(), b.r()),
-        lerp(a.g(), b.g()),
-        lerp(a.b(), b.b()),
-        a.a().max(b.a()),
-    )
-}

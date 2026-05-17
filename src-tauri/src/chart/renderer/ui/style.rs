@@ -1170,6 +1170,45 @@ pub fn color_alpha(c: Color32, alpha: u8) -> Color32 {
 /// 0.3× — barely visible (decorative chart rules, watermarks).
 #[inline] pub fn color_very_dim(c: Color32) -> Color32 { c.gamma_multiply(0.3) }
 
+// ─── L2 surface helper (panel sub-section / card layer) ──────────────────────
+//
+// The design system uses four surface layers:
+//   L0: t.bg              — app canvas
+//   L1: t.toolbar_bg      — panel body
+//   L2: `color_layer_up`  — sub-section / card / active tab body
+//   L3: hover/selected    — color_alpha(t.text, 8) or color_alpha(t.accent, 24)
+//
+// Direction (lighten vs darken) is derived from the theme's `bg` brightness so
+// the lift reads the same on dark + light themes.
+
+/// Returns the panel surface one layer up from `t.toolbar_bg`. Used for
+/// cards, sub-sections, the active tab body — anywhere the design system
+/// asks for a subtle L2 surface that contrasts gently with the panel body.
+///
+/// `n` is the number of 4% steps to lift (clamped to keep things subtle).
+/// `n=1` is the canonical L2; larger values move toward an L3-ish accent.
+/// Direction (lighten vs darken) follows whether the active theme is dark or
+/// light — detected from `t.bg` brightness, same heuristic the gpu hairline
+/// helpers use.
+#[inline]
+pub(crate) fn color_layer_up(t: &crate::chart_renderer::gpu::Theme, n: u8) -> Color32 {
+    let base = t.toolbar_bg;
+    let bg = t.bg;
+    // Match `gpu::hairline_border`'s dark-vs-light heuristic.
+    let is_dark = (bg.r() as i16 + bg.g() as i16 + bg.b() as i16) < 384;
+    // 4% per step (≈10/255), capped at 5 steps so we never blow past L3.
+    let steps = n.min(5) as i16;
+    let shift: i16 = if is_dark { 10 * steps } else { -10 * steps };
+    let clamp = |c: i16| -> u8 {
+        if c < 0 { 0 } else if c > 255 { 255 } else { c as u8 }
+    };
+    Color32::from_rgb(
+        clamp(base.r() as i16 + shift),
+        clamp(base.g() as i16 + shift),
+        clamp(base.b() as i16 + shift),
+    )
+}
+
 // ─── Theme-aware shadow color ────────────────────────────────────────────────
 // Light themes set `t.shadow_color` to a dark-gray (not black) so shadows on
 // cream/peach backgrounds blend instead of looking like hole-punched silhouettes.
