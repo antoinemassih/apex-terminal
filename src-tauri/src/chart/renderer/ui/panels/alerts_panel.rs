@@ -241,7 +241,7 @@ fn alert_row(
         .primary(symbol)
         .secondary(&secondary)
         .trailing(move |ui, t| {
-            if Button::close().show(ui, t).clicked() {
+            if Button::close().show(ui, t).on_hover_text("Delete alert").clicked() {
                 delete_ref.set(true);
             }
         })
@@ -282,7 +282,7 @@ fn draft_row(
         .primary(&alert.symbol)
         .secondary(&secondary)
         .trailing(move |ui, t| {
-            if Button::close().show(ui, t).clicked() {
+            if Button::close().show(ui, t).on_hover_text("Discard draft").clicked() {
                 delete_ref.set(true);
             }
             if Button::small_action("Place").tint(accent).show(ui, t).clicked() {

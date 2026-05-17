@@ -1018,7 +1018,8 @@ impl<'a> FloatingOrderPaneChrome<'a> {
                     .unwrap_or_else(|| crate::ui_kit::widgets::theme::active_theme(ui.ctx()));
                 let close_resp = KitButton::icon(Icon::X)
                     .variant(Variant::Ghost)
-                    .show(ui, theme_for_close);
+                    .show(ui, theme_for_close)
+                    .on_hover_text("Close");
                 if close_resp.clicked() { close_clicked = true; }
 
                 ui.add(egui::Separator::default().spacing(2.0));

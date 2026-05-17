@@ -134,7 +134,7 @@ fn draw_book(
                                                         .fill(color_alpha(close_color, 12))
                                                         .corner_radius(current().r_sm as f32)
                                                         .min_size(egui::vec2(18.0, 16.0))
-                                                        .frameless(true)).clicked() {
+                                                        .frameless(true)).on_hover_text("Close position").clicked() {
                                                         let qty = pos.qty;
                                                         let con_id = pos.con_id;
                                                         std::thread::spawn(move || {
@@ -343,7 +343,7 @@ fn draw_book(
                             .variant(Variant::Chrome)
                             .glyph_color(check_color)
                             .frameless(true)
-                            .min_size(egui::vec2(14.0, 14.0))).clicked() {
+                            .min_size(egui::vec2(14.0, 14.0))).on_hover_text("Select all").clicked() {
                             if all_selected {
                                 watchlist.selected_order_ids.clear();
                             } else {
@@ -540,7 +540,7 @@ fn draw_book(
                                             .variant(Variant::Chrome)
                                             .glyph_color(color_half(t.dim))
                                             .frameless(true)
-                                            .min_size(egui::vec2(14.0, 14.0))).clicked() {
+                                            .min_size(egui::vec2(14.0, 14.0))).on_hover_text("Remove alert").clicked() {
                                             remove_alert = Some(alert.id);
                                         }
                                     });

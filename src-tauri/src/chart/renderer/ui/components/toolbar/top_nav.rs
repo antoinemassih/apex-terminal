@@ -822,10 +822,10 @@ pub(crate) fn render(
                                     if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == *eid) { ind.visible = nv; }
                                 }
                             }
-                            if KitButton::icon(Icon::PENCIL_LINE).variant(KitVariant::MutedIcon).show(ui, t).clicked() {
+                            if KitButton::icon(Icon::PENCIL_LINE).variant(KitVariant::MutedIcon).show(ui, t).on_hover_text("Edit indicator").clicked() {
                                 panes[ap].editing_indicator = Some(*eid);
                             }
-                            if KitButton::icon(Icon::X).variant(KitVariant::MutedIcon).glyph_color(color_half(t.bear)).show(ui, t).clicked() {
+                            if KitButton::icon(Icon::X).variant(KitVariant::MutedIcon).glyph_color(color_half(t.bear)).show(ui, t).on_hover_text("Remove indicator").clicked() {
                                 let shift = ui.input(|i| i.modifiers.shift);
                                 if shift || watchlist.broadcast_mode {
                                     for p in panes.iter_mut() {
@@ -1116,7 +1116,7 @@ pub(crate) fn render(
                         ui.add_space(gap_xl());
                         let label_resp = ui.label(egui::RichText::new(&ov.symbol).monospace().size(font_sm()).color(oc));
                         if label_resp.double_clicked() { edit_idx = Some(oi); }
-                        if KitButton::icon(Icon::X).variant(KitVariant::Ghost).glyph_color(color_half(t.bear)).show(ui, t).clicked() {
+                        if KitButton::icon(Icon::X).variant(KitVariant::Ghost).glyph_color(color_half(t.bear)).show(ui, t).on_hover_text("Remove overlay").clicked() {
                             remove_idx = Some(oi);
                         }
                     });

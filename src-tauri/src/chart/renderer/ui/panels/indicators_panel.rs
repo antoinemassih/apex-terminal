@@ -603,7 +603,7 @@ fn active_symbol_overlay_row(
         .primary(&primary)
         .secondary(secondary)
         .trailing(move |ui, t| {
-            if Button::close().show(ui, t).clicked() {
+            if Button::close().show(ui, t).on_hover_text("Remove overlay").clicked() {
                 r_ref.set(true);
             }
             if Button::icon(Icon::PENCIL_LINE)
@@ -682,7 +682,7 @@ fn active_indicator_row(
         .leading(move |ui, _t| { paint_swatch(ui, swatch_col); })
         .primary(&name)
         .trailing(move |ui, t| {
-            if Button::close().show(ui, t).clicked() { r_ref.set(true); }
+            if Button::close().show(ui, t).on_hover_text("Remove indicator").clicked() { r_ref.set(true); }
             if Button::icon(Icon::GEAR)
                 .size(KitSize::Xs)
                 .show(ui, t)
