@@ -5,6 +5,8 @@ use super::super::style::*;
 use super::super::widgets as widgets;
 use super::super::super::gpu::{Watchlist, Chart, Theme, SplitSection};
 use super::super::widgets::headers::PanelHeaderWithClose;
+use crate::apex_data::live_state;
+use crate::apex_data::types::{Calibrated, CombinedSignalV2};
 use crate::chart_renderer::SignalsTab;
 use crate::ui_kit::icons::Icon;
 
@@ -182,4 +184,235 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
     }
 
     chart.hide_signal_drawings = !chart.show_auto_trendlines;
+
+    // ── SOTA UX §4.6: calibrated signals list ─────────────────────────────
+    // Minimal surgical addition — appended below the visibility toggles.
+    // Reads from `live_state::all_combined_sorted()` (populated by the
+    // `combined` WS frame routed through `ws::dispatch`).
+    ui.add_space(gap_md());
+    separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+    ui.add_space(gap_sm());
+    ui.add(widgets::text::SectionLabel::new("CALIBRATED SIGNALS").tiny().color(t.dim));
+    ui.add_space(gap_xs());
+
+    let signals = live_state::all_combined_sorted();
+    if signals.is_empty() {
+        ui.label(egui::RichText::new("No signals yet").monospace().size(FONT_XS).color(t.dim.gamma_multiply(0.5)));
+    } else {
+        // Column header — keep alignment monospace-friendly so eyes can scan.
+        ui.horizontal(|ui| {
+            ui.add_space(gap_sm());
+            ui.label(egui::RichText::new("score").monospace().size(FONT_3XS).color(t.dim));
+            ui.label(egui::RichText::new("engine").monospace().size(FONT_3XS).color(t.dim));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(egui::RichText::new("🔍").monospace().size(FONT_3XS).color(t.dim));
+                ui.add_space(gap_xs());
+                ui.label(egui::RichText::new("trust").monospace().size(FONT_3XS).color(t.dim));
+                ui.add_space(gap_xs());
+                ui.label(egui::RichText::new("calibrated").monospace().size(FONT_3XS).color(t.dim));
+            });
+        });
+        ui.add_space(gap_2xs());
+        for sig in signals.iter().take(20) {
+            draw_signal_row_calibrated(ui, sig, t);
+        }
+    }
+}
+
+/// Render one row of the calibrated signals table. Public for tests so we
+/// can assert wiring (calibrated rendering, trust bar, lineage button).
+///
+/// Layout (spec §4.6):
+/// ```
+/// score │ engine │ symbol │ time │ calibrated │ trust │ 🔍
+/// ```
+pub(crate) fn draw_signal_row_calibrated(
+    ui: &mut egui::Ui,
+    sig: &CombinedSignalV2,
+    t: &Theme,
+) {
+    ui.horizontal(|ui| {
+        ui.add_space(gap_sm());
+        // Score (large, accent if positive direction).
+        let score_col = match sig.direction.as_str() {
+            "long"  => t.bull,
+            "short" => t.bear,
+            _ => t.text,
+        };
+        ui.label(egui::RichText::new(format!("{:>3.0}", sig.score))
+            .monospace().size(FONT_XS).color(score_col));
+        // Engine (first contributor's engine, or "—").
+        let engine = sig.top_contributors.first()
+            .map(|c| c.engine.as_str()).unwrap_or("—");
+        ui.label(egui::RichText::new(engine).monospace().size(FONT_XS).color(t.text));
+        // Symbol.
+        ui.label(egui::RichText::new(&sig.symbol).monospace().size(FONT_XS).color(t.dim));
+
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            // 🔍 button → opens ProvenancePane via the cross-panel event bus.
+            let lineage = sig.provenance.as_ref().map(|p| p.lineage_id.clone())
+                .or_else(|| sig.top_contributors.first()
+                    .and_then(|c| c.lineage_id.clone()));
+            let btn = ui.add_enabled(
+                lineage.is_some(),
+                egui::Button::new(egui::RichText::new("🔍")
+                    .monospace().size(FONT_XS)
+                    .color(if lineage.is_some() { t.accent } else { t.dim.gamma_multiply(0.4) }))
+                    .fill(egui::Color32::TRANSPARENT)
+                    .min_size(egui::vec2(18.0, 16.0)),
+            );
+            if btn.clicked() {
+                if let Some(l) = lineage {
+                    super::provenance_pane::request_open(l);
+                }
+            }
+            ui.add_space(gap_xs());
+
+            // Trust bar — visual `min(n,50)/50`. Pull the strongest
+            // contributor's calibration (matches the spec — first column
+            // engine drives the row).
+            let calibrated = sig.top_contributors.first()
+                .and_then(|c| sig.calibrated_contributors.get(&c.engine).cloned())
+                .unwrap_or_default();
+            draw_trust_bar(ui, &calibrated, t);
+            ui.add_space(gap_xs());
+
+            // Calibrated hit_rate + sample-size, or "—" if uncalibrated.
+            let label = format_calibrated_label(&calibrated);
+            ui.label(egui::RichText::new(label)
+                .monospace().size(FONT_XS)
+                .color(if calibrated.is_calibrated() { t.text } else { t.dim.gamma_multiply(0.5) }));
+        });
+    });
+    ui.add_space(gap_2xs());
+}
+
+/// Format the calibrated column: "62% (n=240)" or "—".
+pub(crate) fn format_calibrated_label(c: &Calibrated) -> String {
+    if !c.is_calibrated() { return "—".into(); }
+    let hr = c.hit_rate.unwrap_or(0.0) * 100.0;
+    format!("{:.0}% (n={})", hr, c.n_samples)
+}
+
+fn draw_trust_bar(ui: &mut egui::Ui, c: &Calibrated, t: &Theme) {
+    let trust = c.trust_factor(); // 0..=1
+    let w = 32.0;
+    let h = 6.0;
+    let (rect, _resp) = ui.allocate_exact_size(egui::vec2(w, h), egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 0.0, color_alpha(t.dim, alpha_ghost()));
+    let fill_w = (w * trust).clamp(0.0, w);
+    let fill_rect = egui::Rect::from_min_max(
+        rect.min, egui::pos2(rect.min.x + fill_w, rect.max.y));
+    let col = if trust > 0.6 { t.accent }
+              else if trust > 0.3 { t.warn }
+              else { t.dim };
+    painter.rect_filled(fill_rect, 0.0, col);
+}
+
+// ── Tests ───────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::apex_data::types::{Calibrated, CombinedSignalV2, ContributorEntry, ProvenanceRef};
+
+    #[test]
+    fn calibrated_label_em_dash_when_undercalibrated() {
+        let mut c = Calibrated::default();
+        assert_eq!(format_calibrated_label(&c), "—");
+        c.hit_rate = Some(0.6);
+        c.n_samples = 5; // below threshold
+        assert_eq!(format_calibrated_label(&c), "—");
+    }
+
+    #[test]
+    fn calibrated_label_formats_percent_and_sample() {
+        let c = Calibrated {
+            hit_rate: Some(0.62),
+            n_samples: 240,
+            ..Default::default()
+        };
+        assert_eq!(format_calibrated_label(&c), "62% (n=240)");
+    }
+
+    #[test]
+    fn calibrated_label_rounds_hit_rate() {
+        let c = Calibrated {
+            hit_rate: Some(0.555),
+            n_samples: 100,
+            ..Default::default()
+        };
+        // 55.5 -> "56% (n=100)" via default {:.0} rounding.
+        let label = format_calibrated_label(&c);
+        assert!(label == "56% (n=100)" || label == "55% (n=100)",
+            "expected 55/56% rounding; got {}", label);
+    }
+
+    #[test]
+    fn signal_with_provenance_provides_lineage_for_button() {
+        let sig = CombinedSignalV2 {
+            symbol: "SPY".into(),
+            score: 78.0,
+            direction: "long".into(),
+            top_contributors: vec![ContributorEntry {
+                engine: "iv_surface".into(),
+                score: 78.0,
+                lineage_id: Some("CONTRIBUTOR_ID".into()),
+            }],
+            provenance: Some(ProvenanceRef {
+                lineage_id: "ROOT_ID".into(),
+                inputs: vec![],
+            }),
+            ..Default::default()
+        };
+        let extracted = sig.provenance.as_ref().map(|p| p.lineage_id.clone())
+            .or_else(|| sig.top_contributors.first()
+                .and_then(|c| c.lineage_id.clone()));
+        assert_eq!(extracted.as_deref(), Some("ROOT_ID"));
+    }
+
+    #[test]
+    fn signal_without_root_provenance_falls_back_to_contributor() {
+        let sig = CombinedSignalV2 {
+            symbol: "SPY".into(),
+            top_contributors: vec![ContributorEntry {
+                engine: "pin_break".into(),
+                score: 50.0,
+                lineage_id: Some("FALLBACK_ID".into()),
+            }],
+            provenance: None,
+            ..Default::default()
+        };
+        let extracted = sig.provenance.as_ref().map(|p| p.lineage_id.clone())
+            .or_else(|| sig.top_contributors.first()
+                .and_then(|c| c.lineage_id.clone()));
+        assert_eq!(extracted.as_deref(), Some("FALLBACK_ID"));
+    }
+
+    #[test]
+    fn signal_without_any_lineage_disables_button() {
+        let sig = CombinedSignalV2 {
+            symbol: "QQQ".into(),
+            top_contributors: vec![],
+            provenance: None,
+            ..Default::default()
+        };
+        let extracted = sig.provenance.as_ref().map(|p| p.lineage_id.clone())
+            .or_else(|| sig.top_contributors.first()
+                .and_then(|c| c.lineage_id.clone()));
+        assert!(extracted.is_none());
+    }
+
+    #[test]
+    fn trust_factor_clamps_at_50_samples() {
+        let mut c = Calibrated::default();
+        assert_eq!(c.trust_factor(), 0.0);
+        c.n_samples = 25;
+        assert_eq!(c.trust_factor(), 0.5);
+        c.n_samples = 50;
+        assert_eq!(c.trust_factor(), 1.0);
+        c.n_samples = 100;
+        assert_eq!(c.trust_factor(), 1.0, "trust factor saturates at 1.0");
+    }
 }

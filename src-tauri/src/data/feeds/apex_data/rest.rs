@@ -288,3 +288,127 @@ pub fn is_live() -> bool {
     client().get(&url).send().map(|r| r.status().is_success()).unwrap_or(false)
 }
 
+// ── SOTA UX §3.1 — Provenance ──────────────────────────────────────────────
+
+/// Outcome of a `get_provenance` call. We distinguish the 404 "aged out"
+/// case from a network/parse error so the ProvenancePane can show the
+/// spec-mandated message: "Provenance log doesn't have this entry. It
+/// may have aged out of the 24h hot window."
+#[derive(Debug)]
+pub enum ProvenanceError {
+    /// Lineage not found. Server returned 404. Per spec §4.1, render the
+    /// "aged out of the 24h hot window" message.
+    NotFound,
+    /// Disabled, breaker open, network failure, parse error, or any other
+    /// non-200/non-404 outcome. Carries a human-readable cause.
+    Other(String),
+}
+
+impl std::fmt::Display for ProvenanceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotFound => write!(
+                f,
+                "Provenance log doesn't have this entry. It may have aged \
+                 out of the 24h hot window."
+            ),
+            Self::Other(s) => write!(f, "{s}"),
+        }
+    }
+}
+
+impl std::error::Error for ProvenanceError {}
+
+/// `GET /api/provenance/:lineage_id?format=tree|dag&depth=N`
+///
+/// Per SOTA §3.1 + §4.1. Blocking — call from a background thread.
+/// `depth` is clamped to `1..=10`. Returns `NotFound` for 404 (caller
+/// renders the aged-out message); `Other` for any other failure.
+///
+/// Note: the public name is `get_provenance` per the spec's wiring
+/// summary (§5). The Result is sync-friendly since the REST client here
+/// is `reqwest::blocking`; callers wrap it in `std::thread::spawn` so the
+/// render thread never blocks.
+pub fn get_provenance(
+    lineage_id: &str,
+    depth: u8,
+    mode: ProvenanceMode,
+) -> Result<ProvenanceTreeNode, ProvenanceError> {
+    if !is_enabled() {
+        return Err(ProvenanceError::Other("apex_data disabled".into()));
+    }
+    if breaker_is_open() {
+        return Err(ProvenanceError::Other("rest breaker open".into()));
+    }
+    let d = depth.clamp(1, 10);
+    let path = format!(
+        "/api/provenance/{lineage_id}?format={}&depth={d}",
+        mode.as_str()
+    );
+    let url = format!("{}{path}", apex_url());
+    crate::apex_log!("rest.req", "GET {url}");
+    let t0 = Instant::now();
+    let mut req = client().get(&url);
+    if let Some(tok) = apex_token() { req = req.bearer_auth(tok); }
+    match req.send() {
+        Ok(r) if r.status() == reqwest::StatusCode::NOT_FOUND => {
+            record(RestCall {
+                path: path.clone(),
+                status: 404,
+                outcome: "http",
+                ms: t0.elapsed().as_millis(),
+                at: std::time::SystemTime::now(),
+            });
+            Err(ProvenanceError::NotFound)
+        }
+        Ok(r) if r.status().is_success() => {
+            let status = r.status().as_u16();
+            match r.json::<ProvenanceTreeNode>() {
+                Ok(node) => {
+                    breaker_note_success();
+                    record(RestCall {
+                        path,
+                        status,
+                        outcome: "ok",
+                        ms: t0.elapsed().as_millis(),
+                        at: std::time::SystemTime::now(),
+                    });
+                    Ok(node)
+                }
+                Err(e) => {
+                    record(RestCall {
+                        path,
+                        status,
+                        outcome: "parse",
+                        ms: t0.elapsed().as_millis(),
+                        at: std::time::SystemTime::now(),
+                    });
+                    Err(ProvenanceError::Other(format!("parse: {e}")))
+                }
+            }
+        }
+        Ok(r) => {
+            let status = r.status().as_u16();
+            record(RestCall {
+                path,
+                status,
+                outcome: "http",
+                ms: t0.elapsed().as_millis(),
+                at: std::time::SystemTime::now(),
+            });
+            Err(ProvenanceError::Other(format!("http {status}")))
+        }
+        Err(e) => {
+            breaker_note_failure();
+            record(RestCall {
+                path,
+                status: 0,
+                outcome: "err",
+                ms: t0.elapsed().as_millis(),
+                at: std::time::SystemTime::now(),
+            });
+            Err(ProvenanceError::Other(format!("{e}")))
+        }
+    }
+}
+

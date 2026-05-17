@@ -4275,6 +4275,14 @@ pub(crate) struct Watchlist {
     pub(crate) journal_page: usize,
     // Book pane tab (Positions/Orders + Journal)
     pub(crate) book_tab: crate::chart_renderer::BookTab,
+    // ── SOTA UX (Agent A) — ProvenancePane state ────────────────────────────
+    /// Whether the ProvenancePane (right side panel, evidence DAG) is open.
+    /// Opens automatically when a SignalsPanel 🔍 button fires
+    /// `provenance_pane::request_open(lineage_id)`.
+    pub(crate) provenance_open: bool,
+    /// lineage_id currently rendered in the ProvenancePane (the root of the
+    /// evidence DAG). `None` shows the "no signal selected" empty state.
+    pub(crate) provenance_active_lineage: Option<String>,
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
@@ -4426,7 +4434,9 @@ impl Watchlist {
                journal_panel_open: false,
                journal_entries: generate_placeholder_journal(),
                journal_page: 0,
-               book_tab: crate::chart_renderer::BookTab::Book }
+               book_tab: crate::chart_renderer::BookTab::Book,
+               provenance_open: false,
+               provenance_active_lineage: None }
     }
 
     /// Add symbol to the last section (creates one if none exist).
