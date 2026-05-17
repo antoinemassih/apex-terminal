@@ -17,6 +17,7 @@ use crate::ui_kit::widgets::tokens::{Variant, Size};
 use crate::ui_kit::widgets::{ToggleRow, ThemePreviewCard, NumberStepper, PanelSection, PanelSubSection};
 use crate::ui_kit::widgets::SegmentedControl;
 use crate::ui_kit::widgets::theme_preview_card::PreviewKind;
+use crate::ui_kit::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
 
 /// Unified body padding for the settings modal. Single source of truth —
 /// every PanelSection / FormRow inside the scroll area inherits this and
@@ -63,14 +64,19 @@ if !watchlist.settings_open { return; }
 let screen = ctx.screen_rect();
 let dialog_w = 580.0_f32;
 let dialog_h = (screen.height() * 0.82).min(780.0).max(400.0);
-egui::Window::new("settings_panel".to_string())
-    .fixed_pos(egui::pos2(screen.center().x - dialog_w / 2.0, screen.center().y - dialog_h / 2.0))
-    .fixed_size(egui::vec2(dialog_w, dialog_h))
-    .title_bar(false)
-    .frame(super::super::widgets::frames::PopupFrame::new().theme(t).ctx(ctx).build()
-        .inner_margin(0.0).outer_margin(0.0))
-    .show(ctx, |ui| {
-        if super::super::widgets::headers::DialogHeaderWithClose::new("SETTINGS").dim(t.dim).show(ui) { watchlist.settings_open = false; }
+let dialog_pos = egui::pos2(screen.center().x - dialog_w / 2.0, screen.center().y - dialog_h / 2.0);
+let frame = super::super::widgets::frames::PopupFrame::new().theme(t).ctx(ctx).build()
+    .inner_margin(0.0).outer_margin(0.0);
+let modal_resp = Modal::new("SETTINGS")
+    .id("settings_panel")
+    .ctx(ctx)
+    .theme(t)
+    .size(egui::vec2(dialog_w, dialog_h))
+    .anchor(Anchor::Window { pos: Some(dialog_pos) })
+    .header_style(HeaderStyle::Dialog)
+    .frame_kind(FrameKind::Custom(frame))
+    .separator(false)
+    .show(|ui| {
 
         // ── Tab bar — `ui_kit::widgets::Tabs` (replaces legacy TabBar). ──
         const TAB_VARIANTS: &[SettingsTab] = &[
@@ -113,6 +119,7 @@ egui::Window::new("settings_panel".to_string())
                 });
         });
     });
+    if modal_resp.closed { watchlist.settings_open = false; }
 }
 
 // ═══════════════════════════════════════════════════════════════
