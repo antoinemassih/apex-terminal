@@ -712,10 +712,10 @@ pub fn show_widget_gallery(ui: &mut egui::Ui, theme: &Theme) {
     // 18. Shadow showcase
     section(ui, theme, "18. Shadow showcase");
     let presets: [(&str, ShadowSpec); 4] = [
-        ("sm", ShadowSpec::sm()),
-        ("md", ShadowSpec::md()),
-        ("lg", ShadowSpec::lg()),
-        ("xl", ShadowSpec::xl()),
+        ("sm", ShadowSpec::sm_themed(theme)),
+        ("md", ShadowSpec::md_themed(theme)),
+        ("lg", ShadowSpec::lg_themed(theme)),
+        ("xl", ShadowSpec::xl_themed(theme)),
     ];
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 32.0;
