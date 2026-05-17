@@ -98,6 +98,21 @@ fn orders_state_path() -> PathBuf {
     state.join("orders.json")
 }
 
+/// Path for the Wave 5 versioned envelope snapshot. Written alongside
+/// `orders.json` for forward-compatibility experiments. The legacy
+/// reader (`load_from_disk`) still reads `orders.json` directly; this
+/// snapshot is unused by the production cold-start path until a
+/// follow-up wave flips the read side.
+#[allow(dead_code)]
+fn orders_envelope_path() -> PathBuf {
+    let dir = std::env::current_exe().ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+    let state = dir.join("state");
+    let _ = std::fs::create_dir_all(&state);
+    state.join("orders.envelope.json")
+}
+
 // ─── Order State Machine ────────────────────────────────────────────────────
 
 /// Extended order status with full lifecycle
@@ -426,6 +441,25 @@ pub(crate) struct RiskLimits {
     pub(crate) max_notional: f64,          // max $ value per order (0=disabled)
     pub(crate) fat_finger_pct: f32,        // max % deviation from last price (0=disabled), only on OPENING orders
     pub(crate) dedup_cooldown_ms: u64,
+}
+
+/// Wave 5: versioned snapshot of the open-orders journal.
+///
+/// Wraps `Vec<ManagedOrder>` so we can `impl Persistable` — orphan
+/// rules forbid implementing a foreign trait on `Vec<T>` directly. The
+/// production cold-start path (`load_from_disk`) still reads the legacy
+/// un-enveloped `orders.json`; this snapshot is written alongside as
+/// `orders.envelope.json` via `save_to_disk`. A follow-up wave flips
+/// the read side once the on-disk envelope has accumulated for enough
+/// release cycles.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub(crate) struct OrdersJournalSnapshot {
+    pub orders: Vec<ManagedOrder>,
+}
+
+impl crate::state::Persistable for OrdersJournalSnapshot {
+    const KEY: &'static str = "orders_journal";
+    const VERSION: u32 = 1;
 }
 
 impl Default for RiskLimits {
@@ -1904,6 +1938,16 @@ impl OrderManager {
                 }
             }
             Err(e) => eprintln!("[order_manager] save_to_disk serialize failed: {e}"),
+        }
+        // Wave 5: also write a versioned envelope alongside the legacy
+        // `orders.json`. The cold-start path still reads the legacy file
+        // today; the envelope is being shadow-written so a future wave
+        // can flip the reader without a flag day.
+        let snapshot = OrdersJournalSnapshot {
+            orders: active.into_iter().cloned().collect(),
+        };
+        if let Err(e) = crate::state::save(&orders_envelope_path(), &snapshot) {
+            eprintln!("[order_manager] save envelope failed: {e}");
         }
     }
 

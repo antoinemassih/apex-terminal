@@ -6,6 +6,7 @@ pub mod persistence;
 pub mod chart;
 pub mod ui_kit;
 pub mod watchlist;
+pub mod state;
 
 // Backward-compat re-exports so code in lib.rs body keeps working without changes
 pub use foundation::monitoring;
