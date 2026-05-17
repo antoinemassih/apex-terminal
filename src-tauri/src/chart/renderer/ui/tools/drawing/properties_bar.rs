@@ -96,6 +96,7 @@ pub fn show_drawing_properties_bar_ui(
             "#cc5de8", "#ff922b", "#ffffff", "#82dcb4",
         ];
         let cur_color = hex_to_color(&sel_draw.color, 1.0);
+        // TODO: Button::menu doesn't cover per-drawing color swatch as the trigger label (cur_color varies, fg is fixed to t.dim).
         ui.menu_button(
             egui::RichText::new("\u{25A0}").size(font_md() + 2.0).color(cur_color),
             |ui| {
