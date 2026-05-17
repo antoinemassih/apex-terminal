@@ -237,7 +237,7 @@ pub fn paint_pane_header_action(
     } else if resp.hovered() {
         text_color
     } else {
-        dim_color.gamma_multiply(0.85)
+        color_subtle(dim_color)
     };
     header_painter.text(
         egui::pos2(rect.left(), rect.center().y),

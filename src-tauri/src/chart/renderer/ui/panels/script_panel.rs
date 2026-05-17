@@ -145,7 +145,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme, show_save:
     PanelSection::new("EXAMPLES").show(ui, t, |ui, t| {
         ui.horizontal_wrapped(|ui| {
             for (name, source) in PRESETS {
-                let btn = Button::new(*name).variant(Variant::Chrome).size(Size::Xs).fg(t.accent.gamma_multiply(0.8))
+                let btn = Button::new(*name).variant(Variant::Chrome).size(Size::Xs).fg(color_subtle(t.accent))
                     .fill(color_alpha(t.accent, 12))
                     .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.accent, 35)))
                     .show(ui, t);
@@ -273,7 +273,7 @@ fn draw_output_tab(ui: &mut egui::Ui, watchlist: &Watchlist, t: &Theme) {
         } else {
             (color_alpha(t.toolbar_border, alpha_tint()), color_alpha(t.toolbar_border, alpha_muted()))
         };
-        let text_color = if is_error { t.bear } else { t.dim.gamma_multiply(0.85) };
+        let text_color = if is_error { t.bear } else { color_subtle(t.dim) };
         ui.horizontal(|ui| {
             ui.add_space(m);
             Card::new().colors(card_bg, card_border).show(ui, |ui| {
@@ -404,7 +404,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
             egui::Align2::LEFT_CENTER,
             format!("{:.2}", trade.entry_price),
             mono_sm(),
-            t.dim.gamma_multiply(0.8),
+            color_subtle(t.dim),
         );
 
         ui.painter().text(
@@ -412,7 +412,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
             egui::Align2::LEFT_CENTER,
             format!("{:.2}", trade.exit_price),
             mono_sm(),
-            t.dim.gamma_multiply(0.8),
+            color_subtle(t.dim),
         );
 
         let pnl_sign = if trade.pnl >= 0.0 { "+" } else { "" };

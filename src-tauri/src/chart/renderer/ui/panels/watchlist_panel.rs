@@ -472,11 +472,11 @@ if watchlist.open {
                             let sec_rect = egui::Rect::from_min_size(sec_top, egui::vec2(full_w, section_h));
                             {
                                 let p = ui.painter();
-                                p.rect_filled(sec_rect, 0.0, egui::Color32::from_black_alpha(alpha_line()));
+                                p.rect_filled(sec_rect, 0.0, shadow_color_alpha(t, alpha_line()));
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.top()), egui::pos2(sec_rect.right(), sec_rect.top())],
-                                    egui::Stroke::new(stroke_std(), egui::Color32::from_black_alpha(alpha_dim())));
+                                    egui::Stroke::new(stroke_std(), shadow_color_alpha(t, alpha_dim())));
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.top() + 1.0), egui::pos2(sec_rect.right(), sec_rect.top() + 1.0)],
-                                    egui::Stroke::new(stroke_thin(), egui::Color32::from_black_alpha(alpha_tint())));
+                                    egui::Stroke::new(stroke_thin(), shadow_color_alpha(t, alpha_tint())));
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.bottom() - 1.0), egui::pos2(sec_rect.right(), sec_rect.bottom() - 1.0)],
                                     egui::Stroke::new(stroke_std(), color_alpha(t.text, 10)));
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.bottom()), egui::pos2(sec_rect.right(), sec_rect.bottom())],

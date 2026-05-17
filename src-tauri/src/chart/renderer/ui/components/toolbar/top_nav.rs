@@ -1292,7 +1292,7 @@ pub(crate) fn render(
                             // Description
                             let desc = widget_description(kind);
                             p.text(egui::pos2(name_x, r.top() + 23.0), egui::Align2::LEFT_CENTER,
-                                desc, mono_sm(), t.dim.gamma_multiply(0.35));
+                                desc, mono_sm(), color_dim(t.dim));
 
                             // Active checkmark
                             if is_active {
@@ -1852,7 +1852,7 @@ pub(crate) fn render(
                     // Star — toggles favorite without closing the dropdown
                     let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(16.0, 16.0));
                     let sh = hover_pos.map_or(false, |p| sr.contains(p));
-                    let sc = if is_fav { color_alpha(t.accent, ALPHA_HEAVY) } else if sh { color_half(t.dim) } else if hovered { t.dim.gamma_multiply(0.2) } else { t.dim.gamma_multiply(0.08) };
+                    let sc = if is_fav { color_alpha(t.accent, ALPHA_HEAVY) } else if sh { color_half(t.dim) } else if hovered { color_very_dim(t.dim) } else { color_very_dim(t.dim) };
                     ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, egui::FontId::proportional(font_sm()), sc);
                     if sh { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     if sh && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
@@ -1960,13 +1960,13 @@ pub(crate) fn render(
                     // Label + description
                     let lc = if is_cur { t.accent } else if hovered { t.text } else { t.dim };
                     ui.painter().text(egui::pos2(row_rect.left() + 42.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.label(), mono_sm(), lc);
-                    let dc = if hovered { color_alpha(t.dim, ALPHA_HEAVY) } else { t.dim.gamma_multiply(0.55) };
+                    let dc = if hovered { color_alpha(t.dim, ALPHA_HEAVY) } else { color_muted(t.dim) };
                     ui.painter().text(egui::pos2(row_rect.left() + 74.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.description(), mono_sm(), dc);
 
                     // Star — filled, raw pointer click
                     let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(16.0, 16.0));
                     let sh = hover_pos.map_or(false, |p| sr.contains(p));
-                    let sc = if is_fav { color_alpha(t.accent, ALPHA_HEAVY) } else if sh { color_half(t.dim) } else if hovered { t.dim.gamma_multiply(0.2) } else { t.dim.gamma_multiply(0.08) };
+                    let sc = if is_fav { color_alpha(t.accent, ALPHA_HEAVY) } else if sh { color_half(t.dim) } else if hovered { color_very_dim(t.dim) } else { color_very_dim(t.dim) };
                     ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, egui::FontId::proportional(font_sm()), sc);
                     if sh { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     if sh && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {

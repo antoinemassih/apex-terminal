@@ -118,7 +118,7 @@ fn painter_btn_colors(t: &Theme, hovered: bool, active: bool) -> (Color32, Color
          color_alpha(t.accent, alpha_line()))
     } else {
         (color_alpha(t.toolbar_border, alpha_ghost()),
-         t.dim.gamma_multiply(0.8),
+         color_subtle(t.dim),
          color_alpha(t.toolbar_border, alpha_muted()))
     }
 }
@@ -980,9 +980,9 @@ fn nav_colors(enabled: bool, hovered: bool, t: &Theme, ui: &mut Ui) -> (Color32,
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             (color_alpha(t.toolbar_border, alpha_dim()), t.text)
         } else {
-            (Color32::TRANSPARENT, t.dim.gamma_multiply(0.8))
+            (Color32::TRANSPARENT, color_subtle(t.dim))
         }
     } else {
-        (Color32::TRANSPARENT, t.dim.gamma_multiply(0.25))
+        (Color32::TRANSPARENT, color_very_dim(t.dim))
     }
 }

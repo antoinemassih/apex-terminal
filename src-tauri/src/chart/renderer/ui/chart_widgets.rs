@@ -2159,7 +2159,7 @@ fn draw_sector_rotation(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t
             else { t.dim };
         p.circle_filled(egui::pos2(sx, sy), 4.0, col);
         p.text(egui::pos2(sx, sy - 7.0), egui::Align2::CENTER_CENTER, label,
-            mono_4xs(), col.gamma_multiply(0.8));
+            mono_4xs(), color_subtle(col));
     }
 }
 
@@ -2366,7 +2366,7 @@ fn draw_signal_radar(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
         let lx = cx + label_r * angle.cos();
         let ly = cy + label_r * angle.sin();
         p.text(egui::pos2(lx, ly), egui::Align2::CENTER_CENTER, name,
-            egui::FontId::monospace(5.5), if *active { t.accent.gamma_multiply(0.8) } else { color_very_dim(t.dim) });
+            egui::FontId::monospace(5.5), if *active { color_subtle(t.accent) } else { color_very_dim(t.dim) });
     }
 
     // Center: active count
@@ -2731,7 +2731,7 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
         egui::pos2(right - btn_w, y), egui::vec2(btn_w, 14.0));
     let btn_hov = hover.map(|p| btn_rect.contains(p)).unwrap_or(false);
     p.rect_filled(btn_rect, 3.0, color_alpha(t.bear, if btn_hov { 80 } else { 40 }));
-    p.rect_stroke(btn_rect, 3.0, egui::Stroke::new(if btn_hov { 1.0 } else { 0.5 }, t.bear.gamma_multiply(if btn_hov { 0.9 } else { 0.5 })),
+    p.rect_stroke(btn_rect, 3.0, egui::Stroke::new(if btn_hov { 1.0 } else { 0.5 }, if btn_hov { color_subtle(t.bear) } else { color_half(t.bear) }),
         egui::StrokeKind::Outside);
     p.text(btn_rect.center(), egui::Align2::CENTER_CENTER,
         "Close All", egui::FontId::monospace(FONT_2XS), if btn_hov { egui::Color32::WHITE } else { t.bear });
@@ -2744,13 +2744,13 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
 
     // ── Column headers ──
     p.text(egui::pos2(left, y + 4.0), egui::Align2::LEFT_CENTER,
-        "SYMBOL", egui::FontId::monospace(FONT_2XS), t.dim.gamma_multiply(0.35));
+        "SYMBOL", egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
     p.text(egui::pos2(left + 70.0, y + 4.0), egui::Align2::LEFT_CENTER,
-        "QTY", egui::FontId::monospace(FONT_2XS), t.dim.gamma_multiply(0.35));
+        "QTY", egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
     p.text(egui::pos2(right - 40.0, y + 4.0), egui::Align2::RIGHT_CENTER,
-        "P&L", egui::FontId::monospace(FONT_2XS), t.dim.gamma_multiply(0.35));
+        "P&L", egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
     p.text(egui::pos2(right, y + 4.0), egui::Align2::RIGHT_CENTER,
-        "", egui::FontId::monospace(FONT_2XS), t.dim.gamma_multiply(0.35));
+        "", egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
     y += 12.0;
 
     // ── Position rows ──
@@ -2767,7 +2767,7 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
         // Market value below symbol
         let mv_str = format!("${:.0}", pos.market_value);
         p.text(egui::pos2(left, y + row_h * 0.75), egui::Align2::LEFT_CENTER,
-            &mv_str, egui::FontId::monospace(FONT_2XS), t.dim.gamma_multiply(0.35));
+            &mv_str, egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
 
         // Qty with direction color
         let qty_label = format!("{}{}", if pos.qty > 0 { "+" } else { "" }, pos.qty);
@@ -2791,7 +2791,7 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
         }
         p.text(close_rect.center(), egui::Align2::CENTER_CENTER,
             "\u{00D7}", egui::FontId::proportional(FONT_SM),
-            if close_hov { t.bear } else { t.dim.gamma_multiply(0.35) });
+            if close_hov { t.bear } else { color_dim(t.dim) });
         btns.push((close_rect, WidgetBtnAction::ClosePosition(pos_idx)));
 
         // Subtle bottom border
@@ -2841,7 +2841,7 @@ fn draw_custom(p: &egui::Painter, body: egui::Rect, t: &Theme) {
     let cx = body.center().x;
     let cy = body.center().y;
     p.text(egui::pos2(cx, cy - 6.0), egui::Align2::CENTER_CENTER,
-        "\u{2699}", egui::FontId::proportional(20.0), t.dim.gamma_multiply(0.2));
+        "\u{2699}", egui::FontId::proportional(20.0), color_very_dim(t.dim));
     p.text(egui::pos2(cx, cy + 14.0), egui::Align2::CENTER_CENTER,
         "Drag to configure", egui::FontId::monospace(FONT_XS), color_very_dim(t.dim));
 }

@@ -127,14 +127,14 @@ pub(crate) fn draw(
     let hy = inner.top() + 2.0;
     let label_y = hy + header_h * 0.5;
     let hf = egui::FontId::monospace(font_md());
-    let hc = t.dim.gamma_multiply(0.65);
+    let hc = color_muted(t.dim);
     let pad_x = gap_xs();
     if show_delta {
         painter.text(egui::pos2(x0 + cd - pad_x, label_y), egui::Align2::RIGHT_CENTER,
             "\u{0394}", hf.clone(), hc);
     }
     painter.text(egui::pos2(xb + cb - pad_x, label_y), egui::Align2::RIGHT_CENTER,
-        "BID", hf.clone(), t.bull.gamma_multiply(0.65));
+        "BID", hf.clone(), color_muted(t.bull));
     // PRICE header — center-aligned, double-click to recenter.
     let price_hdr_rect = egui::Rect::from_min_size(egui::pos2(xp, hy), egui::vec2(cp, header_h));
     let price_hdr_resp = ui.allocate_rect(price_hdr_rect, egui::Sense::click());
@@ -145,7 +145,7 @@ pub(crate) fn draw(
     }
     if price_hdr_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     painter.text(egui::pos2(xa + pad_x, label_y), egui::Align2::LEFT_CENTER,
-        "ASK", hf.clone(), t.bear.gamma_multiply(0.65));
+        "ASK", hf.clone(), color_muted(t.bear));
     if show_vol {
         painter.text(egui::pos2(xv + pad_x, label_y), egui::Align2::LEFT_CENTER,
             "VOL", hf.clone(), hc);

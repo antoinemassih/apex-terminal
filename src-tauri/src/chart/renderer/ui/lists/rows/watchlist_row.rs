@@ -404,7 +404,7 @@ impl<'a> WatchlistRow<'a> {
                 // ── Drag-handle grip ────────────────────────────────────
                 if drag_handle {
                     painter.text(egui::pos2(left + 6.0, cy), egui::Align2::LEFT_CENTER,
-                        icon_set.drag_handle, egui::FontId::proportional(11.0), dim.gamma_multiply(0.2));
+                        icon_set.drag_handle, egui::FontId::proportional(11.0), color_very_dim(dim));
                     zones_body.borrow_mut().drag = Some(egui::Rect::from_min_size(
                         egui::pos2(left, rect.top()), egui::vec2(14.0, rect.height())));
                 }

@@ -154,20 +154,20 @@ fn paint_date_picker<'a>(
     let hovered = !disabled && response.hovered();
     let hover_t = motion::ease_bool(ui.ctx(), id.with("hover"), hovered, motion::FAST);
     let focus_t = motion::ease_bool(ui.ctx(), id.with("focus"), open, motion::FAST);
-    let dim_mul = if disabled { 0.5 } else { 1.0 };
+    let dim = |c: egui::Color32| if disabled { st::color_half(c) } else { c };
 
     let mut border_col = motion::lerp_color(theme.border(), theme.dim(), hover_t);
     border_col = motion::lerp_color(border_col, theme.accent(), focus_t);
-    border_col = border_col.gamma_multiply(dim_mul);
+    border_col = dim(border_col);
 
     let radius = CornerRadius::same(st::radius_sm() as u8);
     if ui.is_rect_visible(rect) {
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, radius, theme.surface().gamma_multiply(dim_mul));
+        painter.rect_filled(rect, radius, dim(theme.surface()));
         painter.rect_stroke(rect, radius, Stroke::new(st::stroke_std(), border_col), StrokeKind::Inside);
 
         // Leading calendar icon.
-        let icon_color = motion::lerp_color(theme.dim(), theme.accent(), focus_t).gamma_multiply(dim_mul);
+        let icon_color = dim(motion::lerp_color(theme.dim(), theme.accent(), focus_t));
         let cy = rect.center().y;
         let icon_x = rect.left() + pad_x;
         painter.text(
@@ -181,9 +181,9 @@ fn paint_date_picker<'a>(
         // Trigger text.
         let text_x = icon_x + font_size * 1.1 + icon_gap;
         let text_col = if is_placeholder {
-            st::color_alpha(theme.dim(), 160).gamma_multiply(dim_mul)
+            dim(st::color_alpha(theme.dim(), 160))
         } else {
-            theme.text().gamma_multiply(dim_mul)
+            dim(theme.text())
         };
         let max_text_w = rect.right() - pad_x - text_x;
         let truncated = truncate_to_width(ui, &trigger_text, font_size, max_text_w);

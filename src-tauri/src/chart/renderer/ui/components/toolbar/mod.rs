@@ -189,7 +189,7 @@ impl<'a> PaneHeaderAction<'a> {
         } else if resp.hovered() {
             text_c
         } else {
-            dim_c.gamma_multiply(0.85)
+            color_subtle(dim_c)
         };
         painter.text(
             egui::pos2(rect.left(), rect.center().y),
