@@ -17,7 +17,13 @@ use std::path::PathBuf;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use super::{OrderSide, OrderStatus, OrderLevel, APEXIB_URL};
 use super::{snapshot, inflight, paper};
-use super::broker::{Broker, LiveBroker, PaperBroker, SubmitArgs};
+use super::broker::{
+    Broker, LiveBroker,
+    BracketSubmitArgs, OcoSubmitArgs, OcoLeg,
+    ConditionalSubmitArgs, ConditionalCondition,
+    OptionsTriggerArgs,
+    ComboSubmitArgs, ComboLeg as BrokerComboLeg,
+};
 use super::journal::{self, JournalEvent, AttemptKind, ControlKind};
 use crate::foundation::types::{Price, Timestamp, TimeSource, Symbol};
 use crate::foundation::types::price::price_serde;
@@ -492,6 +498,14 @@ pub(crate) struct OrderManager {
     submit_max_tokens: f32,
     submit_refill_per_sec: f32,
     submit_last_refill: Option<Instant>,
+    // ── Wave 4: broker abstraction for multi-leg paths ──
+    // All submit_bracket / submit_oco / submit_conditional / submit_options_trigger
+    // / submit_combo HTTP work goes through this trait object. Defaults to
+    // `LiveBroker` for production; tests inject `MockBroker` via `with_broker`.
+    // Cloned (`Arc::clone`) into the background tokio/std task that performs
+    // the network call so state-machine mutations on the manager itself
+    // stay synchronous on the caller thread.
+    pub(crate) broker: Arc<dyn Broker>,
 }
 
 static ORDER_MANAGER: OnceLock<Mutex<OrderManager>> = OnceLock::new();
@@ -522,7 +536,19 @@ impl OrderManager {
             submit_max_tokens: 20.0,
             submit_refill_per_sec: 5.0,
             submit_last_refill: None,
+            broker: Arc::new(LiveBroker),
         }
+    }
+
+    /// Test-only constructor: build a manager wired to a caller-supplied
+    /// broker (typically `MockBroker`). All other fields default — callers
+    /// can mutate `paper_mode`, `armed`, etc. after construction the same
+    /// way `fresh_manager()` does in the test module.
+    #[cfg(test)]
+    pub(crate) fn with_broker(broker: Arc<dyn Broker>) -> Self {
+        let mut m = Self::new();
+        m.broker = broker;
+        m
     }
 
     /// Pull a single token from the submit bucket. Refills lazily based on
@@ -1162,48 +1188,35 @@ impl OrderManager {
             let sl_price = stop_loss_price;
             let eid = entry_id; let tid = tp_id; let sid = sl_id;
 
+            // Wave 4: HTTP work moved behind `Broker::submit_bracket`. The
+            // spawned thread now calls the trait; local state mutation
+            // (backend_order_id wiring on each leg) happens through `with_mgr`
+            // as before so the state-machine semantics don't change.
+            let broker = Arc::clone(&self.broker);
+            let bargs = BracketSubmitArgs {
+                symbol: sym.clone(),
+                side: side_owned,
+                qty,
+                entry_order_type: ot_owned,
+                entry_price,
+                take_profit_price: tp_price,
+                stop_loss_price: sl_price,
+                idempotency_key: idem_key,
+            };
             std::thread::spawn(move || {
-                let client = reqwest::blocking::Client::new();
-                let con_id = match Self::resolve_con_id(&client, &sym) {
-                    Some(c) => c, None => { eprintln!("[bracket] no conId for {}", sym); return; }
-                };
-
-                let mut entry_leg = serde_json::json!({"orderType": ot_owned});
-                match ot_owned.as_str() {
-                    "limit" => { entry_leg["limitPrice"] = serde_json::json!(entry_price); }
-                    "stop" => { entry_leg["stopPrice"] = serde_json::json!(entry_price); }
-                    "stop_limit" => { entry_leg["limitPrice"] = serde_json::json!(entry_price); entry_leg["stopPrice"] = serde_json::json!(entry_price); }
-                    _ => {} // market
-                }
-
-                let body = serde_json::json!({
-                    "conId": con_id, "side": side_owned, "quantity": qty,
-                    "entry": entry_leg,
-                    "takeProfit": {"orderType": "limit", "limitPrice": tp_price},
-                    "stopLoss": {"orderType": "stop", "stopPrice": sl_price},
-                    "tif": "day",
-                    "idempotencyKey": idem_key,
-                });
-
-                match client.post(format!("{}/orders/bracket", APEXIB_URL))
-                    .json(&body).timeout(std::time::Duration::from_secs(5)).send() {
+                match broker.submit_bracket(&bargs) {
                     Ok(resp) => {
-                        if let Ok(json) = resp.json::<serde_json::Value>() {
-                            with_mgr(|mgr| {
-                                if let Some(oid) = json["parentOrderId"].as_str().map(|s| s.to_string())
-                                    .or_else(|| json["parentOrderId"].as_i64().map(|n| n.to_string())) {
-                                    if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == eid) { o.backend_order_id = Some(oid); }
-                                }
-                                if let Some(oid) = json["takeProfitOrderId"].as_str().map(|s| s.to_string())
-                                    .or_else(|| json["takeProfitOrderId"].as_i64().map(|n| n.to_string())) {
-                                    if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == tid) { o.backend_order_id = Some(oid); }
-                                }
-                                if let Some(oid) = json["stopLossOrderId"].as_str().map(|s| s.to_string())
-                                    .or_else(|| json["stopLossOrderId"].as_i64().map(|n| n.to_string())) {
-                                    if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == sid) { o.backend_order_id = Some(oid); }
-                                }
-                            });
-                        }
+                        with_mgr(|mgr| {
+                            if let Some(oid) = resp.parent_backend_id {
+                                if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == eid) { o.backend_order_id = Some(oid); }
+                            }
+                            if let Some(oid) = resp.take_profit_backend_id {
+                                if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == tid) { o.backend_order_id = Some(oid); }
+                            }
+                            if let Some(oid) = resp.stop_loss_backend_id {
+                                if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == sid) { o.backend_order_id = Some(oid); }
+                            }
+                        });
                     }
                     Err(e) => eprintln!("[bracket] submit failed: {e}"),
                 }
@@ -1305,48 +1318,29 @@ impl OrderManager {
             }).collect();
             let ids_copy = local_ids.clone();
 
-            std::thread::spawn(move || {
-                let client = reqwest::blocking::Client::new();
-                // Build the orders array for the backend
-                let mut oco_orders = Vec::new();
-                for (sym, side, qty, ot, price, stop_price) in &order_intents {
-                    let con_id = match Self::resolve_con_id(&client, sym) {
-                        Some(c) => c, None => continue,
-                    };
-                    let mut order_json = serde_json::json!({
-                        "conId": con_id, "side": side, "quantity": qty,
-                        "orderType": ot, "tif": "day",
-                    });
-                    match ot.as_str() {
-                        "limit" => { order_json["limitPrice"] = serde_json::json!(price); }
-                        "stop" => { order_json["stopPrice"] = serde_json::json!(if *stop_price != 0.0 { *stop_price } else { *price }); }
-                        "stop_limit" => { order_json["limitPrice"] = serde_json::json!(price); order_json["stopPrice"] = serde_json::json!(stop_price); }
-                        _ => {}
-                    }
-                    oco_orders.push(order_json);
+            // Wave 4: HTTP body construction moves into `LiveBroker::submit_oco`.
+            // The manager just maps its (symbol, side, qty, ot, price, stop_price)
+            // tuples into typed `OcoLeg`s and hands them off.
+            let broker = Arc::clone(&self.broker);
+            let legs: Vec<OcoLeg> = order_intents.iter().map(|(sym, side, qty, ot, price, stop_price)| {
+                OcoLeg {
+                    symbol: sym.clone(), side: side.clone(), qty: *qty,
+                    order_type: ot.clone(), price: *price, stop_price: *stop_price,
                 }
-
-                let body = serde_json::json!({ "orders": oco_orders, "ocaGroup": oca });
-                match client.post(format!("{}/orders/oco", APEXIB_URL))
-                    .json(&body).timeout(std::time::Duration::from_secs(5)).send() {
+            }).collect();
+            let oargs = OcoSubmitArgs { legs, oca_group: oca.clone() };
+            std::thread::spawn(move || {
+                match broker.submit_oco(&oargs) {
                     Ok(resp) => {
-                        if let Ok(json) = resp.json::<serde_json::Value>() {
-                            if let Some(backend_ids) = json["orderIds"].as_array() {
-                                with_mgr(|mgr| {
-                                    for (i, bid) in backend_ids.iter().enumerate() {
-                                        if i < ids_copy.len() {
-                                            let oid = bid.as_str().map(|s| s.to_string())
-                                                .or_else(|| bid.as_i64().map(|n| n.to_string()));
-                                            if let Some(oid) = oid {
-                                                if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == ids_copy[i]) {
-                                                    o.backend_order_id = Some(oid);
-                                                }
-                                            }
-                                        }
+                        with_mgr(|mgr| {
+                            for (i, oid) in resp.leg_backend_ids.iter().enumerate() {
+                                if i < ids_copy.len() {
+                                    if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == ids_copy[i]) {
+                                        o.backend_order_id = Some(oid.clone());
                                     }
-                                });
+                                }
                             }
-                        }
+                        });
                     }
                     Err(e) => eprintln!("[oco] submit failed: {e}"),
                 }
@@ -1422,46 +1416,30 @@ impl OrderManager {
         let toast = format!("CONDITIONAL {} {} x{} with {} conditions",
             side_str, sym, qty, conditions.len());
 
+        // Wave 4: HTTP body construction moves into `LiveBroker::submit_conditional`.
+        let broker = Arc::clone(&self.broker);
+        let cargs = ConditionalSubmitArgs {
+            symbol: sym.clone(),
+            side: side_str,
+            qty,
+            order_type: ot,
+            price,
+            conditions: conditions.iter().map(|c| ConditionalCondition {
+                con_id: c.con_id, exchange: c.exchange.clone(),
+                is_more: c.is_more, price: c.price,
+            }).collect(),
+            conditions_logic: logic,
+            conditions_cancel_order: cancel_order,
+            idempotency_key: idem_key,
+        };
         std::thread::spawn(move || {
-            let client = reqwest::blocking::Client::new();
-            let con_id = match Self::resolve_con_id(&client, &sym) {
-                Some(c) => c, None => { eprintln!("[conditional] no conId for {}", sym); return; }
-            };
-
-            let conds_json: Vec<serde_json::Value> = conditions.iter().map(|c| {
-                serde_json::json!({
-                    "type": "price",
-                    "conId": c.con_id,
-                    "exchange": c.exchange,
-                    "isMore": c.is_more,
-                    "price": c.price.to_f32(),
-                    "triggerMethod": "default",
-                })
-            }).collect();
-
-            let mut body = serde_json::json!({
-                "conId": con_id, "side": side_str, "quantity": qty,
-                "orderType": ot, "tif": "day",
-                "conditions": conds_json,
-                "conditionsLogic": logic,
-                "conditionsCancelOrder": cancel_order,
-                "outsideRth": true,
-                "idempotencyKey": idem_key,
-            });
-            if ot == "limit" { body["limitPrice"] = serde_json::json!(price); }
-
-            match client.post(format!("{}/orders/conditional", APEXIB_URL))
-                .json(&body).timeout(std::time::Duration::from_secs(5)).send() {
-                Ok(resp) => {
-                    if let Ok(json) = resp.json::<serde_json::Value>() {
-                        if let Some(oid) = Self::extract_order_id(&json) {
-                            with_mgr(|mgr| {
-                                if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
-                                    o.backend_order_id = Some(oid);
-                                }
-                            });
+            match broker.submit_conditional(&cargs) {
+                Ok(oid) => {
+                    with_mgr(|mgr| {
+                        if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
+                            o.backend_order_id = Some(oid);
                         }
-                    }
+                    });
                 }
                 Err(e) => eprintln!("[conditional] submit failed: {e}"),
             }
@@ -1527,36 +1505,23 @@ impl OrderManager {
             .unwrap_or_else(|| format!("apex_opttrig_{}_{}_{}", id, underlying, now_ms));
         let id_copy = id;
 
+        // Wave 4: HTTP body moves into `LiveBroker::submit_options_trigger`.
+        let broker = Arc::clone(&self.broker);
+        let oargs = OptionsTriggerArgs {
+            underlying: und, option_type: ot, strike, expiration: exp,
+            qty, entry_price, entry_direction: entry_dir,
+            exit_price, exit_direction: exit_dir,
+            idempotency_key: idem_key,
+        };
         std::thread::spawn(move || {
-            let client = reqwest::blocking::Client::new();
-            let body = serde_json::json!({
-                "underlying": und,
-                "optionType": ot,
-                "strike": strike,
-                "expiration": exp,
-                "quantity": qty,
-                "entryPrice": entry_price,
-                "entryDirection": entry_dir,
-                "exitPrice": exit_price,
-                "exitDirection": exit_dir,
-                "exitOrderType": "market",
-                "idempotencyKey": idem_key,
-            });
-            match client.post(format!("{}/orders/options-trigger", APEXIB_URL))
-                .json(&body).timeout(std::time::Duration::from_secs(5)).send() {
+            match broker.submit_options_trigger(&oargs) {
                 Ok(resp) => {
-                    if let Ok(json) = resp.json::<serde_json::Value>() {
-                        with_mgr(|mgr| {
-                            if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
-                                if let Some(oid) = json["entryOrderId"].as_str().map(|s| s.to_string()) {
-                                    o.backend_order_id = Some(oid);
-                                }
-                                if let Some(con_id) = json["optionConId"].as_i64() {
-                                    o.option_con_id = Some(con_id);
-                                }
-                            }
-                        });
-                    }
+                    with_mgr(|mgr| {
+                        if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
+                            if let Some(oid) = resp.entry_backend_id { o.backend_order_id = Some(oid); }
+                            if let Some(cid) = resp.option_con_id { o.option_con_id = Some(cid); }
+                        }
+                    });
                 }
                 Err(e) => eprintln!("[options-trigger] submit failed: {e}"),
             }
@@ -1629,35 +1594,26 @@ impl OrderManager {
         // Build toast before move
         let toast = format!("COMBO {} {} x{} ({} legs)", side.to_uppercase(), symbol, qty, num_legs);
 
+        // Wave 4: combo HTTP shape (legs in body, params in query) moves into
+        // `LiveBroker::submit_combo`. Manager maps its `ComboLeg` into the
+        // broker-side equivalent (same fields, different module).
+        let broker = Arc::clone(&self.broker);
+        let cargs = ComboSubmitArgs {
+            symbol: sym, side: side_owned, qty,
+            order_type: ot_owned, limit_price,
+            legs: legs.iter().map(|l| BrokerComboLeg {
+                con_id: l.con_id, ratio: l.ratio, side: l.side.clone(),
+            }).collect(),
+            idempotency_key: idem_key,
+        };
         std::thread::spawn(move || {
-            let client = reqwest::blocking::Client::new();
-            let legs_json: Vec<serde_json::Value> = legs.iter().map(|l| {
-                serde_json::json!({
-                    "conId": l.con_id,
-                    "ratio": l.ratio,
-                    "side": l.side,
-                })
-            }).collect();
-
-            let mut url = format!("{}/orders/combo?symbol={}&side={}&quantity={}&orderType={}&tif=day&idempotencyKey={}",
-                APEXIB_URL, sym, side_owned, qty, ot_owned, idem_key);
-            if let Some(lp) = limit_price {
-                url.push_str(&format!("&limitPrice={}", lp));
-            }
-
-            match client.post(&url)
-                .json(&legs_json)
-                .timeout(std::time::Duration::from_secs(5)).send() {
-                Ok(resp) => {
-                    if let Ok(json) = resp.json::<serde_json::Value>() {
-                        if let Some(oid) = Self::extract_order_id(&json) {
-                            with_mgr(|mgr| {
-                                if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
-                                    o.backend_order_id = Some(oid);
-                                }
-                            });
+            match broker.submit_combo(&cargs) {
+                Ok(oid) => {
+                    with_mgr(|mgr| {
+                        if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
+                            o.backend_order_id = Some(oid);
                         }
-                    }
+                    });
                 }
                 Err(e) => eprintln!("[combo] submit failed: {e}"),
             }
@@ -3783,5 +3739,36 @@ mod tests {
                 "first submit must accept, got {:?}", r1);
         assert!(matches!(r2, OrderResult::Accepted(_)),
                 "Wave 3: second submit one tick apart must NOT be Duplicate, got {:?}", r2);
+    }
+
+    // ── Wave 4: multi-leg paths now go through Broker trait ─────────────────
+
+    #[test]
+    fn wave4_submit_bracket_creates_three_linked_orders() {
+        use super::super::broker::MockBroker;
+        // We can't easily swap the *global* manager, so build a standalone
+        // OrderManager wired to a MockBroker. submit_bracket mutates `self`
+        // synchronously for the local-state half (creating 3 ManagedOrders
+        // with pair_id set), then spawns a thread for the HTTP half. The
+        // local-state assertions don't depend on the spawn completing.
+        let mock = std::sync::Arc::new(MockBroker::new());
+        let mut m = OrderManager::with_broker(mock.clone());
+        m.paper_mode = true;
+        m.armed = true;
+        m.initial_reconcile_done = true;
+
+        let intent = limit_intent("AAPL", OrderSide::Buy, 100.0, 10);
+        let (entry, tp, sl) = m.submit_bracket(intent, 105.0, 95.0);
+        assert!(matches!(entry, OrderResult::Accepted(_)),
+                "entry leg should accept, got {:?}", entry);
+        assert!(tp.is_some(), "tp leg id should be set");
+        assert!(sl.is_some(), "sl leg id should be set");
+
+        // 3 ManagedOrders, both child legs linked back to the entry id via pair_id.
+        let snap: Vec<_> = m.orders.iter().filter(|o| o.symbol == "AAPL").collect();
+        assert_eq!(snap.len(), 3, "bracket should create 3 local orders");
+        let entry_id = match entry { OrderResult::Accepted(id) => id, _ => unreachable!() };
+        let children: Vec<_> = snap.iter().filter(|o| o.pair_id == Some(entry_id)).collect();
+        assert_eq!(children.len(), 2, "TP + SL must both pair back to entry");
     }
 }
