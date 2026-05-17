@@ -41,6 +41,7 @@ if watchlist.open {
     ];
     let shell_resp = SidePanelShell::tabs("watchlist", &mut active_tab, &tabs)
         .width(Width::Narrow)
+        .resizable(180.0..=480.0)
         .pane_metrics(header_h, title_font_size)
         .show(ctx, t, |ui, t, tab| {
             let mut wl_switch_to: Option<usize> = None;
