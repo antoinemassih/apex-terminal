@@ -76,9 +76,15 @@ pub mod form_row;
 pub mod form_section;
 pub mod panel;
 pub mod header;
+pub mod side_panel_shell;
+pub mod split_section_panel;
+pub mod panel_footer;
 
 pub use panel::{Panel, PanelCtx, PanelResponse};
 pub use header::{Header, HeaderVariant, HeaderResponse};
+pub use side_panel_shell::{SidePanelShell, SidePanelShellTabs, Width};
+pub use split_section_panel::SplitSectionPanel;
+pub use panel_footer::{PanelFooter, Tone as PanelFooterTone};
 pub use range_slider::RangeSlider;
 pub use form_row::{FormRow, FormRowAlign};
 pub use form_section::{FormSection, FieldSet, FormActions};

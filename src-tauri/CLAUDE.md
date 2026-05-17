@@ -125,6 +125,20 @@ We ship 15 themes. 4 are light (Bauhaus, Peach, Ivory, Newsprint). Before claimi
 - Switch to Bauhaus, walk through the feature you touched
 - Hardcoded white/black/dark-gray will be obvious there
 
+## Side panel primitives
+
+For new side panels, use:
+- `SidePanelShell::new(id, title)` for the outer shell (replaces hand-rolled SidePanel + PanelHeader + PanelFrame chrome).
+- `SidePanelShell::tabs(id, &mut state, tabs)` for tab-driven panels.
+- `SplitSectionPanel::new(id, &mut splits)` for feed/signals/analysis multi-pane patterns.
+- `PanelFooter::new()` for bottom action bars.
+
+Width presets: `Width::Narrow` (240px), `Width::Medium` (300px), `Width::Wide` (400px). All resizable.
+
+Floating panels (settings, news, connection): use `Header::dialog` + `Modal`, not SidePanelShell.
+
+Body primitives (PanelSection/PanelEmpty/PanelLoading/PanelListRow/PanelCard/PanelKeyValueRow/PanelDivider) — see Agent K's foundation PR.
+
 ## Where to find things
 
 | Question | File |
