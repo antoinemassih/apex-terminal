@@ -266,9 +266,9 @@ fn collect_active_from_snapshot() -> Vec<ActiveRow> {
             state: o.state,
             qty: o.qty,
             filled_qty: o.filled_qty,
-            price: o.price,
+            price: o.price.to_f32(),
             cid8: o.client_order_id.chars().take(8).collect(),
-            updated_at: o.updated_at,
+            updated_at: o.updated_at.millis() as u64,
         })
         .collect();
     // Newest first so freshly placed orders appear at the top.

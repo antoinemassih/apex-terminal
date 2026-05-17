@@ -16,6 +16,7 @@
 use std::sync::Mutex;
 
 use super::APEXIB_URL;
+use crate::foundation::types::Price;
 
 /// What the broker reports back when we ask "do you have this order?"
 /// Used by orphan-recovery (`replay_and_recover`) to learn the real state of
@@ -38,8 +39,10 @@ pub(crate) struct SubmitArgs<'a> {
     pub side: &'a str,         // "buy" / "sell"
     pub qty: u32,
     pub order_type_idx: usize, // 0=market 1=limit 2=stop 3=stop_limit 4=trailing_stop
-    pub price: f32,
-    pub stop_price: f32,
+    /// Wave 3: typed Price (micro-dollars). Converted to f32 at the wire
+    /// boundary in `LiveBroker::submit` so the JSON shape stays the same.
+    pub price: Price,
+    pub stop_price: Price,
     pub trail_amount: Option<f32>,
     pub trail_percent: Option<f32>,
     pub client_order_id: &'a str, // idempotency key
@@ -64,7 +67,7 @@ pub(crate) trait Broker: Send + Sync {
         &self,
         backend_id: &str,
         client_order_id: &str,
-        new_price: f32,
+        new_price: Price,
         new_qty: u32,
     ) -> Result<(), String>;
 
@@ -115,21 +118,25 @@ impl Broker for LiveBroker {
             "idempotencyKey": args.client_order_id,
         });
         if args.outside_rth { body["outsideRth"] = serde_json::json!(true); }
+        // Convert typed Price to f32 at the wire boundary; broker JSON shape
+        // is unchanged from before Wave 3.
+        let price_f = args.price.to_f32();
+        let stop_f = args.stop_price.to_f32();
         match order_type {
-            "limit" => { body["limitPrice"] = serde_json::json!(args.price); }
+            "limit" => { body["limitPrice"] = serde_json::json!(price_f); }
             "stop" => {
                 body["stopPrice"] = serde_json::json!(
-                    if args.stop_price != 0.0 { args.stop_price } else { args.price }
+                    if !args.stop_price.is_zero() { stop_f } else { price_f }
                 );
             }
             "stop_limit" => {
-                body["limitPrice"] = serde_json::json!(args.price);
-                body["stopPrice"] = serde_json::json!(args.stop_price);
+                body["limitPrice"] = serde_json::json!(price_f);
+                body["stopPrice"] = serde_json::json!(stop_f);
             }
             "trailing_stop" => {
                 if let Some(amt) = args.trail_amount { body["trailAmount"] = serde_json::json!(amt); }
                 if let Some(pct) = args.trail_percent { body["trailPercent"] = serde_json::json!(pct); }
-                if args.stop_price != 0.0 { body["stopPrice"] = serde_json::json!(args.stop_price); }
+                if !args.stop_price.is_zero() { body["stopPrice"] = serde_json::json!(stop_f); }
             }
             _ => {}
         }
@@ -150,13 +157,13 @@ impl Broker for LiveBroker {
             .map_err(|e| format!("cancel http: {e}"))
     }
 
-    fn modify(&self, backend_id: &str, _client_order_id: &str, new_price: f32, _new_qty: u32) -> Result<(), String> {
+    fn modify(&self, backend_id: &str, _client_order_id: &str, new_price: Price, _new_qty: u32) -> Result<(), String> {
         // Caller is responsible for choosing limitPrice vs stopPrice — we
         // can't know the order type without re-fetching. Use limitPrice as
         // the default and let the manager call back through with the right
         // body shape if needed (current call sites only modify limit price).
         let client = reqwest::blocking::Client::new();
-        let body = serde_json::json!({"limitPrice": new_price});
+        let body = serde_json::json!({"limitPrice": new_price.to_f32()});
         client.put(format!("{}/orders/{}", APEXIB_URL, backend_id))
             .json(&body).timeout(std::time::Duration::from_secs(5)).send()
             .map(|_| ())
@@ -234,7 +241,7 @@ impl Broker for PaperBroker {
         Ok(())
     }
 
-    fn modify(&self, _backend_id: &str, _client_order_id: &str, _new_price: f32, _new_qty: u32) -> Result<(), String> {
+    fn modify(&self, _backend_id: &str, _client_order_id: &str, _new_price: Price, _new_qty: u32) -> Result<(), String> {
         Ok(())
     }
 
@@ -252,9 +259,9 @@ impl Broker for PaperBroker {
 #[derive(Debug, Clone)]
 #[allow(dead_code)] // fields read via Debug formatting in tests
 pub(crate) enum MockCall {
-    Submit { symbol: String, side: String, qty: u32, price: f32, client_order_id: String },
+    Submit { symbol: String, side: String, qty: u32, price: Price, client_order_id: String },
     Cancel { backend_id: String, client_order_id: String },
-    Modify { backend_id: String, client_order_id: String, new_price: f32, new_qty: u32 },
+    Modify { backend_id: String, client_order_id: String, new_price: Price, new_qty: u32 },
     Lookup { client_order_id: String },
 }
 
@@ -342,7 +349,7 @@ impl Broker for MockBroker {
         Ok(())
     }
 
-    fn modify(&self, backend_id: &str, client_order_id: &str, new_price: f32, new_qty: u32) -> Result<(), String> {
+    fn modify(&self, backend_id: &str, client_order_id: &str, new_price: Price, new_qty: u32) -> Result<(), String> {
         self.record(MockCall::Modify {
             backend_id: backend_id.into(),
             client_order_id: client_order_id.into(),

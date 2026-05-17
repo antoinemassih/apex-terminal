@@ -19,6 +19,9 @@ use super::{OrderSide, OrderStatus, OrderLevel, APEXIB_URL};
 use super::{snapshot, inflight, paper};
 use super::broker::{Broker, LiveBroker, PaperBroker, SubmitArgs};
 use super::journal::{self, JournalEvent, AttemptKind, ControlKind};
+use crate::foundation::types::{Price, Timestamp, TimeSource, Symbol};
+use crate::foundation::types::price::price_serde;
+use crate::foundation::types::timestamp::timestamp_serde;
 
 // ─── Lock helper (panic-poison recovery) ────────────────────────────────────
 
@@ -132,16 +135,19 @@ impl OrderState {
 struct OrderSignature {
     symbol: String,
     side: u8,       // 0=buy, 1=sell, etc.
-    price_cents: i64,
+    /// Wave 3: use Price micro-units directly (i64), not "(price * 100).round()
+    /// integer cents". The legacy cents bucket bucketed $145.999 and $146.001
+    /// onto the same signature → legitimate orders were dropped as duplicates.
+    price_micro: i64,
     qty: u32,
 }
 
 impl OrderSignature {
-    fn new(symbol: &str, side: OrderSide, price: f32, qty: u32) -> Self {
+    fn new(symbol: &str, side: OrderSide, price: Price, qty: u32) -> Self {
         Self {
             symbol: symbol.to_uppercase(),
             side: side as u8,
-            price_cents: (price * 100.0).round() as i64,
+            price_micro: price.0,
             qty,
         }
     }
@@ -158,13 +164,24 @@ pub(crate) struct ManagedOrder {
     #[serde(default = "new_client_order_id")]
     pub(crate) client_order_id: String,
     pub(crate) symbol: String,
+    /// Wave 3: typed symbol companion to `symbol`. The String stays as the
+    /// authoritative serialised form so downstream code is unaffected;
+    /// new sites that want the typed form can read `symbol_typed`. Skipped
+    /// in serde so older `orders.json` still loads.
+    #[serde(skip, default = "default_symbol")]
+    pub(crate) symbol_typed: Symbol,
     pub(crate) side: OrderSide,
     pub(crate) order_type: ManagedOrderType,
-    pub(crate) price: f32,
-    pub(crate) stop_price: f32,     // stop trigger price
+    /// Wave 3: typed Price (micro-dollars). Serialised as f32 for backwards
+    /// compatibility with on-disk `orders.json`.
+    #[serde(with = "price_serde::as_f32")]
+    pub(crate) price: Price,
+    #[serde(with = "price_serde::as_f32")]
+    pub(crate) stop_price: Price,     // stop trigger price
     pub(crate) qty: u32,
     pub(crate) filled_qty: u32,
-    pub(crate) avg_fill_price: f32,
+    #[serde(with = "price_serde::as_f32")]
+    pub(crate) avg_fill_price: Price,
     pub(crate) state: OrderState,
     pub(crate) pair_id: Option<u64>,
     // Trailing stop fields
@@ -174,14 +191,19 @@ pub(crate) struct ManagedOrder {
     pub(crate) option_symbol: Option<String>,
     pub(crate) option_con_id: Option<i64>,
     pub(crate) source: OrderSource,
-    pub(crate) created_at: u64,     // unix ms
-    pub(crate) updated_at: u64,     // unix ms
+    /// Wave 3: typed Timestamp. Serialised as bare u64 ms to preserve the
+    /// `orders.json` wire format.
+    #[serde(with = "timestamp_serde::as_u64_local")]
+    pub(crate) created_at: Timestamp,
+    #[serde(with = "timestamp_serde::as_u64_local")]
+    pub(crate) updated_at: Timestamp,
     pub(crate) backend_order_id: Option<String>, // IB order ID once submitted
     // TIF and extended hours
     pub(crate) tif: u8,              // 0=DAY, 1=GTC, 2=IOC
     pub(crate) outside_rth: bool,    // allow trading outside regular trading hours
     // Audit
-    pub(crate) state_history: Vec<(OrderState, u64)>, // (state, timestamp_ms)
+    #[serde(with = "timestamp_serde::as_pairs_u64_local")]
+    pub(crate) state_history: Vec<(OrderState, Timestamp)>,
     pub(crate) rejection_reason: Option<String>,
     // ── Wave 6c: modify serialization ──
     /// Monotonic per-order modify counter. Each call to `modify_price` bumps
@@ -196,9 +218,14 @@ pub(crate) struct ManagedOrder {
     #[serde(default)]
     pub(crate) modify_inflight: bool,
     /// Latest price queued while a modify is in flight. Drained on completion.
-    #[serde(default)]
-    pub(crate) modify_pending_price: Option<f32>,
+    #[serde(default, with = "price_serde::as_f32_opt")]
+    pub(crate) modify_pending_price: Option<Price>,
 }
+
+/// Default `Symbol` for `serde(skip)` ManagedOrder fields. Empty equity is
+/// the safe placeholder — real call sites populate `symbol_typed` from the
+/// authoritative `symbol` String during construction.
+fn default_symbol() -> Symbol { Symbol::equity("") }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ManagedOrderType { Market, Limit, Stop, StopLimit, TrailingStop }
@@ -235,7 +262,10 @@ impl ManagedOrder {
         OrderLevel {
             id: self.id as u32,
             side: self.side,
-            price: self.price,
+            // OrderLevel keeps f32 (it crosses into the sacred core.rs paint
+            // pipeline that builds it from raw f32 click prices). Convert at
+            // the boundary; ManagedOrder internally uses Price.
+            price: self.price.to_f32(),
             qty: self.qty,
             status: self.state.to_legacy(),
             state: self.state,
@@ -259,6 +289,12 @@ pub(crate) struct OrderIntent {
     pub(crate) symbol: String,
     pub(crate) side: OrderSide,
     pub(crate) order_type: ManagedOrderType,
+    // Wave 3 NOTE: OrderIntent's price fields stay as f32 to preserve the
+    // 13+ construction sites in the sacred `core.rs` paint pipeline. Inside
+    // `submit()`, intent.price is wrapped into `Price` at the manager boundary
+    // and from there the typed value flows through `ManagedOrder`, dedup
+    // signatures, and the broker `SubmitArgs`. The wire-format (f32) only
+    // lives in the intent struct.
     pub(crate) price: f32,         // limit price (0.0 for market orders)
     pub(crate) stop_price: f32,    // stop trigger price (for stop/stop-limit orders)
     pub(crate) qty: u32,
@@ -323,7 +359,7 @@ pub(crate) struct OrderCondition {
     pub(crate) con_id: i64,       // contract to watch
     pub(crate) exchange: String,  // "SMART" default
     pub(crate) is_more: bool,     // true = trigger when >= price
-    pub(crate) price: f32,
+    pub(crate) price: Price,
 }
 
 /// Intent for a conditional order (order with price conditions on any contract).
@@ -676,7 +712,10 @@ impl OrderManager {
         let paper = self.paper_mode;
 
         // ── 1. Dedup check ──
-        let sig = OrderSignature::new(&intent.symbol, intent.side, intent.price, intent.qty);
+        // Wave 3: dedup signature uses typed Price (micro-units, i64) so the
+        // bucket distinguishes neighbouring sub-cent prices instead of
+        // collapsing $145.999 and $146.001 onto the same key.
+        let sig = OrderSignature::new(&intent.symbol, intent.side, Price::from_f32(intent.price), intent.qty);
         self.cleanup_expired_signatures();
         if let Some(last_time) = self.recent_signatures.get(&sig) {
             if last_time.elapsed().as_millis() < self.risk_limits.dedup_cooldown_ms as u128 {
@@ -858,13 +897,14 @@ impl OrderManager {
             id,
             client_order_id: new_client_order_id(),
             symbol: intent.symbol.clone(),
+            symbol_typed: Symbol::equity(&intent.symbol),
             side: intent.side,
             order_type: intent.order_type,
-            price: intent.price,
-            stop_price: intent.stop_price,
+            price: Price::from_f32(intent.price),
+            stop_price: Price::from_f32(intent.stop_price),
             qty: intent.qty,
             filled_qty: 0,
-            avg_fill_price: 0.0,
+            avg_fill_price: Price::ZERO,
             state: initial_state,
             pair_id: intent.pair_with,
             trail_amount: intent.trail_amount,
@@ -874,10 +914,10 @@ impl OrderManager {
             source: intent.source,
             tif: intent.tif,
             outside_rth: intent.outside_rth,
-            created_at: now_ms,
-            updated_at: now_ms,
+            created_at: ts_from_ms(now_ms),
+            updated_at: ts_from_ms(now_ms),
             backend_order_id: None,
-            state_history: vec![(initial_state, now_ms)],
+            state_history: vec![(initial_state, ts_from_ms(now_ms))],
             rejection_reason: None,
             modify_version: 0,
             modify_inflight: false,
@@ -902,6 +942,9 @@ impl OrderManager {
                 ManagedOrderType::StopLimit => 3,
                 ManagedOrderType::TrailingStop => 4,
             };
+            // OrderIntent carries f32 prices (wire-shape); submit_to_ib wants
+            // the same f32 wire-shape, so pass through unchanged. The typed
+            // `Price` lives on ManagedOrder.
             let price = intent.price;
             let stop_price = intent.stop_price;
             let trail_amount = intent.trail_amount;
@@ -962,6 +1005,7 @@ impl OrderManager {
             }
             self.transition(id, OrderState::Working); // Optimistic — will reconcile from poller
             self.pending_toasts.push(format!("{} {} x{} @ {:.2}", side_str.to_uppercase(), intent.symbol, qty, price));
+            // `price` here is already f32 from the wire-boundary capture above.
             OrderResult::Accepted(id)
         } else {
             OrderResult::NeedsConfirmation(id)
@@ -973,9 +1017,9 @@ impl OrderManager {
         if let Some(o) = self.orders.iter_mut().find(|o| o.id == order_id && o.state == OrderState::Draft) {
             let now = epoch_ms();
             o.state = OrderState::Working;
-            o.updated_at = now;
-            o.state_history.push((OrderState::PendingSubmit, now));
-            o.state_history.push((OrderState::Working, now));
+            o.updated_at = ts_from_ms(now);
+            o.state_history.push((OrderState::PendingSubmit, ts_from_ms(now)));
+            o.state_history.push((OrderState::Working, ts_from_ms(now)));
             // Submit to ApexIB
             let sym = o.symbol.clone();
             let side_str = match o.side { OrderSide::Buy | OrderSide::TriggerBuy => "buy", _ => "sell" };
@@ -984,7 +1028,7 @@ impl OrderManager {
                 ManagedOrderType::Stop => 2, ManagedOrderType::StopLimit => 3,
                 ManagedOrderType::TrailingStop => 4,
             };
-            let price = o.price; let stop_price = o.stop_price; let qty = o.qty;
+            let price = o.price.to_f32(); let stop_price = o.stop_price.to_f32(); let qty = o.qty;
             let trail_amount = o.trail_amount;
             let trail_percent = o.trail_percent;
             let intent_tif = o.tif;
@@ -1055,45 +1099,45 @@ impl OrderManager {
 
         // Entry order
         self.orders.push(ManagedOrder {
-            id: entry_id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), side: intent.side,
-            order_type: intent.order_type, price: intent.price, stop_price: intent.stop_price,
-            qty: intent.qty, filled_qty: 0, avg_fill_price: 0.0,
+            id: entry_id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), symbol_typed: Symbol::equity(&intent.symbol), side: intent.side,
+            order_type: intent.order_type, price: Price::from_f32(intent.price), stop_price: Price::from_f32(intent.stop_price),
+            qty: intent.qty, filled_qty: 0, avg_fill_price: Price::ZERO,
             state: initial_state, pair_id: None,
             trail_amount: None, trail_percent: None,
             option_symbol: intent.option_symbol.clone(), option_con_id: intent.option_con_id,
             source: intent.source, tif: intent.tif, outside_rth: intent.outside_rth,
-            created_at: now_ms, updated_at: now_ms,
-            backend_order_id: None, state_history: vec![(initial_state, now_ms)],
+            created_at: ts_from_ms(now_ms), updated_at: ts_from_ms(now_ms),
+            backend_order_id: None, state_history: vec![(initial_state, ts_from_ms(now_ms))],
             rejection_reason: None,
             modify_version: 0, modify_inflight: false, modify_pending_price: None,
         });
 
         // Take profit order
         self.orders.push(ManagedOrder {
-            id: tp_id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), side: tp_side,
-            order_type: ManagedOrderType::Limit, price: take_profit_price, stop_price: 0.0,
-            qty: intent.qty, filled_qty: 0, avg_fill_price: 0.0,
+            id: tp_id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), symbol_typed: Symbol::equity(&intent.symbol), side: tp_side,
+            order_type: ManagedOrderType::Limit, price: Price::from_f32(take_profit_price), stop_price: Price::ZERO,
+            qty: intent.qty, filled_qty: 0, avg_fill_price: Price::ZERO,
             state: initial_state, pair_id: Some(entry_id),
             trail_amount: None, trail_percent: None,
             option_symbol: intent.option_symbol.clone(), option_con_id: intent.option_con_id,
             source: OrderSource::Bracket, tif: intent.tif, outside_rth: intent.outside_rth,
-            created_at: now_ms, updated_at: now_ms,
-            backend_order_id: None, state_history: vec![(initial_state, now_ms)],
+            created_at: ts_from_ms(now_ms), updated_at: ts_from_ms(now_ms),
+            backend_order_id: None, state_history: vec![(initial_state, ts_from_ms(now_ms))],
             rejection_reason: None,
             modify_version: 0, modify_inflight: false, modify_pending_price: None,
         });
 
         // Stop loss order
         self.orders.push(ManagedOrder {
-            id: sl_id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), side: tp_side,
-            order_type: ManagedOrderType::Stop, price: stop_loss_price, stop_price: stop_loss_price,
-            qty: intent.qty, filled_qty: 0, avg_fill_price: 0.0,
+            id: sl_id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), symbol_typed: Symbol::equity(&intent.symbol), side: tp_side,
+            order_type: ManagedOrderType::Stop, price: Price::from_f32(stop_loss_price), stop_price: Price::from_f32(stop_loss_price),
+            qty: intent.qty, filled_qty: 0, avg_fill_price: Price::ZERO,
             state: initial_state, pair_id: Some(entry_id),
             trail_amount: None, trail_percent: None,
             option_symbol: intent.option_symbol.clone(), option_con_id: intent.option_con_id,
             source: OrderSource::Bracket, tif: intent.tif, outside_rth: intent.outside_rth,
-            created_at: now_ms, updated_at: now_ms,
-            backend_order_id: None, state_history: vec![(initial_state, now_ms)],
+            created_at: ts_from_ms(now_ms), updated_at: ts_from_ms(now_ms),
+            backend_order_id: None, state_history: vec![(initial_state, ts_from_ms(now_ms))],
             rejection_reason: None,
             modify_version: 0, modify_inflight: false, modify_pending_price: None,
         });
@@ -1212,15 +1256,15 @@ impl OrderManager {
             let initial_state = if self.armed { OrderState::PendingSubmit } else { OrderState::Draft };
 
             self.orders.push(ManagedOrder {
-                id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), side: intent.side,
-                order_type: intent.order_type, price: intent.price, stop_price: intent.stop_price,
-                qty: intent.qty, filled_qty: 0, avg_fill_price: 0.0,
+                id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), symbol_typed: Symbol::equity(&intent.symbol), side: intent.side,
+                order_type: intent.order_type, price: Price::from_f32(intent.price), stop_price: Price::from_f32(intent.stop_price),
+                qty: intent.qty, filled_qty: 0, avg_fill_price: Price::ZERO,
                 state: initial_state, pair_id: None, // pair_ids linked after all created
                 trail_amount: intent.trail_amount, trail_percent: intent.trail_percent,
                 option_symbol: intent.option_symbol.clone(), option_con_id: intent.option_con_id,
                 source: OrderSource::Oco, tif: intent.tif, outside_rth: intent.outside_rth,
-                created_at: now_ms, updated_at: now_ms,
-                backend_order_id: None, state_history: vec![(initial_state, now_ms)],
+                created_at: ts_from_ms(now_ms), updated_at: ts_from_ms(now_ms),
+                backend_order_id: None, state_history: vec![(initial_state, ts_from_ms(now_ms))],
                 rejection_reason: None,
                 modify_version: 0, modify_inflight: false, modify_pending_price: None,
             });
@@ -1343,15 +1387,15 @@ impl OrderManager {
         let initial_state = OrderState::PendingSubmit; // conditionals always go to backend immediately
 
         self.orders.push(ManagedOrder {
-            id, client_order_id: new_client_order_id(), symbol: base.symbol.clone(), side: base.side,
-            order_type: base.order_type, price: base.price, stop_price: base.stop_price,
-            qty: base.qty, filled_qty: 0, avg_fill_price: 0.0,
+            id, client_order_id: new_client_order_id(), symbol: base.symbol.clone(), symbol_typed: Symbol::equity(&base.symbol), side: base.side,
+            order_type: base.order_type, price: Price::from_f32(base.price), stop_price: Price::from_f32(base.stop_price),
+            qty: base.qty, filled_qty: 0, avg_fill_price: Price::ZERO,
             state: initial_state, pair_id: base.pair_with,
             trail_amount: base.trail_amount, trail_percent: base.trail_percent,
             option_symbol: base.option_symbol.clone(), option_con_id: base.option_con_id,
             source: OrderSource::Conditional, tif: base.tif, outside_rth: base.outside_rth,
-            created_at: now_ms, updated_at: now_ms,
-            backend_order_id: None, state_history: vec![(initial_state, now_ms)],
+            created_at: ts_from_ms(now_ms), updated_at: ts_from_ms(now_ms),
+            backend_order_id: None, state_history: vec![(initial_state, ts_from_ms(now_ms))],
             rejection_reason: None,
             modify_version: 0, modify_inflight: false, modify_pending_price: None,
         });
@@ -1390,7 +1434,7 @@ impl OrderManager {
                     "conId": c.con_id,
                     "exchange": c.exchange,
                     "isMore": c.is_more,
-                    "price": c.price,
+                    "price": c.price.to_f32(),
                     "triggerMethod": "default",
                 })
             }).collect();
@@ -1458,16 +1502,16 @@ impl OrderManager {
         let initial_state = OrderState::PendingSubmit;
 
         self.orders.push(ManagedOrder {
-            id, client_order_id: new_client_order_id(), symbol: underlying.to_string(), side: OrderSide::TriggerBuy,
-            order_type: ManagedOrderType::Market, price: entry_price, stop_price: 0.0,
-            qty, filled_qty: 0, avg_fill_price: 0.0,
+            id, client_order_id: new_client_order_id(), symbol: underlying.to_string(), symbol_typed: Symbol::equity(underlying), side: OrderSide::TriggerBuy,
+            order_type: ManagedOrderType::Market, price: Price::from_f32(entry_price), stop_price: Price::ZERO,
+            qty, filled_qty: 0, avg_fill_price: Price::ZERO,
             state: initial_state, pair_id: None,
             trail_amount: None, trail_percent: None,
             option_symbol: Some(format!("{} {}{} {}", underlying, strike, option_type, expiration)),
             option_con_id: None,
             source: OrderSource::OptionsTrigger, tif: 0, outside_rth: false,
-            created_at: now_ms, updated_at: now_ms,
-            backend_order_id: None, state_history: vec![(initial_state, now_ms)],
+            created_at: ts_from_ms(now_ms), updated_at: ts_from_ms(now_ms),
+            backend_order_id: None, state_history: vec![(initial_state, ts_from_ms(now_ms))],
             rejection_reason: None,
             modify_version: 0, modify_inflight: false, modify_pending_price: None,
         });
@@ -1558,16 +1602,16 @@ impl OrderManager {
         let managed_ot = if order_type == "limit" { ManagedOrderType::Limit } else { ManagedOrderType::Market };
 
         self.orders.push(ManagedOrder {
-            id, client_order_id: new_client_order_id(), symbol: symbol.to_string(), side: order_side,
-            order_type: managed_ot, price: limit_price.unwrap_or(0.0), stop_price: 0.0,
-            qty, filled_qty: 0, avg_fill_price: 0.0,
+            id, client_order_id: new_client_order_id(), symbol: symbol.to_string(), symbol_typed: Symbol::equity(symbol), side: order_side,
+            order_type: managed_ot, price: limit_price.map(Price::from_f32).unwrap_or(Price::ZERO), stop_price: Price::ZERO,
+            qty, filled_qty: 0, avg_fill_price: Price::ZERO,
             state: initial_state, pair_id: None,
             trail_amount: None, trail_percent: None,
             option_symbol: Some(format!("{} combo {}leg", symbol, legs.len())),
             option_con_id: None,
             source: OrderSource::Combo, tif: 0, outside_rth: false,
-            created_at: now_ms, updated_at: now_ms,
-            backend_order_id: None, state_history: vec![(initial_state, now_ms)],
+            created_at: ts_from_ms(now_ms), updated_at: ts_from_ms(now_ms),
+            backend_order_id: None, state_history: vec![(initial_state, ts_from_ms(now_ms))],
             rejection_reason: None,
             modify_version: 0, modify_inflight: false, modify_pending_price: None,
         });
@@ -1722,7 +1766,7 @@ impl OrderManager {
     /// `modify_inflight`, subsequent calls coalesce into `modify_pending_price`
     /// and fire after the in-flight one completes. Each PUT carries a
     /// monotonic `modify_version` so out-of-order responses are discarded.
-    pub(crate) fn modify_price(&mut self, order_id: u64, new_price: f32) -> bool {
+    pub(crate) fn modify_price(&mut self, order_id: u64, new_price: Price) -> bool {
         let paper = self.paper_mode;
         let Some(o) = self.orders.iter_mut().find(|o| o.id == order_id && o.state.is_active()) else {
             return false;
@@ -1734,8 +1778,8 @@ impl OrderManager {
         }
         let now = epoch_ms();
         o.price = new_price;
-        o.updated_at = now;
-        o.state_history.push((OrderState::PendingModify, now));
+        o.updated_at = ts_from_ms(now);
+        o.state_history.push((OrderState::PendingModify, ts_from_ms(now)));
         o.modify_inflight = true;
         o.modify_version = o.modify_version.wrapping_add(1);
         let version = o.modify_version;
@@ -1744,17 +1788,20 @@ impl OrderManager {
         let is_stop = matches!(o.order_type, ManagedOrderType::Stop);
         let is_stop_limit = matches!(o.order_type, ManagedOrderType::StopLimit);
 
+        // Wire-boundary conversion — the broker JSON shape is unchanged.
+        let new_price_f = new_price.to_f32();
+
         journal::append(JournalEvent::Attempt {
             client_id: cid.clone(), kind: AttemptKind::Modify,
             ts_ms: now, payload: serde_json::json!({
-                "order_id": order_id, "new_price": new_price, "modify_version": version,
+                "order_id": order_id, "new_price": new_price_f, "modify_version": version,
             }),
         });
 
         match backend_id {
             Some(bid) => {
                 if paper {
-                    paper::modify_paper(&bid, new_price);
+                    paper::modify_paper(&bid, new_price_f);
                     journal::append(JournalEvent::Ack { client_id: cid, backend_id: Some(bid), ts_ms: epoch_ms() });
                     // Apply inline for paper — we already hold &mut self so we
                     // can't recurse through `with_mgr` (would deadlock the lock).
@@ -1762,7 +1809,7 @@ impl OrderManager {
                 } else {
                     let cid_thread = cid.clone();
                     let bid_thread = bid.clone();
-                    let np = new_price;
+                    let np = new_price_f;
                     std::thread::spawn(move || {
                         let client = reqwest::blocking::Client::new();
                         let body = if is_stop {
@@ -1785,7 +1832,7 @@ impl OrderManager {
                         }
                         // Spawned thread does not hold the manager lock, so it
                         // can re-enter via `with_mgr` safely.
-                        let pending: Option<f32> = with_mgr(|mgr| {
+                        let pending: Option<Price> = with_mgr(|mgr| {
                             let o = mgr.orders.iter_mut().find(|o| o.id == order_id)?;
                             if o.modify_version != version {
                                 return None; // superseded
@@ -1811,7 +1858,7 @@ impl OrderManager {
     /// Used for paper / no-backend paths where `modify_price` hasn't released
     /// the manager lock yet.
     fn apply_modify_result_inner(&mut self, order_id: u64, version: u32) {
-        let pending: Option<f32> = {
+        let pending: Option<Price> = {
             let Some(o) = self.orders.iter_mut().find(|o| o.id == order_id) else { return; };
             if o.modify_version != version {
                 return; // superseded
@@ -1924,8 +1971,8 @@ impl OrderManager {
         let now = epoch_ms();
         for mut o in restored {
             o.state = OrderState::Working;
-            o.updated_at = now;
-            o.state_history.push((OrderState::Working, now));
+            o.updated_at = ts_from_ms(now);
+            o.state_history.push((OrderState::Working, ts_from_ms(now)));
             if o.id >= self.next_id { self.next_id = o.id + 1; }
             self.orders.push(o);
         }
@@ -1943,8 +1990,8 @@ impl OrderManager {
             let now = epoch_ms();
             let from = o.state;
             o.state = new_state;
-            o.updated_at = now;
-            o.state_history.push((new_state, now));
+            o.updated_at = ts_from_ms(now);
+            o.state_history.push((new_state, ts_from_ms(now)));
             chg = Some((o.id.to_string(), from, new_state, now));
         }
         snapshot::publish(&self.orders);
@@ -1962,7 +2009,7 @@ impl OrderManager {
     pub(crate) fn gc(&mut self) {
         if self.orders.len() > 600 {
             let keep = self.orders.len() - 500;
-            self.orders.retain(|o| !o.state.is_terminal() || o.updated_at > epoch_ms() - 3_600_000);
+            self.orders.retain(|o| !o.state.is_terminal() || (o.updated_at.millis() as u64) > epoch_ms() - 3_600_000);
             if self.orders.len() > 500 {
                 self.orders.drain(0..self.orders.len().saturating_sub(500));
             }
@@ -2002,7 +2049,9 @@ pub(crate) fn cancel_all_orders(symbol: &str) {
 
 /// Modify order price
 pub(crate) fn modify_order_price(id: u64, new_price: f32) -> bool {
-    let r = with_mgr(|mgr| mgr.modify_price(id, new_price));
+    // External callers (core.rs render path) pass f32; convert to Price at
+    // the boundary so the internal API stays typed.
+    let r = with_mgr(|mgr| mgr.modify_price(id, Price::from_f32(new_price)));
     with_mgr(|mgr| mgr.save_to_disk());
     r
 }
@@ -2076,7 +2125,7 @@ pub(crate) fn all_order_levels_for(symbol: &str) -> Vec<OrderLevel> {
     let cutoff = epoch_ms().saturating_sub(60_000); // keep terminal orders for 60s
     let snap = snapshot::current();
     snap.orders.iter()
-        .filter(|o| o.symbol == symbol && (o.state.is_active() || o.updated_at > cutoff))
+        .filter(|o| o.symbol == symbol && (o.state.is_active() || (o.updated_at.millis() as u64) > cutoff))
         .map(|o| o.to_order_level())
         .collect()
 }
@@ -2360,13 +2409,14 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
                     id,
                     client_order_id: format!("ext-{}", backend_id),
                     symbol: ib.symbol.clone(),
+                    symbol_typed: Symbol::equity(&ib.symbol),
                     side,
                     order_type: ManagedOrderType::Limit,
-                    price: ib.limit_price as f32,
-                    stop_price: 0.0,
+                    price: Price::from_dollars(ib.limit_price),
+                    stop_price: Price::ZERO,
                     qty: ib.qty.max(0) as u32,
                     filled_qty: ib.filled_qty.max(0) as u32,
-                    avg_fill_price: ib.avg_fill_price as f32,
+                    avg_fill_price: Price::from_dollars(ib.avg_fill_price),
                     state,
                     pair_id: None,
                     trail_amount: None,
@@ -2374,12 +2424,12 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
                     option_symbol: None,
                     option_con_id: None,
                     source: OrderSource::Api,
-                    created_at: ib.submitted_at.max(0) as u64,
-                    updated_at: now,
+                    created_at: ts_from_ms(ib.submitted_at.max(0) as u64),
+                    updated_at: ts_from_ms(now),
                     backend_order_id: Some(backend_id),
                     tif: 0,
                     outside_rth: false,
-                    state_history: vec![(state, now)],
+                    state_history: vec![(state, ts_from_ms(now))],
                     rejection_reason: rejection,
                     modify_version: 0,
                     modify_inflight: false,
@@ -2421,7 +2471,7 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
             let token = if !ib.backend_id.is_empty() {
                 ib.backend_id.clone()
             } else {
-                format!("ib_{}", mgr.orders[idx].created_at)
+                format!("ib_{}", mgr.orders[idx].created_at.millis())
             };
             mgr.orders[idx].backend_order_id = Some(token);
         }
@@ -2481,8 +2531,8 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
         let mut state_changed = false;
         if mgr.orders[idx].state != new_state {
             mgr.orders[idx].state = new_state;
-            mgr.orders[idx].updated_at = now;
-            mgr.orders[idx].state_history.push((new_state, now));
+            mgr.orders[idx].updated_at = ts_from_ms(now);
+            mgr.orders[idx].state_history.push((new_state, ts_from_ms(now)));
             state_changed = true;
         }
 
@@ -2490,11 +2540,11 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
         let mut filled_changed = false;
         if let Some(fq) = filled_qty_to_set {
             mgr.orders[idx].filled_qty = fq;
-            mgr.orders[idx].avg_fill_price = ib.avg_fill_price as f32;
+            mgr.orders[idx].avg_fill_price = Price::from_dollars(ib.avg_fill_price);
             filled_changed = true;
         } else if matches!(new_state, OrderState::Filled) && mgr.orders[idx].filled_qty == 0 && qty_filled_broker > 0 {
             mgr.orders[idx].filled_qty = qty_filled_broker as u32;
-            mgr.orders[idx].avg_fill_price = ib.avg_fill_price as f32;
+            mgr.orders[idx].avg_fill_price = Price::from_dollars(ib.avg_fill_price);
             filled_changed = true;
         }
 
@@ -2505,7 +2555,7 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
             let sym = mgr.orders[idx].symbol.clone();
             let qty = mgr.orders[idx].qty;
             let fq = mgr.orders[idx].filled_qty;
-            let avg = mgr.orders[idx].avg_fill_price;
+            let avg = mgr.orders[idx].avg_fill_price.to_f32();
             // Toast firing rules — surgical to prevent repeated emissions
             // when the broker streams multiple execution records (one per
             // fill chunk) for the same trade. Each record bumps filled_qty
@@ -2596,8 +2646,8 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
                 if !matches!(prev, OrderState::Unknown) {
                     eprintln!("[reconcile] Rule 3: order {} not seen by broker for >15s — marking Unknown", id);
                     o.state = OrderState::Unknown;
-                    o.updated_at = now;
-                    o.state_history.push((OrderState::Unknown, now));
+                    o.updated_at = ts_from_ms(now);
+                    o.state_history.push((OrderState::Unknown, ts_from_ms(now)));
                     journal::append(JournalEvent::Reconcile {
                         client_id: id.to_string(),
                         local: prev,
@@ -2678,6 +2728,20 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
 
 fn epoch_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
+}
+
+/// Wave 3: typed wall-clock timestamp for `ManagedOrder.created_at` /
+/// `updated_at` / `state_history`. Local wall-clock — order lifecycle ts are
+/// recorded by this process, not the exchange.
+fn epoch_ts() -> Timestamp {
+    Timestamp::from_millis(epoch_ms() as i64, TimeSource::Local)
+}
+
+/// Wrap an existing `u64` wall-clock ms into a typed `Timestamp`. Used at
+/// construction sites that already captured `now_ms = epoch_ms()` for
+/// downstream arithmetic and want a parallel typed value for the struct fields.
+fn ts_from_ms(ms: u64) -> Timestamp {
+    Timestamp::from_millis(ms as i64, TimeSource::Local)
 }
 
 /// Lock-free snapshot accessor for render path.
@@ -2768,8 +2832,8 @@ pub(crate) fn replay_and_recover() {
                         if !matches!(o.state, OrderState::Working | OrderState::PartialFill) {
                             let now = epoch_ms();
                             o.state = OrderState::Working;
-                            o.updated_at = now;
-                            o.state_history.push((OrderState::Working, now));
+                            o.updated_at = ts_from_ms(now);
+                            o.state_history.push((OrderState::Working, ts_from_ms(now)));
                         }
                     }
                     journal::append(JournalEvent::Reconcile {
@@ -2794,9 +2858,9 @@ pub(crate) fn replay_and_recover() {
                         o.backend_order_id = Some(backend_id.clone());
                         o.state = OrderState::Filled;
                         o.filled_qty = qty;
-                        o.avg_fill_price = fill_price;
-                        o.updated_at = now;
-                        o.state_history.push((OrderState::Filled, now));
+                        o.avg_fill_price = Price::from_f32(fill_price);
+                        o.updated_at = ts_from_ms(now);
+                        o.state_history.push((OrderState::Filled, ts_from_ms(now)));
                     }
                     journal::append(JournalEvent::Reconcile {
                         client_id: cid.clone(),
@@ -2819,8 +2883,8 @@ pub(crate) fn replay_and_recover() {
                         let now = epoch_ms();
                         o.backend_order_id = Some(backend_id.clone());
                         o.state = OrderState::Cancelled;
-                        o.updated_at = now;
-                        o.state_history.push((OrderState::Cancelled, now));
+                        o.updated_at = ts_from_ms(now);
+                        o.state_history.push((OrderState::Cancelled, ts_from_ms(now)));
                     }
                     journal::append(JournalEvent::Reconcile {
                         client_id: cid.clone(),
@@ -2843,8 +2907,8 @@ pub(crate) fn replay_and_recover() {
                         let now = epoch_ms();
                         o.state = OrderState::Rejected;
                         o.rejection_reason = Some(reason.clone());
-                        o.updated_at = now;
-                        o.state_history.push((OrderState::Rejected, now));
+                        o.updated_at = ts_from_ms(now);
+                        o.state_history.push((OrderState::Rejected, ts_from_ms(now)));
                     }
                     journal::append(JournalEvent::Fail {
                         client_id: cid.clone(),
@@ -2860,8 +2924,8 @@ pub(crate) fn replay_and_recover() {
                         let now = epoch_ms();
                         o.state = OrderState::Rejected;
                         o.rejection_reason = Some("orphan-not-at-broker".into());
-                        o.updated_at = now;
-                        o.state_history.push((OrderState::Rejected, now));
+                        o.updated_at = ts_from_ms(now);
+                        o.state_history.push((OrderState::Rejected, ts_from_ms(now)));
                     }
                     journal::append(JournalEvent::Reconcile {
                         client_id: cid.clone(),
@@ -2960,7 +3024,7 @@ fn start_pending_sweeper() {
                     let mut to_unknown: Vec<u64> = Vec::new();
                     for o in mgr.orders.iter() {
                         let pending = matches!(o.state, OrderState::PendingSubmit | OrderState::PendingCancel | OrderState::PendingModify);
-                        if pending && now.saturating_sub(o.updated_at) > 10_000 {
+                        if pending && now.saturating_sub(o.updated_at.millis() as u64) > 10_000 {
                             to_unknown.push(o.id);
                         }
                     }
@@ -3188,16 +3252,16 @@ mod tests {
         let now = epoch_ms();
         m.orders.push(ManagedOrder {
             id: 1, client_order_id: "pre-1".into(),
-            symbol: "AAPL".into(), side: OrderSide::Buy,
-            order_type: ManagedOrderType::Limit, price: 100.0, stop_price: 0.0,
-            qty: 900, filled_qty: 0, avg_fill_price: 0.0,
+            symbol: "AAPL".into(), symbol_typed: Symbol::equity("AAPL"), side: OrderSide::Buy,
+            order_type: ManagedOrderType::Limit, price: Price::from_f32(100.0), stop_price: Price::ZERO,
+            qty: 900, filled_qty: 0, avg_fill_price: Price::ZERO,
             state: OrderState::Working, pair_id: None,
             trail_amount: None, trail_percent: None,
             option_symbol: None, option_con_id: None,
             source: OrderSource::OrderPanel,
-            created_at: now, updated_at: now, backend_order_id: None,
+            created_at: ts_from_ms(now), updated_at: ts_from_ms(now), backend_order_id: None,
             tif: 0, outside_rth: false,
-            state_history: vec![(OrderState::Working, now)],
+            state_history: vec![(OrderState::Working, ts_from_ms(now))],
             rejection_reason: None,
             modify_version: 0, modify_inflight: false, modify_pending_price: None,
         });
@@ -3331,10 +3395,10 @@ mod tests {
         let mut m = fresh_manager();
         let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
         let id = order_id(&r).expect("submit should accept");
-        assert!(m.modify_price(id, 101.0));
-        assert!(m.modify_price(id, 102.0));
+        assert!(m.modify_price(id, Price::from_f32(101.0)));
+        assert!(m.modify_price(id, Price::from_f32(102.0)));
         let o = m.orders.iter().find(|o| o.id == id).expect("order present");
-        assert!((o.price - 102.0).abs() < 0.001,
+        assert!((o.price.to_f32() - 102.0).abs() < 0.001,
                 "after two modify_price calls, price should equal latest: got {}", o.price);
         // After the synchronous paper path settles, no inflight should remain.
         assert!(!o.modify_inflight, "modify_inflight should be cleared after paper modify settles");
@@ -3363,16 +3427,16 @@ mod tests {
         let now = epoch_ms();
         let mk = |id: u64, side: OrderSide, state: OrderState, pair: u64| ManagedOrder {
             id, client_order_id: format!("oco-{}", id),
-            symbol: "AAPL".into(), side,
-            order_type: ManagedOrderType::Limit, price: 100.0, stop_price: 0.0,
+            symbol: "AAPL".into(), symbol_typed: Symbol::equity("AAPL"), side,
+            order_type: ManagedOrderType::Limit, price: Price::from_f32(100.0), stop_price: Price::ZERO,
             qty: 10, filled_qty: if matches!(state, OrderState::Filled) { 10 } else { 0 },
-            avg_fill_price: 0.0, state, pair_id: Some(pair),
+            avg_fill_price: Price::ZERO, state, pair_id: Some(pair),
             trail_amount: None, trail_percent: None,
             option_symbol: None, option_con_id: None,
             source: OrderSource::Oco,
-            created_at: now, updated_at: now, backend_order_id: None,
+            created_at: ts_from_ms(now), updated_at: ts_from_ms(now), backend_order_id: None,
             tif: 0, outside_rth: false,
-            state_history: vec![(state, now)],
+            state_history: vec![(state, ts_from_ms(now))],
             rejection_reason: None,
             modify_version: 0, modify_inflight: false, modify_pending_price: None,
         };
@@ -3417,17 +3481,17 @@ mod tests {
             let now = epoch_ms();
             let mut a = ManagedOrder {
                 id: 10, client_order_id: "ka".into(),
-                symbol: "AAPL".into(), side: OrderSide::Buy,
-                order_type: ManagedOrderType::Limit, price: 100.0, stop_price: 0.0,
-                qty: 10, filled_qty: 0, avg_fill_price: 0.0,
+                symbol: "AAPL".into(), symbol_typed: Symbol::equity("AAPL"), side: OrderSide::Buy,
+                order_type: ManagedOrderType::Limit, price: Price::from_f32(100.0), stop_price: Price::ZERO,
+                qty: 10, filled_qty: 0, avg_fill_price: Price::ZERO,
                 state: OrderState::PendingSubmit, pair_id: None,
                 trail_amount: None, trail_percent: None,
                 option_symbol: None, option_con_id: None,
                 source: OrderSource::OrderPanel,
-                created_at: now, updated_at: now,
+                created_at: ts_from_ms(now), updated_at: ts_from_ms(now),
                 backend_order_id: Some("abc".into()),
                 tif: 0, outside_rth: false,
-                state_history: vec![(OrderState::PendingSubmit, now)],
+                state_history: vec![(OrderState::PendingSubmit, ts_from_ms(now))],
                 rejection_reason: None,
                 modify_version: 0, modify_inflight: false, modify_pending_price: None,
             };
@@ -3453,16 +3517,16 @@ mod tests {
             let now = epoch_ms();
             m.orders.push(ManagedOrder {
                 id: 1, client_order_id: "k".into(),
-                symbol: "AAPL".into(), side: OrderSide::Buy,
-                order_type: ManagedOrderType::Limit, price: 100.0, stop_price: 0.0,
-                qty: 10, filled_qty: 0, avg_fill_price: 0.0,
+                symbol: "AAPL".into(), symbol_typed: Symbol::equity("AAPL"), side: OrderSide::Buy,
+                order_type: ManagedOrderType::Limit, price: Price::from_f32(100.0), stop_price: Price::ZERO,
+                qty: 10, filled_qty: 0, avg_fill_price: Price::ZERO,
                 state: OrderState::PendingSubmit, pair_id: None,
                 trail_amount: None, trail_percent: None,
                 option_symbol: None, option_con_id: None,
                 source: OrderSource::OrderPanel,
-                created_at: now, updated_at: now, backend_order_id: None,
+                created_at: ts_from_ms(now), updated_at: ts_from_ms(now), backend_order_id: None,
                 tif: 0, outside_rth: false,
-                state_history: vec![(OrderState::PendingSubmit, now)],
+                state_history: vec![(OrderState::PendingSubmit, ts_from_ms(now))],
                 rejection_reason: None,
                 modify_version: 0, modify_inflight: false, modify_pending_price: None,
             });
@@ -3498,17 +3562,17 @@ mod tests {
             let now = epoch_ms();
             m.orders.push(ManagedOrder {
                 id: 1, client_order_id: "k".into(),
-                symbol: "AAPL".into(), side: OrderSide::Buy,
-                order_type: ManagedOrderType::Limit, price: 100.0, stop_price: 0.0,
-                qty: 10, filled_qty: 0, avg_fill_price: 0.0,
+                symbol: "AAPL".into(), symbol_typed: Symbol::equity("AAPL"), side: OrderSide::Buy,
+                order_type: ManagedOrderType::Limit, price: Price::from_f32(100.0), stop_price: Price::ZERO,
+                qty: 10, filled_qty: 0, avg_fill_price: Price::ZERO,
                 state: OrderState::Cancelled, pair_id: None,
                 trail_amount: None, trail_percent: None,
                 option_symbol: None, option_con_id: None,
                 source: OrderSource::OrderPanel,
-                created_at: now, updated_at: now,
+                created_at: ts_from_ms(now), updated_at: ts_from_ms(now),
                 backend_order_id: Some("abc".into()),
                 tif: 0, outside_rth: false,
-                state_history: vec![(OrderState::Cancelled, now)],
+                state_history: vec![(OrderState::Cancelled, ts_from_ms(now))],
                 rejection_reason: None,
                 modify_version: 0, modify_inflight: false, modify_pending_price: None,
             });
@@ -3550,17 +3614,17 @@ mod tests {
             let now = epoch_ms();
             m.orders.push(ManagedOrder {
                 id: 1, client_order_id: "k".into(),
-                symbol: "AAPL".into(), side: OrderSide::Buy,
-                order_type: ManagedOrderType::Limit, price: 100.0, stop_price: 0.0,
-                qty: 100, filled_qty: 50, avg_fill_price: 100.0,
+                symbol: "AAPL".into(), symbol_typed: Symbol::equity("AAPL"), side: OrderSide::Buy,
+                order_type: ManagedOrderType::Limit, price: Price::from_f32(100.0), stop_price: Price::ZERO,
+                qty: 100, filled_qty: 50, avg_fill_price: Price::from_f32(100.0),
                 state: OrderState::PartialFill, pair_id: None,
                 trail_amount: None, trail_percent: None,
                 option_symbol: None, option_con_id: None,
                 source: OrderSource::OrderPanel,
-                created_at: now, updated_at: now,
+                created_at: ts_from_ms(now), updated_at: ts_from_ms(now),
                 backend_order_id: Some("abc".into()),
                 tif: 0, outside_rth: false,
-                state_history: vec![(OrderState::PartialFill, now)],
+                state_history: vec![(OrderState::PartialFill, ts_from_ms(now))],
                 rejection_reason: None,
                 modify_version: 0, modify_inflight: false, modify_pending_price: None,
             });
@@ -3574,7 +3638,7 @@ mod tests {
 
             let o = m.orders.iter().find(|o| o.id == 1).unwrap();
             assert_eq!(o.filled_qty, 80, "local should catch up to broker filled_qty");
-            assert!((o.avg_fill_price - 100.5).abs() < 0.001,
+            assert!((o.avg_fill_price.to_f32() - 100.5).abs() < 0.001,
                     "avg_fill_price should be updated alongside filled_qty");
         }
     }
@@ -3681,5 +3745,43 @@ mod tests {
         let r = m.submit(intent);
         assert!(matches!(r, OrderResult::Accepted(_)),
                 "override_warnings=true should clear fat-finger soft gate, got {:?}", r);
+    }
+
+    // ── O. Wave 3 regression: sub-cent dedup signature collision ────────────
+    //
+    // The legacy `OrderSignature` keyed on `(price * 100.0).round() as i64`
+    // (integer cents). That bucketed $145.999 and $146.001 onto the same
+    // signature — legitimate orders one tick apart were silently dropped as
+    // duplicates. With `Price` micro-units the signature uses the full i64
+    // and distinguishes them.
+
+    #[test]
+    fn wave3_dedup_signature_distinguishes_sub_cent_prices() {
+        // Both prices round to the same integer-cents value (14600) but are
+        // genuinely different micro-prices ($145.999 vs $146.001).
+        let a = OrderSignature::new("AAPL", OrderSide::Buy, Price::from_dollars(145.999), 10);
+        let b = OrderSignature::new("AAPL", OrderSide::Buy, Price::from_dollars(146.001), 10);
+        assert_ne!(a, b,
+                   "Wave 3: $145.999 and $146.001 must produce DIFFERENT signatures \
+                    (legacy cents-rounding collapsed them onto the same bucket)");
+        // Spell the underlying micro-unit difference for clarity:
+        assert_eq!(a.price_micro, 145_999_000);
+        assert_eq!(b.price_micro, 146_001_000);
+    }
+
+    #[test]
+    fn wave3_dedup_does_not_block_legitimate_neighbouring_order() {
+        // Real-world reproduction: submit at $145.999, then at $146.001 within
+        // the cooldown window. The second must NOT be reported as Duplicate.
+        let mut m = fresh_manager();
+        m.risk_limits.dedup_cooldown_ms = 5_000;
+        let i1 = limit_intent("AAPL", OrderSide::Buy, 145.999, 10);
+        let i2 = limit_intent("AAPL", OrderSide::Buy, 146.001, 10);
+        let r1 = m.submit(i1);
+        let r2 = m.submit(i2);
+        assert!(matches!(r1, OrderResult::Accepted(_)),
+                "first submit must accept, got {:?}", r1);
+        assert!(matches!(r2, OrderResult::Accepted(_)),
+                "Wave 3: second submit one tick apart must NOT be Duplicate, got {:?}", r2);
     }
 }
