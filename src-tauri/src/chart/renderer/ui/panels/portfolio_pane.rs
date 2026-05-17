@@ -161,32 +161,32 @@ pub(crate) fn render(
         let mut cx = inner.left();
         // Symbol
         painter.text(egui::pos2(cx, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
-            &pos.symbol, egui::FontId::monospace(font_sm()), t.text);
+            &pos.symbol, mono_sm(), t.text);
         cx += col_widths[0];
         // Qty
         painter.text(egui::pos2(cx, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
             &format!("{}{}", if pos.qty > 0 { "+" } else { "" }, pos.qty),
-            egui::FontId::monospace(font_xs()), dir_c);
+            mono_xs(), dir_c);
         cx += col_widths[1];
         // Avg
         painter.text(egui::pos2(cx, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
-            &format!("{:.2}", pos.avg_price), egui::FontId::monospace(font_xs()), t.dim);
+            &format!("{:.2}", pos.avg_price), mono_xs(), t.dim);
         cx += col_widths[2];
         // Current
         painter.text(egui::pos2(cx, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
-            &format!("{:.2}", pos.current_price), egui::FontId::monospace(font_xs()), t.text);
+            &format!("{:.2}", pos.current_price), mono_xs(), t.text);
         cx += col_widths[3];
         // P&L
         painter.text(egui::pos2(cx, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
-            &format!("{:+.0}", pos.unrealized_pnl), egui::FontId::monospace(font_sm()), pnl_c);
+            &format!("{:+.0}", pos.unrealized_pnl), mono_sm(), pnl_c);
         cx += col_widths[4];
         // P&L %
         painter.text(egui::pos2(cx, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
-            &format!("{:+.1}%", pnl_pct), egui::FontId::monospace(font_xs()), pnl_c);
+            &format!("{:+.1}%", pnl_pct), mono_xs(), pnl_c);
         cx += col_widths[5];
         // Port %
         painter.text(egui::pos2(cx, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
-            &format!("{:.1}%", port_pct), egui::FontId::monospace(font_xs()), t.dim);
+            &format!("{:.1}%", port_pct), mono_xs(), t.dim);
     }
 
     // ── Sector breakdown (right side if space) ─────────────────────────────────
@@ -384,7 +384,7 @@ pub(crate) fn render(
             painter.text(egui::pos2(sector_x, scenario_y + 18.0), egui::Align2::LEFT_CENTER,
                 &format!("${:+.0}", portfolio_impact), egui::FontId::proportional(18.0), impact_col);
             painter.text(egui::pos2(sector_x, scenario_y + 36.0), egui::Align2::LEFT_CENTER,
-                &format!("{:+.1}% portfolio impact", impact_pct), egui::FontId::monospace(font_xs()), impact_col);
+                &format!("{:+.1}% portfolio impact", impact_pct), mono_xs(), impact_col);
 
             // Per-position impact (top 3)
             let mut impacts: Vec<(&str, f64)> = positions.iter()
