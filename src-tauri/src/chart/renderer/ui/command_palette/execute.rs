@@ -25,9 +25,23 @@ pub(super) fn execute(
     // Symbols
     if let Some(sym) = id.strip_prefix("sym:") {
         let tf = panes[ap].timeframe.clone();
+        let group = panes[ap].link_group;
         panes[ap].symbol = sym.to_string();
         panes[ap].pending_symbol_change = Some(sym.to_string());
         fetch_bars_background(sym.to_string(), tf);
+        // Wave 5: publish the symbol change so future subscribers (sibling
+        // panes in the same link group, broadcast-mode listeners) can react
+        // without each call site having to know about them. The legacy
+        // imperative propagation in `gpu.rs::link_group_propagation` is
+        // still authoritative until follow-up work migrates it to subscribe.
+        if group != 0 {
+            watchlist.subscriptions.publish(
+                crate::state::PaneEvent::SymbolChanged {
+                    group,
+                    symbol: sym.to_string(),
+                },
+            );
+        }
         return;
     }
 

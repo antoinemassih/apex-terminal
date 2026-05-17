@@ -1264,6 +1264,21 @@ if watchlist.open {
                         let sym = watchlist.chain_symbol.clone();
                         let far_dte = watchlist.chain_far_dte;
                         watchlist.chain_loading = true;
+                        // Wave 5: mirror the legacy boolean into the central
+                        // InFlightRegistry. The boolean stays authoritative for
+                        // the other ~6 sites; this is the proof-of-concept that
+                        // the registry tracks the same lifecycle. Dedup so we
+                        // don't double-register if the panel re-enters before
+                        // the previous fetch returns.
+                        let kind = crate::state::InFlightKind::OptionsChain {
+                            underlying: sym.clone(),
+                        };
+                        if watchlist.inflight.dedup_kind(&kind).is_none() {
+                            let _ = watchlist.inflight.start(
+                                kind,
+                                std::time::Duration::from_secs(10),
+                            );
+                        }
                         watchlist.chain_last_fetch = Some(std::time::Instant::now());
                         fetch_chain_background(sym.clone(), ns, 0, chain_price);
                         fetch_chain_background(sym, ns, far_dte, chain_price);

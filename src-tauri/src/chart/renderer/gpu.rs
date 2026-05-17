@@ -3301,6 +3301,14 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                         watchlist.chain_far = (to_rows(calls), to_rows(puts));
                     }
                     watchlist.chain_loading = false;
+                    // Wave 5: mirror the legacy boolean into the InFlightRegistry
+                    // by completing any matching outstanding chain request.
+                    let kind = crate::state::InFlightKind::OptionsChain {
+                        underlying: symbol.clone(),
+                    };
+                    if let Some(id) = watchlist.inflight.dedup_kind(&kind) {
+                        watchlist.inflight.complete(id);
+                    }
                     if *underlying_price > 0.0 { watchlist.chain_underlying_price = *underlying_price; }
                     eprintln!("[chain] Loaded {} calls + {} puts for {} dte={} price={:.2}",
                         if *dte == 0 { watchlist.chain_0dte.0.len() } else { watchlist.chain_far.0.len() },
@@ -4296,6 +4304,16 @@ pub(crate) struct Watchlist {
     pub(crate) journal_page: usize,
     // Book pane tab (Positions/Orders + Journal)
     pub(crate) book_tab: crate::chart_renderer::BookTab,
+    // Wave 5: cross-pane event bus. Replaces ad-hoc pull-based pane
+    // iteration for link-group + broadcast propagation. Listeners are
+    // registered at construction time. See `state::subscriptions`.
+    pub(crate) subscriptions: crate::state::SubscriptionBus,
+    // Wave 5: centralized in-flight request tracker. Replaces scattered
+    // `*_loading: bool` flags. Wave 5 wires the registry alongside the
+    // legacy `chain_loading` boolean as proof-of-concept; subsequent
+    // waves migrate the remaining flags one at a time. See
+    // `state::inflight`.
+    pub(crate) inflight: crate::state::InFlightRegistry,
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
@@ -4447,7 +4465,27 @@ impl Watchlist {
                journal_panel_open: false,
                journal_entries: generate_placeholder_journal(),
                journal_page: 0,
-               book_tab: crate::chart_renderer::BookTab::Book }
+               book_tab: crate::chart_renderer::BookTab::Book,
+               // Wave 5: bus + registry start empty. A skeleton listener is
+               // registered immediately below so the wiring is exercised
+               // end-to-end; real sibling-pane fanout is follow-up work.
+               subscriptions: {
+                   let mut bus = crate::state::SubscriptionBus::new();
+                   // TODO(wave-5+): wire this listener to walk `panes` and
+                   // apply SymbolChanged/TimeframeChanged to every sibling
+                   // pane whose `link_group` matches and whose group id is
+                   // within `link_groups.len()`. Today it only counts events
+                   // for diagnostics — the imperative loops in `gpu.rs`
+                   // (`link_group_propagation`, broadcast_mode handling)
+                   // remain authoritative.
+                   bus.on(|evt| {
+                       tracing::trace!(target: "state::subscriptions",
+                           "PaneEvent: {:?}", evt);
+                   });
+                   bus
+               },
+               inflight: crate::state::InFlightRegistry::new(),
+        }
     }
 
     /// Add symbol to the last section (creates one if none exist).
