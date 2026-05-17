@@ -1048,7 +1048,7 @@ impl<'a> IndicatorParamRow<'a> {
                     if Button::new(pr_label.as_str()).variant(Variant::Chrome).size(Size::Xs).fg(fg)
                         .fill(if sel { color_alpha(accent, alpha_soft()) } else { Color32::TRANSPARENT })
                         .corner_radius(crate::chart_renderer::ui::style::current().r_xs as f32)
-                        .min_size(egui::vec2(22.0, 18.0)).show(ui, theme).clicked() && !sel
+                        .min_size(egui::vec2(22.0, row_height_dense())).show(ui, theme).clicked() && !sel
                     {
                         *value = pr;
                         changed = true;
@@ -1144,7 +1144,7 @@ impl<'a> IndicatorParamRowF<'a> {
                     if Button::new(pr_label.as_str()).variant(Variant::Chrome).size(Size::Xs).fg(fg)
                         .fill(if sel { color_alpha(accent, alpha_soft()) } else { Color32::TRANSPARENT })
                         .corner_radius(crate::chart_renderer::ui::style::current().r_xs as f32)
-                        .min_size(egui::vec2(22.0, 18.0)).show(ui, theme).clicked() && !sel
+                        .min_size(egui::vec2(22.0, row_height_dense())).show(ui, theme).clicked() && !sel
                     {
                         *value = pr;
                         changed = true;
@@ -1309,7 +1309,7 @@ impl ApertureOrderTicket {
                 if ui.add(egui::Button::new(
                         egui::RichText::new("EXT").monospace().size(font_xs()).color(rth_fg))
                     .fill(rth_bg).corner_radius(r_xs()).stroke(rth_stroke)
-                    .min_size(egui::vec2(26.0, 18.0)))
+                    .min_size(egui::vec2(26.0, row_height_dense())))
                     .on_hover_text("Trade outside regular trading hours")
                     .clicked()
                 {
@@ -1388,7 +1388,7 @@ impl ApertureOrderTicket {
                             .color(if *s.order_market { self.accent } else { self.dim }))
                     .fill(if *s.order_market { color_alpha(self.accent, 35) } else { self.toolbar_bg })
                     .stroke(Stroke::new(stroke_thin(), color_alpha(self.toolbar_border, 90))).corner_radius(r_xs())
-                    .min_size(egui::vec2(30.0, 20.0)))
+                    .min_size(egui::vec2(30.0, row_height_compact())))
                     .clicked()
                 {
                     *s.order_market = !*s.order_market;
@@ -1444,7 +1444,7 @@ impl ApertureOrderTicket {
                         egui::RichText::new("Bracket").monospace().size(font_sm()).color(brk_color))
                     .fill(if *s.order_bracket { color_alpha(self.accent, 25) } else { egui::Color32::TRANSPARENT })
                     .stroke(Stroke::new(STROKE_THIN, color_alpha(self.toolbar_border, ALPHA_DIM)))
-                    .corner_radius(r_xs()).min_size(egui::vec2(0.0, 18.0)))
+                    .corner_radius(r_xs()).min_size(egui::vec2(0.0, row_height_dense())))
                     .clicked()
                 {
                     *s.order_bracket = !*s.order_bracket;

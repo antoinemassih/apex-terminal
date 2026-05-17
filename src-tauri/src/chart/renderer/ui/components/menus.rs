@@ -62,7 +62,7 @@ impl<'a> Widget for MenuTrigger<'a> {
                 .fill(bg)
                 .stroke(Stroke::new(stroke_thin(), border))
                 .corner_radius(radius_sm())
-                .min_size(egui::vec2(0.0, 20.0)),
+                .min_size(egui::vec2(0.0, row_height_compact())),
         );
         ui.spacing_mut().button_padding = prev_pad;
         if resp.hovered() && !self.open && !crate::design_tokens::is_inspect_mode() {
@@ -163,7 +163,7 @@ impl<'a> Widget for MenuItem<'a> {
                 )
                     .fill(Color32::TRANSPARENT)
                     .stroke(Stroke::NONE)
-                    .min_size(egui::vec2(ui.available_width().max(80.0), 20.0)),
+                    .min_size(egui::vec2(ui.available_width().max(80.0), row_height_compact())),
             );
             if let Some(sc) = self.shortcut {
                 let sc_color = color_alpha(dim, alpha_muted());
@@ -242,7 +242,7 @@ impl<'a> Widget for SidePaneAction<'a> {
                 .fill(bg)
                 .stroke(Stroke::new(stroke_thin(), border))
                 .corner_radius(radius_sm())
-                .min_size(egui::vec2(0.0, 22.0)),
+                .min_size(egui::vec2(0.0, row_height_default())),
         );
         ui.spacing_mut().button_padding = prev_pad;
         if resp.hovered() && !crate::design_tokens::is_inspect_mode() {

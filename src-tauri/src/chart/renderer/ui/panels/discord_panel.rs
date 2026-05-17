@@ -299,7 +299,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                         .fg(egui::Color32::WHITE)
                         .fill(discord_blurple)
                         .corner_radius(current().r_sm as f32)
-                        .min_size(egui::vec2(160.0, 30.0))
+                        .min_size(egui::vec2(160.0, row_height_tall()))
                     ).clicked() {
                         let guild_id = watchlist.discord_selected_guild.as_deref().unwrap_or("");
                         let url = format!(
@@ -481,7 +481,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                 .fg(egui::Color32::WHITE)
                 .fill(discord_blurple)
                 .corner_radius(current().r_md as f32)
-                .min_size(egui::vec2(38.0, 22.0))
+                .min_size(egui::vec2(38.0, row_height_default()))
             ).clicked();
             if (send_clicked || (input.lost_focus && ui.input(|i| i.key_pressed(egui::Key::Enter))))
                 && !watchlist.discord_input.trim().is_empty()

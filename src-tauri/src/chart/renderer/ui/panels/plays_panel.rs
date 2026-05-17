@@ -222,7 +222,7 @@ fn draw_play_editor(
                     if ui.add(Button::new(label.as_str()).variant(Variant::Chrome).size(Size::Xs).fg(fg)
                         .fill(bg).corner_radius(current().r_sm as f32)
                         .stroke(egui::Stroke::new(stroke_thin(), if sel { color_alpha(t.accent, alpha_line()) } else { egui::Stroke::NONE.color }))
-                        .min_size(egui::vec2(0.0, 20.0))).clicked() {
+                        .min_size(egui::vec2(0.0, row_height_compact()))).clicked() {
                         let prev = watchlist.play_editor_type;
                         watchlist.play_editor_type = *pty;
                         if prev != *pty {
@@ -257,7 +257,7 @@ fn draw_play_editor(
                     if ui.add(Button::new(label).variant(Variant::Chrome).size(Size::Sm).fg(fg)
                         .fill(bg).corner_radius(current().r_sm as f32)
                         .stroke(egui::Stroke::new(stroke_thin(), if sel { color_alpha(color, alpha_line()) } else { egui::Stroke::NONE.color }))
-                        .min_size(egui::vec2(56.0, 22.0))).clicked() {
+                        .min_size(egui::vec2(56.0, row_height_default()))).clicked() {
                         watchlist.play_editor_direction = dir;
                         if let Some(ref mut c) = chart { spawn_play_lines(watchlist, c); }
                     }
@@ -582,7 +582,7 @@ fn click_to_set_btn(ui: &mut egui::Ui, icon: &str, t: &Theme, active: bool) -> b
     let bg = if active { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
     ui.add(Button::icon(icon).variant(Variant::Chrome).glyph_color(fg).size(Size::Sm)
         .fill(bg).corner_radius(current().r_sm as f32)
-        .min_size(egui::vec2(18.0, 18.0))).on_hover_text("Click chart to set price").clicked()
+        .min_size(egui::vec2(18.0, row_height_dense()))).on_hover_text("Click chart to set price").clicked()
 }
 
 fn sync_form_to_lines(watchlist: &Watchlist, chart: Option<&mut Chart>) {

@@ -540,7 +540,7 @@ fn draw_bulk_actions(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &str, 
         let sym2 = sym.to_string(); let tf2 = tf.to_string();
         let mut bulk_assign_gid: Option<String> = None;
         egui::ComboBox::from_id_salt("otree_bulk_grp")
-            .selected_text(egui::RichText::new(Icon::FOLDER).size(16.0))
+            .selected_text(egui::RichText::new(Icon::FOLDER).size(font_lg()))
             .width(60.0)
             .show_ui(ui, |ui| {
                 for (gid, gname) in &groups_snap {

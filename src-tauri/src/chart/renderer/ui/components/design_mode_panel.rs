@@ -9,6 +9,7 @@
 //! ```
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use crate::chart_renderer::ui::style::{font_xs, font_sm, font_md_plus};
 
 static DESIGN_PANEL_OPEN: AtomicBool = AtomicBool::new(false);
 
@@ -42,14 +43,14 @@ pub fn show(ctx: &egui::Context) {
             ui.label(
                 egui::RichText::new("DESIGN MODE")
                     .monospace()
-                    .size(14.0)
+                    .size(font_md_plus())
                     .strong()
                     .color(egui::Color32::from_rgb(203, 166, 247)),
             );
             ui.label(
                 egui::RichText::new("Every change affects ALL widgets globally")
                     .monospace()
-                    .size(9.0)
+                    .size(font_xs())
                     .color(egui::Color32::from_rgb(120, 120, 130)),
             );
             ui.add_space(8.0);
@@ -61,7 +62,7 @@ pub fn show(ctx: &egui::Context) {
                 ui.label(
                     egui::RichText::new("GLOBAL SCALE")
                         .monospace()
-                        .size(11.0)
+                        .size(font_sm())
                         .strong()
                         .color(egui::Color32::from_rgb(166, 227, 161)),
                 );
@@ -72,7 +73,7 @@ pub fn show(ctx: &egui::Context) {
                     ui.label(
                         egui::RichText::new("UI Scale")
                             .monospace()
-                            .size(9.0)
+                            .size(font_xs())
                             .color(egui::Color32::from_rgb(170, 170, 180)),
                     );
                     if ui
@@ -99,7 +100,7 @@ pub fn show(ctx: &egui::Context) {
                 ui.label(
                     egui::RichText::new("EGUI STYLE EDITOR")
                         .monospace()
-                        .size(11.0)
+                        .size(font_sm())
                         .strong()
                         .color(egui::Color32::from_rgb(166, 227, 161)),
                 );
@@ -108,7 +109,7 @@ pub fn show(ctx: &egui::Context) {
                         "Controls spacing, colors, rounding, padding for all widgets",
                     )
                     .monospace()
-                    .size(9.0)
+                    .size(font_xs())
                     .color(egui::Color32::from_rgb(120, 120, 130)),
                 );
                 ui.add_space(8.0);

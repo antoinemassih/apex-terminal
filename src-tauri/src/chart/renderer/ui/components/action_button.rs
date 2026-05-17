@@ -98,7 +98,7 @@ pub fn side_pane_action_btn(
             .fill(bg)
             .stroke(Stroke::new(stroke_thin(), border))
             .corner_radius(radius_sm())
-            .min_size(egui::vec2(0.0, 22.0)),
+            .min_size(egui::vec2(0.0, row_height_default())),
     );
     ui.spacing_mut().button_padding = prev_pad;
     let inspect = crate::design_tokens::is_inspect_mode();

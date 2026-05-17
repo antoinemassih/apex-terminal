@@ -18,7 +18,7 @@
 use egui;
 use super::super::style::*;
 use crate::ui_kit::widgets::{
-    Button, PanelListRow, PanelSection, PanelSectionGroup, SidePanelShell, Width,
+    Button, PanelEmpty, PanelListRow, PanelSection, PanelSectionGroup, SidePanelShell, Width,
 };
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 use crate::ui_kit::widgets::Input;
@@ -487,7 +487,7 @@ fn tool_btn(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart, tg: Tg, tooltip: &s
         .variant(crate::ui_kit::widgets::tokens::Variant::Toggle)
         .active(active)
         .size(KitSize::Sm)
-        .min_size(egui::vec2(26.0, 24.0))
+        .min_size(egui::vec2(26.0, row_height_spacious()))
         .show(ui, t)
         .on_hover_text(format!("{}\n{}", bool_label(tg), tooltip));
     if resp.clicked() { bool_set(chart, tg, !active); }
@@ -518,8 +518,7 @@ fn draw_active_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
         + overlay_count;
 
     if total_active == 0 {
-        ui.label(egui::RichText::new("No indicators or overlays on this pane.")
-            .monospace().size(font_sm()).color(color_subtle(t.dim)));
+        PanelEmpty::new("No indicators or overlays on this pane.").show(ui, t);
         ui.add_space(gap_xs());
         add_overlay_button(ui, t, chart);
         return;

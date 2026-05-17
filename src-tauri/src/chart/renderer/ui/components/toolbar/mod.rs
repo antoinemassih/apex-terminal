@@ -131,7 +131,7 @@ impl<'a> TimeframeSelector<'a> {
                     .fill(bg)
                     .stroke(Stroke::new(stroke_thin(), border))
                     .corner_radius(pill_r)
-                    .min_size(egui::vec2(0.0, 22.0)),
+                    .min_size(egui::vec2(0.0, row_height_default())),
             );
             super::super::style::cursor::clickable(ui, &resp);
             if resp.clicked() && i != self.active_idx {

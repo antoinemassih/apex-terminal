@@ -121,7 +121,7 @@ impl<'a> RemovableChip<'a> {
                 .fill(fill)
                 .stroke(Stroke::new(stroke_thin(), border))
                 .corner_radius(egui::CornerRadius { nw: 99, sw: 99, ne: 0, se: 0 })
-                .min_size(egui::vec2(0.0, 18.0)),
+                .min_size(egui::vec2(0.0, row_height_dense())),
             );
             // ✕ remove button (right half of pill — the closable affordance).
             let x = ui.add(
@@ -131,7 +131,7 @@ impl<'a> RemovableChip<'a> {
                 .fill(fill)
                 .stroke(Stroke::new(stroke_thin(), border))
                 .corner_radius(egui::CornerRadius { nw: 0, sw: 0, ne: 99, se: 99 })
-                .min_size(egui::vec2(18.0, 18.0)),
+                .min_size(egui::vec2(18.0, row_height_dense())),
             );
             ui.spacing_mut().button_padding = prev_pad;
             if x.clicked() { x_clicked = true; }

@@ -71,7 +71,7 @@ pub(crate) fn render_heat_panel(
         let hbtn = |ui: &mut egui::Ui, label: &str, col: egui::Color32, tip: &str| -> bool {
             let resp = ui.add(Button::new(label).variant(Variant::Chrome)
                 .fg(col)
-                .min_size(egui::vec2(20.0, 18.0))
+                .min_size(egui::vec2(20.0, row_height_dense()))
                 .corner_radius(current().r_md as f32)
                 .frameless(true));
             if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -177,7 +177,7 @@ pub(crate) fn render_heat_panel(
                         .fg(sector_col)
                         .fill(color_alpha(sector_col, alpha_faint()))
                         .corner_radius(current().r_md as f32)
-                        .min_size(egui::vec2(ui.available_width(), 22.0))
+                        .min_size(egui::vec2(ui.available_width(), row_height_default()))
                         .frameless(true));
                     if header_btn.clicked() {
                         if is_collapsed { watchlist.heat_collapsed.remove(sector); }

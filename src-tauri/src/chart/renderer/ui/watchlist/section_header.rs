@@ -38,7 +38,7 @@ pub struct SectionHeader<'a> {
     collapsed: bool,
     item_count: usize,
     show_delete_when_empty: bool,
-    dim: egui::Color32,
+    dim: Option<egui::Color32>,
 }
 
 impl<'a> SectionHeader<'a> {
@@ -48,7 +48,7 @@ impl<'a> SectionHeader<'a> {
             collapsed: false,
             item_count: 0,
             show_delete_when_empty: true,
-            dim: crate::chart_renderer::gpu::THEMES[0].dim,
+            dim: None,
         }
     }
 
@@ -57,13 +57,15 @@ impl<'a> SectionHeader<'a> {
     pub fn show_delete_when_empty(mut self, v: bool) -> Self { self.show_delete_when_empty = v; self }
 
     pub fn theme(mut self, t: &Theme) -> Self {
-        self.dim = t.dim;
+        self.dim = Some(t.dim);
         self
     }
 
     pub fn show(self, ui: &mut Ui) -> SectionHeaderResponse {
         let mut chevron_clicked = false;
         let mut delete_clicked  = false;
+
+        let dim = self.dim.unwrap_or_else(|| crate::ui_kit::widgets::theme::active_theme(ui.ctx()).dim);
 
         let inner = ui.horizontal(|ui| {
             ui.set_min_height(20.0);
@@ -73,7 +75,7 @@ impl<'a> SectionHeader<'a> {
                 Button::icon(chevron)
                     .variant(Variant::Ghost)
                     .size(Size::Sm)
-                    .glyph_color(color_muted(self.dim))
+                    .glyph_color(color_muted(dim))
                     .frameless(true),
             ).on_hover_text("Expand / collapse").clicked() {
                 chevron_clicked = true;
@@ -83,7 +85,7 @@ impl<'a> SectionHeader<'a> {
                 MonospaceCode::new(self.title)
                     .size_px(font_sm_tight())
                     .strong(true)
-                    .color(self.dim)
+                    .color(dim)
                     .gamma(0.6),
             );
 
@@ -91,7 +93,7 @@ impl<'a> SectionHeader<'a> {
                 ui.add(
                     MonospaceCode::new(&format!("({})", self.item_count))
                         .size_px(8.0)
-                        .color(self.dim)
+                        .color(dim)
                         .gamma(0.3),
                 );
             }
@@ -102,7 +104,7 @@ impl<'a> SectionHeader<'a> {
                         Button::icon(Icon::X)
                             .variant(Variant::Ghost)
                             .size(Size::Sm)
-                            .glyph_color(color_very_dim(self.dim))
+                            .glyph_color(color_very_dim(dim))
                             .frameless(true),
                     ).on_hover_text("Delete section").clicked() {
                         delete_clicked = true;

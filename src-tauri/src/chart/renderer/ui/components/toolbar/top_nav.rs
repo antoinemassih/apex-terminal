@@ -115,6 +115,7 @@ use crate::chart_renderer::ui::style::{
     font_4xs, font_xs, font_2xs, font_sm, font_md, font_lg, font_xl, alpha_muted, alpha_ghost, alpha_strong, alpha_dim,
     mono_xs, mono_sm, mono_md, mono_lg,
     gap_2xs, gap_xs, gap_sm, gap_md, gap_lg, gap_xl,
+    row_height_default,
     stroke_std, stroke_thin, r_md_cr,
 };
 use crate::chart_renderer::ui::widgets::foundation::text_style::TextStyle;
@@ -408,7 +409,7 @@ pub(crate) fn render(
                     )
                     .fill(fill)
                     .corner_radius(r_md_cr())
-                    .min_size(egui::vec2(28.0, 22.0)),
+                    .min_size(egui::vec2(28.0, row_height_default())),
                 );
                 crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
                 if resp.on_hover_text(tip).clicked() {
@@ -1611,7 +1612,7 @@ pub(crate) fn render(
                 let prev_spacing = ui.spacing().item_spacing.x;
                 let prev_panel_pad = ui.spacing().button_padding;
                 // 8px gap between buttons (4px on each side of the divider).
-                ui.spacing_mut().item_spacing.x = 8.0;
+                ui.spacing_mut().item_spacing.x = gap_sm();
                 // gap_lg horizontal padding so labels breathe and the hover
                 // column has visible margin on either side of the text.
                 ui.spacing_mut().button_padding = egui::vec2(gap_lg(), gap_sm());
