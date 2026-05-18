@@ -10,8 +10,9 @@
 
 pub mod resolver;
 
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Arc, sync::OnceLock, time::Duration};
 use std::sync::atomic::{AtomicI64, AtomicU32, AtomicU64};
+use crate::data::connectivity::ConnectionState;
 
 // ── Wave 6: per-feed metrics counters ────────────────────────────────────────
 pub(crate) static MESSAGES_IN:        AtomicU64 = AtomicU64::new(0);
@@ -25,6 +26,17 @@ const STALE_TIMEOUT_MS: i64 = 30_000;
 const WATCHDOG_TICK_SECS: u64 = 10;
 pub(crate) static FORCE_RECONNECT: AtomicBool = AtomicBool::new(false);
 pub(crate) static LAST_STALL_AT_MS: AtomicI64 = AtomicI64::new(0);
+
+// ── Wave 11c: ConnectionState push-notification stream ───────────────────────
+static STATE_TX: OnceLock<tokio::sync::broadcast::Sender<ConnectionState>> = OnceLock::new();
+
+pub fn state_tx() -> &'static tokio::sync::broadcast::Sender<ConnectionState> {
+    STATE_TX.get_or_init(|| tokio::sync::broadcast::channel(64).0)
+}
+
+pub(crate) fn publish_state(s: ConnectionState) {
+    let _ = state_tx().send(s);
+}
 
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
@@ -107,13 +119,26 @@ async fn ws_loop(
     let mut backoff = Backoff::new().with_max_attempts(None);
     let mut first = true;
     loop {
-        if shutdown.load(Ordering::SeqCst) { return; }
+        if shutdown.load(Ordering::SeqCst) {
+            publish_state(ConnectionState::ShuttingDown);
+            return;
+        }
         if !first { RECONNECT_COUNT.fetch_add(1, Ordering::Relaxed); }
         first = false;
+        publish_state(ConnectionState::Connecting {
+            attempt: RECONNECT_COUNT.load(Ordering::Relaxed) + 1,
+        });
         match connect_async(WS_URL).await {
             Ok((stream, _)) => {
                 backoff.reset();
                 let _ = app.emit("ib-connected", ());
+                publish_state(ConnectionState::Authenticated);
+                {
+                    let n = subscribed.lock().await.len();
+                    if n > 0 {
+                        publish_state(ConnectionState::Subscribed { count: n });
+                    }
+                }
                 // Wave 7E: trigger SubscriptionManager gap-fill on reconnect
                 // (skip the initial connect — only run when we recovered).
                 if RECONNECT_COUNT.load(Ordering::Relaxed) > 0 {
@@ -155,6 +180,11 @@ async fn ws_loop(
                 loop {
                     if FORCE_RECONNECT.swap(false, Ordering::SeqCst) {
                         report(ErrorLevel::Warn, "ib_ws", "force_reconnect", "watchdog tripped");
+                        publish_state(ConnectionState::Backoff {
+                            until: std::time::Instant::now() + Duration::from_secs(1),
+                            attempt: RECONNECT_COUNT.load(Ordering::Relaxed),
+                            reason: "tick_stalled".into(),
+                        });
                         let _ = write.close().await;
                         break;
                     }
@@ -264,9 +294,23 @@ async fn ws_loop(
             }
         }
 
-        if shutdown.load(Ordering::SeqCst) { return; }
+        if shutdown.load(Ordering::SeqCst) {
+            publish_state(ConnectionState::ShuttingDown);
+            return;
+        }
         if let Some(d) = backoff.next_delay() {
+            publish_state(ConnectionState::Backoff {
+                until: std::time::Instant::now() + d,
+                attempt: RECONNECT_COUNT.load(Ordering::Relaxed) + 1,
+                reason: "disconnected".into(),
+            });
             tokio::time::sleep(d).await;
+        } else {
+            publish_state(ConnectionState::Failed {
+                reason: crate::data::connectivity::ConnectionError::MaxRetriesExceeded(
+                    RECONNECT_COUNT.load(Ordering::Relaxed),
+                ),
+            });
         }
     }
 }

@@ -4,6 +4,27 @@
 //! a single enum that captures every meaningful phase including transient
 //! backoff. The `Connection` trait gives the UI / observability layer a
 //! uniform handle over every feed (ApexData WS, IB WS, Crypto, Signals, …).
+//!
+//! ## Polling vs subscription
+//!
+//! Consumers have two ways to observe lifecycle changes:
+//!
+//! - **Polling — `state()`**: cheap one-shot read. Right pattern for a per-frame
+//!   status dot, a `status_for_metrics()` snapshot, or anywhere you don't
+//!   actually need to react to *transitions*.
+//! - **Subscription — `subscribe_state()`**: returns
+//!   `Option<broadcast::Receiver<ConnectionState>>`. Each receiver is its own
+//!   independent cursor over the state-transition stream (tokio broadcast
+//!   semantics — every subscriber sees every value, with a per-receiver lag
+//!   counter when the queue overflows). Right pattern for a side-panel that
+//!   wants to flash on reconnect, a diagnostics tab that logs every
+//!   transition, or a toast on terminal `Failed`.
+//!
+//! Adapters that don't have a real state machine return `None` from
+//! `subscribe_state()` — callers must fall back to polling. Wave 11c wires
+//! push notification into `ApexDataProvider`, `IbProvider`, `CryptoProvider`,
+//! `SignalsProvider`, and `MockMarketDataProvider`. `ReplayProvider` is
+//! intentionally polling-only (no real lifecycle).
 
 use std::time::Instant;
 
@@ -56,4 +77,16 @@ pub trait Connection: Send + Sync {
     fn name(&self) -> &str;
     fn state(&self) -> ConnectionState;
     fn metrics(&self) -> ConnectionMetrics;
+
+    /// Optional: subscribe to state-change events. Providers that support
+    /// push notification return `Some(receiver)` — others return `None` and
+    /// callers fall back to polling [`state`](Self::state).
+    ///
+    /// Each subscription gets its own `broadcast::Receiver` cursor. Cheap to
+    /// hold, cheap to clone (each call returns a fresh receiver). Receivers
+    /// that fall behind surface a `RecvError::Lagged` so callers can decide
+    /// whether to re-sync via `state()` or just drop the stale snapshot.
+    fn subscribe_state(&self) -> Option<tokio::sync::broadcast::Receiver<ConnectionState>> {
+        None
+    }
 }
