@@ -118,6 +118,7 @@ pub(super) fn build_registry(watchlist: &Watchlist, active_pane_type: PaneType) 
     v.push(mk("setting:hotkeys",     "Edit hotkeys",         "Open hotkey editor",  Category::Setting, None));
     v.push(mk("setting:settings",    "Settings",             "Open settings panel", Category::Setting, None));
     v.push(mk("setting:apex-diag",   "ApexData diagnostics", "Live view of REST/WS/chain state", Category::Setting, None));
+    v.push(mk("setting:replay",      "Replay scrubber",      "Open historical replay panel (SOTA §4.2)", Category::Setting, None));
     v.push(mk("setting:workspace",   "Save workspace…",      "Save current layout", Category::Setting, None));
     v.push(mk("setting:pane-chart",     "Pane type · Chart",     "Switch active pane to Chart",     Category::Setting, None));
     v.push(mk("setting:pane-portfolio", "Pane type · Portfolio", "Switch active pane to Portfolio", Category::Setting, None));

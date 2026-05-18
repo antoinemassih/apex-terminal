@@ -108,6 +108,7 @@ pub(super) fn execute(
         "setting:hotkeys"        => { watchlist.hotkey_editor_open = true; return; }
         "setting:settings"       => { watchlist.settings_open = true; return; }
         "setting:apex-diag"      => { watchlist.apex_diag_open = true; return; }
+        "setting:replay"         => { watchlist.replay_pane_open = true; return; }
         "setting:workspace"      => { watchlist.settings_open = true; return; }
         "setting:pane-chart"     => { panes[ap].pane_type = PaneType::Chart; return; }
         "setting:pane-portfolio" => { panes[ap].pane_type = PaneType::Portfolio; return; }

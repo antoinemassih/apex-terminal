@@ -21,6 +21,7 @@ pub mod plays_panel;
 pub mod portfolio_pane;
 pub mod provenance_pane;
 pub mod regime_tape;
+pub mod replay_pane;
 pub mod research_panel;
 pub mod rrg_panel;
 pub mod scanner_panel;

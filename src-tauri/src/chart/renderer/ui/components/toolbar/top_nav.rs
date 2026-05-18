@@ -1983,6 +1983,7 @@ pub(crate) fn render(
     // ── Settings panel
     crate::chart_renderer::ui::panels::settings_panel::draw(ctx, watchlist, &mut panes[ap], t, ap);
     crate::chart_renderer::ui::panels::apex_diagnostics::draw(ctx, watchlist, t);
+    crate::chart_renderer::ui::panels::replay_pane::draw(ctx, watchlist, t);
 
     // ── trendline_filter
     crate::chart_renderer::ui::tools::trendline_filter::draw(ctx, watchlist, panes, ap, t);
