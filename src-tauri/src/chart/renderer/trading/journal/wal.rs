@@ -18,7 +18,23 @@ const ROTATE_BYTES: u64 = 10 * 1024 * 1024;
 /// Serialize WAL writes so concurrent threads don't interleave bytes.
 static WAL_LOCK: Mutex<()> = Mutex::new(());
 
+/// Resolve the WAL file path.
+///
+/// If the `APEX_WAL_PATH` environment variable is set, its value is used
+/// directly (parent directory is created if missing). This is intended for
+/// tests so they can point at a `tempfile::TempDir` instead of trampling the
+/// developer machine's `state/orders.wal`.
+///
+/// Otherwise falls back to `{exe_dir}/state/orders.wal` — the production
+/// default that existed before env-var threading.
 pub(crate) fn wal_path() -> PathBuf {
+    if let Ok(override_path) = std::env::var("APEX_WAL_PATH") {
+        let p = PathBuf::from(override_path);
+        if let Some(parent) = p.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        return p;
+    }
     let dir = std::env::current_exe().ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
         .unwrap_or_else(|| PathBuf::from("."));
