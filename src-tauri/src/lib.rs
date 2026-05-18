@@ -7,6 +7,9 @@ pub mod chart;
 pub mod ui_kit;
 pub mod watchlist;
 pub mod state;
+pub mod error;
+
+pub use error::AppError;
 
 // Backward-compat re-exports so code in lib.rs body keeps working without changes
 pub use foundation::monitoring;
