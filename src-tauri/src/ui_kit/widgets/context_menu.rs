@@ -147,14 +147,17 @@ impl ContextMenu {
                 let shadow_rect = egui::Rect::from_min_size(pos, prior_size);
                 // Use the menu's themed shadow tint so light themes get a
                 // soft gray drop instead of a hard black smudge.
-                let s = theme.shadow;
+                // `theme` is a `MenuTheme` snapshot (not `dyn ComponentTheme`),
+                // so we inline what `md_themed` does rather than calling it.
                 super::paint_shadow_gpu(
                     ui.painter(),
                     shadow_rect,
-                    #[allow(deprecated)]
-                    super::ShadowSpec::md().color(
-                        Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), 77),
-                    ),
+                    super::ShadowSpec {
+                        radius: 16.0,
+                        offset: egui::Vec2::new(0.0, 4.0),
+                        color: color_alpha(theme.shadow, 77),
+                        spread: 0.0,
+                    },
                 );
                 let frame = PopupFrame::new()
                     .colors(theme.bg, theme.dim)
