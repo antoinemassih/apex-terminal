@@ -458,6 +458,74 @@ mod tests {
         assert_eq!(got, vec![a]);
     }
 
+    // ── Wave 11c push-notification stream ──────────────────────────────────
+
+    #[tokio::test]
+    async fn mock_provider_state_changes_visible_to_subscriber() {
+        let mock = MockMarketDataProvider::new("test");
+        let mut rx = mock.subscribe_state().expect("mock should support state stream");
+        mock.set_state(ConnectionState::Authenticated);
+        let received = tokio::time::timeout(Duration::from_millis(100), rx.recv())
+            .await
+            .expect("should receive within 100ms")
+            .expect("not lagged or closed");
+        assert!(matches!(received, ConnectionState::Authenticated));
+    }
+
+    #[tokio::test]
+    async fn mock_provider_emits_multiple_transitions_in_order() {
+        let mock = MockMarketDataProvider::new("test");
+        let mut rx = mock.subscribe_state().expect("stream");
+        mock.set_state(ConnectionState::Connecting { attempt: 1 });
+        mock.set_state(ConnectionState::Authenticated);
+        mock.set_state(ConnectionState::Subscribed { count: 3 });
+        let s1 = rx.recv().await.unwrap();
+        let s2 = rx.recv().await.unwrap();
+        let s3 = rx.recv().await.unwrap();
+        assert!(matches!(s1, ConnectionState::Connecting { attempt: 1 }));
+        assert!(matches!(s2, ConnectionState::Authenticated));
+        assert!(matches!(s3, ConnectionState::Subscribed { count: 3 }));
+    }
+
+    #[tokio::test]
+    async fn mock_provider_scripted_disconnect_publishes_state() {
+        let p = MockMarketDataProvider::new("m").script_bars(vec![
+            MockFrame::Bar(bw(1, 1.0)),
+            MockFrame::Disconnect,
+            MockFrame::Sleep(Duration::from_millis(10)),
+            MockFrame::Reconnect,
+        ]);
+        let mut rx = p.subscribe_state().expect("stream");
+        let _bars = p.subscribe_bars("X", "1m").unwrap();
+        // First transition: subscribe_bars sets Subscribed{count:1}
+        let s1 = tokio::time::timeout(Duration::from_millis(200), rx.recv()).await.unwrap().unwrap();
+        assert!(matches!(s1, ConnectionState::Subscribed { count: 1 }));
+        // Then Disconnect → Backoff
+        let mut saw_backoff = false;
+        let mut saw_resub = false;
+        for _ in 0..4 {
+            if let Ok(Ok(s)) = tokio::time::timeout(Duration::from_millis(200), rx.recv()).await {
+                if matches!(s, ConnectionState::Backoff { .. }) { saw_backoff = true; }
+                if matches!(s, ConnectionState::Subscribed { .. }) && saw_backoff { saw_resub = true; break; }
+            }
+        }
+        assert!(saw_backoff, "expected Backoff on Disconnect");
+        assert!(saw_resub, "expected Subscribed on Reconnect");
+    }
+
+    #[tokio::test]
+    async fn apex_data_publish_state_observed_by_subscriber() {
+        // Exercises the module-level broadcast directly — no real WS needed.
+        use crate::data::feeds::apex_data::ws as apex_ws;
+        let mut rx = apex_ws::state_tx().subscribe();
+        apex_ws::publish_state(ConnectionState::Connecting { attempt: 7 });
+        let s = tokio::time::timeout(Duration::from_millis(100), rx.recv())
+            .await
+            .expect("recv within 100ms")
+            .expect("not lagged");
+        assert!(matches!(s, ConnectionState::Connecting { attempt: 7 }));
+    }
+
     #[tokio::test]
     async fn disconnect_reconnect_toggles_state() {
         let p = MockMarketDataProvider::new("m").script_bars(vec![
