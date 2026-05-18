@@ -95,6 +95,24 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (ws, _) = connect_async(APEX_SIGNALS_WS).await?;
     let (mut write, mut read) = ws.split();
 
+    // Wave 7E: trigger gap-fill on every reconnect (skip initial connect).
+    // Signals don't push bars directly, but the SubscriptionManager fanout is
+    // shared with bar subs — calling here keeps the contract uniform.
+    if RECONNECT_COUNT.load(Ordering::Relaxed) > 0 {
+        tokio::spawn(async {
+            let mgr = crate::data::providers::registry::subscription_manager();
+            let n = mgr.gap_fill_on_reconnect_all().await;
+            if n > 0 {
+                report(
+                    ErrorLevel::Info,
+                    "signals_feed",
+                    "gap_fill",
+                    format!("replayed {n} bars after reconnect"),
+                );
+            }
+        });
+    }
+
     // Subscribe to all signal channels
     let sub_msg = serde_json::json!({
         "subscribe": ["patterns", "alerts", "trendlines", "significance"]

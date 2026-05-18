@@ -99,6 +99,22 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (ws, _) = connect_async(APEX_CRYPTO_WS).await?;
     let (mut write, mut read) = ws.split();
 
+    // Wave 7E: trigger gap-fill on every reconnect (skip initial connect).
+    if RECONNECT_COUNT.load(Ordering::Relaxed) > 0 {
+        tokio::spawn(async {
+            let mgr = crate::data::providers::registry::subscription_manager();
+            let n = mgr.gap_fill_on_reconnect_all().await;
+            if n > 0 {
+                report(
+                    ErrorLevel::Info,
+                    "crypto_feed",
+                    "gap_fill",
+                    format!("replayed {n} bars after reconnect"),
+                );
+            }
+        });
+    }
+
     // Subscribe to chart timeframes + tape for T&S
     let sub_msg = serde_json::json!({
         "subscribe": ["*:1s", "*:1m", "*:5m", "*:15m", "*:30m", "*:1h", "*:4h", "*:1d"],

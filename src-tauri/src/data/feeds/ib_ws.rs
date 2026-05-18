@@ -111,6 +111,22 @@ async fn ws_loop(
             Ok((stream, _)) => {
                 backoff.reset();
                 let _ = app.emit("ib-connected", ());
+                // Wave 7E: trigger SubscriptionManager gap-fill on reconnect
+                // (skip the initial connect — only run when we recovered).
+                if RECONNECT_COUNT.load(Ordering::Relaxed) > 0 {
+                    tokio::spawn(async {
+                        let mgr = crate::data::providers::registry::subscription_manager();
+                        let n = mgr.gap_fill_on_reconnect_all().await;
+                        if n > 0 {
+                            report(
+                                ErrorLevel::Info,
+                                "ib_ws",
+                                "gap_fill",
+                                format!("replayed {n} bars after reconnect"),
+                            );
+                        }
+                    });
+                }
                 let (mut write, mut read) = stream.split();
 
                 // Re-subscribe after reconnect

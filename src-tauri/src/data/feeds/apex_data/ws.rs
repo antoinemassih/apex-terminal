@@ -329,6 +329,24 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
         broadcast(&mgr, &Frame::Connection(true));
         backoff.reset();
 
+        // Wave 7E: gap-fill replay through the SubscriptionManager on every
+        // reconnect (not the initial connect — RECONNECT_COUNT > 0 means we
+        // dropped). Spawned so we don't block the WS read loop.
+        if RECONNECT_COUNT.load(Ordering::Relaxed) > 0 {
+            tokio::spawn(async {
+                let mgr = crate::data::providers::registry::subscription_manager();
+                let n = mgr.gap_fill_on_reconnect_all().await;
+                if n > 0 {
+                    report(
+                        ErrorLevel::Info,
+                        "apex_data.ws",
+                        "gap_fill",
+                        format!("replayed {n} bars after reconnect"),
+                    );
+                }
+            });
+        }
+
         let (mut tx_ws, mut rx_ws) = ws.split();
 
         // Send initial subs
