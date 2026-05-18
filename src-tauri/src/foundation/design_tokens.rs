@@ -63,13 +63,13 @@ pub struct DesignTokens {
 pub struct FontTokens { pub xxs: f32, pub xs: f32, pub sm_tight: f32, pub sm: f32, pub md: f32, pub input: f32, pub lg: f32, pub xl: f32, pub xxl: f32, pub display: f32, pub display_lg: f32 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SpacingTokens { pub xs: f32, pub sm: f32, pub md: f32, pub lg: f32, pub xl: f32, pub xxl: f32, pub xxxl: f32 }
+pub struct SpacingTokens { pub xs: f32, pub xs_mid: f32, pub sm: f32, pub md: f32, pub lg: f32, pub xl: f32, pub xxl: f32, pub xxxl: f32 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RadiusTokens { pub xs: f32, pub sm: f32, pub md: f32, pub lg: f32 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StrokeTokens { pub hair: f32, pub thin: f32, pub std: f32, pub bold: f32, pub thick: f32, pub heavy: f32, pub xheavy: f32 }
+pub struct StrokeTokens { pub hair: f32, pub thin: f32, pub medium: f32, pub std: f32, pub bold: f32, pub thick: f32, pub heavy: f32, pub xheavy: f32 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlphaTokens { pub faint: u8, pub ghost: u8, pub soft: u8, pub subtle: u8, pub tint: u8, pub muted: u8, pub line: u8, pub dim: u8, pub strong: u8, pub active: u8, pub heavy: u8 }
@@ -308,9 +308,9 @@ impl Default for DesignTokens {
     fn default() -> Self {
         Self {
             font: FontTokens { xxs: 7.0, xs: 8.0, sm_tight: 9.0, sm: 10.0, md: 11.0, input: 12.0, lg: 13.0, xl: 14.0, xxl: 15.0, display: 28.0, display_lg: 36.0 },
-            spacing: SpacingTokens { xs: 2.0, sm: 4.0, md: 6.0, lg: 8.0, xl: 10.0, xxl: 12.0, xxxl: 20.0 },
+            spacing: SpacingTokens { xs: 2.0, xs_mid: 6.0, sm: 4.0, md: 6.0, lg: 8.0, xl: 10.0, xxl: 12.0, xxxl: 20.0 },
             radius: RadiusTokens { xs: 2.0, sm: 3.0, md: 4.0, lg: 8.0 },
-            stroke: StrokeTokens { hair: 0.3, thin: 0.5, std: 1.0, bold: 1.5, thick: 2.0, heavy: 2.5, xheavy: 5.0 },
+            stroke: StrokeTokens { hair: 0.3, thin: 0.5, medium: 0.8, std: 1.0, bold: 1.5, thick: 2.0, heavy: 2.5, xheavy: 5.0 },
             alpha: AlphaTokens { faint: 10, ghost: 15, soft: 20, subtle: 25, tint: 30, muted: 40, line: 50, dim: 60, strong: 80, active: 100, heavy: 120 },
             shadow: ShadowTokens { offset: 2.0, alpha: 60, spread: 4.0, gradient: [20, 12, 4] },
             toolbar: ToolbarTokens { height: 36.0, height_compact: 28.0, btn_min_height: 24.0, btn_padding_x: 7.0, right_controls_width: 150.0 },
