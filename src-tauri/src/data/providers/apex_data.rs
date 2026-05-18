@@ -56,26 +56,36 @@ fn ensure_listener() {
     static REGISTERED: OnceLock<()> = OnceLock::new();
     REGISTERED.get_or_init(|| {
         ws::subscribe_to_frames(|frame| {
+            // Wave 8: keep SubscriptionManager's last_seen_ts current from the
+            // raw frame stream so gap_fill_on_reconnect_all has accurate
+            // replay anchors regardless of who actually drained the route
+            // mpsc. Lookup is keyed and short-circuits when the manager has
+            // no matching sub, so the cost is one HashMap probe per frame.
+            let mgr = super::registry::subscription_manager();
             let mut r = match routes().lock() { Ok(g) => g, Err(_) => return };
             match frame {
                 ws::Frame::Bar(b) => {
+                    mgr.bump_last_seen_bar(&b.bar.symbol, &b.bar.timeframe, b.bar.time);
                     let key = (b.bar.symbol.clone(), b.bar.timeframe.clone());
                     if let Some(senders) = r.bars.get_mut(&key) {
                         senders.retain(|s| s.send(b.bar.clone()).is_ok());
                     }
                 }
                 ws::Frame::Snapshot { bar, .. } => {
+                    mgr.bump_last_seen_bar(&bar.bar.symbol, &bar.bar.timeframe, bar.bar.time);
                     let key = (bar.bar.symbol.clone(), bar.bar.timeframe.clone());
                     if let Some(senders) = r.bars.get_mut(&key) {
                         senders.retain(|s| s.send(bar.bar.clone()).is_ok());
                     }
                 }
                 ws::Frame::Quote(q) => {
+                    mgr.bump_last_seen_quote(&q.symbol, q.time);
                     if let Some(senders) = r.quotes.get_mut(&q.symbol) {
                         senders.retain(|s| s.send(q.clone()).is_ok());
                     }
                 }
                 ws::Frame::Trade(t) => {
+                    mgr.bump_last_seen_trade(&t.symbol, t.time);
                     if let Some(senders) = r.trades.get_mut(&t.symbol) {
                         senders.retain(|s| s.send(t.clone()).is_ok());
                     }
