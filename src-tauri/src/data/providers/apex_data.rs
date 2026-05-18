@@ -177,7 +177,11 @@ impl Connection for ApexDataProvider {
             parse_errors:   ws::PARSE_ERRORS.load(Ordering::Relaxed),
             reconnect_count: ws::RECONNECT_COUNT.load(Ordering::Relaxed),
             last_message_at,
-            queue_depth:    None,
+            // Sum of broadcast::Sender::len() across all active subscriptions —
+            // measures how many frames are queued but not yet consumed by the
+            // slowest receiver. A value near FANOUT_CAP (1024) means frames
+            // are about to be dropped as RecvError::Lagged.
+            queue_depth: Some(super::registry::subscription_manager().total_queue_depth()),
         }
     }
 }
