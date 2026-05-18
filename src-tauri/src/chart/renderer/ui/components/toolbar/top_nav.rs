@@ -2352,6 +2352,29 @@ pub(crate) fn render(
     // ── connection_panel
     crate::chart_renderer::ui::panels::connection_panel::draw(ctx, watchlist, panes, ap, t, conn_panel_open);
 
+    // ── Welcome wizard (P2) ─────────────────────────────────────────────────
+    // Runs every frame while the wizard is active. When `.show()` returns
+    // false the wizard is finished: flip the flag so the next periodic
+    // `save_state` call (which calls `push_to_ui_settings` + persists
+    // the UiSettings aggregate) will write `has_seen_welcome = true`.
+    //
+    // The resume step is mirrored each frame so a force-quit mid-wizard
+    // picks up where the user left off on the next launch.
+    if watchlist.welcome_wizard.is_some() {
+        let step_now = watchlist.welcome_wizard.as_ref().map(|w| w.step).unwrap_or(0);
+        watchlist.ui_settings.welcome_step_resume = step_now;
+
+        let still_open = {
+            let wiz = watchlist.welcome_wizard.as_mut().unwrap();
+            wiz.show(ctx, t, conn_panel_open)
+        };
+        if !still_open {
+            watchlist.ui_settings.has_seen_welcome = true;
+            watchlist.ui_settings.welcome_step_resume = 0;
+            watchlist.welcome_wizard = None;
+        }
+    }
+
     // ── Order execution toasts ───────────────────────────────────────────────
     if !toasts.is_empty() {
         let screen = ctx.screen_rect();

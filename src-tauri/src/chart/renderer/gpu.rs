@@ -4689,6 +4689,10 @@ pub(crate) struct Watchlist {
     /// True while the symbol input has focus (used for autocomplete dropdown
     /// visibility).
     pub(crate) top_nav_sym_focused: bool,
+    // ── Welcome wizard (P2) ─────────────────────────────────────────────────
+    /// First-launch wizard. `None` after completion or before first check.
+    /// Populated in `new()` when `ui_settings.has_seen_welcome == false`.
+    pub(crate) welcome_wizard: Option<crate::chart_renderer::ui::welcome::WelcomeWizard>,
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
@@ -4853,6 +4857,9 @@ impl Watchlist {
                ui_settings: crate::state::UiSettings::default(),
                top_nav_sym_input: String::new(),
                top_nav_sym_focused: false,
+               // Welcome wizard is initialized after load (when ui_settings is populated).
+               // See `init_welcome_wizard()` called after `pull_from_ui_settings()`.
+               welcome_wizard: None,
         }
     }
 
@@ -4873,6 +4880,21 @@ impl Watchlist {
         self.ui_settings.shared_x_axis = self.shared_x_axis;
         self.ui_settings.shared_y_axis = self.shared_y_axis;
         self.ui_settings.style_idx = self.style_idx;
+    }
+
+    /// P2: Initialise the welcome wizard from the loaded `ui_settings`.
+    /// Call this immediately after `pull_from_ui_settings()` at startup.
+    /// If `has_seen_welcome` is false, a new wizard is created at the
+    /// persisted resume step; otherwise `welcome_wizard` stays `None`.
+    pub(crate) fn init_welcome_wizard(&mut self) {
+        if !self.ui_settings.has_seen_welcome {
+            self.welcome_wizard = Some(
+                crate::chart_renderer::ui::welcome::WelcomeWizard::from_settings(
+                    false,
+                    self.ui_settings.welcome_step_resume,
+                )
+            );
+        }
     }
 
     /// Wave 14c: copy the loaded `ui_settings` aggregate back onto the
@@ -5687,6 +5709,8 @@ impl App {
             wl.ui_settings = loaded_ui;
             wl.pull_from_ui_settings();
         }
+        // P2: Initialize the welcome wizard from loaded ui_settings.
+        wl.init_welcome_wizard();
         // Load persisted hotkeys (override defaults)
         load_hotkeys(&mut wl.hotkeys);
         // Load persisted templates
