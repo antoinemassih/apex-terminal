@@ -214,3 +214,56 @@ mod tests {
         assert_eq!(back, p);
     }
 }
+
+#[cfg(test)]
+mod proptests {
+    //! Property-based tests for `Price`.
+    //!
+    //! Wave 9e: proptest covers the invariants the hand-written suite spot-
+    //! checks — micro-unit round-trip, add/sub inverse, ordering, sub-cent
+    //! distinctness. proptest runs 256 cases per `#[test]` by default; the
+    //! whole block finishes well under a second.
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// `from_dollars` ↔ `to_dollars` must round-trip within micro-unit
+        /// precision across the entire "printable" price range (±$1M).
+        #[test]
+        fn from_f64_to_f64_lossless_in_printable_range(d in -1_000_000.0f64..=1_000_000.0) {
+            let p = Price::from_dollars(d);
+            let back = p.to_dollars();
+            prop_assert!(
+                (back - d).abs() < 0.0000005,
+                "drift exceeded: {} → {} → {}", d, p.0, back
+            );
+        }
+
+        /// `(a + b) - b == a` for any pair of micro-unit prices within a
+        /// range that cannot overflow i64.
+        #[test]
+        fn add_sub_inverse(
+            a in -100_000_000i64..=100_000_000,
+            b in -100_000_000i64..=100_000_000,
+        ) {
+            let pa = Price(a);
+            let pb = Price(b);
+            prop_assert_eq!((pa + pb) - pb, pa);
+        }
+
+        /// Derived ordering must match the underlying `i64` ordering.
+        #[test]
+        fn ordering_matches_underlying_i64(a in any::<i64>(), b in any::<i64>()) {
+            prop_assert_eq!(Price(a).cmp(&Price(b)), a.cmp(&b));
+        }
+
+        /// Two prices 2 cents apart must NEVER hash/compare equal — the
+        /// legacy `(price*100).round()` bucketing bug would collapse them.
+        #[test]
+        fn neighboring_prices_distinct(d in 0.000001f64..=10.0) {
+            let a = Price::from_dollars(d);
+            let b = Price::from_dollars(d + 0.002); // 2 cents = 20_000 micro-units
+            prop_assert_ne!(a, b);
+        }
+    }
+}

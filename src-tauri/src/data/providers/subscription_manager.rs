@@ -414,6 +414,34 @@ impl SubscriptionManager {
             .unwrap_or(0)
     }
 
+    // ────────────────────────────────────────────────────────────────────────
+    // Wave 9e — test-only introspection helpers.
+    //
+    // The concurrency stress tests need to assert on (a) the set of currently
+    // active bar subscriptions and (b) the refcount on a specific key. The
+    // production API doesn't expose these; we add them gated to `cfg(test)`
+    // so they don't expand the public surface.
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// Snapshot of currently-tracked bar subscriptions as
+    /// `(symbol, timeframe, source)` triples. Test-only.
+    #[cfg(test)]
+    pub fn active_bar_subs(&self) -> Vec<(String, String, BarSource)> {
+        self.bars.lock().ok()
+            .map(|m| m.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// Current refcount for the bar key `(symbol, timeframe, Last)`.
+    /// Returns 0 if no entry exists. Test-only.
+    #[cfg(test)]
+    pub fn refcount_for_bar(&self, symbol: &str, timeframe: &str) -> usize {
+        let key = (symbol.to_string(), timeframe.to_string(), BarSource::Last);
+        self.bars.lock().ok()
+            .and_then(|m| m.get(&key).map(|s| s.refcount.load(Ordering::SeqCst)))
+            .unwrap_or(0)
+    }
+
     /// Replace the active quote-subscription set, computing the diff against
     /// current state and calling `subscribe_quotes` / `unsubscribe_quotes`
     /// for each delta. Mirrors the `ws::set_quotes` replace-set semantics so
@@ -785,5 +813,97 @@ mod tests {
         assert_eq!(prov.live_subs("TSLA"), 1);
         mgr.unsubscribe_quotes("TSLA");
         assert_eq!(prov.live_subs("TSLA"), 0);
+    }
+
+    // ── Wave 9e: concurrent subscribe/unsubscribe stress ───────────────────
+    //
+    // The existing tests cover only single-threaded behaviour. The
+    // `Mutex<HashMap>` + `AtomicUsize` pattern inside SubscriptionManager
+    // has been correct on paper but never exercised under contention. These
+    // tests fan many threads through the same keys to catch any race in the
+    // get-or-insert / refcount / evict-on-zero sequence.
+    //
+    // A multi-threaded tokio runtime is required because the first
+    // subscriber on each key spawns an upstream-pump task via `tokio::spawn`
+    // — and our worker threads need a runtime handle to enter so the spawn
+    // doesn't panic. `std::thread::spawn` then runs those workers in
+    // parallel under that runtime handle.
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_subscribe_unsubscribe_stress() {
+        use std::thread;
+        let handle = tokio::runtime::Handle::current();
+        let prov = Arc::new(MockProvider::new());
+        let mgr = Arc::new(SubscriptionManager::new(prov.clone()));
+
+        // 16 threads × 100 iterations = 1600 subscribe/unsubscribe pairs on
+        // the same (symbol, timeframe). Net effect must be zero refcount.
+        let mut handles = vec![];
+        for _ in 0..16 {
+            let mgr = mgr.clone();
+            let h = handle.clone();
+            handles.push(thread::spawn(move || {
+                let _guard = h.enter();
+                for _ in 0..100 {
+                    let _ = mgr.subscribe_bars("AAPL", "1m");
+                    mgr.unsubscribe_bars("AAPL", "1m");
+                }
+            }));
+        }
+        for h in handles { h.join().unwrap(); }
+
+        // After all subscribe/unsubscribe pairs complete, the entry must be
+        // evicted (refcount fell to zero on the last unsubscribe).
+        let active = mgr.active_bar_subs();
+        assert!(
+            active.is_empty() || !active.iter().any(|(s, _, _)| s == "AAPL"),
+            "expected AAPL bars to be evicted after balanced subscribe/unsubscribe, \
+             got active = {:?}", active
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_mixed_subscribes_eventually_consistent() {
+        use std::thread;
+        let handle = tokio::runtime::Handle::current();
+        let prov = Arc::new(MockProvider::new());
+        let mgr = Arc::new(SubscriptionManager::new(prov.clone()));
+
+        // 16 threads, 4 distinct symbols × 2 timeframes:
+        //   - threads 0..8 subscribe + leave subscribed (50 subs each)
+        //   - threads 8..16 subscribe + immediately unsubscribe
+        let mut handles = vec![];
+        for i in 0..16 {
+            let mgr = mgr.clone();
+            let h = handle.clone();
+            handles.push(thread::spawn(move || {
+                let _guard = h.enter();
+                for j in 0..50 {
+                    let sym = format!("SYM{}", i % 4);
+                    let tf = if j % 2 == 0 { "1m" } else { "5m" };
+                    let _ = mgr.subscribe_bars(&sym, tf);
+                    if i >= 8 {
+                        mgr.unsubscribe_bars(&sym, tf);
+                    }
+                }
+            }));
+        }
+        for h in handles { h.join().unwrap(); }
+
+        // Net: at most 8 active subscriptions (4 symbols × 2 timeframes).
+        let active = mgr.active_bar_subs();
+        assert!(
+            active.len() <= 8,
+            "expected ≤8 active subs after stress, got {} ({:?})",
+            active.len(),
+            active
+        );
+
+        // No deadlocks, no panics, and every surviving entry has a positive
+        // refcount (we never crossed zero on the wrong side).
+        for (sym, tf, _) in active {
+            let count = mgr.refcount_for_bar(&sym, &tf);
+            assert!(count > 0, "{sym}:{tf} has zero refcount but is in active list");
+        }
     }
 }
