@@ -314,29 +314,52 @@ async fn ws_loop(
                                                     crate::data::providers::subscription_manager::BarSource::Last,
                                                     ts_ms,
                                                 );
-                                            // Wave 12a: fan tick out to MarketDataProvider streams.
-                                            // The IB payload is trade-print shaped (price + volume),
-                                            // so we synthesize a degenerate 1m bar (OHLC = price)
-                                            // and a Trade. Quote fanout fires only when the payload
+                                            // Wave 13b: fold tick into the real OHLC aggregator
+                                            // and fan out a live (not-yet-closed) bar each tick.
+                                            // When the tick crosses into a new minute bucket the
+                                            // previous bucket is also fanned out with `closed=true`
+                                            // (as a separate frame, AFTER the live bar) so any
+                                            // downstream resampler/storage can finalize it.
+                                            //
+                                            // Quote fanout still fires only when the payload
                                             // actually carries bid/ask fields (defensive — current
                                             // ibserver doesn't emit those on this code path, but
                                             // future quote-tick frames will land here too).
-                                            //
-                                            // A real bar aggregator (rolling OHLC by timeframe
-                                            // bucket) is intentionally deferred — keeps Wave 12a
-                                            // scoped to the wiring. Consumers that want true bars
-                                            // should resample downstream.
                                             let ac = AssetClass::from_symbol(&sym);
-                                            let synth_bar = BarWire {
+                                            let agg_res = aggregator::aggregator()
+                                                .process_tick(&sym, "1m", ts_ms, p as f64, v as f64);
+                                            let live_bar = BarWire {
                                                 symbol: sym.clone(),
                                                 asset_class: ac,
                                                 timeframe: "1m".to_string(),
-                                                time: ts_ms,
-                                                open: p as f64, high: p as f64, low: p as f64, close: p as f64,
-                                                volume: v as f64,
-                                                vwap: 0.0, trades: 0, closed: false,
+                                                time: agg_res.current.bucket_start_ms,
+                                                open:   agg_res.current.open,
+                                                high:   agg_res.current.high,
+                                                low:    agg_res.current.low,
+                                                close:  agg_res.current.close,
+                                                volume: agg_res.current.volume,
+                                                vwap: 0.0,
+                                                trades: agg_res.current.tick_count as u64,
+                                                closed: false,
                                             };
-                                            hub_fanout(bar_hub(), &sym, synth_bar);
+                                            hub_fanout(bar_hub(), &sym, live_bar);
+                                            if let Some(prev) = agg_res.closed {
+                                                let closed_bar = BarWire {
+                                                    symbol: sym.clone(),
+                                                    asset_class: ac,
+                                                    timeframe: "1m".to_string(),
+                                                    time: prev.bucket_start_ms,
+                                                    open:   prev.open,
+                                                    high:   prev.high,
+                                                    low:    prev.low,
+                                                    close:  prev.close,
+                                                    volume: prev.volume,
+                                                    vwap: 0.0,
+                                                    trades: prev.tick_count as u64,
+                                                    closed: true,
+                                                };
+                                                hub_fanout(bar_hub(), &sym, closed_bar);
+                                            }
                                             let trade = Trade {
                                                 symbol: sym.clone(),
                                                 asset_class: ac,
@@ -567,6 +590,76 @@ mod hub_tests {
         assert_eq!(t.price, 800.0);
         assert_eq!(q.bid, 799.5);
         assert_eq!(q.ask, 800.5);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn aggregator_drives_bar_hub_live_then_closed_on_boundary() {
+        // Three ticks in minute 100 + one tick in minute 101.
+        // Expect: 4 live bars (one per tick) + 1 closed bar (when the
+        // 4th tick rolls into minute 101) on the bar_hub stream.
+        let sym = "TEST_AGG_TSLA";
+        let mut rx = hub_subscribe(bar_hub(), sym);
+
+        // Drive the global singleton directly (mirrors ws_loop wiring).
+        let agg = super::aggregator::aggregator();
+
+        // ts_ms in minute 100 == 100 * 60_000 = 6_000_000
+        let m100 = 100_i64 * 60_000;
+        let m101 = 101_i64 * 60_000;
+
+        let r1 = agg.process_tick(sym, "1m", m100 + 0,     100.0, 1.0);
+        let r2 = agg.process_tick(sym, "1m", m100 + 1_000, 102.0, 2.0);
+        let r3 = agg.process_tick(sym, "1m", m100 + 2_000,  99.0, 3.0);
+        let r4 = agg.process_tick(sym, "1m", m101 + 500,   101.0, 4.0);
+
+        // Mirror the ws_loop fanout for each ProcessResult.
+        for r in [r1, r2, r3, r4] {
+            let live = BarWire {
+                symbol: sym.to_string(),
+                asset_class: AssetClass::Stock,
+                timeframe: "1m".into(),
+                time: r.current.bucket_start_ms,
+                open: r.current.open, high: r.current.high,
+                low: r.current.low,   close: r.current.close,
+                volume: r.current.volume,
+                vwap: 0.0, trades: r.current.tick_count as u64, closed: false,
+            };
+            hub_fanout(bar_hub(), sym, live);
+            if let Some(prev) = r.closed {
+                let cb = BarWire {
+                    symbol: sym.to_string(),
+                    asset_class: AssetClass::Stock,
+                    timeframe: "1m".into(),
+                    time: prev.bucket_start_ms,
+                    open: prev.open, high: prev.high,
+                    low: prev.low,   close: prev.close,
+                    volume: prev.volume,
+                    vwap: 0.0, trades: prev.tick_count as u64, closed: true,
+                };
+                hub_fanout(bar_hub(), sym, cb);
+            }
+        }
+
+        let mut live_seen = 0;
+        let mut closed_seen = 0;
+        let mut closed_bar: Option<BarWire> = None;
+        for _ in 0..5 {
+            let bw = tokio::time::timeout(Duration::from_millis(50), rx.recv())
+                .await.expect("rx timed out").expect("rx closed");
+            if bw.closed { closed_seen += 1; closed_bar = Some(bw); }
+            else         { live_seen += 1; }
+        }
+        assert_eq!(live_seen,   4, "expected 4 live bars (one per tick)");
+        assert_eq!(closed_seen, 1, "expected exactly 1 closed bar on minute rollover");
+
+        let cb = closed_bar.expect("closed bar missing");
+        assert_eq!(cb.time,   m100);
+        assert_eq!(cb.open,   100.0);
+        assert_eq!(cb.high,   102.0);
+        assert_eq!(cb.low,     99.0);
+        assert_eq!(cb.close,   99.0);
+        assert_eq!(cb.volume,   6.0);
+        assert_eq!(cb.trades,   3);
     }
 
     #[test]
