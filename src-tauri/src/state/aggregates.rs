@@ -213,15 +213,88 @@ impl Persistable for TradingDefaults {
     const VERSION: u32 = 1;
 }
 
-/// Alerts list + their state.
+// ─── AlertsState aggregate ───────────────────────────────────────────────────
+
+/// Serializable mirror of a price alert.
 ///
-/// Migrate from `Watchlist`:
-/// - `alerts: Vec<Alert>`
-/// - `next_alert_id: u32`
-/// - `alert_query: String`
-/// - `alerts_panel_open: bool` (UI-only — could go in SidebarState)
-#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct AlertsState {}
+/// Mirrors `chart::renderer::trading::Alert` but adds `Serialize + Deserialize`
+/// so the aggregate can be persisted.  The original `Alert` derives only
+/// `Debug + Clone`; this copy is kept in sync manually until a follow-up
+/// wave makes the trading module re-export a serializable version directly.
+///
+/// Source: `src-tauri/src/chart/renderer/trading/mod.rs`, line 440.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PersistedAlert {
+    /// Stable alert identifier (`Watchlist::next_alert_id` counter).
+    pub id: u32,
+    /// Ticker the alert watches (e.g. "AAPL").
+    pub symbol: String,
+    /// Price level that triggers the alert.
+    pub price: f32,
+    /// `true` = fire when price crosses *above*, `false` = *below*.
+    pub above: bool,
+    /// `true` once the alert has fired at least once this session.
+    pub triggered: bool,
+    /// Human-readable note shown in the alerts panel.
+    pub message: String,
+}
+
+/// Alert configurations and list.
+///
+/// **P2 Round 2** populates this aggregate.  Fields are sourced from
+/// `Watchlist` (the legacy god-object).  Call sites are **not** migrated in
+/// this PR; the struct is landed so follow-up waves can migrate one field at
+/// a time.
+///
+/// Field sources (Watchlist field → this aggregate field):
+/// - `Watchlist::alerts: Vec<Alert>`         → `alerts` (via `PersistedAlert`)
+/// - `Watchlist::next_alert_id: u32`         → `next_alert_id`
+/// - `Watchlist::alert_query: String`        → `alert_query`
+/// - `Watchlist::alerts_panel_open: bool`    → `alerts_panel_open`
+///   (UI-only; `SidebarState` is the eventual home, but the field is
+///   small enough to co-locate here until a dedicated sidebar sweep lands.)
+///
+/// Fields NOT included here:
+/// - No additional `alerts_*` fields were found in gpu.rs beyond the four
+///   listed above.  `alert_query` has `#[allow(dead_code)]` in gpu.rs,
+///   suggesting it is stub / future use — included here for completeness.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AlertsState {
+    /// The live alert list.
+    /// Source: `Watchlist::alerts: Vec<Alert>`.
+    #[serde(default)]
+    pub alerts: Vec<PersistedAlert>,
+
+    /// Monotonically-increasing counter used to assign stable alert IDs.
+    /// Source: `Watchlist::next_alert_id: u32` (default 1).
+    #[serde(default = "AlertsState::default_next_alert_id")]
+    pub next_alert_id: u32,
+
+    /// Search / filter string in the alerts panel input box.
+    /// Source: `Watchlist::alert_query: String` (`#[allow(dead_code)]` in gpu.rs).
+    #[serde(default)]
+    pub alert_query: String,
+
+    /// Whether the alerts side-panel is currently visible.
+    /// Source: `Watchlist::alerts_panel_open: bool`.
+    #[serde(default)]
+    pub alerts_panel_open: bool,
+}
+
+impl AlertsState {
+    fn default_next_alert_id() -> u32 { 1 }
+}
+
+impl Default for AlertsState {
+    fn default() -> Self {
+        Self {
+            alerts: Vec::new(),
+            next_alert_id: Self::default_next_alert_id(),
+            alert_query: String::new(),
+            alerts_panel_open: false,
+        }
+    }
+}
 
 impl Persistable for AlertsState {
     const KEY: &'static str = "alerts_state";
@@ -488,6 +561,74 @@ mod tests {
         assert_eq!(loaded.font_scale, 1.8);
         assert_eq!(loaded.font_idx, 2);
         assert_eq!(loaded.style_idx, 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── AlertsState tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn alerts_state_default_values_are_sane() {
+        let s = AlertsState::default();
+        assert!(s.alerts.is_empty(), "no alerts by default");
+        assert_eq!(s.next_alert_id, 1, "IDs start at 1");
+        assert!(s.alert_query.is_empty());
+        assert!(!s.alerts_panel_open);
+    }
+
+    #[test]
+    fn alerts_state_round_trips_through_persistable() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_alerts_state_roundtrip");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("alerts_state.json");
+        let v = AlertsState {
+            alerts: vec![
+                PersistedAlert {
+                    id: 1,
+                    symbol: "AAPL".into(),
+                    price: 150.0,
+                    above: true,
+                    triggered: false,
+                    message: "AAPL breakout".into(),
+                },
+            ],
+            next_alert_id: 2,
+            alert_query: "SPY".into(),
+            alerts_panel_open: true,
+        };
+        save(&path, &v).unwrap();
+        let loaded: AlertsState = load(&path).unwrap();
+        assert_eq!(loaded.alerts.len(), 1);
+        assert_eq!(loaded.alerts[0].symbol, "AAPL");
+        assert_eq!(loaded.alerts[0].price, 150.0);
+        assert!(loaded.alerts[0].above);
+        assert!(!loaded.alerts[0].triggered);
+        assert_eq!(loaded.next_alert_id, 2);
+        assert_eq!(loaded.alert_query, "SPY");
+        assert!(loaded.alerts_panel_open);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn alerts_state_missing_fields_fall_back_to_defaults() {
+        use super::super::persistence::load;
+        let dir = std::env::temp_dir().join("apex_state_alerts_state_partial");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("alerts_state.json");
+        let envelope = serde_json::json!({
+            "key": "alerts_state",
+            "version": 1,
+            "payload": {
+                "next_alert_id": 5,
+            }
+        });
+        std::fs::write(&path, serde_json::to_vec_pretty(&envelope).unwrap()).unwrap();
+        let loaded: AlertsState = load(&path).expect("partial payload should load");
+        assert_eq!(loaded.next_alert_id, 5);
+        assert!(loaded.alerts.is_empty());
+        assert!(loaded.alert_query.is_empty());
+        assert!(!loaded.alerts_panel_open);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
