@@ -215,7 +215,7 @@ mod tests {
 
     struct MockLookup {
         conid: i64,
-        calls: std::sync::Mutex<u32>,
+        calls: parking_lot::Mutex<u32>,
     }
     #[async_trait::async_trait]
     impl ConIdLookup for MockLookup {
@@ -229,7 +229,7 @@ mod tests {
     async fn resolve_conid_uses_cache_when_present() {
         let r = ConIdResolver::new();
         r.observe("TSLA", 7777);
-        let mock = MockLookup { conid: 1, calls: std::sync::Mutex::new(0) };
+        let mock = MockLookup { conid: 1, calls: parking_lot::Mutex::new(0) };
         let cid = r.resolve_conid("TSLA", &mock).await.unwrap();
         assert_eq!(cid, 7777);
         assert_eq!(*mock.calls.lock(), 0, "cache hit must not call lookup");
@@ -238,7 +238,7 @@ mod tests {
     #[tokio::test]
     async fn resolve_conid_falls_back_to_lookup_and_caches() {
         let r = ConIdResolver::new();
-        let mock = MockLookup { conid: 4242, calls: std::sync::Mutex::new(0) };
+        let mock = MockLookup { conid: 4242, calls: parking_lot::Mutex::new(0) };
         let cid = r.resolve_conid("NVDA", &mock).await.unwrap();
         assert_eq!(cid, 4242);
         assert_eq!(*mock.calls.lock(), 1);
