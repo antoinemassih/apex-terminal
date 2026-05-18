@@ -48,6 +48,8 @@ pub enum Frame {
     Quote   (Quote),
     Fmv     { symbol: String, fmv: f64, time_ms: i64 },
     ChainDelta(ChainDelta),
+    /// Wave 10 — LULD trading halt / resume / near-band warning.
+    Halt    (HaltReading),
     Resync  { reason: String },
     Error   { code: String, message: String },
     /// Transport-level: WS connected or disconnected.
@@ -376,6 +378,10 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
         "chain_delta" => match serde_json::from_value::<ChainDelta>(env.data) {
             Ok(d) => Frame::ChainDelta(d),
             Err(e) => { eprintln!("[apex_data.ws] bad chain_delta: {e}"); return; }
+        },
+        "halt" => match serde_json::from_value::<HaltReading>(env.data) {
+            Ok(h) => Frame::Halt(h),
+            Err(e) => { eprintln!("[apex_data.ws] bad halt: {e}"); return; }
         },
         "resync" => {
             let reason = env.data.get("reason").and_then(|v| v.as_str()).unwrap_or("").to_string();

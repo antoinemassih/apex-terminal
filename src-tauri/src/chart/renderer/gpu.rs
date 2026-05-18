@@ -4248,6 +4248,11 @@ pub(crate) struct Watchlist {
     pub(crate) scanner_new_max_change: f32,
     pub(crate) scanner_new_min_volume: String, // string for text edit
     pub(crate) scanner_builder_open: bool,
+    /// Wave 10 — selected movers tab for the projector-backed bucket selector
+    /// in scanner_panel. Index matches `MoverKind::all()`.
+    pub(crate) scanner_mover_tab: usize,
+    /// Wave 10 — popup gate for the deferred "Configure filters" custom scan.
+    pub(crate) scanner_filter_popup_open: bool,
     // Screenshot library
     pub(crate) screenshot_open: bool,
     pub(crate) screenshot_entries: Vec<super::ui::panels::screenshot_panel::ScreenshotEntry>,
@@ -4407,6 +4412,8 @@ impl Watchlist {
                scanner_new_max_change: 999.0,
                scanner_new_min_volume: String::new(),
                scanner_builder_open: false,
+               scanner_mover_tab: 0,
+               scanner_filter_popup_open: false,
                spread_open: false, maximized_pane: None,
                spread_state: super::ui::panels::spread_panel::SpreadState::default(),
                script_open: false,

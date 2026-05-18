@@ -37,8 +37,49 @@ pub(crate) fn render(
         );
         header_ui.add(PaneHeader::new("Dashboard").theme(t));
     }
+    let mut header_bottom = rect.top() + HEADER_H;
+
+    // ── Wave 10 breadth widget (additive strip) ────────────────────────────
+    // Cheap numeric strip directly under the header. Hidden when the breadth
+    // projector hasn't returned anything yet (avoids a blank reservation).
+    const BREADTH_WIDGET_H: f32 = 26.0;
+    if let Some(b) = crate::apex_data::live_state::get_breadth("us") {
+        let strip_rect = egui::Rect::from_min_max(
+            egui::pos2(rect.left() + 6.0, header_bottom + 2.0),
+            egui::pos2(rect.right() - 6.0, header_bottom + 2.0 + BREADTH_WIDGET_H),
+        );
+        let p = ui.painter_at(strip_rect);
+        p.rect_filled(strip_rect, 3.0, t.toolbar_bg);
+        let bull_pct = if b.advancers + b.decliners > 0 {
+            b.advancers as f32 / (b.advancers + b.decliners) as f32
+        } else { 0.5 };
+        // Left half: adv/dec totals
+        let s1 = format!("Adv {}  Dec {}", b.advancers, b.decliners);
+        p.text(
+            egui::pos2(strip_rect.left() + 8.0, strip_rect.center().y),
+            egui::Align2::LEFT_CENTER, s1,
+            egui::FontId::monospace(10.0),
+            if bull_pct >= 0.5 { t.bull } else { t.bear },
+        );
+        // Middle: NH/NL
+        let s2 = format!("NH {} / NL {}", b.new_highs, b.new_lows);
+        p.text(
+            strip_rect.center(),
+            egui::Align2::CENTER_CENTER, s2,
+            egui::FontId::monospace(10.0), t.text,
+        );
+        // Right: % above SMA200
+        let s3 = format!("{:.0}% > SMA200", b.pct_above_sma200);
+        p.text(
+            egui::pos2(strip_rect.right() - 8.0, strip_rect.center().y),
+            egui::Align2::RIGHT_CENTER, s3,
+            egui::FontId::monospace(10.0), t.dim,
+        );
+        header_bottom += BREADTH_WIDGET_H + 4.0;
+    }
+
     let body_rect = egui::Rect::from_min_max(
-        egui::pos2(rect.left(), rect.top() + HEADER_H),
+        egui::pos2(rect.left(), header_bottom),
         rect.max,
     );
 
