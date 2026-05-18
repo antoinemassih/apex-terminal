@@ -103,7 +103,7 @@ impl<'a> PillRow<'a> {
         self
     }
 
-    pub fn show(self, ui: &mut Ui, t: &Theme) -> PillRowResponse {
+    pub fn show(mut self, ui: &mut Ui, t: &Theme) -> PillRowResponse {
         let mut resp = PillRowResponse::default();
         if self.options.is_empty() {
             return resp;
