@@ -8,6 +8,7 @@
 //! Control messages (subscribe/unsubscribe) sent as JSON text — ibserver
 //! receive side stays unchanged.
 
+pub mod aggregator;
 pub mod resolver;
 
 use std::{collections::{HashMap, HashSet}, sync::Arc, sync::OnceLock, time::Duration};
