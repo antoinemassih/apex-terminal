@@ -1794,6 +1794,31 @@ pub(crate) struct Chart {
     pub(crate) gpu_render_params: crate::chart::renderer_gpu::ChartRenderParams,
 }
 
+/// Hard cap on Chart::tab_cache entries.
+///
+/// Each entry holds bar data (~120 KB at 5000 bars), so an unbounded cache
+/// leaks memory across long sessions. 64 is enough to keep recently-visited
+/// (symbol, timeframe) tab swaps warm without blowing past a few MB per pane.
+pub(crate) const TAB_CACHE_MAX: usize = 64;
+
+/// LRU-evict the oldest tab_cache entry (by stored `Instant`) when the cache
+/// is at or above `TAB_CACHE_MAX`. Call this immediately before every insert
+/// to keep the post-insert size bounded by `TAB_CACHE_MAX`.
+pub(crate) fn evict_oldest_if_full(
+    cache: &mut std::collections::HashMap<(String, String), (Vec<Bar>, Vec<i64>, std::time::Instant)>,
+) {
+    if cache.len() < TAB_CACHE_MAX {
+        return;
+    }
+    if let Some(oldest_key) = cache
+        .iter()
+        .min_by_key(|(_, (_, _, t))| *t)
+        .map(|(k, _)| k.clone())
+    {
+        cache.remove(&oldest_key);
+    }
+}
+
 impl Chart {
     pub(crate) fn new_with(symbol: &str, timeframe: &str) -> Self {
         let mut c = Self::new();
@@ -5625,22 +5650,12 @@ impl ApplicationHandler for App {
                     // Stash the OUTGOING (sym, tf)'s bars/ts in the tab cache
                     // before swapping, so re-entry restores instantly.
                     if !pane.symbol.is_empty() && !pane.bars.is_empty() {
+                        // LRU-evict BEFORE insert so post-insert size <= TAB_CACHE_MAX.
+                        evict_oldest_if_full(&mut pane.tab_cache);
                         pane.tab_cache.insert(
                             (pane.symbol.clone(), pane.timeframe.clone()),
                             (pane.bars.clone(), pane.timestamps.clone(), std::time::Instant::now()),
                         );
-                        // Cap to 10 entries — evict the oldest by Instant. Each
-                        // entry holds bar data (~120 KB at 5000 bars), so an
-                        // unbounded cache leaks memory across long sessions.
-                        const MAX: usize = 10;
-                        while pane.tab_cache.len() > MAX {
-                            if let Some((evict_key, _)) = pane.tab_cache.iter()
-                                .min_by_key(|(_, (_, _, ts))| *ts)
-                                .map(|(k, v)| (k.clone(), v.clone()))
-                            {
-                                pane.tab_cache.remove(&evict_key);
-                            } else { break; }
-                        }
                     }
 
                     if let Some(ref sym) = sym_change {
@@ -6632,6 +6647,48 @@ mod synthesize_occ_tests {
     fn aapl_passes_through() {
         let occ = synthesize_occ("AAPL", 200.0, true, "2026-05-07");
         assert!(occ.starts_with("O:AAPL"), "got: {occ}");
+    }
+}
+
+#[cfg(test)]
+mod tab_cache_lru_tests {
+    use super::{evict_oldest_if_full, Bar, TAB_CACHE_MAX};
+    use std::collections::HashMap;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn evict_drops_oldest_when_full() {
+        let mut cache: HashMap<(String, String), (Vec<Bar>, Vec<i64>, Instant)> = HashMap::new();
+        let base = Instant::now();
+        // Insert TAB_CACHE_MAX + 1 entries with monotonically increasing Instants,
+        // calling evict before each insert (matching real call-site contract).
+        for i in 0..(TAB_CACHE_MAX + 1) {
+            evict_oldest_if_full(&mut cache);
+            let ts = base + Duration::from_millis(i as u64);
+            cache.insert((format!("S{i}"), "1m".into()), (vec![], vec![], ts));
+        }
+        assert_eq!(cache.len(), TAB_CACHE_MAX,
+            "post-insert size must be capped at TAB_CACHE_MAX");
+        // S0 had the oldest Instant — it should be gone.
+        assert!(!cache.contains_key(&("S0".to_string(), "1m".to_string())),
+            "oldest entry should have been evicted");
+        // The most recent (S_{MAX}) should still be present.
+        let newest = format!("S{}", TAB_CACHE_MAX);
+        assert!(cache.contains_key(&(newest.clone(), "1m".to_string())),
+            "newest entry should remain");
+    }
+
+    #[test]
+    fn evict_is_noop_when_under_cap() {
+        let mut cache: HashMap<(String, String), (Vec<Bar>, Vec<i64>, Instant)> = HashMap::new();
+        let base = Instant::now();
+        for i in 0..(TAB_CACHE_MAX - 1) {
+            cache.insert((format!("S{i}"), "1m".into()),
+                (vec![], vec![], base + Duration::from_millis(i as u64)));
+        }
+        let before = cache.len();
+        evict_oldest_if_full(&mut cache);
+        assert_eq!(cache.len(), before, "evict should not touch a sub-cap cache");
     }
 }
 
