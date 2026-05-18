@@ -1,0 +1,87 @@
+name: Connectivity CI
+
+on:
+  pull_request:
+    paths:
+      - 'src-tauri/src/data/**'
+      - 'src-tauri/src/foundation/**'
+      - 'src-tauri/src/state/**'
+      - 'src-tauri/src/chart/renderer/trading/**'
+      - 'src-tauri/tests/**'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/Cargo.lock'
+      - '.github/workflows/connectivity-ci.yml'
+  push:
+    branches: [main]
+
+jobs:
+  check-test-clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable + clippy)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Tauri's lib pulls in webkit/gtk via tauri-build; even `cargo check`
+      # needs the system headers present on Linux runners.
+      - name: Install system deps (Tauri build prerequisites)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libgtk-3-dev
+
+      # tauri-build's resource path check fails if the sidecar binaries
+      # tauri.conf.json references aren't present. Touch placeholders so
+      # the build script proceeds — we never execute these in CI.
+      - name: Create placeholder sidecar binaries (for tauri-build)
+        run: |
+          mkdir -p src-tauri/binaries
+          touch src-tauri/binaries/ococo-api-aarch64-apple-darwin
+          touch src-tauri/binaries/ococo-api-x86_64-pc-windows-msvc.exe
+          touch src-tauri/binaries/ococo-api-x86_64-unknown-linux-gnu
+
+      - name: cargo check --lib
+        working-directory: src-tauri
+        run: cargo check --lib --all-features
+
+      - name: cargo test --lib (connectivity + foundation + state + trading)
+        working-directory: src-tauri
+        run: |
+          cargo test --lib \
+            data::connectivity:: \
+            data::providers:: \
+            foundation::types:: \
+            state:: \
+            chart::renderer::trading::
+
+      - name: cargo test --test connectivity_integration
+        working-directory: src-tauri
+        # `continue-on-error` because the integration tests may rely on
+        # network or fixtures not yet wired into CI. Surface failures
+        # without blocking the PR until they're stabilized.
+        continue-on-error: true
+        run: cargo test --test connectivity_integration
+
+      - name: cargo clippy (gated, lib scope)
+        working-directory: src-tauri
+        # Only fail on correctness / suspicious classes for now; the
+        # codebase has a large existing warning surface that needs
+        # incremental cleanup.
+        run: |
+          cargo clippy --lib --no-deps -- \
+            -A clippy::all \
+            -D clippy::correctness \
+            -D clippy::suspicious
