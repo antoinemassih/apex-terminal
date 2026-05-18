@@ -238,8 +238,13 @@ pub(crate) fn start_account_poller() {
     STARTED.get_or_init(|| {
         let _ = ACCOUNT_DATA.get_or_init(|| Mutex::new(None));
 
-        // ── Hot orders thread (1s) ──────────────────────────────────────────
+        // ── Hot orders thread (1s, or FAST_POLL_MS when TP/SL active) ─────────
         // Drives reconcile_with_ib + ACCOUNT_DATA's `ib_orders` slot.
+        //
+        // P1.13: when `is_active_tpsl()` returns true we bypass the backoff
+        // schedule and sleep for FAST_POLL_MS (100ms) instead so TP/SL fills
+        // are detected sub-second.  Normal cadence resumes once all bracket
+        // legs have reached a terminal state.
         std::thread::spawn(|| {
             let client = reqwest::blocking::Client::builder()
                 .timeout(std::time::Duration::from_secs(3))
@@ -267,8 +272,16 @@ pub(crate) fn start_account_poller() {
                         }
                     }
                 }
-                if any_ok { backoff.on_success(); } else { backoff.on_failure(); }
-                backoff.sleep();
+                // P1.13: fast-poll cadence while any TP/SL leg is active.
+                if order_manager::is_active_tpsl() {
+                    std::thread::sleep(std::time::Duration::from_millis(
+                        order_manager::FAST_POLL_MS
+                    ));
+                    // Don't advance backoff — we're healthy, just in fast mode.
+                } else {
+                    if any_ok { backoff.on_success(); } else { backoff.on_failure(); }
+                    backoff.sleep();
+                }
             }
         });
 
