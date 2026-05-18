@@ -7,6 +7,8 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
+use super::connection_state_snapshot;
+use crate::data::connectivity::ConnectionState;
 use crate::ui_kit::widgets::{Indicator, IndicatorTone, PanelListRow, PanelSection};
 use crate::chart_renderer::gpu::APEXIB_URL;
 use crate::chart_renderer::trading::read_account_data;
@@ -22,29 +24,37 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
         .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_active())))
         .corner_radius(r_lg_cr());
 
-    // Snapshot live status once per frame.
-    // TODO(wave-11c-ui-migration): this panel polls `is_connected()` /
-    // `apex_health` every frame. The `Connection` trait now offers
-    // `subscribe_state() -> Option<broadcast::Receiver<ConnectionState>>` on
-    // ApexData / IB / Crypto / Signals providers (see
-    // `data/connectivity/state.rs`). A future UI wave can switch this panel
-    // to react to state-change events instead of polling — pulling the
-    // receiver once in the chrome layer and stashing the last-seen state in
-    // app state. Migration left to a separate UI wave so we can rework the
-    // status-flash / amber-pulse UX alongside it.
+    // Wave 12d: ApexData status now derives from the push-based snapshot
+    // populated by `connection_state_snapshot::spawn_state_listeners()` at
+    // startup. The snapshot is updated synchronously from the broadcast
+    // stream, so we no longer poll `ws::is_connected()` per frame here.
+    // Redis and IB still come from their legacy flags — those feeds don't
+    // expose a `ConnectionState` broadcast yet.
     let redis_ok = crate::bar_cache::is_connected();
     let ib_ok = read_account_data().map(|(a, _, _)| a.connected).unwrap_or(false);
     let apex_enabled = crate::apex_data::is_enabled();
-    let apex_ws_ok = crate::apex_data::ws::is_connected();
+    let apex_state = connection_state_snapshot::get("apex_data");
     let apex_health = crate::apex_data::live_state::get_health();
     let (apex_status, apex_ok) = if !apex_enabled {
         ("OFF", false)
-    } else if let Some(h) = apex_health.as_ref() {
-        if h.ready && apex_ws_ok { ("OK", true) }
-        else if apex_ws_ok       { ("AMBER", false) }
-        else                     { ("DOWN", false) }
     } else {
-        (if apex_ws_ok { "AMBER" } else { "DOWN" }, apex_ws_ok)
+        match &apex_state {
+            ConnectionState::Authenticated | ConnectionState::Subscribed { .. } => {
+                // ApexData WS reports live, but the data-readiness gate
+                // (live_state::get_health) is a separate signal — it only
+                // flips `ready=true` after the first non-stale snapshot.
+                // Keep treating "WS up but not yet ready" as AMBER.
+                if apex_health.as_ref().map(|h| h.ready).unwrap_or(false) {
+                    ("OK", true)
+                } else {
+                    ("AMBER", false)
+                }
+            }
+            ConnectionState::Connecting { .. } | ConnectionState::Backoff { .. } => ("AMBER", false),
+            ConnectionState::Idle | ConnectionState::ShuttingDown | ConnectionState::Failed { .. } => {
+                ("DOWN", false)
+            }
+        }
     };
     let apex_url_owned = crate::apex_data::apex_url();
 
