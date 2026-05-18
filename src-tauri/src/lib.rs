@@ -307,18 +307,14 @@ pub fn run() {
             let ib_handle = ib_ws::spawn(app.handle().clone());
             app.manage(ib_handle);
 
-            // Wave 1: register Shutdown stubs for the long-lived feeds so
-            // drain_all has a registry to walk on exit. Real drain logic
-            // (close WS gracefully, flush in-flight subscribes, etc.) lands
-            // per-feed in Wave 2 — for now these no-op so the plumbing is
-            // exercised end-to-end without altering shutdown behavior.
-            use std::sync::Arc;
-            use crate::data::connectivity::{register, shutdown::NoopShutdown};
-            register("apex_data",    Arc::new(NoopShutdown { name: "apex_data" }));
-            register("ib_ws",        Arc::new(NoopShutdown { name: "ib_ws" }));
-            register("crypto_feed",  Arc::new(NoopShutdown { name: "crypto_feed" }));
-            register("signals_feed", Arc::new(NoopShutdown { name: "signals_feed" }));
-            register("discord",      Arc::new(NoopShutdown { name: "discord" }));
+            // Wave 7A fix (Bug 1): the noop pre-registrations that used to
+            // live here masked the real Shutdown impls. Because `register()`
+            // appends rather than replaces, the first (noop) entry won and
+            // real WS close frames were never sent on exit. Each feed now
+            // self-registers its real `Shutdown` when it spawns above
+            // (apex_data::ws::start, ib_ws::spawn, crypto_feed::start,
+            // signals_feed::start). Discord has no long-lived connection
+            // yet — when it grows one, register from its module.
 
             // Spawn ococo-api sidecar — bundled Node.js server
             match app.shell().sidecar("ococo-api") {

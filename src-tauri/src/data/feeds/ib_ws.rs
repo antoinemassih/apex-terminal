@@ -75,6 +75,7 @@ struct IbWsShutdown {
 #[async_trait::async_trait]
 impl connectivity::Shutdown for IbWsShutdown {
     async fn drain(&self, deadline: Duration) -> Result<(), String> {
+        tracing::info!(target: "shutdown", connection = "ib_ws", "drain invoked");
         self.shutdown.store(true, Ordering::SeqCst);
         // Best-effort: send Shutdown so the loop exits the inner select.
         let _ = self.tx.send(Cmd::Shutdown).await;
