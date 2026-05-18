@@ -3677,6 +3677,54 @@ pub(crate) fn apply_pane_events(
                     pane.swing_leg_mode = *value;
                 }
             }
+            PaneEvent::IndicatorVisibilityChanged { group, kind, visible } => {
+                let is_broadcast = *group == BROADCAST_GROUP;
+                if !is_broadcast && (*group == 0 || *group > group_count) {
+                    continue;
+                }
+                for (pi, pane) in panes.iter_mut().enumerate() {
+                    if Some(pi) == *origin { continue; }
+                    let matches = is_broadcast || pane.link_group == *group;
+                    if !matches { continue; }
+                    for ind in pane.indicators.iter_mut() {
+                        if ind.kind == *kind { ind.visible = *visible; }
+                    }
+                }
+            }
+            PaneEvent::IndicatorsRemoved { group, kind, period } => {
+                let is_broadcast = *group == BROADCAST_GROUP;
+                if !is_broadcast && (*group == 0 || *group > group_count) {
+                    continue;
+                }
+                for (pi, pane) in panes.iter_mut().enumerate() {
+                    if Some(pi) == *origin { continue; }
+                    let matches = is_broadcast || pane.link_group == *group;
+                    if !matches { continue; }
+                    let before = pane.indicators.len();
+                    pane.indicators.retain(|ind| {
+                        !(ind.kind == *kind && period.is_none_or(|p| ind.period == p))
+                    });
+                    if pane.indicators.len() != before {
+                        pane.indicator_bar_count = 0;
+                    }
+                }
+            }
+            PaneEvent::IndicatorAdded { group, indicator } => {
+                let is_broadcast = *group == BROADCAST_GROUP;
+                if !is_broadcast && (*group == 0 || *group > group_count) {
+                    continue;
+                }
+                for (pi, pane) in panes.iter_mut().enumerate() {
+                    if Some(pi) == *origin { continue; }
+                    let matches = is_broadcast || pane.link_group == *group;
+                    if !matches { continue; }
+                    let mut copy = indicator.clone();
+                    copy.id = pane.next_indicator_id;
+                    pane.next_indicator_id += 1;
+                    pane.indicators.push(copy);
+                    pane.indicator_bar_count = 0;
+                }
+            }
             PaneEvent::LayoutChanged | PaneEvent::BroadcastEnabled { .. } => {
                 // No subscribers today; queue drain still removes them.
             }
