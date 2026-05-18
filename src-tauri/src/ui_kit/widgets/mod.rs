@@ -91,6 +91,7 @@ pub mod table_header;
 pub mod pill_row;
 pub mod status_pill;
 pub mod panel_error;
+pub mod panel_toolbar;
 
 pub use tokens::{Size, Variant};
 pub use panel::{Panel, PanelCtx, PanelResponse};
@@ -113,6 +114,7 @@ pub use table_header::TableHeader;
 pub use pill_row::{PillRow, PillRowResponse};
 pub use status_pill::StatusPill;
 pub use panel_error::PanelError;
+pub use panel_toolbar::PanelToolbar;
 pub use panel_card::PanelCard;
 pub use panel_key_value_row::PanelKeyValueRow;
 pub use range_slider::RangeSlider;
