@@ -22,9 +22,11 @@ use sqlx::postgres::PgPoolOptions;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let pg_url = std::env::var("APEX_PG_URL")
+        .expect("APEX_PG_URL must be set (e.g. postgresql://postgres:<pass>@192.168.1.143:5432/ococo)");
     let pool = PgPoolOptions::new()
         .max_connections(2)
-        .connect("postgresql://postgres:monkeyxx@192.168.1.143:5432/ococo")
+        .connect(&pg_url)
         .await?;
 
     // 1. Build a chart and save it

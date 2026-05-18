@@ -112,31 +112,50 @@ impl crate::data::connectivity::Authenticated for ApexDataAuth {
     }
 }
 
-/// Redis URL for the bar cache. Reads `APEX_REDIS_URL` env var, falling
-/// back to the homelab dev Redis. Used by `bar_cache::init`.
+/// Redis URL for the bar cache. Reads `APEX_REDIS_URL` env var.
 ///
-/// The default embeds the homelab dev credential so a fresh checkout
-/// on the homelab LAN works out of the box; override via env var in
-/// any other environment. Never log the returned value — it carries a
-/// password.
+/// If the env var is not set, logs a Critical error and returns a sentinel
+/// URL that will fail at connection time. The homelab host/port fallback is
+/// kept (without a password) so the failure message is actionable. Set
+/// `APEX_REDIS_URL` in your environment to configure the credential.
+///
+/// Never log the returned value — it may carry a password.
 pub fn apex_redis_url() -> String {
-    std::env::var("APEX_REDIS_URL")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "redis://:monkeyxx@192.168.1.89:6379/".into())
+    match std::env::var("APEX_REDIS_URL").ok().filter(|s| !s.is_empty()) {
+        Some(url) => url,
+        None => {
+            crate::data::connectivity::errors_sink::report(
+                crate::data::connectivity::errors_sink::ErrorLevel::Critical,
+                "config",
+                "missing_credentials",
+                "APEX_REDIS_URL not set; bar cache unavailable — set the env var with the Redis URL including credentials",
+            );
+            "redis://192.168.1.89:6379/".into()
+        }
+    }
 }
 
-/// PostgreSQL URL for the drawings / watchlist DB. Reads `APEX_PG_URL`
-/// env var, falling back to the homelab dev Postgres.
+/// PostgreSQL URL for the drawings / watchlist DB. Reads `APEX_PG_URL` env var.
 ///
-/// Same caveat as `apex_redis_url`: the default embeds the homelab dev
-/// credential. Override via env var elsewhere. Never log the returned
-/// value — it carries a password.
+/// If the env var is not set, logs a Critical error and returns a sentinel
+/// URL that will fail at connection time. The homelab host/port fallback is
+/// kept (without a password) so the failure message is actionable. Set
+/// `APEX_PG_URL` in your environment to configure the credential.
+///
+/// Never log the returned value — it may carry a password.
 pub fn apex_pg_url() -> String {
-    std::env::var("APEX_PG_URL")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "postgresql://postgres:monkeyxx@192.168.1.143:5432/ococo".into())
+    match std::env::var("APEX_PG_URL").ok().filter(|s| !s.is_empty()) {
+        Some(url) => url,
+        None => {
+            crate::data::connectivity::errors_sink::report(
+                crate::data::connectivity::errors_sink::ErrorLevel::Critical,
+                "config",
+                "missing_credentials",
+                "APEX_PG_URL not set; drawings/watchlist DB unavailable — set the env var with the PostgreSQL URL including credentials",
+            );
+            "postgresql://postgres@192.168.1.143:5432/ococo".into()
+        }
+    }
 }
 
 pub fn apex_host_port() -> Option<(String, u16)> {
