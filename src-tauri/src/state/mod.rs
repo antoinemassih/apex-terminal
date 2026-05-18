@@ -24,3 +24,13 @@ pub use aggregates::{
 pub use inflight::{InFlight, InFlightKind, InFlightRegistry, RequestId};
 pub use persistence::{load, save, Persistable};
 pub use subscriptions::{PaneEvent, PaneToggle, SubscriptionBus, BROADCAST_GROUP};
+
+pub mod store;
+pub mod persistable_store;
+pub mod store_registry;
+pub mod persist_supervisor;
+
+pub use store::{Store, DEBOUNCE_MS};
+pub use persistable_store::PersistableStore;
+pub use store_registry::StoreRegistry;
+pub use persist_supervisor::{spawn as spawn_persist_supervisor, TICK_MS as PERSIST_TICK_MS};
