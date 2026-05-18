@@ -15,6 +15,7 @@ pub mod chart_pane;
 pub mod chart_widgets;
 pub mod toolbar;
 pub mod pane;
+pub mod welcome;
 
 // Backward-compat: keep widgets and components_extra declared so old import paths
 // that still exist in gpu.rs and others continue to resolve.
