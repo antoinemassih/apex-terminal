@@ -58,6 +58,15 @@ pub struct UiSettings {
     pub(crate) shared_y_axis: bool,
     #[serde(default)]
     pub(crate) style_idx: usize,
+    /// Whether the user has completed (or skipped) the first-launch welcome
+    /// wizard. Defaults to `false` so new installs show the wizard. Set to
+    /// `true` on Finish or Skip; reset to `false` via "Show welcome again".
+    #[serde(default)]
+    pub(crate) has_seen_welcome: bool,
+    /// Step index (0..4) where a partially-completed wizard was abandoned.
+    /// Restored when the wizard re-opens so the user continues where they left off.
+    #[serde(default)]
+    pub(crate) welcome_step_resume: u8,
 }
 
 fn default_font_scale() -> f32 { 1.6 }
@@ -79,6 +88,8 @@ impl Default for UiSettings {
             shared_x_axis: false,
             shared_y_axis: false,
             style_idx: 0,
+            has_seen_welcome: false,
+            welcome_step_resume: 0,
         }
     }
 }
@@ -189,6 +200,16 @@ pub struct TradingDefaults {
     // Placeholder fields:
     //   pub default_bracket_tp_pct: Option<f32>,
     //   pub default_bracket_sl_pct: Option<f32>,
+
+    /// Maximum daily loss in USD (set via the welcome wizard, step 3).
+    /// 0.0 means no cap set. Written by `WelcomeWizard` on Finish.
+    #[serde(default)]
+    pub daily_loss_cap: f32,
+
+    /// Maximum position size as a percentage of account equity (0..=100).
+    /// 0.0 means no cap set. Written by `WelcomeWizard` on Finish.
+    #[serde(default)]
+    pub max_position_pct: f32,
 }
 
 impl TradingDefaults {
@@ -204,6 +225,8 @@ impl Default for TradingDefaults {
             default_order_type: DefaultOrderType::default(),
             default_tif: DefaultTimeInForce::default(),
             default_outside_rth: false,
+            daily_loss_cap: 0.0,
+            max_position_pct: 0.0,
         }
     }
 }
@@ -991,6 +1014,8 @@ mod tests {
             shared_x_axis: true,
             shared_y_axis: false,
             style_idx: 4,
+            has_seen_welcome: true,
+            welcome_step_resume: 2,
         };
         save(&path, &v).unwrap();
         let loaded: UiSettings = load(&path).unwrap();
@@ -1003,6 +1028,8 @@ mod tests {
         assert!(loaded.shared_x_axis);
         assert!(!loaded.shared_y_axis);
         assert_eq!(loaded.style_idx, 4);
+        assert!(loaded.has_seen_welcome);
+        assert_eq!(loaded.welcome_step_resume, 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1091,6 +1118,47 @@ mod tests {
         assert_eq!(loaded.default_order_type, DefaultOrderType::Market);
         assert_eq!(loaded.default_tif, DefaultTimeInForce::Day);
         assert!(!loaded.default_outside_rth);
+        // New risk fields default to 0.0 when absent in persisted payload
+        assert_eq!(loaded.daily_loss_cap, 0.0);
+        assert_eq!(loaded.max_position_pct, 0.0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ui_settings_welcome_fields_round_trip() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_ui_settings_welcome_rt");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("ui_settings.json");
+        let v = UiSettings { has_seen_welcome: true, welcome_step_resume: 3, ..UiSettings::default() };
+        save(&path, &v).unwrap();
+        let loaded: UiSettings = load(&path).unwrap();
+        assert!(loaded.has_seen_welcome, "has_seen_welcome must survive round-trip");
+        assert_eq!(loaded.welcome_step_resume, 3, "welcome_step_resume must survive round-trip");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ui_settings_old_json_without_welcome_fields_defaults_to_not_seen() {
+        // Existing installs' saved JSON won't have these keys — they must
+        // deserialize cleanly with has_seen_welcome=false (wizard runs again).
+        use super::super::persistence::load;
+        let dir = std::env::temp_dir().join("apex_state_ui_settings_compat");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ui_settings.json");
+        let envelope = serde_json::json!({
+            "key": "ui_settings",
+            "version": 1,
+            "payload": {
+                "font_scale": 1.6,
+                "style_idx": 0,
+            }
+        });
+        std::fs::write(&path, serde_json::to_vec_pretty(&envelope).unwrap()).unwrap();
+        let loaded: UiSettings = load(&path).expect("compat payload must load");
+        assert!(!loaded.has_seen_welcome, "old saves should default has_seen_welcome=false");
+        assert_eq!(loaded.welcome_step_resume, 0, "old saves should default welcome_step_resume=0");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
