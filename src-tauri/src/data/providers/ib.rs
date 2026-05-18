@@ -94,22 +94,21 @@ impl MarketDataProvider for IbProvider {
     async fn bars(&self, _: &str, _: &str, _: i64, _: i64, _: Option<usize>) -> Result<Vec<BarWire>, ApiError> {
         Err(ApiError::NotSupported("ib: historical bars not exposed".into()))
     }
-    // Wave 12a: bridge to the per-symbol fanout hubs in `feeds::ib_ws`.
-    // The hubs are populated by `ws_loop`'s tick decoder — each decoded
-    // tick is fanned to bar / trade hubs unconditionally and to the
-    // quote hub when bid/ask are present in the payload.
+    // Wave 12a/13b/14b: bridge to the per-(symbol, tf) bar fanout hub in
+    // `feeds::ib_ws`. The hub is populated by `ws_loop`'s tick decoder via
+    // the `OhlcAggregator`, which keeps a rolling OHLC bucket per active
+    // `(sym, tf)` slot and emits live + closed bars on each tick. Quotes
+    // and trades use the symbol-keyed hubs (no TF concept on a tick).
     //
-    // IB ticks are trade-print shaped, so the bar stream synthesizes a
-    // degenerate 1m OHLC (open=high=low=close=tick price). A real bar
-    // aggregator is deferred — callers that need true bars should
-    // resample downstream or use `MarketDataProvider::bars` for history.
+    // Wave 14b lifted the 1m-only restriction: any standard timeframe
+    // string the aggregator recognizes ("1s"…"1d") is now valid, and the
+    // active-TF set is driven by `bar_hub_subscribe` so the tick path
+    // knows which buckets to fold each tick into. Unknown TFs fall back
+    // to 1m buckets inside the aggregator (with a one-shot warn) rather
+    // than failing here — keeps the provider permissive while the
+    // bucketing layer owns TF validation.
     fn subscribe_bars(&self, sym: &str, tf: &str) -> Result<BarStream, ApiError> {
-        if tf != "1m" {
-            return Err(ApiError::NotSupported(format!(
-                "ib: stream synthesizes 1m only, not {tf}"
-            )));
-        }
-        Ok(ib_ws::hub_subscribe(ib_ws::bar_hub(), sym))
+        Ok(ib_ws::bar_hub_subscribe(sym, tf))
     }
     fn unsubscribe_bars(&self, _: &str, _: &str) {
         // Receiver-drop is sufficient — `hub_fanout` prunes the dead
@@ -139,5 +138,36 @@ impl MarketDataProvider for IbProvider {
             crypto_only: false, historical: false, realtime: true,
             fundamentals: false, news: false, earnings: false, corporate_actions: false,
         }
+    }
+}
+
+// ── Wave 14b: subscribe_bars TF acceptance tests ─────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::providers::provider::MarketDataProvider;
+
+    #[test]
+    fn subscribe_bars_accepts_standard_timeframes() {
+        let p = IbProvider::new();
+        // All standard TFs should produce a live receiver — no NotSupported.
+        for tf in ["1m", "5m", "15m", "1h", "1d"] {
+            let sym = format!("TEST_IBP_{}", tf);
+            let rx = p.subscribe_bars(&sym, tf)
+                .unwrap_or_else(|e| panic!("subscribe_bars({tf}) failed: {e:?}"));
+            // Drop the receiver — next tick fanout (if any) will prune it.
+            drop(rx);
+        }
+    }
+
+    #[test]
+    fn subscribe_bars_accepts_unknown_tf_via_1m_fallback() {
+        // Wave 14b made the provider permissive: unknown TFs are routed
+        // through the aggregator's 1m fallback (with a one-shot warn) rather
+        // than rejected at the provider boundary.
+        let p = IbProvider::new();
+        let _rx = p.subscribe_bars("TEST_IBP_UNKNOWN", "7m")
+            .expect("unknown TF should not error at provider");
     }
 }
