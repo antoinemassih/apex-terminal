@@ -325,7 +325,10 @@ fn draw_chart(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Chart, t
     });
 
     // ── SESSIONS ──
-    let is_crypto = crate::data::is_crypto(&chart.symbol);
+    // Wave 9c: prefer registry-backed truth via `symbol_meta` so a real
+    // equity ticker that happens to end in USDT doesn't get the "N/A for
+    // crypto" 24/7 treatment.
+    let is_crypto = chart.symbol_meta.is_crypto();
     PanelSection::new("SESSIONS").show(ui, t, |ui, t| {
         if is_crypto {
             ui.add(BodyLabel::new("N/A for crypto (24/7 market)").color(color_half(t.dim)));

@@ -2957,8 +2957,10 @@ pub(crate) fn db_to_drawing(d: &crate::drawing_db::DbDrawing) -> Option<Drawing>
 }
 
 fn tick_simulation(chart: &mut Chart) {
-    // Skip simulation for crypto — real data comes from ApexCrypto
-    if crate::data::is_crypto(&chart.symbol) { return; }
+    // Skip simulation for crypto — real data comes from ApexCrypto.
+    // Wave 9c: registry-backed asset class via `symbol_meta` (avoids the
+    // `is_crypto(&str)` suffix heuristic mis-flagging XUSDT-style equities).
+    if chart.symbol_meta.is_crypto() { return; }
     // Skip simulation when ApexData is the active feed (Polygon-backed).
     // Off-hours we just want the chart to sit still; ticks/bars come from
     // WS Trade/Bar frames or not at all.
