@@ -38,6 +38,34 @@
 /// `Watchlist::link_groups`, which is bounded well below 255.
 pub const BROADCAST_GROUP: u8 = 0xFF;
 
+/// Identity of a single boolean-valued pane toggle. Each variant maps
+/// 1:1 to a `Chart` field; the dispatcher in
+/// `chart::renderer::gpu::apply_pane_events` writes that field on every
+/// sibling pane targeted by the event's `group`.
+///
+/// New toggles are added by extending this enum and adding a match arm
+/// in `apply_pane_events`. Keep variant names matching the `Chart`
+/// field they map to so grep across the two files is trivial.
+///
+/// Cycling (non-bool) toggles live in a separate event variant
+/// (`PaneEvent::SwingLegModeChanged`) — this enum is bool-valued only.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum PaneToggle {
+    LogScale,
+    OhlcTooltip,
+    MeasureTooltip,
+    ShowVolume,
+    ShowDeltaVolume,
+    ShowRvol,
+    ShowMaRibbon,
+    ShowCvd,
+    ShowPrevClose,
+    ShowPatternLabels,
+    ShowFootprint,
+    ShowAutoFib,
+    HitHighlight,
+}
+
 /// Events that a pane (or panel acting on a pane) can publish for
 /// sibling panes to react to. Variants are intentionally narrow so the
 /// fanout site stays cheap and the listener side stays exhaustive.
@@ -51,6 +79,16 @@ pub enum PaneEvent {
     /// same non-zero link group should follow. `group == BROADCAST_GROUP`
     /// means apply to every pane.
     TimeframeChanged { group: u8, timeframe: String },
+    /// A pane in `group` flipped a boolean display toggle. Sibling
+    /// panes targeted by `group` should mirror `value` on the field
+    /// identified by `kind`. Used by the top-nav indicator/tools/vol
+    /// menus when the user holds Shift (or broadcast mode is on) to
+    /// fan a toggle across panes.
+    ToggleChanged { group: u8, kind: PaneToggle, value: bool },
+    /// A pane in `group` cycled its `swing_leg_mode` (u8: 0=off,
+    /// 1=vertical, 2=diagonal). Split from `ToggleChanged` because the
+    /// value is tri-state, not bool.
+    SwingLegModeChanged { group: u8, value: u8 },
     /// The user picked a different pane layout (1, 2H, 3L, ...).
     /// Subscribers may need to recompute focus, persist favorites, etc.
     LayoutChanged,
@@ -66,7 +104,7 @@ pub enum PaneEvent {
 /// panes. This sidesteps the `&mut Vec<Chart>` / `&mut Watchlist`
 /// borrow-conflict that a fan-out-on-publish listener model hits.
 pub struct SubscriptionBus {
-    pending: Vec<PaneEvent>,
+    pending: Vec<(PaneEvent, Option<usize>)>,
 }
 
 impl SubscriptionBus {
@@ -74,16 +112,28 @@ impl SubscriptionBus {
         Self { pending: Vec::new() }
     }
 
-    /// Queue an event for the next `drain`. Cheap — a single `Vec::push`.
+    /// Queue an event with no origin pane. The dispatcher applies
+    /// matching events to every targeted pane (no originator skip).
+    /// Use this when the publisher already mutated its own pane state
+    /// and wants every other matching pane to follow — typical for
+    /// out-of-band UI publishers (command palette, top nav toolbar).
     pub fn publish(&mut self, event: PaneEvent) {
-        self.pending.push(event);
+        self.pending.push((event, None));
     }
 
-    /// Take all queued events, leaving the bus empty. The caller is
-    /// expected to apply them (typically once per frame in the render
-    /// loop). Returning an owned `Vec` avoids a borrow on `self` during
-    /// the apply step (the caller needs `&mut Vec<Chart>`).
-    pub fn drain(&mut self) -> Vec<PaneEvent> {
+    /// Queue an event tagged with its originating pane index. The
+    /// dispatcher skips that pane during fan-out (it already has the
+    /// new value applied). Used by the render-loop publisher that
+    /// drives cross-pane symbol/timeframe sync.
+    pub fn publish_from(&mut self, event: PaneEvent, origin: usize) {
+        self.pending.push((event, Some(origin)));
+    }
+
+    /// Take all queued `(event, origin)` pairs, leaving the bus
+    /// empty. The caller applies them (typically once per frame in
+    /// the render loop). Returning an owned `Vec` avoids a borrow on
+    /// `self` during the apply step (the caller needs `&mut Vec<Chart>`).
+    pub fn drain(&mut self) -> Vec<(PaneEvent, Option<usize>)> {
         std::mem::take(&mut self.pending)
     }
 
@@ -115,27 +165,27 @@ mod tests {
     fn publish_then_drain_returns_events_in_order() {
         let mut bus = SubscriptionBus::new();
         bus.publish(PaneEvent::SymbolChanged { group: 1, symbol: "AAPL".into() });
-        bus.publish(PaneEvent::SymbolChanged { group: 1, symbol: "TSLA".into() });
+        bus.publish_from(PaneEvent::SymbolChanged { group: 1, symbol: "TSLA".into() }, 2);
         bus.publish(PaneEvent::LayoutChanged);
         assert_eq!(bus.pending_count(), 3);
         let drained = bus.drain();
         assert_eq!(drained.len(), 3);
         assert_eq!(bus.pending_count(), 0);
         match &drained[0] {
-            PaneEvent::SymbolChanged { group, symbol } => {
+            (PaneEvent::SymbolChanged { group, symbol }, None) => {
                 assert_eq!(*group, 1);
                 assert_eq!(symbol, "AAPL");
             }
-            _ => panic!("expected SymbolChanged"),
+            _ => panic!("expected SymbolChanged with no origin"),
         }
         match &drained[1] {
-            PaneEvent::SymbolChanged { group, symbol } => {
+            (PaneEvent::SymbolChanged { group, symbol }, Some(2)) => {
                 assert_eq!(*group, 1);
                 assert_eq!(symbol, "TSLA");
             }
-            _ => panic!("expected SymbolChanged"),
+            _ => panic!("expected SymbolChanged with origin=2"),
         }
-        assert!(matches!(drained[2], PaneEvent::LayoutChanged));
+        assert!(matches!(drained[2], (PaneEvent::LayoutChanged, None)));
     }
 
     #[test]

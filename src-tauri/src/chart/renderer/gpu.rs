@@ -3542,6 +3542,45 @@ pub(crate) fn apply_pane_events(
                     }
                 }
             }
+            PaneEvent::ToggleChanged { group, kind, value } => {
+                use crate::state::PaneToggle;
+                let is_broadcast = *group == BROADCAST_GROUP;
+                if !is_broadcast && (*group == 0 || *group > group_count) {
+                    continue;
+                }
+                for (pi, pane) in panes.iter_mut().enumerate() {
+                    if Some(pi) == *origin { continue; }
+                    let matches = is_broadcast || pane.link_group == *group;
+                    if !matches { continue; }
+                    match kind {
+                        PaneToggle::LogScale          => pane.log_scale = *value,
+                        PaneToggle::OhlcTooltip       => pane.ohlc_tooltip = *value,
+                        PaneToggle::MeasureTooltip    => pane.measure_tooltip = *value,
+                        PaneToggle::ShowVolume        => pane.show_volume = *value,
+                        PaneToggle::ShowDeltaVolume   => pane.show_delta_volume = *value,
+                        PaneToggle::ShowRvol          => pane.show_rvol = *value,
+                        PaneToggle::ShowMaRibbon      => pane.show_ma_ribbon = *value,
+                        PaneToggle::ShowCvd           => pane.show_cvd = *value,
+                        PaneToggle::ShowPrevClose     => pane.show_prev_close = *value,
+                        PaneToggle::ShowPatternLabels => pane.show_pattern_labels = *value,
+                        PaneToggle::ShowFootprint     => pane.show_footprint = *value,
+                        PaneToggle::ShowAutoFib       => pane.show_auto_fib = *value,
+                        PaneToggle::HitHighlight      => pane.hit_highlight = *value,
+                    }
+                }
+            }
+            PaneEvent::SwingLegModeChanged { group, value } => {
+                let is_broadcast = *group == BROADCAST_GROUP;
+                if !is_broadcast && (*group == 0 || *group > group_count) {
+                    continue;
+                }
+                for (pi, pane) in panes.iter_mut().enumerate() {
+                    if Some(pi) == *origin { continue; }
+                    let matches = is_broadcast || pane.link_group == *group;
+                    if !matches { continue; }
+                    pane.swing_leg_mode = *value;
+                }
+            }
             PaneEvent::LayoutChanged | PaneEvent::BroadcastEnabled { .. } => {
                 // No subscribers today; queue drain still removes them.
             }
@@ -5873,19 +5912,23 @@ impl ApplicationHandler for App {
             // — they fall through to "apply to every matching pane",
             // which is fine because the publishing call site already
             // applied the mutation to its own pane before publishing.
-            let mut pane_origins: Vec<Option<usize>> = Vec::new();
+            // Wave 13a: origin is now stored on the bus itself
+            // (`publish_from`), so events published from anywhere
+            // (here, top_nav toggles, command palette, …) carry their
+            // own originator without a parallel index Vec. Drain
+            // returns `(event, origin)` pairs ready for the dispatcher.
             for (origin, group, sym_opt, tf_opt) in pane_changes.drain(..) {
                 if let Some(sym) = sym_opt {
-                    cw.watchlist.subscriptions.publish(
+                    cw.watchlist.subscriptions.publish_from(
                         crate::state::PaneEvent::SymbolChanged { group, symbol: sym },
+                        origin,
                     );
-                    pane_origins.push(Some(origin));
                 }
                 if let Some(tf) = tf_opt {
-                    cw.watchlist.subscriptions.publish(
+                    cw.watchlist.subscriptions.publish_from(
                         crate::state::PaneEvent::TimeframeChanged { group, timeframe: tf },
+                        origin,
                     );
-                    pane_origins.push(Some(origin));
                 }
             }
 
@@ -5894,12 +5937,7 @@ impl ApplicationHandler for App {
             // IDs from prior sessions (or the old click-cycle UI) would
             // silently link panes the user never explicitly grouped.
             let group_count = cw.watchlist.link_groups.len() as u8;
-            let drained = cw.watchlist.subscriptions.drain();
-            let paired: Vec<(crate::state::PaneEvent, Option<usize>)> = drained
-                .into_iter()
-                .enumerate()
-                .map(|(i, e)| (e, pane_origins.get(i).copied().flatten()))
-                .collect();
+            let paired = cw.watchlist.subscriptions.drain();
             apply_pane_events(&mut cw.panes, &paired, group_count, true);
 
             // Request redraw only when something actually needs to repaint.
