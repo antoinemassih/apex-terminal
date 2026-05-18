@@ -201,6 +201,49 @@ mod tests {
     }
 
     #[test]
+    fn symbol_or_guess_uses_registry_when_present() {
+        // Register a quirky symbol in the global registry; `symbol_or_guess`
+        // must return the registered Symbol (with its asset_class + aliases),
+        // not a freshly-guessed one.
+        let key = "REGISTRY_HIT_TEST_SYM_QQQX";
+        registry().insert(Symbol::index(key).with_alias(Vendor::Polygon, "QQQX_POLY"));
+        let got = super::super::symbol_or_guess(key);
+        assert_eq!(got.canonical, key);
+        assert!(got.is_index());
+        assert_eq!(got.alias(Vendor::Polygon), "QQQX_POLY");
+    }
+
+    #[test]
+    fn symbol_or_guess_falls_back_to_string_heuristic_when_absent() {
+        // Use a canonical that is exceedingly unlikely to ever be registered
+        // so the test is order-independent: registry miss → fallback path.
+        let s = super::super::symbol_or_guess("Z_NEVER_REGISTERED_XYZUSDT");
+        // The string heuristic sees the `USDT` suffix and yields crypto.
+        assert!(s.is_crypto());
+
+        let opt = super::super::symbol_or_guess("O:SPY251219C00450000");
+        assert!(opt.is_option());
+
+        let eq = super::super::symbol_or_guess("Z_NEVER_REGISTERED_EQ");
+        assert!(eq.is_equity());
+    }
+
+    #[test]
+    fn crypto_detection_via_registry_correct_for_xusdt_equity() {
+        // THE motivating bug: a real equity ticker that ends in `USDT` would
+        // be mis-classified as crypto by the string heuristic. Registering it
+        // as Equity must override that wrong guess.
+        let bad = "XUSDT";
+        // Heuristic alone is wrong:
+        assert!(super::super::is_crypto(bad), "precondition: heuristic mis-flags XUSDT");
+        // Register as equity → registry wins:
+        registry().insert(Symbol::equity(bad).with_alias(Vendor::ApexData, bad));
+        let got = super::super::symbol_or_guess(bad);
+        assert!(!got.is_crypto(), "registry must override the broken heuristic");
+        assert!(got.is_equity());
+    }
+
+    #[test]
     fn populate_default_seeds_some_symbols() {
         let r = SymbolRegistry::new();
         assert!(r.is_empty());
