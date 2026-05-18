@@ -136,7 +136,7 @@ pub(crate) fn draw_content(
                 let is_sel = i == selected;
                 let label = egui::RichText::new(k.label())
                     .monospace()
-                    .size(9.0)
+                    .size(font_xs())
                     .color(if is_sel { t.accent } else { t.dim });
                 let resp = ui.add(egui::Label::new(label).sense(egui::Sense::click()));
                 if resp.clicked() {
@@ -175,21 +175,21 @@ pub(crate) fn draw_content(
                         ui.add_space(2.0);
                         let cw = (panel_w - 12.0) / 5.0;
                         ui.add_sized(egui::vec2(cw, 14.0), egui::Label::new(
-                            egui::RichText::new(&r.symbol).monospace().size(9.0).color(t.text)
+                            egui::RichText::new(&r.symbol).monospace().size(font_xs()).color(t.text)
                         ));
                         ui.add_sized(egui::vec2(cw, 14.0), egui::Label::new(
-                            egui::RichText::new(format!("{:.2}", r.last)).monospace().size(9.0).color(t.text)
+                            egui::RichText::new(format!("{:.2}", r.last)).monospace().size(font_xs()).color(t.text)
                         ));
                         let chg_color = if r.change_pct >= 0.0 { t.bull } else { t.bear };
                         ui.add_sized(egui::vec2(cw, 14.0), egui::Label::new(
-                            egui::RichText::new(format!("{:+.2}%", r.change_pct)).monospace().size(9.0).color(chg_color)
+                            egui::RichText::new(format!("{:+.2}%", r.change_pct)).monospace().size(font_xs()).color(chg_color)
                         ));
                         ui.add_sized(egui::vec2(cw, 14.0), egui::Label::new(
-                            egui::RichText::new(fmt_volume(r.volume)).monospace().size(9.0).color(t.dim)
+                            egui::RichText::new(fmt_volume(r.volume)).monospace().size(font_xs()).color(t.dim)
                         ));
                         let rvol_str = r.rvol.map(|v| format!("{:.1}x", v)).unwrap_or_else(|| "—".into());
                         ui.add_sized(egui::vec2(cw, 14.0), egui::Label::new(
-                            egui::RichText::new(rvol_str).monospace().size(9.0).color(t.dim)
+                            egui::RichText::new(rvol_str).monospace().size(font_xs()).color(t.dim)
                         ));
                     });
                     if row_resp.response.interact(egui::Sense::click()).clicked() {
