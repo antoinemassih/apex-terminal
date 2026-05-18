@@ -61,17 +61,17 @@ pub fn refresh_universes_in_background() {
             }
 
             match apex_rest::fetch_holdings(poly_ticker) {
-                Some(rows) if !rows.is_empty() => {
+                Ok(rows) if !rows.is_empty() => {
                     eprintln!("[universe-refresh] {name} ← {poly_ticker}: {} holdings", rows.len());
                     watchlist_db::save_universe(name, display, kind, "polygon", &rows);
                     let symbols: Vec<String> = rows.into_iter().map(|(s, _)| s).collect();
                     watchlist_db::set_cached_universe(name, symbols);
                 }
-                Some(_) => {
+                Ok(_) => {
                     eprintln!("[universe-refresh] {name} ← {poly_ticker}: empty response, skip");
                 }
-                None => {
-                    eprintln!("[universe-refresh] {name} ← {poly_ticker}: fetch failed, skip");
+                Err(e) => {
+                    eprintln!("[universe-refresh] {name} ← {poly_ticker}: fetch failed: {e}");
                 }
             }
         }
