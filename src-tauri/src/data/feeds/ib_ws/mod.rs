@@ -13,7 +13,7 @@ pub mod resolver;
 
 use std::{collections::{HashMap, HashSet}, sync::Arc, sync::OnceLock, time::Duration};
 use std::sync::atomic::{AtomicI64, AtomicU32, AtomicU64};
-use std::sync::Mutex as StdMutex;
+use parking_lot::Mutex as StdMutex;
 use crate::data::connectivity::ConnectionState;
 use crate::data::feeds::apex_data::types::{AssetClass, BarWire, Quote, Trade};
 
@@ -50,7 +50,7 @@ pub(crate) fn hub_subscribe<T>(hub: &'static Hub<T>, symbol: &str)
     -> tokio::sync::mpsc::UnboundedReceiver<T>
 {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-    let mut map = hub.lock().expect("ib_ws hub poisoned");
+    let mut map = hub.lock();
     map.entry(symbol.to_string()).or_default().push(tx);
     rx
 }
@@ -59,7 +59,7 @@ pub(crate) fn hub_subscribe<T>(hub: &'static Hub<T>, symbol: &str)
 /// senders in the same pass. Cheap when nobody is subscribed (early return
 /// on empty entry; lock held for the duration of the inner `retain`).
 fn hub_fanout<T: Clone>(hub: &'static Hub<T>, symbol: &str, value: T) {
-    let mut map = hub.lock().expect("ib_ws hub poisoned");
+    let mut map = hub.lock();
     let Some(senders) = map.get_mut(symbol) else { return };
     if senders.is_empty() { return; }
     senders.retain(|s| s.send(value.clone()).is_ok());
@@ -558,13 +558,13 @@ mod hub_tests {
         let sym = "TEST_FANOUT_MSFT";
         let rx = hub_subscribe(bar_hub(), sym);
         // Before any fanout, sender is parked in the hub.
-        assert_eq!(bar_hub().lock().unwrap().get(sym).map(|v| v.len()), Some(1));
+        assert_eq!(bar_hub().lock().get(sym).map(|v| v.len()), Some(1));
 
         drop(rx);
         // Trigger a fanout — `retain` should prune the dead sender and the
         // empty entry is removed in the same pass.
         hub_fanout(bar_hub(), sym, mk_bar(sym, 300.0));
-        assert!(bar_hub().lock().unwrap().get(sym).is_none());
+        assert!(bar_hub().lock().get(sym).is_none());
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -666,6 +666,6 @@ mod hub_tests {
     fn fanout_with_no_subscribers_is_a_noop() {
         // No panic, no hub entry created.
         hub_fanout(bar_hub(), "TEST_FANOUT_GHOST", mk_bar("TEST_FANOUT_GHOST", 1.0));
-        assert!(bar_hub().lock().unwrap().get("TEST_FANOUT_GHOST").is_none());
+        assert!(bar_hub().lock().get("TEST_FANOUT_GHOST").is_none());
     }
 }
