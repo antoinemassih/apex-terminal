@@ -1511,7 +1511,7 @@ pub fn action_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool)
     let resp = ui.add_enabled(enabled,
         egui::Button::new(RichText::new(label).monospace().size(font_sm_tight()).strong().color(fg))
             .fill(bg).stroke(Stroke::new(stroke_thin(), border))
-            .corner_radius(3.0).min_size(egui::vec2(0.0, row_height_compact())));
+            .corner_radius(radius_sm()).min_size(egui::vec2(0.0, row_height_compact())));
     hit(&resp.rect, "ACTION_BTN", "Buttons");
     if resp.hovered() && !crate::design_tokens::is_inspect_mode() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp.clicked()
@@ -1526,7 +1526,7 @@ pub fn trade_btn(ui: &mut egui::Ui, label: &str, color: Color32, width: f32) -> 
         (color.g() as f32 * bright) as u8,
         (color.b() as f32 * bright) as u8);
     let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(11.0).strong().color(contrast_fg(bg)))
-        .fill(bg).min_size(egui::vec2(width, row_height_spacious())).corner_radius(3.0));
+        .fill(bg).min_size(egui::vec2(width, row_height_spacious())).corner_radius(radius_sm()));
     hit(&resp.rect, "TRADE_BTN", "Buttons");
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);

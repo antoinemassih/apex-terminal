@@ -214,7 +214,7 @@ fn draw_plan(ui: &mut egui::Ui, plan: &TradePlanV2, t: &Theme) {
                 .monospace().size(FONT_XS).color(t.accent))
             .fill(color_alpha(t.accent, alpha_ghost()))
             .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.accent, alpha_muted())))
-            .corner_radius(3.0)
+            .corner_radius(radius_sm())
             .min_size(egui::vec2(0.0, 18.0)));
         if resp.clicked() {
             fire_provenance(OpenProvenanceFor { lineage_id: lineage });

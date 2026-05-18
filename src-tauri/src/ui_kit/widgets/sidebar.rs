@@ -230,7 +230,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
             st::color_alpha(theme.text(), st::ALPHA_GHOST),
             hov,
         );
-        ui.painter().rect_filled(btn_rect, CornerRadius::same(3), bg); // TODO: off-token
+        ui.painter().rect_filled(btn_rect, CornerRadius::same(st::radius_sm() as u8), bg);
         let glyph = if *state {
             crate::ui_kit::icons::Icon::CARET_RIGHT
         } else {

@@ -274,7 +274,7 @@ fn paint_calendar<'a>(
                 if hover_t > 0.001 {
                     ui.painter().rect_filled(
                         title_rect,
-                        CornerRadius::same(3), // TODO: off-token
+                        CornerRadius::same(st::radius_sm() as u8),
                         st::color_alpha(bg_hover, (st::ALPHA_GHOST as f32 * hover_t) as u8),
                     );
                 }
@@ -559,7 +559,7 @@ fn paint_one_month(
             }
 
             // Paint cell background.
-            let radius = CornerRadius::same(3); // TODO: off-token
+            let radius = CornerRadius::same(st::radius_sm() as u8);
             let accent = theme.accent();
             let mid_bg = st::color_alpha(accent, st::ALPHA_GHOST);
             let preview_bg = st::color_alpha(accent, st::ALPHA_FAINT);
