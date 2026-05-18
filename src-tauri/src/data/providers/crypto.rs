@@ -32,9 +32,14 @@ impl Default for CryptoProvider {
 impl Connection for CryptoProvider {
     fn name(&self) -> &str { "crypto" }
     fn state(&self) -> ConnectionState {
-        // crypto_feed::FEED_RUNNING is private; for now treat the existence of
-        // a sub-provider as Authenticated when the singleton has started.
-        // Wave-3 will expose a is_connected() hook.
+        use std::sync::atomic::Ordering;
+        if crate::data::feeds::crypto_feed::FORCE_RECONNECT.load(Ordering::Relaxed) {
+            return ConnectionState::Backoff {
+                until: std::time::Instant::now() + std::time::Duration::from_secs(1),
+                attempt: crate::data::feeds::crypto_feed::RECONNECT_COUNT.load(Ordering::Relaxed),
+                reason: "tick_stalled".into(),
+            };
+        }
         ConnectionState::Idle
     }
     fn metrics(&self) -> ConnectionMetrics {

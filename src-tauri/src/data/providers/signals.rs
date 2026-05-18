@@ -30,7 +30,17 @@ impl Default for SignalsProvider {
 
 impl Connection for SignalsProvider {
     fn name(&self) -> &str { "signals" }
-    fn state(&self) -> ConnectionState { ConnectionState::Idle }
+    fn state(&self) -> ConnectionState {
+        use std::sync::atomic::Ordering;
+        if crate::data::feeds::signals_feed::FORCE_RECONNECT.load(Ordering::Relaxed) {
+            return ConnectionState::Backoff {
+                until: std::time::Instant::now() + std::time::Duration::from_secs(1),
+                attempt: crate::data::feeds::signals_feed::RECONNECT_COUNT.load(Ordering::Relaxed),
+                reason: "tick_stalled".into(),
+            };
+        }
+        ConnectionState::Idle
+    }
     fn metrics(&self) -> ConnectionMetrics {
         super::ib::feed_metrics_snapshot(
             &crate::data::feeds::signals_feed::MESSAGES_IN,
