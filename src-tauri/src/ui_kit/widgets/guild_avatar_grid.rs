@@ -78,10 +78,15 @@ impl<'a> GuildAvatarGrid<'a> {
             // Background glow on hover/selected
             if selected || hovered {
                 let glow_rect = icon_rect.expand(2.0);
+                // Hover bg is always the Discord dark-gray; contrast_fg returns WHITE on
+                // dark themes and adapts automatically if bg ever changes. Using
+                // contrast_fg instead of hardcoded WHITE keeps the glow visible even
+                // when the outer app bg is light (Bauhaus / Ivory / Newsprint).
+                let icon_bg = Color32::from_gray(50);
                 let glow_color = if selected {
                     st::color_alpha(discord_blurple, st::alpha_strong())
                 } else {
-                    st::color_alpha(Color32::WHITE, st::alpha_soft())
+                    st::color_alpha(st::contrast_fg(icon_bg), st::alpha_soft())
                 };
                 ui.painter().rect_filled(glow_rect, rounding + 2.0, glow_color);
             }
@@ -91,7 +96,9 @@ impl<'a> GuildAvatarGrid<'a> {
                 let bg = if hovered && !selected { Color32::from_gray(50) } else { Color32::from_gray(35) };
                 ui.painter().rect_filled(icon_rect, rounding, bg);
                 let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
-                let tint = if hovered || selected { Color32::WHITE } else { Color32::from_gray(200) };
+                // Icon bg is always Discord dark-gray; contrast_fg returns WHITE here
+                // (same as the original hardcoded value) but is correct by semantics.
+                let tint = if hovered || selected { st::contrast_fg(bg) } else { Color32::from_gray(200) };
                 ui.painter().image(tex.id(), icon_rect, uv, tint);
             } else {
                 // Initials fallback
@@ -105,7 +112,9 @@ impl<'a> GuildAvatarGrid<'a> {
                     .collect::<String>()
                     .to_uppercase();
                 let font = egui::FontId::monospace(if abbrev.len() > 1 { 9.0 } else { 11.0 });
-                let text_col = if selected || hovered { Color32::WHITE } else { Color32::from_gray(180) };
+                // Initials bg is always dark (blurple/gray-70/gray-50); contrast_fg
+                // returns WHITE, same as before, but correct if bg ever changes.
+                let text_col = if selected || hovered { st::contrast_fg(bg) } else { Color32::from_gray(180) };
                 ui.painter().text(icon_rect.center(), egui::Align2::CENTER_CENTER, &abbrev, font, text_col);
             }
 
