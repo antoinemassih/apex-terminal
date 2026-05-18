@@ -197,13 +197,20 @@ struct BlurUniforms {
     weights: [[f32; 4]; 4], // 13 weights packed in 16 floats; last 3 are 0.
 }
 
+// WGSL layout (48 bytes):
+//   inset_min: vec2<f32>  // 0..8
+//   inset_max: vec2<f32>  // 8..16
+//   corner:    f32        // 16..20
+//   _pad:      vec3<f32>  // vec3 forces 16-byte align → starts at offset 32
+//                         // struct size rounds to multiple of 16 → 48
+// Rust mirror must match exactly or wgpu validation rejects the bind group.
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct SilhouetteUniforms {
-    inset_min: [f32; 2],
-    inset_max: [f32; 2],
-    corner: f32,
-    _pad: [f32; 3],
+    inset_min: [f32; 2], // 0..8
+    inset_max: [f32; 2], // 8..16
+    corner: f32,         // 16..20
+    _pad: [f32; 7],      // 20..48 — covers WGSL vec3 alignment gap + trailing struct padding
 }
 
 #[repr(C)]
@@ -547,7 +554,7 @@ impl CallbackTrait for ShadowCallback {
             inset_min,
             inset_max,
             corner: self.corner / bucket_f,
-            _pad: [0.0; 3],
+            _pad: [0.0; 7],
         };
         let silh_ubo = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("apex.shadow.silh.ubo"),
