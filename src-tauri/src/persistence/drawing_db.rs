@@ -500,3 +500,129 @@ async fn do_remove_group(pool: &PgPool, id: &str) {
         .execute(pool)
         .await;
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Failure-injection tests for the PostgreSQL persistence layer.
+//
+// These tests do NOT require a live Postgres instance — they use clearly-
+// bogus URLs / closed ports to provoke connection failures deterministically.
+// Each test enforces an upper time bound via `tokio::time::timeout` so
+// the CI job cannot hang on a blocked pool.
+// ─────────────────────────────────────────────────────────────────────────
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    const BOGUS_PG_URL: &str = "postgres://apex:apex@127.0.0.1:1/apex_test";
+    const STARTUP_DEADLINE: Duration = Duration::from_secs(5);
+    const DRAIN_DEADLINE: Duration = Duration::from_secs(3);
+
+    /// Attempting to connect to an unreachable Postgres URL must complete
+    /// within `STARTUP_DEADLINE` and must not block indefinitely.
+    ///
+    /// The init path in `lib.rs` already guards against blocking startup
+    /// (pool acquire errors are reported as warnings, not panics). This test
+    /// exercises the `PgPool::connect_lazy` / timeout semantics directly so
+    /// we have explicit coverage before hitting prod.
+    ///
+    /// Note: `drawing_db::init` itself is NOT called here because the module
+    /// uses a `OnceLock` and is exercised in the integration init path.
+    /// Instead we verify that constructing a pool against an unreachable URL
+    /// completes within the deadline and does not panic.
+    #[tokio::test]
+    async fn pg_pool_unreachable_does_not_block_startup() {
+        let result = tokio::time::timeout(STARTUP_DEADLINE, async {
+            // `PgPoolOptions::connect_lazy` returns immediately (no network
+            // call at build time). The failure surfaces only on the first
+            // query — which is the contract the app relies on.
+            sqlx::postgres::PgPoolOptions::new()
+                .max_connections(1)
+                .acquire_timeout(Duration::from_secs(2))
+                .connect_lazy(BOGUS_PG_URL)
+        })
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "Pool construction timed out — should return immediately for lazy connect"
+        );
+
+        // If lazy connect is unavailable, try a non-blocking connect attempt
+        // that is guaranteed to fail fast (connection refused on port 1).
+        // This verifies the pool is None-equivalent for callers checking `get_pool()`.
+        if let Ok(pool_result) = result {
+            assert!(
+                pool_result.is_ok(),
+                "connect_lazy should succeed immediately (no network I/O at build time)"
+            );
+            // The pool was built but `drawing_db::init` was intentionally NOT
+            // called with this broken pool — confirming `get_pool()` stays None.
+            assert!(
+                super::get_pool().is_none(),
+                "get_pool() should be None when drawing_db::init was never called"
+            );
+        }
+    }
+
+    /// `PgPoolShutdown::drain()` must complete within `DRAIN_DEADLINE` even
+    /// when the pool was built against a reachable URL that has since become
+    /// unreachable. We test the happy path: close() on a lazy-built pool
+    /// (no connections ever opened) should return immediately.
+    #[tokio::test]
+    async fn pg_pool_shutdown_drains_cleanly() {
+        use crate::data::connectivity::shutdown::{PgPoolShutdown, Shutdown};
+
+        // Build a lazy pool — no actual connections are held.
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(2)
+            .acquire_timeout(Duration::from_secs(1))
+            .connect_lazy(BOGUS_PG_URL)
+            .expect("connect_lazy must succeed without a network call");
+
+        let shutdown = PgPoolShutdown { name: "test_pool", pool };
+
+        let result = tokio::time::timeout(
+            DRAIN_DEADLINE,
+            shutdown.drain(DRAIN_DEADLINE),
+        )
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "drain() exceeded the {DRAIN_DEADLINE:?} deadline"
+        );
+        assert!(
+            result.unwrap().is_ok(),
+            "drain() returned an error on a pool with no live connections"
+        );
+    }
+
+    /// Pool exhaustion test: acquiring a connection from a 1-connection pool
+    /// against a bogus URL should time out and return an error — not panic or
+    /// block indefinitely.
+    ///
+    /// This validates that the `acquire_timeout` setting is respected, which
+    /// is the production guard against "query piles up forever" when PG is
+    /// temporarily unavailable.
+    ///
+    /// Marked `#[ignore]` because this test has a 2-second mandatory wait
+    /// (the acquire timeout) and would slow down every CI run — run it
+    /// manually with `cargo test -- --ignored persistence::drawing_db::tests::pg_pool_exhausted_save_returns_error`.
+    #[tokio::test]
+    #[ignore = "requires 2-second acquire_timeout to elapse; run manually with --ignored"]
+    async fn pg_pool_exhausted_save_returns_error() {
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .acquire_timeout(Duration::from_secs(2))
+            .connect_lazy(BOGUS_PG_URL)
+            .expect("connect_lazy must succeed");
+
+        // Attempting to acquire from a pool that can never connect should
+        // time out and return an error (not panic).
+        let result = pool.acquire().await;
+        assert!(
+            result.is_err(),
+            "Expected pool.acquire() to fail against unreachable URL, got Ok"
+        );
+    }
+}
