@@ -404,6 +404,28 @@ pub(crate) struct ComboLeg {
     pub(crate) side: String,
 }
 
+/// P1.12: Typed order-level errors that require structured handling at the
+/// call site (as opposed to `OrderResult::Rejected(String)` which is a
+/// generic catch-all for all other rejection reasons).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum OrderError {
+    /// The required notional exceeds available buying power.
+    /// `required` is the candidate order notional (qty × price) plus any
+    /// in-flight notional already committed; `available` is the broker-
+    /// reported buying power at pre-check time.
+    InsufficientBuyingPower { required: f64, available: f64 },
+}
+
+impl std::fmt::Display for OrderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OrderError::InsufficientBuyingPower { required, available } => {
+                write!(f, "insufficient buying power: need ${required:.0}, have ${available:.0}")
+            }
+        }
+    }
+}
+
 /// Result of submitting an intent
 #[derive(Debug, Clone)]
 pub(crate) enum OrderResult {
@@ -842,7 +864,8 @@ impl OrderManager {
             }
         }
 
-        // ── 2.8 Pre-submit buying-power check (Wave 6b) ──
+        // ── 2.8 Pre-submit buying-power check (P1.12) ──
+        // Gate submit() on a BP precheck BEFORE any broker.submit() call.
         // Skip in paper (unlimited buying power by definition) and skip if
         // account_data not yet loaded (poller may not have fired on first
         // submit — log and proceed rather than fail-closed).
@@ -863,18 +886,32 @@ impl OrderManager {
                             let qty_floor = intent.qty as f64;
                             if qty_floor >= 0.95 * bp {
                                 self.orders_rejected += 1;
-                                return OrderResult::Rejected(format!(
-                                    "insufficient buying power for market order: qty {} >= 95% of ${:.0}",
-                                    intent.qty, bp));
+                                let err = OrderError::InsufficientBuyingPower {
+                                    required: qty_floor,
+                                    available: bp,
+                                };
+                                let msg = format!(
+                                    "bp_block (market): qty {} >= 95% of ${:.0} buying power",
+                                    intent.qty, bp
+                                );
+                                report(ErrorLevel::Warn, "order_manager", "bp_block", msg.clone());
+                                return OrderResult::Rejected(err.to_string());
                             }
                         } else {
                             let candidate_notional = (intent.qty as f64) * (intent.price as f64);
                             let total = candidate_notional + inflight_notional;
                             if total > bp {
                                 self.orders_rejected += 1;
-                                return OrderResult::Rejected(format!(
-                                    "insufficient buying power: need ${:.0}, have ${:.0}",
-                                    total, bp));
+                                let err = OrderError::InsufficientBuyingPower {
+                                    required: total,
+                                    available: bp,
+                                };
+                                let msg = format!(
+                                    "bp_block: need ${total:.0}, have ${bp:.0} (symbol={}, qty={}, price={:.2})",
+                                    intent.symbol, intent.qty, intent.price
+                                );
+                                report(ErrorLevel::Warn, "order_manager", "bp_block", msg);
+                                return OrderResult::Rejected(err.to_string());
                             }
                         }
                     }
@@ -4207,5 +4244,114 @@ mod tests {
                  deadlock detected — test did not complete within 30 s"
             ),
         }
+    }
+
+    // ── P1.12: Buying-power first-submit block ───────────────────────────────
+    //
+    // Verifies that a too-large order is rejected BEFORE broker.submit() is
+    // ever called. The MockBroker panics on Submit to enforce this invariant —
+    // if the BP gate lets the order through, the test will panic inside the
+    // spawned broker thread, which surfaces as a panic in the test thread when
+    // we call `wait_for_mock_call`.
+    //
+    // We also confirm the rejection message carries the canonical
+    // "insufficient buying power" copy so callers can match on it.
+
+    struct PanicBroker;
+    impl Broker for PanicBroker {
+        fn submit(&self, _args: &SubmitArgs) -> Result<String, String> {
+            panic!("PanicBroker: broker.submit() called — BP gate should have blocked this order");
+        }
+        fn cancel(&self, _backend_id: &str, _cid: &str) -> Result<(), String> { Ok(()) }
+        fn modify(&self, _args: &ModifyArgs) -> Result<(), String> { Ok(()) }
+        fn lookup_by_client_id(&self, _cid: &str) -> Result<Option<BrokerOrderState>, crate::data::connectivity::error::ApiError> {
+            Ok(None)
+        }
+        fn cancel_all(&self, _symbol: &str) -> Result<usize, crate::data::connectivity::error::ApiError> { Ok(0) }
+        fn resolve_contract(&self, _symbol: &str) -> Result<super::super::broker::ContractDetails, crate::data::connectivity::error::ApiError> {
+            Ok(Default::default())
+        }
+        fn submit_bracket(&self, _args: &BracketSubmitArgs) -> Result<super::super::broker::BracketSubmitResponse, String> { Ok(Default::default()) }
+        fn submit_oco(&self, _args: &OcoSubmitArgs) -> Result<super::super::broker::OcoSubmitResponse, String> { Ok(Default::default()) }
+        fn submit_conditional(&self, _args: &ConditionalSubmitArgs) -> Result<String, String> { Ok("ok".into()) }
+        fn submit_options_trigger(&self, _args: &OptionsTriggerArgs) -> Result<super::super::broker::OptionsTriggerResponse, String> { Ok(Default::default()) }
+        fn submit_combo(&self, _args: &ComboSubmitArgs) -> Result<String, String> { Ok("ok".into()) }
+    }
+
+    #[test]
+    fn p1_12_bp_block_rejects_before_broker_submit() {
+        use std::sync::Arc;
+
+        // Wire a PanicBroker — submit() panics if called.
+        let mut m = OrderManager::with_broker(Arc::new(PanicBroker) as Arc<dyn Broker>);
+        m.paper_mode = false;
+        m.armed = true;
+        m.initial_reconcile_done = true;
+        m.risk_limits.dedup_cooldown_ms = 0;
+        m.risk_limits.max_order_qty = 1_000_000;
+        m.risk_limits.max_position_qty = 1_000_000;
+        m.risk_limits.max_notional = 0.0;  // disable notional soft gate
+
+        // Inject a connected account summary with $10_000 buying power.
+        // We use the ACCOUNT_DATA static directly since `read_account_data`
+        // reads it. In tests this static may already be initialised by a
+        // concurrent test — get_or_init is idempotent.
+        let acct_data = super::super::ACCOUNT_DATA.get_or_init(|| {
+            std::sync::Mutex::new(None)
+        });
+        {
+            let mut guard = acct_data.lock().unwrap();
+            *guard = Some((
+                super::super::AccountSummary {
+                    connected: true,
+                    buying_power: 10_000.0,
+                    nav: 10_000.0,
+                    ..Default::default()
+                },
+                vec![],
+                vec![],
+            ));
+        }
+
+        // Order requires 500 shares @ $100 = $50_000 notional (5x buying power).
+        let intent = OrderIntent {
+            symbol: "AAPL".into(),
+            side: OrderSide::Buy,
+            order_type: ManagedOrderType::Limit,
+            price: 100.0,
+            stop_price: 0.0,
+            qty: 500,
+            source: OrderSource::OrderPanel,
+            pair_with: None,
+            option_symbol: None,
+            option_con_id: None,
+            trail_amount: None,
+            trail_percent: None,
+            last_price: 100.0,
+            tif: 0,
+            outside_rth: false,
+            strategy_id: None,
+            override_warnings: false,
+        };
+
+        let result = m.submit(intent);
+
+        // Must be rejected (not Accepted, not NeedsConfirmation).
+        match result {
+            OrderResult::Rejected(reason) => {
+                assert!(
+                    reason.contains("insufficient buying power"),
+                    "expected 'insufficient buying power' in rejection, got: {reason}"
+                );
+            }
+            other => panic!("expected Rejected(bp_block), got {:?}", other),
+        }
+
+        // No orders were created — the BP gate fired before order construction.
+        assert!(
+            m.orders.is_empty(),
+            "no orders should be created when BP gate fires, found {}",
+            m.orders.len()
+        );
     }
 }
