@@ -186,13 +186,12 @@ impl<'a> PlayCard<'a> {
         let mut activate_clicked = false;
         let mut btn_clicked = false;
         if resp.hovered() {
+            // TODO: migrate row to PanelListRow for a cleaner slice API.
             let del_rect = egui::Rect::from_min_size(egui::pos2(card_rect.right() - 18.0, card_rect.top() + 4.0), egui::vec2(icon_xs(), icon_xs()));
-            let del_resp = ui.interact(del_rect, egui::Id::new(("play_del", &play.id[..8])), egui::Sense::click());
-            if del_resp.hovered() {
-                ui.painter().rect_filled(del_rect, 2.0, color_alpha(t.bear, ALPHA_GHOST));
-            }
-            crate::chart_renderer::ui::style::cursor::clickable(ui, &del_resp);
-            ui.painter().text(del_rect.center(), egui::Align2::CENTER_CENTER, "\u{00D7}", mono_sm(), color_half(t.dim));
+            let del_painter = ui.painter_at(del_rect);
+            let del_resp = crate::ui_kit::widgets::Button::close()
+                .show_at(ui, &del_painter, del_rect, t)
+                .on_hover_text("Delete");
             if del_resp.clicked() { delete_clicked = true; btn_clicked = true; }
 
             if play.status == PlayStatus::Draft {

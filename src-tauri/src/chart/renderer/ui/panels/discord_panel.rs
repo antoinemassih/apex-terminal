@@ -195,11 +195,12 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
         ui.add_space(4.0);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add_space(4.0);
-            if ui.add(Button::new("×")
-                .variant(Variant::TextOnly)
-                .size(Size::Sm)
-                .fg(t.bear)
-            ).on_hover_text("Disconnect").clicked() {
+            if Button::close()
+                .tint(t.bear)
+                .show(ui, t)
+                .on_hover_text("Disconnect")
+                .clicked()
+            {
                 crate::discord::disconnect();
                 watchlist.discord_authenticated = false;
                 watchlist.discord_username.clear();

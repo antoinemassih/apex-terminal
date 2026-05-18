@@ -241,16 +241,9 @@ impl<'a> Header<'a> {
                 egui::pos2(right_edge - close_w + 2.0, rect.top() + (h - 18.0) / 2.0),
                 Vec2::new(18.0, 18.0),
             );
-            let close_resp = ui.allocate_rect(close_rect, Sense::click());
-            st::cursor::clickable(ui, &close_resp);
-            let fg = if close_resp.hovered() { theme.text() } else { st::color_muted(theme.dim()) };
-            painter.text(
-                close_rect.center(),
-                egui::Align2::CENTER_CENTER,
-                "\u{00D7}",
-                FontId::monospace(font_size + 2.0),
-                fg,
-            );
+            let close_resp = super::button::Button::close()
+                .show_at(ui, &painter, close_rect, theme)
+                .on_hover_text("Close");
             if close_resp.clicked() {
                 out.close_clicked = true;
             }

@@ -2807,8 +2807,10 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
         if close_hov {
             p.rect_filled(close_rect, 2.0, color_alpha(t.bear, 60));
         }
+        // TODO: migrate row to PanelListRow; entire fn is pure-painter (no Ui) so
+        // Button::close() cannot be used here until the dispatch chain gains a &mut Ui param.
         p.text(close_rect.center(), egui::Align2::CENTER_CENTER,
-            "\u{00D7}", egui::FontId::proportional(FONT_SM),
+            crate::ui_kit::icons::Icon::X, egui::FontId::proportional(FONT_SM),
             if close_hov { t.bear } else { color_dim(t.dim) });
         btns.push((close_rect, WidgetBtnAction::ClosePosition(pos_idx)));
 

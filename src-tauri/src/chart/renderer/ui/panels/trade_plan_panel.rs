@@ -84,10 +84,11 @@ pub(crate) fn draw(
                 ui.label(egui::RichText::new("TRADE PLAN v2").monospace().strong()
                     .size(FONT_SM).color(t.text));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(egui::Button::new(egui::RichText::new("\u{00D7}")
-                            .size(FONT_SM).color(t.dim))
-                        .fill(egui::Color32::TRANSPARENT)
-                        .min_size(egui::vec2(icon_lg(), icon_lg()))).clicked() {
+                    if crate::ui_kit::widgets::Button::close()
+                        .show(ui, t)
+                        .on_hover_text("Close")
+                        .clicked()
+                    {
                         close(watchlist);
                     }
                 });

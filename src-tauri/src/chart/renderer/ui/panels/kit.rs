@@ -126,20 +126,10 @@ fn paint_header_shadow(ui: &Ui, header_rect: Rect) {
 }
 
 fn paint_close_btn(ui: &mut Ui, painter: &egui::Painter, rect: Rect, t: &Theme) -> bool {
-    let resp = ui.allocate_rect(rect, Sense::click());
-    let st = current();
-    let col = if resp.hovered() { t.bear } else { color_subtle(t.dim) };
-    if resp.hovered() {
-        painter.rect_filled(rect, st.r_sm as f32, color_alpha(t.bear, alpha_tint()));
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-    }
-    painter.text(
-        rect.center(), Align2::CENTER_CENTER,
-        "\u{00D7}",
-        FontId::proportional(font_md() + 2.0),
-        col,
-    );
-    resp.clicked()
+    crate::ui_kit::widgets::Button::close()
+        .show_at(ui, painter, rect, t)
+        .on_hover_text("Close")
+        .clicked()
 }
 
 // ── PanelHeader ──────────────────────────────────────────────────────────────
