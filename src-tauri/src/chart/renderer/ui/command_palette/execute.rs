@@ -27,6 +27,7 @@ pub(super) fn execute(
         let tf = panes[ap].timeframe.clone();
         let group = panes[ap].link_group;
         panes[ap].symbol = sym.to_string();
+        panes[ap].symbol_meta = crate::foundation::types::symbol_or_guess(sym);
         panes[ap].pending_symbol_change = Some(sym.to_string());
         fetch_bars_background(sym.to_string(), tf);
         // Wave 5: publish the symbol change so future subscribers (sibling
@@ -137,6 +138,7 @@ pub(super) fn execute(
             let sym = p.symbol.clone();
             let tf = panes[ap].timeframe.clone();
             panes[ap].symbol = sym.clone();
+            panes[ap].symbol_meta = crate::foundation::types::symbol_or_guess(&sym);
             panes[ap].pending_symbol_change = Some(sym.clone());
             fetch_bars_background(sym, tf);
         }
@@ -150,6 +152,7 @@ pub(super) fn execute(
                 let sym = a.symbol.clone();
                 let tf = panes[ap].timeframe.clone();
                 panes[ap].symbol = sym.clone();
+                panes[ap].symbol_meta = crate::foundation::types::symbol_or_guess(&sym);
                 panes[ap].pending_symbol_change = Some(sym.clone());
                 fetch_bars_background(sym, tf);
             }

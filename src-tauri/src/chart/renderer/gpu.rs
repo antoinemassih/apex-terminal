@@ -1450,6 +1450,13 @@ impl Default for PaneType { fn default() -> Self { Self::Chart } }
 pub(crate) struct Chart {
     pub(crate) pane_type: PaneType,
     pub(crate) symbol: String, pub(crate) timeframe: String,
+    /// Typed metadata for `symbol`. Wave 9c: populated/refreshed whenever
+    /// `symbol` changes via `crate::foundation::types::symbol_or_guess`.
+    /// Reading this gives `asset_class` + vendor aliases without re-parsing
+    /// the canonical String — the String stays canonical for wire/display.
+    /// Heads-up: hot-path code in `render/pane/core.rs` reads `symbol`
+    /// directly; do NOT change the String to a Symbol.
+    pub(crate) symbol_meta: crate::foundation::types::Symbol,
     // Option chart metadata
     pub(crate) is_option: bool,
     pub(crate) underlying: String, // e.g. "SPY" when this chart shows an option
@@ -1823,12 +1830,15 @@ impl Chart {
     pub(crate) fn new_with(symbol: &str, timeframe: &str) -> Self {
         let mut c = Self::new();
         c.symbol = symbol.into();
+        c.symbol_meta = crate::foundation::types::symbol_or_guess(symbol);
         c.timeframe = timeframe.into();
         c
     }
     pub(crate) fn new() -> Self {
         Self { pane_type: PaneType::Chart,
-            symbol: "AAPL".into(), timeframe: "5m".into(),
+            symbol: "AAPL".into(),
+            symbol_meta: crate::foundation::types::symbol_or_guess("AAPL"),
+            timeframe: "5m".into(),
             is_option: false, underlying: String::new(), option_type: String::new(),
             option_strike: 0.0, option_expiry: String::new(), option_con_id: 0, option_contract: String::new(),
             bar_source_mark: false,
@@ -1953,7 +1963,11 @@ impl Chart {
                 // Skip if this pane is an option chart and the LoadBars is for the underlying
                 if self.is_option && symbol != self.symbol { return; }
                 let is_new_symbol = self.symbol != symbol;
-                self.symbol = symbol; self.timeframe = timeframe;
+                self.symbol = symbol;
+                if is_new_symbol {
+                    self.symbol_meta = crate::foundation::types::symbol_or_guess(&self.symbol);
+                }
+                self.timeframe = timeframe;
                 self.bars = bars; self.timestamps = timestamps;
                 self.vs = (self.bars.len() as f32 - self.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
                 self.sim_price = 0.0;
@@ -5674,6 +5688,7 @@ impl ApplicationHandler for App {
                         }
                         pane.symbol_nav_in_progress = false;
                         pane.symbol = sym.clone();
+                        pane.symbol_meta = crate::foundation::types::symbol_or_guess(sym);
                         // Switching to a new symbol via the picker means we're
                         // leaving the current option contract behind. Clear the
                         // option-pane state so the fetch dispatch below routes
@@ -5754,6 +5769,7 @@ impl ApplicationHandler for App {
                     if pane.link_group == *group && pane.symbol != *sym && !pane.bars.is_empty() {
                         let tf = pane.timeframe.clone();
                         pane.symbol = sym.clone();
+                        pane.symbol_meta = crate::foundation::types::symbol_or_guess(sym);
                         pane.bars.clear();
                         pane.timestamps.clear();
                         pane.indicator_bar_count = 0; // force indicator recompute with new bars
