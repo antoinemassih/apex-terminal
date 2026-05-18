@@ -11,7 +11,7 @@
 //! and a `.theme(&Theme)` knob. The `ListRow` base in this file is the
 //! generic vehicle — domain rows wrap it with column slots.
 
-#![allow(unused_imports)]
+#![allow(unused_imports, dead_code, deprecated)]
 
 use egui::{Color32, Response, Sense, Stroke, Ui, Widget};
 use super::super::style::*;
@@ -37,6 +37,12 @@ type Theme = crate::chart_renderer::gpu::Theme;
 ///     .show(ui);
 /// ```
 #[must_use = "ListRow must be finalized with `.show(ui)` to render"]
+#[deprecated(
+    since = "Wave 11b",
+    note = "Use ui_kit::PanelListRow with .leading() + .columns() instead. \
+            ListRow has zero remaining callers; this struct is retained for one \
+            release as a safety net and will be removed in a future cleanup wave."
+)]
 pub struct ListRow<'a, B: FnOnce(&mut Ui) + 'a, T: FnOnce(&mut Ui) + 'a> {
     height: f32,
     selected: bool,

@@ -19,7 +19,7 @@ use super::super::style::*;
 use super::super::widgets;
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::{
-    Button, PanelEmpty, PanelSection, SidePanelShell, Width,
+    Button, PanelEmpty, PanelListRow, PanelSection, SidePanelShell, Width,
 };
 use crate::ui_kit::widgets::tokens::{Variant, Size};
 use crate::ui_kit::widgets::{GuildAvatarGrid, GuildEntry};
@@ -350,16 +350,15 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                         let ch_text = t.dim.gamma_multiply(1.3);
                         for ch in text_chs {
                             let name = ch.name.as_deref().unwrap_or("unknown").to_string();
-                            let resp = widgets::rows::ListRow::new(22.0)
-                                .left_icon("#", t.dim)
-                                .body({
-                                    let name = name.clone();
-                                    move |ui| {
-                                        ui.add(widgets::text::MonospaceCode::new(&name).xs().color(ch_text));
-                                    }
+                            let dim = t.dim;
+                            let row_id = format!("discord_ch_{}", ch.id);
+                            let name_for_leading = name.clone();
+                            let resp = PanelListRow::new(&row_id)
+                                .leading(move |ui, _t| {
+                                    ui.add(widgets::text::MonospaceCode::new("#").xs().color(dim));
+                                    ui.add(widgets::text::MonospaceCode::new(&name_for_leading).xs().color(ch_text));
                                 })
-                                .theme(t)
-                                .show(ui);
+                                .show(ui, t);
                             if resp.clicked() {
                                 clicked_channel = Some((ch.id.clone(), name));
                             }
@@ -440,15 +439,18 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                         let author = msg.author.clone();
                         let timestamp = msg.timestamp.clone();
                         let dim = t.dim;
-                        widgets::rows::ListRow::new(18.0)
-                            .left_painter_circle(author_col)
-                            .hover_enabled(false)
-                            .body(move |ui| {
+                        let row_id = format!("discord_msg_hdr_{}_{}", msg.author, msg.timestamp);
+                        PanelListRow::new(&row_id)
+                            .hoverable(false)
+                            .height(18.0)
+                            .leading(move |ui, _t| {
+                                // Author color dot (matches legacy left_painter_circle).
+                                let (rect, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
+                                ui.painter().circle_filled(rect.center(), 3.0, author_col);
                                 ui.add(widgets::text::MonospaceCode::new(&author).xs().strong(true).color(author_col));
                                 ui.add(widgets::text::CaptionLabel::new(&timestamp).color(dim).gamma(0.4));
                             })
-                            .theme(t)
-                            .show(ui);
+                            .show(ui, t);
                     }
                     // Message content — INLINE EXCEPTION: egui::Label required for
                     // wrap_mode(Wrap); no widget currently supports wrapping body text.
