@@ -1832,9 +1832,39 @@ pub(crate) fn render(
                     if st.nav_buttons_label_only { txt } else { format!("{} {}", icon, txt) }
                 };
 
-                // Settings — always icon-only.
+                // Settings — always icon-only. UX-1 Fix 2: updated hover text
+                // with Cmd+, shortcut hint; Cmd+, also toggles settings.
                 {
-                    let settings_resp = toolbar_btn(ui, Icon::GEAR, watchlist.settings_open, t).on_hover_text("Settings");
+                    // Cmd+, opens settings (register once).
+                    {
+                        use std::sync::Once;
+                        static SETTINGS_SC: Once = Once::new();
+                        SETTINGS_SC.call_once(|| {
+                            use crate::foundation::shortcuts::{ShortcutEntry, Shortcut};
+                            if let Err(e) = crate::foundation::shortcuts::registry()
+                                .write()
+                                .unwrap()
+                                .register(ShortcutEntry {
+                                    shortcut: Shortcut {
+                                        modifiers: egui::Modifiers::COMMAND,
+                                        key: egui::Key::Comma,
+                                    },
+                                    action: "panel.settings_toggle",
+                                    description: "Open settings",
+                                    category: "Panels",
+                                })
+                            {
+                                eprintln!("[shortcuts] {}", e);
+                            }
+                        });
+                    }
+                    let cmd_comma = ctx.input(|i| {
+                        i.key_pressed(egui::Key::Comma) && i.modifiers.command
+                    });
+                    if cmd_comma { watchlist.settings_open = !watchlist.settings_open; }
+
+                    let settings_resp = toolbar_btn(ui, Icon::GEAR, watchlist.settings_open, t)
+                        .on_hover_text("Settings (Cmd+,)");
                     paint_nav_col_tint(ui, tb_rect, settings_resp.rect, t, settings_resp.hovered(), watchlist.settings_open, "right_settings");
                     if settings_resp.clicked() { watchlist.settings_open = !watchlist.settings_open; }
                 }
