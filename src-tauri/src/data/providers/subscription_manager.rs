@@ -17,8 +17,9 @@ use crate::data::connectivity::ApiError;
 use crate::data::feeds::apex_data::types::{BarWire, ChainDelta, Quote, Trade};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Instant;
+use parking_lot::Mutex;
 use tokio::sync::broadcast;
 
 const FANOUT_CAP: usize = 1024;
@@ -125,7 +126,7 @@ impl SubscriptionManager {
         source: BarSource,
     ) -> Result<broadcast::Receiver<BarWire>, ApiError> {
         let key = (symbol.to_string(), timeframe.to_string(), source);
-        let mut map = self.bars.lock().expect("bars map");
+        let mut map = self.bars.lock();
         if let Some(sub) = map.get(&key) {
             sub.refcount.fetch_add(1, Ordering::SeqCst);
             return Ok(sub.fanout.subscribe());
@@ -158,9 +159,7 @@ impl SubscriptionManager {
                                 sub.last_seen_ts.store(bar.time, Ordering::Relaxed);
                             }
                         }
-                        if let Ok(mut g) = sub.last_activity.lock() {
-                            *g = Instant::now();
-                        }
+                        *sub.last_activity.lock() = Instant::now();
                         if sub.fanout.send(bar).is_err() {
                             // No live receivers; keep pumping anyway so refcount
                             // logic stays the sole authority on lifecycle.
@@ -175,7 +174,7 @@ impl SubscriptionManager {
     #[tracing::instrument(skip(self), level = "debug", fields(symbol, timeframe, source = ?source))]
     pub fn unsubscribe_bars_with_source(&self, symbol: &str, timeframe: &str, source: BarSource) {
         let key = (symbol.to_string(), timeframe.to_string(), source);
-        let mut map = self.bars.lock().expect("bars map");
+        let mut map = self.bars.lock();
         if let Some(sub) = map.get(&key) {
             if sub.refcount.fetch_sub(1, Ordering::SeqCst) == 1 {
                 map.remove(&key);
@@ -192,7 +191,7 @@ impl SubscriptionManager {
         &self,
         symbol: &str,
     ) -> Result<broadcast::Receiver<Quote>, ApiError> {
-        let mut map = self.quotes.lock().expect("quotes map");
+        let mut map = self.quotes.lock();
         if let Some(sub) = map.get(symbol) {
             sub.refcount.fetch_add(1, Ordering::SeqCst);
             return Ok(sub.fanout.subscribe());
@@ -216,9 +215,7 @@ impl SubscriptionManager {
                         sub.last_seen_ts.store(q.time, Ordering::Relaxed);
                     }
                 }
-                if let Ok(mut g) = sub.last_activity.lock() {
-                    *g = Instant::now();
-                }
+                *sub.last_activity.lock() = Instant::now();
                 let _ = sub.fanout.send(q);
             }
         });
@@ -227,7 +224,7 @@ impl SubscriptionManager {
 
     #[tracing::instrument(skip(self), level = "debug", fields(symbol))]
     pub fn unsubscribe_quotes(&self, symbol: &str) {
-        let mut map = self.quotes.lock().expect("quotes map");
+        let mut map = self.quotes.lock();
         if let Some(sub) = map.get(symbol) {
             if sub.refcount.fetch_sub(1, Ordering::SeqCst) == 1 {
                 map.remove(symbol);
@@ -241,7 +238,7 @@ impl SubscriptionManager {
         &self,
         symbol: &str,
     ) -> Result<broadcast::Receiver<Trade>, ApiError> {
-        let mut map = self.trades.lock().expect("trades map");
+        let mut map = self.trades.lock();
         if let Some(sub) = map.get(symbol) {
             sub.refcount.fetch_add(1, Ordering::SeqCst);
             return Ok(sub.fanout.subscribe());
@@ -265,9 +262,7 @@ impl SubscriptionManager {
                         sub.last_seen_ts.store(t.time, Ordering::Relaxed);
                     }
                 }
-                if let Ok(mut g) = sub.last_activity.lock() {
-                    *g = Instant::now();
-                }
+                *sub.last_activity.lock() = Instant::now();
                 let _ = sub.fanout.send(t);
             }
         });
@@ -276,7 +271,7 @@ impl SubscriptionManager {
 
     #[tracing::instrument(skip(self), level = "debug", fields(symbol))]
     pub fn unsubscribe_trades(&self, symbol: &str) {
-        let mut map = self.trades.lock().expect("trades map");
+        let mut map = self.trades.lock();
         if let Some(sub) = map.get(symbol) {
             if sub.refcount.fetch_sub(1, Ordering::SeqCst) == 1 {
                 map.remove(symbol);
@@ -290,7 +285,7 @@ impl SubscriptionManager {
         &self,
         underlying: &str,
     ) -> Result<broadcast::Receiver<ChainDelta>, ApiError> {
-        let mut map = self.chain.lock().expect("chain map");
+        let mut map = self.chain.lock();
         if let Some(sub) = map.get(underlying) {
             sub.refcount.fetch_add(1, Ordering::SeqCst);
             return Ok(sub.fanout.subscribe());
@@ -307,9 +302,7 @@ impl SubscriptionManager {
         let recv_out = tx.subscribe();
         tokio::spawn(async move {
             while let Some(d) = rx.recv().await {
-                if let Ok(mut g) = sub.last_activity.lock() {
-                    *g = Instant::now();
-                }
+                *sub.last_activity.lock() = Instant::now();
                 let _ = sub.fanout.send(d);
             }
         });
@@ -318,7 +311,7 @@ impl SubscriptionManager {
 
     #[tracing::instrument(skip(self), level = "debug", fields(underlying))]
     pub fn unsubscribe_chain(&self, underlying: &str) {
-        let mut map = self.chain.lock().expect("chain map");
+        let mut map = self.chain.lock();
         if let Some(sub) = map.get(underlying) {
             if sub.refcount.fetch_sub(1, Ordering::SeqCst) == 1 {
                 map.remove(underlying);
@@ -346,46 +339,37 @@ impl SubscriptionManager {
     pub fn bump_last_seen_bar(&self, symbol: &str, timeframe: &str, source: BarSource, ts_ms: i64) {
         if ts_ms <= 0 { return; }
         let key = (symbol.to_string(), timeframe.to_string(), source);
-        if let Ok(map) = self.bars.lock() {
-            if let Some(sub) = map.get(&key) {
-                let prev = sub.last_seen_ts.load(Ordering::Relaxed);
-                if ts_ms > prev {
-                    sub.last_seen_ts.store(ts_ms, Ordering::Relaxed);
-                }
-                if let Ok(mut g) = sub.last_activity.lock() {
-                    *g = Instant::now();
-                }
+        let map = self.bars.lock();
+        if let Some(sub) = map.get(&key) {
+            let prev = sub.last_seen_ts.load(Ordering::Relaxed);
+            if ts_ms > prev {
+                sub.last_seen_ts.store(ts_ms, Ordering::Relaxed);
             }
+            *sub.last_activity.lock() = Instant::now();
         }
     }
 
     pub fn bump_last_seen_quote(&self, symbol: &str, ts_ms: i64) {
         if ts_ms <= 0 { return; }
-        if let Ok(map) = self.quotes.lock() {
-            if let Some(sub) = map.get(symbol) {
-                let prev = sub.last_seen_ts.load(Ordering::Relaxed);
-                if ts_ms > prev {
-                    sub.last_seen_ts.store(ts_ms, Ordering::Relaxed);
-                }
-                if let Ok(mut g) = sub.last_activity.lock() {
-                    *g = Instant::now();
-                }
+        let map = self.quotes.lock();
+        if let Some(sub) = map.get(symbol) {
+            let prev = sub.last_seen_ts.load(Ordering::Relaxed);
+            if ts_ms > prev {
+                sub.last_seen_ts.store(ts_ms, Ordering::Relaxed);
             }
+            *sub.last_activity.lock() = Instant::now();
         }
     }
 
     pub fn bump_last_seen_trade(&self, symbol: &str, ts_ms: i64) {
         if ts_ms <= 0 { return; }
-        if let Ok(map) = self.trades.lock() {
-            if let Some(sub) = map.get(symbol) {
-                let prev = sub.last_seen_ts.load(Ordering::Relaxed);
-                if ts_ms > prev {
-                    sub.last_seen_ts.store(ts_ms, Ordering::Relaxed);
-                }
-                if let Ok(mut g) = sub.last_activity.lock() {
-                    *g = Instant::now();
-                }
+        let map = self.trades.lock();
+        if let Some(sub) = map.get(symbol) {
+            let prev = sub.last_seen_ts.load(Ordering::Relaxed);
+            if ts_ms > prev {
+                sub.last_seen_ts.store(ts_ms, Ordering::Relaxed);
             }
+            *sub.last_activity.lock() = Instant::now();
         }
     }
 
@@ -397,21 +381,18 @@ impl SubscriptionManager {
 
     pub fn last_seen_bar_with_source(&self, symbol: &str, timeframe: &str, source: BarSource) -> i64 {
         let key = (symbol.to_string(), timeframe.to_string(), source);
-        self.bars.lock().ok()
-            .and_then(|m| m.get(&key).map(|s| s.last_seen_ts.load(Ordering::Relaxed)))
-            .unwrap_or(0)
+        let m = self.bars.lock();
+        m.get(&key).map(|s| s.last_seen_ts.load(Ordering::Relaxed)).unwrap_or(0)
     }
 
     pub fn last_seen_quote(&self, symbol: &str) -> i64 {
-        self.quotes.lock().ok()
-            .and_then(|m| m.get(symbol).map(|s| s.last_seen_ts.load(Ordering::Relaxed)))
-            .unwrap_or(0)
+        let m = self.quotes.lock();
+        m.get(symbol).map(|s| s.last_seen_ts.load(Ordering::Relaxed)).unwrap_or(0)
     }
 
     pub fn last_seen_trade(&self, symbol: &str) -> i64 {
-        self.trades.lock().ok()
-            .and_then(|m| m.get(symbol).map(|s| s.last_seen_ts.load(Ordering::Relaxed)))
-            .unwrap_or(0)
+        let m = self.trades.lock();
+        m.get(symbol).map(|s| s.last_seen_ts.load(Ordering::Relaxed)).unwrap_or(0)
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -427,9 +408,7 @@ impl SubscriptionManager {
     /// `(symbol, timeframe, source)` triples. Test-only.
     #[cfg(test)]
     pub fn active_bar_subs(&self) -> Vec<(String, String, BarSource)> {
-        self.bars.lock().ok()
-            .map(|m| m.keys().cloned().collect())
-            .unwrap_or_default()
+        self.bars.lock().keys().cloned().collect()
     }
 
     /// Current refcount for the bar key `(symbol, timeframe, Last)`.
@@ -437,8 +416,9 @@ impl SubscriptionManager {
     #[cfg(test)]
     pub fn refcount_for_bar(&self, symbol: &str, timeframe: &str) -> usize {
         let key = (symbol.to_string(), timeframe.to_string(), BarSource::Last);
-        self.bars.lock().ok()
-            .and_then(|m| m.get(&key).map(|s| s.refcount.load(Ordering::SeqCst)))
+        self.bars.lock()
+            .get(&key)
+            .map(|s| s.refcount.load(Ordering::SeqCst))
             .unwrap_or(0)
     }
 
@@ -453,9 +433,7 @@ impl SubscriptionManager {
     pub fn set_quotes(&self, symbols: &[String]) {
         use std::collections::HashSet;
         let want: HashSet<String> = symbols.iter().cloned().collect();
-        let have: HashSet<String> = self.quotes.lock().ok()
-            .map(|m| m.keys().cloned().collect())
-            .unwrap_or_default();
+        let have: HashSet<String> = self.quotes.lock().keys().cloned().collect();
         for sym in want.difference(&have) {
             let _ = self.subscribe_quotes(sym);
         }
@@ -469,9 +447,7 @@ impl SubscriptionManager {
     pub fn set_trades(&self, symbols: &[String]) {
         use std::collections::HashSet;
         let want: HashSet<String> = symbols.iter().cloned().collect();
-        let have: HashSet<String> = self.trades.lock().ok()
-            .map(|m| m.keys().cloned().collect())
-            .unwrap_or_default();
+        let have: HashSet<String> = self.trades.lock().keys().cloned().collect();
         for sym in want.difference(&have) {
             let _ = self.subscribe_trades(sym);
         }
@@ -483,9 +459,7 @@ impl SubscriptionManager {
     pub fn set_chain(&self, underlyings: &[String]) {
         use std::collections::HashSet;
         let want: HashSet<String> = underlyings.iter().cloned().collect();
-        let have: HashSet<String> = self.chain.lock().ok()
-            .map(|m| m.keys().cloned().collect())
-            .unwrap_or_default();
+        let have: HashSet<String> = self.chain.lock().keys().cloned().collect();
         for u in want.difference(&have) {
             let _ = self.subscribe_chain(u);
         }
@@ -513,7 +487,7 @@ impl SubscriptionManager {
     ) -> Result<usize, ApiError> {
         let key = (symbol.to_string(), timeframe.to_string(), source);
         let (last_ts, fanout) = {
-            let map = self.bars.lock().expect("bars map");
+            let map = self.bars.lock();
             match map.get(&key) {
                 Some(sub) => (
                     sub.last_seen_ts.load(Ordering::Relaxed),
@@ -556,10 +530,7 @@ impl SubscriptionManager {
     /// Returns total bars replayed across all subs. Errors per-sub are logged
     /// and swallowed so one bad symbol can't block the others.
     pub async fn gap_fill_on_reconnect_all(&self) -> usize {
-        let keys: Vec<(String, String, BarSource)> = match self.bars.lock() {
-            Ok(g) => g.keys().cloned().collect(),
-            Err(_) => return 0,
-        };
+        let keys: Vec<(String, String, BarSource)> = self.bars.lock().keys().cloned().collect();
         let mut total = 0usize;
         for (sym, tf, src) in keys {
             // Mark-source subs have no provider trait surface for historical
@@ -586,35 +557,38 @@ impl SubscriptionManager {
     pub fn check_stale(&self) {
         let now = Instant::now();
         let check = |kind: &str, key: &str, activity: &Mutex<Instant>| {
-            if let Ok(g) = activity.lock() {
-                let age = now.saturating_duration_since(*g);
-                if age.as_secs() > STALE_TTL_SECS {
-                    tracing::warn!(
-                        target: "providers.sub_mgr",
-                        kind,
-                        key,
-                        age_secs = age.as_secs(),
-                        "subscription stale — no upstream activity"
-                    );
-                }
+            let g = activity.lock();
+            let age = now.saturating_duration_since(*g);
+            if age.as_secs() > STALE_TTL_SECS {
+                tracing::warn!(
+                    target: "providers.sub_mgr",
+                    kind,
+                    key,
+                    age_secs = age.as_secs(),
+                    "subscription stale — no upstream activity"
+                );
             }
         };
-        if let Ok(map) = self.bars.lock() {
+        {
+            let map = self.bars.lock();
             for ((s, tf, src), sub) in map.iter() {
                 check("bars", &format!("{s}:{tf}:{}", src.as_str()), &sub.last_activity);
             }
         }
-        if let Ok(map) = self.quotes.lock() {
+        {
+            let map = self.quotes.lock();
             for (s, sub) in map.iter() {
                 check("quotes", s, &sub.last_activity);
             }
         }
-        if let Ok(map) = self.trades.lock() {
+        {
+            let map = self.trades.lock();
             for (s, sub) in map.iter() {
                 check("trades", s, &sub.last_activity);
             }
         }
-        if let Ok(map) = self.chain.lock() {
+        {
+            let map = self.chain.lock();
             for (s, sub) in map.iter() {
                 check("chain", s, &sub.last_activity);
             }
@@ -646,7 +620,6 @@ mod tests {
         fn live_subs(&self, key: &str) -> u32 {
             self.subs
                 .lock()
-                .unwrap()
                 .get(key)
                 .map(|a| a.load(Ordering::SeqCst))
                 .unwrap_or(0)
@@ -664,20 +637,20 @@ mod tests {
         async fn bars(&self, _s: &str, _tf: &str, _a: i64, _b: i64, _l: Option<usize>) -> Result<Vec<BarWire>, ApiError> { Ok(vec![]) }
         fn subscribe_bars(&self, s: &str, tf: &str) -> Result<BarStream, ApiError> {
             let key = format!("{s}:{tf}");
-            self.subs.lock().unwrap().entry(key).or_insert_with(|| AtomicU32::new(0)).fetch_add(1, Ordering::SeqCst);
+            self.subs.lock().entry(key).or_insert_with(|| AtomicU32::new(0)).fetch_add(1, Ordering::SeqCst);
             let (_tx, rx) = tokio::sync::mpsc::unbounded_channel();
             Ok(rx)
         }
         fn unsubscribe_bars(&self, s: &str, tf: &str) {
             let key = format!("{s}:{tf}");
-            if let Some(a) = self.subs.lock().unwrap().get(&key) { a.fetch_sub(1, Ordering::SeqCst); }
+            if let Some(a) = self.subs.lock().get(&key) { a.fetch_sub(1, Ordering::SeqCst); }
         }
         fn subscribe_quotes(&self, s: &str) -> Result<QuoteStream, ApiError> {
-            self.subs.lock().unwrap().entry(s.to_string()).or_insert_with(|| AtomicU32::new(0)).fetch_add(1, Ordering::SeqCst);
+            self.subs.lock().entry(s.to_string()).or_insert_with(|| AtomicU32::new(0)).fetch_add(1, Ordering::SeqCst);
             let (_tx, rx) = tokio::sync::mpsc::unbounded_channel(); Ok(rx)
         }
         fn unsubscribe_quotes(&self, s: &str) {
-            if let Some(a) = self.subs.lock().unwrap().get(s) { a.fetch_sub(1, Ordering::SeqCst); }
+            if let Some(a) = self.subs.lock().get(s) { a.fetch_sub(1, Ordering::SeqCst); }
         }
         fn subscribe_trades(&self, _s: &str) -> Result<TradeStream, ApiError> {
             let (_tx, rx) = tokio::sync::mpsc::unbounded_channel(); Ok(rx)
