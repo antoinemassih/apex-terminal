@@ -284,7 +284,8 @@ async fn run_watchdog() {
 pub async fn ib_ws_send(
     msg: Value,
     state: tauri::State<'_, IbWsHandle>,
-) -> Result<(), String> {
+) -> Result<(), crate::error::AppError> {
+    use crate::error::AppError;
     // Wave 8c: IB subscribes by numeric conId, not by (symbol, timeframe),
     // so we cannot route the subscribe site through SubscriptionManager
     // without a conId→symbol resolver. The symbol-keyed state is wired in
@@ -315,10 +316,10 @@ pub async fn ib_ws_send(
         }
     }
 
-    let text = serde_json::to_string(&msg).map_err(|e| e.to_string())?;
+    let text = serde_json::to_string(&msg).map_err(AppError::from)?;
     state
         .tx
         .send(Cmd::Send(text))
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| AppError::internal(e))
 }
