@@ -5610,6 +5610,15 @@ impl App {
         wl.pane_split_v4 = loaded_settings.pane_split_v4;
         wl.pane_split_v5 = loaded_settings.pane_split_v5;
         wl.pane_split_v6 = loaded_settings.pane_split_v6;
+        // Wave 14c: overlay the typed UiSettings aggregate if present,
+        // overriding the legacy `settings` blob values. Cold-start (no
+        // file yet) keeps the legacy-derived values in place.
+        if let Some(loaded_ui) =
+            crate::state::load::<crate::state::UiSettings>(&ui_settings_path())
+        {
+            wl.ui_settings = loaded_ui;
+            wl.pull_from_ui_settings();
+        }
         // Load persisted hotkeys (override defaults)
         load_hotkeys(&mut wl.hotkeys);
         // Load persisted templates
@@ -5675,7 +5684,7 @@ impl ApplicationHandler for App {
         }
         match ev {
             WindowEvent::CloseRequested => {
-                save_state(&cw.panes, cw.layout, &cw.watchlist);
+                save_state(&cw.panes, cw.layout, &mut cw.watchlist);
                 cw.watchlist.persist();
                 self.windows.retain(|w| w.id != wid);
             }
@@ -5815,7 +5824,7 @@ impl ApplicationHandler for App {
                     let now = std::time::Instant::now();
                     let should_save = cw.last_save.map_or(true, |t| now.duration_since(t).as_secs() >= 30);
                     if should_save {
-                        save_state(&cw.panes, cw.layout, &cw.watchlist);
+                        save_state(&cw.panes, cw.layout, &mut cw.watchlist);
                         cw.last_save = Some(now);
                     }
                 }
@@ -6163,6 +6172,17 @@ fn state_path() -> std::path::PathBuf {
     p
 }
 
+/// Wave 14c: companion to `state_path()` for the `UiSettings`
+/// aggregate. Lives alongside `native-chart-state.json`; the legacy
+/// `settings` blob inside that file stays the authoritative load path
+/// until a follow-up wave can drop it, so this file is purely additive.
+fn ui_settings_path() -> std::path::PathBuf {
+    let mut p = state_path();
+    p.pop();
+    p.push("ui_settings.json");
+    p
+}
+
 fn workspace_dir() -> std::path::PathBuf {
     let mut p = state_path(); p.pop(); p.push("workspaces"); let _ = std::fs::create_dir_all(&p); p
 }
@@ -6243,7 +6263,14 @@ pub(crate) fn list_workspaces() -> Vec<String> {
     names
 }
 
-pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &Watchlist) {
+pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &mut Watchlist) {
+    // Wave 14c: mirror the live legacy fields into the typed aggregate
+    // before either of them goes to disk. Legacy `settings` blob stays
+    // authoritative for now; aggregate file is additive.
+    watchlist.push_to_ui_settings();
+    if let Err(e) = crate::state::save(&ui_settings_path(), &watchlist.ui_settings) {
+        eprintln!("[state] ui_settings save failed: {e}");
+    }
     let pane_data: Vec<serde_json::Value> = panes.iter().map(|p| {
         // Serialize indicators — include ALL styling fields
         let indicators: Vec<serde_json::Value> = p.indicators.iter().map(|ind| serde_json::json!({
