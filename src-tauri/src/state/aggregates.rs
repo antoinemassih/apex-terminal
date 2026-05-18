@@ -701,23 +701,239 @@ impl Persistable for SidebarState {
     const VERSION: u32 = 1;
 }
 
-/// Layout state — grid choice, pane split ratios, link groups, broadcast mode.
+// ─── LayoutState aggregate ───────────────────────────────────────────────────
+
+/// A single named, colored pane link group.
 ///
-/// Migrate from `Watchlist`:
-/// - `link_groups: Vec<LinkGroup>`
-/// - `broadcast_mode: bool`
-/// - `pane_split_h`, `pane_split_v`, `pane_split_h2`, `pane_split_v2`
-/// - `pane_split_v3`..`pane_split_v6`
-/// - `pane_divider_dragging: bool` (runtime only — exclude)
-/// - `layout_favorites: Vec<String>`
-/// - `timeframe_favorites: Vec<String>`
-/// - `maximized_pane: Option<usize>`
-/// - `pane_templates`, `portfolio_templates`, `dashboard_templates`,
-///   `heatmap_templates`, `spreadsheet_templates`
-/// - `dragging_tab: Option<TabDragState>` (runtime only — exclude)
-/// - `active_workspace`, `pending_workspace_load`, `workspace_save_name`
-#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct LayoutState {}
+/// Mirrors `chart::renderer::gpu::LinkGroup`, which uses `egui::Color32`
+/// (not serializable).  Here the color is stored as `[u8; 4]` (RGBA) so
+/// the aggregate can be persisted without pulling in egui as a serialization
+/// dependency.
+///
+/// Source: `src-tauri/src/chart/renderer/gpu.rs`, `LinkGroup`, line 4347.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PersistedLinkGroup {
+    /// Human-readable label ("Group 1", etc.).
+    pub name: String,
+    /// RGBA color bytes — maps to/from `egui::Color32::to_array()`.
+    pub color_rgba: [u8; 4],
+}
+
+impl Default for PersistedLinkGroup {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            color_rgba: [70, 130, 255, 255],
+        }
+    }
+}
+
+/// Layout state — grid choice, pane split ratios, link groups, broadcast mode,
+/// workspace management, and favorites.
+///
+/// **P2 Round 2** populates this aggregate.
+///
+/// Field sources (Watchlist field → this aggregate field):
+/// - `Watchlist::link_groups: Vec<LinkGroup>`          → `link_groups` (via `PersistedLinkGroup`)
+/// - `Watchlist::broadcast_mode: bool`                 → `broadcast_mode`
+/// - `Watchlist::pane_split_h: f32`                    → `pane_split_h`
+/// - `Watchlist::pane_split_v: f32`                    → `pane_split_v`
+/// - `Watchlist::pane_split_h2: f32`                   → `pane_split_h2`
+/// - `Watchlist::pane_split_v2: f32`                   → `pane_split_v2`
+/// - `Watchlist::pane_split_v3: f32`                   → `pane_split_v3`
+/// - `Watchlist::pane_split_v4: f32`                   → `pane_split_v4`
+/// - `Watchlist::pane_split_v5: f32`                   → `pane_split_v5`
+/// - `Watchlist::pane_split_v6: f32`                   → `pane_split_v6`
+/// - `Watchlist::layout_favorites: Vec<String>`        → `layout_favorites`
+/// - `Watchlist::timeframe_favorites: Vec<String>`     → `timeframe_favorites`
+/// - `Watchlist::maximized_pane: Option<usize>`        → `maximized_pane`
+/// - `Watchlist::pane_templates: Vec<(String, …)>`     → `pane_template_names` (names only)
+/// - `Watchlist::portfolio_templates: Vec<String>`     → `portfolio_templates`
+/// - `Watchlist::dashboard_templates: Vec<String>`     → `dashboard_templates`
+/// - `Watchlist::heatmap_templates: Vec<String>`       → `heatmap_templates`
+/// - `Watchlist::spreadsheet_templates: Vec<String>`   → `spreadsheet_templates`
+/// - `Watchlist::active_workspace: String`             → `active_workspace`
+/// - `Watchlist::workspace_save_name: String`          → `workspace_save_name`
+///
+/// Fields NOT included here (with reason):
+/// - `pane_divider_dragging: bool` — runtime-only, always `false` on launch.
+/// - `dragging_tab: Option<TabDragState>` — runtime drag state; `TabDragState`
+///   holds `egui::Response` internals that are not serializable.
+/// - `pending_workspace_load: Option<String>` — transient task queue signal;
+///   not meaningful across restarts.
+/// - Full `pane_templates` payloads — the `serde_json::Value` inner type
+///   is intentionally opaque and large; names are persisted here so the
+///   UI can enumerate them; the payloads remain in the chart save/load flow.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct LayoutState {
+    /// Named, colored link groups shared across all panes.
+    /// Source: `Watchlist::link_groups: Vec<LinkGroup>`.
+    #[serde(default = "LayoutState::default_link_groups")]
+    pub link_groups: Vec<PersistedLinkGroup>,
+
+    /// When true, toolbar actions (symbol change, timeframe, etc.) apply to
+    /// all panes simultaneously.
+    /// Source: `Watchlist::broadcast_mode: bool`.
+    #[serde(default)]
+    pub broadcast_mode: bool,
+
+    // ── Pane split ratios ──────────────────────────────────────────────────
+    // All default to 0.5 (equal split).
+
+    /// Primary left/right (vertical-bar) split ratio.
+    /// Source: `Watchlist::pane_split_h: f32`.
+    #[serde(default = "LayoutState::default_split")]
+    pub pane_split_h: f32,
+
+    /// Primary top/bottom (horizontal-bar) split ratio.
+    /// Source: `Watchlist::pane_split_v: f32`.
+    #[serde(default = "LayoutState::default_split")]
+    pub pane_split_v: f32,
+
+    /// Secondary left/right split (3-column layouts).
+    /// Source: `Watchlist::pane_split_h2: f32`.
+    #[serde(default = "LayoutState::default_split")]
+    pub pane_split_h2: f32,
+
+    /// Secondary top/bottom split (3-row layouts).
+    /// Source: `Watchlist::pane_split_v2: f32`.
+    #[serde(default = "LayoutState::default_split")]
+    pub pane_split_v2: f32,
+
+    /// Extra horizontal divider 3 (FiveL / SixL / EightH layouts).
+    /// Source: `Watchlist::pane_split_v3: f32`.
+    #[serde(default = "LayoutState::default_split")]
+    pub pane_split_v3: f32,
+
+    /// Extra horizontal divider 4.
+    /// Source: `Watchlist::pane_split_v4: f32`.
+    #[serde(default = "LayoutState::default_split")]
+    pub pane_split_v4: f32,
+
+    /// Extra horizontal divider 5.
+    /// Source: `Watchlist::pane_split_v5: f32`.
+    #[serde(default = "LayoutState::default_split")]
+    pub pane_split_v5: f32,
+
+    /// Extra horizontal divider 6.
+    /// Source: `Watchlist::pane_split_v6: f32`.
+    #[serde(default = "LayoutState::default_split")]
+    pub pane_split_v6: f32,
+
+    // ── Favorites ─────────────────────────────────────────────────────────
+
+    /// Layout preset names pinned to the toolbar (e.g. `["1", "2", "2H", "4"]`).
+    /// Source: `Watchlist::layout_favorites: Vec<String>`.
+    #[serde(default = "LayoutState::default_layout_favorites")]
+    pub layout_favorites: Vec<String>,
+
+    /// Timeframe strings pinned to the toolbar (e.g. `["1m", "5m", "1d"]`).
+    /// Source: `Watchlist::timeframe_favorites: Vec<String>`.
+    #[serde(default = "LayoutState::default_timeframe_favorites")]
+    pub timeframe_favorites: Vec<String>,
+
+    // ── Pane state ─────────────────────────────────────────────────────────
+
+    /// Index of the pane currently shown fullscreen, or `None`.
+    /// Source: `Watchlist::maximized_pane: Option<usize>`.
+    #[serde(default)]
+    pub maximized_pane: Option<usize>,
+
+    // ── Templates ─────────────────────────────────────────────────────────
+
+    /// Names of saved pane templates (indicator + toggle configs).
+    /// The full payloads live in the chart save/load flow; only names
+    /// are persisted here for enumeration.
+    /// Source: `Watchlist::pane_templates: Vec<(String, serde_json::Value)>` (names only).
+    #[serde(default)]
+    pub pane_template_names: Vec<String>,
+
+    /// Saved portfolio view templates.
+    /// Source: `Watchlist::portfolio_templates: Vec<String>`.
+    #[serde(default = "LayoutState::default_portfolio_templates")]
+    pub portfolio_templates: Vec<String>,
+
+    /// Saved dashboard templates.
+    /// Source: `Watchlist::dashboard_templates: Vec<String>`.
+    #[serde(default = "LayoutState::default_dashboard_templates")]
+    pub dashboard_templates: Vec<String>,
+
+    /// Saved heatmap templates.
+    /// Source: `Watchlist::heatmap_templates: Vec<String>`.
+    #[serde(default = "LayoutState::default_heatmap_templates")]
+    pub heatmap_templates: Vec<String>,
+
+    /// Saved spreadsheet templates.
+    /// Source: `Watchlist::spreadsheet_templates: Vec<String>`.
+    #[serde(default = "LayoutState::default_spreadsheet_templates")]
+    pub spreadsheet_templates: Vec<String>,
+
+    // ── Workspace ─────────────────────────────────────────────────────────
+
+    /// Name of the currently active workspace.
+    /// Source: `Watchlist::active_workspace: String`.
+    #[serde(default = "LayoutState::default_workspace")]
+    pub active_workspace: String,
+
+    /// Buffer for the "save workspace as…" input field.
+    /// Source: `Watchlist::workspace_save_name: String`.
+    #[serde(default)]
+    pub workspace_save_name: String,
+}
+
+impl LayoutState {
+    fn default_split() -> f32 { 0.5 }
+    fn default_workspace() -> String { "Default".into() }
+
+    fn default_layout_favorites() -> Vec<String> {
+        vec!["1".into(), "2".into(), "2H".into(), "3".into(), "4".into()]
+    }
+    fn default_timeframe_favorites() -> Vec<String> {
+        vec![
+            "1m".into(), "5m".into(), "15m".into(), "30m".into(),
+            "1h".into(), "4h".into(), "1d".into(), "1wk".into(),
+        ]
+    }
+    fn default_link_groups() -> Vec<PersistedLinkGroup> {
+        vec![
+            PersistedLinkGroup { name: "Group 1".into(), color_rgba: [70, 130, 255, 255] },
+            PersistedLinkGroup { name: "Group 2".into(), color_rgba: [80, 200, 120, 255] },
+            PersistedLinkGroup { name: "Group 3".into(), color_rgba: [255, 160, 60, 255] },
+            PersistedLinkGroup { name: "Group 4".into(), color_rgba: [180, 100, 255, 255] },
+        ]
+    }
+    fn default_portfolio_templates() -> Vec<String> { vec!["Default".into()] }
+    fn default_dashboard_templates() -> Vec<String> { vec!["Default".into()] }
+    fn default_heatmap_templates() -> Vec<String> { vec!["Default".into()] }
+    fn default_spreadsheet_templates() -> Vec<String> { vec!["Default".into()] }
+}
+
+impl Default for LayoutState {
+    fn default() -> Self {
+        Self {
+            link_groups: Self::default_link_groups(),
+            broadcast_mode: false,
+            pane_split_h: 0.5,
+            pane_split_v: 0.5,
+            pane_split_h2: 0.5,
+            pane_split_v2: 0.5,
+            pane_split_v3: 0.5,
+            pane_split_v4: 0.5,
+            pane_split_v5: 0.5,
+            pane_split_v6: 0.5,
+            layout_favorites: Self::default_layout_favorites(),
+            timeframe_favorites: Self::default_timeframe_favorites(),
+            maximized_pane: None,
+            pane_template_names: Vec::new(),
+            portfolio_templates: Self::default_portfolio_templates(),
+            dashboard_templates: Self::default_dashboard_templates(),
+            heatmap_templates: Self::default_heatmap_templates(),
+            spreadsheet_templates: Self::default_spreadsheet_templates(),
+            active_workspace: Self::default_workspace(),
+            workspace_save_name: String::new(),
+        }
+    }
+}
 
 impl Persistable for LayoutState {
     const KEY: &'static str = "layout_state";
@@ -1108,5 +1324,84 @@ mod tests {
         // fracs should fall back to the explicit default
         assert_eq!(loaded.indicators_section_fracs, [0.18, 0.25, 0.57]);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── LayoutState tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn layout_state_default_values_are_sane() {
+        let s = LayoutState::default();
+        assert_eq!(s.link_groups.len(), 4, "four default link groups");
+        assert_eq!(s.link_groups[0].name, "Group 1");
+        assert_eq!(s.pane_split_h, 0.5);
+        assert_eq!(s.pane_split_v6, 0.5);
+        assert!(!s.broadcast_mode);
+        assert!(s.maximized_pane.is_none());
+        assert_eq!(s.active_workspace, "Default");
+        assert!(!s.layout_favorites.is_empty());
+        assert!(!s.timeframe_favorites.is_empty());
+    }
+
+    #[test]
+    fn layout_state_round_trips_through_persistable() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_layout_state_roundtrip");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("layout_state.json");
+        let mut v = LayoutState::default();
+        v.broadcast_mode = true;
+        v.pane_split_h = 0.35;
+        v.pane_split_v = 0.65;
+        v.maximized_pane = Some(2);
+        v.active_workspace = "MyWorkspace".into();
+        v.layout_favorites = vec!["1".into(), "4".into()];
+        v.link_groups[0].name = "Blue".into();
+        save(&path, &v).unwrap();
+        let loaded: LayoutState = load(&path).unwrap();
+        assert!(loaded.broadcast_mode);
+        assert_eq!(loaded.pane_split_h, 0.35);
+        assert_eq!(loaded.pane_split_v, 0.65);
+        assert_eq!(loaded.maximized_pane, Some(2));
+        assert_eq!(loaded.active_workspace, "MyWorkspace");
+        assert_eq!(loaded.layout_favorites, &["1", "4"]);
+        assert_eq!(loaded.link_groups[0].name, "Blue");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn layout_state_missing_fields_fall_back_to_defaults() {
+        use super::super::persistence::load;
+        let dir = std::env::temp_dir().join("apex_state_layout_state_partial");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("layout_state.json");
+        let envelope = serde_json::json!({
+            "key": "layout_state",
+            "version": 1,
+            "payload": {
+                "broadcast_mode": true,
+            }
+        });
+        std::fs::write(&path, serde_json::to_vec_pretty(&envelope).unwrap()).unwrap();
+        let loaded: LayoutState = load(&path).expect("partial payload should load");
+        assert!(loaded.broadcast_mode);
+        // All other fields should be defaults
+        assert_eq!(loaded.pane_split_h, 0.5);
+        assert_eq!(loaded.link_groups.len(), 4);
+        assert_eq!(loaded.active_workspace, "Default");
+        assert!(!loaded.layout_favorites.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn persisted_link_group_rgba_round_trips() {
+        let group = PersistedLinkGroup {
+            name: "Alpha".into(),
+            color_rgba: [255, 80, 30, 200],
+        };
+        let json = serde_json::to_string(&group).unwrap();
+        let back: PersistedLinkGroup = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.name, "Alpha");
+        assert_eq!(back.color_rgba, [255, 80, 30, 200]);
     }
 }
