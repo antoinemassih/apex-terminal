@@ -10,9 +10,62 @@
 
 pub mod resolver;
 
-use std::{collections::HashSet, sync::Arc, sync::OnceLock, time::Duration};
+use std::{collections::{HashMap, HashSet}, sync::Arc, sync::OnceLock, time::Duration};
 use std::sync::atomic::{AtomicI64, AtomicU32, AtomicU64};
+use std::sync::Mutex as StdMutex;
 use crate::data::connectivity::ConnectionState;
+use crate::data::feeds::apex_data::types::{AssetClass, BarWire, Quote, Trade};
+
+// ── Wave 12a: per-symbol mpsc fanout hubs ────────────────────────────────────
+//
+// `feeds::ib_ws::ws_loop` historically emitted decoded ticks as `ib-tick`
+// Tauri events directly to the WebView. Wave 12a additionally fans every
+// observed tick into per-symbol Rust-side streams so `IbProvider`'s
+// `MarketDataProvider::subscribe_*` methods can return honest streams.
+//
+// Storage: `Mutex<HashMap<String, Vec<UnboundedSender<T>>>>`. The IB hub is
+// bounded by active symbols (typically a few dozen) and the hot path holds
+// the lock only long enough to clone+retain the sender vec, so contention is
+// negligible. Avoiding `dashmap` keeps the dependency surface lean (matches
+// `resolver` rationale).
+//
+// Subscribers receive an `UnboundedReceiver<T>`. Dropping the receiver causes
+// the corresponding `UnboundedSender::send` to fail, and the next tick that
+// touches that symbol prunes the dead sender via `retain`.
+type SenderVec<T> = Vec<tokio::sync::mpsc::UnboundedSender<T>>;
+type Hub<T> = StdMutex<HashMap<String, SenderVec<T>>>;
+
+static BAR_HUB:   OnceLock<Hub<BarWire>> = OnceLock::new();
+static QUOTE_HUB: OnceLock<Hub<Quote>>   = OnceLock::new();
+static TRADE_HUB: OnceLock<Hub<Trade>>   = OnceLock::new();
+
+pub fn bar_hub()   -> &'static Hub<BarWire> { BAR_HUB.get_or_init(Default::default) }
+pub fn quote_hub() -> &'static Hub<Quote>   { QUOTE_HUB.get_or_init(Default::default) }
+pub fn trade_hub() -> &'static Hub<Trade>   { TRADE_HUB.get_or_init(Default::default) }
+
+/// Register a new subscriber for `symbol` on the given hub. Returns the
+/// receiver end; senders are stored in the hub for the next tick fanout.
+pub(crate) fn hub_subscribe<T>(hub: &'static Hub<T>, symbol: &str)
+    -> tokio::sync::mpsc::UnboundedReceiver<T>
+{
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut map = hub.lock().expect("ib_ws hub poisoned");
+    map.entry(symbol.to_string()).or_default().push(tx);
+    rx
+}
+
+/// Fan `value` out to every live subscriber for `symbol`, pruning closed
+/// senders in the same pass. Cheap when nobody is subscribed (early return
+/// on empty entry; lock held for the duration of the inner `retain`).
+fn hub_fanout<T: Clone>(hub: &'static Hub<T>, symbol: &str, value: T) {
+    let mut map = hub.lock().expect("ib_ws hub poisoned");
+    let Some(senders) = map.get_mut(symbol) else { return };
+    if senders.is_empty() { return; }
+    senders.retain(|s| s.send(value.clone()).is_ok());
+    if senders.is_empty() {
+        map.remove(symbol);
+    }
+}
 
 // ── Wave 6: per-feed metrics counters ────────────────────────────────────────
 pub(crate) static MESSAGES_IN:        AtomicU64 = AtomicU64::new(0);
@@ -260,6 +313,55 @@ async fn ws_loop(
                                                     crate::data::providers::subscription_manager::BarSource::Last,
                                                     ts_ms,
                                                 );
+                                            // Wave 12a: fan tick out to MarketDataProvider streams.
+                                            // The IB payload is trade-print shaped (price + volume),
+                                            // so we synthesize a degenerate 1m bar (OHLC = price)
+                                            // and a Trade. Quote fanout fires only when the payload
+                                            // actually carries bid/ask fields (defensive — current
+                                            // ibserver doesn't emit those on this code path, but
+                                            // future quote-tick frames will land here too).
+                                            //
+                                            // A real bar aggregator (rolling OHLC by timeframe
+                                            // bucket) is intentionally deferred — keeps Wave 12a
+                                            // scoped to the wiring. Consumers that want true bars
+                                            // should resample downstream.
+                                            let ac = AssetClass::from_symbol(&sym);
+                                            let synth_bar = BarWire {
+                                                symbol: sym.clone(),
+                                                asset_class: ac,
+                                                timeframe: "1m".to_string(),
+                                                time: ts_ms,
+                                                open: p as f64, high: p as f64, low: p as f64, close: p as f64,
+                                                volume: v as f64,
+                                                vwap: 0.0, trades: 0, closed: false,
+                                            };
+                                            hub_fanout(bar_hub(), &sym, synth_bar);
+                                            let trade = Trade {
+                                                symbol: sym.clone(),
+                                                asset_class: ac,
+                                                price: p as f64,
+                                                qty: v as f64,
+                                                time: ts_ms,
+                                            };
+                                            hub_fanout(trade_hub(), &sym, trade);
+                                            // Quote fanout only when bid/ask actually present.
+                                            let bid = map.get("bid").and_then(|v| v.as_f64());
+                                            let ask = map.get("ask").and_then(|v| v.as_f64());
+                                            if bid.is_some() || ask.is_some() {
+                                                let quote = Quote {
+                                                    symbol: sym.clone(),
+                                                    asset_class: ac,
+                                                    bid: bid.unwrap_or(0.0),
+                                                    ask: ask.unwrap_or(0.0),
+                                                    bid_size: map.get("bid_size").or_else(|| map.get("bidSize"))
+                                                        .and_then(|v| v.as_f64()).unwrap_or(0.0),
+                                                    ask_size: map.get("ask_size").or_else(|| map.get("askSize"))
+                                                        .and_then(|v| v.as_f64()).unwrap_or(0.0),
+                                                    spread: 0.0,
+                                                    time: ts_ms,
+                                                };
+                                                hub_fanout(quote_hub(), &sym, quote);
+                                            }
                                             crate::send_to_native_chart(crate::chart_renderer::ChartCommand::UpdateLastBar {
                                                 symbol: sym,
                                                 timeframe: "5m".to_string(),
