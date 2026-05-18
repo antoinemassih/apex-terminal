@@ -404,10 +404,10 @@ fn paint_picker_body(
     ui.spacing_mut().item_spacing.y = st::gap_sm();
 
     // ── 1. SV square ──
-    paint_sv_square(ui, base_id, color, state);
+    paint_sv_square(ui, theme, base_id, color, state);
 
     // ── 2. Hue strip ──
-    paint_hue_strip(ui, base_id, color, state);
+    paint_hue_strip(ui, theme, base_id, color, state);
 
     // ── 3. Hex input + small preview ──
     ui.horizontal(|ui| {
@@ -513,6 +513,7 @@ fn paint_picker_body(
 
 fn paint_sv_square(
     ui: &mut Ui,
+    theme: &dyn ComponentTheme,
     base_id: Id,
     color: &mut Color32,
     state: &mut PickerState,
@@ -548,7 +549,7 @@ fn paint_sv_square(
     painter.rect_stroke(
         rect,
         CornerRadius::same(st::radius_xs() as u8),
-        Stroke::new(st::stroke_std(), Color32::from_black_alpha(80)),
+        Stroke::new(st::stroke_std(), st::color_alpha(theme.shadow_color(), 80)),
         StrokeKind::Inside,
     );
 
@@ -593,6 +594,7 @@ fn paint_sv_square(
 
 fn paint_hue_strip(
     ui: &mut Ui,
+    theme: &dyn ComponentTheme,
     base_id: Id,
     color: &mut Color32,
     state: &mut PickerState,
@@ -616,7 +618,7 @@ fn paint_hue_strip(
     painter.rect_stroke(
         rect,
         CornerRadius::same(st::radius_xs() as u8),
-        Stroke::new(st::stroke_std(), Color32::from_black_alpha(80)),
+        Stroke::new(st::stroke_std(), st::color_alpha(theme.shadow_color(), 80)),
         StrokeKind::Inside,
     );
 
@@ -653,7 +655,7 @@ fn paint_hue_strip(
     painter.rect_stroke(
         caret,
         CornerRadius::same(1), // TODO: off-token
-        Stroke::new(st::stroke_std(), Color32::from_black_alpha(180)),
+        Stroke::new(st::stroke_std(), st::color_alpha(theme.shadow_color(), 180)),
         StrokeKind::Inside,
     );
 }
