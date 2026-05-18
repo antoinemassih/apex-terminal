@@ -91,6 +91,80 @@ pub struct OptionsChain {
     pub puts: Vec<OptionContract>,
 }
 
+// ── Input validation helpers ─────────────────────────────────────────────────
+
+/// Validate a ticker symbol.
+///
+/// Accepts: uppercase letters, digits, colon (options `O:...`), dot
+/// (share-class suffix like `BRK.B`), and hyphen (warrants etc.).
+/// Length: 1–32 chars.
+fn validate_symbol(symbol: &str) -> Result<(), crate::error::AppError> {
+    if symbol.is_empty() || symbol.len() > 32 {
+        return Err(crate::error::AppError::invalid_input(
+            "symbol must be 1–32 characters",
+        ));
+    }
+    if !symbol
+        .chars()
+        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || matches!(c, ':' | '.' | '-'))
+    {
+        return Err(crate::error::AppError::invalid_input(
+            "symbol contains invalid characters (expected A-Z 0-9 : . -)",
+        ));
+    }
+    Ok(())
+}
+
+/// Validate a bar interval against a known-good list.
+fn validate_interval(interval: &str) -> Result<(), crate::error::AppError> {
+    const VALID: &[&str] = &[
+        "1m", "2m", "5m", "15m", "30m", "60m", "1h", "4h",
+        "1d", "1wk", "1w", "1mo",
+    ];
+    if VALID.contains(&interval) {
+        Ok(())
+    } else {
+        Err(crate::error::AppError::invalid_input(
+            "interval is not a recognised value",
+        ))
+    }
+}
+
+/// Validate a bar period against a known-good list.
+fn validate_period(period: &str) -> Result<(), crate::error::AppError> {
+    const VALID: &[&str] = &[
+        "1d", "5d", "1mo", "3mo", "6mo",
+        "1y", "2y", "5y", "10y", "ytd", "max",
+    ];
+    if VALID.contains(&period) {
+        Ok(())
+    } else {
+        Err(crate::error::AppError::invalid_input(
+            "period is not a recognised value",
+        ))
+    }
+}
+
+/// Validate an optional date string in `YYYY-MM-DD` format.
+fn validate_date(date: &str) -> Result<(), crate::error::AppError> {
+    let bytes = date.as_bytes();
+    let ok = bytes.len() == 10
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes[..4].iter().all(|b| b.is_ascii_digit())
+        && bytes[5..7].iter().all(|b| b.is_ascii_digit())
+        && bytes[8..].iter().all(|b| b.is_ascii_digit());
+    if ok {
+        Ok(())
+    } else {
+        Err(crate::error::AppError::invalid_input(
+            "date must be YYYY-MM-DD",
+        ))
+    }
+}
+
+// ── Commands ─────────────────────────────────────────────────────────────────
+
 #[tauri::command]
 pub async fn get_bars(
     symbol: String,
@@ -98,6 +172,17 @@ pub async fn get_bars(
     period: String,
 ) -> Result<Vec<Bar>, crate::error::AppError> {
     use crate::error::AppError;
+
+    // ── Whitelist validation (defense-in-depth, before any URL construction) ──
+    validate_symbol(&symbol)?;
+    validate_interval(&interval)?;
+    validate_period(&period)?;
+
+    // ── Belt-and-suspenders URL encoding ──────────────────────────────────────
+    let enc_symbol   = urlencoding::encode(&symbol);
+    let enc_interval = urlencoding::encode(&interval);
+    let enc_period   = urlencoding::encode(&period);
+
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0")
         .build()
@@ -105,7 +190,7 @@ pub async fn get_bars(
 
     // 0. Crypto → ApexCrypto directly (manages its own cache + Binance backfill)
     if is_crypto(&symbol) {
-        let apex_url = format!("http://192.168.1.56:30840/api/bars/{}/{}", symbol, interval);
+        let apex_url = format!("http://192.168.1.56:30840/api/bars/{}/{}", enc_symbol, enc_interval);
         if let Ok(resp) = client.get(&apex_url).timeout(std::time::Duration::from_secs(5)).send().await {
             if let Ok(bars) = resp.json::<Vec<Bar>>().await {
                 if !bars.is_empty() {
@@ -126,7 +211,7 @@ pub async fn get_bars(
     }
 
     // 2. OCOCO
-    let ococo_url = format!("http://192.168.1.60:30300/api/bars?symbol={}&interval={}&limit=500", symbol, interval);
+    let ococo_url = format!("http://192.168.1.60:30300/api/bars?symbol={}&interval={}&limit=500", enc_symbol, enc_interval);
     if let Ok(resp) = client.get(&ococo_url).timeout(std::time::Duration::from_secs(2)).send().await {
         if let Ok(bars) = resp.json::<Vec<Bar>>().await {
             if !bars.is_empty() {
@@ -137,7 +222,7 @@ pub async fn get_bars(
     }
 
     // 3. yfinance sidecar
-    let yf_url = format!("http://127.0.0.1:8777/bars?symbol={}&interval={}&period={}", symbol, interval, period);
+    let yf_url = format!("http://127.0.0.1:8777/bars?symbol={}&interval={}&period={}", enc_symbol, enc_interval, enc_period);
     if let Ok(resp) = client.get(&yf_url).timeout(std::time::Duration::from_secs(3)).send().await {
         if let Ok(bars) = resp.json::<Vec<Bar>>().await {
             if !bars.is_empty() {
@@ -155,9 +240,10 @@ pub async fn get_bars(
         "1d" => ("1d","5y"), "1wk" => ("1wk","10y"),
         _ => (interval.as_str(), &*period),
     };
+    // yf_interval/yf_range are our own constants — encode enc_symbol only.
     let yahoo_url = format!(
         "https://query1.finance.yahoo.com/v8/finance/chart/{}?interval={}&range={}",
-        symbol, yf_interval, yf_range
+        enc_symbol, yf_interval, yf_range
     );
     if let Ok(resp) = client.get(&yahoo_url).timeout(std::time::Duration::from_secs(5)).send().await {
         if let Ok(json) = resp.json::<serde_json::Value>().await {
@@ -202,10 +288,20 @@ pub async fn get_options_chain(
     date: Option<String>,
 ) -> Result<OptionsChain, crate::error::AppError> {
     use crate::error::AppError;
-    let mut url = format!("http://127.0.0.1:8777/options?symbol={}", symbol);
-    if let Some(d) = &date {
-        url.push_str(&format!("&date={}", d));
+
+    // ── Whitelist validation ───────────────────────────────────────────────────
+    validate_symbol(&symbol)?;
+    if let Some(ref d) = date {
+        validate_date(d)?;
     }
+
+    // ── Belt-and-suspenders URL encoding ──────────────────────────────────────
+    let enc_symbol = urlencoding::encode(&symbol);
+    let mut url = format!("http://127.0.0.1:8777/options?symbol={}", enc_symbol);
+    if let Some(ref d) = date {
+        url.push_str(&format!("&date={}", urlencoding::encode(d)));
+    }
+
     let resp = reqwest::get(&url)
         .await
         .map_err(|e| AppError::network_error(e))?;
@@ -214,4 +310,76 @@ pub async fn get_options_chain(
         .await
         .map_err(|e| AppError::parse_error(e))?;
     Ok(chain)
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod input_validation_tests {
+    use super::{validate_symbol, validate_interval, validate_period, validate_date};
+
+    // ── get_bars: symbol injection ────────────────────────────────────────────
+
+    #[test]
+    fn get_bars_rejects_symbol_with_query_inject() {
+        // "AAPL&foo=bar" would inject an extra query param without validation.
+        let result = validate_symbol("AAPL&foo=bar");
+        assert!(
+            result.is_err(),
+            "expected Err for symbol with query injection"
+        );
+        assert_eq!(result.unwrap_err().code, "invalid_input");
+    }
+
+    #[test]
+    fn get_bars_rejects_symbol_with_path_traversal() {
+        // "AAPL/../admin" would escape the URL path segment.
+        let result = validate_symbol("AAPL/../admin");
+        assert!(
+            result.is_err(),
+            "expected Err for symbol with path traversal"
+        );
+        assert_eq!(result.unwrap_err().code, "invalid_input");
+    }
+
+    // ── get_bars: interval whitelist ──────────────────────────────────────────
+
+    #[test]
+    fn get_bars_rejects_unknown_interval() {
+        let result = validate_interval("99x");
+        assert!(result.is_err(), "expected Err for unrecognised interval");
+        assert_eq!(result.unwrap_err().code, "invalid_input");
+    }
+
+    // ── get_options_chain: date format ────────────────────────────────────────
+
+    #[test]
+    fn get_options_chain_rejects_malformed_date() {
+        // SQL/shell injection attempt disguised as a date.
+        for bad in &["2025/06/01", "20250601", "2025-6-1", "'; DROP TABLE--"] {
+            let result = validate_date(bad);
+            assert!(
+                result.is_err(),
+                "expected Err for malformed date {:?}",
+                bad
+            );
+        }
+    }
+
+    // ── Sanity: good inputs must still pass ───────────────────────────────────
+
+    #[test]
+    fn get_bars_accepts_aapl_5m_5d() {
+        assert!(validate_symbol("AAPL").is_ok());
+        assert!(validate_interval("5m").is_ok());
+        assert!(validate_period("5d").is_ok());
+    }
+
+    #[test]
+    fn get_options_chain_accepts_o_prefix_option() {
+        // Options symbols use the "O:" prefix and are up to 32 chars.
+        assert!(validate_symbol("O:SPY251219C00450000").is_ok());
+        // Date in YYYY-MM-DD format should also pass.
+        assert!(validate_date("2025-12-19").is_ok());
+    }
 }
