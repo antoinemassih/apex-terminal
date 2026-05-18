@@ -385,12 +385,13 @@ pub(crate) fn draw(
     let mid_w = aw - side_w * 2.0 - 6.0;
     let mid_half_h = action_h * 0.5 - 1.0;
 
-    // BUY (spans full action height)
+    // BUY (spans full action height) — UX-1 Fix 3: kbd hint from default_hotkeys
     let r = egui::Rect::from_min_size(egui::pos2(inner.left()+1.0, r2y), egui::vec2(side_w, action_h));
     let resp = place_at(ui, r, |ui| {
         ui.add(Button::buy("BUY")
             .tint(t.bull)
             .size(KitSize::Md)
+            .kbd("Ctrl+B")
             .min_size(egui::vec2(side_w, action_h)))
     });
     if resp.clicked() { let p = if !is_mkt { dom_selected_price.unwrap_or(current_price) } else { current_price }; *new_order = Some((OrderSide::Buy, p, *order_qty)); }
@@ -401,11 +402,13 @@ pub(crate) fn draw(
 
     // FLATTEN — Variant::NeutralAction (grey fill, black text). Reads as the
     // structural "close all" action: high contrast, low chroma, no direction.
+    // UX-1 Fix 3: kbd hint.
     let r = egui::Rect::from_min_size(egui::pos2(mid_x, r2y), egui::vec2(mid_w, mid_half_h));
     let resp = place_at(ui, r, |ui| {
         ui.add(Button::new("FLATTEN")
             .variant(Variant::NeutralAction)
             .size(KitSize::Md)
+            .kbd("Ctrl+Shift+F")
             .min_size(egui::vec2(mid_w, mid_half_h)))
     });
     if resp.clicked() { *cancel_all = true; }
@@ -414,6 +417,7 @@ pub(crate) fn draw(
     // action paired with FLATTEN. Centered text, dark fg for readable
     // contrast against the soft red. Colors come from the order-status
     // semantic tokens (style::order_cancel_bg / order_cancel_fg).
+    // UX-1 Fix 3: kbd hint.
     let cancel_fill = order_cancel_bg();
     let r = egui::Rect::from_min_size(egui::pos2(mid_x, r2y+mid_half_h+2.0), egui::vec2(mid_w, mid_half_h));
     let resp = place_at(ui, r, |ui| {
@@ -422,16 +426,18 @@ pub(crate) fn draw(
             .size(KitSize::Md)
             .fill(cancel_fill)
             .fg(order_cancel_fg())
+            .kbd("Ctrl+Shift+Q")
             .min_size(egui::vec2(mid_w, mid_half_h)))
     });
     if resp.clicked() { *cancel_all = true; }
 
-    // SELL (spans full action height)
+    // SELL (spans full action height) — UX-1 Fix 3: kbd hint.
     let r = egui::Rect::from_min_size(egui::pos2(mid_x+mid_w+3.0, r2y), egui::vec2(side_w, action_h));
     let resp = place_at(ui, r, |ui| {
         ui.add(Button::sell("SELL")
             .tint(t.bear)
             .size(KitSize::Md)
+            .kbd("Ctrl+Shift+B")
             .min_size(egui::vec2(side_w, action_h)))
     });
     if resp.clicked() { let p = if !is_mkt { dom_selected_price.unwrap_or(current_price) } else { current_price }; *new_order = Some((OrderSide::Sell, p, *order_qty)); }

@@ -819,24 +819,25 @@ impl<'a> AccountStrip<'a> {
 
                         ui.add(egui::Separator::default().spacing(8.0));
 
-                        // Emergency action buttons
-                        if ui.add(
-                            egui::Button::new(RichText::new("CANCEL ALL").monospace().size(font_sm()).strong().color(contrast_fg(t.bear)))
-                                .fill(color_alpha(t.bear, 120))
-                                .corner_radius(radius_sm())
-                                .min_size(egui::vec2(0.0, row_height_default()))
-                                .stroke(Stroke::new(stroke_std(), t.bear)),
-                        ).clicked() {
+                        // Emergency action buttons — UX-1 Fix 3: kbd hints from
+                        // default_hotkeys (Ctrl+Shift+Q / Ctrl+Shift+F).
+                        if KitButton::new("CANCEL ALL")
+                            .variant(crate::ui_kit::widgets::tokens::Variant::Danger)
+                            .size(crate::ui_kit::widgets::tokens::Size::Sm)
+                            .kbd("Ctrl+Shift+Q")
+                            .show(ui, t)
+                            .clicked()
+                        {
                             on_cancel_all();
                         }
 
-                        if ui.add(
-                            egui::Button::new(RichText::new("FLATTEN").monospace().size(font_sm()).strong().color(contrast_fg(t.bear)))
-                                .fill(color_alpha(t.bear, 180))
-                                .corner_radius(radius_sm())
-                                .min_size(egui::vec2(0.0, row_height_default()))
-                                .stroke(Stroke::new(stroke_std(), t.bear)),
-                        ).clicked() {
+                        if KitButton::new("FLATTEN")
+                            .variant(crate::ui_kit::widgets::tokens::Variant::Danger)
+                            .size(crate::ui_kit::widgets::tokens::Size::Sm)
+                            .kbd("Ctrl+Shift+F")
+                            .show(ui, t)
+                            .clicked()
+                        {
                             on_flatten();
                         }
                     } else {
