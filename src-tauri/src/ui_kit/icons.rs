@@ -2,6 +2,17 @@
 //!
 //! All icons use the Bold weight at 24px. Use `Icon::button` / `Icon::button_colored`.
 //! Usage: `ui.label(Icon::PENCIL_LINE);` or `Icon::button(ui, Icon::TRASH, "Delete")`
+//!
+//! ## Close affordances — design rule
+//!
+//! Close affordances MUST use [`Icon::X`] (or its [`Icon::CLOSE`] alias).
+//! Never use `Icon::X_CIRCLE`, `Icon::X_SQUARE`, or any filled close variants —
+//! design rule per owner. Filled close icons read as "destroy", not "dismiss",
+//! and break the visual language.
+//!
+//! The `X_CIRCLE` and `X_SQUARE` constants are deprecated for close use; they
+//! remain available for cases where the shape itself is intentional (e.g.
+//! error indicators), but should never be used as dismiss / close buttons.
 
 use egui_phosphor::bold as ph;
 use egui_phosphor::fill as ph_fill;
@@ -21,6 +32,21 @@ impl Icon {
     // Actions
     pub const TRASH: &'static str = ph::TRASH;
     pub const X: &'static str = ph::X;
+    /// Semantic alias for `Icon::X`. Use for all dismiss / close affordances.
+    /// See module-level docs for the design rule on close variants.
+    pub const CLOSE: &'static str = Self::X;
+    /// Phosphor Bold "arrow-left" (U+E058).
+    pub const ARROW_LEFT: &'static str = "\u{E058}";
+    /// Phosphor Bold "arrow-right" (U+E06C).
+    pub const ARROW_RIGHT: &'static str = "\u{E06C}";
+    /// Phosphor Bold "x-circle". Reads as "destroy" — NOT a close button.
+    /// Use `Icon::X` / `Icon::CLOSE` for dismiss affordances.
+    #[deprecated(note = "use Icon::X for close affordances; X_CIRCLE reads as 'destroy'")]
+    pub const X_CIRCLE: &'static str = ph::X_CIRCLE;
+    /// Phosphor Bold "x-square". Reads as "destroy" — NOT a close button.
+    /// Use `Icon::X` / `Icon::CLOSE` for dismiss affordances.
+    #[deprecated(note = "use Icon::X for close affordances; X_SQUARE reads as 'destroy'")]
+    pub const X_SQUARE: &'static str = ph::X_SQUARE;
     pub const SQUARE: &'static str = ph::SQUARE;
     pub const LIST: &'static str = ph::LIST;
     pub const ARROW_FAT_UP: &'static str = ph::ARROW_FAT_UP;
