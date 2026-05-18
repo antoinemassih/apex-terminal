@@ -101,6 +101,7 @@ eframe = { version = "0.31", default-features = false, features = ["default_font
 tempfile = "3"
 serial_test = "3"
 proptest = "1"
+mockito = "1"
 
 [[example]]
 name = "font_showcase"
