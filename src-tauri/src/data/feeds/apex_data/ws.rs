@@ -150,7 +150,7 @@ fn manager() -> Arc<Manager> {
     }).clone()
 }
 
-fn runtime() -> &'static Runtime {
+pub(crate) fn runtime() -> &'static Runtime {
     RT.get_or_init(|| {
         tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)

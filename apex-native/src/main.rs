@@ -39,9 +39,8 @@ fn main() {
         {
             Ok(pool) => {
                 eprintln!("[apex-native] PostgreSQL connected");
-                if let Err(e) = _scaffold_lib::drawings::ensure_schema(&pool).await {
-                    eprintln!("[apex-native] Schema migration failed: {e}");
-                }
+                // Schema is managed externally; lib.rs (Tauri path) also skips
+                // an ensure_schema call. drawing_db::init is the contract.
                 _scaffold_lib::drawing_db::init(pool.clone());
                 // Wave 7A fix (Bug 2): register the pool for shutdown.
                 use std::sync::Arc;
@@ -74,17 +73,25 @@ fn main() {
     }
 
     _scaffold_lib::chart_renderer::gpu::fetch_bars_background_pub("SPY".into(), "5m".into());
-    _scaffold_lib::chart_renderer::gpu::open_window(rx, initial, None);
 
-    loop {
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        let has_senders = _scaffold_lib::NATIVE_CHART_TXS.get()
-            .and_then(|m| m.lock().ok())
-            .map(|v| !v.is_empty())
-            .unwrap_or(false);
-        if !has_senders {
-            std::thread::sleep(std::time::Duration::from_millis(200));
-            break;
+    // macOS requires winit::EventLoop on the main thread — use the blocking
+    // variant that owns the main thread until all windows close.
+    #[cfg(target_os = "macos")]
+    _scaffold_lib::chart_renderer::gpu::open_window_blocking(rx, initial, None);
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        _scaffold_lib::chart_renderer::gpu::open_window(rx, initial, None);
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let has_senders = _scaffold_lib::NATIVE_CHART_TXS.get()
+                .and_then(|m| m.lock().ok())
+                .map(|v| !v.is_empty())
+                .unwrap_or(false);
+            if !has_senders {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+                break;
+            }
         }
     }
 

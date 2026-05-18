@@ -24,6 +24,24 @@ use tokio::sync::broadcast;
 const FANOUT_CAP: usize = 1024;
 const STALE_TTL_SECS: u64 = 30;
 
+/// Spawn an async pump task. Tries the caller's current Tokio runtime
+/// first; falls back to the long-lived `apex_data::ws` runtime when the
+/// caller is on a plain `std::thread` (common in the native binary's
+/// fetch path). If neither is available, logs and drops the task —
+/// the fanout for that subscription will be silent until the upstream
+/// is restarted.
+fn spawn_pump<F>(task: F)
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    if let Ok(h) = tokio::runtime::Handle::try_current() {
+        h.spawn(task);
+        return;
+    }
+    let rt = crate::data::feeds::apex_data::ws::runtime();
+    rt.handle().spawn(task);
+}
+
 /// Which series a bar subscription targets. `Last` is the default
 /// trade-print stream; `Mark` is the parallel NBBO-mid stream
 /// (MARK_BARS_PROTOCOL). Subscriptions for the same `(symbol, timeframe)`
@@ -148,7 +166,7 @@ impl SubscriptionManager {
         drop(map);
         let recv_out = tx.subscribe();
         if let Some(mut rx) = upstream {
-            tokio::spawn({
+            spawn_pump({
                 let sub = sub.clone();
                 async move {
                     while let Some(bar) = rx.recv().await {
@@ -208,7 +226,7 @@ impl SubscriptionManager {
         map.insert(symbol.to_string(), sub.clone());
         drop(map);
         let recv_out = tx.subscribe();
-        tokio::spawn(async move {
+        spawn_pump(async move {
             while let Some(q) = rx.recv().await {
                 if q.time > 0 {
                     let prev = sub.last_seen_ts.load(Ordering::Relaxed);
@@ -257,7 +275,7 @@ impl SubscriptionManager {
         map.insert(symbol.to_string(), sub.clone());
         drop(map);
         let recv_out = tx.subscribe();
-        tokio::spawn(async move {
+        spawn_pump(async move {
             while let Some(t) = rx.recv().await {
                 if t.time > 0 {
                     let prev = sub.last_seen_ts.load(Ordering::Relaxed);
@@ -305,7 +323,7 @@ impl SubscriptionManager {
         map.insert(underlying.to_string(), sub.clone());
         drop(map);
         let recv_out = tx.subscribe();
-        tokio::spawn(async move {
+        spawn_pump(async move {
             while let Some(d) = rx.recv().await {
                 if let Ok(mut g) = sub.last_activity.lock() {
                     *g = Instant::now();
