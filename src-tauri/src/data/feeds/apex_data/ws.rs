@@ -642,6 +642,7 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
                 Frame::Spike(s)
             }
             Err(e) => { eprintln!("[apex_data.ws] bad spike: {e}"); return; }
+        },
         "halt" => match serde_json::from_value::<HaltReading>(env.data) {
             Ok(h) => Frame::Halt(h),
             Err(e) => { eprintln!("[apex_data.ws] bad halt: {e}"); return; }

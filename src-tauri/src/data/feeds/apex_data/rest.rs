@@ -397,6 +397,8 @@ pub fn get_breadth(index: &str) -> Option<BreadthReading> {
 /// gainers/losers; this one covers gainers/losers/active/rvol_leaders/gappers.
 pub fn get_movers(kind: MoverKind) -> Option<MoversReading> {
     get(&format!("/api/stocks/movers/{}", kind.as_str()))
+}
+
 // ── Wave 10 projector REST endpoints ─────────────────────────────────────
 
 /// `GET /api/stocks/news/:ticker?since=<epoch_ms>` — cached `news_sentiment`
@@ -560,6 +562,8 @@ pub fn get_provenance(
             Err(ProvenanceError::Other(format!("{e}")))
         }
     }
+}
+
 // ── §3.1 / SOTA §4.2 — replay session control ──────────────────────────────
 
 /// `POST /api/replay/start` — kick off a new replay session.

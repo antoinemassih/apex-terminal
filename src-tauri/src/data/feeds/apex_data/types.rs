@@ -478,6 +478,8 @@ pub struct RegimeTransition {
     pub from: String,
     pub to: String,
     pub t_ms: i64,
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Replay (SOTA §4.2) — historical scrubbing session
 // ────────────────────────────────────────────────────────────────────────────
@@ -630,6 +632,9 @@ impl ReplayEvent {
     }
     pub fn new_error(msg: impl Into<String>) -> Self {
         ReplayEvent { kind: "error", symbol: msg.into(), t_ms: 0, price: None }
+    }
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // SOTA §4.4 — TradePlan v2 (Calibrated + Conformal + Provenance)
 // ────────────────────────────────────────────────────────────────────────────
@@ -783,6 +788,8 @@ impl SpikeExplanation {
         let id = Self::derive_id(&symbol, t_ms);
         Self { symbol, t_ms, sigma, pct_move, headline, explanation, sources, id }
     }
+}
+
 // ── §5.6 Stocks: bulk snapshots / movers / grouped daily ──────────────────
 
 /// Polygon-shape minute aggregate inside a `StockSnapshot`.
@@ -998,6 +1005,8 @@ pub struct HaltReading {
     #[serde(default)] pub time_ms: i64,
     /// Resumes-at timestamp for `HaltActive`; 0 when unknown.
     #[serde(default)] pub resumes_at_ms: i64,
+}
+
 // ── Wave 10 projector outputs — news / IV rank / ETF IIV / corp actions ──
 
 /// Single news article reading from the `news_sentiment` projector.

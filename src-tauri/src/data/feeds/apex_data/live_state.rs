@@ -7,9 +7,7 @@
 use super::types::{
     Quote, Trade, Snapshot, HealthReady, FeedsResponse, GreeksRow, ChainRow,
     CombinedSignalV2, RegimeFrame, RegimeTransition,
-};
-use super::types::{Quote, Trade, Snapshot, HealthReady, FeedsResponse, GreeksRow, ChainRow,
-    TradePlanV2, SpikeExplanation};
+    TradePlanV2, SpikeExplanation,
     SectorRotationReading, BreadthReading, MoversReading, MoverKind, HaltReading, HaltKind,
     NewsResponse, IvRankV2, EtfIivReading, CorporateActionsReading,
 };
@@ -552,6 +550,8 @@ pub fn all_combined_sorted() -> Vec<CombinedSignalV2> {
     let mut v: Vec<CombinedSignalV2> = g.values().cloned().collect();
     v.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
     v
+}
+
 // ── SOTA §4.4 — Trade plan v2 (latest per symbol) ──────────────────────────
 
 /// Upsert the latest TradePlan v2 for a symbol. Idempotent. Older plans for
@@ -622,6 +622,8 @@ pub fn reset_spike_state_for_tests() {
     if let Ok(mut g) = state().recent_spike_explanations.lock() { g.clear(); }
     if let Ok(mut g) = state().dismissed_spikes.lock() { g.clear(); }
     if let Ok(mut g) = state().latest_trade_plan.lock() { g.clear(); }
+}
+
 // ── Wave 10 projector caches ───────────────────────────────────────────────
 
 /// Cache the latest sector-rotation projector reading.
