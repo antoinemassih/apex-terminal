@@ -226,7 +226,7 @@ pub(crate) fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i3
                 strike_window_pct: Some(10.0),
                 ..Default::default()
             };
-            if let Some(chain) = crate::apex_data::rest::get_chain_with(&symbol, &q) {
+            if let Ok(chain) = crate::apex_data::rest::get_chain_with(&symbol, &q) {
                 crate::apex_log!("chain", "{}: {} rows (cache={}, filters dte_max={:?} sw%={:?})",
                     symbol, chain.rows.len(), chain.total_in_cache,
                     chain.filters.dte_max, chain.filters.strike_window_pct);
@@ -246,7 +246,7 @@ pub(crate) fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i3
                         strike_window_pct: Some(10.0),
                         ..Default::default()
                     };
-                    if let Some(past) = crate::apex_data::rest::get_chain_with(&symbol, &pq) {
+                    if let Ok(past) = crate::apex_data::rest::get_chain_with(&symbol, &pq) {
                         crate::apex_log!("chain.zerodte",
                             "{}: backfill expiry={} → {} rows", symbol, zdt_s, past.rows.len());
                         crate::apex_data::live_state::merge_chain_delta(&symbol, &past.rows);
@@ -279,7 +279,7 @@ pub(crate) fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i3
                         return;
                     }
                 }
-                if let Some(chain) = crate::apex_data::rest::get_chain_with(&symbol, &q) {
+                if let Ok(chain) = crate::apex_data::rest::get_chain_with(&symbol, &q) {
                     if !chain.rows.is_empty() {
                         crate::apex_data::live_state::seed_chain(&symbol, &chain.rows);
                         if let Some((calls, puts, spot)) = render_from(&chain.rows, hint) {
@@ -473,7 +473,7 @@ pub(crate) fn fetch_overlay_chain_background(symbol: String, underlying_price: f
     std::thread::spawn(move || {
         // 0. ApexData — preferred. 0DTE strikes, wide strike band.
         if crate::apex_data::is_enabled() {
-            if let Some(chain) = crate::apex_data::rest::get_chain(&symbol) {
+            if let Ok(chain) = crate::apex_data::rest::get_chain(&symbol) {
                 let spot = if underlying_price > 0.0 { underlying_price }
                            else {
                                crate::apex_data::live_state::get_snapshot(&symbol)
@@ -834,7 +834,7 @@ pub(crate) fn fetch_option_history_background(occ: String, display_sym: String, 
         match crate::apex_data::rest::get_replay(
             crate::apex_data::AssetClass::Option, &occ, &tf, from_ms, to_ms, None, Some(1000), src)
         {
-            Some(resp) if !resp.bars.is_empty() => {
+            Ok(resp) if !resp.bars.is_empty() => {
                 let gpu_bars: Vec<Bar> = resp.bars.iter().map(|b| Bar {
                     open: b.open as f32, high: b.high as f32, low: b.low as f32,
                     close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
@@ -887,7 +887,7 @@ pub(crate) fn fetch_history_background(sym: String, tf: String, before_ts: i64) 
             let class = crate::apex_data::AssetClass::from_symbol(&sym);
             let to_ms = before_ts * 1000;
             let from_ms = to_ms - page_seconds * 1000;
-            if let Some(resp) = crate::apex_data::rest::get_replay(class, &sym, &tf, from_ms, to_ms, None, Some(1000), crate::apex_data::BarSource::Last) {
+            if let Ok(resp) = crate::apex_data::rest::get_replay(class, &sym, &tf, from_ms, to_ms, None, Some(1000), crate::apex_data::BarSource::Last) {
                 if !resp.bars.is_empty() {
                     let gpu_bars: Vec<Bar> = resp.bars.iter().map(|b| Bar {
                         open: b.open as f32, high: b.high as f32, low: b.low as f32,
@@ -1075,7 +1075,7 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
         match crate::apex_data::rest::get_bars(
             crate::apex_data::AssetClass::Option, &occ, &tf, src)
         {
-            Some(bars) if !bars.is_empty() => {
+            Ok(bars) if !bars.is_empty() => {
                 crate::apex_log!("option.fetch", "OK {} bars for {occ}", bars.len());
                 let adapted: Vec<crate::data::Bar> = bars.into_iter().map(|b| crate::data::Bar {
                     time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
@@ -1083,7 +1083,7 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
                 send(adapted, "ApexData");
             }
             other => {
-                let was_empty = matches!(other, Some(_));
+                let was_empty = matches!(other, Ok(_));
                 crate::apex_log!("option.fetch",
                     "{} for {occ} {tf} source={} — trying mark fallback",
                     if was_empty { "EMPTY history" } else { "UNREACHABLE/breaker" },
@@ -1093,7 +1093,7 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
                 // populates instead of staying blank. Without this, a fresh
                 // option pane would never load until the user manually toggles.
                 if !mark {
-                    if let Some(bars) = crate::apex_data::rest::get_bars(
+                    if let Ok(bars) = crate::apex_data::rest::get_bars(
                         crate::apex_data::AssetClass::Option, &occ, &tf,
                         crate::apex_data::BarSource::Mark)
                     {

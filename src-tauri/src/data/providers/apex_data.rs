@@ -258,11 +258,11 @@ impl MarketDataProvider for ApexDataProvider {
         if !apex_data::is_enabled() {
             return Err(ApiError::NotSupported("apex_data: disabled".into()));
         }
-        let u = underlying.to_string();
-        let res = tokio::task::spawn_blocking(move || rest::get_chain(&u))
-            .await
-            .map_err(|e| ApiError::Network(format!("join: {e}")))?;
-        res.ok_or_else(|| ApiError::Network("apex_data: chain empty".into()))
+        // Routed through `with_auth_retry` so a 401 from ApexData triggers
+        // a single refresh + retry before bubbling up. (Refresh is a no-op
+        // today — ApexData has no `/auth/refresh` endpoint — but the wiring
+        // is in place so a server-side flow lands transparently.)
+        rest::get_chain_async(underlying).await
     }
 
     fn subscribe_chain(&self, underlying: &str) -> Result<ChainStream, ApiError> {
