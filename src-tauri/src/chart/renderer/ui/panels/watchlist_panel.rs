@@ -1778,21 +1778,21 @@ if watchlist.open {
                                     .show(ui, &mut watchlist.chain_0_strike_mode);
                             }
                             // Count ± (always visible)
-                            if ui.add(Button::new("-").variant(Variant::Chrome).size(Size::Sm).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_num_strikes = watchlist.chain_0_num_strikes.saturating_sub(1).max(1); }
+                            if ui.add(Button::new("-").variant(Variant::Chrome).size(Size::Sm).min_size(egui::vec2(icon_xs(), icon_xs()))).clicked() { watchlist.chain_0_num_strikes = watchlist.chain_0_num_strikes.saturating_sub(1).max(1); }
                             ui.add(MonospaceCode::new(&format!("{}", watchlist.chain_0_num_strikes)).size_px(font_xs()).color(t.dim));
-                            if ui.add(Button::new("+").variant(Variant::Chrome).size(Size::Sm).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_num_strikes += 1; }
+                            if ui.add(Button::new("+").variant(Variant::Chrome).size(Size::Sm).min_size(egui::vec2(icon_xs(), icon_xs()))).clicked() { watchlist.chain_0_num_strikes += 1; }
                             // Near / Mid / Far toggles
                             NmfToggle::new(&mut watchlist.chain_0_nmf).theme(t).show(ui);
                             // Freeze + arrows
                             let fr_col = if watchlist.chain_0_frozen { t.accent } else { color_dim(t.dim) };
                             let fr_icon_0 = if watchlist.chain_0_frozen { Icon::PAUSE } else { Icon::PLAY };
-                            if ui.add(Button::icon(fr_icon_0).variant(Variant::Chrome).glyph_color(fr_col).size(Size::Sm).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).on_hover_text("Freeze strikes").clicked() {
+                            if ui.add(Button::icon(fr_icon_0).variant(Variant::Chrome).glyph_color(fr_col).size(Size::Sm).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(icon_xs(), icon_xs()))).on_hover_text("Freeze strikes").clicked() {
                                 watchlist.chain_0_frozen = !watchlist.chain_0_frozen;
                                 if !watchlist.chain_0_frozen { watchlist.chain_0_offset = 0; }
                             }
                             if watchlist.chain_0_frozen {
-                                if ui.add(Button::icon(Icon::ARROW_FAT_UP).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).on_hover_text("Shift strikes up").clicked() { watchlist.chain_0_offset += 1; }
-                                if ui.add(Button::icon(Icon::ARROW_FAT_DOWN).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).on_hover_text("Shift strikes down").clicked() { watchlist.chain_0_offset -= 1; }
+                                if ui.add(Button::icon(Icon::ARROW_FAT_UP).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(icon_xs(), icon_xs()))).on_hover_text("Shift strikes up").clicked() { watchlist.chain_0_offset += 1; }
+                                if ui.add(Button::icon(Icon::ARROW_FAT_DOWN).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(icon_xs(), icon_xs()))).on_hover_text("Shift strikes down").clicked() { watchlist.chain_0_offset -= 1; }
                             }
                         });
                         let ns_0 = watchlist.chain_0_num_strikes;
@@ -1832,19 +1832,19 @@ if watchlist.open {
                                     .theme(t)
                                     .show(ui, &mut watchlist.chain_far_strike_mode);
                             }
-                            if ui.add(Button::new("-").variant(Variant::Chrome).size(Size::Sm).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_num_strikes = watchlist.chain_far_num_strikes.saturating_sub(1).max(1); }
+                            if ui.add(Button::new("-").variant(Variant::Chrome).size(Size::Sm).min_size(egui::vec2(icon_xs(), icon_xs()))).clicked() { watchlist.chain_far_num_strikes = watchlist.chain_far_num_strikes.saturating_sub(1).max(1); }
                             ui.add(MonospaceCode::new(&format!("{}", watchlist.chain_far_num_strikes)).size_px(font_xs()).color(t.dim));
-                            if ui.add(Button::new("+").variant(Variant::Chrome).size(Size::Sm).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_num_strikes += 1; }
+                            if ui.add(Button::new("+").variant(Variant::Chrome).size(Size::Sm).min_size(egui::vec2(icon_xs(), icon_xs()))).clicked() { watchlist.chain_far_num_strikes += 1; }
                             NmfToggle::new(&mut watchlist.chain_far_nmf).theme(t).show(ui);
                             let fr_col = if watchlist.chain_far_frozen { t.accent } else { color_dim(t.dim) };
                             let fr_icon_far = if watchlist.chain_far_frozen { Icon::PAUSE } else { Icon::PLAY };
-                            if ui.add(Button::icon(fr_icon_far).variant(Variant::Chrome).glyph_color(fr_col).size(Size::Sm).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).on_hover_text("Freeze strikes").clicked() {
+                            if ui.add(Button::icon(fr_icon_far).variant(Variant::Chrome).glyph_color(fr_col).size(Size::Sm).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(icon_xs(), icon_xs()))).on_hover_text("Freeze strikes").clicked() {
                                 watchlist.chain_far_frozen = !watchlist.chain_far_frozen;
                                 if !watchlist.chain_far_frozen { watchlist.chain_far_offset = 0; }
                             }
                             if watchlist.chain_far_frozen {
-                                if ui.add(Button::icon(Icon::ARROW_FAT_UP).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).on_hover_text("Shift strikes up").clicked() { watchlist.chain_far_offset += 1; }
-                                if ui.add(Button::icon(Icon::ARROW_FAT_DOWN).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).on_hover_text("Shift strikes down").clicked() { watchlist.chain_far_offset -= 1; }
+                                if ui.add(Button::icon(Icon::ARROW_FAT_UP).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(icon_xs(), icon_xs()))).on_hover_text("Shift strikes up").clicked() { watchlist.chain_far_offset += 1; }
+                                if ui.add(Button::icon(Icon::ARROW_FAT_DOWN).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(icon_xs(), icon_xs()))).on_hover_text("Shift strikes down").clicked() { watchlist.chain_far_offset -= 1; }
                             }
                         });
                         let ns_f = watchlist.chain_far_num_strikes;

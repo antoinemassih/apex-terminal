@@ -111,6 +111,7 @@ use crate::chart_renderer::ui::style::{
     STROKE_STD, STROKE_THIN,
     ALPHA_FAINT, ALPHA_GHOST, ALPHA_DIM, ALPHA_HEAVY,
     BTN_ICON_SM, BTN_ICON_LG,
+    icon_sm,
     set_toolbar_rect, tb_group_break, current as style_current,
     font_4xs, font_xs, font_2xs, font_sm, font_md, font_lg, font_xl, alpha_muted, alpha_ghost, alpha_strong, alpha_dim,
     mono_xs, mono_sm, mono_md, mono_lg,
@@ -1948,7 +1949,7 @@ pub(crate) fn render(
                     );
 
                     // Star — toggles favorite without closing the dropdown
-                    let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(16.0, 16.0));
+                    let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(icon_sm(), icon_sm()));
                     let sh = hover_pos.map_or(false, |p| sr.contains(p));
                     let sc = if is_fav { color_alpha(t.accent, ALPHA_HEAVY) } else if sh { color_half(t.dim) } else if hovered { color_very_dim(t.dim) } else { color_very_dim(t.dim) };
                     ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, egui::FontId::proportional(font_sm()), sc);
@@ -2062,7 +2063,7 @@ pub(crate) fn render(
                     ui.painter().text(egui::pos2(row_rect.left() + 74.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.description(), mono_sm(), dc);
 
                     // Star — filled, raw pointer click
-                    let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(16.0, 16.0));
+                    let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(icon_sm(), icon_sm()));
                     let sh = hover_pos.map_or(false, |p| sr.contains(p));
                     let sc = if is_fav { color_alpha(t.accent, ALPHA_HEAVY) } else if sh { color_half(t.dim) } else if hovered { color_very_dim(t.dim) } else { color_very_dim(t.dim) };
                     ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, egui::FontId::proportional(font_sm()), sc);

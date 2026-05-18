@@ -31,6 +31,7 @@ use std::time::{Duration, Instant};
 
 use egui;
 
+use crate::chart_renderer::ui::style::icon_md;
 use crate::data::apex_data::live_state;
 use crate::data::apex_data::types::SpikeExplanation;
 
@@ -280,7 +281,7 @@ fn draw_toast_body(
             if ui.add(egui::Button::new(egui::RichText::new("\u{00D7}")
                 .size(14.0).color(egui::Color32::from_rgb(180, 180, 180)))
                 .fill(egui::Color32::TRANSPARENT)
-                .min_size(egui::vec2(18.0, 18.0))
+                .min_size(egui::vec2(icon_md(), icon_md()))
             ).on_hover_text("Dismiss").clicked() {
                 dismiss_buf.push(spike.id.clone());
             }

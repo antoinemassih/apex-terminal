@@ -130,7 +130,7 @@ impl<'a> AlertRow<'a> {
 
                 // Embedded delete button.
                 let db = egui::Rect::from_min_size(
-                    egui::pos2(rect.right() - 22.0, cy - 8.0), egui::vec2(16.0, 16.0));
+                    egui::pos2(rect.right() - 22.0, cy - 8.0), egui::vec2(icon_sm(), icon_sm()));
                 let db_resp = ui.allocate_rect(db, egui::Sense::click());
                 crate::chart_renderer::ui::style::cursor::clickable(ui, &db_resp);
                 let col = if db_resp.hovered() { bear } else { dim };
