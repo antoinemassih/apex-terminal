@@ -859,7 +859,7 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
         // point-form plans.
         "trade_plan" => match serde_json::from_value::<TradePlanV2>(env.data) {
             Ok(p) => Frame::TradePlan(p),
-            Err(e) => { eprintln!("[apex_data.ws] bad trade_plan: {e}"); return; }
+            Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_trade_plan", e.to_string()); return; }
         },
         // SOTA §4.5 — spike-explanation toast. Derive the dedup id from
         // (symbol, t_ms) after deserialization — the server doesn't have to
@@ -869,11 +869,11 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
                 s.id = SpikeExplanation::derive_id(&s.symbol, s.t_ms);
                 Frame::Spike(s)
             }
-            Err(e) => { eprintln!("[apex_data.ws] bad spike: {e}"); return; }
+            Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_spike", e.to_string()); return; }
         },
         "halt" => match serde_json::from_value::<HaltReading>(env.data) {
             Ok(h) => Frame::Halt(h),
-            Err(e) => { eprintln!("[apex_data.ws] bad halt: {e}"); return; }
+            Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_halt", e.to_string()); return; }
         },
         "resync" => {
             let reason = env.data.get("reason").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -892,7 +892,7 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
                 super::live_state::push_combined(c.clone());
                 Frame::Combined(c)
             }
-            Err(e) => { eprintln!("[apex_data.ws] bad combined: {e}"); return; }
+            Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_combined", e.to_string()); return; }
         },
         // ── SOTA UX §3.3 — regime frame ───────────────────────────────────
         // Routes into `live_state.latest_regime` so the always-visible
@@ -902,9 +902,8 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
                 super::live_state::push_regime(r.clone());
                 Frame::Regime(r)
             }
-            Err(e) => { eprintln!("[apex_data.ws] bad regime: {e}"); return; }
+            Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_regime", e.to_string()); return; }
         },
-        other => { eprintln!("[apex_data.ws] unknown frame: {other}"); return; }
         other => { report(ErrorLevel::Warn, "apex_data.ws", "unknown_frame", other.to_string()); return; }
     };
     broadcast(mgr, &frame);
