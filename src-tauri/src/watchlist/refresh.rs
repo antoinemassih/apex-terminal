@@ -8,6 +8,7 @@
 //! at whatever the previous successful refresh produced.
 
 use crate::data::apex_data::rest as apex_rest;
+use crate::foundation::types::{registry, Symbol, Vendor};
 use crate::persistence::watchlist_db;
 
 /// (polygon_ticker, universe_name, display_name, kind)
@@ -64,6 +65,19 @@ pub fn refresh_universes_in_background() {
                 Ok(rows) if !rows.is_empty() => {
                     eprintln!("[universe-refresh] {name} ← {poly_ticker}: {} holdings", rows.len());
                     watchlist_db::save_universe(name, display, kind, "polygon", &rows);
+                    // Populate the global SymbolRegistry so downstream code can
+                    // ask `registry().get(ticker).is_some()` and trust the answer
+                    // for every constituent of every universe we just fetched.
+                    // This is what retires the brittle `is_crypto(&str)` heuristic
+                    // for "real" tickers — a `XUSDT`-style equity stays equity.
+                    let reg = registry();
+                    for (ticker, _weight) in &rows {
+                        reg.insert(
+                            Symbol::equity(ticker)
+                                .with_alias(Vendor::ApexData, ticker)
+                                .with_alias(Vendor::InteractiveBrokers, ticker),
+                        );
+                    }
                     let symbols: Vec<String> = rows.into_iter().map(|(s, _)| s).collect();
                     watchlist_db::set_cached_universe(name, symbols);
                 }

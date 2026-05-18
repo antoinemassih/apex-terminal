@@ -64,7 +64,15 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
                         });
                     }
                     ui.add_space(8.0);
-                    if !crate::data::is_crypto(active_symbol) && !crate::apex_data::is_enabled() {
+                    // Wave 9c: prefer registry-backed asset class (avoids
+                    // mis-classifying real equities whose ticker happens to
+                    // end in USDT); fall back to the legacy string heuristic
+                    // for tickers the registry has never seen.
+                    let active_is_crypto = crate::foundation::types::registry()
+                        .get(active_symbol)
+                        .map(|s| s.is_crypto())
+                        .unwrap_or_else(|| crate::data::is_crypto(active_symbol));
+                    if !active_is_crypto && !crate::apex_data::is_enabled() {
                         PanelEmpty::new("No prints yet")
                             .hint("Enable ApexData in settings for stock T&S")
                             .show(ui, t);

@@ -304,6 +304,7 @@ pub(crate) fn draw(
                 } else { format!("{:.1}", strike) };
                 let opt_sym = format!("{} {}{}", underlying, strike_str, if is_call { "C" } else { "P" });
                 panes[pi].symbol = opt_sym.clone();
+                panes[pi].symbol_meta = crate::foundation::types::symbol_or_guess(&opt_sym);
                 panes[pi].option_type = if is_call { "C".into() } else { "P".into() };
                 panes[pi].option_strike = strike;
                 panes[pi].option_contract = occ_final.clone();

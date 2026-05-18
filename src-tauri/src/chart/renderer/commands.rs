@@ -501,6 +501,7 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         AppCommand::SwapPaneSymbol { pane, symbol } => {
             if let Some(p) = panes.get_mut(pane) {
                 p.symbol = symbol.clone();
+                p.symbol_meta = crate::foundation::types::symbol_or_guess(&symbol);
                 p.pending_symbol_change = Some(symbol);
             }
         }

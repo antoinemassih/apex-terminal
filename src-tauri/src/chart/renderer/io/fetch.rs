@@ -577,7 +577,14 @@ pub(crate) fn fetch_watchlist_prices(symbols: Vec<String>) {
         .filter(|s| {
             let s_upper = s.to_uppercase();
             // Crypto: ApexCrypto handles BTCUSDT etc.
-            if crate::data::is_crypto(s) { return false; }
+            // Wave 9c: registry-preferred (so equities like XUSDT aren't
+            // dropped); string heuristic remains the fallback for tickers
+            // not yet registered.
+            let crypto = crate::foundation::types::registry()
+                .get(s)
+                .map(|sy| sy.is_crypto())
+                .unwrap_or_else(|| crate::data::is_crypto(s));
+            if crypto { return false; }
             // Option OCC: "O:SPY..." prefix.
             if s_upper.starts_with("O:") { return false; }
             // Option display label: "UND STRIKE C/P EXPIRY" or "UND STRIKEC EXPIRY".
@@ -1188,7 +1195,13 @@ pub(crate) fn fetch_bars_background(sym: String, tf: String) {
         // apex_data::ws frame listener. The previous inline path did this.
         // Wave 8: route through SubscriptionManager so gap-fill on reconnect
         // sees this sub. Receiver is unused; the data path is unchanged.
-        if crate::apex_data::is_enabled() && !crate::data::is_crypto(&sym) {
+        // Wave 9c: registry-preferred crypto check so non-crypto tickers
+        // whose strings end in `USDT` still get the ApexData WS subscription.
+        let sym_is_crypto = crate::foundation::types::registry()
+            .get(&sym)
+            .map(|s| s.is_crypto())
+            .unwrap_or_else(|| crate::data::is_crypto(&sym));
+        if crate::apex_data::is_enabled() && !sym_is_crypto {
             let _ = crate::data::providers::registry::subscription_manager()
                 .subscribe_bars(&sym, &tf);
         }
