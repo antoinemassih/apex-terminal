@@ -615,8 +615,15 @@ impl crate::data::connectivity::Authenticated for DiscordAuthProvider {
             })
         })
         .await
-        .map_err(|e| AuthError::RefreshFailed(format!("spawn_blocking join: {e}")))?
-        .map_err(AuthError::RefreshFailed)?;
+        .map_err(|e| {
+            let msg = format!("spawn_blocking join: {e}");
+            report(ErrorLevel::Error, "discord", "refresh_failed", &msg);
+            AuthError::RefreshFailed(msg)
+        })?
+        .map_err(|e| {
+            report(ErrorLevel::Error, "discord", "refresh_failed", &e);
+            AuthError::RefreshFailed(e)
+        })?;
 
         // Persist + update the in-memory token store (same path as exchange_code).
         save_auth_to_disk(&new_auth);

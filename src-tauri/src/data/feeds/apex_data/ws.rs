@@ -42,6 +42,11 @@ pub(crate) static FORCE_RECONNECT: AtomicBool = AtomicBool::new(false);
 /// Last reason recorded by the watchdog so the provider's ConnectionState
 /// can surface a meaningful Backoff reason after a tick-stall reconnect.
 pub(crate) static LAST_STALL_AT_MS: AtomicI64 = AtomicI64::new(0);
+/// Timestamp (ms) of the last stale-feed toast emitted. Used to suppress
+/// duplicate toasts during a sustained outage (60s cooldown).
+static LAST_STALL_TOAST_AT: AtomicI64 = AtomicI64::new(0);
+/// Minimum gap between consecutive stale-feed toasts (60 seconds).
+const STALL_TOAST_COOLDOWN_MS: i64 = 60_000;
 
 // ── Wave 11c: ConnectionState push-notification stream ───────────────────────
 // Module-level broadcast channel — `ApexDataProvider::subscribe_state()` and
@@ -505,6 +510,7 @@ async fn run_watchdog() {
         let last = LAST_MESSAGE_AT_MS.load(Ordering::Relaxed);
         let now = now_ms();
         if last > 0 && now - last > STALE_TIMEOUT_MS && !FORCE_RECONNECT.load(Ordering::Relaxed) {
+            let stall_secs = (now - last) / 1000;
             LAST_STALL_AT_MS.store(now, Ordering::Relaxed);
             report(
                 ErrorLevel::Warn,
@@ -512,6 +518,18 @@ async fn run_watchdog() {
                 "tick_stalled",
                 format!("no frames for {}ms — forcing reconnect", now - last),
             );
+            // P1.11: emit a user-visible toast if we haven't toasted recently.
+            // Gate on 60s cooldown so a sustained outage doesn't spam the user.
+            let last_toast = LAST_STALL_TOAST_AT.load(Ordering::Relaxed);
+            if now - last_toast >= STALL_TOAST_COOLDOWN_MS {
+                LAST_STALL_TOAST_AT.store(now, Ordering::Relaxed);
+                report(
+                    ErrorLevel::Warn,
+                    "apex_data.ws",
+                    "feed_stalled",
+                    format!("ApexData feed silent for >{stall_secs}s — reconnecting"),
+                );
+            }
             FORCE_RECONNECT.store(true, Ordering::SeqCst);
             // Wave 7E: hook for SubscriptionManager gap-fill — fires on the
             // *next* successful reconnect via the broadcast wired below.
@@ -859,7 +877,7 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
         // point-form plans.
         "trade_plan" => match serde_json::from_value::<TradePlanV2>(env.data) {
             Ok(p) => Frame::TradePlan(p),
-            Err(e) => { eprintln!("[apex_data.ws] bad trade_plan: {e}"); return; }
+            Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_trade_plan", e.to_string()); return; }
         },
         // SOTA §4.5 — spike-explanation toast. Derive the dedup id from
         // (symbol, t_ms) after deserialization — the server doesn't have to
@@ -869,11 +887,11 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
                 s.id = SpikeExplanation::derive_id(&s.symbol, s.t_ms);
                 Frame::Spike(s)
             }
-            Err(e) => { eprintln!("[apex_data.ws] bad spike: {e}"); return; }
+            Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_spike", e.to_string()); return; }
         },
         "halt" => match serde_json::from_value::<HaltReading>(env.data) {
             Ok(h) => Frame::Halt(h),
-            Err(e) => { eprintln!("[apex_data.ws] bad halt: {e}"); return; }
+            Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_halt", e.to_string()); return; }
         },
         "resync" => {
             let reason = env.data.get("reason").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -892,7 +910,7 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
                 super::live_state::push_combined(c.clone());
                 Frame::Combined(c)
             }
-            Err(e) => { eprintln!("[apex_data.ws] bad combined: {e}"); return; }
+            Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_combined", e.to_string()); return; }
         },
         // ── SOTA UX §3.3 — regime frame ───────────────────────────────────
         // Routes into `live_state.latest_regime` so the always-visible
@@ -902,9 +920,8 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
                 super::live_state::push_regime(r.clone());
                 Frame::Regime(r)
             }
-            Err(e) => { eprintln!("[apex_data.ws] bad regime: {e}"); return; }
+            Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_regime", e.to_string()); return; }
         },
-        other => { eprintln!("[apex_data.ws] unknown frame: {other}"); return; }
         other => { report(ErrorLevel::Warn, "apex_data.ws", "unknown_frame", other.to_string()); return; }
     };
     broadcast(mgr, &frame);

@@ -151,6 +151,9 @@ const STALE_TIMEOUT_MS: i64 = 30_000;
 const WATCHDOG_TICK_SECS: u64 = 10;
 pub(crate) static FORCE_RECONNECT: AtomicBool = AtomicBool::new(false);
 pub(crate) static LAST_STALL_AT_MS: AtomicI64 = AtomicI64::new(0);
+/// Timestamp (ms) of the last stale-feed toast emitted (60s cooldown).
+static LAST_STALL_TOAST_AT: AtomicI64 = AtomicI64::new(0);
+const STALL_TOAST_COOLDOWN_MS: i64 = 60_000;
 
 // ── Wave 11c: ConnectionState push-notification stream ───────────────────────
 static STATE_TX: OnceLock<tokio::sync::broadcast::Sender<ConnectionState>> = OnceLock::new();
@@ -488,8 +491,19 @@ async fn ws_loop(
                             Some(Ok(_)) => {
                                 LAST_MESSAGE_AT_MS.store(now_ms(), Ordering::Relaxed);
                             }
-                            // Socket closed or error → reconnect
-                            _ => break,
+                            // Socket closed or error → report and reconnect
+                            Some(Ok(Message::Close(_))) => {
+                                report(ErrorLevel::Warn, "ib_ws", "ws_close", "close frame received");
+                                break;
+                            }
+                            Some(Err(e)) => {
+                                report(ErrorLevel::Warn, "ib_ws", "recv_error", e.to_string());
+                                break;
+                            }
+                            None => {
+                                report(ErrorLevel::Warn, "ib_ws", "stream_ended", "no more frames");
+                                break;
+                            }
                         },
                     }
                 }
@@ -534,6 +548,7 @@ async fn run_watchdog() {
         let last = LAST_MESSAGE_AT_MS.load(Ordering::Relaxed);
         let now = now_ms();
         if last > 0 && now - last > STALE_TIMEOUT_MS && !FORCE_RECONNECT.load(Ordering::Relaxed) {
+            let stall_secs = (now - last) / 1000;
             LAST_STALL_AT_MS.store(now, Ordering::Relaxed);
             report(
                 ErrorLevel::Warn,
@@ -541,6 +556,17 @@ async fn run_watchdog() {
                 "tick_stalled",
                 format!("no frames for {}ms — forcing reconnect", now - last),
             );
+            // P1.11: user-visible toast with 60s cooldown.
+            let last_toast = LAST_STALL_TOAST_AT.load(Ordering::Relaxed);
+            if now - last_toast >= STALL_TOAST_COOLDOWN_MS {
+                LAST_STALL_TOAST_AT.store(now, Ordering::Relaxed);
+                report(
+                    ErrorLevel::Warn,
+                    "ib_ws",
+                    "feed_stalled",
+                    format!("IB feed silent for >{stall_secs}s — reconnecting"),
+                );
+            }
             FORCE_RECONNECT.store(true, Ordering::SeqCst);
         }
     }
