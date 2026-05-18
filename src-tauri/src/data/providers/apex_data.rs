@@ -19,6 +19,7 @@ use crate::data::connectivity::{
 };
 use crate::data::feeds::apex_data::{self, ws, rest};
 use crate::data::feeds::apex_data::types::{AssetClass, BarWire, ChainDelta, Quote, Trade};
+use super::subscription_manager::BarSource as SubBarSource;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use tokio::sync::mpsc;
@@ -65,14 +66,18 @@ fn ensure_listener() {
             let mut r = match routes().lock() { Ok(g) => g, Err(_) => return };
             match frame {
                 ws::Frame::Bar(b) => {
-                    mgr.bump_last_seen_bar(&b.bar.symbol, &b.bar.timeframe, b.bar.time);
+                    // MARK_BARS_PROTOCOL: envelope carries `source` ("last"|"mark");
+                    // map to SubscriptionManager's BarSource for keyed state.
+                    let src = SubBarSource::from_str(&b.source);
+                    mgr.bump_last_seen_bar(&b.bar.symbol, &b.bar.timeframe, src, b.bar.time);
                     let key = (b.bar.symbol.clone(), b.bar.timeframe.clone());
                     if let Some(senders) = r.bars.get_mut(&key) {
                         senders.retain(|s| s.send(b.bar.clone()).is_ok());
                     }
                 }
                 ws::Frame::Snapshot { bar, .. } => {
-                    mgr.bump_last_seen_bar(&bar.bar.symbol, &bar.bar.timeframe, bar.bar.time);
+                    let src = SubBarSource::from_str(&bar.source);
+                    mgr.bump_last_seen_bar(&bar.bar.symbol, &bar.bar.timeframe, src, bar.bar.time);
                     let key = (bar.bar.symbol.clone(), bar.bar.timeframe.clone());
                     if let Some(senders) = r.bars.get_mut(&key) {
                         senders.retain(|s| s.send(bar.bar.clone()).is_ok());

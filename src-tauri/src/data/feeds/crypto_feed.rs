@@ -195,6 +195,20 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let bar = &update.bar;
             let is_1s = bar.timeframe == "1s";
 
+            // Wave 8c: bump SubscriptionManager so gap-fill on reconnect
+            // has accurate replay anchors for crypto symbols too. Crypto
+            // subscribes by wildcard (no per-symbol subscribe site), so
+            // the bumper is the only useful integration point — entries
+            // are a no-op when no one has subscribed to this (sym, tf).
+            // Crypto bars are always last-source.
+            crate::data::providers::registry::subscription_manager()
+                .bump_last_seen_bar(
+                    &bar.symbol,
+                    &bar.timeframe,
+                    crate::data::providers::subscription_manager::BarSource::Last,
+                    bar.time,
+                );
+
             // 1s bars → watchlist price updates only (don't send to chart)
             if is_1s {
                 let price_cmd = ChartCommand::WatchlistPrice {

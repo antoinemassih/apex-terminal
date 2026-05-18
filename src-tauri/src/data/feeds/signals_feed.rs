@@ -163,6 +163,13 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             Err(_) => { PARSE_ERRORS.fetch_add(1, Ordering::Relaxed); continue; }
         };
 
+        // Wave 8c: signals feed is wildcard-subscribed by channel
+        // ("patterns" / "alerts" / "trendlines" / "significance") and the
+        // frames are pattern/alert/trendline events — not bar updates.
+        // There is no (symbol, timeframe) bumper that fits here; gap-fill
+        // does not apply to signals state. Intentionally no SubscriptionManager
+        // bump call. The reconnect hook above is still useful because the
+        // shared manager may have bar subs from other feeds.
         let channel = json.get("channel").and_then(|c| c.as_str()).unwrap_or("");
         let symbol = match json.get("symbol").and_then(|s| s.as_str()) {
             Some(s) => s.to_string(),
