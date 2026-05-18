@@ -165,4 +165,37 @@ mod tests {
         }
         panic!("snapshot did not update within 50 ms");
     }
+
+    /// Wave 13c: verify the snapshot map carries independent entries for
+    /// every push-capable feed (apex_data, ib_ws, crypto, signals). The
+    /// production listener side is already covered by
+    /// `snapshot_updates_when_provider_publishes`; this test exercises the
+    /// read path that `connection_panel::status_from_snapshot` walks each
+    /// frame.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn snapshot_tracks_all_four_feeds_independently() {
+        // Write directly to the snapshot, skipping the listener machinery.
+        {
+            let mut w = snapshot().write().unwrap();
+            w.insert("apex_data".into(), ConnectionState::Authenticated);
+            w.insert("ib_ws".into(), ConnectionState::Subscribed { count: 3 });
+            w.insert(
+                "crypto".into(),
+                ConnectionState::Backoff {
+                    until: std::time::Instant::now(),
+                    attempt: 1,
+                    reason: "test".into(),
+                },
+            );
+            w.insert("signals".into(), ConnectionState::Idle);
+        }
+
+        assert!(matches!(get("apex_data"), ConnectionState::Authenticated));
+        assert!(matches!(
+            get("ib_ws"),
+            ConnectionState::Subscribed { count: 3 }
+        ));
+        assert!(matches!(get("crypto"), ConnectionState::Backoff { .. }));
+        assert!(matches!(get("signals"), ConnectionState::Idle));
+    }
 }
