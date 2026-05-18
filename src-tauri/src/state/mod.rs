@@ -22,4 +22,4 @@ pub use aggregates::{
 };
 pub use inflight::{InFlight, InFlightKind, InFlightRegistry, RequestId};
 pub use persistence::{load, save, Persistable};
-pub use subscriptions::{PaneEvent, SubscriptionBus};
+pub use subscriptions::{PaneEvent, SubscriptionBus, BROADCAST_GROUP};
