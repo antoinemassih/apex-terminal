@@ -23,21 +23,64 @@ use super::persistence::Persistable;
 
 /// UI display preferences — theme, font, density, panel chrome toggles.
 ///
-/// Migrate from `Watchlist`:
-/// - `font_scale: f32`
-/// - `native_dpi_scale: f32`
-/// - `font_idx: usize`
-/// - `style_idx: usize`
-/// - `compact_mode: bool`
-/// - `pane_header_size: PaneHeaderSize`
-/// - `show_x_axis: bool` / `show_y_axis: bool`
-/// - `shared_x_axis: bool` / `shared_y_axis: bool`
-/// - `toolbar_auto_hide: bool`
-/// - `toolbar_hover_time: Option<Instant>` (runtime only — exclude from persist)
-#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
+/// **Wave 14c** populates this aggregate. Fields are mirrored from the
+/// matching `Watchlist::*` fields via
+/// `Watchlist::push_to_ui_settings` (write before save) and
+/// `Watchlist::pull_from_ui_settings` (write after load). Until a
+/// follow-up wave can flip the source-of-truth, the legacy `Watchlist`
+/// fields remain authoritative for reads (notably the sacred
+/// `core.rs` paint pipeline reads them directly).
+///
+/// Excluded from this aggregate:
+/// - `native_dpi_scale: f32` — derived from `Window::scale_factor()` at
+///   runtime, must not be persisted.
+/// - `toolbar_hover_time: Option<Instant>` — runtime-only animation
+///   state; `Instant` is not serializable.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct UiSettings {
-    // Fields land here in follow-up waves. Empty struct intentionally;
-    // having the type already named + serializable is half the migration.
+    #[serde(default = "default_font_scale")]
+    pub(crate) font_scale: f32,
+    #[serde(default)]
+    pub(crate) font_idx: usize,
+    #[serde(default)]
+    pub(crate) compact_mode: bool,
+    #[serde(default = "default_pane_header_size")]
+    pub(crate) pane_header_size: crate::chart_renderer::PaneHeaderSize,
+    #[serde(default)]
+    pub(crate) toolbar_auto_hide: bool,
+    #[serde(default = "default_true")]
+    pub(crate) show_x_axis: bool,
+    #[serde(default = "default_true")]
+    pub(crate) show_y_axis: bool,
+    #[serde(default)]
+    pub(crate) shared_x_axis: bool,
+    #[serde(default)]
+    pub(crate) shared_y_axis: bool,
+    #[serde(default)]
+    pub(crate) style_idx: usize,
+}
+
+fn default_font_scale() -> f32 { 1.6 }
+fn default_true() -> bool { true }
+fn default_pane_header_size() -> crate::chart_renderer::PaneHeaderSize {
+    crate::chart_renderer::PaneHeaderSize::Compact
+}
+
+impl Default for UiSettings {
+    fn default() -> Self {
+        Self {
+            font_scale: default_font_scale(),
+            font_idx: 0,
+            compact_mode: false,
+            pane_header_size: default_pane_header_size(),
+            toolbar_auto_hide: false,
+            show_x_axis: true,
+            show_y_axis: true,
+            shared_x_axis: false,
+            shared_y_axis: false,
+            style_idx: 0,
+        }
+    }
 }
 
 impl Persistable for UiSettings {
@@ -183,8 +226,74 @@ mod tests {
         let v = UiSettings::default();
         save(&path, &v).unwrap();
         let loaded: UiSettings = load(&path).unwrap();
-        // No fields yet — just confirm the envelope path works.
-        let _ = loaded;
+        assert_eq!(loaded.font_scale, v.font_scale);
+        assert_eq!(loaded.font_idx, v.font_idx);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ui_settings_round_trips_through_persistable() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_ui_settings_roundtrip");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("ui_settings.json");
+        let v = UiSettings {
+            font_scale: 2.0,
+            font_idx: 3,
+            compact_mode: true,
+            pane_header_size: crate::chart_renderer::PaneHeaderSize::Expanded,
+            toolbar_auto_hide: true,
+            show_x_axis: false,
+            show_y_axis: true,
+            shared_x_axis: true,
+            shared_y_axis: false,
+            style_idx: 4,
+        };
+        save(&path, &v).unwrap();
+        let loaded: UiSettings = load(&path).unwrap();
+        assert_eq!(loaded.font_scale, 2.0);
+        assert_eq!(loaded.font_idx, 3);
+        assert!(loaded.compact_mode);
+        assert!(loaded.toolbar_auto_hide);
+        assert!(!loaded.show_x_axis);
+        assert!(loaded.show_y_axis);
+        assert!(loaded.shared_x_axis);
+        assert!(!loaded.shared_y_axis);
+        assert_eq!(loaded.style_idx, 4);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ui_settings_version_migration_from_v1_passes_through() {
+        // VERSION == 1 currently. A future bump pairs with a migrate arm;
+        // this test pins the contract that an envelope marked v1 round-trips
+        // through `migrate` (default pass-through) without dropping fields.
+        use super::super::persistence::load;
+        let dir = std::env::temp_dir().join("apex_state_ui_settings_v1_passthrough");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ui_settings.json");
+        let envelope = serde_json::json!({
+            "key": "ui_settings",
+            "version": 1,
+            "payload": {
+                "font_scale": 1.8,
+                "font_idx": 2,
+                "compact_mode": false,
+                "pane_header_size": "Normal",
+                "toolbar_auto_hide": false,
+                "show_x_axis": true,
+                "show_y_axis": true,
+                "shared_x_axis": false,
+                "shared_y_axis": false,
+                "style_idx": 1,
+            }
+        });
+        std::fs::write(&path, serde_json::to_vec_pretty(&envelope).unwrap()).unwrap();
+        let loaded: UiSettings = load(&path).expect("v1 envelope should load");
+        assert_eq!(loaded.font_scale, 1.8);
+        assert_eq!(loaded.font_idx, 2);
+        assert_eq!(loaded.style_idx, 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

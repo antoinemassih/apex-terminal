@@ -4674,6 +4674,15 @@ pub(crate) struct Watchlist {
     // waves migrate the remaining flags one at a time. See
     // `state::inflight`.
     pub(crate) inflight: crate::state::InFlightRegistry,
+    /// Wave 14c: typed aggregate for UI display preferences. Mirrors
+    /// the legacy `font_scale` / `font_idx` / `compact_mode` /
+    /// `pane_header_size` / `toolbar_auto_hide` / `show_x_axis` /
+    /// `show_y_axis` / `shared_x_axis` / `shared_y_axis` / `style_idx`
+    /// fields. The legacy fields remain the read source of truth
+    /// (notably `core.rs` reads them directly); `push_to_ui_settings`
+    /// copies legacy → aggregate before serialization and
+    /// `pull_from_ui_settings` copies aggregate → legacy after load.
+    pub(crate) ui_settings: crate::state::UiSettings,
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
@@ -4835,7 +4844,45 @@ impl Watchlist {
                // for the model description and group sentinel.
                subscriptions: crate::state::SubscriptionBus::new(),
                inflight: crate::state::InFlightRegistry::new(),
+               ui_settings: crate::state::UiSettings::default(),
         }
+    }
+
+    /// Wave 14c: copy legacy display-pref fields into the
+    /// `ui_settings` aggregate. Call this immediately before persisting
+    /// so the serialized aggregate matches what reads see in the live
+    /// `Watchlist`. The legacy fields stay the authoritative read source
+    /// for now (sacred `core.rs` reads `pane_header_size`,
+    /// `shared_x_axis`, etc. directly).
+    pub(crate) fn push_to_ui_settings(&mut self) {
+        self.ui_settings.font_scale = self.font_scale;
+        self.ui_settings.font_idx = self.font_idx;
+        self.ui_settings.compact_mode = self.compact_mode;
+        self.ui_settings.pane_header_size = self.pane_header_size;
+        self.ui_settings.toolbar_auto_hide = self.toolbar_auto_hide;
+        self.ui_settings.show_x_axis = self.show_x_axis;
+        self.ui_settings.show_y_axis = self.show_y_axis;
+        self.ui_settings.shared_x_axis = self.shared_x_axis;
+        self.ui_settings.shared_y_axis = self.shared_y_axis;
+        self.ui_settings.style_idx = self.style_idx;
+    }
+
+    /// Wave 14c: copy the loaded `ui_settings` aggregate back onto the
+    /// legacy `Watchlist` fields. Call this after a successful
+    /// `Persistable::load` so existing readers (UI panels and the
+    /// sacred `core.rs` paint pipeline) observe the restored values
+    /// through their familiar field names.
+    pub(crate) fn pull_from_ui_settings(&mut self) {
+        self.font_scale = self.ui_settings.font_scale;
+        self.font_idx = self.ui_settings.font_idx;
+        self.compact_mode = self.ui_settings.compact_mode;
+        self.pane_header_size = self.ui_settings.pane_header_size;
+        self.toolbar_auto_hide = self.ui_settings.toolbar_auto_hide;
+        self.show_x_axis = self.ui_settings.show_x_axis;
+        self.show_y_axis = self.ui_settings.show_y_axis;
+        self.shared_x_axis = self.ui_settings.shared_x_axis;
+        self.shared_y_axis = self.ui_settings.shared_y_axis;
+        self.style_idx = self.ui_settings.style_idx;
     }
 
     /// Add symbol to the last section (creates one if none exist).
@@ -5623,6 +5670,15 @@ impl App {
         wl.pane_split_v4 = loaded_settings.pane_split_v4;
         wl.pane_split_v5 = loaded_settings.pane_split_v5;
         wl.pane_split_v6 = loaded_settings.pane_split_v6;
+        // Wave 14c: overlay the typed UiSettings aggregate if present,
+        // overriding the legacy `settings` blob values. Cold-start (no
+        // file yet) keeps the legacy-derived values in place.
+        if let Some(loaded_ui) =
+            crate::state::load::<crate::state::UiSettings>(&ui_settings_path())
+        {
+            wl.ui_settings = loaded_ui;
+            wl.pull_from_ui_settings();
+        }
         // Load persisted hotkeys (override defaults)
         load_hotkeys(&mut wl.hotkeys);
         // Load persisted templates
@@ -5688,7 +5744,7 @@ impl ApplicationHandler for App {
         }
         match ev {
             WindowEvent::CloseRequested => {
-                save_state(&cw.panes, cw.layout, &cw.watchlist);
+                save_state(&cw.panes, cw.layout, &mut cw.watchlist);
                 cw.watchlist.persist();
                 self.windows.retain(|w| w.id != wid);
             }
@@ -5831,7 +5887,7 @@ impl ApplicationHandler for App {
                     let now = std::time::Instant::now();
                     let should_save = cw.last_save.map_or(true, |t| now.duration_since(t).as_secs() >= 30);
                     if should_save {
-                        save_state(&cw.panes, cw.layout, &cw.watchlist);
+                        save_state(&cw.panes, cw.layout, &mut cw.watchlist);
                         cw.last_save = Some(now);
                     }
                 }
@@ -6179,6 +6235,17 @@ fn state_path() -> std::path::PathBuf {
     p
 }
 
+/// Wave 14c: companion to `state_path()` for the `UiSettings`
+/// aggregate. Lives alongside `native-chart-state.json`; the legacy
+/// `settings` blob inside that file stays the authoritative load path
+/// until a follow-up wave can drop it, so this file is purely additive.
+fn ui_settings_path() -> std::path::PathBuf {
+    let mut p = state_path();
+    p.pop();
+    p.push("ui_settings.json");
+    p
+}
+
 fn workspace_dir() -> std::path::PathBuf {
     let mut p = state_path(); p.pop(); p.push("workspaces"); let _ = std::fs::create_dir_all(&p); p
 }
@@ -6259,7 +6326,14 @@ pub(crate) fn list_workspaces() -> Vec<String> {
     names
 }
 
-pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &Watchlist) {
+pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &mut Watchlist) {
+    // Wave 14c: mirror the live legacy fields into the typed aggregate
+    // before either of them goes to disk. Legacy `settings` blob stays
+    // authoritative for now; aggregate file is additive.
+    watchlist.push_to_ui_settings();
+    if let Err(e) = crate::state::save(&ui_settings_path(), &watchlist.ui_settings) {
+        eprintln!("[state] ui_settings save failed: {e}");
+    }
     let pane_data: Vec<serde_json::Value> = panes.iter().map(|p| {
         // Serialize indicators — include ALL styling fields
         let indicators: Vec<serde_json::Value> = p.indicators.iter().map(|ind| serde_json::json!({
