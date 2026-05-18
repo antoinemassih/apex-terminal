@@ -5646,10 +5646,19 @@ impl ApplicationHandler for App {
 
         // Handle symbol/timeframe changes + frame rate for ALL windows
         for cw in &mut self.windows {
-            for pane in &mut cw.panes {
+            // Track per-pane changes for cross-pane propagation. We collect
+            // these inside the per-pane loop (which holds &mut cw.panes) and
+            // publish/apply them AFTER the loop, when we can also borrow
+            // &mut cw.watchlist.subscriptions and re-borrow &mut cw.panes
+            // for sibling-pane apply. Each entry: (originating pane index,
+            // pane.link_group, new_symbol, new_timeframe).
+            let mut pane_changes: Vec<(usize, u8, Option<String>, Option<String>)> = Vec::new();
+            for (pane_idx, pane) in cw.panes.iter_mut().enumerate() {
                 let sym_change = pane.pending_symbol_change.take();
                 let tf_change = pane.pending_timeframe_change.take();
-                if sym_change.is_some() || tf_change.is_some() {
+                let sym_changed = sym_change.is_some();
+                let tf_changed = tf_change.is_some();
+                if sym_changed || tf_changed {
                     // Stash the OUTGOING (sym, tf)'s bars/ts in the tab cache
                     // before swapping, so re-entry restores instantly.
                     if !pane.symbol.is_empty() && !pane.bars.is_empty() {
@@ -5726,50 +5735,138 @@ impl ApplicationHandler for App {
                     }
 
                     if pane.is_option && !pane.option_contract.is_empty() {
-                        fetch_option_bars_background(pane.option_contract.clone(), sym, tf, pane.bar_source_mark);
+                        fetch_option_bars_background(pane.option_contract.clone(), sym.clone(), tf.clone(), pane.bar_source_mark);
                     } else {
-                        fetch_bars_background(sym, tf);
+                        fetch_bars_background(sym.clone(), tf.clone());
+                    }
+
+                    // Wave 12c: record this pane's change for cross-pane
+                    // propagation via the SubscriptionBus, applied after the
+                    // per-pane loop exits (where we can borrow watchlist +
+                    // panes together). Only record when the pane is in a
+                    // user-defined link group; group==0 means unlinked and
+                    // nothing should propagate.
+                    if pane.link_group > 0 {
+                        pane_changes.push((
+                            pane_idx,
+                            pane.link_group,
+                            if sym_changed { Some(sym) } else { None },
+                            if tf_changed { Some(tf) } else { None },
+                        ));
                     }
                 }
             }
 
-            // ── Linked pane groups: propagate symbol changes across linked panes ──
-            // Detect which panes just changed symbol (had pending_symbol_change processed above)
-            // by checking which panes have empty bars + link_group > 0.
+            // ── Wave 12c: cross-pane propagation via SubscriptionBus ──
+            // Publish the changes recorded above as PaneEvents, then drain
+            // the bus and apply each event to sibling panes. This replaces
+            // the prior `link_changes` detector loop that inferred which
+            // panes had changed by spotting empty-bars + link_group>0 —
+            // we now know exactly which pane originated each change
+            // (`origin_pane_idx`) and skip it during apply.
             //
-            // Only treat a pane as linked when its `link_group` indexes into an
-            // existing watchlist group — otherwise stale group IDs from prior
-            // sessions (or the old click-cycle UI) would silently link panes
-            // the user never explicitly grouped.
-            let group_count = cw.watchlist.link_groups.len() as u8;
-            let mut link_changes: Vec<(u8, String)> = Vec::new();
-            for pane in &cw.panes {
-                let valid_group = pane.link_group > 0 && pane.link_group <= group_count;
-                if valid_group && pane.bars.is_empty() && !pane.symbol.is_empty() {
-                    let already = link_changes.iter().any(|(g, _)| *g == pane.link_group);
-                    if !already {
-                        link_changes.push((pane.link_group, pane.symbol.clone()));
-                    }
+            // The `pane_origins` vec parallels the queue order so the
+            // drain step can pair each event with its originator. Events
+            // published from outside the renderer (e.g. command palette,
+            // see `ui::command_palette::execute`) carry no origin index
+            // — they fall through to "apply to every matching pane",
+            // which is fine because the publishing call site already
+            // applied the mutation to its own pane before publishing.
+            let mut pane_origins: Vec<Option<usize>> = Vec::new();
+            for (origin, group, sym_opt, tf_opt) in pane_changes.drain(..) {
+                if let Some(sym) = sym_opt {
+                    cw.watchlist.subscriptions.publish(
+                        crate::state::PaneEvent::SymbolChanged { group, symbol: sym },
+                    );
+                    pane_origins.push(Some(origin));
+                }
+                if let Some(tf) = tf_opt {
+                    cw.watchlist.subscriptions.publish(
+                        crate::state::PaneEvent::TimeframeChanged { group, timeframe: tf },
+                    );
+                    pane_origins.push(Some(origin));
                 }
             }
-            // For linked panes: ONLY change symbol + fetch bars. Preserve timeframe, indicators, drawings.
-            for (group, sym) in &link_changes {
-                for pane in &mut cw.panes {
-                    if pane.link_group == *group && pane.symbol != *sym && !pane.bars.is_empty() {
-                        let tf = pane.timeframe.clone();
-                        pane.symbol = sym.clone();
-                        pane.symbol_meta = crate::foundation::types::symbol_or_guess(sym);
-                        pane.bars.clear();
-                        pane.timestamps.clear();
-                        pane.indicator_bar_count = 0; // force indicator recompute with new bars
-                        pane.vol_analytics_computed = 0;
-                        pane.history_loading = false;
-                        pane.history_exhausted = false;
-                        pane.drawings_requested = false;
-                        pane.drawings.clear();
-                        // DO NOT clear indicators, timeframe, or other pane settings
-                        fetch_bars_background(sym.clone(), tf);
+
+            // Only treat a pane as linked when its `link_group` indexes
+            // into an existing watchlist group — otherwise stale group
+            // IDs from prior sessions (or the old click-cycle UI) would
+            // silently link panes the user never explicitly grouped.
+            let group_count = cw.watchlist.link_groups.len() as u8;
+            let events = cw.watchlist.subscriptions.drain();
+            for (i, event) in events.into_iter().enumerate() {
+                let origin = pane_origins.get(i).copied().flatten();
+                match event {
+                    crate::state::PaneEvent::SymbolChanged { group, symbol } => {
+                        let is_broadcast = group == crate::state::BROADCAST_GROUP;
+                        // Validate non-broadcast groups against link_groups.len()
+                        if !is_broadcast && (group == 0 || group > group_count) {
+                            continue;
+                        }
+                        for (pi, pane) in cw.panes.iter_mut().enumerate() {
+                            if Some(pi) == origin { continue; }
+                            let matches = is_broadcast || pane.link_group == group;
+                            if !matches { continue; }
+                            if pane.symbol == symbol { continue; }
+                            // Preserve timeframe, indicators, etc. — only swap symbol + bars.
+                            let tf = pane.timeframe.clone();
+                            pane.symbol = symbol.clone();
+                            pane.symbol_meta = crate::foundation::types::symbol_or_guess(&symbol);
+                            pane.bars.clear();
+                            pane.timestamps.clear();
+                            pane.indicator_bar_count = 0;
+                            pane.vol_analytics_computed = 0;
+                            pane.history_loading = false;
+                            pane.history_exhausted = false;
+                            pane.drawings_requested = false;
+                            pane.drawings.clear();
+                            fetch_bars_background(symbol.clone(), tf);
+                        }
                     }
+                    crate::state::PaneEvent::TimeframeChanged { group, timeframe } => {
+                        let is_broadcast = group == crate::state::BROADCAST_GROUP;
+                        if !is_broadcast && (group == 0 || group > group_count) {
+                            continue;
+                        }
+                        for (pi, pane) in cw.panes.iter_mut().enumerate() {
+                            if Some(pi) == origin { continue; }
+                            let matches = is_broadcast || pane.link_group == group;
+                            if !matches { continue; }
+                            if pane.timeframe == timeframe { continue; }
+                            // Mirror the per-pane tf-change path: stash old bars
+                            // into the tab cache, clear, refetch.
+                            if !pane.symbol.is_empty() && !pane.bars.is_empty() {
+                                evict_oldest_if_full(&mut pane.tab_cache);
+                                pane.tab_cache.insert(
+                                    (pane.symbol.clone(), pane.timeframe.clone()),
+                                    (pane.bars.clone(), pane.timestamps.clone(), std::time::Instant::now()),
+                                );
+                            }
+                            pane.timeframe = timeframe.clone();
+                            let sym = pane.symbol.clone();
+                            let tf = pane.timeframe.clone();
+                            let cache_hit = pane.tab_cache.get(&(sym.clone(), tf.clone())).cloned();
+                            if let Some((cb, cts, _)) = cache_hit {
+                                pane.bars = cb;
+                                pane.timestamps = cts;
+                                pane.indicator_bar_count = 0;
+                            } else {
+                                pane.bars.clear();
+                                pane.timestamps.clear();
+                            }
+                            pane.indicators.clear();
+                            pane.drawings.clear();
+                            pane.drawings_requested = false;
+                            pane.history_loading = false;
+                            pane.history_exhausted = false;
+                            fetch_bars_background(sym, tf);
+                        }
+                    }
+                    // Layout / broadcast-toggle events are queued for
+                    // future subscribers (none today). The drain still
+                    // empties the queue so events don't accumulate.
+                    crate::state::PaneEvent::LayoutChanged
+                    | crate::state::PaneEvent::BroadcastEnabled { .. } => {}
                 }
             }
 
