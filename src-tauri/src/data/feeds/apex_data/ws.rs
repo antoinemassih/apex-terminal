@@ -42,6 +42,11 @@ pub(crate) static FORCE_RECONNECT: AtomicBool = AtomicBool::new(false);
 /// Last reason recorded by the watchdog so the provider's ConnectionState
 /// can surface a meaningful Backoff reason after a tick-stall reconnect.
 pub(crate) static LAST_STALL_AT_MS: AtomicI64 = AtomicI64::new(0);
+/// Timestamp (ms) of the last stale-feed toast emitted. Used to suppress
+/// duplicate toasts during a sustained outage (60s cooldown).
+static LAST_STALL_TOAST_AT: AtomicI64 = AtomicI64::new(0);
+/// Minimum gap between consecutive stale-feed toasts (60 seconds).
+const STALL_TOAST_COOLDOWN_MS: i64 = 60_000;
 
 // ── Wave 11c: ConnectionState push-notification stream ───────────────────────
 // Module-level broadcast channel — `ApexDataProvider::subscribe_state()` and
@@ -505,6 +510,7 @@ async fn run_watchdog() {
         let last = LAST_MESSAGE_AT_MS.load(Ordering::Relaxed);
         let now = now_ms();
         if last > 0 && now - last > STALE_TIMEOUT_MS && !FORCE_RECONNECT.load(Ordering::Relaxed) {
+            let stall_secs = (now - last) / 1000;
             LAST_STALL_AT_MS.store(now, Ordering::Relaxed);
             report(
                 ErrorLevel::Warn,
@@ -512,6 +518,18 @@ async fn run_watchdog() {
                 "tick_stalled",
                 format!("no frames for {}ms — forcing reconnect", now - last),
             );
+            // P1.11: emit a user-visible toast if we haven't toasted recently.
+            // Gate on 60s cooldown so a sustained outage doesn't spam the user.
+            let last_toast = LAST_STALL_TOAST_AT.load(Ordering::Relaxed);
+            if now - last_toast >= STALL_TOAST_COOLDOWN_MS {
+                LAST_STALL_TOAST_AT.store(now, Ordering::Relaxed);
+                report(
+                    ErrorLevel::Warn,
+                    "apex_data.ws",
+                    "feed_stalled",
+                    format!("ApexData feed silent for >{stall_secs}s — reconnecting"),
+                );
+            }
             FORCE_RECONNECT.store(true, Ordering::SeqCst);
             // Wave 7E: hook for SubscriptionManager gap-fill — fires on the
             // *next* successful reconnect via the broadcast wired below.
