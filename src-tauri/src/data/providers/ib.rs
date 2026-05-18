@@ -50,12 +50,16 @@ impl Connection for IbProvider {
         Some(crate::data::feeds::ib_ws::state_tx().subscribe())
     }
     fn metrics(&self) -> ConnectionMetrics {
-        feed_metrics_snapshot(
+        let mut m = feed_metrics_snapshot(
             &crate::data::feeds::ib_ws::MESSAGES_IN,
             &crate::data::feeds::ib_ws::PARSE_ERRORS,
             &crate::data::feeds::ib_ws::RECONNECT_COUNT,
             &crate::data::feeds::ib_ws::LAST_MESSAGE_AT_MS,
-        )
+        );
+        // P1.18: surface broadcast fanout queue depth so slow IB subscribers
+        // can be detected before RecvError::Lagged is triggered.
+        m.queue_depth = Some(super::registry::subscription_manager().total_queue_depth());
+        m
     }
 }
 

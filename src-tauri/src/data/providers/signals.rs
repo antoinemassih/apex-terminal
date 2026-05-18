@@ -46,12 +46,15 @@ impl Connection for SignalsProvider {
         Some(crate::data::feeds::signals_feed::state_tx().subscribe())
     }
     fn metrics(&self) -> ConnectionMetrics {
-        super::ib::feed_metrics_snapshot(
+        let mut m = super::ib::feed_metrics_snapshot(
             &crate::data::feeds::signals_feed::MESSAGES_IN,
             &crate::data::feeds::signals_feed::PARSE_ERRORS,
             &crate::data::feeds::signals_feed::RECONNECT_COUNT,
             &crate::data::feeds::signals_feed::LAST_MESSAGE_AT_MS,
-        )
+        );
+        // P1.18: expose broadcast fanout queue depth (sum across all active subs).
+        m.queue_depth = Some(super::registry::subscription_manager().total_queue_depth());
+        m
     }
 }
 

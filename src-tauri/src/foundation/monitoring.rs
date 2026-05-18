@@ -997,6 +997,23 @@ fn format_feed_metrics() -> String {
         };
         out.push_str(&format!("apex_feed_state{{feed=\"{}\"}} {}\n", f.name(), s));
     }
+
+    // P1.18: per-feed broadcast fanout queue depth.
+    //
+    // `apex_subscription_queue_depth{feed="..."}` — number of frames queued in
+    // the SubscriptionManager's broadcast channels but not yet consumed by the
+    // slowest subscriber. Summed across all stream types (bars, quotes, trades,
+    // chain). A sustained non-zero value (especially approaching FANOUT_CAP=1024)
+    // indicates a slow subscriber that will soon trigger RecvError::Lagged.
+    out.push_str("# HELP apex_subscription_queue_depth Broadcast fanout queue depth across all active subscriptions (sum of broadcast::Sender::len). Near 1024 = lagged subscriber imminent.\n");
+    out.push_str("# TYPE apex_subscription_queue_depth gauge\n");
+    for f in &feeds {
+        let m = f.metrics();
+        if let Some(depth) = m.queue_depth {
+            out.push_str(&format!("apex_subscription_queue_depth{{feed=\"{}\"}} {}\n", f.name(), depth));
+        }
+    }
+
     out
 }
 
