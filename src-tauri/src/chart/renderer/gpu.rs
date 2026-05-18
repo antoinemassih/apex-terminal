@@ -3685,6 +3685,54 @@ pub(crate) fn apply_pane_events(
                     pane.swing_leg_mode = *value;
                 }
             }
+            PaneEvent::IndicatorVisibilityChanged { group, kind, visible } => {
+                let is_broadcast = *group == BROADCAST_GROUP;
+                if !is_broadcast && (*group == 0 || *group > group_count) {
+                    continue;
+                }
+                for (pi, pane) in panes.iter_mut().enumerate() {
+                    if Some(pi) == *origin { continue; }
+                    let matches = is_broadcast || pane.link_group == *group;
+                    if !matches { continue; }
+                    for ind in pane.indicators.iter_mut() {
+                        if ind.kind == *kind { ind.visible = *visible; }
+                    }
+                }
+            }
+            PaneEvent::IndicatorsRemoved { group, kind, period } => {
+                let is_broadcast = *group == BROADCAST_GROUP;
+                if !is_broadcast && (*group == 0 || *group > group_count) {
+                    continue;
+                }
+                for (pi, pane) in panes.iter_mut().enumerate() {
+                    if Some(pi) == *origin { continue; }
+                    let matches = is_broadcast || pane.link_group == *group;
+                    if !matches { continue; }
+                    let before = pane.indicators.len();
+                    pane.indicators.retain(|ind| {
+                        !(ind.kind == *kind && period.is_none_or(|p| ind.period == p))
+                    });
+                    if pane.indicators.len() != before {
+                        pane.indicator_bar_count = 0;
+                    }
+                }
+            }
+            PaneEvent::IndicatorAdded { group, indicator } => {
+                let is_broadcast = *group == BROADCAST_GROUP;
+                if !is_broadcast && (*group == 0 || *group > group_count) {
+                    continue;
+                }
+                for (pi, pane) in panes.iter_mut().enumerate() {
+                    if Some(pi) == *origin { continue; }
+                    let matches = is_broadcast || pane.link_group == *group;
+                    if !matches { continue; }
+                    let mut copy = indicator.clone();
+                    copy.id = pane.next_indicator_id;
+                    pane.next_indicator_id += 1;
+                    pane.indicators.push(copy);
+                    pane.indicator_bar_count = 0;
+                }
+            }
             PaneEvent::LayoutChanged | PaneEvent::BroadcastEnabled { .. } => {
                 // No subscribers today; queue drain still removes them.
             }
@@ -7404,5 +7452,118 @@ mod pane_event_apply_tests {
         assert_eq!(panes[0].swing_leg_mode, 1);
         assert_eq!(panes[1].swing_leg_mode, 1);
         assert_eq!(panes[2].swing_leg_mode, 1);
+    }
+
+    // ── Wave 14a: indicator mass-mutation event contract ──
+
+    #[test]
+    fn indicator_visibility_propagates_to_siblings_only() {
+        let mut panes = vec![
+            chart("AAPL", "5m", 1),
+            chart("MSFT", "5m", 1),
+            chart("NVDA", "5m", 1),
+            chart("TSLA", "5m", 0),
+        ];
+        // Clear Chart::new's default indicator set so each test owns
+        // its `indicators` Vec, then give every pane one SMA(20).
+        for (i, p) in panes.iter_mut().enumerate() {
+            p.indicators.clear();
+            p.indicators.push(Indicator::new(100 + i as u32, IndicatorType::SMA, 20, "#00bef0"));
+        }
+        // Originator just flipped its SMA off.
+        panes[0].indicators[0].visible = false;
+        let events = vec![(
+            PaneEvent::IndicatorVisibilityChanged { group: 1, kind: IndicatorType::SMA, visible: false },
+            Some(0usize),
+        )];
+        apply_pane_events(&mut panes, &events, 2, false);
+        assert!(!panes[0].indicators[0].visible, "originator pre-set");
+        assert!(!panes[1].indicators[0].visible, "sibling group 1");
+        assert!(!panes[2].indicators[0].visible, "sibling group 1");
+        assert!(panes[3].indicators[0].visible, "unlinked pane untouched");
+    }
+
+    #[test]
+    fn indicators_removed_by_kind_period_predicate_matches_originator_intent() {
+        let mut panes = vec![
+            chart("AAPL", "5m", 1),
+            chart("MSFT", "5m", 1),
+            chart("TSLA", "5m", 0),
+        ];
+        // Sibling has SMA(20), SMA(50), and EMA(20). After remove
+        // event for (SMA, Some(20)), only SMA(20) should drop.
+        for p in panes.iter_mut() {
+            p.indicators.clear();
+            p.indicators.push(Indicator::new(1, IndicatorType::SMA, 20, "#aaa"));
+            p.indicators.push(Indicator::new(2, IndicatorType::SMA, 50, "#bbb"));
+            p.indicators.push(Indicator::new(3, IndicatorType::EMA, 20, "#ccc"));
+            // Simulate already-warm sibling counter that should reset.
+            p.indicator_bar_count = 42;
+        }
+        let events = vec![(
+            PaneEvent::IndicatorsRemoved { group: 1, kind: IndicatorType::SMA, period: Some(20) },
+            Some(0usize),
+        )];
+        apply_pane_events(&mut panes, &events, 2, false);
+        // Originator untouched by dispatcher (it pre-removed locally).
+        assert_eq!(panes[0].indicators.len(), 3);
+        assert_eq!(panes[0].indicator_bar_count, 42);
+        // Sibling: SMA(20) dropped, SMA(50) and EMA(20) preserved.
+        assert_eq!(panes[1].indicators.len(), 2);
+        assert!(panes[1].indicators.iter().any(|i| i.kind == IndicatorType::SMA && i.period == 50));
+        assert!(panes[1].indicators.iter().any(|i| i.kind == IndicatorType::EMA && i.period == 20));
+        assert_eq!(panes[1].indicator_bar_count, 0, "sibling counter reset on actual removal");
+        // Unlinked pane: untouched.
+        assert_eq!(panes[2].indicators.len(), 3);
+        assert_eq!(panes[2].indicator_bar_count, 42);
+
+        // period: None form removes ALL of the kind.
+        let events = vec![(
+            PaneEvent::IndicatorsRemoved { group: 1, kind: IndicatorType::SMA, period: None },
+            Some(0usize),
+        )];
+        apply_pane_events(&mut panes, &events, 2, false);
+        assert_eq!(panes[1].indicators.len(), 1, "all SMA gone, EMA remains");
+        assert!(panes[1].indicators.iter().all(|i| i.kind == IndicatorType::EMA));
+    }
+
+    #[test]
+    fn indicator_added_clones_into_each_sibling_with_fresh_id() {
+        let mut panes = vec![
+            chart("AAPL", "5m", 1),
+            chart("MSFT", "5m", 1),
+            chart("NVDA", "5m", 1),
+            chart("TSLA", "5m", 0),
+        ];
+        // Clear default indicator set; pre-set distinct
+        // next_indicator_id per sibling so we can verify each pane
+        // allocates from its OWN counter, not the originator's.
+        for p in panes.iter_mut() { p.indicators.clear(); }
+        panes[1].next_indicator_id = 77;
+        panes[2].next_indicator_id = 200;
+        let mut original = Indicator::new(42, IndicatorType::EMA, 12, "#f0d732");
+        original.visible = true;
+        // Originator already pushed its own copy at id=42.
+        panes[0].indicators.push(original.clone());
+        let events = vec![(
+            PaneEvent::IndicatorAdded { group: 1, indicator: original },
+            Some(0usize),
+        )];
+        apply_pane_events(&mut panes, &events, 2, false);
+        // Originator unchanged (skipped by Some(0)).
+        assert_eq!(panes[0].indicators.len(), 1);
+        assert_eq!(panes[0].indicators[0].id, 42);
+        // Siblings got the indicator with their own next id.
+        assert_eq!(panes[1].indicators.len(), 1);
+        assert_eq!(panes[1].indicators[0].id, 77);
+        assert_eq!(panes[1].indicators[0].kind, IndicatorType::EMA);
+        assert_eq!(panes[1].indicators[0].period, 12);
+        assert_eq!(panes[1].next_indicator_id, 78, "sibling counter advanced");
+        assert_eq!(panes[1].indicator_bar_count, 0);
+        assert_eq!(panes[2].indicators.len(), 1);
+        assert_eq!(panes[2].indicators[0].id, 200);
+        assert_eq!(panes[2].next_indicator_id, 201);
+        // Unlinked pane untouched.
+        assert_eq!(panes[3].indicators.len(), 0);
     }
 }

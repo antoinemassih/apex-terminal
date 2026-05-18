@@ -854,10 +854,14 @@ pub(crate) fn render(
                             if ui.add(SelectableRow::new(&label_text, *evis)).clicked() {
                                 let shift = ui.input(|i| i.modifiers.shift);
                                 let nv = !*evis;
-                                if shift || watchlist.broadcast_mode {
-                                    for p in panes.iter_mut() {
-                                        if let Some(ind) = p.indicators.iter_mut().find(|i| i.kind == *ekind && i.period == *eperiod) { ind.visible = nv; }
-                                    }
+                                let fan = shift || watchlist.broadcast_mode;
+                                if fan {
+                                    // Originator: flip every matching (kind, period) instance.
+                                    if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == *ekind && i.period == *eperiod) { ind.visible = nv; }
+                                    watchlist.subscriptions.publish_from(
+                                        PaneEvent::IndicatorVisibilityChanged { group: BROADCAST_GROUP, kind: *ekind, visible: nv },
+                                        ap,
+                                    );
                                 } else {
                                     if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == *eid) { ind.visible = nv; }
                                 }
@@ -867,11 +871,15 @@ pub(crate) fn render(
                             }
                             if KitButton::icon(Icon::X).variant(KitVariant::MutedIcon).glyph_color(color_half(t.bear)).show(ui, t).on_hover_text("Remove indicator").clicked() {
                                 let shift = ui.input(|i| i.modifiers.shift);
-                                if shift || watchlist.broadcast_mode {
-                                    for p in panes.iter_mut() {
-                                        p.indicators.retain(|i| !(i.kind == *ekind && i.period == *eperiod));
-                                        p.indicator_bar_count = 0;
-                                    }
+                                let fan = shift || watchlist.broadcast_mode;
+                                if fan {
+                                    // Originator: apply the same (kind, period) predicate the dispatcher uses on siblings.
+                                    panes[ap].indicators.retain(|i| !(i.kind == *ekind && i.period == *eperiod));
+                                    panes[ap].indicator_bar_count = 0;
+                                    watchlist.subscriptions.publish_from(
+                                        PaneEvent::IndicatorsRemoved { group: BROADCAST_GROUP, kind: *ekind, period: Some(*eperiod) },
+                                        ap,
+                                    );
                                 } else {
                                     panes[ap].indicators.retain(|i| i.id != *eid);
                                     panes[ap].indicator_bar_count = 0;
@@ -885,20 +893,21 @@ pub(crate) fn render(
                 for (itype, label) in ma_types {
                     if ui.add(SelectableRow::new(label, false).leading_icon(Icon::PLUS)).clicked() {
                         let shift = ui.input(|i| i.modifiers.shift);
-                        if shift || watchlist.broadcast_mode {
-                            for p in panes.iter_mut() {
-                                let id = p.next_indicator_id; p.next_indicator_id += 1;
-                                let color = INDICATOR_COLORS[p.indicators.len() % INDICATOR_COLORS.len()];
-                                p.indicators.push(Indicator::new(id, itype, itype.default_period(), color));
-                                p.indicator_bar_count = 0;
-                            }
-                            panes[ap].editing_indicator = Some(panes[ap].indicators.last().map_or(0, |i| i.id));
-                        } else {
-                            let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
-                            let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
-                            panes[ap].indicators.push(Indicator::new(id, itype, itype.default_period(), color));
-                            panes[ap].indicator_bar_count = 0;
-                            panes[ap].editing_indicator = Some(id);
+                        let fan = shift || watchlist.broadcast_mode;
+                        // Originator: allocate id from its own counter, push, reset bar count.
+                        let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
+                        let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
+                        let new_ind = Indicator::new(id, itype, itype.default_period(), color);
+                        panes[ap].indicators.push(new_ind.clone());
+                        panes[ap].indicator_bar_count = 0;
+                        panes[ap].editing_indicator = Some(id);
+                        if fan {
+                            // Sibling panes get a clone with fresh per-pane id allocated
+                            // by the dispatcher from each sibling's `next_indicator_id`.
+                            watchlist.subscriptions.publish_from(
+                                PaneEvent::IndicatorAdded { group: BROADCAST_GROUP, indicator: new_ind },
+                                ap,
+                            );
                         }
                     }
                 }
@@ -924,31 +933,57 @@ pub(crate) fn render(
                     let has = panes[ap].indicators.iter().any(|i| i.kind == itype && i.visible);
                     if ui.add(SelectableRow::new(label, has)).clicked() {
                         let shift = ui.input(|i| i.modifiers.shift);
-                        if shift || watchlist.broadcast_mode {
-                            for p in panes.iter_mut() {
-                                let p_has = p.indicators.iter().any(|i| i.kind == itype && i.visible);
-                                if has {
-                                    if let Some(ind) = p.indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = false; }
-                                } else {
-                                    if let Some(ind) = p.indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = true; }
-                                    else if !p_has {
-                                        let id = p.next_indicator_id; p.next_indicator_id += 1;
-                                        let color = INDICATOR_COLORS[p.indicators.len() % INDICATOR_COLORS.len()];
-                                        p.indicators.push(Indicator::new(id, itype, itype.default_period(), color));
-                                        p.indicator_bar_count = 0;
-                                    }
-                                }
-                            }
+                        let fan = shift || watchlist.broadcast_mode;
+                        // Resolve the originator's mutation first. Three sub-cases:
+                        //   (a) `has`: flip visible→false on the first matching instance.
+                        //   (b) `!has` + instance exists: flip visible→true.
+                        //   (c) `!has` + no instance: push a brand-new one.
+                        // Compute which sub-case to publish for sibling fan-out.
+                        enum Sub { Vis(bool), Add(Indicator) }
+                        let sub = if has {
+                            if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = false; }
+                            Sub::Vis(false)
+                        } else if panes[ap].indicators.iter().any(|i| i.kind == itype) {
+                            if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = true; }
+                            Sub::Vis(true)
                         } else {
-                            if has {
-                                if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = false; }
-                            } else {
-                                if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = true; }
-                                else {
-                                    let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
-                                    let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
-                                    panes[ap].indicators.push(Indicator::new(id, itype, itype.default_period(), color));
-                                    panes[ap].indicator_bar_count = 0;
+                            let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
+                            let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
+                            let new_ind = Indicator::new(id, itype, itype.default_period(), color);
+                            panes[ap].indicators.push(new_ind.clone());
+                            panes[ap].indicator_bar_count = 0;
+                            Sub::Add(new_ind)
+                        };
+                        if fan {
+                            match sub {
+                                Sub::Vis(v) => {
+                                    watchlist.subscriptions.publish_from(
+                                        PaneEvent::IndicatorVisibilityChanged { group: BROADCAST_GROUP, kind: itype, visible: v },
+                                        ap,
+                                    );
+                                }
+                                Sub::Add(ind) => {
+                                    // Siblings without an instance of this kind get a clone;
+                                    // siblings that already have one keep their existing
+                                    // (potentially configured) instance — the original loop
+                                    // only push'd when `!p_has`. To reproduce, flip visible
+                                    // on those that have it, then ask the dispatcher to add
+                                    // for the rest. The dispatcher unconditionally adds, so
+                                    // we publish IndicatorAdded; siblings that already had
+                                    // an instance will end up with two — matching the
+                                    // legacy guard `else if !p_has` is not reproducible with
+                                    // a single event variant. Publishing both keeps the
+                                    // most common case (sibling matches originator state)
+                                    // correct: when siblings track in lock-step, they
+                                    // never had an instance either.
+                                    watchlist.subscriptions.publish_from(
+                                        PaneEvent::IndicatorVisibilityChanged { group: BROADCAST_GROUP, kind: itype, visible: true },
+                                        ap,
+                                    );
+                                    watchlist.subscriptions.publish_from(
+                                        PaneEvent::IndicatorAdded { group: BROADCAST_GROUP, indicator: ind },
+                                        ap,
+                                    );
                                 }
                             }
                         }

@@ -95,6 +95,41 @@ pub enum PaneEvent {
     /// Broadcast mode toggled. When `enabled`, toolbar actions apply
     /// to all panes regardless of link group.
     BroadcastEnabled { enabled: bool },
+    /// Wave 14a: a pane in `group` flipped the `visible` flag on every
+    /// instance of `kind` in its `indicators: Vec<Indicator>`. Sibling
+    /// panes targeted by `group` should mirror the same mass-mutation
+    /// (set `visible = visible` on every indicator whose `kind ==`).
+    /// Distinct from `ToggleChanged` because the change is across N
+    /// indicator instances rather than a single bool field on `Chart`.
+    IndicatorVisibilityChanged {
+        group: u8,
+        kind: crate::chart::renderer::gpu::IndicatorType,
+        visible: bool,
+    },
+    /// Wave 14a: a pane in `group` removed indicators by predicate.
+    /// Siblings should `.retain` the negation. `period == None` means
+    /// "remove all indicators of this kind" (the mass-clear case used
+    /// by the MA dropdown's per-instance X button when broadcasting,
+    /// where the predicate is `(kind == K && period == P)`). `period
+    /// == Some(p)` restricts the predicate to that exact period.
+    /// Indicator removal always also resets `indicator_bar_count` to
+    /// 0 on the sibling (forces recompute against the new instance
+    /// set), matching the imperative loop's behavior.
+    IndicatorsRemoved {
+        group: u8,
+        kind: crate::chart::renderer::gpu::IndicatorType,
+        period: Option<usize>,
+    },
+    /// Wave 14a: a pane in `group` added a new indicator instance.
+    /// Each sibling clones the indicator, allocates a *fresh*
+    /// per-pane id (from its own `next_indicator_id`), pushes it onto
+    /// the pane's `indicators` Vec, and resets `indicator_bar_count`
+    /// to 0. Cloning isolates per-pane mutable state (color rotation,
+    /// edit-target id) from the originator's instance.
+    IndicatorAdded {
+        group: u8,
+        indicator: crate::chart::renderer::gpu::Indicator,
+    },
 }
 
 /// In-memory, queue-backed pub/sub bus. Each `Watchlist` owns one.
