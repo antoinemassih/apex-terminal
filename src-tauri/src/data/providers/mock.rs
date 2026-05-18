@@ -45,6 +45,9 @@ pub enum MockFrame {
 pub struct MockMarketDataProvider {
     name: String,
     state: Arc<Mutex<ConnectionState>>,
+    // Wave 11c: per-instance broadcast so tests can assert push-notification
+    // behavior without leaking state into a process-global channel.
+    state_tx: tokio::sync::broadcast::Sender<ConnectionState>,
     metrics: Arc<Mutex<ConnectionMetrics>>,
     bar_script: Arc<Mutex<VecDeque<MockFrame>>>,
     quote_script: Arc<Mutex<VecDeque<MockFrame>>>,
@@ -66,9 +69,11 @@ pub struct MockMarketDataProvider {
 
 impl MockMarketDataProvider {
     pub fn new(name: impl Into<String>) -> Self {
+        let (state_tx, _) = tokio::sync::broadcast::channel(64);
         Self {
             name: name.into(),
             state: Arc::new(Mutex::new(ConnectionState::Idle)),
+            state_tx,
             metrics: Arc::new(Mutex::new(ConnectionMetrics::default())),
             bar_script: Arc::new(Mutex::new(VecDeque::new())),
             quote_script: Arc::new(Mutex::new(VecDeque::new())),
@@ -152,7 +157,9 @@ impl MockMarketDataProvider {
     }
 
     pub fn set_state(&self, state: ConnectionState) {
-        if let Ok(mut g) = self.state.lock() { *g = state; }
+        if let Ok(mut g) = self.state.lock() { *g = state.clone(); }
+        // Wave 11c: broadcast to subscribers (best-effort; ignore no-listeners).
+        let _ = self.state_tx.send(state);
     }
 
     /// Push an additional frame onto the bar script. Useful when tests want to
@@ -173,12 +180,19 @@ impl Connection for MockMarketDataProvider {
     fn metrics(&self) -> ConnectionMetrics {
         self.metrics.lock().map(|g| g.clone()).unwrap_or_default()
     }
+    fn subscribe_state(&self) -> Option<tokio::sync::broadcast::Receiver<ConnectionState>> {
+        // Wave 11c: per-instance broadcast — every `set_state(...)` call
+        // pushes to current subscribers. Useful for tests that need to assert
+        // push-notification visibility without spinning up real WS clients.
+        Some(self.state_tx.subscribe())
+    }
 }
 
 fn spawn_stream<T: Send + 'static, F>(
     script: Arc<Mutex<VecDeque<MockFrame>>>,
     metrics: Arc<Mutex<ConnectionMetrics>>,
     state: Arc<Mutex<ConnectionState>>,
+    state_tx: tokio::sync::broadcast::Sender<ConnectionState>,
     tx: mpsc::UnboundedSender<T>,
     extract: F,
 )
@@ -203,18 +217,18 @@ where
             match frame {
                 MockFrame::Sleep(d) => tokio::time::sleep(d).await,
                 MockFrame::Disconnect => {
-                    if let Ok(mut s) = state.lock() {
-                        *s = ConnectionState::Backoff {
-                            until: std::time::Instant::now() + Duration::from_millis(50),
-                            attempt: 1,
-                            reason: "mock disconnect".into(),
-                        };
-                    }
+                    let new = ConnectionState::Backoff {
+                        until: std::time::Instant::now() + Duration::from_millis(50),
+                        attempt: 1,
+                        reason: "mock disconnect".into(),
+                    };
+                    if let Ok(mut s) = state.lock() { *s = new.clone(); }
+                    let _ = state_tx.send(new);
                 }
                 MockFrame::Reconnect => {
-                    if let Ok(mut s) = state.lock() {
-                        *s = ConnectionState::Subscribed { count: 1 };
-                    }
+                    let new = ConnectionState::Subscribed { count: 1 };
+                    if let Ok(mut s) = state.lock() { *s = new.clone(); }
+                    let _ = state_tx.send(new);
                     if let Ok(mut m) = metrics.lock() { m.reconnect_count += 1; }
                 }
                 MockFrame::Error(_) => {
@@ -258,6 +272,7 @@ impl MarketDataProvider for MockMarketDataProvider {
             self.bar_script.clone(),
             self.metrics.clone(),
             self.state.clone(),
+            self.state_tx.clone(),
             tx,
             |f| match f { MockFrame::Bar(b) => Some(b), _ => None },
         );
@@ -272,6 +287,7 @@ impl MarketDataProvider for MockMarketDataProvider {
             self.quote_script.clone(),
             self.metrics.clone(),
             self.state.clone(),
+            self.state_tx.clone(),
             tx,
             |f| match f { MockFrame::Quote(q) => Some(q), _ => None },
         );
@@ -286,6 +302,7 @@ impl MarketDataProvider for MockMarketDataProvider {
             self.trade_script.clone(),
             self.metrics.clone(),
             self.state.clone(),
+            self.state_tx.clone(),
             tx,
             |f| match f { MockFrame::Trade(t) => Some(t), _ => None },
         );

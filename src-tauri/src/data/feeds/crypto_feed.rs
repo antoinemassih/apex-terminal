@@ -23,6 +23,17 @@ const WATCHDOG_TICK_SECS: u64 = 10;
 pub(crate) static FORCE_RECONNECT: AtomicBool = AtomicBool::new(false);
 pub(crate) static LAST_STALL_AT_MS: AtomicI64 = AtomicI64::new(0);
 
+// ── Wave 11c: ConnectionState push-notification stream ───────────────────────
+static STATE_TX: OnceLock<tokio::sync::broadcast::Sender<ConnectionState>> = OnceLock::new();
+
+pub fn state_tx() -> &'static tokio::sync::broadcast::Sender<ConnectionState> {
+    STATE_TX.get_or_init(|| tokio::sync::broadcast::channel(64).0)
+}
+
+pub(crate) fn publish_state(s: ConnectionState) {
+    let _ = state_tx().send(s);
+}
+
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -30,7 +41,7 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 use crate::chart_renderer::{self, ChartCommand, Bar};
-use crate::data::connectivity::{self, errors_sink::{report, ErrorLevel}, Backoff};
+use crate::data::connectivity::{self, errors_sink::{report, ErrorLevel}, Backoff, ConnectionState};
 
 const APEX_CRYPTO_WS: &str = "ws://192.168.1.56:30840/ws";
 
@@ -60,18 +71,38 @@ pub fn start() {
             let mut backoff = Backoff::new().with_max_attempts(None);
             let mut first = true;
             loop {
-                if shutdown.load(Ordering::SeqCst) { break; }
+                if shutdown.load(Ordering::SeqCst) {
+                    publish_state(ConnectionState::ShuttingDown);
+                    break;
+                }
                 if !first { RECONNECT_COUNT.fetch_add(1, Ordering::Relaxed); }
                 first = false;
+                publish_state(ConnectionState::Connecting {
+                    attempt: RECONNECT_COUNT.load(Ordering::Relaxed) + 1,
+                });
                 match run_feed().await {
                     Ok(()) => { backoff.reset(); }
                     Err(e) => {
                         report(ErrorLevel::Warn, "crypto_feed", "reconnect", e.to_string());
                     }
                 }
-                if shutdown.load(Ordering::SeqCst) { break; }
+                if shutdown.load(Ordering::SeqCst) {
+                    publish_state(ConnectionState::ShuttingDown);
+                    break;
+                }
                 if let Some(d) = backoff.next_delay() {
+                    publish_state(ConnectionState::Backoff {
+                        until: std::time::Instant::now() + d,
+                        attempt: RECONNECT_COUNT.load(Ordering::Relaxed) + 1,
+                        reason: "disconnected".into(),
+                    });
                     tokio::time::sleep(d).await;
+                } else {
+                    publish_state(ConnectionState::Failed {
+                        reason: connectivity::ConnectionError::MaxRetriesExceeded(
+                            RECONNECT_COUNT.load(Ordering::Relaxed),
+                        ),
+                    });
                 }
             }
         });
@@ -125,6 +156,10 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         sub_msg.to_string().into()
     )).await?;
     report(ErrorLevel::Info, "crypto_feed", "connected", "bars + tape subscribed");
+    publish_state(ConnectionState::Authenticated);
+    // Wildcard subs — exact count isn't meaningful; surface 1 so the UI shows
+    // green-with-load rather than just Authenticated.
+    publish_state(ConnectionState::Subscribed { count: 1 });
 
     let mut chart_updates: u64 = 0;
     let mut price_updates: u64 = 0;
@@ -141,6 +176,11 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     loop {
         if FORCE_RECONNECT.swap(false, Ordering::SeqCst) {
             report(ErrorLevel::Warn, "crypto_feed", "force_reconnect", "watchdog tripped");
+            publish_state(ConnectionState::Backoff {
+                until: std::time::Instant::now() + Duration::from_secs(1),
+                attempt: RECONNECT_COUNT.load(Ordering::Relaxed),
+                reason: "tick_stalled".into(),
+            });
             return Err("watchdog forced reconnect".into());
         }
         tokio::select! {

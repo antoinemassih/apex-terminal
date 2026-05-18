@@ -44,6 +44,10 @@ impl Connection for IbProvider {
         }
         ConnectionState::Idle
     }
+    fn subscribe_state(&self) -> Option<tokio::sync::broadcast::Receiver<ConnectionState>> {
+        // Wave 11c: push stream backed by `feeds::ib_ws::state_tx()`.
+        Some(crate::data::feeds::ib_ws::state_tx().subscribe())
+    }
     fn metrics(&self) -> ConnectionMetrics {
         feed_metrics_snapshot(
             &crate::data::feeds::ib_ws::MESSAGES_IN,

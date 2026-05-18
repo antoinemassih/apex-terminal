@@ -41,6 +41,10 @@ impl Connection for SignalsProvider {
         }
         ConnectionState::Idle
     }
+    fn subscribe_state(&self) -> Option<tokio::sync::broadcast::Receiver<ConnectionState>> {
+        // Wave 11c: push stream backed by `feeds::signals_feed::state_tx()`.
+        Some(crate::data::feeds::signals_feed::state_tx().subscribe())
+    }
     fn metrics(&self) -> ConnectionMetrics {
         super::ib::feed_metrics_snapshot(
             &crate::data::feeds::signals_feed::MESSAGES_IN,
