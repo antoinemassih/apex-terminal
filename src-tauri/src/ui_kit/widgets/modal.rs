@@ -347,6 +347,15 @@ impl<'a> Modal<'a> {
                 // Paint a soft drop shadow behind fixed-position windows.
                 // We can't easily track the rect of a movable window across
                 // frames, so the shadow only goes on pinned modals.
+                //
+                // Use the md-tier (radius 16px) rather than lg (24px) here.
+                // The modal frame already carries an egui::epaint::Shadow from
+                // PopupFrame/themed_popup_frame, so this GPU layer is additive.
+                // lg (radius 24) routes to the GPU silhouette path and painted
+                // a ~48-pt halo on each side — visibly too wide. md (radius 16)
+                // stays in the fast CPU stacked-rect path, is visually
+                // indistinguishable from the prior CPU-only behaviour, and does
+                // not double up on the GPU compositor.
                 if !draggable && self.size.x > 0.0 && self.size.y > 0.0 {
                     let shadow_rect = Rect::from_min_size(win_pos, self.size);
                     let shadow_id = Id::new(("apex_modal_shadow", id));
@@ -359,7 +368,7 @@ impl<'a> Modal<'a> {
                             super::paint_shadow_gpu(
                                 ui.painter(),
                                 shadow_rect,
-                                super::ShadowSpec::lg_themed(t),
+                                super::ShadowSpec::md_themed(t),
                             );
                         });
                 }
@@ -397,10 +406,14 @@ impl<'a> Modal<'a> {
                             m.data.get_temp(Id::new(("apex_modal_rect", id)))
                         });
                         if let Some(r) = prior_rect {
+                            // md-tier (16px) keeps the shadow in the CPU
+                            // stacked-rect path. lg (24px) was triggering the
+                            // GPU silhouette and creating an oversized ~48pt
+                            // halo around every floating modal.
                             super::paint_shadow_gpu(
                                 ui.painter(),
                                 r,
-                                super::ShadowSpec::lg_themed(t),
+                                super::ShadowSpec::md_themed(t),
                             );
                         }
                         let resp = frame.show(ui, |ui| {
