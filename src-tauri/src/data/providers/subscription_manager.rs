@@ -33,12 +33,14 @@ struct BarSub {
 
 struct QuoteSub {
     refcount: AtomicUsize,
+    last_seen_ts: AtomicI64,
     last_activity: Mutex<Instant>,
     fanout: broadcast::Sender<Quote>,
 }
 
 struct TradeSub {
     refcount: AtomicUsize,
+    last_seen_ts: AtomicI64,
     last_activity: Mutex<Instant>,
     fanout: broadcast::Sender<Trade>,
 }
@@ -98,7 +100,12 @@ impl SubscriptionManager {
             let sub = sub.clone();
             async move {
                 while let Some(bar) = rx.recv().await {
-                    sub.last_seen_ts.store(bar.time, Ordering::Relaxed);
+                    if bar.time > 0 {
+                        let prev = sub.last_seen_ts.load(Ordering::Relaxed);
+                        if bar.time > prev {
+                            sub.last_seen_ts.store(bar.time, Ordering::Relaxed);
+                        }
+                    }
                     if let Ok(mut g) = sub.last_activity.lock() {
                         *g = Instant::now();
                     }
@@ -138,6 +145,7 @@ impl SubscriptionManager {
         let (tx, _) = broadcast::channel::<Quote>(FANOUT_CAP);
         let sub = Arc::new(QuoteSub {
             refcount: AtomicUsize::new(1),
+            last_seen_ts: AtomicI64::new(0),
             last_activity: Mutex::new(Instant::now()),
             fanout: tx.clone(),
         });
@@ -146,6 +154,12 @@ impl SubscriptionManager {
         let recv_out = tx.subscribe();
         tokio::spawn(async move {
             while let Some(q) = rx.recv().await {
+                if q.time > 0 {
+                    let prev = sub.last_seen_ts.load(Ordering::Relaxed);
+                    if q.time > prev {
+                        sub.last_seen_ts.store(q.time, Ordering::Relaxed);
+                    }
+                }
                 if let Ok(mut g) = sub.last_activity.lock() {
                     *g = Instant::now();
                 }
@@ -180,6 +194,7 @@ impl SubscriptionManager {
         let (tx, _) = broadcast::channel::<Trade>(FANOUT_CAP);
         let sub = Arc::new(TradeSub {
             refcount: AtomicUsize::new(1),
+            last_seen_ts: AtomicI64::new(0),
             last_activity: Mutex::new(Instant::now()),
             fanout: tx.clone(),
         });
@@ -188,6 +203,12 @@ impl SubscriptionManager {
         let recv_out = tx.subscribe();
         tokio::spawn(async move {
             while let Some(t) = rx.recv().await {
+                if t.time > 0 {
+                    let prev = sub.last_seen_ts.load(Ordering::Relaxed);
+                    if t.time > prev {
+                        sub.last_seen_ts.store(t.time, Ordering::Relaxed);
+                    }
+                }
                 if let Ok(mut g) = sub.last_activity.lock() {
                     *g = Instant::now();
                 }
@@ -247,6 +268,140 @@ impl SubscriptionManager {
                 map.remove(underlying);
                 self.provider.unsubscribe_chain(underlying);
             }
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Wave 8 — request-side wrappers and external `last_seen_ts` bumpers.
+    //
+    // The data-delivery path remains unchanged (feeds fan frames into
+    // `NATIVE_CHART_TXS`). These helpers exist so callers can route their
+    // subscription REQUESTS through SubscriptionManager — that gives
+    // `gap_fill_on_reconnect_all()` a populated set to walk. Callers may
+    // ignore the returned receiver; the broadcast Sender is held internally
+    // and the pump still bumps `last_seen_ts` from the trait-side stream.
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// Bump the bar `last_seen_ts` from outside the trait pump.
+    ///
+    /// Useful when the actual frame stream reaches the UI via a path that
+    /// does NOT flow through `SubscriptionManager.subscribe_bars` (e.g. the
+    /// legacy `NATIVE_CHART_TXS` route). Monotonic: only the max wins.
+    pub fn bump_last_seen_bar(&self, symbol: &str, timeframe: &str, ts_ms: i64) {
+        if ts_ms <= 0 { return; }
+        let key = (symbol.to_string(), timeframe.to_string());
+        if let Ok(map) = self.bars.lock() {
+            if let Some(sub) = map.get(&key) {
+                let prev = sub.last_seen_ts.load(Ordering::Relaxed);
+                if ts_ms > prev {
+                    sub.last_seen_ts.store(ts_ms, Ordering::Relaxed);
+                }
+                if let Ok(mut g) = sub.last_activity.lock() {
+                    *g = Instant::now();
+                }
+            }
+        }
+    }
+
+    pub fn bump_last_seen_quote(&self, symbol: &str, ts_ms: i64) {
+        if ts_ms <= 0 { return; }
+        if let Ok(map) = self.quotes.lock() {
+            if let Some(sub) = map.get(symbol) {
+                let prev = sub.last_seen_ts.load(Ordering::Relaxed);
+                if ts_ms > prev {
+                    sub.last_seen_ts.store(ts_ms, Ordering::Relaxed);
+                }
+                if let Ok(mut g) = sub.last_activity.lock() {
+                    *g = Instant::now();
+                }
+            }
+        }
+    }
+
+    pub fn bump_last_seen_trade(&self, symbol: &str, ts_ms: i64) {
+        if ts_ms <= 0 { return; }
+        if let Ok(map) = self.trades.lock() {
+            if let Some(sub) = map.get(symbol) {
+                let prev = sub.last_seen_ts.load(Ordering::Relaxed);
+                if ts_ms > prev {
+                    sub.last_seen_ts.store(ts_ms, Ordering::Relaxed);
+                }
+                if let Ok(mut g) = sub.last_activity.lock() {
+                    *g = Instant::now();
+                }
+            }
+        }
+    }
+
+    /// Read-only inspection of current bar `last_seen_ts` (for tests / debug).
+    pub fn last_seen_bar(&self, symbol: &str, timeframe: &str) -> i64 {
+        let key = (symbol.to_string(), timeframe.to_string());
+        self.bars.lock().ok()
+            .and_then(|m| m.get(&key).map(|s| s.last_seen_ts.load(Ordering::Relaxed)))
+            .unwrap_or(0)
+    }
+
+    pub fn last_seen_quote(&self, symbol: &str) -> i64 {
+        self.quotes.lock().ok()
+            .and_then(|m| m.get(symbol).map(|s| s.last_seen_ts.load(Ordering::Relaxed)))
+            .unwrap_or(0)
+    }
+
+    pub fn last_seen_trade(&self, symbol: &str) -> i64 {
+        self.trades.lock().ok()
+            .and_then(|m| m.get(symbol).map(|s| s.last_seen_ts.load(Ordering::Relaxed)))
+            .unwrap_or(0)
+    }
+
+    /// Replace the active quote-subscription set, computing the diff against
+    /// current state and calling `subscribe_quotes` / `unsubscribe_quotes`
+    /// for each delta. Mirrors the `ws::set_quotes` replace-set semantics so
+    /// callers that thought in those terms can migrate one-for-one.
+    ///
+    /// Receivers from `subscribe_quotes` are dropped; the broadcast Sender
+    /// stays alive (so refcount logic remains the lifecycle authority) and
+    /// future `subscribe_quotes` calls fan onto the same channel.
+    pub fn set_quotes(&self, symbols: &[String]) {
+        use std::collections::HashSet;
+        let want: HashSet<String> = symbols.iter().cloned().collect();
+        let have: HashSet<String> = self.quotes.lock().ok()
+            .map(|m| m.keys().cloned().collect())
+            .unwrap_or_default();
+        for sym in want.difference(&have) {
+            let _ = self.subscribe_quotes(sym);
+        }
+        for sym in have.difference(&want) {
+            // Refcount-aware: only the SubscriptionManager-owned ref is
+            // dropped here. Other callers holding refs still keep the sub.
+            self.unsubscribe_quotes(sym);
+        }
+    }
+
+    pub fn set_trades(&self, symbols: &[String]) {
+        use std::collections::HashSet;
+        let want: HashSet<String> = symbols.iter().cloned().collect();
+        let have: HashSet<String> = self.trades.lock().ok()
+            .map(|m| m.keys().cloned().collect())
+            .unwrap_or_default();
+        for sym in want.difference(&have) {
+            let _ = self.subscribe_trades(sym);
+        }
+        for sym in have.difference(&want) {
+            self.unsubscribe_trades(sym);
+        }
+    }
+
+    pub fn set_chain(&self, underlyings: &[String]) {
+        use std::collections::HashSet;
+        let want: HashSet<String> = underlyings.iter().cloned().collect();
+        let have: HashSet<String> = self.chain.lock().ok()
+            .map(|m| m.keys().cloned().collect())
+            .unwrap_or_default();
+        for u in want.difference(&have) {
+            let _ = self.subscribe_chain(u);
+        }
+        for u in have.difference(&want) {
+            self.unsubscribe_chain(u);
         }
     }
 
@@ -450,6 +605,72 @@ mod tests {
         assert_eq!(prov.live_subs("AAPL:5m"), 1, "still active");
         mgr.unsubscribe_bars("AAPL", "5m");
         assert_eq!(prov.live_subs("AAPL:5m"), 0, "evicted at zero");
+    }
+
+    #[tokio::test]
+    async fn subscribe_bars_calls_underlying_feed_once_per_key() {
+        let prov = Arc::new(MockProvider::new());
+        let mgr = SubscriptionManager::new(prov.clone());
+        // 4 panes ask for the same (sym, tf).
+        let _a = mgr.subscribe_bars("MSFT", "1m").unwrap();
+        let _b = mgr.subscribe_bars("MSFT", "1m").unwrap();
+        let _c = mgr.subscribe_bars("MSFT", "1m").unwrap();
+        let _d = mgr.subscribe_bars("MSFT", "1m").unwrap();
+        // Underlying feed should have been touched exactly once.
+        assert_eq!(prov.live_subs("MSFT:1m"), 1);
+    }
+
+    #[tokio::test]
+    async fn unsubscribe_bars_calls_underlying_only_when_refcount_zero() {
+        let prov = Arc::new(MockProvider::new());
+        let mgr = SubscriptionManager::new(prov.clone());
+        for _ in 0..5 { let _ = mgr.subscribe_bars("NVDA", "5m").unwrap(); }
+        assert_eq!(prov.live_subs("NVDA:5m"), 1);
+        for _ in 0..4 { mgr.unsubscribe_bars("NVDA", "5m"); }
+        // 4 of 5 unsubs — still live.
+        assert_eq!(prov.live_subs("NVDA:5m"), 1);
+        // 5th unsub — last one out, underlying call fires.
+        mgr.unsubscribe_bars("NVDA", "5m");
+        assert_eq!(prov.live_subs("NVDA:5m"), 0);
+    }
+
+    #[tokio::test]
+    async fn bump_last_seen_advances_timestamp_monotonically() {
+        let prov = Arc::new(MockProvider::new());
+        let mgr = SubscriptionManager::new(prov.clone());
+        let _r = mgr.subscribe_bars("AMD", "1m").unwrap();
+        assert_eq!(mgr.last_seen_bar("AMD", "1m"), 0);
+        mgr.bump_last_seen_bar("AMD", "1m", 100);
+        assert_eq!(mgr.last_seen_bar("AMD", "1m"), 100);
+        mgr.bump_last_seen_bar("AMD", "1m", 200);
+        assert_eq!(mgr.last_seen_bar("AMD", "1m"), 200);
+        // Going backwards is ignored.
+        mgr.bump_last_seen_bar("AMD", "1m", 150);
+        assert_eq!(mgr.last_seen_bar("AMD", "1m"), 200);
+        // Unknown key is a no-op (doesn't insert).
+        mgr.bump_last_seen_bar("GHOST", "1m", 999);
+        assert_eq!(mgr.last_seen_bar("GHOST", "1m"), 0);
+    }
+
+    #[tokio::test]
+    async fn set_quotes_diffs_against_existing() {
+        let prov = Arc::new(MockProvider::new());
+        let mgr = SubscriptionManager::new(prov.clone());
+        mgr.set_quotes(&["AAPL".into(), "MSFT".into(), "TSLA".into()]);
+        assert_eq!(prov.live_subs("AAPL"), 1);
+        assert_eq!(prov.live_subs("MSFT"), 1);
+        assert_eq!(prov.live_subs("TSLA"), 1);
+        // Replace TSLA with NVDA — TSLA should drop, NVDA should add.
+        mgr.set_quotes(&["AAPL".into(), "MSFT".into(), "NVDA".into()]);
+        assert_eq!(prov.live_subs("AAPL"), 1);
+        assert_eq!(prov.live_subs("MSFT"), 1);
+        assert_eq!(prov.live_subs("TSLA"), 0);
+        assert_eq!(prov.live_subs("NVDA"), 1);
+        // Clear all.
+        mgr.set_quotes(&[]);
+        assert_eq!(prov.live_subs("AAPL"), 0);
+        assert_eq!(prov.live_subs("MSFT"), 0);
+        assert_eq!(prov.live_subs("NVDA"), 0);
     }
 
     #[tokio::test]

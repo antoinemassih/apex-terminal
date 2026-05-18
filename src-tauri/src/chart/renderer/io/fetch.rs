@@ -194,8 +194,11 @@ pub(crate) fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i3
             use crate::apex_data::types::ChainQuery;
 
             // Subscribe once to the chain delta stream for this underlying.
-            // Idempotent — dedup happens server-side by refcount.
-            crate::apex_data::ws::set_chain(&[symbol.clone()]);
+            // Routed through SubscriptionManager so it records the active
+            // sub for gap-fill on reconnect (Wave 8). Replace-set semantics
+            // are preserved — same as the old `ws::set_chain` call.
+            crate::data::providers::registry::subscription_manager()
+                .set_chain(&[symbol.clone()]);
             crate::apex_log!("chain", "WS chain sub set to [{}]", symbol);
 
             let render_from = |rows: &[crate::apex_data::ChainRow], hint: f32| -> Option<(Vec<_>, Vec<_>, f32)> {
@@ -265,7 +268,11 @@ pub(crate) fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i3
             //     sub taking effect).
             let placeholder_occ = synthesize_occ(&symbol, 100.0, true, "0DTE");
             crate::apex_log!("chain", "untracked {} — priming via {}", symbol, placeholder_occ);
-            crate::apex_data::ws::add_bar_sub(&placeholder_occ, "1m");
+            // Wave 8: route through SubscriptionManager so gap-fill knows
+            // about the prime sub. Returned receiver is unused — bar frames
+            // continue to reach the UI via NATIVE_CHART_TXS.
+            let _ = crate::data::providers::registry::subscription_manager()
+                .subscribe_bars(&placeholder_occ, "1m");
 
             for attempt in 1..=8 {
                 std::thread::sleep(std::time::Duration::from_millis(1000));
@@ -1039,9 +1046,17 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
     if mark {
         crate::apex_data::ws::add_mark_bar_sub(&occ, &tf);
         // Make sure we're not also receiving last-source frames for this contract.
-        crate::apex_data::ws::remove_bar_sub(&occ, &tf);
+        // Wave 8: route the non-mark unsub through SubscriptionManager so the
+        // refcount stays correct (mark-bar subs have no provider trait surface
+        // yet, so they remain direct calls).
+        crate::data::providers::registry::subscription_manager()
+            .unsubscribe_bars(&occ, &tf);
     } else {
-        crate::apex_data::ws::add_bar_sub(&occ, &tf);
+        // Wave 8: route through SubscriptionManager so gap-fill knows about
+        // the active option bar sub. Receiver is unused — frames continue to
+        // reach the UI via NATIVE_CHART_TXS.
+        let _ = crate::data::providers::registry::subscription_manager()
+            .subscribe_bars(&occ, &tf);
         crate::apex_data::ws::remove_mark_bar_sub(&occ, &tf);
     }
     let mut quote_set: Vec<String> = vec![occ.clone()];
@@ -1102,8 +1117,12 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
                                 "OK {} bars for {occ} (FALLBACK to mark — Last had nothing)",
                                 bars.len());
                             // Swap WS subs to mark too so live updates match.
+                            // Wave 8: route the last-source unsub through
+                            // SubscriptionManager so the refcount we added
+                            // moments ago is correctly decremented.
                             crate::apex_data::ws::add_mark_bar_sub(&occ, &tf);
-                            crate::apex_data::ws::remove_bar_sub(&occ, &tf);
+                            crate::data::providers::registry::subscription_manager()
+                                .unsubscribe_bars(&occ, &tf);
                             // Flag the pane so the toggle reflects the active
                             // source. The pane's bar_source_mark is currently
                             // false, but the bars are mark — we send a Mark
@@ -1159,8 +1178,11 @@ pub(crate) fn fetch_bars_background(sym: String, tf: String) {
         // For ApexData live updates: subscribe to the WS bar stream so
         // incremental bar updates flow into NATIVE_CHART_TXS via the existing
         // apex_data::ws frame listener. The previous inline path did this.
+        // Wave 8: route through SubscriptionManager so gap-fill on reconnect
+        // sees this sub. Receiver is unused; the data path is unchanged.
         if crate::apex_data::is_enabled() && !crate::data::is_crypto(&sym) {
-            crate::apex_data::ws::add_bar_sub(&sym, &tf);
+            let _ = crate::data::providers::registry::subscription_manager()
+                .subscribe_bars(&sym, &tf);
         }
         let gpu_bars: Vec<Bar> = bars.iter().map(|b| Bar {
             open: b.open as f32, high: b.high as f32, low: b.low as f32,
