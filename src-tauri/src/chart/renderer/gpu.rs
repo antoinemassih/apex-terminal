@@ -4614,6 +4614,15 @@ pub(crate) struct Watchlist {
     // waves migrate the remaining flags one at a time. See
     // `state::inflight`.
     pub(crate) inflight: crate::state::InFlightRegistry,
+    /// Wave 14c: typed aggregate for UI display preferences. Mirrors
+    /// the legacy `font_scale` / `font_idx` / `compact_mode` /
+    /// `pane_header_size` / `toolbar_auto_hide` / `show_x_axis` /
+    /// `show_y_axis` / `shared_x_axis` / `shared_y_axis` / `style_idx`
+    /// fields. The legacy fields remain the read source of truth
+    /// (notably `core.rs` reads them directly); `push_to_ui_settings`
+    /// copies legacy → aggregate before serialization and
+    /// `pull_from_ui_settings` copies aggregate → legacy after load.
+    pub(crate) ui_settings: crate::state::UiSettings,
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
@@ -4775,7 +4784,45 @@ impl Watchlist {
                // for the model description and group sentinel.
                subscriptions: crate::state::SubscriptionBus::new(),
                inflight: crate::state::InFlightRegistry::new(),
+               ui_settings: crate::state::UiSettings::default(),
         }
+    }
+
+    /// Wave 14c: copy legacy display-pref fields into the
+    /// `ui_settings` aggregate. Call this immediately before persisting
+    /// so the serialized aggregate matches what reads see in the live
+    /// `Watchlist`. The legacy fields stay the authoritative read source
+    /// for now (sacred `core.rs` reads `pane_header_size`,
+    /// `shared_x_axis`, etc. directly).
+    pub(crate) fn push_to_ui_settings(&mut self) {
+        self.ui_settings.font_scale = self.font_scale;
+        self.ui_settings.font_idx = self.font_idx;
+        self.ui_settings.compact_mode = self.compact_mode;
+        self.ui_settings.pane_header_size = self.pane_header_size;
+        self.ui_settings.toolbar_auto_hide = self.toolbar_auto_hide;
+        self.ui_settings.show_x_axis = self.show_x_axis;
+        self.ui_settings.show_y_axis = self.show_y_axis;
+        self.ui_settings.shared_x_axis = self.shared_x_axis;
+        self.ui_settings.shared_y_axis = self.shared_y_axis;
+        self.ui_settings.style_idx = self.style_idx;
+    }
+
+    /// Wave 14c: copy the loaded `ui_settings` aggregate back onto the
+    /// legacy `Watchlist` fields. Call this after a successful
+    /// `Persistable::load` so existing readers (UI panels and the
+    /// sacred `core.rs` paint pipeline) observe the restored values
+    /// through their familiar field names.
+    pub(crate) fn pull_from_ui_settings(&mut self) {
+        self.font_scale = self.ui_settings.font_scale;
+        self.font_idx = self.ui_settings.font_idx;
+        self.compact_mode = self.ui_settings.compact_mode;
+        self.pane_header_size = self.ui_settings.pane_header_size;
+        self.toolbar_auto_hide = self.ui_settings.toolbar_auto_hide;
+        self.show_x_axis = self.ui_settings.show_x_axis;
+        self.show_y_axis = self.ui_settings.show_y_axis;
+        self.shared_x_axis = self.ui_settings.shared_x_axis;
+        self.shared_y_axis = self.ui_settings.shared_y_axis;
+        self.style_idx = self.ui_settings.style_idx;
     }
 
     /// Add symbol to the last section (creates one if none exist).
