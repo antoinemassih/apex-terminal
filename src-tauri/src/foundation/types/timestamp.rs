@@ -149,3 +149,33 @@ mod tests {
         assert!(earlier < later);
     }
 }
+
+#[cfg(test)]
+mod proptests {
+    //! Property-based tests for `Timestamp`.
+    //!
+    //! Wave 9e: proptest covers ms / seconds round-trips across the full
+    //! realistic epoch range. 256 cases per generator by default.
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// `from_millis` ↔ `millis()` must round-trip exactly across the
+        /// realistic epoch-ms range (±10^13).
+        #[test]
+        fn ms_round_trip(ms in -10_000_000_000_000i64..=10_000_000_000_000) {
+            let t = Timestamp::from_millis(ms, TimeSource::ExchangeUtc);
+            prop_assert_eq!(t.millis(), ms);
+        }
+
+        /// `from_seconds` ↔ `seconds()` must round-trip; and the underlying
+        /// `unix_ms` must be exactly `s * 1000` (no precision loss from any
+        /// intermediate float).
+        #[test]
+        fn seconds_round_trip(s in -10_000_000_000i64..=10_000_000_000) {
+            let t = Timestamp::from_seconds(s, TimeSource::ExchangeUtc);
+            prop_assert_eq!(t.seconds(), s);
+            prop_assert_eq!(t.millis(), s * 1000);
+        }
+    }
+}
