@@ -331,6 +331,39 @@ let resp = PanelSection::new("ACTIVE")
 if resp.action_clicked { /* handle */ }
 ```
 
+### `PanelSection` opt-in features (Wave 10a)
+
+`PanelSection` now supports three opt-in builders that bring it to
+feature parity with the legacy `chart/renderer/ui/watchlist/section_header.rs`
+widget (so that wrapper can be retired):
+
+- **`.collapsible(&mut expanded)`** — leading caret + click-anywhere-on-header
+  toggle. Body closure is skipped when collapsed (`SectionResponse.body` is
+  `None`); count chip is rendered inline as `(N)` next to the title.
+- **`.delete_when_empty()`** — when set AND `.count(0)` is set, the
+  trailing slot paints an `Icon::X` ghost button; click surfaces via
+  `SectionResponse.delete_clicked`. Precedence: when `count == 0` the
+  delete button wins over `.action(...)`; for `count > 0` the action
+  button paints normally.
+- **`SectionResponse.header_response`** — the full header-strip
+  `egui::Response`, exposed so callers can attach
+  `.context_menu(|ui| { Rename / Color / Delete })`. The frame's
+  `chevron_clicked` flag fires once on the frame `*expanded` flipped.
+
+```rust
+let resp = PanelSection::new("WATCHLIST")
+    .count(items.len())
+    .collapsible(&mut section.expanded)
+    .delete_when_empty()
+    .show(ui, t, |ui, t| { /* body */ });
+if resp.delete_clicked { delete_section(section); }
+resp.header_response.context_menu(|ui| {
+    if ui.button("Rename").clicked() { /* … */ }
+    if ui.button("Color").clicked()  { /* … */ }
+    if ui.button("Delete").clicked() { /* … */ }
+});
+```
+
 ## Where to find things
 
 | Question | File |

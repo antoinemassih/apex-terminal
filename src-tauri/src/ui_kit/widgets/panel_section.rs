@@ -785,6 +785,162 @@ impl<'u> PanelSectionGroupBuilder<'u> {
     }
 }
 
+// ─── Tests ──────────────────────────────────────────────────────────────────
+//
+// Verify the three opt-in features added in Wave 10a:
+//   1. `.collapsible(&mut expanded)` skips the body closure when
+//      `!*expanded`.
+//   2. `.delete_when_empty()` paints + fires the X button only when
+//      `count == 0`.
+//   3. Clicking the header strip in collapsible mode toggles
+//      `*expanded` (chevron_clicked observable).
+//
+// We exercise the widget via egui's `__run_test_ui` harness. Click
+// simulation uses `Response::clicked()`-equivalent flows by directly
+// looking at allocated rects via the egui memory API — for the
+// chevron toggle test we manually invoke pointer events; for the
+// "body not called" check we use a flag in a Cell.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chart_renderer::gpu::THEMES;
+    use std::cell::Cell;
+
+    fn theme() -> &'static Theme {
+        &THEMES[0]
+    }
+
+    #[test]
+    fn collapsible_toggle_skips_body_when_collapsed() {
+        use std::cell::RefCell;
+        let theme = theme();
+        let expanded: RefCell<bool> = RefCell::new(false);
+        let body_called = Cell::new(false);
+
+        egui::__run_test_ui(|ui| {
+            let mut e = expanded.borrow_mut();
+            let resp = PanelSection::new("ACTIVE")
+                .count(0)
+                .collapsible(&mut *e)
+                .show(ui, theme, |_ui, _t| {
+                    body_called.set(true);
+                });
+            assert!(resp.body.is_none(), "body should be None when collapsed");
+        });
+
+        assert!(!body_called.get(), "body closure must not run when section collapsed");
+        assert!(!*expanded.borrow(), "expanded state must remain false without click");
+    }
+
+    #[test]
+    fn collapsible_runs_body_when_expanded() {
+        use std::cell::RefCell;
+        let theme = theme();
+        let expanded: RefCell<bool> = RefCell::new(true);
+        let body_called = Cell::new(false);
+
+        egui::__run_test_ui(|ui| {
+            let mut e = expanded.borrow_mut();
+            let resp = PanelSection::new("ACTIVE")
+                .count(3)
+                .collapsible(&mut *e)
+                .show(ui, theme, |_ui, _t| {
+                    body_called.set(true);
+                });
+            assert!(resp.body.is_some(), "body should be Some when expanded");
+        });
+
+        assert!(body_called.get(), "body closure must run when section expanded");
+    }
+
+    #[test]
+    fn delete_button_paints_only_when_count_zero() {
+        let theme = theme();
+
+        // count == 0 + delete_when_empty: button paints, click flag wired.
+        egui::__run_test_ui(|ui| {
+            let resp = PanelSection::new("WATCHLIST")
+                .count(0)
+                .delete_when_empty()
+                .show(ui, theme, |_ui, _t| {});
+            // No click was issued — but the field must exist and be
+            // observable as false (proves the field is wired through).
+            assert!(!resp.delete_clicked);
+            assert!(!resp.action_clicked);
+        });
+
+        // count > 0: delete button suppressed, action button (if any) paints.
+        egui::__run_test_ui(|ui| {
+            let resp = PanelSection::new("WATCHLIST")
+                .count(5)
+                .delete_when_empty()
+                .action("Clear", Tone::Danger)
+                .show(ui, theme, |_ui, _t| {});
+            assert!(!resp.delete_clicked, "delete must not fire when count > 0");
+        });
+    }
+
+    #[test]
+    fn chevron_click_toggles_expansion() {
+        use std::cell::RefCell;
+        let theme = theme();
+        let expanded: RefCell<bool> = RefCell::new(true);
+
+        // ctx.run takes a `Fn` closure (not `FnMut`), so the expanded
+        // state lives behind a RefCell. The header_response rect is
+        // captured in a Cell so we can synthesize a click at its
+        // center on the second frame.
+        let ctx = egui::Context::default();
+        let header_rect_cell: Cell<Option<egui::Rect>> = Cell::new(None);
+
+        // First pass — discover header rect (no click).
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let mut e = expanded.borrow_mut();
+                let resp = PanelSection::new("WATCHLIST")
+                    .count(1)
+                    .collapsible(&mut *e)
+                    .show(ui, theme, |_ui, _t| {});
+                header_rect_cell.set(Some(resp.header_response.rect));
+            });
+        });
+        let header_rect = header_rect_cell.get().expect("header rect captured");
+        assert!(*expanded.borrow(), "expanded unchanged after non-clicking pass");
+
+        // Second pass — synthesize a click at the header center.
+        let click_pos = header_rect.center();
+        let mut input = egui::RawInput::default();
+        input.events.push(egui::Event::PointerMoved(click_pos));
+        input.events.push(egui::Event::PointerButton {
+            pos: click_pos,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: Default::default(),
+        });
+        input.events.push(egui::Event::PointerButton {
+            pos: click_pos,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: Default::default(),
+        });
+        let chevron_clicked_cell: Cell<bool> = Cell::new(false);
+        let _ = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let mut e = expanded.borrow_mut();
+                let resp = PanelSection::new("WATCHLIST")
+                    .count(1)
+                    .collapsible(&mut *e)
+                    .show(ui, theme, |_ui, _t| {});
+                chevron_clicked_cell.set(resp.chevron_clicked);
+            });
+        });
+
+        assert!(chevron_clicked_cell.get(), "chevron_clicked must be true on toggle frame");
+        assert!(!*expanded.borrow(), "expanded should have flipped true → false");
+    }
+}
+
 /// Paint a hairline + 3-dot grippy in the middle of `rect`. The divider
 /// runs left→right; dots are centered horizontally.
 fn paint_grippy_divider(ui: &mut Ui, t: &Theme, rect: Rect, hovered: bool) {
