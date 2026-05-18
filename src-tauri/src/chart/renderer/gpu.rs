@@ -4507,24 +4507,11 @@ impl Watchlist {
                journal_entries: generate_placeholder_journal(),
                journal_page: 0,
                book_tab: crate::chart_renderer::BookTab::Book,
-               // Wave 5: bus + registry start empty. A skeleton listener is
-               // registered immediately below so the wiring is exercised
-               // end-to-end; real sibling-pane fanout is follow-up work.
-               subscriptions: {
-                   let mut bus = crate::state::SubscriptionBus::new();
-                   // TODO(wave-5+): wire this listener to walk `panes` and
-                   // apply SymbolChanged/TimeframeChanged to every sibling
-                   // pane whose `link_group` matches and whose group id is
-                   // within `link_groups.len()`. Today it only counts events
-                   // for diagnostics — the imperative loops in `gpu.rs`
-                   // (`link_group_propagation`, broadcast_mode handling)
-                   // remain authoritative.
-                   bus.on(|evt| {
-                       tracing::trace!(target: "state::subscriptions",
-                           "PaneEvent: {:?}", evt);
-                   });
-                   bus
-               },
+               // Wave 12c: queue-backed bus. Publishers push events; the
+               // render loop (`App::about_to_wait`) drains and applies them
+               // to sibling panes once per frame. See `state::subscriptions`
+               // for the model description and group sentinel.
+               subscriptions: crate::state::SubscriptionBus::new(),
                inflight: crate::state::InFlightRegistry::new(),
         }
     }
