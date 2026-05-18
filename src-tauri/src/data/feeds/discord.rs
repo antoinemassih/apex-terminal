@@ -540,27 +540,94 @@ pub fn disconnect() {
     eprintln!("[discord] Disconnected");
 }
 
-// ── Wave 1: Authenticated adapter ──────────────────────────────────────────
+// ── Wave 7C: Authenticated adapter w/ live refresh ────────────────────────
 //
 // Discord OAuth2 supports refresh via `grant_type=refresh_token` against
-// `/api/oauth2/token`, but this codebase does not currently call it (tokens
-// are simply discarded on expiry — see `load_auth_from_disk`). The adapter
-// below returns `RefreshFailed("not implemented")` so callers using
-// `with_auth_retry` get the typed surface today; the actual POST can land
-// in a follow-up without touching consumers.
+// `/api/oauth2/token`. We POST with the stored refresh token, persist the
+// new access + refresh tokens (Discord rotates the refresh token), and
+// return the new access token. Errors map to `AuthError::RefreshFailed`.
 //
-// TODO(wave-2): implement refresh by POSTing `grant_type=refresh_token` +
-// `refresh_token=<stored>` to Discord's token endpoint and re-saving
-// DiscordAuth.
+// The refresh runs in `spawn_blocking` so the blocking `reqwest::Client`
+// (shared with the rest of this module) doesn't stall the tokio reactor.
+
+const DISCORD_TOKEN_URL: &str = "https://discord.com/api/oauth2/token";
 
 pub struct DiscordAuthProvider;
 
 #[async_trait::async_trait]
 impl crate::data::connectivity::Authenticated for DiscordAuthProvider {
     async fn refresh_token(&self) -> Result<String, crate::data::connectivity::AuthError> {
-        Err(crate::data::connectivity::AuthError::RefreshFailed(
-            "discord: refresh flow not yet wired (TODO wave-2)".into(),
-        ))
+        use crate::data::connectivity::AuthError;
+
+        // Snapshot what we need under the OnceLock guards before crossing the
+        // .await boundary; the underlying mutexes aren't Send across awaits.
+        let current = get_auth().ok_or(AuthError::MissingCredentials)?;
+        if current.refresh_token.is_empty() {
+            return Err(AuthError::TokenInvalid);
+        }
+        let config = DISCORD_CONFIG
+            .get()
+            .ok_or_else(|| AuthError::RefreshFailed("discord: not configured".into()))?;
+        let client_id = config.client_id.clone();
+        let client_secret = config.client_secret.clone();
+        let refresh = current.refresh_token.clone();
+        let kept_user_id = current.user_id.clone();
+        let kept_username = current.username.clone();
+        let kept_avatar = current.avatar.clone();
+
+        let new_auth = tokio::task::spawn_blocking(move || -> Result<DiscordAuth, String> {
+            let client = http();
+            let resp = client
+                .post(DISCORD_TOKEN_URL)
+                .form(&[
+                    ("client_id", client_id.as_str()),
+                    ("client_secret", client_secret.as_str()),
+                    ("grant_type", "refresh_token"),
+                    ("refresh_token", refresh.as_str()),
+                ])
+                .send()
+                .map_err(|e| format!("send: {e}"))?;
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let body = resp.text().unwrap_or_default();
+                return Err(format!("status {status}: {}", &body[..body.len().min(200)]));
+            }
+            let json: serde_json::Value = resp.json().map_err(|e| format!("parse: {e}"))?;
+            let access_token = json["access_token"]
+                .as_str()
+                .ok_or_else(|| "no access_token in response".to_string())?
+                .to_string();
+            // Discord rotates the refresh token on every refresh; fall back
+            // to the old one if (somehow) absent so we don't end up with an
+            // empty refresh_token that locks us out next cycle.
+            let refresh_token = json["refresh_token"]
+                .as_str()
+                .map(|s| s.to_string())
+                .unwrap_or(refresh);
+            let expires_in = json["expires_in"].as_u64().unwrap_or(604800);
+            Ok(DiscordAuth {
+                access_token,
+                refresh_token,
+                expires_at: std::time::Instant::now() + std::time::Duration::from_secs(expires_in),
+                user_id: kept_user_id,
+                username: kept_username,
+                avatar: kept_avatar,
+            })
+        })
+        .await
+        .map_err(|e| AuthError::RefreshFailed(format!("spawn_blocking join: {e}")))?
+        .map_err(AuthError::RefreshFailed)?;
+
+        // Persist + update the in-memory token store (same path as exchange_code).
+        save_auth_to_disk(&new_auth);
+        let _ = DISCORD_TOKEN.get_or_init(|| Mutex::new(None));
+        if let Some(m) = DISCORD_TOKEN.get() {
+            if let Ok(mut g) = m.lock() {
+                *g = Some(new_auth.clone());
+            }
+        }
+        report(ErrorLevel::Info, "discord", "token_refreshed", "rotated refresh token, saved to disk");
+        Ok(new_auth.access_token)
     }
     fn current_token(&self) -> Option<String> {
         get_auth().map(|a| a.access_token)
