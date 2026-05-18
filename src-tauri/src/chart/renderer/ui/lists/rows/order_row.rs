@@ -123,7 +123,7 @@ impl<'a> OrderRow<'a> {
                 if show_cancel {
                     let cb = egui::Rect::from_min_size(
                         egui::pos2(rect.right() - 22.0, cy - 8.0),
-                        egui::vec2(16.0, 16.0));
+                        egui::vec2(icon_sm(), icon_sm()));
                     let cb_resp = ui.allocate_rect(cb, egui::Sense::click());
                     crate::chart_renderer::ui::style::cursor::clickable(ui, &cb_resp);
                     let col = if cb_resp.hovered() { bear } else { dim };

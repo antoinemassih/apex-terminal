@@ -186,7 +186,7 @@ impl<'a> PlayCard<'a> {
         let mut activate_clicked = false;
         let mut btn_clicked = false;
         if resp.hovered() {
-            let del_rect = egui::Rect::from_min_size(egui::pos2(card_rect.right() - 18.0, card_rect.top() + 4.0), egui::vec2(14.0, 14.0));
+            let del_rect = egui::Rect::from_min_size(egui::pos2(card_rect.right() - 18.0, card_rect.top() + 4.0), egui::vec2(icon_xs(), icon_xs()));
             let del_resp = ui.interact(del_rect, egui::Id::new(("play_del", &play.id[..8])), egui::Sense::click());
             if del_resp.hovered() {
                 ui.painter().rect_filled(del_rect, 2.0, color_alpha(t.bear, ALPHA_GHOST));

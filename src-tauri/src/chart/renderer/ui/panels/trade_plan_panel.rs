@@ -87,7 +87,7 @@ pub(crate) fn draw(
                     if ui.add(egui::Button::new(egui::RichText::new("\u{00D7}")
                             .size(FONT_SM).color(t.dim))
                         .fill(egui::Color32::TRANSPARENT)
-                        .min_size(egui::vec2(20.0, 20.0))).clicked() {
+                        .min_size(egui::vec2(icon_lg(), icon_lg()))).clicked() {
                         close(watchlist);
                     }
                 });

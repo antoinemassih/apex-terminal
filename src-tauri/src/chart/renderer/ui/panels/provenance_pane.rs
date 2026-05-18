@@ -331,7 +331,7 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
             if ui.add(egui::Button::new(egui::RichText::new("\u{00D7}")
                 .monospace().size(FONT_MD).color(t.dim))
                 .fill(egui::Color32::TRANSPARENT)
-                .min_size(egui::vec2(20.0, 20.0))).clicked() {
+                .min_size(egui::vec2(icon_lg(), icon_lg()))).clicked() {
                 watchlist.provenance_open = false;
             }
         });
@@ -586,7 +586,7 @@ fn draw_tree_node(
         if ui.add(egui::Button::new(egui::RichText::new(marker)
             .monospace().size(FONT_XS).color(col_marker))
             .fill(egui::Color32::TRANSPARENT)
-            .min_size(egui::vec2(16.0, 16.0))).clicked()
+            .min_size(egui::vec2(icon_sm(), icon_sm()))).clicked()
         {
             if !node.children.is_empty() || indent > 0 {
                 *toggled = Some(id.clone());

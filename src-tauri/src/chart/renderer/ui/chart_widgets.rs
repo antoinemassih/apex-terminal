@@ -478,7 +478,7 @@ pub(crate) fn draw_widgets(
             let anchor_rect = egui::Rect::from_center_size(
                 egui::pos2(chart.chart_widgets[wi].anim_x + chart.chart_widgets[wi].w - 50.0,
                            chart.chart_widgets[wi].anim_y - 4.0),
-                egui::vec2(20.0, 20.0));
+                egui::vec2(icon_lg(), icon_lg()));
             let anchor_resp = ui.interact(anchor_rect,
                 egui::Id::new(("widget_ctx_anchor", wi)), egui::Sense::hover());
             egui::popup_below_widget(ui, popup_id, &anchor_resp,
@@ -2784,7 +2784,7 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
 
         // Close button — interactive with hover
         let close_rect = egui::Rect::from_center_size(
-            egui::pos2(right - 6.0, y + row_h * 0.5), egui::vec2(14.0, 14.0));
+            egui::pos2(right - 6.0, y + row_h * 0.5), egui::vec2(icon_xs(), icon_xs()));
         let close_hov = hover.map(|p| close_rect.contains(p)).unwrap_or(false);
         if close_hov {
             p.rect_filled(close_rect, 2.0, color_alpha(t.bear, 60));

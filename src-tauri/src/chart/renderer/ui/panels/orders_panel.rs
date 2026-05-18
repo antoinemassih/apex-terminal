@@ -343,7 +343,7 @@ fn draw_book(
                             .variant(Variant::Chrome)
                             .glyph_color(check_color)
                             .frameless(true)
-                            .min_size(egui::vec2(14.0, 14.0))).on_hover_text("Select all").clicked() {
+                            .min_size(egui::vec2(icon_xs(), icon_xs()))).on_hover_text("Select all").clicked() {
                             if all_selected {
                                 watchlist.selected_order_ids.clear();
                             } else {
@@ -540,7 +540,7 @@ fn draw_book(
                                             .variant(Variant::Chrome)
                                             .glyph_color(color_half(t.dim))
                                             .frameless(true)
-                                            .min_size(egui::vec2(14.0, 14.0))).on_hover_text("Remove alert").clicked() {
+                                            .min_size(egui::vec2(icon_xs(), icon_xs()))).on_hover_text("Remove alert").clicked() {
                                             remove_alert = Some(alert.id);
                                         }
                                     });
