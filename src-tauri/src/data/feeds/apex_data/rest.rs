@@ -369,6 +369,36 @@ pub fn stocks_grouped_daily(date: &str) -> Option<Vec<GroupedDailyBar>> {
     get(&format!("/api/stocks/grouped/{date}"))
 }
 
+// ── Wave 10 projector outputs (sector rotation / breadth / movers) ─────────
+//
+// These mirror the new ApexData projector routes. The projectors are merged
+// upstream but the HTTP routes may not be exposed yet on every deployment —
+// the breaker + None return handles missing routes gracefully.
+//
+// TODO(wire-route): confirm `/api/stocks/sector_rotation`, `/api/stocks/breadth/:index`,
+// and `/api/stocks/movers/:kind` are exposed in `apex-data`'s router crate.
+// If not, a Redis bridge keyed `projector:sector_rotation` / `projector:breadth:<idx>` /
+// `projector:movers:<kind>` may be the only access path until the routes ship.
+
+/// `GET /api/stocks/sector_rotation` — 11 SPDR sector ETF RRG snapshot.
+pub fn get_sector_rotation() -> Option<SectorRotationReading> {
+    get("/api/stocks/sector_rotation")
+}
+
+/// `GET /api/stocks/breadth/:index` — `index` ∈ {spx, ndx, compq, rut, us}.
+pub fn get_breadth(index: &str) -> Option<BreadthReading> {
+    let idx = index.trim().to_lowercase();
+    if idx.is_empty() { return None; }
+    get(&format!("/api/stocks/breadth/{idx}"))
+}
+
+/// `GET /api/stocks/movers/:kind` — Wave 10 projector. Distinct from the
+/// legacy `/api/stocks/movers?direction=` endpoint which only supports
+/// gainers/losers; this one covers gainers/losers/active/rvol_leaders/gappers.
+pub fn get_movers(kind: MoverKind) -> Option<MoversReading> {
+    get(&format!("/api/stocks/movers/{}", kind.as_str()))
+}
+
 /// Liveness — text "ok". Returns true on HTTP 200.
 pub fn is_live() -> bool {
     let url = format!("{}/api/health/live", apex_url());

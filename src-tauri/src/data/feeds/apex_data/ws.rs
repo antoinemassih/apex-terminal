@@ -52,6 +52,8 @@ pub enum Frame {
     TradePlan(TradePlanV2),
     /// SOTA §4.5 — spike-explanation toast payload.
     Spike(SpikeExplanation),
+    /// Wave 10 — LULD trading halt / resume / near-band warning.
+    Halt    (HaltReading),
     Resync  { reason: String },
     Error   { code: String, message: String },
     /// Transport-level: WS connected or disconnected.
@@ -640,6 +642,9 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
                 Frame::Spike(s)
             }
             Err(e) => { eprintln!("[apex_data.ws] bad spike: {e}"); return; }
+        "halt" => match serde_json::from_value::<HaltReading>(env.data) {
+            Ok(h) => Frame::Halt(h),
+            Err(e) => { eprintln!("[apex_data.ws] bad halt: {e}"); return; }
         },
         "resync" => {
             let reason = env.data.get("reason").and_then(|v| v.as_str()).unwrap_or("").to_string();

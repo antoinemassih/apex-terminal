@@ -104,6 +104,109 @@ pub(crate) fn draw_content(
     separator(ui, t.toolbar_border);
     ui.add_space(4.0);
 
+    // ── Wave 10 movers tabs (projector-backed) ────────────────────────────
+    // Single bucket selector at top of the panel — reads `live_state::get_movers(kind)`
+    // populated by the 5s `apex-projectors` poller. Stays cached even when the
+    // user has the panel closed; tab switch flips the read key only.
+    {
+        use crate::apex_data::types::MoverKind;
+        let kinds = MoverKind::all();
+        let mut selected = watchlist.scanner_mover_tab.min(kinds.len().saturating_sub(1));
+
+        ui.horizontal_wrapped(|ui| {
+            ui.add(SectionLabel::new("MOVERS").xs().color(t.accent));
+            for (i, k) in kinds.iter().enumerate() {
+                let is_sel = i == selected;
+                let label = egui::RichText::new(k.label())
+                    .monospace()
+                    .size(9.0)
+                    .color(if is_sel { t.accent } else { t.dim });
+                let resp = ui.add(egui::Label::new(label).sense(egui::Sense::click()));
+                if resp.clicked() {
+                    selected = i;
+                    watchlist.scanner_mover_tab = i;
+                }
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.add(Button::new("Configure filters").variant(Variant::Secondary).simple_treatment(true).fg(t.dim).min_size(egui::vec2(110.0, 0.0))).clicked() {
+                    watchlist.scanner_filter_popup_open = !watchlist.scanner_filter_popup_open;
+                }
+            });
+        });
+        let kind = kinds[selected];
+        let cache = crate::apex_data::live_state::get_movers(kind);
+        let age = crate::apex_data::live_state::movers_age_secs(kind);
+        match cache {
+            Some(m) if !m.rows.is_empty() => {
+                ui.add(MonospaceCode::new(&format!(
+                    "{} rows · {}s ago", m.rows.len(),
+                    if age == u64::MAX { 0 } else { age.min(9999) },
+                )).size_px(font_2xs()).color(t.dim).gamma(0.4));
+                ui.horizontal(|ui| {
+                    ui.add_space(2.0);
+                    let cw = (panel_w - 12.0) / 5.0;
+                    let hdr_color = color_dim(t.dim);
+                    col_header(ui, "SYM",   cw, hdr_color, false);
+                    col_header(ui, "LAST",  cw, hdr_color, true);
+                    col_header(ui, "CHG%",  cw, hdr_color, true);
+                    col_header(ui, "VOL",   cw, hdr_color, true);
+                    col_header(ui, "RVOL",  cw, hdr_color, true);
+                });
+                let max_rows = 20usize;
+                for r in m.rows.iter().take(max_rows) {
+                    let row_resp = ui.horizontal(|ui| {
+                        ui.add_space(2.0);
+                        let cw = (panel_w - 12.0) / 5.0;
+                        ui.add_sized(egui::vec2(cw, 14.0), egui::Label::new(
+                            egui::RichText::new(&r.symbol).monospace().size(9.0).color(t.text)
+                        ));
+                        ui.add_sized(egui::vec2(cw, 14.0), egui::Label::new(
+                            egui::RichText::new(format!("{:.2}", r.last)).monospace().size(9.0).color(t.text)
+                        ));
+                        let chg_color = if r.change_pct >= 0.0 { t.bull } else { t.bear };
+                        ui.add_sized(egui::vec2(cw, 14.0), egui::Label::new(
+                            egui::RichText::new(format!("{:+.2}%", r.change_pct)).monospace().size(9.0).color(chg_color)
+                        ));
+                        ui.add_sized(egui::vec2(cw, 14.0), egui::Label::new(
+                            egui::RichText::new(fmt_volume(r.volume)).monospace().size(9.0).color(t.dim)
+                        ));
+                        let rvol_str = r.rvol.map(|v| format!("{:.1}x", v)).unwrap_or_else(|| "—".into());
+                        ui.add_sized(egui::vec2(cw, 14.0), egui::Label::new(
+                            egui::RichText::new(rvol_str).monospace().size(9.0).color(t.dim)
+                        ));
+                    });
+                    if row_resp.response.interact(egui::Sense::click()).clicked() {
+                        *pending_symbol = Some(r.symbol.clone());
+                    }
+                }
+            }
+            Some(_) => {
+                ui.add(MonospaceCode::new("(empty bucket — projector returned no rows)").size_px(font_2xs()).color(t.dim).gamma(0.3));
+            }
+            None => {
+                ui.horizontal(|ui| {
+                    ui.add(Spinner::new().sm().theme(t));
+                    ui.add(MonospaceCode::new(&format!("loading {}…", kind.label())).size_px(font_xs()).color(t.dim));
+                });
+                ui.add(MonospaceCode::new(
+                    "// TODO(wire-route): /api/stocks/movers/:kind not reachable yet"
+                ).size_px(font_2xs()).color(t.dim).gamma(0.3));
+            }
+        }
+        if watchlist.scanner_filter_popup_open {
+            ui.group(|ui| {
+                ui.add(MonospaceCode::new("Custom filters").size_px(font_sm_tight()).strong(true).color(t.accent));
+                ui.add(MonospaceCode::new("Wave 12 — custom scan endpoint not yet exposed.").size_px(font_xs()).color(t.dim));
+                if ui.add(Button::new("Close").variant(Variant::Secondary).simple_treatment(true).fg(t.dim).min_size(egui::vec2(50.0, 0.0))).clicked() {
+                    watchlist.scanner_filter_popup_open = false;
+                }
+            });
+        }
+        ui.add_space(4.0);
+        separator(ui, color_alpha(t.toolbar_border, alpha_dim()));
+        ui.add_space(4.0);
+    }
+
     // ── Custom scanner builder (collapsible) ──
     if watchlist.scanner_builder_open {
         ui.group(|ui| {

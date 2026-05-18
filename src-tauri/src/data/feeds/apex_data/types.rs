@@ -876,6 +876,130 @@ impl StockSnapshot {
     }
 }
 
+// ── Wave 10 projector outputs — sector rotation / breadth / movers / halts ─
+
+/// One sector ETF's rotation reading. The 11 SPDR sector ETFs (XLK / XLF / XLE /
+/// XLV / XLI / XLP / XLY / XLU / XLB / XLRE / XLC) are scored on two axes
+/// (relative strength vs SPY, and rate-of-change of that RS). Quadrant per RRG:
+/// `Leading`, `Weakening`, `Lagging`, `Improving`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RotationQuadrant { Leading, Weakening, Lagging, Improving, Unknown }
+
+impl Default for RotationQuadrant {
+    fn default() -> Self { Self::Unknown }
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct SectorRotationRow {
+    pub symbol: String,                       // "XLK", "XLF", …
+    #[serde(default)] pub name: String,       // "Technology"
+    #[serde(default)] pub rs_ratio: f32,      // relative strength vs benchmark
+    #[serde(default)] pub rs_momentum: f32,   // rate of change of rs_ratio
+    #[serde(default)] pub change_pct: f32,    // intraday %
+    #[serde(default)] pub quadrant: RotationQuadrant,
+}
+
+/// `GET /api/stocks/sector_rotation` — Wave 10 projector output.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct SectorRotationReading {
+    #[serde(default)] pub benchmark: String,         // "SPY"
+    #[serde(default)] pub session_date: String,      // "YYYY-MM-DD"
+    #[serde(default)] pub rows: Vec<SectorRotationRow>,
+    #[serde(default)] pub updated_at_ms: i64,
+}
+
+/// `GET /api/stocks/breadth/:index` — Wave 10 projector output.
+/// `index` is one of `spx`, `ndx`, `compq`, `rut` or `us` (whole market).
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct BreadthReading {
+    #[serde(default)] pub index: String,
+    #[serde(default)] pub advancers: u32,
+    #[serde(default)] pub decliners: u32,
+    #[serde(default)] pub unchanged: u32,
+    #[serde(default)] pub new_highs: u32,        // 52-week
+    #[serde(default)] pub new_lows: u32,         // 52-week
+    #[serde(default)] pub pct_above_sma50: f32,
+    #[serde(default)] pub pct_above_sma200: f32,
+    #[serde(default)] pub up_volume: f64,
+    #[serde(default)] pub down_volume: f64,
+    #[serde(default)] pub session_date: String,
+    #[serde(default)] pub updated_at_ms: i64,
+}
+
+/// Movers bucket kind — drives `GET /api/stocks/movers/:kind`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoverKind { Gainers, Losers, Active, RvolLeaders, Gappers }
+
+impl MoverKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Gainers => "gainers",
+            Self::Losers  => "losers",
+            Self::Active  => "active",
+            Self::RvolLeaders => "rvol_leaders",
+            Self::Gappers => "gappers",
+        }
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Gainers => "Gainers",
+            Self::Losers  => "Losers",
+            Self::Active  => "Active",
+            Self::RvolLeaders => "RVOL Leaders",
+            Self::Gappers => "Gappers",
+        }
+    }
+    pub fn all() -> [MoverKind; 5] {
+        [Self::Gainers, Self::Losers, Self::Active, Self::RvolLeaders, Self::Gappers]
+    }
+}
+
+/// One row inside a `MoversReading`. Fields are projector-shaped, not Polygon —
+/// the projector enriches with RVOL + market-cap when available.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct MoverRow {
+    pub symbol: String,
+    #[serde(default)] pub last: f64,
+    #[serde(default)] pub change_pct: f32,
+    #[serde(default)] pub volume: u64,
+    #[serde(default)] pub rvol: Option<f32>,
+    #[serde(default)] pub market_cap: Option<f64>,
+    #[serde(default)] pub gap_pct: Option<f32>,
+}
+
+/// `GET /api/stocks/movers/:kind` — Wave 10 projector output.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct MoversReading {
+    #[serde(default)] pub kind: String,
+    #[serde(default)] pub rows: Vec<MoverRow>,
+    #[serde(default)] pub updated_at_ms: i64,
+}
+
+/// Halt kind for `Frame::Halt`. Matches the projector's classification:
+/// `HaltActive` (LULD trading-paused), `HaltCleared` (resumed),
+/// `NearLuldUp` / `NearLuldDown` (within X% of LULD band — early warning).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HaltKind { HaltActive, HaltCleared, NearLuldUp, NearLuldDown, Unknown }
+
+impl Default for HaltKind {
+    fn default() -> Self { Self::Unknown }
+}
+
+/// WS `Frame::Halt` payload — also returned by any REST snapshot endpoint
+/// for recent halts (not wired yet — pure WS for now).
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct HaltReading {
+    pub symbol: String,
+    #[serde(default)] pub kind: HaltKind,
+    #[serde(default)] pub reason: String,        // e.g. "LULD", "T1", "M"
+    #[serde(default)] pub price: f64,
+    #[serde(default)] pub time_ms: i64,
+    /// Resumes-at timestamp for `HaltActive`; 0 when unknown.
+    #[serde(default)] pub resumes_at_ms: i64,
+}
+
 /// §5.6.c — `GET /api/stocks/grouped/:date` row (Polygon "grouped daily bars").
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct GroupedDailyBar {
@@ -889,4 +1013,88 @@ pub struct GroupedDailyBar {
     #[serde(default, alias = "n")]  pub n: u64,
     /// Epoch millis at session end.
     #[serde(default, alias = "t")]  pub t: i64,
+}
+
+#[cfg(test)]
+mod wave10_parse_tests {
+    use super::*;
+
+    #[test]
+    fn sector_rotation_parses_with_quadrants() {
+        let body = r#"{
+          "benchmark":"SPY",
+          "session_date":"2026-05-17",
+          "rows":[
+            {"symbol":"XLK","name":"Technology","rs_ratio":101.2,"rs_momentum":100.8,"change_pct":1.4,"quadrant":"leading"},
+            {"symbol":"XLF","name":"Financials","rs_ratio":99.8,"rs_momentum":100.2,"change_pct":0.3,"quadrant":"improving"},
+            {"symbol":"XLE","name":"Energy","rs_ratio":98.5,"rs_momentum":99.4,"change_pct":-0.7,"quadrant":"lagging"}
+          ],
+          "updated_at_ms":1700000000000
+        }"#;
+        let r: SectorRotationReading = serde_json::from_str(body).expect("parse");
+        assert_eq!(r.rows.len(), 3);
+        assert_eq!(r.rows[0].quadrant, RotationQuadrant::Leading);
+        assert_eq!(r.rows[1].quadrant, RotationQuadrant::Improving);
+        assert_eq!(r.rows[2].quadrant, RotationQuadrant::Lagging);
+    }
+
+    #[test]
+    fn breadth_parses() {
+        let body = r#"{
+          "index":"spx","advancers":1240,"decliners":950,"unchanged":20,
+          "new_highs":87,"new_lows":12,
+          "pct_above_sma50":65.4,"pct_above_sma200":58.1,
+          "up_volume":1.2e10,"down_volume":8.0e9
+        }"#;
+        let b: BreadthReading = serde_json::from_str(body).expect("parse");
+        assert_eq!(b.advancers, 1240);
+        assert_eq!(b.new_highs, 87);
+        assert!((b.pct_above_sma50 - 65.4).abs() < 0.01);
+    }
+
+    #[test]
+    fn movers_parses_all_kinds() {
+        for kind in MoverKind::all() {
+            let body = format!(r#"{{
+              "kind":"{}",
+              "rows":[
+                {{"symbol":"AAPL","last":195.2,"change_pct":2.1,"volume":50000000,"rvol":1.8,"market_cap":3.0e12}}
+              ]
+            }}"#, kind.as_str());
+            let m: MoversReading = serde_json::from_str(&body).expect("parse");
+            assert_eq!(m.kind, kind.as_str());
+            assert_eq!(m.rows.len(), 1);
+            assert_eq!(m.rows[0].symbol, "AAPL");
+            assert!(m.rows[0].rvol.unwrap_or(0.0) > 1.0);
+        }
+    }
+
+    #[test]
+    fn mover_kind_str_matches_rest_path_segment() {
+        // The scanner panel tab selector flips `scanner_mover_tab`, which we use
+        // to index `MoverKind::all()` and feed `get_movers(kind)`. This test
+        // pins the URL-path segment per kind so a typo there is caught early.
+        assert_eq!(MoverKind::Gainers.as_str(),     "gainers");
+        assert_eq!(MoverKind::Losers.as_str(),      "losers");
+        assert_eq!(MoverKind::Active.as_str(),      "active");
+        assert_eq!(MoverKind::RvolLeaders.as_str(), "rvol_leaders");
+        assert_eq!(MoverKind::Gappers.as_str(),     "gappers");
+        // All 5 kinds participate in the tab selector.
+        assert_eq!(MoverKind::all().len(), 5);
+    }
+
+    #[test]
+    fn halt_frame_parses_with_kind_variants() {
+        for (s, want) in [
+            ("halt_active", HaltKind::HaltActive),
+            ("halt_cleared", HaltKind::HaltCleared),
+            ("near_luld_up", HaltKind::NearLuldUp),
+            ("near_luld_down", HaltKind::NearLuldDown),
+        ] {
+            let body = format!(r#"{{"symbol":"GME","kind":"{s}","reason":"LULD","price":42.5,"time_ms":1700000000000}}"#);
+            let h: HaltReading = serde_json::from_str(&body).expect("parse");
+            assert_eq!(h.kind, want);
+            assert_eq!(h.symbol, "GME");
+        }
+    }
 }

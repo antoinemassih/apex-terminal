@@ -265,6 +265,28 @@ pub fn run() {
                         apex_data::live_state::merge_chain_delta(&d.underlying, &d.rows);
                         crate::apex_log!("ws.chain", "{} delta: {} rows", d.underlying, d.rows.len());
                     }
+                    Frame::Halt(h) => {
+                        // Cache in recent_halts for the heat/scanner panels; also
+                        // surface as a toast for HaltActive / NearLuld events so
+                        // the user sees an immediate banner. HaltCleared dismisses
+                        // by removing the active entry (handled inside push_halt).
+                        use apex_data::types::HaltKind;
+                        let toast = match h.kind {
+                            HaltKind::HaltActive => Some(format!(
+                                "HALT ACTIVE: {} ({}) @ {:.2}", h.symbol, h.reason, h.price)),
+                            HaltKind::NearLuldUp => Some(format!(
+                                "NEAR LULD↑: {} @ {:.2}", h.symbol, h.price)),
+                            HaltKind::NearLuldDown => Some(format!(
+                                "NEAR LULD↓: {} @ {:.2}", h.symbol, h.price)),
+                            HaltKind::HaltCleared => Some(format!(
+                                "RESUMED: {} @ {:.2}", h.symbol, h.price)),
+                            HaltKind::Unknown => None,
+                        };
+                        apex_data::live_state::push_halt(h.clone());
+                        if let Some(msg) = toast {
+                            apex_data::live_state::push_toast(msg);
+                        }
+                    }
                     Frame::Resync { reason } => {
                         eprintln!("[apex_data] resync: {reason}");
                     }

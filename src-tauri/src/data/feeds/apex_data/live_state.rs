@@ -10,6 +10,8 @@ use super::types::{
 };
 use super::types::{Quote, Trade, Snapshot, HealthReady, FeedsResponse, GreeksRow, ChainRow,
     TradePlanV2, SpikeExplanation};
+    SectorRotationReading, BreadthReading, MoversReading, MoverKind, HaltReading, HaltKind,
+};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -58,6 +60,14 @@ struct State {
     /// already dismissed. Server may republish on reconnect; we don't want
     /// the toast to re-fire.
     dismissed_spikes: Mutex<HashSet<String>>,
+    // Wave 10 projector caches
+    sector_rotation: Mutex<Option<(SectorRotationReading, Instant)>>,
+    breadth: Mutex<HashMap<String, (BreadthReading, Instant)>>,  // keyed by lower-case index
+    movers: Mutex<HashMap<String, (MoversReading, Instant)>>,    // keyed by kind.as_str()
+    recent_halts: Mutex<VecDeque<HaltReading>>,                  // capped at 50
+    /// Sequenced halt history for the toast overlay — we keep cleared events so
+    /// the UI can dismiss the matching active toast.
+    halt_events: Mutex<VecDeque<HaltReading>>,                   // capped at 100
 }
 
 /// Max spikes kept in the ring (per §4.5 — recent activity, not history).
@@ -87,6 +97,11 @@ fn state() -> &'static State {
         latest_trade_plan: Mutex::new(HashMap::new()),
         recent_spike_explanations: Mutex::new(VecDeque::with_capacity(SPIKE_HISTORY_CAP)),
         dismissed_spikes: Mutex::new(HashSet::new()),
+        sector_rotation: Mutex::new(None),
+        breadth: Mutex::new(HashMap::new()),
+        movers: Mutex::new(HashMap::new()),
+        recent_halts: Mutex::new(VecDeque::with_capacity(50)),
+        halt_events: Mutex::new(VecDeque::with_capacity(100)),
     })
 }
 
@@ -127,6 +142,34 @@ pub fn start_pollers() {
                     }
                 }
                 std::thread::sleep(Duration::from_secs(1));
+            }
+        }).ok();
+
+        // Wave 10 projector poller: sector rotation (15s), breadth (5s), movers (5s).
+        // Cheap: 3 GETs every 5s. The REST circuit breaker silences any missing
+        // routes — panels fall back to a "loading" state when reading absent caches.
+        std::thread::Builder::new().name("apex-projectors".into()).spawn(|| {
+            let mut last_rotation = Instant::now() - Duration::from_secs(60);
+            loop {
+                // Movers — one bucket per tick, round-robin to spread load.
+                for kind in super::types::MoverKind::all() {
+                    if let Some(m) = super::rest::get_movers(kind) {
+                        set_movers(kind, m);
+                    }
+                }
+                // Breadth — fetch the default index (`us`); panels that need a
+                // specific index can call get_breadth(idx) directly through fetch helpers.
+                if let Some(b) = super::rest::get_breadth("us") {
+                    set_breadth("us", b);
+                }
+                // Sector rotation — every 15s (slower-changing).
+                if last_rotation.elapsed() >= Duration::from_secs(15) {
+                    if let Some(r) = super::rest::get_sector_rotation() {
+                        set_sector_rotation(r);
+                    }
+                    last_rotation = Instant::now();
+                }
+                std::thread::sleep(Duration::from_secs(5));
             }
         }).ok();
 
@@ -443,4 +486,120 @@ pub fn reset_spike_state_for_tests() {
     if let Ok(mut g) = state().recent_spike_explanations.lock() { g.clear(); }
     if let Ok(mut g) = state().dismissed_spikes.lock() { g.clear(); }
     if let Ok(mut g) = state().latest_trade_plan.lock() { g.clear(); }
+// ── Wave 10 projector caches ───────────────────────────────────────────────
+
+/// Cache the latest sector-rotation projector reading.
+pub fn set_sector_rotation(r: SectorRotationReading) {
+    if let Ok(mut g) = state().sector_rotation.lock() { *g = Some((r, Instant::now())); }
+}
+/// Read the cached sector rotation (cloned). `None` if never fetched.
+pub fn get_sector_rotation() -> Option<SectorRotationReading> {
+    state().sector_rotation.lock().ok()?.as_ref().map(|(r, _)| r.clone())
+}
+/// Age of the cached reading in seconds — `u64::MAX` if absent.
+pub fn sector_rotation_age_secs() -> u64 {
+    state().sector_rotation.lock().ok()
+        .and_then(|g| g.as_ref().map(|(_, t)| t.elapsed().as_secs()))
+        .unwrap_or(u64::MAX)
+}
+
+pub fn set_breadth(index: &str, r: BreadthReading) {
+    if let Ok(mut g) = state().breadth.lock() {
+        g.insert(index.to_lowercase(), (r, Instant::now()));
+    }
+}
+pub fn get_breadth(index: &str) -> Option<BreadthReading> {
+    state().breadth.lock().ok()?.get(&index.to_lowercase()).map(|(r, _)| r.clone())
+}
+
+pub fn set_movers(kind: MoverKind, r: MoversReading) {
+    if let Ok(mut g) = state().movers.lock() {
+        g.insert(kind.as_str().to_string(), (r, Instant::now()));
+    }
+}
+pub fn get_movers(kind: MoverKind) -> Option<MoversReading> {
+    state().movers.lock().ok()?.get(kind.as_str()).map(|(r, _)| r.clone())
+}
+pub fn movers_age_secs(kind: MoverKind) -> u64 {
+    state().movers.lock().ok()
+        .and_then(|g| g.get(kind.as_str()).map(|(_, t)| t.elapsed().as_secs()))
+        .unwrap_or(u64::MAX)
+}
+
+// ── Halts (WS `Frame::Halt`) ───────────────────────────────────────────────
+
+/// Push a halt event into the cap-50 recent-halts ring. `HaltCleared` removes
+/// the matching `HaltActive` for the same symbol from `recent_halts` (so the
+/// "currently halted" set stays accurate) but always lands in `halt_events`.
+pub fn push_halt(h: HaltReading) {
+    if let Ok(mut g) = state().halt_events.lock() {
+        g.push_back(h.clone());
+        while g.len() > 100 { g.pop_front(); }
+    }
+    if let Ok(mut g) = state().recent_halts.lock() {
+        match h.kind {
+            HaltKind::HaltCleared => {
+                // Remove any active halt for this symbol.
+                g.retain(|x| !(x.symbol.eq_ignore_ascii_case(&h.symbol)
+                            && matches!(x.kind, HaltKind::HaltActive)));
+                // Still record the clear so toast logic can pair them.
+                g.push_back(h);
+            }
+            _ => {
+                g.push_back(h);
+            }
+        }
+        while g.len() > 50 { g.pop_front(); }
+    }
+}
+
+/// Snapshot of recent halts (most-recent last).
+pub fn recent_halts() -> Vec<HaltReading> {
+    state().recent_halts.lock().ok().map(|g| g.iter().cloned().collect()).unwrap_or_default()
+}
+
+/// Drain the halt-event queue for the toast renderer. Empties the queue.
+pub fn drain_halt_events() -> Vec<HaltReading> {
+    state().halt_events.lock().ok().map(|mut g| {
+        let out: Vec<_> = g.iter().cloned().collect();
+        g.clear();
+        out
+    }).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod halt_tests {
+    use super::*;
+
+    #[test]
+    fn halt_cleared_removes_matching_active() {
+        // Use a fresh state by exercising the global; safe because each test
+        // pushes uniquely-named symbols.
+        push_halt(HaltReading {
+            symbol: "ZZTEST1".into(), kind: HaltKind::HaltActive,
+            reason: "LULD".into(), price: 10.0, time_ms: 1, resumes_at_ms: 0,
+        });
+        assert!(recent_halts().iter().any(|h|
+            h.symbol == "ZZTEST1" && matches!(h.kind, HaltKind::HaltActive)));
+        push_halt(HaltReading {
+            symbol: "ZZTEST1".into(), kind: HaltKind::HaltCleared,
+            reason: "LULD".into(), price: 10.5, time_ms: 2, resumes_at_ms: 0,
+        });
+        assert!(!recent_halts().iter().any(|h|
+            h.symbol == "ZZTEST1" && matches!(h.kind, HaltKind::HaltActive)),
+            "HaltActive should be removed after HaltCleared");
+    }
+
+    #[test]
+    fn drain_halt_events_empties_queue() {
+        push_halt(HaltReading {
+            symbol: "ZZTEST2".into(), kind: HaltKind::NearLuldUp,
+            reason: "".into(), price: 1.0, time_ms: 1, resumes_at_ms: 0,
+        });
+        let events = drain_halt_events();
+        assert!(events.iter().any(|h| h.symbol == "ZZTEST2"));
+        // Second drain should not re-yield the same event.
+        let events2 = drain_halt_events();
+        assert!(!events2.iter().any(|h| h.symbol == "ZZTEST2"));
+    }
 }

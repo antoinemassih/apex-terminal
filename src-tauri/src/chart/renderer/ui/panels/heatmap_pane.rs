@@ -83,6 +83,57 @@ pub(crate) fn render(
         }).collect()
     };
 
+    // ── Wave 10 additive header rows: breadth strip + sector rotation row ──
+    // These read cached projector outputs from live_state (None → row hidden,
+    // so the rest of the layout stays identical when the backend isn't up).
+    const BREADTH_STRIP_H: f32 = 18.0;
+    const SECTOR_ROW_H: f32 = 22.0;
+
+    let mut extra_h = 0.0f32;
+    let breadth = crate::apex_data::live_state::get_breadth("us");
+    let rotation = crate::apex_data::live_state::get_sector_rotation();
+
+    if let Some(b) = breadth.as_ref() {
+        let strip_rect = egui::Rect::from_min_max(
+            egui::pos2(rect.left() + 8.0, rect.top() + header_h + extra_h),
+            egui::pos2(rect.right() - 8.0, rect.top() + header_h + extra_h + BREADTH_STRIP_H),
+        );
+        painter.rect_filled(strip_rect, 2.0, color_alpha(t.toolbar_bg, alpha_muted()));
+        let txt = format!(
+            "Adv {} / Dec {} · NH {} / NL {} · {:.0}% > SMA50 · {:.0}% > SMA200",
+            b.advancers, b.decliners, b.new_highs, b.new_lows,
+            b.pct_above_sma50, b.pct_above_sma200,
+        );
+        painter.text(
+            egui::pos2(strip_rect.left() + 6.0, strip_rect.center().y),
+            egui::Align2::LEFT_CENTER, txt,
+            egui::FontId::monospace(10.0), t.text,
+        );
+        extra_h += BREADTH_STRIP_H + 2.0;
+    }
+
+    if let Some(r) = rotation.as_ref() {
+        let row_rect = egui::Rect::from_min_max(
+            egui::pos2(rect.left() + 8.0, rect.top() + header_h + extra_h),
+            egui::pos2(rect.right() - 8.0, rect.top() + header_h + extra_h + SECTOR_ROW_H),
+        );
+        let rows = &r.rows;
+        if !rows.is_empty() {
+            let cell_w = row_rect.width() / rows.len() as f32;
+            for (i, row) in rows.iter().enumerate() {
+                let cr = egui::Rect::from_min_size(
+                    egui::pos2(row_rect.left() + i as f32 * cell_w, row_rect.top()),
+                    egui::vec2(cell_w - 1.0, row_rect.height()),
+                );
+                let color = quadrant_color(row.quadrant, t);
+                painter.rect_filled(cr, 2.0, color);
+                painter.text(cr.center(), egui::Align2::CENTER_CENTER,
+                    &row.symbol, egui::FontId::monospace(9.0), t.text);
+            }
+            extra_h += SECTOR_ROW_H + 2.0;
+        }
+    }
+
     if cells.is_empty() {
         // No data yet — empty pane (cold-start fetch is in flight).
         painter.text(rect.center(), egui::Align2::CENTER_CENTER,
@@ -94,9 +145,10 @@ pub(crate) fn render(
     // pass through to the slice-and-dice layout below.
     let _ = &mut cells;
 
-    // Simple treemap layout — squarified algorithm simplified
+    // Simple treemap layout — squarified algorithm simplified.
+    // Top edge slides down by `extra_h` to accommodate the additive rows above.
     let map_rect = egui::Rect::from_min_max(
-        egui::pos2(rect.left() + 8.0, rect.top() + header_h),
+        egui::pos2(rect.left() + 8.0, rect.top() + header_h + extra_h),
         egui::pos2(rect.right() - 8.0, rect.bottom() - 8.0));
     let total_cap: f64 = cells.iter().map(|c| c.weight).sum();
     let map_area = map_rect.width() * map_rect.height();
@@ -167,6 +219,70 @@ pub(crate) fn render(
                 painter.text(inset.center() + egui::vec2(0.0, 8.0), egui::Align2::CENTER_CENTER,
                     &format!("{:+.1}%", cell.change_pct), egui::FontId::monospace(font_size * 0.7),
                     if cell.change_pct >= 0.0 { t.text } else { t.text });
+            }
+        }
+    }
+}
+
+/// Map an RRG quadrant to a theme color band:
+///   Leading    → bull (green)
+///   Weakening  → muted bull (yellow-ish — falls back to dimmed bull)
+///   Lagging    → bear  (red)
+///   Improving  → accent (blue/cyan)
+///   Unknown    → toolbar_bg (neutral)
+fn quadrant_color(q: crate::apex_data::types::RotationQuadrant, t: &Theme) -> egui::Color32 {
+    use crate::apex_data::types::RotationQuadrant as Q;
+    // RRG convention:
+    //   Leading   → green   (full strength)
+    //   Weakening → yellow  (rolling over from leading)
+    //   Lagging   → red     (full weakness)
+    //   Improving → blue    (rolling up from lagging)
+    // We don't always have palette-distinct accent/warn, so guarantee uniqueness
+    // by giving each quadrant a distinct alpha tier on top of its base hue.
+    let base = match q {
+        Q::Leading   => t.bull,
+        Q::Weakening => t.warn,
+        Q::Lagging   => t.bear,
+        Q::Improving => t.accent,
+        Q::Unknown   => t.toolbar_bg,
+    };
+    let alpha: u8 = match q {
+        Q::Leading   => 200,
+        Q::Weakening => 170,
+        Q::Lagging   => 200,
+        Q::Improving => 150,
+        Q::Unknown   => 120,
+    };
+    egui::Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), alpha)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::apex_data::types::{RotationQuadrant, SectorRotationReading, SectorRotationRow};
+
+    #[test]
+    fn quadrant_colors_are_distinct_for_real_quadrants() {
+        // Build a SectorRotationReading covering the 4 real quadrants; the
+        // helper must return four distinct colors so the header row is legible.
+        let r = SectorRotationReading {
+            benchmark: "SPY".into(), session_date: "2026-05-17".into(),
+            rows: vec![
+                SectorRotationRow { symbol: "XLK".into(), quadrant: RotationQuadrant::Leading,   ..Default::default() },
+                SectorRotationRow { symbol: "XLF".into(), quadrant: RotationQuadrant::Improving, ..Default::default() },
+                SectorRotationRow { symbol: "XLE".into(), quadrant: RotationQuadrant::Lagging,   ..Default::default() },
+                SectorRotationRow { symbol: "XLY".into(), quadrant: RotationQuadrant::Weakening, ..Default::default() },
+            ],
+            updated_at_ms: 0,
+        };
+        let t = &THEMES[0];
+        let colors: Vec<egui::Color32> = r.rows.iter().map(|row| quadrant_color(row.quadrant, t)).collect();
+        // All four should be distinct.
+        for i in 0..colors.len() {
+            for j in (i+1)..colors.len() {
+                assert_ne!(colors[i], colors[j],
+                    "quadrants {:?} and {:?} produced the same color",
+                    r.rows[i].quadrant, r.rows[j].quadrant);
             }
         }
     }
