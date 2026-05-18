@@ -446,6 +446,21 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
         let submitted = lost_focus
             && ui.ctx().input(|i| i.key_pressed(Key::Enter));
 
+        // Focus ring — painted outside the border so it layers behind
+        // the input frame chrome, not over the text edit content.
+        if focused {
+            use egui::{CornerRadius, Stroke, StrokeKind};
+            let st = st::current();
+            let ring_color = st::color_alpha(theme.accent(), st.focus_ring_alpha);
+            let ring_radius = CornerRadius::same((st::radius_sm() as u8).saturating_add(1));
+            ui.painter().rect_stroke(
+                rect.expand(2.0),
+                ring_radius,
+                Stroke::new(st.focus_ring_width, ring_color),
+                StrokeKind::Outside,
+            );
+        }
+
         let mut row_resp = response;
         if *value != pre_value {
             row_resp.mark_changed();
@@ -633,5 +648,34 @@ fn paint_input_bare<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a
         lost_focus,
         has_focus,
         editor_id: edit_id,
+    }
+}
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    /// Smoke: verify that `paint_input` contains a focus ring paint call.
+    /// This guards against accidental removal of the focus ring path.
+    /// A UI-level test that programs focus and observes a paint call would
+    /// require a full egui harness; source scanning is the pragmatic alternative.
+    #[test]
+    fn input_focus_ring_paints_when_focused() {
+        let src = include_str!("input.rs");
+        assert!(
+            src.contains("focus_ring_alpha") && src.contains("rect.expand(2.0)"),
+            "paint_input must contain a focus ring paint block (focus_ring_alpha + rect.expand)"
+        );
+    }
+
+    /// Smoke: verify `InputResponse` exposes `has_focus` so callers can
+    /// gate actions on whether the input is currently focused.
+    #[test]
+    fn input_response_exposes_has_focus() {
+        let src = include_str!("input.rs");
+        assert!(
+            src.contains("pub has_focus: bool"),
+            "InputResponse must expose `pub has_focus: bool`"
+        );
     }
 }

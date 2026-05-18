@@ -304,6 +304,34 @@ pub mod cursor {
         clickable(ui, &r);
         r
     }
+
+    /// Paint a keyboard-focus ring around `resp.rect` when the widget has
+    /// focus. No-op when the widget is not focused, so callers add this
+    /// unconditionally after building their response.
+    ///
+    /// The ring is painted *outside* the widget's rect (2 px expansion) so it
+    /// doesn't clip or overlap inner chrome. Accent color at `focus_ring_alpha`
+    /// opacity keeps it visible but subtle — consistent with the design system's
+    /// focus treatment across Button, Input, and Select.
+    ///
+    /// `accent` — the accent Color32 for this widget (from its theme). Pull
+    /// it with `theme.accent()` (ComponentTheme) or `t.accent` (Theme).
+    #[inline]
+    pub fn focus_ring(ui: &Ui, resp: &Response, accent: egui::Color32) {
+        use egui::{CornerRadius, Stroke, StrokeKind};
+        if !resp.has_focus() {
+            return;
+        }
+        let st = super::current();
+        let color = super::color_alpha(accent, st.focus_ring_alpha);
+        let radius = CornerRadius::same((super::radius_sm() as u8).saturating_add(1));
+        ui.painter().rect_stroke(
+            resp.rect.expand(2.0),
+            radius,
+            Stroke::new(st.focus_ring_width, color),
+            StrokeKind::Outside,
+        );
+    }
 }
 
 // ─── Stroke width tokens ─────────────────────────────────────────────────────

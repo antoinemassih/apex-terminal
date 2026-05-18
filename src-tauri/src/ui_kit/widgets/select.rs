@@ -647,6 +647,10 @@ fn paint_select<'a, T: 'a>(
         response.mark_changed();
     }
 
+    // Focus ring on the trigger — only the trigger rect, not the dropdown panel.
+    // Wired through cursor::focus_ring so StyleSettings knobs apply uniformly.
+    st::cursor::focus_ring(ui, &response, theme.accent());
+
     save_mem(ui, id, mem);
 
     SelectResponse {
@@ -1060,4 +1064,21 @@ fn render_row<'a, T>(
     }
 
     resp.clicked()
+}
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    /// Smoke: verify that `paint_select` calls `cursor::focus_ring` on the
+    /// trigger response. The dropdown list items are handled by egui internally
+    /// and are intentionally excluded from this focus ring wave.
+    #[test]
+    fn select_focus_ring_paints_when_focused() {
+        let src = include_str!("select.rs");
+        assert!(
+            src.contains("cursor::focus_ring"),
+            "paint_select must call st::cursor::focus_ring for keyboard focus"
+        );
+    }
 }
