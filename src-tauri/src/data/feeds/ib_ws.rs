@@ -17,6 +17,13 @@ pub(crate) static PARSE_ERRORS:       AtomicU64 = AtomicU64::new(0);
 pub(crate) static RECONNECT_COUNT:    AtomicU32 = AtomicU32::new(0);
 pub(crate) static LAST_MESSAGE_AT_MS: AtomicI64 = AtomicI64::new(0);
 
+// ── Wave 7E: WS resilience ───────────────────────────────────────────────────
+const HEARTBEAT_SECS: u64 = 30;
+const STALE_TIMEOUT_MS: i64 = 30_000;
+const WATCHDOG_TICK_SECS: u64 = 10;
+pub(crate) static FORCE_RECONNECT: AtomicBool = AtomicBool::new(false);
+pub(crate) static LAST_STALL_AT_MS: AtomicI64 = AtomicI64::new(0);
+
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -62,6 +69,8 @@ pub fn spawn(app: AppHandle) -> IbWsHandle {
     let subscribed: Arc<Mutex<HashSet<i64>>> = Default::default();
     let shutdown = Arc::new(AtomicBool::new(false));
     async_runtime::spawn(ws_loop(app, rx, subscribed.clone(), shutdown.clone()));
+    // Wave 7E: tick-age watchdog — flips FORCE_RECONNECT when silent past STALE_TIMEOUT_MS.
+    async_runtime::spawn(run_watchdog());
     let handle = IbWsHandle { tx: tx.clone(), subscribed, shutdown: shutdown.clone() };
     connectivity::register("ib_ws", Arc::new(IbWsShutdown { tx, shutdown }));
     handle
@@ -114,10 +123,32 @@ async fn ws_loop(
                     }
                 }
 
+                // Wave 7E: app-level heartbeat — ibserver does not emit text
+                // chatter, so without this a stalled TCP socket goes unnoticed
+                // for hours.
+                FORCE_RECONNECT.store(false, Ordering::SeqCst);
+                let mut heartbeat = tokio::time::interval(Duration::from_secs(HEARTBEAT_SECS));
+                heartbeat.tick().await; // skip immediate first tick
+                let mut force_check = tokio::time::interval(Duration::from_secs(1));
+                force_check.tick().await;
+
                 let mut clean_shutdown = false;
                 loop {
+                    if FORCE_RECONNECT.swap(false, Ordering::SeqCst) {
+                        report(ErrorLevel::Warn, "ib_ws", "force_reconnect", "watchdog tripped");
+                        let _ = write.close().await;
+                        break;
+                    }
                     tokio::select! {
                         biased; // check commands first so subscribe acks aren't delayed
+
+                        _ = heartbeat.tick() => {
+                            if let Err(e) = write.send(Message::Ping(Vec::new().into())).await {
+                                report(ErrorLevel::Warn, "ib_ws", "ping_failed", e.to_string());
+                                break;
+                            }
+                        }
+                        _ = force_check.tick() => { /* loop top re-checks FORCE_RECONNECT */ }
 
                         cmd = rx.recv() => match cmd {
                             Some(Cmd::Send(text)) => {
@@ -161,8 +192,11 @@ async fn ws_loop(
                                     let _ = app.emit("ib-tick", val);
                                 }
                             }
-                            // Ignore ping/pong/text (ibserver doesn't send text)
-                            Some(Ok(_)) => {}
+                            // Ping/pong/text — refresh liveness so the watchdog
+                            // sees the pong from our own ping when no data flows.
+                            Some(Ok(_)) => {
+                                LAST_MESSAGE_AT_MS.store(now_ms(), Ordering::Relaxed);
+                            }
                             // Socket closed or error → reconnect
                             _ => break,
                         },
@@ -182,6 +216,27 @@ async fn ws_loop(
         if shutdown.load(Ordering::SeqCst) { return; }
         if let Some(d) = backoff.next_delay() {
             tokio::time::sleep(d).await;
+        }
+    }
+}
+
+// ── Wave 7E: tick-age watchdog ───────────────────────────────────────────────
+
+async fn run_watchdog() {
+    let mut tick = tokio::time::interval(Duration::from_secs(WATCHDOG_TICK_SECS));
+    loop {
+        tick.tick().await;
+        let last = LAST_MESSAGE_AT_MS.load(Ordering::Relaxed);
+        let now = now_ms();
+        if last > 0 && now - last > STALE_TIMEOUT_MS && !FORCE_RECONNECT.load(Ordering::Relaxed) {
+            LAST_STALL_AT_MS.store(now, Ordering::Relaxed);
+            report(
+                ErrorLevel::Warn,
+                "ib_ws",
+                "tick_stalled",
+                format!("no frames for {}ms — forcing reconnect", now - last),
+            );
+            FORCE_RECONNECT.store(true, Ordering::SeqCst);
         }
     }
 }
