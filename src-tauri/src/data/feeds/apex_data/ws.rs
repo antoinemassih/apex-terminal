@@ -13,7 +13,7 @@
 
 use super::config::{apex_ws_url, apex_token, is_enabled};
 use super::types::*;
-use crate::data::connectivity::{self, errors_sink::{report, ErrorLevel}, Backoff};
+use crate::data::connectivity::{self, errors_sink::{report, ErrorLevel}, Backoff, ConnectionState};
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -42,6 +42,25 @@ pub(crate) static FORCE_RECONNECT: AtomicBool = AtomicBool::new(false);
 /// Last reason recorded by the watchdog so the provider's ConnectionState
 /// can surface a meaningful Backoff reason after a tick-stall reconnect.
 pub(crate) static LAST_STALL_AT_MS: AtomicI64 = AtomicI64::new(0);
+
+// ── Wave 11c: ConnectionState push-notification stream ───────────────────────
+// Module-level broadcast channel — `ApexDataProvider::subscribe_state()` and
+// every diagnostic consumer hold receivers. Capacity 64 gives slow subscribers
+// some slack before they observe `RecvError::Lagged`. Send is best-effort —
+// failures (no receivers) are silently ignored.
+static STATE_TX: OnceLock<tokio::sync::broadcast::Sender<ConnectionState>> = OnceLock::new();
+
+pub fn state_tx() -> &'static tokio::sync::broadcast::Sender<ConnectionState> {
+    STATE_TX.get_or_init(|| tokio::sync::broadcast::channel(64).0)
+}
+
+/// Publish a state transition to all current subscribers. Call from any
+/// state-mutation site in the WS loop. Send failure (no subscribers) is
+/// silently swallowed — broadcast channels keep working after every receiver
+/// drops.
+pub(crate) fn publish_state(s: ConnectionState) {
+    let _ = state_tx().send(s);
+}
 
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
@@ -278,6 +297,9 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
         let url = format!("{}?format=msgpack{}", apex_ws_url(),
             apex_token().map(|t| format!("&token={t}")).unwrap_or_default());
         report(ErrorLevel::Info, "apex_data.ws", "connecting", format!("→ {url}"));
+        publish_state(ConnectionState::Connecting {
+            attempt: RECONNECT_COUNT.load(Ordering::Relaxed) + 1,
+        });
 
         let req = match url.into_client_request() {
             Ok(r) => r,
@@ -317,9 +339,15 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
         let ws = match conn_result {
             Ok(ws) => ws,
             Err(e) => {
-                report(ErrorLevel::Warn, "apex_data.ws", "connect_failed", e);
+                report(ErrorLevel::Warn, "apex_data.ws", "connect_failed", e.clone());
                 broadcast(&mgr, &Frame::Connection(false));
+                let next_attempt = RECONNECT_COUNT.load(Ordering::Relaxed) + 1;
                 if let Some(d) = backoff.next_delay() {
+                    publish_state(ConnectionState::Backoff {
+                        until: std::time::Instant::now() + d,
+                        attempt: next_attempt,
+                        reason: format!("connect_failed: {e}"),
+                    });
                     tokio::time::sleep(d).await;
                 }
                 continue;
@@ -329,6 +357,16 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
         if let Ok(mut c) = mgr.connected.lock() { *c = true; }
         broadcast(&mgr, &Frame::Connection(true));
         backoff.reset();
+        // Wave 11c: handshake done — push Authenticated, then a Subscribed
+        // snapshot reflecting whatever subs were re-sent below. The route
+        // table is the source of truth for live sub count.
+        publish_state(ConnectionState::Authenticated);
+        let sub_count = mgr.subs.lock().ok().map(|s|
+            s.bars.len() + s.bars_mark.len() + s.tape.len() + s.quotes.len() + s.chain.len()
+        ).unwrap_or(0);
+        if sub_count > 0 {
+            publish_state(ConnectionState::Subscribed { count: sub_count });
+        }
 
         // Wave 7E: gap-fill replay through the SubscriptionManager on every
         // reconnect (not the initial connect — RECONNECT_COUNT > 0 means we
@@ -370,6 +408,13 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
         loop {
             if FORCE_RECONNECT.swap(false, Ordering::SeqCst) {
                 report(ErrorLevel::Warn, "apex_data.ws", "force_reconnect", "watchdog tripped");
+                // Wave 11c: surface the stall as a Backoff transition so push
+                // subscribers see the same reason the poll-path synthesizes.
+                publish_state(ConnectionState::Backoff {
+                    until: std::time::Instant::now() + Duration::from_secs(1),
+                    attempt: RECONNECT_COUNT.load(Ordering::Relaxed),
+                    reason: "tick_stalled".into(),
+                });
                 let _ = tx_ws.close().await;
                 break;
             }
@@ -415,9 +460,24 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
 
         if let Ok(mut c) = mgr.connected.lock() { *c = false; }
         broadcast(&mgr, &Frame::Connection(false));
-        if mgr.shutdown.load(Ordering::SeqCst) { break; }
+        if mgr.shutdown.load(Ordering::SeqCst) {
+            publish_state(ConnectionState::ShuttingDown);
+            break;
+        }
         if let Some(d) = backoff.next_delay() {
+            publish_state(ConnectionState::Backoff {
+                until: std::time::Instant::now() + d,
+                attempt: RECONNECT_COUNT.load(Ordering::Relaxed) + 1,
+                reason: "disconnected".into(),
+            });
             tokio::time::sleep(d).await;
+        } else {
+            // Backoff exhausted — terminal failure.
+            publish_state(ConnectionState::Failed {
+                reason: connectivity::ConnectionError::MaxRetriesExceeded(
+                    RECONNECT_COUNT.load(Ordering::Relaxed),
+                ),
+            });
         }
     }
 }

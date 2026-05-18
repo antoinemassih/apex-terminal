@@ -149,6 +149,13 @@ impl Connection for ApexDataProvider {
         }
     }
 
+    fn subscribe_state(&self) -> Option<tokio::sync::broadcast::Receiver<ConnectionState>> {
+        // Wave 11c: push-notification stream of lifecycle transitions.
+        // Backed by the module-level broadcast channel in `apex_data::ws`;
+        // every call returns a fresh receiver cursor.
+        Some(ws::state_tx().subscribe())
+    }
+
     fn metrics(&self) -> ConnectionMetrics {
         use std::sync::atomic::Ordering;
         let last_ms = ws::LAST_MESSAGE_AT_MS.load(Ordering::Relaxed);
