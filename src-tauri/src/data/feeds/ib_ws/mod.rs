@@ -489,3 +489,89 @@ pub async fn ib_ws_send(
         .await
         .map_err(|e| AppError::internal(e))
 }
+
+// ── Wave 12a: hub fanout tests ────────────────────────────────────────────────
+
+#[cfg(test)]
+mod hub_tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn mk_bar(sym: &str, price: f64) -> BarWire {
+        BarWire {
+            symbol: sym.to_string(),
+            asset_class: AssetClass::Stock,
+            timeframe: "1m".to_string(),
+            time: 1_700_000_000_000,
+            open: price, high: price, low: price, close: price,
+            volume: 100.0, vwap: 0.0, trades: 0, closed: false,
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn bar_hub_fans_out_to_subscribers() {
+        // Use a uniquely-named symbol so this test can't be poisoned by
+        // sibling tests or by real tick traffic in a Tauri-launched harness.
+        let sym = "TEST_FANOUT_AAPL";
+        let mut rx1 = hub_subscribe(bar_hub(), sym);
+        let mut rx2 = hub_subscribe(bar_hub(), sym);
+
+        let bar = mk_bar(sym, 145.0);
+        hub_fanout(bar_hub(), sym, bar.clone());
+
+        let r1 = tokio::time::timeout(Duration::from_millis(50), rx1.recv())
+            .await.expect("rx1 timed out").expect("rx1 closed");
+        let r2 = tokio::time::timeout(Duration::from_millis(50), rx2.recv())
+            .await.expect("rx2 timed out").expect("rx2 closed");
+        assert_eq!(r1.close, bar.close);
+        assert_eq!(r2.close, bar.close);
+        assert_eq!(r1.symbol, sym);
+        assert_eq!(r2.symbol, sym);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn unsubscribe_drops_sender_count() {
+        let sym = "TEST_FANOUT_MSFT";
+        let rx = hub_subscribe(bar_hub(), sym);
+        // Before any fanout, sender is parked in the hub.
+        assert_eq!(bar_hub().lock().unwrap().get(sym).map(|v| v.len()), Some(1));
+
+        drop(rx);
+        // Trigger a fanout — `retain` should prune the dead sender and the
+        // empty entry is removed in the same pass.
+        hub_fanout(bar_hub(), sym, mk_bar(sym, 300.0));
+        assert!(bar_hub().lock().unwrap().get(sym).is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn quote_and_trade_hubs_independent() {
+        let sym = "TEST_FANOUT_NVDA";
+        let mut qrx = hub_subscribe(quote_hub(), sym);
+        let mut trx = hub_subscribe(trade_hub(), sym);
+
+        hub_fanout(trade_hub(), sym, Trade {
+            symbol: sym.into(), asset_class: AssetClass::Stock,
+            price: 800.0, qty: 10.0, time: 1,
+        });
+        hub_fanout(quote_hub(), sym, Quote {
+            symbol: sym.into(), asset_class: AssetClass::Stock,
+            bid: 799.5, ask: 800.5, bid_size: 1.0, ask_size: 2.0,
+            spread: 1.0, time: 1,
+        });
+
+        let t = tokio::time::timeout(Duration::from_millis(50), trx.recv())
+            .await.expect("trx timed out").expect("trx closed");
+        let q = tokio::time::timeout(Duration::from_millis(50), qrx.recv())
+            .await.expect("qrx timed out").expect("qrx closed");
+        assert_eq!(t.price, 800.0);
+        assert_eq!(q.bid, 799.5);
+        assert_eq!(q.ask, 800.5);
+    }
+
+    #[test]
+    fn fanout_with_no_subscribers_is_a_noop() {
+        // No panic, no hub entry created.
+        hub_fanout(bar_hub(), "TEST_FANOUT_GHOST", mk_bar("TEST_FANOUT_GHOST", 1.0));
+        assert!(bar_hub().lock().unwrap().get("TEST_FANOUT_GHOST").is_none());
+    }
+}
