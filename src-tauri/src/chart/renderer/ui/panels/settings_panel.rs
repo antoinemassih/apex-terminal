@@ -287,6 +287,24 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
             }
         });
     });
+
+    // ── ONBOARDING ──
+    PanelSection::new("ONBOARDING").show(ui, t, |ui, t| {
+        setting_form_row("Welcome wizard", t).show(ui, t, |ui| {
+            if Button::new("Show welcome again")
+                .variant(crate::ui_kit::widgets::tokens::Variant::Secondary)
+                .size(crate::ui_kit::widgets::tokens::Size::Sm)
+                .show(ui, t)
+                .clicked()
+            {
+                watchlist.ui_settings.has_seen_welcome = false;
+                watchlist.ui_settings.welcome_step_resume = 0;
+                watchlist.welcome_wizard = Some(
+                    crate::chart_renderer::ui::welcome::WelcomeWizard::from_settings(false, 0)
+                );
+            }
+        });
+    });
 }
 
 // ═══════════════════════════════════════════════════════════════
