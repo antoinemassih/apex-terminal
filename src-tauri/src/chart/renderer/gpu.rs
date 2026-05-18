@@ -3638,6 +3638,45 @@ pub(crate) fn apply_pane_events(
                     }
                 }
             }
+            PaneEvent::ToggleChanged { group, kind, value } => {
+                use crate::state::PaneToggle;
+                let is_broadcast = *group == BROADCAST_GROUP;
+                if !is_broadcast && (*group == 0 || *group > group_count) {
+                    continue;
+                }
+                for (pi, pane) in panes.iter_mut().enumerate() {
+                    if Some(pi) == *origin { continue; }
+                    let matches = is_broadcast || pane.link_group == *group;
+                    if !matches { continue; }
+                    match kind {
+                        PaneToggle::LogScale          => pane.log_scale = *value,
+                        PaneToggle::OhlcTooltip       => pane.ohlc_tooltip = *value,
+                        PaneToggle::MeasureTooltip    => pane.measure_tooltip = *value,
+                        PaneToggle::ShowVolume        => pane.show_volume = *value,
+                        PaneToggle::ShowDeltaVolume   => pane.show_delta_volume = *value,
+                        PaneToggle::ShowRvol          => pane.show_rvol = *value,
+                        PaneToggle::ShowMaRibbon      => pane.show_ma_ribbon = *value,
+                        PaneToggle::ShowCvd           => pane.show_cvd = *value,
+                        PaneToggle::ShowPrevClose     => pane.show_prev_close = *value,
+                        PaneToggle::ShowPatternLabels => pane.show_pattern_labels = *value,
+                        PaneToggle::ShowFootprint     => pane.show_footprint = *value,
+                        PaneToggle::ShowAutoFib       => pane.show_auto_fib = *value,
+                        PaneToggle::HitHighlight      => pane.hit_highlight = *value,
+                    }
+                }
+            }
+            PaneEvent::SwingLegModeChanged { group, value } => {
+                let is_broadcast = *group == BROADCAST_GROUP;
+                if !is_broadcast && (*group == 0 || *group > group_count) {
+                    continue;
+                }
+                for (pi, pane) in panes.iter_mut().enumerate() {
+                    if Some(pi) == *origin { continue; }
+                    let matches = is_broadcast || pane.link_group == *group;
+                    if !matches { continue; }
+                    pane.swing_leg_mode = *value;
+                }
+            }
             PaneEvent::LayoutChanged | PaneEvent::BroadcastEnabled { .. } => {
                 // No subscribers today; queue drain still removes them.
             }
@@ -6011,19 +6050,23 @@ impl ApplicationHandler for App {
             // — they fall through to "apply to every matching pane",
             // which is fine because the publishing call site already
             // applied the mutation to its own pane before publishing.
-            let mut pane_origins: Vec<Option<usize>> = Vec::new();
+            // Wave 13a: origin is now stored on the bus itself
+            // (`publish_from`), so events published from anywhere
+            // (here, top_nav toggles, command palette, …) carry their
+            // own originator without a parallel index Vec. Drain
+            // returns `(event, origin)` pairs ready for the dispatcher.
             for (origin, group, sym_opt, tf_opt) in pane_changes.drain(..) {
                 if let Some(sym) = sym_opt {
-                    cw.watchlist.subscriptions.publish(
+                    cw.watchlist.subscriptions.publish_from(
                         crate::state::PaneEvent::SymbolChanged { group, symbol: sym },
+                        origin,
                     );
-                    pane_origins.push(Some(origin));
                 }
                 if let Some(tf) = tf_opt {
-                    cw.watchlist.subscriptions.publish(
+                    cw.watchlist.subscriptions.publish_from(
                         crate::state::PaneEvent::TimeframeChanged { group, timeframe: tf },
+                        origin,
                     );
-                    pane_origins.push(Some(origin));
                 }
             }
 
@@ -6032,12 +6075,7 @@ impl ApplicationHandler for App {
             // IDs from prior sessions (or the old click-cycle UI) would
             // silently link panes the user never explicitly grouped.
             let group_count = cw.watchlist.link_groups.len() as u8;
-            let drained = cw.watchlist.subscriptions.drain();
-            let paired: Vec<(crate::state::PaneEvent, Option<usize>)> = drained
-                .into_iter()
-                .enumerate()
-                .map(|(i, e)| (e, pane_origins.get(i).copied().flatten()))
-                .collect();
+            let paired = cw.watchlist.subscriptions.drain();
             apply_pane_events(&mut cw.panes, &paired, group_count, true);
 
             // Request redraw only when something actually needs to repaint.
@@ -7184,5 +7222,172 @@ mod pane_event_apply_tests {
         // No fields changed — but the drain still consumed the event.
         assert_eq!(panes[0].symbol, "AAPL");
         assert_eq!(panes[0].timeframe, "5m");
+    }
+
+    // ── Wave 13a: ToggleChanged / SwingLegModeChanged contract ──
+
+    use crate::state::PaneToggle;
+
+    #[test]
+    fn toggle_propagates_to_link_group_siblings_only() {
+        // 4 panes: pane 0 originator (group 1), pane 1+2 also group 1,
+        // pane 3 unlinked. log_scale toggle should reach 1+2 only.
+        let mut panes = vec![
+            chart("AAPL", "5m", 1),
+            chart("MSFT", "5m", 1),
+            chart("NVDA", "5m", 1),
+            chart("TSLA", "5m", 0),
+        ];
+        // simulate originator already flipped to true
+        panes[0].log_scale = true;
+        let events = vec![(
+            PaneEvent::ToggleChanged { group: 1, kind: PaneToggle::LogScale, value: true },
+            Some(0usize),
+        )];
+        apply_pane_events(&mut panes, &events, 2, false);
+        assert!(panes[0].log_scale, "originator unchanged (caller pre-set)");
+        assert!(panes[1].log_scale, "sibling group 1 updated");
+        assert!(panes[2].log_scale, "sibling group 1 updated");
+        assert!(!panes[3].log_scale, "unlinked pane untouched");
+    }
+
+    #[test]
+    fn toggle_broadcast_applies_to_every_pane_except_origin() {
+        let mut panes = vec![
+            chart("AAPL", "5m", 0),
+            chart("MSFT", "5m", 1),
+            chart("NVDA", "5m", 2),
+            chart("TSLA", "5m", 0),
+        ];
+        // pre-set originator's show_volume to false to verify it stays put
+        panes[0].show_volume = true;
+        for p in &mut panes[1..] { p.show_volume = true; }
+        // originator just flipped to false
+        panes[0].show_volume = false;
+        let events = vec![(
+            PaneEvent::ToggleChanged {
+                group: BROADCAST_GROUP, kind: PaneToggle::ShowVolume, value: false,
+            },
+            Some(0usize),
+        )];
+        apply_pane_events(&mut panes, &events, 0, false);
+        assert!(!panes[0].show_volume, "originator (already pre-flipped)");
+        assert!(!panes[1].show_volume);
+        assert!(!panes[2].show_volume);
+        assert!(!panes[3].show_volume);
+    }
+
+    #[test]
+    fn toggle_invalid_group_id_is_dropped() {
+        let mut panes = vec![
+            chart("AAPL", "5m", 5),
+            chart("MSFT", "5m", 5),
+        ];
+        let events = vec![(
+            PaneEvent::ToggleChanged { group: 5, kind: PaneToggle::ShowCvd, value: true },
+            Some(0usize),
+        )];
+        apply_pane_events(&mut panes, &events, 2, false);
+        assert!(!panes[0].show_cvd);
+        assert!(!panes[1].show_cvd, "stale group id must not propagate");
+    }
+
+    #[test]
+    fn toggle_zero_group_is_dropped() {
+        let mut panes = vec![
+            chart("AAPL", "5m", 0),
+            chart("MSFT", "5m", 0),
+        ];
+        let events = vec![(
+            PaneEvent::ToggleChanged { group: 0, kind: PaneToggle::OhlcTooltip, value: false },
+            Some(0usize),
+        )];
+        apply_pane_events(&mut panes, &events, 2, false);
+        assert!(panes[0].ohlc_tooltip, "default true preserved");
+        assert!(panes[1].ohlc_tooltip, "group=0 must not propagate");
+    }
+
+    #[test]
+    fn toggle_with_no_origin_applies_to_every_match() {
+        // origin=None: dispatcher fans to all matching panes incl
+        // would-be-originator. Used when the caller already wrote
+        // their own field separately (top_nav pattern uses Some(ap)
+        // explicitly, but command-palette-style callers may not).
+        let mut panes = vec![
+            chart("AAPL", "5m", 1),
+            chart("MSFT", "5m", 1),
+        ];
+        let events = vec![(
+            PaneEvent::ToggleChanged { group: 1, kind: PaneToggle::ShowMaRibbon, value: true },
+            None,
+        )];
+        apply_pane_events(&mut panes, &events, 2, false);
+        assert!(panes[0].show_ma_ribbon);
+        assert!(panes[1].show_ma_ribbon);
+    }
+
+    #[test]
+    fn toggle_dispatcher_covers_every_pane_toggle_variant() {
+        // Sanity: every PaneToggle variant must dispatch to a Chart
+        // field. If a future variant is added without an apply arm,
+        // this test will fail to compile (exhaustive `match`) — see
+        // apply_pane_events::ToggleChanged.
+        let kinds = [
+            PaneToggle::LogScale, PaneToggle::OhlcTooltip, PaneToggle::MeasureTooltip,
+            PaneToggle::ShowVolume, PaneToggle::ShowDeltaVolume, PaneToggle::ShowRvol,
+            PaneToggle::ShowMaRibbon, PaneToggle::ShowCvd, PaneToggle::ShowPrevClose,
+            PaneToggle::ShowPatternLabels, PaneToggle::ShowFootprint,
+            PaneToggle::ShowAutoFib, PaneToggle::HitHighlight,
+        ];
+        let mut panes = vec![chart("AAPL", "5m", 1), chart("MSFT", "5m", 1)];
+        for kind in kinds {
+            let events = vec![(
+                PaneEvent::ToggleChanged { group: 1, kind, value: true },
+                Some(0usize),
+            )];
+            apply_pane_events(&mut panes, &events, 2, false);
+        }
+        // After flipping every variant true on the sibling, spot-check
+        // a handful of fields landed correctly.
+        assert!(panes[1].log_scale);
+        assert!(panes[1].show_cvd);
+        assert!(panes[1].show_footprint);
+        assert!(panes[1].hit_highlight);
+    }
+
+    #[test]
+    fn swing_leg_mode_propagates_to_link_group() {
+        let mut panes = vec![
+            chart("AAPL", "5m", 1),
+            chart("MSFT", "5m", 1),
+            chart("TSLA", "5m", 0),
+        ];
+        panes[0].swing_leg_mode = 2;
+        let events = vec![(
+            PaneEvent::SwingLegModeChanged { group: 1, value: 2 },
+            Some(0usize),
+        )];
+        apply_pane_events(&mut panes, &events, 2, false);
+        assert_eq!(panes[0].swing_leg_mode, 2, "originator untouched");
+        assert_eq!(panes[1].swing_leg_mode, 2, "sibling group 1 cycled");
+        assert_eq!(panes[2].swing_leg_mode, 0, "unlinked pane untouched");
+    }
+
+    #[test]
+    fn swing_leg_mode_broadcast_applies_to_every_pane_except_origin() {
+        let mut panes = vec![
+            chart("AAPL", "5m", 0),
+            chart("MSFT", "5m", 1),
+            chart("NVDA", "5m", 2),
+        ];
+        panes[0].swing_leg_mode = 1;
+        let events = vec![(
+            PaneEvent::SwingLegModeChanged { group: BROADCAST_GROUP, value: 1 },
+            Some(0usize),
+        )];
+        apply_pane_events(&mut panes, &events, 0, false);
+        assert_eq!(panes[0].swing_leg_mode, 1);
+        assert_eq!(panes[1].swing_leg_mode, 1);
+        assert_eq!(panes[2].swing_leg_mode, 1);
     }
 }

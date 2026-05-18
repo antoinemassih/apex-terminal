@@ -121,7 +121,44 @@ use crate::chart_renderer::ui::style::{
 use crate::chart_renderer::ui::widgets::foundation::text_style::TextStyle;
 use crate::chart_renderer::trading::{AccountSummary, Position, IbOrder, OrderStatus};
 use crate::chart_renderer::{ChartCommand, ChartWidgetKind, ChartWidget, DrawingGroup};
+use crate::state::{BROADCAST_GROUP, PaneEvent, PaneToggle};
 use super::toolbar_btn;
+
+/// Wave 13a helper: publish a `PaneEvent::ToggleChanged` for the
+/// fan-out flow used by top_nav menu toggles. Caller has already
+/// flipped the originator's field (`panes[ap].<field> = nv`); this
+/// just broadcasts the new value to sibling panes when the user held
+/// Shift or broadcast mode is on. The originator is skipped by
+/// `apply_pane_events` via the `Some(ap)` origin tag, so the caller
+/// never double-writes.
+fn publish_toggle(
+    watchlist: &mut Watchlist,
+    fan_out: bool,
+    kind: PaneToggle,
+    value: bool,
+    ap: usize,
+) {
+    if !fan_out { return; }
+    watchlist.subscriptions.publish_from(
+        PaneEvent::ToggleChanged { group: BROADCAST_GROUP, kind, value },
+        ap,
+    );
+}
+
+/// Wave 13a helper: sibling of `publish_toggle` for the tri-state
+/// `swing_leg_mode` toggle (u8 cycling 0→1→2→0).
+fn publish_swing_leg_mode(
+    watchlist: &mut Watchlist,
+    fan_out: bool,
+    value: u8,
+    ap: usize,
+) {
+    if !fan_out { return; }
+    watchlist.subscriptions.publish_from(
+        PaneEvent::SwingLegModeChanged { group: BROADCAST_GROUP, value },
+        ap,
+    );
+}
 
 /// Paint a full-toolbar-height column tint behind a `menu_button` (or any
 /// other widget) when hovered or active. Mirrors the column-fill hover/active
@@ -713,7 +750,9 @@ pub(crate) fn render(
                 let log = panes[ap].log_scale;
                 if ui.add(SelectableRow::new("Log Scale", log)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !log;
-                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.log_scale = nv; } } else { panes[ap].log_scale = nv; }
+                    let fan = shift || watchlist.broadcast_mode;
+                    panes[ap].log_scale = nv;
+                    publish_toggle(watchlist, fan, PaneToggle::LogScale, nv, ap);
                 }
             });
             paint_nav_col_tint(ui, tb_rect, mode_menu.response.rect, t,
@@ -868,7 +907,9 @@ pub(crate) fn render(
                 if ui.add(SelectableRow::new("MA Ribbon (8-89)", ribbon_active)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift);
                     let nv = !ribbon_active;
-                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_ma_ribbon = nv; } } else { panes[ap].show_ma_ribbon = nv; }
+                    let fan = shift || watchlist.broadcast_mode;
+                    panes[ap].show_ma_ribbon = nv;
+                    publish_toggle(watchlist, fan, PaneToggle::ShowMaRibbon, nv, ap);
                 }
             });
 
@@ -918,7 +959,9 @@ pub(crate) fn render(
                 if ui.add(SelectableRow::new("CVD", cvd)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift);
                     let nv = !cvd;
-                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_cvd = nv; } } else { panes[ap].show_cvd = nv; }
+                    let fan = shift || watchlist.broadcast_mode;
+                    panes[ap].show_cvd = nv;
+                    publish_toggle(watchlist, fan, PaneToggle::ShowCvd, nv, ap);
                 }
             });
 
@@ -929,17 +972,23 @@ pub(crate) fn render(
                 let vol = panes[ap].show_volume;
                 if ui.add(SelectableRow::new("Volume Bars", vol)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !vol;
-                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_volume = nv; } } else { panes[ap].show_volume = nv; }
+                    let fan = shift || watchlist.broadcast_mode;
+                    panes[ap].show_volume = nv;
+                    publish_toggle(watchlist, fan, PaneToggle::ShowVolume, nv, ap);
                 }
                 let dvol = panes[ap].show_delta_volume;
                 if ui.add(SelectableRow::new("Delta Volume", dvol)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !dvol;
-                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_delta_volume = nv; } } else { panes[ap].show_delta_volume = nv; }
+                    let fan = shift || watchlist.broadcast_mode;
+                    panes[ap].show_delta_volume = nv;
+                    publish_toggle(watchlist, fan, PaneToggle::ShowDeltaVolume, nv, ap);
                 }
                 let rvol = panes[ap].show_rvol;
                 if ui.add(SelectableRow::new("Relative Volume", rvol)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !rvol;
-                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_rvol = nv; } } else { panes[ap].show_rvol = nv; }
+                    let fan = shift || watchlist.broadcast_mode;
+                    panes[ap].show_rvol = nv;
+                    publish_toggle(watchlist, fan, PaneToggle::ShowRvol, nv, ap);
                 }
                 ui.separator();
                 ui.label(egui::RichText::new("Volume Profile").monospace().size(font_sm()).color(t.dim));
@@ -1142,22 +1191,30 @@ pub(crate) fn render(
                 let ohlc = panes[ap].ohlc_tooltip;
                 if ui.add(SelectableRow::new("OHLC Tooltip", ohlc)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !ohlc;
-                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.ohlc_tooltip = nv; } } else { panes[ap].ohlc_tooltip = nv; }
+                    let fan = shift || watchlist.broadcast_mode;
+                    panes[ap].ohlc_tooltip = nv;
+                    publish_toggle(watchlist, fan, PaneToggle::OhlcTooltip, nv, ap);
                 }
                 let mt = panes[ap].measure_tooltip;
                 if ui.add(SelectableRow::new("Measure Tooltip", mt)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !mt;
-                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.measure_tooltip = nv; } } else { panes[ap].measure_tooltip = nv; }
+                    let fan = shift || watchlist.broadcast_mode;
+                    panes[ap].measure_tooltip = nv;
+                    publish_toggle(watchlist, fan, PaneToggle::MeasureTooltip, nv, ap);
                 }
                 let pc = panes[ap].show_prev_close;
                 if ui.add(SelectableRow::new("Prev Close / Open", pc)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !pc;
-                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_prev_close = nv; } } else { panes[ap].show_prev_close = nv; }
+                    let fan = shift || watchlist.broadcast_mode;
+                    panes[ap].show_prev_close = nv;
+                    publish_toggle(watchlist, fan, PaneToggle::ShowPrevClose, nv, ap);
                 }
                 let pl = panes[ap].show_pattern_labels;
                 if ui.add(SelectableRow::new("Pattern Labels", pl)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !pl;
-                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_pattern_labels = nv; } } else { panes[ap].show_pattern_labels = nv; }
+                    let fan = shift || watchlist.broadcast_mode;
+                    panes[ap].show_pattern_labels = nv;
+                    publish_toggle(watchlist, fan, PaneToggle::ShowPatternLabels, nv, ap);
                 }
                 let pnl = panes[ap].show_pnl_curve;
                 if ui.add(SelectableRow::new("P&L Curve", pnl)).clicked() { panes[ap].show_pnl_curve = !panes[ap].show_pnl_curve; }
@@ -1167,7 +1224,9 @@ pub(crate) fn render(
                 let fp = panes[ap].show_footprint;
                 if ui.add(SelectableRow::new("Footprint (hover)", fp)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !fp;
-                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_footprint = nv; } } else { panes[ap].show_footprint = nv; }
+                    let fan = shift || watchlist.broadcast_mode;
+                    panes[ap].show_footprint = nv;
+                    publish_toggle(watchlist, fan, PaneToggle::ShowFootprint, nv, ap);
                 }
 
                 ui.separator();
@@ -1192,12 +1251,16 @@ pub(crate) fn render(
                 let sl_suffix = match sl_mode { 1 => " (Vertical)", 2 => " (Diagonal)", _ => "" };
                 if ui.add(SelectableRow::new(&format!("SwingRange{}", sl_suffix), sl_active)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = (sl_mode + 1) % 3;
-                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.swing_leg_mode = nv; } } else { panes[ap].swing_leg_mode = nv; }
+                    let fan = shift || watchlist.broadcast_mode;
+                    panes[ap].swing_leg_mode = nv;
+                    publish_swing_leg_mode(watchlist, fan, nv, ap);
                 }
                 let afib = panes[ap].show_auto_fib;
                 if ui.add(SelectableRow::new("Auto Fibonacci", afib)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !afib;
-                    if shift || watchlist.broadcast_mode { for p in panes.iter_mut() { p.show_auto_fib = nv; } } else { panes[ap].show_auto_fib = nv; }
+                    let fan = shift || watchlist.broadcast_mode;
+                    panes[ap].show_auto_fib = nv;
+                    publish_toggle(watchlist, fan, PaneToggle::ShowAutoFib, nv, ap);
                 }
                 ui.separator();
                 ui.add(SelectableRow::new("Triangulator", false).disabled(true));
@@ -1344,11 +1407,9 @@ pub(crate) fn render(
                 if hh_resp.clicked() {
                     let shift = ui.input(|i| i.modifiers.shift);
                     let nv = !panes[ap].hit_highlight;
-                    if shift || watchlist.broadcast_mode {
-                        for p in panes.iter_mut() { p.hit_highlight = nv; }
-                    } else {
-                        panes[ap].hit_highlight = nv;
-                    }
+                    let fan = shift || watchlist.broadcast_mode;
+                    panes[ap].hit_highlight = nv;
+                    publish_toggle(watchlist, fan, PaneToggle::HitHighlight, nv, ap);
                 }
             }
 
