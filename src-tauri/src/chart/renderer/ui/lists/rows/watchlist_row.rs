@@ -21,7 +21,6 @@ use crate::chart::renderer::ui::foundation::{
     tokens::Size,
     variants::RowVariant,
 };
-use crate::chart::renderer::ui::widgets::rows::ListRow;
 use crate::ui_kit::widgets::HoverCard;
 use super::watchlist_columns::{
     spec as col_spec, ColumnCtx, WatchlistColumnId, WatchlistItemData,
