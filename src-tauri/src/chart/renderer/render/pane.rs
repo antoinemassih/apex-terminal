@@ -2354,6 +2354,80 @@ fn render_chart_pane(
     } // end candle batch block
     } // end if !skip_egui_candles
 
+    // ── Replay overlay (second render pass) ──────────────────────────────
+    // Hook for the ReplayScrubber pane (branch `sota-terminal-replay`).
+    // Renders overlay candles aligned to the live time axis in a distinct,
+    // semi-transparent color so the user can compare replay vs. live state.
+    // No-op unless the scrubber pane has installed an overlay. Sits between
+    // live candles and drawings/annotations so overlay shows over price
+    // history but under user drawings.
+    if let Some(overlay) = chart.replay_overlay.as_ref() {
+        if !overlay.bars.is_empty() && !chart.timestamps.is_empty() {
+            let base = overlay.color;
+            let body_c = egui::Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 160);
+            let wick_c = egui::Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 220);
+            let bw_o = (bs * 0.35).max(1.0);
+            let hw_o = 0.5_f32;
+            let mut o_wick = egui::Mesh::default();
+            let mut o_body = egui::Mesh::default();
+            // Live timestamps are assumed monotonic — binary-search to align
+            // each overlay timestamp to a live-bar index.
+            for (k, &ts) in overlay.timestamps.iter().enumerate() {
+                let b = match overlay.bars.get(k) { Some(b) => b, None => continue };
+                let idx_f = match chart.timestamps.binary_search(&ts) {
+                    Ok(i) => i as f32,
+                    Err(i) => {
+                        // Snap to nearest live bar; skip if outside the live window
+                        if i == 0 || i >= chart.timestamps.len() { continue; }
+                        let lo = chart.timestamps[i-1];
+                        let hi = chart.timestamps[i];
+                        if (ts - lo).abs() <= (hi - ts).abs() { (i-1) as f32 } else { i as f32 }
+                    }
+                };
+                // Skip bars outside the visible window
+                if idx_f < (vs as f32) - 1.0 || idx_f > end as f32 + 1.0 { continue; }
+                let x = bx(idx_f);
+                let bt = py(b.open.max(b.close));
+                let bb = py(b.open.min(b.close));
+                let wt = py(b.high);
+                let wb = py(b.low);
+                // Wick
+                let vi = o_wick.vertices.len() as u32;
+                o_wick.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x - hw_o, wt), uv: egui::epaint::WHITE_UV, color: wick_c });
+                o_wick.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x + hw_o, wt), uv: egui::epaint::WHITE_UV, color: wick_c });
+                o_wick.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x + hw_o, wb), uv: egui::epaint::WHITE_UV, color: wick_c });
+                o_wick.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x - hw_o, wb), uv: egui::epaint::WHITE_UV, color: wick_c });
+                o_wick.indices.extend_from_slice(&[vi, vi+1, vi+2, vi, vi+2, vi+3]);
+                // Body
+                let body_h = (bb - bt).max(1.0);
+                let vi = o_body.vertices.len() as u32;
+                o_body.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x - bw_o, bt), uv: egui::epaint::WHITE_UV, color: body_c });
+                o_body.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x + bw_o, bt), uv: egui::epaint::WHITE_UV, color: body_c });
+                o_body.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x + bw_o, bt + body_h), uv: egui::epaint::WHITE_UV, color: body_c });
+                o_body.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x - bw_o, bt + body_h), uv: egui::epaint::WHITE_UV, color: body_c });
+                o_body.indices.extend_from_slice(&[vi, vi+1, vi+2, vi, vi+2, vi+3]);
+            }
+            if !o_wick.vertices.is_empty() { painter.add(egui::Shape::mesh(o_wick)); }
+            if !o_body.vertices.is_empty() { painter.add(egui::Shape::mesh(o_body)); }
+
+            // Top-left REPLAY MODE badge
+            let badge_text = if overlay.label.is_empty() {
+                "REPLAY MODE".to_string()
+            } else {
+                format!("REPLAY MODE: {}", overlay.label)
+            };
+            let badge_pos = egui::pos2(rect.left() + 8.0, rect.top() + pt + 6.0);
+            let font_id = egui::FontId::proportional(11.0);
+            // Measure for background pill
+            let galley = painter.layout_no_wrap(badge_text.clone(), font_id.clone(), egui::Color32::WHITE);
+            let badge_rect = egui::Rect::from_min_size(badge_pos, galley.size() + egui::vec2(10.0, 4.0));
+            painter.rect_filled(badge_rect, 3.0,
+                egui::Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 200));
+            painter.text(badge_pos + egui::vec2(5.0, 2.0), egui::Align2::LEFT_TOP,
+                badge_text, font_id, egui::Color32::BLACK);
+        }
+    }
+
     // GPU path: populate chart.gpu_render_params for THIS pane (every visible
     // pane uploads + draws independently in the per-pane render loop). When
     // use_gpu_candles is false (non-Standard mode), instances stays empty —

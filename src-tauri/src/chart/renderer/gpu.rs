@@ -15,6 +15,65 @@ use winit::{
 
 use super::{Bar, ChartCommand, Drawing, DrawingKind, DrawingGroup, DrawingSignificance, LineStyle, PatternLabel};
 
+// ── Replay overlay hook (sibling-branch ReplayScrubber feature) ────────────
+//
+// A single, scoped hook for rendering "replay" OHLCV bars on top of the live
+// chart in a distinct color. Designed to be driven by the `ReplayScrubber`
+// pane (see branch `sota-terminal-replay`, `replay_pane.rs`) — that pane
+// installs/clears the overlay via the public methods on `Chart` below.
+//
+// This branch (`replay-overlay-hook`) is INDEPENDENT of `sota-terminal-replay`
+// and is based on `main`. The overlay field stays `None` and the second
+// render pass is a no-op until the scrubber pane lands and wires it up.
+//
+// Render contract (see render/pane.rs):
+//   - Overlay bars share the same time axis as live bars: alignment is done
+//     by matching `overlay.timestamps[i]` against `chart.timestamps` and
+//     drawing at the resulting live-bar x-position. Overlay bars whose
+//     timestamps fall outside the live `timestamps` window are skipped.
+//   - Overlay candles are drawn semi-transparent in `overlay.color`
+//     (alpha ~160), AFTER live candles but BEFORE drawings/annotations.
+//   - When the overlay is active, a "REPLAY MODE: <label>" badge is shown
+//     in the top-left of the chart pane.
+//   - The live-bar render path is intentionally untouched.
+#[derive(Clone, Debug)]
+pub struct ReplayOverlay {
+    /// OHLCV bars to render as the replay overlay.
+    pub bars: Vec<Bar>,
+    /// Timestamps (ms since epoch) parallel to `bars`. Used to align the
+    /// overlay to the live chart's time axis.
+    pub timestamps: Vec<i64>,
+    /// Color used for the overlay candles (alpha is composed in the renderer).
+    /// Default is a distinct orange so the overlay is clearly differentiated
+    /// from live bull/bear coloring.
+    pub color: egui::Color32,
+    /// Label rendered in the top-left "REPLAY MODE" badge, e.g.
+    /// "Replay: 2026-04-15 10:30:00".
+    pub label: String,
+}
+
+impl ReplayOverlay {
+    /// Distinct orange used as the default overlay color.
+    pub const DEFAULT_COLOR: egui::Color32 = egui::Color32::from_rgb(0xff, 0xa5, 0x00);
+
+    /// Construct an empty overlay with the given label and the default
+    /// orange color.
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            bars: Vec::new(),
+            timestamps: Vec::new(),
+            color: Self::DEFAULT_COLOR,
+            label: label.into(),
+        }
+    }
+
+    /// Append a single replay bar (used by the streaming/WS path).
+    pub fn push(&mut self, bar: Bar, t_ms: i64) {
+        self.bars.push(bar);
+        self.timestamps.push(t_ms);
+    }
+}
+
 /// Per-alert hit rects stashed each frame so the priority-0 click handler
 /// can route clicks to PLACE/X buttons rendered via painter.
 #[derive(Clone)]
@@ -1711,6 +1770,11 @@ pub(crate) struct Chart {
     pub(crate) replay_playing: bool,
     pub(crate) replay_speed: f32,      // 1.0 = normal, 2.0 = 2x, etc.
     pub(crate) replay_last_step: Option<std::time::Instant>,
+    /// Replay overlay installed by the `ReplayScrubber` pane (sibling branch
+    /// `sota-terminal-replay`). When `Some`, the chart render loop will draw
+    /// these bars in a distinct color on top of the live bars. See the
+    /// `ReplayOverlay` doc comment for the render contract.
+    pub replay_overlay: Option<ReplayOverlay>,
     // Notional-based order entry
     pub(crate) order_notional_mode: bool,
     pub(crate) order_notional_amount: String,
@@ -1868,6 +1932,7 @@ impl Chart {
             vwap_data: vec![], vwap_upper1: vec![], vwap_lower1: vec![], vwap_upper2: vec![], vwap_lower2: vec![],
             cvd_data: vec![], delta_data: vec![], rvol_data: vec![], vol_analytics_computed: 0,
             replay_mode: false, replay_bar_count: 0, replay_playing: false, replay_speed: 1.0, replay_last_step: None,
+            replay_overlay: None,
             order_notional_mode: false, order_notional_amount: String::new(),
             bracket_templates: vec![
                 BracketTemplate { name: "Tight".into(),  target_pct: 1.0, stop_pct: 0.5 },
@@ -1901,6 +1966,34 @@ impl Chart {
             gpu_render_params: crate::chart::renderer_gpu::ChartRenderParams::default(),
         }
     }
+
+    // ── Replay overlay hook (public API) ─────────────────────────────────
+    // Driven by the `ReplayScrubber` pane on branch `sota-terminal-replay`.
+    // See the `ReplayOverlay` doc comment near the top of this file for the
+    // render contract.
+
+    /// Install a replay overlay on this chart. Replaces any existing overlay.
+    pub fn set_replay_overlay(&mut self, overlay: ReplayOverlay) {
+        self.replay_overlay = Some(overlay);
+    }
+
+    /// Append a single bar to the active replay overlay. Creates an empty
+    /// overlay (with the default color and an empty label) if none is
+    /// installed yet — useful for the streaming/WS path where bars arrive
+    /// incrementally before any explicit `set_replay_overlay` call.
+    pub fn append_replay_bar(&mut self, bar: Bar, t_ms: i64) {
+        let overlay = self
+            .replay_overlay
+            .get_or_insert_with(|| ReplayOverlay::new(String::new()));
+        overlay.push(bar, t_ms);
+    }
+
+    /// Remove the replay overlay (if any). The next frame will render only
+    /// the live bars.
+    pub fn clear_replay_overlay(&mut self) {
+        self.replay_overlay = None;
+    }
+
     fn process(&mut self, cmd: ChartCommand) {
         match cmd {
             ChartCommand::LoadBars { bars, timestamps, symbol, timeframe, .. } => {
@@ -6586,6 +6679,74 @@ mod synthesize_occ_tests {
     fn aapl_passes_through() {
         let occ = synthesize_occ("AAPL", 200.0, true, "2026-05-07");
         assert!(occ.starts_with("O:AAPL"), "got: {occ}");
+    }
+}
+
+#[cfg(test)]
+mod replay_overlay_tests {
+    use super::{Bar, Chart, ReplayOverlay};
+
+    fn bar(o: f32, h: f32, l: f32, c: f32) -> Bar {
+        Bar { open: o, high: h, low: l, close: c, volume: 100.0, _pad: 0.0 }
+    }
+
+    #[test]
+    fn default_overlay_is_none() {
+        let c = Chart::new();
+        assert!(c.replay_overlay.is_none());
+    }
+
+    #[test]
+    fn set_installs_overlay() {
+        let mut c = Chart::new();
+        let mut o = ReplayOverlay::new("Replay: 2026-04-15 10:30:00");
+        o.push(bar(100.0, 101.0, 99.5, 100.5), 1_700_000_000_000);
+        c.set_replay_overlay(o);
+        let installed = c.replay_overlay.as_ref().expect("overlay installed");
+        assert_eq!(installed.bars.len(), 1);
+        assert_eq!(installed.timestamps.len(), 1);
+        assert_eq!(installed.label, "Replay: 2026-04-15 10:30:00");
+        assert_eq!(installed.color, ReplayOverlay::DEFAULT_COLOR);
+    }
+
+    #[test]
+    fn append_creates_when_none_and_grows() {
+        let mut c = Chart::new();
+        assert!(c.replay_overlay.is_none());
+        c.append_replay_bar(bar(1.0, 2.0, 0.5, 1.5), 1);
+        c.append_replay_bar(bar(1.5, 2.5, 1.0, 2.0), 2);
+        let o = c.replay_overlay.as_ref().unwrap();
+        assert_eq!(o.bars.len(), 2);
+        assert_eq!(o.timestamps, vec![1, 2]);
+    }
+
+    #[test]
+    fn append_respects_existing_overlay() {
+        let mut c = Chart::new();
+        c.set_replay_overlay(ReplayOverlay::new("session-A"));
+        c.append_replay_bar(bar(10.0, 11.0, 9.0, 10.5), 42);
+        let o = c.replay_overlay.as_ref().unwrap();
+        assert_eq!(o.label, "session-A");
+        assert_eq!(o.bars.len(), 1);
+        assert_eq!(o.timestamps, vec![42]);
+    }
+
+    #[test]
+    fn clear_removes_overlay() {
+        let mut c = Chart::new();
+        c.set_replay_overlay(ReplayOverlay::new("x"));
+        assert!(c.replay_overlay.is_some());
+        c.clear_replay_overlay();
+        assert!(c.replay_overlay.is_none());
+    }
+
+    #[test]
+    fn custom_color_is_preserved() {
+        let mut o = ReplayOverlay::new("");
+        o.color = egui::Color32::from_rgb(0x00, 0xff, 0xff);
+        let mut c = Chart::new();
+        c.set_replay_overlay(o);
+        assert_eq!(c.replay_overlay.unwrap().color, egui::Color32::from_rgb(0x00, 0xff, 0xff));
     }
 }
 
