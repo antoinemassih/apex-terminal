@@ -279,6 +279,16 @@ pub struct PanelListRow<'a> {
     /// library, accordion children). Leave off for selected-row lists
     /// where the selected-row stripe + tint already carries the divide.
     divided: bool,
+    /// Optional explicit row height override (px). When `None`, the row uses
+    /// the dense (22) / non-dense (32) default. Streaming-data panels (tape
+    /// T&S) that historically used a tighter 14-px row pass this to preserve
+    /// information density. Most callers should NOT set this — use `.dense()`.
+    height_override: Option<f32>,
+    /// When `false`, suppresses the hover background fill (and the
+    /// PointingHand cursor). Used by purely-display streaming rows
+    /// (tape T&S) where hovering a print conveys nothing actionable.
+    /// Default `true`.
+    hoverable: bool,
     /// Permanent row background tint (e.g., buy/sell tape coloring).
     /// Painted BEHIND the hover/selected backgrounds so those still
     /// layer correctly on top. Works in both layout modes (primary/
@@ -299,8 +309,29 @@ impl<'a> PanelListRow<'a> {
             selected: false,
             dense: true,
             divided: false,
+            height_override: None,
+            hoverable: true,
             row_tint: None,
         }
+    }
+
+    /// Suppress the hover background fill (and PointingHand cursor) for
+    /// purely-display streaming rows (tape T&S) where hover conveys
+    /// nothing actionable. Default `true`.
+    #[inline]
+    pub fn hoverable(mut self, on: bool) -> Self {
+        self.hoverable = on;
+        self
+    }
+
+    /// Override the row height (px). Use sparingly — `.dense(true/false)`
+    /// (22 / 32) covers the design-system defaults. The streaming tape T&S
+    /// panel uses 14 for historical density; new code should prefer the
+    /// dense default.
+    #[inline]
+    pub fn height(mut self, px: f32) -> Self {
+        self.height_override = Some(px);
+        self
     }
 
     /// Paint a permanent background tint for this row, layered BEHIND the
@@ -410,16 +441,23 @@ impl<'a> PanelListRow<'a> {
             selected,
             dense,
             divided,
+            height_override,
+            hoverable,
             row_tint,
         } = self;
 
-        let h = if dense { 22.0 } else { 32.0 };
+        let h = height_override.unwrap_or(if dense { 22.0 } else { 32.0 });
         let avail_w = ui.available_width();
+        let row_sense = if hoverable { Sense::click() } else { Sense::hover() };
         let (rect, resp) = ui.allocate_exact_size(
             Vec2::new(avail_w, h),
-            Sense::click(),
+            row_sense,
         );
-        let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+        let resp = if hoverable {
+            resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+        } else {
+            resp
+        };
 
         // ── Reserve trailing-button strip BEFORE interacting with the row
         // body — clicks inside the strip belong to the buttons, not the row.
@@ -490,7 +528,7 @@ impl<'a> PanelListRow<'a> {
         // Background — selected wins over hover.
         if selected {
             painter.rect_filled(rect, cr, color_alpha(t.accent, SELECTED_BG_ALPHA));
-        } else if resp.hovered() {
+        } else if hoverable && resp.hovered() {
             painter.rect_filled(rect, cr, color_alpha(t.text, HOVER_BG_ALPHA));
         }
 
