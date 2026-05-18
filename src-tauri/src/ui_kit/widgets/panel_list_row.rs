@@ -279,6 +279,11 @@ pub struct PanelListRow<'a> {
     /// library, accordion children). Leave off for selected-row lists
     /// where the selected-row stripe + tint already carries the divide.
     divided: bool,
+    /// Permanent row background tint (e.g., buy/sell tape coloring).
+    /// Painted BEHIND the hover/selected backgrounds so those still
+    /// layer correctly on top. Works in both layout modes (primary/
+    /// secondary AND columns). Stored as `(color, alpha 0..=255)`.
+    row_tint: Option<(Color32, u8)>,
 }
 
 impl<'a> PanelListRow<'a> {
@@ -294,7 +299,19 @@ impl<'a> PanelListRow<'a> {
             selected: false,
             dense: true,
             divided: false,
+            row_tint: None,
         }
+    }
+
+    /// Paint a permanent background tint for this row, layered BEHIND the
+    /// hover/selected backgrounds. Used for buy/sell-tinted streaming rows
+    /// (tape T&S, scanner T&S). `alpha` is 0..=255. Works in both layout
+    /// modes (primary/secondary AND columns). Byte-trivial — just stores
+    /// the pair.
+    #[inline]
+    pub fn row_tint(mut self, color: Color32, alpha: u8) -> Self {
+        self.row_tint = Some((color, alpha));
+        self
     }
 
     /// Paint a faint bottom hairline beneath the row so consecutive
@@ -393,6 +410,7 @@ impl<'a> PanelListRow<'a> {
             selected,
             dense,
             divided,
+            row_tint,
         } = self;
 
         let h = if dense { 22.0 } else { 32.0 };
@@ -461,6 +479,13 @@ impl<'a> PanelListRow<'a> {
 
         let painter = ui.painter_at(rect);
         let cr = CornerRadius::same(radius_sm() as u8);
+
+        // Permanent row tint (buy/sell tape) — painted BEHIND hover/selected
+        // so directional coloring stays visible but interactive states still
+        // read clearly on top.
+        if let Some((tint_color, tint_alpha)) = row_tint {
+            painter.rect_filled(rect, cr, color_alpha(tint_color, tint_alpha));
+        }
 
         // Background — selected wins over hover.
         if selected {
