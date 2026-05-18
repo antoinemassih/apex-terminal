@@ -254,6 +254,66 @@ fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(path: &str, bo
 // expose a pair: the raw `get_*` functions (synchronous, no auth retry) and
 // the `*_with_auth_retry` async variants for code paths that have a runtime.
 
+/// Synchronous auth-retry: run `f` once; on 401/Auth error attempt a token
+/// refresh (via a one-shot tokio runtime or the current handle if one exists),
+/// then retry `f` exactly once more. Any other error propagates immediately.
+///
+/// This is the sync sibling of `with_auth_retry_blocking`. Use it for blocking
+/// functions that cannot be made async without migrating every call site.
+/// Token expiry is therefore caught and retried rather than silently failing.
+fn with_auth_retry_sync<T, F>(f: F) -> Result<T, ApiError>
+where
+    F: Fn() -> Result<T, ApiError>,
+{
+    fn is_auth(e: &ApiError) -> bool {
+        matches!(e, ApiError::Auth(_) | ApiError::Http { status: 401, .. })
+    }
+
+    match f() {
+        Ok(v) => Ok(v),
+        Err(e) if is_auth(&e) => {
+            // Attempt token refresh. ApexDataAuth::refresh_token is currently a
+            // no-op (server-side refresh not yet wired), but the call ensures we
+            // will pick up an externally-updated token if the caller has rotated
+            // it out-of-band (e.g. via set_apex_token). On RefreshFailed we
+            // still retry once — a fresh read of apex_token() may succeed.
+            let refresh_result: Result<String, _> = {
+                let auth = super::config::ApexDataAuth;
+                // Try to use an existing tokio handle; fall back to a one-shot runtime.
+                match tokio::runtime::Handle::try_current() {
+                    Ok(handle) => std::thread::spawn(move || {
+                        handle.block_on(
+                            crate::data::connectivity::auth::Authenticated::refresh_token(&auth)
+                        )
+                    })
+                    .join()
+                    .unwrap_or(Err(crate::data::connectivity::AuthError::RefreshFailed(
+                        "join error".into(),
+                    ))),
+                    Err(_) => match tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                    {
+                        Ok(rt) => rt.block_on(
+                            crate::data::connectivity::auth::Authenticated::refresh_token(&auth)
+                        ),
+                        Err(build_err) => Err(crate::data::connectivity::AuthError::RefreshFailed(
+                            build_err.to_string(),
+                        )),
+                    },
+                }
+            };
+            if let Err(ref re) = refresh_result {
+                crate::apex_log!("rest.auth", "token refresh failed: {re}; retrying once anyway");
+            }
+            // Always retry once — the token may have been refreshed externally
+            // even if our refresh call failed.
+            f()
+        }
+        Err(other) => Err(other),
+    }
+}
+
 async fn with_apex_auth_retry<T, F, Fut>(f: F) -> Result<T, ApiError>
 where
     T: Send + 'static,
@@ -369,14 +429,25 @@ pub fn get_indicators(class: AssetClass, symbol: &str, tf: &str) -> Result<Indic
 ///
 /// Special-cased because the 503 response carries a useful payload (the same
 /// `HealthReady` schema as 200). Network / parse failures still bubble up
-/// as `ApiError`.
+/// as `ApiError`. On 401 the call is retried once via `with_auth_retry_sync`
+/// (token expiry should not silently block health checks forever).
 pub fn get_health_ready() -> Result<HealthReady, ApiError> {
-    let url = format!("{}/api/health/ready", apex_url());
-    let mut req = client().get(&url);
-    if let Some(tok) = apex_token() { req = req.bearer_auth(tok); }
-    let resp = req.send().map_err(|e| ApiError::Network(e.to_string()))?;
-    // Both 200 and 503 carry a HealthReady body
-    resp.json::<HealthReady>().map_err(|e| ApiError::Parse(e.to_string()))
+    with_auth_retry_sync(|| {
+        let url = format!("{}/api/health/ready", apex_url());
+        let mut req = client().get(&url);
+        if let Some(tok) = apex_token() { req = req.bearer_auth(tok); }
+        let resp = req.send().map_err(|e| ApiError::Network(e.to_string()))?;
+        let status = resp.status();
+        if status.is_success() || status.as_u16() == 503 {
+            // Both 200 and 503 carry a HealthReady body — parse normally.
+            resp.json::<HealthReady>().map_err(|e| ApiError::Parse(e.to_string()))
+        } else if status.as_u16() == 401 {
+            Err(ApiError::Auth(crate::data::connectivity::AuthError::TokenExpired))
+        } else {
+            let body = resp.text().unwrap_or_default();
+            Err(ApiError::Http { status: status.as_u16(), body })
+        }
+    })
 }
 
 pub fn get_feeds() -> Result<FeedsResponse, ApiError> {
@@ -509,10 +580,23 @@ pub fn get_corp_actions(ticker: &str) -> Option<CorporateActionsReading> {
     get(&format!("/api/stocks/corporate_actions/{ticker}")).ok()
 }
 
-/// Liveness — text "ok". Returns true on HTTP 200.
+/// Liveness — text "ok". Returns `true` on HTTP 200, `false` on any error.
+///
+/// Non-critical (health probe only). Internally uses `with_auth_retry_sync` so
+/// a 401 caused by token expiry triggers one refresh attempt + retry before
+/// giving up — token expiry must not cause permanent `false` results silently.
 pub fn is_live() -> bool {
-    let url = format!("{}/api/health/live", apex_url());
-    client().get(&url).send().map(|r| r.status().is_success()).unwrap_or(false)
+    let result: Result<bool, ApiError> = with_auth_retry_sync(|| {
+        let url = format!("{}/api/health/live", apex_url());
+        let resp = client().get(&url).send().map_err(|e| ApiError::Network(e.to_string()))?;
+        let status = resp.status();
+        if status.as_u16() == 401 {
+            Err(ApiError::Auth(crate::data::connectivity::AuthError::TokenExpired))
+        } else {
+            Ok(status.is_success())
+        }
+    });
+    result.unwrap_or(false)
 }
 
 // ── SOTA UX §3.1 — Provenance ──────────────────────────────────────────────
@@ -568,74 +652,95 @@ pub fn get_provenance(
         return Err(ProvenanceError::Other("rest breaker open".into()));
     }
     let d = depth.clamp(1, 10);
-    let path = format!(
-        "/api/provenance/{lineage_id}?format={}&depth={d}",
-        mode.as_str()
-    );
-    let url = format!("{}{path}", apex_url());
-    crate::apex_log!("rest.req", "GET {url}");
-    let t0 = Instant::now();
-    let mut req = client().get(&url);
-    if let Some(tok) = apex_token() { req = req.bearer_auth(tok); }
-    match req.send() {
-        Ok(r) if r.status() == reqwest::StatusCode::NOT_FOUND => {
-            record(RestCall {
-                path: path.clone(),
-                status: 404,
-                outcome: "http",
-                ms: t0.elapsed().as_millis(),
-                at: std::time::SystemTime::now(),
-            });
-            Err(ProvenanceError::NotFound)
-        }
-        Ok(r) if r.status().is_success() => {
-            let status = r.status().as_u16();
-            match r.json::<ProvenanceTreeNode>() {
-                Ok(node) => {
-                    breaker_note_success();
-                    record(RestCall {
-                        path,
-                        status,
-                        outcome: "ok",
-                        ms: t0.elapsed().as_millis(),
-                        at: std::time::SystemTime::now(),
-                    });
-                    Ok(node)
-                }
-                Err(e) => {
-                    record(RestCall {
-                        path,
-                        status,
-                        outcome: "parse",
-                        ms: t0.elapsed().as_millis(),
-                        at: std::time::SystemTime::now(),
-                    });
-                    Err(ProvenanceError::Other(format!("parse: {e}")))
+    let lineage_id = lineage_id.to_string();
+    let mode_str = mode.as_str().to_string();
+
+    // Internal helper: one attempt, returns ApiError on 401 so with_auth_retry_sync
+    // can catch it and retry after a token refresh. NotFound (404) is surfaced
+    // separately so callers render the "aged out of 24h hot window" message.
+    let inner = move || -> Result<ProvenanceTreeNode, ApiError> {
+        let path = format!("/api/provenance/{lineage_id}?format={mode_str}&depth={d}");
+        let url = format!("{}{path}", apex_url());
+        crate::apex_log!("rest.req", "GET {url}");
+        let t0 = Instant::now();
+        let mut req = client().get(&url);
+        if let Some(tok) = apex_token() { req = req.bearer_auth(tok); }
+        match req.send() {
+            Ok(r) if r.status() == reqwest::StatusCode::NOT_FOUND => {
+                record(RestCall {
+                    path: path.clone(),
+                    status: 404,
+                    outcome: "http",
+                    ms: t0.elapsed().as_millis(),
+                    at: std::time::SystemTime::now(),
+                });
+                // Sentinel: map 404 through a recognizable Http error so the outer
+                // converter can translate it to ProvenanceError::NotFound.
+                Err(ApiError::Http { status: 404, body: String::new() })
+            }
+            Ok(r) if r.status().is_success() => {
+                let status = r.status().as_u16();
+                match r.json::<ProvenanceTreeNode>() {
+                    Ok(node) => {
+                        breaker_note_success();
+                        record(RestCall {
+                            path,
+                            status,
+                            outcome: "ok",
+                            ms: t0.elapsed().as_millis(),
+                            at: std::time::SystemTime::now(),
+                        });
+                        Ok(node)
+                    }
+                    Err(e) => {
+                        record(RestCall {
+                            path,
+                            status,
+                            outcome: "parse",
+                            ms: t0.elapsed().as_millis(),
+                            at: std::time::SystemTime::now(),
+                        });
+                        Err(ApiError::Parse(e.to_string()))
+                    }
                 }
             }
+            Ok(r) => {
+                let status = r.status().as_u16();
+                record(RestCall {
+                    path,
+                    status,
+                    outcome: "http",
+                    ms: t0.elapsed().as_millis(),
+                    at: std::time::SystemTime::now(),
+                });
+                if status == 401 {
+                    Err(ApiError::Auth(crate::data::connectivity::AuthError::TokenExpired))
+                } else {
+                    Err(ApiError::Http { status, body: String::new() })
+                }
+            }
+            Err(e) => {
+                breaker_note_failure();
+                record(RestCall {
+                    path,
+                    status: 0,
+                    outcome: "err",
+                    ms: t0.elapsed().as_millis(),
+                    at: std::time::SystemTime::now(),
+                });
+                Err(ApiError::Network(e.to_string()))
+            }
         }
-        Ok(r) => {
-            let status = r.status().as_u16();
-            record(RestCall {
-                path,
-                status,
-                outcome: "http",
-                ms: t0.elapsed().as_millis(),
-                at: std::time::SystemTime::now(),
-            });
-            Err(ProvenanceError::Other(format!("http {status}")))
-        }
-        Err(e) => {
-            breaker_note_failure();
-            record(RestCall {
-                path,
-                status: 0,
-                outcome: "err",
-                ms: t0.elapsed().as_millis(),
-                at: std::time::SystemTime::now(),
-            });
-            Err(ProvenanceError::Other(format!("{e}")))
-        }
+    };
+
+    // Run through auth-retry so a 401 triggers refresh + one retry before failing.
+    match with_auth_retry_sync(inner) {
+        Ok(node) => Ok(node),
+        Err(ApiError::Http { status: 404, .. }) => Err(ProvenanceError::NotFound),
+        Err(ApiError::Auth(_)) => Err(ProvenanceError::Other(
+            "authentication failed (token expired or missing)".into(),
+        )),
+        Err(e) => Err(ProvenanceError::Other(e.to_string())),
     }
 }
 
@@ -749,4 +854,190 @@ pub async fn get_greeks_async(contract: &str) -> Result<GreeksRow, ApiError> {
         get_greeks(&c)
     })
     .await
+}
+
+// ── P1.8 tests — auth-retry coverage for is_live / get_provenance / get_health_ready ──
+//
+// Tests use mockito to stand up a local HTTP server and repoint the apex URL
+// at it via `set_apex_url`. `serial_test` prevents URL-override races between
+// parallel test runners (the config is process-global).
+
+#[cfg(test)]
+mod p1_8_auth_retry_tests {
+    use super::*;
+    use mockito::Server;
+    use serial_test::serial;
+
+    /// Helper: override the apex URL and clear the breaker so prior test state
+    /// doesn't bleed through.
+    fn setup(url: &str) {
+        super::super::config::set_apex_url(url);
+        super::super::config::set_enabled(true);
+        super::reset_breaker();
+    }
+
+    // ── is_live ───────────────────────────────────────────────────────────────
+
+    /// `is_live` must return `false` when the server keeps returning 401 even
+    /// after the (no-op) token refresh. This proves that the auth-retry wrapper
+    /// is engaged and propagates the final auth failure as `false` rather than
+    /// panicking or hanging.
+    #[test]
+    #[serial]
+    fn is_live_returns_false_on_persistent_auth_failure() {
+        let mut server = Server::new();
+        // Always 401 — simulates a token that can't be refreshed.
+        let _m = server
+            .mock("GET", "/api/health/live")
+            .with_status(401)
+            .with_body("Unauthorized")
+            .expect(2) // first attempt + one retry
+            .create();
+
+        setup(&server.url());
+        // Token must be set so the bearer header is sent (otherwise the server
+        // may return 200 on the no-auth path in some deployments).
+        super::super::config::set_apex_token(Some("stale-token".into()));
+
+        let result = is_live();
+        assert!(!result, "is_live should return false on persistent 401");
+
+        _m.assert();
+    }
+
+    /// Happy path: 200 → `true`.
+    #[test]
+    #[serial]
+    fn is_live_returns_true_on_200() {
+        let mut server = Server::new();
+        let _m = server
+            .mock("GET", "/api/health/live")
+            .with_status(200)
+            .with_body("ok")
+            .create();
+
+        setup(&server.url());
+        super::super::config::set_apex_token(None);
+
+        assert!(is_live());
+        _m.assert();
+    }
+
+    // ── get_provenance ────────────────────────────────────────────────────────
+
+    /// First call returns 401; after the (no-op) refresh the second call
+    /// returns 200 with a valid `ProvenanceTreeNode`. The final result should
+    /// be `Ok(node)`.
+    #[test]
+    #[serial]
+    fn get_provenance_retries_on_401_then_succeeds() {
+        let mut server = Server::new();
+        // First call: 401
+        let _m401 = server
+            .mock("GET", mockito::Matcher::Regex(r"^/api/provenance/".to_string()))
+            .with_status(401)
+            .with_body("Unauthorized")
+            .expect(1)
+            .create();
+        // Second call (after retry): 200 with a minimal node
+        let node_json = r#"{"lineage_id":"abc-123","source_engine":"test","symbol":"AAPL","t_ms":0,"kind":"signal","children":[]}"#;
+        let _m200 = server
+            .mock("GET", mockito::Matcher::Regex(r"^/api/provenance/".to_string()))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(node_json)
+            .expect(1)
+            .create();
+
+        setup(&server.url());
+        super::super::config::set_apex_token(Some("stale-token".into()));
+
+        let result = get_provenance("abc-123", 1, ProvenanceMode::Tree);
+        assert!(result.is_ok(), "Expected Ok after retry: {:?}", result);
+        let node = result.unwrap();
+        assert_eq!(node.lineage_id, "abc-123");
+
+        _m401.assert();
+        _m200.assert();
+    }
+
+    /// 404 → `ProvenanceError::NotFound` (aged-out message).
+    #[test]
+    #[serial]
+    fn get_provenance_404_returns_not_found() {
+        let mut server = Server::new();
+        let _m = server
+            .mock("GET", mockito::Matcher::Regex(r"^/api/provenance/".to_string()))
+            .with_status(404)
+            .with_body("Not Found")
+            .create();
+
+        setup(&server.url());
+        super::super::config::set_apex_token(None);
+
+        let result = get_provenance("gone-id", 1, ProvenanceMode::Tree);
+        assert!(
+            matches!(result, Err(ProvenanceError::NotFound)),
+            "Expected NotFound, got {:?}",
+            result
+        );
+        _m.assert();
+    }
+
+    // ── get_health_ready ──────────────────────────────────────────────────────
+
+    /// 503 with a `HealthReady` body → `Ok(HealthReady { ready: false, .. })`.
+    /// This verifies that the 503 special-case survives the auth-retry refactor.
+    #[test]
+    #[serial]
+    fn get_health_ready_503_returns_not_ready() {
+        let mut server = Server::new();
+        let body = r#"{"ready":false,"tick_age_ms":0,"tick_fresh":false,"redis":false,"questdb":false,"feeds_connected":0,"feeds_total":0}"#;
+        let _m = server
+            .mock("GET", "/api/health/ready")
+            .with_status(503)
+            .with_header("content-type", "application/json")
+            .with_body(body)
+            .create();
+
+        setup(&server.url());
+        super::super::config::set_apex_token(None);
+
+        let result = get_health_ready();
+        assert!(result.is_ok(), "Expected Ok for 503 path: {:?}", result);
+        assert!(!result.unwrap().ready);
+        _m.assert();
+    }
+
+    /// First call returns 401; after refresh the second call returns 200 with
+    /// a `HealthReady { ready: true }`. Verifies auth-retry is wired.
+    #[test]
+    #[serial]
+    fn get_health_ready_401_retries_via_auth() {
+        let mut server = Server::new();
+        let _m401 = server
+            .mock("GET", "/api/health/ready")
+            .with_status(401)
+            .with_body("Unauthorized")
+            .expect(1)
+            .create();
+        let body = r#"{"ready":true,"tick_age_ms":5,"tick_fresh":true,"redis":true,"questdb":true,"feeds_connected":2,"feeds_total":2}"#;
+        let _m200 = server
+            .mock("GET", "/api/health/ready")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(body)
+            .expect(1)
+            .create();
+
+        setup(&server.url());
+        super::super::config::set_apex_token(Some("stale-token".into()));
+
+        let result = get_health_ready();
+        assert!(result.is_ok(), "Expected Ok after retry: {:?}", result);
+        assert!(result.unwrap().ready);
+
+        _m401.assert();
+        _m200.assert();
+    }
 }
