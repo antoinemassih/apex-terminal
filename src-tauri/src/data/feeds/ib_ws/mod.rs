@@ -8,6 +8,8 @@
 //! Control messages (subscribe/unsubscribe) sent as JSON text — ibserver
 //! receive side stays unchanged.
 
+pub mod resolver;
+
 use std::{collections::HashSet, sync::Arc, time::Duration};
 use std::sync::atomic::{AtomicI64, AtomicU32, AtomicU64};
 
@@ -197,6 +199,20 @@ async fn ws_loop(
                                             let p = price as f32;
                                             let v = volume as f32;
                                             let sym = map.get("symbol").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                            // Wave 9b: every tick carries both `symbol` and
+                                            // `conId` — observe the pair so the resolver
+                                            // fills passively as the user streams symbols.
+                                            // Accept either casing defensively; ibserver
+                                            // is camelCase today but msgpack producers vary.
+                                            if !sym.is_empty() {
+                                                if let Some(cid) = map
+                                                    .get("conId")
+                                                    .and_then(|v| v.as_i64())
+                                                    .or_else(|| map.get("conid").and_then(|v| v.as_i64()))
+                                                {
+                                                    resolver::resolver().observe(&sym, cid);
+                                                }
+                                            }
                                             // Wave 8c: bump SubscriptionManager so IB-fed
                                             // (sym, "5m") subs become visible to gap-fill.
                                             // IB subscribes per-conId (not per-symbol), so
@@ -285,12 +301,16 @@ pub async fn ib_ws_send(
     msg: Value,
     state: tauri::State<'_, IbWsHandle>,
 ) -> Result<(), String> {
-    // Wave 8c: IB subscribes by numeric conId, not by (symbol, timeframe),
-    // so we cannot route the subscribe site through SubscriptionManager
-    // without a conId→symbol resolver. The symbol-keyed state is wired in
-    // at the binary tick frame ingress (see ws_loop) where the payload
-    // carries the symbol string. TODO(wave9): once a conId map exists,
-    // route subscribe/unsubscribe through SubscriptionManager too.
+    // Wave 8c/9b: IB subscribes by numeric conId, not by (symbol, timeframe).
+    // The resolver in `feeds::ib_ws::resolver` now provides bidirectional
+    // conId ↔ symbol mapping (populated passively from tick frames in
+    // ws_loop). No Rust-side subscribe callers exist today — all IB
+    // subscribes flow through this Tauri command from the WebView, which
+    // already knows both the conId and symbol, so SubscriptionManager
+    // bumping happens at tick ingress (symbol-keyed) rather than at
+    // subscribe time (conId-keyed). The resolver primarily benefits
+    // future Rust-side subscribe paths (see `ib_subscribe_symbol` helper
+    // sketched in the Wave 9b task notes).
 
     // Track subscription state for reconnect restoration
     if let Value::Object(ref map) = msg {
