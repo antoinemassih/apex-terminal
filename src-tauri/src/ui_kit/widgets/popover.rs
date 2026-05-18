@@ -118,7 +118,7 @@ impl<'a> Popover<'a> {
                 super::paint_shadow_gpu(
                     ui.painter(),
                     shadow_rect,
-                    super::ShadowSpec::md(),
+                    super::ShadowSpec::md_themed(theme),
                 );
                 let frame = egui::Frame::popup(ui.style())
                     .fill(bg)
@@ -129,7 +129,10 @@ impl<'a> Popover<'a> {
                         offset: [0, 4],
                         blur: 16,
                         spread: 1,
-                        color: Color32::from_black_alpha(80),
+                        color: {
+                            let s = theme.shadow_color();
+                            Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), 80)
+                        },
                     });
                 let inner = frame.show(ui, |ui| add_contents(ui));
                 result = Some(inner.inner);

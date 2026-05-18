@@ -7,10 +7,12 @@
 //!  3. Merge the cached projector readings into `watchlist.news_items` so the
 //!     legacy `NewsItem` shape downstream code knows about keeps working.
 //!  4. Render with a sentiment filter dropdown (All / Bullish / Bearish / Neutral).
+//! Chrome: `Modal + HeaderStyle::Dialog`. Body: `PanelLoading` while items
+//! are still being fetched, `PanelEmpty` when the active filter produces no
+//! matches, otherwise a list of `PanelListRow` headlines.
 
 use egui;
 use super::super::style::*;
-use super::super::widgets as widgets;
 use super::super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
 use super::super::super::gpu::{Watchlist, NewsItem, Theme};
 use crate::ui_kit::widgets::{Button, Skeleton};
@@ -89,6 +91,7 @@ fn refresh_from_projector(watchlist: &mut Watchlist, active_symbol: &str, now_ms
     all.truncate(50);
     watchlist.news_items = all.iter().map(|r| reading_to_item(r, now_ms)).collect();
 }
+use crate::ui_kit::widgets::{PanelEmpty, PanelListRow, PanelLoading};
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol: &str, t: &Theme) {
     if !watchlist.news_open { return; }
@@ -123,7 +126,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
         .id("news_feed")
         .ctx(ctx)
         .theme(t)
-        .size(egui::vec2(280.0, 400.0))
+        .size(egui::vec2(320.0, 440.0))
         .anchor(Anchor::Window { pos: Some(egui::pos2(300.0, 100.0)) })
         .frame_kind(FrameKind::Custom(frame))
         .draggable_header(true)
@@ -154,17 +157,10 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 cycle_sentiment = true;
             }
         })
+        .header_style(HeaderStyle::Dialog)
         .separator(false)
         .show(|ui| {
-            let w = ui.available_width();
-            ui.add_space(4.0);
-            let div_rect = egui::Rect::from_min_size(
-                egui::pos2(ui.cursor().min.x, ui.cursor().min.y),
-                egui::vec2(w, 1.0),
-            );
-            ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, alpha_dim()));
-            ui.add_space(4.0);
-
+            ui.add_space(gap_xs());
             draw_content(ui, watchlist, active_symbol, t);
         });
 
@@ -201,31 +197,40 @@ pub(crate) fn filtered<'a>(items: &'a [NewsItem], filter_symbol: bool, active_sy
 }
 
 /// Tab body content (no Window wrapper, no header). Used by feed_panel News tab.
+/// Tab body content (no Window wrapper, no header). Used by the floating
+/// modal above and by the feed_panel News tab.
 pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_symbol: &str, t: &Theme) {
-    let w = ui.available_width();
-    egui::ScrollArea::vertical()
-        .id_salt("news_items")
-        .show(ui, |ui| {
-            ui.set_min_width(w - 4.0);
-            let filter_active = watchlist.news_filter_symbol;
-            let sent_filter = watchlist.news_sentiment_filter;
-            let items_snapshot: Vec<NewsItem> = watchlist.news_items.clone();
-            let filtered: Vec<&NewsItem> = filtered(&items_snapshot, filter_active, active_symbol, sent_filter);
+    let active_label = if watchlist.news_filter_symbol { active_symbol } else { "All" };
+    let mut toggle_filter = false;
 
+    let section_title = if watchlist.news_filter_symbol { "HEADLINES" } else { "HEADLINES · ALL" };
+    let filter_tone = if watchlist.news_filter_symbol {
+        crate::ui_kit::widgets::PanelTone::Accent
+    } else {
+        crate::ui_kit::widgets::PanelTone::Default
+    };
+
+    let resp = crate::ui_kit::widgets::PanelSection::new(section_title)
+        .meta(active_label.to_string())
+        .action("filter", filter_tone)
+        .show(ui, t, |ui, t| {
+            let filtered: Vec<&NewsItem> = watchlist.news_items.iter()
+                .filter(|n| !watchlist.news_filter_symbol || n.symbol == active_symbol)
+                .collect();
+
+            if watchlist.news_items.is_empty() {
+                PanelLoading::new().reason("Fetching news").show(ui, t);
+                return;
+            }
             if filtered.is_empty() {
-                ui.add_space(8.0);
-                let row_w = (w - 16.0).max(80.0);
-                for _ in 0..4 {
-                    ui.add_space(4.0);
-                    Skeleton::text(row_w).show(ui, t);
-                    ui.add_space(2.0);
-                    Skeleton::text(row_w * 0.55).show(ui, t);
-                    ui.add_space(8.0);
-                }
+                PanelEmpty::new("No headlines")
+                    .hint("Try toggling the symbol filter")
+                    .show(ui, t);
+                return;
             }
 
             for news in &filtered {
-                let resp = widgets::rows::NewsRow::new(
+                let resp = super::super::widgets::rows::NewsRow::new(
                     &news.headline, &news.timestamp, &news.source, &news.symbol)
                     .sentiment(news.sentiment)
                     .height(52.0)
@@ -236,7 +241,38 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
                     let _ = open::that(&news.url);
                 }
             }
+            egui::ScrollArea::vertical()
+                .id_salt("news_items")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    for (idx, news) in filtered.iter().enumerate() {
+                        let id = format!("news_{idx}");
+                        let primary = news.headline.clone();
+                        let secondary = format!("{} · {} · {}", news.source, news.symbol, news.timestamp);
+                        let sentiment = news.sentiment;
+                        let row = PanelListRow::new(&id)
+                            .dense(false)
+                            .primary(&primary)
+                            .secondary(&secondary)
+                            .leading(move |ui, t| {
+                                let color = match sentiment {
+                                    s if s > 0 => t.bull,
+                                    s if s < 0 => t.bear,
+                                    _          => t.dim,
+                                };
+                                let (r, _) = ui.allocate_exact_size(egui::vec2(6.0, 6.0), egui::Sense::hover());
+                                ui.painter().circle_filled(r.center(), 3.0, color);
+                            })
+                            .show(ui, t);
+                        if row.clicked() && !news.url.is_empty() {
+                            // TODO: open URL
+                        }
+                    }
+                });
         });
+
+    if resp.action_clicked { toggle_filter = true; }
+    if toggle_filter { watchlist.news_filter_symbol = !watchlist.news_filter_symbol; }
 }
 
 #[cfg(test)]

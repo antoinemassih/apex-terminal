@@ -1,19 +1,31 @@
 //! Indicators panel — unified management for active indicators, library
 //! browsing, and chart-tool toggles. Operates on the active pane.
 //!
-//! The panel is additive — every indicator and toggle that exists in the legacy
-//! Indicators dropdown is reachable here without removing the old menus.
+//! Migrated to the canonical ui_kit side-panel primitives:
+//!   - `SidePanelShell` for outer chrome (was hand-rolled SidePanel + PanelFrame + PanelHeader)
+//!   - `ui_kit::PanelSection` for TOOLS / ACTIVE / LIBRARY headers (default
+//!     `.rule(true)` hairline, optional count badge)
+//!   - `ui_kit::PanelListRow` for active rows (leading color swatch + primary
+//!     label + trailing visibility / delete cluster) and library rows
+//!     (selected state encodes "on", trailing slot carries the +/ON affordance)
+//!   - `ui_kit::Button` for the tool toggles (`Button::toggle`), the inline
+//!     close-X (`Button::close`), and the add-symbol-overlay row
+//!     (`Button::simple` full-width)
+//!
+//! Indicator definitions (`Tg`, `LibItem`, `LIB_SECTIONS`, `bool_get/set`,
+//! etc.) are unchanged — this migration only touches the chrome around them.
 
 use egui;
 use super::super::style::*;
-use super::super::widgets as widgets;
-use super::super::widgets::headers::PanelHeaderWithClose;
+use crate::ui_kit::widgets::{
+    Button, PanelEmpty, PanelListRow, PanelSection, PanelSectionGroup, SidePanelShell, Width,
+};
+use crate::ui_kit::widgets::tokens::Size as KitSize;
+use crate::ui_kit::widgets::Input;
 use super::super::super::gpu::{
     Watchlist, Chart, Theme, Indicator, IndicatorType, INDICATOR_COLORS, VolumeProfileMode,
 };
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::Input;
-use crate::ui_kit::widgets::tokens::Size as KitSize;
 
 // ─── Toggle / picker IDs ────────────────────────────────────────────────────
 //
@@ -349,69 +361,66 @@ pub(crate) fn draw(
     }
     let ap = ap.min(panes.len() - 1);
 
-    egui::SidePanel::right("indicators_panel")
-        .default_width(300.0)
-        .min_width(260.0)
-        .max_width(460.0)
-        .resizable(true)
-        .frame(widgets::frames::PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build())
-        .show(ctx, |ui| {
-            let closed = PanelHeaderWithClose::new("INDICATORS").theme(t).watchlist(watchlist).show(ui);
-            if closed {
-                watchlist.indicators_panel_open = false;
-                return;
-            }
-            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
-
-            // ── Three resizable sections: Tools / Active / Library ──
-            let avail_h = ui.available_height();
-            let header_h = 26.0_f32;
-            let divider_h = 8.0_f32;
-            let divider_total = 2.0 * divider_h;
-            let header_total = 3.0 * header_h;
-            let content_h = (avail_h - divider_total - header_total).max(60.0);
-
-            let fracs = watchlist.indicators_section_fracs;
-            let sum: f32 = fracs.iter().sum();
-            let norm = if sum > 0.001 { 1.0 / sum } else { 1.0 / 3.0 };
-            let h_tools   = (fracs[0] * norm * content_h).max(40.0);
-            let h_active  = (fracs[1] * norm * content_h).max(40.0);
-            let h_library = (fracs[2] * norm * content_h).max(60.0);
-
-            // 1. Tools
+    let resp = SidePanelShell::new("indicators_panel", "INDICATORS")
+        .width(Width::Medium)
+        .pane_metrics(
+            crate::chart_renderer::gpu::pane_tabs_header_h(watchlist),
+            watchlist.pane_header_size.title_font(),
+        )
+        .show(ctx, t, |ui, t| {
+            // 3-way user-resizable split (TOOLS / ACTIVE / LIBRARY). The
+            // section fractions persist on the Watchlist so the user's
+            // chosen ratio survives panel close / app restart.
             let tools_count = active_tools_count(&panes[ap]);
-            section_header(ui, "TOOLS", Some(tools_count), t);
-            section_inset_body(ui, t, h_tools, "indicators_tools_scroll", |ui| {
-                draw_tools_section(ui, &mut panes[ap], t);
-            });
-
-            let d1 = grippy_divider(ui, "ind_div_0", t);
-            if d1 != 0.0 {
-                let delta = d1 / content_h.max(1.0);
-                watchlist.indicators_section_fracs[0] = (fracs[0] + delta).max(0.06);
-                watchlist.indicators_section_fracs[1] = (fracs[1] - delta).max(0.06);
-            }
-
-            // 2. Active
-            let active_count_total = active_count(&panes[ap]);
-            section_header(ui, "ACTIVE", Some(active_count_total), t);
-            section_inset_body(ui, t, h_active, "indicators_active_scroll", |ui| {
-                draw_active_section(ui, &mut panes[ap], t);
-            });
-
-            let d2 = grippy_divider(ui, "ind_div_1", t);
-            if d2 != 0.0 {
-                let delta = d2 / content_h.max(1.0);
-                watchlist.indicators_section_fracs[1] = (fracs[1] + delta).max(0.06);
-                watchlist.indicators_section_fracs[2] = (fracs[2] - delta).max(0.10);
-            }
-
-            // 3. Library
-            section_header(ui, "LIBRARY", None, t);
-            section_inset_body(ui, t, h_library, "indicators_library_scroll", |ui| {
-                draw_library_section(ui, watchlist, &mut panes[ap], t);
-            });
+            let active_total = active_count(&panes[ap]);
+            // Snapshot section fractions into a local so the group can
+            // own the &mut without locking out the body closures that
+            // also need &mut watchlist (for library search state).
+            let mut fracs = watchlist.indicators_section_fracs;
+            let chart = &mut panes[ap];
+            PanelSectionGroup::new(&mut fracs)
+                .min_section_height(40.0)
+                .show(ui, t, |grp| {
+                    // ── TOOLS ──
+                    grp.section(|ui, t| {
+                        PanelSection::new("TOOLS")
+                            .count(tools_count)
+                            .show(ui, t, |ui, t| {
+                                draw_tools_section(ui, chart, t);
+                            });
+                    });
+                    // ── ACTIVE ──
+                    grp.section(|ui, t| {
+                        PanelSection::new("ACTIVE")
+                            .count(active_total)
+                            .show(ui, t, |ui, t| {
+                                egui::ScrollArea::vertical()
+                                    .id_salt("indicators_active_scroll")
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        draw_active_section(ui, chart, t);
+                                    });
+                            });
+                    });
+                    // ── LIBRARY ──
+                    grp.section(|ui, t| {
+                        PanelSection::new("LIBRARY")
+                            .show(ui, t, |ui, t| {
+                                egui::ScrollArea::vertical()
+                                    .id_salt("indicators_library_scroll")
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        draw_library_section(ui, watchlist, chart, t);
+                                    });
+                            });
+                    });
+                });
+            watchlist.indicators_section_fracs = fracs;
         });
+
+    if resp.close_clicked {
+        watchlist.indicators_panel_open = false;
+    }
 }
 
 /// Count of every active "thing" on the chart (indicators + toggles + special).
@@ -431,127 +440,10 @@ fn active_tools_count(c: &Chart) -> usize {
         .iter().filter(|tg| bool_get(c, **tg)).count()
 }
 
-/// Polished section header: vertical accent stripe, uppercase label, optional
-/// count badge on the right. Reads at-a-glance like a Figma panel header.
-fn section_header(ui: &mut egui::Ui, title: &str, count: Option<usize>, t: &Theme) {
-    let h = 26.0_f32;
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), h), egui::Sense::hover());
-    let p = ui.painter_at(rect);
-
-    // Accent stripe (left edge), only intrudes 2px so it reads as a tab marker.
-    let stripe_x = rect.left() + 1.0;
-    p.line_segment(
-        [egui::pos2(stripe_x, rect.top() + 6.0), egui::pos2(stripe_x, rect.bottom() - 6.0)],
-        egui::Stroke::new(stroke_thick(), color_alpha(t.accent, alpha_strong())),
-    );
-
-    // Title — uppercase, monospace small, slightly emphasised.
-    p.text(
-        egui::pos2(rect.left() + 10.0, rect.center().y),
-        egui::Align2::LEFT_CENTER,
-        title,
-        egui::FontId::monospace(font_xs()),
-        t.text,
-    );
-
-    // Count chip (subtle dim) on the right.
-    if let Some(n) = count {
-        let chip_text = format!("{}", n);
-        let galley = p.layout_no_wrap(chip_text.clone(),
-            egui::FontId::monospace(font_xs()), t.dim.gamma_multiply(0.85));
-        let chip_w = galley.size().x + 10.0;
-        let chip_h = 14.0;
-        let chip_rect = egui::Rect::from_min_size(
-            egui::pos2(rect.right() - chip_w - 6.0, rect.center().y - chip_h / 2.0),
-            egui::vec2(chip_w, chip_h),
-        );
-        p.rect_filled(chip_rect, 7.0, color_alpha(t.toolbar_border, alpha_subtle()));
-        p.text(
-            chip_rect.center(),
-            egui::Align2::CENTER_CENTER,
-            chip_text,
-            egui::FontId::monospace(font_xs()),
-            t.dim,
-        );
-    }
-}
-
-/// Inset body for a section. Subtle bg + 1px hairline border so the section
-/// reads as a card inset under the header.
-fn section_inset_body(
-    ui: &mut egui::Ui,
-    t: &Theme,
-    height: f32,
-    id_salt: &str,
-    add_contents: impl FnOnce(&mut egui::Ui),
-) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), egui::Sense::hover());
-    let bg = color_alpha(t.toolbar_border, 22);
-    ui.painter().rect_filled(rect, 5.0, bg);
-    ui.painter().rect_stroke(
-        rect, 5.0,
-        egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_subtle())),
-        egui::StrokeKind::Inside,
-    );
-
-    let mut child = ui.new_child(
-        egui::UiBuilder::new()
-            .max_rect(rect.shrink2(egui::vec2(6.0, 6.0)))
-            .layout(egui::Layout::top_down(egui::Align::Min)),
-    );
-    egui::ScrollArea::vertical()
-        .id_salt(id_salt)
-        .auto_shrink([false; 2])
-        .max_height(rect.height() - 12.0)
-        .show(&mut child, add_contents);
-}
-
-/// Custom resize handle between sections — Figma/Framer style 6-dot grip on
-/// hover. Returns drag delta in pixels.
-fn grippy_divider(ui: &mut egui::Ui, _id_salt: &str, t: &Theme) -> f32 {
-    let h = 8.0_f32;
-    let (rect, resp) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), h),
-        egui::Sense::drag(),
-    );
-    let active = resp.hovered() || resp.dragged();
-    if active {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
-        // Subtle hover bg
-        ui.painter().rect_filled(rect, 0.0, color_alpha(t.accent, 14));
-        // 6-dot grip in the centre
-        let cy = rect.center().y;
-        let cx = rect.center().x;
-        let dot_r = 1.5_f32;
-        let dot_sp = 4.0_f32;
-        let dot_col = if resp.dragged() { t.accent } else { t.dim.gamma_multiply(0.9) };
-        for i in -2..=2 {
-            if i == 0 { continue; }
-            ui.painter().circle_filled(
-                egui::pos2(cx + i as f32 * dot_sp, cy - 2.0),
-                dot_r, dot_col,
-            );
-            ui.painter().circle_filled(
-                egui::pos2(cx + i as f32 * dot_sp, cy + 2.0),
-                dot_r, dot_col,
-            );
-        }
-    } else {
-        // Resting state: micro hairline at the centre, barely visible
-        let cy = rect.center().y;
-        ui.painter().line_segment(
-            [egui::pos2(rect.left() + 12.0, cy), egui::pos2(rect.right() - 12.0, cy)],
-            egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_subtle())),
-        );
-    }
-    if resp.dragged() { resp.drag_delta().y } else { 0.0 }
-}
-
 // ─── Tools section ───────────────────────────────────────────────────────────
 
 fn draw_tools_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
-    // Single Figma-style icon toolbar. Groups are separated by a hairline
-    // vertical divider. Tools wrap on narrow panels.
+    // Single icon-toggle toolbar. Groups separated by hairline vertical dividers.
     let groups: &[(&[Tg], &[&str])] = &[
         // Cursor group
         (&[Tg::Magnet, Tg::OhlcTip, Tg::MeasureTip, Tg::Footprint],
@@ -583,36 +475,21 @@ fn draw_tools_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
     });
 }
 
-/// Compact Figma/Framer-style tool button — icon-only, square, pill-rounded.
-/// Active state: accent foreground + tinted background.
+/// Compact icon-only toggle button — uses the canonical `Button::toggle`
+/// preset so the active accent tint matches every other toggle chip in the app.
 fn tool_btn(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart, tg: Tg, tooltip: &str) {
     let active = bool_get(chart, tg);
-    let size = egui::vec2(26.0, 24.0);
-    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
-    let hovered = resp.hovered();
-
-    let bg = if active {
-        color_alpha(t.accent, alpha_tint())
-    } else if hovered {
-        color_alpha(t.toolbar_border, alpha_subtle())
-    } else {
-        egui::Color32::TRANSPARENT
-    };
-    let fg = if active { t.accent } else if hovered { t.text } else { t.dim };
-
-    ui.painter().rect_filled(rect, 4.0, bg);
-    if hovered {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-    }
-    ui.painter().text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        tool_icon(tg),
-        egui::FontId::proportional(15.0),
-        fg,
-    );
-
-    let resp = resp.on_hover_text(format!("{}\n{}", bool_label(tg), tooltip));
+    // Icon-only toggle: use Button::icon() so leading_icon is populated
+    // (the icon_only paint path only renders leading_icon, not label).
+    // Then layer Variant::Toggle on top so the active state matches
+    // every other toggle chip in the app.
+    let resp = Button::icon(tool_icon(tg))
+        .variant(crate::ui_kit::widgets::tokens::Variant::Toggle)
+        .active(active)
+        .size(KitSize::Sm)
+        .min_size(egui::vec2(26.0, row_height_spacious()))
+        .show(ui, t)
+        .on_hover_text(format!("{}\n{}", bool_label(tg), tooltip));
     if resp.clicked() { bool_set(chart, tg, !active); }
 }
 
@@ -629,7 +506,6 @@ fn tool_group_divider(ui: &mut egui::Ui, t: &Theme) {
 // ─── Active section ─────────────────────────────────────────────────────────
 
 fn draw_active_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
-    // Count active = real indicators + active boolean toggles + non-Off VP + non-Off swing
     let active_toggles = library_active_toggles();
     let active_bool_count = active_toggles.iter().filter(|tg| bool_get(chart, **tg)).count();
     let vp_active = chart.vp_mode != VolumeProfileMode::Off;
@@ -642,9 +518,8 @@ fn draw_active_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
         + overlay_count;
 
     if total_active == 0 {
-        ui.label(egui::RichText::new("No indicators or overlays on this pane.")
-            .monospace().size(font_sm()).color(color_subtle(t.dim)));
-        ui.add_space(4.0);
+        PanelEmpty::new("No indicators or overlays on this pane.").show(ui, t);
+        ui.add_space(gap_xs());
         add_overlay_button(ui, t, chart);
         return;
     }
@@ -671,10 +546,7 @@ fn draw_active_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
     if vp_active { active_vp_row(ui, t, chart); }
     if swing_active { active_swing_row(ui, t, chart); }
 
-    // ── Symbol overlays ──────────────────────────────────────────────────
-    // Each is a separate ticker overlaid on the chart. The actual add/edit
-    // dialog lives in `overlay_manager.rs`; we just open it via the
-    // overlay_editing/overlay_editing_idx state pair.
+    // Symbol overlays
     let mut overlay_remove: Option<usize> = None;
     let mut overlay_edit: Option<usize> = None;
     for i in 0..chart.symbol_overlays.len() {
@@ -689,9 +561,16 @@ fn draw_active_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
         chart.overlay_input = chart.symbol_overlays[i].symbol.clone();
     }
 
-    // Add-overlay affordance — always rendered after the list.
-    ui.add_space(4.0);
+    ui.add_space(gap_xs());
     add_overlay_button(ui, t, chart);
+}
+
+/// Paint a 10px color swatch into the leading slot.
+fn paint_swatch(ui: &mut egui::Ui, color: egui::Color32) {
+    let swatch_size = 10.0;
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(swatch_size, swatch_size), egui::Sense::hover());
+    ui.painter().rect_filled(rect, 2.0, color);
 }
 
 fn active_symbol_overlay_row(
@@ -706,46 +585,56 @@ fn active_symbol_overlay_row(
         let ov = &chart.symbol_overlays[idx];
         (ov.symbol.clone(), ov.color.clone(), ov.visible, ov.loading)
     };
-    ui.horizontal(|ui| {
-        ui.set_min_height(22.0);
-        let swatch_size = 10.0;
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(swatch_size, swatch_size), egui::Sense::hover());
-        ui.painter().rect_filled(rect, 2.0, hex_to_color(&color_hex, 1.0));
-        ui.add_space(4.0);
+    let primary = if loading { format!("{} (loading…)", symbol) } else { symbol.clone() };
+    let id_salt = format!("ov_{}", idx);
+    let swatch_col = hex_to_color(&color_hex, 1.0);
+    let secondary = "OV";
 
-        let label = if loading { format!("{} (loading…)", symbol) } else { symbol.clone() };
-        let txt_color = if visible { t.text } else { color_half(t.dim) };
-        let label_resp = ui.label(egui::RichText::new(label).monospace().size(font_sm()).color(txt_color));
-        if label_resp.double_clicked() { *edit = Some(idx); }
+    let want_remove = std::cell::Cell::new(false);
+    let want_edit = std::cell::Cell::new(false);
+    let want_toggle_vis = std::cell::Cell::new(false);
+    let r_ref = &want_remove;
+    let e_ref = &want_edit;
+    let v_ref = &want_toggle_vis;
 
-        // Tag the row with "OV" so users distinguish overlays from indicators
-        ui.label(egui::RichText::new("OV").monospace().size(font_xs()).color(color_muted(t.dim)));
-
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if mini_btn(ui, t, "\u{00D7}", "Remove overlay", false).clicked() {
-                *remove = Some(idx);
+    PanelListRow::new(&id_salt)
+        .leading(move |ui, _t| { paint_swatch(ui, swatch_col); })
+        .primary(&primary)
+        .secondary(secondary)
+        .trailing(move |ui, t| {
+            if Button::close().show(ui, t).on_hover_text("Remove overlay").clicked() {
+                r_ref.set(true);
             }
-            if mini_btn(ui, t, Icon::PENCIL_LINE, "Edit symbol / color", false).clicked() {
-                *edit = Some(idx);
+            if Button::icon(Icon::PENCIL_LINE)
+                .size(KitSize::Xs)
+                .show(ui, t)
+                .on_hover_text("Edit symbol / color")
+                .clicked()
+            {
+                e_ref.set(true);
             }
             let eye = if visible { Icon::EYE } else { Icon::EYE_SLASH };
-            if mini_btn(ui, t, eye, "Show / hide", visible).clicked() {
-                chart.symbol_overlays[idx].visible = !visible;
+            if Button::icon(eye)
+                .size(KitSize::Xs)
+                .active(visible)
+                .show(ui, t)
+                .on_hover_text("Show / hide")
+                .clicked()
+            {
+                v_ref.set(true);
             }
-        });
-    });
+        })
+        .dense(false)
+        .show(ui, t);
+
+    if want_remove.get() { *remove = Some(idx); }
+    if want_edit.get() { *edit = Some(idx); }
+    if want_toggle_vis.get() { chart.symbol_overlays[idx].visible = !visible; }
 }
 
 fn add_overlay_button(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
-    let resp = ui.add(
-        egui::Button::new(
-            egui::RichText::new(format!("{}  Add symbol overlay", Icon::PLUS))
-                .monospace().size(font_sm()).color(t.dim))
-            .fill(egui::Color32::TRANSPARENT)
-            .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_muted())))
-            .corner_radius(3.0)
-            .min_size(egui::vec2(ui.available_width(), 22.0)),
-    );
+    let label = format!("{}  Add symbol overlay", Icon::PLUS);
+    let resp = Button::outline_full_width(label.as_str()).show(ui, t);
     if resp.clicked() {
         chart.overlay_editing = true;
         chart.overlay_editing_idx = None;
@@ -775,75 +664,101 @@ fn active_indicator_row(
     remove_id: &mut Option<u32>,
     edit_id: &mut Option<u32>,
 ) {
-    ui.horizontal(|ui| {
-        ui.set_min_height(22.0);
-        let swatch_size = 10.0;
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(swatch_size, swatch_size), egui::Sense::hover());
-        let col = hex_to_color(&ind.color, 1.0);
-        ui.painter().rect_filled(rect, 2.0, col);
-        ui.add_space(4.0);
-        let txt_color = if ind.visible { t.text } else { color_half(t.dim) };
-        ui.label(egui::RichText::new(ind.display_name()).monospace().size(font_sm()).color(txt_color));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if mini_btn(ui, t, "\u{00D7}", "Remove", false).clicked() { *remove_id = Some(ind.id); }
-            if mini_btn(ui, t, Icon::GEAR, "Edit", false).clicked() { *edit_id = Some(ind.id); }
-            let eye = if ind.visible { Icon::EYE } else { Icon::EYE_SLASH };
-            if mini_btn(ui, t, eye, "Show / hide", ind.visible).clicked() { ind.visible = !ind.visible; }
-        });
-    });
+    let id = ind.id;
+    let visible = ind.visible;
+    let swatch_col = hex_to_color(&ind.color, 1.0);
+    let name = ind.display_name();
+    let id_salt = format!("ind_{}", id);
+
+    let want_remove = std::cell::Cell::new(false);
+    let want_edit = std::cell::Cell::new(false);
+    let want_toggle_vis = std::cell::Cell::new(false);
+    let r_ref = &want_remove;
+    let e_ref = &want_edit;
+    let v_ref = &want_toggle_vis;
+
+    PanelListRow::new(&id_salt)
+        .leading(move |ui, _t| { paint_swatch(ui, swatch_col); })
+        .primary(&name)
+        .trailing(move |ui, t| {
+            if Button::close().show(ui, t).on_hover_text("Remove indicator").clicked() { r_ref.set(true); }
+            if Button::icon(Icon::GEAR)
+                .size(KitSize::Xs)
+                .show(ui, t)
+                .on_hover_text("Edit")
+                .clicked()
+            {
+                e_ref.set(true);
+            }
+            let eye = if visible { Icon::EYE } else { Icon::EYE_SLASH };
+            if Button::icon(eye)
+                .size(KitSize::Xs)
+                .active(visible)
+                .show(ui, t)
+                .on_hover_text("Show / hide")
+                .clicked()
+            {
+                v_ref.set(true);
+            }
+        })
+        .show(ui, t);
+
+    if want_remove.get() { *remove_id = Some(id); }
+    if want_edit.get() { *edit_id = Some(id); }
+    if want_toggle_vis.get() { ind.visible = !visible; }
 }
 
 fn active_bool_row(ui: &mut egui::Ui, t: &Theme, tg: Tg, to_disable: &mut Option<Tg>) {
-    ui.horizontal(|ui| {
-        ui.set_min_height(22.0);
-        // Small accent-colored pip as a "swatch" stand-in
-        let swatch_size = 10.0;
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(swatch_size, swatch_size), egui::Sense::hover());
-        ui.painter().rect_filled(rect, 2.0, color_alpha(t.accent, alpha_strong()));
-        ui.add_space(4.0);
-        ui.label(egui::RichText::new(bool_label(tg)).monospace().size(font_sm()).color(t.text));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if mini_btn(ui, t, "\u{00D7}", "Disable", false).clicked() { *to_disable = Some(tg); }
-        });
-    });
+    let accent = color_alpha(t.accent, alpha_strong());
+    let id_salt = format!("act_bool_{:?}", tg as u8 as usize);
+    let want_disable = std::cell::Cell::new(false);
+    let d_ref = &want_disable;
+    PanelListRow::new(&id_salt)
+        .leading(move |ui, _t| { paint_swatch(ui, accent); })
+        .primary(bool_label(tg))
+        .trailing(move |ui, t| {
+            if Button::close().show(ui, t).on_hover_text("Disable").clicked() {
+                d_ref.set(true);
+            }
+        })
+        .show(ui, t);
+    if want_disable.get() { *to_disable = Some(tg); }
 }
 
 fn active_vp_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
-    ui.horizontal(|ui| {
-        ui.set_min_height(22.0);
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
-        ui.painter().rect_filled(rect, 2.0, color_alpha(t.accent, alpha_strong()));
-        ui.add_space(4.0);
-        ui.label(egui::RichText::new(format!("Volume profile · {}", vp_label(chart.vp_mode)))
-            .monospace().size(font_sm()).color(t.text));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if mini_btn(ui, t, "\u{00D7}", "Disable", false).clicked() {
-                chart.vp_mode = VolumeProfileMode::Off; chart.vp_data = None;
+    let accent = color_alpha(t.accent, alpha_strong());
+    let primary = format!("Volume profile · {}", vp_label(chart.vp_mode));
+    let want_disable = std::cell::Cell::new(false);
+    let d_ref = &want_disable;
+    PanelListRow::new("act_vp")
+        .leading(move |ui, _t| { paint_swatch(ui, accent); })
+        .primary(&primary)
+        .trailing(move |ui, t| {
+            if Button::close().show(ui, t).on_hover_text("Disable").clicked() {
+                d_ref.set(true);
             }
-        });
-    });
+        })
+        .show(ui, t);
+    if want_disable.get() {
+        chart.vp_mode = VolumeProfileMode::Off; chart.vp_data = None;
+    }
 }
 
 fn active_swing_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
-    ui.horizontal(|ui| {
-        ui.set_min_height(22.0);
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
-        ui.painter().rect_filled(rect, 2.0, color_alpha(t.accent, alpha_strong()));
-        ui.add_space(4.0);
-        ui.label(egui::RichText::new(format!("SwingRange · {}", swing_label(chart.swing_leg_mode)))
-            .monospace().size(font_sm()).color(t.text));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if mini_btn(ui, t, "\u{00D7}", "Disable", false).clicked() { chart.swing_leg_mode = 0; }
-        });
-    });
-}
-
-fn mini_btn(ui: &mut egui::Ui, t: &Theme, icon: &str, tip: &str, active: bool) -> egui::Response {
-    let col = if active { t.text } else { color_subtle(t.dim) };
-    ui.add(egui::Button::new(egui::RichText::new(icon).size(font_md()).color(col))
-        .fill(egui::Color32::TRANSPARENT)
-        .min_size(egui::vec2(20.0, 20.0)))
-        .on_hover_text(tip)
+    let accent = color_alpha(t.accent, alpha_strong());
+    let primary = format!("SwingRange · {}", swing_label(chart.swing_leg_mode));
+    let want_disable = std::cell::Cell::new(false);
+    let d_ref = &want_disable;
+    PanelListRow::new("act_swing")
+        .leading(move |ui, _t| { paint_swatch(ui, accent); })
+        .primary(&primary)
+        .trailing(move |ui, t| {
+            if Button::close().show(ui, t).on_hover_text("Disable").clicked() {
+                d_ref.set(true);
+            }
+        })
+        .show(ui, t);
+    if want_disable.get() { chart.swing_leg_mode = 0; }
 }
 
 // ─── Library section ────────────────────────────────────────────────────────
@@ -863,13 +778,12 @@ fn draw_library_section(
             .full_width()
             .show(ui, t);
     });
-    ui.add_space(4.0);
+    ui.add_space(gap_xs());
 
     let query = watchlist.indicators_panel_search.trim().to_lowercase();
     let force_open = !query.is_empty();
 
-    // Build the visible-section list first so we know where to draw dividers
-    // (only between *visible* sections, not after empty ones).
+    // Build visible-section list first so we know where to draw dividers.
     let visible: Vec<(usize, Vec<&LibItem>)> = LIB_SECTIONS
         .iter()
         .enumerate()
@@ -884,7 +798,7 @@ fn draw_library_section(
         let key = sec.title.to_string();
         let collapsed = !force_open && watchlist.indicators_lib_collapsed.contains(&key);
 
-        // ── Clickable header ─────────────────────────────────────────────
+        // ── Clickable category header (caret + title + count chip) ──
         let header_h = 24.0;
         let (h_rect, h_resp) = ui.allocate_exact_size(
             egui::vec2(ui.available_width(), header_h),
@@ -897,27 +811,24 @@ fn draw_library_section(
         }
         let painter = ui.painter_at(h_rect);
         let cy = h_rect.center().y;
-        // Caret: monospace + Phosphor (matches Icon constants which are
-        // mapped into the monospace family in init_fonts).
         let caret = if collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
         painter.text(
             egui::pos2(h_rect.left() + 8.0, cy),
             egui::Align2::LEFT_CENTER,
             caret,
-            egui::FontId::monospace(font_sm()),
+            mono_sm(),
             t.dim,
         );
         painter.text(
             egui::pos2(h_rect.left() + 22.0, cy),
             egui::Align2::LEFT_CENTER,
             sec.title,
-            egui::FontId::monospace(font_sm()),
-            if hovered { t.text } else { t.text.gamma_multiply(0.92) },
+            mono_sm(),
+            if hovered { t.text } else { color_subtle(t.text) },
         );
-        // Count chip — pill-shaped, mirrors the section-header chip.
         let chip_text = format!("{}", matches.len());
         let galley = painter.layout_no_wrap(chip_text.clone(),
-            egui::FontId::monospace(font_xs()), t.dim);
+            mono_xs(), t.dim);
         let chip_w = galley.size().x + 10.0;
         let chip_h = 14.0;
         let chip_rect = egui::Rect::from_min_size(
@@ -926,48 +837,23 @@ fn draw_library_section(
         );
         painter.rect_filled(chip_rect, 7.0, color_alpha(t.toolbar_border, alpha_subtle()));
         painter.text(chip_rect.center(), egui::Align2::CENTER_CENTER,
-            chip_text, egui::FontId::monospace(font_xs()), t.dim);
+            chip_text, mono_xs(), t.dim);
 
         if h_resp.clicked() && !force_open {
             if collapsed { watchlist.indicators_lib_collapsed.remove(&key); }
             else { watchlist.indicators_lib_collapsed.insert(key); }
         }
 
-        // ── Inset body ───────────────────────────────────────────────────
+        // ── Body — rows via PanelListRow (selected state encodes "on") ──
         if !collapsed {
-            let row_h: f32 = 22.0;
-            let body_h_estimate: f32 = matches.len() as f32 * row_h + 6.0;
-            let (body_rect, _) = ui.allocate_exact_size(
-                egui::vec2(ui.available_width(), body_h_estimate),
-                egui::Sense::hover(),
-            );
-            // Body inset: clearly visible alpha + 1px hairline so the body
-            // reads as a card under the header, not a flush continuation.
-            ui.painter().rect_filled(
-                body_rect, 3.0,
-                color_alpha(t.toolbar_border, 28),
-            );
-            ui.painter().rect_stroke(
-                body_rect, 3.0,
-                egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_subtle())),
-                egui::StrokeKind::Inside,
-            );
-
-            let mut child = ui.new_child(
-                egui::UiBuilder::new()
-                    .max_rect(body_rect.shrink2(egui::vec2(3.0, 3.0)))
-                    .layout(egui::Layout::top_down(egui::Align::Min)),
-            );
             for item in matches {
-                lib_row(&mut child, t, **item, chart);
+                lib_row(ui, t, **item, chart, *sec_idx);
             }
         }
 
-        // ── Divider between accordion sections ───────────────────────────
-        // Inset hairline that sits between sections without touching the
-        // panel edges — Figma-style architectural division.
+        // ── Inset hairline divider between visible category sections ──
         if vi + 1 < visible.len() {
-            ui.add_space(4.0);
+            ui.add_space(gap_xs());
             let (div_rect, _) = ui.allocate_exact_size(
                 egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
             ui.painter().line_segment(
@@ -975,7 +861,7 @@ fn draw_library_section(
                  egui::pos2(div_rect.right() - 8.0, div_rect.center().y)],
                 egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_muted())),
             );
-            ui.add_space(4.0);
+            ui.add_space(gap_xs());
         }
     }
 }
@@ -991,53 +877,54 @@ fn matches_query(item: LibItem, q: &str) -> bool {
     short.to_lowercase().contains(q) || long.to_lowercase().contains(q)
 }
 
-fn lib_row(ui: &mut egui::Ui, t: &Theme, item: LibItem, chart: &mut Chart) {
+fn lib_row(ui: &mut egui::Ui, t: &Theme, item: LibItem, chart: &mut Chart, sec_idx: usize) {
     match item {
-        LibItem::Ind(k) => lib_ind_row(ui, t, k, chart),
-        LibItem::Bool(tg) => lib_bool_row(ui, t, tg, chart),
-        LibItem::VpMode => lib_vp_row(ui, t, chart),
-        LibItem::SwingRange => lib_swing_row(ui, t, chart),
+        LibItem::Ind(k) => lib_ind_row(ui, t, k, chart, sec_idx),
+        LibItem::Bool(tg) => lib_bool_row(ui, t, tg, chart, sec_idx),
+        LibItem::VpMode => lib_vp_row(ui, t, chart, sec_idx),
+        LibItem::SwingRange => lib_swing_row(ui, t, chart, sec_idx),
     }
 }
 
-fn lib_ind_row(ui: &mut egui::Ui, t: &Theme, kind: IndicatorType, chart: &mut Chart) {
+/// Build a stable per-row id_salt that uniquely keys this library row
+/// across panel sections (since the same item enum could in principle appear
+/// twice).
+fn lib_id(sec_idx: usize, tag: &str) -> String {
+    format!("lib_{}_{}", sec_idx, tag)
+}
+
+fn lib_ind_row(ui: &mut egui::Ui, t: &Theme, kind: IndicatorType, chart: &mut Chart, sec_idx: usize) {
     let single = is_single_instance(kind);
     let count = chart.indicators.iter().filter(|i| i.kind == kind).count();
     let active = count > 0;
-
-    let row_h = 22.0;
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), row_h), egui::Sense::click());
-    let hovered = resp.hovered();
-    let bg = if single && active {
-        color_alpha(t.accent, alpha_tint())
-    } else if hovered {
-        color_alpha(t.toolbar_border, alpha_subtle())
-    } else { egui::Color32::TRANSPARENT };
-    ui.painter().rect_filled(rect, 3.0, bg);
-    if hovered { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-
-    let painter = ui.painter_at(rect);
-    let cy = rect.center().y;
-    let label_x = rect.left() + 16.0;
-    let label_col = if single && active { t.accent } else { t.text };
-    painter.text(egui::pos2(label_x, cy), egui::Align2::LEFT_CENTER,
-        kind.label(), egui::FontId::monospace(font_sm()), label_col);
-    let tag_w = 50.0;
-    painter.text(egui::pos2(label_x + tag_w, cy), egui::Align2::LEFT_CENTER,
-        type_long_name(kind), egui::FontId::monospace(font_xs()), t.dim);
-
-    let right_x = rect.right() - 8.0;
-    if single {
-        let lbl = if active { "ON" } else { "+" };
-        let col = if active { t.accent } else { t.dim };
-        painter.text(egui::pos2(right_x, cy), egui::Align2::RIGHT_CENTER, lbl, egui::FontId::monospace(font_xs()), col);
+    // For multi-instance: never show selected state (each click adds a new one).
+    let selected = single && active;
+    let id_salt = lib_id(sec_idx, kind.label());
+    let trail_text: String = if single {
+        if active { "ON".into() } else { "+".into() }
     } else if count > 0 {
-        painter.text(egui::pos2(right_x, cy), egui::Align2::RIGHT_CENTER,
-            format!("+ ({})", count), egui::FontId::monospace(font_xs()), t.dim.gamma_multiply(0.8));
+        format!("+ ({})", count)
     } else {
-        painter.text(egui::pos2(right_x, cy), egui::Align2::RIGHT_CENTER,
-            "+", egui::FontId::monospace(font_md()), t.dim);
-    }
+        "+".into()
+    };
+    let trail_col = if active { t.accent } else { t.dim };
+    let label = kind.label();
+    let long = type_long_name(kind);
+    let resp = PanelListRow::new(&id_salt)
+        .primary(label)
+        .secondary(long)
+        .selected(selected)
+        .divided(true)
+        .trailing(move |ui, _t| {
+            ui.label(
+                egui::RichText::new(&trail_text)
+                    .monospace()
+                    .size(font_xs())
+                    .color(trail_col),
+            );
+        })
+        .dense(false)
+        .show(ui, t);
 
     if resp.clicked() {
         if single && active {
@@ -1054,57 +941,46 @@ fn lib_ind_row(ui: &mut egui::Ui, t: &Theme, kind: IndicatorType, chart: &mut Ch
     }
 }
 
-fn lib_bool_row(ui: &mut egui::Ui, t: &Theme, tg: Tg, chart: &mut Chart) {
+fn lib_bool_row(ui: &mut egui::Ui, t: &Theme, tg: Tg, chart: &mut Chart, sec_idx: usize) {
     let active = bool_get(chart, tg);
-    let row_h = 22.0;
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), row_h), egui::Sense::click());
-    let hovered = resp.hovered();
-    let bg = if active { color_alpha(t.accent, alpha_tint()) }
-        else if hovered { color_alpha(t.toolbar_border, alpha_subtle()) }
-        else { egui::Color32::TRANSPARENT };
-    ui.painter().rect_filled(rect, 3.0, bg);
-    if hovered { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-
-    let painter = ui.painter_at(rect);
-    let cy = rect.center().y;
-    let label_x = rect.left() + 16.0;
-    let label_col = if active { t.accent } else { t.text };
-    painter.text(egui::pos2(label_x, cy), egui::Align2::LEFT_CENTER,
-        bool_label(tg), egui::FontId::monospace(font_sm()), label_col);
-
-    let right_x = rect.right() - 8.0;
-    let lbl = if active { "ON" } else { "+" };
-    let col = if active { t.accent } else { t.dim };
-    painter.text(egui::pos2(right_x, cy), egui::Align2::RIGHT_CENTER,
-        lbl, egui::FontId::monospace(font_xs()), col);
-
+    let id_salt = lib_id(sec_idx, bool_label(tg));
+    let trail_text: &str = if active { "ON" } else { "+" };
+    let trail_col = if active { t.accent } else { t.dim };
+    let label = bool_label(tg);
+    let resp = PanelListRow::new(&id_salt)
+        .primary(label)
+        .selected(active)
+        .divided(true)
+        .trailing(move |ui, _t| {
+            ui.label(
+                egui::RichText::new(trail_text)
+                    .monospace()
+                    .size(font_xs())
+                    .color(trail_col),
+            );
+        })
+        .show(ui, t);
     if resp.clicked() { bool_set(chart, tg, !active); }
 }
 
-fn lib_vp_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
+fn lib_vp_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart, sec_idx: usize) {
     let active = chart.vp_mode != VolumeProfileMode::Off;
-    let row_h = 22.0;
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), row_h), egui::Sense::click());
-    let hovered = resp.hovered();
-    let bg = if active { color_alpha(t.accent, alpha_tint()) }
-        else if hovered { color_alpha(t.toolbar_border, alpha_subtle()) }
-        else { egui::Color32::TRANSPARENT };
-    ui.painter().rect_filled(rect, 3.0, bg);
-    if hovered { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-
-    let painter = ui.painter_at(rect);
-    let cy = rect.center().y;
-    let label_x = rect.left() + 16.0;
-    let label_col = if active { t.accent } else { t.text };
-    painter.text(egui::pos2(label_x, cy), egui::Align2::LEFT_CENTER,
-        "Volume profile", egui::FontId::monospace(font_sm()), label_col);
-
-    let right_x = rect.right() - 8.0;
-    let lbl = if active { vp_label(chart.vp_mode) } else { "+" };
-    let col = if active { t.accent } else { t.dim };
-    painter.text(egui::pos2(right_x, cy), egui::Align2::RIGHT_CENTER,
-        lbl, egui::FontId::monospace(font_xs()), col);
-
+    let id_salt = lib_id(sec_idx, "VP");
+    let trail_text: String = if active { vp_label(chart.vp_mode).to_string() } else { "+".to_string() };
+    let trail_col = if active { t.accent } else { t.dim };
+    let resp = PanelListRow::new(&id_salt)
+        .primary("Volume profile")
+        .selected(active)
+        .divided(true)
+        .trailing(move |ui, _t| {
+            ui.label(
+                egui::RichText::new(&trail_text)
+                    .monospace()
+                    .size(font_xs())
+                    .color(trail_col),
+            );
+        })
+        .show(ui, t);
     if resp.clicked() {
         // Cycle Off → Classic → Heatmap → Strip → Clean → Off
         chart.vp_mode = match chart.vp_mode {
@@ -1118,29 +994,23 @@ fn lib_vp_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
     }
 }
 
-fn lib_swing_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
+fn lib_swing_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart, sec_idx: usize) {
     let active = chart.swing_leg_mode > 0;
-    let row_h = 22.0;
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), row_h), egui::Sense::click());
-    let hovered = resp.hovered();
-    let bg = if active { color_alpha(t.accent, alpha_tint()) }
-        else if hovered { color_alpha(t.toolbar_border, alpha_subtle()) }
-        else { egui::Color32::TRANSPARENT };
-    ui.painter().rect_filled(rect, 3.0, bg);
-    if hovered { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-
-    let painter = ui.painter_at(rect);
-    let cy = rect.center().y;
-    let label_x = rect.left() + 16.0;
-    let label_col = if active { t.accent } else { t.text };
-    painter.text(egui::pos2(label_x, cy), egui::Align2::LEFT_CENTER,
-        "SwingRange", egui::FontId::monospace(font_sm()), label_col);
-
-    let right_x = rect.right() - 8.0;
-    let lbl = if active { swing_label(chart.swing_leg_mode) } else { "+" };
-    let col = if active { t.accent } else { t.dim };
-    painter.text(egui::pos2(right_x, cy), egui::Align2::RIGHT_CENTER,
-        lbl, egui::FontId::monospace(font_xs()), col);
-
+    let id_salt = lib_id(sec_idx, "SR");
+    let trail_text: String = if active { swing_label(chart.swing_leg_mode).to_string() } else { "+".to_string() };
+    let trail_col = if active { t.accent } else { t.dim };
+    let resp = PanelListRow::new(&id_salt)
+        .primary("SwingRange")
+        .selected(active)
+        .divided(true)
+        .trailing(move |ui, _t| {
+            ui.label(
+                egui::RichText::new(&trail_text)
+                    .monospace()
+                    .size(font_xs())
+                    .color(trail_col),
+            );
+        })
+        .show(ui, t);
     if resp.clicked() { chart.swing_leg_mode = (chart.swing_leg_mode + 1) % 3; }
 }

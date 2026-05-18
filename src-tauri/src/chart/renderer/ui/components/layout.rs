@@ -13,7 +13,7 @@
 use egui::{Color32, Response, Sense, Ui, Vec2};
 use crate::ui_kit::icons::Icon;
 use super::super::style::{
-    self, split_divider, gap_sm, gap_md, gap_lg, GAP_SM, GAP_MD, GAP_LG,
+    self, color_dim, color_muted, split_divider, gap_sm, gap_md, gap_lg, GAP_SM, GAP_MD, GAP_LG,
 };
 use super::super::components::empty_state_panel;
 
@@ -84,7 +84,7 @@ fn vertical_split_divider(ui: &mut Ui, _id_salt: &str, dim: Color32) -> f32 {
     let p = ui.painter();
     let active = resp.hovered() || resp.dragged();
     let color = if active {
-        dim.gamma_multiply(0.6)
+        color_muted(dim)
     } else {
         style::color_alpha(dim, style::alpha_faint())
     };
@@ -101,7 +101,7 @@ fn vertical_split_divider(ui: &mut Ui, _id_salt: &str, dim: Color32) -> f32 {
         let cx = rect.center().x;
         let cy = rect.center().y;
         for dy in [-dot_sp, 0.0, dot_sp] {
-            p.circle_filled(egui::pos2(cx, cy + dy), dot_r, dim.gamma_multiply(0.4));
+            p.circle_filled(egui::pos2(cx, cy + dy), dot_r, color_dim(dim));
         }
         ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
     }

@@ -5,6 +5,12 @@
 //! Each chip picks a `ChipVariant` + `Size` + content + optional close
 //! affordance. The public API (type names + builder methods) is unchanged so
 //! callers in widgets/menus, toolbar, pane chrome and headers keep working.
+//!
+//! **DEPRECATED in the design-system pass.** Prefer `ui_kit::Tag` (with
+//! `TagTone::Normal | Muted | Success | Warning`) for label/pill use
+//! cases, and `ui_kit::Badge` for counts. The builder types in this file
+//! (`RemovableChip`, `DisplayChip`) will be retired during the panel
+//! sweep — do not add new uses.
 
 #![allow(dead_code, unused_imports)]
 
@@ -115,7 +121,7 @@ impl<'a> RemovableChip<'a> {
                 .fill(fill)
                 .stroke(Stroke::new(stroke_thin(), border))
                 .corner_radius(egui::CornerRadius { nw: 99, sw: 99, ne: 0, se: 0 })
-                .min_size(egui::vec2(0.0, 18.0)),
+                .min_size(egui::vec2(0.0, row_height_dense())),
             );
             // ✕ remove button (right half of pill — the closable affordance).
             let x = ui.add(
@@ -125,7 +131,7 @@ impl<'a> RemovableChip<'a> {
                 .fill(fill)
                 .stroke(Stroke::new(stroke_thin(), border))
                 .corner_radius(egui::CornerRadius { nw: 0, sw: 0, ne: 99, se: 99 })
-                .min_size(egui::vec2(18.0, 18.0)),
+                .min_size(egui::vec2(18.0, row_height_dense())),
             );
             ui.spacing_mut().button_padding = prev_pad;
             if x.clicked() { x_clicked = true; }

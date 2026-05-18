@@ -1,5 +1,13 @@
 //! GPU-blurred drop shadow for floating panels.
 //!
+//! ### NOTE: foundation primitive, not a widget
+//! This module is a paint primitive consumed by widgets (Modal, Popover,
+//! Sheet, ContextMenu, Tooltip). It exposes a free `paint()` function and
+//! `ShadowSpec` presets — there is no builder + `show(ui, theme)` because
+//! shadows are painted *underneath* a widget's own rect, not as a
+//! standalone interactive element. The "Builder + show()" rule in
+//! `CLAUDE.md` does not apply here.
+//!
 //! egui's built-in `egui::epaint::Shadow` paints a feathered rectangle
 //! that looks like 2010 Win32 chrome. This module paints a real
 //! Gaussian-blurred-looking quad behind a target rect — used by
@@ -45,7 +53,16 @@ pub struct ShadowSpec {
 }
 
 impl ShadowSpec {
-    /// Tooltips — short, low-rise, subtle.
+    /// Build a themed-color shadow from a base spec.
+    #[inline]
+    fn themed_color(t: &dyn crate::ui_kit::widgets::theme::ComponentTheme, alpha: u8) -> Color32 {
+        let s = t.shadow_color();
+        Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), alpha)
+    }
+
+    /// Tooltips — short, low-rise, subtle. LEGACY: hardcoded black tint.
+    /// Prefer [`ShadowSpec::sm_themed`] in new code.
+    #[deprecated(note = "Use ShadowSpec::sm_themed(theme) for light-theme parity")]
     pub fn sm() -> Self {
         Self {
             radius: 8.0,
@@ -55,7 +72,9 @@ impl ShadowSpec {
         }
     }
 
-    /// Popovers, context menus.
+    /// Popovers, context menus. LEGACY: hardcoded black tint.
+    /// Prefer [`ShadowSpec::md_themed`] in new code.
+    #[deprecated(note = "Use ShadowSpec::md_themed(theme) for light-theme parity")]
     pub fn md() -> Self {
         Self {
             radius: 16.0,
@@ -65,7 +84,9 @@ impl ShadowSpec {
         }
     }
 
-    /// Modals.
+    /// Modals. LEGACY: hardcoded black tint.
+    /// Prefer [`ShadowSpec::lg_themed`] in new code.
+    #[deprecated(note = "Use ShadowSpec::lg_themed(theme) for light-theme parity")]
     pub fn lg() -> Self {
         Self {
             radius: 24.0,
@@ -75,12 +96,54 @@ impl ShadowSpec {
         }
     }
 
-    /// Sheets, full-window overlays.
+    /// Sheets, full-window overlays. LEGACY: hardcoded black tint.
+    /// Prefer [`ShadowSpec::xl_themed`] in new code.
+    #[deprecated(note = "Use ShadowSpec::xl_themed(theme) for light-theme parity")]
     pub fn xl() -> Self {
         Self {
             radius: 32.0,
             offset: Vec2::new(0.0, 12.0),
             color: Color32::from_rgba_unmultiplied(0, 0, 0, 102), // ~40% alpha
+            spread: 0.0,
+        }
+    }
+
+    /// Tooltips — short, low-rise, subtle. Themed tint.
+    pub fn sm_themed(t: &dyn crate::ui_kit::widgets::theme::ComponentTheme) -> Self {
+        Self {
+            radius: 8.0,
+            offset: Vec2::new(0.0, 2.0),
+            color: Self::themed_color(t, 64), // ~25% alpha
+            spread: 0.0,
+        }
+    }
+
+    /// Popovers, context menus. Themed tint.
+    pub fn md_themed(t: &dyn crate::ui_kit::widgets::theme::ComponentTheme) -> Self {
+        Self {
+            radius: 16.0,
+            offset: Vec2::new(0.0, 4.0),
+            color: Self::themed_color(t, 77), // ~30% alpha
+            spread: 0.0,
+        }
+    }
+
+    /// Modals. Themed tint.
+    pub fn lg_themed(t: &dyn crate::ui_kit::widgets::theme::ComponentTheme) -> Self {
+        Self {
+            radius: 24.0,
+            offset: Vec2::new(0.0, 8.0),
+            color: Self::themed_color(t, 89), // ~35% alpha
+            spread: 0.0,
+        }
+    }
+
+    /// Sheets, full-window overlays. Themed tint.
+    pub fn xl_themed(t: &dyn crate::ui_kit::widgets::theme::ComponentTheme) -> Self {
+        Self {
+            radius: 32.0,
+            offset: Vec2::new(0.0, 12.0),
+            color: Self::themed_color(t, 102), // ~40% alpha
             spread: 0.0,
         }
     }
@@ -221,10 +284,10 @@ pub fn show_shadow_gallery(
     theme: &dyn crate::ui_kit::widgets::theme::ComponentTheme,
 ) {
     let presets: [(&str, ShadowSpec); 4] = [
-        ("sm", ShadowSpec::sm()),
-        ("md", ShadowSpec::md()),
-        ("lg", ShadowSpec::lg()),
-        ("xl", ShadowSpec::xl()),
+        ("sm", ShadowSpec::sm_themed(theme)),
+        ("md", ShadowSpec::md_themed(theme)),
+        ("lg", ShadowSpec::lg_themed(theme)),
+        ("xl", ShadowSpec::xl_themed(theme)),
     ];
 
     let tile_size = Vec2::new(120.0, 80.0);

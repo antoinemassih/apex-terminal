@@ -4,26 +4,55 @@
 //! TTL varies by timeframe: intraday data expires faster than daily.
 //! Uses a persistent connection (Mutex-guarded) to avoid per-call overhead.
 //! Falls back gracefully — if Redis is unreachable, all ops return None/Ok.
+//!
+//! ## Configuration
+//!
+//! The Redis URL is supplied by the caller (see
+//! `crate::data::apex_data::config::apex_redis_url`, which reads the
+//! `APEX_REDIS_URL` env var). The URL carries a password — do NOT log it,
+//! print it in error messages, or surface it to the UI.
 
 use crate::data::Bar;
+use crate::data::connectivity::errors_sink::{report, ErrorLevel};
 use redis::{Client, Connection};
 use std::sync::{Mutex, OnceLock};
 
 static CONN: OnceLock<Mutex<Option<Connection>>> = OnceLock::new();
+static REDIS_URL: OnceLock<String> = OnceLock::new();
+
+fn open_connection() -> Option<Connection> {
+    let url = REDIS_URL.get()?;
+    Client::open(url.as_str()).ok().and_then(|c| c.get_connection().ok())
+}
 
 /// Initialize the Redis connection (call once at startup).
 /// If Redis is unreachable, caching is silently disabled.
-pub fn init() {
+///
+/// `url` is consumed once and stored for reconnects. Never echoed back in
+/// any log line (it contains the password).
+pub fn init(url: &str) {
+    let _ = REDIS_URL.set(url.to_string());
     CONN.get_or_init(|| {
-        let conn = Client::open("redis://:monkeyxx@192.168.1.89:6379/")
-            .ok()
-            .and_then(|c| c.get_connection().ok());
+        let conn = open_connection();
         match &conn {
-            Some(_) => eprintln!("[bar-cache] Redis connected at 192.168.1.89:6379"),
-            None    => eprintln!("[bar-cache] Redis unreachable — caching disabled"),
+            // Strip auth segment from URL before logging — never echo password.
+            Some(_) => {
+                let endpoint = host_port_for_log(url).unwrap_or_else(|| "redis".into());
+                report(ErrorLevel::Info, "bar_cache", "redis_connected", format!("Redis connected at {endpoint}"));
+            }
+            None => report(ErrorLevel::Warn, "bar_cache", "redis_unreachable", "Redis unreachable — caching disabled"),
         }
         Mutex::new(conn)
     });
+}
+
+/// Strip user:pass out of a `redis://[user[:pass]@]host[:port][/db]` URL so
+/// the host:port can be logged without leaking credentials.
+fn host_port_for_log(url: &str) -> Option<String> {
+    let rest = url.strip_prefix("redis://").or_else(|| url.strip_prefix("rediss://"))?;
+    let after_auth = rest.rsplit_once('@').map(|(_, h)| h).unwrap_or(rest);
+    let host_port = after_auth.split('/').next()?;
+    Some(host_port.to_string())
 }
 
 fn key(symbol: &str, timeframe: &str) -> String {
@@ -53,10 +82,8 @@ fn with_conn<T>(f: impl Fn(&mut Connection) -> redis::RedisResult<T>) -> Option<
     if let Some(conn) = guard.as_mut() {
         if let Ok(v) = f(conn) { return Some(v); }
     }
-    // Reconnect
-    *guard = Client::open("redis://:monkeyxx@192.168.1.89:6379/")
-        .ok()
-        .and_then(|c| c.get_connection().ok());
+    // Reconnect using the URL passed to `init`.
+    *guard = open_connection();
     let conn = guard.as_mut()?;
     f(conn).ok()
 }

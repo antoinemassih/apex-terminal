@@ -194,8 +194,11 @@ pub(crate) fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i3
             use crate::apex_data::types::ChainQuery;
 
             // Subscribe once to the chain delta stream for this underlying.
-            // Idempotent — dedup happens server-side by refcount.
-            crate::apex_data::ws::set_chain(&[symbol.clone()]);
+            // Routed through SubscriptionManager so it records the active
+            // sub for gap-fill on reconnect (Wave 8). Replace-set semantics
+            // are preserved — same as the old `ws::set_chain` call.
+            crate::data::providers::registry::subscription_manager()
+                .set_chain(&[symbol.clone()]);
             crate::apex_log!("chain", "WS chain sub set to [{}]", symbol);
 
             let render_from = |rows: &[crate::apex_data::ChainRow], hint: f32| -> Option<(Vec<_>, Vec<_>, f32)> {
@@ -226,7 +229,7 @@ pub(crate) fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i3
                 strike_window_pct: Some(10.0),
                 ..Default::default()
             };
-            if let Some(chain) = crate::apex_data::rest::get_chain_with(&symbol, &q) {
+            if let Ok(chain) = crate::apex_data::rest::get_chain_with(&symbol, &q) {
                 crate::apex_log!("chain", "{}: {} rows (cache={}, filters dte_max={:?} sw%={:?})",
                     symbol, chain.rows.len(), chain.total_in_cache,
                     chain.filters.dte_max, chain.filters.strike_window_pct);
@@ -246,7 +249,7 @@ pub(crate) fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i3
                         strike_window_pct: Some(10.0),
                         ..Default::default()
                     };
-                    if let Some(past) = crate::apex_data::rest::get_chain_with(&symbol, &pq) {
+                    if let Ok(past) = crate::apex_data::rest::get_chain_with(&symbol, &pq) {
                         crate::apex_log!("chain.zerodte",
                             "{}: backfill expiry={} → {} rows", symbol, zdt_s, past.rows.len());
                         crate::apex_data::live_state::merge_chain_delta(&symbol, &past.rows);
@@ -265,7 +268,11 @@ pub(crate) fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i3
             //     sub taking effect).
             let placeholder_occ = synthesize_occ(&symbol, 100.0, true, "0DTE");
             crate::apex_log!("chain", "untracked {} — priming via {}", symbol, placeholder_occ);
-            crate::apex_data::ws::add_bar_sub(&placeholder_occ, "1m");
+            // Wave 8: route through SubscriptionManager so gap-fill knows
+            // about the prime sub. Returned receiver is unused — bar frames
+            // continue to reach the UI via NATIVE_CHART_TXS.
+            let _ = crate::data::providers::registry::subscription_manager()
+                .subscribe_bars(&placeholder_occ, "1m");
 
             for attempt in 1..=8 {
                 std::thread::sleep(std::time::Duration::from_millis(1000));
@@ -279,7 +286,7 @@ pub(crate) fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i3
                         return;
                     }
                 }
-                if let Some(chain) = crate::apex_data::rest::get_chain_with(&symbol, &q) {
+                if let Ok(chain) = crate::apex_data::rest::get_chain_with(&symbol, &q) {
                     if !chain.rows.is_empty() {
                         crate::apex_data::live_state::seed_chain(&symbol, &chain.rows);
                         if let Some((calls, puts, spot)) = render_from(&chain.rows, hint) {
@@ -473,7 +480,7 @@ pub(crate) fn fetch_overlay_chain_background(symbol: String, underlying_price: f
     std::thread::spawn(move || {
         // 0. ApexData — preferred. 0DTE strikes, wide strike band.
         if crate::apex_data::is_enabled() {
-            if let Some(chain) = crate::apex_data::rest::get_chain(&symbol) {
+            if let Ok(chain) = crate::apex_data::rest::get_chain(&symbol) {
                 let spot = if underlying_price > 0.0 { underlying_price }
                            else {
                                crate::apex_data::live_state::get_snapshot(&symbol)
@@ -598,6 +605,38 @@ pub(crate) fn watchlist_price_from_snapshot(
 pub(crate) fn fetch_watchlist_prices(symbols: Vec<String>) {
     let symbols: Vec<String> = symbols.into_iter().filter(|s| is_stock_symbol(s)).collect();
     if symbols.is_empty() { return; }
+    // Filter: this fn only knows how to fetch equities (Redis/ApexIB/Yahoo).
+    // Option contracts (OCC tickers, "AAPL 287.5C 2026-04-30" labels) and
+    // crypto pairs go through their own feeds — sending them here means a
+    // silent 404 on Yahoo. Drop them before the fetch loop.
+    let symbols: Vec<String> = symbols.into_iter()
+        .filter(|s| {
+            let s_upper = s.to_uppercase();
+            // Crypto: ApexCrypto handles BTCUSDT etc.
+            // Wave 9c: registry-preferred (so equities like XUSDT aren't
+            // dropped); string heuristic remains the fallback for tickers
+            // not yet registered.
+            let crypto = crate::foundation::types::registry()
+                .get(s)
+                .map(|sy| sy.is_crypto())
+                .unwrap_or_else(|| crate::data::is_crypto(s));
+            if crypto { return false; }
+            // Option OCC: "O:SPY..." prefix.
+            if s_upper.starts_with("O:") { return false; }
+            // Option display label: "UND STRIKE C/P EXPIRY" or "UND STRIKEC EXPIRY".
+            // Heuristic: contains a space AND ends with a digit-or-Y/E (date) AND
+            // has a C/P somewhere in the middle — distinguishes from "BRK.B".
+            let parts: Vec<&str> = s.split_whitespace().collect();
+            if parts.len() >= 2 {
+                let middle = parts[1];
+                if middle.ends_with('C') || middle.ends_with('P')
+                    || middle.contains('C') || middle.contains('P') {
+                    if middle.chars().any(|c| c.is_ascii_digit()) { return false; }
+                }
+            }
+            true
+        })
+        .collect();
     std::thread::spawn(move || {
         let snaps = crate::apex_data::rest::snap_bulk(&symbols).unwrap_or_default();
         for snap in &snaps {
@@ -818,7 +857,7 @@ pub(crate) fn fetch_option_history_background(occ: String, display_sym: String, 
         match crate::apex_data::rest::get_replay(
             crate::apex_data::AssetClass::Option, &occ, &tf, from_ms, to_ms, None, Some(1000), src)
         {
-            Some(resp) if !resp.bars.is_empty() => {
+            Ok(resp) if !resp.bars.is_empty() => {
                 let gpu_bars: Vec<Bar> = resp.bars.iter().map(|b| Bar {
                     open: b.open as f32, high: b.high as f32, low: b.low as f32,
                     close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
@@ -871,7 +910,7 @@ pub(crate) fn fetch_history_background(sym: String, tf: String, before_ts: i64) 
             let class = crate::apex_data::AssetClass::from_symbol(&sym);
             let to_ms = before_ts * 1000;
             let from_ms = to_ms - page_seconds * 1000;
-            if let Some(resp) = crate::apex_data::rest::get_replay(class, &sym, &tf, from_ms, to_ms, None, Some(1000), crate::apex_data::BarSource::Last) {
+            if let Ok(resp) = crate::apex_data::rest::get_replay(class, &sym, &tf, from_ms, to_ms, None, Some(1000), crate::apex_data::BarSource::Last) {
                 if !resp.bars.is_empty() {
                     let gpu_bars: Vec<Bar> = resp.bars.iter().map(|b| Bar {
                         open: b.open as f32, high: b.high as f32, low: b.low as f32,
@@ -1021,11 +1060,25 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
     let ws_was = crate::apex_data::ws::is_connected();
     crate::apex_log!("option.fetch", "WS connected={ws_was} — calling add_{}bar_sub", if mark {"mark_"} else {""});
     if mark {
+        // Wave 8c: route mark-bar sub through SubscriptionManager with the
+        // Mark source variant. The actual upstream WS call still has to be
+        // made by us (Mark has no MarketDataProvider trait surface), but
+        // SubscriptionManager now tracks the refcount + bumper state so
+        // gap-fill / stale checks see it.
+        use crate::data::providers::subscription_manager::BarSource;
+        let mgr = crate::data::providers::registry::subscription_manager();
+        let _ = mgr.subscribe_bars_with_source(&occ, &tf, BarSource::Mark);
         crate::apex_data::ws::add_mark_bar_sub(&occ, &tf);
         // Make sure we're not also receiving last-source frames for this contract.
-        crate::apex_data::ws::remove_bar_sub(&occ, &tf);
+        mgr.unsubscribe_bars_with_source(&occ, &tf, BarSource::Last);
     } else {
-        crate::apex_data::ws::add_bar_sub(&occ, &tf);
+        // Wave 8: route through SubscriptionManager so gap-fill knows about
+        // the active option bar sub. Receiver is unused — frames continue to
+        // reach the UI via NATIVE_CHART_TXS.
+        use crate::data::providers::subscription_manager::BarSource;
+        let mgr = crate::data::providers::registry::subscription_manager();
+        let _ = mgr.subscribe_bars_with_source(&occ, &tf, BarSource::Last);
+        mgr.unsubscribe_bars_with_source(&occ, &tf, BarSource::Mark);
         crate::apex_data::ws::remove_mark_bar_sub(&occ, &tf);
     }
     let mut quote_set: Vec<String> = vec![occ.clone()];
@@ -1059,7 +1112,7 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
         match crate::apex_data::rest::get_bars(
             crate::apex_data::AssetClass::Option, &occ, &tf, src)
         {
-            Some(bars) if !bars.is_empty() => {
+            Ok(bars) if !bars.is_empty() => {
                 crate::apex_log!("option.fetch", "OK {} bars for {occ}", bars.len());
                 let adapted: Vec<crate::data::Bar> = bars.into_iter().map(|b| crate::data::Bar {
                     time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
@@ -1067,7 +1120,7 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
                 send(adapted, "ApexData");
             }
             other => {
-                let was_empty = matches!(other, Some(_));
+                let was_empty = matches!(other, Ok(_));
                 crate::apex_log!("option.fetch",
                     "{} for {occ} {tf} source={} — trying mark fallback",
                     if was_empty { "EMPTY history" } else { "UNREACHABLE/breaker" },
@@ -1077,7 +1130,7 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
                 // populates instead of staying blank. Without this, a fresh
                 // option pane would never load until the user manually toggles.
                 if !mark {
-                    if let Some(bars) = crate::apex_data::rest::get_bars(
+                    if let Ok(bars) = crate::apex_data::rest::get_bars(
                         crate::apex_data::AssetClass::Option, &occ, &tf,
                         crate::apex_data::BarSource::Mark)
                     {
@@ -1086,8 +1139,14 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
                                 "OK {} bars for {occ} (FALLBACK to mark — Last had nothing)",
                                 bars.len());
                             // Swap WS subs to mark too so live updates match.
+                            // Wave 8c: add a Mark refcount in SubscriptionManager
+                            // before the WS call so gap-fill sees the new source,
+                            // then drop the Last refcount we added moments ago.
+                            use crate::data::providers::subscription_manager::BarSource;
+                            let mgr = crate::data::providers::registry::subscription_manager();
+                            let _ = mgr.subscribe_bars_with_source(&occ, &tf, BarSource::Mark);
                             crate::apex_data::ws::add_mark_bar_sub(&occ, &tf);
-                            crate::apex_data::ws::remove_bar_sub(&occ, &tf);
+                            mgr.unsubscribe_bars_with_source(&occ, &tf, BarSource::Last);
                             // Flag the pane so the toggle reflects the active
                             // source. The pane's bar_source_mark is currently
                             // false, but the bars are mark — we send a Mark
@@ -1116,101 +1175,60 @@ pub(crate) fn fetch_bars_background(sym: String, tf: String) {
         .map(|g| g.clone())
         .unwrap_or_default();
     if txs.is_empty() { return; }
+
+    // Route through the canonical Wave-2 provider chain (crypto → cached
+    // apex_data → OCOCO → yfinance → Yahoo). The chain encapsulates the
+    // 6-tier `if-else` ladder this function used to inline.
     std::thread::spawn(move || {
-        let send_bars = |bars: &[crate::data::Bar], src: &str| -> bool {
-            if bars.is_empty() { return false; }
-            let gpu_bars: Vec<Bar> = bars.iter().map(|b| Bar {
-                open: b.open as f32, high: b.high as f32, low: b.low as f32,
-                close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
-            }).collect();
-            let timestamps: Vec<i64> = bars.iter().map(|b| b.time).collect();
-            eprintln!("[native-chart] {} bars for {} {} from {}", gpu_bars.len(), sym, tf, src);
-            let cmd = ChartCommand::LoadBars { symbol: sym.clone(), timeframe: tf.clone(), bars: gpu_bars, timestamps };
-            for tx in &txs { let _ = tx.send(cmd.clone()); } crate::wake_native_ui();
-            true
+        let chain = crate::data::providers::registry::bar_chain();
+        // Spin a private tokio runtime — fetch is called from background
+        // threads outside any existing async context.
+        let rt = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(rt) => rt,
+            Err(e) => {
+                eprintln!("[native-chart] fetch runtime: {e}");
+                return;
+            }
         };
-
-        let client = reqwest::blocking::Client::builder()
-            .user_agent("Mozilla/5.0")
-            .build().unwrap_or_else(|_| reqwest::blocking::Client::new());
-
-        // 0. Crypto → ApexCrypto (skip local cache, ApexCrypto manages its own + Binance backfill)
-        if crate::data::is_crypto(&sym) {
-            let apex_url = format!("http://192.168.1.56:30840/api/bars/{}/{}", sym, tf);
-            if let Ok(resp) = client.get(&apex_url).timeout(std::time::Duration::from_secs(5)).send() {
-                if let Ok(bars) = resp.json::<Vec<crate::data::Bar>>() {
-                    if !bars.is_empty() {
-                        if send_bars(&bars, "ApexCrypto") { return; }
-                    }
-                }
-            }
-            // Crypto-only: don't fall through to Yahoo
-            return;
-        }
-
-        // 0. ApexData — authoritative source (REST + WS live updates)
-        if crate::apex_data::is_enabled() {
-            let class = crate::apex_data::AssetClass::from_symbol(&sym);
-            if let Some(bars) = crate::apex_data::rest::get_bars(class, &sym, &tf, crate::apex_data::BarSource::Last) {
-                if !bars.is_empty() {
-                    // ApexData's ChartBar has the same shape as our data::Bar (time in secs).
-                    let adapted: Vec<crate::data::Bar> = bars.into_iter().map(|b| crate::data::Bar {
-                        time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
-                    }).collect();
-                    crate::bar_cache::set(&sym, &tf, &adapted);
-                    // Subscribe to live updates for this (symbol, tf).
-                    crate::apex_data::ws::add_bar_sub(&sym, &tf);
-                    if send_bars(&adapted, "ApexData") { return; }
-                }
-            }
-        }
-
-        // 1. Redis cache — instant (stocks only)
-        if let Some(cached) = crate::bar_cache::get(&sym, &tf) {
-            if send_bars(&cached, "Redis cache") { return; }
-        }
-
-        // 2. OCOCO (InfluxDB cache)
-        let ococo_url = format!("http://192.168.1.60:30300/api/bars?symbol={}&interval={}&limit=500", sym, tf);
-        if let Ok(resp) = client.get(&ococo_url).timeout(std::time::Duration::from_secs(2)).send() {
-            if let Ok(bars) = resp.json::<Vec<crate::data::Bar>>() {
-                if !bars.is_empty() {
-                    crate::bar_cache::set(&sym, &tf, &bars);
-                    if send_bars(&bars, "OCOCO") { return; }
-                }
-            }
-        }
-
-        // 2. yfinance sidecar
-        let (yf_interval, yf_range) = match tf.as_str() {
-            "1m" => ("1m","5d"), "2m" => ("2m","5d"), "5m" => ("5m","5d"),
-            "15m" => ("15m","60d"), "30m" => ("30m","60d"), "1h" => ("60m","60d"),
-            "4h" => ("1h","730d"), "1d" => ("1d","5y"), "1wk" => ("1wk","10y"),
-            _ => ("5m","5d"),
+        let result = rt.block_on(chain.bars(&sym, &tf, 0, 0, None));
+        let bars = match result {
+            Ok(b) if !b.is_empty() => b,
+            Ok(_) => { eprintln!("[native-chart] {} {} empty", sym, tf); return; }
+            Err(e) => { eprintln!("[native-chart] {} {} all sources failed: {e}", sym, tf); return; }
         };
-        let yf_url = format!("http://127.0.0.1:8777/bars?symbol={}&interval={}&period={}", sym, yf_interval, yf_range);
-        if let Ok(resp) = client.get(&yf_url).timeout(std::time::Duration::from_secs(3)).send() {
-            if let Ok(bars) = resp.json::<Vec<crate::data::Bar>>() {
-                if !bars.is_empty() {
-                    crate::bar_cache::set(&sym, &tf, &bars);
-                    if send_bars(&bars, "yfinance-sidecar") { return; }
-                }
-            }
+        // For ApexData live updates: subscribe to the WS bar stream so
+        // incremental bar updates flow into NATIVE_CHART_TXS via the existing
+        // apex_data::ws frame listener. The previous inline path did this.
+        // Wave 8: route through SubscriptionManager so gap-fill on reconnect
+        // sees this sub. Receiver is unused; the data path is unchanged.
+        // Wave 9c: registry-preferred crypto check so non-crypto tickers
+        // whose strings end in `USDT` still get the ApexData WS subscription.
+        let sym_is_crypto = crate::foundation::types::registry()
+            .get(&sym)
+            .map(|s| s.is_crypto())
+            .unwrap_or_else(|| crate::data::is_crypto(&sym));
+        if crate::apex_data::is_enabled() && !sym_is_crypto {
+            let _ = crate::data::providers::registry::subscription_manager()
+                .subscribe_bars(&sym, &tf);
         }
-
-        // 3. Direct Yahoo Finance v8 API — universal fallback
-        let yahoo_url = format!(
-            "https://query1.finance.yahoo.com/v8/finance/chart/{}?interval={}&range={}",
-            sym, yf_interval, yf_range
-        );
-        if let Ok(resp) = client.get(&yahoo_url).timeout(std::time::Duration::from_secs(5)).send() {
-            if let Ok(json) = resp.json::<serde_json::Value>() {
-                if let Some(bars) = crate::data::parse_yahoo_v8(&json) {
-                    crate::bar_cache::set(&sym, &tf, &bars);
-                    send_bars(&bars, "Yahoo Finance");
-                }
-            }
-        }
+        let gpu_bars: Vec<Bar> = bars.iter().map(|b| Bar {
+            open: b.open as f32, high: b.high as f32, low: b.low as f32,
+            close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
+        }).collect();
+        // BarWire.time is in ms; LoadBars wants seconds.
+        let timestamps: Vec<i64> = bars.iter().map(|b| b.time / 1000).collect();
+        eprintln!("[native-chart] {} bars for {} {} via provider chain", gpu_bars.len(), sym, tf);
+        let cmd = ChartCommand::LoadBars {
+            symbol: sym.clone(),
+            timeframe: tf.clone(),
+            bars: gpu_bars,
+            timestamps,
+        };
+        for tx in &txs { let _ = tx.send(cmd.clone()); }
+        crate::wake_native_ui();
     });
 }
 

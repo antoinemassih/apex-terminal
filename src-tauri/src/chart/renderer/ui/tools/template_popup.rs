@@ -5,7 +5,7 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::{self, Watchlist, Chart, Theme, CandleMode, INDICATOR_COLORS};
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::Input;
+use crate::ui_kit::widgets::{Button as KitButton, Input};
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 
 pub(crate) fn draw(
@@ -51,7 +51,7 @@ pub(crate) fn draw(
                 ui.horizontal(|ui| {
                     ui.add(SectionLabel::new("TEMPLATES").lg().color(t.accent));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if close_button(ui, t.dim) { close_popup = true; }
+                        if KitButton::close().show(ui, t).on_hover_text("Close").clicked() { close_popup = true; }
                     });
                 });
                 ui.add_space(gap_sm());
@@ -68,14 +68,14 @@ pub(crate) fn draw(
                                 (super::super::super::gpu::PaneType::Spreadsheet, "Spreadsheet", "\u{229E}"),
                             ] {
                                 let active = panes[pi].pane_type == ptype;
-                                let fg = if active { t.accent } else { t.dim.gamma_multiply(0.5) };
+                                let fg = if active { t.accent } else { color_half(t.dim) };
                                 let bg = if active { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
-                                if ui.add(egui::Button::new(egui::RichText::new(format!("{} {}", icon, label))
-                                    .monospace().size(FONT_XS).color(fg))
+                                if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new(format!("{} {}", icon, label))
+                                    .monospace().size(font_xs()).color(fg))
                                     .fill(bg).corner_radius(r_sm_cr())
                                     .stroke(egui::Stroke::new(if active { stroke_thin() } else { 0.0 },
                                         if active { color_alpha(t.accent, alpha_line()) } else { egui::Color32::TRANSPARENT }))
-                                    .min_size(egui::vec2(0.0, 20.0))).clicked() {
+                                    .min_size(egui::vec2(0.0, row_height_compact()))).clicked() {
                                     panes[pi].pane_type = ptype;
                                 }
                             }
@@ -86,7 +86,7 @@ pub(crate) fn draw(
 
                         // Template list
                         if watchlist.pane_templates.is_empty() {
-                            ui.add(BodyLabel::new("No saved templates").color(t.dim.gamma_multiply(0.5)));
+                            ui.add(BodyLabel::new("No saved templates").color(color_half(t.dim)));
                             ui.add_space(gap_sm());
                         } else {
                             egui::ScrollArea::vertical()
@@ -115,15 +115,15 @@ pub(crate) fn draw(
                                             ui.vertical(|ui| {
                                                 ui.set_min_height(28.0);
                                                 ui.horizontal(|ui| {
-                                                    ui.add(BodyLabel::new(Icon::STAR).size(FONT_SM).color(t.accent));
-                                                    ui.add(BodyLabel::new(name).size(FONT_SM).monospace(true).strong(true).color(TEXT_PRIMARY));
+                                                    ui.add(BodyLabel::new(Icon::STAR).size(font_sm()).color(t.accent));
+                                                    ui.add(BodyLabel::new(name).size(font_sm()).monospace(true).strong(true).color(TEXT_PRIMARY));
                                                 });
-                                                ui.add(BodyLabel::new(&summary).size(FONT_XS).monospace(true).color(t.dim.gamma_multiply(0.6)));
+                                                ui.add(BodyLabel::new(&summary).size(font_xs()).monospace(true).color(color_muted(t.dim)));
                                             });
 
                                             // Delete button (right side)
                                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                                if icon_btn(ui, Icon::TRASH, t.dim.gamma_multiply(0.4), FONT_SM)
+                                                if icon_btn(ui, Icon::TRASH, color_dim(t.dim), font_sm())
                                                     .on_hover_text("Delete template").clicked()
                                                 {
                                                     delete_idx = Some(i);
@@ -135,8 +135,8 @@ pub(crate) fn draw(
                                         let row_rect = row_resp.response.rect;
                                         let click_resp = ui.interact(row_rect,
                                             egui::Id::new(("tmpl_apply", pi, i)), egui::Sense::click());
+                                        crate::chart_renderer::ui::style::cursor::clickable(ui, &click_resp);
                                         if click_resp.hovered() {
-                                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                             ui.painter().rect_filled(row_rect, radius_sm(),
                                                 color_alpha(t.accent, alpha_faint()));
                                         }
@@ -162,7 +162,7 @@ pub(crate) fn draw(
                                 .show(ui, t);
                             let can_save = !panes[pi].template_save_name.trim().is_empty();
                             if can_save {
-                                if small_action_btn(ui, "Save", t.accent) {
+                                if KitButton::small_action("Save").tint(t.accent).show(ui, t).clicked() {
                                     let name = panes[pi].template_save_name.trim().to_string();
                                     let p = &panes[pi];
                                     let indicators: Vec<serde_json::Value> = p.indicators.iter().map(|ind| serde_json::json!({

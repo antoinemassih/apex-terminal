@@ -29,7 +29,7 @@ impl<'a> EventCard<'a> {
     pub fn theme(mut self, t: &'a Theme) -> Self { self.theme = Some(t); self }
 
     pub fn show(self, ui: &mut Ui) {
-        let t = self.theme.unwrap_or(&crate::chart_renderer::gpu::THEMES[0]);
+        let t = self.theme.expect("EventCard requires a theme — call `.theme(t)` before `.show()`");
         let dim  = t.dim;
         let text = t.text;
         let theme = self.theme;

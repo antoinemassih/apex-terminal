@@ -3,7 +3,6 @@
 #![allow(dead_code)]
 
 pub use super::components::inputs::*;
-pub use super::components::chips::*;
 pub use super::components::sortable_headers::*;
 pub use super::components::toasts::*;
 pub use super::components::header_buttons::*;

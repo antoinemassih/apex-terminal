@@ -9,6 +9,8 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::widgets::Button as KitButton;
+use crate::ui_kit::widgets::PanelLoading;
 
 const DTE_LIST: &[i32] = &[0, 1, 2, 3, 7, 14, 30, 60];
 
@@ -79,11 +81,11 @@ pub(crate) fn draw(
                         // ── Header: underlying symbol + close ──
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new(&underlying)
-                                .monospace().size(FONT_LG).strong().color(t.accent));
+                                .monospace().size(font_lg()).strong().color(t.accent));
                             ui.label(egui::RichText::new(format!("@ {:.2}", spot))
-                                .monospace().size(FONT_SM).color(t.dim));
+                                .monospace().size(font_sm()).color(t.dim));
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if close_button(ui, t.dim) { close_picker = true; }
+                                if KitButton::close().show(ui, t).on_hover_text("Close").clicked() { close_picker = true; }
                             });
                         });
                         ui.add_space(gap_sm());
@@ -95,8 +97,8 @@ pub(crate) fn draw(
                             ui.add_space(gap_md());
                             // Back arrow
                             let can_back = dte_idx > 0;
-                            let back_col = if can_back { t.accent } else { t.dim.gamma_multiply(0.3) };
-                            if icon_btn(ui, Icon::CARET_LEFT, back_col, FONT_LG).clicked() && can_back {
+                            let back_col = if can_back { t.accent } else { color_very_dim(t.dim) };
+                            if icon_btn(ui, Icon::CARET_LEFT, back_col, font_lg()).clicked() && can_back {
                                 panes[pi].option_quick_dte_idx = dte_idx - 1;
                                 let new_dte = DTE_LIST[dte_idx - 1];
                                 fetch_chain_background(underlying.clone(), 15, new_dte, spot);
@@ -104,14 +106,14 @@ pub(crate) fn draw(
                             // DTE label (centered)
                             ui.vertical_centered(|ui| {
                                 ui.label(egui::RichText::new(dte_label(current_dte))
-                                    .monospace().size(FONT_LG).strong().color(TEXT_PRIMARY));
+                                    .monospace().size(font_lg()).strong().color(TEXT_PRIMARY));
                             });
                             // Forward arrow
                             let can_fwd = dte_idx < DTE_LIST.len() - 1;
-                            let fwd_col = if can_fwd { t.accent } else { t.dim.gamma_multiply(0.3) };
+                            let fwd_col = if can_fwd { t.accent } else { color_very_dim(t.dim) };
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 ui.add_space(gap_md());
-                                if icon_btn(ui, Icon::CARET_RIGHT, fwd_col, FONT_LG).clicked() && can_fwd {
+                                if icon_btn(ui, Icon::CARET_RIGHT, fwd_col, font_lg()).clicked() && can_fwd {
                                     panes[pi].option_quick_dte_idx = dte_idx + 1;
                                     let new_dte = DTE_LIST[dte_idx + 1];
                                     fetch_chain_background(underlying.clone(), 15, new_dte, spot);
@@ -130,8 +132,8 @@ pub(crate) fn draw(
                                 // Prev strike
                                 let (prev_rect, prev_resp) = ui.allocate_exact_size(
                                     egui::vec2(half_w, 22.0), egui::Sense::click());
+                                crate::chart_renderer::ui::style::cursor::clickable(ui, &prev_resp);
                                 let prev_bg = if prev_resp.hovered() {
-                                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                     color_alpha(t.accent, alpha_tint())
                                 } else { color_alpha(t.toolbar_border, alpha_subtle()) };
                                 ui.painter().rect_filled(prev_rect, r_md_cr(), prev_bg);
@@ -141,7 +143,7 @@ pub(crate) fn draw(
                                 ui.painter().text(
                                     prev_rect.center(), egui::Align2::CENTER_CENTER,
                                     format!("{} Prev Strike", Icon::CARET_LEFT),
-                                    egui::FontId::monospace(FONT_SM), TEXT_PRIMARY);
+                                    egui::FontId::monospace(font_sm()), TEXT_PRIMARY);
                                 if prev_resp.clicked() {
                                     // Find the next-lower strike in the current type's chain
                                     let rows = if cur_is_call { &watchlist.chain_0dte.0 } else { &watchlist.chain_0dte.1 };
@@ -157,8 +159,8 @@ pub(crate) fn draw(
                                 // Next strike
                                 let (next_rect, next_resp) = ui.allocate_exact_size(
                                     egui::vec2(half_w, 22.0), egui::Sense::click());
+                                crate::chart_renderer::ui::style::cursor::clickable(ui, &next_resp);
                                 let next_bg = if next_resp.hovered() {
-                                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                     color_alpha(t.accent, alpha_tint())
                                 } else { color_alpha(t.toolbar_border, alpha_subtle()) };
                                 ui.painter().rect_filled(next_rect, r_md_cr(), next_bg);
@@ -168,7 +170,7 @@ pub(crate) fn draw(
                                 ui.painter().text(
                                     next_rect.center(), egui::Align2::CENTER_CENTER,
                                     format!("Next Strike {}", Icon::CARET_RIGHT),
-                                    egui::FontId::monospace(FONT_SM), TEXT_PRIMARY);
+                                    egui::FontId::monospace(font_sm()), TEXT_PRIMARY);
                                 if next_resp.clicked() {
                                     let rows = if cur_is_call { &watchlist.chain_0dte.0 } else { &watchlist.chain_0dte.1 };
                                     let rows = if current_dte == 0 { rows }
@@ -188,9 +190,9 @@ pub(crate) fn draw(
                         // Column headers: CALL | STRIKE | PUT
                         ui.horizontal(|ui| {
                             let cw = 250.0 / 3.0;
-                            col_header(ui, "CALL",   cw, t.dim.gamma_multiply(0.5), false);
-                            col_header(ui, "STRIKE", cw, t.dim.gamma_multiply(0.5), false);
-                            col_header(ui, "PUT",    cw, t.dim.gamma_multiply(0.5), false);
+                            col_header(ui, "CALL",   cw, color_half(t.dim), false);
+                            col_header(ui, "STRIKE", cw, color_half(t.dim), false);
+                            col_header(ui, "PUT",    cw, color_half(t.dim), false);
                         });
                         separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
 
@@ -208,12 +210,7 @@ pub(crate) fn draw(
                         let (calls, puts) = (&chain_ref.0, &chain_ref.1);
 
                         if calls.is_empty() && puts.is_empty() {
-                            ui.add_space(gap_lg());
-                            ui.vertical_centered(|ui| {
-                                ui.label(egui::RichText::new("Loading chain…")
-                                    .monospace().size(FONT_SM).color(t.dim));
-                            });
-                            ui.add_space(gap_lg());
+                            PanelLoading::new().show(ui, t);
                         } else {
                             // Build a sorted list of unique strikes
                             let mut strikes: Vec<f32> = calls.iter().map(|r| r.strike)
@@ -236,13 +233,13 @@ pub(crate) fn draw(
                                             let call_text = call_row.map(|r| format!("{:.2}", r.bid))
                                                 .unwrap_or_else(|| "-".into());
                                             let (crect, cresp) = ui.allocate_exact_size(egui::vec2(cw, 20.0), egui::Sense::click());
+                                            crate::chart_renderer::ui::style::cursor::clickable(ui, &cresp);
                                             if cresp.hovered() {
-                                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                                 ui.painter().rect_filled(crect, r_sm_cr(), color_alpha(t.bull, alpha_ghost()));
                                             }
                                             ui.painter().text(crect.center(), egui::Align2::CENTER_CENTER,
-                                                &call_text, egui::FontId::monospace(FONT_SM),
-                                                if call_row.is_some() { t.bull } else { t.dim.gamma_multiply(0.4) });
+                                                &call_text, egui::FontId::monospace(font_sm()),
+                                                if call_row.is_some() { t.bull } else { color_dim(t.dim) });
                                             if cresp.clicked() && call_row.is_some() {
                                                 pending_load = Some((*strike, true));
                                             }
@@ -256,19 +253,19 @@ pub(crate) fn draw(
                                             };
                                             ui.painter().text(srect.center(), egui::Align2::CENTER_CENTER,
                                                 strike_txt,
-                                                egui::FontId::monospace(FONT_SM),
+                                                egui::FontId::monospace(font_sm()),
                                                 strike_col);
                                             // PUT cell
                                             let put_text = put_row.map(|r| format!("{:.2}", r.bid))
                                                 .unwrap_or_else(|| "-".into());
                                             let (prect, presp) = ui.allocate_exact_size(egui::vec2(cw, 20.0), egui::Sense::click());
+                                            crate::chart_renderer::ui::style::cursor::clickable(ui, &presp);
                                             if presp.hovered() {
-                                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                                 ui.painter().rect_filled(prect, r_sm_cr(), color_alpha(t.bear, alpha_ghost()));
                                             }
                                             ui.painter().text(prect.center(), egui::Align2::CENTER_CENTER,
-                                                &put_text, egui::FontId::monospace(FONT_SM),
-                                                if put_row.is_some() { t.bear } else { t.dim.gamma_multiply(0.4) });
+                                                &put_text, egui::FontId::monospace(font_sm()),
+                                                if put_row.is_some() { t.bear } else { color_dim(t.dim) });
                                             if presp.clicked() && put_row.is_some() {
                                                 pending_load = Some((*strike, false));
                                             }
@@ -307,6 +304,7 @@ pub(crate) fn draw(
                 } else { format!("{:.1}", strike) };
                 let opt_sym = format!("{} {}{}", underlying, strike_str, if is_call { "C" } else { "P" });
                 panes[pi].symbol = opt_sym.clone();
+                panes[pi].symbol_meta = crate::foundation::types::symbol_or_guess(&opt_sym);
                 panes[pi].option_type = if is_call { "C".into() } else { "P".into() };
                 panes[pi].option_strike = strike;
                 panes[pi].option_contract = occ_final.clone();

@@ -127,14 +127,14 @@ pub(crate) fn draw(
     let hy = inner.top() + 2.0;
     let label_y = hy + header_h * 0.5;
     let hf = egui::FontId::monospace(font_md());
-    let hc = t.dim.gamma_multiply(0.65);
+    let hc = color_muted(t.dim);
     let pad_x = gap_xs();
     if show_delta {
         painter.text(egui::pos2(x0 + cd - pad_x, label_y), egui::Align2::RIGHT_CENTER,
             "\u{0394}", hf.clone(), hc);
     }
     painter.text(egui::pos2(xb + cb - pad_x, label_y), egui::Align2::RIGHT_CENTER,
-        "BID", hf.clone(), t.bull.gamma_multiply(0.65));
+        "BID", hf.clone(), color_muted(t.bull));
     // PRICE header — center-aligned, double-click to recenter.
     let price_hdr_rect = egui::Rect::from_min_size(egui::pos2(xp, hy), egui::vec2(cp, header_h));
     let price_hdr_resp = ui.allocate_rect(price_hdr_rect, egui::Sense::click());
@@ -145,7 +145,7 @@ pub(crate) fn draw(
     }
     if price_hdr_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     painter.text(egui::pos2(xa + pad_x, label_y), egui::Align2::LEFT_CENTER,
-        "ASK", hf.clone(), t.bear.gamma_multiply(0.65));
+        "ASK", hf.clone(), color_muted(t.bear));
     if show_vol {
         painter.text(egui::pos2(xv + pad_x, label_y), egui::Align2::LEFT_CENTER,
             "VOL", hf.clone(), hc);
@@ -163,7 +163,7 @@ pub(crate) fn draw(
     );
     // Subtle background tint so the trigger reads as a button even at rest.
     painter.rect_filled(mode_rect,
-        egui::CornerRadius::same(3),
+        egui::CornerRadius::same(3), // TODO: off-token
         color_alpha(t.toolbar_border, alpha_subtle()));
     {
         // Action enum so item_render and trigger_render get a real value to
@@ -341,7 +341,7 @@ pub(crate) fn draw(
     // neutral Secondary with shield-style icon. Tooltip explains the state.
     let armw = inner.right() - cx - 1.0;
     let arm_rect = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(armw, r1h));
-    let arm_radius = egui::CornerRadius::same(4);
+    let arm_radius = egui::CornerRadius::same(radius_sm() as u8);
     let arm_resp = ui.allocate_rect(arm_rect, egui::Sense::click());
     if *dom_armed {
         // Filled red bg, white icon, subtle border.
@@ -349,9 +349,11 @@ pub(crate) fn draw(
         painter.rect_stroke(arm_rect, arm_radius,
             egui::Stroke::new(stroke_thin(), color_alpha(t.bear, alpha_strong())),
             egui::StrokeKind::Inside);
+        // Armed badge glyph on `t.bear` fill — use contrast_fg so a light
+        // bear (if ever introduced) gets black instead of unreadable white.
         painter.text(arm_rect.center(), egui::Align2::CENTER_CENTER,
             Icon::PULSE, egui::FontId::proportional(font_md() + 1.0),
-            egui::Color32::WHITE);
+            contrast_fg(t.bear));
     } else {
         let bg = if arm_resp.hovered() {
             color_alpha(t.toolbar_border, alpha_dim())

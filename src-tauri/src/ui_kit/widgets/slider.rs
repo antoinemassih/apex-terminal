@@ -107,6 +107,7 @@ fn paint_slider<T: egui::emath::Numeric>(
                 st::color_alpha(theme.text(), 180),
             );
             // Allocate the label space.
+            // layout-only: only `.rect.width()/.height()` is read.
             let galley = ui.fonts(|f| f.layout_no_wrap(
                 text.clone(), egui::FontId::proportional(label_font), Color32::WHITE));
             ui.allocate_exact_size(Vec2::new(galley.rect.width(), galley.rect.height() + 2.0), Sense::hover());
@@ -187,7 +188,7 @@ fn paint_slider<T: egui::emath::Numeric>(
                 let ty = track_rect.bottom() + 2.0;
                 painter.line_segment(
                     [Pos2::new(tx, ty), Pos2::new(tx, ty + 4.0)],
-                    Stroke::new(1.0, st::color_alpha(theme.dim(), 100)),
+                    Stroke::new(st::stroke_std(), st::color_alpha(theme.dim(), 100)),
                 );
             }
 
@@ -197,7 +198,7 @@ fn paint_slider<T: egui::emath::Numeric>(
             let d = thumb_d + scale_t * hover_extra;
             let thumb_bg = theme.bg().gamma_multiply(dim_mul);
             painter.circle_filled(thumb_center, d * 0.5, thumb_bg);
-            painter.circle_stroke(thumb_center, d * 0.5, Stroke::new(2.0, fill_color));
+            painter.circle_stroke(thumb_center, d * 0.5, Stroke::new(st::stroke_thick(), fill_color));
 
             if !disabled && response.hovered() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);

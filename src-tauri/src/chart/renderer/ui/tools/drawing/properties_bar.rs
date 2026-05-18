@@ -3,7 +3,7 @@
 use egui::Context;
 use crate::chart_renderer::gpu::{Theme, Chart, DrawingAction, drawing_persist_key, drawing_to_db};
 use crate::chart_renderer::{DrawingKind, LineStyle};
-use crate::chart_renderer::ui::style::{hex_to_color, COLOR_AMBER, gap_xs, font_xs, font_sm, font_md, stroke_bold};
+use crate::chart_renderer::ui::style::{hex_to_color, COLOR_AMBER, gap_xs, font_xs, font_sm, font_md, row_height_compact, row_height_dense, stroke_bold};
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
 #[cfg(target_os = "windows")]
@@ -96,6 +96,7 @@ pub fn show_drawing_properties_bar_ui(
             "#cc5de8", "#ff922b", "#ffffff", "#82dcb4",
         ];
         let cur_color = hex_to_color(&sel_draw.color, 1.0);
+        // TODO: Button::menu doesn't cover per-drawing color swatch as the trigger label (cur_color varies, fg is fixed to t.dim).
         ui.menu_button(
             egui::RichText::new("\u{25A0}").size(font_md() + 2.0).color(cur_color),
             |ui| {
@@ -107,11 +108,11 @@ pub fn show_drawing_properties_bar_ui(
                     for hex in SWATCHES {
                         let c = hex_to_color(hex, 1.0);
                         let is_cur = sel_draw.color == *hex;
-                        let resp = ui.add(egui::Button::new("")
+                        let resp = crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new("")
                             .fill(c)
-                            .min_size(egui::vec2(20.0, 20.0))
-                            .corner_radius(3.0)
-                            .stroke(if is_cur { egui::Stroke::new(stroke_bold(), egui::Color32::WHITE) } else { egui::Stroke::NONE }));
+                            .min_size(egui::vec2(20.0, row_height_compact()))
+                            .corner_radius(3.0) // TODO: off-token
+                            .stroke(if is_cur { egui::Stroke::new(stroke_bold(), t.text) } else { egui::Stroke::NONE }));
                         if resp.clicked() {
                             if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
                                 chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
@@ -232,7 +233,7 @@ pub fn show_drawing_properties_bar_ui(
 
         // Extension toggles (lines only)
         if matches!(&sel_draw.kind, DrawingKind::TrendLine{..} | DrawingKind::Ray{..}) {
-            if ui.add(egui::Button::new(egui::RichText::new("\u{2190}").monospace().size(font_md()).color(if sel_draw.extend_left { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
+            if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new("\u{2190}").monospace().size(font_md()).color(if sel_draw.extend_left { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, row_height_dense()))).clicked() {
                 if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
                     chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
                     chart.redo_stack.clear();
@@ -240,7 +241,7 @@ pub fn show_drawing_properties_bar_ui(
                     crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
                 }
             }
-            if ui.add(egui::Button::new(egui::RichText::new("\u{2192}").monospace().size(font_md()).color(if sel_draw.extend_right { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0))).clicked() {
+            if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new("\u{2192}").monospace().size(font_md()).color(if sel_draw.extend_right { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, row_height_dense()))).clicked() {
                 if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
                     chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
                     chart.redo_stack.clear();
@@ -252,14 +253,14 @@ pub fn show_drawing_properties_bar_ui(
         }
 
         // Lock
-        if ui.add(egui::Button::new(egui::RichText::new(if sel_draw.locked { "Locked" } else { "Lock" }).monospace().size(font_sm()).color(if sel_draw.locked { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT)).clicked() {
+        if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new(if sel_draw.locked { "Locked" } else { "Lock" }).monospace().size(font_sm()).color(if sel_draw.locked { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT)).clicked() {
             if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) { d.locked = !d.locked; }
         }
 
         ui.add(egui::Separator::default().spacing(gap_xs()));
 
         // Delete
-        if KitButton::icon(Icon::TRASH).variant(KitVariant::Ghost).glyph_color(t.bear).show(ui, t).clicked() {
+        if KitButton::icon(Icon::TRASH).variant(KitVariant::Ghost).glyph_color(t.bear).show(ui, t).on_hover_text("Delete").clicked() {
             if let Some(d) = chart.drawings.iter().find(|d| d.id == sel_id) {
                 chart.undo_stack.push(DrawingAction::Remove(d.clone()));
             }
@@ -274,7 +275,7 @@ pub fn show_drawing_properties_bar_ui(
         let has_alert = sel_draw.alert_enabled;
         let bell_col = if has_alert { COLOR_AMBER } else { dim };
         let bell_label = if has_alert { "\u{1F514} ON" } else { "\u{1F514}" };
-        if ui.add(egui::Button::new(egui::RichText::new(bell_label).monospace().size(font_sm()).color(bell_col)).fill(egui::Color32::TRANSPARENT)).clicked() {
+        if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new(bell_label).monospace().size(font_sm()).color(bell_col)).fill(egui::Color32::TRANSPARENT)).clicked() {
             if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
                 d.alert_enabled = !d.alert_enabled;
                 let drawing_id = d.id.clone();

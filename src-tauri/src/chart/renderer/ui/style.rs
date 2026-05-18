@@ -138,6 +138,37 @@ pub const GAP_XL:  f32 = 20.0;
 pub const GAP_2XL: f32 = 24.0;
 pub const GAP_3XL: f32 = 32.0;
 
+// ─── Icon control sizes ──────────────────────────────────────────────────────
+// Standard square sizes for icon-only controls (toggle pills, trailing buttons,
+// inline icon-only buttons). Replaces hand-rolled vec2(14, 14) / vec2(16, 16) etc.
+#[inline] pub fn icon_xs() -> f32 { 14.0 }
+#[inline] pub fn icon_sm() -> f32 { 16.0 }
+#[inline] pub fn icon_md() -> f32 { 18.0 }
+#[inline] pub fn icon_lg() -> f32 { 20.0 }
+
+// ─── Row heights ─────────────────────────────────────────────────────────────
+// Canonical list/table row heights. PanelListRow defaults to row_height_default
+// (22) for dense lists and row_height_spacious (24) for breathable ones.
+#[inline] pub fn row_height_dense()     -> f32 { 18.0 }
+#[inline] pub fn row_height_compact()   -> f32 { 20.0 }
+#[inline] pub fn row_height_default()   -> f32 { 22.0 }
+#[inline] pub fn row_height_spacious()  -> f32 { 24.0 }
+#[inline] pub fn row_height_tall()      -> f32 { 30.0 }
+
+// ─── Card padding ────────────────────────────────────────────────────────────
+// Symmetric inner_margin presets for PanelCard / hand-rolled card bodies.
+#[inline] pub fn card_padding_compact()  -> f32 { 8.0 }
+#[inline] pub fn card_padding_default()  -> f32 { 12.0 }
+#[inline] pub fn card_padding_spacious() -> f32 { 16.0 }
+
+// ─── Divider insets ──────────────────────────────────────────────────────────
+// Vertical inset for hairline dividers (typically applied to top + bottom
+// of the dividing line so the rule doesn't kiss adjacent content).
+#[inline] pub fn divider_inset_xs() -> f32 { 1.0 }
+#[inline] pub fn divider_inset_sm() -> f32 { 2.0 }
+#[inline] pub fn divider_inset_md() -> f32 { 3.0 }
+#[inline] pub fn divider_inset_lg() -> f32 { 5.0 }
+
 // ─── Corner radius tokens ─────────────────────────────────────────────────────
 // 2026-05: function fallbacks reconciled with the const values (was 3/4/8).
 pub fn radius_xs() -> f32 { crate::dt_f32!(radius.xs, 2.0) }
@@ -152,6 +183,128 @@ pub const RADIUS_SM: f32 = 4.0;
 pub const RADIUS_MD: f32 = 6.0;
 pub const RADIUS_LG: f32 = 12.0;
 pub const RADIUS_PILL: f32 = 999.0;
+
+// ─── Cursor tokens ───────────────────────────────────────────────────────────
+//
+// Centralized cursor policy. Every interactive surface in the app should
+// route its cursor through one of these helpers. They:
+//   1. Check `resp.hovered()` — no cursor leak when the pointer moves away.
+//   2. Honor `is_inspect_mode()` — the design inspector owns the cursor
+//      while it's active, so widgets must not override it.
+//   3. Implement state machines where relevant (draggable: Grab on hover,
+//      Grabbing while a drag is in progress).
+//
+// Add a new helper here rather than inlining `set_cursor_icon` at a call
+// site. Inlined sites drift: they forget the inspect guard, they don't
+// handle drag-state transitions, and they make role audits impossible.
+pub mod cursor {
+    use egui::{CursorIcon, Response, Ui};
+
+    #[inline]
+    fn inspect_mode() -> bool {
+        crate::design_tokens::is_inspect_mode()
+    }
+
+    /// PointingHand on hover — for any surface that responds to click
+    /// (buttons, chips, links, list rows, menu items, status indicators).
+    #[inline]
+    pub fn clickable(ui: &Ui, resp: &Response) {
+        if resp.hovered() && !inspect_mode() {
+            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        }
+    }
+
+    /// Grab on hover, Grabbing while the user is actively dragging.
+    /// For chart pan, drawing handles, draggable lines, tab reorder.
+    #[inline]
+    pub fn draggable(ui: &Ui, resp: &Response) {
+        if inspect_mode() { return; }
+        if resp.dragged() {
+            ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+        } else if resp.hovered() {
+            ui.ctx().set_cursor_icon(CursorIcon::Grab);
+        }
+    }
+
+    /// Horizontal resize cursor — vertical dividers between panes/columns.
+    /// Stays sticky during a drag so the cursor doesn't flicker back to the
+    /// default arrow when the pointer briefly leaves the narrow drag rect.
+    #[inline]
+    pub fn resize_h(ui: &Ui, resp: &Response) {
+        if inspect_mode() { return; }
+        if resp.hovered() || resp.dragged() {
+            ui.ctx().set_cursor_icon(CursorIcon::ResizeHorizontal);
+        }
+    }
+
+    /// Vertical resize cursor — horizontal dividers between rows/panes.
+    /// Stays sticky during a drag.
+    #[inline]
+    pub fn resize_v(ui: &Ui, resp: &Response) {
+        if inspect_mode() { return; }
+        if resp.hovered() || resp.dragged() {
+            ui.ctx().set_cursor_icon(CursorIcon::ResizeVertical);
+        }
+    }
+
+    /// Diagonal NW–SE resize — corner grabbers on resizable panels.
+    #[inline]
+    pub fn resize_nwse(ui: &Ui, resp: &Response) {
+        if resp.hovered() && !inspect_mode() {
+            ui.ctx().set_cursor_icon(CursorIcon::ResizeNwSe);
+        }
+    }
+
+    /// Text I-beam — text input fields, editable cells.
+    #[inline]
+    pub fn text_input(ui: &Ui, resp: &Response) {
+        if resp.hovered() && !inspect_mode() {
+            ui.ctx().set_cursor_icon(CursorIcon::Text);
+        }
+    }
+
+    /// Crosshair — chart measurement tool, precision picking.
+    #[inline]
+    pub fn crosshair(ui: &Ui, resp: &Response) {
+        if resp.hovered() && !inspect_mode() {
+            ui.ctx().set_cursor_icon(CursorIcon::Crosshair);
+        }
+    }
+
+    /// ZoomIn — zoom-box tool while idle (Grabbing takes over once the
+    /// drag starts, paint that one yourself with `set_cursor_icon` since
+    /// the zoom drag is modal and doesn't go through Response).
+    #[inline]
+    pub fn zoom_in(ui: &Ui, resp: &Response) {
+        if resp.hovered() && !inspect_mode() {
+            ui.ctx().set_cursor_icon(CursorIcon::ZoomIn);
+        }
+    }
+
+    /// Modal cursor: set whenever a tool mode is active (measure, zoom,
+    /// crosshair, drawing). Doesn't read from a Response — caller already
+    /// knows the mode is on. Still honors inspect mode so the design
+    /// inspector retains control.
+    #[inline]
+    pub fn modal(ui: &Ui, icon: CursorIcon) {
+        if !inspect_mode() {
+            ui.ctx().set_cursor_icon(icon);
+        }
+    }
+
+    /// `ui.add(widget)` + `clickable(...)` in one call. Use this anywhere
+    /// you're about to write `ui.add(egui::Button::new(...))` — the
+    /// resulting `Response` already has PointingHand wired up on hover.
+    /// egui 0.31 has no global "interactive cursor" style, so call sites
+    /// either route through this helper, `ui_kit::Button` (which sets
+    /// PointingHand internally), or set the cursor manually.
+    #[inline]
+    pub fn click_widget<W: egui::Widget>(ui: &mut Ui, widget: W) -> Response {
+        let r = ui.add(widget);
+        clickable(ui, &r);
+        r
+    }
+}
 
 // ─── Stroke width tokens ─────────────────────────────────────────────────────
 pub fn stroke_hair()        -> f32 { crate::dt_f32!(stroke.hair, 0.3) }
@@ -229,11 +382,30 @@ pub const SHADOW_SPREAD: f32 = 4.0;
 // Returns egui::epaint::Shadow ready for `Frame::shadow(...)`. Backed by the
 // `shadow_preset` design-token sub-struct when design-mode is on, else hard-
 // coded defaults that match the original inline values they replace.
+//
+// LEGACY: `shadow_card / _modal / _tooltip / _dropdown` (no theme arg) use
+// black as the shadow color — fine on dark themes, but on light themes
+// (Bauhaus, Peach, Ivory, Newsprint) they paint as a hard black smudge.
+// Prefer the `_themed` variants — they pull `t.shadow_color` so light
+// themes get a soft gray drop. The legacy variants are kept compiling for
+// the ~30 call sites that don't currently have a theme handle.
 #[inline]
 fn shadow_from_preset(offset: [i8; 2], blur: u8, spread: u8, alpha: u8) -> egui::epaint::Shadow {
     egui::epaint::Shadow {
         offset, blur, spread,
         color: Color32::from_black_alpha(alpha),
+    }
+}
+
+#[inline]
+fn shadow_from_preset_themed(
+    t: &super::super::gpu::Theme,
+    offset: [i8; 2], blur: u8, spread: u8, alpha: u8,
+) -> egui::epaint::Shadow {
+    let s = t.shadow_color;
+    egui::epaint::Shadow {
+        offset, blur, spread,
+        color: Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), alpha),
     }
 }
 
@@ -247,6 +419,16 @@ pub fn shadow_card() -> egui::epaint::Shadow {
     shadow_from_preset([0, 2], 4, 0, 60)
 }
 
+/// Card / panel — theme-aware. Use this in new code.
+pub fn shadow_card_themed(t: &super::super::gpu::Theme) -> egui::epaint::Shadow {
+    #[cfg(feature = "design-mode")]
+    if let Some(dt) = crate::design_tokens::get() {
+        let p = dt.shadow_preset.card;
+        return shadow_from_preset_themed(t, p.offset, p.blur, p.spread, p.alpha);
+    }
+    shadow_from_preset_themed(t, [0, 2], 4, 0, 60)
+}
+
 /// Modal dialog — tall, soft. Defaults: offset (0,8), blur 28, spread 2, alpha 80.
 pub fn shadow_modal() -> egui::epaint::Shadow {
     #[cfg(feature = "design-mode")]
@@ -255,6 +437,16 @@ pub fn shadow_modal() -> egui::epaint::Shadow {
         return shadow_from_preset(p.offset, p.blur, p.spread, p.alpha);
     }
     shadow_from_preset([0, 8], 28, 2, 80)
+}
+
+/// Modal dialog — theme-aware. Use this in new code.
+pub fn shadow_modal_themed(t: &super::super::gpu::Theme) -> egui::epaint::Shadow {
+    #[cfg(feature = "design-mode")]
+    if let Some(dt) = crate::design_tokens::get() {
+        let p = dt.shadow_preset.modal;
+        return shadow_from_preset_themed(t, p.offset, p.blur, p.spread, p.alpha);
+    }
+    shadow_from_preset_themed(t, [0, 8], 28, 2, 80)
 }
 
 /// Tooltip — small, crisp. Used for hover bubbles.
@@ -267,6 +459,16 @@ pub fn shadow_tooltip() -> egui::epaint::Shadow {
     shadow_from_preset([0, 2], 0, 0, 60)
 }
 
+/// Tooltip — theme-aware. Use this in new code.
+pub fn shadow_tooltip_themed(t: &super::super::gpu::Theme) -> egui::epaint::Shadow {
+    #[cfg(feature = "design-mode")]
+    if let Some(dt) = crate::design_tokens::get() {
+        let p = dt.shadow_preset.tooltip;
+        return shadow_from_preset_themed(t, p.offset, p.blur, p.spread, p.alpha);
+    }
+    shadow_from_preset_themed(t, [0, 2], 0, 0, 60)
+}
+
 /// Dropdown / popover. Defaults: offset (0,8), blur 24, spread 1, alpha 40.
 pub fn shadow_dropdown() -> egui::epaint::Shadow {
     #[cfg(feature = "design-mode")]
@@ -275,6 +477,16 @@ pub fn shadow_dropdown() -> egui::epaint::Shadow {
         return shadow_from_preset(p.offset, p.blur, p.spread, p.alpha);
     }
     shadow_from_preset([0, 8], 24, 1, 40)
+}
+
+/// Dropdown / popover — theme-aware. Use this in new code.
+pub fn shadow_dropdown_themed(t: &super::super::gpu::Theme) -> egui::epaint::Shadow {
+    #[cfg(feature = "design-mode")]
+    if let Some(dt) = crate::design_tokens::get() {
+        let p = dt.shadow_preset.dropdown;
+        return shadow_from_preset_themed(t, p.offset, p.blur, p.spread, p.alpha);
+    }
+    shadow_from_preset_themed(t, [0, 8], 24, 1, 40)
 }
 
 // ─── Semantic color accessors ────────────────────────────────────────────────
@@ -434,6 +646,7 @@ fn label_is_icon_only(s: &str) -> bool {
     })
 }
 
+#[deprecated(note = "use `ui_kit::Button::toolbar(label).active(b).show(ui, theme)` (which is exactly what the `toolbar_btn(ui, label, active, t)` helper in components/toolbar/mod.rs already does)")]
 pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim: Color32, toolbar_bg: Color32, toolbar_border: Color32) -> egui::Response {
     let st = current();
     // Apply uppercase transform per active style (#5).
@@ -482,7 +695,7 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
             let galley = ui.fonts(|f| f.layout_no_wrap(
                 display_label.clone(),
                 egui::FontId::monospace(label_size),
-                Color32::WHITE,
+                Color32::WHITE, // layout-only: color discarded, only width is read below
             ));
             galley.rect.width() + 16.0 // approx button padding
         };
@@ -549,7 +762,7 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
     let resp = ui.add(egui::Button::new(RichText::new(display_label).monospace().size(label_size).color(fg))
         .wrap_mode(egui::TextWrapMode::Extend)
         .fill(animated_bg).stroke(Stroke::new(stroke_thin(), animated_border)).corner_radius(corner_r)
-        .min_size(egui::vec2(0.0, 24.0)));
+        .min_size(egui::vec2(0.0, row_height_spacious())));
     hit(&resp.rect, "TOOLBAR_BTN", "Toolbar");
 
     // Hover bevel highlight — animate fade-in/out so it doesn't snap.
@@ -699,13 +912,31 @@ pub fn dialog_separator(ui: &mut egui::Ui, margin: f32, color: Color32) {
 
 /// Inset separator + soft gradient shadow below (3 fading lines).
 /// Uses `stroke_thick` for the main divider line so bold-separator sites are style-driven.
+///
+/// LEGACY: hardcoded black for the shadow gradient — breaks light themes.
+/// Prefer [`dialog_separator_shadow_themed`] in new code.
 pub fn dialog_separator_shadow(ui: &mut egui::Ui, margin: f32, color: Color32) {
+    dialog_separator_shadow_impl(ui, margin, color, Color32::BLACK);
+}
+
+/// Inset separator + soft gradient shadow below — theme-aware.
+pub fn dialog_separator_shadow_themed(
+    ui: &mut egui::Ui,
+    margin: f32,
+    color: Color32,
+    t: &super::super::gpu::Theme,
+) {
+    dialog_separator_shadow_impl(ui, margin, color, t.shadow_color);
+}
+
+#[inline]
+fn dialog_separator_shadow_impl(ui: &mut egui::Ui, margin: f32, color: Color32, shadow_tint: Color32) {
     let rect = ui.available_rect_before_wrap();
     let y = ui.cursor().min.y;
     let left = rect.left() + margin;
     let right = rect.right() - margin;
     ui.painter().line_segment([egui::pos2(left, y), egui::pos2(right, y)], Stroke::new(current().stroke_thick, color));
-    // Fading shadow gradient: 3 strokes at decreasing black alpha
+    // Fading shadow gradient: 3 strokes at decreasing alpha (themed tint).
     #[cfg(feature = "design-mode")]
     let shadow_alphas = {
         if let Some(t) = crate::design_tokens::get() { t.shadow.gradient } else { [20u8, 12, 4] }
@@ -715,7 +946,11 @@ pub fn dialog_separator_shadow(ui: &mut egui::Ui, margin: f32, color: Color32) {
     for (i, &a) in shadow_alphas.iter().enumerate() {
         ui.painter().line_segment(
             [egui::pos2(left, y + (i + 1) as f32), egui::pos2(right, y + (i + 1) as f32)],
-            Stroke::new(stroke_thin(), Color32::from_rgba_unmultiplied(0, 0, 0, a)));
+            Stroke::new(
+                stroke_thin(),
+                Color32::from_rgba_unmultiplied(shadow_tint.r(), shadow_tint.g(), shadow_tint.b(), a),
+            ),
+        );
     }
     ui.add_space(crate::dt_f32!(separator.shadow_space, 4.0));
 }
@@ -803,7 +1038,9 @@ pub fn segmented_control(
     let mut union_rect: Option<egui::Rect> = None;
     let n = labels.len();
     let rsm = radius_sm() as u8;
-    let seg_btn_h = 20.0;
+    // Match Size::Sm button height (22px) so segmented controls don't read
+    // 2px shorter than adjacent toolbar buttons.
+    let seg_btn_h = 22.0;
     let seg_pad_x = 5.0;
 
     for (i, label) in labels.iter().enumerate() {
@@ -825,7 +1062,7 @@ pub fn segmented_control(
         );
         ui.spacing_mut().button_padding = prev_pad;
         union_rect = Some(union_rect.map_or(resp.rect, |r: egui::Rect| r.union(resp.rect)));
-        if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+        cursor::clickable(ui, &resp);
         if resp.clicked() { clicked = Some(i); }
     }
 
@@ -868,6 +1105,7 @@ pub fn icon_btn(ui: &mut egui::Ui, icon: &str, color: Color32, size: f32) -> egu
 }
 
 /// Close button (X icon) — square icon_btn, standard panel close.
+#[deprecated(note = "use `ui_kit::Button::close().show(ui, theme).clicked()`")]
 #[inline]
 pub fn close_button(ui: &mut egui::Ui, dim: Color32) -> bool {
     icon_btn(ui, crate::ui_kit::icons::Icon::X, dim, font_lg()).clicked()
@@ -942,9 +1180,23 @@ pub fn stat_row(ui: &mut egui::Ui, label: &str, value: &str, label_color: Color3
 }
 
 /// Paint a drop shadow behind a painter-based tooltip rect (call BEFORE painting the bg).
+///
+/// LEGACY: hardcoded black tint — breaks light themes. Prefer
+/// [`paint_tooltip_shadow_themed`] in new code.
 pub fn paint_tooltip_shadow(painter: &egui::Painter, rect: egui::Rect, radius: f32) {
     let shadow_rect = rect.translate(egui::vec2(shadow_offset(), shadow_offset()));
     painter.rect_filled(shadow_rect, radius, Color32::from_rgba_unmultiplied(0, 0, 0, shadow_alpha()));
+}
+
+/// Theme-aware drop shadow behind a painter-based tooltip rect.
+pub fn paint_tooltip_shadow_themed(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    radius: f32,
+    t: &super::super::gpu::Theme,
+) {
+    let shadow_rect = rect.translate(egui::vec2(shadow_offset(), shadow_offset()));
+    painter.rect_filled(shadow_rect, radius, shadow_color_alpha(t, shadow_alpha()));
 }
 
 // ─── Utility ──────────────────────────────────────────────────────────────────
@@ -984,6 +1236,169 @@ pub fn color_alpha(c: Color32, alpha: u8) -> Color32 {
 #[inline] pub fn color_dim(c: Color32) -> Color32 { c.gamma_multiply(0.4) }
 /// 0.3× — barely visible (decorative chart rules, watermarks).
 #[inline] pub fn color_very_dim(c: Color32) -> Color32 { c.gamma_multiply(0.3) }
+
+// ─── Lighten / darken primitives ─────────────────────────────────────────────
+// Linear RGB lerp toward white / black. Used to derive hover/pressed states
+// from a base fill color.
+
+/// Lighten a color toward white by `amount` (0.0–1.0). Preserves alpha.
+#[inline]
+pub fn lighten(c: Color32, amount: f32) -> Color32 {
+    let amt = amount.clamp(0.0, 1.0);
+    let r = c.r() as f32 + (255.0 - c.r() as f32) * amt;
+    let g = c.g() as f32 + (255.0 - c.g() as f32) * amt;
+    let b = c.b() as f32 + (255.0 - c.b() as f32) * amt;
+    Color32::from_rgba_premultiplied(r as u8, g as u8, b as u8, c.a())
+}
+
+/// Darken a color toward black by `amount` (0.0–1.0). Preserves alpha.
+#[inline]
+pub fn darken(c: Color32, amount: f32) -> Color32 {
+    let amt = (1.0 - amount).clamp(0.0, 1.0);
+    Color32::from_rgba_premultiplied(
+        (c.r() as f32 * amt) as u8,
+        (c.g() as f32 * amt) as u8,
+        (c.b() as f32 * amt) as u8,
+        c.a(),
+    )
+}
+
+// ─── Semantic interaction-state colors ───────────────────────────────────────
+// Canonical hover / pressed / active / divider / disabled tones built on the
+// primitives above. Call-sites should reach for these instead of inlining
+// `lighten(c, 0.10)` / `color_alpha(t.toolbar_border, 36)` etc.
+
+/// Brighten a color by 10% — canonical hover treatment for filled surfaces.
+#[inline] pub fn color_hover(c: Color32) -> Color32 { lighten(c, 0.10) }
+
+/// Darken a color by 8% — canonical pressed/active state for filled surfaces.
+#[inline] pub fn color_pressed(c: Color32) -> Color32 { darken(c, 0.08) }
+
+/// Subtle text-color hover tint for rows/cells. Roughly matches PanelListRow's
+/// HOVER_BG_ALPHA constant — gives ~7% text alpha overlay.
+#[inline]
+pub fn hover_tint_text(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
+    color_alpha(t.text, 18)
+}
+
+/// Subtle accent fill for active chips/toggles. Use when a toggleable
+/// surface needs a "yes I'm on" visual that's quieter than a full accent.
+#[inline]
+pub fn active_chip_fill(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
+    color_alpha(t.accent, alpha_soft())
+}
+
+/// Standard hairline divider color. Wraps the toolbar_border + alpha 36 pair
+/// that's been hand-written across ~5 files for section dividers.
+#[inline]
+pub fn divider_color(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
+    color_alpha(t.toolbar_border, 36)
+}
+
+/// Disabled overlay — soft dim wash to apply over content that's not interactive.
+#[inline]
+pub fn disabled_overlay(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
+    color_alpha(t.dim, alpha_dim())
+}
+
+// ─── L2 surface helper (panel sub-section / card layer) ──────────────────────
+//
+// The design system uses four surface layers:
+//   L0: t.bg              — app canvas
+//   L1: t.toolbar_bg      — panel body
+//   L2: `color_layer_up`  — sub-section / card / active tab body
+//   L3: hover/selected    — color_alpha(t.text, 8) or color_alpha(t.accent, 24)
+//
+// Direction (lighten vs darken) is derived from the theme's `bg` brightness so
+// the lift reads the same on dark + light themes.
+
+/// Returns the panel surface one layer up from `t.toolbar_bg`. Used for
+/// cards, sub-sections, the active tab body — anywhere the design system
+/// asks for a subtle L2 surface that contrasts gently with the panel body.
+///
+/// `n` is the number of 4% steps to lift (clamped to keep things subtle).
+/// `n=1` is the canonical L2; larger values move toward an L3-ish accent.
+/// Direction (lighten vs darken) follows whether the active theme is dark or
+/// light — detected from `t.bg` brightness, same heuristic the gpu hairline
+/// helpers use.
+#[inline]
+pub(crate) fn color_layer_up(t: &crate::chart_renderer::gpu::Theme, n: u8) -> Color32 {
+    let base = t.toolbar_bg;
+    let bg = t.bg;
+    // Match `gpu::hairline_border`'s dark-vs-light heuristic.
+    let is_dark = (bg.r() as i16 + bg.g() as i16 + bg.b() as i16) < 384;
+    // 7% per step (≈18/255), capped at 5 steps. Calibrated so an L2
+    // subsection visibly nests above L1 without looking like a separate
+    // surface; was 4% which read as nothing. Stays under the threshold
+    // where the lifted bg starts feeling like a separate card.
+    let steps = n.min(5) as i16;
+    let shift: i16 = if is_dark { 18 * steps } else { -18 * steps };
+    let clamp = |c: i16| -> u8 { c.clamp(0, 255) as u8 };
+    Color32::from_rgb(
+        clamp(base.r() as i16 + shift),
+        clamp(base.g() as i16 + shift),
+        clamp(base.b() as i16 + shift),
+    )
+}
+
+/// Top-level panel header surface — closest to `t.bg` (chart pane
+/// background). Used by SidePanelShell so the topmost panel chrome
+/// reads as adjacent to the chart pane.
+#[inline]
+pub(crate) fn header_surface(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
+    t.bg.gamma_multiply(0.95)
+}
+
+/// Section header surface — one shade darker than `header_surface` so
+/// PanelSection headers sit visually below the SidePanelShell header
+/// above them. Creates the depth ramp: SidePanelShell (lightest) →
+/// PanelSection → PanelSubSection → panel body (darkest).
+#[inline]
+pub(crate) fn section_header_surface(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
+    t.bg.gamma_multiply(0.88)
+}
+
+/// Panel body surface — darker than `t.bg` so the side panel body
+/// recedes visually below the chart and below its own header.
+/// The pattern is: header (lighter, near `t.bg`) → body (darker,
+/// recessed) — readable depth without high-contrast slabs.
+#[inline]
+pub(crate) fn panel_surface(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
+    t.bg.gamma_multiply(0.85)
+}
+
+/// Header border — matches the chart pane header's perimeter hairline:
+/// `color_alpha(t.text, 38)` at `stroke_thin()`. Use for every panel
+/// header bottom rule, accordion rule, and side-panel header rule so
+/// the entire chrome family reads as one bordered system.
+#[inline]
+pub(crate) fn header_border(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
+    color_alpha(t.text, 38)
+}
+
+/// Inverse of `color_layer_up` — moves the surface DOWN one or more
+/// layers (toward `t.bg`, away from `t.text`). Use for elements that
+/// should read as RECESSED rather than RAISED — section header bands,
+/// trough surfaces, inset wells. Direction-aware: darker on dark themes,
+/// lighter on light themes (always away from the foreground).
+#[inline]
+pub(crate) fn color_layer_down(t: &crate::chart_renderer::gpu::Theme, n: u8) -> Color32 {
+    let base = t.toolbar_bg;
+    let bg = t.bg;
+    let is_dark = (bg.r() as i16 + bg.g() as i16 + bg.b() as i16) < 384;
+    let steps = n.min(5) as i16;
+    // OPPOSITE direction from color_layer_up — dark themes go darker,
+    // light themes go lighter (move toward t.bg).
+    let shift: i16 = if is_dark { -18 * steps } else { 18 * steps };
+    let clamp = |c: i16| -> u8 {
+        if c < 0 { 0 } else if c > 255 { 255 } else { c as u8 }
+    };
+    Color32::from_rgb(
+        clamp(base.r() as i16 + shift),
+        clamp(base.g() as i16 + shift),
+        clamp(base.b() as i16 + shift),
+    )
+}
 
 // ─── Theme-aware shadow color ────────────────────────────────────────────────
 // Light themes set `t.shadow_color` to a dark-gray (not black) so shadows on
@@ -1060,28 +1475,30 @@ pub fn order_card(ui: &mut egui::Ui, accent: Color32, bg: Color32, add_content: 
 // ─── Buttons ──────────────────────────────────────────────────────────────────
 
 /// Action button — tinted bg, for Place/Cancel/Clear. Disabled = greyed out.
+#[deprecated(note = "use `ui_kit::Button::action(label).tint(color).enabled(b).show(ui, theme)`")]
 pub fn action_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool) -> bool {
     let bg     = if enabled { color_alpha(color, alpha_muted())  } else { color_alpha(color, alpha_faint())  };
     let fg     = if enabled { color                              } else { color_alpha(color, alpha_active()) };
     let border = if enabled { color_alpha(color, alpha_active()) } else { color_alpha(color, alpha_line())   };
     let resp = ui.add_enabled(enabled,
         egui::Button::new(RichText::new(label).monospace().size(font_sm_tight()).strong().color(fg))
-            .fill(bg).stroke(Stroke::new(0.5, border))
-            .corner_radius(3.0).min_size(egui::vec2(0.0, 20.0)));
+            .fill(bg).stroke(Stroke::new(stroke_thin(), border))
+            .corner_radius(3.0).min_size(egui::vec2(0.0, row_height_compact())));
     hit(&resp.rect, "ACTION_BTN", "Buttons");
     if resp.hovered() && !crate::design_tokens::is_inspect_mode() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp.clicked()
 }
 
 /// Trade button — deep saturated bg for BUY/SELL. White bold text.
+#[deprecated(note = "use `ui_kit::Button::trade(label).tint(color).min_size((width, 24.0)).show(ui, theme)`")]
 pub fn trade_btn(ui: &mut egui::Ui, label: &str, color: Color32, width: f32) -> bool {
     let bright = crate::dt_f32!(button.trade_brightness, 0.55);
     let bg = Color32::from_rgb(
         (color.r() as f32 * bright) as u8,
         (color.g() as f32 * bright) as u8,
         (color.b() as f32 * bright) as u8);
-    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(11.0).strong().color(Color32::WHITE))
-        .fill(bg).min_size(egui::vec2(width, 24.0)).corner_radius(3.0));
+    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(11.0).strong().color(contrast_fg(bg)))
+        .fill(bg).min_size(egui::vec2(width, row_height_spacious())).corner_radius(3.0));
     hit(&resp.rect, "TRADE_BTN", "Buttons");
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -1092,7 +1509,7 @@ pub fn trade_btn(ui: &mut egui::Ui, label: &str, color: Color32, width: f32) -> 
             (color.b() as f32 * hb).min(255.0) as u8);
         ui.painter().rect_filled(resp.rect, radius_md(), hover_bg);
         ui.painter().text(resp.rect.center(), egui::Align2::CENTER_CENTER,
-            label, egui::FontId::monospace(font_lg()), Color32::WHITE);
+            label, egui::FontId::monospace(font_lg()), contrast_fg(hover_bg));
     }
     resp.clicked()
 }
@@ -1101,10 +1518,11 @@ pub fn trade_btn(ui: &mut egui::Ui, label: &str, color: Color32, width: f32) -> 
 /// Use for the "REVIEW BUY" / "PLACE ORDER" terminal action at the bottom of order tickets.
 /// The fill color and text color follow `active_fill_color` / `active_text_color` overrides
 /// when set (Newsprint: black fill + white text), otherwise uses `color` directly.
+#[deprecated(note = "use `ui_kit::Button::cta(label).tint(color).enabled(b).show(ui, theme)`")]
 pub fn cta_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool) -> bool {
     let st = current();
     let fill = st.active_fill_color.unwrap_or(color);
-    let fg   = st.active_text_color.unwrap_or(Color32::WHITE);
+    let fg   = st.active_text_color.unwrap_or_else(|| contrast_fg(fill));
     let h    = st.cta_height_px;
     let px   = st.cta_padding_x;
     let cr   = st.r_sm as f32;
@@ -1125,6 +1543,7 @@ pub fn cta_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool) ->
 }
 
 /// Small action button — for inline header actions like "Clear All", "Close All".
+#[deprecated(note = "use `ui_kit::Button::small_action(label).tint(color).show(ui, theme)`")]
 pub fn small_action_btn(ui: &mut egui::Ui, label: &str, color: Color32) -> bool {
     let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_sm()).strong().color(color))
         .fill(color_alpha(color, alpha_soft()))
@@ -1137,12 +1556,13 @@ pub fn small_action_btn(ui: &mut egui::Ui, label: &str, color: Color32) -> bool 
 }
 
 /// Simple button — subtle border, for form actions (Create, Cancel).
+#[deprecated(note = "use `ui_kit::Button::simple(label).tint(color).min_width(w).show(ui, theme)`")]
 pub fn simple_btn(ui: &mut egui::Ui, label: &str, color: Color32, min_width: f32) -> bool {
     let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_sm()).color(color))
         .fill(color_alpha(color, alpha_faint()))
         .stroke(Stroke::new(stroke_thin(), color_alpha(color, alpha_muted())))
         .corner_radius(radius_sm())
-        .min_size(egui::vec2(min_width, 18.0)));
+        .min_size(egui::vec2(min_width, row_height_dense())));
     hit(&resp.rect, "SIMPLE_BTN", "Buttons");
     if resp.hovered() && !crate::design_tokens::is_inspect_mode() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp.clicked()
@@ -1810,7 +2230,7 @@ pub fn apply_ui_style(ctx: &egui::Context, settings: &StyleSettings, toolbar_bor
         let inact = &mut style.visuals.widgets.inactive;
         inact.bg_fill      = egui::Color32::TRANSPARENT;
         inact.weak_bg_fill = egui::Color32::TRANSPARENT;
-        inact.bg_stroke    = egui::Stroke::new(1.0, color_alpha(toolbar_border, 70));
+        inact.bg_stroke    = egui::Stroke::new(stroke_std(), color_alpha(toolbar_border, 70));
         inact.corner_radius = egui::CornerRadius::ZERO;
 
         let hov = &mut style.visuals.widgets.hovered;

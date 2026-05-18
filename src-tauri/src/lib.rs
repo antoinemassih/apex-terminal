@@ -6,6 +6,10 @@ pub mod persistence;
 pub mod chart;
 pub mod ui_kit;
 pub mod watchlist;
+pub mod state;
+pub mod error;
+
+pub use error::AppError;
 
 // Backward-compat re-exports so code in lib.rs body keeps working without changes
 pub use foundation::monitoring;
@@ -32,6 +36,7 @@ use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandChild;
 use std::sync::Mutex;
 use std::time::Duration;
+use crate::data::connectivity::errors_sink::{report, ErrorLevel};
 
 /// Global senders for forwarding ticks/data to ALL native chart windows
 pub static NATIVE_CHART_TXS: std::sync::OnceLock<Mutex<Vec<std::sync::mpsc::Sender<chart_renderer::ChartCommand>>>> = std::sync::OnceLock::new();
@@ -62,7 +67,7 @@ fn native_chart_data(symbol: String, timeframe: String, bars: Vec<JsBar>) {
     bar_cache::set(&symbol, &timeframe, &cache_bars);
 
     let (gpu_bars, timestamps) = convert_js_bars(&bars);
-    eprintln!("[native-chart] Received {} bars for {} from WebView", gpu_bars.len(), symbol);
+    tracing::debug!(target: "native_chart", count = gpu_bars.len(), %symbol, "received bars from WebView");
     send_to_native_chart(chart_renderer::ChartCommand::LoadBars {
         symbol, timeframe, bars: gpu_bars, timestamps,
     });
@@ -111,8 +116,9 @@ fn convert_js_bars(bars: &[JsBar]) -> (Vec<chart_renderer::Bar>, Vec<i64>) {
 }
 
 #[tauri::command]
-async fn open_native_chart(app: tauri::AppHandle, symbol: String, timeframe: String, bars: Option<Vec<JsBar>>) -> Result<String, String> {
-    eprintln!("[native-chart] Opening for {} {} (bars from WebView: {})", symbol, timeframe, bars.as_ref().map_or(0, |b| b.len()));
+async fn open_native_chart(app: tauri::AppHandle, symbol: String, timeframe: String, bars: Option<Vec<JsBar>>) -> Result<String, AppError> {
+    report(ErrorLevel::Info, "native_chart", "open",
+        format!("opening for {} {} (bars from WebView: {})", symbol, timeframe, bars.as_ref().map_or(0, |b| b.len())));
 
     let (gpu_bars, timestamps) = bars.as_ref()
         .filter(|b| !b.is_empty())
@@ -145,8 +151,27 @@ fn greet(name: &str) -> String {
 
 struct OcocoProcess(Mutex<Option<CommandChild>>);
 
+/// Holds the `tracing-appender` non-blocking writer guard for the program's
+/// lifetime. Dropping it would stop the background log thread and silently
+/// truncate buffered lines, so we stash it here instead.
+static TRACING_GUARD: std::sync::OnceLock<tracing_appender::non_blocking::WorkerGuard> =
+    std::sync::OnceLock::new();
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Initialize tracing FIRST so any startup error / log line gets captured.
+    // Log dir: ~/Library/Logs/apex-terminal (macOS) or std::env::temp_dir()
+    // fallback. The non-blocking writer guard MUST live for the program's
+    // duration — stash it in a static.
+    {
+        let log_dir = dirs::data_local_dir()
+            .map(|p| p.join("apex-terminal").join("logs"))
+            .unwrap_or_else(|| std::env::temp_dir().join("apex-terminal-logs"));
+        let guard = crate::data::connectivity::init_tracing(&log_dir);
+        let _ = TRACING_GUARD.set(guard);
+        tracing::info!(target: "apex", log_dir = %log_dir.display(), "tracing initialized");
+    }
+
     // Initialize design-mode token store so is_active() returns true and
     // the inspector keyboard shortcut (Ctrl+Shift+D) becomes responsive.
     // Tries design.toml first, falls back to defaults.
@@ -157,7 +182,7 @@ pub fn run() {
             .and_then(|s| toml::from_str(&s).ok())
             .unwrap_or_default();
         design_tokens::init(tokens);
-        eprintln!("[design-mode] active — press Ctrl+Shift+D to toggle the panel");
+        report(ErrorLevel::Info, "design_mode", "active", "active — press Ctrl+Shift+D to toggle the panel");
     }
 
     tauri::Builder::default()
@@ -168,14 +193,17 @@ pub fn run() {
             // acquire_timeout caps the initial connection attempt at 3 s instead of
             // blocking the setup thread indefinitely (which leaves the window blank).
             let pool_opt = async_runtime::block_on(async {
+                let pg_url = data::apex_data::config::apex_pg_url();
                 let connect = PgPoolOptions::new()
                     .max_connections(5)
                     .acquire_timeout(Duration::from_secs(3))
-                    .connect("postgresql://postgres:monkeyxx@192.168.1.143:5432/ococo")
+                    .connect(&pg_url)
                     .await;
+                // Do NOT include `pg_url` in any error message — it carries
+                // the password. The sqlx error already names the host:port.
                 match connect {
                     Err(e) => {
-                        eprintln!("[apex] PostgreSQL unavailable ({e}) — drawings use fallback");
+                        report(ErrorLevel::Warn, "apex", "postgres_unavailable", format!("({e}) — drawings use fallback"));
                         None
                     }
                     Ok(p) => Some(p),
@@ -183,15 +211,25 @@ pub fn run() {
             });
             if let Some(pool) = pool_opt {
                 drawing_db::init(pool.clone());
-                crate::persistence::watchlist_db::init(pool);
+                crate::persistence::watchlist_db::init(pool.clone());
+                // Wave 7A fix (Bug 2): register the pool for shutdown so
+                // `pool.close().await` runs on exit. Without this, sqlx's
+                // background connections stay open and the dev DB starts
+                // rejecting new connections after ~10-20 restarts.
+                {
+                    use std::sync::Arc;
+                    use crate::data::connectivity::{register, shutdown::PgPoolShutdown};
+                    register("postgres", Arc::new(PgPoolShutdown { name: "postgres", pool: pool.clone() }));
+                }
                 // Phase (d): refresh Polygon-backed ETF/index holdings into
                 // symbol_universes on a background thread. Cold-start cache
                 // is primed from the DB inside the same job.
                 crate::watchlist::refresh::refresh_universes_in_background();
             }
 
-            // Redis bar cache — optional, app works without it
-            bar_cache::init();
+            // Redis bar cache — optional, app works without it. URL comes
+            // from APEX_REDIS_URL env (defaults to the homelab dev Redis).
+            bar_cache::init(&data::apex_data::config::apex_redis_url());
 
             // System monitoring — GPU, CPU, memory, frame timing → :9091/metrics
             monitoring::start();
@@ -288,13 +326,13 @@ pub fn run() {
                         }
                     }
                     Frame::Resync { reason } => {
-                        eprintln!("[apex_data] resync: {reason}");
+                        report(ErrorLevel::Warn, "apex_data", "resync", reason.to_string());
                     }
                     Frame::Connection(connected) => {
                         apex_data::live_state::set_connected(*connected);
                     }
                     Frame::Error { code, message } => {
-                        eprintln!("[apex_data] server error {code}: {message}");
+                        report(ErrorLevel::Warn, "apex_data", "server_error", format!("{code}: {message}"));
                         // Surface sub_rejected (cap reached, no feed handle) as a toast.
                         // Other soft errors stay in stderr — too noisy for the UI.
                         if code == "sub_rejected" {
@@ -320,11 +358,29 @@ pub fn run() {
             let ib_handle = ib_ws::spawn(app.handle().clone());
             app.manage(ib_handle);
 
+            // Wave 12d: bridge `Connection::subscribe_state()` broadcast
+            // streams into a module-level snapshot map readable by the
+            // connection panel each frame. Must run after the WS feeds are
+            // started above (so their broadcast senders exist) and inside the
+            // tokio runtime (so `tokio::spawn` from inside the function works).
+            async_runtime::spawn(async {
+                crate::chart_renderer::ui::panels::connection_state_snapshot::spawn_state_listeners();
+            });
+
+            // Wave 7A fix (Bug 1): the noop pre-registrations that used to
+            // live here masked the real Shutdown impls. Because `register()`
+            // appends rather than replaces, the first (noop) entry won and
+            // real WS close frames were never sent on exit. Each feed now
+            // self-registers its real `Shutdown` when it spawns above
+            // (apex_data::ws::start, ib_ws::spawn, crypto_feed::start,
+            // signals_feed::start). Discord has no long-lived connection
+            // yet — when it grows one, register from its module.
+
             // Spawn ococo-api sidecar — bundled Node.js server
             match app.shell().sidecar("ococo-api") {
-                Err(e) => eprintln!("[apex] ococo-api sidecar not found: {e}"),
+                Err(e) => report(ErrorLevel::Error, "apex", "sidecar_not_found", format!("ococo-api: {e}")),
                 Ok(cmd) => match cmd.spawn() {
-                    Err(e) => eprintln!("[apex] Failed to spawn ococo-api: {e}"),
+                    Err(e) => report(ErrorLevel::Error, "apex", "sidecar_spawn_failed", format!("ococo-api: {e}")),
                     Ok((mut rx, child)) => {
                         // Drain sidecar stdout/stderr so the channel doesn't block.
                         tauri::async_runtime::spawn(async move {
@@ -342,10 +398,10 @@ pub fn run() {
                                         }
                                     }
                                     CommandEvent::Error(e) => {
-                                        eprintln!("[ococo] error: {e}");
+                                        report(ErrorLevel::Error, "ococo", "sidecar_error", e.to_string());
                                     }
                                     CommandEvent::Terminated(status) => {
-                                        eprintln!("[ococo] exited: {:?}", status);
+                                        report(ErrorLevel::Warn, "ococo", "sidecar_exited", format!("{:?}", status));
                                         break;
                                     }
                                     _ => {}
@@ -377,6 +433,12 @@ pub fn run() {
         .run(|app, event| {
             // Kill ococo-api cleanly when the app exits
             if let tauri::RunEvent::Exit = event {
+                // Wave 1: drain all registered connections within 3 s before
+                // killing sidecars. Best-effort — failures are logged via
+                // tracing inside `drain_all`.
+                tauri::async_runtime::block_on(async {
+                    crate::data::connectivity::drain_all(std::time::Duration::from_secs(3)).await;
+                });
                 if let Some(state) = app.try_state::<OcocoProcess>() {
                     if let Ok(mut guard) = state.0.lock() {
                         if let Some(child) = guard.take() {

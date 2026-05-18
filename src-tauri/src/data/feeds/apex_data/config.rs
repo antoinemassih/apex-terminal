@@ -88,6 +88,57 @@ pub fn set_apex_lan_ip(ip: Option<String>) {
 
 /// Parse the host[:port] out of the configured base URL. Used by the REST
 /// and WS layers to bind the LAN-IP override only to this host.
+/// Wave 1: typed `Authenticated` adapter over the free-function token store.
+///
+/// ApexData does NOT currently expose a `/auth/refresh` endpoint, so
+/// `refresh_token()` returns `AuthError::RefreshFailed("not supported")`.
+/// Callers using `with_auth_retry` will see the original 401 propagate after
+/// one no-op refresh attempt — same effective behavior as today, but the
+/// typed surface is now in place so a server-side refresh flow can be wired
+/// without touching every call site.
+///
+/// TODO(wave-2): wire to the real refresh endpoint once it lands in ApexData.
+pub struct ApexDataAuth;
+
+#[async_trait::async_trait]
+impl crate::data::connectivity::Authenticated for ApexDataAuth {
+    async fn refresh_token(&self) -> Result<String, crate::data::connectivity::AuthError> {
+        Err(crate::data::connectivity::AuthError::RefreshFailed(
+            "apex_data: refresh endpoint not implemented server-side".into(),
+        ))
+    }
+    fn current_token(&self) -> Option<String> {
+        apex_token()
+    }
+}
+
+/// Redis URL for the bar cache. Reads `APEX_REDIS_URL` env var, falling
+/// back to the homelab dev Redis. Used by `bar_cache::init`.
+///
+/// The default embeds the homelab dev credential so a fresh checkout
+/// on the homelab LAN works out of the box; override via env var in
+/// any other environment. Never log the returned value — it carries a
+/// password.
+pub fn apex_redis_url() -> String {
+    std::env::var("APEX_REDIS_URL")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "redis://:monkeyxx@192.168.1.89:6379/".into())
+}
+
+/// PostgreSQL URL for the drawings / watchlist DB. Reads `APEX_PG_URL`
+/// env var, falling back to the homelab dev Postgres.
+///
+/// Same caveat as `apex_redis_url`: the default embeds the homelab dev
+/// credential. Override via env var elsewhere. Never log the returned
+/// value — it carries a password.
+pub fn apex_pg_url() -> String {
+    std::env::var("APEX_PG_URL")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "postgresql://postgres:monkeyxx@192.168.1.143:5432/ococo".into())
+}
+
 pub fn apex_host_port() -> Option<(String, u16)> {
     let url = apex_url();
     let rest = url.strip_prefix("http://").or_else(|| url.strip_prefix("https://")).unwrap_or(&url);

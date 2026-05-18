@@ -208,12 +208,12 @@ if chart.picker_open {
         .separator(false)
         .close_on_click_outside(true)
         .show(|ui| {
-            let input = super::super::widgets::inputs::TextInput::new(&mut chart.picker_query)
+            let input = crate::ui_kit::widgets::Input::new(&mut chart.picker_query)
                     .placeholder("Search any stock, ETF, index...")
                     .width(300.0)
                     .font_size(11.0)
-                    .show(ui);
-            input.request_focus();
+                    .show(ui, t);
+            input.request_focus(ui.ctx());
 
             if chart.picker_searching {
                 ui.horizontal(|ui| {

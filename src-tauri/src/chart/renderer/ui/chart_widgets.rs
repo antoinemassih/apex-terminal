@@ -1561,7 +1561,7 @@ fn draw_risk_reward(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &T
         egui::CornerRadius { nw: 4, sw: 4, ne: 0, se: 0 }, color_alpha(t.bear, ALPHA_STRONG));
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x + risk_w, bar_y), egui::vec2(bar_w - risk_w, bar_h)),
         egui::CornerRadius { nw: 0, sw: 0, ne: 4, se: 4 }, color_alpha(t.bull, ALPHA_STRONG));
-    p.circle_filled(egui::pos2(bar_x + risk_w, bar_y + bar_h / 2.0), 4.0, Color32::WHITE);
+    p.circle_filled(egui::pos2(bar_x + risk_w, bar_y + bar_h / 2.0), 4.0, t.text);
 
     let rr_str = format!("{:.1} : 1", reward);
     let rr_col = if reward >= 2.0 { t.bull } else if reward >= 1.0 { Color32::from_rgb(255, 191, 0) } else { t.bear };
@@ -2082,7 +2082,7 @@ fn draw_momentum_heat(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
         // ROC value
         p.text(egui::pos2(x + col_w * 0.5, body.top() + bar_h * 0.5), egui::Align2::CENTER_CENTER,
             &format!("{:+.0}", roc), egui::FontId::monospace(FONT_2XS),
-            if intensity > 0.5 { egui::Color32::from_rgba_unmultiplied(0, 0, 0, 200) } else { t.text });
+            if intensity > 0.5 { shadow_color_alpha(t, 200) } else { t.text });
 
         // Label
         p.text(egui::pos2(x + col_w * 0.5, body.bottom() - 6.0), egui::Align2::CENTER_CENTER,
@@ -2159,7 +2159,7 @@ fn draw_sector_rotation(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t
             else { t.dim };
         p.circle_filled(egui::pos2(sx, sy), 4.0, col);
         p.text(egui::pos2(sx, sy - 7.0), egui::Align2::CENTER_CENTER, label,
-            mono_4xs(), col.gamma_multiply(0.8));
+            mono_4xs(), color_subtle(col));
     }
 }
 
@@ -2366,7 +2366,7 @@ fn draw_signal_radar(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
         let lx = cx + label_r * angle.cos();
         let ly = cy + label_r * angle.sin();
         p.text(egui::pos2(lx, ly), egui::Align2::CENTER_CENTER, name,
-            egui::FontId::monospace(5.5), if *active { t.accent.gamma_multiply(0.8) } else { color_very_dim(t.dim) });
+            egui::FontId::monospace(5.5), if *active { color_subtle(t.accent) } else { color_very_dim(t.dim) });
     }
 
     // Center: active count
@@ -2432,7 +2432,7 @@ fn draw_tape_speed(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
         p.line_segment([
             egui::pos2(cx + r * a0.cos(), cy + r * a0.sin()),
             egui::pos2(cx + r * a1.cos(), cy + r * a1.sin())],
-            egui::Stroke::new(5.0, col));
+            egui::Stroke::new(5.0, col)); // TODO: off-token
     }
 
     // Needle
@@ -2731,10 +2731,10 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
         egui::pos2(right - btn_w, y), egui::vec2(btn_w, 14.0));
     let btn_hov = hover.map(|p| btn_rect.contains(p)).unwrap_or(false);
     p.rect_filled(btn_rect, 3.0, color_alpha(t.bear, if btn_hov { 80 } else { 40 }));
-    p.rect_stroke(btn_rect, 3.0, egui::Stroke::new(if btn_hov { 1.0 } else { 0.5 }, t.bear.gamma_multiply(if btn_hov { 0.9 } else { 0.5 })),
+    p.rect_stroke(btn_rect, 3.0, egui::Stroke::new(if btn_hov { 1.0 } else { 0.5 }, if btn_hov { color_subtle(t.bear) } else { color_half(t.bear) }),
         egui::StrokeKind::Outside);
     p.text(btn_rect.center(), egui::Align2::CENTER_CENTER,
-        "Close All", egui::FontId::monospace(FONT_2XS), if btn_hov { egui::Color32::WHITE } else { t.bear });
+        "Close All", egui::FontId::monospace(FONT_2XS), if btn_hov { contrast_fg(t.bear) } else { t.bear });
     btns.push((btn_rect, WidgetBtnAction::CloseAllPositions));
 
     p.text(egui::pos2(left, y + 7.0), egui::Align2::LEFT_CENTER,
@@ -2744,13 +2744,13 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
 
     // ── Column headers ──
     p.text(egui::pos2(left, y + 4.0), egui::Align2::LEFT_CENTER,
-        "SYMBOL", egui::FontId::monospace(FONT_2XS), t.dim.gamma_multiply(0.35));
+        "SYMBOL", egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
     p.text(egui::pos2(left + 70.0, y + 4.0), egui::Align2::LEFT_CENTER,
-        "QTY", egui::FontId::monospace(FONT_2XS), t.dim.gamma_multiply(0.35));
+        "QTY", egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
     p.text(egui::pos2(right - 40.0, y + 4.0), egui::Align2::RIGHT_CENTER,
-        "P&L", egui::FontId::monospace(FONT_2XS), t.dim.gamma_multiply(0.35));
+        "P&L", egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
     p.text(egui::pos2(right, y + 4.0), egui::Align2::RIGHT_CENTER,
-        "", egui::FontId::monospace(FONT_2XS), t.dim.gamma_multiply(0.35));
+        "", egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
     y += 12.0;
 
     // ── Position rows ──
@@ -2767,7 +2767,7 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
         // Market value below symbol
         let mv_str = format!("${:.0}", pos.market_value);
         p.text(egui::pos2(left, y + row_h * 0.75), egui::Align2::LEFT_CENTER,
-            &mv_str, egui::FontId::monospace(FONT_2XS), t.dim.gamma_multiply(0.35));
+            &mv_str, egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
 
         // Qty with direction color
         let qty_label = format!("{}{}", if pos.qty > 0 { "+" } else { "" }, pos.qty);
@@ -2791,7 +2791,7 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
         }
         p.text(close_rect.center(), egui::Align2::CENTER_CENTER,
             "\u{00D7}", egui::FontId::proportional(FONT_SM),
-            if close_hov { t.bear } else { t.dim.gamma_multiply(0.35) });
+            if close_hov { t.bear } else { color_dim(t.dim) });
         btns.push((close_rect, WidgetBtnAction::ClosePosition(pos_idx)));
 
         // Subtle bottom border
@@ -2829,7 +2829,7 @@ fn draw_daily_pnl(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
     p.rect_stroke(btn_rect, 4.0, egui::Stroke::new(if btn_hovered { 1.0 } else { 0.5 }, btn_border),
         egui::StrokeKind::Outside);
     p.text(btn_rect.center(), egui::Align2::CENTER_CENTER,
-        "Close All", egui::FontId::monospace(FONT_SM), if btn_hovered { egui::Color32::WHITE } else { t.bear });
+        "Close All", egui::FontId::monospace(FONT_SM), if btn_hovered { contrast_fg(t.bear) } else { t.bear });
     btns.push((btn_rect, WidgetBtnAction::CloseAllPositions));
 
     // Subtle "DAY P&L" label top-left
@@ -2841,7 +2841,7 @@ fn draw_custom(p: &egui::Painter, body: egui::Rect, t: &Theme) {
     let cx = body.center().x;
     let cy = body.center().y;
     p.text(egui::pos2(cx, cy - 6.0), egui::Align2::CENTER_CENTER,
-        "\u{2699}", egui::FontId::proportional(20.0), t.dim.gamma_multiply(0.2));
+        "\u{2699}", egui::FontId::proportional(20.0), color_very_dim(t.dim));
     p.text(egui::pos2(cx, cy + 14.0), egui::Align2::CENTER_CENTER,
         "Drag to configure", egui::FontId::monospace(FONT_XS), color_very_dim(t.dim));
 }
@@ -2877,8 +2877,8 @@ fn draw_correlation(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
     // Needle: corr maps -1..+1 to PI..0
     let needle_a = PI * 0.5 * (1.0 - corr); // 0 at right, PI at left
     let ne = egui::pos2(cx + (r - 8.0) * needle_a.cos(), gauge_cy - (r - 8.0) * needle_a.sin());
-    p.line_segment([egui::pos2(cx, gauge_cy), ne], Stroke::new(stroke_bold(), Color32::WHITE));
-    p.circle_filled(egui::pos2(cx, gauge_cy), 3.0, Color32::WHITE);
+    p.line_segment([egui::pos2(cx, gauge_cy), ne], Stroke::new(stroke_bold(), t.text));
+    p.circle_filled(egui::pos2(cx, gauge_cy), 3.0, t.text);
 
     // Hero correlation value
     let sign = if corr >= 0.0 { "+" } else { "" };
@@ -3462,13 +3462,13 @@ fn draw_conviction_meter(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t
     draw_arc(p, egui::pos2(cx, gauge_cy), r, 0.0, PI,
         Stroke::new(stroke_heavy(), color_alpha(t.toolbar_border, ALPHA_MUTED)), 40);
     let sweep = (score / 100.0) * PI;
-    draw_arc(p, egui::pos2(cx, gauge_cy), r, PI - sweep, PI, Stroke::new(3.5, color), 30);
+    draw_arc(p, egui::pos2(cx, gauge_cy), r, PI - sweep, PI, Stroke::new(3.5, color), 30); // TODO: off-token
 
     // Needle
     let a = PI - (score / 100.0) * PI;
     let ne = egui::pos2(cx + (r - 8.0) * a.cos(), gauge_cy - (r - 8.0) * a.sin());
-    p.line_segment([egui::pos2(cx, gauge_cy), ne], Stroke::new(stroke_bold(), Color32::WHITE));
-    p.circle_filled(egui::pos2(cx, gauge_cy), 3.0, Color32::WHITE);
+    p.line_segment([egui::pos2(cx, gauge_cy), ne], Stroke::new(stroke_bold(), t.text));
+    p.circle_filled(egui::pos2(cx, gauge_cy), 3.0, t.text);
 
     hero_number(p, egui::pos2(cx, gauge_cy + 14.0), &format!("{:.0}", score), color);
 

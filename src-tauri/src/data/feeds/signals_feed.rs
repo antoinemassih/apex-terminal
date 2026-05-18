@@ -3,12 +3,49 @@
 //! Subscribes to patterns/alerts/trendlines/significance channels.
 //! Pushes PatternLabels / AlertTriggered / AutoTrendlines / SignificanceUpdate to the chart renderer.
 
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, Ordering};
+use std::time::Duration;
+
+// ── Wave 6: per-feed metrics counters ────────────────────────────────────────
+pub(crate) static MESSAGES_IN:        AtomicU64 = AtomicU64::new(0);
+pub(crate) static PARSE_ERRORS:       AtomicU64 = AtomicU64::new(0);
+pub(crate) static RECONNECT_COUNT:    AtomicU32 = AtomicU32::new(0);
+pub(crate) static LAST_MESSAGE_AT_MS: AtomicI64 = AtomicI64::new(0);
+
+// ── Wave 7E: WS resilience ───────────────────────────────────────────────────
+// Signals traffic is bursty (patterns + alerts on bar-close) — quiet for
+// minutes is normal, so the heartbeat is unconditional, not conditional.
+const HEARTBEAT_SECS: u64 = 30;
+const STALE_TIMEOUT_MS: i64 = 60_000; // signals can be legitimately quiet
+const WATCHDOG_TICK_SECS: u64 = 10;
+pub(crate) static FORCE_RECONNECT: AtomicBool = AtomicBool::new(false);
+pub(crate) static LAST_STALL_AT_MS: AtomicI64 = AtomicI64::new(0);
+
+// ── Wave 11c: ConnectionState push-notification stream ───────────────────────
+static STATE_TX: OnceLock<tokio::sync::broadcast::Sender<ConnectionState>> = OnceLock::new();
+
+pub fn state_tx() -> &'static tokio::sync::broadcast::Sender<ConnectionState> {
+    STATE_TX.get_or_init(|| tokio::sync::broadcast::channel(64).0)
+}
+
+pub(crate) fn publish_state(s: ConnectionState) {
+    let _ = state_tx().send(s);
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
 use crate::chart_renderer::{ChartCommand, PatternLabel};
+use crate::data::connectivity::{self, errors_sink::{report, ErrorLevel}, Backoff, ConnectionState};
 
 const APEX_SIGNALS_WS: &str = "ws://localhost:8200/ws";
 
 static FEED_RUNNING: OnceLock<Mutex<bool>> = OnceLock::new();
+static SHUTDOWN: OnceLock<Arc<AtomicBool>> = OnceLock::new();
 
 pub fn start() {
     let running = FEED_RUNNING.get_or_init(|| Mutex::new(false));
@@ -17,29 +54,96 @@ pub fn start() {
     *guard = true;
     drop(guard);
 
-    std::thread::spawn(|| {
+    let shutdown = SHUTDOWN.get_or_init(|| Arc::new(AtomicBool::new(false))).clone();
+    connectivity::register("signals_feed", Arc::new(SignalsFeedShutdown { shutdown: shutdown.clone() }));
+
+    std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
         rt.block_on(async {
+            tokio::spawn(run_watchdog());
+            let mut backoff = Backoff::new().with_max_attempts(None);
+            let mut first = true;
             loop {
-                if let Err(e) = run_feed().await {
-                    eprintln!("[signals-feed] Error: {e} — reconnecting in 5s");
+                if shutdown.load(Ordering::SeqCst) {
+                    publish_state(ConnectionState::ShuttingDown);
+                    break;
                 }
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                if !first { RECONNECT_COUNT.fetch_add(1, Ordering::Relaxed); }
+                first = false;
+                publish_state(ConnectionState::Connecting {
+                    attempt: RECONNECT_COUNT.load(Ordering::Relaxed) + 1,
+                });
+                match run_feed().await {
+                    Ok(()) => { backoff.reset(); }
+                    Err(e) => {
+                        report(ErrorLevel::Warn, "signals_feed", "reconnect", e.to_string());
+                    }
+                }
+                if shutdown.load(Ordering::SeqCst) {
+                    publish_state(ConnectionState::ShuttingDown);
+                    break;
+                }
+                if let Some(d) = backoff.next_delay() {
+                    publish_state(ConnectionState::Backoff {
+                        until: std::time::Instant::now() + d,
+                        attempt: RECONNECT_COUNT.load(Ordering::Relaxed) + 1,
+                        reason: "disconnected".into(),
+                    });
+                    tokio::time::sleep(d).await;
+                } else {
+                    publish_state(ConnectionState::Failed {
+                        reason: connectivity::ConnectionError::MaxRetriesExceeded(
+                            RECONNECT_COUNT.load(Ordering::Relaxed),
+                        ),
+                    });
+                }
             }
         });
     });
+}
+
+struct SignalsFeedShutdown {
+    shutdown: Arc<AtomicBool>,
+}
+
+#[async_trait::async_trait]
+impl connectivity::Shutdown for SignalsFeedShutdown {
+    async fn drain(&self, deadline: Duration) -> Result<(), String> {
+        tracing::info!(target: "shutdown", connection = "signals_feed", "drain invoked");
+        self.shutdown.store(true, Ordering::SeqCst);
+        tokio::time::sleep(deadline.min(Duration::from_millis(200))).await;
+        Ok(())
+    }
 }
 
 async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use futures_util::{StreamExt, SinkExt};
     use tokio_tungstenite::connect_async;
 
-    eprintln!("[signals-feed] Connecting to {}", APEX_SIGNALS_WS);
+    report(ErrorLevel::Info, "signals_feed", "connecting", APEX_SIGNALS_WS);
     let (ws, _) = connect_async(APEX_SIGNALS_WS).await?;
     let (mut write, mut read) = ws.split();
+
+    // Wave 7E: trigger gap-fill on every reconnect (skip initial connect).
+    // Signals don't push bars directly, but the SubscriptionManager fanout is
+    // shared with bar subs — calling here keeps the contract uniform.
+    if RECONNECT_COUNT.load(Ordering::Relaxed) > 0 {
+        tokio::spawn(async {
+            let mgr = crate::data::providers::registry::subscription_manager();
+            let n = mgr.gap_fill_on_reconnect_all().await;
+            if n > 0 {
+                report(
+                    ErrorLevel::Info,
+                    "signals_feed",
+                    "gap_fill",
+                    format!("replayed {n} bars after reconnect"),
+                );
+            }
+        });
+    }
 
     // Subscribe to all signal channels
     let sub_msg = serde_json::json!({
@@ -48,18 +152,62 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     write.send(tokio_tungstenite::tungstenite::Message::Text(
         sub_msg.to_string().into()
     )).await?;
-    eprintln!("[signals-feed] Connected — subscribed to patterns/alerts/trendlines/significance");
+    report(ErrorLevel::Info, "signals_feed", "connected", "patterns/alerts/trendlines/significance");
+    publish_state(ConnectionState::Authenticated);
+    publish_state(ConnectionState::Subscribed { count: 4 });
 
-    while let Some(msg) = read.next().await {
-        let msg = msg?;
-        if !msg.is_text() { continue; }
+    // Wave 7E: heartbeat + force-reconnect plumbing.
+    FORCE_RECONNECT.store(false, Ordering::SeqCst);
+    let mut heartbeat = tokio::time::interval(Duration::from_secs(HEARTBEAT_SECS));
+    heartbeat.tick().await;
+    let mut force_check = tokio::time::interval(Duration::from_secs(1));
+    force_check.tick().await;
+
+    loop {
+        if FORCE_RECONNECT.swap(false, Ordering::SeqCst) {
+            report(ErrorLevel::Warn, "signals_feed", "force_reconnect", "watchdog tripped");
+            publish_state(ConnectionState::Backoff {
+                until: std::time::Instant::now() + Duration::from_secs(1),
+                attempt: RECONNECT_COUNT.load(Ordering::Relaxed),
+                reason: "tick_stalled".into(),
+            });
+            return Err("watchdog forced reconnect".into());
+        }
+        let msg = tokio::select! {
+            _ = heartbeat.tick() => {
+                if let Err(e) = write.send(tokio_tungstenite::tungstenite::Message::Ping(Vec::new().into())).await {
+                    report(ErrorLevel::Warn, "signals_feed", "ping_failed", e.to_string());
+                    return Err(e.into());
+                }
+                continue;
+            }
+            _ = force_check.tick() => { continue; }
+            frame = read.next() => match frame {
+                Some(m) => m?,
+                None => break,
+            }
+        };
+        if !msg.is_text() {
+            LAST_MESSAGE_AT_MS.store(now_ms(), Ordering::Relaxed);
+            continue;
+        }
         let text = msg.to_text()?;
+
+        MESSAGES_IN.fetch_add(1, Ordering::Relaxed);
+        LAST_MESSAGE_AT_MS.store(now_ms(), Ordering::Relaxed);
 
         let json: serde_json::Value = match serde_json::from_str(text) {
             Ok(v) => v,
-            Err(_) => continue,
+            Err(_) => { PARSE_ERRORS.fetch_add(1, Ordering::Relaxed); continue; }
         };
 
+        // Wave 8c: signals feed is wildcard-subscribed by channel
+        // ("patterns" / "alerts" / "trendlines" / "significance") and the
+        // frames are pattern/alert/trendline events — not bar updates.
+        // There is no (symbol, timeframe) bumper that fits here; gap-fill
+        // does not apply to signals state. Intentionally no SubscriptionManager
+        // bump call. The reconnect hook above is still useful because the
+        // shared manager may have bar subs from other feeds.
         let channel = json.get("channel").and_then(|c| c.as_str()).unwrap_or("");
         let symbol = match json.get("symbol").and_then(|s| s.as_str()) {
             Some(s) => s.to_string(),
@@ -107,6 +255,27 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 
     Err("WebSocket closed".into())
+}
+
+// ── Wave 7E: tick-age watchdog ───────────────────────────────────────────────
+
+async fn run_watchdog() {
+    let mut tick = tokio::time::interval(Duration::from_secs(WATCHDOG_TICK_SECS));
+    loop {
+        tick.tick().await;
+        let last = LAST_MESSAGE_AT_MS.load(Ordering::Relaxed);
+        let now = now_ms();
+        if last > 0 && now - last > STALE_TIMEOUT_MS && !FORCE_RECONNECT.load(Ordering::Relaxed) {
+            LAST_STALL_AT_MS.store(now, Ordering::Relaxed);
+            report(
+                ErrorLevel::Warn,
+                "signals_feed",
+                "tick_stalled",
+                format!("no frames for {}ms — forcing reconnect", now - last),
+            );
+            FORCE_RECONNECT.store(true, Ordering::SeqCst);
+        }
+    }
 }
 
 fn send_to_charts(cmd: ChartCommand) {

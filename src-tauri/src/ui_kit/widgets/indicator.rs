@@ -14,6 +14,7 @@ use egui::{Color32, Response, Sense, Stroke, Ui, Vec2, Widget};
 
 use super::motion;
 use super::theme::ComponentTheme;
+use crate::chart::renderer::ui::style as st;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum IndicatorTone {
@@ -115,7 +116,7 @@ impl Indicator {
                 painter.circle_filled(center, radius, color);
             }
             IndicatorStyle::Ring => {
-                painter.circle_stroke(center, radius, Stroke::new(1.5, color));
+                painter.circle_stroke(center, radius, Stroke::new(st::stroke_bold(), color));
             }
             IndicatorStyle::Pulsing => {
                 // Solid inner dot.
@@ -140,7 +141,7 @@ impl Indicator {
                     color.b(),
                     alpha,
                 );
-                painter.circle_stroke(center, outer_r, Stroke::new(1.0, ring_color));
+                painter.circle_stroke(center, outer_r, Stroke::new(st::stroke_std(), ring_color));
 
                 // Keep animating while visible.
                 ui.ctx().request_repaint();

@@ -15,11 +15,10 @@ use egui;
 
 use super::super::style::{self, *};
 use super::super::super::gpu::{Watchlist, Chart, Theme};
-use super::super::widgets::frames::PanelFrame;
-use super::super::widgets::headers::PanelHeaderWithClose;
 use super::super::widgets::text::{SectionLabel, MonospaceCode};
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::tokens::Size as KitSize;
+use crate::ui_kit::widgets::side_panel_shell::{SidePanelShell, Width};
 use crate::chart_renderer::trading::OrderSide;
 use crate::chart_renderer::trading::order_manager::{self, OrderState};
 use crate::chart_renderer::trading::journal::{self, JournalEvent, AttemptKind};
@@ -85,18 +84,13 @@ pub(crate) fn draw(
 ) {
     if !watchlist.order_ledger_open { return; }
 
-    egui::SidePanel::right("order_ledger_panel")
-        .default_width(380.0)
-        .min_width(280.0)
-        .max_width(560.0)
-        .resizable(true)
-        .frame(PanelFrame::new(t.toolbar_bg, t.toolbar_border).build())
-        .show(ctx, |ui| {
-            // ── Header + close ───────────────────────────────────────────
-            if PanelHeaderWithClose::new("ORDER LEDGER").theme(t).watchlist(watchlist).show(ui) {
-                watchlist.order_ledger_open = false;
-            }
-            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+    let pane_h    = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
+    let pane_font = watchlist.pane_header_size.title_font();
+    let resp = SidePanelShell::new("order_ledger_panel", "ORDER LEDGER")
+        .width(Width::Medium)
+        .resizable(280.0..=560.0)
+        .pane_metrics(pane_h, pane_font)
+        .show(ctx, t, |ui, t| {
             ui.add_space(gap_xs());
 
             // Snapshot of journal + counts. Read once per frame.
@@ -254,6 +248,7 @@ pub(crate) fn draw(
                 });
             }
         });
+    if resp.close_clicked { watchlist.order_ledger_open = false; }
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -271,9 +266,9 @@ fn collect_active_from_snapshot() -> Vec<ActiveRow> {
             state: o.state,
             qty: o.qty,
             filled_qty: o.filled_qty,
-            price: o.price,
+            price: o.price.to_f32(),
             cid8: o.client_order_id.chars().take(8).collect(),
-            updated_at: o.updated_at,
+            updated_at: o.updated_at.millis() as u64,
         })
         .collect();
     // Newest first so freshly placed orders appear at the top.

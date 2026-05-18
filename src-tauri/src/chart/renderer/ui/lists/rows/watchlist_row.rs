@@ -21,7 +21,6 @@ use crate::chart::renderer::ui::foundation::{
     tokens::Size,
     variants::RowVariant,
 };
-use crate::chart::renderer::ui::widgets::rows::ListRow;
 use crate::ui_kit::widgets::HoverCard;
 use super::watchlist_columns::{
     spec as col_spec, ColumnCtx, WatchlistColumnId, WatchlistItemData,
@@ -267,14 +266,13 @@ impl<'a> WatchlistRow<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> WatchlistRowResponse {
-        let default_t = &crate::chart_renderer::gpu::THEMES[0];
-        let theme_ref: &Theme = self.theme.unwrap_or(default_t);
-        let bull = self.theme_bull.unwrap_or(default_t.bull);
-        let bear = self.theme_bear.unwrap_or(default_t.bear);
-        let dim = self.theme_dim.unwrap_or(default_t.dim);
-        let fg = self.fg_override.unwrap_or_else(|| self.theme_fg.unwrap_or(default_t.text));
-        let accent = self.theme_accent.unwrap_or(default_t.accent);
-        let border = self.theme_border.unwrap_or(default_t.toolbar_border);
+        let theme_ref: &Theme = self.theme.expect("WatchlistRow requires a theme — call `.theme(t)` before `.show()`");
+        let bull = self.theme_bull.unwrap_or(theme_ref.bull);
+        let bear = self.theme_bear.unwrap_or(theme_ref.bear);
+        let dim = self.theme_dim.unwrap_or(theme_ref.dim);
+        let fg = self.fg_override.unwrap_or_else(|| self.theme_fg.unwrap_or(theme_ref.text));
+        let accent = self.theme_accent.unwrap_or(theme_ref.accent);
+        let border = self.theme_border.unwrap_or(theme_ref.toolbar_border);
         let symbol = self.symbol;
         let price = self.price;
         let change_pct = self.change_pct;
@@ -405,7 +403,7 @@ impl<'a> WatchlistRow<'a> {
                 // ── Drag-handle grip ────────────────────────────────────
                 if drag_handle {
                     painter.text(egui::pos2(left + 6.0, cy), egui::Align2::LEFT_CENTER,
-                        icon_set.drag_handle, egui::FontId::proportional(11.0), dim.gamma_multiply(0.2));
+                        icon_set.drag_handle, egui::FontId::proportional(11.0), color_very_dim(dim));
                     zones_body.borrow_mut().drag = Some(egui::Rect::from_min_size(
                         egui::pos2(left, rect.top()), egui::vec2(14.0, rect.height())));
                 }
@@ -465,7 +463,7 @@ impl<'a> WatchlistRow<'a> {
                     painter.circle_filled(egui::pos2(ind_x + 5.0, cy), 5.5,
                         theme_ref.bear);
                     painter.text(egui::pos2(ind_x + 5.0, cy), egui::Align2::CENTER_CENTER,
-                        icon_set.alert, egui::FontId::proportional(11.0), Color32::WHITE);
+                        icon_set.alert, egui::FontId::proportional(11.0), contrast_fg(theme_ref.bear));
                     zones_body.borrow_mut().alert = Some(egui::Rect::from_center_size(
                         egui::pos2(ind_x + 5.0, cy), egui::vec2(12.0, 12.0)));
                     ind_x += 14.0;
@@ -655,7 +653,7 @@ impl<'a> WatchlistRow<'a> {
                     ui.label(
                         egui::RichText::new(&price_str)
                             .monospace()
-                            .size(14.0)
+                            .size(font_md_plus())
                             .color(card_fg),
                     );
 
@@ -683,7 +681,7 @@ impl<'a> WatchlistRow<'a> {
                         ui.horizontal(|ui| {
                             ui.label(
                                 egui::RichText::new(label)
-                                    .size(11.0)
+                                    .size(font_sm())
                                     .color(label_col),
                             );
                             ui.with_layout(
@@ -692,7 +690,7 @@ impl<'a> WatchlistRow<'a> {
                                     ui.label(
                                         egui::RichText::new(value)
                                             .monospace()
-                                            .size(11.0)
+                                            .size(font_sm())
                                             .color(value_col),
                                     );
                                 },

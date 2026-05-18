@@ -15,9 +15,6 @@ use crate::chart_renderer::gpu::Theme;
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::{Variant, Size};
 
-#[inline(always)]
-fn ft() -> &'static crate::chart_renderer::gpu::Theme { &crate::chart_renderer::gpu::THEMES[0] }
-
 pub struct NmfToggle<'a> {
     value: &'a mut u8,
     accent: egui::Color32,
@@ -26,10 +23,14 @@ pub struct NmfToggle<'a> {
 
 impl<'a> NmfToggle<'a> {
     pub fn new(value: &'a mut u8) -> Self {
+        // Color fields are unused by the rendered Button (which resolves via
+        // ambient theme). `.theme(t)` is still honored for explicit palette
+        // overrides. TRANSPARENT placeholder avoids the `&THEMES[0]` light-
+        // theme parity bug.
         Self {
             value,
-            accent: ft().accent,
-            dim:    ft().dim,
+            accent: egui::Color32::TRANSPARENT,
+            dim:    egui::Color32::TRANSPARENT,
         }
     }
 

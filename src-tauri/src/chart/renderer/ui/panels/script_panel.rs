@@ -2,19 +2,33 @@
 //!
 //! This is the UI scaffold. The actual script execution engine and AI integration
 //! come later; for now, "Run" and "Backtest" produce mock output.
+//!
+//! Migrated to the canonical ui_kit side-panel primitives:
+//!   - `SidePanelShell` for outer chrome (replaces the bespoke Modal +
+//!     PopupFrame chrome the standalone draw used to roll by hand).
+//!   - `PanelSection` for section headers (AI PROMPT / EXAMPLES / EDITOR /
+//!     ACTIONS / RESULT).
+//!   - Result tabs already on `Button::toggle` from Agent H.
+//!   - The `draw` and `draw_content` paths now share one body via
+//!     `draw_body`, so the modal chrome no longer duplicates the tab body.
+//!
+//! NOTE: Previously the standalone `draw` was a floating Modal at
+//! (280, 80) sized 480x620 with `PopupFrame`. Per Agent Q's brief, all
+//! mid-tier panel chrome is being unified on `SidePanelShell`. If product
+//! needs the floating dialog back, switch the chrome only — the body is
+//! shell-agnostic.
 
 use egui;
 use super::super::style::*;
-use super::super::widgets::inputs::TextInput;
-use super::super::widgets::frames::PopupFrame;
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::TextArea;
 use crate::ui_kit::widgets::tokens::{Variant, Size};
+use crate::ui_kit::widgets::{PanelSection, SidePanelShell, Width};
+use crate::ui_kit::icons::Icon;
 use super::super::widgets::text::MonospaceCode;
 use super::super::widgets::cards::Card;
-use super::super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
 use super::super::super::gpu::{Watchlist, Theme};
 
 // ── Preset example scripts ──────────────────────────────────────────────────
@@ -48,21 +62,20 @@ pub(crate) struct BacktestResult {
 
 /// Generate deterministic mock backtest results (no rand crate needed).
 fn mock_backtest() -> BacktestResult {
-    // Simple LCG-style deterministic sequence for reproducible mock data
     let mut seed: u32 = 42;
     let mut next = || -> f32 {
         seed = seed.wrapping_mul(1103515245).wrapping_add(12345);
-        ((seed >> 16) & 0x7FFF) as f32 / 32767.0 // 0.0..1.0
+        ((seed >> 16) & 0x7FFF) as f32 / 32767.0
     };
 
     let mut trades = Vec::with_capacity(18);
-    let base_price = 450.0_f32; // ~SPY-like price
+    let base_price = 450.0_f32;
 
     for _ in 0..18 {
-        let is_long = next() > 0.4; // ~60% long bias
+        let is_long = next() > 0.4;
         let side = if is_long { "LONG" } else { "SHORT" };
         let entry = base_price + (next() - 0.5) * 40.0;
-        let move_pct = (next() - 0.42) * 0.06; // slight positive bias → ~55% win rate
+        let move_pct = (next() - 0.42) * 0.06;
         let exit = if is_long {
             entry * (1.0 + move_pct)
         } else {
@@ -81,7 +94,6 @@ fn mock_backtest() -> BacktestResult {
     let gross_loss: f32 = trades.iter().filter(|t| t.pnl < 0.0).map(|t| t.pnl.abs()).sum();
     let profit_factor = if gross_loss > 0.0 { gross_profit / gross_loss } else { 99.9 };
 
-    // Simple max drawdown from cumulative P&L
     let mut peak = 0.0_f32;
     let mut max_dd = 0.0_f32;
     let mut cum = 0.0_f32;
@@ -93,7 +105,6 @@ fn mock_backtest() -> BacktestResult {
     }
     let max_drawdown = if base_price > 0.0 { max_dd / base_price * 100.0 } else { 0.0 };
 
-    // Simplified Sharpe (mean / std of trade returns)
     let mean = total_pnl / trades.len() as f32;
     let variance: f32 = trades.iter().map(|t| (t.pnl - mean).powi(2)).sum::<f32>() / trades.len() as f32;
     let sharpe = if variance > 0.0 { mean / variance.sqrt() * (252.0_f32).sqrt() } else { 0.0 };
@@ -109,264 +120,107 @@ pub(crate) enum ScriptResultTab {
     Backtest,
 }
 
-// ── draw_content: inner body for use inside analysis_panel tab ─────────────
+// ── Shared body ─────────────────────────────────────────────────────────────
 
-pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
+/// Shared body for both the standalone `draw` (SidePanelShell) and the
+/// `draw_content` path used by analysis_panel as a tab. `show_save` is `true`
+/// only for the standalone shell (analysis_panel doesn't expose Save).
+fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme, show_save: bool) {
     let w = ui.available_width();
 
-    // ── AI Prompt input ─────────────────────────────────────
-    ui.horizontal(|ui| {
-        ui.add(super::super::widgets::text::MonospaceCode::new("\u{2728}").xs().color(t.accent));
-        ui.add_space(4.0);
-        Input::new(&mut watchlist.script_ai_prompt)
-            .min_width(w - 36.0)
-            .size(KitSize::Sm)
-            .placeholder("Describe your indicator or strategy...")
-            .show(ui, t);
-    });
-    ui.add_space(4.0);
-
-    // ── Preset examples ─────────────────────────────────────
-    ui.horizontal(|ui| {
-        ui.add(MonospaceCode::new("Examples:").xs().color(t.dim).gamma(0.5));
-        for (name, source) in PRESETS {
-            let btn = Button::new(*name).variant(Variant::Chrome).size(Size::Xs).fg(t.accent.gamma_multiply(0.8))
-                .fill(color_alpha(t.accent, 12))
-                .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.accent, 35)))
+    // ── AI Prompt ─────────────────────────────────────────────
+    PanelSection::new("AI PROMPT").show(ui, t, |ui, t| {
+        ui.horizontal(|ui| {
+            ui.add(MonospaceCode::new("\u{2728}").xs().color(t.accent));
+            ui.add_space(gap_xs());
+            Input::new(&mut watchlist.script_ai_prompt)
+                .min_width(w - 36.0)
+                .size(KitSize::Sm)
+                .placeholder("Describe your indicator or strategy...")
                 .show(ui, t);
-            if btn.clicked() { watchlist.script_source = source.to_string(); }
-            if btn.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-        }
+        });
     });
-    ui.add_space(4.0);
-    separator(ui, t.toolbar_border);
-    ui.add_space(4.0);
 
-    // ── Code editor area ────────────────────────────────────
-    TextArea::new(&mut watchlist.script_source)
-        .min_rows(8)
-        .max_rows(8)
-        .monospace(true)
-        .full_width()
-        .show(ui, t);
-    ui.add_space(4.0);
-
-    // ── Button row ──────────────────────────────────────────
-    ui.horizontal(|ui| {
-        if action_button(ui, "\u{25B6} Run", t.bull, t).clicked() {
-            if watchlist.script_source.is_empty() {
-                watchlist.script_output = "Error: No script to run.".to_string();
-            } else {
-                watchlist.script_output = format!(
-                    "Evaluating: {}\n\n--- Output ---\nScript parsed successfully.\nBars processed: 1,240\nSignals generated: 47",
-                    watchlist.script_source
-                );
-            }
-            watchlist.script_result_tab = ScriptResultTab::Output;
-        }
-        ui.add_space(4.0);
-        if action_button(ui, "\u{1F4CA} Backtest", t.accent, t).clicked() {
-            let result = mock_backtest();
-            let mut out = String::new();
-            out.push_str(&format!("Backtesting: {}\n", watchlist.script_source));
-            out.push_str(&format!("Period: 252 bars | {} trades\n\n", result.trades.len()));
-            out.push_str(&format!("Total P&L:      ${:.2}\n", result.total_pnl));
-            out.push_str(&format!("Win Rate:       {:.1}%\n", result.win_rate));
-            out.push_str(&format!("Profit Factor:  {:.2}\n", result.profit_factor));
-            out.push_str(&format!("Max Drawdown:   {:.2}%\n", result.max_drawdown));
-            out.push_str(&format!("Sharpe Ratio:   {:.2}\n", result.sharpe));
-            watchlist.script_output = out;
-            watchlist.script_backtest = Some(result);
-            watchlist.script_result_tab = ScriptResultTab::Backtest;
-        }
-        ui.add_space(4.0);
-        if action_button(ui, "Clear", color_subtle(t.bear), t).clicked() {
-            watchlist.script_source.clear();
-            watchlist.script_ai_prompt.clear();
-            watchlist.script_output.clear();
-            watchlist.script_backtest = None;
-        }
-    });
-    ui.add_space(4.0);
-    separator(ui, t.toolbar_border);
-    ui.add_space(4.0);
-
-    // ── Result tabs ─────────────────────────────────────────
-    ui.horizontal(|ui| {
-        result_tab_btn(ui, "Output", ScriptResultTab::Output, &mut watchlist.script_result_tab, t);
-        ui.add_space(4.0);
-        result_tab_btn(ui, "Backtest", ScriptResultTab::Backtest, &mut watchlist.script_result_tab, t);
-    });
-    ui.add_space(4.0);
-
-    // ── Results area ────────────────────────────────────────
-    egui::ScrollArea::vertical()
-        .id_salt("script_results_tab")
-        .show(ui, |ui| {
-            ui.set_min_width(w - 4.0);
-            match watchlist.script_result_tab {
-                ScriptResultTab::Output => draw_output_tab(ui, watchlist, t),
-                ScriptResultTab::Backtest => draw_backtest_tab(ui, watchlist, w, t),
+    // ── Presets ───────────────────────────────────────────────
+    PanelSection::new("EXAMPLES").show(ui, t, |ui, t| {
+        ui.horizontal_wrapped(|ui| {
+            for (name, source) in PRESETS {
+                let btn = Button::new(*name).variant(Variant::Chrome).size(Size::Xs).fg(color_subtle(t.accent))
+                    .fill(color_alpha(t.accent, 12))
+                    .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.accent, 35)))
+                    .show(ui, t);
+                if btn.clicked() { watchlist.script_source = source.to_string(); }
+                if btn.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             }
         });
-}
+    });
 
-fn separator(ui: &mut egui::Ui, color: egui::Color32) {
-    super::super::style::separator(ui, color);
-}
+    // ── Editor ────────────────────────────────────────────────
+    PanelSection::new("EDITOR").show(ui, t, |ui, t| {
+        TextArea::new(&mut watchlist.script_source)
+            .min_rows(8)
+            .max_rows(10)
+            .monospace(true)
+            .full_width()
+            .show(ui, t);
+    });
 
-// ── Main draw function ──────────────────────────────────────────────────────
-
-pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
-    if !watchlist.script_open { return; }
-
-    let frame = PopupFrame::new().ctx(ctx).theme(t).build();
-
-    let resp = Modal::new("APEX SCRIPT")
-        .id("apex_script")
-        .ctx(ctx)
-        .theme(t)
-        .size(egui::vec2(480.0, 620.0))
-        .anchor(Anchor::Window { pos: Some(egui::pos2(280.0, 80.0)) })
-        .frame_kind(FrameKind::Custom(frame))
-        .draggable_header(true)
-        .header_style(HeaderStyle::panel())
-        .separator(false)
-        .show(|ui| {
-            let w = ui.available_width();
-
-            ui.add_space(4.0);
-            divider(ui, w, t);
-            ui.add_space(8.0);
-
-            // ── AI Prompt input ─────────────────────────────────────
-            ui.horizontal(|ui| {
-                ui.add_space(8.0);
-                ui.add(super::super::widgets::text::MonospaceCode::new("\u{2728}").xs().color(t.accent));
-                ui.add_space(4.0);
-                let prompt_response = TextInput::new(&mut watchlist.script_ai_prompt)
-                    .width(w - 36.0)
-                    .font_size(9.5)
-                    .placeholder("Describe your indicator or strategy...")
-                    .text_color(egui::Color32::from_gray(210))
-                    .margin(egui::Margin::symmetric(gap_md() as i8, gap_xs() as i8))
-                    .theme(t)
-                    .show(ui);
-                // Style the text edit background
-                let bg_rect = prompt_response.rect;
-                ui.painter().set(
-                    ui.painter().add(egui::Shape::Noop),
-                    egui::Shape::Noop,
-                );
-                // Highlight border on focus
-                if prompt_response.has_focus() {
-                    ui.painter().rect_stroke(bg_rect, 3.0, egui::Stroke::new(stroke_std(), color_alpha(t.accent, alpha_strong())), egui::StrokeKind::Outside);
+    // ── Actions ───────────────────────────────────────────────
+    PanelSection::new("ACTIONS").show(ui, t, |ui, t| {
+        ui.horizontal(|ui| {
+            if action_button(ui, "\u{25B6} Run", t.bull, t).clicked() {
+                if watchlist.script_source.is_empty() {
+                    watchlist.script_output = "Error: No script to run.".to_string();
+                } else {
+                    watchlist.script_output = format!(
+                        "Evaluating: {}\n\n--- Output ---\nScript parsed successfully.\nBars processed: 1,240\nSignals generated: 47",
+                        watchlist.script_source
+                    );
                 }
-            });
-            ui.add_space(8.0);
-
-            // ── Preset examples ─────────────────────────────────────
-            ui.horizontal(|ui| {
-                ui.add_space(8.0);
-                ui.add(MonospaceCode::new("Examples:").xs().color(t.dim).gamma(0.5));
-                ui.add_space(4.0);
-                for (name, source) in PRESETS {
-                    let btn = Button::new(*name).variant(Variant::Chrome).size(Size::Xs).fg(t.accent.gamma_multiply(0.8))
-                        .fill(color_alpha(t.accent, 12))
-                        .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.accent, 35)))
-                        .show(ui, t);
-                    if btn.clicked() {
-                        watchlist.script_source = source.to_string();
-                    }
-                    if btn.hovered() {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    }
-                }
-            });
-            ui.add_space(8.0);
-            divider(ui, w, t);
-            ui.add_space(8.0);
-
-            // ── Code editor area ────────────────────────────────────
-            ui.horizontal(|ui| {
-                ui.add_space(8.0);
-                TextArea::new(&mut watchlist.script_source)
-                    .min_rows(10)
-                    .max_rows(10)
-                    .monospace(true)
-                    .full_width()
-                    .show(ui, t);
-            });
-            ui.add_space(8.0);
-
-            // ── Button row ──────────────────────────────────────────
-            ui.horizontal(|ui| {
-                ui.add_space(8.0);
-                // Run button (accent/green)
-                if action_button(ui, "\u{25B6} Run", t.bull, t).clicked() {
-                    // Mock run — just echo the source
-                    if watchlist.script_source.is_empty() {
-                        watchlist.script_output = "Error: No script to run. Enter a script or select a preset.".to_string();
-                    } else {
-                        watchlist.script_output = format!(
-                            "Evaluating: {}\n\n--- Output ---\nScript parsed successfully.\nBars processed: 1,240\nSignals generated: 47\nLast signal: BUY at bar 1,238 (close = $452.30)",
-                            watchlist.script_source
-                        );
-                    }
-                    watchlist.script_result_tab = ScriptResultTab::Output;
-                }
-
-                ui.add_space(4.0);
-
-                // Backtest button (accent)
-                if action_button(ui, "\u{1F4CA} Backtest", t.accent, t).clicked() {
-                    let result = mock_backtest();
-                    // Format output
-                    let mut out = String::new();
-                    out.push_str(&format!("Backtesting: {}\n", watchlist.script_source));
-                    out.push_str(&format!("Period: 252 bars | {} trades\n\n", result.trades.len()));
-                    out.push_str(&format!("Total P&L:      ${:.2}\n", result.total_pnl));
-                    out.push_str(&format!("Win Rate:       {:.1}%\n", result.win_rate));
-                    out.push_str(&format!("Profit Factor:  {:.2}\n", result.profit_factor));
-                    out.push_str(&format!("Max Drawdown:   {:.2}%\n", result.max_drawdown));
-                    out.push_str(&format!("Sharpe Ratio:   {:.2}\n", result.sharpe));
-                    watchlist.script_output = out;
-                    watchlist.script_backtest = Some(result);
-                    watchlist.script_result_tab = ScriptResultTab::Backtest;
-                }
-
-                ui.add_space(4.0);
-
-                // Save button (dim)
+                watchlist.script_result_tab = ScriptResultTab::Output;
+            }
+            ui.add_space(gap_xs());
+            if action_button(ui, "\u{1F4CA} Backtest", t.accent, t).clicked() {
+                let result = mock_backtest();
+                let mut out = String::new();
+                out.push_str(&format!("Backtesting: {}\n", watchlist.script_source));
+                out.push_str(&format!("Period: 252 bars | {} trades\n\n", result.trades.len()));
+                out.push_str(&format!("Total P&L:      ${:.2}\n", result.total_pnl));
+                out.push_str(&format!("Win Rate:       {:.1}%\n", result.win_rate));
+                out.push_str(&format!("Profit Factor:  {:.2}\n", result.profit_factor));
+                out.push_str(&format!("Max Drawdown:   {:.2}%\n", result.max_drawdown));
+                out.push_str(&format!("Sharpe Ratio:   {:.2}\n", result.sharpe));
+                watchlist.script_output = out;
+                watchlist.script_backtest = Some(result);
+                watchlist.script_result_tab = ScriptResultTab::Backtest;
+            }
+            if show_save {
+                ui.add_space(gap_xs());
                 if action_button(ui, "Save", t.dim, t).clicked() {
                     watchlist.script_output = "Script saved. (placeholder — persistence coming soon)".to_string();
                     watchlist.script_result_tab = ScriptResultTab::Output;
                 }
+            }
+            ui.add_space(gap_xs());
+            if action_button(ui, "Clear", color_subtle(t.bear), t).clicked() {
+                watchlist.script_source.clear();
+                watchlist.script_ai_prompt.clear();
+                watchlist.script_output.clear();
+                watchlist.script_backtest = None;
+            }
+        });
+    });
 
-                ui.add_space(4.0);
-
-                // Clear button (bear/red)
-                if action_button(ui, "Clear", color_subtle(t.bear), t).clicked() {
-                    watchlist.script_source.clear();
-                    watchlist.script_ai_prompt.clear();
-                    watchlist.script_output.clear();
-                    watchlist.script_backtest = None;
-                }
-            });
-            ui.add_space(8.0);
-            divider(ui, w, t);
-            ui.add_space(4.0);
-
-            // ── Result tabs ─────────────────────────────────────────
+    // ── Result tabs + body ────────────────────────────────────
+    PanelSection::new("RESULT")
+        .show(ui, t, |ui, t| {
             ui.horizontal(|ui| {
-                ui.add_space(8.0);
                 result_tab_btn(ui, "Output", ScriptResultTab::Output, &mut watchlist.script_result_tab, t);
-                ui.add_space(4.0);
+                ui.add_space(gap_xs());
                 result_tab_btn(ui, "Backtest", ScriptResultTab::Backtest, &mut watchlist.script_result_tab, t);
             });
-            ui.add_space(4.0);
+            ui.add_space(gap_xs());
 
-            // ── Results area ────────────────────────────────────────
             egui::ScrollArea::vertical()
                 .id_salt("script_results")
                 .show(ui, |ui| {
@@ -377,8 +231,29 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
                     }
                 });
         });
+}
 
-    if resp.closed { watchlist.script_open = false; }
+// ── Public entry points ─────────────────────────────────────────────────────
+
+/// Inner body for use inside analysis_panel tab. No Save action here.
+pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
+    draw_body(ui, watchlist, t, false);
+}
+
+/// Standalone panel — outer chrome via canonical SidePanelShell.
+pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
+    if !watchlist.script_open { return; }
+
+    let resp = SidePanelShell::new("apex_script", "APEX SCRIPT")
+        .width(Width::Wide)
+        .pane_metrics(
+            crate::chart_renderer::gpu::pane_tabs_header_h(watchlist),
+            watchlist.pane_header_size.title_font(),
+        )
+        .show(ctx, t, |ui, t| {
+            draw_body(ui, watchlist, t, true);
+        });
+    if resp.close_clicked { watchlist.script_open = false; }
 }
 
 // ── Output tab ──────────────────────────────────────────────────────────────
@@ -388,7 +263,7 @@ fn draw_output_tab(ui: &mut egui::Ui, watchlist: &Watchlist, t: &Theme) {
     if watchlist.script_output.is_empty() {
         ui.add_space(20.0);
         ui.vertical_centered(|ui| {
-            ui.add(super::super::widgets::text::MonospaceCode::new("Run a script or backtest to see results here.").xs().color(t.dim).gamma(0.4));
+            ui.add(MonospaceCode::new("Run a script or backtest to see results here.").xs().color(t.dim).gamma(0.4));
         });
     } else {
         ui.add_space(4.0);
@@ -398,7 +273,7 @@ fn draw_output_tab(ui: &mut egui::Ui, watchlist: &Watchlist, t: &Theme) {
         } else {
             (color_alpha(t.toolbar_border, alpha_tint()), color_alpha(t.toolbar_border, alpha_muted()))
         };
-        let text_color = if is_error { t.bear } else { t.dim.gamma_multiply(0.85) };
+        let text_color = if is_error { t.bear } else { color_subtle(t.dim) };
         ui.horizontal(|ui| {
             ui.add_space(m);
             Card::new().colors(card_bg, card_border).show(ui, |ui| {
@@ -418,7 +293,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         None => {
             ui.add_space(20.0);
             ui.vertical_centered(|ui| {
-                ui.add(super::super::widgets::text::MonospaceCode::new("Click \"Backtest\" to generate results.").xs().color(t.dim).gamma(0.4));
+                ui.add(MonospaceCode::new("Click \"Backtest\" to generate results.").xs().color(t.dim).gamma(0.4));
             });
             return;
         }
@@ -443,7 +318,6 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
             ui.painter().rect_filled(rect, 3.0, color_alpha(t.toolbar_border, alpha_tint()));
             ui.painter().rect_stroke(rect, 3.0, egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_line())), egui::StrokeKind::Outside);
 
-            // Label
             ui.painter().text(
                 egui::pos2(rect.center().x, rect.min.y + 10.0),
                 egui::Align2::CENTER_CENTER,
@@ -451,7 +325,6 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
                 mono_sm(),
                 color_half(t.dim),
             );
-            // Value
             ui.painter().text(
                 egui::pos2(rect.center().x, rect.min.y + 26.0),
                 egui::Align2::CENTER_CENTER,
@@ -467,11 +340,10 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
     // ── Trade list header ───────────────────────────────────
     ui.horizontal(|ui| {
         ui.add_space(m);
-        ui.add(super::super::widgets::text::MonospaceCode::new(&format!("TRADES ({})", result.trades.len())).xs().color(t.dim).gamma(0.5).strong(true));
+        ui.add(MonospaceCode::new(&format!("TRADES ({})", result.trades.len())).xs().color(t.dim).gamma(0.5).strong(true));
     });
     ui.add_space(4.0);
 
-    // Column header
     let col_x = [m, m + 42.0, m + 112.0, m + 192.0, m + 262.0];
     let header_y = ui.cursor().min.y;
     let header_rect = egui::Rect::from_min_size(
@@ -490,7 +362,6 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         );
     }
 
-    // Divider under header
     let div_y = header_y + 14.0;
     let div_rect = egui::Rect::from_min_size(
         egui::pos2(ui.cursor().min.x + m, div_y),
@@ -499,7 +370,6 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
     ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, alpha_muted()));
     ui.add_space(4.0);
 
-    // Trade rows
     for trade in &result.trades {
         let row_y = ui.cursor().min.y;
         let row_rect = egui::Rect::from_min_size(
@@ -515,7 +385,6 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         let cy = row_y + 8.0;
         let pnl_color = if trade.pnl >= 0.0 { t.bull } else { t.bear };
 
-        // Side badge
         let side_col = if trade.side == "LONG" { t.bull } else { t.bear };
         let side_rect = egui::Rect::from_min_size(
             egui::pos2(base_x + col_x[0], row_y + 1.0),
@@ -530,25 +399,22 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
             side_col,
         );
 
-        // Entry price
         ui.painter().text(
             egui::pos2(base_x + col_x[1], cy),
             egui::Align2::LEFT_CENTER,
             format!("{:.2}", trade.entry_price),
             mono_sm(),
-            t.dim.gamma_multiply(0.8),
+            color_subtle(t.dim),
         );
 
-        // Exit price
         ui.painter().text(
             egui::pos2(base_x + col_x[2], cy),
             egui::Align2::LEFT_CENTER,
             format!("{:.2}", trade.exit_price),
             mono_sm(),
-            t.dim.gamma_multiply(0.8),
+            color_subtle(t.dim),
         );
 
-        // P&L
         let pnl_sign = if trade.pnl >= 0.0 { "+" } else { "" };
         ui.painter().text(
             egui::pos2(base_x + col_x[3], cy),
@@ -558,7 +424,6 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
             pnl_color,
         );
 
-        // P&L %
         ui.painter().text(
             egui::pos2(base_x + col_x[4], cy),
             egui::Align2::LEFT_CENTER,
@@ -573,16 +438,6 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
 
 // ── Helper widgets ──────────────────────────────────────────────────────────
 
-/// Horizontal divider line.
-fn divider(ui: &mut egui::Ui, w: f32, t: &Theme) {
-    let rect = egui::Rect::from_min_size(
-        egui::pos2(ui.cursor().min.x, ui.cursor().min.y),
-        egui::vec2(w, 1.0),
-    );
-    ui.painter().rect_filled(rect, 0.0, color_alpha(t.toolbar_border, alpha_dim()));
-    ui.advance_cursor_after_rect(rect);
-}
-
 /// Accent-colored action button for the toolbar row.
 fn action_button(ui: &mut egui::Ui, label: &str, color: egui::Color32, t: &Theme) -> egui::Response {
     let resp = Button::new(label).variant(Variant::Secondary).simple_treatment(true).fg(color).show(ui, t);
@@ -593,16 +448,10 @@ fn action_button(ui: &mut egui::Ui, label: &str, color: egui::Color32, t: &Theme
     resp
 }
 
-/// Tab button for Output / Backtest result tabs.
+/// Tab button for Output / Backtest result tabs (already on Button::toggle from Agent H).
 fn result_tab_btn(ui: &mut egui::Ui, label: &str, tab: ScriptResultTab, active: &mut ScriptResultTab, t: &Theme) {
     let is_active = *active == tab;
-    let fg = if is_active { t.accent } else { color_half(t.dim) };
-    let bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
-    let border = if is_active { color_alpha(t.accent, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_muted()) };
-
-    let resp = Button::new(label).variant(Variant::Chrome).size(Size::Sm).fg(fg)
-        .fill(bg)
-        .stroke(egui::Stroke::new(stroke_thin(), border))
+    let resp = Button::toggle(label, is_active)
         .corner_radius(crate::chart_renderer::ui::style::current().r_md as f32)
         .show(ui, t);
     if resp.clicked() {

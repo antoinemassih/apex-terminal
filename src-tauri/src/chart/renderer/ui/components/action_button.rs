@@ -66,8 +66,10 @@ pub fn big_action_btn(
     let hover_id = resp.id.with("big_action_btn_hover");
     let hover_t = motion::ease_bool(ui.ctx(), hover_id, resp.hovered() && interactive, motion::FAST);
     if hover_t > 0.001 {
+        // Hover wash: tint toward `contrast_fg(bg)` so light-themed buttons
+        // darken on hover and dark-themed ones lighten.
         ui.painter().rect_filled(resp.rect, radius_md(),
-            motion::fade_in(color_alpha(Color32::WHITE, 12), hover_t));
+            motion::fade_in(color_alpha(contrast_fg(bg), 12), hover_t));
     }
     resp
 }
@@ -96,7 +98,7 @@ pub fn side_pane_action_btn(
             .fill(bg)
             .stroke(Stroke::new(stroke_thin(), border))
             .corner_radius(radius_sm())
-            .min_size(egui::vec2(0.0, 22.0)),
+            .min_size(egui::vec2(0.0, row_height_default())),
     );
     ui.spacing_mut().button_padding = prev_pad;
     let inspect = crate::design_tokens::is_inspect_mode();
@@ -149,8 +151,10 @@ pub fn brand_cta_button(
     let hover_id = resp.id.with("brand_cta_btn_hover");
     let hover_t = motion::ease_bool(ui.ctx(), hover_id, resp.hovered() && interactive, motion::FAST);
     if hover_t > 0.001 {
+        // Hover wash: tint toward contrast of the brand fill so the overlay
+        // brightens dark brands and darkens light ones.
         ui.painter().rect_filled(resp.rect, radius_md(),
-            motion::fade_in(color_alpha(Color32::WHITE, 12), hover_t));
+            motion::fade_in(color_alpha(contrast_fg(brand_color), 12), hover_t));
     }
     resp
 }

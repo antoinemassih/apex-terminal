@@ -180,7 +180,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
     painter.line_segment(
         [Pos2::new(rect.right() - 0.5, rect.top()),
          Pos2::new(rect.right() - 0.5, rect.bottom())],
-        Stroke::new(1.0, theme.border()),
+        Stroke::new(st::stroke_std(), theme.border()),
     );
 
     let pad_x = st::gap_sm();
@@ -211,7 +211,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
         ui.painter_at(rect).line_segment(
             [Pos2::new(rect.left() + pad_x, content_top),
              Pos2::new(rect.right() - pad_x, content_top)],
-            Stroke::new(1.0, st::color_alpha(theme.border(), st::ALPHA_STRONG)),
+            Stroke::new(st::stroke_std(), st::color_alpha(theme.border(), st::ALPHA_STRONG)),
         );
         content_top += st::gap_xs();
     }
@@ -230,7 +230,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
             st::color_alpha(theme.text(), st::ALPHA_GHOST),
             hov,
         );
-        ui.painter().rect_filled(btn_rect, CornerRadius::same(3), bg);
+        ui.painter().rect_filled(btn_rect, CornerRadius::same(3), bg); // TODO: off-token
         let glyph = if *state {
             crate::ui_kit::icons::Icon::CARET_RIGHT
         } else {
@@ -260,7 +260,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
         ui.painter_at(rect).line_segment(
             [Pos2::new(rect.left() + pad_x, ftr_rect.top() - st::gap_xs()),
              Pos2::new(rect.right() - pad_x, ftr_rect.top() - st::gap_xs())],
-            Stroke::new(1.0, st::color_alpha(theme.border(), st::ALPHA_STRONG)),
+            Stroke::new(st::stroke_std(), st::color_alpha(theme.border(), st::ALPHA_STRONG)),
         );
         let mut child = ui.new_child(
             egui::UiBuilder::new()
@@ -329,20 +329,20 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
                 st::color_alpha(theme.accent(), st::ALPHA_GHOST),
                 active_t,
             );
-            p.rect_filled(row_rect, CornerRadius::same(4), bg);
+            p.rect_filled(row_rect, CornerRadius::same(st::radius_sm() as u8), bg);
             // Left stripe.
             let stripe = Rect::from_min_size(
                 Pos2::new(row_rect.left(), row_rect.top() + 4.0),
                 Vec2::new(ACTIVE_STRIPE, row_rect.height() - 8.0),
             );
-            p.rect_filled(stripe, CornerRadius::same(1), theme.accent());
+            p.rect_filled(stripe, CornerRadius::same(1), theme.accent()); // TODO: off-token
         } else if hover_t > 0.01 {
             let bg = motion::lerp_color(
                 Color32::TRANSPARENT,
                 st::color_alpha(theme.text(), 18),
                 hover_t,
             );
-            p.rect_filled(row_rect, CornerRadius::same(4), bg);
+            p.rect_filled(row_rect, CornerRadius::same(st::radius_sm() as u8), bg);
         }
 
         // Content layout.
@@ -386,6 +386,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
             // Badge.
             if let Some(n) = item.badge {
                 let s = if n > 99 { "99+".to_string() } else { n.to_string() };
+                // layout-only galley: only width is read below.
                 let bg_text = ui.fonts(|f| f.layout_no_wrap(
                     s.clone(), FontId::monospace(10.0), Color32::WHITE,
                 ));
@@ -396,9 +397,9 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
                               row_rect.center().y - bh * 0.5),
                     Vec2::new(bw, bh),
                 );
-                p.rect_filled(br, CornerRadius::same(7), theme.bear());
+                p.rect_filled(br, CornerRadius::same(7), theme.bear()); // TODO: off-token
                 p.text(br.center(), Align2::CENTER_CENTER, &s,
-                    FontId::monospace(10.0), Color32::WHITE);
+                    FontId::monospace(10.0), st::contrast_fg(theme.bear()));
             }
         } else if let Some(n) = item.badge {
             // Rail mode: tiny dot-style badge in the top-right corner of the icon.
@@ -409,9 +410,9 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
                 Pos2::new(icon_center.x + 4.0, icon_center.y - ICON_SIZE * 0.5 - 2.0),
                 Vec2::new(bw, bh),
             );
-            p.rect_filled(br, CornerRadius::same(6), theme.bear());
+            p.rect_filled(br, CornerRadius::same(st::radius_md() as u8), theme.bear());
             p.text(br.center(), Align2::CENTER_CENTER, &s,
-                FontId::monospace(9.0), Color32::WHITE);
+                FontId::monospace(9.0), st::contrast_fg(theme.bear()));
         }
 
         if resp.clicked() && !item.disabled {

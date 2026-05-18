@@ -1,14 +1,16 @@
 //! Analysis panel — sidebar with subdivided sections, each with its own tab bar.
-//! User can add/remove sections and resize them via draggable dividers.
+//!
+//! Chrome (outer side panel, header, "+", per-section tab strips, dividers,
+//! close-X) is delegated to
+//! [`SplitSectionPanel`](crate::ui_kit::widgets::SplitSectionPanel). This
+//! module is now responsible only for tab definitions and per-tab body
+//! dispatch (RRG / T&S / Scanner / Scripts / Seasonality / Research).
 
 use egui;
-use super::super::style::*;
-use super::super::super::gpu::{Watchlist, Chart, Theme, SplitSection};
+use super::super::super::gpu::{Watchlist, Chart, Theme};
 use crate::chart_renderer::AnalysisTab;
-use crate::ui_kit::widgets::Button;
-use crate::ui_kit::widgets::tokens::Variant;
-use super::super::widgets::frames::PanelFrame;
-use super::super::widgets::headers::PanelHeaderWithClose;
+use crate::ui_kit::widgets::SplitSectionPanel;
+use crate::ui_kit::widgets::side_panel_shell::Width;
 
 const ALL_TABS: &[(AnalysisTab, &str)] = &[
     (AnalysisTab::Rrg, "RRG"),
@@ -30,130 +32,50 @@ pub(crate) fn draw(
 
     let mut pending_symbol: Option<String> = None;
 
-    egui::SidePanel::right("analysis_panel")
-        .default_width(260.0)
-        .min_width(220.0)
-        .max_width(480.0)
-        .resizable(true)
-        .frame(PanelFrame::new(t.toolbar_bg, t.toolbar_border).build())
-        .show(ctx, |ui| {
+    // Snapshot per-section active tab so the body closure can dispatch
+    // without holding a borrow into the splits Vec (owned by the widget).
+    let tab_snapshot: Vec<AnalysisTab> =
+        watchlist.analysis_splits.iter().map(|s| s.tab).collect();
+
+    // Move splits out so the body closure can use `&mut watchlist` freely
+    // for the child draw_content panels. Restore after `.show()`.
+    let mut splits = std::mem::take(&mut watchlist.analysis_splits);
+    let pane_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
+    let pane_font = watchlist.pane_header_size.title_font();
+
+    let resp = SplitSectionPanel::new("analysis_panel", &mut splits)
+        .title("ANALYSIS")
+        .tabs(ALL_TABS)
+        .default_tab(AnalysisTab::Rrg)
+        .width(Width::Narrow)
+        .resizable(220.0..=480.0)
+        .pane_metrics(pane_h, pane_font)
+        .show(ctx, t, |ui, t, i, _frac| {
+            let tab = tab_snapshot.get(i).copied().unwrap_or(AnalysisTab::Rrg);
             let panel_w = ui.available_width();
-
-            // Header: title + add-section button + close. Pre-resolve
-            // pane-aligned metrics outside the mutating closure.
-            let header_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
-            let title_font_size = watchlist.pane_header_size.title_font();
-            let closed = PanelHeaderWithClose::new("ANALYSIS").theme(t)
-                .height(header_h).font_size(title_font_size)
-                .show_with(ui, |ui| {
-                if ui.add(Button::new("+").variant(Variant::Chrome).fill(egui::Color32::TRANSPARENT).fg(t.dim).min_size(egui::vec2(20.0, 20.0)).frameless(true)).clicked() {
-                    let used: Vec<AnalysisTab> = watchlist.analysis_splits.iter().map(|s| s.tab).collect();
-                    let next = ALL_TABS.iter().find(|(tab, _)| !used.contains(tab))
-                        .map(|(tab, _)| *tab).unwrap_or(AnalysisTab::Rrg);
-                    if let Some(last) = watchlist.analysis_splits.last_mut() {
-                        last.frac *= 0.5;
-                    }
-                    let frac = watchlist.analysis_splits.last().map(|s| s.frac).unwrap_or(1.0);
-                    watchlist.analysis_splits.push(SplitSection::new(next, frac));
+            match tab {
+                AnalysisTab::Rrg =>
+                    super::rrg_panel::draw_content(ui, watchlist, t),
+                AnalysisTab::TimeSales => {
+                    let sym = if !panes.is_empty() { panes[ap].symbol.clone() } else { String::new() };
+                    super::tape_panel::draw_content(ui, watchlist, &sym, t);
                 }
-            });
-            if closed { watchlist.analysis_open = false; }
-            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
-
-            let available_h = ui.available_height();
-            let n = watchlist.analysis_splits.len();
-            if n == 0 {
-                watchlist.analysis_splits.push(SplitSection::new(AnalysisTab::Rrg, 1.0));
-            }
-
-            // Compute pixel heights
-            let divider_total = (n.saturating_sub(1)) as f32 * 6.0;
-            let tab_bar_total = n as f32 * 28.0;
-            let content_h = (available_h - divider_total - tab_bar_total).max(40.0);
-            let total_frac: f32 = watchlist.analysis_splits.iter().map(|s| s.frac).sum();
-            let norm = if total_frac > 0.001 { 1.0 / total_frac } else { 1.0 };
-            let heights: Vec<f32> = watchlist.analysis_splits.iter()
-                .map(|s| (s.frac * norm * content_h).max(30.0)).collect();
-
-            // Collect deferred actions
-            let mut remove_idx: Option<usize> = None;
-            let mut divider_drags: Vec<(usize, f32)> = Vec::new();
-
-            for i in 0..n {
-                let tab = watchlist.analysis_splits[i].tab;
-                let h = heights[i];
-                let can_close = n > 1;
-
-                // Tab bar for this section
-                ui.horizontal(|ui| {
-                    ui.set_min_height(26.0);
-                    // Render tabs inline
-                    for (t_val, t_label) in ALL_TABS {
-                        let sel = tab == *t_val;
-                        if ui.add(Button::new(*t_label)
-                            .variant(Variant::Tab)
-                            .active(sel)).clicked() {
-                            watchlist.analysis_splits[i].tab = *t_val;
-                        }
-                    }
-                    // Close button for this section
-                    if can_close {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.add(Button::icon(crate::ui_kit::icons::Icon::X)
-                                .variant(Variant::InlineClose)).clicked() {
-                                remove_idx = Some(i);
-                            }
-                        });
-                    }
-                });
-                // Underline below active tab
-                ui.painter().line_segment(
-                    [egui::pos2(ui.min_rect().left(), ui.min_rect().bottom()),
-                     egui::pos2(ui.min_rect().right(), ui.min_rect().bottom())],
-                    egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_faint())));
-
-                // Content
-                egui::ScrollArea::vertical().id_salt(format!("analysis_sec_{}", i)).max_height(h).show(ui, |ui| {
-                    match tab {
-                        AnalysisTab::Rrg => super::rrg_panel::draw_content(ui, watchlist, t),
-                        AnalysisTab::TimeSales => {
-                            let sym = if !panes.is_empty() { panes[ap].symbol.clone() } else { String::new() };
-                            super::tape_panel::draw_content(ui, watchlist, &sym, t);
-                        }
-                        AnalysisTab::Scanner => {
-                            super::scanner_panel::draw_content(ui, watchlist, panes, ap, t, &mut pending_symbol, panel_w);
-                        }
-                        AnalysisTab::Scripts => super::script_panel::draw_content(ui, watchlist, t),
-                        AnalysisTab::Seasonality => super::seasonality_panel::draw_content(ui, watchlist, panes, ap, t),
-                        AnalysisTab::Research => super::research_panel::draw_content(ui, panes, ap, t),
-                    }
-                });
-
-                // Divider between sections
-                if i + 1 < n {
-                    let d = split_divider(ui, &format!("adiv_{}", i), t.dim);
-                    if d != 0.0 { divider_drags.push((i, d)); }
+                AnalysisTab::Scanner => {
+                    super::scanner_panel::draw_content(
+                        ui, watchlist, panes, ap, t, &mut pending_symbol, panel_w,
+                    );
                 }
-            }
-
-            // Apply deferred actions
-            if let Some(idx) = remove_idx {
-                let removed_frac = watchlist.analysis_splits[idx].frac;
-                watchlist.analysis_splits.remove(idx);
-                // Redistribute removed fraction to remaining
-                if !watchlist.analysis_splits.is_empty() {
-                    let share = removed_frac / watchlist.analysis_splits.len() as f32;
-                    for s in &mut watchlist.analysis_splits { s.frac += share; }
-                }
-            }
-            for (idx, delta) in divider_drags {
-                if idx + 1 < watchlist.analysis_splits.len() {
-                    let frac_delta = delta / available_h.max(1.0);
-                    watchlist.analysis_splits[idx].frac = (watchlist.analysis_splits[idx].frac + frac_delta).clamp(0.05, 0.90);
-                    watchlist.analysis_splits[idx + 1].frac = (watchlist.analysis_splits[idx + 1].frac - frac_delta).clamp(0.05, 0.90);
-                }
+                AnalysisTab::Scripts =>
+                    super::script_panel::draw_content(ui, watchlist, t),
+                AnalysisTab::Seasonality =>
+                    super::seasonality_panel::draw_content(ui, watchlist, panes, ap, t),
+                AnalysisTab::Research =>
+                    super::research_panel::draw_content(ui, panes, ap, t),
             }
         });
+
+    watchlist.analysis_splits = splits;
+    if resp.close_clicked { watchlist.analysis_open = false; }
 
     if let Some(sym) = pending_symbol {
         if let Some(p) = panes.get_mut(ap) {

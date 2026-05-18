@@ -26,8 +26,17 @@ pub(super) fn execute(
     if let Some(sym) = id.strip_prefix("sym:") {
         let tf = panes[ap].timeframe.clone();
         panes[ap].symbol = sym.to_string();
+        panes[ap].symbol_meta = crate::foundation::types::symbol_or_guess(sym);
         panes[ap].pending_symbol_change = Some(sym.to_string());
         fetch_bars_background(sym.to_string(), tf);
+        // Wave 12c: the cross-pane SubscriptionBus publish for this
+        // symbol change happens centrally in `App::about_to_wait` when
+        // `pending_symbol_change` is consumed. No per-call-site publish
+        // is needed — the centralized publisher knows the originating
+        // pane index (required for the drain-and-apply step to skip the
+        // origin), which we can't accurately reconstruct here when the
+        // pending change has not yet been applied.
+        let _ = watchlist; // bus is reached from about_to_wait, not here
         return;
     }
 
@@ -124,6 +133,7 @@ pub(super) fn execute(
             let sym = p.symbol.clone();
             let tf = panes[ap].timeframe.clone();
             panes[ap].symbol = sym.clone();
+            panes[ap].symbol_meta = crate::foundation::types::symbol_or_guess(&sym);
             panes[ap].pending_symbol_change = Some(sym.clone());
             fetch_bars_background(sym, tf);
         }
@@ -137,6 +147,7 @@ pub(super) fn execute(
                 let sym = a.symbol.clone();
                 let tf = panes[ap].timeframe.clone();
                 panes[ap].symbol = sym.clone();
+                panes[ap].symbol_meta = crate::foundation::types::symbol_or_guess(&sym);
                 panes[ap].pending_symbol_change = Some(sym.clone());
                 fetch_bars_background(sym, tf);
             }

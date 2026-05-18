@@ -2,6 +2,12 @@
 //! so widgets can stay decoupled from chart_renderer paths. Migrate the
 //! original module here in a future pass.
 //!
+//! ### NOTE: foundation primitive, not a widget
+//! This module exposes timing constants and easing helpers (`ease_bool`,
+//! `cursor_visibility`, `INSTANT`, `DELAY_TOOLTIP`, …) consumed by
+//! widgets. It has no builder, no `show(ui, theme)`, and renders nothing
+//! on its own. The "Builder + show()" rule in `CLAUDE.md` does not apply.
+//!
 //! In addition to the re-exports, this module hosts ui_kit-only motion
 //! tokens that don't yet have a home in the legacy module:
 //!   - `CURSOR_BLINK_PERIOD` / `cursor_visibility` for custom-paint text

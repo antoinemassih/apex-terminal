@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 use super::codec::{db, xol};
 use super::file_io;
+use crate::error::AppError;
 
 /// Result of an import — the new chart's UUID plus any non-blocking warnings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -21,25 +22,26 @@ pub struct ImportResult {
 /// Export a chart by UUID as XOL bytes. Returns the raw zip — FE picks where
 /// to save it and writes via the file dialog.
 #[tauri::command]
-pub async fn export_chart_xol(chart_id: String) -> Result<Vec<u8>, String> {
-    let pool = crate::drawing_db::get_pool()
-        .ok_or_else(|| "DB not initialized".to_string())?;
-    let id = Uuid::parse_str(&chart_id).map_err(|e| format!("invalid uuid: {e}"))?;
-    let state = db::load_chart(pool, id).await.map_err(|e| e.to_string())?;
-    xol::write(&state).map_err(|e| e.to_string())
+pub async fn export_chart_xol(chart_id: String) -> Result<Vec<u8>, AppError> {
+    let pool = crate::drawing_db::get_pool().ok_or_else(AppError::db_uninitialized)?;
+    let id = Uuid::parse_str(&chart_id)
+        .map_err(|e| AppError::invalid_input(&format!("uuid: {e}")))?;
+    let state = db::load_chart(pool, id)
+        .await
+        .map_err(|e| AppError::internal(e))?;
+    xol::write(&state).map_err(|e| AppError::internal(e))
 }
 
 /// Import an XOL file into the database. Caller passes the raw bytes from the
 /// file picker. Returns the newly inserted chart's UUID plus any warnings
 /// (missing indicators, unknown drawing kinds, etc.).
 #[tauri::command]
-pub async fn import_chart_xol(bytes: Vec<u8>) -> Result<ImportResult, String> {
-    let pool = crate::drawing_db::get_pool()
-        .ok_or_else(|| "DB not initialized".to_string())?;
-    let (state, warnings) = xol::read(&bytes).map_err(|e| e.to_string())?;
+pub async fn import_chart_xol(bytes: Vec<u8>) -> Result<ImportResult, AppError> {
+    let pool = crate::drawing_db::get_pool().ok_or_else(AppError::db_uninitialized)?;
+    let (state, warnings) = xol::read(&bytes).map_err(|e| AppError::parse_error(e))?;
     let chart_id = save_with_warnings(pool, &state, &warnings)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppError::internal(e))?;
     Ok(ImportResult {
         chart_id: chart_id.to_string(),
         warnings,
@@ -49,11 +51,13 @@ pub async fn import_chart_xol(bytes: Vec<u8>) -> Result<ImportResult, String> {
 /// Save a chart to a user-chosen `.xol` file via the system Save dialog.
 /// Returns the chosen path as a string, or empty string if cancelled.
 #[tauri::command]
-pub async fn save_chart_to_file(chart_id: String) -> Result<String, String> {
-    let pool = crate::drawing_db::get_pool()
-        .ok_or_else(|| "DB not initialized".to_string())?;
-    let id = Uuid::parse_str(&chart_id).map_err(|e| format!("invalid uuid: {e}"))?;
-    let state = db::load_chart(pool, id).await.map_err(|e| e.to_string())?;
+pub async fn save_chart_to_file(chart_id: String) -> Result<String, AppError> {
+    let pool = crate::drawing_db::get_pool().ok_or_else(AppError::db_uninitialized)?;
+    let id = Uuid::parse_str(&chart_id)
+        .map_err(|e| AppError::invalid_input(&format!("uuid: {e}")))?;
+    let state = db::load_chart(pool, id)
+        .await
+        .map_err(|e| AppError::internal(e))?;
     let suggested = state
         .title
         .as_ref()
@@ -63,8 +67,8 @@ pub async fn save_chart_to_file(chart_id: String) -> Result<String, String> {
     // rfd dialog blocks; off-load to a sync task.
     let saved = tokio::task::spawn_blocking(move || file_io::save_chart_dialog(&state, &suggested))
         .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppError::internal(e))?
+        .map_err(|e| AppError::internal(e))?;
     Ok(saved.map(|p| p.display().to_string()).unwrap_or_default())
 }
 
@@ -72,19 +76,21 @@ pub async fn save_chart_to_file(chart_id: String) -> Result<String, String> {
 /// chart in the DB. Returns the new chart UUID + warnings, or
 /// `chart_id == ""` if the user cancelled the dialog.
 #[tauri::command]
-pub async fn load_chart_from_file() -> Result<ImportResult, String> {
-    let pool = crate::drawing_db::get_pool()
-        .ok_or_else(|| "DB not initialized".to_string())?;
+pub async fn load_chart_from_file() -> Result<ImportResult, AppError> {
+    let pool = crate::drawing_db::get_pool().ok_or_else(AppError::db_uninitialized)?;
     let result = tokio::task::spawn_blocking(file_io::open_chart_dialog)
         .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppError::internal(e))?
+        .map_err(|e| AppError::internal(e))?;
     let Some((state, warnings)) = result else {
-        return Ok(ImportResult { chart_id: String::new(), warnings: xol::ImportWarnings::default() });
+        return Ok(ImportResult {
+            chart_id: String::new(),
+            warnings: xol::ImportWarnings::default(),
+        });
     };
     let chart_id = save_with_warnings(pool, &state, &warnings)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppError::internal(e))?;
     Ok(ImportResult {
         chart_id: chart_id.to_string(),
         warnings,

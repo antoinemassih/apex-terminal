@@ -1,0 +1,546 @@
+//! Programmable `MarketDataProvider` for tests.
+//!
+//! Wave 6: lets integration tests drive the connectivity stack without standing
+//! up real WS / REST services. Each stream is scripted as a `VecDeque<MockFrame>`
+//! — the test pushes frames, the provider drains them on `subscribe_*` and
+//! drives a `tokio::sync::mpsc::UnboundedSender` from a background task. Frames
+//! can also force disconnects, reconnects, parse errors, or sleeps so tests
+//! can assert behavior in adverse network conditions.
+//!
+//! Not wired into the production registry — pulled in by `tests/` and by
+//! Rust-side `#[cfg(test)]` modules that need a deterministic feed.
+
+use super::provider::{
+    BarStream, ChainSnapshot, ChainStream, MarketDataProvider, ProviderCapabilities,
+    QuoteStream, TradeStream,
+};
+use crate::data::connectivity::{
+    ApiError, Connection, ConnectionMetrics, ConnectionState,
+};
+use crate::data::feeds::apex_data::types::{BarWire, ChainDelta, Quote, Trade};
+use crate::foundation::types::{CorporateAction, EarningsItem, Fundamentals, NewsItem};
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tokio::sync::mpsc;
+
+/// A scripted unit of mock-feed behavior. Drained in order by the background
+/// stream task.
+#[derive(Debug, Clone)]
+pub enum MockFrame {
+    Bar(BarWire),
+    Quote(Quote),
+    Trade(Trade),
+    /// Force the provider's `ConnectionState` to `Backoff` mid-stream — useful
+    /// for testing reconnect behavior in the SubscriptionManager.
+    Disconnect,
+    /// Force the provider's `ConnectionState` back to `Subscribed { count: 1 }`.
+    Reconnect,
+    /// Emit a parse-error event (bumps `parse_errors`).
+    Error(String),
+    /// Pause `dur` before delivering the next frame.
+    Sleep(Duration),
+}
+
+pub struct MockMarketDataProvider {
+    name: String,
+    state: Arc<Mutex<ConnectionState>>,
+    // Wave 11c: per-instance broadcast so tests can assert push-notification
+    // behavior without leaking state into a process-global channel.
+    state_tx: tokio::sync::broadcast::Sender<ConnectionState>,
+    metrics: Arc<Mutex<ConnectionMetrics>>,
+    bar_script: Arc<Mutex<VecDeque<MockFrame>>>,
+    quote_script: Arc<Mutex<VecDeque<MockFrame>>>,
+    trade_script: Arc<Mutex<VecDeque<MockFrame>>>,
+    historical_bars: Arc<Mutex<Vec<BarWire>>>,
+    /// When `true`, `bars()` returns an error to simulate a REST failure.
+    historical_error: Arc<Mutex<Option<String>>>,
+    // Wave 10c — scripted reference-data responses. Each is an
+    // `Option<Result<T, ApiError>>`: `None` falls through to the trait
+    // default (`NotSupported`); `Some(Ok)` / `Some(Err)` returns the
+    // scripted result. Wrapped in `Arc<Mutex<…>>` so tests can mutate
+    // them after construction.
+    fundamentals_resp: Arc<Mutex<Option<Result<Fundamentals, ApiError>>>>,
+    news_resp: Arc<Mutex<Option<Result<Vec<NewsItem>, ApiError>>>>,
+    earnings_resp: Arc<Mutex<Option<Result<Vec<EarningsItem>, ApiError>>>>,
+    corp_actions_resp: Arc<Mutex<Option<Result<Vec<CorporateAction>, ApiError>>>>,
+    capabilities: ProviderCapabilities,
+}
+
+impl MockMarketDataProvider {
+    pub fn new(name: impl Into<String>) -> Self {
+        let (state_tx, _) = tokio::sync::broadcast::channel(64);
+        Self {
+            name: name.into(),
+            state: Arc::new(Mutex::new(ConnectionState::Idle)),
+            state_tx,
+            metrics: Arc::new(Mutex::new(ConnectionMetrics::default())),
+            bar_script: Arc::new(Mutex::new(VecDeque::new())),
+            quote_script: Arc::new(Mutex::new(VecDeque::new())),
+            trade_script: Arc::new(Mutex::new(VecDeque::new())),
+            historical_bars: Arc::new(Mutex::new(Vec::new())),
+            historical_error: Arc::new(Mutex::new(None)),
+            fundamentals_resp: Arc::new(Mutex::new(None)),
+            news_resp: Arc::new(Mutex::new(None)),
+            earnings_resp: Arc::new(Mutex::new(None)),
+            corp_actions_resp: Arc::new(Mutex::new(None)),
+            capabilities: ProviderCapabilities {
+                bars: true, quotes: true, trades: true, chain: false,
+                crypto_only: false, historical: true, realtime: true,
+                fundamentals: false, news: false, earnings: false, corporate_actions: false,
+            },
+        }
+    }
+
+    /// Script a `fundamentals()` response. `Ok` → returns the snapshot;
+    /// `Err` → propagates the ApiError. Without this, the trait default
+    /// returns `NotSupported`.
+    pub fn script_fundamentals(self, resp: Result<Fundamentals, ApiError>) -> Self {
+        *self.fundamentals_resp.lock().unwrap() = Some(resp);
+        self
+    }
+
+    /// Script a `news()` response.
+    pub fn script_news(self, resp: Result<Vec<NewsItem>, ApiError>) -> Self {
+        *self.news_resp.lock().unwrap() = Some(resp);
+        self
+    }
+
+    /// Script an `earnings()` response.
+    pub fn script_earnings(self, resp: Result<Vec<EarningsItem>, ApiError>) -> Self {
+        *self.earnings_resp.lock().unwrap() = Some(resp);
+        self
+    }
+
+    /// Script a `corporate_actions()` response.
+    pub fn script_corporate_actions(self, resp: Result<Vec<CorporateAction>, ApiError>) -> Self {
+        *self.corp_actions_resp.lock().unwrap() = Some(resp);
+        self
+    }
+
+    pub fn script_bars(self, frames: Vec<MockFrame>) -> Self {
+        *self.bar_script.lock().unwrap() = VecDeque::from(frames);
+        self
+    }
+
+    pub fn script_quotes(self, frames: Vec<MockFrame>) -> Self {
+        *self.quote_script.lock().unwrap() = VecDeque::from(frames);
+        self
+    }
+
+    pub fn script_trades(self, frames: Vec<MockFrame>) -> Self {
+        *self.trade_script.lock().unwrap() = VecDeque::from(frames);
+        self
+    }
+
+    pub fn historical_bars(self, bars: Vec<BarWire>) -> Self {
+        *self.historical_bars.lock().unwrap() = bars;
+        self
+    }
+
+    pub fn historical_error(self, msg: impl Into<String>) -> Self {
+        *self.historical_error.lock().unwrap() = Some(msg.into());
+        self
+    }
+
+    pub fn with_capabilities(mut self, caps: ProviderCapabilities) -> Self {
+        self.capabilities = caps;
+        self
+    }
+
+    pub fn metrics_snapshot(&self) -> ConnectionMetrics {
+        self.metrics.lock().map(|g| g.clone()).unwrap_or_default()
+    }
+
+    pub fn state_snapshot(&self) -> ConnectionState {
+        self.state.lock().map(|g| g.clone()).unwrap_or(ConnectionState::Idle)
+    }
+
+    pub fn set_state(&self, state: ConnectionState) {
+        if let Ok(mut g) = self.state.lock() { *g = state.clone(); }
+        // Wave 11c: broadcast to subscribers (best-effort; ignore no-listeners).
+        let _ = self.state_tx.send(state);
+    }
+
+    /// Push an additional frame onto the bar script. Useful when tests want to
+    /// interleave subscribe + later injection.
+    pub fn push_bar_frame(&self, frame: MockFrame) {
+        if let Ok(mut q) = self.bar_script.lock() { q.push_back(frame); }
+    }
+    pub fn push_quote_frame(&self, frame: MockFrame) {
+        if let Ok(mut q) = self.quote_script.lock() { q.push_back(frame); }
+    }
+}
+
+impl Connection for MockMarketDataProvider {
+    fn name(&self) -> &str { &self.name }
+    fn state(&self) -> ConnectionState {
+        self.state.lock().map(|g| g.clone()).unwrap_or(ConnectionState::Idle)
+    }
+    fn metrics(&self) -> ConnectionMetrics {
+        self.metrics.lock().map(|g| g.clone()).unwrap_or_default()
+    }
+    fn subscribe_state(&self) -> Option<tokio::sync::broadcast::Receiver<ConnectionState>> {
+        // Wave 11c: per-instance broadcast — every `set_state(...)` call
+        // pushes to current subscribers. Useful for tests that need to assert
+        // push-notification visibility without spinning up real WS clients.
+        Some(self.state_tx.subscribe())
+    }
+}
+
+fn spawn_stream<T: Send + 'static, F>(
+    script: Arc<Mutex<VecDeque<MockFrame>>>,
+    metrics: Arc<Mutex<ConnectionMetrics>>,
+    state: Arc<Mutex<ConnectionState>>,
+    state_tx: tokio::sync::broadcast::Sender<ConnectionState>,
+    tx: mpsc::UnboundedSender<T>,
+    extract: F,
+)
+where
+    F: Fn(MockFrame) -> Option<T> + Send + 'static,
+{
+    tokio::spawn(async move {
+        loop {
+            let next = match script.lock() {
+                Ok(mut q) => q.pop_front(),
+                Err(_) => break,
+            };
+            let frame = match next {
+                Some(f) => f,
+                None => {
+                    // Idle wait — tests can push more frames via push_*_frame.
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    if tx.is_closed() { break; }
+                    continue;
+                }
+            };
+            match frame {
+                MockFrame::Sleep(d) => tokio::time::sleep(d).await,
+                MockFrame::Disconnect => {
+                    let new = ConnectionState::Backoff {
+                        until: std::time::Instant::now() + Duration::from_millis(50),
+                        attempt: 1,
+                        reason: "mock disconnect".into(),
+                    };
+                    if let Ok(mut s) = state.lock() { *s = new.clone(); }
+                    let _ = state_tx.send(new);
+                }
+                MockFrame::Reconnect => {
+                    let new = ConnectionState::Subscribed { count: 1 };
+                    if let Ok(mut s) = state.lock() { *s = new.clone(); }
+                    let _ = state_tx.send(new);
+                    if let Ok(mut m) = metrics.lock() { m.reconnect_count += 1; }
+                }
+                MockFrame::Error(_) => {
+                    if let Ok(mut m) = metrics.lock() { m.parse_errors += 1; }
+                }
+                other => {
+                    if let Some(t) = extract(other) {
+                        if tx.send(t).is_err() { break; }
+                        if let Ok(mut m) = metrics.lock() {
+                            m.messages_in += 1;
+                            m.last_message_at = Some(std::time::Instant::now());
+                        }
+                    }
+                }
+            }
+            if tx.is_closed() { break; }
+        }
+    });
+}
+
+#[async_trait::async_trait]
+impl MarketDataProvider for MockMarketDataProvider {
+    async fn bars(
+        &self,
+        _symbol: &str,
+        _timeframe: &str,
+        _start_ms: i64,
+        _end_ms: i64,
+        _limit: Option<usize>,
+    ) -> Result<Vec<BarWire>, ApiError> {
+        if let Some(err) = self.historical_error.lock().ok().and_then(|g| g.clone()) {
+            return Err(ApiError::Network(err));
+        }
+        Ok(self.historical_bars.lock().map(|g| g.clone()).unwrap_or_default())
+    }
+
+    fn subscribe_bars(&self, _symbol: &str, _timeframe: &str) -> Result<BarStream, ApiError> {
+        let (tx, rx) = mpsc::unbounded_channel::<BarWire>();
+        self.set_state(ConnectionState::Subscribed { count: 1 });
+        spawn_stream(
+            self.bar_script.clone(),
+            self.metrics.clone(),
+            self.state.clone(),
+            self.state_tx.clone(),
+            tx,
+            |f| match f { MockFrame::Bar(b) => Some(b), _ => None },
+        );
+        Ok(rx)
+    }
+    fn unsubscribe_bars(&self, _: &str, _: &str) {}
+
+    fn subscribe_quotes(&self, _symbol: &str) -> Result<QuoteStream, ApiError> {
+        let (tx, rx) = mpsc::unbounded_channel::<Quote>();
+        self.set_state(ConnectionState::Subscribed { count: 1 });
+        spawn_stream(
+            self.quote_script.clone(),
+            self.metrics.clone(),
+            self.state.clone(),
+            self.state_tx.clone(),
+            tx,
+            |f| match f { MockFrame::Quote(q) => Some(q), _ => None },
+        );
+        Ok(rx)
+    }
+    fn unsubscribe_quotes(&self, _: &str) {}
+
+    fn subscribe_trades(&self, _symbol: &str) -> Result<TradeStream, ApiError> {
+        let (tx, rx) = mpsc::unbounded_channel::<Trade>();
+        self.set_state(ConnectionState::Subscribed { count: 1 });
+        spawn_stream(
+            self.trade_script.clone(),
+            self.metrics.clone(),
+            self.state.clone(),
+            self.state_tx.clone(),
+            tx,
+            |f| match f { MockFrame::Trade(t) => Some(t), _ => None },
+        );
+        Ok(rx)
+    }
+    fn unsubscribe_trades(&self, _: &str) {}
+
+    async fn chain_snapshot(&self, _u: &str) -> Result<ChainSnapshot, ApiError> {
+        Err(ApiError::NotSupported("mock: chain".into()))
+    }
+    fn subscribe_chain(&self, _: &str) -> Result<ChainStream, ApiError> {
+        let (_tx, rx) = mpsc::unbounded_channel::<ChainDelta>();
+        Ok(rx)
+    }
+    fn unsubscribe_chain(&self, _: &str) {}
+
+    fn capabilities(&self) -> ProviderCapabilities { self.capabilities }
+
+    async fn fundamentals(&self, symbol: &str) -> Result<Fundamentals, ApiError> {
+        match self.fundamentals_resp.lock().ok().and_then(|g| g.clone()) {
+            Some(r) => r,
+            None => Err(ApiError::NotSupported(format!("{} does not provide fundamentals", symbol))),
+        }
+    }
+
+    async fn news(&self, _symbol: &str, _limit: Option<usize>) -> Result<Vec<NewsItem>, ApiError> {
+        match self.news_resp.lock().ok().and_then(|g| g.clone()) {
+            Some(r) => r,
+            None => Err(ApiError::NotSupported("mock: no news scripted".into())),
+        }
+    }
+
+    async fn earnings(&self, _symbol: &str, _limit: Option<usize>) -> Result<Vec<EarningsItem>, ApiError> {
+        match self.earnings_resp.lock().ok().and_then(|g| g.clone()) {
+            Some(r) => r,
+            None => Err(ApiError::NotSupported("mock: no earnings scripted".into())),
+        }
+    }
+
+    async fn corporate_actions(&self, _symbol: &str) -> Result<Vec<CorporateAction>, ApiError> {
+        match self.corp_actions_resp.lock().ok().and_then(|g| g.clone()) {
+            Some(r) => r,
+            None => Err(ApiError::NotSupported("mock: no corporate_actions scripted".into())),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::feeds::apex_data::types::AssetClass;
+
+    fn bw(t: i64, c: f64) -> BarWire {
+        BarWire {
+            symbol: "X".into(), asset_class: AssetClass::Stock, timeframe: "1m".into(),
+            time: t, open: c, high: c, low: c, close: c, volume: 0.0,
+            vwap: 0.0, trades: 0, closed: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn scripted_bars_flow_through() {
+        let p = MockMarketDataProvider::new("m")
+            .script_bars(vec![MockFrame::Bar(bw(1, 1.0)), MockFrame::Bar(bw(2, 2.0))]);
+        let mut rx = p.subscribe_bars("X", "1m").unwrap();
+        let b1 = tokio::time::timeout(Duration::from_millis(200), rx.recv()).await.unwrap().unwrap();
+        let b2 = tokio::time::timeout(Duration::from_millis(200), rx.recv()).await.unwrap().unwrap();
+        assert_eq!(b1.time, 1);
+        assert_eq!(b2.time, 2);
+        let m = p.metrics();
+        assert!(m.messages_in >= 2);
+    }
+
+    #[tokio::test]
+    async fn historical_bars_returns_canned_data() {
+        let p = MockMarketDataProvider::new("m")
+            .historical_bars(vec![bw(10, 10.0), bw(20, 20.0)]);
+        let bars = p.bars("X", "1m", 0, 0, None).await.unwrap();
+        assert_eq!(bars.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn historical_error_propagates() {
+        let p = MockMarketDataProvider::new("m").historical_error("boom");
+        let err = p.bars("X", "1m", 0, 0, None).await.unwrap_err();
+        assert!(format!("{}", err).contains("boom"));
+    }
+
+    // ── Wave 10c reference-data scripting ───────────────────────────────
+
+    use crate::foundation::types::{
+        CorporateAction, CorporateActionKind, EarningsItem, EarningsWhen,
+        Fundamentals, NewsItem, TimeSource, Timestamp,
+    };
+
+    #[tokio::test]
+    async fn fundamentals_unscripted_returns_not_supported() {
+        let p = MockMarketDataProvider::new("m");
+        let err = p.fundamentals("AAPL").await.unwrap_err();
+        assert!(matches!(err, ApiError::NotSupported(_)));
+    }
+
+    #[tokio::test]
+    async fn fundamentals_scripted_ok_returns_snapshot() {
+        let snap = Fundamentals {
+            symbol: "AAPL".into(),
+            market_cap: Some(3_500_000_000_000),
+            pe_ratio: Some(29.4), eps: Some(6.42), dividend_yield: Some(0.45),
+            sector: Some("Technology".into()), industry: Some("Consumer Electronics".into()),
+            description: None,
+        };
+        let p = MockMarketDataProvider::new("m").script_fundamentals(Ok(snap.clone()));
+        let got = p.fundamentals("AAPL").await.unwrap();
+        assert_eq!(got, snap);
+    }
+
+    #[tokio::test]
+    async fn news_scripted_err_propagates() {
+        let p = MockMarketDataProvider::new("m")
+            .script_news(Err(ApiError::Network("upstream down".into())));
+        let err = p.news("AAPL", None).await.unwrap_err();
+        assert!(matches!(err, ApiError::Network(_)));
+    }
+
+    #[tokio::test]
+    async fn earnings_scripted_ok_returns_items() {
+        let item = EarningsItem {
+            symbol: "AAPL".into(),
+            reports_at: Timestamp::from_millis(1_700_000_000_000, TimeSource::ExchangeUtc),
+            eps_estimate: Some(1.25), eps_actual: None,
+            revenue_estimate: None, revenue_actual: None,
+            when: EarningsWhen::AfterMarket,
+        };
+        let p = MockMarketDataProvider::new("m").script_earnings(Ok(vec![item.clone()]));
+        let got = p.earnings("AAPL", None).await.unwrap();
+        assert_eq!(got, vec![item]);
+    }
+
+    #[tokio::test]
+    async fn corporate_actions_scripted_ok_returns_items() {
+        let a = CorporateAction {
+            symbol: "AAPL".into(),
+            action: CorporateActionKind::Split { ratio_num: 4, ratio_den: 1 },
+            effective_date: Timestamp::from_millis(1_700_000_000_000, TimeSource::ExchangeUtc),
+            announced_date: Timestamp::from_millis(1_699_000_000_000, TimeSource::ExchangeUtc),
+        };
+        let _ = NewsItem { // smoke-touch the import so test still compiles after refactors
+            id: "x".into(), symbol: None, headline: "x".into(), source: "x".into(),
+            url: None, published_at: Timestamp::from_millis(0, TimeSource::Local), summary: None,
+        };
+        let p = MockMarketDataProvider::new("m").script_corporate_actions(Ok(vec![a.clone()]));
+        let got = p.corporate_actions("AAPL").await.unwrap();
+        assert_eq!(got, vec![a]);
+    }
+
+    // ── Wave 11c push-notification stream ──────────────────────────────────
+
+    #[tokio::test]
+    async fn mock_provider_state_changes_visible_to_subscriber() {
+        let mock = MockMarketDataProvider::new("test");
+        let mut rx = mock.subscribe_state().expect("mock should support state stream");
+        mock.set_state(ConnectionState::Authenticated);
+        let received = tokio::time::timeout(Duration::from_millis(100), rx.recv())
+            .await
+            .expect("should receive within 100ms")
+            .expect("not lagged or closed");
+        assert!(matches!(received, ConnectionState::Authenticated));
+    }
+
+    #[tokio::test]
+    async fn mock_provider_emits_multiple_transitions_in_order() {
+        let mock = MockMarketDataProvider::new("test");
+        let mut rx = mock.subscribe_state().expect("stream");
+        mock.set_state(ConnectionState::Connecting { attempt: 1 });
+        mock.set_state(ConnectionState::Authenticated);
+        mock.set_state(ConnectionState::Subscribed { count: 3 });
+        let s1 = rx.recv().await.unwrap();
+        let s2 = rx.recv().await.unwrap();
+        let s3 = rx.recv().await.unwrap();
+        assert!(matches!(s1, ConnectionState::Connecting { attempt: 1 }));
+        assert!(matches!(s2, ConnectionState::Authenticated));
+        assert!(matches!(s3, ConnectionState::Subscribed { count: 3 }));
+    }
+
+    #[tokio::test]
+    async fn mock_provider_scripted_disconnect_publishes_state() {
+        let p = MockMarketDataProvider::new("m").script_bars(vec![
+            MockFrame::Bar(bw(1, 1.0)),
+            MockFrame::Disconnect,
+            MockFrame::Sleep(Duration::from_millis(10)),
+            MockFrame::Reconnect,
+        ]);
+        let mut rx = p.subscribe_state().expect("stream");
+        let _bars = p.subscribe_bars("X", "1m").unwrap();
+        // First transition: subscribe_bars sets Subscribed{count:1}
+        let s1 = tokio::time::timeout(Duration::from_millis(200), rx.recv()).await.unwrap().unwrap();
+        assert!(matches!(s1, ConnectionState::Subscribed { count: 1 }));
+        // Then Disconnect → Backoff
+        let mut saw_backoff = false;
+        let mut saw_resub = false;
+        for _ in 0..4 {
+            if let Ok(Ok(s)) = tokio::time::timeout(Duration::from_millis(200), rx.recv()).await {
+                if matches!(s, ConnectionState::Backoff { .. }) { saw_backoff = true; }
+                if matches!(s, ConnectionState::Subscribed { .. }) && saw_backoff { saw_resub = true; break; }
+            }
+        }
+        assert!(saw_backoff, "expected Backoff on Disconnect");
+        assert!(saw_resub, "expected Subscribed on Reconnect");
+    }
+
+    #[tokio::test]
+    async fn apex_data_publish_state_observed_by_subscriber() {
+        // Exercises the module-level broadcast directly — no real WS needed.
+        use crate::data::feeds::apex_data::ws as apex_ws;
+        let mut rx = apex_ws::state_tx().subscribe();
+        apex_ws::publish_state(ConnectionState::Connecting { attempt: 7 });
+        let s = tokio::time::timeout(Duration::from_millis(100), rx.recv())
+            .await
+            .expect("recv within 100ms")
+            .expect("not lagged");
+        assert!(matches!(s, ConnectionState::Connecting { attempt: 7 }));
+    }
+
+    #[tokio::test]
+    async fn disconnect_reconnect_toggles_state() {
+        let p = MockMarketDataProvider::new("m").script_bars(vec![
+            MockFrame::Bar(bw(1, 1.0)),
+            MockFrame::Disconnect,
+            MockFrame::Sleep(Duration::from_millis(20)),
+            MockFrame::Reconnect,
+            MockFrame::Bar(bw(2, 2.0)),
+        ]);
+        let mut rx = p.subscribe_bars("X", "1m").unwrap();
+        let _ = tokio::time::timeout(Duration::from_millis(200), rx.recv()).await.unwrap().unwrap();
+        // Drain script - eventually we should hit Reconnect and emit bar 2.
+        let b2 = tokio::time::timeout(Duration::from_millis(500), rx.recv()).await.unwrap().unwrap();
+        assert_eq!(b2.time, 2);
+        assert!(matches!(p.state(), ConnectionState::Subscribed { .. }));
+        assert!(p.metrics().reconnect_count >= 1);
+    }
+}

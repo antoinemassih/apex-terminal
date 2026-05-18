@@ -45,7 +45,7 @@ impl<'a> TradeCard<'a> {
         use st::{
             color_alpha, color_subtle, color_half, color_dim,
             alpha_subtle, radius_sm, gap_xs,
-            FONT_SM, FONT_XS,
+            font_sm, font_xs,
         };
 
         let entry = self.data;
@@ -79,13 +79,13 @@ impl<'a> TradeCard<'a> {
 
         // Row 1: symbol · side · P&L
         p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
-            entry.symbol, egui::FontId::monospace(FONT_SM), theme.text());
+            entry.symbol, egui::FontId::monospace(font_sm()), theme.text());
         p.text(egui::pos2(cx + 50.0, cy + 4.0), egui::Align2::LEFT_CENTER,
-            entry.side, egui::FontId::monospace(FONT_XS), dir_col);
+            entry.side, egui::FontId::monospace(font_xs()), dir_col);
         let sign = if entry.pnl >= 0.0 { "+" } else { "" };
         p.text(egui::pos2(card_rect.right() - 8.0, cy + 4.0), egui::Align2::RIGHT_CENTER,
             &format!("{}${:.0} ({:+.1}%)", sign, entry.pnl, entry.pnl_pct),
-            egui::FontId::monospace(FONT_SM), pnl_col);
+            egui::FontId::monospace(font_sm()), pnl_col);
         cy += 16.0;
 
         // Row 2: setup · duration · R-multiple
@@ -116,7 +116,7 @@ impl<'a> TradeCard<'a> {
         if !entry.notes.is_empty() {
             cy += 14.0;
             p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
-                entry.notes, st::mono_sm(), theme.dim().gamma_multiply(0.35));
+                entry.notes, st::mono_sm(), st::color_dim(theme.dim()));
         }
 
         ui.add_space(gap_xs());

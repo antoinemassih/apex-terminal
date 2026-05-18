@@ -11,6 +11,14 @@
 //!
 //! API surface (builder method names, ModalResponse) is unchanged from the
 //! legacy struct so callers keep compiling via the chrome::modal re-export.
+//!
+//! ### Signature note
+//! `Modal::show(body)` does NOT take `ui: &mut Ui` or `theme: &dyn ComponentTheme`
+//! as parameters. A modal is a top-level floating Area on the egui Context
+//! (not a child of any parent `Ui`), so it takes a `Context` via `.ctx(ctx)`
+//! and a theme via `.theme(t)` as builder methods. The `.show(body)` call
+//! then runs the body inside the modal's own internal Ui. This is an explicit,
+//! documented variance from the "Builder + show(ui, theme)" rule in `CLAUDE.md`.
 
 #![allow(dead_code)]
 
@@ -243,7 +251,7 @@ impl<'a> Modal<'a> {
                 .colors(bg, border)
                 .ctx(ctx)
                 .build(),
-            FrameKind::DialogWindow => dialog_window_frame(ctx, bg, border, None),
+            FrameKind::DialogWindow => dialog_window_frame(ctx, bg, border, None, t.shadow_color()),
             FrameKind::Custom(f) => f,
         };
 
@@ -351,7 +359,7 @@ impl<'a> Modal<'a> {
                             super::paint_shadow_gpu(
                                 ui.painter(),
                                 shadow_rect,
-                                super::ShadowSpec::lg(),
+                                super::ShadowSpec::lg_themed(t),
                             );
                         });
                 }
@@ -392,7 +400,7 @@ impl<'a> Modal<'a> {
                             super::paint_shadow_gpu(
                                 ui.painter(),
                                 r,
-                                super::ShadowSpec::lg(),
+                                super::ShadowSpec::lg_themed(t),
                             );
                         }
                         let resp = frame.show(ui, |ui| {
@@ -433,17 +441,20 @@ fn dialog_window_frame(
     toolbar_bg: Color32,
     toolbar_border: Color32,
     border_color: Option<Color32>,
+    shadow_tint: Color32,
 ) -> egui::Frame {
     let border = border_color.unwrap_or(color_alpha(toolbar_border, 80));
     egui::Frame::popup(&ctx.style())
         .fill(toolbar_bg)
         .inner_margin(0.0)
-        .stroke(Stroke::new(1.0, border))
+        .stroke(Stroke::new(style::stroke_std(), border))
         .corner_radius(r_lg_cr())
         .shadow(egui::epaint::Shadow {
             offset: [0, 8],
             blur:   28,
             spread: 2,
-            color:  Color32::from_black_alpha(80),
+            color:  Color32::from_rgba_unmultiplied(
+                shadow_tint.r(), shadow_tint.g(), shadow_tint.b(), 80,
+            ),
         })
 }

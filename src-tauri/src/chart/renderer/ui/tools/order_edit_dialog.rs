@@ -6,8 +6,8 @@
 use egui::Context;
 use crate::chart_renderer::gpu::Theme;
 use crate::chart_renderer::trading::OrderSide;
-use crate::chart_renderer::ui::style::{color_alpha, dialog_separator_shadow, gap_xs, gap_sm, gap_md, gap_lg, font_xs, font_sm, font_md, shadow_color_alpha, stroke_thin};
-use crate::chart_renderer::ui::widgets::inputs::TextInput;
+use crate::chart_renderer::ui::style::{color_alpha, color_half, color_muted, cursor, dialog_separator_shadow, gap_xs, gap_sm, gap_md, gap_lg, font_xs, font_sm, font_md, radius_xs, radius_md, row_height_default, shadow_color_alpha, stroke_thin};
+use crate::ui_kit::widgets::Input;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
 use crate::ui_kit::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
@@ -74,7 +74,7 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
                 .fill(c.t.toolbar_bg)
                 .inner_margin(0.0)
                 .stroke(egui::Stroke::new(stroke_thin(), color_alpha(c.t.toolbar_border, 60)))
-                .corner_radius(6.0)
+                .corner_radius(radius_md())
                 .shadow(egui::epaint::Shadow {
                     offset: [0, 4], blur: 12, spread: 2,
                     color: shadow_color_alpha(c.t, 80),
@@ -98,7 +98,7 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
                         ui.add_space(m);
                         let action = if c.order_side == OrderSide::TriggerBuy { "Buy option" } else { "Sell option" };
                         ui.label(egui::RichText::new(format!("{} when {} reaches trigger price", action, c.symbol))
-                            .monospace().size(font_xs()).color(c.t.dim.gamma_multiply(0.6)));
+                            .monospace().size(font_xs()).color(color_muted(c.t.dim)));
                     });
                     ui.add_space(gap_md());
                     dialog_separator_shadow(ui, m, color_alpha(c.t.toolbar_border, 40));
@@ -112,13 +112,13 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
                 ui.add_space(m);
                 ui.label(egui::RichText::new(format!("{:6}", price_label)).monospace().size(font_sm()).color(c.t.dim));
                 ui.add_space(gap_sm());
-                let resp = TextInput::new(c.edit_price)
+                let resp = Input::new(c.edit_price)
                     .width(if is_trigger { 130.0 } else { 110.0 })
                     .font_size(font_sm())
                     .horizontal_align(egui::Align::RIGHT)
                     .frameless(true)
-                    .show(ui);
-                if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    .show(ui, c.t);
+                if resp.lost_focus && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     if let Ok(p) = c.edit_price.parse::<f32>() { apply_price = Some(p); }
                 }
             });
@@ -129,8 +129,8 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
                 ui.add_space(m);
                 ui.label(egui::RichText::new("Qty   ").monospace().size(font_sm()).color(c.t.dim));
                 ui.add_space(gap_sm());
-                if ui.add(egui::Button::new(egui::RichText::new("-").monospace().size(font_md()).color(c.t.dim))
-                    .fill(color_alpha(c.t.toolbar_border, 25)).corner_radius(2.0).min_size(egui::vec2(20.0, 22.0))).clicked() {
+                if cursor::click_widget(ui, egui::Button::new(egui::RichText::new("-").monospace().size(font_md()).color(c.t.dim))
+                    .fill(color_alpha(c.t.toolbar_border, 25)).corner_radius(radius_xs()).min_size(egui::vec2(20.0, row_height_default()))).clicked() {
                     if let Ok(q) = c.edit_qty.parse::<u32>() {
                         let step = if q > 100 { 10 } else if q > 10 { 5 } else { 1 };
                         let new_q = q.saturating_sub(step).max(1);
@@ -138,17 +138,17 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
                         apply_qty = Some(new_q);
                     }
                 }
-                let resp = TextInput::new(c.edit_qty)
+                let resp = Input::new(c.edit_qty)
                     .width(if is_trigger { 80.0 } else { 60.0 })
                     .font_size(font_sm())
                     .horizontal_align(egui::Align::Center)
                     .frameless(true)
-                    .show(ui);
-                if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    .show(ui, c.t);
+                if resp.lost_focus && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     if let Ok(q) = c.edit_qty.parse::<u32>() { apply_qty = Some(q.max(1)); }
                 }
-                if ui.add(egui::Button::new(egui::RichText::new("+").monospace().size(font_md()).color(c.t.dim))
-                    .fill(color_alpha(c.t.toolbar_border, 25)).corner_radius(2.0).min_size(egui::vec2(20.0, 22.0))).clicked() {
+                if cursor::click_widget(ui, egui::Button::new(egui::RichText::new("+").monospace().size(font_md()).color(c.t.dim))
+                    .fill(color_alpha(c.t.toolbar_border, 25)).corner_radius(radius_xs()).min_size(egui::vec2(20.0, row_height_default()))).clicked() {
                     if let Ok(q) = c.edit_qty.parse::<u32>() {
                         let step = if q >= 100 { 10 } else if q >= 10 { 5 } else { 1 };
                         let new_q = q + step;
@@ -165,10 +165,10 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
                 for &preset in &[1u32, 5, 10, 25, 50, 100] {
                     let current_qty = c.edit_qty.parse::<u32>().unwrap_or(0);
                     let sel = current_qty == preset;
-                    let fg = if sel { c.t.accent } else { c.t.dim.gamma_multiply(0.5) };
+                    let fg = if sel { c.t.accent } else { color_half(c.t.dim) };
                     let bg = if sel { color_alpha(c.t.accent, 25) } else { egui::Color32::TRANSPARENT };
-                    if ui.add(egui::Button::new(egui::RichText::new(format!("{}", preset)).monospace().size(font_xs()).color(fg))
-                        .fill(bg).corner_radius(2.0).min_size(egui::vec2(24.0, 16.0))).clicked() {
+                    if cursor::click_widget(ui, egui::Button::new(egui::RichText::new(format!("{}", preset)).monospace().size(font_xs()).color(fg))
+                        .fill(bg).corner_radius(radius_xs()).min_size(egui::vec2(24.0, 16.0))).clicked() {
                         *c.edit_qty = format!("{}", preset);
                         apply_qty = Some(preset);
                     }

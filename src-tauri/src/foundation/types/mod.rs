@@ -1,3 +1,31 @@
+//! Foundation types — owned data shapes shared across the app.
+//!
+//! Wave 3 split `data_types.rs` into a directory so typed primitives
+//! (`Price`, `Timestamp`, `Symbol`) live alongside the legacy wire types
+//! (`Bar`, `OptionContract`, `OptionsChain`) without growing one giant file.
+//!
+//! Existing re-exports stay flat via `pub use` — downstream code that
+//! `use crate::foundation::*`-ed the old module is unaffected.
+
+pub mod price;
+pub mod timestamp;
+pub mod symbol;
+pub mod fundamentals;
+pub mod news;
+pub mod earnings;
+pub mod corporate_actions;
+
+pub use price::Price;
+pub use timestamp::{Timestamp, TimeSource};
+pub use symbol::{Symbol, SymbolRegistry, Vendor, AssetClass, registry};
+pub use fundamentals::Fundamentals;
+pub use news::NewsItem;
+pub use earnings::{EarningsItem, EarningsWhen};
+pub use corporate_actions::{CorporateAction, CorporateActionKind};
+
+// `symbol_or_guess` is defined further down in this module (after `is_crypto`)
+// but re-exported here for convenience so callers can `use foundation::types::symbol_or_guess`.
+
 use serde::{Deserialize, Serialize};
 
 /// Detect crypto symbols (Binance pairs)
@@ -5,6 +33,26 @@ pub fn is_crypto(symbol: &str) -> bool {
     let s = symbol.to_uppercase();
     s.ends_with("USDT") || s.ends_with("BUSD") || s.ends_with("USDC")
         || s.ends_with("BTC") && s.len() > 3 && s != "GBTC"
+}
+
+/// Resolve a canonical ticker to a typed `Symbol`, preferring the global
+/// `SymbolRegistry` (populated from index/ETF constituents at startup) and
+/// falling back to string-pattern heuristics for tickers the registry has
+/// never seen.
+///
+/// This is the bridge point that lets call sites move off the brittle
+/// `is_crypto(&str)` heuristic onto registry-backed truth — once a ticker is
+/// registered as `Equity` the heuristic's `"XUSDT" → crypto` misclassification
+/// stops mattering.
+pub fn symbol_or_guess(canonical: &str) -> Symbol {
+    if let Some(s) = registry().get(canonical) { return s; }
+    if canonical.starts_with("O:") {
+        Symbol::option(canonical)
+    } else if is_crypto(canonical) {
+        Symbol::crypto(canonical)
+    } else {
+        Symbol::equity(canonical)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,10 +92,16 @@ pub struct OptionsChain {
 }
 
 #[tauri::command]
-pub async fn get_bars(symbol: String, interval: String, period: String) -> Result<Vec<Bar>, String> {
+pub async fn get_bars(
+    symbol: String,
+    interval: String,
+    period: String,
+) -> Result<Vec<Bar>, crate::error::AppError> {
+    use crate::error::AppError;
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0")
-        .build().map_err(|e| e.to_string())?;
+        .build()
+        .map_err(|e| AppError::network_error(e))?;
 
     // 0. Crypto → ApexCrypto directly (manages its own cache + Binance backfill)
     if is_crypto(&symbol) {
@@ -143,17 +197,21 @@ pub fn parse_yahoo_v8(json: &serde_json::Value) -> Option<Vec<Bar>> {
 }
 
 #[tauri::command]
-pub async fn get_options_chain(symbol: String, date: Option<String>) -> Result<OptionsChain, String> {
+pub async fn get_options_chain(
+    symbol: String,
+    date: Option<String>,
+) -> Result<OptionsChain, crate::error::AppError> {
+    use crate::error::AppError;
     let mut url = format!("http://127.0.0.1:8777/options?symbol={}", symbol);
     if let Some(d) = &date {
         url.push_str(&format!("&date={}", d));
     }
     let resp = reqwest::get(&url)
         .await
-        .map_err(|e| format!("Failed to reach yfinance server: {}", e))?;
+        .map_err(|e| AppError::network_error(e))?;
     let chain: OptionsChain = resp
         .json()
         .await
-        .map_err(|e| format!("Failed to parse options chain: {}", e))?;
+        .map_err(|e| AppError::parse_error(e))?;
     Ok(chain)
 }

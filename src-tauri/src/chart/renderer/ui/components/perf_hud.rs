@@ -5,16 +5,21 @@
 //! spans, allocation counts, GPU/CPU/RAM stats, and recent jank events.
 
 use egui::{Color32, RichText};
-use super::super::style::{font_xs, font_sm, color_alpha, ALPHA_SOLID, stroke_std};
-fn ft() -> &'static crate::chart_renderer::gpu::Theme { &crate::chart_renderer::gpu::THEMES[0] }
+use super::super::style::{font_xs, font_sm, color_alpha, ALPHA_SOLID, radius_sm, stroke_std};
+
+#[inline(always)]
+fn ambient(ctx: &egui::Context) -> &'static crate::chart_renderer::gpu::Theme {
+    crate::ui_kit::widgets::theme::active_theme(ctx)
+}
 
 fn us_to_ms(us: u64) -> f64 { us as f64 / 1000.0 }
 
 /// Color a value: green if fast, yellow if moderate, red if slow.
-fn phase_color(us: u64, warn_us: u64, bad_us: u64) -> Color32 {
-    if us >= bad_us       { ft().bear }
-    else if us >= warn_us { ft().warn }
-    else                  { ft().bull }
+fn phase_color(ctx: &egui::Context, us: u64, warn_us: u64, bad_us: u64) -> Color32 {
+    let t = ambient(ctx);
+    if us >= bad_us       { t.bear }
+    else if us >= warn_us { t.warn }
+    else                  { t.bull }
 }
 
 /// Render a sparkline of frame times in a tiny painter strip.
@@ -22,6 +27,7 @@ fn sparkline(ui: &mut egui::Ui, values: &[f64], width: f32, height: f32) {
     if values.is_empty() { return; }
     let (min_v, max_v) = values.iter().fold((f64::MAX, 0_f64), |(mn, mx), &v| (mn.min(v), mx.max(v)));
     let range = (max_v - min_v).max(1.0);
+    let ctx = ui.ctx().clone();
     let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
     let painter = ui.painter_at(rect);
     let n = values.len();
@@ -30,7 +36,7 @@ fn sparkline(ui: &mut egui::Ui, values: &[f64], width: f32, height: f32) {
         let norm = ((v - min_v) / range) as f32;
         let bar_h = (norm * height).max(1.0);
         let x = rect.left() + i as f32 * bar_w;
-        let col = phase_color((v * 1000.0) as u64, 16_000, 33_000);
+        let col = phase_color(&ctx, (v * 1000.0) as u64, 16_000, 33_000);
         painter.rect_filled(
             egui::Rect::from_min_size(egui::pos2(x, rect.bottom() - bar_h), egui::vec2(bar_w - 0.5, bar_h)),
             0.0, col,
@@ -51,7 +57,8 @@ pub fn show(ctx: &egui::Context, open: &mut bool) {
     let frame_ms = us_to_ms(snap.frames.last_frame_us);
     let avg_ms   = us_to_ms(snap.frames.avg_frame_us);
 
-    // retained as Window: collapsible + resizable + corner-anchored; uses ft() theme hack throughout (dev tool)
+    // Dev tool — resolves theme from the ambient registry (active_theme).
+    let amb = ambient(ctx);
     egui::Window::new("⏱ Perf HUD")
         .id(egui::Id::new("perf_hud_window"))
         .anchor(egui::Align2::RIGHT_TOP, [-8.0, 8.0])
@@ -60,15 +67,15 @@ pub fn show(ctx: &egui::Context, open: &mut bool) {
         .default_width(300.0)
         .frame(
             egui::Frame::window(&ctx.style())
-                .fill(color_alpha(ft().bg, ALPHA_SOLID))
-                .stroke(egui::Stroke::new(stroke_std(), ft().toolbar_border))
+                .fill(color_alpha(amb.bg, ALPHA_SOLID))
+                .stroke(egui::Stroke::new(stroke_std(), amb.toolbar_border))
                 .inner_margin(8.0)
-                .corner_radius(4.0),
+                .corner_radius(radius_sm()),
         )
         .open(open)
         .show(ctx, |ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
-            let t     = ft();
+            let t     = ambient(ui.ctx());
             let dim   = t.dim;
             let white = t.text;
             let warn  = t.warn;
@@ -118,7 +125,7 @@ pub fn show(ctx: &egui::Context, open: &mut bool) {
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
                 for &(name, us, wt, bt) in &phases {
-                    let col = if us == max_phase_us && us > 2_000 { red } else { phase_color(us, wt, bt) };
+                    let col = if us == max_phase_us && us > 2_000 { red } else { phase_color(ui.ctx(), us, wt, bt) };
                     ui.label(RichText::new(format!("{} {:.1}", name, us_to_ms(us)))
                         .font(label_font.clone()).color(col));
                 }
@@ -134,7 +141,7 @@ pub fn show(ctx: &egui::Context, open: &mut bool) {
                 let mut sorted = snap.subsystems.spans.clone();
                 sorted.sort_by(|a, b| b.3.cmp(&a.3)); // sort by last_us desc
                 for (name, avg_us, max_us, last_us) in sorted.iter().take(10) {
-                    let col = phase_color(*last_us, 4_000, 12_000);
+                    let col = phase_color(ui.ctx(), *last_us, 4_000, 12_000);
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(format!("  {:<20}", name))
                             .font(label_font.clone()).color(dim));

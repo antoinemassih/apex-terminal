@@ -140,7 +140,7 @@ impl<'a> PanelHeaderWithClose<'a> {
         actions: impl FnOnce(&mut Ui),
     ) -> bool {
         let theme = self.theme_ref
-            .unwrap_or_else(|| &super::super::super::gpu::THEMES[0]);
+            .unwrap_or_else(|| crate::ui_kit::widgets::theme::active_theme(ui.ctx()));
         let mut h = super::super::super::ui::panels::kit::PanelHeader::new(self.title);
         if let Some(w) = self.watchlist_ref {
             h = h.watchlist(w);
@@ -225,7 +225,7 @@ impl<'a, T: PartialEq + Copy> PanelHeaderWithTabs<'a, T> {
     /// Delegates to `panels::kit::PanelHeaderTabs` so all tabbed side panels
     /// share the same chart-pane-parity chrome and tab paint.
     pub fn show_with(self, ui: &mut Ui, actions: impl FnOnce(&mut Ui)) -> bool {
-        let theme = self.theme.unwrap_or_else(|| &super::super::super::gpu::THEMES[0]);
+        let theme = self.theme.unwrap_or_else(|| crate::ui_kit::widgets::theme::active_theme(ui.ctx()));
         let mut h = super::super::super::ui::panels::kit::PanelHeaderTabs::new(self.current, self.tabs);
         if let Some(w) = self.watchlist {
             h = h.watchlist(w);

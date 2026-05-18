@@ -8,6 +8,16 @@
 //!     keyed on the menu id so concurrent menus animate independently.
 //!   * Public types (`MenuTheme`, `MenuBuilder`, `MenuItem`, etc.)
 //!     are unchanged so callers compile via the back-compat re-export.
+//!
+//! ### Signature note
+//! `ContextMenu::show(ui, body)` intentionally does NOT take
+//! `theme: &dyn ComponentTheme` as a third parameter — the standard
+//! ui_kit shape. Theme is captured at construction time via
+//! `ContextMenu::new(theme)` because the menu snapshots a `MenuTheme`
+//! (a `Copy` palette) so the body closure can be handed a
+//! `&mut MenuBuilder<'_>` without lifetime gymnastics tying the closure
+//! to the original `&dyn ComponentTheme`. This is an explicit, documented
+//! variance from the "Builder + show(ui, theme)" rule in `CLAUDE.md`.
 
 #![allow(dead_code, unused_imports)]
 
@@ -32,6 +42,8 @@ pub struct MenuTheme {
     pub bg: Color32,
     pub fg: Color32,
     pub danger: Color32,
+    /// Themed shadow tint (light themes use soft gray, dark themes black).
+    pub shadow: Color32,
 }
 
 impl MenuTheme {
@@ -42,6 +54,7 @@ impl MenuTheme {
             bg: t.bg,
             fg: t.text,
             danger: t.bear,
+            shadow: <Theme as ComponentTheme>::shadow_color(t),
         }
     }
     pub fn from_component<T: ComponentTheme + ?Sized>(t: &T) -> Self {
@@ -51,6 +64,7 @@ impl MenuTheme {
             bg: t.bg(),
             fg: t.text(),
             danger: t.bear(),
+            shadow: t.shadow_color(),
         }
     }
 }
@@ -131,10 +145,16 @@ impl ContextMenu {
             .show(ui.ctx(), |ui| {
                 ui.set_opacity(appear_t);
                 let shadow_rect = egui::Rect::from_min_size(pos, prior_size);
+                // Use the menu's themed shadow tint so light themes get a
+                // soft gray drop instead of a hard black smudge.
+                let s = theme.shadow;
                 super::paint_shadow_gpu(
                     ui.painter(),
                     shadow_rect,
-                    super::ShadowSpec::md(),
+                    #[allow(deprecated)]
+                    super::ShadowSpec::md().color(
+                        Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), 77),
+                    ),
                 );
                 let frame = PopupFrame::new()
                     .colors(theme.bg, theme.dim)

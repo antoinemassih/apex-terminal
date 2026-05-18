@@ -1,12 +1,21 @@
 //! Screenshot library panel — saves chart snapshots as metadata and displays them.
+//!
+//! Migrated to canonical ui_kit side-panel primitives:
+//!   - Standalone `draw` uses `SidePanelShell` (was hand-rolled
+//!     `SidePanel + PanelHeaderWithClose`).
+//!   - Embedded `draw_content` uses `PanelSection` + `PanelListRow` +
+//!     `PanelEmpty` for the empty state.
+//! Each screenshot row: symbol in the leading slot (color swatch /
+//! placeholder for the thumb), filename-ish "SYM TF" as primary, date/time
+//! as secondary, and a trailing delete-X + View button.
 
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
-use super::super::widgets::text::{BodyLabel, SectionLabelSize};
-use crate::ui_kit::widgets::Button;
-use crate::ui_kit::widgets::tokens::Variant;
-use super::super::widgets::headers::PanelHeaderWithClose;
+use crate::ui_kit::widgets::{
+    Button, PanelEmpty, PanelListRow, PanelSection, SidePanelShell, Width,
+};
+use crate::ui_kit::icons::Icon;
 
 /// A single screenshot entry with chart state for replay.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -49,7 +58,6 @@ pub(crate) fn save_screenshot(symbol: &str, timeframe: &str, vs: f32, vc: u32) -
         vc,
     };
     entries.insert(0, entry.clone());
-    // Keep max 200 entries
     entries.truncate(200);
     let _ = std::fs::write(screenshots_path(), serde_json::to_string_pretty(&entries).unwrap_or_default());
     entry
@@ -64,21 +72,18 @@ pub(crate) fn load_screenshots() -> Vec<ScreenshotEntry> {
     }
 }
 
-/// Save current entries back to disk.
 fn persist(entries: &[ScreenshotEntry]) {
     let _ = std::fs::write(screenshots_path(), serde_json::to_string_pretty(entries).unwrap_or_default());
 }
 
 /// Format a unix timestamp into a readable date string.
 fn format_timestamp(ts: i64) -> String {
-    // Simple UTC-based formatting without chrono
     let secs_per_day = 86400i64;
     let days_since_epoch = ts / secs_per_day;
     let time_of_day = ts % secs_per_day;
     let hours = time_of_day / 3600;
     let minutes = (time_of_day % 3600) / 60;
 
-    // Approximate date calculation (good enough for display)
     let mut y = 1970i64;
     let mut remaining = days_since_epoch;
     loop {
@@ -100,7 +105,7 @@ fn format_timestamp(ts: i64) -> String {
     format!("{:04}-{:02}-{:02} {:02}:{:02}", y, m, d, hours, minutes)
 }
 
-/// Draw the screenshot library panel.
+/// Draw the screenshot library panel (standalone side panel).
 pub(crate) fn draw(
     ctx: &egui::Context,
     watchlist: &mut Watchlist,
@@ -110,32 +115,16 @@ pub(crate) fn draw(
 ) {
     if !watchlist.screenshot_open { return; }
 
-    egui::SidePanel::right("screenshot_library")
-        .default_width(260.0)
-        .min_width(220.0)
-        .max_width(400.0)
-        .resizable(true)
-        // Edge-only border: SidePanel resize-handle provides the divider.
-        .frame(egui::Frame::NONE.fill(t.toolbar_bg)
-            .inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 4 }))
-        .show(ctx, |ui| {
-            // Header — tiny 9px title + count badge + close
-            let count = watchlist.screenshot_entries.len();
-            let dim = t.dim;
-            if PanelHeaderWithClose::new("SCREENSHOTS")
-                .title_size(SectionLabelSize::Tiny)
-                .title_size_px(9.0)
-                .theme(t)
-                .watchlist(watchlist)
-                .show_with_title_actions(ui, |ui| {
-                    ui.add(BodyLabel::new(&format!("({})", count)).size(font_sm()).monospace(true).color(dim));
-                })
-            {
-                watchlist.screenshot_open = false;
-            }
-            ui.add_space(4.0);
+    let resp = SidePanelShell::new("screenshot_library", "SCREENSHOTS")
+        .width(Width::Narrow)
+        .pane_metrics(
+            crate::chart_renderer::gpu::pane_tabs_header_h(watchlist),
+            watchlist.pane_header_size.title_font(),
+        )
+        .show(ctx, t, |ui, t| {
             draw_content(ui, watchlist, t, panes, active_pane);
         });
+    if resp.close_clicked { watchlist.screenshot_open = false; }
 }
 
 /// Tab body content (no SidePanel wrapper, no header). Used by feed_panel Screenshots tab.
@@ -146,59 +135,71 @@ pub(crate) fn draw_content(
     panes: &mut [super::super::super::gpu::Chart],
     active_pane: usize,
 ) {
-    if watchlist.screenshot_entries.is_empty() {
-        ui.add_space(20.0);
-        ui.vertical_centered(|ui| {
-            ui.add(BodyLabel::new("No screenshots yet").size(font_sm()).monospace(true).color(t.dim));
-            ui.add_space(4.0);
-            ui.add(BodyLabel::new("Press Ctrl+Shift+S to capture").size(font_sm()).monospace(true).color(t.dim.gamma_multiply(0.6)));
-        });
-        return;
-    }
+    let count = watchlist.screenshot_entries.len();
 
-    // Scrollable list
     let mut remove_id: Option<String> = None;
     let mut navigate_entry: Option<(String, String, f32, u32)> = None;
 
-    egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
-        for entry in &watchlist.screenshot_entries {
-            let card = egui::Frame::NONE
-                .fill(t.bg.gamma_multiply(0.6))
-                .corner_radius(r_sm_cr())
-                .inner_margin(egui::Margin::same(gap_md() as i8))
-                .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())));
+    PanelSection::new("LIBRARY")
+        .count(count)
+        .meta("Ctrl+Shift+S to capture")
+        .show(ui, t, |ui, t| {
+            if watchlist.screenshot_entries.is_empty() {
+                PanelEmpty::new("No screenshots yet")
+                    .glyph(Icon::CAMERA)
+                    .hint("Press Ctrl+Shift+S to capture")
+                    .show(ui, t);
+                return;
+            }
 
-            card.show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    // Symbol + timeframe
-                    ui.add(BodyLabel::new(&entry.symbol).size(font_sm()).monospace(true).strong(true).color(t.accent));
-                    ui.add(BodyLabel::new(&entry.timeframe).size(font_sm()).monospace(true).color(t.dim));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Delete button
-                        if ui.add(egui::Button::new(
-                            egui::RichText::new("\u{e9a8}").size(font_sm()).color(t.bear.gamma_multiply(0.5)) // X icon
-                        ).frame(false).min_size(egui::vec2(14.0, 14.0))).on_hover_text("Delete").clicked() {
-                            remove_id = Some(entry.id.clone());
-                        }
-                    });
+            egui::ScrollArea::vertical()
+                .id_salt("screenshot_scroll")
+                .auto_shrink([false; 2])
+                .show(ui, |ui| {
+                    for entry in &watchlist.screenshot_entries {
+                        let id_salt = format!("ss_{}", entry.id);
+                        let primary = format!("{}  {}", entry.symbol, entry.timeframe);
+                        let secondary = format_timestamp(entry.timestamp);
+                        let entry_id = entry.id.clone();
+                        let nav_data = (
+                            entry.symbol.clone(),
+                            entry.timeframe.clone(),
+                            entry.vs,
+                            entry.vc,
+                        );
+
+                        let delete = std::cell::Cell::new(false);
+                        let view = std::cell::Cell::new(false);
+                        let delete_ref = &delete;
+                        let view_ref = &view;
+                        let accent_col = t.accent;
+
+                        PanelListRow::new(&id_salt)
+                            .leading(move |ui, _t| {
+                                ui.label(
+                                    egui::RichText::new(Icon::CAMERA)
+                                        .font(egui::FontId::proportional(font_md()))
+                                        .color(accent_col),
+                                );
+                            })
+                            .primary(&primary)
+                            .secondary(&secondary)
+                            .trailing(move |ui, t| {
+                                if Button::close().show(ui, t).on_hover_text("Delete screenshot").clicked() {
+                                    delete_ref.set(true);
+                                }
+                                if Button::small_action("View").tint(accent_col).show(ui, t).clicked() {
+                                    view_ref.set(true);
+                                }
+                            })
+                            .dense(false)
+                            .show(ui, t);
+
+                        if delete.get() { remove_id = Some(entry_id); }
+                        if view.get() { navigate_entry = Some(nav_data); }
+                    }
                 });
-
-                // Timestamp
-                ui.add(BodyLabel::new(&format_timestamp(entry.timestamp)).size(font_xs()).monospace(true).color(t.dim.gamma_multiply(0.7)));
-
-                // Note (if any)
-                if !entry.note.is_empty() {
-                    ui.add(BodyLabel::new(&entry.note).size(font_sm()).monospace(true).color(t.dim));
-                }
-
-                // View button — navigates to the chart state
-                if ui.add(Button::new("View").variant(Variant::Secondary).simple_treatment(true).fg(t.accent).min_size(egui::vec2(50.0, 0.0))).on_hover_text("Navigate to this chart state").clicked() {
-                    navigate_entry = Some((entry.symbol.clone(), entry.timeframe.clone(), entry.vs, entry.vc));
-                }
-            });
-            ui.add_space(4.0);
-        }
-    });
+        });
 
     // Handle deletions
     if let Some(id) = remove_id {
@@ -210,7 +211,6 @@ pub(crate) fn draw_content(
     if let Some((symbol, timeframe, vs, vc)) = navigate_entry {
         if active_pane < panes.len() {
             let chart = &mut panes[active_pane];
-            // Switch symbol/timeframe if different
             if chart.symbol != symbol || chart.timeframe != timeframe {
                 chart.pending_symbol_change = Some(symbol);
                 chart.pending_timeframe_change = Some(timeframe);

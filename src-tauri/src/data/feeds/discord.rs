@@ -7,6 +7,7 @@
 //!   DISCORD_BOT_TOKEN=...     (enables channels, messages, sending)
 
 use std::sync::{Mutex, OnceLock};
+use crate::data::connectivity::errors_sink::{report, ErrorLevel};
 
 const REDIRECT_PORT: u16 = 19847;
 const REDIRECT_URI: &str = "http://localhost:19847/callback";
@@ -94,7 +95,7 @@ fn load_auth_from_disk() -> Option<DiscordAuth> {
     if disk.expires_epoch <= epoch_now {
         // Token expired — delete file
         let _ = std::fs::remove_file(token_path());
-        eprintln!("[discord] Saved token expired");
+        report(ErrorLevel::Warn, "discord", "token_expired", "saved token expired");
         return None;
     }
     let remaining = disk.expires_epoch - epoch_now;
@@ -184,18 +185,18 @@ pub fn load_config() {
         if !client_id.is_empty() && !client_secret.is_empty() {
             let has_bot = bot_token.is_some();
             let _ = DISCORD_CONFIG.set(DiscordConfig { client_id, client_secret, bot_token });
-            eprintln!("[discord] Config loaded (bot: {})", has_bot);
+            report(ErrorLevel::Info, "discord", "config_loaded", format!("bot: {has_bot}"));
         }
         // Restore saved auth token from disk
         if let Some(auth) = load_auth_from_disk() {
-            eprintln!("[discord] Restored session for {} ({})", auth.username, auth.user_id);
+            report(ErrorLevel::Info, "discord", "session_restored", format!("{} ({})", auth.username, auth.user_id));
             let _ = DISCORD_TOKEN.get_or_init(|| Mutex::new(None));
             if let Some(m) = DISCORD_TOKEN.get() {
                 *m.lock().unwrap() = Some(auth);
             }
         }
     } else {
-        eprintln!("[discord] No discord.env found — Discord integration disabled");
+        report(ErrorLevel::Info, "discord", "not_configured", "No discord.env found — Discord integration disabled");
     }
 }
 
@@ -220,7 +221,7 @@ pub fn get_auth() -> Option<DiscordAuth> {
 pub fn start_oauth2() {
     let config = match DISCORD_CONFIG.get() {
         Some(c) => c,
-        None => { eprintln!("[discord] Not configured"); return; }
+        None => { report(ErrorLevel::Warn, "discord", "oauth_no_config", "Not configured"); return; }
     };
 
     let auth_url = format!(
@@ -230,7 +231,7 @@ pub fn start_oauth2() {
         urlencoding::encode(SCOPES),
     );
 
-    eprintln!("[discord] Opening browser for OAuth2...");
+    report(ErrorLevel::Info, "discord", "oauth_start", "Opening browser for OAuth2");
     let _ = open::that(&auth_url);
 
     std::thread::spawn(move || { start_callback_server(); });
@@ -242,10 +243,10 @@ fn start_callback_server() {
 
     let listener = match TcpListener::bind(format!("127.0.0.1:{}", REDIRECT_PORT)) {
         Ok(l) => l,
-        Err(e) => { eprintln!("[discord] Failed to bind: {}", e); return; }
+        Err(e) => { report(ErrorLevel::Error, "discord", "callback_bind_failed", e.to_string()); return; }
     };
     listener.set_nonblocking(false).ok();
-    eprintln!("[discord] Callback server listening on port {}", REDIRECT_PORT);
+    report(ErrorLevel::Info, "discord", "callback_listening", format!("port {REDIRECT_PORT}"));
 
     if let Ok((mut stream, _)) = listener.accept() {
         let mut buf = [0u8; 4096];
@@ -253,10 +254,10 @@ fn start_callback_server() {
         let request = String::from_utf8_lossy(&buf[..n]);
 
         if let Some(code) = extract_code(&request) {
-            eprintln!("[discord] Got auth code: {}...", &code[..code.len().min(10)]);
+            report(ErrorLevel::Info, "discord", "oauth_code_received", format!("{}...", &code[..code.len().min(10)]));
             match exchange_code(&code) {
                 Ok(auth) => {
-                    eprintln!("[discord] Authenticated as {} ({})", auth.username, auth.user_id);
+                    report(ErrorLevel::Info, "discord", "authenticated", format!("{} ({})", auth.username, auth.user_id));
                     save_auth_to_disk(&auth);
                     let _ = DISCORD_TOKEN.get_or_init(|| Mutex::new(None));
                     if let Some(m) = DISCORD_TOKEN.get() {
@@ -266,7 +267,7 @@ fn start_callback_server() {
                     let _ = stream.write_all(response.as_bytes());
                 }
                 Err(e) => {
-                    eprintln!("[discord] Token exchange failed: {}", e);
+                    report(ErrorLevel::Error, "discord", "token_exchange_failed", e.to_string());
                     let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<html><body style='background:#1a1a2e;color:#eee;font-family:monospace;text-align:center;padding:60px'><h1>Connection Failed</h1><p>{}</p></body></html>", e);
                     let _ = stream.write_all(response.as_bytes());
                 }
@@ -367,10 +368,10 @@ pub fn fetch_channels_sync(guild_id: &str) -> Vec<DiscordChannel> {
         Ok(r) => {
             let status = r.status();
             let body = r.text().unwrap_or_default();
-            eprintln!("[discord] Channel fetch {}: {}", status, body);
+            report(ErrorLevel::Warn, "discord", "channel_fetch_http", format!("{status}: {body}"));
             vec![]
         }
-        Err(e) => { eprintln!("[discord] Channel fetch error: {}", e); vec![] }
+        Err(e) => { report(ErrorLevel::Warn, "discord", "channel_fetch_error", e.to_string()); vec![] }
     }
 }
 
@@ -393,10 +394,10 @@ pub fn fetch_messages_sync(channel_id: &str, limit: u32, after: Option<&str>) ->
         Ok(r) => {
             let status = r.status();
             let body = r.text().unwrap_or_default();
-            eprintln!("[discord] Message fetch {}: {}", status, &body[..body.len().min(200)]);
+            report(ErrorLevel::Warn, "discord", "message_fetch_http", format!("{status}: {}", &body[..body.len().min(200)]));
             vec![]
         }
-        Err(e) => { eprintln!("[discord] Message fetch error: {}", e); vec![] }
+        Err(e) => { report(ErrorLevel::Warn, "discord", "message_fetch_error", e.to_string()); vec![] }
     }
 }
 
@@ -436,7 +437,7 @@ pub fn fetch_guilds_bg() {
     PENDING_GUILDS.get_or_init(|| Mutex::new(None));
     std::thread::spawn(|| {
         let guilds = fetch_guilds();
-        eprintln!("[discord] Fetched {} guilds", guilds.len());
+        report(ErrorLevel::Info, "discord", "guilds_fetched", format!("{} guilds", guilds.len()));
         // Fetch icons for guilds that have them
         for g in &guilds {
             if let Some(ref hash) = g.icon {
@@ -456,7 +457,7 @@ pub fn fetch_channels_bg(guild_id: String) {
     PENDING_CHANNELS.get_or_init(|| Mutex::new(None));
     std::thread::spawn(move || {
         let channels = fetch_channels_sync(&guild_id);
-        eprintln!("[discord] Fetched {} channels for {}", channels.len(), guild_id);
+        report(ErrorLevel::Info, "discord", "channels_fetched", format!("{} channels for {}", channels.len(), guild_id));
         let pending = PENDING_CHANNELS.get().unwrap();
         *pending.lock().unwrap() = Some(channels);
     });
@@ -536,5 +537,99 @@ pub fn disconnect() {
         *m.lock().unwrap() = None;
     }
     let _ = std::fs::remove_file(token_path());
-    eprintln!("[discord] Disconnected");
+    report(ErrorLevel::Info, "discord", "disconnected", "Disconnected");
+}
+
+// ── Wave 7C: Authenticated adapter w/ live refresh ────────────────────────
+//
+// Discord OAuth2 supports refresh via `grant_type=refresh_token` against
+// `/api/oauth2/token`. We POST with the stored refresh token, persist the
+// new access + refresh tokens (Discord rotates the refresh token), and
+// return the new access token. Errors map to `AuthError::RefreshFailed`.
+//
+// The refresh runs in `spawn_blocking` so the blocking `reqwest::Client`
+// (shared with the rest of this module) doesn't stall the tokio reactor.
+
+const DISCORD_TOKEN_URL: &str = "https://discord.com/api/oauth2/token";
+
+pub struct DiscordAuthProvider;
+
+#[async_trait::async_trait]
+impl crate::data::connectivity::Authenticated for DiscordAuthProvider {
+    async fn refresh_token(&self) -> Result<String, crate::data::connectivity::AuthError> {
+        use crate::data::connectivity::AuthError;
+
+        // Snapshot what we need under the OnceLock guards before crossing the
+        // .await boundary; the underlying mutexes aren't Send across awaits.
+        let current = get_auth().ok_or(AuthError::MissingCredentials)?;
+        if current.refresh_token.is_empty() {
+            return Err(AuthError::TokenInvalid);
+        }
+        let config = DISCORD_CONFIG
+            .get()
+            .ok_or_else(|| AuthError::RefreshFailed("discord: not configured".into()))?;
+        let client_id = config.client_id.clone();
+        let client_secret = config.client_secret.clone();
+        let refresh = current.refresh_token.clone();
+        let kept_user_id = current.user_id.clone();
+        let kept_username = current.username.clone();
+        let kept_avatar = current.avatar.clone();
+
+        let new_auth = tokio::task::spawn_blocking(move || -> Result<DiscordAuth, String> {
+            let client = http();
+            let resp = client
+                .post(DISCORD_TOKEN_URL)
+                .form(&[
+                    ("client_id", client_id.as_str()),
+                    ("client_secret", client_secret.as_str()),
+                    ("grant_type", "refresh_token"),
+                    ("refresh_token", refresh.as_str()),
+                ])
+                .send()
+                .map_err(|e| format!("send: {e}"))?;
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let body = resp.text().unwrap_or_default();
+                return Err(format!("status {status}: {}", &body[..body.len().min(200)]));
+            }
+            let json: serde_json::Value = resp.json().map_err(|e| format!("parse: {e}"))?;
+            let access_token = json["access_token"]
+                .as_str()
+                .ok_or_else(|| "no access_token in response".to_string())?
+                .to_string();
+            // Discord rotates the refresh token on every refresh; fall back
+            // to the old one if (somehow) absent so we don't end up with an
+            // empty refresh_token that locks us out next cycle.
+            let refresh_token = json["refresh_token"]
+                .as_str()
+                .map(|s| s.to_string())
+                .unwrap_or(refresh);
+            let expires_in = json["expires_in"].as_u64().unwrap_or(604800);
+            Ok(DiscordAuth {
+                access_token,
+                refresh_token,
+                expires_at: std::time::Instant::now() + std::time::Duration::from_secs(expires_in),
+                user_id: kept_user_id,
+                username: kept_username,
+                avatar: kept_avatar,
+            })
+        })
+        .await
+        .map_err(|e| AuthError::RefreshFailed(format!("spawn_blocking join: {e}")))?
+        .map_err(AuthError::RefreshFailed)?;
+
+        // Persist + update the in-memory token store (same path as exchange_code).
+        save_auth_to_disk(&new_auth);
+        let _ = DISCORD_TOKEN.get_or_init(|| Mutex::new(None));
+        if let Some(m) = DISCORD_TOKEN.get() {
+            if let Ok(mut g) = m.lock() {
+                *g = Some(new_auth.clone());
+            }
+        }
+        report(ErrorLevel::Info, "discord", "token_refreshed", "rotated refresh token, saved to disk");
+        Ok(new_auth.access_token)
+    }
+    fn current_token(&self) -> Option<String> {
+        get_auth().map(|a| a.access_token)
+    }
 }

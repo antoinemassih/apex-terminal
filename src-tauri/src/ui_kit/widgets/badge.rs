@@ -97,6 +97,7 @@ impl<'a> Badge<'a> {
         // copy this size into other widgets.
         let font_size: f32 = 10.0;
         let galley = ui.fonts(|f| {
+            // layout-only: width measurement only; text color is decided below.
             f.layout_no_wrap(display.clone(), FontId::monospace(font_size), Color32::WHITE)
         });
         let text_w = galley.rect.width();
@@ -115,7 +116,7 @@ impl<'a> Badge<'a> {
                 egui::Align2::CENTER_CENTER,
                 &display,
                 FontId::monospace(font_size),
-                Color32::WHITE,
+                crate::chart_renderer::ui::style::contrast_fg(tone_col),
             );
         }
 

@@ -929,6 +929,77 @@ fn format_jank_json(snap: &Snapshot) -> String {
     format!("[{}]", events.join(","))
 }
 
+// ─── Wave 6: per-feed connectivity metrics ───────────────────────────────────
+//
+// Reads `Connection::metrics()` from each registered data feed (via
+// `crate::data::providers::registry`) and emits one labeled gauge family per
+// metric. Labels carry the feed name so Grafana / alert rules can split by
+// feed:
+//
+//   apex_feed_messages_in_total{feed="apex_data"} 1234
+//   apex_feed_parse_errors_total{feed="apex_data"} 0
+//   apex_feed_reconnect_count{feed="apex_data"} 2
+//   apex_feed_last_message_age_seconds{feed="apex_data"} 0.3
+//
+// Called inline by the metrics HTTP handler — no separate refresh task needed
+// since the underlying `metrics()` impls just read atomics.
+
+fn format_feed_metrics() -> String {
+    use crate::data::connectivity::Connection;
+    let mut out = String::with_capacity(1024);
+    let feeds: Vec<std::sync::Arc<dyn Connection>> = vec![
+        std::sync::Arc::new(crate::data::providers::apex_data::ApexDataProvider::new()),
+        std::sync::Arc::new(crate::data::providers::ib::IbProvider::new()),
+        std::sync::Arc::new(crate::data::providers::crypto::CryptoProvider::new()),
+        std::sync::Arc::new(crate::data::providers::signals::SignalsProvider::new()),
+    ];
+
+    out.push_str("# HELP apex_feed_messages_in_total Inbound WS/REST messages observed per feed\n");
+    out.push_str("# TYPE apex_feed_messages_in_total counter\n");
+    for f in &feeds {
+        let m = f.metrics();
+        out.push_str(&format!("apex_feed_messages_in_total{{feed=\"{}\"}} {}\n", f.name(), m.messages_in));
+    }
+    out.push_str("# HELP apex_feed_parse_errors_total Frame parse failures per feed\n");
+    out.push_str("# TYPE apex_feed_parse_errors_total counter\n");
+    for f in &feeds {
+        let m = f.metrics();
+        out.push_str(&format!("apex_feed_parse_errors_total{{feed=\"{}\"}} {}\n", f.name(), m.parse_errors));
+    }
+    out.push_str("# HELP apex_feed_reconnect_count Reconnect attempts since process start\n");
+    out.push_str("# TYPE apex_feed_reconnect_count gauge\n");
+    for f in &feeds {
+        let m = f.metrics();
+        out.push_str(&format!("apex_feed_reconnect_count{{feed=\"{}\"}} {}\n", f.name(), m.reconnect_count));
+    }
+    out.push_str("# HELP apex_feed_last_message_age_seconds Seconds since last inbound message (-1 if never seen)\n");
+    out.push_str("# TYPE apex_feed_last_message_age_seconds gauge\n");
+    for f in &feeds {
+        let m = f.metrics();
+        let age = match m.last_message_at {
+            Some(t) => format!("{:.3}", t.elapsed().as_secs_f64()),
+            None => "-1".to_string(),
+        };
+        out.push_str(&format!("apex_feed_last_message_age_seconds{{feed=\"{}\"}} {}\n", f.name(), age));
+    }
+    // Connection state, one-hot encoded.
+    out.push_str("# HELP apex_feed_state Connection lifecycle state: 0=Idle 1=Connecting 2=Authenticated 3=Subscribed 4=Backoff 5=Failed 6=ShuttingDown\n");
+    out.push_str("# TYPE apex_feed_state gauge\n");
+    for f in &feeds {
+        let s = match f.state() {
+            crate::data::connectivity::ConnectionState::Idle             => 0,
+            crate::data::connectivity::ConnectionState::Connecting{..}   => 1,
+            crate::data::connectivity::ConnectionState::Authenticated    => 2,
+            crate::data::connectivity::ConnectionState::Subscribed{..}   => 3,
+            crate::data::connectivity::ConnectionState::Backoff{..}      => 4,
+            crate::data::connectivity::ConnectionState::Failed{..}       => 5,
+            crate::data::connectivity::ConnectionState::ShuttingDown     => 6,
+        };
+        out.push_str(&format!("apex_feed_state{{feed=\"{}\"}} {}\n", f.name(), s));
+    }
+    out
+}
+
 // ─── HTTP metrics server ─────────────────────────────────────────────────────
 
 fn start_http_server(metrics: Arc<Mutex<Snapshot>>) {
@@ -956,7 +1027,11 @@ fn start_http_server(metrics: Arc<Mutex<Snapshot>>) {
             let (content_type, body) = if req.contains("GET /jank") {
                 ("application/json", format_jank_json(&snap))
             } else {
-                ("text/plain; version=0.0.4; charset=utf-8", format_prometheus(&snap))
+                let mut body = format_prometheus(&snap);
+                // Wave 6: append per-feed connectivity metrics (apex_data, ib,
+                // crypto, signals) so Grafana can split by feed.
+                body.push_str(&format_feed_metrics());
+                ("text/plain; version=0.0.4; charset=utf-8", body)
             };
 
             let response = format!(

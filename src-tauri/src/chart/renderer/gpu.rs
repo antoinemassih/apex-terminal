@@ -216,16 +216,31 @@ pub(crate) struct Theme {
     // to signal hover/active/selected/disabled. Single accent at multiple
     // alphas — avoids cartoony hover treatments by NOT switching colors.
     /// Subtle bg tint on hover (text @ alpha 12).
+    ///
+    /// Defined in all 15 themes but currently unreferenced by application code.
+    /// Candidate for deprecation in a future palette pruning pass.
     pub(crate) element_hover: egui::Color32,
     /// Pressed/active stronger (text @ alpha 24).
+    ///
+    /// Defined in all 15 themes but currently unreferenced by application code.
+    /// Candidate for deprecation in a future palette pruning pass.
     pub(crate) element_active: egui::Color32,
     /// Selection background (accent @ alpha 24).
+    ///
+    /// Defined in all 15 themes but currently unreferenced by application code.
+    /// Candidate for deprecation in a future palette pruning pass.
     pub(crate) element_selected: egui::Color32,
     /// Disabled wash on text (dim @ alpha 80).
     pub(crate) element_disabled: egui::Color32,
     /// Even subtler hover for ghost/nav buttons (text @ alpha 6).
+    ///
+    /// Defined in all 15 themes but currently unreferenced by application code.
+    /// Candidate for deprecation in a future palette pruning pass.
     pub(crate) ghost_hover: egui::Color32,
     /// Active state for ghost variant (text @ alpha 12).
+    ///
+    /// Defined in all 15 themes but currently unreferenced by application code.
+    /// Candidate for deprecation in a future palette pruning pass.
     pub(crate) ghost_active: egui::Color32,
     // ── Icon color ramp (Zed Phase 2) ───────────────────────────────────────
     // Icons get their own ramp, decoupled from text hierarchy. Lets a row
@@ -233,8 +248,14 @@ pub(crate) struct Theme {
     /// Full strength icon, default (= text).
     pub(crate) icon: egui::Color32,
     /// Secondary icons (toolbar idle) — text @ ~70% alpha (178).
+    ///
+    /// Defined in all 15 themes but currently unreferenced by application code.
+    /// Candidate for deprecation in a future palette pruning pass.
     pub(crate) icon_muted: egui::Color32,
     /// Disabled icons — text @ ~40% alpha (102).
+    ///
+    /// Defined in all 15 themes but currently unreferenced by application code.
+    /// Candidate for deprecation in a future palette pruning pass.
     pub(crate) icon_disabled: egui::Color32,
     /// Accent-tinted icons (selected/highlight) (= accent).
     pub(crate) icon_accent: egui::Color32,
@@ -442,7 +463,7 @@ pub(crate) const MAX_RECENT_SYMBOLS: usize = 20;     // Max entries in recent sy
 pub(crate) const MAX_SEARCH_RESULTS: usize = 15;     // Max Yahoo/static search results
 
 // Shared helpers
-use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, separator, status_badge, order_card, action_btn, trade_btn, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, segmented_control, paint_chrome_tile_button, ChromeTileState, chrome_tile_fg, FONT_LG, FONT_MD, FONT_SM, STROKE_THIN, STROKE_STD, ALPHA_FAINT, ALPHA_GHOST, ALPHA_SUBTLE, ALPHA_TINT, ALPHA_MUTED, ALPHA_LINE, ALPHA_DIM, ALPHA_STRONG, ALPHA_ACTIVE, ALPHA_HEAVY, TEXT_PRIMARY, COLOR_AMBER};
+use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, color_dim, color_half, color_very_dim, separator, status_badge, order_card, action_btn, trade_btn, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, segmented_control, paint_chrome_tile_button, ChromeTileState, chrome_tile_fg, FONT_LG, FONT_MD, FONT_SM, STROKE_THIN, STROKE_STD, ALPHA_FAINT, ALPHA_GHOST, ALPHA_SUBTLE, ALPHA_TINT, ALPHA_MUTED, ALPHA_LINE, ALPHA_DIM, ALPHA_STRONG, ALPHA_ACTIVE, ALPHA_HEAVY, TEXT_PRIMARY, COLOR_AMBER};
 use super::ui::style as style;
 use super::ui::widgets::foundation::text_style::TextStyle;
 use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner, compute_adx, compute_cci, compute_williams_r};
@@ -1488,6 +1509,13 @@ impl Default for PaneType { fn default() -> Self { Self::Chart } }
 pub(crate) struct Chart {
     pub(crate) pane_type: PaneType,
     pub(crate) symbol: String, pub(crate) timeframe: String,
+    /// Typed metadata for `symbol`. Wave 9c: populated/refreshed whenever
+    /// `symbol` changes via `crate::foundation::types::symbol_or_guess`.
+    /// Reading this gives `asset_class` + vendor aliases without re-parsing
+    /// the canonical String — the String stays canonical for wire/display.
+    /// Heads-up: hot-path code in `render/pane/core.rs` reads `symbol`
+    /// directly; do NOT change the String to a Symbol.
+    pub(crate) symbol_meta: crate::foundation::types::Symbol,
     // Option chart metadata
     pub(crate) is_option: bool,
     pub(crate) underlying: String, // e.g. "SPY" when this chart shows an option
@@ -1837,16 +1865,44 @@ pub(crate) struct Chart {
     pub(crate) gpu_render_params: crate::chart::renderer_gpu::ChartRenderParams,
 }
 
+/// Hard cap on Chart::tab_cache entries.
+///
+/// Each entry holds bar data (~120 KB at 5000 bars), so an unbounded cache
+/// leaks memory across long sessions. 64 is enough to keep recently-visited
+/// (symbol, timeframe) tab swaps warm without blowing past a few MB per pane.
+pub(crate) const TAB_CACHE_MAX: usize = 64;
+
+/// LRU-evict the oldest tab_cache entry (by stored `Instant`) when the cache
+/// is at or above `TAB_CACHE_MAX`. Call this immediately before every insert
+/// to keep the post-insert size bounded by `TAB_CACHE_MAX`.
+pub(crate) fn evict_oldest_if_full(
+    cache: &mut std::collections::HashMap<(String, String), (Vec<Bar>, Vec<i64>, std::time::Instant)>,
+) {
+    if cache.len() < TAB_CACHE_MAX {
+        return;
+    }
+    if let Some(oldest_key) = cache
+        .iter()
+        .min_by_key(|(_, (_, _, t))| *t)
+        .map(|(k, _)| k.clone())
+    {
+        cache.remove(&oldest_key);
+    }
+}
+
 impl Chart {
     pub(crate) fn new_with(symbol: &str, timeframe: &str) -> Self {
         let mut c = Self::new();
         c.symbol = symbol.into();
+        c.symbol_meta = crate::foundation::types::symbol_or_guess(symbol);
         c.timeframe = timeframe.into();
         c
     }
     pub(crate) fn new() -> Self {
         Self { pane_type: PaneType::Chart,
-            symbol: "AAPL".into(), timeframe: "5m".into(),
+            symbol: "AAPL".into(),
+            symbol_meta: crate::foundation::types::symbol_or_guess("AAPL"),
+            timeframe: "5m".into(),
             is_option: false, underlying: String::new(), option_type: String::new(),
             option_strike: 0.0, option_expiry: String::new(), option_con_id: 0, option_contract: String::new(),
             bar_source_mark: false,
@@ -2000,7 +2056,11 @@ impl Chart {
                 // Skip if this pane is an option chart and the LoadBars is for the underlying
                 if self.is_option && symbol != self.symbol { return; }
                 let is_new_symbol = self.symbol != symbol;
-                self.symbol = symbol; self.timeframe = timeframe;
+                self.symbol = symbol;
+                if is_new_symbol {
+                    self.symbol_meta = crate::foundation::types::symbol_or_guess(&self.symbol);
+                }
+                self.timeframe = timeframe;
                 self.bars = bars; self.timestamps = timestamps;
                 self.vs = (self.bars.len() as f32 - self.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
                 self.sim_price = 0.0;
@@ -2990,8 +3050,10 @@ pub(crate) fn db_to_drawing(d: &crate::drawing_db::DbDrawing) -> Option<Drawing>
 }
 
 fn tick_simulation(chart: &mut Chart) {
-    // Skip simulation for crypto — real data comes from ApexCrypto
-    if crate::data::is_crypto(&chart.symbol) { return; }
+    // Skip simulation for crypto — real data comes from ApexCrypto.
+    // Wave 9c: registry-backed asset class via `symbol_meta` (avoids the
+    // `is_crypto(&str)` suffix heuristic mis-flagging XUSDT-style equities).
+    if chart.symbol_meta.is_crypto() { return; }
     // Skip simulation when ApexData is the active feed (Polygon-backed).
     // Off-hours we just want the chart to sit still; ticks/bars come from
     // WS Trade/Bar frames or not at all.
@@ -3376,6 +3438,14 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                         watchlist.chain_far = (to_rows(calls), to_rows(puts));
                     }
                     watchlist.chain_loading = false;
+                    // Wave 5: mirror the legacy boolean into the InFlightRegistry
+                    // by completing any matching outstanding chain request.
+                    let kind = crate::state::InFlightKind::OptionsChain {
+                        underlying: symbol.clone(),
+                    };
+                    if let Some(id) = watchlist.inflight.dedup_kind(&kind) {
+                        watchlist.inflight.complete(id);
+                    }
                     if *underlying_price > 0.0 { watchlist.chain_underlying_price = *underlying_price; }
                     eprintln!("[chain] Loaded {} calls + {} puts for {} dte={} price={:.2}",
                         if *dte == 0 { watchlist.chain_0dte.0.len() } else { watchlist.chain_far.0.len() },
@@ -3472,6 +3542,107 @@ pub(crate) fn update_simulation(panes: &mut [Chart]) {
         tick_simulation(chart);
     }
     span_end();
+}
+
+/// Apply a batch of cross-pane `PaneEvent`s to the pane vector.
+///
+/// Pulled out of `App::about_to_wait` so the propagation contract is
+/// testable in isolation. Each `(event, origin)` pair from the drained
+/// SubscriptionBus is applied to every sibling pane whose `link_group`
+/// matches (or to all panes for `BROADCAST_GROUP`), skipping the
+/// originating pane by index.
+///
+/// `group_count` validates non-broadcast groups against the
+/// `Watchlist::link_groups` vector length, mirroring the prior
+/// imperative loop's guard against stale group ids. `apply_bars_fetch`
+/// is `true` in production (kicks off background bar loads); tests
+/// set it to `false` to avoid the network side-effect.
+///
+/// Behavior parity with the prior imperative detector:
+/// - Sibling whose current symbol/timeframe already matches is skipped.
+/// - Sibling-symbol-change preserves timeframe, indicators, drawings
+///   (only the bars + meta swap).
+/// - Sibling-timeframe-change mirrors the per-pane tab-cache stash +
+///   cache-hit restore from `App::about_to_wait`.
+pub(crate) fn apply_pane_events(
+    panes: &mut [Chart],
+    events: &[(crate::state::PaneEvent, Option<usize>)],
+    group_count: u8,
+    apply_bars_fetch: bool,
+) {
+    use crate::state::{PaneEvent, BROADCAST_GROUP};
+    for (event, origin) in events {
+        match event {
+            PaneEvent::SymbolChanged { group, symbol } => {
+                let is_broadcast = *group == BROADCAST_GROUP;
+                if !is_broadcast && (*group == 0 || *group > group_count) {
+                    continue;
+                }
+                for (pi, pane) in panes.iter_mut().enumerate() {
+                    if Some(pi) == *origin { continue; }
+                    let matches = is_broadcast || pane.link_group == *group;
+                    if !matches { continue; }
+                    if pane.symbol == *symbol { continue; }
+                    let tf = pane.timeframe.clone();
+                    pane.symbol = symbol.clone();
+                    pane.symbol_meta = crate::foundation::types::symbol_or_guess(symbol);
+                    pane.bars.clear();
+                    pane.timestamps.clear();
+                    pane.indicator_bar_count = 0;
+                    pane.vol_analytics_computed = 0;
+                    pane.history_loading = false;
+                    pane.history_exhausted = false;
+                    pane.drawings_requested = false;
+                    pane.drawings.clear();
+                    if apply_bars_fetch {
+                        fetch_bars_background(symbol.clone(), tf);
+                    }
+                }
+            }
+            PaneEvent::TimeframeChanged { group, timeframe } => {
+                let is_broadcast = *group == BROADCAST_GROUP;
+                if !is_broadcast && (*group == 0 || *group > group_count) {
+                    continue;
+                }
+                for (pi, pane) in panes.iter_mut().enumerate() {
+                    if Some(pi) == *origin { continue; }
+                    let matches = is_broadcast || pane.link_group == *group;
+                    if !matches { continue; }
+                    if pane.timeframe == *timeframe { continue; }
+                    if !pane.symbol.is_empty() && !pane.bars.is_empty() {
+                        evict_oldest_if_full(&mut pane.tab_cache);
+                        pane.tab_cache.insert(
+                            (pane.symbol.clone(), pane.timeframe.clone()),
+                            (pane.bars.clone(), pane.timestamps.clone(), std::time::Instant::now()),
+                        );
+                    }
+                    pane.timeframe = timeframe.clone();
+                    let sym = pane.symbol.clone();
+                    let tf = pane.timeframe.clone();
+                    let cache_hit = pane.tab_cache.get(&(sym.clone(), tf.clone())).cloned();
+                    if let Some((cb, cts, _)) = cache_hit {
+                        pane.bars = cb;
+                        pane.timestamps = cts;
+                        pane.indicator_bar_count = 0;
+                    } else {
+                        pane.bars.clear();
+                        pane.timestamps.clear();
+                    }
+                    pane.indicators.clear();
+                    pane.drawings.clear();
+                    pane.drawings_requested = false;
+                    pane.history_loading = false;
+                    pane.history_exhausted = false;
+                    if apply_bars_fetch {
+                        fetch_bars_background(sym, tf);
+                    }
+                }
+            }
+            PaneEvent::LayoutChanged | PaneEvent::BroadcastEnabled { .. } => {
+                // No subscribers today; queue drain still removes them.
+            }
+        }
+    }
 }
 
 /// Phase 4: Apply theme, font scale, cache account data, get window ref.
@@ -3764,9 +3935,9 @@ pub(crate) fn paint_widget_preview(p: &egui::Painter, r: egui::Rect, kind: super
     use super::ChartWidgetKind as W;
     let cx = r.center().x;
     let cy = r.center().y;
-    let accent = if active { t.accent } else { t.dim.gamma_multiply(0.5) };
-    let bull = if active { t.bull } else { t.dim.gamma_multiply(0.4) };
-    let bear = if active { t.bear } else { t.dim.gamma_multiply(0.3) };
+    let accent = if active { t.accent } else { color_half(t.dim) };
+    let bull = if active { t.bull } else { color_dim(t.dim) };
+    let bear = if active { t.bear } else { color_very_dim(t.dim) };
 
     match kind {
         // Donut gauges — small ring
@@ -4394,6 +4565,16 @@ pub(crate) struct Watchlist {
     /// lineage_id currently rendered in the ProvenancePane (the root of the
     /// evidence DAG). `None` shows the "no signal selected" empty state.
     pub(crate) provenance_active_lineage: Option<String>,
+    // Wave 5: cross-pane event bus. Replaces ad-hoc pull-based pane
+    // iteration for link-group + broadcast propagation. Listeners are
+    // registered at construction time. See `state::subscriptions`.
+    pub(crate) subscriptions: crate::state::SubscriptionBus,
+    // Wave 5: centralized in-flight request tracker. Replaces scattered
+    // `*_loading: bool` flags. Wave 5 wires the registry alongside the
+    // legacy `chain_loading` boolean as proof-of-concept; subsequent
+    // waves migrate the remaining flags one at a time. See
+    // `state::inflight`.
+    pub(crate) inflight: crate::state::InFlightRegistry,
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
@@ -4548,7 +4729,14 @@ impl Watchlist {
                journal_page: 0,
                book_tab: crate::chart_renderer::BookTab::Book,
                provenance_open: false,
-               provenance_active_lineage: None }
+               provenance_active_lineage: None,
+               // Wave 12c: queue-backed bus. Publishers push events; the
+               // render loop (`App::about_to_wait`) drains and applies them
+               // to sibling panes once per frame. See `state::subscriptions`
+               // for the model description and group sentinel.
+               subscriptions: crate::state::SubscriptionBus::new(),
+               inflight: crate::state::InFlightRegistry::new(),
+        }
     }
 
     /// Add symbol to the last section (creates one if none exist).
@@ -5697,29 +5885,28 @@ impl ApplicationHandler for App {
 
         // Handle symbol/timeframe changes + frame rate for ALL windows
         for cw in &mut self.windows {
-            for pane in &mut cw.panes {
+            // Track per-pane changes for cross-pane propagation. We collect
+            // these inside the per-pane loop (which holds &mut cw.panes) and
+            // publish/apply them AFTER the loop, when we can also borrow
+            // &mut cw.watchlist.subscriptions and re-borrow &mut cw.panes
+            // for sibling-pane apply. Each entry: (originating pane index,
+            // pane.link_group, new_symbol, new_timeframe).
+            let mut pane_changes: Vec<(usize, u8, Option<String>, Option<String>)> = Vec::new();
+            for (pane_idx, pane) in cw.panes.iter_mut().enumerate() {
                 let sym_change = pane.pending_symbol_change.take();
                 let tf_change = pane.pending_timeframe_change.take();
-                if sym_change.is_some() || tf_change.is_some() {
+                let sym_changed = sym_change.is_some();
+                let tf_changed = tf_change.is_some();
+                if sym_changed || tf_changed {
                     // Stash the OUTGOING (sym, tf)'s bars/ts in the tab cache
                     // before swapping, so re-entry restores instantly.
                     if !pane.symbol.is_empty() && !pane.bars.is_empty() {
+                        // LRU-evict BEFORE insert so post-insert size <= TAB_CACHE_MAX.
+                        evict_oldest_if_full(&mut pane.tab_cache);
                         pane.tab_cache.insert(
                             (pane.symbol.clone(), pane.timeframe.clone()),
                             (pane.bars.clone(), pane.timestamps.clone(), std::time::Instant::now()),
                         );
-                        // Cap to 10 entries — evict the oldest by Instant. Each
-                        // entry holds bar data (~120 KB at 5000 bars), so an
-                        // unbounded cache leaks memory across long sessions.
-                        const MAX: usize = 10;
-                        while pane.tab_cache.len() > MAX {
-                            if let Some((evict_key, _)) = pane.tab_cache.iter()
-                                .min_by_key(|(_, (_, _, ts))| *ts)
-                                .map(|(k, v)| (k.clone(), v.clone()))
-                            {
-                                pane.tab_cache.remove(&evict_key);
-                            } else { break; }
-                        }
                     }
 
                     if let Some(ref sym) = sym_change {
@@ -5738,6 +5925,7 @@ impl ApplicationHandler for App {
                         }
                         pane.symbol_nav_in_progress = false;
                         pane.symbol = sym.clone();
+                        pane.symbol_meta = crate::foundation::types::symbol_or_guess(sym);
                         // Switching to a new symbol via the picker means we're
                         // leaving the current option contract behind. Clear the
                         // option-pane state so the fetch dispatch below routes
@@ -5786,51 +5974,71 @@ impl ApplicationHandler for App {
                     }
 
                     if pane.is_option && !pane.option_contract.is_empty() {
-                        fetch_option_bars_background(pane.option_contract.clone(), sym, tf, pane.bar_source_mark);
+                        fetch_option_bars_background(pane.option_contract.clone(), sym.clone(), tf.clone(), pane.bar_source_mark);
                     } else {
-                        fetch_bars_background(sym, tf);
+                        fetch_bars_background(sym.clone(), tf.clone());
+                    }
+
+                    // Wave 12c: record this pane's change for cross-pane
+                    // propagation via the SubscriptionBus, applied after the
+                    // per-pane loop exits (where we can borrow watchlist +
+                    // panes together). Only record when the pane is in a
+                    // user-defined link group; group==0 means unlinked and
+                    // nothing should propagate.
+                    if pane.link_group > 0 {
+                        pane_changes.push((
+                            pane_idx,
+                            pane.link_group,
+                            if sym_changed { Some(sym) } else { None },
+                            if tf_changed { Some(tf) } else { None },
+                        ));
                     }
                 }
             }
 
-            // ── Linked pane groups: propagate symbol changes across linked panes ──
-            // Detect which panes just changed symbol (had pending_symbol_change processed above)
-            // by checking which panes have empty bars + link_group > 0.
+            // ── Wave 12c: cross-pane propagation via SubscriptionBus ──
+            // Publish the changes recorded above as PaneEvents, then drain
+            // the bus and apply each event to sibling panes. This replaces
+            // the prior `link_changes` detector loop that inferred which
+            // panes had changed by spotting empty-bars + link_group>0 —
+            // we now know exactly which pane originated each change
+            // (`origin_pane_idx`) and skip it during apply.
             //
-            // Only treat a pane as linked when its `link_group` indexes into an
-            // existing watchlist group — otherwise stale group IDs from prior
-            // sessions (or the old click-cycle UI) would silently link panes
-            // the user never explicitly grouped.
+            // The `pane_origins` vec parallels the queue order so the
+            // drain step can pair each event with its originator. Events
+            // published from outside the renderer (e.g. command palette,
+            // see `ui::command_palette::execute`) carry no origin index
+            // — they fall through to "apply to every matching pane",
+            // which is fine because the publishing call site already
+            // applied the mutation to its own pane before publishing.
+            let mut pane_origins: Vec<Option<usize>> = Vec::new();
+            for (origin, group, sym_opt, tf_opt) in pane_changes.drain(..) {
+                if let Some(sym) = sym_opt {
+                    cw.watchlist.subscriptions.publish(
+                        crate::state::PaneEvent::SymbolChanged { group, symbol: sym },
+                    );
+                    pane_origins.push(Some(origin));
+                }
+                if let Some(tf) = tf_opt {
+                    cw.watchlist.subscriptions.publish(
+                        crate::state::PaneEvent::TimeframeChanged { group, timeframe: tf },
+                    );
+                    pane_origins.push(Some(origin));
+                }
+            }
+
+            // Only treat a pane as linked when its `link_group` indexes
+            // into an existing watchlist group — otherwise stale group
+            // IDs from prior sessions (or the old click-cycle UI) would
+            // silently link panes the user never explicitly grouped.
             let group_count = cw.watchlist.link_groups.len() as u8;
-            let mut link_changes: Vec<(u8, String)> = Vec::new();
-            for pane in &cw.panes {
-                let valid_group = pane.link_group > 0 && pane.link_group <= group_count;
-                if valid_group && pane.bars.is_empty() && !pane.symbol.is_empty() {
-                    let already = link_changes.iter().any(|(g, _)| *g == pane.link_group);
-                    if !already {
-                        link_changes.push((pane.link_group, pane.symbol.clone()));
-                    }
-                }
-            }
-            // For linked panes: ONLY change symbol + fetch bars. Preserve timeframe, indicators, drawings.
-            for (group, sym) in &link_changes {
-                for pane in &mut cw.panes {
-                    if pane.link_group == *group && pane.symbol != *sym && !pane.bars.is_empty() {
-                        let tf = pane.timeframe.clone();
-                        pane.symbol = sym.clone();
-                        pane.bars.clear();
-                        pane.timestamps.clear();
-                        pane.indicator_bar_count = 0; // force indicator recompute with new bars
-                        pane.vol_analytics_computed = 0;
-                        pane.history_loading = false;
-                        pane.history_exhausted = false;
-                        pane.drawings_requested = false;
-                        pane.drawings.clear();
-                        // DO NOT clear indicators, timeframe, or other pane settings
-                        fetch_bars_background(sym.clone(), tf);
-                    }
-                }
-            }
+            let drained = cw.watchlist.subscriptions.drain();
+            let paired: Vec<(crate::state::PaneEvent, Option<usize>)> = drained
+                .into_iter()
+                .enumerate()
+                .map(|(i, e)| (e, pane_origins.get(i).copied().flatten()))
+                .collect();
+            apply_pane_events(&mut cw.panes, &paired, group_count, true);
 
             // Request redraw only when something actually needs to repaint.
             // Egui tracks pending repaint requests internally (animations,
@@ -6782,3 +6990,199 @@ mod replay_overlay_tests {
     }
 }
 
+mod tab_cache_lru_tests {
+    use super::{evict_oldest_if_full, Bar, TAB_CACHE_MAX};
+    use std::collections::HashMap;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn evict_drops_oldest_when_full() {
+        let mut cache: HashMap<(String, String), (Vec<Bar>, Vec<i64>, Instant)> = HashMap::new();
+        let base = Instant::now();
+        // Insert TAB_CACHE_MAX + 1 entries with monotonically increasing Instants,
+        // calling evict before each insert (matching real call-site contract).
+        for i in 0..(TAB_CACHE_MAX + 1) {
+            evict_oldest_if_full(&mut cache);
+            let ts = base + Duration::from_millis(i as u64);
+            cache.insert((format!("S{i}"), "1m".into()), (vec![], vec![], ts));
+        }
+        assert_eq!(cache.len(), TAB_CACHE_MAX,
+            "post-insert size must be capped at TAB_CACHE_MAX");
+        // S0 had the oldest Instant — it should be gone.
+        assert!(!cache.contains_key(&("S0".to_string(), "1m".to_string())),
+            "oldest entry should have been evicted");
+        // The most recent (S_{MAX}) should still be present.
+        let newest = format!("S{}", TAB_CACHE_MAX);
+        assert!(cache.contains_key(&(newest.clone(), "1m".to_string())),
+            "newest entry should remain");
+    }
+
+    #[test]
+    fn evict_is_noop_when_under_cap() {
+        let mut cache: HashMap<(String, String), (Vec<Bar>, Vec<i64>, Instant)> = HashMap::new();
+        let base = Instant::now();
+        for i in 0..(TAB_CACHE_MAX - 1) {
+            cache.insert((format!("S{i}"), "1m".into()),
+                (vec![], vec![], base + Duration::from_millis(i as u64)));
+        }
+        let before = cache.len();
+        evict_oldest_if_full(&mut cache);
+        assert_eq!(cache.len(), before, "evict should not touch a sub-cap cache");
+    }
+}
+
+
+#[cfg(test)]
+mod pane_event_apply_tests {
+    //! Wave 12c: contract tests for `apply_pane_events`. The render
+    //! loop in `App::about_to_wait` drains the SubscriptionBus once per
+    //! frame and delegates to this helper; these tests exercise it in
+    //! isolation (no winit / wgpu / network) so the propagation
+    //! contract is locked in.
+
+    use super::*;
+    use crate::state::{PaneEvent, BROADCAST_GROUP};
+
+    fn chart(symbol: &str, tf: &str, link_group: u8) -> Chart {
+        let mut c = Chart::new_with(symbol, tf);
+        c.link_group = link_group;
+        // Give the pane non-empty bars so timeframe-change's tab-cache
+        // stash branch is exercised; symbol-change tests don't care.
+        c.bars.push(Bar { open: 1.0, high: 1.0, low: 1.0, close: 1.0, volume: 1.0, _pad: 0.0 });
+        c.timestamps.push(0);
+        c
+    }
+
+    #[test]
+    fn symbol_change_propagates_to_link_group_siblings_only() {
+        // 4 panes: pane 0 in group 1, panes 1+2 in group 1, pane 3 unlinked.
+        let mut panes = vec![
+            chart("AAPL", "5m", 1), // originator
+            chart("MSFT", "5m", 1),
+            chart("NVDA", "5m", 1),
+            chart("TSLA", "5m", 0), // unlinked
+        ];
+        let events = vec![(
+            PaneEvent::SymbolChanged { group: 1, symbol: "AAPL".into() },
+            Some(0usize),
+        )];
+        // group_count=2 (groups 1..=2 are valid). apply_bars_fetch=false
+        // so we don't kick a background HTTP request from tests.
+        apply_pane_events(&mut panes, &events, 2, false);
+
+        assert_eq!(panes[0].symbol, "AAPL", "originator unchanged");
+        assert_eq!(panes[1].symbol, "AAPL", "sibling in group 1 updated");
+        assert_eq!(panes[2].symbol, "AAPL", "sibling in group 1 updated");
+        assert_eq!(panes[3].symbol, "TSLA", "unlinked pane untouched");
+
+        // Sibling panes had bars cleared + indicator counters reset
+        // (the contract the imperative loop also enforced).
+        assert!(panes[1].bars.is_empty());
+        assert!(panes[2].bars.is_empty());
+        assert_eq!(panes[1].indicator_bar_count, 0);
+        assert_eq!(panes[2].indicator_bar_count, 0);
+
+        // Originator's own bars are untouched by apply (the per-pane
+        // loop in about_to_wait handles the originator separately).
+        assert!(!panes[0].bars.is_empty());
+        assert!(!panes[3].bars.is_empty());
+    }
+
+    #[test]
+    fn broadcast_group_applies_to_every_pane_except_origin() {
+        let mut panes = vec![
+            chart("AAPL", "5m", 0),
+            chart("MSFT", "5m", 1),
+            chart("NVDA", "5m", 2),
+            chart("TSLA", "5m", 0),
+        ];
+        let events = vec![(
+            PaneEvent::SymbolChanged { group: BROADCAST_GROUP, symbol: "SPY".into() },
+            Some(0usize),
+        )];
+        // group_count=0: real groups would be rejected, but BROADCAST_GROUP
+        // bypasses validation by design.
+        apply_pane_events(&mut panes, &events, 0, false);
+
+        assert_eq!(panes[0].symbol, "AAPL", "originator skipped");
+        assert_eq!(panes[1].symbol, "SPY");
+        assert_eq!(panes[2].symbol, "SPY");
+        assert_eq!(panes[3].symbol, "SPY");
+    }
+
+    #[test]
+    fn invalid_group_id_is_dropped() {
+        // group=5 but only 2 link groups exist → don't propagate to anyone.
+        let mut panes = vec![
+            chart("AAPL", "5m", 5),
+            chart("MSFT", "5m", 5),
+        ];
+        let events = vec![(
+            PaneEvent::SymbolChanged { group: 5, symbol: "ZZZ".into() },
+            Some(0usize),
+        )];
+        apply_pane_events(&mut panes, &events, 2, false);
+        assert_eq!(panes[0].symbol, "AAPL");
+        assert_eq!(panes[1].symbol, "MSFT", "stale group id must not propagate");
+    }
+
+    #[test]
+    fn zero_group_id_is_dropped() {
+        // group=0 means "unlinked" — should never propagate via apply.
+        let mut panes = vec![
+            chart("AAPL", "5m", 0),
+            chart("MSFT", "5m", 0),
+        ];
+        let events = vec![(
+            PaneEvent::SymbolChanged { group: 0, symbol: "ZZZ".into() },
+            Some(0usize),
+        )];
+        apply_pane_events(&mut panes, &events, 2, false);
+        assert_eq!(panes[0].symbol, "AAPL");
+        assert_eq!(panes[1].symbol, "MSFT", "group=0 must not propagate");
+    }
+
+    #[test]
+    fn matching_symbol_sibling_is_skipped() {
+        // Sibling already has the target symbol — apply should be a no-op
+        // for it (preserves the prior loop's `pane.symbol != sym` guard).
+        let mut panes = vec![
+            chart("AAPL", "5m", 1),
+            chart("AAPL", "5m", 1),
+        ];
+        let events = vec![(
+            PaneEvent::SymbolChanged { group: 1, symbol: "AAPL".into() },
+            Some(0usize),
+        )];
+        apply_pane_events(&mut panes, &events, 2, false);
+        assert_eq!(panes[1].symbol, "AAPL");
+        assert!(!panes[1].bars.is_empty(), "matching-symbol sibling: bars preserved");
+    }
+
+    #[test]
+    fn timeframe_change_propagates_to_link_group() {
+        let mut panes = vec![
+            chart("AAPL", "5m", 1),
+            chart("MSFT", "5m", 1),
+            chart("TSLA", "5m", 0),
+        ];
+        let events = vec![(
+            PaneEvent::TimeframeChanged { group: 1, timeframe: "1h".into() },
+            Some(0usize),
+        )];
+        apply_pane_events(&mut panes, &events, 2, false);
+        assert_eq!(panes[0].timeframe, "5m", "originator unchanged");
+        assert_eq!(panes[1].timeframe, "1h", "sibling group 1 updated");
+        assert_eq!(panes[2].timeframe, "5m", "unlinked pane untouched");
+    }
+
+    #[test]
+    fn layout_event_drains_without_effect() {
+        let mut panes = vec![chart("AAPL", "5m", 1)];
+        let events = vec![(PaneEvent::LayoutChanged, None)];
+        apply_pane_events(&mut panes, &events, 2, false);
+        // No fields changed — but the drain still consumed the event.
+        assert_eq!(panes[0].symbol, "AAPL");
+        assert_eq!(panes[0].timeframe, "5m");
+    }
+}

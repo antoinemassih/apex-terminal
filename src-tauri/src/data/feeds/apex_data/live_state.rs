@@ -112,14 +112,25 @@ pub fn start_pollers() {
     STARTED.call_once(|| {
         // Health + feeds poller: 1s health, 5s feeds.
         std::thread::Builder::new().name("apex-health".into()).spawn(|| {
+            use crate::data::connectivity::errors_sink::{report, ErrorLevel};
+            use crate::data::connectivity::error::ApiError;
             let mut last_feeds = Instant::now() - Duration::from_secs(10);
             loop {
-                if let Some(h) = super::rest::get_health_ready() {
-                    if let Ok(mut g) = state().health.lock() { *g = Some(h); }
+                match super::rest::get_health_ready() {
+                    Ok(h) => { if let Ok(mut g) = state().health.lock() { *g = Some(h); } }
+                    // Circuit-open is expected once tripped; don't spam the sink.
+                    Err(ApiError::CircuitOpen) => {}
+                    Err(e) => {
+                        report(ErrorLevel::Warn, "apex_data.rest", "health_poll", e.to_string());
+                    }
                 }
                 if last_feeds.elapsed() >= Duration::from_secs(5) {
-                    if let Some(f) = super::rest::get_feeds() {
-                        if let Ok(mut g) = state().feeds.lock() { *g = Some(f); }
+                    match super::rest::get_feeds() {
+                        Ok(f) => { if let Ok(mut g) = state().feeds.lock() { *g = Some(f); } }
+                        Err(ApiError::CircuitOpen) => {}
+                        Err(e) => {
+                            report(ErrorLevel::Warn, "apex_data.rest", "feeds_poll", e.to_string());
+                        }
                     }
                     last_feeds = Instant::now();
                 }
@@ -129,14 +140,23 @@ pub fn start_pollers() {
 
         // Snapshot poller: 1Hz per watched symbol.
         std::thread::Builder::new().name("apex-snap".into()).spawn(|| {
+            use crate::data::connectivity::errors_sink::{report, ErrorLevel};
+            use crate::data::connectivity::error::ApiError;
             loop {
                 let watched: Vec<String> = state().snap_watch.lock().ok()
                     .map(|g| g.iter().cloned().collect()).unwrap_or_default();
                 for sym in watched {
                     let class = super::types::AssetClass::from_symbol(&sym);
-                    if let Some(s) = super::rest::get_snapshot(class, &sym) {
-                        if let Ok(mut g) = state().snapshots.lock() {
-                            g.insert(sym, (s, Instant::now()));
+                    match super::rest::get_snapshot(class, &sym) {
+                        Ok(s) => {
+                            if let Ok(mut g) = state().snapshots.lock() {
+                                g.insert(sym, (s, Instant::now()));
+                            }
+                        }
+                        Err(ApiError::CircuitOpen) => {}
+                        Err(e) => {
+                            report(ErrorLevel::Warn, "apex_data.rest", "snapshot_poll",
+                                format!("{sym}: {e}"));
                         }
                     }
                 }
@@ -174,13 +194,22 @@ pub fn start_pollers() {
 
         // Greeks poller: 1 fetch every 2s per watched contract.
         std::thread::Builder::new().name("apex-greeks".into()).spawn(|| {
+            use crate::data::connectivity::errors_sink::{report, ErrorLevel};
+            use crate::data::connectivity::error::ApiError;
             loop {
                 let watched: Vec<String> = state().greeks_watch.lock().ok()
                     .map(|g| g.iter().cloned().collect()).unwrap_or_default();
                 for contract in watched {
-                    if let Some(gr) = super::rest::get_greeks(&contract) {
-                        if let Ok(mut g) = state().greeks.lock() {
-                            g.insert(contract, (gr, Instant::now()));
+                    match super::rest::get_greeks(&contract) {
+                        Ok(gr) => {
+                            if let Ok(mut g) = state().greeks.lock() {
+                                g.insert(contract, (gr, Instant::now()));
+                            }
+                        }
+                        Err(ApiError::CircuitOpen) => {}
+                        Err(e) => {
+                            report(ErrorLevel::Warn, "apex_data.rest", "greeks_poll",
+                                format!("{contract}: {e}"));
                         }
                     }
                 }

@@ -13,61 +13,41 @@ use crate::chart_renderer::trading::market_session;
 use super::super::widgets::text::MonospaceCode;
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::{Variant, Size};
-use super::super::widgets::inputs::TextInput;
 use crate::ui_kit::widgets::SearchInput;
 use super::super::widgets::frames::PopupFrame;
-use super::super::widgets::watchlist::{SectionHeader, NmfToggle};
-use crate::ui_kit::widgets::{Input, Tag, TagTone};
+use super::super::widgets::watchlist::NmfToggle;
+use crate::ui_kit::widgets::{
+    Input, PanelEmpty, PanelLoading, PanelSection, SidePanelShell, Tag, TagTone, Width,
+};
 use crate::ui_kit::widgets::tokens::Size as KitSize;
-use super::super::widgets::headers::PanelHeaderWithTabs;
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
     let _z_watchlist = crate::foundation::frame_profiler::profile_zone("watchlist_panel");
 // ── Watchlist side panel ───────────────────────────────────────────────────
 if watchlist.open {
-    egui::SidePanel::right("watchlist")
-        .default_width(240.0)
-        .min_width(140.0)
-        .max_width(500.0)
-        .resizable(true)
-        .frame(super::super::widgets::frames::PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build())
-        .show(ctx, |ui| {
-            // Force content to never exceed the panel's actual width
-            let panel_w = ui.available_width();
-            ui.set_min_width(0.0);
-            ui.set_max_width(panel_w);
+    // Snapshot the active tab so SidePanelShell::tabs can take a &mut without
+    // conflicting with `&mut watchlist` inside the body closure (orders_panel
+    // pattern). Written back after the shell returns.
+    let mut active_tab = watchlist.tab;
+    // Pre-resolve pane-aligned metrics outside the mutable borrow window so the
+    // body can borrow &mut watchlist freely.
+    let header_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
+    let title_font_size = watchlist.pane_header_size.title_font();
+    let tabs = [
+        (WatchlistTab::Stocks, "LIST", None),
+        (WatchlistTab::Chain,  "CHAIN", None),
+        (WatchlistTab::Heat,   "HEAT", None),
+    ];
+    let shell_resp = SidePanelShell::tabs("watchlist", &mut active_tab, &tabs)
+        .width(Width::Narrow)
+        .resizable(180.0..=480.0)
+        .pane_metrics(header_h, title_font_size)
+        .show(ctx, t, |ui, t, tab| {
             let mut wl_switch_to: Option<usize> = None;
             let mut wl_fetch_syms: Vec<String> = Vec::new();
             let mut wl_rename_idx: Option<usize> = None;
             let mut wl_delete_idx: Option<usize> = None;
             let mut wl_dup_idx: Option<usize> = None;
-
-            // ── A) Tab-driven header (LIST / CHAIN / HEAT) + market-session badge + close ──
-            // Pre-resolve pane-aligned metrics outside the mutable borrow window.
-            let header_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
-            let title_font_size = watchlist.pane_header_size.title_font();
-            let closed = PanelHeaderWithTabs::new(&mut watchlist.tab, &[
-                (WatchlistTab::Stocks, "LIST"),
-                (WatchlistTab::Chain, "CHAIN"),
-                (WatchlistTab::Heat, "HEAT"),
-            ])
-            .theme(t)
-            .height(header_h)
-            .font_size(title_font_size)
-            .show(ui);
-            if closed { watchlist.open = false; }
-
-            // Body padding — the panel frame is zero-margin (so the header
-            // sits flush at the panel edge), so the body content needs its
-            // own inner inset. Top gap clears the 10px header drop-shadow.
-            egui::Frame::NONE
-                .inner_margin(egui::Margin {
-                    left:   gap_sm() as i8,
-                    right:  gap_sm() as i8,
-                    top:    gap_sm() as i8,
-                    bottom: gap_sm() as i8,
-                })
-                .show(ui, |ui| {
 
             let mut open_option_chart: Option<(String, f32, bool, String)> = None;
             // OCC ticker for the click → routed into pending_opt_chart_contract
@@ -75,7 +55,7 @@ if watchlist.open {
             // back on synthesize_occ (which is wrong for non-Friday expiries).
             let mut clicked_occ_ticker: Option<String> = None;
 
-            match watchlist.tab {
+            match tab {
                 // ── STOCKS TAB (LIST) ──────────────────────────────────────────
                 WatchlistTab::Stocks => {
                     // ── B) Watchlist selector + options toggle ──
@@ -83,11 +63,11 @@ if watchlist.open {
                         ui.set_min_height(20.0);
                         // Inline rename mode
                         if watchlist.watchlist_name_editing {
-                            let resp = super::super::widgets::inputs::TextInput::new(&mut watchlist.watchlist_name_buf)
+                            let resp = Input::new(&mut watchlist.watchlist_name_buf)
                                 .width(ui.available_width() - 50.0)
                                 .font_size(10.0)
-                                .show(ui);
-                            if resp.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                .show(ui, t);
+                            if resp.lost_focus || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                 let new_name = watchlist.watchlist_name_buf.trim().to_string();
                                 if !new_name.is_empty() {
                                     if let Some(wl) = watchlist.saved_watchlists.get_mut(watchlist.active_watchlist_idx) {
@@ -97,7 +77,7 @@ if watchlist.open {
                                 watchlist.watchlist_name_editing = false;
                                 watchlist.persist();
                             } else {
-                                resp.request_focus();
+                                resp.request_focus(ui.ctx());
                             }
                         } else {
                             // Snapshot names and count for the dropdown to avoid borrow conflicts
@@ -157,7 +137,7 @@ if watchlist.open {
                                 }
                             });
                             // "+" button to create new watchlist
-                            if ui.add(Button::icon(Icon::PLUS).variant(Variant::TextOnly).glyph_color(t.dim).size(Size::Md)).clicked() {
+                            if ui.add(Button::icon(Icon::PLUS).variant(Variant::TextOnly).glyph_color(t.dim).size(Size::Md)).on_hover_text("New watchlist").clicked() {
                                 let n = watchlist.saved_watchlists.len() + 1;
                                 let syms = watchlist.create_watchlist(&format!("Watchlist {}", n));
                                 if !syms.is_empty() { wl_fetch_syms = syms; }
@@ -171,7 +151,8 @@ if watchlist.open {
                             let opt_icon = if watchlist.options_visible { Icon::RADIO_BUTTON } else { Icon::DOT };
                             let opt_color = if watchlist.options_visible { t.accent } else { t.dim };
                             let opt_resp = ui.add(Button::icon(opt_icon).variant(Variant::Chrome).glyph_color(opt_color).size(Size::Sm)
-                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, 18.0)));
+                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, row_height_dense())))
+                                .on_hover_text("Show / hide options");
                             if opt_resp.clicked() { watchlist.options_visible = !watchlist.options_visible; }
                             if opt_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
 
@@ -236,20 +217,20 @@ if watchlist.open {
                     }).inner;
                     // Filter button (right portion)
                     let filter_active = watchlist.filter_preset != "All" || !watchlist.filter_text.is_empty();
-                    let icon_col = if filter_active { t.accent } else if watchlist.filter_open { t.accent } else { t.dim.gamma_multiply(0.4) };
+                    let icon_col = if filter_active { t.accent } else if watchlist.filter_open { t.accent } else { color_dim(t.dim) };
                     let btn_rect = egui::Rect::from_min_size(egui::pos2(full_rect.right() - btn_w, full_rect.top()), egui::vec2(btn_w, search_h));
                     let filter_btn_rect = btn_rect; // capture for popup anchor
                     ui.painter().text(btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::FUNNEL, egui::FontId::proportional(font_sm()), icon_col);
                     let btn_resp = ui.interact(btn_rect, egui::Id::new("wl_filter_btn"), egui::Sense::click());
                     if btn_resp.clicked() { watchlist.filter_open = !watchlist.filter_open; }
-                    if btn_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    crate::chart_renderer::ui::style::cursor::clickable(ui, &btn_resp);
                     // Columns config button (sliders icon)
                     let col_btn_rect = egui::Rect::from_min_size(egui::pos2(btn_rect.left() - btn_w, full_rect.top()), egui::vec2(btn_w, search_h));
-                    let col_icon_col = if watchlist.wl_columns_open { t.accent } else { t.dim.gamma_multiply(0.4) };
+                    let col_icon_col = if watchlist.wl_columns_open { t.accent } else { color_dim(t.dim) };
                     ui.painter().text(col_btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::SLIDERS, egui::FontId::proportional(font_sm()), col_icon_col);
                     let col_resp = ui.interact(col_btn_rect, egui::Id::new("wl_columns_btn"), egui::Sense::click());
                     if col_resp.clicked() { watchlist.wl_columns_open = !watchlist.wl_columns_open; }
-                    if col_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    crate::chart_renderer::ui::style::cursor::clickable(ui, &col_resp);
                     // Refocus after adding a symbol
                     if watchlist.search_refocus {
                         watchlist.search_refocus = false;
@@ -309,7 +290,7 @@ if watchlist.open {
                                 let lbl = format!("{:6} {}", sym, name);
                                 // legacy: monospace RichText; Button uses plain text
                                 let resp = ui.add(Button::new(lbl.as_str()).variant(Variant::Chrome).size(Size::Sm).fg(fg)
-                                    .fill(bg).frameless(true).min_size(egui::vec2(ui.available_width(), 20.0)));
+                                    .fill(bg).frameless(true).min_size(egui::vec2(ui.available_width(), row_height_compact())));
                                 if resp.clicked() {
                                     watchlist.add_symbol(sym);
                                     fetch_watchlist_prices(vec![sym.clone()]);
@@ -349,9 +330,9 @@ if watchlist.open {
                                     let visible = watchlist.wl_columns.contains(&s.id);
                                     ui.horizontal(|ui| {
                                         let icon = if visible { Icon::EYE } else { Icon::EYE_SLASH };
-                                        let col = if visible { t.accent } else { t.dim.gamma_multiply(0.3) };
+                                        let col = if visible { t.accent } else { color_very_dim(t.dim) };
                                         if ui.add(Button::icon(icon).variant(Variant::Chrome).glyph_color(col).size(Size::Sm)
-                                            .frameless(true).min_size(egui::vec2(18.0, 16.0))).clicked() {
+                                            .frameless(true).min_size(egui::vec2(18.0, 16.0))).on_hover_text("Show / hide column").clicked() {
                                             if visible {
                                                 watchlist.wl_columns.retain(|c| *c != s.id);
                                             } else {
@@ -359,8 +340,8 @@ if watchlist.open {
                                                 watchlist.wl_columns.push(s.id);
                                             }
                                         }
-                                        let lbl_col = if visible { t.text } else { t.dim.gamma_multiply(0.4) };
-                                        ui.add(MonospaceCode::new(s.label).size_px(FONT_XS).color(lbl_col));
+                                        let lbl_col = if visible { t.text } else { color_dim(t.dim) };
+                                        ui.add(MonospaceCode::new(s.label).size_px(font_xs()).color(lbl_col));
                                     });
                                 }
                             });
@@ -389,7 +370,7 @@ if watchlist.open {
                                             .size(KitSize::Xs)
                                             .show(ui, t);
                                         if !watchlist.filter_text.is_empty() {
-                                            if ui.add(Button::icon(Icon::X).variant(Variant::TextOnly).glyph_color(t.dim).size(Size::Xs)).clicked() {
+                                            if ui.add(Button::icon(Icon::X).variant(Variant::TextOnly).glyph_color(t.dim).size(Size::Xs)).on_hover_text("Clear filter").clicked() {
                                                 watchlist.filter_text.clear();
                                             }
                                         }
@@ -491,11 +472,11 @@ if watchlist.open {
                             let sec_rect = egui::Rect::from_min_size(sec_top, egui::vec2(full_w, section_h));
                             {
                                 let p = ui.painter();
-                                p.rect_filled(sec_rect, 0.0, egui::Color32::from_black_alpha(alpha_line()));
+                                p.rect_filled(sec_rect, 0.0, shadow_color_alpha(t, alpha_line()));
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.top()), egui::pos2(sec_rect.right(), sec_rect.top())],
-                                    egui::Stroke::new(stroke_std(), egui::Color32::from_black_alpha(alpha_dim())));
+                                    egui::Stroke::new(stroke_std(), shadow_color_alpha(t, alpha_dim())));
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.top() + 1.0), egui::pos2(sec_rect.right(), sec_rect.top() + 1.0)],
-                                    egui::Stroke::new(stroke_thin(), egui::Color32::from_black_alpha(alpha_tint())));
+                                    egui::Stroke::new(stroke_thin(), shadow_color_alpha(t, alpha_tint())));
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.bottom() - 1.0), egui::pos2(sec_rect.right(), sec_rect.bottom() - 1.0)],
                                     egui::Stroke::new(stroke_std(), color_alpha(t.text, 10)));
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.bottom()), egui::pos2(sec_rect.right(), sec_rect.bottom())],
@@ -507,7 +488,10 @@ if watchlist.open {
                             for (si, ii, pin_sym, pin_price, pin_prev, _pin_loaded, avg_range) in &pinned_items {
                                 let is_active = *pin_sym == active_sym;
                                 let change_pct = if *pin_prev > 0.0 { (*pin_price / *pin_prev - 1.0) * 100.0 } else { 0.0 };
-                                let sym_fg = if is_active { egui::Color32::WHITE } else { color_alpha(t.text, 230) };
+                                // Active row paints over an accent-tinted bg; use the theme's
+                                // text color so light themes (Bauhaus / Peach / Ivory / Newsprint)
+                                // don't get unreadable white-on-light foreground.
+                                let sym_fg = if is_active { t.text } else { color_alpha(t.text, 230) };
                                 let wresp = WatchlistRow::new(pin_sym, *pin_price, change_pct)
                                     .theme(t)
                                     .height(28.0)
@@ -571,17 +555,26 @@ if watchlist.open {
 
                             // ── Section header (only if title is non-empty) ──
                             if !sec_title.is_empty() && watchlist.renaming_section != Some(sec_id) {
-                                let header_resp = SectionHeader::new(&sec_title)
-                                    .collapsed(sec_collapsed)
-                                    .item_count(sec_item_count)
-                                    .theme(t)
-                                    .show(ui);
-                                if header_resp.chevron_clicked { toggle_collapse = Some(si); }
-                                if header_resp.delete_clicked  { remove_section  = Some(si); }
-                                section_header_rects.push((si, header_resp.response.rect));
+                                // Wave 11a: SectionHeader retired in favor of canonical PanelSection.
+                                // Use a local `expanded` bool to feed `.collapsible()`; the
+                                // collapse toggle is propagated via `chevron_clicked` so the
+                                // existing `toggle_collapse` deferred-mutation flow still owns
+                                // the persistent `sec.collapsed` write. Body is left as the
+                                // empty closure — rows continue to render full-width below to
+                                // preserve drag/drop hit rects + section background tinting.
+                                let mut sec_expanded = !sec_collapsed;
+                                let resp = PanelSection::new(&sec_title)
+                                    .count(sec_item_count)
+                                    .collapsible(&mut sec_expanded)
+                                    .delete_when_empty()
+                                    .rule(false)
+                                    .show(ui, t, |_ui, _t| {});
+                                if resp.chevron_clicked { toggle_collapse = Some(si); }
+                                if resp.delete_clicked  { remove_section  = Some(si); }
+                                section_header_rects.push((si, resp.header_response.rect));
 
                                 // Right-click context menu on section header
-                                header_resp.response.context_menu(|ui| {
+                                resp.header_response.context_menu(|ui| {
                                     // Rename
                                     if ui.button(egui::RichText::new("Rename").monospace().size(font_sm())).clicked() {
                                         watchlist.renaming_section = Some(sec_id);
@@ -595,7 +588,7 @@ if watchlist.open {
                                         ui.horizontal(|ui| {
                                             for hex in row {
                                                 let c = hex_to_color(hex, 1.0);
-                                                if ui.add(Button::icon("\u{25CF}").variant(Variant::TextOnly).glyph_color(c).size(Size::Lg)).clicked() {
+                                                if ui.add(Button::icon("\u{25CF}").variant(Variant::TextOnly).glyph_color(c).size(Size::Lg)).on_hover_text(*hex).clicked() {
                                                     if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                                         sec.color = Some(hex.to_string());
                                                     }
@@ -630,11 +623,11 @@ if watchlist.open {
 
                                     // Collapse chevron (keep visible during rename)
                                     let chevron = if sec_collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
-                                    ui.add(Button::icon(chevron).variant(Variant::TextOnly).glyph_color(t.dim.gamma_multiply(0.6)).size(Size::Sm));
+                                    ui.add(Button::icon(chevron).variant(Variant::TextOnly).glyph_color(color_muted(t.dim)).size(Size::Sm));
 
-                                    let te = super::super::widgets::inputs::TextInput::new(&mut watchlist.rename_buf)
-                                        .width((ui.available_width() - 10.0).max(40.0)).font_size(9.0).show(ui);
-                                    if te.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                    let te = Input::new(&mut watchlist.rename_buf)
+                                        .width((ui.available_width() - 10.0).max(40.0)).font_size(9.0).show(ui, t);
+                                    if te.lost_focus || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                                         if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                             sec.title = watchlist.rename_buf.clone();
                                         }
@@ -644,7 +637,7 @@ if watchlist.open {
                                     if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                                         watchlist.renaming_section = None;
                                     }
-                                    te.request_focus();
+                                    te.request_focus(ui.ctx());
                                 });
                             }
 
@@ -747,7 +740,7 @@ if watchlist.open {
                                             ui.add(MonospaceCode::new(&item_sym).size_px(font_sm()).strong(true).color(sym_color));
                                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                                 // X button
-                                                if ui.add(Button::icon(Icon::X).variant(Variant::TextOnly).glyph_color(t.dim.gamma_multiply(0.3)).size(Size::Sm)).clicked() {
+                                                if ui.add(Button::icon(Icon::X).variant(Variant::TextOnly).glyph_color(color_very_dim(t.dim)).size(Size::Sm)).on_hover_text("Remove option").clicked() {
                                                     remove_sym = Some(item_sym.clone());
                                                 }
                                                 // Bid x Ask (or price fallback)
@@ -1006,7 +999,7 @@ if watchlist.open {
                                     ui.painter().rect_filled(float_rect, 4.0, color_alpha(t.accent, alpha_muted()));
                                     ui.painter().rect_stroke(float_rect, 4.0, egui::Stroke::new(stroke_std(), t.accent), egui::StrokeKind::Outside);
                                     ui.painter().text(float_rect.center(), egui::Align2::CENTER_CENTER,
-                                        drag_sym, egui::FontId::monospace(font_md()), t.text);
+                                        drag_sym, mono_md(), t.text);
                                     ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
                                 }
                             }
@@ -1044,7 +1037,7 @@ if watchlist.open {
                         ui.add_space(gap_md());
                         ui.horizontal(|ui| {
                             let add_sec_lbl = format!("{} Section", Icon::PLUS);
-                            if ui.add(Button::new(add_sec_lbl.as_str()).variant(Variant::TextOnly).size(Size::Sm).fg(t.dim.gamma_multiply(0.4))).clicked() {
+                            if ui.add(Button::new(add_sec_lbl.as_str()).variant(Variant::TextOnly).size(Size::Sm).fg(color_dim(t.dim))).clicked() {
                                 watchlist.add_section("New Section");
                                 watchlist.persist();
                             }
@@ -1087,25 +1080,32 @@ if watchlist.open {
                         // Store divider Y position for drag handling outside the panel
                         watchlist.divider_y = div_rect.center().y;
                         watchlist.divider_total_h = total_avail;
-                        // Show resize cursor on hover
-                        if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
-                            if div_rect.expand(6.0).contains(pos) || watchlist.divider_dragging {
-                                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
-                            }
+                        // Show resize cursor on hover — wired through the canonical
+                        // cursor helper. Synthesize a one-frame Response over the
+                        // divider rect so the helper's hover/drag transitions fire.
+                        let div_hover_resp = ui.interact(
+                            div_rect.expand(6.0),
+                            egui::Id::new("wl_options_divider_cursor"),
+                            egui::Sense::hover(),
+                        );
+                        crate::chart_renderer::ui::style::cursor::resize_v(ui, &div_hover_resp);
+                        if watchlist.divider_dragging {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
                         }
                         ui.add_space(gap_md());
 
-                        // OPTIONS label
-                        ui.horizontal(|ui| {
-                            ui.add(MonospaceCode::new("OPTIONS").size_px(font_sm_tight()).strong(true).color(t.accent).gamma(0.7));
-                            let opt_count: usize = watchlist.sections.iter()
-                                .filter(|s| s.title.contains("Options"))
-                                .map(|s| s.items.len()).sum();
-                            if opt_count > 0 {
-                                ui.add(MonospaceCode::new(&format!("({})", opt_count)).size_px(font_xs()).color(t.dim).gamma(0.4));
-                            }
-                        });
-                        ui.add_space(gap_xs());
+                        // OPTIONS sub-header — migrated to PanelSection chrome.
+                        // `rule(false)` suppresses the section's hairline because the
+                        // divider above already separates the LIST scroll from the
+                        // options scroll. Count chip preserves the prior "(n)" badge.
+                        let opt_count: usize = watchlist.sections.iter()
+                            .filter(|s| s.title.contains("Options"))
+                            .map(|s| s.items.len()).sum();
+                        PanelSection::new("OPTIONS")
+                            .count(opt_count)
+                            .title_color(t.accent)
+                            .rule(false)
+                            .show(ui, t, |_ui, _t| {});
 
                         egui::ScrollArea::vertical().id_salt("wl_options").show(ui, |ui| {
                             let active_sym = panes[ap].symbol.clone();
@@ -1126,17 +1126,20 @@ if watchlist.open {
 
                                 let section_block_start_y = ui.cursor().min.y;
 
-                                // Section header with collapse chevron
-                                let header_resp = SectionHeader::new(&sec_title)
-                                    .collapsed(sec_collapsed)
-                                    .item_count(sec_item_count)
-                                    .theme(t)
-                                    .show(ui);
-                                if header_resp.chevron_clicked { opt_toggle_collapse = Some(si); }
-                                if header_resp.delete_clicked  { opt_remove_section  = Some(si); }
+                                // Section header with collapse chevron — Wave 11a:
+                                // migrated to canonical PanelSection (see stocks-loop comment).
+                                let mut sec_expanded = !sec_collapsed;
+                                let resp = PanelSection::new(&sec_title)
+                                    .count(sec_item_count)
+                                    .collapsible(&mut sec_expanded)
+                                    .delete_when_empty()
+                                    .rule(false)
+                                    .show(ui, t, |_ui, _t| {});
+                                if resp.chevron_clicked { opt_toggle_collapse = Some(si); }
+                                if resp.delete_clicked  { opt_remove_section  = Some(si); }
 
                                 // Right-click context menu on option section header (same as stock sections)
-                                header_resp.response.context_menu(|ui| {
+                                resp.header_response.context_menu(|ui| {
                                     // Rename
                                     if ui.button(egui::RichText::new("Rename").monospace().size(font_sm())).clicked() {
                                         watchlist.renaming_section = Some(sec_id);
@@ -1150,7 +1153,7 @@ if watchlist.open {
                                         ui.horizontal(|ui| {
                                             for hex in row {
                                                 let c = hex_to_color(hex, 1.0);
-                                                if ui.add(Button::icon("\u{25CF}").variant(Variant::TextOnly).glyph_color(c).size(Size::Lg)).clicked() {
+                                                if ui.add(Button::icon("\u{25CF}").variant(Variant::TextOnly).glyph_color(c).size(Size::Lg)).on_hover_text(*hex).clicked() {
                                                     if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                                         sec.color = Some(hex.to_string());
                                                     }
@@ -1197,23 +1200,23 @@ if watchlist.open {
                                         painter.rect_filled(rect, 0.0, row_bg);
                                         if resp.hovered() {
                                             painter.rect_filled(rect, 0.0, color_alpha(t.toolbar_border, alpha_subtle()));
-                                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                         }
+                                        crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
 
                                         let badge = if is_call { "C" } else { "P" };
                                         let y_c = rect.center().y;
                                         // C/P badge
                                         painter.text(egui::pos2(rect.left() + 6.0, y_c), egui::Align2::LEFT_CENTER,
-                                            badge, egui::FontId::monospace(font_md()), color);
+                                            badge, mono_md(), color);
                                         // Contract name
                                         painter.text(egui::pos2(rect.left() + 22.0, y_c), egui::Align2::LEFT_CENTER,
                                             &format!("{} {:.0} {}", item_underlying, item_strike, item_expiry),
-                                            egui::FontId::monospace(font_lg()), t.text);
+                                            mono_lg(), t.text);
                                         // Bid x Ask (right-aligned)
                                         if item_bid > 0.0 || item_ask > 0.0 {
                                             painter.text(egui::pos2(rect.right() - 6.0, y_c), egui::Align2::RIGHT_CENTER,
                                                 &format!("{:.2} x {:.2}", item_bid, item_ask),
-                                                egui::FontId::monospace(font_lg()), color.gamma_multiply(0.7));
+                                                mono_lg(), color_subtle(color));
                                         }
                                         // Faint separator
                                         painter.line_segment(
@@ -1228,6 +1231,7 @@ if watchlist.open {
                                         let x_rect = egui::Rect::from_min_size(egui::pos2(rect.right() - 16.0, rect.top()), egui::vec2(16.0, 22.0));
                                         if resp.hovered() {
                                             let x_resp = ui.interact(x_rect, egui::Id::new(("opt_x", si, ii, "opt_item")), egui::Sense::click());
+                                            crate::chart_renderer::ui::style::cursor::clickable(ui, &x_resp);
                                             if x_resp.clicked() { remove_sym = Some(item_sym.clone()); }
                                         }
                                     }
@@ -1247,19 +1251,18 @@ if watchlist.open {
                                 ui.add_space(gap_sm());
                             }
 
-                            // Empty state
+                            // Empty state — canonical PanelEmpty with hint.
                             if option_section_ids.is_empty() {
-                                ui.add_space(gap_lg());
-                                ui.add(MonospaceCode::new("No options saved").size_px(font_sm_tight()).color(t.dim).gamma(0.35));
-                                ui.add(MonospaceCode::new("Shift+click contracts in the CHAIN tab").size_px(font_xs()).color(t.dim).gamma(0.25));
-                                ui.add_space(gap_lg());
+                                PanelEmpty::new("No options saved")
+                                    .hint("Shift+click contracts in the CHAIN tab")
+                                    .show(ui, t);
                             }
 
                             // "+ Section" button at bottom of options area
                             ui.add_space(gap_md());
                             ui.horizontal(|ui| {
                                 let add_opt_sec_lbl = format!("{} Section", Icon::PLUS);
-                                if ui.add(Button::new(add_opt_sec_lbl.as_str()).variant(Variant::TextOnly).size(Size::Sm).fg(t.dim.gamma_multiply(0.4))).clicked() {
+                                if ui.add(Button::new(add_opt_sec_lbl.as_str()).variant(Variant::TextOnly).size(Size::Sm).fg(color_dim(t.dim))).clicked() {
                                     watchlist.add_option_section("New Options");
                                     watchlist.persist();
                                 }
@@ -1301,6 +1304,21 @@ if watchlist.open {
                         let sym = watchlist.chain_symbol.clone();
                         let far_dte = watchlist.chain_far_dte;
                         watchlist.chain_loading = true;
+                        // Wave 5: mirror the legacy boolean into the central
+                        // InFlightRegistry. The boolean stays authoritative for
+                        // the other ~6 sites; this is the proof-of-concept that
+                        // the registry tracks the same lifecycle. Dedup so we
+                        // don't double-register if the panel re-enters before
+                        // the previous fetch returns.
+                        let kind = crate::state::InFlightKind::OptionsChain {
+                            underlying: sym.clone(),
+                        };
+                        if watchlist.inflight.dedup_kind(&kind).is_none() {
+                            let _ = watchlist.inflight.start(
+                                kind,
+                                std::time::Duration::from_secs(10),
+                            );
+                        }
                         watchlist.chain_last_fetch = Some(std::time::Instant::now());
                         fetch_chain_background(sym.clone(), ns, 0, chain_price);
                         fetch_chain_background(sym, ns, far_dte, chain_price);
@@ -1338,7 +1356,7 @@ if watchlist.open {
                         }
                         // Spread Builder shortcut
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if small_action_btn(ui, "Spread", t.dim) {
+                            if Button::small_action("Spread").tint(t.dim).show(ui, t).clicked() {
                                 watchlist.spread_open = !watchlist.spread_open;
                             }
                         });
@@ -1350,29 +1368,28 @@ if watchlist.open {
                     ui.horizontal(|ui| {
                         let has_focus = ui.memory(|m| m.has_focus(egui::Id::new("chain_sym_edit")));
                         let input_bg = if has_focus { color_alpha(t.toolbar_border, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_ghost()) };
-                        let sym_resp = TextInput::new(&mut watchlist.chain_sym_input)
+                        let sym_resp = Input::new(&mut watchlist.chain_sym_input)
                             .id(egui::Id::new("chain_sym_edit"))
-                            .placeholder(&watchlist.chain_symbol)
+                            .placeholder(watchlist.chain_symbol.clone())
                             .width(70.0)
                             .font_size(14.0)
                             .text_color(t.accent)
                             .background_color(input_bg)
                             .margin(egui::Margin::symmetric(gap_sm() as i8, gap_xs() as i8))
-                            .theme(t)
-                            .show(ui);
+                            .show(ui, t);
                         if !has_focus {
                             let display_text = if watchlist.chain_sym_input.is_empty() { &watchlist.chain_symbol } else { &watchlist.chain_sym_input };
-                            let r = sym_resp.rect;
+                            let r = sym_resp.response.rect;
                             ui.painter().text(egui::pos2(r.left() + 6.0, r.center().y), egui::Align2::LEFT_CENTER,
-                                display_text, egui::FontId::monospace(font_lg()), t.accent);
+                                display_text, mono_lg(), t.accent);
                         }
                         // Price display
                         if chain_price > 0.0 {
                             ui.add_space(gap_md());
-                            ui.add(MonospaceCode::new(&format!("${:.2}", chain_price)).size_px(font_lg()).color(TEXT_PRIMARY));
+                            ui.add(MonospaceCode::new(&format!("${:.2}", chain_price)).size_px(font_lg()).color(t.text));
                         }
                         // Search — static immediate + ApexIB background
-                        if sym_resp.changed() && !watchlist.chain_sym_input.is_empty() {
+                        if sym_resp.response.changed() && !watchlist.chain_sym_input.is_empty() {
                             watchlist.search_results = crate::ui_kit::symbols::search_symbols(&watchlist.chain_sym_input, 5)
                                 .iter().map(|s| (s.symbol.to_string(), s.name.to_string())).collect();
                             // Also fire ApexIB search in background
@@ -1394,7 +1411,7 @@ if watchlist.open {
                             for (sym, name) in watchlist.search_results.clone() {
                                 let chain_sugg_lbl = format!("{} {}", sym, name);
                                 if ui.add(Button::new(chain_sugg_lbl.as_str()).variant(Variant::Chrome).size(Size::Sm).fg(t.dim)
-                                    .frameless(true).min_size(egui::vec2(ui.available_width(), 20.0))).clicked() {
+                                    .frameless(true).min_size(egui::vec2(ui.available_width(), row_height_compact()))).clicked() {
                                     watchlist.chain_symbol = sym;
                                     watchlist.chain_sym_input.clear();
                                     watchlist.search_results.clear();
@@ -1415,12 +1432,9 @@ if watchlist.open {
                         egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())));
                     ui.add_space(gap_sm());
 
-                    // Loading indicator
+                    // Loading indicator — canonical PanelLoading.
                     if watchlist.chain_loading {
-                        ui.horizontal(|ui| {
-                            ui.spinner();
-                            ui.add(MonospaceCode::new("Loading chain...").size_px(font_sm_tight()).color(t.dim));
-                        });
+                        PanelLoading::new().reason("Loading chain").show(ui, t);
                     }
 
                     // ── Column layout ──
@@ -1445,7 +1459,7 @@ if watchlist.open {
                     ui.horizontal(|ui| {
                         // ui.set_min_width removed — was preventing sidebar resize
                         ui.spacing_mut().item_spacing.x = gap;
-                        let hdr_color = t.dim.gamma_multiply(0.4);
+                        let hdr_color = color_dim(t.dim);
                         ui.add_space(col_chk);
                         ui.allocate_ui(egui::vec2(col_stk, 14.0), |ui| { dim_label(ui, "STK", hdr_color); });
                         ui.allocate_ui(egui::vec2(col_bid, 14.0), |ui| { dim_label(ui, "BID", hdr_color); });
@@ -1490,17 +1504,17 @@ if watchlist.open {
 
                         // Strike
                         painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                            &format!("{:.0}", row.strike), egui::FontId::monospace(font_lg()), t.text);
+                            &format!("{:.0}", row.strike), mono_lg(), t.text);
                         x += col_stk + gap;
 
                         // Bid
                         painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                            &format!("{:.2}", row.bid), egui::FontId::monospace(font_lg()), color);
+                            &format!("{:.2}", row.bid), mono_lg(), color);
                         x += col_bid + gap;
 
                         // Ask
                         painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                            &format!("{:.2}", row.ask), egui::FontId::monospace(font_lg()), t.dim);
+                            &format!("{:.2}", row.ask), mono_lg(), t.dim);
                         x += col_ask + gap;
 
                         // OI
@@ -1509,7 +1523,7 @@ if watchlist.open {
                             else { format!("{}", row.oi) };
                         let oi_x = x;
                         painter.text(egui::pos2(x, y_center), egui::Align2::LEFT_CENTER,
-                            &oi_str, mono_sm(), t.dim.gamma_multiply(0.5));
+                            &oi_str, mono_sm(), color_half(t.dim));
 
                         // IV indicator — left edge strip on the row
                         if row.iv > 0.0 {
@@ -1693,8 +1707,8 @@ if watchlist.open {
                                 format!("${:.2}", price)
                             };
                             ui.painter().text(badge_rect.center(), egui::Align2::CENTER_CENTER,
-                                &badge_text, egui::FontId::monospace(font_md()),
-                                TEXT_PRIMARY);
+                                &badge_text, mono_md(),
+                                t.text);
                         }
                         ui.add_space(20.0);
 
@@ -1747,15 +1761,15 @@ if watchlist.open {
                             // Near / Mid / Far toggles
                             NmfToggle::new(&mut watchlist.chain_0_nmf).theme(t).show(ui);
                             // Freeze + arrows
-                            let fr_col = if watchlist.chain_0_frozen { t.accent } else { t.dim.gamma_multiply(0.4) };
+                            let fr_col = if watchlist.chain_0_frozen { t.accent } else { color_dim(t.dim) };
                             let fr_icon_0 = if watchlist.chain_0_frozen { Icon::PAUSE } else { Icon::PLAY };
-                            if ui.add(Button::icon(fr_icon_0).variant(Variant::Chrome).glyph_color(fr_col).size(Size::Sm).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                            if ui.add(Button::icon(fr_icon_0).variant(Variant::Chrome).glyph_color(fr_col).size(Size::Sm).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).on_hover_text("Freeze strikes").clicked() {
                                 watchlist.chain_0_frozen = !watchlist.chain_0_frozen;
                                 if !watchlist.chain_0_frozen { watchlist.chain_0_offset = 0; }
                             }
                             if watchlist.chain_0_frozen {
-                                if ui.add(Button::icon(Icon::ARROW_FAT_UP).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_offset += 1; }
-                                if ui.add(Button::icon(Icon::ARROW_FAT_DOWN).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_0_offset -= 1; }
+                                if ui.add(Button::icon(Icon::ARROW_FAT_UP).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).on_hover_text("Shift strikes up").clicked() { watchlist.chain_0_offset += 1; }
+                                if ui.add(Button::icon(Icon::ARROW_FAT_DOWN).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).on_hover_text("Shift strikes down").clicked() { watchlist.chain_0_offset -= 1; }
                             }
                         });
                         let ns_0 = watchlist.chain_0_num_strikes;
@@ -1799,15 +1813,15 @@ if watchlist.open {
                             ui.add(MonospaceCode::new(&format!("{}", watchlist.chain_far_num_strikes)).size_px(font_xs()).color(t.dim));
                             if ui.add(Button::new("+").variant(Variant::Chrome).size(Size::Sm).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_num_strikes += 1; }
                             NmfToggle::new(&mut watchlist.chain_far_nmf).theme(t).show(ui);
-                            let fr_col = if watchlist.chain_far_frozen { t.accent } else { t.dim.gamma_multiply(0.4) };
+                            let fr_col = if watchlist.chain_far_frozen { t.accent } else { color_dim(t.dim) };
                             let fr_icon_far = if watchlist.chain_far_frozen { Icon::PAUSE } else { Icon::PLAY };
-                            if ui.add(Button::icon(fr_icon_far).variant(Variant::Chrome).glyph_color(fr_col).size(Size::Sm).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).clicked() {
+                            if ui.add(Button::icon(fr_icon_far).variant(Variant::Chrome).glyph_color(fr_col).size(Size::Sm).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(14.0, 14.0))).on_hover_text("Freeze strikes").clicked() {
                                 watchlist.chain_far_frozen = !watchlist.chain_far_frozen;
                                 if !watchlist.chain_far_frozen { watchlist.chain_far_offset = 0; }
                             }
                             if watchlist.chain_far_frozen {
-                                if ui.add(Button::icon(Icon::ARROW_FAT_UP).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_offset += 1; }
-                                if ui.add(Button::icon(Icon::ARROW_FAT_DOWN).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).clicked() { watchlist.chain_far_offset -= 1; }
+                                if ui.add(Button::icon(Icon::ARROW_FAT_UP).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).on_hover_text("Shift strikes up").clicked() { watchlist.chain_far_offset += 1; }
+                                if ui.add(Button::icon(Icon::ARROW_FAT_DOWN).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(14.0, 14.0))).on_hover_text("Shift strikes down").clicked() { watchlist.chain_far_offset -= 1; }
                             }
                         });
                         let ns_f = watchlist.chain_far_num_strikes;
@@ -1850,9 +1864,10 @@ if watchlist.open {
                 watchlist.pending_opt_chart = Some(info);
                 watchlist.pending_opt_chart_contract = clicked_occ_ticker.take();
             }
+        }); // close SidePanelShell::tabs body closure
 
-            }); // close body-padding Frame
-        });
+    if shell_resp.close_clicked { watchlist.open = false; }
+    watchlist.tab = active_tab;
 }
 
 

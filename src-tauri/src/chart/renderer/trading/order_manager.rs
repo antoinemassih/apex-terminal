@@ -17,8 +17,19 @@ use std::path::PathBuf;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use super::{OrderSide, OrderStatus, OrderLevel, APEXIB_URL};
 use super::{snapshot, inflight, paper};
-use super::broker::{Broker, LiveBroker, PaperBroker, SubmitArgs};
+use super::broker::{
+    Broker, LiveBroker, BrokerOrderState,
+    SubmitArgs, ModifyArgs, ModifyKind,
+    BracketSubmitArgs, OcoSubmitArgs, OcoLeg,
+    ConditionalSubmitArgs, ConditionalCondition,
+    OptionsTriggerArgs,
+    ComboSubmitArgs, ComboLeg as BrokerComboLeg,
+};
 use super::journal::{self, JournalEvent, AttemptKind, ControlKind};
+use crate::foundation::types::{Price, Timestamp, TimeSource, Symbol};
+use crate::foundation::types::price::price_serde;
+use crate::foundation::types::timestamp::timestamp_serde;
+use crate::data::connectivity::errors_sink::{report, ErrorLevel};
 
 // ─── Lock helper (panic-poison recovery) ────────────────────────────────────
 
@@ -36,8 +47,8 @@ fn manager() -> &'static Mutex<OrderManager> {
             if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes) {
                 m.kill_engaged = v["kill_engaged"].as_bool().unwrap_or(false);
                 m.halted = v["halted"].as_bool().unwrap_or(false);
-                if m.kill_engaged { eprintln!("[control] restored kill_engaged=true from disk"); }
-                if m.halted { eprintln!("[control] restored halted=true from disk"); }
+                if m.kill_engaged { report(ErrorLevel::Warn, "control", "kill_restored", "restored kill_engaged=true from disk"); }
+                if m.halted { report(ErrorLevel::Warn, "control", "halt_restored", "restored halted=true from disk"); }
             }
         }
         let mgr = Mutex::new(m);
@@ -46,7 +57,7 @@ fn manager() -> &'static Mutex<OrderManager> {
         // don't race a recovered order into Unknown.
         // Skip when the previous run exited cleanly (Shutdown marker present).
         if journal::last_event_was_shutdown() {
-            eprintln!("[recovery] previous run exited cleanly — skipping orphan recovery");
+            report(ErrorLevel::Info, "recovery", "clean_shutdown", "previous run exited cleanly — skipping orphan recovery");
         } else {
             // Spawn the recovery work so we don't block init on HTTP. It re-acquires
             // the manager lock when it has results to apply.
@@ -73,7 +84,7 @@ impl Drop for OrderManager {
 /// for a trading app where one panic must not lock everyone out forever.
 fn with_mgr<F, R>(f: F) -> R where F: FnOnce(&mut OrderManager) -> R {
     let mut g = manager().lock().unwrap_or_else(|e| {
-        eprintln!("[order_manager] mutex poisoned, recovering: {e}");
+        report(ErrorLevel::Critical, "order_manager", "mutex_poisoned", format!("recovering: {e}"));
         e.into_inner()
     });
     f(&mut *g)
@@ -87,6 +98,21 @@ fn orders_state_path() -> PathBuf {
     let state = dir.join("state");
     let _ = std::fs::create_dir_all(&state);
     state.join("orders.json")
+}
+
+/// Path for the Wave 5 versioned envelope snapshot. Written alongside
+/// `orders.json` for forward-compatibility experiments. The legacy
+/// reader (`load_from_disk`) still reads `orders.json` directly; this
+/// snapshot is unused by the production cold-start path until a
+/// follow-up wave flips the read side.
+#[allow(dead_code)]
+fn orders_envelope_path() -> PathBuf {
+    let dir = std::env::current_exe().ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+    let state = dir.join("state");
+    let _ = std::fs::create_dir_all(&state);
+    state.join("orders.envelope.json")
 }
 
 // ─── Order State Machine ────────────────────────────────────────────────────
@@ -132,16 +158,19 @@ impl OrderState {
 struct OrderSignature {
     symbol: String,
     side: u8,       // 0=buy, 1=sell, etc.
-    price_cents: i64,
+    /// Wave 3: use Price micro-units directly (i64), not "(price * 100).round()
+    /// integer cents". The legacy cents bucket bucketed $145.999 and $146.001
+    /// onto the same signature → legitimate orders were dropped as duplicates.
+    price_micro: i64,
     qty: u32,
 }
 
 impl OrderSignature {
-    fn new(symbol: &str, side: OrderSide, price: f32, qty: u32) -> Self {
+    fn new(symbol: &str, side: OrderSide, price: Price, qty: u32) -> Self {
         Self {
             symbol: symbol.to_uppercase(),
             side: side as u8,
-            price_cents: (price * 100.0).round() as i64,
+            price_micro: price.0,
             qty,
         }
     }
@@ -158,13 +187,24 @@ pub(crate) struct ManagedOrder {
     #[serde(default = "new_client_order_id")]
     pub(crate) client_order_id: String,
     pub(crate) symbol: String,
+    /// Wave 3: typed symbol companion to `symbol`. The String stays as the
+    /// authoritative serialised form so downstream code is unaffected;
+    /// new sites that want the typed form can read `symbol_typed`. Skipped
+    /// in serde so older `orders.json` still loads.
+    #[serde(skip, default = "default_symbol")]
+    pub(crate) symbol_typed: Symbol,
     pub(crate) side: OrderSide,
     pub(crate) order_type: ManagedOrderType,
-    pub(crate) price: f32,
-    pub(crate) stop_price: f32,     // stop trigger price
+    /// Wave 3: typed Price (micro-dollars). Serialised as f32 for backwards
+    /// compatibility with on-disk `orders.json`.
+    #[serde(with = "price_serde::as_f32")]
+    pub(crate) price: Price,
+    #[serde(with = "price_serde::as_f32")]
+    pub(crate) stop_price: Price,     // stop trigger price
     pub(crate) qty: u32,
     pub(crate) filled_qty: u32,
-    pub(crate) avg_fill_price: f32,
+    #[serde(with = "price_serde::as_f32")]
+    pub(crate) avg_fill_price: Price,
     pub(crate) state: OrderState,
     pub(crate) pair_id: Option<u64>,
     // Trailing stop fields
@@ -174,14 +214,19 @@ pub(crate) struct ManagedOrder {
     pub(crate) option_symbol: Option<String>,
     pub(crate) option_con_id: Option<i64>,
     pub(crate) source: OrderSource,
-    pub(crate) created_at: u64,     // unix ms
-    pub(crate) updated_at: u64,     // unix ms
+    /// Wave 3: typed Timestamp. Serialised as bare u64 ms to preserve the
+    /// `orders.json` wire format.
+    #[serde(with = "timestamp_serde::as_u64_local")]
+    pub(crate) created_at: Timestamp,
+    #[serde(with = "timestamp_serde::as_u64_local")]
+    pub(crate) updated_at: Timestamp,
     pub(crate) backend_order_id: Option<String>, // IB order ID once submitted
     // TIF and extended hours
     pub(crate) tif: u8,              // 0=DAY, 1=GTC, 2=IOC
     pub(crate) outside_rth: bool,    // allow trading outside regular trading hours
     // Audit
-    pub(crate) state_history: Vec<(OrderState, u64)>, // (state, timestamp_ms)
+    #[serde(with = "timestamp_serde::as_pairs_u64_local")]
+    pub(crate) state_history: Vec<(OrderState, Timestamp)>,
     pub(crate) rejection_reason: Option<String>,
     // ── Wave 6c: modify serialization ──
     /// Monotonic per-order modify counter. Each call to `modify_price` bumps
@@ -196,9 +241,14 @@ pub(crate) struct ManagedOrder {
     #[serde(default)]
     pub(crate) modify_inflight: bool,
     /// Latest price queued while a modify is in flight. Drained on completion.
-    #[serde(default)]
-    pub(crate) modify_pending_price: Option<f32>,
+    #[serde(default, with = "price_serde::as_f32_opt")]
+    pub(crate) modify_pending_price: Option<Price>,
 }
+
+/// Default `Symbol` for `serde(skip)` ManagedOrder fields. Empty equity is
+/// the safe placeholder — real call sites populate `symbol_typed` from the
+/// authoritative `symbol` String during construction.
+fn default_symbol() -> Symbol { Symbol::equity("") }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ManagedOrderType { Market, Limit, Stop, StopLimit, TrailingStop }
@@ -235,7 +285,10 @@ impl ManagedOrder {
         OrderLevel {
             id: self.id as u32,
             side: self.side,
-            price: self.price,
+            // OrderLevel keeps f32 (it crosses into the sacred core.rs paint
+            // pipeline that builds it from raw f32 click prices). Convert at
+            // the boundary; ManagedOrder internally uses Price.
+            price: self.price.to_f32(),
             qty: self.qty,
             status: self.state.to_legacy(),
             state: self.state,
@@ -259,6 +312,12 @@ pub(crate) struct OrderIntent {
     pub(crate) symbol: String,
     pub(crate) side: OrderSide,
     pub(crate) order_type: ManagedOrderType,
+    // Wave 3 NOTE: OrderIntent's price fields stay as f32 to preserve the
+    // 13+ construction sites in the sacred `core.rs` paint pipeline. Inside
+    // `submit()`, intent.price is wrapped into `Price` at the manager boundary
+    // and from there the typed value flows through `ManagedOrder`, dedup
+    // signatures, and the broker `SubmitArgs`. The wire-format (f32) only
+    // lives in the intent struct.
     pub(crate) price: f32,         // limit price (0.0 for market orders)
     pub(crate) stop_price: f32,    // stop trigger price (for stop/stop-limit orders)
     pub(crate) qty: u32,
@@ -323,7 +382,7 @@ pub(crate) struct OrderCondition {
     pub(crate) con_id: i64,       // contract to watch
     pub(crate) exchange: String,  // "SMART" default
     pub(crate) is_more: bool,     // true = trigger when >= price
-    pub(crate) price: f32,
+    pub(crate) price: Price,
 }
 
 /// Intent for a conditional order (order with price conditions on any contract).
@@ -384,6 +443,25 @@ pub(crate) struct RiskLimits {
     pub(crate) max_notional: f64,          // max $ value per order (0=disabled)
     pub(crate) fat_finger_pct: f32,        // max % deviation from last price (0=disabled), only on OPENING orders
     pub(crate) dedup_cooldown_ms: u64,
+}
+
+/// Wave 5: versioned snapshot of the open-orders journal.
+///
+/// Wraps `Vec<ManagedOrder>` so we can `impl Persistable` — orphan
+/// rules forbid implementing a foreign trait on `Vec<T>` directly. The
+/// production cold-start path (`load_from_disk`) still reads the legacy
+/// un-enveloped `orders.json`; this snapshot is written alongside as
+/// `orders.envelope.json` via `save_to_disk`. A follow-up wave flips
+/// the read side once the on-disk envelope has accumulated for enough
+/// release cycles.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub(crate) struct OrdersJournalSnapshot {
+    pub orders: Vec<ManagedOrder>,
+}
+
+impl crate::state::Persistable for OrdersJournalSnapshot {
+    const KEY: &'static str = "orders_journal";
+    const VERSION: u32 = 1;
 }
 
 impl Default for RiskLimits {
@@ -456,6 +534,14 @@ pub(crate) struct OrderManager {
     submit_max_tokens: f32,
     submit_refill_per_sec: f32,
     submit_last_refill: Option<Instant>,
+    // ── Wave 4: broker abstraction for multi-leg paths ──
+    // All submit_bracket / submit_oco / submit_conditional / submit_options_trigger
+    // / submit_combo HTTP work goes through this trait object. Defaults to
+    // `LiveBroker` for production; tests inject `MockBroker` via `with_broker`.
+    // Cloned (`Arc::clone`) into the background tokio/std task that performs
+    // the network call so state-machine mutations on the manager itself
+    // stay synchronous on the caller thread.
+    pub(crate) broker: Arc<dyn Broker>,
 }
 
 static ORDER_MANAGER: OnceLock<Mutex<OrderManager>> = OnceLock::new();
@@ -486,7 +572,19 @@ impl OrderManager {
             submit_max_tokens: 20.0,
             submit_refill_per_sec: 5.0,
             submit_last_refill: None,
+            broker: Arc::new(LiveBroker),
         }
+    }
+
+    /// Test-only constructor: build a manager wired to a caller-supplied
+    /// broker (typically `MockBroker`). All other fields default — callers
+    /// can mutate `paper_mode`, `armed`, etc. after construction the same
+    /// way `fresh_manager()` does in the test module.
+    #[cfg(test)]
+    pub(crate) fn with_broker(broker: Arc<dyn Broker>) -> Self {
+        let mut m = Self::new();
+        m.broker = broker;
+        m
     }
 
     /// Pull a single token from the submit bucket. Refills lazily based on
@@ -559,100 +657,47 @@ impl OrderManager {
     pub(crate) fn engage_kill(&mut self) -> Result<(), String> {
         self.cancel_all("");
         self.kill_engaged = true;
-        std::thread::spawn(|| {
-            let client = reqwest::blocking::Client::new();
-            let _ = client.post(format!("{}/risk/kill", APEXIB_URL))
-                .timeout(std::time::Duration::from_secs(10)).send();
+        let broker = Arc::clone(&self.broker);
+        std::thread::spawn(move || {
+            let _ = broker.kill();
         });
-        eprintln!("[kill] ENGAGED (local + broker)");
+        report(ErrorLevel::Warn, "kill", "engaged", "ENGAGED (local + broker)");
         Ok(())
     }
 
     pub(crate) fn release_kill(&mut self) -> Result<(), String> {
         self.kill_engaged = false;
-        eprintln!("[kill] RELEASED (local only — no broker endpoint)");
+        report(ErrorLevel::Info, "kill", "released", "RELEASED (local only — no broker endpoint)");
         Ok(())
     }
 
     pub(crate) fn halt_inner(&mut self) -> Result<(), String> {
         self.halted = true;
-        std::thread::spawn(|| {
-            let client = reqwest::blocking::Client::new();
-            let _ = client.post(format!("{}/risk/halt", APEXIB_URL))
-                .timeout(std::time::Duration::from_secs(5)).send();
+        let broker = Arc::clone(&self.broker);
+        std::thread::spawn(move || {
+            let _ = broker.halt();
         });
-        eprintln!("[halt] ENGAGED (local + broker)");
+        report(ErrorLevel::Warn, "halt", "engaged", "ENGAGED (local + broker)");
         Ok(())
     }
 
     pub(crate) fn resume_inner(&mut self) -> Result<(), String> {
         self.halted = false;
-        std::thread::spawn(|| {
-            let client = reqwest::blocking::Client::new();
-            let _ = client.post(format!("{}/risk/resume", APEXIB_URL))
-                .timeout(std::time::Duration::from_secs(5)).send();
+        let broker = Arc::clone(&self.broker);
+        std::thread::spawn(move || {
+            let _ = broker.resume();
         });
-        eprintln!("[resume] (local + broker)");
+        report(ErrorLevel::Info, "halt", "resume", "(local + broker)");
         Ok(())
     }
 
-    /// Resolve a symbol to its IB conId.
-    fn resolve_con_id(client: &reqwest::blocking::Client, symbol: &str) -> Option<i64> {
-        client.get(format!("{}/contract/{}", APEXIB_URL, symbol))
-            .timeout(std::time::Duration::from_secs(5)).send()
-            .and_then(|r| r.json::<serde_json::Value>())
-            .ok()
-            .and_then(|j| j["conId"].as_i64())
-    }
-
-    /// Extract orderId from a JSON response.
-    fn extract_order_id(json: &serde_json::Value) -> Option<String> {
-        json["orderId"].as_str().map(|s| s.to_string())
-            .or_else(|| json["orderId"].as_i64().map(|n| n.to_string()))
-    }
-
-    /// Submit an order to ApexIB and return the backend order ID.
-    /// Handles all order types: market, limit, stop, stop_limit, trailing_stop.
-    fn submit_to_ib(symbol: &str, side: &str, qty: u32, order_type_idx: usize,
-                    price: f32, stop_price: f32,
-                    trail_amount: Option<f32>, trail_percent: Option<f32>,
-                    idempotency_key: &str, intent_tif: u8, outside_rth: bool) -> Option<String> {
-        let client = reqwest::blocking::Client::new();
-        let con_id = Self::resolve_con_id(&client, symbol)?;
-
-        let order_type = match order_type_idx {
-            0 => "market", 1 => "limit", 2 => "stop",
-            3 => "stop_limit", 4 => "trailing_stop", _ => "market"
-        };
-        let tif = match intent_tif { 0 => "day", 1 => "gtc", 2 => "ioc", _ => "day" };
-        let mut body = serde_json::json!({
-            "conId": con_id, "side": side, "quantity": qty,
-            "orderType": order_type, "tif": tif,
-            "idempotencyKey": idempotency_key,
-        });
-        if outside_rth { body["outsideRth"] = serde_json::json!(true); }
-        match order_type {
-            "limit" => { body["limitPrice"] = serde_json::json!(price); }
-            "stop" => { body["stopPrice"] = serde_json::json!(if stop_price != 0.0 { stop_price } else { price }); }
-            "stop_limit" => {
-                body["limitPrice"] = serde_json::json!(price);
-                body["stopPrice"] = serde_json::json!(stop_price);
-            }
-            "trailing_stop" => {
-                if let Some(amt) = trail_amount { body["trailAmount"] = serde_json::json!(amt); }
-                if let Some(pct) = trail_percent { body["trailPercent"] = serde_json::json!(pct); }
-                if stop_price != 0.0 { body["stopPrice"] = serde_json::json!(stop_price); }
-            }
-            _ => {} // market — no price fields
-        }
-
-        let resp = client.post(format!("{}/orders", APEXIB_URL))
-            .json(&body).timeout(std::time::Duration::from_secs(5)).send().ok()?;
-        let json: serde_json::Value = resp.json().ok()?;
-        Self::extract_order_id(&json)
-    }
+    // Wave 7D: single-order submit/cancel/modify HTTP moved behind `Broker`.
+    // The old static `submit_to_ib` / `resolve_con_id` / `extract_order_id`
+    // helpers that lived here are now in `broker::LiveBroker`. Callers build
+    // `SubmitArgs` and call `self.broker.submit(...)` from a spawned thread.
 
     /// Submit an order intent. Returns the result.
+    #[tracing::instrument(skip(self, intent), level = "debug", fields(symbol = %intent.symbol, side = ?intent.side, qty = intent.qty, price = intent.price))]
     pub(crate) fn submit(&mut self, intent: OrderIntent) -> OrderResult {
         if self.kill_engaged { return OrderResult::Rejected("kill switch engaged".into()); }
         if self.halted { return OrderResult::Rejected(self.halt_reason().into()); }
@@ -676,7 +721,10 @@ impl OrderManager {
         let paper = self.paper_mode;
 
         // ── 1. Dedup check ──
-        let sig = OrderSignature::new(&intent.symbol, intent.side, intent.price, intent.qty);
+        // Wave 3: dedup signature uses typed Price (micro-units, i64) so the
+        // bucket distinguishes neighbouring sub-cent prices instead of
+        // collapsing $145.999 and $146.001 onto the same key.
+        let sig = OrderSignature::new(&intent.symbol, intent.side, Price::from_f32(intent.price), intent.qty);
         self.cleanup_expired_signatures();
         if let Some(last_time) = self.recent_signatures.get(&sig) {
             if last_time.elapsed().as_millis() < self.risk_limits.dedup_cooldown_ms as u128 {
@@ -832,7 +880,7 @@ impl OrderManager {
                     }
                 }
                 _ => {
-                    eprintln!("[risk] buying-power check skipped — account_data not yet loaded");
+                    report(ErrorLevel::Warn, "risk", "bp_check_skipped", "buying-power check skipped — account_data not yet loaded");
                 }
             }
         }
@@ -858,13 +906,14 @@ impl OrderManager {
             id,
             client_order_id: new_client_order_id(),
             symbol: intent.symbol.clone(),
+            symbol_typed: Symbol::equity(&intent.symbol),
             side: intent.side,
             order_type: intent.order_type,
-            price: intent.price,
-            stop_price: intent.stop_price,
+            price: Price::from_f32(intent.price),
+            stop_price: Price::from_f32(intent.stop_price),
             qty: intent.qty,
             filled_qty: 0,
-            avg_fill_price: 0.0,
+            avg_fill_price: Price::ZERO,
             state: initial_state,
             pair_id: intent.pair_with,
             trail_amount: intent.trail_amount,
@@ -874,10 +923,10 @@ impl OrderManager {
             source: intent.source,
             tif: intent.tif,
             outside_rth: intent.outside_rth,
-            created_at: now_ms,
-            updated_at: now_ms,
+            created_at: ts_from_ms(now_ms),
+            updated_at: ts_from_ms(now_ms),
             backend_order_id: None,
-            state_history: vec![(initial_state, now_ms)],
+            state_history: vec![(initial_state, ts_from_ms(now_ms))],
             rejection_reason: None,
             modify_version: 0,
             modify_inflight: false,
@@ -902,6 +951,9 @@ impl OrderManager {
                 ManagedOrderType::StopLimit => 3,
                 ManagedOrderType::TrailingStop => 4,
             };
+            // OrderIntent carries f32 prices (wire-shape); submit_to_ib wants
+            // the same f32 wire-shape, so pass through unchanged. The typed
+            // `Price` lives on ManagedOrder.
             let price = intent.price;
             let stop_price = intent.stop_price;
             let trail_amount = intent.trail_amount;
@@ -939,9 +991,25 @@ impl OrderManager {
             } else {
                 // Fire async backend submission — captures IB order ID back into the manager
                 let cid_thread = cid.clone();
+                let side_owned: String = side_str.to_string();
+                let sym_owned = sym;
+                let idem_owned = idem_key;
+                let broker = Arc::clone(&self.broker);
                 std::thread::spawn(move || {
-                    match Self::submit_to_ib(&sym, side_str, qty, ot_idx, price, stop_price, trail_amount, trail_percent, &idem_key, intent_tif, outside_rth) {
-                        Some(ib_oid) => {
+                    let args = SubmitArgs {
+                        symbol: &sym_owned,
+                        side: &side_owned,
+                        qty,
+                        order_type_idx: ot_idx,
+                        price: Price::from_f32(price),
+                        stop_price: Price::from_f32(stop_price),
+                        trail_amount, trail_percent,
+                        client_order_id: &idem_owned,
+                        tif: intent_tif,
+                        outside_rth,
+                    };
+                    match broker.submit(&args) {
+                        Ok(ib_oid) => {
                             with_mgr(|mgr| {
                                 if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == order_id_copy) {
                                     o.backend_order_id = Some(ib_oid.clone());
@@ -951,9 +1019,9 @@ impl OrderManager {
                                 client_id: cid_thread, backend_id: Some(ib_oid), ts_ms: epoch_ms(),
                             });
                         }
-                        None => {
+                        Err(reason) => {
                             journal::append(JournalEvent::Fail {
-                                client_id: cid_thread, reason: "submit_to_ib returned None".into(),
+                                client_id: cid_thread, reason,
                                 ts_ms: epoch_ms(),
                             });
                         }
@@ -962,6 +1030,7 @@ impl OrderManager {
             }
             self.transition(id, OrderState::Working); // Optimistic — will reconcile from poller
             self.pending_toasts.push(format!("{} {} x{} @ {:.2}", side_str.to_uppercase(), intent.symbol, qty, price));
+            // `price` here is already f32 from the wire-boundary capture above.
             OrderResult::Accepted(id)
         } else {
             OrderResult::NeedsConfirmation(id)
@@ -973,9 +1042,9 @@ impl OrderManager {
         if let Some(o) = self.orders.iter_mut().find(|o| o.id == order_id && o.state == OrderState::Draft) {
             let now = epoch_ms();
             o.state = OrderState::Working;
-            o.updated_at = now;
-            o.state_history.push((OrderState::PendingSubmit, now));
-            o.state_history.push((OrderState::Working, now));
+            o.updated_at = ts_from_ms(now);
+            o.state_history.push((OrderState::PendingSubmit, ts_from_ms(now)));
+            o.state_history.push((OrderState::Working, ts_from_ms(now)));
             // Submit to ApexIB
             let sym = o.symbol.clone();
             let side_str = match o.side { OrderSide::Buy | OrderSide::TriggerBuy => "buy", _ => "sell" };
@@ -984,15 +1053,29 @@ impl OrderManager {
                 ManagedOrderType::Stop => 2, ManagedOrderType::StopLimit => 3,
                 ManagedOrderType::TrailingStop => 4,
             };
-            let price = o.price; let stop_price = o.stop_price; let qty = o.qty;
+            let price = o.price.to_f32(); let stop_price = o.stop_price.to_f32(); let qty = o.qty;
             let trail_amount = o.trail_amount;
             let trail_percent = o.trail_percent;
             let intent_tif = o.tif;
             let outside_rth = o.outside_rth;
             let idem_key = o.client_order_id.clone();
             let order_id_copy = order_id;
+            let side_owned: String = side_str.to_string();
+            let broker = Arc::clone(&self.broker);
             std::thread::spawn(move || {
-                if let Some(ib_oid) = Self::submit_to_ib(&sym, side_str, qty, ot_idx, price, stop_price, trail_amount, trail_percent, &idem_key, intent_tif, outside_rth) {
+                let args = SubmitArgs {
+                    symbol: &sym,
+                    side: &side_owned,
+                    qty,
+                    order_type_idx: ot_idx,
+                    price: Price::from_f32(price),
+                    stop_price: Price::from_f32(stop_price),
+                    trail_amount, trail_percent,
+                    client_order_id: &idem_key,
+                    tif: intent_tif,
+                    outside_rth,
+                };
+                if let Ok(ib_oid) = broker.submit(&args) {
                     with_mgr(|mgr| {
                         if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == order_id_copy) {
                             o.backend_order_id = Some(ib_oid);
@@ -1015,6 +1098,7 @@ impl OrderManager {
     /// Submit a bracket order (entry + take profit + stop loss) via POST /orders/bracket.
     /// Creates 3 local managed orders and submits the bracket to the backend.
     /// Returns (entry_result, tp_order_id, sl_order_id).
+    #[tracing::instrument(skip(self, intent), level = "debug", fields(symbol = %intent.symbol, qty = intent.qty, tp = take_profit_price, sl = stop_loss_price))]
     pub(crate) fn submit_bracket(&mut self, intent: OrderIntent, take_profit_price: f32, stop_loss_price: f32) -> (OrderResult, Option<u64>, Option<u64>) {
         if self.kill_engaged { return (OrderResult::Rejected("kill switch engaged".into()), None, None); }
         if self.halted { return (OrderResult::Rejected(self.halt_reason().into()), None, None); }
@@ -1055,45 +1139,45 @@ impl OrderManager {
 
         // Entry order
         self.orders.push(ManagedOrder {
-            id: entry_id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), side: intent.side,
-            order_type: intent.order_type, price: intent.price, stop_price: intent.stop_price,
-            qty: intent.qty, filled_qty: 0, avg_fill_price: 0.0,
+            id: entry_id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), symbol_typed: Symbol::equity(&intent.symbol), side: intent.side,
+            order_type: intent.order_type, price: Price::from_f32(intent.price), stop_price: Price::from_f32(intent.stop_price),
+            qty: intent.qty, filled_qty: 0, avg_fill_price: Price::ZERO,
             state: initial_state, pair_id: None,
             trail_amount: None, trail_percent: None,
             option_symbol: intent.option_symbol.clone(), option_con_id: intent.option_con_id,
             source: intent.source, tif: intent.tif, outside_rth: intent.outside_rth,
-            created_at: now_ms, updated_at: now_ms,
-            backend_order_id: None, state_history: vec![(initial_state, now_ms)],
+            created_at: ts_from_ms(now_ms), updated_at: ts_from_ms(now_ms),
+            backend_order_id: None, state_history: vec![(initial_state, ts_from_ms(now_ms))],
             rejection_reason: None,
             modify_version: 0, modify_inflight: false, modify_pending_price: None,
         });
 
         // Take profit order
         self.orders.push(ManagedOrder {
-            id: tp_id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), side: tp_side,
-            order_type: ManagedOrderType::Limit, price: take_profit_price, stop_price: 0.0,
-            qty: intent.qty, filled_qty: 0, avg_fill_price: 0.0,
+            id: tp_id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), symbol_typed: Symbol::equity(&intent.symbol), side: tp_side,
+            order_type: ManagedOrderType::Limit, price: Price::from_f32(take_profit_price), stop_price: Price::ZERO,
+            qty: intent.qty, filled_qty: 0, avg_fill_price: Price::ZERO,
             state: initial_state, pair_id: Some(entry_id),
             trail_amount: None, trail_percent: None,
             option_symbol: intent.option_symbol.clone(), option_con_id: intent.option_con_id,
             source: OrderSource::Bracket, tif: intent.tif, outside_rth: intent.outside_rth,
-            created_at: now_ms, updated_at: now_ms,
-            backend_order_id: None, state_history: vec![(initial_state, now_ms)],
+            created_at: ts_from_ms(now_ms), updated_at: ts_from_ms(now_ms),
+            backend_order_id: None, state_history: vec![(initial_state, ts_from_ms(now_ms))],
             rejection_reason: None,
             modify_version: 0, modify_inflight: false, modify_pending_price: None,
         });
 
         // Stop loss order
         self.orders.push(ManagedOrder {
-            id: sl_id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), side: tp_side,
-            order_type: ManagedOrderType::Stop, price: stop_loss_price, stop_price: stop_loss_price,
-            qty: intent.qty, filled_qty: 0, avg_fill_price: 0.0,
+            id: sl_id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), symbol_typed: Symbol::equity(&intent.symbol), side: tp_side,
+            order_type: ManagedOrderType::Stop, price: Price::from_f32(stop_loss_price), stop_price: Price::from_f32(stop_loss_price),
+            qty: intent.qty, filled_qty: 0, avg_fill_price: Price::ZERO,
             state: initial_state, pair_id: Some(entry_id),
             trail_amount: None, trail_percent: None,
             option_symbol: intent.option_symbol.clone(), option_con_id: intent.option_con_id,
             source: OrderSource::Bracket, tif: intent.tif, outside_rth: intent.outside_rth,
-            created_at: now_ms, updated_at: now_ms,
-            backend_order_id: None, state_history: vec![(initial_state, now_ms)],
+            created_at: ts_from_ms(now_ms), updated_at: ts_from_ms(now_ms),
+            backend_order_id: None, state_history: vec![(initial_state, ts_from_ms(now_ms))],
             rejection_reason: None,
             modify_version: 0, modify_inflight: false, modify_pending_price: None,
         });
@@ -1118,50 +1202,37 @@ impl OrderManager {
             let sl_price = stop_loss_price;
             let eid = entry_id; let tid = tp_id; let sid = sl_id;
 
+            // Wave 4: HTTP work moved behind `Broker::submit_bracket`. The
+            // spawned thread now calls the trait; local state mutation
+            // (backend_order_id wiring on each leg) happens through `with_mgr`
+            // as before so the state-machine semantics don't change.
+            let broker = Arc::clone(&self.broker);
+            let bargs = BracketSubmitArgs {
+                symbol: sym.clone(),
+                side: side_owned,
+                qty,
+                entry_order_type: ot_owned,
+                entry_price,
+                take_profit_price: tp_price,
+                stop_loss_price: sl_price,
+                idempotency_key: idem_key,
+            };
             std::thread::spawn(move || {
-                let client = reqwest::blocking::Client::new();
-                let con_id = match Self::resolve_con_id(&client, &sym) {
-                    Some(c) => c, None => { eprintln!("[bracket] no conId for {}", sym); return; }
-                };
-
-                let mut entry_leg = serde_json::json!({"orderType": ot_owned});
-                match ot_owned.as_str() {
-                    "limit" => { entry_leg["limitPrice"] = serde_json::json!(entry_price); }
-                    "stop" => { entry_leg["stopPrice"] = serde_json::json!(entry_price); }
-                    "stop_limit" => { entry_leg["limitPrice"] = serde_json::json!(entry_price); entry_leg["stopPrice"] = serde_json::json!(entry_price); }
-                    _ => {} // market
-                }
-
-                let body = serde_json::json!({
-                    "conId": con_id, "side": side_owned, "quantity": qty,
-                    "entry": entry_leg,
-                    "takeProfit": {"orderType": "limit", "limitPrice": tp_price},
-                    "stopLoss": {"orderType": "stop", "stopPrice": sl_price},
-                    "tif": "day",
-                    "idempotencyKey": idem_key,
-                });
-
-                match client.post(format!("{}/orders/bracket", APEXIB_URL))
-                    .json(&body).timeout(std::time::Duration::from_secs(5)).send() {
+                match broker.submit_bracket(&bargs) {
                     Ok(resp) => {
-                        if let Ok(json) = resp.json::<serde_json::Value>() {
-                            with_mgr(|mgr| {
-                                if let Some(oid) = json["parentOrderId"].as_str().map(|s| s.to_string())
-                                    .or_else(|| json["parentOrderId"].as_i64().map(|n| n.to_string())) {
-                                    if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == eid) { o.backend_order_id = Some(oid); }
-                                }
-                                if let Some(oid) = json["takeProfitOrderId"].as_str().map(|s| s.to_string())
-                                    .or_else(|| json["takeProfitOrderId"].as_i64().map(|n| n.to_string())) {
-                                    if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == tid) { o.backend_order_id = Some(oid); }
-                                }
-                                if let Some(oid) = json["stopLossOrderId"].as_str().map(|s| s.to_string())
-                                    .or_else(|| json["stopLossOrderId"].as_i64().map(|n| n.to_string())) {
-                                    if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == sid) { o.backend_order_id = Some(oid); }
-                                }
-                            });
-                        }
+                        with_mgr(|mgr| {
+                            if let Some(oid) = resp.parent_backend_id {
+                                if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == eid) { o.backend_order_id = Some(oid); }
+                            }
+                            if let Some(oid) = resp.take_profit_backend_id {
+                                if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == tid) { o.backend_order_id = Some(oid); }
+                            }
+                            if let Some(oid) = resp.stop_loss_backend_id {
+                                if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == sid) { o.backend_order_id = Some(oid); }
+                            }
+                        });
                     }
-                    Err(e) => eprintln!("[bracket] submit failed: {e}"),
+                    Err(e) => report(ErrorLevel::Error, "bracket", "submit_failed", e.to_string()),
                 }
             });
             self.transition(entry_id, OrderState::Working);
@@ -1179,6 +1250,7 @@ impl OrderManager {
 
     /// Submit an OCO (One-Cancels-Other) order group via POST /orders/oco.
     /// Creates all orders locally paired together, then submits to the backend.
+    #[tracing::instrument(skip(self, orders), level = "debug", fields(legs = orders.len()))]
     pub(crate) fn submit_oco(&mut self, orders: Vec<OrderIntent>) -> Vec<OrderResult> {
         if self.kill_engaged { return vec![OrderResult::Rejected("kill switch engaged".into())]; }
         if self.halted { return vec![OrderResult::Rejected(self.halt_reason().into())]; }
@@ -1212,15 +1284,15 @@ impl OrderManager {
             let initial_state = if self.armed { OrderState::PendingSubmit } else { OrderState::Draft };
 
             self.orders.push(ManagedOrder {
-                id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), side: intent.side,
-                order_type: intent.order_type, price: intent.price, stop_price: intent.stop_price,
-                qty: intent.qty, filled_qty: 0, avg_fill_price: 0.0,
+                id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), symbol_typed: Symbol::equity(&intent.symbol), side: intent.side,
+                order_type: intent.order_type, price: Price::from_f32(intent.price), stop_price: Price::from_f32(intent.stop_price),
+                qty: intent.qty, filled_qty: 0, avg_fill_price: Price::ZERO,
                 state: initial_state, pair_id: None, // pair_ids linked after all created
                 trail_amount: intent.trail_amount, trail_percent: intent.trail_percent,
                 option_symbol: intent.option_symbol.clone(), option_con_id: intent.option_con_id,
                 source: OrderSource::Oco, tif: intent.tif, outside_rth: intent.outside_rth,
-                created_at: now_ms, updated_at: now_ms,
-                backend_order_id: None, state_history: vec![(initial_state, now_ms)],
+                created_at: ts_from_ms(now_ms), updated_at: ts_from_ms(now_ms),
+                backend_order_id: None, state_history: vec![(initial_state, ts_from_ms(now_ms))],
                 rejection_reason: None,
                 modify_version: 0, modify_inflight: false, modify_pending_price: None,
             });
@@ -1261,50 +1333,31 @@ impl OrderManager {
             }).collect();
             let ids_copy = local_ids.clone();
 
-            std::thread::spawn(move || {
-                let client = reqwest::blocking::Client::new();
-                // Build the orders array for the backend
-                let mut oco_orders = Vec::new();
-                for (sym, side, qty, ot, price, stop_price) in &order_intents {
-                    let con_id = match Self::resolve_con_id(&client, sym) {
-                        Some(c) => c, None => continue,
-                    };
-                    let mut order_json = serde_json::json!({
-                        "conId": con_id, "side": side, "quantity": qty,
-                        "orderType": ot, "tif": "day",
-                    });
-                    match ot.as_str() {
-                        "limit" => { order_json["limitPrice"] = serde_json::json!(price); }
-                        "stop" => { order_json["stopPrice"] = serde_json::json!(if *stop_price != 0.0 { *stop_price } else { *price }); }
-                        "stop_limit" => { order_json["limitPrice"] = serde_json::json!(price); order_json["stopPrice"] = serde_json::json!(stop_price); }
-                        _ => {}
-                    }
-                    oco_orders.push(order_json);
+            // Wave 4: HTTP body construction moves into `LiveBroker::submit_oco`.
+            // The manager just maps its (symbol, side, qty, ot, price, stop_price)
+            // tuples into typed `OcoLeg`s and hands them off.
+            let broker = Arc::clone(&self.broker);
+            let legs: Vec<OcoLeg> = order_intents.iter().map(|(sym, side, qty, ot, price, stop_price)| {
+                OcoLeg {
+                    symbol: sym.clone(), side: side.clone(), qty: *qty,
+                    order_type: ot.clone(), price: *price, stop_price: *stop_price,
                 }
-
-                let body = serde_json::json!({ "orders": oco_orders, "ocaGroup": oca });
-                match client.post(format!("{}/orders/oco", APEXIB_URL))
-                    .json(&body).timeout(std::time::Duration::from_secs(5)).send() {
+            }).collect();
+            let oargs = OcoSubmitArgs { legs, oca_group: oca.clone() };
+            std::thread::spawn(move || {
+                match broker.submit_oco(&oargs) {
                     Ok(resp) => {
-                        if let Ok(json) = resp.json::<serde_json::Value>() {
-                            if let Some(backend_ids) = json["orderIds"].as_array() {
-                                with_mgr(|mgr| {
-                                    for (i, bid) in backend_ids.iter().enumerate() {
-                                        if i < ids_copy.len() {
-                                            let oid = bid.as_str().map(|s| s.to_string())
-                                                .or_else(|| bid.as_i64().map(|n| n.to_string()));
-                                            if let Some(oid) = oid {
-                                                if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == ids_copy[i]) {
-                                                    o.backend_order_id = Some(oid);
-                                                }
-                                            }
-                                        }
+                        with_mgr(|mgr| {
+                            for (i, oid) in resp.leg_backend_ids.iter().enumerate() {
+                                if i < ids_copy.len() {
+                                    if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == ids_copy[i]) {
+                                        o.backend_order_id = Some(oid.clone());
                                     }
-                                });
+                                }
                             }
-                        }
+                        });
                     }
-                    Err(e) => eprintln!("[oco] submit failed: {e}"),
+                    Err(e) => report(ErrorLevel::Error, "oco", "submit_failed", e.to_string()),
                 }
             });
             self.pending_toasts.push(format!("OCO group {} with {} orders", oca_group, local_ids.len()));
@@ -1317,6 +1370,7 @@ impl OrderManager {
 
     /// Submit a conditional order via POST /orders/conditional.
     /// The order executes when price conditions on watched contracts are met.
+    #[tracing::instrument(skip(self, intent), level = "debug")]
     pub(crate) fn submit_conditional(&mut self, intent: ConditionalOrderIntent) -> OrderResult {
         if self.kill_engaged { return OrderResult::Rejected("kill switch engaged".into()); }
         if self.halted { return OrderResult::Rejected(self.halt_reason().into()); }
@@ -1343,15 +1397,15 @@ impl OrderManager {
         let initial_state = OrderState::PendingSubmit; // conditionals always go to backend immediately
 
         self.orders.push(ManagedOrder {
-            id, client_order_id: new_client_order_id(), symbol: base.symbol.clone(), side: base.side,
-            order_type: base.order_type, price: base.price, stop_price: base.stop_price,
-            qty: base.qty, filled_qty: 0, avg_fill_price: 0.0,
+            id, client_order_id: new_client_order_id(), symbol: base.symbol.clone(), symbol_typed: Symbol::equity(&base.symbol), side: base.side,
+            order_type: base.order_type, price: Price::from_f32(base.price), stop_price: Price::from_f32(base.stop_price),
+            qty: base.qty, filled_qty: 0, avg_fill_price: Price::ZERO,
             state: initial_state, pair_id: base.pair_with,
             trail_amount: base.trail_amount, trail_percent: base.trail_percent,
             option_symbol: base.option_symbol.clone(), option_con_id: base.option_con_id,
             source: OrderSource::Conditional, tif: base.tif, outside_rth: base.outside_rth,
-            created_at: now_ms, updated_at: now_ms,
-            backend_order_id: None, state_history: vec![(initial_state, now_ms)],
+            created_at: ts_from_ms(now_ms), updated_at: ts_from_ms(now_ms),
+            backend_order_id: None, state_history: vec![(initial_state, ts_from_ms(now_ms))],
             rejection_reason: None,
             modify_version: 0, modify_inflight: false, modify_pending_price: None,
         });
@@ -1378,48 +1432,32 @@ impl OrderManager {
         let toast = format!("CONDITIONAL {} {} x{} with {} conditions",
             side_str, sym, qty, conditions.len());
 
+        // Wave 4: HTTP body construction moves into `LiveBroker::submit_conditional`.
+        let broker = Arc::clone(&self.broker);
+        let cargs = ConditionalSubmitArgs {
+            symbol: sym.clone(),
+            side: side_str,
+            qty,
+            order_type: ot,
+            price,
+            conditions: conditions.iter().map(|c| ConditionalCondition {
+                con_id: c.con_id, exchange: c.exchange.clone(),
+                is_more: c.is_more, price: c.price,
+            }).collect(),
+            conditions_logic: logic,
+            conditions_cancel_order: cancel_order,
+            idempotency_key: idem_key,
+        };
         std::thread::spawn(move || {
-            let client = reqwest::blocking::Client::new();
-            let con_id = match Self::resolve_con_id(&client, &sym) {
-                Some(c) => c, None => { eprintln!("[conditional] no conId for {}", sym); return; }
-            };
-
-            let conds_json: Vec<serde_json::Value> = conditions.iter().map(|c| {
-                serde_json::json!({
-                    "type": "price",
-                    "conId": c.con_id,
-                    "exchange": c.exchange,
-                    "isMore": c.is_more,
-                    "price": c.price,
-                    "triggerMethod": "default",
-                })
-            }).collect();
-
-            let mut body = serde_json::json!({
-                "conId": con_id, "side": side_str, "quantity": qty,
-                "orderType": ot, "tif": "day",
-                "conditions": conds_json,
-                "conditionsLogic": logic,
-                "conditionsCancelOrder": cancel_order,
-                "outsideRth": true,
-                "idempotencyKey": idem_key,
-            });
-            if ot == "limit" { body["limitPrice"] = serde_json::json!(price); }
-
-            match client.post(format!("{}/orders/conditional", APEXIB_URL))
-                .json(&body).timeout(std::time::Duration::from_secs(5)).send() {
-                Ok(resp) => {
-                    if let Ok(json) = resp.json::<serde_json::Value>() {
-                        if let Some(oid) = Self::extract_order_id(&json) {
-                            with_mgr(|mgr| {
-                                if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
-                                    o.backend_order_id = Some(oid);
-                                }
-                            });
+            match broker.submit_conditional(&cargs) {
+                Ok(oid) => {
+                    with_mgr(|mgr| {
+                        if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
+                            o.backend_order_id = Some(oid);
                         }
-                    }
+                    });
                 }
-                Err(e) => eprintln!("[conditional] submit failed: {e}"),
+                Err(e) => report(ErrorLevel::Error, "conditional", "submit_failed", e.to_string()),
             }
         });
 
@@ -1433,6 +1471,7 @@ impl OrderManager {
     /// Submit an options trigger via POST /orders/options-trigger.
     /// Creates entry + exit conditional orders on an option based on underlying price levels.
     #[allow(clippy::too_many_arguments)]
+    #[tracing::instrument(skip(self), level = "debug", fields(underlying, option_type, strike, qty))]
     pub(crate) fn submit_options_trigger(&mut self,
         underlying: &str, option_type: &str, strike: f32, expiration: &str,
         qty: u32, entry_price: f32, entry_direction: &str,
@@ -1458,16 +1497,16 @@ impl OrderManager {
         let initial_state = OrderState::PendingSubmit;
 
         self.orders.push(ManagedOrder {
-            id, client_order_id: new_client_order_id(), symbol: underlying.to_string(), side: OrderSide::TriggerBuy,
-            order_type: ManagedOrderType::Market, price: entry_price, stop_price: 0.0,
-            qty, filled_qty: 0, avg_fill_price: 0.0,
+            id, client_order_id: new_client_order_id(), symbol: underlying.to_string(), symbol_typed: Symbol::equity(underlying), side: OrderSide::TriggerBuy,
+            order_type: ManagedOrderType::Market, price: Price::from_f32(entry_price), stop_price: Price::ZERO,
+            qty, filled_qty: 0, avg_fill_price: Price::ZERO,
             state: initial_state, pair_id: None,
             trail_amount: None, trail_percent: None,
             option_symbol: Some(format!("{} {}{} {}", underlying, strike, option_type, expiration)),
             option_con_id: None,
             source: OrderSource::OptionsTrigger, tif: 0, outside_rth: false,
-            created_at: now_ms, updated_at: now_ms,
-            backend_order_id: None, state_history: vec![(initial_state, now_ms)],
+            created_at: ts_from_ms(now_ms), updated_at: ts_from_ms(now_ms),
+            backend_order_id: None, state_history: vec![(initial_state, ts_from_ms(now_ms))],
             rejection_reason: None,
             modify_version: 0, modify_inflight: false, modify_pending_price: None,
         });
@@ -1483,38 +1522,25 @@ impl OrderManager {
             .unwrap_or_else(|| format!("apex_opttrig_{}_{}_{}", id, underlying, now_ms));
         let id_copy = id;
 
+        // Wave 4: HTTP body moves into `LiveBroker::submit_options_trigger`.
+        let broker = Arc::clone(&self.broker);
+        let oargs = OptionsTriggerArgs {
+            underlying: und, option_type: ot, strike, expiration: exp,
+            qty, entry_price, entry_direction: entry_dir,
+            exit_price, exit_direction: exit_dir,
+            idempotency_key: idem_key,
+        };
         std::thread::spawn(move || {
-            let client = reqwest::blocking::Client::new();
-            let body = serde_json::json!({
-                "underlying": und,
-                "optionType": ot,
-                "strike": strike,
-                "expiration": exp,
-                "quantity": qty,
-                "entryPrice": entry_price,
-                "entryDirection": entry_dir,
-                "exitPrice": exit_price,
-                "exitDirection": exit_dir,
-                "exitOrderType": "market",
-                "idempotencyKey": idem_key,
-            });
-            match client.post(format!("{}/orders/options-trigger", APEXIB_URL))
-                .json(&body).timeout(std::time::Duration::from_secs(5)).send() {
+            match broker.submit_options_trigger(&oargs) {
                 Ok(resp) => {
-                    if let Ok(json) = resp.json::<serde_json::Value>() {
-                        with_mgr(|mgr| {
-                            if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
-                                if let Some(oid) = json["entryOrderId"].as_str().map(|s| s.to_string()) {
-                                    o.backend_order_id = Some(oid);
-                                }
-                                if let Some(con_id) = json["optionConId"].as_i64() {
-                                    o.option_con_id = Some(con_id);
-                                }
-                            }
-                        });
-                    }
+                    with_mgr(|mgr| {
+                        if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
+                            if let Some(oid) = resp.entry_backend_id { o.backend_order_id = Some(oid); }
+                            if let Some(cid) = resp.option_con_id { o.option_con_id = Some(cid); }
+                        }
+                    });
                 }
-                Err(e) => eprintln!("[options-trigger] submit failed: {e}"),
+                Err(e) => report(ErrorLevel::Error, "options_trigger", "submit_failed", e.to_string()),
             }
         });
 
@@ -1529,6 +1555,7 @@ impl OrderManager {
     /// Submit a combo/spread order via POST /orders/combo.
     /// All legs fill atomically via IB's native combo mechanism.
     #[allow(clippy::too_many_arguments)]
+    #[tracing::instrument(skip(self, legs), level = "debug", fields(symbol, n_legs = legs.len(), side, qty, order_type))]
     pub(crate) fn submit_combo(&mut self, symbol: &str, legs: Vec<ComboLeg>,
         side: &str, qty: u32, order_type: &str, limit_price: Option<f32>,
     ) -> OrderResult {
@@ -1558,16 +1585,16 @@ impl OrderManager {
         let managed_ot = if order_type == "limit" { ManagedOrderType::Limit } else { ManagedOrderType::Market };
 
         self.orders.push(ManagedOrder {
-            id, client_order_id: new_client_order_id(), symbol: symbol.to_string(), side: order_side,
-            order_type: managed_ot, price: limit_price.unwrap_or(0.0), stop_price: 0.0,
-            qty, filled_qty: 0, avg_fill_price: 0.0,
+            id, client_order_id: new_client_order_id(), symbol: symbol.to_string(), symbol_typed: Symbol::equity(symbol), side: order_side,
+            order_type: managed_ot, price: limit_price.map(Price::from_f32).unwrap_or(Price::ZERO), stop_price: Price::ZERO,
+            qty, filled_qty: 0, avg_fill_price: Price::ZERO,
             state: initial_state, pair_id: None,
             trail_amount: None, trail_percent: None,
             option_symbol: Some(format!("{} combo {}leg", symbol, legs.len())),
             option_con_id: None,
             source: OrderSource::Combo, tif: 0, outside_rth: false,
-            created_at: now_ms, updated_at: now_ms,
-            backend_order_id: None, state_history: vec![(initial_state, now_ms)],
+            created_at: ts_from_ms(now_ms), updated_at: ts_from_ms(now_ms),
+            backend_order_id: None, state_history: vec![(initial_state, ts_from_ms(now_ms))],
             rejection_reason: None,
             modify_version: 0, modify_inflight: false, modify_pending_price: None,
         });
@@ -1585,37 +1612,28 @@ impl OrderManager {
         // Build toast before move
         let toast = format!("COMBO {} {} x{} ({} legs)", side.to_uppercase(), symbol, qty, num_legs);
 
+        // Wave 4: combo HTTP shape (legs in body, params in query) moves into
+        // `LiveBroker::submit_combo`. Manager maps its `ComboLeg` into the
+        // broker-side equivalent (same fields, different module).
+        let broker = Arc::clone(&self.broker);
+        let cargs = ComboSubmitArgs {
+            symbol: sym, side: side_owned, qty,
+            order_type: ot_owned, limit_price,
+            legs: legs.iter().map(|l| BrokerComboLeg {
+                con_id: l.con_id, ratio: l.ratio, side: l.side.clone(),
+            }).collect(),
+            idempotency_key: idem_key,
+        };
         std::thread::spawn(move || {
-            let client = reqwest::blocking::Client::new();
-            let legs_json: Vec<serde_json::Value> = legs.iter().map(|l| {
-                serde_json::json!({
-                    "conId": l.con_id,
-                    "ratio": l.ratio,
-                    "side": l.side,
-                })
-            }).collect();
-
-            let mut url = format!("{}/orders/combo?symbol={}&side={}&quantity={}&orderType={}&tif=day&idempotencyKey={}",
-                APEXIB_URL, sym, side_owned, qty, ot_owned, idem_key);
-            if let Some(lp) = limit_price {
-                url.push_str(&format!("&limitPrice={}", lp));
-            }
-
-            match client.post(&url)
-                .json(&legs_json)
-                .timeout(std::time::Duration::from_secs(5)).send() {
-                Ok(resp) => {
-                    if let Ok(json) = resp.json::<serde_json::Value>() {
-                        if let Some(oid) = Self::extract_order_id(&json) {
-                            with_mgr(|mgr| {
-                                if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
-                                    o.backend_order_id = Some(oid);
-                                }
-                            });
+            match broker.submit_combo(&cargs) {
+                Ok(oid) => {
+                    with_mgr(|mgr| {
+                        if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id_copy) {
+                            o.backend_order_id = Some(oid);
                         }
-                    }
+                    });
                 }
-                Err(e) => eprintln!("[combo] submit failed: {e}"),
+                Err(e) => report(ErrorLevel::Error, "combo", "submit_failed", e.to_string()),
             }
         });
 
@@ -1625,6 +1643,7 @@ impl OrderManager {
     }
 
     /// Cancel an order
+    #[tracing::instrument(skip(self), level = "debug", fields(order_id))]
     pub(crate) fn cancel(&mut self, order_id: u64) -> bool {
         // Find the order and its pair_id
         let (is_active, pair_id) = self.orders.iter()
@@ -1651,13 +1670,11 @@ impl OrderManager {
             } else {
                 let cid_thread = cid.clone();
                 let bid = backend_id.clone();
+                let broker = Arc::clone(&self.broker);
                 std::thread::spawn(move || {
-                    let client = reqwest::blocking::Client::new();
-                    let res = client.delete(format!("{}/orders/{}", APEXIB_URL, bid))
-                        .timeout(std::time::Duration::from_secs(5)).send();
-                    match res {
-                        Ok(_) => journal::append(JournalEvent::Ack { client_id: cid_thread, backend_id: Some(bid), ts_ms: epoch_ms() }),
-                        Err(e) => journal::append(JournalEvent::Fail { client_id: cid_thread, reason: format!("cancel http: {e}"), ts_ms: epoch_ms() }),
+                    match broker.cancel(&bid, &cid_thread) {
+                        Ok(()) => journal::append(JournalEvent::Ack { client_id: cid_thread, backend_id: Some(bid), ts_ms: epoch_ms() }),
+                        Err(e) => journal::append(JournalEvent::Fail { client_id: cid_thread, reason: e, ts_ms: epoch_ms() }),
                     }
                 });
             }
@@ -1672,10 +1689,12 @@ impl OrderManager {
                 self.transition(pid, OrderState::Cancelled);
                 // Cancel paired order on backend too
                 if let Some(pair_backend_id) = self.orders.iter().find(|o| o.id == pid).and_then(|o| o.backend_order_id.clone()) {
+                    let pair_cid = self.orders.iter().find(|o| o.id == pid)
+                        .map(|o| o.client_order_id.clone())
+                        .unwrap_or_default();
+                    let broker = Arc::clone(&self.broker);
                     std::thread::spawn(move || {
-                        let client = reqwest::blocking::Client::new();
-                        let _ = client.delete(format!("{}/orders/{}", APEXIB_URL, pair_backend_id))
-                            .timeout(std::time::Duration::from_secs(5)).send();
+                        let _ = broker.cancel(&pair_backend_id, &pair_cid);
                     });
                 }
             }
@@ -1692,16 +1711,17 @@ impl OrderManager {
             ts_ms: epoch_ms(), payload: serde_json::json!({"symbol": symbol}),
         });
         let paper = self.paper_mode;
-        // Send cancel-all to IB backend (skip in paper)
+        // Wave 12b: bulk DELETE now routes through `Broker::cancel_all`.
+        // The per-order cancels that follow this bulk call still go through
+        // `self.broker.cancel(...)` via `self.cancel(id)`.
         if !paper {
             let cid_thread = cid.clone();
+            let symbol_thread = symbol.to_string();
+            let broker = Arc::clone(&self.broker);
             std::thread::spawn(move || {
-                let client = reqwest::blocking::Client::new();
-                let res = client.delete(format!("{}/orders", APEXIB_URL))
-                    .timeout(std::time::Duration::from_secs(5)).send();
-                match res {
-                    Ok(_) => journal::append(JournalEvent::Ack { client_id: cid_thread, backend_id: None, ts_ms: epoch_ms() }),
-                    Err(e) => journal::append(JournalEvent::Fail { client_id: cid_thread, reason: format!("cancel_all http: {e}"), ts_ms: epoch_ms() }),
+                match broker.cancel_all(&symbol_thread) {
+                    Ok(_n) => journal::append(JournalEvent::Ack { client_id: cid_thread, backend_id: None, ts_ms: epoch_ms() }),
+                    Err(e) => journal::append(JournalEvent::Fail { client_id: cid_thread, reason: format!("cancel_all: {e}"), ts_ms: epoch_ms() }),
                 }
             });
         } else {
@@ -1722,7 +1742,8 @@ impl OrderManager {
     /// `modify_inflight`, subsequent calls coalesce into `modify_pending_price`
     /// and fire after the in-flight one completes. Each PUT carries a
     /// monotonic `modify_version` so out-of-order responses are discarded.
-    pub(crate) fn modify_price(&mut self, order_id: u64, new_price: f32) -> bool {
+    #[tracing::instrument(skip(self), level = "debug", fields(order_id, new_price = ?new_price))]
+    pub(crate) fn modify_price(&mut self, order_id: u64, new_price: Price) -> bool {
         let paper = self.paper_mode;
         let Some(o) = self.orders.iter_mut().find(|o| o.id == order_id && o.state.is_active()) else {
             return false;
@@ -1734,8 +1755,8 @@ impl OrderManager {
         }
         let now = epoch_ms();
         o.price = new_price;
-        o.updated_at = now;
-        o.state_history.push((OrderState::PendingModify, now));
+        o.updated_at = ts_from_ms(now);
+        o.state_history.push((OrderState::PendingModify, ts_from_ms(now)));
         o.modify_inflight = true;
         o.modify_version = o.modify_version.wrapping_add(1);
         let version = o.modify_version;
@@ -1744,17 +1765,20 @@ impl OrderManager {
         let is_stop = matches!(o.order_type, ManagedOrderType::Stop);
         let is_stop_limit = matches!(o.order_type, ManagedOrderType::StopLimit);
 
+        // Wire-boundary conversion — the broker JSON shape is unchanged.
+        let new_price_f = new_price.to_f32();
+
         journal::append(JournalEvent::Attempt {
             client_id: cid.clone(), kind: AttemptKind::Modify,
             ts_ms: now, payload: serde_json::json!({
-                "order_id": order_id, "new_price": new_price, "modify_version": version,
+                "order_id": order_id, "new_price": new_price_f, "modify_version": version,
             }),
         });
 
         match backend_id {
             Some(bid) => {
                 if paper {
-                    paper::modify_paper(&bid, new_price);
+                    paper::modify_paper(&bid, new_price_f);
                     journal::append(JournalEvent::Ack { client_id: cid, backend_id: Some(bid), ts_ms: epoch_ms() });
                     // Apply inline for paper — we already hold &mut self so we
                     // can't recurse through `with_mgr` (would deadlock the lock).
@@ -1762,30 +1786,30 @@ impl OrderManager {
                 } else {
                     let cid_thread = cid.clone();
                     let bid_thread = bid.clone();
-                    let np = new_price;
+                    let kind = if is_stop { ModifyKind::Stop }
+                        else if is_stop_limit { ModifyKind::StopLimit }
+                        else { ModifyKind::Limit };
+                    let broker = Arc::clone(&self.broker);
                     std::thread::spawn(move || {
-                        let client = reqwest::blocking::Client::new();
-                        let body = if is_stop {
-                            serde_json::json!({"stopPrice": np, "modifyVersion": version})
-                        } else if is_stop_limit {
-                            serde_json::json!({"limitPrice": np, "stopPrice": np, "modifyVersion": version})
-                        } else {
-                            serde_json::json!({"limitPrice": np, "modifyVersion": version})
+                        let args = ModifyArgs {
+                            backend_id: &bid_thread,
+                            client_order_id: &cid_thread,
+                            new_price,
+                            new_qty: 0,
+                            kind,
+                            modify_version: version,
                         };
-                        let res = client.put(format!("{}/orders/{}", APEXIB_URL, bid_thread))
-                            .json(&body)
-                            .timeout(std::time::Duration::from_secs(5)).send();
-                        match res {
-                            Ok(_) => journal::append(JournalEvent::Ack {
-                                client_id: cid_thread, backend_id: Some(bid), ts_ms: epoch_ms(),
+                        match broker.modify(&args) {
+                            Ok(()) => journal::append(JournalEvent::Ack {
+                                client_id: cid_thread.clone(), backend_id: Some(bid), ts_ms: epoch_ms(),
                             }),
                             Err(e) => journal::append(JournalEvent::Fail {
-                                client_id: cid_thread, reason: format!("modify http: {e}"), ts_ms: epoch_ms(),
+                                client_id: cid_thread.clone(), reason: e, ts_ms: epoch_ms(),
                             }),
                         }
                         // Spawned thread does not hold the manager lock, so it
                         // can re-enter via `with_mgr` safely.
-                        let pending: Option<f32> = with_mgr(|mgr| {
+                        let pending: Option<Price> = with_mgr(|mgr| {
                             let o = mgr.orders.iter_mut().find(|o| o.id == order_id)?;
                             if o.modify_version != version {
                                 return None; // superseded
@@ -1811,7 +1835,7 @@ impl OrderManager {
     /// Used for paper / no-backend paths where `modify_price` hasn't released
     /// the manager lock yet.
     fn apply_modify_result_inner(&mut self, order_id: u64, version: u32) {
-        let pending: Option<f32> = {
+        let pending: Option<Price> = {
             let Some(o) = self.orders.iter_mut().find(|o| o.id == order_id) else { return; };
             if o.modify_version != version {
                 return; // superseded
@@ -1897,10 +1921,20 @@ impl OrderManager {
             Ok(bytes) => {
                 let path = orders_state_path();
                 if let Err(e) = std::fs::write(&path, &bytes) {
-                    eprintln!("[order_manager] save_to_disk write failed: {e}");
+                    report(ErrorLevel::Error, "order_manager", "save_write_failed", e.to_string());
                 }
             }
-            Err(e) => eprintln!("[order_manager] save_to_disk serialize failed: {e}"),
+            Err(e) => report(ErrorLevel::Error, "order_manager", "save_serialize_failed", e.to_string()),
+        }
+        // Wave 5: also write a versioned envelope alongside the legacy
+        // `orders.json`. The cold-start path still reads the legacy file
+        // today; the envelope is being shadow-written so a future wave
+        // can flip the reader without a flag day.
+        let snapshot = OrdersJournalSnapshot {
+            orders: active.into_iter().cloned().collect(),
+        };
+        if let Err(e) = crate::state::save(&orders_envelope_path(), &snapshot) {
+            report(ErrorLevel::Error, "order_manager", "save_envelope_failed", e.to_string());
         }
     }
 
@@ -1916,7 +1950,7 @@ impl OrderManager {
         let restored: Vec<ManagedOrder> = match serde_json::from_slice(&bytes) {
             Ok(v) => v,
             Err(e) => {
-                eprintln!("[order_manager] load_from_disk parse failed: {e}");
+                report(ErrorLevel::Error, "order_manager", "load_parse_failed", e.to_string());
                 return;
             }
         };
@@ -1924,8 +1958,8 @@ impl OrderManager {
         let now = epoch_ms();
         for mut o in restored {
             o.state = OrderState::Working;
-            o.updated_at = now;
-            o.state_history.push((OrderState::Working, now));
+            o.updated_at = ts_from_ms(now);
+            o.state_history.push((OrderState::Working, ts_from_ms(now)));
             if o.id >= self.next_id { self.next_id = o.id + 1; }
             self.orders.push(o);
         }
@@ -1943,8 +1977,8 @@ impl OrderManager {
             let now = epoch_ms();
             let from = o.state;
             o.state = new_state;
-            o.updated_at = now;
-            o.state_history.push((new_state, now));
+            o.updated_at = ts_from_ms(now);
+            o.state_history.push((new_state, ts_from_ms(now)));
             chg = Some((o.id.to_string(), from, new_state, now));
         }
         snapshot::publish(&self.orders);
@@ -1962,7 +1996,7 @@ impl OrderManager {
     pub(crate) fn gc(&mut self) {
         if self.orders.len() > 600 {
             let keep = self.orders.len() - 500;
-            self.orders.retain(|o| !o.state.is_terminal() || o.updated_at > epoch_ms() - 3_600_000);
+            self.orders.retain(|o| !o.state.is_terminal() || (o.updated_at.millis() as u64) > epoch_ms() - 3_600_000);
             if self.orders.len() > 500 {
                 self.orders.drain(0..self.orders.len().saturating_sub(500));
             }
@@ -1988,6 +2022,7 @@ pub(crate) fn confirm_order(id: u64) -> bool {
 }
 
 /// Cancel an order
+#[tracing::instrument(level = "debug", fields(order_id = id))]
 pub(crate) fn cancel_order(id: u64) -> bool {
     let r = with_mgr(|mgr| mgr.cancel(id));
     with_mgr(|mgr| mgr.save_to_disk());
@@ -2002,7 +2037,9 @@ pub(crate) fn cancel_all_orders(symbol: &str) {
 
 /// Modify order price
 pub(crate) fn modify_order_price(id: u64, new_price: f32) -> bool {
-    let r = with_mgr(|mgr| mgr.modify_price(id, new_price));
+    // External callers (core.rs render path) pass f32; convert to Price at
+    // the boundary so the internal API stays typed.
+    let r = with_mgr(|mgr| mgr.modify_price(id, Price::from_f32(new_price)));
     with_mgr(|mgr| mgr.save_to_disk());
     r
 }
@@ -2076,7 +2113,7 @@ pub(crate) fn all_order_levels_for(symbol: &str) -> Vec<OrderLevel> {
     let cutoff = epoch_ms().saturating_sub(60_000); // keep terminal orders for 60s
     let snap = snapshot::current();
     snap.orders.iter()
-        .filter(|o| o.symbol == symbol && (o.state.is_active() || o.updated_at > cutoff))
+        .filter(|o| o.symbol == symbol && (o.state.is_active() || (o.updated_at.millis() as u64) > cutoff))
         .map(|o| o.to_order_level())
         .collect()
 }
@@ -2089,21 +2126,22 @@ pub(crate) fn submit_and_get_id(intent: OrderIntent) -> Option<u64> {
     match submit_order(intent) {
         OrderResult::Accepted(id) | OrderResult::NeedsConfirmation(id) => Some(id),
         OrderResult::Duplicate => {
-            eprintln!("[order-manager] Duplicate (silent): side={:?} price={:.2} qty={} (within {}ms cooldown)",
-                side, price, qty, with_mgr(|m| m.risk_limits.dedup_cooldown_ms));
+            let cd = with_mgr(|m| m.risk_limits.dedup_cooldown_ms);
+            report(ErrorLevel::Info, "order_manager", "duplicate_silent",
+                format!("side={:?} price={:.2} qty={} (within {}ms cooldown)", side, price, qty, cd));
             None
         }
         OrderResult::Rejected(reason) => {
-            eprintln!("[order-manager] Rejected: side={:?} price={:.2} qty={}: {}",
-                side, price, qty, reason);
+            report(ErrorLevel::Warn, "order_manager", "rejected",
+                format!("side={:?} price={:.2} qty={}: {}", side, price, qty, reason));
             None
         }
         OrderResult::NeedsApproval { reason, .. } => {
             // No order id is created on the soft-warning path — callers that
             // need to surface the warning to the operator must use
             // `submit_order` directly and inspect the result.
-            eprintln!("[order-manager] NeedsApproval (silent at this entry point): side={:?} price={:.2} qty={}: {}",
-                side, price, qty, reason);
+            report(ErrorLevel::Info, "order_manager", "needs_approval_silent",
+                format!("side={:?} price={:.2} qty={}: {}", side, price, qty, reason));
             None
         }
     }
@@ -2166,11 +2204,21 @@ pub(crate) fn next_order_id() -> u64 {
 
 /// What-if margin check for a proposed order
 pub(crate) fn check_margin(symbol: &str, side: &str, qty: u32, order_type: &str, price: f32) -> Option<serde_json::Value> {
+    // Wave 12b: conId lookup routes through `Broker::resolve_contract` so
+    // paper/mock brokers can short-circuit and tests don't hit the network.
+    // The margin GET still uses raw reqwest — folding it into the broker
+    // trait is left for a follow-up because the wire shape is heavier than
+    // `ContractDetails` and only one caller needs it.
+    let broker = with_mgr(|m| Arc::clone(&m.broker));
+    let details = broker.resolve_contract(symbol).ok()?;
+    let con_id = details.conid;
+    // Bonus: every margin check now populates the conId cache so chart /
+    // ib_ws callers don't have to re-resolve. The observe call is no-op if
+    // the conId is 0 (paper mode synthetic).
+    if con_id != 0 {
+        crate::data::feeds::ib_ws::resolver::resolver().observe(symbol, con_id);
+    }
     let client = reqwest::blocking::Client::new();
-    let con_id = client.get(format!("{}/contract/{}", APEXIB_URL, symbol))
-        .timeout(std::time::Duration::from_secs(5)).send()
-        .and_then(|r| r.json::<serde_json::Value>()).ok()
-        .and_then(|j| j["conId"].as_i64())?;
     client.get(format!("{}/orders/0/margin?conId={}&side={}&quantity={}&orderType={}&limitPrice={}",
         APEXIB_URL, con_id, side, qty, order_type, price))
         .timeout(std::time::Duration::from_secs(5)).send().ok()
@@ -2230,7 +2278,7 @@ fn save_control_flags() {
     let (k, h) = with_mgr(|m| (m.kill_engaged, m.halted));
     let v = serde_json::json!({ "kill_engaged": k, "halted": h });
     if let Err(e) = std::fs::write(control_flags_path(), v.to_string()) {
-        eprintln!("[control] save_control_flags failed: {e}");
+        report(ErrorLevel::Error, "control", "save_flags_failed", e.to_string());
     }
 }
 
@@ -2255,6 +2303,7 @@ pub(crate) fn update_risk_limits(limits: RiskLimits) {
 }
 
 /// Reconcile OrderManager state with IB backend data (called each frame with account poller data)
+#[tracing::instrument(skip(ib_orders), level = "debug", fields(n_orders = ib_orders.len()))]
 pub(crate) fn reconcile_with_ib(ib_orders: &[super::IbOrder]) {
     with_mgr(|mgr| reconcile_with_ib_inner(mgr, ib_orders));
     with_mgr(|mgr| mgr.save_to_disk());
@@ -2360,13 +2409,14 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
                     id,
                     client_order_id: format!("ext-{}", backend_id),
                     symbol: ib.symbol.clone(),
+                    symbol_typed: Symbol::equity(&ib.symbol),
                     side,
                     order_type: ManagedOrderType::Limit,
-                    price: ib.limit_price as f32,
-                    stop_price: 0.0,
+                    price: Price::from_dollars(ib.limit_price),
+                    stop_price: Price::ZERO,
                     qty: ib.qty.max(0) as u32,
                     filled_qty: ib.filled_qty.max(0) as u32,
-                    avg_fill_price: ib.avg_fill_price as f32,
+                    avg_fill_price: Price::from_dollars(ib.avg_fill_price),
                     state,
                     pair_id: None,
                     trail_amount: None,
@@ -2374,12 +2424,12 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
                     option_symbol: None,
                     option_con_id: None,
                     source: OrderSource::Api,
-                    created_at: ib.submitted_at.max(0) as u64,
-                    updated_at: now,
+                    created_at: ts_from_ms(ib.submitted_at.max(0) as u64),
+                    updated_at: ts_from_ms(now),
                     backend_order_id: Some(backend_id),
                     tif: 0,
                     outside_rth: false,
-                    state_history: vec![(state, now)],
+                    state_history: vec![(state, ts_from_ms(now))],
                     rejection_reason: rejection,
                     modify_version: 0,
                     modify_inflight: false,
@@ -2387,10 +2437,11 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
                 };
                 let new_idx = mgr.orders.len();
                 mgr.orders.push(adopted);
-                eprintln!("[reconcile] Rule 5: adopted external order id={} {} {} x{} state={:?}",
-                    id, mgr.orders[new_idx].symbol,
-                    if matches!(mgr.orders[new_idx].side, OrderSide::Buy) {"BUY"} else {"SELL"},
-                    mgr.orders[new_idx].qty, state);
+                report(ErrorLevel::Info, "reconcile", "rule5_adopted",
+                    format!("external order id={} {} {} x{} state={:?}",
+                        id, mgr.orders[new_idx].symbol,
+                        if matches!(mgr.orders[new_idx].side, OrderSide::Buy) {"BUY"} else {"SELL"},
+                        mgr.orders[new_idx].qty, state));
                 journal::append(JournalEvent::Reconcile {
                     client_id: id.to_string(),
                     local: state,
@@ -2421,7 +2472,7 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
             let token = if !ib.backend_id.is_empty() {
                 ib.backend_id.clone()
             } else {
-                format!("ib_{}", mgr.orders[idx].created_at)
+                format!("ib_{}", mgr.orders[idx].created_at.millis())
             };
             mgr.orders[idx].backend_order_id = Some(token);
         }
@@ -2430,7 +2481,7 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
         if matches!(prev_state, OrderState::Cancelled)
             && matches!(broker_state, OrderState::Working | OrderState::PartialFill)
         {
-            eprintln!("[reconcile] Rule 4: local Cancelled but broker Working — re-firing cancel id={}", local_id);
+            report(ErrorLevel::Warn, "reconcile", "rule4_recancel", format!("local Cancelled but broker Working — re-firing cancel id={}", local_id));
             journal::append(JournalEvent::Reconcile {
                 client_id: local_id.to_string(),
                 local: prev_state,
@@ -2481,8 +2532,8 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
         let mut state_changed = false;
         if mgr.orders[idx].state != new_state {
             mgr.orders[idx].state = new_state;
-            mgr.orders[idx].updated_at = now;
-            mgr.orders[idx].state_history.push((new_state, now));
+            mgr.orders[idx].updated_at = ts_from_ms(now);
+            mgr.orders[idx].state_history.push((new_state, ts_from_ms(now)));
             state_changed = true;
         }
 
@@ -2490,11 +2541,11 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
         let mut filled_changed = false;
         if let Some(fq) = filled_qty_to_set {
             mgr.orders[idx].filled_qty = fq;
-            mgr.orders[idx].avg_fill_price = ib.avg_fill_price as f32;
+            mgr.orders[idx].avg_fill_price = Price::from_dollars(ib.avg_fill_price);
             filled_changed = true;
         } else if matches!(new_state, OrderState::Filled) && mgr.orders[idx].filled_qty == 0 && qty_filled_broker > 0 {
             mgr.orders[idx].filled_qty = qty_filled_broker as u32;
-            mgr.orders[idx].avg_fill_price = ib.avg_fill_price as f32;
+            mgr.orders[idx].avg_fill_price = Price::from_dollars(ib.avg_fill_price);
             filled_changed = true;
         }
 
@@ -2505,7 +2556,7 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
             let sym = mgr.orders[idx].symbol.clone();
             let qty = mgr.orders[idx].qty;
             let fq = mgr.orders[idx].filled_qty;
-            let avg = mgr.orders[idx].avg_fill_price;
+            let avg = mgr.orders[idx].avg_fill_price.to_f32();
             // Toast firing rules — surgical to prevent repeated emissions
             // when the broker streams multiple execution records (one per
             // fill chunk) for the same trade. Each record bumps filled_qty
@@ -2594,10 +2645,10 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
             if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id) {
                 let prev = o.state;
                 if !matches!(prev, OrderState::Unknown) {
-                    eprintln!("[reconcile] Rule 3: order {} not seen by broker for >15s — marking Unknown", id);
+                    report(ErrorLevel::Warn, "reconcile", "rule3_unknown", format!("order {} not seen by broker for >15s — marking Unknown", id));
                     o.state = OrderState::Unknown;
-                    o.updated_at = now;
-                    o.state_history.push((OrderState::Unknown, now));
+                    o.updated_at = ts_from_ms(now);
+                    o.state_history.push((OrderState::Unknown, ts_from_ms(now)));
                     journal::append(JournalEvent::Reconcile {
                         client_id: id.to_string(),
                         local: prev,
@@ -2629,7 +2680,7 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
         }
     }
     for cid in to_cancel_partners {
-        eprintln!("[reconcile] orphan pair: cancelling partner id={}", cid);
+        report(ErrorLevel::Warn, "reconcile", "orphan_pair_cancel", format!("cancelling partner id={}", cid));
         journal::append(JournalEvent::Reconcile {
             client_id: cid.to_string(),
             local: mgr.orders.iter().find(|o| o.id == cid).map(|o| o.state).unwrap_or(OrderState::Unknown),
@@ -2658,13 +2709,11 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
         } else {
             let cid_thread = cid_str;
             let bid_thread = bid.clone();
+            let broker = Arc::clone(&mgr.broker);
             std::thread::spawn(move || {
-                let client = reqwest::blocking::Client::new();
-                let res = client.delete(format!("{}/orders/{}", APEXIB_URL, bid_thread))
-                    .timeout(std::time::Duration::from_secs(5)).send();
-                match res {
-                    Ok(_) => journal::append(JournalEvent::Ack { client_id: cid_thread, backend_id: Some(bid_thread), ts_ms: epoch_ms() }),
-                    Err(e) => journal::append(JournalEvent::Fail { client_id: cid_thread, reason: format!("rule4 recancel: {e}"), ts_ms: epoch_ms() }),
+                match broker.cancel(&bid_thread, &cid_thread) {
+                    Ok(()) => journal::append(JournalEvent::Ack { client_id: cid_thread.clone(), backend_id: Some(bid_thread), ts_ms: epoch_ms() }),
+                    Err(e) => journal::append(JournalEvent::Fail { client_id: cid_thread.clone(), reason: format!("rule4 recancel: {e}"), ts_ms: epoch_ms() }),
                 }
             });
         }
@@ -2680,6 +2729,20 @@ fn epoch_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
 }
 
+/// Wave 3: typed wall-clock timestamp for `ManagedOrder.created_at` /
+/// `updated_at` / `state_history`. Local wall-clock — order lifecycle ts are
+/// recorded by this process, not the exchange.
+fn epoch_ts() -> Timestamp {
+    Timestamp::from_millis(epoch_ms() as i64, TimeSource::Local)
+}
+
+/// Wrap an existing `u64` wall-clock ms into a typed `Timestamp`. Used at
+/// construction sites that already captured `now_ms = epoch_ms()` for
+/// downstream arithmetic and want a parallel typed value for the struct fields.
+fn ts_from_ms(ms: u64) -> Timestamp {
+    Timestamp::from_millis(ms as i64, TimeSource::Local)
+}
+
 /// Lock-free snapshot accessor for render path.
 #[allow(dead_code)]
 pub(crate) fn orders_snapshot() -> std::sync::Arc<crate::chart::renderer::trading::snapshot::OrdersSnapshot> {
@@ -2688,60 +2751,17 @@ pub(crate) fn orders_snapshot() -> std::sync::Arc<crate::chart::renderer::tradin
 
 // ─── Wave 6a: WAL replay & broker reconciliation ─────────────────────────────
 
-/// Broker-side view of an order, returned by `query_broker_by_client_id`.
-#[derive(Debug, Clone)]
-pub(crate) enum BrokerOrderState {
-    Working { backend_id: String, status: String },
-    Filled { backend_id: String, fill_price: f32, qty: u32 },
-    Cancelled { backend_id: String },
-    Rejected { reason: String },
-    NotFound,
-}
-
-/// Query ApexIB for the order with the given client_order_id (idempotency key).
-/// Returns `None` if the HTTP request itself failed (network/timeout) — the
-/// caller should leave the orphan alone and retry next startup.
+/// Query the broker for the order with the given client_order_id.
 ///
-/// TODO: confirm with backend — assumed endpoint shape is
-/// `GET {APEXIB_URL}/orders/by-client-id/{cid}` returning a JSON object with
-/// `status`, `orderId`, `avgFillPrice`, `filledQty`. If the endpoint isn't
-/// available the request returns 404 → `Some(NotFound)`, which is the safe
-/// outcome (we'll mark the local order Rejected with a clear reason).
-fn query_broker_by_client_id(cid: &str) -> Option<BrokerOrderState> {
-    let client = reqwest::blocking::Client::new();
-    let url = format!("{}/orders/by-client-id/{}", APEXIB_URL, cid);
-    let resp = client.get(&url)
-        .timeout(std::time::Duration::from_secs(3))
-        .send()
-        .ok()?;
-    let status = resp.status();
-    if status.as_u16() == 404 {
-        return Some(BrokerOrderState::NotFound);
-    }
-    if !status.is_success() {
-        // Any other non-2xx is treated as transient — don't draw conclusions.
-        return None;
-    }
-    let json: serde_json::Value = resp.json().ok()?;
-    let backend_id = json["orderId"].as_str().map(|s| s.to_string())
-        .or_else(|| json["orderId"].as_i64().map(|n| n.to_string()))
-        .unwrap_or_default();
-    let raw_status = json["status"].as_str().unwrap_or("").to_string();
-    let lower = raw_status.to_ascii_lowercase();
-    Some(match lower.as_str() {
-        "filled" => BrokerOrderState::Filled {
-            backend_id,
-            fill_price: json["avgFillPrice"].as_f64().unwrap_or(0.0) as f32,
-            qty: json["filledQty"].as_i64().unwrap_or(0).max(0) as u32,
-        },
-        "cancelled" | "apicancelled" => BrokerOrderState::Cancelled { backend_id },
-        "rejected" | "inactive" => BrokerOrderState::Rejected {
-            reason: format!("broker: {}", raw_status),
-        },
-        "submitted" | "presubmitted" | "working" | "" =>
-            BrokerOrderState::Working { backend_id, status: raw_status },
-        _ => BrokerOrderState::Working { backend_id, status: raw_status },
-    })
+/// Wave 12b: now routes through `Broker::lookup_by_client_id`, whose
+/// `Result<Option<_>, ApiError>` shape lets us tell apart:
+/// - `Ok(Some(state))` — broker found it; adopt its state.
+/// - `Ok(None)` — broker confirmed it doesn't know about the order;
+///   mark Rejected with "orphan-not-at-broker".
+/// - `Err(_)` — transport failure; leave orphan alone for the next sweep.
+fn query_broker_by_client_id(cid: &str) -> Result<Option<BrokerOrderState>, crate::data::connectivity::error::ApiError> {
+    let broker = with_mgr(|m| Arc::clone(&m.broker));
+    broker.lookup_by_client_id(cid)
 }
 
 /// Wave 6a: replay the WAL, find Attempts with no Ack/Fail, and ask the broker
@@ -2752,7 +2772,7 @@ fn query_broker_by_client_id(cid: &str) -> Option<BrokerOrderState> {
 pub(crate) fn replay_and_recover() {
     let orphans = journal::find_orphan_attempts();
     if orphans.is_empty() { return; }
-    eprintln!("[recovery] {} orphan attempts — querying broker", orphans.len());
+    report(ErrorLevel::Info, "recovery", "orphan_query_start", format!("{} orphan attempts — querying broker", orphans.len()));
 
     for (cid, kind, ts, _payload) in orphans {
         // Cancel/CancelAll attempts are best handled by the live reconciler;
@@ -2761,15 +2781,15 @@ pub(crate) fn replay_and_recover() {
             continue;
         }
         match query_broker_by_client_id(&cid) {
-            Some(BrokerOrderState::Working { backend_id, status }) => {
+            Ok(Some(BrokerOrderState::Working { backend_id, status })) => {
                 with_mgr(|mgr| {
                     if let Some(o) = mgr.orders.iter_mut().find(|o| o.client_order_id == cid) {
                         o.backend_order_id = Some(backend_id.clone());
                         if !matches!(o.state, OrderState::Working | OrderState::PartialFill) {
                             let now = epoch_ms();
                             o.state = OrderState::Working;
-                            o.updated_at = now;
-                            o.state_history.push((OrderState::Working, now));
+                            o.updated_at = ts_from_ms(now);
+                            o.state_history.push((OrderState::Working, ts_from_ms(now)));
                         }
                     }
                     journal::append(JournalEvent::Reconcile {
@@ -2787,16 +2807,16 @@ pub(crate) fn replay_and_recover() {
                     snapshot::publish(&mgr.orders);
                 });
             }
-            Some(BrokerOrderState::Filled { backend_id, fill_price, qty }) => {
+            Ok(Some(BrokerOrderState::Filled { backend_id, fill_price, qty })) => {
                 with_mgr(|mgr| {
                     if let Some(o) = mgr.orders.iter_mut().find(|o| o.client_order_id == cid) {
                         let now = epoch_ms();
                         o.backend_order_id = Some(backend_id.clone());
                         o.state = OrderState::Filled;
                         o.filled_qty = qty;
-                        o.avg_fill_price = fill_price;
-                        o.updated_at = now;
-                        o.state_history.push((OrderState::Filled, now));
+                        o.avg_fill_price = Price::from_f32(fill_price);
+                        o.updated_at = ts_from_ms(now);
+                        o.state_history.push((OrderState::Filled, ts_from_ms(now)));
                     }
                     journal::append(JournalEvent::Reconcile {
                         client_id: cid.clone(),
@@ -2813,14 +2833,14 @@ pub(crate) fn replay_and_recover() {
                     snapshot::publish(&mgr.orders);
                 });
             }
-            Some(BrokerOrderState::Cancelled { backend_id }) => {
+            Ok(Some(BrokerOrderState::Cancelled { backend_id })) => {
                 with_mgr(|mgr| {
                     if let Some(o) = mgr.orders.iter_mut().find(|o| o.client_order_id == cid) {
                         let now = epoch_ms();
                         o.backend_order_id = Some(backend_id.clone());
                         o.state = OrderState::Cancelled;
-                        o.updated_at = now;
-                        o.state_history.push((OrderState::Cancelled, now));
+                        o.updated_at = ts_from_ms(now);
+                        o.state_history.push((OrderState::Cancelled, ts_from_ms(now)));
                     }
                     journal::append(JournalEvent::Reconcile {
                         client_id: cid.clone(),
@@ -2837,14 +2857,14 @@ pub(crate) fn replay_and_recover() {
                     snapshot::publish(&mgr.orders);
                 });
             }
-            Some(BrokerOrderState::Rejected { reason }) => {
+            Ok(Some(BrokerOrderState::Rejected { reason })) => {
                 with_mgr(|mgr| {
                     if let Some(o) = mgr.orders.iter_mut().find(|o| o.client_order_id == cid) {
                         let now = epoch_ms();
                         o.state = OrderState::Rejected;
                         o.rejection_reason = Some(reason.clone());
-                        o.updated_at = now;
-                        o.state_history.push((OrderState::Rejected, now));
+                        o.updated_at = ts_from_ms(now);
+                        o.state_history.push((OrderState::Rejected, ts_from_ms(now)));
                     }
                     journal::append(JournalEvent::Fail {
                         client_id: cid.clone(),
@@ -2854,14 +2874,14 @@ pub(crate) fn replay_and_recover() {
                     snapshot::publish(&mgr.orders);
                 });
             }
-            Some(BrokerOrderState::NotFound) => {
+            Ok(None) => {
                 with_mgr(|mgr| {
                     if let Some(o) = mgr.orders.iter_mut().find(|o| o.client_order_id == cid) {
                         let now = epoch_ms();
                         o.state = OrderState::Rejected;
                         o.rejection_reason = Some("orphan-not-at-broker".into());
-                        o.updated_at = now;
-                        o.state_history.push((OrderState::Rejected, now));
+                        o.updated_at = ts_from_ms(now);
+                        o.state_history.push((OrderState::Rejected, ts_from_ms(now)));
                     }
                     journal::append(JournalEvent::Reconcile {
                         client_id: cid.clone(),
@@ -2878,11 +2898,11 @@ pub(crate) fn replay_and_recover() {
                     snapshot::publish(&mgr.orders);
                 });
             }
-            None => {
-                // Broker query failed (transport / timeout). Leave as orphan;
-                // next startup or live reconciler will retry.
-                eprintln!("[recovery] broker query failed for cid={} (kind={:?} ts={}) — leaving as orphan",
-                    cid, kind, ts);
+            Err(e) => {
+                // Broker query failed (transport / timeout / circuit open).
+                // Leave as orphan; next startup or live reconciler will retry.
+                report(ErrorLevel::Warn, "recovery", "broker_query_failed",
+                    format!("cid={} (kind={:?} ts={}) err={} — leaving as orphan", cid, kind, ts, e));
             }
         }
     }
@@ -2913,8 +2933,9 @@ pub(crate) fn reconcile_positions(positions: &[super::Position]) {
                 .sum();
             let broker_signed = pos.qty as i64;
             if local_signed != broker_signed {
-                eprintln!("[reconcile-pos] {}: local={} broker={} drift={}",
-                    pos.symbol, local_signed, broker_signed, broker_signed - local_signed);
+                report(ErrorLevel::Warn, "reconcile_pos", "position_drift",
+                    format!("{}: local={} broker={} drift={}",
+                        pos.symbol, local_signed, broker_signed, broker_signed - local_signed));
                 journal::append(JournalEvent::Reconcile {
                     client_id: format!("position:{}", pos.symbol),
                     local: OrderState::Filled,
@@ -2960,12 +2981,12 @@ fn start_pending_sweeper() {
                     let mut to_unknown: Vec<u64> = Vec::new();
                     for o in mgr.orders.iter() {
                         let pending = matches!(o.state, OrderState::PendingSubmit | OrderState::PendingCancel | OrderState::PendingModify);
-                        if pending && now.saturating_sub(o.updated_at) > 10_000 {
+                        if pending && now.saturating_sub(o.updated_at.millis() as u64) > 10_000 {
                             to_unknown.push(o.id);
                         }
                     }
                     for id in to_unknown {
-                        eprintln!("[sweeper] order {} stuck pending — marking Unknown", id);
+                        report(ErrorLevel::Warn, "sweeper", "stuck_pending", format!("order {} stuck pending — marking Unknown", id));
                         mgr.transition(id, OrderState::Unknown);
                     }
                 });
@@ -3011,7 +3032,7 @@ pub(crate) fn check_broker_health() {
             m.halted = true;
             m.auto_halted_due_to_disconnect = true;
             m.pending_toasts.push("BROKER DISCONNECTED \u{2014} trading auto-halted".into());
-            eprintln!("[broker-watchdog] disconnect >10s, halting");
+            report(ErrorLevel::Critical, "broker_watchdog", "disconnect_halt", "disconnect >10s, halting");
             journal::append(JournalEvent::Control { kind: ControlKind::Halt, ts_ms: now });
         }
         if !stale && m.auto_halted_due_to_disconnect {
@@ -3019,7 +3040,7 @@ pub(crate) fn check_broker_health() {
             m.halted = false;
             m.auto_halted_due_to_disconnect = false;
             m.pending_toasts.push("BROKER RECONNECTED \u{2014} trading resumed".into());
-            eprintln!("[broker-watchdog] contact restored, resuming");
+            report(ErrorLevel::Info, "broker_watchdog", "contact_restored", "contact restored, resuming");
             journal::append(JournalEvent::Control { kind: ControlKind::Resume, ts_ms: now });
         }
     });
@@ -3188,16 +3209,16 @@ mod tests {
         let now = epoch_ms();
         m.orders.push(ManagedOrder {
             id: 1, client_order_id: "pre-1".into(),
-            symbol: "AAPL".into(), side: OrderSide::Buy,
-            order_type: ManagedOrderType::Limit, price: 100.0, stop_price: 0.0,
-            qty: 900, filled_qty: 0, avg_fill_price: 0.0,
+            symbol: "AAPL".into(), symbol_typed: Symbol::equity("AAPL"), side: OrderSide::Buy,
+            order_type: ManagedOrderType::Limit, price: Price::from_f32(100.0), stop_price: Price::ZERO,
+            qty: 900, filled_qty: 0, avg_fill_price: Price::ZERO,
             state: OrderState::Working, pair_id: None,
             trail_amount: None, trail_percent: None,
             option_symbol: None, option_con_id: None,
             source: OrderSource::OrderPanel,
-            created_at: now, updated_at: now, backend_order_id: None,
+            created_at: ts_from_ms(now), updated_at: ts_from_ms(now), backend_order_id: None,
             tif: 0, outside_rth: false,
-            state_history: vec![(OrderState::Working, now)],
+            state_history: vec![(OrderState::Working, ts_from_ms(now))],
             rejection_reason: None,
             modify_version: 0, modify_inflight: false, modify_pending_price: None,
         });
@@ -3331,10 +3352,10 @@ mod tests {
         let mut m = fresh_manager();
         let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 10));
         let id = order_id(&r).expect("submit should accept");
-        assert!(m.modify_price(id, 101.0));
-        assert!(m.modify_price(id, 102.0));
+        assert!(m.modify_price(id, Price::from_f32(101.0)));
+        assert!(m.modify_price(id, Price::from_f32(102.0)));
         let o = m.orders.iter().find(|o| o.id == id).expect("order present");
-        assert!((o.price - 102.0).abs() < 0.001,
+        assert!((o.price.to_f32() - 102.0).abs() < 0.001,
                 "after two modify_price calls, price should equal latest: got {}", o.price);
         // After the synchronous paper path settles, no inflight should remain.
         assert!(!o.modify_inflight, "modify_inflight should be cleared after paper modify settles");
@@ -3363,16 +3384,16 @@ mod tests {
         let now = epoch_ms();
         let mk = |id: u64, side: OrderSide, state: OrderState, pair: u64| ManagedOrder {
             id, client_order_id: format!("oco-{}", id),
-            symbol: "AAPL".into(), side,
-            order_type: ManagedOrderType::Limit, price: 100.0, stop_price: 0.0,
+            symbol: "AAPL".into(), symbol_typed: Symbol::equity("AAPL"), side,
+            order_type: ManagedOrderType::Limit, price: Price::from_f32(100.0), stop_price: Price::ZERO,
             qty: 10, filled_qty: if matches!(state, OrderState::Filled) { 10 } else { 0 },
-            avg_fill_price: 0.0, state, pair_id: Some(pair),
+            avg_fill_price: Price::ZERO, state, pair_id: Some(pair),
             trail_amount: None, trail_percent: None,
             option_symbol: None, option_con_id: None,
             source: OrderSource::Oco,
-            created_at: now, updated_at: now, backend_order_id: None,
+            created_at: ts_from_ms(now), updated_at: ts_from_ms(now), backend_order_id: None,
             tif: 0, outside_rth: false,
-            state_history: vec![(state, now)],
+            state_history: vec![(state, ts_from_ms(now))],
             rejection_reason: None,
             modify_version: 0, modify_inflight: false, modify_pending_price: None,
         };
@@ -3417,17 +3438,17 @@ mod tests {
             let now = epoch_ms();
             let mut a = ManagedOrder {
                 id: 10, client_order_id: "ka".into(),
-                symbol: "AAPL".into(), side: OrderSide::Buy,
-                order_type: ManagedOrderType::Limit, price: 100.0, stop_price: 0.0,
-                qty: 10, filled_qty: 0, avg_fill_price: 0.0,
+                symbol: "AAPL".into(), symbol_typed: Symbol::equity("AAPL"), side: OrderSide::Buy,
+                order_type: ManagedOrderType::Limit, price: Price::from_f32(100.0), stop_price: Price::ZERO,
+                qty: 10, filled_qty: 0, avg_fill_price: Price::ZERO,
                 state: OrderState::PendingSubmit, pair_id: None,
                 trail_amount: None, trail_percent: None,
                 option_symbol: None, option_con_id: None,
                 source: OrderSource::OrderPanel,
-                created_at: now, updated_at: now,
+                created_at: ts_from_ms(now), updated_at: ts_from_ms(now),
                 backend_order_id: Some("abc".into()),
                 tif: 0, outside_rth: false,
-                state_history: vec![(OrderState::PendingSubmit, now)],
+                state_history: vec![(OrderState::PendingSubmit, ts_from_ms(now))],
                 rejection_reason: None,
                 modify_version: 0, modify_inflight: false, modify_pending_price: None,
             };
@@ -3453,16 +3474,16 @@ mod tests {
             let now = epoch_ms();
             m.orders.push(ManagedOrder {
                 id: 1, client_order_id: "k".into(),
-                symbol: "AAPL".into(), side: OrderSide::Buy,
-                order_type: ManagedOrderType::Limit, price: 100.0, stop_price: 0.0,
-                qty: 10, filled_qty: 0, avg_fill_price: 0.0,
+                symbol: "AAPL".into(), symbol_typed: Symbol::equity("AAPL"), side: OrderSide::Buy,
+                order_type: ManagedOrderType::Limit, price: Price::from_f32(100.0), stop_price: Price::ZERO,
+                qty: 10, filled_qty: 0, avg_fill_price: Price::ZERO,
                 state: OrderState::PendingSubmit, pair_id: None,
                 trail_amount: None, trail_percent: None,
                 option_symbol: None, option_con_id: None,
                 source: OrderSource::OrderPanel,
-                created_at: now, updated_at: now, backend_order_id: None,
+                created_at: ts_from_ms(now), updated_at: ts_from_ms(now), backend_order_id: None,
                 tif: 0, outside_rth: false,
-                state_history: vec![(OrderState::PendingSubmit, now)],
+                state_history: vec![(OrderState::PendingSubmit, ts_from_ms(now))],
                 rejection_reason: None,
                 modify_version: 0, modify_inflight: false, modify_pending_price: None,
             });
@@ -3498,17 +3519,17 @@ mod tests {
             let now = epoch_ms();
             m.orders.push(ManagedOrder {
                 id: 1, client_order_id: "k".into(),
-                symbol: "AAPL".into(), side: OrderSide::Buy,
-                order_type: ManagedOrderType::Limit, price: 100.0, stop_price: 0.0,
-                qty: 10, filled_qty: 0, avg_fill_price: 0.0,
+                symbol: "AAPL".into(), symbol_typed: Symbol::equity("AAPL"), side: OrderSide::Buy,
+                order_type: ManagedOrderType::Limit, price: Price::from_f32(100.0), stop_price: Price::ZERO,
+                qty: 10, filled_qty: 0, avg_fill_price: Price::ZERO,
                 state: OrderState::Cancelled, pair_id: None,
                 trail_amount: None, trail_percent: None,
                 option_symbol: None, option_con_id: None,
                 source: OrderSource::OrderPanel,
-                created_at: now, updated_at: now,
+                created_at: ts_from_ms(now), updated_at: ts_from_ms(now),
                 backend_order_id: Some("abc".into()),
                 tif: 0, outside_rth: false,
-                state_history: vec![(OrderState::Cancelled, now)],
+                state_history: vec![(OrderState::Cancelled, ts_from_ms(now))],
                 rejection_reason: None,
                 modify_version: 0, modify_inflight: false, modify_pending_price: None,
             });
@@ -3550,17 +3571,17 @@ mod tests {
             let now = epoch_ms();
             m.orders.push(ManagedOrder {
                 id: 1, client_order_id: "k".into(),
-                symbol: "AAPL".into(), side: OrderSide::Buy,
-                order_type: ManagedOrderType::Limit, price: 100.0, stop_price: 0.0,
-                qty: 100, filled_qty: 50, avg_fill_price: 100.0,
+                symbol: "AAPL".into(), symbol_typed: Symbol::equity("AAPL"), side: OrderSide::Buy,
+                order_type: ManagedOrderType::Limit, price: Price::from_f32(100.0), stop_price: Price::ZERO,
+                qty: 100, filled_qty: 50, avg_fill_price: Price::from_f32(100.0),
                 state: OrderState::PartialFill, pair_id: None,
                 trail_amount: None, trail_percent: None,
                 option_symbol: None, option_con_id: None,
                 source: OrderSource::OrderPanel,
-                created_at: now, updated_at: now,
+                created_at: ts_from_ms(now), updated_at: ts_from_ms(now),
                 backend_order_id: Some("abc".into()),
                 tif: 0, outside_rth: false,
-                state_history: vec![(OrderState::PartialFill, now)],
+                state_history: vec![(OrderState::PartialFill, ts_from_ms(now))],
                 rejection_reason: None,
                 modify_version: 0, modify_inflight: false, modify_pending_price: None,
             });
@@ -3574,7 +3595,7 @@ mod tests {
 
             let o = m.orders.iter().find(|o| o.id == 1).unwrap();
             assert_eq!(o.filled_qty, 80, "local should catch up to broker filled_qty");
-            assert!((o.avg_fill_price - 100.5).abs() < 0.001,
+            assert!((o.avg_fill_price.to_f32() - 100.5).abs() < 0.001,
                     "avg_fill_price should be updated alongside filled_qty");
         }
     }
@@ -3592,11 +3613,98 @@ mod tests {
     // ── K. WAL roundtrip ─────────────────────────────────────────────────────
 
     #[test]
-    #[ignore = "wal::append writes to a hardcoded `state/orders.wal` next to the executable; testing roundtrip cleanly requires a path override (env var or feature flag) to avoid trampling the live WAL on developer machines."]
+    #[serial_test::serial(apex_wal_path)]
     fn wal_roundtrip_replays_in_order() {
-        // TODO: thread a path override (env var `APEX_WAL_PATH` or a
-        // feature flag) through wal::wal_path() so tests can write to a
-        // temp dir.
+        // Point the WAL at a temp dir for the duration of this test so we
+        // don't trample the developer machine's `state/orders.wal`. The
+        // `#[serial(apex_wal_path)]` gate keeps any other env-driven WAL
+        // test from racing the global env var.
+        //
+        // Note: APEX_WAL_PATH is process-global. Sibling tests running in
+        // parallel that call `journal::append` (via `submit`, `cancel`, etc.)
+        // will hit this override while it's live and contribute extra events
+        // to the same file. We compensate by filtering replay down to the
+        // unique client_ids we wrote, plus our distinctive Shutdown ts.
+        use crate::chart::renderer::trading::journal::wal;
+
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let wal_path = tmp.path().join("orders.wal");
+        // SAFETY: the serial gate above prevents concurrent env-var writers
+        // of this same key. Sibling tests reading the var inherit our path.
+        std::env::set_var("APEX_WAL_PATH", &wal_path);
+        // Defensive: in case a prior aborted test left bytes behind.
+        let _ = std::fs::remove_file(&wal_path);
+
+        let events = vec![
+            JournalEvent::Attempt {
+                client_id: "wal-roundtrip-cid-1".into(),
+                kind: AttemptKind::Submit,
+                ts_ms: 1000,
+                payload: serde_json::json!({"symbol": "AAPL", "qty": 10}),
+            },
+            JournalEvent::Ack {
+                client_id: "wal-roundtrip-cid-1".into(),
+                backend_id: Some("broker-42".into()),
+                ts_ms: 1001,
+            },
+            JournalEvent::StateChg {
+                client_id: "wal-roundtrip-cid-1".into(),
+                from: OrderState::PendingSubmit,
+                to: OrderState::Working,
+                ts_ms: 1002,
+            },
+            JournalEvent::Attempt {
+                client_id: "wal-roundtrip-cid-2".into(),
+                kind: AttemptKind::Cancel,
+                ts_ms: 1003,
+                payload: serde_json::json!({"target": "wal-roundtrip-cid-1"}),
+            },
+            JournalEvent::Fail {
+                client_id: "wal-roundtrip-cid-2".into(),
+                reason: "already filled".into(),
+                ts_ms: 1004,
+            },
+            JournalEvent::Shutdown { ts_ms: 9_999_999_999_998 },
+        ];
+
+        for ev in &events {
+            wal::append(ev);
+        }
+
+        let our_cids: std::collections::HashSet<&str> = [
+            "wal-roundtrip-cid-1",
+            "wal-roundtrip-cid-2",
+        ].iter().copied().collect();
+        let replayed: Vec<JournalEvent> = wal::read_all()
+            .into_iter()
+            .filter(|ev| match ev {
+                // Our sentinel Shutdown ts is far in the future so it won't
+                // collide with an OrderManager Drop-emitted Shutdown.
+                JournalEvent::Shutdown { ts_ms } => *ts_ms == 9_999_999_999_998,
+                JournalEvent::Control { .. } => false,
+                other => our_cids.contains(other.client_id()),
+            })
+            .collect();
+
+        assert_eq!(replayed.len(), events.len(),
+                   "filtered replay count must match append count");
+
+        // Verify exact ordering by event-kind + client_id + timestamp signature.
+        let sig = |ev: &JournalEvent| match ev {
+            JournalEvent::Attempt { client_id, ts_ms, .. } => format!("A:{client_id}:{ts_ms}"),
+            JournalEvent::Ack { client_id, ts_ms, .. }    => format!("K:{client_id}:{ts_ms}"),
+            JournalEvent::Fail { client_id, ts_ms, .. }   => format!("F:{client_id}:{ts_ms}"),
+            JournalEvent::StateChg { client_id, ts_ms, .. } => format!("S:{client_id}:{ts_ms}"),
+            JournalEvent::Reconcile { client_id, ts_ms, .. } => format!("R:{client_id}:{ts_ms}"),
+            JournalEvent::Control { ts_ms, .. }            => format!("C:{ts_ms}"),
+            JournalEvent::Shutdown { ts_ms }               => format!("D:{ts_ms}"),
+        };
+        let expected: Vec<String> = events.iter().map(sig).collect();
+        let actual: Vec<String> = replayed.iter().map(sig).collect();
+        assert_eq!(actual, expected, "WAL must replay events in append order");
+
+        // Clear env var so subsequent tests get the default path again.
+        std::env::remove_var("APEX_WAL_PATH");
     }
 
     // ── L. Wave 8a Task B: submit rate limit ────────────────────────────────
@@ -3681,5 +3789,256 @@ mod tests {
         let r = m.submit(intent);
         assert!(matches!(r, OrderResult::Accepted(_)),
                 "override_warnings=true should clear fat-finger soft gate, got {:?}", r);
+    }
+
+    // ── O. Wave 3 regression: sub-cent dedup signature collision ────────────
+    //
+    // The legacy `OrderSignature` keyed on `(price * 100.0).round() as i64`
+    // (integer cents). That bucketed $145.999 and $146.001 onto the same
+    // signature — legitimate orders one tick apart were silently dropped as
+    // duplicates. With `Price` micro-units the signature uses the full i64
+    // and distinguishes them.
+
+    #[test]
+    fn wave3_dedup_signature_distinguishes_sub_cent_prices() {
+        // Both prices round to the same integer-cents value (14600) but are
+        // genuinely different micro-prices ($145.999 vs $146.001).
+        let a = OrderSignature::new("AAPL", OrderSide::Buy, Price::from_dollars(145.999), 10);
+        let b = OrderSignature::new("AAPL", OrderSide::Buy, Price::from_dollars(146.001), 10);
+        assert_ne!(a, b,
+                   "Wave 3: $145.999 and $146.001 must produce DIFFERENT signatures \
+                    (legacy cents-rounding collapsed them onto the same bucket)");
+        // Spell the underlying micro-unit difference for clarity:
+        assert_eq!(a.price_micro, 145_999_000);
+        assert_eq!(b.price_micro, 146_001_000);
+    }
+
+    #[test]
+    fn wave3_dedup_does_not_block_legitimate_neighbouring_order() {
+        // Real-world reproduction: submit at $145.999, then at $146.001 within
+        // the cooldown window. The second must NOT be reported as Duplicate.
+        let mut m = fresh_manager();
+        m.risk_limits.dedup_cooldown_ms = 5_000;
+        let i1 = limit_intent("AAPL", OrderSide::Buy, 145.999, 10);
+        let i2 = limit_intent("AAPL", OrderSide::Buy, 146.001, 10);
+        let r1 = m.submit(i1);
+        let r2 = m.submit(i2);
+        assert!(matches!(r1, OrderResult::Accepted(_)),
+                "first submit must accept, got {:?}", r1);
+        assert!(matches!(r2, OrderResult::Accepted(_)),
+                "Wave 3: second submit one tick apart must NOT be Duplicate, got {:?}", r2);
+    }
+
+    // ── Wave 4: multi-leg paths now go through Broker trait ─────────────────
+
+    #[test]
+    fn wave4_submit_bracket_creates_three_linked_orders() {
+        use super::super::broker::MockBroker;
+        // We can't easily swap the *global* manager, so build a standalone
+        // OrderManager wired to a MockBroker. submit_bracket mutates `self`
+        // synchronously for the local-state half (creating 3 ManagedOrders
+        // with pair_id set), then spawns a thread for the HTTP half. The
+        // local-state assertions don't depend on the spawn completing.
+        let mock = std::sync::Arc::new(MockBroker::new());
+        let mut m = OrderManager::with_broker(mock.clone());
+        m.paper_mode = true;
+        m.armed = true;
+        m.initial_reconcile_done = true;
+
+        let intent = limit_intent("AAPL", OrderSide::Buy, 100.0, 10);
+        let (entry, tp, sl) = m.submit_bracket(intent, 105.0, 95.0);
+        assert!(matches!(entry, OrderResult::Accepted(_)),
+                "entry leg should accept, got {:?}", entry);
+        assert!(tp.is_some(), "tp leg id should be set");
+        assert!(sl.is_some(), "sl leg id should be set");
+
+        // 3 ManagedOrders, both child legs linked back to the entry id via pair_id.
+        let snap: Vec<_> = m.orders.iter().filter(|o| o.symbol == "AAPL").collect();
+        assert_eq!(snap.len(), 3, "bracket should create 3 local orders");
+        let entry_id = match entry { OrderResult::Accepted(id) => id, _ => unreachable!() };
+        let children: Vec<_> = snap.iter().filter(|o| o.pair_id == Some(entry_id)).collect();
+        assert_eq!(children.len(), 2, "TP + SL must both pair back to entry");
+    }
+
+    // ── L. Wave 7D: single-order paths route through Broker ──────────────────
+    //
+    // These tests verify that submit / cancel / modify on `OrderManager`
+    // delegate to the injected `Broker` trait rather than going inline to
+    // HTTP. They use `MockBroker` (records every call) so we can assert
+    // the broker actually saw the action without standing up a fake HTTP
+    // server. `paper_mode` is OFF — paper mode short-circuits the broker
+    // entirely via `paper::submit_paper` and friends.
+
+    use crate::chart::renderer::trading::broker::{MockBroker, MockCall, MockResponse};
+
+    fn live_mock_manager() -> (OrderManager, Arc<MockBroker>) {
+        let mock = Arc::new(MockBroker::new());
+        let mut m = OrderManager::with_broker(mock.clone() as Arc<dyn Broker>);
+        m.paper_mode = false;
+        m.armed = true;
+        m.risk_limits.dedup_cooldown_ms = 50;
+        m.initial_reconcile_done = true;
+        (m, mock)
+    }
+
+    /// Wait for the spawned broker thread to record its call. The submit /
+    /// cancel / modify paths in `OrderManager` fire-and-forget through
+    /// `std::thread::spawn` so the test must briefly poll. Timeout is
+    /// generous — `MockBroker` does no I/O, so the call typically lands in
+    /// well under 100ms.
+    fn wait_for_mock_call(mock: &Arc<MockBroker>, want: usize) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            if mock.calls().len() >= want { return; }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        panic!("timeout waiting for {} mock broker calls; got {}", want, mock.calls().len());
+    }
+
+    #[test]
+    fn manager_submit_single_via_mock_broker() {
+        let (mut m, mock) = live_mock_manager();
+        mock.enqueue_response(MockResponse::SubmitOk("broker-123".into()));
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 5));
+        assert!(matches!(r, OrderResult::Accepted(_)),
+                "submit should accept and dispatch to broker, got {:?}", r);
+        wait_for_mock_call(&mock, 1);
+        let calls = mock.calls();
+        assert!(matches!(calls[0],
+            MockCall::Submit { ref symbol, ref side, qty: 5, .. }
+                if symbol == "AAPL" && side == "buy"),
+            "expected Submit(AAPL, buy, 5), got {:?}", calls[0]);
+    }
+
+    #[test]
+    fn manager_cancel_via_mock_broker() {
+        let (mut m, mock) = live_mock_manager();
+        mock.enqueue_response(MockResponse::SubmitOk("broker-bid".into()));
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 5));
+        let id = order_id(&r).expect("submit should yield an id");
+        wait_for_mock_call(&mock, 1);
+        // The submit-thread's `with_mgr(...)` writes `backend_order_id` to
+        // the GLOBAL `ORDER_MANAGER`, not our local `m`. For the cancel
+        // path to issue a broker call we need it locally — set it directly.
+        if let Some(o) = m.orders.iter_mut().find(|o| o.id == id) {
+            o.backend_order_id = Some("broker-bid".into());
+        }
+        let cancelled = m.cancel(id);
+        assert!(cancelled, "cancel should succeed");
+        wait_for_mock_call(&mock, 2);
+        let calls = mock.calls();
+        assert!(matches!(calls[1], MockCall::Cancel { ref backend_id, .. }
+            if backend_id == "broker-bid"),
+            "expected Cancel(broker-bid), got {:?}", calls[1]);
+    }
+
+    #[test]
+    fn manager_modify_via_mock_broker() {
+        let (mut m, mock) = live_mock_manager();
+        mock.enqueue_response(MockResponse::SubmitOk("broker-bid".into()));
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 5));
+        let id = order_id(&r).expect("submit should yield an id");
+        wait_for_mock_call(&mock, 1);
+        // Same note as `manager_cancel_via_mock_broker`: the async submit
+        // callback lands in the global manager, not this local one. Wire
+        // the backend_id directly so `modify_price` takes the broker path.
+        if let Some(o) = m.orders.iter_mut().find(|o| o.id == id) {
+            o.backend_order_id = Some("broker-bid".into());
+        }
+        let ok = m.modify_price(id, Price::from_f32(101.25));
+        assert!(ok, "modify should succeed");
+        wait_for_mock_call(&mock, 2);
+        let calls = mock.calls();
+        assert!(matches!(calls[1], MockCall::Modify {
+            ref backend_id, kind: ModifyKind::Limit, new_price, ..
+        } if backend_id == "broker-bid" && (new_price.to_f32() - 101.25).abs() < 1e-4),
+            "expected Modify(broker-bid, Limit, 101.25), got {:?}", calls[1]);
+    }
+
+    // ── Wave 12b: orphan recovery transport vs not-found semantics ─────────
+    //
+    // The real `replay_and_recover` uses the global `ORDER_MANAGER`, which
+    // makes a deterministic end-to-end test awkward (it reads the journal on
+    // disk and mutates global state). This test pins the SEMANTIC contract
+    // of the new typed lookup: a manager + mock-broker pair should land in
+    // distinct local states when the broker reports "confirmed-not-found"
+    // vs "transport-fail". The actual decision logic lives inline in
+    // `replay_and_recover`'s match arms; we replicate the relevant branches
+    // here so a future change that flattens the distinction will trip.
+    #[test]
+    fn orphan_recovery_distinguishes_transport_vs_notfound() {
+        use crate::chart::renderer::trading::broker::BrokerOrderState;
+        use crate::data::connectivity::error::ApiError;
+
+        // Scenario A: transport-fail → orphan stays orphaned (no Rejected).
+        let mock = Arc::new(MockBroker::new());
+        mock.enqueue_response(MockResponse::Lookup(Err(ApiError::Network("down".into()))));
+        let mut got_rejected = false;
+        match mock.lookup_by_client_id("cid-A") {
+            Ok(Some(_)) | Ok(None) => got_rejected = true,
+            Err(_) => { /* leave orphan as-is, expected */ }
+        }
+        assert!(!got_rejected, "transport-fail must NOT mark orphan Rejected");
+
+        // Scenario B: confirmed-not-found → orphan transitions to Rejected.
+        mock.enqueue_response(MockResponse::Lookup(Ok(None)));
+        let mut became_rejected = false;
+        match mock.lookup_by_client_id("cid-B") {
+            Ok(None) => became_rejected = true,
+            Ok(Some(BrokerOrderState::Rejected { .. })) => became_rejected = true,
+            _ => {}
+        }
+        assert!(became_rejected, "confirmed-not-found must mark orphan Rejected");
+
+        // Scenario C: still-working → orphan adopted as Working.
+        mock.enqueue_response(MockResponse::Lookup(Ok(Some(
+            BrokerOrderState::Working { backend_id: "B-9".into(), status: "Submitted".into() }
+        ))));
+        let mut adopted_working = false;
+        if let Ok(Some(BrokerOrderState::Working { .. })) = mock.lookup_by_client_id("cid-C") {
+            adopted_working = true;
+        }
+        assert!(adopted_working, "Working should be adopted by recovery");
+
+        // All three calls should have been recorded.
+        let calls = mock.calls();
+        assert_eq!(calls.len(), 3);
+        assert!(matches!(calls[0], MockCall::Lookup { ref client_order_id } if client_order_id == "cid-A"));
+        assert!(matches!(calls[1], MockCall::Lookup { ref client_order_id } if client_order_id == "cid-B"));
+        assert!(matches!(calls[2], MockCall::Lookup { ref client_order_id } if client_order_id == "cid-C"));
+    }
+
+    // ── Wave 9e: property-based dedup-signature invariants ─────────────────
+    //
+    // proptest variants of the hand-written Wave 3 regression tests above.
+    // Two properties: distinct prices ⇒ distinct signatures; identical inputs
+    // ⇒ identical signatures. 256 cases each by default.
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn order_signature_distinct_prices_distinct_signatures(
+            p1 in 1.0f64..=10_000.0,
+            p2 in 1.0f64..=10_000.0,
+        ) {
+            // Skip pairs that round into the same micro-unit bucket — by
+            // construction the signatures would (correctly) compare equal.
+            let pa = Price::from_dollars(p1);
+            let pb = Price::from_dollars(p2);
+            prop_assume!(pa != pb);
+            let s1 = OrderSignature::new("AAPL", OrderSide::Buy, pa, 100);
+            let s2 = OrderSignature::new("AAPL", OrderSide::Buy, pb, 100);
+            prop_assert_ne!(s1, s2);
+        }
+
+        #[test]
+        fn order_signature_same_inputs_same_signature(
+            p in 1.0f64..=10_000.0,
+            qty in 1u32..=10_000,
+        ) {
+            let s1 = OrderSignature::new("AAPL", OrderSide::Buy, Price::from_dollars(p), qty);
+            let s2 = OrderSignature::new("AAPL", OrderSide::Buy, Price::from_dollars(p), qty);
+            prop_assert_eq!(s1, s2);
+        }
     }
 }

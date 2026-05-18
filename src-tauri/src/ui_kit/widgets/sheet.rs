@@ -240,17 +240,18 @@ impl<'a> Sheet<'a> {
                 // faces the rest of the app). t naturally fades it during
                 // the slide animation since alpha is multiplied here.
                 let shadow_spec = match side {
-                    SheetSide::Right => super::ShadowSpec::lg().offset(-8.0, 0.0),
-                    SheetSide::Left => super::ShadowSpec::lg().offset(8.0, 0.0),
-                    SheetSide::Top => super::ShadowSpec::lg().offset(0.0, 8.0),
-                    SheetSide::Bottom => super::ShadowSpec::lg().offset(0.0, -8.0),
+                    SheetSide::Right => super::ShadowSpec::lg_themed(theme).offset(-8.0, 0.0),
+                    SheetSide::Left => super::ShadowSpec::lg_themed(theme).offset(8.0, 0.0),
+                    SheetSide::Top => super::ShadowSpec::lg_themed(theme).offset(0.0, 8.0),
+                    SheetSide::Bottom => super::ShadowSpec::lg_themed(theme).offset(0.0, -8.0),
                 };
                 let base_a = shadow_spec.color.a() as f32;
                 let a = (base_a * t).clamp(0.0, 255.0) as u8;
+                let s = theme.shadow_color();
                 super::paint_shadow_gpu(
                     ui.painter(),
                     panel_rect,
-                    shadow_spec.color(Color32::from_black_alpha(a)),
+                    shadow_spec.color(Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), a)),
                 );
                 // Background fill for the panel rect.
                 ui.painter().rect_filled(panel_rect, 0.0, bg);
@@ -300,6 +301,7 @@ impl<'a> Sheet<'a> {
                                 .variant(Variant::Ghost)
                                 .size(KitSize::Sm)
                                 .show(ui, theme)
+                                .on_hover_text("Close")
                                 .clicked()
                             {
                                 header_close = true;
@@ -320,6 +322,7 @@ impl<'a> Sheet<'a> {
                                         .variant(Variant::Ghost)
                                         .size(KitSize::Sm)
                                         .show(ui, theme)
+                                        .on_hover_text("Close")
                                         .clicked()
                                     {
                                         header_close = true;

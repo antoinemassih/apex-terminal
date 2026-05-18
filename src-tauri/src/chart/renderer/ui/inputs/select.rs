@@ -19,10 +19,12 @@ use std::hash::Hash;
 use egui::{Color32, Response, RichText, Sense, Stroke, Ui, Vec2, Widget};
 use super::super::style::*;
 use crate::ui_kit::icons::Icon;
-use super::inputs::{TextInput, SearchInput};
+use super::inputs::SearchInput;
 
 #[inline(always)]
-fn ft() -> &'static super::super::super::gpu::Theme { &crate::chart_renderer::gpu::THEMES[0] }
+fn ambient(ctx: &egui::Context) -> &'static super::super::super::gpu::Theme {
+    crate::ui_kit::widgets::theme::active_theme(ctx)
+}
 
 // ─── Dropdown ─────────────────────────────────────────────────────────────────
 
@@ -67,8 +69,8 @@ impl<'a, T: PartialEq + Copy> Dropdown<'a, T> {
     }
 
     pub fn show(self, ui: &mut Ui, current: &mut T) -> bool {
-        let accent = self.accent.unwrap_or_else(|| ft().accent);
-        let dim = self.dim.unwrap_or_else(|| ft().dim);
+        let accent = self.accent.unwrap_or(ambient(ui.ctx()).accent);
+        let dim = self.dim.unwrap_or(ambient(ui.ctx()).dim);
         let width = self.width.unwrap_or(140.0);
         let mut changed = false;
 
@@ -152,8 +154,8 @@ impl<'a, T: PartialEq + Copy> Combobox<'a, T> {
     }
 
     pub fn show(self, ui: &mut Ui, current: &mut T) -> bool {
-        let accent = self.accent.unwrap_or_else(|| ft().accent);
-        let dim = self.dim.unwrap_or_else(|| ft().dim);
+        let accent = self.accent.unwrap_or(ambient(ui.ctx()).accent);
+        let dim = self.dim.unwrap_or(ambient(ui.ctx()).dim);
         let width = self.width.unwrap_or(180.0);
         let mut changed = false;
 
@@ -181,7 +183,7 @@ impl<'a, T: PartialEq + Copy> Combobox<'a, T> {
                 ui.set_min_width(width);
                 let _ = SearchInput::new(&mut filter)
                     .placeholder(self.placeholder)
-                    .palette(accent, ft().bear, dim)
+                    .palette(accent, ambient(ui.ctx()).bear, dim)
                     .show(ui);
                 ui.separator();
 
@@ -259,8 +261,8 @@ impl<'a, T: PartialEq + Copy> MultiSelect<'a, T> {
 
     /// Mutate a `Vec<T>`. Returns true if the selection changed.
     pub fn show_vec(self, ui: &mut Ui, current: &mut Vec<T>) -> bool {
-        let accent = self.accent.unwrap_or_else(|| ft().accent);
-        let dim = self.dim.unwrap_or_else(|| ft().dim);
+        let accent = self.accent.unwrap_or(ambient(ui.ctx()).accent);
+        let dim = self.dim.unwrap_or(ambient(ui.ctx()).dim);
         let width = self.width.unwrap_or(180.0);
         let mut changed = false;
 
@@ -299,8 +301,8 @@ impl<'a, T: PartialEq + Copy> MultiSelect<'a, T> {
 impl<'a, T: PartialEq + Copy + Eq + Hash> MultiSelect<'a, T> {
     /// Mutate a `HashSet<T>`. Returns true if the selection changed.
     pub fn show_set(self, ui: &mut Ui, current: &mut HashSet<T>) -> bool {
-        let accent = self.accent.unwrap_or_else(|| ft().accent);
-        let dim = self.dim.unwrap_or_else(|| ft().dim);
+        let accent = self.accent.unwrap_or(ambient(ui.ctx()).accent);
+        let dim = self.dim.unwrap_or(ambient(ui.ctx()).dim);
         let width = self.width.unwrap_or(180.0);
         let mut changed = false;
 
@@ -386,8 +388,8 @@ impl<'a, 'b> Autocomplete<'a, 'b> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Option<String> {
-        let accent = self.accent.unwrap_or_else(|| ft().accent);
-        let dim = self.dim.unwrap_or_else(|| ft().dim);
+        let accent = self.accent.unwrap_or(ambient(ui.ctx()).accent);
+        let dim = self.dim.unwrap_or(ambient(ui.ctx()).dim);
 
         let edit_id = egui::Id::new(("autocomplete_edit", self.id_salt));
         let popup_id = egui::Id::new(("autocomplete_popup", self.id_salt));
@@ -499,8 +501,8 @@ impl<'a, T: PartialEq + Copy> SegmentedControl<'a, T> {
     pub fn height(mut self, h: f32) -> Self { self.height = Some(h); self }
 
     pub fn show(self, ui: &mut Ui, current: &mut T) -> bool {
-        let accent = self.accent.unwrap_or_else(|| ft().accent);
-        let dim = self.dim.unwrap_or_else(|| ft().dim);
+        let accent = self.accent.unwrap_or(ambient(ui.ctx()).accent);
+        let dim = self.dim.unwrap_or(ambient(ui.ctx()).dim);
         let mut changed = false;
 
         let prev_item_spacing = ui.spacing().item_spacing.x;
@@ -552,7 +554,7 @@ impl<'a, T: PartialEq + Copy> SegmentedControl<'a, T> {
                         (false, false) => egui::CornerRadius::ZERO,
                     }
                 } else {
-                    egui::CornerRadius::same(99)
+                    egui::CornerRadius::same(radius_pill() as u8)
                 };
 
                 let resp = ui.add(
@@ -611,8 +613,8 @@ impl<'a, T: PartialEq + Copy> RadioGroup<'a, T> {
     }
 
     pub fn show(self, ui: &mut Ui, current: &mut T) -> bool {
-        let accent = self.accent.unwrap_or_else(|| ft().accent);
-        let dim = self.dim.unwrap_or_else(|| ft().dim);
+        let accent = self.accent.unwrap_or(ambient(ui.ctx()).accent);
+        let dim = self.dim.unwrap_or(ambient(ui.ctx()).dim);
         let mut changed = false;
 
         ui.vertical(|ui| {
@@ -696,8 +698,8 @@ impl<'a, T: Clone + PartialEq> DropdownOwned<'a, T> {
 
     /// Show the dropdown. Returns `(changed, combo_response)`.
     pub fn show_resp(mut self, ui: &mut Ui, current: &mut T) -> (bool, Response) {
-        let accent = self.accent.unwrap_or_else(|| ft().accent);
-        let dim = self.dim.unwrap_or_else(|| ft().dim);
+        let accent = self.accent.unwrap_or(ambient(ui.ctx()).accent);
+        let dim = self.dim.unwrap_or(ambient(ui.ctx()).dim);
         let width = self.width.unwrap_or(140.0);
         let fs = self.font_size.unwrap_or_else(font_sm);
         let mut changed = false;
@@ -774,8 +776,8 @@ impl<'a> DropdownActions<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response {
-        let accent = self.accent.unwrap_or_else(|| ft().accent);
-        let dim = self.dim.unwrap_or_else(|| ft().dim);
+        let accent = self.accent.unwrap_or(ambient(ui.ctx()).accent);
+        let dim = self.dim.unwrap_or(ambient(ui.ctx()).dim);
         let trigger = self.trigger_text.unwrap_or_else(|| {
             RichText::new(Icon::CARET_DOWN).size(24.0).color(dim)
         });

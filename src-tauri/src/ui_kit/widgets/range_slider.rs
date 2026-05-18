@@ -98,7 +98,7 @@ fn paint_range_slider<T: egui::emath::Numeric>(
                 f.layout_no_wrap(
                     text.to_string(),
                     egui::FontId::proportional(st::font_xs()),
-                    Color32::WHITE,
+                    Color32::WHITE, // layout-only: only `.rect.width()/.height()` is read
                 )
             });
             let lbl_pos = ui.cursor().min;
@@ -125,7 +125,7 @@ fn paint_range_slider<T: egui::emath::Numeric>(
                 f.layout_no_wrap(
                     text.clone(),
                     egui::FontId::proportional(st::font_xs()),
-                    Color32::WHITE,
+                    Color32::WHITE, // layout-only: only `.rect.width()/.height()` is read
                 )
             });
             ui.painter().text(
@@ -233,7 +233,7 @@ fn paint_range_slider<T: egui::emath::Numeric>(
                 painter.circle_stroke(
                     center,
                     d * 0.5,
-                    Stroke::new(2.0, fill_col),
+                    Stroke::new(st::stroke_thick(), fill_col),
                 );
             }
 

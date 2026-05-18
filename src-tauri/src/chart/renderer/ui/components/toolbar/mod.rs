@@ -20,8 +20,9 @@ pub mod top_nav;
 use egui::{Color32, Response, RichText, Stroke, Ui, Widget};
 use super::super::style::*;
 
-fn ft() -> &'static super::super::super::gpu::Theme {
-    &super::super::super::gpu::THEMES[0]
+#[inline(always)]
+fn ambient(ctx: &egui::Context) -> &'static super::super::super::gpu::Theme {
+    crate::ui_kit::widgets::theme::active_theme(ctx)
 }
 
 // ─── toolbar_btn (free function) ──────────────────────────────────────────────
@@ -89,37 +90,39 @@ pub fn toolbar_btn(
 pub struct TimeframeSelector<'a> {
     options: &'a [&'a str],
     active_idx: usize,
-    accent: Color32,
-    dim: Color32,
+    accent: Option<Color32>,
+    dim: Option<Color32>,
 }
 
 impl<'a> TimeframeSelector<'a> {
     pub fn new(options: &'a [&'a str], active_idx: usize) -> Self {
-        let f = ft();
         Self {
             options,
             active_idx,
-            accent: f.accent,
-            dim: f.dim,
+            accent: None,
+            dim: None,
         }
     }
     pub fn theme(mut self, t: &super::super::super::gpu::Theme) -> Self {
-        self.accent = t.accent;
-        self.dim = t.dim;
+        self.accent = Some(t.accent);
+        self.dim = Some(t.dim);
         self
     }
     pub fn show(self, ui: &mut Ui) -> Option<usize> {
+        let amb = ambient(ui.ctx());
+        let accent_c = self.accent.unwrap_or(amb.accent);
+        let dim_c = self.dim.unwrap_or(amb.dim);
         let mut clicked = None;
-        let pill_r = egui::CornerRadius::same(99);
+        let pill_r = egui::CornerRadius::same(radius_pill() as u8);
         let prev_item_spacing = ui.spacing().item_spacing.x;
         ui.spacing_mut().item_spacing.x = gap_xs();
         let prev_pad = ui.spacing().button_padding;
         ui.spacing_mut().button_padding = egui::vec2(gap_md(), gap_xs());
         for (i, &label) in self.options.iter().enumerate() {
             let active = i == self.active_idx;
-            let fg = if active { self.accent } else { self.dim };
+            let fg = if active { accent_c } else { dim_c };
             let (bg, border) = if active {
-                (color_alpha(self.accent, alpha_tint()), color_alpha(self.accent, alpha_dim()))
+                (color_alpha(accent_c, alpha_tint()), color_alpha(accent_c, alpha_dim()))
             } else {
                 (Color32::TRANSPARENT, Color32::TRANSPARENT)
             };
@@ -128,11 +131,9 @@ impl<'a> TimeframeSelector<'a> {
                     .fill(bg)
                     .stroke(Stroke::new(stroke_thin(), border))
                     .corner_radius(pill_r)
-                    .min_size(egui::vec2(0.0, 20.0)),
+                    .min_size(egui::vec2(0.0, row_height_default())),
             );
-            if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            }
+            super::super::style::cursor::clickable(ui, &resp);
             if resp.clicked() && i != self.active_idx {
                 clicked = Some(i);
             }
@@ -157,36 +158,38 @@ impl<'a> TimeframeSelector<'a> {
 pub struct PaneHeaderAction<'a> {
     label: &'a str,
     active: bool,
-    text_color: Color32,
-    dim_color: Color32,
+    text_color: Option<Color32>,
+    dim_color: Option<Color32>,
 }
 
 impl<'a> PaneHeaderAction<'a> {
     pub fn new(label: &'a str) -> Self {
-        let f = ft();
         Self {
             label,
             active: false,
-            text_color: f.text,
-            dim_color: f.dim,
+            text_color: None,
+            dim_color: None,
         }
     }
     pub fn active(mut self, v: bool) -> Self { self.active = v; self }
-    pub fn text_color(mut self, c: Color32) -> Self { self.text_color = c; self }
-    pub fn dim_color(mut self, c: Color32) -> Self { self.dim_color = c; self }
+    pub fn text_color(mut self, c: Color32) -> Self { self.text_color = Some(c); self }
+    pub fn dim_color(mut self, c: Color32) -> Self { self.dim_color = Some(c); self }
     pub fn theme(mut self, t: &super::super::super::gpu::Theme) -> Self {
-        self.text_color = t.text;
-        self.dim_color = t.dim;
+        self.text_color = Some(t.text);
+        self.dim_color = Some(t.dim);
         self
     }
     pub fn show(self, ui: &mut Ui, painter: &egui::Painter, rect: egui::Rect) -> Response {
+        let amb = ambient(ui.ctx());
+        let text_c = self.text_color.unwrap_or(amb.text);
+        let dim_c = self.dim_color.unwrap_or(amb.dim);
         let resp = ui.allocate_rect(rect, egui::Sense::click());
         let fg = if self.active {
-            self.text_color
+            text_c
         } else if resp.hovered() {
-            self.text_color
+            text_c
         } else {
-            self.dim_color.gamma_multiply(0.85)
+            color_subtle(dim_c)
         };
         painter.text(
             egui::pos2(rect.left(), rect.center().y),

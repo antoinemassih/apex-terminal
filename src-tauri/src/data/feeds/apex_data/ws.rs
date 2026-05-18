@@ -13,10 +13,61 @@
 
 use super::config::{apex_ws_url, apex_token, is_enabled};
 use super::types::*;
+use crate::data::connectivity::{self, errors_sink::{report, ErrorLevel}, Backoff, ConnectionState};
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, Ordering};
 use std::time::Duration;
+
+// ── Wave 6: per-feed metrics counters ────────────────────────────────────────
+// Read by `data/providers/apex_data.rs::Connection::metrics()` and surfaced to
+// Prometheus via `foundation/monitoring.rs`.
+pub(crate) static MESSAGES_IN:        AtomicU64 = AtomicU64::new(0);
+pub(crate) static PARSE_ERRORS:       AtomicU64 = AtomicU64::new(0);
+pub(crate) static RECONNECT_COUNT:    AtomicU32 = AtomicU32::new(0);
+pub(crate) static LAST_MESSAGE_AT_MS: AtomicI64 = AtomicI64::new(0);
+
+// ── Wave 7E: WS resilience ───────────────────────────────────────────────────
+// Heartbeat: send a tungstenite Ping every HEARTBEAT_SECS to keep the socket
+// warm and surface dead peers fast (OS TCP keep-alive is ≥2hr by default).
+// Watchdog: if no inbound frame for STALE_TIMEOUT_MS, force a reconnect.
+const HEARTBEAT_SECS: u64 = 30;
+const STALE_TIMEOUT_MS: i64 = 30_000;
+const WATCHDOG_TICK_SECS: u64 = 10;
+/// Flipped to `true` by the watchdog when the feed has been silent past
+/// `STALE_TIMEOUT_MS`. The inner WS loop observes this each select tick and
+/// breaks out so the outer reconnect logic takes over.
+pub(crate) static FORCE_RECONNECT: AtomicBool = AtomicBool::new(false);
+/// Last reason recorded by the watchdog so the provider's ConnectionState
+/// can surface a meaningful Backoff reason after a tick-stall reconnect.
+pub(crate) static LAST_STALL_AT_MS: AtomicI64 = AtomicI64::new(0);
+
+// ── Wave 11c: ConnectionState push-notification stream ───────────────────────
+// Module-level broadcast channel — `ApexDataProvider::subscribe_state()` and
+// every diagnostic consumer hold receivers. Capacity 64 gives slow subscribers
+// some slack before they observe `RecvError::Lagged`. Send is best-effort —
+// failures (no receivers) are silently ignored.
+static STATE_TX: OnceLock<tokio::sync::broadcast::Sender<ConnectionState>> = OnceLock::new();
+
+pub fn state_tx() -> &'static tokio::sync::broadcast::Sender<ConnectionState> {
+    STATE_TX.get_or_init(|| tokio::sync::broadcast::channel(64).0)
+}
+
+/// Publish a state transition to all current subscribers. Call from any
+/// state-mutation site in the WS loop. Send failure (no subscribers) is
+/// silently swallowed — broadcast channels keep working after every receiver
+/// drops.
+pub(crate) fn publish_state(s: ConnectionState) {
+    let _ = state_tx().send(s);
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
 
 use tokio::sync::mpsc;
 use tokio::net::TcpStream;
@@ -74,10 +125,14 @@ struct Manager {
     listeners: Mutex<Vec<Listener>>,
     tx_ctrl: Mutex<Option<mpsc::UnboundedSender<CtrlMsg>>>,
     connected: Mutex<bool>,
+    /// Set by `Shutdown::drain` to stop the reconnect loop after the current
+    /// iteration exits.
+    shutdown: AtomicBool,
 }
 
 enum CtrlMsg {
     PushSubs,
+    Shutdown,
 }
 
 static MANAGER: OnceLock<Arc<Manager>> = OnceLock::new();
@@ -90,6 +145,7 @@ fn manager() -> Arc<Manager> {
             listeners: Mutex::new(Vec::new()),
             tx_ctrl: Mutex::new(None),
             connected: Mutex::new(false),
+            shutdown: AtomicBool::new(false),
         })
     }).clone()
 }
@@ -135,7 +191,10 @@ struct InEnvelope {
 
 /// Boot the client once at startup. Safe to call multiple times — first wins.
 pub fn start() {
-    if !is_enabled() { eprintln!("[apex_data.ws] disabled, not starting"); return; }
+    if !is_enabled() {
+        report(ErrorLevel::Info, "apex_data.ws", "disabled", "not starting");
+        return;
+    }
     let mgr = manager();
     // If a control channel already exists, we've already started.
     if mgr.tx_ctrl.lock().map(|g| g.is_some()).unwrap_or(false) { return; }
@@ -145,6 +204,38 @@ pub fn start() {
 
     let mgr_bg = mgr.clone();
     runtime().spawn(async move { run_connection_loop(mgr_bg, rx_ctrl).await; });
+    // Wave 7E: tick-age watchdog. Runs independently of the WS loop; when it
+    // detects silence past STALE_TIMEOUT_MS it sets FORCE_RECONNECT, which the
+    // inner select breaks on, triggering the existing reconnect path.
+    runtime().spawn(async move { run_watchdog().await; });
+
+    // Register a real Shutdown handler so process exit can drain cleanly.
+    connectivity::register("apex_data.ws", Arc::new(ApexDataWsShutdown { mgr: mgr.clone() }));
+}
+
+/// Real `Shutdown` impl for the ApexData WS connection.
+struct ApexDataWsShutdown {
+    mgr: Arc<Manager>,
+}
+
+#[async_trait::async_trait]
+impl connectivity::Shutdown for ApexDataWsShutdown {
+    async fn drain(&self, deadline: Duration) -> Result<(), String> {
+        tracing::info!(target: "shutdown", connection = "apex_data.ws", "drain invoked");
+        self.mgr.shutdown.store(true, Ordering::SeqCst);
+        // Best-effort: nudge the control loop so it observes shutdown.
+        if let Some(tx) = self.mgr.tx_ctrl.lock().ok().and_then(|g| g.clone()) {
+            let _ = tx.send(CtrlMsg::Shutdown);
+        }
+        // Wait until the connected flag clears or the deadline elapses.
+        let start = std::time::Instant::now();
+        while start.elapsed() < deadline {
+            let connected = self.mgr.connected.lock().map(|g| *g).unwrap_or(false);
+            if !connected { return Ok(()); }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        Err("apex_data.ws drain timed out".into())
+    }
 }
 
 pub fn is_connected() -> bool {
@@ -206,16 +297,30 @@ fn push_subs() {
 // ────────────────────────────────────────────────────────────────────────────
 
 async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedReceiver<CtrlMsg>) {
+    // Infinite reconnect attempts — exponential backoff w/ jitter prevents
+    // thundering herd. WS feeds should never give up.
+    let mut backoff = Backoff::new().with_max_attempts(None);
+    let mut first_attempt = true;
     loop {
+        if mgr.shutdown.load(Ordering::SeqCst) { break; }
+        if !first_attempt {
+            RECONNECT_COUNT.fetch_add(1, Ordering::Relaxed);
+        }
+        first_attempt = false;
         let url = format!("{}?format=msgpack{}", apex_ws_url(),
             apex_token().map(|t| format!("&token={t}")).unwrap_or_default());
-        eprintln!("[apex_data.ws] connecting → {url}");
+        report(ErrorLevel::Info, "apex_data.ws", "connecting", format!("→ {url}"));
+        publish_state(ConnectionState::Connecting {
+            attempt: RECONNECT_COUNT.load(Ordering::Relaxed) + 1,
+        });
 
         let req = match url.into_client_request() {
             Ok(r) => r,
             Err(e) => {
-                eprintln!("[apex_data.ws] bad url: {e}");
-                tokio::time::sleep(Duration::from_secs(5)).await;
+                report(ErrorLevel::Error, "apex_data.ws", "bad_url", e.to_string());
+                if let Some(d) = backoff.next_delay() {
+                    tokio::time::sleep(d).await;
+                }
                 continue;
             }
         };
@@ -229,7 +334,7 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
         };
 
         let conn_result = if let Some((ip, port)) = lan_override.as_ref() {
-            eprintln!("[apex_data.ws] LAN override: dial {ip}:{port}");
+            report(ErrorLevel::Info, "apex_data.ws", "lan_override", format!("dial {ip}:{port}"));
             match TcpStream::connect((ip.as_str(), *port)).await {
                 Ok(stream) => match client_async(req, MaybeTlsStream::Plain(stream)).await {
                     Ok((ws, _)) => Ok(ws),
@@ -247,15 +352,52 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
         let ws = match conn_result {
             Ok(ws) => ws,
             Err(e) => {
-                eprintln!("[apex_data.ws] connect failed: {e}");
+                report(ErrorLevel::Warn, "apex_data.ws", "connect_failed", e.clone());
                 broadcast(&mgr, &Frame::Connection(false));
-                tokio::time::sleep(Duration::from_secs(2)).await;
+                let next_attempt = RECONNECT_COUNT.load(Ordering::Relaxed) + 1;
+                if let Some(d) = backoff.next_delay() {
+                    publish_state(ConnectionState::Backoff {
+                        until: std::time::Instant::now() + d,
+                        attempt: next_attempt,
+                        reason: format!("connect_failed: {e}"),
+                    });
+                    tokio::time::sleep(d).await;
+                }
                 continue;
             }
         };
-        eprintln!("[apex_data.ws] connected");
+        report(ErrorLevel::Info, "apex_data.ws", "connected", "ws established");
         if let Ok(mut c) = mgr.connected.lock() { *c = true; }
         broadcast(&mgr, &Frame::Connection(true));
+        backoff.reset();
+        // Wave 11c: handshake done — push Authenticated, then a Subscribed
+        // snapshot reflecting whatever subs were re-sent below. The route
+        // table is the source of truth for live sub count.
+        publish_state(ConnectionState::Authenticated);
+        let sub_count = mgr.subs.lock().ok().map(|s|
+            s.bars.len() + s.bars_mark.len() + s.tape.len() + s.quotes.len() + s.chain.len()
+        ).unwrap_or(0);
+        if sub_count > 0 {
+            publish_state(ConnectionState::Subscribed { count: sub_count });
+        }
+
+        // Wave 7E: gap-fill replay through the SubscriptionManager on every
+        // reconnect (not the initial connect — RECONNECT_COUNT > 0 means we
+        // dropped). Spawned so we don't block the WS read loop.
+        if RECONNECT_COUNT.load(Ordering::Relaxed) > 0 {
+            tokio::spawn(async {
+                let mgr = crate::data::providers::registry::subscription_manager();
+                let n = mgr.gap_fill_on_reconnect_all().await;
+                if n > 0 {
+                    report(
+                        ErrorLevel::Info,
+                        "apex_data.ws",
+                        "gap_fill",
+                        format!("replayed {n} bars after reconnect"),
+                    );
+                }
+            });
+        }
 
         let (mut tx_ws, mut rx_ws) = ws.split();
 
@@ -264,17 +406,50 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
             let _ = tx_ws.send(Message::Text(frame)).await;
         }
 
+        // Wave 7E: clear stale flag at connect-time so a previous stall doesn't
+        // immediately tear down the fresh socket.
+        FORCE_RECONNECT.store(false, Ordering::SeqCst);
+        let mut heartbeat = tokio::time::interval(Duration::from_secs(HEARTBEAT_SECS));
+        // Skip the immediate first tick — server hasn't had time to reply.
+        heartbeat.tick().await;
+        // Cheap check (every second) on the watchdog flag so we don't have to
+        // route the signal through a channel.
+        let mut force_check = tokio::time::interval(Duration::from_secs(1));
+        force_check.tick().await;
+
         // Main loop: pump inbound + handle control
         loop {
+            if FORCE_RECONNECT.swap(false, Ordering::SeqCst) {
+                report(ErrorLevel::Warn, "apex_data.ws", "force_reconnect", "watchdog tripped");
+                // Wave 11c: surface the stall as a Backoff transition so push
+                // subscribers see the same reason the poll-path synthesizes.
+                publish_state(ConnectionState::Backoff {
+                    until: std::time::Instant::now() + Duration::from_secs(1),
+                    attempt: RECONNECT_COUNT.load(Ordering::Relaxed),
+                    reason: "tick_stalled".into(),
+                });
+                let _ = tx_ws.close().await;
+                break;
+            }
             tokio::select! {
+                _ = heartbeat.tick() => {
+                    // Tungstenite Ping — protocol-level keepalive; server's
+                    // pong arrives back through rx_ws and is counted in
+                    // LAST_MESSAGE_AT_MS via the default Message arm (no-op).
+                    if let Err(e) = tx_ws.send(Message::Ping(Vec::new().into())).await {
+                        report(ErrorLevel::Warn, "apex_data.ws", "ping_failed", e.to_string());
+                        break;
+                    }
+                }
+                _ = force_check.tick() => { /* loop top re-checks FORCE_RECONNECT */ }
                 msg = rx_ws.next() => {
                     match msg {
                         Some(Ok(Message::Binary(bytes))) => handle_binary(&mgr, &bytes),
                         Some(Ok(Message::Text(text)))   => handle_text(&mgr, &text),
-                        Some(Ok(Message::Close(_))) => { eprintln!("[apex_data.ws] close"); break; }
+                        Some(Ok(Message::Close(_))) => { report(ErrorLevel::Warn, "apex_data.ws", "ws_close", "close frame"); break; }
                         Some(Ok(_))  => {}
-                        Some(Err(e)) => { eprintln!("[apex_data.ws] recv error: {e}"); break; }
-                        None         => { eprintln!("[apex_data.ws] stream ended"); break; }
+                        Some(Err(e)) => { report(ErrorLevel::Warn, "apex_data.ws", "recv_error", e.to_string()); break; }
+                        None         => { report(ErrorLevel::Warn, "apex_data.ws", "stream_ended", "no more frames"); break; }
                     }
                 }
                 ctrl = rx_ctrl.recv() => {
@@ -282,12 +457,15 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
                         Some(CtrlMsg::PushSubs) => {
                             if let Some(frame) = build_subs_frame(&mgr) {
                                 if let Err(e) = tx_ws.send(Message::Text(frame)).await {
-                                    eprintln!("[apex_data.ws] send failed: {e}");
+                                    report(ErrorLevel::Warn, "apex_data.ws", "send_failed", e.to_string());
                                     break;
                                 }
                             }
                         }
-                        None => break,
+                        Some(CtrlMsg::Shutdown) | None => {
+                            let _ = tx_ws.close().await;
+                            break;
+                        }
                     }
                 }
             }
@@ -295,7 +473,49 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
 
         if let Ok(mut c) = mgr.connected.lock() { *c = false; }
         broadcast(&mgr, &Frame::Connection(false));
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        if mgr.shutdown.load(Ordering::SeqCst) {
+            publish_state(ConnectionState::ShuttingDown);
+            break;
+        }
+        if let Some(d) = backoff.next_delay() {
+            publish_state(ConnectionState::Backoff {
+                until: std::time::Instant::now() + d,
+                attempt: RECONNECT_COUNT.load(Ordering::Relaxed) + 1,
+                reason: "disconnected".into(),
+            });
+            tokio::time::sleep(d).await;
+        } else {
+            // Backoff exhausted — terminal failure.
+            publish_state(ConnectionState::Failed {
+                reason: connectivity::ConnectionError::MaxRetriesExceeded(
+                    RECONNECT_COUNT.load(Ordering::Relaxed),
+                ),
+            });
+        }
+    }
+}
+
+/// Wave 7E: tick-age watchdog. Forces a reconnect when no inbound frame has
+/// arrived for `STALE_TIMEOUT_MS`. The inner WS select observes
+/// `FORCE_RECONNECT` and breaks; the outer reconnect loop dials again.
+async fn run_watchdog() {
+    let mut tick = tokio::time::interval(Duration::from_secs(WATCHDOG_TICK_SECS));
+    loop {
+        tick.tick().await;
+        let last = LAST_MESSAGE_AT_MS.load(Ordering::Relaxed);
+        let now = now_ms();
+        if last > 0 && now - last > STALE_TIMEOUT_MS && !FORCE_RECONNECT.load(Ordering::Relaxed) {
+            LAST_STALL_AT_MS.store(now, Ordering::Relaxed);
+            report(
+                ErrorLevel::Warn,
+                "apex_data.ws",
+                "tick_stalled",
+                format!("no frames for {}ms — forcing reconnect", now - last),
+            );
+            FORCE_RECONNECT.store(true, Ordering::SeqCst);
+            // Wave 7E: hook for SubscriptionManager gap-fill — fires on the
+            // *next* successful reconnect via the broadcast wired below.
+        }
     }
 }
 
@@ -325,13 +545,20 @@ fn broadcast(mgr: &Arc<Manager>, f: &Frame) {
 }
 
 fn handle_text(mgr: &Arc<Manager>, text: &str) {
+    MESSAGES_IN.fetch_add(1, Ordering::Relaxed);
+    LAST_MESSAGE_AT_MS.store(now_ms(), Ordering::Relaxed);
     match serde_json::from_str::<InEnvelope>(text) {
         Ok(env) => dispatch(mgr, env),
-        Err(e) => eprintln!("[apex_data.ws] bad json frame: {e}"),
+        Err(e) => {
+            PARSE_ERRORS.fetch_add(1, Ordering::Relaxed);
+            report(ErrorLevel::Warn, "apex_data.ws", "parse_json", e.to_string())
+        }
     }
 }
 
 fn handle_binary(mgr: &Arc<Manager>, bytes: &[u8]) {
+    MESSAGES_IN.fetch_add(1, Ordering::Relaxed);
+    LAST_MESSAGE_AT_MS.store(now_ms(), Ordering::Relaxed);
     match rmp_serde::from_slice::<InEnvelope>(bytes) {
         Ok(env) => dispatch(mgr, env),
         Err(e) => {
@@ -341,7 +568,8 @@ fn handle_binary(mgr: &Arc<Manager>, bytes: &[u8]) {
                     dispatch(mgr, env); return;
                 }
             }
-            eprintln!("[apex_data.ws] bad msgpack frame: {e}");
+            PARSE_ERRORS.fetch_add(1, Ordering::Relaxed);
+            report(ErrorLevel::Warn, "apex_data.ws", "parse_msgpack", e.to_string());
         }
     }
 }
@@ -595,7 +823,7 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
             let src = env.data.get("source").and_then(|v| v.as_str()).unwrap_or("last").to_string();
             match serde_json::from_value::<BarUpdate>(env.data) {
                 Ok(mut b) => { b.source = src; Frame::Bar(b) }
-                Err(e) => { eprintln!("[apex_data.ws] bad bar: {e}"); return; }
+                Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_bar", e.to_string()); return; }
             }
         }
         "snapshot" => {
@@ -604,16 +832,16 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
             let bar = env.data.get("bar").cloned().unwrap_or(serde_json::Value::Null);
             match serde_json::from_value::<BarUpdate>(bar) {
                 Ok(mut b) => { b.source = src; Frame::Snapshot { subscription: sub, bar: b } }
-                Err(e) => { eprintln!("[apex_data.ws] bad snapshot: {e}"); return; }
+                Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_snapshot", e.to_string()); return; }
             }
         }
         "trade" => match serde_json::from_value::<Trade>(env.data) {
             Ok(t) => Frame::Trade(t),
-            Err(e) => { eprintln!("[apex_data.ws] bad trade: {e}"); return; }
+            Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_trade", e.to_string()); return; }
         },
         "quote" => match serde_json::from_value::<Quote>(env.data) {
             Ok(q) => Frame::Quote(q),
-            Err(e) => { eprintln!("[apex_data.ws] bad quote: {e}"); return; }
+            Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_quote", e.to_string()); return; }
         },
         "fmv" => {
             let symbol = env.data.get("symbol").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -623,7 +851,7 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
         }
         "chain_delta" => match serde_json::from_value::<ChainDelta>(env.data) {
             Ok(d) => Frame::ChainDelta(d),
-            Err(e) => { eprintln!("[apex_data.ws] bad chain_delta: {e}"); return; }
+            Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_chain_delta", e.to_string()); return; }
         },
         // SOTA §4.4 — calibrated trade plan v2. Every non-legacy field on
         // TradePlanV2 uses #[serde(default)], so older servers that emit
@@ -677,6 +905,7 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
             Err(e) => { eprintln!("[apex_data.ws] bad regime: {e}"); return; }
         },
         other => { eprintln!("[apex_data.ws] unknown frame: {other}"); return; }
+        other => { report(ErrorLevel::Warn, "apex_data.ws", "unknown_frame", other.to_string()); return; }
     };
     broadcast(mgr, &frame);
 }

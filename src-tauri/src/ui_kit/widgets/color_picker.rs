@@ -259,6 +259,7 @@ fn paint_compact<'a>(
                     st::color_alpha(theme.text(), 200),
                 );
                 let galley = ui.fonts(|f| {
+                    // layout-only: only `.rect.width()` is read.
                     f.layout_no_wrap(
                         text.clone(),
                         FontId::proportional(st::font_sm()),
@@ -352,7 +353,7 @@ fn paint_swatch(
     hovered: bool,
 ) {
     let painter = ui.painter_at(rect);
-    let radius = CornerRadius::same(4);
+    let radius = CornerRadius::same(st::radius_sm() as u8);
 
     // Checkered transparency background if alpha < 255.
     if color.a() < 255 {
@@ -363,13 +364,13 @@ fn paint_swatch(
     // Animated border.
     let hover_t = motion::ease_bool(ui.ctx(), id.with("swatch_hover"), hovered, motion::FAST);
     let border = motion::lerp_color(theme.border(), theme.accent(), hover_t);
-    painter.rect_stroke(rect, radius, Stroke::new(1.0, border), StrokeKind::Inside);
+    painter.rect_stroke(rect, radius, Stroke::new(st::stroke_std(), border), StrokeKind::Inside);
 }
 
 fn paint_checker(painter: &egui::Painter, rect: Rect, cell: f32) {
     let light = Color32::from_gray(180);
     let dark = Color32::from_gray(120);
-    painter.rect_filled(rect, CornerRadius::same(4), light);
+    painter.rect_filled(rect, CornerRadius::same(st::radius_sm() as u8), light);
     let cols = (rect.width() / cell).ceil() as i32;
     let rows = (rect.height() / cell).ceil() as i32;
     for y in 0..rows {
@@ -546,8 +547,8 @@ fn paint_sv_square(
 
     painter.rect_stroke(
         rect,
-        CornerRadius::same(2),
-        Stroke::new(1.0, Color32::from_black_alpha(80)),
+        CornerRadius::same(st::radius_xs() as u8),
+        Stroke::new(st::stroke_std(), Color32::from_black_alpha(80)),
         StrokeKind::Inside,
     );
 
@@ -580,8 +581,8 @@ fn paint_sv_square(
         )
     };
     let center = Pos2::new(dot_x, dot_y);
-    painter.circle_stroke(center, 6.0, Stroke::new(2.0, Color32::WHITE));
-    painter.circle_stroke(center, 6.0, Stroke::new(1.0, Color32::from_black_alpha(180)));
+    painter.circle_stroke(center, 6.0, Stroke::new(st::stroke_thick(), Color32::WHITE));
+    painter.circle_stroke(center, 6.0, Stroke::new(st::stroke_std(), Color32::from_black_alpha(180)));
 
     let _ = hue_color; // silence unused if optimized
 }
@@ -614,8 +615,8 @@ fn paint_hue_strip(
 
     painter.rect_stroke(
         rect,
-        CornerRadius::same(2),
-        Stroke::new(1.0, Color32::from_black_alpha(80)),
+        CornerRadius::same(st::radius_xs() as u8),
+        Stroke::new(st::stroke_std(), Color32::from_black_alpha(80)),
         StrokeKind::Inside,
     );
 
@@ -648,11 +649,11 @@ fn paint_hue_strip(
         Pos2::new(caret_x - 2.0, rect.top() - 2.0),
         Pos2::new(caret_x + 2.0, rect.bottom() + 2.0),
     );
-    painter.rect_filled(caret, CornerRadius::same(1), Color32::WHITE);
+    painter.rect_filled(caret, CornerRadius::same(1), Color32::WHITE); // TODO: off-token
     painter.rect_stroke(
         caret,
-        CornerRadius::same(1),
-        Stroke::new(1.0, Color32::from_black_alpha(180)),
+        CornerRadius::same(1), // TODO: off-token
+        Stroke::new(st::stroke_std(), Color32::from_black_alpha(180)),
         StrokeKind::Inside,
     );
 }

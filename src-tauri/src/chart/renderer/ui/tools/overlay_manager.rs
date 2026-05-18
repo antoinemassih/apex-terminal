@@ -43,7 +43,7 @@ if panes[ap].overlay_editing {
                     // Color cycle (click to cycle through colors)
                     let (cr, cresp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::click());
                     ui.painter().circle_filled(cr.center(), 5.0, oc);
-                    if cresp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    crate::chart_renderer::ui::style::cursor::clickable(ui, &cresp);
                     if cresp.clicked() {
                         let all_colors: Vec<&str> = OVERLAY_COLORS.iter().chain(INDICATOR_COLORS.iter().filter(|c| !OVERLAY_COLORS.contains(c))).copied().collect();
                         let cur_idx = all_colors.iter().position(|&c| c == ov_color).unwrap_or(0);
@@ -51,12 +51,12 @@ if panes[ap].overlay_editing {
                     }
                     // Candle toggle
                     let candle_icon = if ov_candles { Icon::CHART_BAR } else { Icon::CHART_LINE };
-                    let candle_col = if ov_candles { t.accent } else { t.dim.gamma_multiply(0.5) };
-                    if ui.add(Button::icon(candle_icon).variant(Variant::Ghost).glyph_color(candle_col).size(KitSize::Sm)).clicked() {
+                    let candle_col = if ov_candles { t.accent } else { color_half(t.dim) };
+                    if ui.add(Button::icon(candle_icon).variant(Variant::Ghost).glyph_color(candle_col).size(KitSize::Sm)).on_hover_text("Toggle candles / line").clicked() {
                         panes[ap].symbol_overlays[oi].show_candles = !panes[ap].symbol_overlays[oi].show_candles;
                     }
                     // Delete
-                    if ui.add(Button::icon(Icon::X).variant(Variant::Ghost).glyph_color(t.bear.gamma_multiply(0.5)).size(KitSize::Sm)).clicked() {
+                    if ui.add(Button::icon(Icon::X).variant(Variant::Ghost).glyph_color(color_half(t.bear)).size(KitSize::Sm)).on_hover_text("Remove overlay").clicked() {
                         delete_idx = Some(oi);
                     }
                 });
@@ -70,7 +70,7 @@ if panes[ap].overlay_editing {
             }
 
             // ── Add new overlay ──
-            dialog_section(ui, "ADD OVERLAY", m, t.dim.gamma_multiply(0.5));
+            dialog_section(ui, "ADD OVERLAY", m, color_half(t.dim));
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.add_space(m);

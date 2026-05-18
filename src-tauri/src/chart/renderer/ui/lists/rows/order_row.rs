@@ -66,12 +66,11 @@ impl<'a> OrderRow<'a> {
 
     /// Returns (row_response, cancel_clicked).
     pub fn show(self, ui: &mut Ui) -> (Response, bool) {
-        let default_t = &crate::chart_renderer::gpu::THEMES[0];
-        let theme_ref: &Theme = self.theme.unwrap_or(default_t);
-        let bull = self.theme_bull.unwrap_or(default_t.bull);
-        let bear = self.theme_bear.unwrap_or(default_t.bear);
-        let dim = self.theme_dim.unwrap_or(default_t.dim);
-        let fg = self.theme_fg.unwrap_or(default_t.text);
+        let theme_ref: &Theme = self.theme.expect("OrderRow requires a theme — call `.theme(t)` before `.show()`");
+        let bull = self.theme_bull.unwrap_or(theme_ref.bull);
+        let bear = self.theme_bear.unwrap_or(theme_ref.bear);
+        let dim = self.theme_dim.unwrap_or(theme_ref.dim);
+        let fg = self.theme_fg.unwrap_or(theme_ref.text);
 
         let side = self.side;
         let symbol = self.symbol;
@@ -117,7 +116,7 @@ impl<'a> OrderRow<'a> {
                 if let Some(a) = age {
                     let x = if show_cancel { rect.right() - 28.0 } else { rect.right() - 6.0 };
                     ui.painter().text(egui::pos2(x, cy), egui::Align2::RIGHT_CENTER,
-                        a, mono_sm(), dim.gamma_multiply(0.7));
+                        a, mono_sm(), color_subtle(dim));
                 }
 
                 // Embedded cancel button.
@@ -126,6 +125,7 @@ impl<'a> OrderRow<'a> {
                         egui::pos2(rect.right() - 22.0, cy - 8.0),
                         egui::vec2(16.0, 16.0));
                     let cb_resp = ui.allocate_rect(cb, egui::Sense::click());
+                    crate::chart_renderer::ui::style::cursor::clickable(ui, &cb_resp);
                     let col = if cb_resp.hovered() { bear } else { dim };
                     ui.painter().text(cb.center(), egui::Align2::CENTER_CENTER,
                         "×", mono_sm(), col);

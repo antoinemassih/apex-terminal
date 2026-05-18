@@ -8,10 +8,11 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
-use super::super::widgets::text::{SectionLabel, MonospaceCode};
+use super::super::widgets::text::MonospaceCode;
 use super::super::widgets::status::StatusDot;
 use super::super::widgets::inputs::Slider;
-use super::super::widgets::frames::CompactPanelFrame;
+use crate::ui_kit::widgets::{PanelSection, SidePanelShell, Width};
+use crate::ui_kit::icons::Icon;
 
 /// Fixed sector colors for the 11 SPDR sector ETFs.
 const SECTOR_COLORS: &[(&str, &str, (u8, u8, u8))] = &[
@@ -198,72 +199,71 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
     };
     let use_demo = sectors.is_empty();
 
-    // Header
-    ui.add(SectionLabel::new("RRG — Relative Rotation").xs().color(t.dim));
-    super::super::style::separator(ui, t.toolbar_border);
-    ui.add_space(4.0);
+    PanelSection::new("RRG — RELATIVE ROTATION").show(ui, t, |ui, t| {
+        // Compute the square plot area. Don't enforce a min larger than
+        // what's actually available — the previous .max(200.0) prevented
+        // the side panel from being resized narrower than 200px because
+        // the plot would overflow.
+        let avail = ui.available_size();
+        let plot_size = avail.x.min(avail.y - 30.0).max(80.0);
+        let (response, painter) = ui.allocate_painter(
+            egui::vec2(plot_size, plot_size),
+            egui::Sense::hover(),
+        );
+        let rect = response.rect;
 
-    // Compute the square plot area
-    let avail = ui.available_size();
-    let plot_size = avail.x.min(avail.y - 30.0).max(200.0); // leave room for cycle text
-    let (response, painter) = ui.allocate_painter(
-        egui::vec2(plot_size, plot_size),
-        egui::Sense::hover(),
-    );
-    let rect = response.rect;
+        draw_rrg_content(&painter, rect, sectors, use_demo, t,
+            watchlist.rrg_time_offset, watchlist.rrg_tail_length);
 
-    draw_rrg_content(&painter, rect, sectors, use_demo, t,
-        watchlist.rrg_time_offset, watchlist.rrg_tail_length);
+        // Time slider
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.add(MonospaceCode::new("TIME").xs().color(color_alpha(t.dim, alpha_active())));
+            ui.spacing_mut().slider_width = plot_size - 50.0;
+            Slider::new(&mut watchlist.rrg_time_offset, 0.0..=0.95)
+                .show_value(false)
+                .theme(t)
+                .show(ui);
+        });
+        ui.horizontal(|ui| {
+            ui.add(MonospaceCode::new("TAIL").xs().color(color_alpha(t.dim, alpha_active())));
+            ui.spacing_mut().slider_width = plot_size - 50.0;
+            let mut tail = watchlist.rrg_tail_length as f32;
+            if Slider::new(&mut tail, 1.0..=15.0).show_value(false).step(1.0).theme(t).show(ui).changed() {
+                watchlist.rrg_tail_length = tail as usize;
+            }
+        });
 
-    // Time slider
-    ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        ui.add(MonospaceCode::new("TIME").xs().color(color_alpha(t.dim, alpha_active())));
-        ui.spacing_mut().slider_width = plot_size - 50.0;
-        Slider::new(&mut watchlist.rrg_time_offset, 0.0..=0.95)
-            .show_value(false)
-            .theme(t)
-            .show(ui);
-    });
-    ui.horizontal(|ui| {
-        ui.add(MonospaceCode::new("TAIL").xs().color(color_alpha(t.dim, alpha_active())));
-        ui.spacing_mut().slider_width = plot_size - 50.0;
-        let mut tail = watchlist.rrg_tail_length as f32;
-        if Slider::new(&mut tail, 1.0..=15.0).show_value(false).step(1.0).theme(t).show(ui).changed() {
-            watchlist.rrg_tail_length = tail as usize;
-        }
-    });
-
-    // Cycle phase text at the bottom
-    ui.add_space(4.0);
-    let phase = if !watchlist.rrg_cycle_phase.is_empty() {
-        watchlist.rrg_cycle_phase.as_str()
-    } else {
-        "LATE EXPANSION"
-    };
-    ui.horizontal(|ui| {
-        ui.add(MonospaceCode::new("CYCLE:").xs().color(color_alpha(t.dim, alpha_heavy())));
-        ui.add(MonospaceCode::new(phase).xs().color(t.bull));
+        // Cycle phase text at the bottom
+        ui.add_space(4.0);
+        let phase = if !watchlist.rrg_cycle_phase.is_empty() {
+            watchlist.rrg_cycle_phase.as_str()
+        } else {
+            "LATE EXPANSION"
+        };
+        ui.horizontal(|ui| {
+            ui.add(MonospaceCode::new("CYCLE:").xs().color(color_alpha(t.dim, alpha_heavy())));
+            ui.add(MonospaceCode::new(phase).xs().color(t.bull));
+        });
     });
 
     // Legend — compact 2-column layout
-    ui.add_space(4.0);
-    super::super::style::separator(ui, t.toolbar_border);
-    ui.add_space(4.0);
-    let legend_sectors = if use_demo { &demo_sectors()[..] } else { sectors };
-    let half = (legend_sectors.len() + 1) / 2;
-    ui.horizontal(|ui| {
-        ui.vertical(|ui| {
-            for s in legend_sectors.iter().take(half) {
-                let c = sector_color(&s.symbol);
-                ui.add(StatusDot::new().color(c).label(&s.symbol).radius(3.0));
-            }
-        });
-        ui.vertical(|ui| {
-            for s in legend_sectors.iter().skip(half) {
-                let c = sector_color(&s.symbol);
-                ui.add(StatusDot::new().color(c).label(&s.symbol).radius(3.0));
-            }
+    PanelSection::new("LEGEND").show(ui, t, |ui, _t| {
+        let legend_sectors = if use_demo { &demo_sectors()[..] } else { sectors };
+        let half = (legend_sectors.len() + 1) / 2;
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                for s in legend_sectors.iter().take(half) {
+                    let c = sector_color(&s.symbol);
+                    ui.add(StatusDot::new().color(c).label(&s.symbol).radius(3.0));
+                }
+            });
+            ui.vertical(|ui| {
+                for s in legend_sectors.iter().skip(half) {
+                    let c = sector_color(&s.symbol);
+                    ui.add(StatusDot::new().color(c).label(&s.symbol).radius(3.0));
+                }
+            });
         });
     });
 }
@@ -276,23 +276,13 @@ pub(crate) fn draw(
 ) {
     if !watchlist.rrg_open { return; }
 
-    egui::SidePanel::right("rrg_panel")
-        .default_width(320.0)
-        .min_width(240.0)
-        .max_width(500.0)
-        .resizable(true)
-        .frame(CompactPanelFrame::new(t.toolbar_bg, t.toolbar_border).build())
-        .show(ctx, |ui| {
-            // Add close button at the top
-            ui.horizontal(|ui| {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if super::super::style::close_button(ui, t.dim) {
-                        watchlist.rrg_open = false;
-                    }
-                });
-            });
+    let resp = SidePanelShell::new("rrg_panel", "RRG")
+        .width(Width::Medium)
+        .resizable(240.0..=500.0)
+        .show(ctx, t, |ui, t| {
             draw_content(ui, watchlist, t);
         });
+    if resp.close_clicked { watchlist.rrg_open = false; }
 }
 
 /// Draw the RRG scatter plot content into a given rect.

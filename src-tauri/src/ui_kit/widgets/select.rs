@@ -362,6 +362,7 @@ fn paint_select<'a, T: 'a>(
     // Measure the widest label once (used for both trigger and popup widths).
     let label_font = FontId::proportional(font_size);
     let mut widest_label: f32 = 0.0;
+    // layout-only galleys in this block: only `.rect.width()` is read.
     for i in 0..display.len() {
         let label = display.label(i);
         let g = ui.fonts(|f| f.layout_no_wrap(label, label_font.clone(), Color32::WHITE));
@@ -434,12 +435,12 @@ fn paint_select<'a, T: 'a>(
     let open_tint = st::color_alpha(theme.text(), 14);
     let bg_fill = motion::lerp_color(surface_bg, open_tint, open_t);
 
-    let radius = CornerRadius::same(4);
+    let radius = CornerRadius::same(st::radius_sm() as u8);
 
     if ui.is_rect_visible(rect) {
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, radius, bg_fill);
-        painter.rect_stroke(rect, radius, Stroke::new(1.0, border_col), StrokeKind::Inside);
+        painter.rect_stroke(rect, radius, Stroke::new(st::stroke_std(), border_col), StrokeKind::Inside);
     }
 
     // ─── Trigger content ──
@@ -689,7 +690,7 @@ fn chip_paint(
     let painter = ui.painter_at(chip_rect);
     painter.rect_filled(
         chip_rect,
-        CornerRadius::same(3),
+        CornerRadius::same(3), // TODO: off-token
         st::color_alpha(theme.accent(), st::ALPHA_GHOST + 10),
     );
     painter.text(
@@ -832,13 +833,13 @@ fn render_panel<'a, T>(
                 let painter = ui.painter_at(s_rect);
                 painter.rect_filled(
                     s_rect,
-                    CornerRadius::same(3),
+                    CornerRadius::same(3), // TODO: off-token
                     st::color_alpha(theme.bg(), 200),
                 );
                 painter.rect_stroke(
                     s_rect,
-                    CornerRadius::same(3),
-                    Stroke::new(1.0, st::color_alpha(theme.border(), st::alpha_line())),
+                    CornerRadius::same(3), // TODO: off-token
+                    Stroke::new(st::stroke_std(), st::color_alpha(theme.border(), st::alpha_line())),
                     StrokeKind::Inside,
                 );
                 let cy = s_rect.center().y;
@@ -937,7 +938,7 @@ fn render_panel<'a, T>(
                 let div_y = ui.cursor().min.y;
                 ui.painter().line_segment(
                     [Pos2::new(ui.min_rect().left(), div_y), Pos2::new(ui.min_rect().left() + width, div_y)],
-                    Stroke::new(1.0, st::color_alpha(theme.border(), 120)),
+                    Stroke::new(st::stroke_std(), st::color_alpha(theme.border(), 120)),
                 );
                 ui.add_space(st::gap_2xs());
                 let selected = is_selected(mode, i);
@@ -993,7 +994,7 @@ fn render_row<'a, T>(
     let bg_sel = st::color_alpha(theme.accent(), st::ALPHA_GHOST);
     let mut bg = motion::lerp_color(Color32::TRANSPARENT, bg_hover, hover_t);
     bg = motion::lerp_color(bg, bg_sel, sel_t);
-    painter.rect_filled(rect, CornerRadius::same(3), bg);
+    painter.rect_filled(rect, CornerRadius::same(3), bg); // TODO: off-token
 
     let cy = rect.center().y;
     let pad = st::gap_xs();
@@ -1006,18 +1007,18 @@ fn render_row<'a, T>(
         let bx = Rect::from_min_size(Pos2::new(left_x, cy - bs * 0.5), Vec2::splat(bs));
         let border = motion::lerp_color(theme.border(), theme.accent(), sel_t);
         let fill = motion::lerp_color(Color32::TRANSPARENT, theme.accent(), sel_t);
-        painter.rect_filled(bx, CornerRadius::same(2), fill);
+        painter.rect_filled(bx, CornerRadius::same(st::radius_xs() as u8), fill);
         painter.rect_stroke(
             bx,
-            CornerRadius::same(2),
-            Stroke::new(1.0, border),
+            CornerRadius::same(st::radius_xs() as u8),
+            Stroke::new(st::stroke_std(), border),
             StrokeKind::Inside,
         );
         if selected {
             let p1 = Pos2::new(bx.center().x - bs * 0.25, bx.center().y + bs * 0.02);
             let p2 = Pos2::new(bx.center().x - bs * 0.05, bx.center().y + bs * 0.20);
             let p3 = Pos2::new(bx.center().x + bs * 0.28, bx.center().y - bs * 0.18);
-            let s = Stroke::new(1.4, Color32::WHITE);
+            let s = Stroke::new(1.4, st::contrast_fg(theme.accent())); // TODO: off-token (stroke width)
             painter.line_segment([p1, p2], s);
             painter.line_segment([p2, p3], s);
         }

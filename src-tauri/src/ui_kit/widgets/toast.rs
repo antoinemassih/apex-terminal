@@ -17,7 +17,7 @@ use super::theme::ComponentTheme;
 use super::motion;
 
 use crate::chart_renderer::ui::style::{
-    alpha_dim, alpha_strong, color_alpha, font_md, font_sm, gap_lg, r_md_cr, stroke_thin,
+    alpha_dim, alpha_strong, color_alpha, font_md, font_sm, gap_lg, r_md_cr, radius_xs, stroke_thin,
 };
 
 type Theme = crate::chart_renderer::gpu::Theme;
@@ -141,7 +141,7 @@ impl<'a> Toast<'a> {
                 let cur = ui.cursor().min;
                 painter.rect_filled(
                     Rect::from_min_size(cur, Vec2::new(3.0, font_md() + font_sm() + 6.0)),
-                    egui::CornerRadius::same(2),
+                    egui::CornerRadius::same(radius_xs() as u8),
                     accent,
                 );
                 ui.add_space(8.0);

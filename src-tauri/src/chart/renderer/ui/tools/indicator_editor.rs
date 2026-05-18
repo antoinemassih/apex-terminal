@@ -46,6 +46,8 @@ if let Some(edit_id) = panes[ap].editing_indicator {
 
     // Pre-compute header data so the painter closure doesn't need to
     // borrow `panes` (the body closure borrows it mutably).
+    // WHITE is a never-rendered placeholder: the closing branch (no indicator
+    // found) sets close_editor = true and the dot is never painted.
     let (hdr_color, hdr_name) = panes[ap].indicators.iter().find(|i| i.id == edit_id)
         .map(|i| (hex_to_color(&i.color, 1.0), i.display_name()))
         .unwrap_or((egui::Color32::WHITE, String::new()));
@@ -78,7 +80,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 ui.label(egui::RichText::new(&hdr_name).monospace().size(font_sm()).strong().color(TEXT_PRIMARY));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_space(4.0);
-                    if icon_btn(ui, Icon::X, color_subtle(t.dim), FONT_LG).on_hover_text("Close").clicked() {
+                    if icon_btn(ui, Icon::X, color_subtle(t.dim), font_lg()).on_hover_text("Close").clicked() {
                         hdr_close = true;
                     }
                 });
@@ -87,7 +89,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
             // movable(true) (set via Modal::draggable_header) handles motion.
             let hdr_rect = header_resp.response.rect;
             let drag_resp = ui.interact(hdr_rect, egui::Id::new(("ind_editor_drag", edit_id)), egui::Sense::drag());
-            if drag_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::Grab); }
+            crate::chart_renderer::ui::style::cursor::draggable(ui, &drag_resp);
             hdr_close
         })
         .show(|ui| {
@@ -275,7 +277,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     for (i, &tf) in tfs.iter().enumerate() {
                         let label = if tf.is_empty() { "Chart" } else { tf };
                         let sel = ind.source_tf == tf;
-                        let fg = if sel { egui::Color32::WHITE } else { color_subtle(t.dim) };
+                        let fg = if sel { t.text } else { color_subtle(t.dim) };
                         let bg = if sel { color_alpha(t.accent, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_subtle()) };
                         let rounding = if i == 0 {
                             egui::CornerRadius { nw: r_sm, sw: r_sm, ne: 0, se: 0 }
@@ -285,8 +287,8 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                             egui::CornerRadius::ZERO
                         };
                         let stroke_col = if sel { color_alpha(t.accent, alpha_heavy()) } else { color_alpha(t.toolbar_border, alpha_line()) };
-                        if ui.add(egui::Button::new(egui::RichText::new(label).monospace().size(font_sm()).color(fg))
-                            .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, 20.0))
+                        if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new(label).monospace().size(font_sm()).color(fg))
+                            .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, row_height_compact()))
                             .stroke(egui::Stroke::new(stroke_thin(), stroke_col)))
                             .clicked() && !sel
                         {
@@ -389,7 +391,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         .glyph_color(vis_fg)
                         .fill(if ind.visible { color_alpha(t.toolbar_border, alpha_soft()) } else { egui::Color32::TRANSPARENT })
                         .corner_radius(current().r_sm as f32)
-                        .min_size(egui::vec2(24.0, 22.0))
+                        .min_size(egui::vec2(24.0, row_height_default()))
                         .frameless(true));
                     if vr.on_hover_text("Toggle Visibility").clicked() { ind.visible = !ind.visible; }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -401,7 +403,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                             .fill(color_alpha(del_color, alpha_ghost()))
                             .corner_radius(current().r_sm as f32)
                             .stroke(egui::Stroke::new(stroke_thin(), color_alpha(del_color, alpha_dim())))
-                            .min_size(egui::vec2(24.0, 22.0))
+                            .min_size(egui::vec2(24.0, row_height_default()))
                             .frameless(true));
                         if dr.on_hover_text("Delete Indicator").clicked() {
                             delete_id = Some(edit_id); close_editor = true;

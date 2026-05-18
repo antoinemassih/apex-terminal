@@ -14,16 +14,27 @@ fn main() {
     eprintln!("║  Apex Terminal — Native GPU Edition   ║");
     eprintln!("╚══════════════════════════════════════╝");
 
-    // Initialize Redis bar cache
-    _scaffold_lib::bar_cache::init();
+    // Wave 1: unified tracing FIRST. Bind the WorkerGuard to a local that
+    // lives until the bottom of `main` so the non-blocking writer thread
+    // stays alive for the program's duration.
+    let log_dir = std::env::var("APEX_LOG_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir().join("apex-terminal-logs"));
+    let _tracing_guard = _scaffold_lib::data::connectivity::init_tracing(&log_dir);
+    tracing::info!(target: "apex_native", log_dir = %log_dir.display(), "tracing initialized");
+
+    // Initialize Redis bar cache. URL comes from APEX_REDIS_URL env
+    // (defaults to the homelab dev Redis).
+    _scaffold_lib::bar_cache::init(&_scaffold_lib::data::apex_data::config::apex_redis_url());
 
     // Initialize PostgreSQL drawing persistence
     let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
     rt.block_on(async {
+        let pg_url = _scaffold_lib::data::apex_data::config::apex_pg_url();
         match sqlx::postgres::PgPoolOptions::new()
             .max_connections(5)
             .acquire_timeout(std::time::Duration::from_secs(3))
-            .connect("postgresql://postgres:monkeyxx@192.168.1.143:5432/ococo")
+            .connect(&pg_url)
             .await
         {
             Ok(pool) => {
@@ -31,7 +42,11 @@ fn main() {
                 if let Err(e) = _scaffold_lib::drawings::ensure_schema(&pool).await {
                     eprintln!("[apex-native] Schema migration failed: {e}");
                 }
-                _scaffold_lib::drawing_db::init(pool);
+                _scaffold_lib::drawing_db::init(pool.clone());
+                // Wave 7A fix (Bug 2): register the pool for shutdown.
+                use std::sync::Arc;
+                use _scaffold_lib::data::connectivity::{register, shutdown::PgPoolShutdown};
+                register("postgres", Arc::new(PgPoolShutdown { name: "postgres", pool }));
             }
             Err(e) => eprintln!("[apex-native] PostgreSQL unavailable ({e}) — drawings won't persist"),
         }
@@ -73,5 +88,13 @@ fn main() {
         }
     }
 
+    // Wave 1: drain registered connections before exit. Uses the
+    // already-built tokio runtime from above. 3s deadline mirrors the Tauri
+    // entry point.
+    rt.block_on(async {
+        _scaffold_lib::data::connectivity::drain_all(std::time::Duration::from_secs(3)).await;
+    });
+
     eprintln!("[apex-native] All windows closed. Exiting.");
+    drop(_tracing_guard);
 }

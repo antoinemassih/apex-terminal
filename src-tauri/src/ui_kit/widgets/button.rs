@@ -124,11 +124,142 @@ impl<'a> Button<'a> {
         b
     }
 
+    // ─── Named presets for the legacy free-function helpers ────────────
+    //
+    // These cover the role-specific buttons that previously lived as free
+    // functions in `chart/renderer/ui/style.rs` (action_btn, trade_btn,
+    // cta_btn, simple_btn, small_action_btn, close_button, tb_btn). New
+    // code should use these named presets so every button surface goes
+    // through one canonical widget.
+
+    /// Action button — tinted bg for Place / Cancel / Clear. Pass the
+    /// semantic color (bull / bear / accent / warn) as the tint.
+    pub fn action(label: impl Into<&'a str>) -> Self {
+        let mut b = Self::new(label);
+        b.variant = Variant::Secondary;
+        b.size = Size::Sm;
+        b
+    }
+
+    /// Trade button — deep saturated bg for BUY/SELL. Use `.tint(bull)`
+    /// or `.tint(bear)` to color it.
+    pub fn trade(label: impl Into<&'a str>) -> Self {
+        let mut b = Self::new(label);
+        b.variant = Variant::Primary;
+        b.size = Size::Md;
+        b
+    }
+
+    /// Primary CTA button — solid filled accent, full-width default.
+    /// Used for the terminal action at the bottom of order tickets
+    /// ("REVIEW BUY", "PLACE ORDER").
+    pub fn cta(label: impl Into<&'a str>) -> Self {
+        let mut b = Self::new(label);
+        b.variant = Variant::Primary;
+        b.size = Size::Md;
+        b.full_width = true;
+        b
+    }
+
+    /// Small action — inline header actions like "Clear All", "Close All".
+    pub fn small_action(label: impl Into<&'a str>) -> Self {
+        let mut b = Self::new(label);
+        b.variant = Variant::Secondary;
+        b.size = Size::Xs;
+        b
+    }
+
+    /// Simple — subtle border, form-level actions (Create, Cancel).
+    pub fn simple(label: impl Into<&'a str>) -> Self {
+        let mut b = Self::new(label);
+        b.variant = Variant::Secondary;
+        b.size = Size::Sm;
+        b
+    }
+
+    /// Outline + full-width — a Ghost button (no fill) sized small that
+    /// stretches across the available width. Used for the "+ Add …" row
+    /// at the bottom of a `PanelSection` body where the affordance should
+    /// span the section but stay visually quiet. Replaces the
+    /// `Button::simple(label).variant(Ghost).min_size(vec2(avail, 22.0))`
+    /// workaround that several panels had to reach for.
+    pub fn outline_full_width(label: impl Into<&'a str>) -> Self {
+        let mut b = Self::new(label);
+        b.variant = Variant::Ghost;
+        b.size = Size::Sm;
+        b.full_width = true;
+        b
+    }
+
+    /// Toolbar — top-nav button surface. Status mode + Ghost variant so
+    /// the bg only paints on hover/active.
+    pub fn toolbar(label: impl Into<&'a str>) -> Self {
+        let mut b = Self::new(label);
+        b.is_status = true;
+        b.size = Size::Sm;
+        b.variant = Variant::Ghost;
+        b
+    }
+
+    /// Menu trigger — the canonical "I open a dropdown" preset. Pairs
+    /// `Variant::Toolbar` (Status + Ghost so the bg only paints on
+    /// hover) with a trailing caret indicator so the button reads as a
+    /// menu trigger consistent with the rest of the toolbar surfaces.
+    /// Pair with [`Button::show_menu`] to render and attach the popup.
+    ///
+    /// ```ignore
+    /// Button::menu("Mode")
+    ///     .icon(Icon::ARROW_RIGHT)             // optional leading icon
+    ///     .show_menu(ui, t, |ui| {
+    ///         if ui.button("Item 1").clicked() { /* ... */ }
+    ///     });
+    /// ```
+    ///
+    /// Replaces raw
+    /// `ui.menu_button(RichText::new(label).monospace().size(font_sm()).color(t.dim), ...)`
+    /// patterns that have drifted across the toolbar / tool-menu / object-tree.
+    pub fn menu(label: impl Into<&'a str>) -> Self {
+        let mut b = Self::new(label);
+        b.is_status = true;
+        b.size = Size::Sm;
+        b.variant = Variant::Ghost;
+        b.trailing_icon = Some(crate::ui_kit::icons::Icon::CARET_DOWN);
+        b
+    }
+
+    /// Close (×) affordance — small icon-only Ghost. Pair with
+    /// `.size(Size::Xs)` for compact contexts.
+    pub fn close() -> Self {
+        let mut b = Self::icon(crate::ui_kit::icons::Icon::X);
+        b.size = Size::Xs;
+        b
+    }
+
+    /// Toggle chip — one of a row of selectable presets (style chips,
+    /// font-scale chips, session-tint chips). When `active` is true the
+    /// chip paints with an accent-tinted bg + accent fg + accent border;
+    /// when false it paints transparent with a soft dim outline and
+    /// text-color fg. Hover blends toward active styling. Defaults to
+    /// `Variant::Toggle` + `Size::Sm` with the `active` flag pre-set.
+    pub fn toggle(label: impl Into<&'a str>, active: bool) -> Self {
+        let mut b = Self::new(label);
+        b.variant = Variant::Toggle;
+        b.size = Size::Sm;
+        b.active = active;
+        b
+    }
+
     pub fn variant(mut self, v: Variant) -> Self { self.variant = v; self }
     pub fn size(mut self, s: Size) -> Self { self.size = s; self }
     pub fn icon_only(mut self, v: bool) -> Self { self.icon_only = v; self }
     pub fn loading(mut self, v: bool) -> Self { self.loading = v; self }
     pub fn disabled(mut self, v: bool) -> Self { self.disabled = v; self }
+    /// Positive-form counterpart to [`Button::disabled`]. `.enabled(true)`
+    /// keeps the button interactive; `.enabled(false)` gates interaction
+    /// and dims the surface to 50%. Same backing field as `.disabled()` —
+    /// pick whichever reads better at the call site (most call sites think
+    /// "is this button currently active?" rather than "is it disabled?").
+    pub fn enabled(mut self, v: bool) -> Self { self.disabled = !v; self }
     pub fn active(mut self, v: bool) -> Self { self.active = v; self }
     pub fn full_width(mut self, v: bool) -> Self { self.full_width = v; self }
     pub fn tint(mut self, c: Color32) -> Self { self.tint = Some(c); self }
@@ -156,6 +287,16 @@ impl<'a> Button<'a> {
 
     /// Minimum size (replaces auto-computed from Size enum).
     pub fn min_size(mut self, sz: Vec2) -> Self { self.min_size_override = Some(sz); self }
+
+    /// Shortcut for setting only the minimum width. Preserves any
+    /// previously-set min height; otherwise uses the variant's default
+    /// height from [`Size`]. Equivalent to
+    /// `.min_size(vec2(w, current_or_default_height))`.
+    pub fn min_width(mut self, w: f32) -> Self {
+        let h = self.min_size_override.map(|v| v.y).unwrap_or_else(|| self.size.height());
+        self.min_size_override = Some(Vec2::new(w, h));
+        self
+    }
 
     /// Frameless mode: paint label/icon only, no bg/border. Replaces
     /// `egui::Button::frame(false)` for parity with ChromeBtn::frameless.
@@ -235,10 +376,20 @@ impl<'a> Button<'a> {
         let fg = self.fg_override.unwrap_or_else(|| theme.dim());
         let label_text = if self.icon_only && self.label.is_empty() {
             self.leading_icon.unwrap_or("").to_string()
-        } else if let Some(icon) = self.leading_icon {
-            format!("{}  {}", icon, self.label)
         } else {
-            self.label.to_string()
+            let mut s = String::new();
+            if let Some(icon) = self.leading_icon {
+                s.push_str(icon);
+                if !self.label.is_empty() {
+                    s.push_str("  ");
+                }
+            }
+            s.push_str(self.label);
+            if let Some(tic) = self.trailing_icon {
+                s.push(' ');
+                s.push_str(tic);
+            }
+            s
         };
         let glyph_size = self.glyph_px.unwrap_or(default_size);
         let rich = RichText::new(label_text).size(glyph_size).color(fg);
@@ -344,8 +495,13 @@ fn paint_button<'a>(
             content_w += font_size * 1.1 + icon_gap;
         }
         if !label.is_empty() {
+            // Chrome buttons render labels in Proportional (Inter) so they
+            // visually match context menus, panel chrome, and dropdowns.
+            // Tabular data (prices, tickers) should use RichText.monospace
+            // directly, not Button labels.
+            // layout-only galley: only `.rect.width()` is read; color discarded.
             let galley = ui.fonts(|f| {
-                f.layout_no_wrap(label.to_string(), FontId::monospace(font_size), Color32::WHITE)
+                f.layout_no_wrap(label.to_string(), FontId::proportional(font_size), Color32::WHITE)
             });
             content_w += galley.rect.width();
         }
@@ -353,6 +509,7 @@ fn paint_button<'a>(
             content_w += icon_gap + font_size * 1.1;
         }
         if let Some(kt) = kbd_text.as_ref() {
+            // layout-only galley: width measurement only.
             let g = ui.fonts(|f| f.layout_no_wrap(kt.clone(), kbd_font.clone(), Color32::WHITE));
             content_w += st::gap_md() + g.rect.width();
         }
@@ -368,6 +525,7 @@ fn paint_button<'a>(
     if stacked {
         // Width: max(icon_w, label_w, sublabel_w) + side padding
         let mut max_w = stacked_icon_size;
+        // layout-only galleys in this stacked-measurement block: only `.rect.width()` is read.
         if !label.is_empty() {
             let g = ui.fonts(|f| f.layout_no_wrap(label.to_string(), stacked_label_font.clone(), Color32::WHITE));
             max_w = max_w.max(g.rect.width());
@@ -442,6 +600,12 @@ fn paint_button<'a>(
         }
 
         let mut fg = motion::lerp_color(fg_idle, fg_hover, hover_t);
+        // Toggle variant: when active, fg snaps to accent (or the
+        // resolved tint). Blends in alongside the bg/border active state.
+        if matches!(variant, Variant::Toggle) && active_t > 0.001 {
+            let accent_fg = tint.unwrap_or_else(|| theme.accent());
+            fg = motion::lerp_color(fg, accent_fg, active_t);
+        }
         if let Some(c) = fg_override { fg = c; }
         let border_col = motion::lerp_color(border_idle, border_active, active_t);
 
@@ -475,7 +639,7 @@ fn paint_button<'a>(
                     painter.rect_stroke(rect, cr, s, StrokeKind::Inside);
                 }
             } else {
-                let border_w = match variant { Variant::Secondary => 1.0, _ => 0.0 };
+                let border_w = match variant { Variant::Secondary | Variant::Toggle => 1.0, _ => 0.0 };
                 if border_col.a() > 0 && (border_w > 0.0 || active_t > 0.001) {
                     let w = if border_w > 0.0 { border_w } else { 1.0 };
                     painter.rect_stroke(rect, cr, Stroke::new(w, border_col), StrokeKind::Inside);
@@ -492,7 +656,7 @@ fn paint_button<'a>(
             let y = rect.bottom() - 2.0;
             let x0 = rect.left() + pad_x * 0.5;
             let x1 = rect.right() - pad_x * 0.5;
-            painter.line_segment([Pos2::new(x0, y), Pos2::new(x1, y)], Stroke::new(1.0, underline));
+            painter.line_segment([Pos2::new(x0, y), Pos2::new(x1, y)], Stroke::new(st::stroke_std(), underline));
         }
 
         // ── Layout content (icon | label | trailing) ──
@@ -571,14 +735,14 @@ fn paint_button<'a>(
             }
             if !label.is_empty() {
                 let galley = ui.fonts(|f| {
-                    f.layout_no_wrap(label.to_string(), FontId::monospace(font_size), fg)
+                    f.layout_no_wrap(label.to_string(), FontId::proportional(font_size), fg)
                 });
                 let lw = galley.rect.width();
                 painter.text(
                     Pos2::new(x, cy),
                     egui::Align2::LEFT_CENTER,
                     label,
-                    FontId::monospace(font_size),
+                    FontId::proportional(font_size),
                     fg,
                 );
                 x += lw;
@@ -613,7 +777,7 @@ fn paint_button<'a>(
             painter.rect_stroke(
                 rect.expand(2.0),
                 cr,
-                Stroke::new(2.0, ring_color),
+                Stroke::new(st::stroke_thick(), ring_color),
                 StrokeKind::Outside,
             );
         }
@@ -679,7 +843,7 @@ fn paint_secondary_with_treatment(
     let h = btn.min_size_override.map(|v| v.y).unwrap_or_else(btn_small_height);
     let min_w = btn.min_size_override.map(|v| v.x).unwrap_or(0.0);
     let resp = ui.add(
-        egui::Button::new(RichText::new(btn.label).monospace().size(font_sm()).color(fg))
+        egui::Button::new(RichText::new(btn.label).size(font_sm()).color(fg))
             .fill(fill)
             .stroke(Stroke::new(stroke_w, stroke_col))
             .corner_radius(cr)
@@ -732,7 +896,7 @@ fn default_radius(v: Variant) -> f32 {
         Variant::Primary | Variant::Secondary | Variant::Danger | Variant::NeutralAction => 4.0,
         Variant::Ghost | Variant::MutedIcon | Variant::InlineClose => 2.0,
         Variant::Link | Variant::TextOnly | Variant::Tab => 0.0,
-        Variant::Chip => 99.0, // pill
+        Variant::Chip | Variant::Toggle => 99.0, // pill
         Variant::Chrome => 4.0,
     }
 }
@@ -748,7 +912,6 @@ fn resolve_palette(
     let surface = theme.surface();
     let text = theme.text();
     let border = theme.border();
-    let white = Color32::WHITE;
     let transparent = Color32::TRANSPARENT;
 
     match variant {
@@ -756,8 +919,8 @@ fn resolve_palette(
             accent,
             lighten(accent, 0.10),
             darken(accent, 0.08),
-            white,
-            white,
+            st::contrast_fg(accent),
+            st::contrast_fg(accent),
             transparent,
             st::color_alpha(accent, st::alpha_active()),
         ),
@@ -771,20 +934,25 @@ fn resolve_palette(
             st::color_alpha(accent, st::alpha_active()),
         ),
         Variant::Ghost => (
+            // Toolbar toggles paint Ghost. When many are simultaneously
+            // active (e.g. SMA+EMA+Bollinger+VOL all on), the accent
+            // tint+border previously summed into a "purple soup". Softer
+            // active bg (alpha_soft) and dropped border keep the surface
+            // calm; foreground accent on active is set by `toolbar_btn`.
             transparent,
             st::color_alpha(text, 18),
-            st::color_alpha(accent, st::alpha_tint()),
+            st::color_alpha(accent, st::alpha_soft()),
             text,
             text,
             transparent,
-            st::color_alpha(accent, st::alpha_muted()),
+            transparent,
         ),
         Variant::Danger => (
             bear,
             lighten(bear, 0.10),
             darken(bear, 0.08),
-            white,
-            white,
+            st::contrast_fg(bear),
+            st::contrast_fg(bear),
             transparent,
             st::color_alpha(bear, st::alpha_active()),
         ),
@@ -816,7 +984,7 @@ fn resolve_palette(
             transparent,
             st::color_alpha(text, 18),
             st::color_alpha(accent, st::alpha_soft()),
-            theme.dim().gamma_multiply(0.6),
+            st::color_muted(theme.dim()),
             text,
             transparent,
             st::color_alpha(accent, st::alpha_active()),
@@ -826,7 +994,7 @@ fn resolve_palette(
             transparent,
             transparent,
             transparent,
-            theme.dim().gamma_multiply(0.6),
+            st::color_muted(theme.dim()),
             text,
             transparent,
             transparent,
@@ -837,7 +1005,7 @@ fn resolve_palette(
             transparent,
             st::color_alpha(text, 18),
             transparent,
-            theme.dim().gamma_multiply(0.7),
+            st::color_subtle(theme.dim()),
             text,
             transparent,
             transparent,
@@ -847,7 +1015,7 @@ fn resolve_palette(
             transparent,
             st::color_alpha(text, 18),
             st::color_alpha(accent, st::alpha_tint()),
-            theme.dim().gamma_multiply(0.5),
+            st::color_half(theme.dim()),
             text,
             transparent,
             transparent,
@@ -871,6 +1039,22 @@ fn resolve_palette(
             text,
             transparent,
             transparent,
+        ),
+        Variant::Toggle => (
+            // Toggle chip — one of a row of selectable presets.
+            //   Inactive: transparent bg, dim fg (text @ alpha_soft via
+            //             gamma), soft outline.
+            //   Hover (inactive): bg = text @ alpha_ghost, fg snaps to text.
+            //   Active: accent-tinted bg, accent fg, accent border @ active.
+            //   Hover (active): bg brightened by 0.05 (handled by active_bg
+            //                   being slightly lighter than the tint).
+            transparent,
+            st::color_alpha(text, st::alpha_ghost()),
+            lighten(st::color_alpha(accent, st::alpha_tint()), 0.05),
+            st::color_alpha(text, st::alpha_soft()),
+            text,
+            st::color_alpha(text, st::alpha_soft()),
+            st::color_alpha(accent, st::alpha_active()),
         ),
     }
 }
@@ -924,7 +1108,7 @@ fn paint_spinner(ui: &Ui, rect: Rect, color: Color32) {
         let p1 = center + Vec2::new(a.cos(), a.sin()) * radius;
         let alpha = (60.0 + 195.0 * t).round().clamp(0.0, 255.0) as u8;
         let c = Color32::from_rgba_premultiplied(color.r(), color.g(), color.b(), alpha.min(color.a()));
-        painter.line_segment([p0, p1], Stroke::new(1.5, c));
+        painter.line_segment([p0, p1], Stroke::new(st::stroke_bold(), c));
     }
 }
 
@@ -962,7 +1146,7 @@ pub fn show_button_gallery(ui: &mut Ui, theme: &dyn ComponentTheme) {
     ui.separator();
     ui.label("Modifiers");
     ui.horizontal(|ui| {
-        let _ = Button::icon(Icon::GEAR).size(Size::Md).show(ui, theme);
+        let _ = Button::icon(Icon::GEAR).size(Size::Md).show(ui, theme).on_hover_text("Settings");
         let _ = Button::new("Loading").loading(true).show(ui, theme);
         let _ = Button::new("Disabled").disabled(true).show(ui, theme);
         let _ = Button::new("Active").active(true).variant(Variant::Secondary).show(ui, theme);
@@ -993,14 +1177,15 @@ pub fn show_button_gallery(ui: &mut Ui, theme: &dyn ComponentTheme) {
         let _ = Button::icon(Icon::GEAR)
             .variant(Variant::Ghost)
             .glyph_color(theme.accent())
-            .show(ui, theme);
+            .show(ui, theme)
+            .on_hover_text("Settings");
         // ChromeBtn parity: Chrome variant with explicit fill/stroke/min_size.
         let _ = Button::new("Connect")
             .variant(Variant::Chrome)
             .fill(theme.surface())
-            .stroke(Stroke::new(1.0, theme.border()))
+            .stroke(Stroke::new(st::stroke_std(), theme.border()))
             .min_size(Vec2::new(80.0, 24.0))
-            .corner_radius(4.0)
+            .corner_radius(st::radius_sm())
             .fg(theme.text())
             .show(ui, theme);
         // ChromeBtn::frameless parity.

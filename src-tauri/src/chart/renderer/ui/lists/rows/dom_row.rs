@@ -80,10 +80,6 @@ pub struct DomRowLadderResponse {
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
-fn fallback_theme() -> &'static Theme {
-    &crate::chart_renderer::gpu::THEMES[0]
-}
-
 /// Which built-in column to show in addition to the bid/price/ask trio.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DomColumn {
@@ -199,7 +195,7 @@ impl<'a> DomRow<'a> {
     pub fn theme(mut self, t: &'a Theme) -> Self { self.theme = Some(t); self }
 
     pub fn show(self, ui: &mut Ui) -> DomRowResponse {
-        let theme_ref: &Theme = match self.theme { Some(t) => t, None => fallback_theme() };
+        let theme_ref: &Theme = self.theme.expect("DomRow requires a theme — call `.theme(t)` before `.show()`");
         let bull = theme_ref.bull;
         let bear = theme_ref.bear;
         let dim = theme_ref.dim;
@@ -317,7 +313,7 @@ impl<'a> DomRow<'a> {
 
                 // ── PRICE column ──
                 if let Some(pr) = find(DomColumn::Price) {
-                    let pc = if is_current { Color32::WHITE }
+                    let pc = if is_current { contrast_fg(accent) }
                         else if is_inside { accent }
                         else if price > 0.0 { fg } else { fg };
                     painter.text(pr.center(), egui::Align2::CENTER_CENTER,
@@ -449,7 +445,7 @@ impl<'a> DomRow<'a> {
     /// the ladder body all renders into one `ui.painter_at(body_clip)`.
     /// Requires `column_layout()` to be set; falls back gracefully if not.
     pub fn show_in(self, ui: &mut Ui, painter: &Painter, rr: egui::Rect) -> DomRowLadderResponse {
-        let theme_ref: &Theme = match self.theme { Some(t) => t, None => fallback_theme() };
+        let theme_ref: &Theme = self.theme.expect("DomRow requires a theme — call `.theme(t)` before `.show_in()`");
         let bull = theme_ref.bull;
         let bear = theme_ref.bear;
         let dim = theme_ref.dim;
@@ -534,7 +530,7 @@ impl<'a> DomRow<'a> {
 
         // PRICE — compact 5-char formatting when narrow
         let pc = self.price_color_override.unwrap_or_else(|| {
-            if self.current_price { Color32::WHITE }
+            if self.current_price { contrast_fg(accent) }
             else if self.selected { accent }
             else if self.imbalance > 0.0 { color_subtle(bull) }
             else { color_subtle(bear) }
@@ -614,15 +610,15 @@ impl<'a> DomRow<'a> {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                 let xr = Rect::from_min_size(egui::pos2(br.right() - 12.0, br.top()), egui::vec2(12.0, br.height()));
                 painter.rect_filled(xr, 1.0, color_alpha(bear, alpha_dim()));
-                painter.text(xr.center(), egui::Align2::CENTER_CENTER, "x", mono_sm(), Color32::WHITE);
+                painter.text(xr.center(), egui::Align2::CENTER_CENTER, "x", mono_sm(), contrast_fg(bear));
                 let label_rect = Rect::from_min_max(br.min, egui::pos2(br.right() - 12.0, br.max.y));
-                draw_order_chip_label(painter, label_rect, side_ch, qty);
+                draw_order_chip_label(painter, label_rect, side_ch, qty, theme_ref.overlay_text);
                 if drag_resp.clicked() {
                     let ptr = ui.input(|i| i.pointer.hover_pos()).unwrap_or_default();
                     if ptr.x > br.right() - 14.0 { out.order_cancel = Some(oid); }
                 }
             } else if !currently_dragging_this {
-                draw_order_chip_label(painter, br, side_ch, qty);
+                draw_order_chip_label(painter, br, side_ch, qty, theme_ref.overlay_text);
             }
         }
 
@@ -636,7 +632,7 @@ impl<'a> DomRow<'a> {
                 );
                 painter.rect_filled(gr, radius_xs(), color_alpha(oc, 160));
                 painter.rect_stroke(gr, radius_xs(), Stroke::new(stroke_bold(), oc), StrokeKind::Outside);
-                draw_order_chip_label(painter, gr, side_ch, self.drag_cx.ghost_qty);
+                draw_order_chip_label(painter, gr, side_ch, self.drag_cx.ghost_qty, theme_ref.overlay_text);
                 painter.rect_stroke(rr, 0.0,
                     Stroke::new(stroke_std(), color_alpha(oc, alpha_dim())),
                     StrokeKind::Outside);
@@ -653,11 +649,11 @@ impl<'a> DomRow<'a> {
     }
 }
 
-fn draw_order_chip_label(painter: &Painter, rect: Rect, side: char, qty: u32) {
+fn draw_order_chip_label(painter: &Painter, rect: Rect, side: char, qty: u32, text_col: Color32) {
     let qty_str = format!("{}", qty);
     let side_font = mono_sm();
     let qty_font = mono_sm();
-    let text_col = fallback_theme().overlay_text; // high-contrast label on colored chip
+    // high-contrast label on colored chip (caller passes theme.overlay_text)
     let s = side.to_string();
     painter.text(egui::pos2(rect.left() + 8.0, rect.center().y), egui::Align2::CENTER_CENTER, &s, side_font, text_col);
     painter.text(egui::pos2(rect.left() + 8.0 + (rect.width() - 8.0) * 0.5, rect.center().y), egui::Align2::CENTER_CENTER, &qty_str, qty_font, text_col);

@@ -3,13 +3,15 @@
 //!
 //! Opens via `watchlist.apex_diag_open`. Read-only; all data pulled from the
 //! running apex_data module state.
+//!
+//! Chrome: `Modal + HeaderStyle::Dialog`. Body: `PanelSection` groups with
+//! `PanelKeyValueRow` for tagged metric stacks (Bull/Bear/Warn tones).
 
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
 use super::super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
-use super::super::widgets::text::SectionLabelSize;
-use crate::ui_kit::widgets::{Alert, Progress};
+use crate::ui_kit::widgets::{Alert, PanelEmpty, PanelKeyValueRow, PanelSection, PanelTone, Progress};
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
@@ -24,6 +26,8 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
         .ctx(ctx)
         .build();
 
+    let mut reset_breaker = false;
+
     let resp = Modal::new("APEX DATA DIAGNOSTICS")
         .id("apex_diagnostics")
         .ctx(ctx)
@@ -31,100 +35,82 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
         .size(egui::vec2(w, h))
         .anchor(Anchor::Window { pos: Some(egui::pos2(screen.center().x - w / 2.0, 60.0)) })
         .frame_kind(FrameKind::Custom(frame))
-        .header_style(HeaderStyle::Panel {
-            title_size:      SectionLabelSize::Md,
-            title_size_px:   None,
-            title_monospace: None,
-            leading_space:   0.0,
-            trailing_space:  0.0,
-        })
-        .panel_actions(|ui| {
-            if ui.small_button("reset breaker").clicked() {
-                crate::apex_data::rest::reset_breaker();
-            }
-        })
+        .header_style(HeaderStyle::Dialog)
         .separator(false)
         .show(|ui| {
-            ui.separator();
-
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                section_config(ui, t);
-                ui.add_space(gap_lg());
-                section_connection(ui, t);
-                ui.add_space(gap_lg());
-                section_rest_stats(ui, t);
-                ui.add_space(gap_lg());
-                section_ws_subs(ui, t);
-                ui.add_space(gap_lg());
-                section_chain_cache(ui, t);
-                ui.add_space(gap_lg());
-                section_recent_calls(ui, t);
+                let r = PanelSection::new("CONFIG")
+                    .action("reset breaker", PanelTone::Warn)
+                    .show(ui, t, section_config);
+                if r.action_clicked { reset_breaker = true; }
+
+                PanelSection::new("CONNECTION").show(ui, t, section_connection);
+                PanelSection::new("REST STATS").show(ui, t, section_rest_stats);
+                PanelSection::new("WS").show(ui, t, section_ws_subs);
+                PanelSection::new("CHAIN CACHE").show(ui, t, section_chain_cache);
+                PanelSection::new("RECENT REST CALLS").rule(false).show(ui, t, section_recent_calls);
             });
         });
 
+    if reset_breaker { crate::apex_data::rest::reset_breaker(); }
     if resp.closed { watchlist.apex_diag_open = false; }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
 
-fn hdr(ui: &mut egui::Ui, label: &str, t: &Theme) {
-    ui.add(super::super::widgets::text::MonospaceCode::new(label).sm().color(t.dim).gamma(0.7).strong(true));
-    ui.separator();
-}
-
-fn kv(ui: &mut egui::Ui, k: &str, v: &str, t: &Theme, value_color: Option<egui::Color32>) {
-    ui.horizontal(|ui| {
-        ui.add(super::super::widgets::text::MonospaceCode::new(k).color(t.dim));
-        ui.add_space(gap_xs());
-        ui.add(super::super::widgets::text::MonospaceCode::new(v).sm().color(value_color.unwrap_or(t.text)).strong(true));
-    });
-}
-
+/// Inline status pill — small tinted rounded rectangle. Kept local since the
+/// shared `Tag` widget renders too large for these dense diagnostics rows.
 fn pill(ui: &mut egui::Ui, text: &str, color: egui::Color32) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(60.0, 14.0), egui::Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(72.0, 14.0), egui::Sense::hover());
     ui.painter().rect_filled(rect, current().r_md, color_alpha(color, 50));
     ui.painter().rect_stroke(rect, current().r_md, egui::Stroke::new(current().stroke_std, color), egui::StrokeKind::Inside);
     ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
-        text, egui::FontId::proportional(font_sm()), color);
+        text, egui::FontId::proportional(font_xs()), color);
 }
 
 // ────────────────────────────────────────────────────────────────────────────
 
 fn section_config(ui: &mut egui::Ui, t: &Theme) {
-    hdr(ui, "CONFIG", t);
     let url = crate::apex_data::apex_url();
     let lan = crate::apex_data::config::apex_lan_ip().unwrap_or_else(|| "—".into());
     let token = crate::apex_data::apex_token().map(|_| "set".to_string()).unwrap_or_else(|| "none".into());
     let enabled = crate::apex_data::is_enabled();
-    kv(ui, "enabled",  if enabled { "yes" } else { "no" }, t,
-       Some(if enabled { t.bull } else { t.bear }));
-    kv(ui, "base URL", &url, t, None);
-    kv(ui, "LAN IP  ", &lan, t, None);
-    kv(ui, "token   ", &token, t, None);
-    kv(ui, "log file", &crate::apex_data::debug_log::path_string(), t, Some(t.dim));
+
+    PanelKeyValueRow::new("enabled", if enabled { "yes" } else { "no" })
+        .tone(if enabled { PanelTone::Bull } else { PanelTone::Bear })
+        .show(ui, t);
+    PanelKeyValueRow::new("base URL", url).show(ui, t);
+    PanelKeyValueRow::new("LAN IP",   lan).show(ui, t);
+    PanelKeyValueRow::new("token",    token).show(ui, t);
+    PanelKeyValueRow::new("log file", crate::apex_data::debug_log::path_string())
+        .tone(PanelTone::Default)
+        .show(ui, t);
 }
 
 fn section_connection(ui: &mut egui::Ui, t: &Theme) {
-    hdr(ui, "CONNECTION", t);
     let ws = crate::apex_data::ws::is_connected();
     let (fails, cooldown) = crate::apex_data::rest::breaker_snapshot();
+
     ui.horizontal(|ui| {
-        ui.add(super::super::widgets::text::MonospaceCode::new("WS").color(t.dim));
+        ui.add_space(gap_md());
+        ui.label(egui::RichText::new("WS").monospace().size(font_xs()).color(color_muted(t.dim)));
+        ui.add_space(gap_sm());
         pill(ui, if ws { "connected" } else { "disconnected" },
              if ws { t.bull } else { t.bear });
     });
     ui.horizontal(|ui| {
-        ui.add(super::super::widgets::text::MonospaceCode::new("breaker").color(t.dim));
+        ui.add_space(gap_md());
+        ui.label(egui::RichText::new("breaker").monospace().size(font_xs()).color(color_muted(t.dim)));
+        ui.add_space(gap_sm());
         if cooldown.is_some() {
             pill(ui, "open", t.bear);
         } else {
             pill(ui, "closed", t.bull);
         }
-        ui.add(super::super::widgets::text::MonospaceCode::new(&format!("fails={fails}")).color(t.dim));
+        ui.add_space(gap_sm());
+        ui.label(egui::RichText::new(format!("fails={fails}")).monospace().size(font_xs()).color(t.dim));
     });
 
-    // When breaker is open, surface it as a banner with cooldown progress.
-    // 30s is the COOLDOWN constant in apex_data::rest.
     if let Some(remaining) = cooldown {
         const COOLDOWN_SECS: f32 = 30.0;
         let remaining_s = remaining.as_secs_f32();
@@ -143,10 +129,15 @@ fn section_connection(ui: &mut egui::Ui, t: &Theme) {
     if let Some(h) = crate::apex_data::live_state::get_health() {
         if h.ready {
             ui.horizontal(|ui| {
-                ui.add(super::super::widgets::text::MonospaceCode::new("health").color(t.dim));
+                ui.add_space(gap_md());
+                ui.label(egui::RichText::new("health").monospace().size(font_xs()).color(color_muted(t.dim)));
+                ui.add_space(gap_sm());
                 pill(ui, "ready", t.bull);
-                ui.add(super::super::widgets::text::MonospaceCode::new(&format!("tick age {}ms, redis={} questdb={} feeds {}/{}",
-                    h.tick_age_ms, h.redis, h.questdb, h.feeds_connected, h.feeds_total)).color(t.dim));
+                ui.add_space(gap_sm());
+                ui.label(egui::RichText::new(format!(
+                    "tick age {}ms, redis={} questdb={} feeds {}/{}",
+                    h.tick_age_ms, h.redis, h.questdb, h.feeds_connected, h.feeds_total
+                )).monospace().size(font_xs()).color(t.dim));
             });
         } else {
             Alert::warn(format!(
@@ -157,72 +148,69 @@ fn section_connection(ui: &mut egui::Ui, t: &Theme) {
             .show(ui, t);
         }
     } else {
-        kv(ui, "health ", "(no response yet)", t, Some(t.dim));
+        PanelKeyValueRow::new("health", "(no response yet)")
+            .tone(PanelTone::Default)
+            .show(ui, t);
     }
 }
 
 fn section_rest_stats(ui: &mut egui::Ui, t: &Theme) {
-    hdr(ui, "REST STATS", t);
     let (ok, http_err, net_err, parse_err, skipped, _) = crate::apex_data::rest::stats_snapshot();
     let total = ok + http_err + net_err + parse_err + skipped;
     let pct = |n: u64| if total == 0 { 0.0 } else { 100.0 * n as f64 / total as f64 };
-    ui.horizontal_wrapped(|ui| {
-        kv(ui, "total",  &format!("{total}"), t, None); ui.add_space(gap_lg());
-        kv(ui, "ok",     &format!("{ok} ({:.0}%)",        pct(ok)), t, Some(t.bull)); ui.add_space(gap_lg());
-        kv(ui, "http",   &format!("{http_err} ({:.0}%)",  pct(http_err)), t, Some(t.warn)); ui.add_space(gap_lg());
-        kv(ui, "net",    &format!("{net_err} ({:.0}%)",   pct(net_err)), t, Some(t.bear)); ui.add_space(gap_lg());
-        kv(ui, "parse",  &format!("{parse_err} ({:.0}%)", pct(parse_err)), t, Some(t.bear)); ui.add_space(gap_lg());
-        kv(ui, "skip",   &format!("{skipped} ({:.0}%)",   pct(skipped)), t, Some(t.dim));
-    });
+
+    PanelKeyValueRow::new("total", format!("{total}")).show(ui, t);
+    PanelKeyValueRow::new("ok",    format!("{ok}"))       .meta(format!("{:.0}%", pct(ok)))       .tone(PanelTone::Bull).show(ui, t);
+    PanelKeyValueRow::new("http",  format!("{http_err}")) .meta(format!("{:.0}%", pct(http_err))) .tone(PanelTone::Warn).show(ui, t);
+    PanelKeyValueRow::new("net",   format!("{net_err}"))  .meta(format!("{:.0}%", pct(net_err)))  .tone(PanelTone::Bear).show(ui, t);
+    PanelKeyValueRow::new("parse", format!("{parse_err}")).meta(format!("{:.0}%", pct(parse_err))).tone(PanelTone::Bear).show(ui, t);
+    PanelKeyValueRow::new("skip",  format!("{skipped}"))  .meta(format!("{:.0}%", pct(skipped)))  .tone(PanelTone::Default).show(ui, t);
+
     if total > 0 {
         ui.add_space(gap_xs());
         ui.horizontal(|ui| {
-            ui.add(super::super::widgets::text::MonospaceCode::new("ok rate").color(t.dim));
-            ui.add_space(gap_xs());
+            ui.add_space(gap_md());
+            ui.label(egui::RichText::new("ok rate").monospace().size(font_xs()).color(color_muted(t.dim)));
+            ui.add_space(gap_sm());
             Progress::linear((pct(ok) / 100.0) as f32).size(KitSize::Sm).show(ui, t);
         });
     }
 }
 
 fn section_ws_subs(ui: &mut egui::Ui, t: &Theme) {
-    hdr(ui, "WS", t);
-    ui.add(super::super::widgets::text::MonospaceCode::new("(subscription counts tracked client-side; see 'chain cache' below for live state)")
-        .color(color_muted(t.dim)));
+    ui.horizontal(|ui| {
+        ui.add_space(gap_md());
+        ui.label(egui::RichText::new(
+            "(subscription counts tracked client-side; see 'chain cache' below for live state)"
+        ).monospace().size(font_xs()).color(color_muted(t.dim)));
+    });
 }
 
 fn section_chain_cache(ui: &mut egui::Ui, t: &Theme) {
-    hdr(ui, "CHAIN CACHE", t);
     let summary = crate::apex_data::live_state::chain_summary();
     if summary.is_empty() {
-        ui.add(super::super::widgets::text::MonospaceCode::new("  (empty — no chains cached yet)").color(t.dim));
+        PanelEmpty::new("No chains cached yet")
+            .min_height(48.0)
+            .show(ui, t);
         return;
     }
-    ui.horizontal(|ui| {
-        ui.add(super::super::widgets::text::MonospaceCode::new("underlying").color(color_muted(t.dim)));
-        ui.add_space(60.0);
-        ui.add(super::super::widgets::text::MonospaceCode::new("rows").color(color_muted(t.dim)));
-        ui.add_space(gap_2xl());
-        ui.add(super::super::widgets::text::MonospaceCode::new("last update").color(color_muted(t.dim)));
-    });
     for (ul, rows, age_s) in summary {
-        let age_color = if age_s < 10 { t.bull }
-                       else if age_s < 60 { t.warn }
-                       else { t.bear };
-        ui.horizontal(|ui| {
-            ui.add(super::super::widgets::text::MonospaceCode::new(&ul).sm().color(t.text).strong(true));
-            ui.add_space(120.0 - 10.0 * ul.len() as f32);
-            ui.add(super::super::widgets::text::MonospaceCode::new(&format!("{rows}")).color(t.text));
-            ui.add_space(24.0);
-            ui.add(super::super::widgets::text::MonospaceCode::new(&format!("{age_s}s ago")).color(age_color));
-        });
+        let tone = if age_s < 10 { PanelTone::Bull }
+                   else if age_s < 60 { PanelTone::Warn }
+                   else { PanelTone::Bear };
+        PanelKeyValueRow::new(&ul, format!("{age_s}s ago"))
+            .meta(format!("{rows} rows"))
+            .tone(tone)
+            .show(ui, t);
     }
 }
 
 fn section_recent_calls(ui: &mut egui::Ui, t: &Theme) {
-    hdr(ui, "RECENT REST CALLS", t);
     let (_, _, _, _, _, recent) = crate::apex_data::rest::stats_snapshot();
     if recent.is_empty() {
-        ui.add(super::super::widgets::text::MonospaceCode::new("  (none yet)").color(t.dim));
+        PanelEmpty::new("No recent calls")
+            .min_height(48.0)
+            .show(ui, t);
         return;
     }
     for call in recent.iter().rev().take(25) {
@@ -242,14 +230,15 @@ fn section_recent_calls(ui: &mut egui::Ui, t: &Theme) {
             _       => call.outcome.into(),
         };
         ui.horizontal(|ui| {
+            ui.add_space(gap_md());
             let (pill_rect, _) = ui.allocate_exact_size(egui::vec2(62.0, 14.0), egui::Sense::hover());
             ui.painter().rect_filled(pill_rect, current().r_sm, color_alpha(color, 40));
             ui.painter().text(pill_rect.center(), egui::Align2::CENTER_CENTER,
-                &label, egui::FontId::monospace(super::super::style::font_xs()), color);
+                &label, egui::FontId::monospace(font_xs()), color);
             ui.add_space(gap_sm());
-            ui.add(super::super::widgets::text::MonospaceCode::new(&format!("{}ms", call.ms)).color(t.dim));
+            ui.label(egui::RichText::new(format!("{}ms", call.ms)).monospace().size(font_xs()).color(t.dim));
             ui.add_space(gap_sm());
-            ui.add(super::super::widgets::text::MonospaceCode::new(&call.path).color(t.text.gamma_multiply(0.85)));
+            ui.label(egui::RichText::new(&call.path).monospace().size(font_xs()).color(color_subtle(t.text)));
         });
     }
 }

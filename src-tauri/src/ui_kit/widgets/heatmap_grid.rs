@@ -134,7 +134,7 @@ impl<'a> HeatmapGrid<'a> {
                 0.0, edge_col);
             // Symbol text
             let sym_col: Color32 = if is_active {
-                Color32::WHITE
+                theme.text()
             } else if is_hovered {
                 st::color_alpha(theme.text(), 230)
             } else {

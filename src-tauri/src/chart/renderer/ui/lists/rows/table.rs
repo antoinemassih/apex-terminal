@@ -118,7 +118,7 @@ impl<'a, T> Table<'a, T> {
             egui::vec2(avail_w, avail_h),
         );
 
-        let default_t = &crate::chart_renderer::gpu::THEMES[0];
+        let default_t: &Theme = self.theme_handle.expect("Table requires a theme — call `.theme(t)` before `.show()`");
         let dim = self.theme_dim.unwrap_or(default_t.dim);
         let fg = self.theme_fg.unwrap_or(default_t.text);
         let accent = self.theme_accent.unwrap_or(default_t.accent);
@@ -155,6 +155,9 @@ impl<'a, T> Table<'a, T> {
             let cell = egui::Rect::from_min_size(
                 egui::pos2(cx, header_rect.min.y), egui::vec2(cw, header_h));
             let resp = ui.allocate_rect(cell, if c.sortable { Sense::click() } else { Sense::hover() });
+            if c.sortable {
+                crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
+            }
             let active = self.state.sort_col == Some(i) && self.state.sort_dir != SortDir::None;
             let col_text = if active { accent } else { dim };
             let align = if c.right_align { egui::Align2::RIGHT_CENTER } else { egui::Align2::LEFT_CENTER };
@@ -193,11 +196,8 @@ impl<'a, T> Table<'a, T> {
             egui::pos2(rect.left(), header_rect.bottom()),
             rect.max,
         );
-        // Resolve a theme handle for RowShell — fall back to first theme.
-        let theme_for_shell: &Theme = match self.theme_handle {
-            Some(t) => t,
-            None => &crate::chart_renderer::gpu::THEMES[0],
-        };
+        // Theme handle (already validated above).
+        let theme_for_shell: &Theme = default_t;
         let select_col = self.select_col;
         let row_height = self.row_height;
         let striping = self.striping;

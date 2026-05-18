@@ -160,7 +160,7 @@ fn paint_text_area<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, ta: TextArea<'a>
             painter.rect_stroke(
                 border_rect,
                 radius,
-                Stroke::new(1.0, border_col),
+                Stroke::new(st::stroke_std(), border_col),
                 StrokeKind::Inside,
             );
         }

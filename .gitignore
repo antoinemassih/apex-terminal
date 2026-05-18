@@ -34,3 +34,15 @@ apex-native/target/
 # Agent worktrees (Claude Code session isolation)
 .claude/worktrees/
 .playwright-mcp/
+
+
+# Added by cargo
+
+/target
+
+# Locally-generated sidecar binary placeholders (per-platform build artifacts).
+# Agents touch these as zero-byte stubs so the Tauri build script does not
+# fail; the real binaries are produced by CI. The Windows binary IS tracked
+# (per Wave 7B notes) and intentionally not listed here.
+src-tauri/binaries/ococo-api-aarch64-apple-darwin
+src-tauri/binaries/ococo-api-x86_64-unknown-linux-gnu

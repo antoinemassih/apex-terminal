@@ -12,6 +12,7 @@ pub(crate) use events::{AttemptKind, ControlKind, JournalEvent};
 
 use std::collections::{HashSet, VecDeque};
 use std::sync::{Mutex, OnceLock};
+use crate::data::connectivity::errors_sink::{report, ErrorLevel};
 
 /// In-memory ring of recent journal events for UI tail. Capacity is generous —
 /// the order ledger panel reads up to ~200 at a time.
@@ -101,8 +102,8 @@ pub(crate) fn start_wal_backup_thread() {
     std::thread::spawn(|| loop {
         std::thread::sleep(std::time::Duration::from_secs(3600)); // 1 hour
         match snapshot_wal() {
-            Ok(path) => eprintln!("[wal-backup] snapshot saved: {}", path),
-            Err(e) => eprintln!("[wal-backup] failed: {}", e),
+            Ok(path) => report(ErrorLevel::Info, "wal_backup", "snapshot_saved", path),
+            Err(e) => report(ErrorLevel::Error, "wal_backup", "snapshot_failed", e),
         }
         prune_old_backups(24);
     });
@@ -170,7 +171,7 @@ pub(crate) fn report_orphans_to_stderr() -> usize {
     for ev in &events {
         if let JournalEvent::Attempt { client_id, kind, ts_ms, .. } = ev {
             if !resolved.contains(client_id) {
-                eprintln!("[wal] orphan attempt: client_id={} kind={:?} ts={}", client_id, kind, ts_ms);
+                report(ErrorLevel::Warn, "wal", "orphan_attempt", format!("client_id={} kind={:?} ts={}", client_id, kind, ts_ms));
                 orphans += 1;
             }
         }

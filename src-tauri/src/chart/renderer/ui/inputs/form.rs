@@ -18,8 +18,11 @@ use crate::ui_kit::icons::Icon;
 // Shorthand for the Theme type used across the codebase.
 type Theme = crate::chart_renderer::gpu::Theme;
 
-fn ft() -> &'static Theme {
-    &crate::chart_renderer::gpu::THEMES[0]
+/// Resolve the ambient theme stashed by the render loop. Used by `Widget`
+/// impls and `show()` methods that don't receive a `&Theme` argument, so we
+/// never have to fall back to `&THEMES[0]` (which would break light themes).
+fn ambient_theme(ctx: &egui::Context) -> &'static Theme {
+    crate::ui_kit::widgets::theme::active_theme(ctx)
 }
 
 // ─── FormRow ──────────────────────────────────────────────────────────────────
@@ -346,7 +349,7 @@ impl<'a> HelpText<'a> {
 
 impl<'a> egui::Widget for HelpText<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let base = self.color.unwrap_or_else(|| ft().dim);
+        let base = self.color.unwrap_or_else(|| ambient_theme(ui.ctx()).dim);
         let c = color_alpha(base, alpha_dim());
         ui.label(
             RichText::new(self.text)
@@ -376,7 +379,7 @@ impl<'a> ErrorText<'a> {
 
 impl<'a> egui::Widget for ErrorText<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let c = self.color.unwrap_or_else(|| ft().bear);
+        let c = self.color.unwrap_or_else(|| ambient_theme(ui.ctx()).bear);
         ui.label(
             RichText::new(self.text)
                 .monospace()
@@ -406,7 +409,7 @@ impl Default for RequiredMarker {
 
 impl egui::Widget for RequiredMarker {
     fn ui(self, ui: &mut Ui) -> Response {
-        let c = self.color.unwrap_or_else(|| ft().bear);
+        let c = self.color.unwrap_or_else(|| ambient_theme(ui.ctx()).bear);
         ui.label(
             RichText::new("*")
                 .monospace()
@@ -461,18 +464,19 @@ impl InlineValidation {
 
 impl egui::Widget for InlineValidation {
     fn ui(self, ui: &mut Ui) -> Response {
+        let amb = ambient_theme(ui.ctx());
         let (glyph, color) = match self.state {
             ValidationState::Ok => (
                 Icon::CHECK,
-                self.ok_color.unwrap_or_else(|| ft().bull),
+                self.ok_color.unwrap_or(amb.bull),
             ),
             ValidationState::Error => (
                 "✗",
-                self.err_color.unwrap_or_else(|| ft().bear),
+                self.err_color.unwrap_or(amb.bear),
             ),
             ValidationState::Neutral => (
                 "•",
-                self.dim_color.unwrap_or_else(|| ft().dim),
+                self.dim_color.unwrap_or(amb.dim),
             ),
         };
         ui.label(
@@ -544,16 +548,19 @@ pub struct MeridienOrderTicket<'a> {
 
 impl<'a> MeridienOrderTicket<'a> {
     pub fn new() -> Self {
-        let t = ft();
+        // Color fields are intentionally TRANSPARENT placeholders. Callers
+        // MUST call `.theme(t)` before `.show(...)` — every call site does.
+        // Avoids the `&THEMES[0]` light-theme bug.
+        let z = Color32::TRANSPARENT;
         Self {
             theme:  None,
-            bg:     t.toolbar_bg,
-            text:   t.text,
-            dim:    t.dim,
-            bull:   t.bull,
-            bear:   t.bear,
-            accent: t.accent,
-            border: t.toolbar_border,
+            bg:     z,
+            text:   z,
+            dim:    z,
+            bull:   z,
+            bear:   z,
+            accent: z,
+            border: z,
             width:  0.0,
         }
     }
@@ -585,7 +592,7 @@ impl<'a> MeridienOrderTicket<'a> {
         let mut review_clicked = false;
         let theme_for_seg = self.theme;
         let panel_w = if self.width > 0.0 { self.width } else { ui.available_width() };
-        let label_color = self.dim.gamma_multiply(0.7);
+        let label_color = color_subtle(self.dim);
         let card_bg     = color_alpha(self.border, alpha_subtle());
         let card_radius = radius_md() as u8;
 
@@ -844,7 +851,8 @@ impl<'a> MeridienOrderTicket<'a> {
                         .variant(Variant::Chrome)
                         .glyph_size(9.0)
                         .min_size(Vec2::new(caret_w, pill_h))
-                        .corner_radius(0.0));
+                        .corner_radius(0.0))
+                        .on_hover_text("More options");
                     let popup_id = ui.make_persistent_id(("pill_more", id_salt));
                     if caret.clicked() {
                         ui.memory_mut(|m| m.toggle_popup(popup_id));
@@ -919,7 +927,7 @@ impl<'a> MeridienOrderTicket<'a> {
                         Button::buy(side_str)
                     } else {
                         Button::sell(side_str)
-                    }.sublabel(qty_sub).fg(egui::Color32::WHITE);
+                    }.sublabel(qty_sub).fg(crate::chart_renderer::ui::style::contrast_fg(side_color));
                     if ui.add(cta_btn.min_size(Vec2::new(cta_w, cta_h))).clicked() {
                         review_clicked = true;
                     }
@@ -1008,12 +1016,13 @@ impl<'a> IndicatorParamRow<'a> {
     pub fn show(self, ui: &mut Ui) -> bool {
         use crate::ui_kit::widgets::Button;
         use crate::ui_kit::widgets::tokens::{Variant, Size};
-        let accent = self.accent.unwrap_or_else(|| ft().accent);
-        let dim = self.dim.unwrap_or_else(|| ft().dim);
-        let border = self.border.unwrap_or_else(|| ft().toolbar_border);
+        let amb = ambient_theme(ui.ctx());
+        let accent = self.accent.unwrap_or(amb.accent);
+        let dim = self.dim.unwrap_or(amb.dim);
+        let border = self.border.unwrap_or(amb.toolbar_border);
         let value = self.value;
         let mut changed = false;
-        let theme = self.theme.unwrap_or_else(|| ft());
+        let theme = self.theme.unwrap_or(amb);
 
         ui.horizontal(|ui| {
             if self.indent > 0.0 { ui.add_space(self.indent); }
@@ -1034,12 +1043,12 @@ impl<'a> IndicatorParamRow<'a> {
                 ui.spacing_mut().item_spacing.x = gap_xs();
                 for &pr in self.presets {
                     let sel = *value == pr;
-                    let fg = if sel { accent } else { dim.gamma_multiply(0.5) };
+                    let fg = if sel { accent } else { color_half(dim) };
                     let pr_label = format!("{}", pr);
                     if Button::new(pr_label.as_str()).variant(Variant::Chrome).size(Size::Xs).fg(fg)
                         .fill(if sel { color_alpha(accent, alpha_soft()) } else { Color32::TRANSPARENT })
                         .corner_radius(crate::chart_renderer::ui::style::current().r_xs as f32)
-                        .min_size(egui::vec2(22.0, 18.0)).show(ui, theme).clicked() && !sel
+                        .min_size(egui::vec2(22.0, row_height_dense())).show(ui, theme).clicked() && !sel
                     {
                         *value = pr;
                         changed = true;
@@ -1103,14 +1112,15 @@ impl<'a> IndicatorParamRowF<'a> {
     pub fn show(self, ui: &mut Ui) -> bool {
         use crate::ui_kit::widgets::Button;
         use crate::ui_kit::widgets::tokens::{Variant, Size};
-        let accent = self.accent.unwrap_or_else(|| ft().accent);
-        let dim = self.dim.unwrap_or_else(|| ft().dim);
+        let amb = ambient_theme(ui.ctx());
+        let accent = self.accent.unwrap_or(amb.accent);
+        let dim = self.dim.unwrap_or(amb.dim);
         let d = self.decimals;
         let value = self.value;
         // Treat 0.0 as "use default"
         if *value <= 0.0 { *value = self.default; }
         let mut changed = false;
-        let theme = self.theme.unwrap_or_else(|| ft());
+        let theme = self.theme.unwrap_or(amb);
 
         ui.horizontal(|ui| {
             if self.indent > 0.0 { ui.add_space(self.indent); }
@@ -1129,12 +1139,12 @@ impl<'a> IndicatorParamRowF<'a> {
                 ui.spacing_mut().item_spacing.x = gap_xs();
                 for &pr in self.presets {
                     let sel = (*value - pr).abs() < 0.01;
-                    let fg = if sel { accent } else { dim.gamma_multiply(0.5) };
+                    let fg = if sel { accent } else { color_half(dim) };
                     let pr_label = format!("{:.prec$}", pr, prec = d);
                     if Button::new(pr_label.as_str()).variant(Variant::Chrome).size(Size::Xs).fg(fg)
                         .fill(if sel { color_alpha(accent, alpha_soft()) } else { Color32::TRANSPARENT })
                         .corner_radius(crate::chart_renderer::ui::style::current().r_xs as f32)
-                        .min_size(egui::vec2(22.0, 18.0)).show(ui, theme).clicked() && !sel
+                        .min_size(egui::vec2(22.0, row_height_dense())).show(ui, theme).clicked() && !sel
                     {
                         *value = pr;
                         changed = true;
@@ -1299,7 +1309,7 @@ impl ApertureOrderTicket {
                 if ui.add(egui::Button::new(
                         egui::RichText::new("EXT").monospace().size(font_xs()).color(rth_fg))
                     .fill(rth_bg).corner_radius(r_xs()).stroke(rth_stroke)
-                    .min_size(egui::vec2(26.0, 18.0)))
+                    .min_size(egui::vec2(26.0, row_height_dense())))
                     .on_hover_text("Trade outside regular trading hours")
                     .clicked()
                 {
@@ -1321,6 +1331,10 @@ impl ApertureOrderTicket {
                 ui.add_space(gap_sm());
                 let premium = last;
                 let mult    = if s.is_option { 100.0_f32 } else { 1.0_f32 };
+                // TODO: Input migration deferred — order-form numeric fields
+                // below (notional/limit/stop/trail/tp/sl) need right- and
+                // center-aligned text for price/qty legibility; ui_kit::Input
+                // doesn't expose horizontal_align on the inner TextEdit.
                 ui.add(egui::TextEdit::singleline(s.order_notional_amount)
                     .desired_width(70.0).font(mono_sm()).hint_text("Amount"));
                 let notional: f32 = s.order_notional_amount.parse().unwrap_or(0.0);
@@ -1374,7 +1388,7 @@ impl ApertureOrderTicket {
                             .color(if *s.order_market { self.accent } else { self.dim }))
                     .fill(if *s.order_market { color_alpha(self.accent, 35) } else { self.toolbar_bg })
                     .stroke(Stroke::new(stroke_thin(), color_alpha(self.toolbar_border, 90))).corner_radius(r_xs())
-                    .min_size(egui::vec2(30.0, 20.0)))
+                    .min_size(egui::vec2(30.0, row_height_compact())))
                     .clicked()
                 {
                     *s.order_market = !*s.order_market;
@@ -1430,7 +1444,7 @@ impl ApertureOrderTicket {
                         egui::RichText::new("Bracket").monospace().size(font_sm()).color(brk_color))
                     .fill(if *s.order_bracket { color_alpha(self.accent, 25) } else { egui::Color32::TRANSPARENT })
                     .stroke(Stroke::new(STROKE_THIN, color_alpha(self.toolbar_border, ALPHA_DIM)))
-                    .corner_radius(r_xs()).min_size(egui::vec2(0.0, 18.0)))
+                    .corner_radius(r_xs()).min_size(egui::vec2(0.0, row_height_dense())))
                     .clicked()
                 {
                     *s.order_bracket = !*s.order_bracket;

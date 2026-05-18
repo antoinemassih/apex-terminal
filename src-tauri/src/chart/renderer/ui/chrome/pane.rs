@@ -17,9 +17,9 @@ use super::super::components::PaneHeader;
 use super::super::components::{RemovableChip, DisplayChip, StatusBadge};
 use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant};
 
-fn ft() -> &'static crate::chart_renderer::gpu::Theme {
-    &crate::chart_renderer::gpu::THEMES[0]
-}
+// Color fields in builder `new()` constructors below are seeded with
+// `Color32::TRANSPARENT` placeholders. Every call site calls `.theme(t)` which
+// overwrites them. This avoids the `&THEMES[0]` light-theme parity bug.
 
 // ─── PaneSymbolBadge ─────────────────────────────────────────────────────────
 
@@ -46,8 +46,8 @@ impl<'a> PaneSymbolBadge<'a> {
             symbol,
             exchange: None,
             asset_class: None,
-            accent: ft().accent,
-            dim:    ft().dim,
+            accent: Color32::TRANSPARENT,
+            dim:    Color32::TRANSPARENT,
         }
     }
     pub fn exchange(mut self, e: &'a str) -> Self { self.exchange = Some(e); self }
@@ -102,8 +102,8 @@ impl<'a> PaneTimeframeBadge<'a> {
         Self {
             label,
             active: false,
-            accent: ft().accent,
-            dim:    ft().dim,
+            accent: Color32::TRANSPARENT,
+            dim:    Color32::TRANSPARENT,
         }
     }
     pub fn active(mut self, v: bool) -> Self { self.active = v; self }
@@ -124,7 +124,7 @@ impl<'a> Widget for PaneTimeframeBadge<'a> {
         ui.add(
             KitButton::new(label_ref)
                 .variant(Variant::Secondary)
-                .corner_radius(9.0)
+                .corner_radius(9.0) // TODO: off-token
                 .active(self.active)
                 .fg(fg),
         )
@@ -152,8 +152,8 @@ impl<'a> PaneIndicatorChip<'a> {
     pub fn new(label: &'a str) -> Self {
         Self {
             label,
-            accent: ft().accent,
-            dim:    ft().dim,
+            accent: Color32::TRANSPARENT,
+            dim:    Color32::TRANSPARENT,
         }
     }
     pub fn palette(mut self, accent: Color32, dim: Color32) -> Self {
@@ -201,10 +201,10 @@ impl PaneStatusStrip {
             connected: None,
             loading: false,
             data_quality: None,
-            bull: ft().bull,
-            warn: ft().warn,
-            bear: ft().bear,
-            dim:  ft().dim,
+            bull: Color32::TRANSPARENT,
+            warn: Color32::TRANSPARENT,
+            bear: Color32::TRANSPARENT,
+            dim:  Color32::TRANSPARENT,
         }
     }
     pub fn connected(mut self, v: bool) -> Self { self.connected = Some(v); self }
@@ -300,10 +300,10 @@ impl<'a> PaneHeaderBar<'a> {
             asset_class: None,
             indicators: &[],
             height: 28.0,
-            accent: ft().accent,
-            dim:    ft().dim,
-            bg:     ft().toolbar_bg,
-            border: ft().toolbar_border,
+            accent: Color32::TRANSPARENT,
+            dim:    Color32::TRANSPARENT,
+            bg:     Color32::TRANSPARENT,
+            border: Color32::TRANSPARENT,
         }
     }
     pub fn exchange(mut self, e: &'a str) -> Self { self.exchange = Some(e); self }
@@ -385,8 +385,8 @@ impl PaneToolbar {
     pub fn new() -> Self {
         Self {
             height: 24.0,
-            bg:     ft().toolbar_bg,
-            border: ft().toolbar_border,
+            bg:     Color32::TRANSPARENT,
+            border: Color32::TRANSPARENT,
         }
     }
     pub fn height(mut self, h: f32) -> Self { self.height = h; self }
@@ -443,11 +443,11 @@ impl<'a> PaneFooter<'a> {
             time:       None,
             connected:  None,
             height:     22.0,
-            bg:         ft().toolbar_bg,
-            border:     ft().toolbar_border,
-            bull:       ft().bull,
-            bear:       ft().bear,
-            dim:        ft().dim,
+            bg:         Color32::TRANSPARENT,
+            border:     Color32::TRANSPARENT,
+            bull:       Color32::TRANSPARENT,
+            bear:       Color32::TRANSPARENT,
+            dim:        Color32::TRANSPARENT,
         }
     }
     pub fn last_price(mut self, s: &'a str, c: Color32) -> Self { self.last_price = Some((s, c)); self }
@@ -546,9 +546,9 @@ impl<'a> PaneHeaderActions<'a> {
         Self {
             actions,
             header_height: 28.0,
-            active_color: ft().text,
-            inactive_color: ft().dim,
-            border_color: ft().toolbar_border,
+            active_color: Color32::TRANSPARENT,
+            inactive_color: Color32::TRANSPARENT,
+            border_color: Color32::TRANSPARENT,
         }
     }
     pub fn header_height(mut self, h: f32) -> Self { self.header_height = h; self }
@@ -643,14 +643,14 @@ impl PaneDivider {
     pub fn horizontal() -> Self {
         Self {
             orient: PaneDividerOrientation::Horizontal,
-            border: ft().toolbar_border,
+            border: Color32::TRANSPARENT,
             thickness: 4.0,
         }
     }
     pub fn vertical() -> Self {
         Self {
             orient: PaneDividerOrientation::Vertical,
-            border: ft().toolbar_border,
+            border: Color32::TRANSPARENT,
             thickness: 4.0,
         }
     }
@@ -766,7 +766,7 @@ impl<'a> AccountStrip<'a> {
         ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::TopDown), |ui| {
             ui.horizontal(|ui| {
                 let avail = ui.available_width();
-                ui.spacing_mut().item_spacing.x = 16.0;
+                ui.spacing_mut().item_spacing.x = gap_lg();
 
                 if let Some(acct) = self.account_data {
                     if acct.connected {
@@ -821,20 +821,20 @@ impl<'a> AccountStrip<'a> {
 
                         // Emergency action buttons
                         if ui.add(
-                            egui::Button::new(RichText::new("CANCEL ALL").monospace().size(font_sm()).strong().color(Color32::WHITE))
+                            egui::Button::new(RichText::new("CANCEL ALL").monospace().size(font_sm()).strong().color(contrast_fg(t.bear)))
                                 .fill(color_alpha(t.bear, 120))
-                                .corner_radius(3.0)
-                                .min_size(egui::vec2(0.0, 22.0))
+                                .corner_radius(3.0) // TODO: off-token
+                                .min_size(egui::vec2(0.0, row_height_default()))
                                 .stroke(Stroke::new(stroke_std(), t.bear)),
                         ).clicked() {
                             on_cancel_all();
                         }
 
                         if ui.add(
-                            egui::Button::new(RichText::new("FLATTEN").monospace().size(font_sm()).strong().color(Color32::WHITE))
+                            egui::Button::new(RichText::new("FLATTEN").monospace().size(font_sm()).strong().color(contrast_fg(t.bear)))
                                 .fill(color_alpha(t.bear, 180))
-                                .corner_radius(3.0)
-                                .min_size(egui::vec2(0.0, 22.0))
+                                .corner_radius(3.0) // TODO: off-token
+                                .min_size(egui::vec2(0.0, row_height_default()))
                                 .stroke(Stroke::new(stroke_std(), t.bear)),
                         ).clicked() {
                             on_flatten();
@@ -892,8 +892,9 @@ pub struct FloatingOrderPaneChrome<'a> {
     dim:          Color32,
     toolbar_bg:   Color32,
     toolbar_border: Color32,
-    /// Borrowed active theme — set by `.theme(t)`; falls back to `&THEMES[0]`
-    /// only if the caller forgot to call `.theme()` (which they always do).
+    /// Borrowed active theme — set by `.theme(t)`; falls back to the
+    /// ambient theme from `ui.ctx()` only if the caller forgot to call
+    /// `.theme()` (which they always do).
     theme_ref:    Option<&'a super::super::super::gpu::Theme>,
 }
 
@@ -917,10 +918,10 @@ impl<'a> FloatingOrderPaneChrome<'a> {
             armed:          false,
             advanced:       false,
             pos_text:       None,
-            accent:         ft().accent,
-            dim:            ft().dim,
-            toolbar_bg:     ft().toolbar_bg,
-            toolbar_border: ft().toolbar_border,
+            accent:         Color32::TRANSPARENT,
+            dim:            Color32::TRANSPARENT,
+            toolbar_bg:     Color32::TRANSPARENT,
+            toolbar_border: Color32::TRANSPARENT,
             theme_ref:      None,
         }
     }
@@ -977,12 +978,12 @@ impl<'a> FloatingOrderPaneChrome<'a> {
 
             // Armed toggle
             let armed_icon  = if armed { Icon::SHIELD_WARNING } else { Icon::PLAY };
-            let armed_color = if armed { accent } else { dim.gamma_multiply(0.4) };
+            let armed_color = if armed { accent } else { color_dim(dim) };
             let armed_resp  = ui.add(
                 egui::Button::new(egui::RichText::new(armed_icon).size(font_xs() + 3.0).color(armed_color))
                     .fill(if armed { color_alpha(accent, alpha_soft()) } else { Color32::TRANSPARENT })
                     .stroke(egui::Stroke::NONE)
-                    .min_size(egui::vec2(18.0, 18.0))
+                    .min_size(egui::vec2(18.0, row_height_dense()))
                     .corner_radius(radius_sm()),
             );
             if armed_resp.clicked()  { armed_toggled = true; }
@@ -992,7 +993,7 @@ impl<'a> FloatingOrderPaneChrome<'a> {
             ui.label(
                 egui::RichText::new(self.title)
                     .monospace()
-                    .size(font_xs() + 1.0)
+                    .size(font_xs_plus())
                     .strong()
                     .color(color_alpha(dim, alpha_strong())),
             );
@@ -1002,7 +1003,7 @@ impl<'a> FloatingOrderPaneChrome<'a> {
                 ui.label(
                     egui::RichText::new(text)
                         .monospace()
-                        .size(font_xs() + 1.0)
+                        .size(font_xs_plus())
                         .strong()
                         .color(color),
                 );
@@ -1013,9 +1014,12 @@ impl<'a> FloatingOrderPaneChrome<'a> {
                 ui.add_space(gap_sm());
 
                 // Close button
+                let theme_for_close: &super::super::super::gpu::Theme = self.theme_ref
+                    .unwrap_or_else(|| crate::ui_kit::widgets::theme::active_theme(ui.ctx()));
                 let close_resp = KitButton::icon(Icon::X)
                     .variant(Variant::Ghost)
-                    .show(ui, self.theme_ref.unwrap_or(&crate::chart_renderer::gpu::THEMES[0]));
+                    .show(ui, theme_for_close)
+                    .on_hover_text("Close");
                 if close_resp.clicked() { close_clicked = true; }
 
                 ui.add(egui::Separator::default().spacing(2.0));
@@ -1024,10 +1028,10 @@ impl<'a> FloatingOrderPaneChrome<'a> {
                 let exp_icon = if advanced { Icon::MINUS } else { Icon::PLUS };
                 let exp_resp = ui.add(
                     egui::Button::new(
-                        egui::RichText::new(exp_icon).size(font_xs() + 1.0).color(dim.gamma_multiply(0.5)),
+                        egui::RichText::new(exp_icon).size(font_xs_plus()).color(color_half(dim)),
                     )
                     .fill(Color32::TRANSPARENT)
-                    .min_size(egui::vec2(20.0, 18.0))
+                    .min_size(egui::vec2(20.0, row_height_dense()))
                     .corner_radius(radius_sm()),
                 );
                 if exp_resp.clicked() { advanced_toggled = true; }

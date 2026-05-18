@@ -82,7 +82,7 @@ impl<'a> Separator<'a> {
                         let right_start = left_end + total;
                         painter.line_segment(
                             [Pos2::new(rect.left(), y), Pos2::new(left_end, y)],
-                            Stroke::new(1.0, color),
+                            Stroke::new(st::stroke_std(), color),
                         );
                         painter.text(
                             Pos2::new(left_end + gap, y),
@@ -93,12 +93,12 @@ impl<'a> Separator<'a> {
                         );
                         painter.line_segment(
                             [Pos2::new(right_start, y), Pos2::new(rect.right(), y)],
-                            Stroke::new(1.0, color),
+                            Stroke::new(st::stroke_std(), color),
                         );
                     } else {
                         painter.line_segment(
                             [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
-                            Stroke::new(1.0, color),
+                            Stroke::new(st::stroke_std(), color),
                         );
                     }
                 }
@@ -114,7 +114,7 @@ impl<'a> Separator<'a> {
                     let x = rect.center().x;
                     ui.painter_at(rect).line_segment(
                         [Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())],
-                        Stroke::new(1.0, color),
+                        Stroke::new(st::stroke_std(), color),
                     );
                 }
                 response

@@ -59,12 +59,11 @@ impl<'a> NewsRow<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response {
-        let default_t = &crate::chart_renderer::gpu::THEMES[0];
-        let theme_ref: &Theme = self.theme.unwrap_or(default_t);
-        let bull = self.theme_bull.unwrap_or(default_t.bull);
-        let bear = self.theme_bear.unwrap_or(default_t.bear);
-        let dim = self.theme_dim.unwrap_or(default_t.dim);
-        let accent = self.theme_accent.unwrap_or(default_t.accent);
+        let theme_ref: &Theme = self.theme.expect("NewsRow requires a theme — call `.theme(t)` before `.show()`");
+        let bull = self.theme_bull.unwrap_or(theme_ref.bull);
+        let bear = self.theme_bear.unwrap_or(theme_ref.bear);
+        let dim = self.theme_dim.unwrap_or(theme_ref.dim);
+        let accent = self.theme_accent.unwrap_or(theme_ref.accent);
         let headline_fg = theme_ref.text;
 
         let headline = self.headline;
@@ -106,7 +105,7 @@ impl<'a> NewsRow<'a> {
 
                 painter.text(egui::pos2(rect.min.x + m + 55.0, meta_y + 7.0),
                     egui::Align2::LEFT_CENTER, timestamp,
-                    mono_sm(), dim.gamma_multiply(0.5));
+                    mono_sm(), color_half(dim));
 
                 let sym_rect = egui::Rect::from_min_size(
                     egui::pos2(rect.min.x + m + 95.0, meta_y), egui::vec2(36.0, 14.0));
@@ -126,7 +125,7 @@ impl<'a> NewsRow<'a> {
                 }
 
                 let dot_col = match sentiment {
-                    1 => bull, -1 => bear, _ => dim.gamma_multiply(0.4),
+                    1 => bull, -1 => bear, _ => color_dim(dim),
                 };
                 painter.circle_filled(
                     egui::pos2(rect.right() - m - 4.0, meta_y + 7.0), 3.5, dot_col);

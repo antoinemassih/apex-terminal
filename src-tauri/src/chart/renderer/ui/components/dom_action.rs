@@ -160,7 +160,7 @@ pub fn paint_dom_action(
         }
         SegmentChip => {
             let (fill, text_col) = if ctx.is_light {
-                (t.accent, Color32::WHITE)
+                (t.accent, contrast_fg(t.accent))
             } else {
                 (color_alpha(t.accent, if hover { 55 } else { 28 }), t.accent)
             };
@@ -169,7 +169,7 @@ pub fn paint_dom_action(
             painter.text(rect.center(), egui::Align2::CENTER_CENTER, label, font_label, text_col);
         }
         ArmedChip => {
-            let ac = if ctx.armed { t.bear } else { t.dim.gamma_multiply(0.4) };
+            let ac = if ctx.armed { t.bear } else { color_dim(t.dim) };
             let fill = if ctx.armed { color_alpha(ac, 35) } else { color_alpha(t.toolbar_border, alpha_ghost()) };
             painter.rect_filled(rect, r_xs, fill);
             let stroke_a = if ctx.armed { 90 } else { 30 };
@@ -181,7 +181,7 @@ pub fn paint_dom_action(
         Buy | Sell => {
             let semantic = if matches!(tier, Buy) { t.bull } else { t.bear };
             let (fill, text_col) = if ctx.is_light {
-                (if hover { semantic } else { semantic.gamma_multiply(0.92) }, Color32::WHITE)
+                (if hover { semantic } else { semantic.gamma_multiply(0.92) }, contrast_fg(semantic))
             } else {
                 (if hover { color_alpha(semantic, 70) } else { color_alpha(semantic, alpha_tint()) }, semantic)
             };
@@ -199,7 +199,7 @@ pub fn paint_dom_action(
                 egui::Stroke::new(stroke_thin(), color_alpha(fc, alpha_line())),
                 egui::StrokeKind::Outside);
             painter.text(rect.center(), egui::Align2::CENTER_CENTER, label, font_label,
-                if hover { fc } else { fc.gamma_multiply(0.6) });
+                if hover { fc } else { color_muted(fc) });
         }
         Subtle => {
             painter.rect_filled(rect, r_xs,
@@ -208,7 +208,7 @@ pub fn paint_dom_action(
                 egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_line())),
                 egui::StrokeKind::Outside);
             painter.text(rect.center(), egui::Align2::CENTER_CENTER, label, font_label,
-                if hover { t.dim } else { t.dim.gamma_multiply(0.5) });
+                if hover { t.dim } else { color_half(t.dim) });
         }
     }
     if hover && !crate::design_tokens::is_inspect_mode() {
@@ -237,7 +237,7 @@ pub fn paint_pane_header_action(
     } else if resp.hovered() {
         text_color
     } else {
-        dim_color.gamma_multiply(0.85)
+        color_subtle(dim_color)
     };
     header_painter.text(
         egui::pos2(rect.left(), rect.center().y),

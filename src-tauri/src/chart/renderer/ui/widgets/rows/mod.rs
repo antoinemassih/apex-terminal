@@ -11,7 +11,7 @@
 //! and a `.theme(&Theme)` knob. The `ListRow` base in this file is the
 //! generic vehicle — domain rows wrap it with column slots.
 
-#![allow(unused_imports)]
+#![allow(unused_imports, dead_code, deprecated)]
 
 use egui::{Color32, Response, Sense, Stroke, Ui, Widget};
 use super::super::style::*;
@@ -37,6 +37,12 @@ type Theme = crate::chart_renderer::gpu::Theme;
 ///     .show(ui);
 /// ```
 #[must_use = "ListRow must be finalized with `.show(ui)` to render"]
+#[deprecated(
+    since = "Wave 11b",
+    note = "Use ui_kit::PanelListRow with .leading() + .columns() instead. \
+            ListRow has zero remaining callers; this struct is retained for one \
+            release as a safety net and will be removed in a future cleanup wave."
+)]
 pub struct ListRow<'a, B: FnOnce(&mut Ui) + 'a, T: FnOnce(&mut Ui) + 'a> {
     height: f32,
     selected: bool,
@@ -142,7 +148,7 @@ impl<'a, B: FnOnce(&mut Ui) + 'a, T: FnOnce(&mut Ui) + 'a> ListRow<'a, B, T> {
         );
         let resp = ui.allocate_rect(rect, self.sense);
 
-        let default_t = &crate::chart_renderer::gpu::THEMES[0];
+        let default_t = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
         let border = self.theme_border.unwrap_or(default_t.toolbar_border);
         let accent = self.theme_accent.unwrap_or(default_t.accent);
 

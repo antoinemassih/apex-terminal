@@ -1,14 +1,23 @@
 //! Trade Journal panel — behavioral analytics, trade log, performance stats.
+//!
+//! Migrated to canonical ui_kit side-panel primitives:
+//!   - Standalone `draw` uses `SidePanelShell` (was hand-rolled
+//!     `SidePanel + PanelFrame + PanelHeaderWithClose`).
+//!   - Section headers (TOTAL P&L / METRICS / INSIGHTS / TRADE LOG /
+//!     RECENT TRADES) use `PanelSection`.
+//!   - `PanelEmpty` for the "no trades" state.
+//!   - `TradeCard` is preserved — that's the canonical trade card primitive.
+//!   - The metric grid (Win Rate / Avg R / PF / etc.) keeps its bespoke
+//!     4-column layout — `PanelKeyValueRow` only handles 2 columns.
 
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme, JournalEntry};
-use super::super::widgets::text::{SectionLabel, MonospaceCode};
-use super::super::widgets::layout::EmptyState;
-use super::super::widgets::frames::PanelFrame;
-use super::super::widgets::headers::PanelHeaderWithClose;
-use crate::ui_kit::widgets::Pagination;
-use crate::ui_kit::widgets::{TradeCard, TradeCardData};
+use super::super::widgets::text::MonospaceCode;
+use crate::ui_kit::widgets::{
+    PanelEmpty, PanelSection, Pagination, SidePanelShell, TradeCard, TradeCardData, Width,
+};
+use crate::ui_kit::icons::Icon;
 
 const TRADE_LOG_PAGE_SIZE: usize = 10;
 
@@ -20,18 +29,21 @@ pub(crate) fn draw_content(
 ) {
     let entries = &watchlist.journal_entries;
     if entries.is_empty() {
-        EmptyState::new("\u{1F4D2}", "No trades logged", "Log a trade to see analytics").theme(t).show(ui);
+        PanelEmpty::new("No trades logged")
+            .glyph(Icon::NOTEBOOK)
+            .hint("Log a trade to see analytics")
+            .show(ui, t);
         return;
     }
-    draw_summary(ui, entries, t);
-    ui.add_space(gap_sm());
-    separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
-    ui.add_space(gap_sm());
-    ui.add(SectionLabel::new(&format!("RECENT TRADES ({})", entries.len().min(5))).tiny().color(t.dim));
-    ui.add_space(gap_xs());
-    for entry in entries.iter().take(5) {
-        draw_card(ui, entry, t);
-    }
+
+    PanelSection::new("SUMMARY").show(ui, t, |ui, t| draw_summary(ui, entries, t));
+
+    let take = entries.len().min(5);
+    PanelSection::new("RECENT TRADES").count(take).show(ui, t, |ui, t| {
+        for entry in entries.iter().take(5) {
+            draw_card(ui, entry, t);
+        }
+    });
 }
 
 /// Standalone sidebar panel.
@@ -42,63 +54,59 @@ pub(crate) fn draw(
 ) {
     if !watchlist.journal_panel_open { return; }
 
-    egui::SidePanel::right("journal_panel")
-        .default_width(300.0)
-        .min_width(260.0)
-        .max_width(460.0)
-        .resizable(true)
-        .frame(PanelFrame::new(t.toolbar_bg, t.toolbar_border).build())
-        .show(ctx, |ui| {
-            if PanelHeaderWithClose::new("TRADE JOURNAL").theme(t).watchlist(watchlist).show(ui) {
-                watchlist.journal_panel_open = false;
-            }
-            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
-            ui.add_space(gap_sm());
-
+    let resp = SidePanelShell::new("journal_panel", "TRADE JOURNAL")
+        .width(Width::Medium)
+        .pane_metrics(
+            crate::chart_renderer::gpu::pane_tabs_header_h(watchlist),
+            watchlist.pane_header_size.title_font(),
+        )
+        .show(ctx, t, |ui, t| {
             if watchlist.journal_entries.is_empty() {
                 ui.add_space(gap_3xl());
-                EmptyState::new("\u{1F4D2}", "No trades logged", "Log a trade to see analytics").theme(t).show(ui);
+                PanelEmpty::new("No trades logged")
+                    .glyph(Icon::NOTEBOOK)
+                    .hint("Log a trade to see analytics")
+                    .show(ui, t);
                 return;
             }
 
             egui::ScrollArea::vertical().id_salt("journal_main").show(ui, |ui| {
                 let entries = &watchlist.journal_entries;
-                draw_summary(ui, entries, t);
-                ui.add_space(gap_sm());
-                separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
-                ui.add_space(gap_sm());
-                draw_insights(ui, entries, t);
-                ui.add_space(gap_sm());
-                separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
-                ui.add_space(gap_sm());
-                let total = watchlist.journal_entries.len();
-                ui.add(SectionLabel::new(&format!("TRADE LOG ({})", total)).tiny().color(t.dim));
-                ui.add_space(gap_xs());
 
-                if total <= TRADE_LOG_PAGE_SIZE {
-                    for entry in &watchlist.journal_entries {
-                        draw_card(ui, entry, t);
+                PanelSection::new("SUMMARY")
+                    .show(ui, t, |ui, t| draw_summary(ui, entries, t));
+
+                PanelSection::new("INSIGHTS")
+                    .show(ui, t, |ui, t| draw_insights(ui, entries, t));
+
+                let total = watchlist.journal_entries.len();
+                PanelSection::new("TRADE LOG").count(total).show(ui, t, |ui, t| {
+                    if total <= TRADE_LOG_PAGE_SIZE {
+                        for entry in &watchlist.journal_entries {
+                            draw_card(ui, entry, t);
+                        }
+                    } else {
+                        let total_pages = (total + TRADE_LOG_PAGE_SIZE - 1) / TRADE_LOG_PAGE_SIZE;
+                        if watchlist.journal_page >= total_pages {
+                            watchlist.journal_page = total_pages - 1;
+                        }
+                        let page = watchlist.journal_page;
+                        let start = page * TRADE_LOG_PAGE_SIZE;
+                        let end = (start + TRADE_LOG_PAGE_SIZE).min(total);
+                        for entry in &watchlist.journal_entries[start..end] {
+                            draw_card(ui, entry, t);
+                        }
+                        ui.add_space(gap_xs());
+                        ui.horizontal(|ui| {
+                            ui.add_space(gap_sm());
+                            let _ = Pagination::new(&mut watchlist.journal_page, total_pages)
+                                .show(ui, t);
+                        });
                     }
-                } else {
-                    let total_pages = (total + TRADE_LOG_PAGE_SIZE - 1) / TRADE_LOG_PAGE_SIZE;
-                    if watchlist.journal_page >= total_pages {
-                        watchlist.journal_page = total_pages - 1;
-                    }
-                    let page = watchlist.journal_page;
-                    let start = page * TRADE_LOG_PAGE_SIZE;
-                    let end = (start + TRADE_LOG_PAGE_SIZE).min(total);
-                    for entry in &watchlist.journal_entries[start..end] {
-                        draw_card(ui, entry, t);
-                    }
-                    ui.add_space(gap_xs());
-                    ui.horizontal(|ui| {
-                        ui.add_space(gap_sm());
-                        let _ = Pagination::new(&mut watchlist.journal_page, total_pages)
-                            .show(ui, t);
-                    });
-                }
+                });
             });
         });
+    if resp.close_clicked { watchlist.journal_panel_open = false; }
 }
 
 fn draw_summary(ui: &mut egui::Ui, entries: &[JournalEntry], t: &Theme) {
@@ -147,46 +155,44 @@ fn draw_summary(ui: &mut egui::Ui, entries: &[JournalEntry], t: &Theme) {
 }
 
 fn draw_insights(ui: &mut egui::Ui, entries: &[JournalEntry], t: &Theme) {
-    // By setup type
-    ui.add(SectionLabel::new("BY SETUP TYPE").tiny().color(t.dim));
-    ui.add_space(gap_xs());
-    let mut setups: Vec<(String, u32, u32, f64)> = Vec::new();
-    for e in entries {
-        if let Some(s) = setups.iter_mut().find(|(n, _, _, _)| *n == e.setup_type) {
-            s.1 += 1; if e.pnl > 0.0 { s.2 += 1; } s.3 += e.pnl;
-        } else {
-            setups.push((e.setup_type.clone(), 1, if e.pnl > 0.0 { 1 } else { 0 }, e.pnl));
+    // BY SETUP TYPE
+    PanelSection::new("BY SETUP TYPE").rule(false).show(ui, t, |ui, t| {
+        let mut setups: Vec<(String, u32, u32, f64)> = Vec::new();
+        for e in entries {
+            if let Some(s) = setups.iter_mut().find(|(n, _, _, _)| *n == e.setup_type) {
+                s.1 += 1; if e.pnl > 0.0 { s.2 += 1; } s.3 += e.pnl;
+            } else {
+                setups.push((e.setup_type.clone(), 1, if e.pnl > 0.0 { 1 } else { 0 }, e.pnl));
+            }
         }
-    }
-    setups.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
-    for (setup, total, wins, pnl) in &setups {
-        let wr = if *total > 0 { *wins as f32 / *total as f32 * 100.0 } else { 0.0 };
-        draw_insight_row(ui, setup, *total, wr, *pnl, t);
-    }
+        setups.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
+        for (setup, total, wins, pnl) in &setups {
+            let wr = if *total > 0 { *wins as f32 / *total as f32 * 100.0 } else { 0.0 };
+            draw_insight_row(ui, setup, *total, wr, *pnl, t);
+        }
+    });
 
-    ui.add_space(gap_sm());
-    ui.add(SectionLabel::new("BY HOLDING TIME").tiny().color(t.dim));
-    ui.add_space(gap_xs());
-    for (label, min_m, max_m) in [("< 2 hrs", 0i64, 120i64), ("2h - 1d", 120, 1440), ("> 1 day", 1440, i64::MAX)] {
-        let trades: Vec<&JournalEntry> = entries.iter().filter(|e| e.duration_mins >= min_m && e.duration_mins < max_m).collect();
-        if trades.is_empty() { continue; }
-        let w = trades.iter().filter(|e| e.pnl > 0.0).count() as u32;
-        let wr = w as f32 / trades.len() as f32 * 100.0;
-        let p: f64 = trades.iter().map(|e| e.pnl).sum();
-        draw_insight_row(ui, label, trades.len() as u32, wr, p, t);
-    }
+    PanelSection::new("BY HOLDING TIME").rule(false).show(ui, t, |ui, t| {
+        for (label, min_m, max_m) in [("< 2 hrs", 0i64, 120i64), ("2h - 1d", 120, 1440), ("> 1 day", 1440, i64::MAX)] {
+            let trades: Vec<&JournalEntry> = entries.iter().filter(|e| e.duration_mins >= min_m && e.duration_mins < max_m).collect();
+            if trades.is_empty() { continue; }
+            let w = trades.iter().filter(|e| e.pnl > 0.0).count() as u32;
+            let wr = w as f32 / trades.len() as f32 * 100.0;
+            let p: f64 = trades.iter().map(|e| e.pnl).sum();
+            draw_insight_row(ui, label, trades.len() as u32, wr, p, t);
+        }
+    });
 
-    ui.add_space(gap_sm());
-    ui.add(SectionLabel::new("BY DIRECTION").tiny().color(t.dim));
-    ui.add_space(gap_xs());
-    for dir in ["Long", "Short"] {
-        let trades: Vec<&JournalEntry> = entries.iter().filter(|e| e.side == dir).collect();
-        if trades.is_empty() { continue; }
-        let w = trades.iter().filter(|e| e.pnl > 0.0).count() as u32;
-        let wr = w as f32 / trades.len() as f32 * 100.0;
-        let p: f64 = trades.iter().map(|e| e.pnl).sum();
-        draw_insight_row(ui, dir, trades.len() as u32, wr, p, t);
-    }
+    PanelSection::new("BY DIRECTION").rule(false).show(ui, t, |ui, t| {
+        for dir in ["Long", "Short"] {
+            let trades: Vec<&JournalEntry> = entries.iter().filter(|e| e.side == dir).collect();
+            if trades.is_empty() { continue; }
+            let w = trades.iter().filter(|e| e.pnl > 0.0).count() as u32;
+            let wr = w as f32 / trades.len() as f32 * 100.0;
+            let p: f64 = trades.iter().map(|e| e.pnl).sum();
+            draw_insight_row(ui, dir, trades.len() as u32, wr, p, t);
+        }
+    });
 }
 
 fn draw_insight_row(ui: &mut egui::Ui, label: &str, total: u32, wr: f32, pnl: f64, t: &Theme) {

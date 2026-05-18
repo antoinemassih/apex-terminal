@@ -61,7 +61,7 @@ gradient = [
 [toolbar]
 height = 36.0
 height_compact = 28.0
-btn_min_height = 24.0
+btn_min_height = 22.0
 btn_padding_x = 7.0
 right_controls_width = 150.0
 
@@ -157,7 +157,7 @@ height = 36.0
 trough_darken = 12
 trough_expand_x = 4.0
 btn_padding_x = 7.0
-btn_min_height = 24.0
+btn_min_height = 22.0
 
 [icon_button]
 icon_padding = 5.0
@@ -294,24 +294,24 @@ pane_tints = [
     62,
     120,
     180,
-    30,
+    0,
 ],
     [
     180,
     100,
     255,
-    30,
+    0,
 ],
     [
     46,
     204,
     113,
-    30,
+    0,
 ],
     [
     255,
     191,
     0,
-    30,
+    0,
 ],
 ]

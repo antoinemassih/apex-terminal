@@ -1,6 +1,13 @@
 //! Cosmic-text rasterization pipeline. Owns a global FontSystem +
 //! SwashCache + an egui-managed glyph atlas. Used by `PolishedLabel`.
 //!
+//! ### NOTE: foundation primitive, not a widget
+//! This module is the text rasterization backend used by `PolishedLabel`.
+//! It exposes shaping / atlas / glyph-lookup APIs, not a builder + `show()`.
+//! It is not a widget and the "Builder + show()" rule in `CLAUDE.md` does
+//! not apply. If you want themed text, use `PolishedLabel` (which delegates
+//! here) or `Label`.
+//!
 //! Lifecycle: lazy-init on first request. Atlas grows on demand;
 //! glyphs are evicted via an LRU sweep that runs every 60 frames and
 //! reclaims regions unused for the last ~2 minutes. Reclaimed regions

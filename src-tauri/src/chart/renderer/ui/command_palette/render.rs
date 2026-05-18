@@ -7,7 +7,7 @@ use super::super::style::*;
 use super::super::components::*;
 use super::super::components_extra::*;
 use super::super::widgets::text::{BodyLabel, CaptionLabel};
-use super::super::widgets::inputs::TextInput;
+use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::{Variant, Size}};
 use super::super::super::gpu::*;
 
@@ -17,7 +17,7 @@ pub(super) fn draw_ai_mode(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
         ui.add_space(gap_lg());
         let (badge_rect, _) = ui.allocate_exact_size(egui::vec2(68.0, 18.0), egui::Sense::hover());
         let painter = ui.painter();
-        painter.rect_filled(badge_rect, current().r_lg, Category::Ai.color(t).gamma_multiply(0.25));
+        painter.rect_filled(badge_rect, current().r_lg, color_very_dim(Category::Ai.color(t)));
         painter.rect_stroke(badge_rect, current().r_lg, egui::Stroke::new(current().stroke_std, Category::Ai.color(t)), egui::StrokeKind::Inside);
         painter.text(badge_rect.center(), egui::Align2::CENTER_CENTER,
             "GEMMA 4", egui::FontId::proportional(font_sm()), Category::Ai.color(t));
@@ -36,18 +36,17 @@ pub(super) fn draw_ai_mode(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
         "> summarize today's price action on QQQ",
         "> what widgets would help me trade earnings season?",
     ] {
-        ui.label(egui::RichText::new(hint).size(font_md()).monospace().color(t.text.gamma_multiply(0.7)));
+        ui.label(egui::RichText::new(hint).size(font_md()).monospace().color(color_subtle(t.text)));
     }
     ui.add_space(gap_xl());
-    let te = TextInput::new(&mut watchlist.cmd_palette_ai_input)
+    let te = Input::new(&mut watchlist.cmd_palette_ai_input)
         .multiline(true)
         .width(pal_w - 16.0)
         .placeholder("Ask anything — Gemma 4 will answer (coming soon)…")
         .font_size(font_md())
         .proportional(true)
-        .theme(t)
-        .show(ui);
-    te.request_focus();
+        .show(ui, t);
+    te.request_focus(ui.ctx());
     ui.add_space(gap_md());
     ui.horizontal(|ui| {
         ui.add(BodyLabel::new("Gemma 4 is not wired up yet — this is a placeholder panel.").size(font_sm()).italics(true).color(t.dim));
@@ -108,7 +107,7 @@ pub(super) fn draw_help_mode(ui: &mut egui::Ui, topic: &str, t: &Theme, _pal_w: 
 
 /// File-local helper: dim hint paragraph used throughout the preview pane.
 fn preview_hint(ui: &mut egui::Ui, text: &str, t: &Theme) {
-    ui.add(BodyLabel::new(text).color(t.text.gamma_multiply(0.75)));
+    ui.add(BodyLabel::new(text).color(color_subtle(t.text)));
 }
 
 pub(super) fn draw_preview(ui: &mut egui::Ui, t: &Theme, selected: Option<&(String, String, String)>, panes: &[Chart], ap: usize) {
@@ -128,7 +127,7 @@ pub(super) fn draw_preview(ui: &mut egui::Ui, t: &Theme, selected: Option<&(Stri
         draw_symbol_preview(ui, t, sym, panes, ap);
     } else if id == "ai:chat" {
         ui.label(egui::RichText::new("Conversational assistant\npowered by fine-tuned Gemma 4.")
-            .size(super::super::style::font_sm()).color(t.text.gamma_multiply(0.8)));
+            .size(super::super::style::font_sm()).color(color_subtle(t.text)));
         ui.add_space(gap_sm());
         ui.label(egui::RichText::new("• scanners in plain English\n• alert creation\n• context-aware answers")
             .size(font_sm()).color(t.dim));
@@ -192,7 +191,7 @@ fn draw_symbol_preview(ui: &mut egui::Ui, t: &Theme, sym: &str, _panes: &[Chart]
         // Sparkline
         let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 54.0), egui::Sense::hover());
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, current().r_md, t.toolbar_bg.gamma_multiply(0.5));
+        painter.rect_filled(rect, current().r_md, color_half(t.toolbar_bg));
         let tail: Vec<_> = bars.iter().rev().take(60).rev().cloned().collect();
         if tail.len() >= 2 {
             let (mn, mx) = tail.iter().fold((f32::MAX, f32::MIN), |(a, b), bar| (a.min(bar.low), b.max(bar.high)));
@@ -211,7 +210,7 @@ fn draw_symbol_preview(ui: &mut egui::Ui, t: &Theme, sym: &str, _panes: &[Chart]
         ui.add_space(gap_md());
         let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 40.0), egui::Sense::hover());
         ui.painter().rect_stroke(rect, current().r_md,
-            egui::Stroke::new(current().stroke_std, t.dim.gamma_multiply(0.4)), egui::StrokeKind::Inside);
+            egui::Stroke::new(current().stroke_std, color_dim(t.dim)), egui::StrokeKind::Inside);
         ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
             "no cached bars", egui::FontId::proportional(font_sm()), t.dim);
     }

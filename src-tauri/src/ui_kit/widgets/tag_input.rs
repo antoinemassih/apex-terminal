@@ -166,7 +166,7 @@ impl<'a> TagInput<'a> {
                         painter.rect_stroke(
                             container_rect,
                             radius,
-                            Stroke::new(1.0, border_col),
+                            Stroke::new(st::stroke_std(), border_col),
                             StrokeKind::Inside,
                         );
                     }
@@ -328,7 +328,7 @@ impl<'a> TagInput<'a> {
 
                         egui::Frame::none()
                             .fill(bg)
-                            .stroke(Stroke::new(1.0, border))
+                            .stroke(Stroke::new(st::stroke_std(), border))
                             .corner_radius(CornerRadius::same(st::radius_sm() as u8))
                             .inner_margin(Margin::symmetric(st::gap_xs() as i8, st::gap_2xs() as i8))
                             .show(ui, |ui| {
@@ -383,6 +383,7 @@ impl<'a> TagInput<'a> {
 /// Measure the pixel width of a tag label (without padding/icon overhead).
 fn measure_tag_width(ui: &Ui, text: &str, font_size: f32) -> f32 {
     ui.fonts(|f| {
+        // layout-only: only `.rect.width()` is read; color is discarded.
         f.layout_no_wrap(
             text.to_string(),
             FontId::proportional(font_size - 1.0),

@@ -1,13 +1,16 @@
 //! Feed panel — sidebar with subdivided sections, each with its own tab bar.
+//!
+//! Chrome (outer side panel, header, "+", per-section tab strips, dividers,
+//! close-X) is delegated to
+//! [`SplitSectionPanel`](crate::ui_kit::widgets::SplitSectionPanel). This
+//! module is now responsible only for tab definitions and per-tab body
+//! dispatch (News / Discord / Screenshots).
 
 use egui;
-use super::super::style::*;
-use super::super::widgets as widgets;
-use crate::ui_kit::widgets::Button;
-use crate::ui_kit::widgets::tokens::Variant;
-use super::super::widgets::headers::PanelHeaderWithClose;
-use super::super::super::gpu::{Watchlist, Chart, Theme, SplitSection};
+use super::super::super::gpu::{Watchlist, Chart, Theme};
 use crate::chart_renderer::FeedTab;
+use crate::ui_kit::widgets::SplitSectionPanel;
+use crate::ui_kit::widgets::side_panel_shell::Width;
 
 const ALL_TABS: &[(FeedTab, &str)] = &[
     (FeedTab::News, "News"),
@@ -27,110 +30,36 @@ pub(crate) fn draw(
     super::discord_panel::drain_background(ctx, watchlist);
     let active_symbol = if !panes.is_empty() { panes[ap].symbol.clone() } else { String::new() };
 
-    egui::SidePanel::right("feed_panel")
-        .default_width(300.0)
-        .min_width(260.0)
-        .max_width(480.0)
-        .resizable(true)
-        .frame(widgets::frames::PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build())
-        .show(ctx, |ui| {
-            // Header — title + add-section button + close. Pre-resolve
-            // pane-aligned metrics outside the mutating closure.
-            let header_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
-            let title_font_size = watchlist.pane_header_size.title_font();
-            let closed = PanelHeaderWithClose::new("FEED").theme(t)
-                .height(header_h).font_size(title_font_size)
-                .show_with(ui, |ui| {
-                if ui.add(Button::new("+").variant(Variant::Chrome).fill(egui::Color32::TRANSPARENT).fg(t.dim).min_size(egui::vec2(20.0, 20.0)).frameless(true)).clicked() {
-                    let used: Vec<FeedTab> = watchlist.feed_splits.iter().map(|s| s.tab).collect();
-                    let next = ALL_TABS.iter().find(|(tab, _)| !used.contains(tab))
-                        .map(|(tab, _)| *tab).unwrap_or(FeedTab::News);
-                    if let Some(last) = watchlist.feed_splits.last_mut() { last.frac *= 0.5; }
-                    let frac = watchlist.feed_splits.last().map(|s| s.frac).unwrap_or(1.0);
-                    watchlist.feed_splits.push(SplitSection::new(next, frac));
-                }
-            });
-            if closed { watchlist.feed_panel_open = false; }
-            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+    // Snapshot per-section active tab so the body closure can dispatch
+    // without holding a borrow into the splits Vec (owned by the widget).
+    let tab_snapshot: Vec<FeedTab> =
+        watchlist.feed_splits.iter().map(|s| s.tab).collect();
 
-            let available_h = ui.available_height();
-            let n = watchlist.feed_splits.len();
-            if watchlist.feed_splits.is_empty() {
-                watchlist.feed_splits.push(SplitSection::new(FeedTab::News, 1.0));
-            }
+    // Move splits out so the body closure can use `&mut watchlist` freely
+    // for the child draw_content panels. Restore after `.show()`.
+    let mut splits = std::mem::take(&mut watchlist.feed_splits);
+    let pane_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
+    let pane_font = watchlist.pane_header_size.title_font();
 
-            let divider_total = n.saturating_sub(1) as f32 * 6.0;
-            let tab_bar_total = n as f32 * 28.0;
-            let content_h = (available_h - divider_total - tab_bar_total).max(40.0);
-            let total_frac: f32 = watchlist.feed_splits.iter().map(|s| s.frac).sum();
-            let norm = if total_frac > 0.001 { 1.0 / total_frac } else { 1.0 };
-            let heights: Vec<f32> = watchlist.feed_splits.iter()
-                .map(|s| (s.frac * norm * content_h).max(30.0)).collect();
-
-            let mut remove_idx: Option<usize> = None;
-            let mut divider_drags: Vec<(usize, f32)> = Vec::new();
-
-            for i in 0..n {
-                let tab = watchlist.feed_splits[i].tab;
-                let h = heights[i];
-                let can_close = n > 1;
-
-                ui.horizontal(|ui| {
-                    ui.set_min_height(26.0);
-                    let labels: Vec<&str> = ALL_TABS.iter().map(|(_, l)| *l).collect();
-                    let mut active_idx: usize = ALL_TABS.iter().position(|(tv, _)| *tv == tab).unwrap_or(0);
-                    let prev_idx = active_idx;
-                    crate::ui_kit::widgets::Tabs::new(&mut active_idx, &labels)
-                        .size(crate::ui_kit::widgets::tokens::Size::Sm)
-                        .show(ui, t);
-                    if active_idx != prev_idx {
-                        watchlist.feed_splits[i].tab = ALL_TABS[active_idx].0;
-                    }
-                    if can_close {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.add(Button::new("\u{00D7}").variant(Variant::Chrome)
-                                .fill(egui::Color32::TRANSPARENT)
-                                .fg(color_dim(t.dim))
-                                .min_size(egui::vec2(18.0, 18.0))
-                                .frameless(true)).clicked() {
-                                remove_idx = Some(i);
-                            }
-                        });
-                    }
-                });
-                ui.painter().line_segment(
-                    [egui::pos2(ui.min_rect().left(), ui.min_rect().bottom()),
-                     egui::pos2(ui.min_rect().right(), ui.min_rect().bottom())],
-                    egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_faint())));
-
-                egui::ScrollArea::vertical().id_salt(format!("feed_sec_{}", i)).max_height(h).show(ui, |ui| {
-                    match tab {
-                        FeedTab::News => super::news_panel::draw_content(ui, watchlist, &active_symbol, t),
-                        FeedTab::Discord => super::discord_panel::draw_content(ui, watchlist, t),
-                        FeedTab::Screenshots => super::screenshot_panel::draw_content(ui, watchlist, t, panes, ap),
-                    }
-                });
-
-                if i + 1 < n {
-                    let d = split_divider(ui, &format!("fdiv_{}", i), t.dim);
-                    if d != 0.0 { divider_drags.push((i, d)); }
-                }
-            }
-
-            if let Some(idx) = remove_idx {
-                let removed = watchlist.feed_splits[idx].frac;
-                watchlist.feed_splits.remove(idx);
-                if !watchlist.feed_splits.is_empty() {
-                    let share = removed / watchlist.feed_splits.len() as f32;
-                    for s in &mut watchlist.feed_splits { s.frac += share; }
-                }
-            }
-            for (idx, delta) in divider_drags {
-                if idx + 1 < watchlist.feed_splits.len() {
-                    let fd = delta / available_h.max(1.0);
-                    watchlist.feed_splits[idx].frac = (watchlist.feed_splits[idx].frac + fd).clamp(0.05, 0.90);
-                    watchlist.feed_splits[idx + 1].frac = (watchlist.feed_splits[idx + 1].frac - fd).clamp(0.05, 0.90);
-                }
+    let resp = SplitSectionPanel::new("feed_panel", &mut splits)
+        .title("FEED")
+        .tabs(ALL_TABS)
+        .default_tab(FeedTab::News)
+        .width(Width::Medium)
+        .resizable(260.0..=480.0)
+        .pane_metrics(pane_h, pane_font)
+        .show(ctx, t, |ui, t, i, _frac| {
+            let tab = tab_snapshot.get(i).copied().unwrap_or(FeedTab::News);
+            match tab {
+                FeedTab::News =>
+                    super::news_panel::draw_content(ui, watchlist, &active_symbol, t),
+                FeedTab::Discord =>
+                    super::discord_panel::draw_content(ui, watchlist, t),
+                FeedTab::Screenshots =>
+                    super::screenshot_panel::draw_content(ui, watchlist, t, panes, ap),
             }
         });
+
+    watchlist.feed_splits = splits;
+    if resp.close_clicked { watchlist.feed_panel_open = false; }
 }

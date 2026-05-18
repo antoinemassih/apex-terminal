@@ -14,7 +14,7 @@ use super::components_extra::*;
 use super::widgets::pills::*;
 use super::widgets::frames::PopupFrame;
 use super::widgets::text::BodyLabel;
-use super::widgets::inputs::TextInput;
+use crate::ui_kit::widgets::Input;
 use super::super::gpu::*;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::{Variant, Size}};
 use crate::ui_kit::icons::Icon;
@@ -200,15 +200,14 @@ fn draw_normal_mode(
     // Header
     ui.horizontal(|ui| {
         ui.add(BodyLabel::new("⌕").size(font_lg()).color(t.dim));
-        let te = TextInput::new(&mut watchlist.cmd_palette_query)
+        let te = Input::new(&mut watchlist.cmd_palette_query)
             .width(pal_w - 180.0)
             .font_size(font_lg())
             .proportional(true)
             .placeholder("Search symbols, commands, widgets…  (Tab for AI)")
             .frameless(true)
-            .theme(t)
-            .show(ui);
-        te.request_focus();
+            .show(ui, t);
+        te.request_focus(ui.ctx());
 
         if ui.input(|i| i.key_pressed(egui::Key::Tab)) {
             watchlist.cmd_palette_ai_mode = true; return;
@@ -235,7 +234,7 @@ fn draw_normal_mode(
             PaneType::Chart => "Chart", PaneType::Portfolio => "Portfolio",
             PaneType::Dashboard => "Dashboard", PaneType::Heatmap => "Heatmap",
             PaneType::Spreadsheet => "Spreadsheet",
-        })).size(font_sm()).color(t.dim.gamma_multiply(0.7)));
+        })).size(font_sm()).color(color_subtle(t.dim)));
     });
     ui.add_space(gap_sm()); ui.separator(); ui.add_space(gap_sm());
 
@@ -409,7 +408,7 @@ fn draw_normal_mode(
                             let chip_rect = egui::Rect::from_min_size(
                                 rect.min + egui::vec2(6.0, (row_h - 14.0) / 2.0),
                                 egui::vec2(62.0, 14.0));
-                            painter.rect_filled(chip_rect, current().r_sm, chip_col.gamma_multiply(0.22));
+                            painter.rect_filled(chip_rect, current().r_sm, color_very_dim(chip_col));
                             painter.text(chip_rect.center(), egui::Align2::CENTER_CENTER,
                                 cat_label, egui::FontId::proportional(super::style::font_xs()), chip_col);
 
@@ -418,7 +417,7 @@ fn draw_normal_mode(
                                 egui::Align2::LEFT_CENTER,
                                 label,
                                 egui::FontId::proportional(super::style::font_md()),
-                                if is_sel { t.text } else { t.text.gamma_multiply(0.88) },
+                                if is_sel { t.text } else { color_subtle(t.text) },
                             );
 
                             if let Some(hk) = hotkey_for(id) {

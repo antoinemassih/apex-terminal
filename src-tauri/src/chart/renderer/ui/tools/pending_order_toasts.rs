@@ -39,10 +39,10 @@ pub fn show_pending_order_toasts(c: PendingOrderToastsCtx<'_>) {
                 .show(c.ctx, |ui| {
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new(format!("{} x{} @ {:.2}", label, qty, price)).monospace().size(font_sm()).color(color));
-                        if KitButton::icon(Icon::CHECK).variant(KitVariant::Ghost).glyph_color(c.t.bull).show(ui, c.t).clicked() {
+                        if KitButton::icon(Icon::CHECK).variant(KitVariant::Ghost).glyph_color(c.t.bull).show(ui, c.t).on_hover_text("Confirm order").clicked() {
                             confirm_ids.push(*oid);
                         }
-                        if KitButton::icon(Icon::X).variant(KitVariant::Ghost).glyph_color(c.t.bear).show(ui, c.t).clicked() {
+                        if KitButton::icon(Icon::X).variant(KitVariant::Ghost).glyph_color(c.t.bear).show(ui, c.t).on_hover_text("Cancel order").clicked() {
                             cancel_ids.push(*oid);
                         }
                     });

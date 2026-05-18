@@ -248,6 +248,7 @@ fn paint_calendar<'a>(
                 if Button::icon(super::super::icons::Icon::CARET_LEFT)
                     .size(Size::Sm)
                     .show(ui, theme)
+                    .on_hover_text("Previous month")
                     .clicked()
                 {
                     pending_view = Some(add_months(view_month, -1));
@@ -273,7 +274,7 @@ fn paint_calendar<'a>(
                 if hover_t > 0.001 {
                     ui.painter().rect_filled(
                         title_rect,
-                        CornerRadius::same(3),
+                        CornerRadius::same(3), // TODO: off-token
                         st::color_alpha(bg_hover, (st::ALPHA_GHOST as f32 * hover_t) as u8),
                     );
                 }
@@ -327,7 +328,7 @@ fn paint_calendar<'a>(
                                                 RichText::new(label)
                                                     .monospace()
                                                     .size(st::font_xs())
-                                                    .color(if is_cur { Color32::WHITE } else { theme.text() }),
+                                                    .color(if is_cur { st::contrast_fg(theme.accent()) } else { theme.text() }),
                                             )
                                             .fill(if is_cur { theme.accent() } else { Color32::TRANSPARENT })
                                             .min_size(Vec2::new(40.0, 20.0)),
@@ -352,7 +353,7 @@ fn paint_calendar<'a>(
                                                 RichText::new(&MONTH_NAMES[(m - 1) as usize][..3])
                                                     .monospace()
                                                     .size(st::font_xs())
-                                                    .color(if is_cur { Color32::WHITE } else { theme.text() }),
+                                                    .color(if is_cur { st::contrast_fg(theme.accent()) } else { theme.text() }),
                                             )
                                             .fill(if is_cur { theme.accent() } else { Color32::TRANSPARENT })
                                             .min_size(Vec2::new(40.0, 20.0)),
@@ -380,6 +381,7 @@ fn paint_calendar<'a>(
                 if Button::icon(super::super::icons::Icon::CARET_RIGHT)
                     .size(Size::Sm)
                     .show(ui, theme)
+                    .on_hover_text("Next month")
                     .clicked()
                 {
                     pending_view = Some(add_months(view_month, 1));
@@ -557,7 +559,7 @@ fn paint_one_month(
             }
 
             // Paint cell background.
-            let radius = CornerRadius::same(3);
+            let radius = CornerRadius::same(3); // TODO: off-token
             let accent = theme.accent();
             let mid_bg = st::color_alpha(accent, st::ALPHA_GHOST);
             let preview_bg = st::color_alpha(accent, st::ALPHA_FAINT);
@@ -587,14 +589,14 @@ fn paint_one_month(
                 painter.rect_stroke(
                     cell_rect.shrink(2.0),
                     radius,
-                    Stroke::new(1.5, accent),
+                    Stroke::new(st::stroke_bold(), accent),
                     StrokeKind::Inside,
                 );
             }
 
             // Number text.
             let text_col = match sel_state {
-                CellSel::Selected | CellSel::RangeStart | CellSel::RangeEnd => Color32::WHITE,
+                CellSel::Selected | CellSel::RangeStart | CellSel::RangeEnd => st::contrast_fg(accent),
                 CellSel::None => {
                     if !in_month {
                         st::color_alpha(theme.dim(), 80)

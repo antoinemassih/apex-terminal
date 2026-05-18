@@ -1,21 +1,27 @@
 //! Alerts management panel — shows all active and triggered alerts with controls.
 //!
-//! Migrated to the panel kit (PanelSection, PanelEmpty, PanelInputRow,
-//! PanelDualAction, Stat). Section boilerplate (header + RTL action + separator)
-//! collapses to a single `PanelSection::new(...).action(...).show(ui, t, |ui|...)`
-//! call, and the Above/Below buttons route through PanelDualAction.
+//! Migrated to the canonical ui_kit side-panel primitives:
+//!   - `SidePanelShell` for outer chrome (was hand-rolled SidePanel + PanelFrame + PanelHeader)
+//!   - `ui_kit::PanelSection` for section headers (default `.rule(true)` hairline)
+//!   - `ui_kit::PanelListRow` for alert rows (leading status dot + symbol +
+//!     secondary cmp/price line + trailing close button)
+//!   - `ui_kit::PanelEmpty` for the "no alerts" state
+//!
+//! `kit::PanelInputRow` and `kit::PanelDualAction` are still used inside the
+//! ADD ALERT section — those primitives have not yet been promoted to ui_kit.
 
 use egui;
 use super::super::style::*;
-use super::super::widgets as widgets;
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::tokens::Size as KitSize;
-use super::super::widgets::rows::alert_row::{AlertRow, AlertCmp};
+use crate::ui_kit::widgets::{
+    Button, PanelEmpty, PanelListRow, PanelSection, PanelTone, SidePanelShell, Width,
+};
 use super::super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::trading::PriceAlert;
 use crate::chart_renderer::commands::{AppCommand, UiCtx};
-use super::kit::{PanelHeader, PanelSection, PanelEmpty, PanelInputRow, PanelDualAction, Tone};
+use super::kit::{PanelInputRow, PanelDualAction, Tone};
 
 pub(crate) fn draw(
     ctx: &egui::Context,
@@ -25,33 +31,17 @@ pub(crate) fn draw(
     t: &Theme,
 ) {
     if !watchlist.alerts_panel_open { return; }
-
-    let cx = UiCtx::new(t);
-    egui::SidePanel::right("alerts_panel")
-        .default_width(240.0)
-        .min_width(180.0)
-        .max_width(300.0)
-        .frame(widgets::frames::PanelFrame::new(cx.toolbar_bg, cx.toolbar_border).theme(&cx).zero_margin().build())
-        .show(ctx, |ui| {
-            let close_clicked = PanelHeader::new("ALERTS")
-                .icon(Icon::BELL)
-                .watchlist(watchlist)
-                .show(ui, t);
-            if close_clicked {
-                watchlist.alerts_panel_open = false;
-            }
-            ui.add_space(gap_md());
-            egui::Frame::NONE
-                .inner_margin(egui::Margin {
-                    left:   gap_lg() as i8,
-                    right:  gap_lg() as i8,
-                    top:    0,
-                    bottom: gap_lg() as i8,
-                })
-                .show(ui, |ui| {
-                    draw_content_cx(ui, watchlist, panes, ap, &cx);
-                });
+    let resp = SidePanelShell::new("alerts_panel", "ALERTS")
+        .width(Width::Narrow)
+        .pane_metrics(
+            crate::chart_renderer::gpu::pane_tabs_header_h(watchlist),
+            watchlist.pane_header_size.title_font(),
+        )
+        .show(ctx, t, |ui, t| {
+            let cx = UiCtx::new(t);
+            draw_content_cx(ui, watchlist, panes, ap, &cx);
         });
+    if resp.close_clicked { watchlist.alerts_panel_open = false; }
 }
 
 /// Tab body content (no SidePanel wrapper, no header). Used by signals_panel.
@@ -82,13 +72,13 @@ fn draw_content_cx(
 
     PanelSection::new("ADD ALERT")
         .meta(meta)
-        .show(ui, t, |ui| {
+        .show(ui, t, |ui, t| {
             PanelInputRow::new("Price").show(ui, t, |ui| {
                 Input::new(&mut panes[ap].alert_input_price)
                     .min_width(80.0)
                     .size(KitSize::Sm)
                     .placeholder(format!("{:.2}", current_price))
-                    .show(ui, cx.theme);
+                    .show(ui, t);
             });
             ui.add_space(gap_xs());
 
@@ -112,22 +102,10 @@ fn draw_content_cx(
     if !pane_drafts.is_empty() {
         let r = PanelSection::new("DRAFT")
             .count(pane_drafts.len())
-            .action("Place All", Tone::Accent)
-            .show(ui, t, |ui| {
+            .action("Place All", PanelTone::Accent)
+            .show(ui, t, |ui, t| {
                 for (pi, alert) in &pane_drafts {
-                    ui.horizontal(|ui| {
-                        let cmp = if alert.above { AlertCmp::Above } else { AlertCmp::Below };
-                        let (_resp, delete_clicked) = AlertRow::new(&alert.symbol, cmp, alert.price)
-                            .armed(false).triggered(false).note("DRAFT").theme(cx.theme).show(ui);
-                        if delete_clicked {
-                            cx.dispatch(AppCommand::CancelPaneAlert { pane: *pi, id: alert.id });
-                        }
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if super::kit::panel_action_btn(ui, "Place", cx.accent) {
-                                cx.dispatch(AppCommand::PlaceDraftAlert { pane: *pi, id: alert.id });
-                            }
-                        });
-                    });
+                    draft_row(ui, t, cx, *pi, alert);
                 }
             });
         if r.action_clicked {
@@ -150,12 +128,12 @@ fn draw_content_cx(
     let total_triggered = triggered_alerts.len() + pane_triggered.len();
 
     let mut active_section = PanelSection::new("ACTIVE")
-        .tone(Tone::Accent)
+        .title_color(t.accent)
         .count(total_active);
     if total_active > 0 {
-        active_section = active_section.action("Clear All", Tone::Danger);
+        active_section = active_section.action("Clear All", PanelTone::Danger);
     }
-    let active_resp = active_section.show(ui, t, |ui| {
+    let active_resp = active_section.show(ui, t, |ui, t| {
         egui::ScrollArea::vertical()
             .id_salt("alerts_scroll")
             .max_height(ui.available_height() * 0.6)
@@ -164,18 +142,12 @@ fn draw_content_cx(
                     PanelEmpty::new("No active alerts").show(ui, t);
                 }
                 for alert in &active_alerts {
-                    let cmp = if alert.above { AlertCmp::Above } else { AlertCmp::Below };
-                    let (_resp, delete_clicked) = AlertRow::new(&alert.symbol, cmp, alert.price)
-                        .armed(true).triggered(false).theme(cx.theme).show(ui);
-                    if delete_clicked {
+                    if alert_row(ui, t, &alert.symbol, alert.id, alert.price, alert.above, AlertState::Armed) {
                         cx.dispatch(AppCommand::CancelWatchlistAlert { id: alert.id });
                     }
                 }
                 for (pi, alert) in &pane_active {
-                    let cmp = if alert.above { AlertCmp::Above } else { AlertCmp::Below };
-                    let (_resp, delete_clicked) = AlertRow::new(&alert.symbol, cmp, alert.price)
-                        .armed(true).triggered(false).theme(cx.theme).show(ui);
-                    if delete_clicked {
+                    if alert_row(ui, t, &alert.symbol, alert.id, alert.price, alert.above, AlertState::Armed) {
                         cx.dispatch(AppCommand::CancelPaneAlert { pane: *pi, id: alert.id });
                     }
                 }
@@ -192,31 +164,26 @@ fn draw_content_cx(
 
     // ── Triggered ──
     if total_triggered > 0 {
-        let mut sec = PanelSection::new("TRIGGERED").count(total_triggered);
-        sec = sec.action("Dismiss All", Tone::Default);
-        let r = sec.show(ui, t, |ui| {
-            egui::ScrollArea::vertical()
-                .id_salt("triggered_scroll")
-                .max_height(ui.available_height())
-                .show(ui, |ui| {
-                    for alert in &triggered_alerts {
-                        let cmp = if alert.above { AlertCmp::Above } else { AlertCmp::Below };
-                        let (_resp, delete_clicked) = AlertRow::new(&alert.symbol, cmp, alert.price)
-                            .armed(false).triggered(true).theme(cx.theme).show(ui);
-                        if delete_clicked {
-                            cx.dispatch(AppCommand::CancelWatchlistAlert { id: alert.id });
+        let r = PanelSection::new("TRIGGERED")
+            .count(total_triggered)
+            .action("Dismiss All", PanelTone::Default)
+            .show(ui, t, |ui, t| {
+                egui::ScrollArea::vertical()
+                    .id_salt("triggered_scroll")
+                    .max_height(ui.available_height())
+                    .show(ui, |ui| {
+                        for alert in &triggered_alerts {
+                            if alert_row(ui, t, &alert.symbol, alert.id, alert.price, alert.above, AlertState::Triggered) {
+                                cx.dispatch(AppCommand::CancelWatchlistAlert { id: alert.id });
+                            }
                         }
-                    }
-                    for (pi, alert) in &pane_triggered {
-                        let cmp = if alert.above { AlertCmp::Above } else { AlertCmp::Below };
-                        let (_resp, delete_clicked) = AlertRow::new(&alert.symbol, cmp, alert.price)
-                            .armed(false).triggered(true).theme(cx.theme).show(ui);
-                        if delete_clicked {
-                            cx.dispatch(AppCommand::CancelPaneAlert { pane: *pi, id: alert.id });
+                        for (pi, alert) in &pane_triggered {
+                            if alert_row(ui, t, &alert.symbol, alert.id, alert.price, alert.above, AlertState::Triggered) {
+                                cx.dispatch(AppCommand::CancelPaneAlert { pane: *pi, id: alert.id });
+                            }
                         }
-                    }
-                });
-        });
+                    });
+            });
         if r.action_clicked {
             for a in &triggered_alerts {
                 cx.dispatch(AppCommand::CancelWatchlistAlert { id: a.id });
@@ -226,5 +193,109 @@ fn draw_content_cx(
             }
         }
     }
+}
 
+// ── Row helpers ──────────────────────────────────────────────────────────────
+
+#[derive(Copy, Clone)]
+enum AlertState { Armed, Triggered, Draft }
+
+impl AlertState {
+    fn dot_color(self, t: &Theme) -> egui::Color32 {
+        match self {
+            AlertState::Armed => t.bull,
+            AlertState::Triggered => t.accent,
+            AlertState::Draft => t.dim,
+        }
+    }
+}
+
+/// Render a single alert row via `PanelListRow`. Returns `true` if the
+/// trailing close button was clicked (caller dispatches the cancel command).
+/// Accepts decomposed fields so it can render both `Alert` (watchlist) and
+/// `PriceAlert` (pane) without a shared trait.
+fn alert_row(
+    ui: &mut egui::Ui,
+    t: &Theme,
+    symbol: &str,
+    id: u32,
+    price: f32,
+    above: bool,
+    state: AlertState,
+) -> bool {
+    let cmp = if above { ">" } else { "<" };
+    let secondary = format!("{} {:.2}", cmp, price);
+    let id_salt = format!("alert_{}", id);
+    let dot_col = state.dot_color(t);
+    let delete = std::cell::Cell::new(false);
+    let delete_ref = &delete;
+
+    PanelListRow::new(&id_salt)
+        .leading(move |ui, _t| {
+            ui.label(
+                egui::RichText::new(Icon::CIRCLE)
+                    .font(egui::FontId::proportional(font_md()))
+                    .color(dot_col),
+            );
+        })
+        .primary(symbol)
+        .secondary(&secondary)
+        .trailing(move |ui, t| {
+            if Button::close().show(ui, t).on_hover_text("Delete alert").clicked() {
+                delete_ref.set(true);
+            }
+        })
+        .dense(false)
+        .show(ui, t);
+
+    delete.get()
+}
+
+/// Draft row — like `alert_row` but with a leading "Place" action in the
+/// trailing slot alongside the close button.
+fn draft_row(
+    ui: &mut egui::Ui,
+    t: &Theme,
+    cx: &UiCtx<'_>,
+    pi: usize,
+    alert: &PriceAlert,
+) {
+    let cmp = if alert.above { ">" } else { "<" };
+    let secondary = format!("{} {:.2}  DRAFT", cmp, alert.price);
+    let id_salt = format!("draft_{}_{}", pi, alert.id);
+    let dot_col = AlertState::Draft.dot_color(t);
+
+    let delete = std::cell::Cell::new(false);
+    let place = std::cell::Cell::new(false);
+    let delete_ref = &delete;
+    let place_ref = &place;
+    let accent = t.accent;
+
+    PanelListRow::new(&id_salt)
+        .leading(move |ui, _t| {
+            ui.label(
+                egui::RichText::new(Icon::CIRCLE)
+                    .font(egui::FontId::proportional(font_md()))
+                    .color(dot_col),
+            );
+        })
+        .primary(&alert.symbol)
+        .secondary(&secondary)
+        .trailing(move |ui, t| {
+            if Button::close().show(ui, t).on_hover_text("Discard draft").clicked() {
+                delete_ref.set(true);
+            }
+            if Button::small_action("Place").tint(accent).show(ui, t).clicked() {
+                place_ref.set(true);
+            }
+        })
+        .dense(false)
+        .show(ui, t);
+
+    if delete.get() {
+        cx.dispatch(AppCommand::CancelPaneAlert { pane: pi, id: alert.id });
+    }
+    if place.get() {
+        cx.dispatch(AppCommand::PlaceDraftAlert { pane: pi, id: alert.id });
+    }
 }
