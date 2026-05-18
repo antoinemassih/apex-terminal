@@ -57,56 +57,144 @@ pub struct DiscordAuth {
     pub avatar: String,
 }
 
-/// Serializable version for disk persistence
-#[derive(serde::Serialize, serde::Deserialize)]
-struct DiscordAuthDisk {
-    access_token: String,
-    refresh_token: String,
-    expires_epoch: u64, // seconds since UNIX epoch
-    user_id: String,
-    username: String,
-    avatar: String,
-}
+// ── Token persistence (OS keychain) ─────────────────────────────────────────
+//
+// Tokens are stored in the OS keychain (macOS Keychain, Windows Credential
+// Manager, Linux Secret Service) via the `keyring` crate. They are NEVER
+// written to a plaintext file. If the keychain is unavailable we treat the
+// session as unauthenticated (user must re-auth) — we do NOT fall back to
+// plaintext.
 
-fn token_path() -> std::path::PathBuf {
+use super::discord_keychain::{self, DiscordTokens};
+
+/// Path of the legacy plaintext token file (used only for one-time migration).
+fn legacy_token_path() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("discord_token.json")
 }
 
-fn save_auth_to_disk(auth: &DiscordAuth) {
-    let epoch_now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
-    let remaining = auth.expires_at.saturating_duration_since(std::time::Instant::now()).as_secs();
-    let disk = DiscordAuthDisk {
+/// Convert a live `DiscordAuth` to the keychain-storable `DiscordTokens`.
+fn auth_to_tokens(auth: &DiscordAuth) -> DiscordTokens {
+    let epoch_now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let remaining = auth.expires_at
+        .saturating_duration_since(std::time::Instant::now())
+        .as_secs();
+    DiscordTokens {
         access_token: auth.access_token.clone(),
         refresh_token: auth.refresh_token.clone(),
         expires_epoch: epoch_now + remaining,
         user_id: auth.user_id.clone(),
         username: auth.username.clone(),
         avatar: auth.avatar.clone(),
-    };
-    if let Ok(json) = serde_json::to_string_pretty(&disk) {
-        let _ = std::fs::write(token_path(), json);
     }
 }
 
-fn load_auth_from_disk() -> Option<DiscordAuth> {
-    let data = std::fs::read_to_string(token_path()).ok()?;
-    let disk: DiscordAuthDisk = serde_json::from_str(&data).ok()?;
-    let epoch_now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
-    if disk.expires_epoch <= epoch_now {
-        // Token expired — delete file
-        let _ = std::fs::remove_file(token_path());
-        report(ErrorLevel::Warn, "discord", "token_expired", "saved token expired");
+/// Convert a loaded `DiscordTokens` to the in-memory `DiscordAuth`, or `None`
+/// if the token is already expired.
+fn tokens_to_auth(tokens: DiscordTokens) -> Option<DiscordAuth> {
+    let epoch_now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    if tokens.expires_epoch <= epoch_now {
+        report(ErrorLevel::Warn, "discord", "token_expired", "keychain token expired; user must re-auth");
+        // Remove the stale keychain entry so we don't keep re-loading it.
+        let _ = discord_keychain::delete_tokens();
         return None;
     }
-    let remaining = disk.expires_epoch - epoch_now;
+    let remaining = tokens.expires_epoch - epoch_now;
     Some(DiscordAuth {
-        access_token: disk.access_token,
-        refresh_token: disk.refresh_token,
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
         expires_at: std::time::Instant::now() + std::time::Duration::from_secs(remaining),
-        user_id: disk.user_id,
-        username: disk.username,
-        avatar: disk.avatar,
+        user_id: tokens.user_id,
+        username: tokens.username,
+        avatar: tokens.avatar,
     })
+}
+
+/// Persist `auth` to the OS keychain.
+///
+/// On failure, logs the error (without token content) and returns — the app
+/// continues to work with the in-memory copy for this session, but the session
+/// won't survive a restart.
+fn save_auth(auth: &DiscordAuth) {
+    let tokens = auth_to_tokens(auth);
+    if let Err(e) = discord_keychain::store_tokens(&tokens) {
+        report(ErrorLevel::Error, "discord", "keychain_write_failed", e);
+    }
+}
+
+/// Load `DiscordAuth` from the OS keychain.
+///
+/// Also handles one-time migration from the legacy plaintext
+/// `discord_token.json` file: if it is present, we read it once, write to the
+/// keychain, and delete it. The token content is NEVER logged.
+///
+/// Returns `None` if:
+/// - No keychain entry exists (first run / after disconnect)
+/// - The keychain is unavailable (fail-safe: user must re-auth)
+/// - The stored token is expired
+fn load_auth() -> Option<DiscordAuth> {
+    // ── Migration: legacy plaintext file → keychain (one-time) ──────────────
+    let legacy = legacy_token_path();
+    if legacy.exists() {
+        // Read and parse the old file.
+        #[derive(serde::Deserialize)]
+        struct LegacyDisk {
+            access_token: String,
+            refresh_token: String,
+            expires_epoch: u64,
+            user_id: String,
+            username: String,
+            avatar: String,
+        }
+        let migrated = std::fs::read_to_string(&legacy)
+            .ok()
+            .and_then(|data| serde_json::from_str::<LegacyDisk>(&data).ok())
+            .map(|d| DiscordTokens {
+                access_token: d.access_token,
+                refresh_token: d.refresh_token,
+                expires_epoch: d.expires_epoch,
+                user_id: d.user_id,
+                username: d.username,
+                avatar: d.avatar,
+            });
+
+        if let Some(tokens) = migrated {
+            match discord_keychain::store_tokens(&tokens) {
+                Ok(()) => {
+                    // Delete the plaintext file only after a successful keychain write.
+                    let _ = std::fs::remove_file(&legacy);
+                    report(ErrorLevel::Info, "discord", "migrated_to_keychain",
+                        "legacy plaintext token file migrated to OS keychain and deleted");
+                }
+                Err(e) => {
+                    // Keychain unavailable — remove the plaintext file anyway so
+                    // we don't keep trying, but the user will need to re-auth.
+                    let _ = std::fs::remove_file(&legacy);
+                    report(ErrorLevel::Error, "discord", "migration_keychain_failed",
+                        format!("could not migrate token to keychain ({e}); user must re-auth"));
+                    return None;
+                }
+            }
+        } else {
+            // File was unreadable / unparseable — delete it silently.
+            let _ = std::fs::remove_file(&legacy);
+        }
+    }
+    // ── Normal keychain load ─────────────────────────────────────────────────
+    match discord_keychain::load_tokens() {
+        Ok(Some(tokens)) => tokens_to_auth(tokens),
+        Ok(None) => None,
+        Err(e) => {
+            report(ErrorLevel::Error, "discord", "keychain_read_failed",
+                format!("keychain unavailable ({e}); user must re-auth"));
+            None
+        }
+    }
 }
 
 #[derive(Clone, Debug, serde::Deserialize)]
@@ -187,8 +275,8 @@ pub fn load_config() {
             let _ = DISCORD_CONFIG.set(DiscordConfig { client_id, client_secret, bot_token });
             report(ErrorLevel::Info, "discord", "config_loaded", format!("bot: {has_bot}"));
         }
-        // Restore saved auth token from disk
-        if let Some(auth) = load_auth_from_disk() {
+        // Restore saved auth token from keychain (or migrate from legacy file).
+        if let Some(auth) = load_auth() {
             report(ErrorLevel::Info, "discord", "session_restored", format!("{} ({})", auth.username, auth.user_id));
             let _ = DISCORD_TOKEN.get_or_init(|| Mutex::new(None));
             if let Some(m) = DISCORD_TOKEN.get() {
@@ -258,7 +346,7 @@ fn start_callback_server() {
             match exchange_code(&code) {
                 Ok(auth) => {
                     report(ErrorLevel::Info, "discord", "authenticated", format!("{} ({})", auth.username, auth.user_id));
-                    save_auth_to_disk(&auth);
+                    save_auth(&auth);
                     let _ = DISCORD_TOKEN.get_or_init(|| Mutex::new(None));
                     if let Some(m) = DISCORD_TOKEN.get() {
                         *m.lock().unwrap() = Some(auth);
@@ -536,7 +624,9 @@ pub fn disconnect() {
     if let Some(m) = DISCORD_TOKEN.get() {
         *m.lock().unwrap() = None;
     }
-    let _ = std::fs::remove_file(token_path());
+    if let Err(e) = discord_keychain::delete_tokens() {
+        report(ErrorLevel::Warn, "discord", "keychain_delete_failed", e);
+    }
     report(ErrorLevel::Info, "discord", "disconnected", "Disconnected");
 }
 
@@ -625,15 +715,15 @@ impl crate::data::connectivity::Authenticated for DiscordAuthProvider {
             AuthError::RefreshFailed(e)
         })?;
 
-        // Persist + update the in-memory token store (same path as exchange_code).
-        save_auth_to_disk(&new_auth);
+        // Persist to keychain + update the in-memory token store.
+        save_auth(&new_auth);
         let _ = DISCORD_TOKEN.get_or_init(|| Mutex::new(None));
         if let Some(m) = DISCORD_TOKEN.get() {
             if let Ok(mut g) = m.lock() {
                 *g = Some(new_auth.clone());
             }
         }
-        report(ErrorLevel::Info, "discord", "token_refreshed", "rotated refresh token, saved to disk");
+        report(ErrorLevel::Info, "discord", "token_refreshed", "rotated refresh token, saved to keychain");
         Ok(new_auth.access_token)
     }
     fn current_token(&self) -> Option<String> {
