@@ -15,7 +15,7 @@ use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::{Variant, Size};
 use crate::ui_kit::widgets::SearchInput;
 use super::super::widgets::frames::PopupFrame;
-use super::super::widgets::watchlist::{SectionHeader, NmfToggle};
+use super::super::widgets::watchlist::NmfToggle;
 use crate::ui_kit::widgets::{
     Input, PanelEmpty, PanelLoading, PanelSection, SidePanelShell, Tag, TagTone, Width,
 };
@@ -555,17 +555,26 @@ if watchlist.open {
 
                             // ── Section header (only if title is non-empty) ──
                             if !sec_title.is_empty() && watchlist.renaming_section != Some(sec_id) {
-                                let header_resp = SectionHeader::new(&sec_title)
-                                    .collapsed(sec_collapsed)
-                                    .item_count(sec_item_count)
-                                    .theme(t)
-                                    .show(ui);
-                                if header_resp.chevron_clicked { toggle_collapse = Some(si); }
-                                if header_resp.delete_clicked  { remove_section  = Some(si); }
-                                section_header_rects.push((si, header_resp.response.rect));
+                                // Wave 11a: SectionHeader retired in favor of canonical PanelSection.
+                                // Use a local `expanded` bool to feed `.collapsible()`; the
+                                // collapse toggle is propagated via `chevron_clicked` so the
+                                // existing `toggle_collapse` deferred-mutation flow still owns
+                                // the persistent `sec.collapsed` write. Body is left as the
+                                // empty closure — rows continue to render full-width below to
+                                // preserve drag/drop hit rects + section background tinting.
+                                let mut sec_expanded = !sec_collapsed;
+                                let resp = PanelSection::new(&sec_title)
+                                    .count(sec_item_count)
+                                    .collapsible(&mut sec_expanded)
+                                    .delete_when_empty()
+                                    .rule(false)
+                                    .show(ui, t, |_ui, _t| {});
+                                if resp.chevron_clicked { toggle_collapse = Some(si); }
+                                if resp.delete_clicked  { remove_section  = Some(si); }
+                                section_header_rects.push((si, resp.header_response.rect));
 
                                 // Right-click context menu on section header
-                                header_resp.response.context_menu(|ui| {
+                                resp.header_response.context_menu(|ui| {
                                     // Rename
                                     if ui.button(egui::RichText::new("Rename").monospace().size(font_sm())).clicked() {
                                         watchlist.renaming_section = Some(sec_id);
@@ -1089,17 +1098,20 @@ if watchlist.open {
 
                                 let section_block_start_y = ui.cursor().min.y;
 
-                                // Section header with collapse chevron
-                                let header_resp = SectionHeader::new(&sec_title)
-                                    .collapsed(sec_collapsed)
-                                    .item_count(sec_item_count)
-                                    .theme(t)
-                                    .show(ui);
-                                if header_resp.chevron_clicked { opt_toggle_collapse = Some(si); }
-                                if header_resp.delete_clicked  { opt_remove_section  = Some(si); }
+                                // Section header with collapse chevron — Wave 11a:
+                                // migrated to canonical PanelSection (see stocks-loop comment).
+                                let mut sec_expanded = !sec_collapsed;
+                                let resp = PanelSection::new(&sec_title)
+                                    .count(sec_item_count)
+                                    .collapsible(&mut sec_expanded)
+                                    .delete_when_empty()
+                                    .rule(false)
+                                    .show(ui, t, |_ui, _t| {});
+                                if resp.chevron_clicked { opt_toggle_collapse = Some(si); }
+                                if resp.delete_clicked  { opt_remove_section  = Some(si); }
 
                                 // Right-click context menu on option section header (same as stock sections)
-                                header_resp.response.context_menu(|ui| {
+                                resp.header_response.context_menu(|ui| {
                                     // Rename
                                     if ui.button(egui::RichText::new("Rename").monospace().size(font_sm())).clicked() {
                                         watchlist.renaming_section = Some(sec_id);
