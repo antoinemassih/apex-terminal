@@ -4041,4 +4041,171 @@ mod tests {
             prop_assert_eq!(s1, s2);
         }
     }
+
+    // ── P1.9: Broker mutex stress test ──────────────────────────────────────
+    //
+    // 4 threads hammer a single OrderManager (wrapped in Arc<Mutex>):
+    //   threads 0 + 1  → 50 submits each  (paper mode, no HTTP)
+    //   threads 2 + 3  → 50 best-effort cancels each against IDs 1..=50
+    //
+    // Goals:
+    //   1. No deadlock — test completes within 30 s (enforced below).
+    //   2. All 100 submit calls reach MockBroker (no lost calls under
+    //      contention).  Paper mode is OFF so the broker path fires; the
+    //      broker records every submit synchronously (no background thread).
+    //   3. Order map is consistent — at most 100 orders, never negative.
+    //
+    // Note: `OrderManager::submit`/`cancel` take `&mut self`, so callers
+    // must hold the mutex.  This is intentional: the production code path
+    // acquires the global `ORDER_MANAGER` mutex for every operation.
+    #[test]
+    fn order_manager_broker_mutex_survives_concurrent_submit_cancel() {
+        use std::sync::{Arc, Mutex};
+        use std::thread;
+        use std::time::Duration;
+        use crate::chart::renderer::trading::broker::{MockBroker, MockCall};
+
+        // Run the whole body on a scoped thread with a 30-second timeout so
+        // any deadlock surfaces as a clear test failure rather than a hang.
+        let runner = thread::Builder::new()
+            .name("stress-runner".into())
+            .spawn(|| {
+                let mock = Arc::new(MockBroker::new());
+                // Build a live-mode manager (paper OFF) so submits actually
+                // reach the broker. Dedup cooldown is zeroed so rapid
+                // same-symbol submits from different threads aren't blocked.
+                let mgr = {
+                    let mut m = OrderManager::with_broker(mock.clone() as Arc<dyn Broker>);
+                    m.paper_mode = false;
+                    m.armed = true;
+                    m.initial_reconcile_done = true;
+                    // Zero dedup window: concurrent submits for the same
+                    // symbol must not be eaten by the cooldown gate.
+                    m.risk_limits.dedup_cooldown_ms = 0;
+                    // Relax risk limits so all 100 submits can be accepted.
+                    m.risk_limits.max_order_qty = 100_000;
+                    m.risk_limits.max_position_qty = 100_000;
+                    m.risk_limits.max_notional = 1_000_000_000.0;
+                    m.risk_limits.max_open_orders = 1_000;
+                    // Expand the token-bucket so 100 rapid-fire submits are
+                    // never blocked by the rate limiter.
+                    m.set_submit_rate_limit(10_000.0, 10_000.0);
+                    Arc::new(Mutex::new(m))
+                };
+
+                let mut handles = vec![];
+
+                // Threads 0 + 1: 50 submits each (100 total).
+                for t in 0u32..2 {
+                    let mgr = Arc::clone(&mgr);
+                    handles.push(thread::spawn(move || {
+                        for i in 0u32..50 {
+                            let sym = format!("SYM{}", t);
+                            let intent = OrderIntent {
+                                symbol: sym,
+                                side: OrderSide::Buy,
+                                order_type: ManagedOrderType::Limit,
+                                price: 100.0 + i as f32,
+                                stop_price: 0.0,
+                                qty: 1,
+                                source: OrderSource::OrderPanel,
+                                pair_with: None,
+                                option_symbol: None,
+                                option_con_id: None,
+                                trail_amount: None,
+                                trail_percent: None,
+                                last_price: 0.0,
+                                tif: 0,
+                                outside_rth: false,
+                                strategy_id: None,
+                                override_warnings: false,
+                            };
+                            // Best-effort: accept or reject — either is fine
+                            // for the stress test; we only care that the lock
+                            // is released correctly and no panic occurs.
+                            let _ = mgr.lock().unwrap().submit(intent);
+                        }
+                    }));
+                }
+
+                // Threads 2 + 3: 50 best-effort cancels each.
+                // We cancel IDs 1..=50 (the first batch of orders that the
+                // submit threads will create).  Many cancels will hit
+                // non-existent or already-cancelled orders — that is fine;
+                // `cancel` returns `false` rather than panicking.
+                for _t in 2u32..4 {
+                    let mgr = Arc::clone(&mgr);
+                    handles.push(thread::spawn(move || {
+                        for id in 1u64..=50 {
+                            let _ = mgr.lock().unwrap().cancel(id);
+                        }
+                    }));
+                }
+
+                for h in handles {
+                    h.join().expect("stress thread panicked");
+                }
+
+                // ── Wait for background broker threads ───────────────────
+                // In live mode each `submit()` spawns a background thread
+                // that calls `broker.submit(...)`. We must wait for all 100
+                // background threads to land before asserting the call log.
+                // Timeout is generous (10 s); MockBroker does no I/O so
+                // threads normally complete in well under 100 ms.
+                let deadline = std::time::Instant::now() + Duration::from_secs(10);
+                loop {
+                    let n = mock.calls().iter()
+                        .filter(|c| matches!(c, MockCall::Submit { .. }))
+                        .count();
+                    if n >= 100 { break; }
+                    if std::time::Instant::now() >= deadline {
+                        panic!("timeout waiting for 100 broker Submit calls; got {}", n);
+                    }
+                    thread::sleep(Duration::from_millis(5));
+                }
+
+                // ── Assertions ───────────────────────────────────────────
+                let calls = mock.calls();
+                let submit_count = calls.iter()
+                    .filter(|c| matches!(c, MockCall::Submit { .. }))
+                    .count();
+                assert_eq!(
+                    submit_count, 100,
+                    "expected 100 Submit calls in MockBroker, got {} — possible call lost under contention",
+                    submit_count
+                );
+
+                // Order map must be consistent: at most 100 entries, no
+                // duplicate IDs (checked implicitly by the unique next_id
+                // counter), no negative counts.
+                let order_count = mgr.lock().unwrap().orders.len();
+                assert!(
+                    order_count <= 100,
+                    "order map has {} entries — should be ≤ 100",
+                    order_count
+                );
+            })
+            .expect("failed to spawn stress-runner thread");
+
+        // Enforce a 30-second wall-clock timeout to catch deadlocks.
+        // `std::thread::JoinHandle` has no `join_timeout`, so we use an
+        // auxiliary channel: the runner sends `Ok(())` on completion and
+        // the main test thread blocks on `recv_timeout`.
+        let (done_tx, done_rx) = std::sync::mpsc::channel::<std::thread::Result<()>>();
+        // Wrap the original handle in a watcher thread that forwards the join
+        // result over the channel.
+        thread::spawn(move || {
+            let res = runner.join();
+            let _ = done_tx.send(res);
+        });
+
+        match done_rx.recv_timeout(Duration::from_secs(30)) {
+            Ok(Ok(())) => { /* test passed */ }
+            Ok(Err(e)) => std::panic::resume_unwind(e),
+            Err(_) => panic!(
+                "order_manager_broker_mutex_survives_concurrent_submit_cancel: \
+                 deadlock detected — test did not complete within 30 s"
+            ),
+        }
+    }
 }

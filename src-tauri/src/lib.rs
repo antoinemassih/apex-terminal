@@ -449,3 +449,86 @@ pub fn run() {
             }
         });
 }
+
+// ── P1.9: NATIVE_CHART_TXS broadcast stress test ────────────────────────────
+//
+// Verifies that `send_to_native_chart` fans out correctly under concurrent
+// senders without losing messages or deadlocking.
+//
+// Design:
+//   - 100 receivers registered in NATIVE_CHART_TXS
+//   - 10 sender threads, each broadcasting 100 ChartCommand::Shutdown (cheapest
+//     Clone-able variant with no allocation)
+//   - Expected: each receiver sees all 1 000 events → 100 × 1 000 = 100 000
+//     total across all receivers
+//
+// The test owns the OnceLock initialization, so it must run in an isolated
+// process or be the first test to touch NATIVE_CHART_TXS.  In practice the
+// lib unit-test binary contains no other initializer, so the OnceLock is
+// always unset when this runs.  If the OnceLock is already set (parallel test
+// run edge-case), `get_or_init` returns the existing value and the test will
+// still pass (senders are added, counts will only be ≥ expected).
+#[cfg(test)]
+mod broadcast_stress {
+    use super::*;
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    fn native_chart_txs_broadcast_100_receivers_10_senders() {
+        const RECEIVERS: usize = 100;
+        const SENDERS: usize = 10;
+        const SENDS_PER_SENDER: usize = 100;
+        const EXPECTED_PER_RECEIVER: usize = SENDERS * SENDS_PER_SENDER; // 1 000
+
+        // --- Register receivers -------------------------------------------
+        let txs_lock = NATIVE_CHART_TXS.get_or_init(|| Mutex::new(Vec::new()));
+
+        let mut receivers = Vec::with_capacity(RECEIVERS);
+        {
+            let mut guard = txs_lock.lock().unwrap();
+            for _ in 0..RECEIVERS {
+                let (tx, rx) = mpsc::channel::<chart_renderer::ChartCommand>();
+                guard.push(tx);
+                receivers.push(rx);
+            }
+        }
+
+        // --- 10 concurrent sender threads, 100 commands each ---------------
+        let mut handles = Vec::with_capacity(SENDERS);
+        for _sender_id in 0..SENDERS {
+            handles.push(thread::spawn(move || {
+                for _ in 0..SENDS_PER_SENDER {
+                    // `Shutdown` is a unit variant — cheapest possible clone.
+                    send_to_native_chart(chart_renderer::ChartCommand::Shutdown);
+                }
+            }));
+        }
+
+        for h in handles {
+            h.join().expect("sender thread panicked");
+        }
+
+        // --- Drain all receivers and count ----------------------------------
+        // Give the mutex guard time to flush — all senders have joined so
+        // every send call has completed; no additional sleep needed.
+        let mut total_received: usize = 0;
+        for rx in &receivers {
+            while let Ok(_) = rx.try_recv() {
+                total_received += 1;
+            }
+        }
+
+        let expected_total = RECEIVERS * EXPECTED_PER_RECEIVER; // 100 000
+        assert!(
+            total_received > 0,
+            "broadcast bus delivered nothing — NATIVE_CHART_TXS fan-out is broken"
+        );
+        assert_eq!(
+            total_received, expected_total,
+            "expected {} total deliveries ({} receivers × {} events), got {}",
+            expected_total, RECEIVERS, EXPECTED_PER_RECEIVER, total_received
+        );
+    }
+}
