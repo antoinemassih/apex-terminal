@@ -676,6 +676,40 @@ impl DrawingSignificance {
     }
 }
 
+/// Return a human-readable default label for a drawing kind (UX-3 Fix 4).
+/// Used to pre-fill the label field when a drawing is first created so the
+/// object tree never shows a blank or generic entry.
+pub fn drawing_kind_default_label(kind: &DrawingKind) -> &'static str {
+    match kind {
+        DrawingKind::HLine { .. }           => "Horizontal Line",
+        DrawingKind::TrendLine { .. }       => "Trendline",
+        DrawingKind::HZone { .. }           => "Zone",
+        DrawingKind::BarMarker { .. }       => "Marker",
+        DrawingKind::Fibonacci { .. }       => "Fib Retracement",
+        DrawingKind::Channel { .. }         => "Channel",
+        DrawingKind::FibChannel { .. }      => "Fib Channel",
+        DrawingKind::Pitchfork { .. }       => "Pitchfork",
+        DrawingKind::GannFan { .. }         => "Gann Fan",
+        DrawingKind::RegressionChannel {..} => "Regression Channel",
+        DrawingKind::XABCD { .. }           => "XABCD",
+        DrawingKind::ElliottWave { wave_type, .. } => match wave_type {
+            0 => "Elliott Impulse",
+            1 => "Elliott ABC",
+            _ => "Elliott Wave",
+        },
+        DrawingKind::AnchoredVWAP { .. }    => "Anchored VWAP",
+        DrawingKind::PriceRange { .. }      => "Price Range",
+        DrawingKind::RiskReward { .. }      => "Risk/Reward",
+        DrawingKind::VerticalLine { .. }    => "Vertical Line",
+        DrawingKind::Ray { .. }             => "Ray",
+        DrawingKind::FibExtension { .. }    => "Fib Extension",
+        DrawingKind::FibTimeZone { .. }     => "Fib Time Zones",
+        DrawingKind::FibArc { .. }          => "Fib Arcs",
+        DrawingKind::GannBox { .. }         => "Gann Box",
+        DrawingKind::TextNote { .. }        => "Text Note",
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Drawing {
     pub id: String,
@@ -690,11 +724,21 @@ pub struct Drawing {
     pub locked: bool,       // prevent accidental moves
     pub alert_enabled: bool, // show alert bell indicator
     pub significance: Option<DrawingSignificance>, // backend-populated or estimated
+    /// User-assigned label shown in the object tree. Pre-filled from
+    /// `drawing_kind_default_label` on creation. Empty = fall back to kind short label.
+    pub label: Option<String>,
 }
 
 impl Drawing {
     pub fn new(id: String, kind: DrawingKind) -> Self {
-        Self { id, kind, color: "#4a9eff".into(), opacity: 1.0, line_style: LineStyle::Solid, thickness: 1.5, group_id: "default".into(), extend_left: false, extend_right: false, locked: false, alert_enabled: false, significance: None }
+        let default_label = drawing_kind_default_label(&kind).to_string();
+        Self {
+            id, kind, color: "#4a9eff".into(), opacity: 1.0,
+            line_style: LineStyle::Solid, thickness: 1.5,
+            group_id: "default".into(), extend_left: false, extend_right: false,
+            locked: false, alert_enabled: false, significance: None,
+            label: Some(default_label),
+        }
     }
 }
 
