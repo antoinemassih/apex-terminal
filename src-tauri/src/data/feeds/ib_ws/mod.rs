@@ -36,22 +36,69 @@ use crate::data::feeds::apex_data::types::{AssetClass, BarWire, Quote, Trade};
 type SenderVec<T> = Vec<tokio::sync::mpsc::UnboundedSender<T>>;
 type Hub<T> = StdMutex<HashMap<String, SenderVec<T>>>;
 
-static BAR_HUB:   OnceLock<Hub<BarWire>> = OnceLock::new();
-static QUOTE_HUB: OnceLock<Hub<Quote>>   = OnceLock::new();
-static TRADE_HUB: OnceLock<Hub<Trade>>   = OnceLock::new();
+// Wave 14b: bar hub keyed by (symbol, tf) so subscribers only see frames
+// for their own timeframe — no receive-side filter needed. Quote/Trade
+// hubs stay symbol-keyed: there is no TF concept on a tick stream.
+type BarHub = StdMutex<HashMap<(String, String), SenderVec<BarWire>>>;
 
-pub fn bar_hub()   -> &'static Hub<BarWire> { BAR_HUB.get_or_init(Default::default) }
+static BAR_HUB:   OnceLock<BarHub>      = OnceLock::new();
+static QUOTE_HUB: OnceLock<Hub<Quote>>  = OnceLock::new();
+static TRADE_HUB: OnceLock<Hub<Trade>>  = OnceLock::new();
+
+pub fn bar_hub()   -> &'static BarHub       { BAR_HUB.get_or_init(Default::default) }
 pub fn quote_hub() -> &'static Hub<Quote>   { QUOTE_HUB.get_or_init(Default::default) }
 pub fn trade_hub() -> &'static Hub<Trade>   { TRADE_HUB.get_or_init(Default::default) }
 
-/// Register a new subscriber for `symbol` on the given hub. Returns the
-/// receiver end; senders are stored in the hub for the next tick fanout.
+// ── Wave 14b: active timeframes per symbol ───────────────────────────────────
+//
+// The ws_loop tick path iterates this set to know which `(sym, tf)` buckets
+// to fold each tick into. Populated by `bar_hub_subscribe`, pruned in
+// `bar_hub_fanout` when the last subscriber for `(sym, tf)` drops.
+//
+// Storage: `Mutex<HashMap<String, HashSet<String>>>`. Bounded by active
+// subscriptions (small); lock is held only for the duration of a clone()
+// on the hot path. Lives next to the hubs because its lifecycle is
+// inseparable from `bar_hub_subscribe` / `bar_hub_fanout`.
+static ACTIVE_TFS: OnceLock<StdMutex<HashMap<String, HashSet<String>>>> = OnceLock::new();
+
+fn active_tfs() -> &'static StdMutex<HashMap<String, HashSet<String>>> {
+    ACTIVE_TFS.get_or_init(Default::default)
+}
+
+/// Snapshot of timeframes currently subscribed for `symbol`. Cloned out so
+/// the tick path can iterate without holding the mutex.
+pub(crate) fn active_tfs_for(symbol: &str) -> Vec<String> {
+    let map = active_tfs().lock().expect("active_tfs poisoned");
+    map.get(symbol).map(|s| s.iter().cloned().collect()).unwrap_or_default()
+}
+
+/// Register a new subscriber for `symbol` on a symbol-keyed hub
+/// (Quote / Trade). Returns the receiver end; senders are stored in the
+/// hub for the next tick fanout.
 pub(crate) fn hub_subscribe<T>(hub: &'static Hub<T>, symbol: &str)
     -> tokio::sync::mpsc::UnboundedReceiver<T>
 {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     let mut map = hub.lock().expect("ib_ws hub poisoned");
     map.entry(symbol.to_string()).or_default().push(tx);
+    rx
+}
+
+/// Register a new subscriber for `(symbol, tf)` on the bar hub. Also
+/// records `tf` in the per-symbol active-TF set so `ws_loop` knows to
+/// fold each tick through that timeframe's aggregator bucket.
+pub(crate) fn bar_hub_subscribe(symbol: &str, tf: &str)
+    -> tokio::sync::mpsc::UnboundedReceiver<BarWire>
+{
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    {
+        let mut map = bar_hub().lock().expect("ib_ws bar_hub poisoned");
+        map.entry((symbol.to_string(), tf.to_string())).or_default().push(tx);
+    }
+    {
+        let mut tfs = active_tfs().lock().expect("active_tfs poisoned");
+        tfs.entry(symbol.to_string()).or_default().insert(tf.to_string());
+    }
     rx
 }
 
@@ -65,6 +112,30 @@ fn hub_fanout<T: Clone>(hub: &'static Hub<T>, symbol: &str, value: T) {
     senders.retain(|s| s.send(value.clone()).is_ok());
     if senders.is_empty() {
         map.remove(symbol);
+    }
+}
+
+/// Bar-hub fanout for the `(symbol, tf)` key. Mirrors `hub_fanout` but
+/// also prunes the entry's TF from `active_tfs` when the last subscriber
+/// for that (sym, tf) goes away — so the ws_loop tick path stops folding
+/// ticks into a bucket nobody is listening for.
+pub(crate) fn bar_hub_fanout(symbol: &str, tf: &str, value: BarWire) {
+    let became_empty = {
+        let mut map = bar_hub().lock().expect("ib_ws bar_hub poisoned");
+        let key = (symbol.to_string(), tf.to_string());
+        let Some(senders) = map.get_mut(&key) else { return };
+        if senders.is_empty() { return; }
+        senders.retain(|s| s.send(value.clone()).is_ok());
+        let empty = senders.is_empty();
+        if empty { map.remove(&key); }
+        empty
+    };
+    if became_empty {
+        let mut tfs = active_tfs().lock().expect("active_tfs poisoned");
+        if let Some(set) = tfs.get_mut(symbol) {
+            set.remove(tf);
+            if set.is_empty() { tfs.remove(symbol); }
+        }
     }
 }
 
@@ -314,51 +385,64 @@ async fn ws_loop(
                                                     crate::data::providers::subscription_manager::BarSource::Last,
                                                     ts_ms,
                                                 );
-                                            // Wave 13b: fold tick into the real OHLC aggregator
-                                            // and fan out a live (not-yet-closed) bar each tick.
-                                            // When the tick crosses into a new minute bucket the
-                                            // previous bucket is also fanned out with `closed=true`
-                                            // (as a separate frame, AFTER the live bar) so any
-                                            // downstream resampler/storage can finalize it.
+                                            // Wave 13b/14b: fold tick into the OHLC aggregator
+                                            // for EVERY active timeframe on this symbol and fan
+                                            // out a live (not-yet-closed) bar per TF. When a tick
+                                            // crosses a bucket boundary the previous bucket is
+                                            // also fanned out with `closed=true` (as a separate
+                                            // frame, AFTER the live bar) so downstream
+                                            // resampler/storage can finalize it.
+                                            //
+                                            // Active TFs come from `active_tfs_for(sym)`, which is
+                                            // driven by `bar_hub_subscribe`. If nobody subscribes,
+                                            // we still fold at "1m" so resolver/SubscriptionManager
+                                            // wiring and the native chart UpdateLastBar below stay
+                                            // identical to Wave 13b behavior.
                                             //
                                             // Quote fanout still fires only when the payload
                                             // actually carries bid/ask fields (defensive — current
                                             // ibserver doesn't emit those on this code path, but
                                             // future quote-tick frames will land here too).
                                             let ac = AssetClass::from_symbol(&sym);
-                                            let agg_res = aggregator::aggregator()
-                                                .process_tick(&sym, "1m", ts_ms, p as f64, v as f64);
-                                            let live_bar = BarWire {
-                                                symbol: sym.clone(),
-                                                asset_class: ac,
-                                                timeframe: "1m".to_string(),
-                                                time: agg_res.current.bucket_start_ms,
-                                                open:   agg_res.current.open,
-                                                high:   agg_res.current.high,
-                                                low:    agg_res.current.low,
-                                                close:  agg_res.current.close,
-                                                volume: agg_res.current.volume,
-                                                vwap: 0.0,
-                                                trades: agg_res.current.tick_count as u64,
-                                                closed: false,
-                                            };
-                                            hub_fanout(bar_hub(), &sym, live_bar);
-                                            if let Some(prev) = agg_res.closed {
-                                                let closed_bar = BarWire {
+                                            let mut tfs = active_tfs_for(&sym);
+                                            if tfs.is_empty() {
+                                                tfs.push("1m".to_string());
+                                            }
+                                            for tf in &tfs {
+                                                let agg_res = aggregator::aggregator()
+                                                    .process_tick(&sym, tf, ts_ms, p as f64, v as f64);
+                                                let live_bar = BarWire {
                                                     symbol: sym.clone(),
                                                     asset_class: ac,
-                                                    timeframe: "1m".to_string(),
-                                                    time: prev.bucket_start_ms,
-                                                    open:   prev.open,
-                                                    high:   prev.high,
-                                                    low:    prev.low,
-                                                    close:  prev.close,
-                                                    volume: prev.volume,
+                                                    timeframe: tf.clone(),
+                                                    time: agg_res.current.bucket_start_ms,
+                                                    open:   agg_res.current.open,
+                                                    high:   agg_res.current.high,
+                                                    low:    agg_res.current.low,
+                                                    close:  agg_res.current.close,
+                                                    volume: agg_res.current.volume,
                                                     vwap: 0.0,
-                                                    trades: prev.tick_count as u64,
-                                                    closed: true,
+                                                    trades: agg_res.current.tick_count as u64,
+                                                    closed: false,
                                                 };
-                                                hub_fanout(bar_hub(), &sym, closed_bar);
+                                                bar_hub_fanout(&sym, tf, live_bar);
+                                                if let Some(prev) = agg_res.closed {
+                                                    let closed_bar = BarWire {
+                                                        symbol: sym.clone(),
+                                                        asset_class: ac,
+                                                        timeframe: tf.clone(),
+                                                        time: prev.bucket_start_ms,
+                                                        open:   prev.open,
+                                                        high:   prev.high,
+                                                        low:    prev.low,
+                                                        close:  prev.close,
+                                                        volume: prev.volume,
+                                                        vwap: 0.0,
+                                                        trades: prev.tick_count as u64,
+                                                        closed: true,
+                                                    };
+                                                    bar_hub_fanout(&sym, tf, closed_bar);
+                                                }
                                             }
                                             let trade = Trade {
                                                 symbol: sym.clone(),
@@ -537,11 +621,11 @@ mod hub_tests {
         // Use a uniquely-named symbol so this test can't be poisoned by
         // sibling tests or by real tick traffic in a Tauri-launched harness.
         let sym = "TEST_FANOUT_AAPL";
-        let mut rx1 = hub_subscribe(bar_hub(), sym);
-        let mut rx2 = hub_subscribe(bar_hub(), sym);
+        let mut rx1 = bar_hub_subscribe(sym, "1m");
+        let mut rx2 = bar_hub_subscribe(sym, "1m");
 
         let bar = mk_bar(sym, 145.0);
-        hub_fanout(bar_hub(), sym, bar.clone());
+        bar_hub_fanout(sym, "1m", bar.clone());
 
         let r1 = tokio::time::timeout(Duration::from_millis(50), rx1.recv())
             .await.expect("rx1 timed out").expect("rx1 closed");
@@ -556,15 +640,50 @@ mod hub_tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn unsubscribe_drops_sender_count() {
         let sym = "TEST_FANOUT_MSFT";
-        let rx = hub_subscribe(bar_hub(), sym);
+        let rx = bar_hub_subscribe(sym, "1m");
         // Before any fanout, sender is parked in the hub.
-        assert_eq!(bar_hub().lock().unwrap().get(sym).map(|v| v.len()), Some(1));
+        let key = (sym.to_string(), "1m".to_string());
+        assert_eq!(bar_hub().lock().unwrap().get(&key).map(|v| v.len()), Some(1));
 
         drop(rx);
         // Trigger a fanout — `retain` should prune the dead sender and the
         // empty entry is removed in the same pass.
-        hub_fanout(bar_hub(), sym, mk_bar(sym, 300.0));
-        assert!(bar_hub().lock().unwrap().get(sym).is_none());
+        bar_hub_fanout(sym, "1m", mk_bar(sym, 300.0));
+        assert!(bar_hub().lock().unwrap().get(&key).is_none());
+        // And the active-TF set entry is gone too.
+        assert!(active_tfs().lock().unwrap().get(sym).is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn bar_hub_segregates_by_timeframe() {
+        // Subscribers on different TFs of the same symbol must NOT see
+        // each other's bars — they live in separate (sym, tf) slots.
+        let sym = "TEST_FANOUT_TFSEG";
+        let mut rx1 = bar_hub_subscribe(sym, "1m");
+        let mut rx5 = bar_hub_subscribe(sym, "5m");
+
+        let mut b1 = mk_bar(sym, 100.0); b1.timeframe = "1m".into();
+        let mut b5 = mk_bar(sym, 200.0); b5.timeframe = "5m".into();
+        bar_hub_fanout(sym, "1m", b1.clone());
+        bar_hub_fanout(sym, "5m", b5.clone());
+
+        let r1 = tokio::time::timeout(Duration::from_millis(50), rx1.recv())
+            .await.expect("rx1 timed out").expect("rx1 closed");
+        let r5 = tokio::time::timeout(Duration::from_millis(50), rx5.recv())
+            .await.expect("rx5 timed out").expect("rx5 closed");
+        assert_eq!(r1.timeframe, "1m");
+        assert_eq!(r1.close, 100.0);
+        assert_eq!(r5.timeframe, "5m");
+        assert_eq!(r5.close, 200.0);
+
+        // No cross-talk: each receiver got exactly one frame.
+        assert!(tokio::time::timeout(Duration::from_millis(20), rx1.recv()).await.is_err());
+        assert!(tokio::time::timeout(Duration::from_millis(20), rx5.recv()).await.is_err());
+
+        // active_tfs should know both TFs are live for this sym.
+        let tfs = active_tfs_for(sym);
+        assert!(tfs.contains(&"1m".to_string()));
+        assert!(tfs.contains(&"5m".to_string()));
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -598,7 +717,7 @@ mod hub_tests {
         // Expect: 4 live bars (one per tick) + 1 closed bar (when the
         // 4th tick rolls into minute 101) on the bar_hub stream.
         let sym = "TEST_AGG_TSLA";
-        let mut rx = hub_subscribe(bar_hub(), sym);
+        let mut rx = bar_hub_subscribe(sym, "1m");
 
         // Drive the global singleton directly (mirrors ws_loop wiring).
         let agg = super::aggregator::aggregator();
@@ -624,7 +743,7 @@ mod hub_tests {
                 volume: r.current.volume,
                 vwap: 0.0, trades: r.current.tick_count as u64, closed: false,
             };
-            hub_fanout(bar_hub(), sym, live);
+            bar_hub_fanout(sym, "1m", live);
             if let Some(prev) = r.closed {
                 let cb = BarWire {
                     symbol: sym.to_string(),
@@ -636,7 +755,7 @@ mod hub_tests {
                     volume: prev.volume,
                     vwap: 0.0, trades: prev.tick_count as u64, closed: true,
                 };
-                hub_fanout(bar_hub(), sym, cb);
+                bar_hub_fanout(sym, "1m", cb);
             }
         }
 
@@ -665,7 +784,8 @@ mod hub_tests {
     #[test]
     fn fanout_with_no_subscribers_is_a_noop() {
         // No panic, no hub entry created.
-        hub_fanout(bar_hub(), "TEST_FANOUT_GHOST", mk_bar("TEST_FANOUT_GHOST", 1.0));
-        assert!(bar_hub().lock().unwrap().get("TEST_FANOUT_GHOST").is_none());
+        bar_hub_fanout("TEST_FANOUT_GHOST", "1m", mk_bar("TEST_FANOUT_GHOST", 1.0));
+        let key = ("TEST_FANOUT_GHOST".to_string(), "1m".to_string());
+        assert!(bar_hub().lock().unwrap().get(&key).is_none());
     }
 }
