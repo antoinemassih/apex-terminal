@@ -229,6 +229,12 @@ PanelListRow::new("print_123")
         Column::right("$145.32").color(t.bull),
         Column::right("250").color(t.text),
     ])
+    .row_tint(side_color, 12)   // Wave 10b: buy/sell tape tinting,
+                                // painted BEHIND hover/selected backgrounds.
+    .hoverable(false)           // Wave 10b: suppress hover bg + cursor
+                                // for purely-display streaming rows.
+    .height(14.0)               // Wave 10b: override default 22-px dense
+                                // height; use sparingly (tape T&S only).
     .show(ui, t);
 ```
 
@@ -237,7 +243,7 @@ to avoid clashing with `Table`'s `Column` / `ColAlign`.
 
 | Hand-rolled pattern | Replace with |
 |---|---|
-| `tape_panel.rs` free-form 3-column print rows | `PanelListRow::columns(&[...])` |
+| `tape_panel.rs` free-form 3-column print rows | `PanelListRow::columns(&[...])` (DONE — Wave 10b) |
 | `scanner_panel.rs` T&S column rows | `PanelListRow::columns(&[...])` |
 | Journal table rows (date / pnl / R / notes) | `PanelListRow::columns(&[...])` |
 
