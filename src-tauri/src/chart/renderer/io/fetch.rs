@@ -1044,19 +1044,25 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
     let ws_was = crate::apex_data::ws::is_connected();
     crate::apex_log!("option.fetch", "WS connected={ws_was} — calling add_{}bar_sub", if mark {"mark_"} else {""});
     if mark {
+        // Wave 8c: route mark-bar sub through SubscriptionManager with the
+        // Mark source variant. The actual upstream WS call still has to be
+        // made by us (Mark has no MarketDataProvider trait surface), but
+        // SubscriptionManager now tracks the refcount + bumper state so
+        // gap-fill / stale checks see it.
+        use crate::data::providers::subscription_manager::BarSource;
+        let mgr = crate::data::providers::registry::subscription_manager();
+        let _ = mgr.subscribe_bars_with_source(&occ, &tf, BarSource::Mark);
         crate::apex_data::ws::add_mark_bar_sub(&occ, &tf);
         // Make sure we're not also receiving last-source frames for this contract.
-        // Wave 8: route the non-mark unsub through SubscriptionManager so the
-        // refcount stays correct (mark-bar subs have no provider trait surface
-        // yet, so they remain direct calls).
-        crate::data::providers::registry::subscription_manager()
-            .unsubscribe_bars(&occ, &tf);
+        mgr.unsubscribe_bars_with_source(&occ, &tf, BarSource::Last);
     } else {
         // Wave 8: route through SubscriptionManager so gap-fill knows about
         // the active option bar sub. Receiver is unused — frames continue to
         // reach the UI via NATIVE_CHART_TXS.
-        let _ = crate::data::providers::registry::subscription_manager()
-            .subscribe_bars(&occ, &tf);
+        use crate::data::providers::subscription_manager::BarSource;
+        let mgr = crate::data::providers::registry::subscription_manager();
+        let _ = mgr.subscribe_bars_with_source(&occ, &tf, BarSource::Last);
+        mgr.unsubscribe_bars_with_source(&occ, &tf, BarSource::Mark);
         crate::apex_data::ws::remove_mark_bar_sub(&occ, &tf);
     }
     let mut quote_set: Vec<String> = vec![occ.clone()];
@@ -1117,12 +1123,14 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
                                 "OK {} bars for {occ} (FALLBACK to mark — Last had nothing)",
                                 bars.len());
                             // Swap WS subs to mark too so live updates match.
-                            // Wave 8: route the last-source unsub through
-                            // SubscriptionManager so the refcount we added
-                            // moments ago is correctly decremented.
+                            // Wave 8c: add a Mark refcount in SubscriptionManager
+                            // before the WS call so gap-fill sees the new source,
+                            // then drop the Last refcount we added moments ago.
+                            use crate::data::providers::subscription_manager::BarSource;
+                            let mgr = crate::data::providers::registry::subscription_manager();
+                            let _ = mgr.subscribe_bars_with_source(&occ, &tf, BarSource::Mark);
                             crate::apex_data::ws::add_mark_bar_sub(&occ, &tf);
-                            crate::data::providers::registry::subscription_manager()
-                                .unsubscribe_bars(&occ, &tf);
+                            mgr.unsubscribe_bars_with_source(&occ, &tf, BarSource::Last);
                             // Flag the pane so the toggle reflects the active
                             // source. The pane's bar_source_mark is currently
                             // false, but the bars are mark — we send a Mark

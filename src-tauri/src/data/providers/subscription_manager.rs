@@ -24,6 +24,23 @@ use tokio::sync::broadcast;
 const FANOUT_CAP: usize = 1024;
 const STALE_TTL_SECS: u64 = 30;
 
+/// Which series a bar subscription targets. `Last` is the default
+/// trade-print stream; `Mark` is the parallel NBBO-mid stream
+/// (MARK_BARS_PROTOCOL). Subscriptions for the same `(symbol, timeframe)`
+/// with different `BarSource` values are independent — they refcount
+/// separately and each maps to a distinct underlying feed call.
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub enum BarSource { Last, Mark }
+
+impl BarSource {
+    pub fn as_str(self) -> &'static str {
+        match self { BarSource::Last => "last", BarSource::Mark => "mark" }
+    }
+    pub fn from_str(s: &str) -> Self {
+        match s { "mark" => BarSource::Mark, _ => BarSource::Last }
+    }
+}
+
 struct BarSub {
     refcount: AtomicUsize,
     last_seen_ts: AtomicI64,
@@ -53,7 +70,7 @@ struct ChainSub {
 
 pub struct SubscriptionManager {
     provider: Arc<dyn MarketDataProvider>,
-    bars: Mutex<HashMap<(String, String), Arc<BarSub>>>,
+    bars: Mutex<HashMap<(String, String, BarSource), Arc<BarSub>>>,
     quotes: Mutex<HashMap<String, Arc<QuoteSub>>>,
     trades: Mutex<HashMap<String, Arc<TradeSub>>>,
     chain: Mutex<HashMap<String, Arc<ChainSub>>>,
@@ -72,20 +89,55 @@ impl SubscriptionManager {
 
     /// First subscriber spins up the upstream pump; subsequent subscribers
     /// just get a fresh `broadcast::Receiver` on the existing fanout.
+    ///
+    /// Defaults to `BarSource::Last` — the trade-print stream. For mark-source
+    /// (NBBO-mid) bars, use [`subscribe_bars_with_source`].
     #[tracing::instrument(skip(self), level = "debug", fields(symbol, timeframe))]
     pub fn subscribe_bars(
         &self,
         symbol: &str,
         timeframe: &str,
     ) -> Result<broadcast::Receiver<BarWire>, ApiError> {
-        let key = (symbol.to_string(), timeframe.to_string());
+        self.subscribe_bars_with_source(symbol, timeframe, BarSource::Last)
+    }
+
+    #[tracing::instrument(skip(self), level = "debug", fields(symbol, timeframe))]
+    pub fn unsubscribe_bars(&self, symbol: &str, timeframe: &str) {
+        self.unsubscribe_bars_with_source(symbol, timeframe, BarSource::Last)
+    }
+
+    /// Source-aware subscription. `(symbol, timeframe, source)` keys are
+    /// independent — Last and Mark subs for the same symbol/timeframe pair
+    /// each refcount + bump separately.
+    ///
+    /// For `BarSource::Last` this routes through the underlying
+    /// `MarketDataProvider` trait (`provider.subscribe_bars`). For
+    /// `BarSource::Mark` there is no trait surface yet, so we only track
+    /// refcount + fanout state — callers remain responsible for the actual
+    /// upstream feed call (e.g. `ws::add_mark_bar_sub`). The returned
+    /// receiver is still valid (callers may ignore it); `last_seen_ts` is
+    /// kept current via [`bump_last_seen_bar`].
+    #[tracing::instrument(skip(self), level = "debug", fields(symbol, timeframe, source = ?source))]
+    pub fn subscribe_bars_with_source(
+        &self,
+        symbol: &str,
+        timeframe: &str,
+        source: BarSource,
+    ) -> Result<broadcast::Receiver<BarWire>, ApiError> {
+        let key = (symbol.to_string(), timeframe.to_string(), source);
         let mut map = self.bars.lock().expect("bars map");
         if let Some(sub) = map.get(&key) {
             sub.refcount.fetch_add(1, Ordering::SeqCst);
             return Ok(sub.fanout.subscribe());
         }
-        let mut rx = self.provider.subscribe_bars(symbol, timeframe)?;
-        let (tx, rx_out) = broadcast::channel::<BarWire>(FANOUT_CAP);
+        // Only Last has a trait-side pump. Mark gets a state-only entry; its
+        // bumper is driven externally from the feed adapter.
+        let upstream = if source == BarSource::Last {
+            Some(self.provider.subscribe_bars(symbol, timeframe)?)
+        } else {
+            None
+        };
+        let (tx, _rx_out) = broadcast::channel::<BarWire>(FANOUT_CAP);
         let sub = Arc::new(BarSub {
             refcount: AtomicUsize::new(1),
             last_seen_ts: AtomicI64::new(0),
@@ -94,39 +146,43 @@ impl SubscriptionManager {
         });
         map.insert(key.clone(), sub.clone());
         drop(map);
-        let _ = rx_out; // returned below via tx.subscribe()
         let recv_out = tx.subscribe();
-        tokio::spawn({
-            let sub = sub.clone();
-            async move {
-                while let Some(bar) = rx.recv().await {
-                    if bar.time > 0 {
-                        let prev = sub.last_seen_ts.load(Ordering::Relaxed);
-                        if bar.time > prev {
-                            sub.last_seen_ts.store(bar.time, Ordering::Relaxed);
+        if let Some(mut rx) = upstream {
+            tokio::spawn({
+                let sub = sub.clone();
+                async move {
+                    while let Some(bar) = rx.recv().await {
+                        if bar.time > 0 {
+                            let prev = sub.last_seen_ts.load(Ordering::Relaxed);
+                            if bar.time > prev {
+                                sub.last_seen_ts.store(bar.time, Ordering::Relaxed);
+                            }
+                        }
+                        if let Ok(mut g) = sub.last_activity.lock() {
+                            *g = Instant::now();
+                        }
+                        if sub.fanout.send(bar).is_err() {
+                            // No live receivers; keep pumping anyway so refcount
+                            // logic stays the sole authority on lifecycle.
                         }
                     }
-                    if let Ok(mut g) = sub.last_activity.lock() {
-                        *g = Instant::now();
-                    }
-                    if sub.fanout.send(bar).is_err() {
-                        // No live receivers; keep pumping anyway so refcount
-                        // logic stays the sole authority on lifecycle.
-                    }
                 }
-            }
-        });
+            });
+        }
         Ok(recv_out)
     }
 
-    #[tracing::instrument(skip(self), level = "debug", fields(symbol, timeframe))]
-    pub fn unsubscribe_bars(&self, symbol: &str, timeframe: &str) {
-        let key = (symbol.to_string(), timeframe.to_string());
+    #[tracing::instrument(skip(self), level = "debug", fields(symbol, timeframe, source = ?source))]
+    pub fn unsubscribe_bars_with_source(&self, symbol: &str, timeframe: &str, source: BarSource) {
+        let key = (symbol.to_string(), timeframe.to_string(), source);
         let mut map = self.bars.lock().expect("bars map");
         if let Some(sub) = map.get(&key) {
             if sub.refcount.fetch_sub(1, Ordering::SeqCst) == 1 {
                 map.remove(&key);
-                self.provider.unsubscribe_bars(symbol, timeframe);
+                if source == BarSource::Last {
+                    self.provider.unsubscribe_bars(symbol, timeframe);
+                }
+                // Mark-source upstream unsub stays the caller's responsibility.
             }
         }
     }
@@ -287,9 +343,9 @@ impl SubscriptionManager {
     /// Useful when the actual frame stream reaches the UI via a path that
     /// does NOT flow through `SubscriptionManager.subscribe_bars` (e.g. the
     /// legacy `NATIVE_CHART_TXS` route). Monotonic: only the max wins.
-    pub fn bump_last_seen_bar(&self, symbol: &str, timeframe: &str, ts_ms: i64) {
+    pub fn bump_last_seen_bar(&self, symbol: &str, timeframe: &str, source: BarSource, ts_ms: i64) {
         if ts_ms <= 0 { return; }
-        let key = (symbol.to_string(), timeframe.to_string());
+        let key = (symbol.to_string(), timeframe.to_string(), source);
         if let Ok(map) = self.bars.lock() {
             if let Some(sub) = map.get(&key) {
                 let prev = sub.last_seen_ts.load(Ordering::Relaxed);
@@ -334,8 +390,13 @@ impl SubscriptionManager {
     }
 
     /// Read-only inspection of current bar `last_seen_ts` (for tests / debug).
+    /// Defaults to `BarSource::Last`.
     pub fn last_seen_bar(&self, symbol: &str, timeframe: &str) -> i64 {
-        let key = (symbol.to_string(), timeframe.to_string());
+        self.last_seen_bar_with_source(symbol, timeframe, BarSource::Last)
+    }
+
+    pub fn last_seen_bar_with_source(&self, symbol: &str, timeframe: &str, source: BarSource) -> i64 {
+        let key = (symbol.to_string(), timeframe.to_string(), source);
         self.bars.lock().ok()
             .and_then(|m| m.get(&key).map(|s| s.last_seen_ts.load(Ordering::Relaxed)))
             .unwrap_or(0)
@@ -413,7 +474,16 @@ impl SubscriptionManager {
         symbol: &str,
         timeframe: &str,
     ) -> Result<usize, ApiError> {
-        let key = (symbol.to_string(), timeframe.to_string());
+        self.gap_fill_on_reconnect_with_source(symbol, timeframe, BarSource::Last).await
+    }
+
+    pub async fn gap_fill_on_reconnect_with_source(
+        &self,
+        symbol: &str,
+        timeframe: &str,
+        source: BarSource,
+    ) -> Result<usize, ApiError> {
+        let key = (symbol.to_string(), timeframe.to_string(), source);
         let (last_ts, fanout) = {
             let map = self.bars.lock().expect("bars map");
             match map.get(&key) {
@@ -458,18 +528,23 @@ impl SubscriptionManager {
     /// Returns total bars replayed across all subs. Errors per-sub are logged
     /// and swallowed so one bad symbol can't block the others.
     pub async fn gap_fill_on_reconnect_all(&self) -> usize {
-        let keys: Vec<(String, String)> = match self.bars.lock() {
+        let keys: Vec<(String, String, BarSource)> = match self.bars.lock() {
             Ok(g) => g.keys().cloned().collect(),
             Err(_) => return 0,
         };
         let mut total = 0usize;
-        for (sym, tf) in keys {
-            match self.gap_fill_on_reconnect(&sym, &tf).await {
+        for (sym, tf, src) in keys {
+            // Mark-source subs have no provider trait surface for historical
+            // bars yet, so gap-fill replay only runs for Last. Skip Mark
+            // entries silently — their `last_seen_ts` is still tracked for
+            // future use.
+            if src != BarSource::Last { continue; }
+            match self.gap_fill_on_reconnect_with_source(&sym, &tf, src).await {
                 Ok(n) => total = total.saturating_add(n),
                 Err(e) => {
                     tracing::warn!(
                         target: "providers.sub_mgr",
-                        symbol = %sym, timeframe = %tf, err = %e,
+                        symbol = %sym, timeframe = %tf, source = ?src, err = %e,
                         "gap_fill_on_reconnect_all: per-sub error swallowed"
                     );
                 }
@@ -497,8 +572,8 @@ impl SubscriptionManager {
             }
         };
         if let Ok(map) = self.bars.lock() {
-            for ((s, tf), sub) in map.iter() {
-                check("bars", &format!("{s}:{tf}"), &sub.last_activity);
+            for ((s, tf, src), sub) in map.iter() {
+                check("bars", &format!("{s}:{tf}:{}", src.as_str()), &sub.last_activity);
             }
         }
         if let Ok(map) = self.quotes.lock() {
@@ -640,15 +715,15 @@ mod tests {
         let mgr = SubscriptionManager::new(prov.clone());
         let _r = mgr.subscribe_bars("AMD", "1m").unwrap();
         assert_eq!(mgr.last_seen_bar("AMD", "1m"), 0);
-        mgr.bump_last_seen_bar("AMD", "1m", 100);
+        mgr.bump_last_seen_bar("AMD", "1m", BarSource::Last,100);
         assert_eq!(mgr.last_seen_bar("AMD", "1m"), 100);
-        mgr.bump_last_seen_bar("AMD", "1m", 200);
+        mgr.bump_last_seen_bar("AMD", "1m", BarSource::Last,200);
         assert_eq!(mgr.last_seen_bar("AMD", "1m"), 200);
         // Going backwards is ignored.
-        mgr.bump_last_seen_bar("AMD", "1m", 150);
+        mgr.bump_last_seen_bar("AMD", "1m", BarSource::Last,150);
         assert_eq!(mgr.last_seen_bar("AMD", "1m"), 200);
         // Unknown key is a no-op (doesn't insert).
-        mgr.bump_last_seen_bar("GHOST", "1m", 999);
+        mgr.bump_last_seen_bar("GHOST", "1m", BarSource::Last, 999);
         assert_eq!(mgr.last_seen_bar("GHOST", "1m"), 0);
     }
 
@@ -671,6 +746,32 @@ mod tests {
         assert_eq!(prov.live_subs("AAPL"), 0);
         assert_eq!(prov.live_subs("MSFT"), 0);
         assert_eq!(prov.live_subs("NVDA"), 0);
+    }
+
+    #[tokio::test]
+    async fn subscribe_bars_with_source_distinguishes_sources() {
+        let prov = Arc::new(MockProvider::new());
+        let mgr = SubscriptionManager::new(prov.clone());
+        // Same (sym, tf) with different sources → independent refcounts.
+        let _last_a = mgr.subscribe_bars_with_source("AAPL", "5m", BarSource::Last).unwrap();
+        let _last_b = mgr.subscribe_bars_with_source("AAPL", "5m", BarSource::Last).unwrap();
+        let _mark_a = mgr.subscribe_bars_with_source("AAPL", "5m", BarSource::Mark).unwrap();
+        // Provider should be touched once (Last only — Mark has no trait surface).
+        assert_eq!(prov.live_subs("AAPL:5m"), 1, "Last underlying sub fired once");
+        // bump_last_seen for Last only — Mark stays at 0.
+        mgr.bump_last_seen_bar("AAPL", "5m", BarSource::Last, 1_000);
+        mgr.bump_last_seen_bar("AAPL", "5m", BarSource::Mark, 2_000);
+        assert_eq!(mgr.last_seen_bar_with_source("AAPL", "5m", BarSource::Last), 1_000);
+        assert_eq!(mgr.last_seen_bar_with_source("AAPL", "5m", BarSource::Mark), 2_000);
+        // Drop Last twice → underlying unsub fires.
+        mgr.unsubscribe_bars_with_source("AAPL", "5m", BarSource::Last);
+        assert_eq!(prov.live_subs("AAPL:5m"), 1, "still one Last ref");
+        mgr.unsubscribe_bars_with_source("AAPL", "5m", BarSource::Last);
+        assert_eq!(prov.live_subs("AAPL:5m"), 0, "Last evicted at zero");
+        // Mark sub still alive — independent.
+        assert_eq!(mgr.last_seen_bar_with_source("AAPL", "5m", BarSource::Mark), 2_000);
+        mgr.unsubscribe_bars_with_source("AAPL", "5m", BarSource::Mark);
+        assert_eq!(mgr.last_seen_bar_with_source("AAPL", "5m", BarSource::Mark), 0);
     }
 
     #[tokio::test]
