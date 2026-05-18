@@ -10,10 +10,18 @@
 pub mod price;
 pub mod timestamp;
 pub mod symbol;
+pub mod fundamentals;
+pub mod news;
+pub mod earnings;
+pub mod corporate_actions;
 
 pub use price::Price;
 pub use timestamp::{Timestamp, TimeSource};
 pub use symbol::{Symbol, SymbolRegistry, Vendor, AssetClass, registry};
+pub use fundamentals::Fundamentals;
+pub use news::NewsItem;
+pub use earnings::{EarningsItem, EarningsWhen};
+pub use corporate_actions::{CorporateAction, CorporateActionKind};
 
 // `symbol_or_guess` is defined further down in this module (after `is_crypto`)
 // but re-exported here for convenience so callers can `use foundation::types::symbol_or_guess`.

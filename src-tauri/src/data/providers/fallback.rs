@@ -163,6 +163,10 @@ impl MarketDataProvider for FallbackProvider {
             c.chain      |= pc.chain;
             c.historical |= pc.historical;
             c.realtime   |= pc.realtime;
+            c.fundamentals       |= pc.fundamentals;
+            c.news               |= pc.news;
+            c.earnings           |= pc.earnings;
+            c.corporate_actions  |= pc.corporate_actions;
             // crypto_only is true only if EVERY provider is crypto_only.
             c.crypto_only = if c == ProviderCapabilities::default() {
                 pc.crypto_only
@@ -183,6 +187,10 @@ impl PartialEq for ProviderCapabilities {
             && self.crypto_only == other.crypto_only
             && self.historical == other.historical
             && self.realtime == other.realtime
+            && self.fundamentals == other.fundamentals
+            && self.news == other.news
+            && self.earnings == other.earnings
+            && self.corporate_actions == other.corporate_actions
     }
 }
 

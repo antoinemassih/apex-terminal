@@ -127,6 +127,7 @@ impl MarketDataProvider for CryptoProvider {
         ProviderCapabilities {
             bars: true, quotes: false, trades: false, chain: false,
             crypto_only: true, historical: true, realtime: false,
+            fundamentals: false, news: false, earnings: false, corporate_actions: false,
         }
     }
 }

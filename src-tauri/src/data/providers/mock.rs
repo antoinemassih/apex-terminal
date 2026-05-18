@@ -18,6 +18,7 @@ use crate::data::connectivity::{
     ApiError, Connection, ConnectionMetrics, ConnectionState,
 };
 use crate::data::feeds::apex_data::types::{BarWire, ChainDelta, Quote, Trade};
+use crate::foundation::types::{CorporateAction, EarningsItem, Fundamentals, NewsItem};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -51,6 +52,15 @@ pub struct MockMarketDataProvider {
     historical_bars: Arc<Mutex<Vec<BarWire>>>,
     /// When `true`, `bars()` returns an error to simulate a REST failure.
     historical_error: Arc<Mutex<Option<String>>>,
+    // Wave 10c — scripted reference-data responses. Each is an
+    // `Option<Result<T, ApiError>>`: `None` falls through to the trait
+    // default (`NotSupported`); `Some(Ok)` / `Some(Err)` returns the
+    // scripted result. Wrapped in `Arc<Mutex<…>>` so tests can mutate
+    // them after construction.
+    fundamentals_resp: Arc<Mutex<Option<Result<Fundamentals, ApiError>>>>,
+    news_resp: Arc<Mutex<Option<Result<Vec<NewsItem>, ApiError>>>>,
+    earnings_resp: Arc<Mutex<Option<Result<Vec<EarningsItem>, ApiError>>>>,
+    corp_actions_resp: Arc<Mutex<Option<Result<Vec<CorporateAction>, ApiError>>>>,
     capabilities: ProviderCapabilities,
 }
 
@@ -65,11 +75,42 @@ impl MockMarketDataProvider {
             trade_script: Arc::new(Mutex::new(VecDeque::new())),
             historical_bars: Arc::new(Mutex::new(Vec::new())),
             historical_error: Arc::new(Mutex::new(None)),
+            fundamentals_resp: Arc::new(Mutex::new(None)),
+            news_resp: Arc::new(Mutex::new(None)),
+            earnings_resp: Arc::new(Mutex::new(None)),
+            corp_actions_resp: Arc::new(Mutex::new(None)),
             capabilities: ProviderCapabilities {
                 bars: true, quotes: true, trades: true, chain: false,
                 crypto_only: false, historical: true, realtime: true,
+                fundamentals: false, news: false, earnings: false, corporate_actions: false,
             },
         }
+    }
+
+    /// Script a `fundamentals()` response. `Ok` → returns the snapshot;
+    /// `Err` → propagates the ApiError. Without this, the trait default
+    /// returns `NotSupported`.
+    pub fn script_fundamentals(self, resp: Result<Fundamentals, ApiError>) -> Self {
+        *self.fundamentals_resp.lock().unwrap() = Some(resp);
+        self
+    }
+
+    /// Script a `news()` response.
+    pub fn script_news(self, resp: Result<Vec<NewsItem>, ApiError>) -> Self {
+        *self.news_resp.lock().unwrap() = Some(resp);
+        self
+    }
+
+    /// Script an `earnings()` response.
+    pub fn script_earnings(self, resp: Result<Vec<EarningsItem>, ApiError>) -> Self {
+        *self.earnings_resp.lock().unwrap() = Some(resp);
+        self
+    }
+
+    /// Script a `corporate_actions()` response.
+    pub fn script_corporate_actions(self, resp: Result<Vec<CorporateAction>, ApiError>) -> Self {
+        *self.corp_actions_resp.lock().unwrap() = Some(resp);
+        self
     }
 
     pub fn script_bars(self, frames: Vec<MockFrame>) -> Self {
@@ -262,6 +303,34 @@ impl MarketDataProvider for MockMarketDataProvider {
     fn unsubscribe_chain(&self, _: &str) {}
 
     fn capabilities(&self) -> ProviderCapabilities { self.capabilities }
+
+    async fn fundamentals(&self, symbol: &str) -> Result<Fundamentals, ApiError> {
+        match self.fundamentals_resp.lock().ok().and_then(|g| g.clone()) {
+            Some(r) => r,
+            None => Err(ApiError::NotSupported(format!("{} does not provide fundamentals", symbol))),
+        }
+    }
+
+    async fn news(&self, _symbol: &str, _limit: Option<usize>) -> Result<Vec<NewsItem>, ApiError> {
+        match self.news_resp.lock().ok().and_then(|g| g.clone()) {
+            Some(r) => r,
+            None => Err(ApiError::NotSupported("mock: no news scripted".into())),
+        }
+    }
+
+    async fn earnings(&self, _symbol: &str, _limit: Option<usize>) -> Result<Vec<EarningsItem>, ApiError> {
+        match self.earnings_resp.lock().ok().and_then(|g| g.clone()) {
+            Some(r) => r,
+            None => Err(ApiError::NotSupported("mock: no earnings scripted".into())),
+        }
+    }
+
+    async fn corporate_actions(&self, _symbol: &str) -> Result<Vec<CorporateAction>, ApiError> {
+        match self.corp_actions_resp.lock().ok().and_then(|g| g.clone()) {
+            Some(r) => r,
+            None => Err(ApiError::NotSupported("mock: no corporate_actions scripted".into())),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -303,6 +372,73 @@ mod tests {
         let p = MockMarketDataProvider::new("m").historical_error("boom");
         let err = p.bars("X", "1m", 0, 0, None).await.unwrap_err();
         assert!(format!("{}", err).contains("boom"));
+    }
+
+    // ── Wave 10c reference-data scripting ───────────────────────────────
+
+    use crate::foundation::types::{
+        CorporateAction, CorporateActionKind, EarningsItem, EarningsWhen,
+        Fundamentals, NewsItem, TimeSource, Timestamp,
+    };
+
+    #[tokio::test]
+    async fn fundamentals_unscripted_returns_not_supported() {
+        let p = MockMarketDataProvider::new("m");
+        let err = p.fundamentals("AAPL").await.unwrap_err();
+        assert!(matches!(err, ApiError::NotSupported(_)));
+    }
+
+    #[tokio::test]
+    async fn fundamentals_scripted_ok_returns_snapshot() {
+        let snap = Fundamentals {
+            symbol: "AAPL".into(),
+            market_cap: Some(3_500_000_000_000),
+            pe_ratio: Some(29.4), eps: Some(6.42), dividend_yield: Some(0.45),
+            sector: Some("Technology".into()), industry: Some("Consumer Electronics".into()),
+            description: None,
+        };
+        let p = MockMarketDataProvider::new("m").script_fundamentals(Ok(snap.clone()));
+        let got = p.fundamentals("AAPL").await.unwrap();
+        assert_eq!(got, snap);
+    }
+
+    #[tokio::test]
+    async fn news_scripted_err_propagates() {
+        let p = MockMarketDataProvider::new("m")
+            .script_news(Err(ApiError::Network("upstream down".into())));
+        let err = p.news("AAPL", None).await.unwrap_err();
+        assert!(matches!(err, ApiError::Network(_)));
+    }
+
+    #[tokio::test]
+    async fn earnings_scripted_ok_returns_items() {
+        let item = EarningsItem {
+            symbol: "AAPL".into(),
+            reports_at: Timestamp::from_millis(1_700_000_000_000, TimeSource::ExchangeUtc),
+            eps_estimate: Some(1.25), eps_actual: None,
+            revenue_estimate: None, revenue_actual: None,
+            when: EarningsWhen::AfterMarket,
+        };
+        let p = MockMarketDataProvider::new("m").script_earnings(Ok(vec![item.clone()]));
+        let got = p.earnings("AAPL", None).await.unwrap();
+        assert_eq!(got, vec![item]);
+    }
+
+    #[tokio::test]
+    async fn corporate_actions_scripted_ok_returns_items() {
+        let a = CorporateAction {
+            symbol: "AAPL".into(),
+            action: CorporateActionKind::Split { ratio_num: 4, ratio_den: 1 },
+            effective_date: Timestamp::from_millis(1_700_000_000_000, TimeSource::ExchangeUtc),
+            announced_date: Timestamp::from_millis(1_699_000_000_000, TimeSource::ExchangeUtc),
+        };
+        let _ = NewsItem { // smoke-touch the import so test still compiles after refactors
+            id: "x".into(), symbol: None, headline: "x".into(), source: "x".into(),
+            url: None, published_at: Timestamp::from_millis(0, TimeSource::Local), summary: None,
+        };
+        let p = MockMarketDataProvider::new("m").script_corporate_actions(Ok(vec![a.clone()]));
+        let got = p.corporate_actions("AAPL").await.unwrap();
+        assert_eq!(got, vec![a]);
     }
 
     #[tokio::test]
