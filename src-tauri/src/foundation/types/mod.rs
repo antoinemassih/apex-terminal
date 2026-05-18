@@ -61,10 +61,16 @@ pub struct OptionsChain {
 }
 
 #[tauri::command]
-pub async fn get_bars(symbol: String, interval: String, period: String) -> Result<Vec<Bar>, String> {
+pub async fn get_bars(
+    symbol: String,
+    interval: String,
+    period: String,
+) -> Result<Vec<Bar>, crate::error::AppError> {
+    use crate::error::AppError;
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0")
-        .build().map_err(|e| e.to_string())?;
+        .build()
+        .map_err(|e| AppError::network_error(e))?;
 
     // 0. Crypto → ApexCrypto directly (manages its own cache + Binance backfill)
     if is_crypto(&symbol) {
@@ -160,17 +166,21 @@ pub fn parse_yahoo_v8(json: &serde_json::Value) -> Option<Vec<Bar>> {
 }
 
 #[tauri::command]
-pub async fn get_options_chain(symbol: String, date: Option<String>) -> Result<OptionsChain, String> {
+pub async fn get_options_chain(
+    symbol: String,
+    date: Option<String>,
+) -> Result<OptionsChain, crate::error::AppError> {
+    use crate::error::AppError;
     let mut url = format!("http://127.0.0.1:8777/options?symbol={}", symbol);
     if let Some(d) = &date {
         url.push_str(&format!("&date={}", d));
     }
     let resp = reqwest::get(&url)
         .await
-        .map_err(|e| format!("Failed to reach yfinance server: {}", e))?;
+        .map_err(|e| AppError::network_error(e))?;
     let chain: OptionsChain = resp
         .json()
         .await
-        .map_err(|e| format!("Failed to parse options chain: {}", e))?;
+        .map_err(|e| AppError::parse_error(e))?;
     Ok(chain)
 }
