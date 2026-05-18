@@ -3666,11 +3666,98 @@ mod tests {
     // ── K. WAL roundtrip ─────────────────────────────────────────────────────
 
     #[test]
-    #[ignore = "wal::append writes to a hardcoded `state/orders.wal` next to the executable; testing roundtrip cleanly requires a path override (env var or feature flag) to avoid trampling the live WAL on developer machines."]
+    #[serial_test::serial(apex_wal_path)]
     fn wal_roundtrip_replays_in_order() {
-        // TODO: thread a path override (env var `APEX_WAL_PATH` or a
-        // feature flag) through wal::wal_path() so tests can write to a
-        // temp dir.
+        // Point the WAL at a temp dir for the duration of this test so we
+        // don't trample the developer machine's `state/orders.wal`. The
+        // `#[serial(apex_wal_path)]` gate keeps any other env-driven WAL
+        // test from racing the global env var.
+        //
+        // Note: APEX_WAL_PATH is process-global. Sibling tests running in
+        // parallel that call `journal::append` (via `submit`, `cancel`, etc.)
+        // will hit this override while it's live and contribute extra events
+        // to the same file. We compensate by filtering replay down to the
+        // unique client_ids we wrote, plus our distinctive Shutdown ts.
+        use crate::chart::renderer::trading::journal::wal;
+
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let wal_path = tmp.path().join("orders.wal");
+        // SAFETY: the serial gate above prevents concurrent env-var writers
+        // of this same key. Sibling tests reading the var inherit our path.
+        std::env::set_var("APEX_WAL_PATH", &wal_path);
+        // Defensive: in case a prior aborted test left bytes behind.
+        let _ = std::fs::remove_file(&wal_path);
+
+        let events = vec![
+            JournalEvent::Attempt {
+                client_id: "wal-roundtrip-cid-1".into(),
+                kind: AttemptKind::Submit,
+                ts_ms: 1000,
+                payload: serde_json::json!({"symbol": "AAPL", "qty": 10}),
+            },
+            JournalEvent::Ack {
+                client_id: "wal-roundtrip-cid-1".into(),
+                backend_id: Some("broker-42".into()),
+                ts_ms: 1001,
+            },
+            JournalEvent::StateChg {
+                client_id: "wal-roundtrip-cid-1".into(),
+                from: OrderState::PendingSubmit,
+                to: OrderState::Working,
+                ts_ms: 1002,
+            },
+            JournalEvent::Attempt {
+                client_id: "wal-roundtrip-cid-2".into(),
+                kind: AttemptKind::Cancel,
+                ts_ms: 1003,
+                payload: serde_json::json!({"target": "wal-roundtrip-cid-1"}),
+            },
+            JournalEvent::Fail {
+                client_id: "wal-roundtrip-cid-2".into(),
+                reason: "already filled".into(),
+                ts_ms: 1004,
+            },
+            JournalEvent::Shutdown { ts_ms: 9_999_999_999_998 },
+        ];
+
+        for ev in &events {
+            wal::append(ev);
+        }
+
+        let our_cids: std::collections::HashSet<&str> = [
+            "wal-roundtrip-cid-1",
+            "wal-roundtrip-cid-2",
+        ].iter().copied().collect();
+        let replayed: Vec<JournalEvent> = wal::read_all()
+            .into_iter()
+            .filter(|ev| match ev {
+                // Our sentinel Shutdown ts is far in the future so it won't
+                // collide with an OrderManager Drop-emitted Shutdown.
+                JournalEvent::Shutdown { ts_ms } => *ts_ms == 9_999_999_999_998,
+                JournalEvent::Control { .. } => false,
+                other => our_cids.contains(other.client_id()),
+            })
+            .collect();
+
+        assert_eq!(replayed.len(), events.len(),
+                   "filtered replay count must match append count");
+
+        // Verify exact ordering by event-kind + client_id + timestamp signature.
+        let sig = |ev: &JournalEvent| match ev {
+            JournalEvent::Attempt { client_id, ts_ms, .. } => format!("A:{client_id}:{ts_ms}"),
+            JournalEvent::Ack { client_id, ts_ms, .. }    => format!("K:{client_id}:{ts_ms}"),
+            JournalEvent::Fail { client_id, ts_ms, .. }   => format!("F:{client_id}:{ts_ms}"),
+            JournalEvent::StateChg { client_id, ts_ms, .. } => format!("S:{client_id}:{ts_ms}"),
+            JournalEvent::Reconcile { client_id, ts_ms, .. } => format!("R:{client_id}:{ts_ms}"),
+            JournalEvent::Control { ts_ms, .. }            => format!("C:{ts_ms}"),
+            JournalEvent::Shutdown { ts_ms }               => format!("D:{ts_ms}"),
+        };
+        let expected: Vec<String> = events.iter().map(sig).collect();
+        let actual: Vec<String> = replayed.iter().map(sig).collect();
+        assert_eq!(actual, expected, "WAL must replay events in append order");
+
+        // Clear env var so subsequent tests get the default path again.
+        std::env::remove_var("APEX_WAL_PATH");
     }
 
     // ── L. Wave 8a Task B: submit rate limit ────────────────────────────────
