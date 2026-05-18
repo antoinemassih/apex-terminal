@@ -325,6 +325,15 @@ pub fn run() {
             let ib_handle = ib_ws::spawn(app.handle().clone());
             app.manage(ib_handle);
 
+            // Wave 12d: bridge `Connection::subscribe_state()` broadcast
+            // streams into a module-level snapshot map readable by the
+            // connection panel each frame. Must run after the WS feeds are
+            // started above (so their broadcast senders exist) and inside the
+            // tokio runtime (so `tokio::spawn` from inside the function works).
+            async_runtime::spawn(async {
+                crate::chart_renderer::ui::panels::connection_state_snapshot::spawn_state_listeners();
+            });
+
             // Wave 7A fix (Bug 1): the noop pre-registrations that used to
             // live here masked the real Shutdown impls. Because `register()`
             // appends rather than replaces, the first (noop) entry won and

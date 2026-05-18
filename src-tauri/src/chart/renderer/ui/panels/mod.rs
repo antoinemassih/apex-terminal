@@ -3,6 +3,7 @@ pub mod alerts_panel;
 pub mod analysis_panel;
 pub mod apex_diagnostics;
 pub mod connection_panel;
+pub mod connection_state_snapshot;
 pub mod dashboard_pane;
 pub mod discord_panel;
 pub mod dom_panel;
