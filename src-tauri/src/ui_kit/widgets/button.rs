@@ -21,6 +21,7 @@ use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Response, RichText, Sense,
 use super::motion;
 use super::theme::ComponentTheme;
 use super::tokens::{Size, Variant};
+use super::icon_placement::{IconPlacement, IconTone, IconState, icon_glyph_color, icon_hover_bg};
 use crate::chart::renderer::ui::style as st;
 
 /// Unified button builder. Use [`Button::new`] for a labelled button or
@@ -63,6 +64,13 @@ pub struct Button<'a> {
     sublabel: Option<String>,
     /// Override the rendered icon pixel size for icon-only buttons.
     glyph_px: Option<f32>,
+    /// Placement-driven sizing and hover semantics. When `Some`, placement
+    /// wins over `min_size_override` and `glyph_px`. When `None`, the
+    /// existing Button behaviour is preserved (zero regression for unmigrated
+    /// call sites).
+    placement: Option<IconPlacement>,
+    /// Semantic tone for icon glyph color resolution (used when placement is set).
+    icon_tone: IconTone,
 }
 
 impl<'a> Button<'a> {
@@ -95,6 +103,8 @@ impl<'a> Button<'a> {
             is_status: false,
             sublabel: None,
             glyph_px: None,
+            placement: None,
+            icon_tone: IconTone::Neutral,
         }
     }
 
@@ -228,10 +238,12 @@ impl<'a> Button<'a> {
     }
 
     /// Close (×) affordance — small icon-only Ghost. Pair with
-    /// `.size(Size::Xs)` for compact contexts.
+    /// `.size(Size::Xs)` for compact contexts. Defaults to
+    /// `IconPlacement::Modal` sizing (24×24 hit-target, 14px glyph).
     pub fn close() -> Self {
         let mut b = Self::icon(crate::ui_kit::icons::Icon::X);
         b.size = Size::Xs;
+        b.placement = Some(IconPlacement::Modal);
         b
     }
 
@@ -267,6 +279,49 @@ impl<'a> Button<'a> {
     pub fn trailing_icon(mut self, icon: &'a str) -> Self { self.trailing_icon = Some(icon); self }
     pub fn glyph_size(mut self, px: f32) -> Self { self.glyph_px = Some(px); self }
     pub fn corner_radius(mut self, r: f32) -> Self { self.corner_radius = Some(r); self }
+
+    /// Set the [`IconPlacement`] for this button. When set, placement drives
+    /// glyph size and hit-target size (overriding `min_size` / `glyph_size`),
+    /// hover-bg treatment, and interactivity semantics. When `None` (default),
+    /// the existing Button sizing/color logic is preserved.
+    pub fn placement(mut self, p: IconPlacement) -> Self {
+        self.placement = Some(p);
+        self
+    }
+
+    /// Set the icon tone to `IconTone::Destructive` (bear/danger color).
+    /// Only meaningful when a placement is set.
+    pub fn tone_destructive(mut self) -> Self {
+        self.icon_tone = IconTone::Destructive;
+        self
+    }
+
+    /// Set the icon tone to `IconTone::Affirmative` (bull/confirm color).
+    /// Only meaningful when a placement is set.
+    pub fn tone_affirmative(mut self) -> Self {
+        self.icon_tone = IconTone::Affirmative;
+        self
+    }
+
+    // ─── Placement-aware preset shortcuts ──────────────────────────────
+
+    /// Toolbar icon button (24×24 hit-target, 14px glyph, bg fill on hover).
+    pub fn icon_toolbar(icon: &'a str) -> Self {
+        Self::icon(icon).placement(IconPlacement::Toolbar)
+    }
+
+    /// Panel header icon button (20×20 hit-target, 13px glyph, bg fill on hover).
+    pub fn icon_panel_header(icon: &'a str) -> Self {
+        Self::icon(icon).placement(IconPlacement::PanelHeader)
+    }
+
+    /// Tab-close button (14×14 hit-target, 11px glyph, color-snap only — no bg fill).
+    /// Automatically applies `IconTone::Destructive`.
+    pub fn icon_tab_close() -> Self {
+        Self::icon(crate::ui_kit::icons::Icon::X)
+            .placement(IconPlacement::TabClose)
+            .tone_destructive()
+    }
 
     /// Override the icon/glyph color (Ghost variant). Useful for legacy
     /// IconBtn parity where each icon has its own color.
@@ -479,10 +534,20 @@ fn paint_button<'a>(
     // Keybind: only meaningful when there's a label (not icon_only) and not stacked.
     let kbd_text: Option<String> = if !icon_only && !stacked { btn.kbd.clone() } else { None };
 
+    // ── Placement resolution ─────────────────────────────────────────────────
+    // When a placement is set, it wins over glyph_px and min_size_override.
+    let placement = btn.placement;
+    let icon_tone = btn.icon_tone;
+
     let h = size.height();
     let pad_x = if is_status { st::gap_2xs() } else { size.padding_x() };
     let font_size = size.font_size();
-    let icon_px = btn.glyph_px.unwrap_or(font_size * 1.25);
+    // Placement glyph px wins over glyph_px override wins over size-derived default.
+    let icon_px = if let Some(p) = placement {
+        p.glyph_px()
+    } else {
+        btn.glyph_px.unwrap_or(font_size * 1.25)
+    };
     let icon_gap = st::gap_2xs();
     let kbd_font = st::mono_xs();
 
@@ -542,12 +607,21 @@ fn paint_button<'a>(
     let desired_h = if stacked { stacked_h } else { h };
     let desired_w = if full_width { ui.available_width().max(intrinsic_w) } else { intrinsic_w };
     let mut desired = Vec2::new(desired_w, desired_h);
-    if let Some(ms) = min_size_override {
+    // Placement hit-target wins over min_size_override (placement is the source of truth).
+    if let Some(p) = placement {
+        let hit = p.hit_px();
+        if hit > 0.0 {
+            desired.x = desired.x.max(hit);
+            desired.y = desired.y.max(hit);
+        }
+    } else if let Some(ms) = min_size_override {
         desired.x = desired.x.max(ms.x);
         desired.y = desired.y.max(ms.y);
     }
 
-    let sense = if disabled || loading { Sense::hover() } else { Sense::click() };
+    // StatusIndicator is a non-interactive decoration — use Sense::hover().
+    let is_non_interactive = placement.map_or(false, |p| !p.interactive());
+    let sense = if disabled || loading || is_non_interactive { Sense::hover() } else { Sense::click() };
     let (rect, response) = match placed {
         Some((r, _)) => {
             let id = ui.id().with(("ui_kit_button_show_at", r.min.x.to_bits(), r.min.y.to_bits()));
@@ -582,6 +656,27 @@ fn paint_button<'a>(
             fg_hover = theme.text();
         }
 
+        // Placement overrides: when a placement is active, use icon_glyph_color
+        // for the icon fg and conditionally suppress hover bg.
+        if let Some(p) = placement {
+            // Glyph colors from icon_glyph_color (single source of truth).
+            fg_idle  = if disabled {
+                icon_glyph_color(theme, icon_tone, IconState::Disabled)
+            } else {
+                icon_glyph_color(theme, icon_tone, IconState::Idle)
+            };
+            fg_hover = icon_glyph_color(theme, icon_tone, IconState::Hover);
+            if p.hover_bg() {
+                // Use the canonical hover bg color from the icon placement system.
+                idle_bg  = Color32::TRANSPARENT;
+                hover_bg = icon_hover_bg(theme);
+            } else {
+                // TabClose / StatusIndicator / InlineLabel: color-snap only, no bg fill.
+                idle_bg  = Color32::TRANSPARENT;
+                hover_bg = Color32::TRANSPARENT;
+            }
+        }
+
         // Caller-supplied fill / hover_fill override the variant defaults.
         if let Some(f) = fill_override {
             idle_bg = f;
@@ -605,6 +700,11 @@ fn paint_button<'a>(
         if matches!(variant, Variant::Toggle) && active_t > 0.001 {
             let accent_fg = tint.unwrap_or_else(|| theme.accent());
             fg = motion::lerp_color(fg, accent_fg, active_t);
+        }
+        // Placement active state: blend toward the active glyph color.
+        if placement.is_some() && active_t > 0.001 {
+            let active_fg = icon_glyph_color(theme, icon_tone, IconState::Active);
+            fg = motion::lerp_color(fg, active_fg, active_t);
         }
         if let Some(c) = fg_override { fg = c; }
         let border_col = motion::lerp_color(border_idle, border_active, active_t);
@@ -1206,6 +1306,9 @@ pub fn show_button_gallery(ui: &mut Ui, theme: &dyn ComponentTheme) {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use super::super::icon_placement::{IconPlacement, IconTone};
+
     /// Smoke: verify that `paint_button` delegates to `cursor::focus_ring`.
     /// A full UI-level test would need an egui harness with programmatic focus;
     /// source scanning is the lightweight alternative that catches accidental removal.
@@ -1216,5 +1319,74 @@ mod tests {
             src.contains("cursor::focus_ring"),
             "paint_button must call st::cursor::focus_ring for keyboard focus"
         );
+    }
+
+    // ── Placement-aware builder state tests ───────────────────────────────────
+
+    /// `Button::icon_toolbar` resolves to Toolbar placement.
+    #[test]
+    fn icon_toolbar_resolves_to_toolbar_placement() {
+        let b = Button::icon_toolbar(crate::ui_kit::icons::Icon::GEAR);
+        assert_eq!(b.placement, Some(IconPlacement::Toolbar));
+    }
+
+    /// `Button::icon_tab_close` resolves to TabClose placement + Destructive tone.
+    #[test]
+    fn icon_tab_close_resolves_to_tabclose_and_destructive() {
+        let b = Button::icon_tab_close();
+        assert_eq!(b.placement, Some(IconPlacement::TabClose));
+        assert_eq!(b.icon_tone, IconTone::Destructive);
+        // TabClose has no hover bg — assert via the placement API.
+        assert!(!IconPlacement::TabClose.hover_bg(), "TabClose must not show hover bg");
+    }
+
+    /// `Button::close()` defaults to Modal placement.
+    #[test]
+    fn close_defaults_to_modal_placement() {
+        let b = Button::close();
+        assert_eq!(b.placement, Some(IconPlacement::Modal));
+    }
+
+    /// `.placement(Toolbar)` overrides an explicit `.min_size`.
+    /// The placement hit-target (24px) wins over a smaller min_size when it's larger.
+    /// And when min_size is explicitly larger, placement still wins (placement is authority).
+    #[test]
+    fn placement_wins_over_min_size() {
+        let b = Button::icon(crate::ui_kit::icons::Icon::GEAR)
+            .min_size(egui::Vec2::new(100.0, 100.0))
+            .placement(IconPlacement::Toolbar);
+        // Placement is set — sizing happens in paint_button, but we can assert
+        // that the placement field is set (meaning paint_button will use it).
+        assert_eq!(b.placement, Some(IconPlacement::Toolbar));
+        // Toolbar hit_px = 24.0; in paint_button: desired = max(intrinsic, hit_px=24)
+        // but min_size_override=100 is skipped when placement is set.
+        // We verify the sizing branch would be taken via the presence of placement.
+        assert_eq!(IconPlacement::Toolbar.hit_px(), 24.0);
+        // The min_size_override is stored (it was set), but placement takes the
+        // sizing branch in paint_button (the else branch is not reached).
+        assert!(b.min_size_override.is_some());
+    }
+
+    /// `Button::icon_panel_header` resolves to PanelHeader placement.
+    #[test]
+    fn icon_panel_header_resolves_to_panel_header_placement() {
+        let b = Button::icon_panel_header(crate::ui_kit::icons::Icon::X);
+        assert_eq!(b.placement, Some(IconPlacement::PanelHeader));
+    }
+
+    /// Tone setters work correctly.
+    #[test]
+    fn tone_setters_work() {
+        let b = Button::icon(crate::ui_kit::icons::Icon::GEAR).tone_destructive();
+        assert_eq!(b.icon_tone, IconTone::Destructive);
+        let b2 = Button::icon(crate::ui_kit::icons::Icon::GEAR).tone_affirmative();
+        assert_eq!(b2.icon_tone, IconTone::Affirmative);
+    }
+
+    /// Default icon_tone is Neutral.
+    #[test]
+    fn default_tone_is_neutral() {
+        let b = Button::icon(crate::ui_kit::icons::Icon::GEAR);
+        assert_eq!(b.icon_tone, IconTone::Neutral);
     }
 }

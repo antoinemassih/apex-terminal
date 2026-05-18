@@ -92,6 +92,9 @@ pub mod pill_row;
 pub mod status_pill;
 pub mod panel_error;
 pub mod panel_toolbar;
+// P2: icon placement foundation (wire step)
+pub mod icon_placement;
+pub use icon_placement::{IconPlacement, IconTone, IconState, icon_glyph_color, icon_hover_bg};
 
 pub use tokens::{Size, Variant};
 pub use panel::{Panel, PanelCtx, PanelResponse};
