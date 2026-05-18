@@ -9,6 +9,7 @@ use crate::chart_renderer::gpu::Watchlist;
 use crate::chart_renderer::ui::style::{color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, cursor, gap_xs, gap_sm, gap_lg, gap_2xl, font_xs, font_sm, font_md, radius_sm, radius_lg, stroke_std};
 use crate::chart_renderer::ui::widgets::frames::PopupFrame;
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::widgets::PanelEmpty;
 
 /// Layout parameters passed in from gpu.rs.
 pub struct OrderEntryPanelCtx<'a> {
@@ -147,7 +148,13 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
             }
 
             // ── Order body ──
-            render_order_entry_body(ui, chart, c.t, c.pane_idx as u64, panel_w);
+            if c.account_data_cached.is_none() {
+                PanelEmpty::new("Awaiting account data")
+                    .hint("Check broker connection")
+                    .show(ui, c.t);
+            } else {
+                render_order_entry_body(ui, chart, c.t, c.pane_idx as u64, panel_w);
+            }
         });
 }
 

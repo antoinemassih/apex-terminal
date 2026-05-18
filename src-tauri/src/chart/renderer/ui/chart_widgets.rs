@@ -1924,7 +1924,25 @@ fn draw_trend_align(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
 /// Volume Shelf — horizontal bars ranked by volume (chart4 stacked bars style)
 fn draw_volume_shelf(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
     if wd.vol_shelves.is_empty() {
-        p.text(body.center(), egui::Align2::CENTER_CENTER, "NO DATA", egui::FontId::monospace(FONT_SM), color_dim(t.dim));
+        if !wd.bars_loaded {
+            return draw_loading_skeleton(p, body, t);
+        }
+        // bars loaded but no shelf data — paint a two-line empty state using tokens
+        let cy = body.center().y - 8.0;
+        p.text(
+            egui::pos2(body.center().x, cy),
+            egui::Align2::CENTER_CENTER,
+            "No data for this symbol/timeframe",
+            egui::FontId::monospace(FONT_SM),
+            color_muted(t.dim),
+        );
+        p.text(
+            egui::pos2(body.center().x, cy + FONT_SM + 4.0),
+            egui::Align2::CENTER_CENTER,
+            "Check the symbol or switch timeframe",
+            egui::FontId::monospace(FONT_XS),
+            color_dim(t.dim),
+        );
         return;
     }
     let row_h = (body.height() - 8.0) / wd.vol_shelves.len().min(5) as f32;
