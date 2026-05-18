@@ -4,7 +4,10 @@
 //! WS frame dispatcher on the tokio thread + two poller threads (health + snap).
 //! All access is mutex-guarded.
 
-use super::types::{Quote, Trade, Snapshot, HealthReady, FeedsResponse, GreeksRow, ChainRow};
+use super::types::{
+    Quote, Trade, Snapshot, HealthReady, FeedsResponse, GreeksRow, ChainRow,
+    CombinedSignalV2, RegimeFrame, RegimeTransition,
+};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -34,6 +37,15 @@ struct State {
     connected: Mutex<bool>,
     health: Mutex<Option<HealthReady>>,
     feeds:  Mutex<Option<FeedsResponse>>,
+    // ── SOTA UX state (Agent A) ────────────────────────────────────────────
+    /// Latest full 4-axis regime frame from `Signal::Regime` (§4.3).
+    /// `RwLock` not available here without a new dep — the existing module
+    /// uses `Mutex` uniformly, so we follow suit for consistency.
+    latest_regime: Mutex<Option<RegimeFrame>>,
+    /// Per-symbol latest `CombinedSignalV2` from `Signal::Combined` (§4.6).
+    latest_combined: Mutex<HashMap<String, CombinedSignalV2>>,
+    /// Last 20 axis transitions today, for the optional tape transitions strip.
+    regime_transitions: Mutex<VecDeque<RegimeTransition>>,
 }
 
 static STATE: OnceLock<State> = OnceLock::new();
@@ -54,6 +66,9 @@ fn state() -> &'static State {
         connected: Mutex::new(false),
         health: Mutex::new(None),
         feeds:  Mutex::new(None),
+        latest_regime: Mutex::new(None),
+        latest_combined: Mutex::new(HashMap::new()),
+        regime_transitions: Mutex::new(VecDeque::with_capacity(20)),
     })
 }
 
@@ -277,4 +292,67 @@ pub fn push_toast(msg: impl Into<String>) {
 }
 pub fn drain_toasts() -> Vec<String> {
     state().toasts.lock().ok().map(|mut g| std::mem::take(&mut *g)).unwrap_or_default()
+}
+
+// ── SOTA UX (Agent A) ───────────────────────────────────────────────────────
+
+/// Replace the latest regime frame. Called from `ws::dispatch` when a
+/// `regime` frame arrives. Also pushes a transition entry when the regime
+/// key differs from the previous one so the optional tape sub-strip has
+/// something to render.
+pub fn push_regime(frame: RegimeFrame) {
+    let prev_axes = state().latest_regime.lock().ok().and_then(|g| g.clone());
+    if let Ok(mut g) = state().latest_regime.lock() {
+        *g = Some(frame.clone());
+    }
+    if let Some(prev) = prev_axes {
+        let now = &frame.regime;
+        let old = &prev.regime;
+        let t_ms = frame.t_ms;
+        let mut push = |axis: &str, from: &str, to: &str| {
+            if from != to {
+                if let Ok(mut q) = state().regime_transitions.lock() {
+                    q.push_back(RegimeTransition {
+                        axis: axis.into(), from: from.into(),
+                        to: to.into(), t_ms,
+                    });
+                    while q.len() > 20 { q.pop_front(); }
+                }
+            }
+        };
+        push("intraday", &old.intraday.value, &now.intraday.value);
+        push("multiday", &old.multiday.value, &now.multiday.value);
+        push("vol",      &old.vol.value,      &now.vol.value);
+        push("sector",   &old.sector.value,   &now.sector.value);
+    }
+}
+
+pub fn get_regime() -> Option<RegimeFrame> {
+    state().latest_regime.lock().ok().and_then(|g| g.clone())
+}
+
+pub fn get_regime_transitions() -> Vec<RegimeTransition> {
+    state().regime_transitions.lock().ok()
+        .map(|g| g.iter().cloned().collect()).unwrap_or_default()
+}
+
+/// Replace the latest combined signal for a symbol. Called from `ws::dispatch`
+/// when a `combined` frame arrives.
+pub fn push_combined(signal: CombinedSignalV2) {
+    if let Ok(mut g) = state().latest_combined.lock() {
+        g.insert(signal.symbol.clone(), signal);
+    }
+}
+
+pub fn get_combined(symbol: &str) -> Option<CombinedSignalV2> {
+    state().latest_combined.lock().ok()?.get(symbol).cloned()
+}
+
+/// All cached combined signals, cloned. Sorted by score descending so the
+/// SignalsPanel can render the top N directly.
+pub fn all_combined_sorted() -> Vec<CombinedSignalV2> {
+    let g = match state().latest_combined.lock() { Ok(g) => g, Err(_) => return vec![] };
+    let mut v: Vec<CombinedSignalV2> = g.values().cloned().collect();
+    v.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    v
 }

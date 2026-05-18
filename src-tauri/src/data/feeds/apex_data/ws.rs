@@ -52,6 +52,13 @@ pub enum Frame {
     Error   { code: String, message: String },
     /// Transport-level: WS connected or disconnected.
     Connection(bool),
+    // ── SOTA UX §3.3 frames (Agent A) ──────────────────────────────────────
+    /// `Signal::Combined` — per-symbol composite signal with calibrated
+    /// contributors and provenance. Drives SignalsPanel + ProvenancePane.
+    Combined(CombinedSignalV2),
+    /// `Signal::Regime` — 4-axis classification published every 5min +
+    /// on axis change. Drives the always-visible RegimeTape top strip.
+    Regime(RegimeFrame),
 }
 
 type Listener = Arc<dyn Fn(&Frame) + Send + Sync>;
@@ -386,6 +393,26 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
             let message = env.data.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string();
             Frame::Error { code, message }
         }
+        // ── SOTA UX §3.3 — combined signal ────────────────────────────────
+        // Routes into `live_state.latest_combined[symbol]` so SignalsPanel
+        // can render rows with calibrated + lineage_id without re-fetching.
+        "combined" => match serde_json::from_value::<CombinedSignalV2>(env.data) {
+            Ok(c) => {
+                super::live_state::push_combined(c.clone());
+                Frame::Combined(c)
+            }
+            Err(e) => { eprintln!("[apex_data.ws] bad combined: {e}"); return; }
+        },
+        // ── SOTA UX §3.3 — regime frame ───────────────────────────────────
+        // Routes into `live_state.latest_regime` so the always-visible
+        // RegimeTape top strip can render without re-fetching.
+        "regime" => match serde_json::from_value::<RegimeFrame>(env.data) {
+            Ok(r) => {
+                super::live_state::push_regime(r.clone());
+                Frame::Regime(r)
+            }
+            Err(e) => { eprintln!("[apex_data.ws] bad regime: {e}"); return; }
+        },
         other => { eprintln!("[apex_data.ws] unknown frame: {other}"); return; }
     };
     broadcast(mgr, &frame);
