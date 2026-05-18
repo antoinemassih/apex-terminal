@@ -13,6 +13,46 @@ use crate::ui_kit::widgets::{Indicator, IndicatorTone, PanelListRow, PanelSectio
 use crate::chart_renderer::gpu::APEXIB_URL;
 use crate::chart_renderer::trading::read_account_data;
 
+/// Display tone for a connection-state badge. Maps onto `Theme` colors
+/// (`bull` / `warn` / `bear` / `dim`) inside `service_row` so light themes
+/// stay readable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StatusColor {
+    /// Healthy — green dot, green badge text.
+    Ok,
+    /// Transient / recoverable — amber pulse, amber badge text.
+    Warn,
+    /// Terminal failure — red dot, red badge text.
+    Bad,
+    /// Idle / shutdown — muted dim badge.
+    Dim,
+}
+
+/// Map a feed's `ConnectionState` (read from the push-driven snapshot map) into
+/// a `(label, tone)` pair suitable for `service_row`.
+///
+/// `label` is the trailing badge text; `tone` decides the dot + badge color.
+/// `Subscribed { count > 0 }` surfaces the live subscription count so a glance
+/// at the panel reveals e.g. `OK (3)` for three active subs.
+pub(crate) fn status_from_snapshot(name: &str) -> (String, StatusColor) {
+    match connection_state_snapshot::get(name) {
+        ConnectionState::Authenticated => ("OK".into(), StatusColor::Ok),
+        ConnectionState::Subscribed { count } if count > 0 => {
+            (format!("OK ({count})"), StatusColor::Ok)
+        }
+        ConnectionState::Subscribed { .. } => ("OK".into(), StatusColor::Ok),
+        ConnectionState::Connecting { attempt } => {
+            (format!("CONN {attempt}"), StatusColor::Warn)
+        }
+        ConnectionState::Backoff { attempt, .. } => {
+            (format!("BACKOFF {attempt}"), StatusColor::Warn)
+        }
+        ConnectionState::Idle => ("IDLE".into(), StatusColor::Dim),
+        ConnectionState::Failed { .. } => ("DOWN".into(), StatusColor::Bad),
+        ConnectionState::ShuttingDown => ("STOP".into(), StatusColor::Dim),
+    }
+}
+
 pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mut [Chart], _ap: usize, t: &Theme, conn_panel_open: &mut bool) {
     if !*conn_panel_open { return; }
 
@@ -83,6 +123,15 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
                     for (id, name, status, ok, detail) in market_data {
                         service_row(ui, t, id, name, status, *ok, detail);
                     }
+                    // Wave 13c: crypto + signals feeds — both push their
+                    // ConnectionState into `connection_state_snapshot` via the
+                    // listeners spawned at startup.
+                    let (crypto_status, crypto_tone) = status_from_snapshot("crypto");
+                    service_row_tone(ui, t, "crypto", "Crypto",
+                                     &crypto_status, crypto_tone, "crypto ws");
+                    let (signals_status, signals_tone) = status_from_snapshot("signals");
+                    service_row_tone(ui, t, "signals", "Signals",
+                                     &signals_status, signals_tone, "signals ws");
                 });
             if md_resp.action_clicked { open_diag = true; }
 
@@ -90,6 +139,12 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
             PanelSection::new("TRADING").show(ui, t, |ui, t| {
                 service_row(ui, t, "apexib", "ApexIB",
                             if ib_ok { "OK" } else { "OFF" }, ib_ok, APEXIB_URL);
+                // Wave 13c: surface the ib_ws WebSocket lifecycle from the
+                // push-driven snapshot (separate from the REST account-data
+                // flag above, which is `ib_ok`).
+                let (ib_ws_status, ib_ws_tone) = status_from_snapshot("ib_ws");
+                service_row_tone(ui, t, "ib_ws", "ApexIB WS",
+                                 &ib_ws_status, ib_ws_tone, "ib websocket");
             });
 
             // ── INFRASTRUCTURE ─────────────────────────────────────────────
@@ -127,6 +182,44 @@ fn service_row(ui: &mut egui::Ui, t: &Theme, id: &str, name: &str, status: &str,
         .secondary(detail)
         .trailing(move |ui, t| {
             let color = if pulsing { t.warn } else if ok { t.bull } else { t.bear };
+            status_badge(ui, &status_owned, color);
+        })
+        .show(ui, t);
+}
+
+/// Variant of [`service_row`] that takes a typed [`StatusColor`] instead of
+/// the legacy `(ok: bool, "AMBER"-sentinel)` pair. Used by Wave 13c rows that
+/// derive their status from `status_from_snapshot`.
+fn service_row_tone(
+    ui: &mut egui::Ui,
+    t: &Theme,
+    id: &str,
+    name: &str,
+    status: &str,
+    tone: StatusColor,
+    detail: &str,
+) {
+    let status_owned = status.to_string();
+    PanelListRow::new(id)
+        .dense(false)
+        .leading(move |ui, t| {
+            let indicator = match tone {
+                StatusColor::Warn => Indicator::pulsing().tone(IndicatorTone::Warn),
+                StatusColor::Ok => Indicator::dot().tone(IndicatorTone::Bull),
+                StatusColor::Bad => Indicator::dot().tone(IndicatorTone::Bear),
+                StatusColor::Dim => Indicator::dot().tone(IndicatorTone::Neutral),
+            };
+            indicator.show(ui, t);
+        })
+        .primary(name)
+        .secondary(detail)
+        .trailing(move |ui, t| {
+            let color = match tone {
+                StatusColor::Ok => t.bull,
+                StatusColor::Warn => t.warn,
+                StatusColor::Bad => t.bear,
+                StatusColor::Dim => t.dim,
+            };
             status_badge(ui, &status_owned, color);
         })
         .show(ui, t);
