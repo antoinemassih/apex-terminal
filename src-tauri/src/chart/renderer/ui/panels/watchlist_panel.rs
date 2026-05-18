@@ -849,6 +849,34 @@ if watchlist.open {
                                         let row_hovered = resp.hovered();
                                         let y_c = rect.center().y;
 
+                                        // ── Corporate-actions / news badges ──
+                                        // Pure-data fetch via projector caches (TTL-gated, won't
+                                        // thread-storm). Painted just to the left of the X / price
+                                        // cluster so they don't overlap drag handle or symbol.
+                                        let now_ms = std::time::SystemTime::now()
+                                            .duration_since(std::time::UNIX_EPOCH)
+                                            .map(|d| d.as_millis() as i64).unwrap_or(0);
+                                        let (badge_text, badge_tip) = super::watchlist_badges::badges_for_ticker(&item_sym, now_ms);
+                                        if !badge_text.is_empty() {
+                                            let badge_id = egui::Id::new(("wl_badge", si, ii));
+                                            let badge_w = 64.0_f32.min(rect.width() * 0.30);
+                                            let badge_rect = egui::Rect::from_min_max(
+                                                egui::pos2(rect.max.x - 84.0 - badge_w, rect.min.y + 4.0),
+                                                egui::pos2(rect.max.x - 84.0, rect.max.y - 4.0),
+                                            );
+                                            ui.painter().text(
+                                                badge_rect.right_center(),
+                                                egui::Align2::RIGHT_CENTER,
+                                                &badge_text,
+                                                egui::FontId::proportional(11.0),
+                                                t.dim,
+                                            );
+                                            let badge_resp = ui.interact(badge_rect, badge_id, egui::Sense::hover());
+                                            if badge_resp.hovered() && !badge_tip.is_empty() {
+                                                badge_resp.on_hover_text(badge_tip);
+                                            }
+                                        }
+
                                         // ── Rich tooltip — deferred ──
                                         if row_hovered && !drag_confirmed {
                                             set_pending_wl_tooltip(Some(WlTooltipData {
