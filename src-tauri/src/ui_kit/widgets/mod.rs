@@ -89,6 +89,7 @@ pub mod panel_sub_section;
 // DS-IMPL-2: new panel primitives (wave 3)
 pub mod table_header;
 pub mod pill_row;
+pub mod status_pill;
 
 pub use tokens::{Size, Variant};
 pub use panel::{Panel, PanelCtx, PanelResponse};
@@ -109,6 +110,7 @@ pub use panel_list_row::{Column as PanelColumn, ColAlign as PanelColAlign};
 // DS-IMPL-2: new panel primitives (wave 3)
 pub use table_header::TableHeader;
 pub use pill_row::{PillRow, PillRowResponse};
+pub use status_pill::StatusPill;
 pub use panel_card::PanelCard;
 pub use panel_key_value_row::PanelKeyValueRow;
 pub use range_slider::RangeSlider;
