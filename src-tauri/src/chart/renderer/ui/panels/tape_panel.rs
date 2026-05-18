@@ -4,21 +4,22 @@
 //! uses [`SidePanelShell`]; the body groups the column headers and scrolling
 //! print list under a [`PanelSection`].
 //!
-//! Row primitive: KEEPS the existing `widgets::rows::ListRow`. The T&S tape
-//! is a high-cadence streaming list (up to 200 visible prints, refreshed
-//! every frame on live ticks). `PanelListRow` is structured around
-//! leading / primary / secondary / trailing slots, which doesn't map onto
-//! the three painter-positioned columns (TIME / PRICE / SIZE). Forcing the
-//! mapping would only add per-row closure allocations without any visual
-//! gain. See the migration report for the gap / follow-up.
+//! Row primitive: `PanelListRow::columns(&[...])` (Wave 10b migration).
+//! The T&S tape is a high-cadence streaming list (up to 200 visible
+//! prints, refreshed every frame on live ticks); `PanelListRow.columns`
+//! uses a borrowed `&[Column]` slice with no per-cell allocations, and
+//! `.row_tint(side_color, 12)` paints the buy/sell directional fill
+//! BEHIND any hover/selected backgrounds — matching the legacy
+//! `ListRow.row_tint` look exactly.
 
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, TapeRow, Theme};
 use super::super::widgets::text::MonospaceCode;
-use super::super::widgets::rows::ListRow;
-use crate::ui_kit::widgets::{PanelEmpty, PanelSection, SidePanelShell, Skeleton, Width};
-use crate::ui_kit::icons::Icon;
+use crate::ui_kit::widgets::{
+    PanelColAlign, PanelColumn, PanelEmpty, PanelListRow, PanelSection,
+    SidePanelShell, Skeleton, Width,
+};
 
 
 /// Draw the T&S content into `ui` (used by analysis_panel as a tab).
@@ -79,11 +80,12 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
                     }
                 }
 
-                let col_w = (panel_w - 12.0) / 3.0;
-                for entry in entries.iter().rev().take(200).collect::<Vec<_>>().into_iter().rev() {
+                let dim_color = color_muted(t.dim);
+                let qty_color = t.text;
+                for (idx, entry) in entries.iter().rev().take(200).collect::<Vec<_>>().into_iter().rev().enumerate() {
                     let side_color = if entry.is_buy { COLOR_PROFIT_GREEN } else { COLOR_LOSS_RED };
 
-                    // Build strings before the closure to avoid borrow issues.
+                    // Build strings before the row to avoid borrow issues.
                     let secs = entry.time / 1000;
                     let h = (secs / 3600) % 24;
                     let m = (secs / 60) % 60;
@@ -102,34 +104,21 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
                         format!("{:.6}", entry.qty)
                     };
 
-                    let dim_color = color_muted(t.dim);
-                    let qty_color = t.text;
-                    let cw = col_w;
-
-                    // KEEP: `ListRow` — see module-level doc for rationale.
-                    ListRow::new(row_h)
-                        .hover_enabled(false)
+                    // Wave 10b: PanelListRow.columns + .row_tint replaces the
+                    // legacy ListRow. The id_salt borrows the entry's index;
+                    // the columns slice is stack-built (no heap alloc per row
+                    // beyond the format!() strings, which the legacy also did).
+                    let id_salt = format!("tape_row_{idx}");
+                    PanelListRow::new(&id_salt)
+                        .height(row_h)
+                        .hoverable(false)
                         .row_tint(side_color, 12)
-                        .body(move |ui| {
-                            let rect = ui.max_rect();
-                            let font = mono_sm();
-                            ui.painter().text(
-                                egui::pos2(rect.left(), rect.center().y),
-                                egui::Align2::LEFT_CENTER, &time_str, font.clone(),
-                                dim_color,
-                            );
-                            ui.painter().text(
-                                egui::pos2(rect.left() + cw, rect.center().y),
-                                egui::Align2::LEFT_CENTER, &price_str, font.clone(),
-                                side_color,
-                            );
-                            ui.painter().text(
-                                egui::pos2(rect.right(), rect.center().y),
-                                egui::Align2::RIGHT_CENTER, &qty_str, font,
-                                qty_color,
-                            );
-                        })
-                        .show(ui);
+                        .columns(&[
+                            PanelColumn { text: &time_str,  align: PanelColAlign::Left,  color: dim_color, weight: 1.0, min_width: None, mono: true },
+                            PanelColumn { text: &price_str, align: PanelColAlign::Right, color: side_color, weight: 1.0, min_width: None, mono: true },
+                            PanelColumn { text: &qty_str,   align: PanelColAlign::Right, color: qty_color, weight: 1.0, min_width: None, mono: true },
+                        ])
+                        .show(ui, t);
                 }
             });
     });
