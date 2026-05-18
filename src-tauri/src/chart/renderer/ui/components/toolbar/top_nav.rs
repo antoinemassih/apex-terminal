@@ -266,13 +266,25 @@ pub(crate) fn render(
         use std::sync::Once;
         static SHORTCUTS_REGISTERED: Once = Once::new();
         SHORTCUTS_REGISTERED.call_once(|| {
-            use crate::foundation::shortcuts::{register, shortcut_cmd, ShortcutEntry};
+            use crate::foundation::shortcuts::{register, shortcut_cmd, ShortcutEntry, Shortcut};
             register(ShortcutEntry {
                 shortcut: shortcut_cmd(egui::Key::L),
                 action: "panel.order_ledger_toggle",
                 description: "Toggle order ledger panel",
                 category: "Panels",
             });
+            // UX-1 Fix 1: Alt+S focuses the symbol input in the top toolbar.
+            if let Err(e) = crate::foundation::shortcuts::registry().write().unwrap().register(ShortcutEntry {
+                shortcut: Shortcut {
+                    modifiers: egui::Modifiers { alt: true, ..egui::Modifiers::NONE },
+                    key: egui::Key::S,
+                },
+                action: "nav.focus_symbol_input",
+                description: "Focus symbol input in toolbar",
+                category: "Navigation",
+            }) {
+                eprintln!("[shortcuts] {}", e);
+            }
         });
     }
     use crate::monitoring::{span_begin, span_end};
@@ -455,6 +467,146 @@ pub(crate) fn render(
                 }
             }
 
+
+            ui.add(egui::Separator::default().spacing(4.0));
+
+            // ── UX-1 Fix 1: Editable symbol input ──────────────────────────
+            // Shows the active pane symbol as an editable text field.
+            // Enter pushes `pending_symbol_change`; Alt+S focuses it.
+            // An autocomplete dropdown lists up to 8 watchlist symbol matches.
+            {
+                use crate::ui_kit::widgets::Input;
+
+                // Sync the input buffer from the active pane symbol when NOT
+                // focused so it always reflects the current chart.
+                if !watchlist.top_nav_sym_focused {
+                    let sym = panes[ap].symbol.clone();
+                    if watchlist.top_nav_sym_input != sym {
+                        watchlist.top_nav_sym_input = sym;
+                    }
+                }
+
+                // Alt+S global shortcut: request focus on the symbol input.
+                let alt_s = ctx.input(|i| {
+                    i.key_pressed(egui::Key::S) && i.modifiers == (egui::Modifiers { alt: true, ..egui::Modifiers::NONE })
+                });
+
+                let sym_id = egui::Id::new("top_nav_sym_input");
+                if alt_s {
+                    ctx.memory_mut(|m| m.request_focus(sym_id));
+                }
+
+                let input_resp = Input::new(&mut watchlist.top_nav_sym_input)
+                    .placeholder("Symbol")
+                    .min_width(64.0)
+                    .size(crate::ui_kit::widgets::Size::Sm)
+                    .id(sym_id)
+                    .show(ui, t);
+
+                let was_focused = watchlist.top_nav_sym_focused;
+                watchlist.top_nav_sym_focused = input_resp.has_focus;
+
+                // Uppercase the input as the user types.
+                if input_resp.response.changed() {
+                    let up = watchlist.top_nav_sym_input.to_uppercase();
+                    watchlist.top_nav_sym_input = up;
+                }
+
+                // On Enter (submitted) push the symbol change.
+                if input_resp.submitted {
+                    let sym = watchlist.top_nav_sym_input.trim().to_uppercase();
+                    if !sym.is_empty() {
+                        panes[ap].pending_symbol_change = Some(sym.clone());
+                        watchlist.top_nav_sym_input = sym;
+                        watchlist.top_nav_sym_focused = false;
+                        ctx.memory_mut(|m| m.surrender_focus(sym_id));
+                    }
+                }
+
+                // On blur without submit, restore the active symbol.
+                if was_focused && !input_resp.has_focus && !input_resp.submitted {
+                    watchlist.top_nav_sym_input = panes[ap].symbol.clone();
+                }
+
+                // ── Autocomplete dropdown ──
+                // Collect up to 8 watchlist symbols whose prefix matches the input.
+                if input_resp.has_focus && !watchlist.top_nav_sym_input.is_empty() {
+                    let query = watchlist.top_nav_sym_input.to_uppercase();
+                    let mut matches: Vec<String> = Vec::new();
+                    let active_idx = watchlist.active_watchlist_idx;
+                    if active_idx < watchlist.saved_watchlists.len() {
+                        for sec in &watchlist.saved_watchlists[active_idx].sections {
+                            for item in &sec.items {
+                                let sym_up = item.symbol.to_uppercase();
+                                if sym_up.starts_with(&query) && sym_up != query {
+                                    matches.push(item.symbol.clone());
+                                    if matches.len() >= 8 { break; }
+                                }
+                            }
+                            if matches.len() >= 8 { break; }
+                        }
+                    }
+
+                    if !matches.is_empty() {
+                        let dropdown_pos = egui::pos2(
+                            input_resp.response.rect.left(),
+                            input_resp.response.rect.bottom() + 2.0,
+                        );
+                        let dropdown_w = input_resp.response.rect.width().max(80.0);
+                        let row_h = 22.0_f32;
+                        let dropdown_h = row_h * matches.len() as f32 + 4.0;
+
+                        let layer = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("sym_ac_dropdown"));
+                        let mut child = ui.new_child(
+                            egui::UiBuilder::new()
+                                .layer_id(layer)
+                                .max_rect(egui::Rect::from_min_size(
+                                    dropdown_pos,
+                                    egui::vec2(dropdown_w, dropdown_h),
+                                ))
+                                .layout(egui::Layout::top_down(egui::Align::Min))
+                        );
+
+                        let bg = t.toolbar_bg;
+                        child.painter().rect_filled(
+                            egui::Rect::from_min_size(dropdown_pos, egui::vec2(dropdown_w, dropdown_h)),
+                            crate::chart_renderer::ui::style::r_md_cr(),
+                            bg,
+                        );
+                        child.painter().rect_stroke(
+                            egui::Rect::from_min_size(dropdown_pos, egui::vec2(dropdown_w, dropdown_h)),
+                            crate::chart_renderer::ui::style::r_md_cr(),
+                            egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_dim())),
+                            egui::StrokeKind::Outside,
+                        );
+
+                        let mut chosen: Option<String> = None;
+                        for sym in &matches {
+                            let row_resp = child.add_sized(
+                                egui::vec2(dropdown_w, row_h),
+                                egui::Button::new(
+                                    egui::RichText::new(sym.as_str()).monospace().size(font_sm()).color(t.text)
+                                )
+                                .fill(egui::Color32::TRANSPARENT)
+                                .frame(false),
+                            );
+                            if row_resp.hovered() {
+                                child.painter().rect_filled(row_resp.rect, 0.0, color_alpha(t.toolbar_border, alpha_ghost()));
+                            }
+                            if row_resp.clicked() {
+                                chosen = Some(sym.clone());
+                            }
+                        }
+
+                        if let Some(sym) = chosen {
+                            panes[ap].pending_symbol_change = Some(sym.clone());
+                            watchlist.top_nav_sym_input = sym;
+                            watchlist.top_nav_sym_focused = false;
+                            ctx.memory_mut(|m| m.surrender_focus(sym_id));
+                        }
+                    }
+                }
+            }
 
             ui.add(egui::Separator::default().spacing(4.0));
 
