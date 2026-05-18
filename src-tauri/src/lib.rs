@@ -188,11 +188,14 @@ pub fn run() {
             // acquire_timeout caps the initial connection attempt at 3 s instead of
             // blocking the setup thread indefinitely (which leaves the window blank).
             let pool_opt = async_runtime::block_on(async {
+                let pg_url = data::apex_data::config::apex_pg_url();
                 let connect = PgPoolOptions::new()
                     .max_connections(5)
                     .acquire_timeout(Duration::from_secs(3))
-                    .connect("postgresql://postgres:monkeyxx@192.168.1.143:5432/ococo")
+                    .connect(&pg_url)
                     .await;
+                // Do NOT include `pg_url` in any error message — it carries
+                // the password. The sqlx error already names the host:port.
                 match connect {
                     Err(e) => {
                         eprintln!("[apex] PostgreSQL unavailable ({e}) — drawings use fallback");
@@ -203,15 +206,25 @@ pub fn run() {
             });
             if let Some(pool) = pool_opt {
                 drawing_db::init(pool.clone());
-                crate::persistence::watchlist_db::init(pool);
+                crate::persistence::watchlist_db::init(pool.clone());
+                // Wave 7A fix (Bug 2): register the pool for shutdown so
+                // `pool.close().await` runs on exit. Without this, sqlx's
+                // background connections stay open and the dev DB starts
+                // rejecting new connections after ~10-20 restarts.
+                {
+                    use std::sync::Arc;
+                    use crate::data::connectivity::{register, shutdown::PgPoolShutdown};
+                    register("postgres", Arc::new(PgPoolShutdown { name: "postgres", pool: pool.clone() }));
+                }
                 // Phase (d): refresh Polygon-backed ETF/index holdings into
                 // symbol_universes on a background thread. Cold-start cache
                 // is primed from the DB inside the same job.
                 crate::watchlist::refresh::refresh_universes_in_background();
             }
 
-            // Redis bar cache — optional, app works without it
-            bar_cache::init();
+            // Redis bar cache — optional, app works without it. URL comes
+            // from APEX_REDIS_URL env (defaults to the homelab dev Redis).
+            bar_cache::init(&data::apex_data::config::apex_redis_url());
 
             // System monitoring — GPU, CPU, memory, frame timing → :9091/metrics
             monitoring::start();
@@ -307,18 +320,14 @@ pub fn run() {
             let ib_handle = ib_ws::spawn(app.handle().clone());
             app.manage(ib_handle);
 
-            // Wave 1: register Shutdown stubs for the long-lived feeds so
-            // drain_all has a registry to walk on exit. Real drain logic
-            // (close WS gracefully, flush in-flight subscribes, etc.) lands
-            // per-feed in Wave 2 — for now these no-op so the plumbing is
-            // exercised end-to-end without altering shutdown behavior.
-            use std::sync::Arc;
-            use crate::data::connectivity::{register, shutdown::NoopShutdown};
-            register("apex_data",    Arc::new(NoopShutdown { name: "apex_data" }));
-            register("ib_ws",        Arc::new(NoopShutdown { name: "ib_ws" }));
-            register("crypto_feed",  Arc::new(NoopShutdown { name: "crypto_feed" }));
-            register("signals_feed", Arc::new(NoopShutdown { name: "signals_feed" }));
-            register("discord",      Arc::new(NoopShutdown { name: "discord" }));
+            // Wave 7A fix (Bug 1): the noop pre-registrations that used to
+            // live here masked the real Shutdown impls. Because `register()`
+            // appends rather than replaces, the first (noop) entry won and
+            // real WS close frames were never sent on exit. Each feed now
+            // self-registers its real `Shutdown` when it spawns above
+            // (apex_data::ws::start, ib_ws::spawn, crypto_feed::start,
+            // signals_feed::start). Discord has no long-lived connection
+            // yet — when it grows one, register from its module.
 
             // Spawn ococo-api sidecar — bundled Node.js server
             match app.shell().sidecar("ococo-api") {

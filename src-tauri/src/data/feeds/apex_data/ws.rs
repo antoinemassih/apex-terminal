@@ -170,6 +170,7 @@ struct ApexDataWsShutdown {
 #[async_trait::async_trait]
 impl connectivity::Shutdown for ApexDataWsShutdown {
     async fn drain(&self, deadline: Duration) -> Result<(), String> {
+        tracing::info!(target: "shutdown", connection = "apex_data.ws", "drain invoked");
         self.mgr.shutdown.store(true, Ordering::SeqCst);
         // Best-effort: nudge the control loop so it observes shutdown.
         if let Some(tx) = self.mgr.tx_ctrl.lock().ok().and_then(|g| g.clone()) {

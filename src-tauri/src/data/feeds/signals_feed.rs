@@ -71,6 +71,7 @@ struct SignalsFeedShutdown {
 #[async_trait::async_trait]
 impl connectivity::Shutdown for SignalsFeedShutdown {
     async fn drain(&self, deadline: Duration) -> Result<(), String> {
+        tracing::info!(target: "shutdown", connection = "signals_feed", "drain invoked");
         self.shutdown.store(true, Ordering::SeqCst);
         tokio::time::sleep(deadline.min(Duration::from_millis(200))).await;
         Ok(())
