@@ -18,18 +18,43 @@
 use std::sync::Mutex;
 
 use super::APEXIB_URL;
+use crate::data::connectivity::error::ApiError;
 use crate::foundation::types::Price;
 
 /// What the broker reports back when we ask "do you have this order?"
 /// Used by orphan-recovery (`replay_and_recover`) to learn the real state of
 /// an order whose Attempt journal entry was never matched by an Ack/Fail.
+///
+/// Wave 12b: `NotFound` is no longer a variant — the trait method now returns
+/// `Result<Option<BrokerOrderState>, ApiError>` so "broker confirmed absent"
+/// (`Ok(None)`) is distinct from "transport failure" (`Err(_)`). Orphan
+/// recovery uses that distinction to decide whether to mark `Rejected` or
+/// leave the orphan for the next sweep.
 #[derive(Debug, Clone)]
 pub(crate) enum BrokerOrderState {
     Working { backend_id: String, status: String },
     Filled { backend_id: String, fill_price: f32, qty: u32 },
     Cancelled { backend_id: String },
     Rejected { reason: String },
-    NotFound,
+}
+
+/// Resolved contract details returned by `Broker::resolve_contract`. Used by
+/// pre-trade margin checks and as a side-channel to populate the conId cache.
+/// Fields mirror the wire shape of `GET /contract/{symbol}` from ApexIB plus
+/// a couple of fields we expect when wiring `/orders/0/margin` next.
+///
+/// Wave 12b: fields are minimal on purpose — we only carry what the current
+/// call sites need. `initial_margin` / `maintenance_margin` are `Option`
+/// because the contract endpoint may not include them; margin numbers come
+/// from `/orders/0/margin` and can be folded in later if a caller wants both
+/// in a single trait call.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ContractDetails {
+    pub conid: i64,
+    pub min_tick: f32,
+    pub multiplier: f32,
+    pub initial_margin: Option<f64>,
+    pub maintenance_margin: Option<f64>,
 }
 
 /// Body shape the broker should use when modifying a working order.
@@ -211,7 +236,28 @@ pub(crate) trait Broker: Send + Sync {
 
     /// Lookup by client_order_id. Used by `replay_and_recover` after an
     /// Attempt was journaled but no Ack/Fail arrived.
-    fn lookup_by_client_id(&self, client_order_id: &str) -> BrokerOrderState;
+    ///
+    /// Wave 12b: returns `Result<Option<_>, ApiError>` so orphan recovery can
+    /// distinguish three outcomes:
+    /// - `Ok(Some(state))` — broker found the order; adopt `state`.
+    /// - `Ok(None)` — broker confirmed it doesn't know about the order; the
+    ///   caller should mark the local row Rejected.
+    /// - `Err(ApiError::Network|Timeout|CircuitOpen)` — transport failure;
+    ///   the caller should leave the orphan alone for the next sweep.
+    fn lookup_by_client_id(
+        &self,
+        client_order_id: &str,
+    ) -> Result<Option<BrokerOrderState>, ApiError>;
+
+    /// Bulk-cancel every working order for `symbol`. Returns the number of
+    /// orders cancelled per the broker's reported count, or `0` if the broker
+    /// doesn't echo a count. Wave 12b: lifted out of `OrderManager::cancel_all`.
+    fn cancel_all(&self, symbol: &str) -> Result<usize, ApiError>;
+
+    /// Resolve a symbol to its broker contract details (conId, margin
+    /// requirements, minimum tick, contract multiplier). Used by pre-trade
+    /// margin checks; Wave 12b also folds the result into the conId cache.
+    fn resolve_contract(&self, symbol: &str) -> Result<ContractDetails, ApiError>;
 
     /// Server-side kill / halt / resume. Default impls no-op since not all
     /// brokers expose these endpoints.
@@ -342,27 +388,46 @@ impl Broker for LiveBroker {
             .map_err(|e| format!("modify http: {e}"))
     }
 
-    fn lookup_by_client_id(&self, client_order_id: &str) -> BrokerOrderState {
+    fn lookup_by_client_id(
+        &self,
+        client_order_id: &str,
+    ) -> Result<Option<BrokerOrderState>, ApiError> {
         let client = reqwest::blocking::Client::new();
         let url = format!("{}/orders/by-client-id/{}", APEXIB_URL, client_order_id);
-        let resp = match client.get(&url)
-            .timeout(std::time::Duration::from_secs(3)).send() {
-            Ok(r) => r,
-            Err(_) => return BrokerOrderState::NotFound, // transient — caller leaves orphan
-        };
+        // Wave 12b: transport failures bubble up as `ApiError::Network`. The
+        // orphan-recovery caller treats `Err` as "leave it alone" so a flaky
+        // network never tips a real order into Rejected.
+        let resp = client.get(&url)
+            .timeout(std::time::Duration::from_secs(3))
+            .send()
+            .map_err(|e| {
+                if e.is_timeout() {
+                    ApiError::Timeout(std::time::Duration::from_secs(3))
+                } else {
+                    ApiError::Network(format!("lookup_by_client_id: {e}"))
+                }
+            })?;
         let status = resp.status();
-        if status.as_u16() == 404 { return BrokerOrderState::NotFound; }
-        if !status.is_success() { return BrokerOrderState::NotFound; }
-        let json: serde_json::Value = match resp.json() {
-            Ok(j) => j,
-            Err(_) => return BrokerOrderState::NotFound,
-        };
+        if status.as_u16() == 404 {
+            return Ok(None); // broker confirmed absent
+        }
+        if !status.is_success() {
+            // Other non-2xx is treated as transport-ish: surface as Http so
+            // caller can leave the orphan. Critically we do NOT collapse to
+            // `Ok(None)` here — only 404 means "broker said no".
+            return Err(ApiError::Http {
+                status: status.as_u16(),
+                body: String::new(),
+            });
+        }
+        let json: serde_json::Value = resp.json()
+            .map_err(|e| ApiError::Parse(format!("lookup_by_client_id: {e}")))?;
         let backend_id = json["orderId"].as_str().map(|s| s.to_string())
             .or_else(|| json["orderId"].as_i64().map(|n| n.to_string()))
             .unwrap_or_default();
         let raw_status = json["status"].as_str().unwrap_or("").to_string();
         let lower = raw_status.to_ascii_lowercase();
-        match lower.as_str() {
+        Ok(Some(match lower.as_str() {
             "filled" => BrokerOrderState::Filled {
                 backend_id,
                 fill_price: json["avgFillPrice"].as_f64().unwrap_or(0.0) as f32,
@@ -373,7 +438,77 @@ impl Broker for LiveBroker {
                 reason: format!("broker: {}", raw_status),
             },
             _ => BrokerOrderState::Working { backend_id, status: raw_status },
+        }))
+    }
+
+    fn cancel_all(&self, symbol: &str) -> Result<usize, ApiError> {
+        let client = reqwest::blocking::Client::new();
+        // Wave 12b: lifted from `OrderManager::cancel_all`. The bulk
+        // endpoint is `DELETE /orders` with an optional `?symbol=` filter.
+        // Backend doesn't currently echo a count, so we return 0 — callers
+        // shouldn't depend on the exact number, only that the bulk call ran.
+        let mut url = format!("{}/orders", APEXIB_URL);
+        if !symbol.is_empty() {
+            url.push_str(&format!("?symbol={}", symbol));
         }
+        let resp = client.delete(url)
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .map_err(|e| {
+                if e.is_timeout() {
+                    ApiError::Timeout(std::time::Duration::from_secs(5))
+                } else {
+                    ApiError::Network(format!("cancel_all: {e}"))
+                }
+            })?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(ApiError::Http {
+                status: status.as_u16(),
+                body: String::new(),
+            });
+        }
+        let n = resp.json::<serde_json::Value>()
+            .ok()
+            .and_then(|j| j["cancelled"].as_i64())
+            .unwrap_or(0)
+            .max(0) as usize;
+        Ok(n)
+    }
+
+    fn resolve_contract(&self, symbol: &str) -> Result<ContractDetails, ApiError> {
+        let client = reqwest::blocking::Client::new();
+        // Wave 12b: lifted from `OrderManager::check_margin`. Currently only
+        // calls the `/contract/{symbol}` endpoint — margin numbers live on
+        // `/orders/0/margin` and are fetched by the caller separately for now.
+        let resp = client.get(format!("{}/contract/{}", APEXIB_URL, symbol))
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .map_err(|e| {
+                if e.is_timeout() {
+                    ApiError::Timeout(std::time::Duration::from_secs(5))
+                } else {
+                    ApiError::Network(format!("resolve_contract: {e}"))
+                }
+            })?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(ApiError::Http {
+                status: status.as_u16(),
+                body: String::new(),
+            });
+        }
+        let json: serde_json::Value = resp.json()
+            .map_err(|e| ApiError::Parse(format!("resolve_contract: {e}")))?;
+        let conid = json["conId"].as_i64()
+            .ok_or_else(|| ApiError::Parse(format!("resolve_contract: no conId for {symbol}")))?;
+        Ok(ContractDetails {
+            conid,
+            min_tick: json["minTick"].as_f64().unwrap_or(0.01) as f32,
+            multiplier: json["multiplier"].as_f64().unwrap_or(1.0) as f32,
+            initial_margin: json["initialMargin"].as_f64(),
+            maintenance_margin: json["maintenanceMargin"].as_f64(),
+        })
     }
 
     fn kill(&self) -> Result<(), String> {
@@ -591,11 +726,30 @@ impl Broker for PaperBroker {
         Ok(())
     }
 
-    fn lookup_by_client_id(&self, _client_order_id: &str) -> BrokerOrderState {
+    fn lookup_by_client_id(
+        &self,
+        _client_order_id: &str,
+    ) -> Result<Option<BrokerOrderState>, ApiError> {
         // Paper has no out-of-band state — orphan recovery should never need
         // to hit this in paper mode (paper acks inline) but if it does,
-        // return NotFound so the manager marks the orphan rejected.
-        BrokerOrderState::NotFound
+        // return Ok(None) so the manager marks the orphan rejected.
+        Ok(None)
+    }
+
+    fn cancel_all(&self, _symbol: &str) -> Result<usize, ApiError> {
+        // Paper has no broker; per-order cancels are simulated by the manager.
+        Ok(0)
+    }
+
+    fn resolve_contract(&self, _symbol: &str) -> Result<ContractDetails, ApiError> {
+        // Synthetic contract — enough for pre-trade math in paper mode.
+        Ok(ContractDetails {
+            conid: 0,
+            min_tick: 0.01,
+            multiplier: 1.0,
+            initial_margin: None,
+            maintenance_margin: None,
+        })
     }
 
     // ── Multi-leg paths (Wave 4): synthetic acks, no HTTP ──────────────────
@@ -651,6 +805,9 @@ pub(crate) enum MockCall {
     Conditional(ConditionalSubmitArgs),
     OptionsTrigger(OptionsTriggerArgs),
     Combo(ComboSubmitArgs),
+    // Wave 12b: bulk + contract paths
+    CancelAll { symbol: String },
+    ResolveContract { symbol: String },
 }
 
 /// Pre-canned response a test wants the next `submit` call to return.
@@ -660,7 +817,12 @@ pub(crate) enum MockCall {
 pub(crate) enum MockResponse {
     SubmitOk(String),         // backend_id to return
     SubmitErr(String),        // error reason
-    Lookup(BrokerOrderState),
+    /// Wave 12b: scripted lookup result. The full `Result<Option<_>, ApiError>`
+    /// is encoded so tests can drive each of the three orphan-recovery
+    /// branches (Some / None / Err) independently.
+    Lookup(Result<Option<BrokerOrderState>, ApiError>),
+    /// Wave 12b: scripted contract details for `resolve_contract`.
+    Contract(Result<ContractDetails, ApiError>),
 }
 
 pub(crate) struct MockBroker {
@@ -703,7 +865,7 @@ impl MockBroker {
         }
         None
     }
-    fn take_lookup_response(&self) -> Option<BrokerOrderState> {
+    fn take_lookup_response(&self) -> Option<Result<Option<BrokerOrderState>, ApiError>> {
         if let Ok(mut g) = self.responses.lock() {
             let pos = g.iter().position(|r| matches!(r, MockResponse::Lookup(_)));
             return pos.map(|i| match g.remove(i) {
@@ -712,6 +874,22 @@ impl MockBroker {
             });
         }
         None
+    }
+
+    fn take_contract_response(&self) -> Option<Result<ContractDetails, ApiError>> {
+        if let Ok(mut g) = self.responses.lock() {
+            let pos = g.iter().position(|r| matches!(r, MockResponse::Contract(_)));
+            return pos.map(|i| match g.remove(i) {
+                MockResponse::Contract(c) => c,
+                _ => unreachable!(),
+            });
+        }
+        None
+    }
+
+    /// Script the next `resolve_contract` call to return the given details.
+    pub(crate) fn script_resolve_contract(&self, details: ContractDetails) {
+        self.enqueue_response(MockResponse::Contract(Ok(details)));
     }
 }
 
@@ -747,9 +925,31 @@ impl Broker for MockBroker {
         Ok(())
     }
 
-    fn lookup_by_client_id(&self, client_order_id: &str) -> BrokerOrderState {
+    fn lookup_by_client_id(
+        &self,
+        client_order_id: &str,
+    ) -> Result<Option<BrokerOrderState>, ApiError> {
         self.record(MockCall::Lookup { client_order_id: client_order_id.into() });
-        self.take_lookup_response().unwrap_or(BrokerOrderState::NotFound)
+        // Default to `Ok(None)` (broker confirmed-absent) when no script
+        // entry was queued — mirrors the previous default of `NotFound`.
+        self.take_lookup_response().unwrap_or(Ok(None))
+    }
+
+    fn cancel_all(&self, symbol: &str) -> Result<usize, ApiError> {
+        self.record(MockCall::CancelAll { symbol: symbol.into() });
+        Ok(0)
+    }
+
+    fn resolve_contract(&self, symbol: &str) -> Result<ContractDetails, ApiError> {
+        self.record(MockCall::ResolveContract { symbol: symbol.into() });
+        self.take_contract_response()
+            .unwrap_or_else(|| Ok(ContractDetails {
+                conid: 1,
+                min_tick: 0.01,
+                multiplier: 1.0,
+                initial_margin: None,
+                maintenance_margin: None,
+            }))
     }
 
     // ── Multi-leg paths (Wave 4): record + synthetic Ok ─────────────────────
@@ -885,6 +1085,64 @@ mod tests {
         let oid = mock.submit_combo(&args).expect("combo ok");
         assert!(oid.starts_with("mock:"));
         assert!(matches!(mock.calls()[0], MockCall::Combo(_)));
+    }
+
+    // ── Wave 12b: bulk + contract + typed lookup ────────────────────────────
+
+    #[test]
+    fn mock_broker_records_cancel_all() {
+        let mock = MockBroker::new();
+        let n = mock.cancel_all("AAPL").expect("cancel_all ok");
+        assert_eq!(n, 0);
+        let calls = mock.calls();
+        assert_eq!(calls.len(), 1);
+        assert!(matches!(calls[0], MockCall::CancelAll { ref symbol } if symbol == "AAPL"),
+            "expected CancelAll(AAPL), got {:?}", calls[0]);
+    }
+
+    #[test]
+    fn mock_broker_records_resolve_contract() {
+        let mock = MockBroker::new();
+        mock.script_resolve_contract(ContractDetails {
+            conid: 265598,
+            min_tick: 0.01,
+            multiplier: 1.0,
+            initial_margin: Some(2500.0),
+            maintenance_margin: Some(2000.0),
+        });
+        let details = mock.resolve_contract("AAPL").expect("resolve_contract ok");
+        assert_eq!(details.conid, 265598);
+        assert_eq!(details.initial_margin, Some(2500.0));
+        let calls = mock.calls();
+        assert!(matches!(calls[0], MockCall::ResolveContract { ref symbol } if symbol == "AAPL"),
+            "expected ResolveContract(AAPL), got {:?}", calls[0]);
+    }
+
+    #[test]
+    fn mock_broker_lookup_distinguishes_transport_vs_notfound() {
+        // Scenario A: scripted transport failure → caller must see Err and
+        // leave the orphan alone. Two responses queued; we drain them across
+        // two calls so the variants don't interfere.
+        let mock = MockBroker::new();
+        mock.enqueue_response(MockResponse::Lookup(Err(ApiError::Network("down".into()))));
+        let r = mock.lookup_by_client_id("cid-1");
+        assert!(matches!(r, Err(ApiError::Network(_))),
+            "transport-fail script should surface as Err, got {:?}", r);
+
+        // Scenario B: scripted broker-confirmed-absent → Ok(None) so caller
+        // marks Rejected. Distinct return value, distinct caller action.
+        mock.enqueue_response(MockResponse::Lookup(Ok(None)));
+        let r = mock.lookup_by_client_id("cid-2");
+        assert!(matches!(r, Ok(None)),
+            "confirmed-not-found script should surface as Ok(None), got {:?}", r);
+
+        // Scenario C: scripted Working → Ok(Some(_)).
+        mock.enqueue_response(MockResponse::Lookup(Ok(Some(
+            BrokerOrderState::Working { backend_id: "B-1".into(), status: "Submitted".into() }
+        ))));
+        let r = mock.lookup_by_client_id("cid-3");
+        assert!(matches!(r, Ok(Some(BrokerOrderState::Working { .. }))),
+            "scripted Working should surface as Ok(Some(Working)), got {:?}", r);
     }
 
     #[test]

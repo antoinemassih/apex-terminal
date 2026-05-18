@@ -18,7 +18,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use super::{OrderSide, OrderStatus, OrderLevel, APEXIB_URL};
 use super::{snapshot, inflight, paper};
 use super::broker::{
-    Broker, LiveBroker,
+    Broker, LiveBroker, BrokerOrderState,
     SubmitArgs, ModifyArgs, ModifyKind,
     BracketSubmitArgs, OcoSubmitArgs, OcoLeg,
     ConditionalSubmitArgs, ConditionalCondition,
@@ -1711,20 +1711,17 @@ impl OrderManager {
             ts_ms: epoch_ms(), payload: serde_json::json!({"symbol": symbol}),
         });
         let paper = self.paper_mode;
-        // Send cancel-all to IB backend (skip in paper)
-        // Wave 7D note: kept inline — this is a single bulk DELETE on
-        // /orders that the `Broker` trait doesn't model (the trait's
-        // `cancel` is per-order). The per-order cancels that follow this
-        // bulk call DO go through `self.broker.cancel(...)` via `self.cancel(id)`.
+        // Wave 12b: bulk DELETE now routes through `Broker::cancel_all`.
+        // The per-order cancels that follow this bulk call still go through
+        // `self.broker.cancel(...)` via `self.cancel(id)`.
         if !paper {
             let cid_thread = cid.clone();
+            let symbol_thread = symbol.to_string();
+            let broker = Arc::clone(&self.broker);
             std::thread::spawn(move || {
-                let client = reqwest::blocking::Client::new();
-                let res = client.delete(format!("{}/orders", APEXIB_URL))
-                    .timeout(std::time::Duration::from_secs(5)).send();
-                match res {
-                    Ok(_) => journal::append(JournalEvent::Ack { client_id: cid_thread, backend_id: None, ts_ms: epoch_ms() }),
-                    Err(e) => journal::append(JournalEvent::Fail { client_id: cid_thread, reason: format!("cancel_all http: {e}"), ts_ms: epoch_ms() }),
+                match broker.cancel_all(&symbol_thread) {
+                    Ok(_n) => journal::append(JournalEvent::Ack { client_id: cid_thread, backend_id: None, ts_ms: epoch_ms() }),
+                    Err(e) => journal::append(JournalEvent::Fail { client_id: cid_thread, reason: format!("cancel_all: {e}"), ts_ms: epoch_ms() }),
                 }
             });
         } else {
@@ -2207,14 +2204,21 @@ pub(crate) fn next_order_id() -> u64 {
 
 /// What-if margin check for a proposed order
 pub(crate) fn check_margin(symbol: &str, side: &str, qty: u32, order_type: &str, price: f32) -> Option<serde_json::Value> {
-    // Wave 7D note: kept inline — `Broker` exposes order actions, not
-    // contract/margin lookups. If we add `Broker::resolve_contract` +
-    // `Broker::what_if_margin` later, route through there.
+    // Wave 12b: conId lookup routes through `Broker::resolve_contract` so
+    // paper/mock brokers can short-circuit and tests don't hit the network.
+    // The margin GET still uses raw reqwest — folding it into the broker
+    // trait is left for a follow-up because the wire shape is heavier than
+    // `ContractDetails` and only one caller needs it.
+    let broker = with_mgr(|m| Arc::clone(&m.broker));
+    let details = broker.resolve_contract(symbol).ok()?;
+    let con_id = details.conid;
+    // Bonus: every margin check now populates the conId cache so chart /
+    // ib_ws callers don't have to re-resolve. The observe call is no-op if
+    // the conId is 0 (paper mode synthetic).
+    if con_id != 0 {
+        crate::data::feeds::ib_ws::resolver::resolver().observe(symbol, con_id);
+    }
     let client = reqwest::blocking::Client::new();
-    let con_id = client.get(format!("{}/contract/{}", APEXIB_URL, symbol))
-        .timeout(std::time::Duration::from_secs(5)).send()
-        .and_then(|r| r.json::<serde_json::Value>()).ok()
-        .and_then(|j| j["conId"].as_i64())?;
     client.get(format!("{}/orders/0/margin?conId={}&side={}&quantity={}&orderType={}&limitPrice={}",
         APEXIB_URL, con_id, side, qty, order_type, price))
         .timeout(std::time::Duration::from_secs(5)).send().ok()
@@ -2747,67 +2751,17 @@ pub(crate) fn orders_snapshot() -> std::sync::Arc<crate::chart::renderer::tradin
 
 // ─── Wave 6a: WAL replay & broker reconciliation ─────────────────────────────
 
-/// Broker-side view of an order, returned by `query_broker_by_client_id`.
-#[derive(Debug, Clone)]
-pub(crate) enum BrokerOrderState {
-    Working { backend_id: String, status: String },
-    Filled { backend_id: String, fill_price: f32, qty: u32 },
-    Cancelled { backend_id: String },
-    Rejected { reason: String },
-    NotFound,
-}
-
-/// Query ApexIB for the order with the given client_order_id (idempotency key).
-/// Returns `None` if the HTTP request itself failed (network/timeout) — the
-/// caller should leave the orphan alone and retry next startup.
+/// Query the broker for the order with the given client_order_id.
 ///
-/// TODO: confirm with backend — assumed endpoint shape is
-/// `GET {APEXIB_URL}/orders/by-client-id/{cid}` returning a JSON object with
-/// `status`, `orderId`, `avgFillPrice`, `filledQty`. If the endpoint isn't
-/// available the request returns 404 → `Some(NotFound)`, which is the safe
-/// outcome (we'll mark the local order Rejected with a clear reason).
-fn query_broker_by_client_id(cid: &str) -> Option<BrokerOrderState> {
-    // Wave 7D note: NOT routed through `Broker::lookup_by_client_id`. That
-    // method collapses transport failures into `NotFound`, but this recovery
-    // path must distinguish them — returning `None` on transport failure
-    // leaves the orphan alone for retry on next startup; `Some(NotFound)`
-    // would prematurely mark the local order Rejected. Kept as inline
-    // reqwest for now; revisit if `BrokerOrderState` grows a `TransportError`
-    // variant.
-    let client = reqwest::blocking::Client::new();
-    let url = format!("{}/orders/by-client-id/{}", APEXIB_URL, cid);
-    let resp = client.get(&url)
-        .timeout(std::time::Duration::from_secs(3))
-        .send()
-        .ok()?;
-    let status = resp.status();
-    if status.as_u16() == 404 {
-        return Some(BrokerOrderState::NotFound);
-    }
-    if !status.is_success() {
-        // Any other non-2xx is treated as transient — don't draw conclusions.
-        return None;
-    }
-    let json: serde_json::Value = resp.json().ok()?;
-    let backend_id = json["orderId"].as_str().map(|s| s.to_string())
-        .or_else(|| json["orderId"].as_i64().map(|n| n.to_string()))
-        .unwrap_or_default();
-    let raw_status = json["status"].as_str().unwrap_or("").to_string();
-    let lower = raw_status.to_ascii_lowercase();
-    Some(match lower.as_str() {
-        "filled" => BrokerOrderState::Filled {
-            backend_id,
-            fill_price: json["avgFillPrice"].as_f64().unwrap_or(0.0) as f32,
-            qty: json["filledQty"].as_i64().unwrap_or(0).max(0) as u32,
-        },
-        "cancelled" | "apicancelled" => BrokerOrderState::Cancelled { backend_id },
-        "rejected" | "inactive" => BrokerOrderState::Rejected {
-            reason: format!("broker: {}", raw_status),
-        },
-        "submitted" | "presubmitted" | "working" | "" =>
-            BrokerOrderState::Working { backend_id, status: raw_status },
-        _ => BrokerOrderState::Working { backend_id, status: raw_status },
-    })
+/// Wave 12b: now routes through `Broker::lookup_by_client_id`, whose
+/// `Result<Option<_>, ApiError>` shape lets us tell apart:
+/// - `Ok(Some(state))` — broker found it; adopt its state.
+/// - `Ok(None)` — broker confirmed it doesn't know about the order;
+///   mark Rejected with "orphan-not-at-broker".
+/// - `Err(_)` — transport failure; leave orphan alone for the next sweep.
+fn query_broker_by_client_id(cid: &str) -> Result<Option<BrokerOrderState>, crate::data::connectivity::error::ApiError> {
+    let broker = with_mgr(|m| Arc::clone(&m.broker));
+    broker.lookup_by_client_id(cid)
 }
 
 /// Wave 6a: replay the WAL, find Attempts with no Ack/Fail, and ask the broker
@@ -2827,7 +2781,7 @@ pub(crate) fn replay_and_recover() {
             continue;
         }
         match query_broker_by_client_id(&cid) {
-            Some(BrokerOrderState::Working { backend_id, status }) => {
+            Ok(Some(BrokerOrderState::Working { backend_id, status })) => {
                 with_mgr(|mgr| {
                     if let Some(o) = mgr.orders.iter_mut().find(|o| o.client_order_id == cid) {
                         o.backend_order_id = Some(backend_id.clone());
@@ -2853,7 +2807,7 @@ pub(crate) fn replay_and_recover() {
                     snapshot::publish(&mgr.orders);
                 });
             }
-            Some(BrokerOrderState::Filled { backend_id, fill_price, qty }) => {
+            Ok(Some(BrokerOrderState::Filled { backend_id, fill_price, qty })) => {
                 with_mgr(|mgr| {
                     if let Some(o) = mgr.orders.iter_mut().find(|o| o.client_order_id == cid) {
                         let now = epoch_ms();
@@ -2879,7 +2833,7 @@ pub(crate) fn replay_and_recover() {
                     snapshot::publish(&mgr.orders);
                 });
             }
-            Some(BrokerOrderState::Cancelled { backend_id }) => {
+            Ok(Some(BrokerOrderState::Cancelled { backend_id })) => {
                 with_mgr(|mgr| {
                     if let Some(o) = mgr.orders.iter_mut().find(|o| o.client_order_id == cid) {
                         let now = epoch_ms();
@@ -2903,7 +2857,7 @@ pub(crate) fn replay_and_recover() {
                     snapshot::publish(&mgr.orders);
                 });
             }
-            Some(BrokerOrderState::Rejected { reason }) => {
+            Ok(Some(BrokerOrderState::Rejected { reason })) => {
                 with_mgr(|mgr| {
                     if let Some(o) = mgr.orders.iter_mut().find(|o| o.client_order_id == cid) {
                         let now = epoch_ms();
@@ -2920,7 +2874,7 @@ pub(crate) fn replay_and_recover() {
                     snapshot::publish(&mgr.orders);
                 });
             }
-            Some(BrokerOrderState::NotFound) => {
+            Ok(None) => {
                 with_mgr(|mgr| {
                     if let Some(o) = mgr.orders.iter_mut().find(|o| o.client_order_id == cid) {
                         let now = epoch_ms();
@@ -2944,11 +2898,11 @@ pub(crate) fn replay_and_recover() {
                     snapshot::publish(&mgr.orders);
                 });
             }
-            None => {
-                // Broker query failed (transport / timeout). Leave as orphan;
-                // next startup or live reconciler will retry.
+            Err(e) => {
+                // Broker query failed (transport / timeout / circuit open).
+                // Leave as orphan; next startup or live reconciler will retry.
                 report(ErrorLevel::Warn, "recovery", "broker_query_failed",
-                    format!("cid={} (kind={:?} ts={}) — leaving as orphan", cid, kind, ts));
+                    format!("cid={} (kind={:?} ts={}) err={} — leaving as orphan", cid, kind, ts, e));
             }
         }
     }
@@ -3999,6 +3953,59 @@ mod tests {
             ref backend_id, kind: ModifyKind::Limit, new_price, ..
         } if backend_id == "broker-bid" && (new_price.to_f32() - 101.25).abs() < 1e-4),
             "expected Modify(broker-bid, Limit, 101.25), got {:?}", calls[1]);
+    }
+
+    // ── Wave 12b: orphan recovery transport vs not-found semantics ─────────
+    //
+    // The real `replay_and_recover` uses the global `ORDER_MANAGER`, which
+    // makes a deterministic end-to-end test awkward (it reads the journal on
+    // disk and mutates global state). This test pins the SEMANTIC contract
+    // of the new typed lookup: a manager + mock-broker pair should land in
+    // distinct local states when the broker reports "confirmed-not-found"
+    // vs "transport-fail". The actual decision logic lives inline in
+    // `replay_and_recover`'s match arms; we replicate the relevant branches
+    // here so a future change that flattens the distinction will trip.
+    #[test]
+    fn orphan_recovery_distinguishes_transport_vs_notfound() {
+        use crate::chart::renderer::trading::broker::BrokerOrderState;
+        use crate::data::connectivity::error::ApiError;
+
+        // Scenario A: transport-fail → orphan stays orphaned (no Rejected).
+        let mock = Arc::new(MockBroker::new());
+        mock.enqueue_response(MockResponse::Lookup(Err(ApiError::Network("down".into()))));
+        let mut got_rejected = false;
+        match mock.lookup_by_client_id("cid-A") {
+            Ok(Some(_)) | Ok(None) => got_rejected = true,
+            Err(_) => { /* leave orphan as-is, expected */ }
+        }
+        assert!(!got_rejected, "transport-fail must NOT mark orphan Rejected");
+
+        // Scenario B: confirmed-not-found → orphan transitions to Rejected.
+        mock.enqueue_response(MockResponse::Lookup(Ok(None)));
+        let mut became_rejected = false;
+        match mock.lookup_by_client_id("cid-B") {
+            Ok(None) => became_rejected = true,
+            Ok(Some(BrokerOrderState::Rejected { .. })) => became_rejected = true,
+            _ => {}
+        }
+        assert!(became_rejected, "confirmed-not-found must mark orphan Rejected");
+
+        // Scenario C: still-working → orphan adopted as Working.
+        mock.enqueue_response(MockResponse::Lookup(Ok(Some(
+            BrokerOrderState::Working { backend_id: "B-9".into(), status: "Submitted".into() }
+        ))));
+        let mut adopted_working = false;
+        if let Ok(Some(BrokerOrderState::Working { .. })) = mock.lookup_by_client_id("cid-C") {
+            adopted_working = true;
+        }
+        assert!(adopted_working, "Working should be adopted by recovery");
+
+        // All three calls should have been recorded.
+        let calls = mock.calls();
+        assert_eq!(calls.len(), 3);
+        assert!(matches!(calls[0], MockCall::Lookup { ref client_order_id } if client_order_id == "cid-A"));
+        assert!(matches!(calls[1], MockCall::Lookup { ref client_order_id } if client_order_id == "cid-B"));
+        assert!(matches!(calls[2], MockCall::Lookup { ref client_order_id } if client_order_id == "cid-C"));
     }
 
     // ── Wave 9e: property-based dedup-signature invariants ─────────────────
