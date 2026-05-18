@@ -40,7 +40,11 @@ fn main() {
                 if let Err(e) = _scaffold_lib::drawings::ensure_schema(&pool).await {
                     eprintln!("[apex-native] Schema migration failed: {e}");
                 }
-                _scaffold_lib::drawing_db::init(pool);
+                _scaffold_lib::drawing_db::init(pool.clone());
+                // Wave 7A fix (Bug 2): register the pool for shutdown.
+                use std::sync::Arc;
+                use _scaffold_lib::data::connectivity::{register, shutdown::PgPoolShutdown};
+                register("postgres", Arc::new(PgPoolShutdown { name: "postgres", pool }));
             }
             Err(e) => eprintln!("[apex-native] PostgreSQL unavailable ({e}) — drawings won't persist"),
         }

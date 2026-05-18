@@ -203,7 +203,16 @@ pub fn run() {
             });
             if let Some(pool) = pool_opt {
                 drawing_db::init(pool.clone());
-                crate::persistence::watchlist_db::init(pool);
+                crate::persistence::watchlist_db::init(pool.clone());
+                // Wave 7A fix (Bug 2): register the pool for shutdown so
+                // `pool.close().await` runs on exit. Without this, sqlx's
+                // background connections stay open and the dev DB starts
+                // rejecting new connections after ~10-20 restarts.
+                {
+                    use std::sync::Arc;
+                    use crate::data::connectivity::{register, shutdown::PgPoolShutdown};
+                    register("postgres", Arc::new(PgPoolShutdown { name: "postgres", pool: pool.clone() }));
+                }
                 // Phase (d): refresh Polygon-backed ETF/index holdings into
                 // symbol_universes on a background thread. Cold-start cache
                 // is primed from the DB inside the same job.

@@ -93,3 +93,23 @@ impl Shutdown for NoopShutdown {
         Ok(())
     }
 }
+
+/// `Shutdown` wrapper for an `sqlx::PgPool`. Calls `pool.close().await` on
+/// drain, which waits for in-flight queries to finish and then closes every
+/// underlying TCP connection. Without this, postgres connections from
+/// previous app runs accumulate (the server only times out idle
+/// connections after several minutes), and after ~10-20 dev restarts the
+/// server starts rejecting new connections with `too many clients already`.
+pub struct PgPoolShutdown {
+    pub name: &'static str,
+    pub pool: sqlx::PgPool,
+}
+
+#[async_trait]
+impl Shutdown for PgPoolShutdown {
+    async fn drain(&self, _deadline: Duration) -> Result<(), String> {
+        tracing::info!(target: "shutdown", connection = self.name, "pg pool drain invoked");
+        self.pool.close().await;
+        Ok(())
+    }
+}

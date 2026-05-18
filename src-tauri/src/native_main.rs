@@ -68,7 +68,12 @@ fn main() {
                 // Schema is managed by `migrations/001_chart_state.sql`,
                 // applied out-of-band. Just start the drawing worker.
                 _scaffold_lib::drawing_db::init(pool.clone());
-                _scaffold_lib::watchlist_db::init(pool);
+                _scaffold_lib::watchlist_db::init(pool.clone());
+                // Wave 7A fix (Bug 2): register the pool for shutdown so
+                // drain_all closes it cleanly on exit.
+                use std::sync::Arc;
+                use _scaffold_lib::data::connectivity::{register, shutdown::PgPoolShutdown};
+                register("postgres", Arc::new(PgPoolShutdown { name: "postgres", pool }));
             }
             Err(e) => eprintln!("[apex-native] PostgreSQL unavailable ({e}) — drawings won't persist"),
         }
