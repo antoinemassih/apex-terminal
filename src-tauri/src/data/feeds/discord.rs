@@ -185,18 +185,18 @@ pub fn load_config() {
         if !client_id.is_empty() && !client_secret.is_empty() {
             let has_bot = bot_token.is_some();
             let _ = DISCORD_CONFIG.set(DiscordConfig { client_id, client_secret, bot_token });
-            eprintln!("[discord] Config loaded (bot: {})", has_bot);
+            report(ErrorLevel::Info, "discord", "config_loaded", format!("bot: {has_bot}"));
         }
         // Restore saved auth token from disk
         if let Some(auth) = load_auth_from_disk() {
-            eprintln!("[discord] Restored session for {} ({})", auth.username, auth.user_id);
+            report(ErrorLevel::Info, "discord", "session_restored", format!("{} ({})", auth.username, auth.user_id));
             let _ = DISCORD_TOKEN.get_or_init(|| Mutex::new(None));
             if let Some(m) = DISCORD_TOKEN.get() {
                 *m.lock().unwrap() = Some(auth);
             }
         }
     } else {
-        eprintln!("[discord] No discord.env found — Discord integration disabled");
+        report(ErrorLevel::Info, "discord", "not_configured", "No discord.env found — Discord integration disabled");
     }
 }
 
@@ -221,7 +221,7 @@ pub fn get_auth() -> Option<DiscordAuth> {
 pub fn start_oauth2() {
     let config = match DISCORD_CONFIG.get() {
         Some(c) => c,
-        None => { eprintln!("[discord] Not configured"); return; }
+        None => { report(ErrorLevel::Warn, "discord", "oauth_no_config", "Not configured"); return; }
     };
 
     let auth_url = format!(
@@ -231,7 +231,7 @@ pub fn start_oauth2() {
         urlencoding::encode(SCOPES),
     );
 
-    eprintln!("[discord] Opening browser for OAuth2...");
+    report(ErrorLevel::Info, "discord", "oauth_start", "Opening browser for OAuth2");
     let _ = open::that(&auth_url);
 
     std::thread::spawn(move || { start_callback_server(); });
@@ -243,10 +243,10 @@ fn start_callback_server() {
 
     let listener = match TcpListener::bind(format!("127.0.0.1:{}", REDIRECT_PORT)) {
         Ok(l) => l,
-        Err(e) => { eprintln!("[discord] Failed to bind: {}", e); return; }
+        Err(e) => { report(ErrorLevel::Error, "discord", "callback_bind_failed", e.to_string()); return; }
     };
     listener.set_nonblocking(false).ok();
-    eprintln!("[discord] Callback server listening on port {}", REDIRECT_PORT);
+    report(ErrorLevel::Info, "discord", "callback_listening", format!("port {REDIRECT_PORT}"));
 
     if let Ok((mut stream, _)) = listener.accept() {
         let mut buf = [0u8; 4096];
@@ -254,10 +254,10 @@ fn start_callback_server() {
         let request = String::from_utf8_lossy(&buf[..n]);
 
         if let Some(code) = extract_code(&request) {
-            eprintln!("[discord] Got auth code: {}...", &code[..code.len().min(10)]);
+            report(ErrorLevel::Info, "discord", "oauth_code_received", format!("{}...", &code[..code.len().min(10)]));
             match exchange_code(&code) {
                 Ok(auth) => {
-                    eprintln!("[discord] Authenticated as {} ({})", auth.username, auth.user_id);
+                    report(ErrorLevel::Info, "discord", "authenticated", format!("{} ({})", auth.username, auth.user_id));
                     save_auth_to_disk(&auth);
                     let _ = DISCORD_TOKEN.get_or_init(|| Mutex::new(None));
                     if let Some(m) = DISCORD_TOKEN.get() {
@@ -368,7 +368,7 @@ pub fn fetch_channels_sync(guild_id: &str) -> Vec<DiscordChannel> {
         Ok(r) => {
             let status = r.status();
             let body = r.text().unwrap_or_default();
-            eprintln!("[discord] Channel fetch {}: {}", status, body);
+            report(ErrorLevel::Warn, "discord", "channel_fetch_http", format!("{status}: {body}"));
             vec![]
         }
         Err(e) => { report(ErrorLevel::Warn, "discord", "channel_fetch_error", e.to_string()); vec![] }
@@ -394,7 +394,7 @@ pub fn fetch_messages_sync(channel_id: &str, limit: u32, after: Option<&str>) ->
         Ok(r) => {
             let status = r.status();
             let body = r.text().unwrap_or_default();
-            eprintln!("[discord] Message fetch {}: {}", status, &body[..body.len().min(200)]);
+            report(ErrorLevel::Warn, "discord", "message_fetch_http", format!("{status}: {}", &body[..body.len().min(200)]));
             vec![]
         }
         Err(e) => { report(ErrorLevel::Warn, "discord", "message_fetch_error", e.to_string()); vec![] }
@@ -437,7 +437,7 @@ pub fn fetch_guilds_bg() {
     PENDING_GUILDS.get_or_init(|| Mutex::new(None));
     std::thread::spawn(|| {
         let guilds = fetch_guilds();
-        eprintln!("[discord] Fetched {} guilds", guilds.len());
+        report(ErrorLevel::Info, "discord", "guilds_fetched", format!("{} guilds", guilds.len()));
         // Fetch icons for guilds that have them
         for g in &guilds {
             if let Some(ref hash) = g.icon {
@@ -457,7 +457,7 @@ pub fn fetch_channels_bg(guild_id: String) {
     PENDING_CHANNELS.get_or_init(|| Mutex::new(None));
     std::thread::spawn(move || {
         let channels = fetch_channels_sync(&guild_id);
-        eprintln!("[discord] Fetched {} channels for {}", channels.len(), guild_id);
+        report(ErrorLevel::Info, "discord", "channels_fetched", format!("{} channels for {}", channels.len(), guild_id));
         let pending = PENDING_CHANNELS.get().unwrap();
         *pending.lock().unwrap() = Some(channels);
     });
@@ -537,7 +537,7 @@ pub fn disconnect() {
         *m.lock().unwrap() = None;
     }
     let _ = std::fs::remove_file(token_path());
-    eprintln!("[discord] Disconnected");
+    report(ErrorLevel::Info, "discord", "disconnected", "Disconnected");
 }
 
 // ── Wave 7C: Authenticated adapter w/ live refresh ────────────────────────

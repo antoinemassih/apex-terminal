@@ -28,6 +28,7 @@ use super::journal::{self, JournalEvent, AttemptKind, ControlKind};
 use crate::foundation::types::{Price, Timestamp, TimeSource, Symbol};
 use crate::foundation::types::price::price_serde;
 use crate::foundation::types::timestamp::timestamp_serde;
+use crate::data::connectivity::errors_sink::{report, ErrorLevel};
 
 // ─── Lock helper (panic-poison recovery) ────────────────────────────────────
 
@@ -45,8 +46,8 @@ fn manager() -> &'static Mutex<OrderManager> {
             if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes) {
                 m.kill_engaged = v["kill_engaged"].as_bool().unwrap_or(false);
                 m.halted = v["halted"].as_bool().unwrap_or(false);
-                if m.kill_engaged { eprintln!("[control] restored kill_engaged=true from disk"); }
-                if m.halted { eprintln!("[control] restored halted=true from disk"); }
+                if m.kill_engaged { report(ErrorLevel::Warn, "control", "kill_restored", "restored kill_engaged=true from disk"); }
+                if m.halted { report(ErrorLevel::Warn, "control", "halt_restored", "restored halted=true from disk"); }
             }
         }
         let mgr = Mutex::new(m);
@@ -55,7 +56,7 @@ fn manager() -> &'static Mutex<OrderManager> {
         // don't race a recovered order into Unknown.
         // Skip when the previous run exited cleanly (Shutdown marker present).
         if journal::last_event_was_shutdown() {
-            eprintln!("[recovery] previous run exited cleanly — skipping orphan recovery");
+            report(ErrorLevel::Info, "recovery", "clean_shutdown", "previous run exited cleanly — skipping orphan recovery");
         } else {
             // Spawn the recovery work so we don't block init on HTTP. It re-acquires
             // the manager lock when it has results to apply.
@@ -82,7 +83,7 @@ impl Drop for OrderManager {
 /// for a trading app where one panic must not lock everyone out forever.
 fn with_mgr<F, R>(f: F) -> R where F: FnOnce(&mut OrderManager) -> R {
     let mut g = manager().lock().unwrap_or_else(|e| {
-        eprintln!("[order_manager] mutex poisoned, recovering: {e}");
+        report(ErrorLevel::Critical, "order_manager", "mutex_poisoned", format!("recovering: {e}"));
         e.into_inner()
     });
     f(&mut *g)
@@ -660,13 +661,13 @@ impl OrderManager {
             let _ = client.post(format!("{}/risk/kill", APEXIB_URL))
                 .timeout(std::time::Duration::from_secs(10)).send();
         });
-        eprintln!("[kill] ENGAGED (local + broker)");
+        report(ErrorLevel::Warn, "kill", "engaged", "ENGAGED (local + broker)");
         Ok(())
     }
 
     pub(crate) fn release_kill(&mut self) -> Result<(), String> {
         self.kill_engaged = false;
-        eprintln!("[kill] RELEASED (local only — no broker endpoint)");
+        report(ErrorLevel::Info, "kill", "released", "RELEASED (local only — no broker endpoint)");
         Ok(())
     }
 
@@ -677,7 +678,7 @@ impl OrderManager {
             let _ = client.post(format!("{}/risk/halt", APEXIB_URL))
                 .timeout(std::time::Duration::from_secs(5)).send();
         });
-        eprintln!("[halt] ENGAGED (local + broker)");
+        report(ErrorLevel::Warn, "halt", "engaged", "ENGAGED (local + broker)");
         Ok(())
     }
 
@@ -688,7 +689,7 @@ impl OrderManager {
             let _ = client.post(format!("{}/risk/resume", APEXIB_URL))
                 .timeout(std::time::Duration::from_secs(5)).send();
         });
-        eprintln!("[resume] (local + broker)");
+        report(ErrorLevel::Info, "halt", "resume", "(local + broker)");
         Ok(())
     }
 
@@ -932,7 +933,7 @@ impl OrderManager {
                     }
                 }
                 _ => {
-                    eprintln!("[risk] buying-power check skipped — account_data not yet loaded");
+                    report(ErrorLevel::Warn, "risk", "bp_check_skipped", "buying-power check skipped — account_data not yet loaded");
                 }
             }
         }
@@ -1254,7 +1255,7 @@ impl OrderManager {
                             }
                         });
                     }
-                    Err(e) => eprintln!("[bracket] submit failed: {e}"),
+                    Err(e) => report(ErrorLevel::Error, "bracket", "submit_failed", e.to_string()),
                 }
             });
             self.transition(entry_id, OrderState::Working);
@@ -1379,7 +1380,7 @@ impl OrderManager {
                             }
                         });
                     }
-                    Err(e) => eprintln!("[oco] submit failed: {e}"),
+                    Err(e) => report(ErrorLevel::Error, "oco", "submit_failed", e.to_string()),
                 }
             });
             self.pending_toasts.push(format!("OCO group {} with {} orders", oca_group, local_ids.len()));
@@ -1479,7 +1480,7 @@ impl OrderManager {
                         }
                     });
                 }
-                Err(e) => eprintln!("[conditional] submit failed: {e}"),
+                Err(e) => report(ErrorLevel::Error, "conditional", "submit_failed", e.to_string()),
             }
         });
 
@@ -1562,7 +1563,7 @@ impl OrderManager {
                         }
                     });
                 }
-                Err(e) => eprintln!("[options-trigger] submit failed: {e}"),
+                Err(e) => report(ErrorLevel::Error, "options_trigger", "submit_failed", e.to_string()),
             }
         });
 
@@ -1655,7 +1656,7 @@ impl OrderManager {
                         }
                     });
                 }
-                Err(e) => eprintln!("[combo] submit failed: {e}"),
+                Err(e) => report(ErrorLevel::Error, "combo", "submit_failed", e.to_string()),
             }
         });
 
@@ -1942,10 +1943,10 @@ impl OrderManager {
             Ok(bytes) => {
                 let path = orders_state_path();
                 if let Err(e) = std::fs::write(&path, &bytes) {
-                    eprintln!("[order_manager] save_to_disk write failed: {e}");
+                    report(ErrorLevel::Error, "order_manager", "save_write_failed", e.to_string());
                 }
             }
-            Err(e) => eprintln!("[order_manager] save_to_disk serialize failed: {e}"),
+            Err(e) => report(ErrorLevel::Error, "order_manager", "save_serialize_failed", e.to_string()),
         }
         // Wave 5: also write a versioned envelope alongside the legacy
         // `orders.json`. The cold-start path still reads the legacy file
@@ -1955,7 +1956,7 @@ impl OrderManager {
             orders: active.into_iter().cloned().collect(),
         };
         if let Err(e) = crate::state::save(&orders_envelope_path(), &snapshot) {
-            eprintln!("[order_manager] save envelope failed: {e}");
+            report(ErrorLevel::Error, "order_manager", "save_envelope_failed", e.to_string());
         }
     }
 
@@ -1971,7 +1972,7 @@ impl OrderManager {
         let restored: Vec<ManagedOrder> = match serde_json::from_slice(&bytes) {
             Ok(v) => v,
             Err(e) => {
-                eprintln!("[order_manager] load_from_disk parse failed: {e}");
+                report(ErrorLevel::Error, "order_manager", "load_parse_failed", e.to_string());
                 return;
             }
         };
@@ -2147,21 +2148,22 @@ pub(crate) fn submit_and_get_id(intent: OrderIntent) -> Option<u64> {
     match submit_order(intent) {
         OrderResult::Accepted(id) | OrderResult::NeedsConfirmation(id) => Some(id),
         OrderResult::Duplicate => {
-            eprintln!("[order-manager] Duplicate (silent): side={:?} price={:.2} qty={} (within {}ms cooldown)",
-                side, price, qty, with_mgr(|m| m.risk_limits.dedup_cooldown_ms));
+            let cd = with_mgr(|m| m.risk_limits.dedup_cooldown_ms);
+            report(ErrorLevel::Info, "order_manager", "duplicate_silent",
+                format!("side={:?} price={:.2} qty={} (within {}ms cooldown)", side, price, qty, cd));
             None
         }
         OrderResult::Rejected(reason) => {
-            eprintln!("[order-manager] Rejected: side={:?} price={:.2} qty={}: {}",
-                side, price, qty, reason);
+            report(ErrorLevel::Warn, "order_manager", "rejected",
+                format!("side={:?} price={:.2} qty={}: {}", side, price, qty, reason));
             None
         }
         OrderResult::NeedsApproval { reason, .. } => {
             // No order id is created on the soft-warning path — callers that
             // need to surface the warning to the operator must use
             // `submit_order` directly and inspect the result.
-            eprintln!("[order-manager] NeedsApproval (silent at this entry point): side={:?} price={:.2} qty={}: {}",
-                side, price, qty, reason);
+            report(ErrorLevel::Info, "order_manager", "needs_approval_silent",
+                format!("side={:?} price={:.2} qty={}: {}", side, price, qty, reason));
             None
         }
     }
@@ -2288,7 +2290,7 @@ fn save_control_flags() {
     let (k, h) = with_mgr(|m| (m.kill_engaged, m.halted));
     let v = serde_json::json!({ "kill_engaged": k, "halted": h });
     if let Err(e) = std::fs::write(control_flags_path(), v.to_string()) {
-        eprintln!("[control] save_control_flags failed: {e}");
+        report(ErrorLevel::Error, "control", "save_flags_failed", e.to_string());
     }
 }
 
@@ -2447,10 +2449,11 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
                 };
                 let new_idx = mgr.orders.len();
                 mgr.orders.push(adopted);
-                eprintln!("[reconcile] Rule 5: adopted external order id={} {} {} x{} state={:?}",
-                    id, mgr.orders[new_idx].symbol,
-                    if matches!(mgr.orders[new_idx].side, OrderSide::Buy) {"BUY"} else {"SELL"},
-                    mgr.orders[new_idx].qty, state);
+                report(ErrorLevel::Info, "reconcile", "rule5_adopted",
+                    format!("external order id={} {} {} x{} state={:?}",
+                        id, mgr.orders[new_idx].symbol,
+                        if matches!(mgr.orders[new_idx].side, OrderSide::Buy) {"BUY"} else {"SELL"},
+                        mgr.orders[new_idx].qty, state));
                 journal::append(JournalEvent::Reconcile {
                     client_id: id.to_string(),
                     local: state,
@@ -2490,7 +2493,7 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
         if matches!(prev_state, OrderState::Cancelled)
             && matches!(broker_state, OrderState::Working | OrderState::PartialFill)
         {
-            eprintln!("[reconcile] Rule 4: local Cancelled but broker Working — re-firing cancel id={}", local_id);
+            report(ErrorLevel::Warn, "reconcile", "rule4_recancel", format!("local Cancelled but broker Working — re-firing cancel id={}", local_id));
             journal::append(JournalEvent::Reconcile {
                 client_id: local_id.to_string(),
                 local: prev_state,
@@ -2654,7 +2657,7 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
             if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == id) {
                 let prev = o.state;
                 if !matches!(prev, OrderState::Unknown) {
-                    eprintln!("[reconcile] Rule 3: order {} not seen by broker for >15s — marking Unknown", id);
+                    report(ErrorLevel::Warn, "reconcile", "rule3_unknown", format!("order {} not seen by broker for >15s — marking Unknown", id));
                     o.state = OrderState::Unknown;
                     o.updated_at = ts_from_ms(now);
                     o.state_history.push((OrderState::Unknown, ts_from_ms(now)));
@@ -2689,7 +2692,7 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
         }
     }
     for cid in to_cancel_partners {
-        eprintln!("[reconcile] orphan pair: cancelling partner id={}", cid);
+        report(ErrorLevel::Warn, "reconcile", "orphan_pair_cancel", format!("cancelling partner id={}", cid));
         journal::append(JournalEvent::Reconcile {
             client_id: cid.to_string(),
             local: mgr.orders.iter().find(|o| o.id == cid).map(|o| o.state).unwrap_or(OrderState::Unknown),
@@ -2826,7 +2829,7 @@ fn query_broker_by_client_id(cid: &str) -> Option<BrokerOrderState> {
 pub(crate) fn replay_and_recover() {
     let orphans = journal::find_orphan_attempts();
     if orphans.is_empty() { return; }
-    eprintln!("[recovery] {} orphan attempts — querying broker", orphans.len());
+    report(ErrorLevel::Info, "recovery", "orphan_query_start", format!("{} orphan attempts — querying broker", orphans.len()));
 
     for (cid, kind, ts, _payload) in orphans {
         // Cancel/CancelAll attempts are best handled by the live reconciler;
@@ -2955,8 +2958,8 @@ pub(crate) fn replay_and_recover() {
             None => {
                 // Broker query failed (transport / timeout). Leave as orphan;
                 // next startup or live reconciler will retry.
-                eprintln!("[recovery] broker query failed for cid={} (kind={:?} ts={}) — leaving as orphan",
-                    cid, kind, ts);
+                report(ErrorLevel::Warn, "recovery", "broker_query_failed",
+                    format!("cid={} (kind={:?} ts={}) — leaving as orphan", cid, kind, ts));
             }
         }
     }
@@ -2987,8 +2990,9 @@ pub(crate) fn reconcile_positions(positions: &[super::Position]) {
                 .sum();
             let broker_signed = pos.qty as i64;
             if local_signed != broker_signed {
-                eprintln!("[reconcile-pos] {}: local={} broker={} drift={}",
-                    pos.symbol, local_signed, broker_signed, broker_signed - local_signed);
+                report(ErrorLevel::Warn, "reconcile_pos", "position_drift",
+                    format!("{}: local={} broker={} drift={}",
+                        pos.symbol, local_signed, broker_signed, broker_signed - local_signed));
                 journal::append(JournalEvent::Reconcile {
                     client_id: format!("position:{}", pos.symbol),
                     local: OrderState::Filled,
@@ -3039,7 +3043,7 @@ fn start_pending_sweeper() {
                         }
                     }
                     for id in to_unknown {
-                        eprintln!("[sweeper] order {} stuck pending — marking Unknown", id);
+                        report(ErrorLevel::Warn, "sweeper", "stuck_pending", format!("order {} stuck pending — marking Unknown", id));
                         mgr.transition(id, OrderState::Unknown);
                     }
                 });
@@ -3085,7 +3089,7 @@ pub(crate) fn check_broker_health() {
             m.halted = true;
             m.auto_halted_due_to_disconnect = true;
             m.pending_toasts.push("BROKER DISCONNECTED \u{2014} trading auto-halted".into());
-            eprintln!("[broker-watchdog] disconnect >10s, halting");
+            report(ErrorLevel::Critical, "broker_watchdog", "disconnect_halt", "disconnect >10s, halting");
             journal::append(JournalEvent::Control { kind: ControlKind::Halt, ts_ms: now });
         }
         if !stale && m.auto_halted_due_to_disconnect {
@@ -3093,7 +3097,7 @@ pub(crate) fn check_broker_health() {
             m.halted = false;
             m.auto_halted_due_to_disconnect = false;
             m.pending_toasts.push("BROKER RECONNECTED \u{2014} trading resumed".into());
-            eprintln!("[broker-watchdog] contact restored, resuming");
+            report(ErrorLevel::Info, "broker_watchdog", "contact_restored", "contact restored, resuming");
             journal::append(JournalEvent::Control { kind: ControlKind::Resume, ts_ms: now });
         }
     });

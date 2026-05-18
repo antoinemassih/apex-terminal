@@ -13,6 +13,7 @@
 //! print it in error messages, or surface it to the UI.
 
 use crate::data::Bar;
+use crate::data::connectivity::errors_sink::{report, ErrorLevel};
 use redis::{Client, Connection};
 use std::sync::{Mutex, OnceLock};
 
@@ -34,12 +35,12 @@ pub fn init(url: &str) {
     CONN.get_or_init(|| {
         let conn = open_connection();
         match &conn {
-            // Print only the host:port, never the auth segment.
+            // Strip auth segment from URL before logging — never echo password.
             Some(_) => {
                 let endpoint = host_port_for_log(url).unwrap_or_else(|| "redis".into());
-                eprintln!("[bar-cache] Redis connected at {endpoint}");
+                report(ErrorLevel::Info, "bar_cache", "redis_connected", format!("Redis connected at {endpoint}"));
             }
-            None    => eprintln!("[bar-cache] Redis unreachable — caching disabled"),
+            None => report(ErrorLevel::Warn, "bar_cache", "redis_unreachable", "Redis unreachable — caching disabled"),
         }
         Mutex::new(conn)
     });
