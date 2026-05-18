@@ -124,9 +124,11 @@ impl<'a> RemovableChip<'a> {
                 .min_size(egui::vec2(0.0, row_height_dense())),
             );
             // ✕ remove button (right half of pill — the closable affordance).
+            // Icon::X replaces the raw \u{00D7} glyph; pill corner radii are
+            // preserved because this must visually be the right half of the chip.
             let x = ui.add(
                 egui::Button::new(
-                    RichText::new("\u{00D7}").monospace().size(font_sm()).color(self.dim),
+                    RichText::new(crate::ui_kit::icons::Icon::X).monospace().size(font_sm()).color(self.dim),
                 )
                 .fill(fill)
                 .stroke(Stroke::new(stroke_thin(), border))
@@ -138,6 +140,7 @@ impl<'a> RemovableChip<'a> {
             if x.hovered() && !crate::design_tokens::is_inspect_mode() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             }
+            let _ = x.on_hover_text("Remove");
             body
         }).inner;
         (resp, x_clicked)

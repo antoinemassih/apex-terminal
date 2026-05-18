@@ -328,10 +328,11 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
         ui.label(egui::RichText::new("PROVENANCE")
             .monospace().size(FONT_SM).strong().color(t.text));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.add(egui::Button::new(egui::RichText::new("\u{00D7}")
-                .monospace().size(FONT_MD).color(t.dim))
-                .fill(egui::Color32::TRANSPARENT)
-                .min_size(egui::vec2(icon_lg(), icon_lg()))).clicked() {
+            if crate::ui_kit::widgets::Button::close()
+                .show(ui, t)
+                .on_hover_text("Close")
+                .clicked()
+            {
                 watchlist.provenance_open = false;
             }
         });

@@ -243,16 +243,13 @@ impl<'a, T: PartialEq + Copy + Clone + 'a> SplitSectionPanel<'a, T> {
                         ui.with_layout(
                             egui::Layout::right_to_left(egui::Align::Center),
                             |ui| {
-                                let resp = ui.add(
-                                    egui::Button::new(
-                                        egui::RichText::new("\u{00D7}")
-                                            .monospace().size(font_xs() + 2.0)
-                                            .color(color_dim(t.dim)),
-                                    )
-                                    .fill(Color32::TRANSPARENT)
-                                    .min_size(Vec2::new(18.0, 18.0)),
-                                );
-                                if resp.clicked() { remove_idx = Some(i); }
+                                if crate::ui_kit::widgets::Button::close()
+                                    .show(ui, t)
+                                    .on_hover_text("Close section")
+                                    .clicked()
+                                {
+                                    remove_idx = Some(i);
+                                }
                             },
                         );
                     }

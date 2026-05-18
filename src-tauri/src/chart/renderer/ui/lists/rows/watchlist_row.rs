@@ -58,7 +58,7 @@ impl Default for IconSet {
         Self {
             drag_handle: "\u{2807}",
             star: "\u{2605}",
-            x: "\u{00D7}",
+            x: crate::ui_kit::icons::Icon::X,
             alert: "!",
         }
     }

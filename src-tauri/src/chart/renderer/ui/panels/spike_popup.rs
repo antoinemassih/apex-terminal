@@ -278,11 +278,11 @@ fn draw_toast_body(
         ui.label(egui::RichText::new(format!("{:+.2}%", spike.pct_move))
             .monospace().color(move_col).size(11.0));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.add(egui::Button::new(egui::RichText::new("\u{00D7}")
-                .size(14.0).color(egui::Color32::from_rgb(180, 180, 180)))
-                .fill(egui::Color32::TRANSPARENT)
-                .min_size(egui::vec2(icon_md(), icon_md()))
-            ).on_hover_text("Dismiss").clicked() {
+            if crate::ui_kit::widgets::Button::close()
+                .show(ui, &crate::ui_kit::widgets::theme::active_theme(ui.ctx()))
+                .on_hover_text("Dismiss")
+                .clicked()
+            {
                 dismiss_buf.push(spike.id.clone());
             }
         });

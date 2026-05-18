@@ -129,13 +129,13 @@ impl<'a> AlertRow<'a> {
                 }
 
                 // Embedded delete button.
+                // TODO: migrate row to PanelListRow + TrailingBtn for a cleaner slice API.
                 let db = egui::Rect::from_min_size(
                     egui::pos2(rect.right() - 22.0, cy - 8.0), egui::vec2(icon_sm(), icon_sm()));
-                let db_resp = ui.allocate_rect(db, egui::Sense::click());
-                crate::chart_renderer::ui::style::cursor::clickable(ui, &db_resp);
-                let col = if db_resp.hovered() { bear } else { dim };
-                ui.painter().text(db.center(), egui::Align2::CENTER_CENTER,
-                    "×", mono_sm(), col);
+                let painter = ui.painter_at(db);
+                let db_resp = crate::ui_kit::widgets::Button::close()
+                    .show_at(ui, &painter, db, theme_ref)
+                    .on_hover_text("Delete alert");
                 if db_resp.clicked() { delete_ref.set(true); }
             })
             .show(ui);

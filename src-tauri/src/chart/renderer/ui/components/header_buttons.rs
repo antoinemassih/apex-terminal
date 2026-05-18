@@ -2,6 +2,7 @@
 
 use super::super::style::*;
 use egui::{self, Color32, Response, RichText, Stroke, Ui, Vec2};
+use crate::ui_kit::widgets::Button;
 
 // ─── Header action button ─────────────────────────────────────────────────────
 
@@ -27,21 +28,11 @@ pub fn header_action_btn(ui: &mut Ui, glyph: &str, dim: Color32) -> Response {
 
 /// Smaller, dimmer variant of `style::close_button` for secondary close
 /// affordances inside split sections / nested headers.
-pub fn secondary_close_btn(ui: &mut Ui, dim: Color32) -> bool {
-    let resp = ui.add(
-        egui::Button::new(
-            RichText::new("\u{00D7}")
-                .monospace()
-                .size(font_sm())
-                .color(color_alpha(dim, alpha_dim())),
-        )
-        .frame(false)
-        .min_size(Vec2::new(14.0, 14.0)),
-    );
-    if resp.hovered() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-    }
-    resp.clicked()
+pub fn secondary_close_btn(ui: &mut Ui, _dim: Color32) -> bool {
+    Button::close()
+        .show(ui, &crate::ui_kit::widgets::theme::active_theme(ui.ctx()))
+        .on_hover_text("Close")
+        .clicked()
 }
 
 // ─── Tab bar with close ───────────────────────────────────────────────────────

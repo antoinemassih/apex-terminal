@@ -120,15 +120,15 @@ impl<'a> OrderRow<'a> {
                 }
 
                 // Embedded cancel button.
+                // TODO: migrate row to PanelListRow + TrailingBtn for a cleaner slice API.
                 if show_cancel {
                     let cb = egui::Rect::from_min_size(
                         egui::pos2(rect.right() - 22.0, cy - 8.0),
                         egui::vec2(icon_sm(), icon_sm()));
-                    let cb_resp = ui.allocate_rect(cb, egui::Sense::click());
-                    crate::chart_renderer::ui::style::cursor::clickable(ui, &cb_resp);
-                    let col = if cb_resp.hovered() { bear } else { dim };
-                    ui.painter().text(cb.center(), egui::Align2::CENTER_CENTER,
-                        "×", mono_sm(), col);
+                    let painter = ui.painter_at(cb);
+                    let cb_resp = crate::ui_kit::widgets::Button::close()
+                        .show_at(ui, &painter, cb, theme_ref)
+                        .on_hover_text("Cancel order");
                     if cb_resp.clicked() { cancel_ref.set(true); }
                 }
             })

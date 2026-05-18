@@ -519,7 +519,10 @@ impl<'a> ChipShell<'a> {
                     }
                     ui.label(TextStyle::BodySm.as_rich(self.label, fg));
                     if self.closable {
-                        ui.label(RichText::new("×").size(self.size.font()).color(fg));
+                        // Icon::X replaces raw × glyph; rendered as a label (not a button)
+                        // because the whole ChipShell is interactive — adding a nested Button
+                        // would double-capture pointer events.
+                        ui.label(RichText::new(crate::ui_kit::icons::Icon::X).size(self.size.font()).color(fg));
                     }
                 });
             }).response;
