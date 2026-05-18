@@ -271,12 +271,16 @@ fn draw_drawings_section(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &s
 
     // Snapshot drawing data for rendering (avoids borrow conflicts)
     struct DrawSnap {
-        id: String, kind_label: &'static str, color: String, locked: bool,
+        id: String, kind_label: &'static str,
+        /// User label (UX-3 Fix 4) — pre-filled from drawing_kind_default_label.
+        user_label: Option<String>,
+        color: String, locked: bool,
         group_id: String, sig_score: Option<f32>,
     }
     let draw_snaps: Vec<DrawSnap> = chart.drawings.iter().map(|d| DrawSnap {
         id: d.id.clone(),
         kind_label: kind_short_label(&d.kind),
+        user_label: d.label.clone(),
         color: d.color.clone(),
         locked: d.locked,
         group_id: d.group_id.clone(),
@@ -341,6 +345,9 @@ fn draw_drawings_section(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &s
                         }
                     });
 
+                    // Deferred rename state (UX-3 Fix 4)
+                    let mut rename_id: Option<String> = None;
+
                     // ── Drawing rows ──
                     for ds in &group_draws {
                         let is_sel = chart.selected_ids.contains(&ds.id);
@@ -351,12 +358,44 @@ fn draw_drawings_section(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &s
                         let group_id_eye = ds.group_id.clone();
                         let ds_id_del = ds.id.clone();
                         let ds_id_lock = ds.id.clone();
+                        let ds_id_rename = ds.id.clone();
 
                         let id_salt = format!("dr_{}", ds.id);
+
+                        // UX-3 Fix 4: Use the user label if set, otherwise fall back to
+                        // the kind short label.  Inline rename: double-click triggers it.
+                        let display_label: String = ds.user_label
+                            .as_deref()
+                            .filter(|l| !l.is_empty())
+                            .unwrap_or(kind_label)
+                            .to_string();
+
+                        // Inline rename: if this drawing is being renamed, show a
+                        // TextEdit instead of the label row.
+                        let rename_key = egui::Id::new(("drawing_rename_active", ds.id.as_str()));
+                        let is_renaming = ui.data(|d| d.get_temp::<bool>(rename_key).unwrap_or(false));
+                        if is_renaming {
+                            let buf_key = egui::Id::new(("drawing_rename_buf", ds.id.as_str()));
+                            let mut buf: String = ui.data(|d| d.get_temp::<String>(buf_key.clone()).unwrap_or(display_label.clone()));
+                            let te_resp = ui.text_edit_singleline(&mut buf);
+                            ui.data_mut(|d| d.insert_temp(buf_key.clone(), buf.clone()));
+                            if te_resp.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                let new_label = buf.trim().to_string();
+                                if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == ds_id_rename) {
+                                    d.label = Some(if new_label.is_empty() { display_label.clone() } else { new_label });
+                                }
+                                ui.data_mut(|d| {
+                                    d.insert_temp(rename_key, false);
+                                    d.remove::<String>(buf_key);
+                                });
+                            }
+                            continue;
+                        }
+
                         let primary_text: String = if let Some(score) = sig_score {
-                            format!("{}  · {:.1}", kind_label, score)
+                            format!("{}  · {:.1}", display_label, score)
                         } else {
-                            kind_label.to_string()
+                            display_label.clone()
                         };
                         let sig_dot_col = sig_score.map(|s| sig_color(s, t));
 
@@ -411,10 +450,16 @@ fn draw_drawings_section(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &s
                         }
                         let row_resp = row_resp.response.expect("PanelListRow::show_full always sets response");
 
+                        // Double-click triggers inline rename (UX-3 Fix 4).
+                        if row_resp.double_clicked() {
+                            rename_id = Some(ds.id.clone());
+                        }
+
                         // Context menu (right-click)
                         let ds_id_for_menu = ds.id.clone();
                         let ds_id_lock_menu = ds.id.clone();
                         let ds_id_del_menu = ds.id.clone();
+                        let ds_id_rename_menu = ds.id.clone();
                         let group_id_for_menu = group_id.clone();
                         row_resp.context_menu(|ui| {
                             // Per-drawing opacity
@@ -429,6 +474,11 @@ fn draw_drawings_section(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &s
                             });
                             ui.add(egui::Separator::default().spacing(2.0));
                             let mt = super::super::widgets::context_menu::MenuTheme::from_theme(t);
+                            // UX-3 Fix 4: inline rename via context menu.
+                            if MenuItemWithIcon::new("Rename", Icon::PENCIL_LINE).show(ui, &mt).clicked() {
+                                rename_id = Some(ds_id_rename_menu);
+                                ui.close_menu();
+                            }
                             if MenuItemWithIcon::new("Lock/Unlock", Icon::LOCK).show(ui, &mt).clicked() {
                                 toggle_lock_id = Some(ds_id_lock_menu);
                                 ui.close_menu();
@@ -457,6 +507,13 @@ fn draw_drawings_section(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &s
                                 ui.close_menu();
                             }
                         });
+                    }
+
+                    // Process rename activation (UX-3 Fix 4) — must happen
+                    // while `ui` is in scope so temp data can be written.
+                    if let Some(ref id) = rename_id {
+                        let rename_key = egui::Id::new(("drawing_rename_active", id.as_str()));
+                        ui.data_mut(|d| d.insert_temp(rename_key, true));
                     }
                 });
 

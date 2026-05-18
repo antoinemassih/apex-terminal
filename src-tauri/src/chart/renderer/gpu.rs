@@ -4683,6 +4683,12 @@ pub(crate) struct Watchlist {
     /// copies legacy → aggregate before serialization and
     /// `pull_from_ui_settings` copies aggregate → legacy after load.
     pub(crate) ui_settings: crate::state::UiSettings,
+    // ── Top-nav symbol input (UX-1 Fix 1) ──────────────────────────────────
+    /// Buffer for the editable symbol input in the top toolbar.
+    pub(crate) top_nav_sym_input: String,
+    /// True while the symbol input has focus (used for autocomplete dropdown
+    /// visibility).
+    pub(crate) top_nav_sym_focused: bool,
 }
 
 const DEFAULT_WATCHLIST: &[&str] = &["SPY","QQQ","IWM","DIA","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GLD"];
@@ -4845,6 +4851,8 @@ impl Watchlist {
                subscriptions: crate::state::SubscriptionBus::new(),
                inflight: crate::state::InFlightRegistry::new(),
                ui_settings: crate::state::UiSettings::default(),
+               top_nav_sym_input: String::new(),
+               top_nav_sym_focused: false,
         }
     }
 
