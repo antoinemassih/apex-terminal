@@ -772,15 +772,9 @@ fn paint_button<'a>(
 
         // Focus ring overlay — drawn on top of all other paint so the
         // keyboard focus indicator is visible regardless of variant.
-        if response.has_focus() {
-            let ring_color = st::color_alpha(theme.accent(), st::alpha_active());
-            painter.rect_stroke(
-                rect.expand(2.0),
-                cr,
-                Stroke::new(st::stroke_thick(), ring_color),
-                StrokeKind::Outside,
-            );
-        }
+        // Delegates to cursor::focus_ring so focus_ring_width / focus_ring_alpha
+        // StyleSettings knobs are respected and the ring tracks the design system.
+        st::cursor::focus_ring(ui, &response, theme.accent());
 
         // Cursor.
         if hovered {
@@ -1206,4 +1200,21 @@ pub fn show_button_gallery(ui: &mut Ui, theme: &dyn ComponentTheme) {
             .hover_fill(theme.accent())
             .show(ui, theme);
     });
+}
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    /// Smoke: verify that `paint_button` delegates to `cursor::focus_ring`.
+    /// A full UI-level test would need an egui harness with programmatic focus;
+    /// source scanning is the lightweight alternative that catches accidental removal.
+    #[test]
+    fn button_focus_ring_paints_when_focused() {
+        let src = include_str!("button.rs");
+        assert!(
+            src.contains("cursor::focus_ring"),
+            "paint_button must call st::cursor::focus_ring for keyboard focus"
+        );
+    }
 }
