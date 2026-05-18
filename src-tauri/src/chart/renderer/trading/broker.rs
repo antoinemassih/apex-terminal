@@ -32,6 +32,35 @@ pub(crate) enum BrokerOrderState {
     NotFound,
 }
 
+/// Body shape the broker should use when modifying a working order.
+/// The HTTP wire shape differs based on the original order type because the
+/// backend accepts `limitPrice`, `stopPrice`, or both. The manager owns the
+/// order type, so it passes the right hint here rather than the broker
+/// re-fetching the order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ModifyKind {
+    /// Limit / trailing_stop / market — body carries `limitPrice` only.
+    Limit,
+    /// Stop — body carries `stopPrice` only.
+    Stop,
+    /// Stop-limit — body carries both `limitPrice` AND `stopPrice` (same value).
+    StopLimit,
+}
+
+/// Inputs for a single-order modify. `modify_version` is the manager's
+/// monotonic counter — the backend echoes it back so out-of-order responses
+/// can be discarded. `new_qty` is not currently wired into the HTTP body but
+/// is carried for parity with `Broker::modify`'s old positional signature.
+#[derive(Debug, Clone)]
+pub(crate) struct ModifyArgs<'a> {
+    pub backend_id: &'a str,
+    pub client_order_id: &'a str,
+    pub new_price: Price,
+    pub new_qty: u32,
+    pub kind: ModifyKind,
+    pub modify_version: u32,
+}
+
 /// All inputs needed to submit a single working order. Borrows everything
 /// because callers usually construct this from already-owned fields and
 /// don't need the broker to take ownership.
@@ -176,13 +205,9 @@ pub(crate) trait Broker: Send + Sync {
     fn cancel(&self, backend_id: &str, client_order_id: &str) -> Result<(), String>;
 
     /// Modify an existing order's price (and optionally quantity).
-    fn modify(
-        &self,
-        backend_id: &str,
-        client_order_id: &str,
-        new_price: Price,
-        new_qty: u32,
-    ) -> Result<(), String>;
+    /// `args.kind` selects the HTTP body shape (limitPrice vs stopPrice vs both)
+    /// because the broker can't infer the order type from the backend id alone.
+    fn modify(&self, args: &ModifyArgs) -> Result<(), String>;
 
     /// Lookup by client_order_id. Used by `replay_and_recover` after an
     /// Attempt was journaled but no Ack/Fail arrived.
@@ -296,15 +321,22 @@ impl Broker for LiveBroker {
             .map_err(|e| format!("cancel http: {e}"))
     }
 
-    #[tracing::instrument(skip(self), level = "debug", fields(backend_id, new_price = ?new_price))]
-    fn modify(&self, backend_id: &str, _client_order_id: &str, new_price: Price, _new_qty: u32) -> Result<(), String> {
-        // Caller is responsible for choosing limitPrice vs stopPrice — we
-        // can't know the order type without re-fetching. Use limitPrice as
-        // the default and let the manager call back through with the right
-        // body shape if needed (current call sites only modify limit price).
+    #[tracing::instrument(skip(self, args), level = "debug", fields(backend_id = %args.backend_id, new_price = ?args.new_price, kind = ?args.kind, version = args.modify_version))]
+    fn modify(&self, args: &ModifyArgs) -> Result<(), String> {
         let client = reqwest::blocking::Client::new();
-        let body = serde_json::json!({"limitPrice": new_price.to_f32()});
-        client.put(format!("{}/orders/{}", APEXIB_URL, backend_id))
+        let np = args.new_price.to_f32();
+        let body = match args.kind {
+            ModifyKind::Stop => serde_json::json!({
+                "stopPrice": np, "modifyVersion": args.modify_version,
+            }),
+            ModifyKind::StopLimit => serde_json::json!({
+                "limitPrice": np, "stopPrice": np, "modifyVersion": args.modify_version,
+            }),
+            ModifyKind::Limit => serde_json::json!({
+                "limitPrice": np, "modifyVersion": args.modify_version,
+            }),
+        };
+        client.put(format!("{}/orders/{}", APEXIB_URL, args.backend_id))
             .json(&body).timeout(std::time::Duration::from_secs(5)).send()
             .map(|_| ())
             .map_err(|e| format!("modify http: {e}"))
@@ -555,7 +587,7 @@ impl Broker for PaperBroker {
         Ok(())
     }
 
-    fn modify(&self, _backend_id: &str, _client_order_id: &str, _new_price: Price, _new_qty: u32) -> Result<(), String> {
+    fn modify(&self, _args: &ModifyArgs) -> Result<(), String> {
         Ok(())
     }
 
@@ -607,7 +639,11 @@ impl Broker for PaperBroker {
 pub(crate) enum MockCall {
     Submit { symbol: String, side: String, qty: u32, price: Price, client_order_id: String },
     Cancel { backend_id: String, client_order_id: String },
-    Modify { backend_id: String, client_order_id: String, new_price: Price, new_qty: u32 },
+    Modify {
+        backend_id: String, client_order_id: String,
+        new_price: Price, new_qty: u32,
+        kind: ModifyKind, modify_version: u32,
+    },
     Lookup { client_order_id: String },
     // Multi-leg paths (Wave 4)
     Bracket(BracketSubmitArgs),
@@ -701,11 +737,12 @@ impl Broker for MockBroker {
         Ok(())
     }
 
-    fn modify(&self, backend_id: &str, client_order_id: &str, new_price: Price, new_qty: u32) -> Result<(), String> {
+    fn modify(&self, args: &ModifyArgs) -> Result<(), String> {
         self.record(MockCall::Modify {
-            backend_id: backend_id.into(),
-            client_order_id: client_order_id.into(),
-            new_price, new_qty,
+            backend_id: args.backend_id.into(),
+            client_order_id: args.client_order_id.into(),
+            new_price: args.new_price, new_qty: args.new_qty,
+            kind: args.kind, modify_version: args.modify_version,
         });
         Ok(())
     }
