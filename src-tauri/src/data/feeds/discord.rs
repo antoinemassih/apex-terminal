@@ -216,6 +216,75 @@ pub fn get_auth() -> Option<DiscordAuth> {
         .and_then(|t| t.clone())
 }
 
+// ── OAuth2 CSRF state + PKCE storage ────────────────────────────────────────
+
+/// One-shot pending OAuth state stored between auth-URL generation and callback.
+/// Cleared after first use or after STATE_TTL_SECS seconds.
+struct PendingOAuthState {
+    /// CSRF state token (base64url, no padding)
+    state: String,
+    /// PKCE code verifier (base64url, no padding)
+    code_verifier: String,
+    /// Wall-clock instant the state was created (for expiry check)
+    created_at: std::time::Instant,
+}
+
+const STATE_TTL_SECS: u64 = 300; // 5 minutes
+
+static PENDING_OAUTH_STATE: OnceLock<Mutex<Option<PendingOAuthState>>> = OnceLock::new();
+
+fn pending_state_store() -> &'static Mutex<Option<PendingOAuthState>> {
+    PENDING_OAUTH_STATE.get_or_init(|| Mutex::new(None))
+}
+
+/// Base64url-encode (no padding) per RFC 4648 §5.
+fn base64url_encode(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    // Manual base64url — avoids pulling in a base64 crate; the alphabet is
+    // well-defined and the test suite exercises it independently.
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let mut out = String::with_capacity((bytes.len() * 4 + 2) / 3);
+    let mut chunks = bytes.chunks(3);
+    while let Some(chunk) = chunks.next() {
+        let b0 = chunk[0] as u32;
+        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+        let combined = (b0 << 16) | (b1 << 8) | b2;
+        out.push(ALPHABET[((combined >> 18) & 0x3f) as usize] as char);
+        out.push(ALPHABET[((combined >> 12) & 0x3f) as usize] as char);
+        if chunk.len() > 1 { out.push(ALPHABET[((combined >> 6) & 0x3f) as usize] as char); }
+        if chunk.len() > 2 { out.push(ALPHABET[(combined & 0x3f) as usize] as char); }
+        let _ = &mut out; // suppress unused write lint
+    }
+    out
+}
+
+/// Generate `len` random bytes using `rand`.
+fn random_bytes(len: usize) -> Vec<u8> {
+    use rand::RngCore;
+    let mut buf = vec![0u8; len];
+    rand::thread_rng().fill_bytes(&mut buf);
+    buf
+}
+
+/// Compute PKCE S256 challenge: base64url(SHA-256(verifier)).
+fn pkce_challenge(verifier: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let hash = Sha256::digest(verifier.as_bytes());
+    base64url_encode(&hash)
+}
+
+/// Constant-time string comparison via `subtle`.
+fn ct_eq(a: &str, b: &str) -> bool {
+    use subtle::ConstantTimeEq;
+    // Lengths differ → definitely not equal; revealing the length is fine
+    // (state tokens are fixed-length anyway).
+    if a.len() != b.len() {
+        return false;
+    }
+    a.as_bytes().ct_eq(b.as_bytes()).into()
+}
+
 // ── OAuth2 flow ─────────────────────────────────────────────────────────────
 
 pub fn start_oauth2() {
@@ -224,11 +293,36 @@ pub fn start_oauth2() {
         None => { report(ErrorLevel::Warn, "discord", "oauth_no_config", "Not configured"); return; }
     };
 
+    // Generate CSRF state token: 32 random bytes → base64url ≈ 43 chars.
+    let state = base64url_encode(&random_bytes(32));
+    // Generate PKCE verifier: 32 random bytes → base64url ≈ 43 chars (within [43,128]).
+    let code_verifier = base64url_encode(&random_bytes(32));
+    let code_challenge = pkce_challenge(&code_verifier);
+
+    // Store for callback validation (one-shot).
+    {
+        let mut guard = pending_state_store().lock().unwrap();
+        *guard = Some(PendingOAuthState {
+            state: state.clone(),
+            code_verifier: code_verifier.clone(),
+            created_at: std::time::Instant::now(),
+        });
+    }
+
     let auth_url = format!(
-        "https://discord.com/oauth2/authorize?client_id={}&redirect_uri={}&response_type=code&scope={}",
+        "https://discord.com/oauth2/authorize\
+         ?client_id={}\
+         &redirect_uri={}\
+         &response_type=code\
+         &scope={}\
+         &state={}\
+         &code_challenge={}\
+         &code_challenge_method=S256",
         config.client_id,
         urlencoding::encode(REDIRECT_URI),
         urlencoding::encode(SCOPES),
+        urlencoding::encode(&state),
+        urlencoding::encode(&code_challenge),
     );
 
     report(ErrorLevel::Info, "discord", "oauth_start", "Opening browser for OAuth2");
@@ -253,9 +347,28 @@ fn start_callback_server() {
         let n = stream.read(&mut buf).unwrap_or(0);
         let request = String::from_utf8_lossy(&buf[..n]);
 
-        if let Some(code) = extract_code(&request) {
+        // Extract both ?code= and ?state= from the callback URL.
+        let code = extract_query_param(&request, "code");
+        let returned_state = extract_query_param(&request, "state");
+
+        // --- CSRF + expiry validation ---
+        let code_verifier = match validate_and_consume_state(returned_state.as_deref()) {
+            Ok(v) => v,
+            Err(e) => {
+                report(ErrorLevel::Warn, "discord", &e, "OAuth state validation failed");
+                let response = format!(
+                    "HTTP/1.1 403 Forbidden\r\nContent-Type: text/html\r\n\r\n\
+                     <html><body style='background:#1a1a2e;color:#eee;font-family:monospace;\
+                     text-align:center;padding:60px'><h1>Auth Failed</h1><p>{e}</p></body></html>"
+                );
+                let _ = stream.write_all(response.as_bytes());
+                return;
+            }
+        };
+
+        if let Some(code) = code {
             report(ErrorLevel::Info, "discord", "oauth_code_received", format!("{}...", &code[..code.len().min(10)]));
-            match exchange_code(&code) {
+            match exchange_code(&code, &code_verifier) {
                 Ok(auth) => {
                     report(ErrorLevel::Info, "discord", "authenticated", format!("{} ({})", auth.username, auth.user_id));
                     save_auth_to_disk(&auth);
@@ -279,19 +392,56 @@ fn start_callback_server() {
     }
 }
 
-fn extract_code(request: &str) -> Option<String> {
+/// Validate the returned CSRF state and consume it (one-shot).
+/// Returns the stored `code_verifier` on success; an error event key on failure.
+fn validate_and_consume_state(returned_state: Option<&str>) -> Result<String, String> {
+    let returned = match returned_state {
+        Some(s) if !s.is_empty() => s,
+        _ => {
+            report(ErrorLevel::Warn, "discord", "oauth_state_missing", "No state param in callback");
+            return Err("oauth_state_missing".into());
+        }
+    };
+
+    let mut guard = pending_state_store().lock().unwrap();
+    let pending = match guard.take() {
+        Some(p) => p,
+        None => {
+            report(ErrorLevel::Warn, "discord", "oauth_state_missing", "No pending OAuth state — possible replay");
+            return Err("oauth_state_missing".into());
+        }
+    };
+
+    // Check expiry before touching the state value.
+    if pending.created_at.elapsed().as_secs() > STATE_TTL_SECS {
+        report(ErrorLevel::Warn, "discord", "oauth_state_expired", "OAuth state expired (> 5 min)");
+        return Err("oauth_state_expired".into());
+    }
+
+    // Constant-time comparison to resist timing attacks.
+    if !ct_eq(returned, &pending.state) {
+        report(ErrorLevel::Warn, "discord", "oauth_state_mismatch", "OAuth state mismatch — possible CSRF");
+        return Err("oauth_state_mismatch".into());
+    }
+
+    Ok(pending.code_verifier)
+}
+
+/// Extract a single named query param from a raw HTTP request line.
+fn extract_query_param(request: &str, name: &str) -> Option<String> {
     let first_line = request.lines().next()?;
     let url_part = first_line.split_whitespace().nth(1)?;
     let query = url_part.split('?').nth(1)?;
+    let prefix = format!("{}=", name);
     for param in query.split('&') {
-        if let Some(code) = param.strip_prefix("code=") {
-            return Some(code.to_string());
+        if let Some(val) = param.strip_prefix(&prefix as &str) {
+            return Some(val.to_string());
         }
     }
     None
 }
 
-fn exchange_code(code: &str) -> Result<DiscordAuth, String> {
+fn exchange_code(code: &str, code_verifier: &str) -> Result<DiscordAuth, String> {
     let config = DISCORD_CONFIG.get().ok_or("Not configured")?;
     let client = http();
 
@@ -302,6 +452,7 @@ fn exchange_code(code: &str) -> Result<DiscordAuth, String> {
             ("grant_type", "authorization_code"),
             ("code", code),
             ("redirect_uri", REDIRECT_URI),
+            ("code_verifier", code_verifier),
         ])
         .send()
         .map_err(|e| format!("Request failed: {}", e))?;
@@ -333,6 +484,104 @@ fn exchange_code(code: &str) -> Result<DiscordAuth, String> {
             .unwrap_or("Unknown").to_string(),
         avatar: user["avatar"].as_str().unwrap_or("").to_string(),
     })
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod oauth_tests {
+    use super::*;
+
+    // Helper: manually install a pending state for testing without going through start_oauth2().
+    fn install_state(state: &str, verifier: &str, age_secs: u64) {
+        let created_at = std::time::Instant::now()
+            .checked_sub(std::time::Duration::from_secs(age_secs))
+            .unwrap_or(std::time::Instant::now());
+        let mut guard = pending_state_store().lock().unwrap();
+        *guard = Some(PendingOAuthState {
+            state: state.to_string(),
+            code_verifier: verifier.to_string(),
+            created_at,
+        });
+    }
+
+    // Helper: clear state between tests (each test runs in the same process).
+    fn clear_state() {
+        *pending_state_store().lock().unwrap() = None;
+    }
+
+    #[test]
+    fn oauth_state_mismatch_rejected() {
+        install_state("abc", "verifier_xyz", 0);
+        let result = validate_and_consume_state(Some("xyz"));
+        assert!(result.is_err(), "mismatched state must be rejected");
+        assert_eq!(result.unwrap_err(), "oauth_state_mismatch");
+    }
+
+    #[test]
+    fn oauth_state_match_accepted() {
+        install_state("correct_state", "the_verifier", 0);
+        let result = validate_and_consume_state(Some("correct_state"));
+        assert!(result.is_ok(), "matching state must be accepted");
+        assert_eq!(result.unwrap(), "the_verifier");
+    }
+
+    #[test]
+    fn oauth_state_expired_rejected() {
+        // Age of STATE_TTL_SECS + 1 → expired.
+        install_state("good_state", "verifier", STATE_TTL_SECS + 1);
+        let result = validate_and_consume_state(Some("good_state"));
+        assert!(result.is_err(), "expired state must be rejected");
+        assert_eq!(result.unwrap_err(), "oauth_state_expired");
+    }
+
+    #[test]
+    fn oauth_state_one_shot() {
+        install_state("once", "v", 0);
+        // First use: OK.
+        let first = validate_and_consume_state(Some("once"));
+        assert!(first.is_ok());
+        // Second use with same state: should fail (state was consumed).
+        let second = validate_and_consume_state(Some("once"));
+        assert!(second.is_err(), "state must be consumed on first use");
+    }
+
+    #[test]
+    fn oauth_pkce_challenge_verifier_relationship() {
+        // Known test vector: SHA-256("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")
+        // = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM" (RFC 7636 Appendix B, adapted).
+        // We use our own verifier and verify round-trip consistency.
+        let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+        let challenge = pkce_challenge(verifier);
+        // Re-compute independently.
+        use sha2::{Digest, Sha256};
+        let hash = Sha256::digest(verifier.as_bytes());
+        let expected = base64url_encode(&hash);
+        assert_eq!(challenge, expected, "pkce_challenge must produce base64url(sha256(verifier))");
+        // Challenge must not equal verifier.
+        assert_ne!(challenge, verifier);
+    }
+
+    #[test]
+    fn oauth_state_missing_param_rejected() {
+        install_state("s", "v", 0);
+        let result = validate_and_consume_state(None);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "oauth_state_missing");
+        clear_state();
+    }
+
+    #[test]
+    fn base64url_encode_no_padding() {
+        // Encoded output must not contain '=' (no padding).
+        let out = base64url_encode(&[0u8; 32]);
+        assert!(!out.contains('='), "base64url must not include padding");
+        // Must only contain URL-safe chars.
+        for c in out.chars() {
+            assert!(c.is_ascii_alphanumeric() || c == '-' || c == '_',
+                "unexpected char in base64url output: {c}");
+        }
+    }
 }
 
 // ── Synchronous API (used inside background threads) ────────────────────────

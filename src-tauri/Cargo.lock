@@ -38,6 +38,7 @@ dependencies = [
  "slotmap",
  "smallvec",
  "sqlx",
+ "subtle",
  "swash",
  "tauri",
  "tauri-build",
