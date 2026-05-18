@@ -7,7 +7,7 @@
 -- independently from user-owned watchlists.
 --
 -- Apply with:
---   psql "postgresql://postgres:monkeyxx@192.168.1.143:5432/ococo" \
+--   psql "$APEX_PG_URL" \
 --     -f migrations/002_watchlist_state.sql
 
 BEGIN;

@@ -4,7 +4,7 @@
 -- tables are dropped at the bottom — we don't migrate old data.
 --
 -- Apply with:
---   psql "postgresql://postgres:monkeyxx@192.168.1.143:5432/ococo" \
+--   psql "$APEX_PG_URL" \
 --     -f migrations/001_chart_state.sql
 
 BEGIN;
