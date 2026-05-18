@@ -159,6 +159,7 @@ impl MarketDataProvider for ReplayProvider {
         ProviderCapabilities {
             bars: true, quotes: true, trades: true, chain: false,
             crypto_only: false, historical: true, realtime: true,
+            fundamentals: false, news: false, earnings: false, corporate_actions: false,
         }
     }
 }

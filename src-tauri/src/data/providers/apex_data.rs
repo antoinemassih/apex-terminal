@@ -311,6 +311,10 @@ impl MarketDataProvider for ApexDataProvider {
         ProviderCapabilities {
             bars: true, quotes: true, trades: true, chain: true,
             crypto_only: false, historical: true, realtime: true,
+            // Wave 10c: no REST endpoints exist for these in apex_data
+            // (verified rest.rs). The trait defaults already return
+            // NotSupported — surface that honestly here.
+            fundamentals: false, news: false, earnings: false, corporate_actions: false,
         }
     }
 }

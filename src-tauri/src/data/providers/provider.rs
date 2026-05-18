@@ -14,6 +14,9 @@ use crate::data::connectivity::{ApiError, Connection};
 use crate::data::feeds::apex_data::types::{
     BarWire, ChainDelta, ChainResponse, Quote, Trade,
 };
+use crate::foundation::types::{
+    CorporateAction, EarningsItem, Fundamentals, NewsItem,
+};
 
 /// Snapshot of an options chain for an underlying.
 ///
@@ -41,6 +44,12 @@ pub struct ProviderCapabilities {
     pub historical: bool,
     /// Can serve live streams via `subscribe_*`.
     pub realtime: bool,
+    /// Wave 10c — reference-data surfaces. Default `false` so providers
+    /// that don't override `capabilities()` stay honest.
+    pub fundamentals: bool,
+    pub news: bool,
+    pub earnings: bool,
+    pub corporate_actions: bool,
 }
 
 /// Unified market-data surface.
@@ -81,4 +90,40 @@ pub trait MarketDataProvider: Connection {
     /// before composing a fallback chain — `NotSupported` errors are still
     /// returned at call time as a safety net.
     fn capabilities(&self) -> ProviderCapabilities;
+
+    // ── Wave 10c reference-data surfaces ────────────────────────────────
+    //
+    // Default impls return `NotSupported` so existing providers (Crypto,
+    // IB, Signals, Mock, Replay, Fallback wrappers) compile unchanged.
+    // Concrete providers override per-method when an upstream exists.
+
+    /// Snapshot of company / instrument fundamentals.
+    async fn fundamentals(&self, _symbol: &str) -> Result<Fundamentals, ApiError> {
+        Err(ApiError::NotSupported(format!(
+            "{} does not provide fundamentals", self.name()
+        )))
+    }
+
+    /// Recent news items, most-recent-first. `limit` defaults to ~20 on
+    /// the provider side when unset.
+    async fn news(&self, _symbol: &str, _limit: Option<usize>) -> Result<Vec<NewsItem>, ApiError> {
+        Err(ApiError::NotSupported(format!(
+            "{} does not provide news", self.name()
+        )))
+    }
+
+    /// Upcoming + recent earnings items, ordered by `reports_at`
+    /// (most recent first).
+    async fn earnings(&self, _symbol: &str, _limit: Option<usize>) -> Result<Vec<EarningsItem>, ApiError> {
+        Err(ApiError::NotSupported(format!(
+            "{} does not provide earnings", self.name()
+        )))
+    }
+
+    /// Corporate actions affecting this symbol's price history / future.
+    async fn corporate_actions(&self, _symbol: &str) -> Result<Vec<CorporateAction>, ApiError> {
+        Err(ApiError::NotSupported(format!(
+            "{} does not provide corporate actions", self.name()
+        )))
+    }
 }

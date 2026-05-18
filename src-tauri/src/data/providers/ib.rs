@@ -113,6 +113,7 @@ impl MarketDataProvider for IbProvider {
             // Honest: the trait surface isn't wired yet for IB.
             bars: false, quotes: false, trades: false, chain: false,
             crypto_only: false, historical: false, realtime: false,
+            fundamentals: false, news: false, earnings: false, corporate_actions: false,
         }
     }
 }
