@@ -2124,6 +2124,18 @@ pub(crate) fn render(
     span_begin("sidebar.signals");
     crate::chart_renderer::ui::panels::signals_panel::draw(ctx, watchlist, panes, ap, t);
 
+    // ── Trade plan v2 sidebar (SOTA §4.4)
+    span_begin("sidebar.trade_plan_v2");
+    crate::chart_renderer::ui::panels::trade_plan_panel::draw(ctx, watchlist, panes, ap, t);
+
+    // ── Spike-explanation popup overlay (SOTA §4.5).
+    // Floats over the panel grid in the chart window's top-right corner.
+    // Polls live_state.recent_spike_explanations every frame and renders new
+    // ids as transient toasts (30s auto-dismiss).
+    span_begin("overlay.spike_popup");
+    let screen_rect = ctx.screen_rect();
+    crate::chart_renderer::ui::panels::spike_popup::draw(ctx, screen_rect);
+
     // ── Feed sidebar (unified News + Discord + Screenshots)
     span_begin("sidebar.feed");
     crate::chart_renderer::ui::panels::feed_panel::draw(ctx, watchlist, panes, ap, t);

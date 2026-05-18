@@ -48,6 +48,10 @@ pub enum Frame {
     Quote   (Quote),
     Fmv     { symbol: String, fmv: f64, time_ms: i64 },
     ChainDelta(ChainDelta),
+    /// SOTA §4.4 — calibrated trade plan v2.
+    TradePlan(TradePlanV2),
+    /// SOTA §4.5 — spike-explanation toast payload.
+    Spike(SpikeExplanation),
     Resync  { reason: String },
     Error   { code: String, message: String },
     /// Transport-level: WS connected or disconnected.
@@ -618,6 +622,24 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
         "chain_delta" => match serde_json::from_value::<ChainDelta>(env.data) {
             Ok(d) => Frame::ChainDelta(d),
             Err(e) => { eprintln!("[apex_data.ws] bad chain_delta: {e}"); return; }
+        },
+        // SOTA §4.4 — calibrated trade plan v2. Every non-legacy field on
+        // TradePlanV2 uses #[serde(default)], so older servers that emit
+        // only `entry/target/stop` still deserialize and just render as
+        // point-form plans.
+        "trade_plan" => match serde_json::from_value::<TradePlanV2>(env.data) {
+            Ok(p) => Frame::TradePlan(p),
+            Err(e) => { eprintln!("[apex_data.ws] bad trade_plan: {e}"); return; }
+        },
+        // SOTA §4.5 — spike-explanation toast. Derive the dedup id from
+        // (symbol, t_ms) after deserialization — the server doesn't have to
+        // know about our client-side dedup scheme.
+        "spike" => match serde_json::from_value::<SpikeExplanation>(env.data) {
+            Ok(mut s) => {
+                s.id = SpikeExplanation::derive_id(&s.symbol, s.t_ms);
+                Frame::Spike(s)
+            }
+            Err(e) => { eprintln!("[apex_data.ws] bad spike: {e}"); return; }
         },
         "resync" => {
             let reason = env.data.get("reason").and_then(|v| v.as_str()).unwrap_or("").to_string();

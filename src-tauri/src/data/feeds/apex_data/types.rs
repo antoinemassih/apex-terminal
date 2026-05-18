@@ -630,5 +630,157 @@ impl ReplayEvent {
     }
     pub fn new_error(msg: impl Into<String>) -> Self {
         ReplayEvent { kind: "error", symbol: msg.into(), t_ms: 0, price: None }
+// ────────────────────────────────────────────────────────────────────────────
+// SOTA §4.4 — TradePlan v2 (Calibrated + Conformal + Provenance)
+// ────────────────────────────────────────────────────────────────────────────
+
+/// Provenance metadata attached to model-produced wire artifacts (trade plans,
+/// spike explanations, regime calls). The `lineage_id` is the stable id that
+/// the provenance pane uses to open the full lineage tree.
+///
+/// All fields are `#[serde(default)]` so older wire shapes (which omit the
+/// block entirely or only carry `lineage_id`) still deserialize cleanly.
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
+pub struct ProvenanceMeta {
+    #[serde(default)] pub lineage_id: String,
+    #[serde(default)] pub model: Option<String>,
+    #[serde(default)] pub run_id: Option<String>,
+    #[serde(default)] pub source: Option<String>,
+}
+
+/// SOTA §4.4 — calibrated trade plan with conformal target/stop ranges.
+///
+/// Replaces the legacy point-only `(dir, entry, target, stop, contract, rr,
+/// conviction)` tuple in `Chart::trade_plan`. The legacy tuple stays in place
+/// for the existing chart-widget renderer; the new panel reads `TradePlanV2`
+/// out of `live_state.latest_trade_plan` and renders the calibrated form.
+///
+/// Every field added on top of the legacy schema is `#[serde(default)]` so
+/// older backend builds (which don't yet emit conformal ranges or calibration
+/// metadata) deserialize without error and just render the point form.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TradePlanV2 {
+    pub symbol: String,
+    /// "long" | "short" — string-keyed so it round-trips with the Python
+    /// emitter without an enum schema dance.
+    pub direction: String,
+    pub entry_price: f64,
+    pub target_price: f64,
+    pub stop_price: f64,
+
+    /// Conformal-prediction target band (low, high). None when the calibrator
+    /// didn't run for this plan (e.g. cold-start, < 30 samples).
+    #[serde(default)]
+    pub target_range: Option<(f64, f64)>,
+    /// Conformal-prediction stop band (low, high).
+    #[serde(default)]
+    pub stop_range: Option<(f64, f64)>,
+
+    /// Historical hit-rate (0.0..=1.0) for plans matching this setup. None
+    /// when the back-test history has fewer than `min_n` samples.
+    #[serde(default)]
+    pub historical_hit_rate: Option<f32>,
+    /// How many historical samples back the hit-rate. Used to grey out
+    /// low-confidence stats in the UI.
+    #[serde(default)]
+    pub historical_n_samples: u32,
+    /// Conformal coverage level (e.g. 0.8 = 80% prediction intervals).
+    /// Default 0.0 means "no calibration metadata wired up".
+    #[serde(default)]
+    pub conformal_coverage: f32,
+
+    /// Plain-text exit rule emitted by the planner ("scale 50% at +1R, runner
+    /// to +2R; stop to break-even on first target"). Free-form, panel renders
+    /// verbatim.
+    #[serde(default)]
+    pub exit_rule: Option<String>,
+
+    /// Day-type classifier output: "BULL" | "BEAR" | "PIN" | "MIXED" | "CHOP".
+    /// Per the user's MEMORY.md day-type-classifier rule, MIXED/CHOP plans
+    /// should be visually suppressed by the renderer.
+    #[serde(default)]
+    pub day_type: Option<String>,
+    /// Day-type confidence (0.0..=1.0).
+    #[serde(default)]
+    pub day_type_confidence: Option<f32>,
+
+    /// Provenance pointer for the [🔍 prov] button. None when the upstream
+    /// planner doesn't emit lineage.
+    #[serde(default)]
+    pub provenance: Option<ProvenanceMeta>,
+
+    /// Server-side emit timestamp in epoch milliseconds.
+    #[serde(default)]
+    pub t_ms: i64,
+}
+
+impl TradePlanV2 {
+    /// Whether the panel should visually suppress this plan per the day-type
+    /// rule. MIXED/CHOP days mean "no edge" — show greyed banner instead of a
+    /// loud plan.
+    pub fn day_type_suppressed(&self) -> bool {
+        matches!(self.day_type.as_deref(), Some("MIXED" | "CHOP"))
+    }
+
+    /// Calibration tier for color routing (>=0.6 green, 0.5..0.6 yellow,
+    /// <0.5 red, None → grey "no calibration"). Falls back to a stable
+    /// "Unknown" when `historical_hit_rate` is `None`.
+    pub fn calibration_tier(&self) -> CalibrationTier {
+        match self.historical_hit_rate {
+            None => CalibrationTier::Unknown,
+            Some(r) if r >= 0.6 => CalibrationTier::Strong,
+            Some(r) if r >= 0.5 => CalibrationTier::Marginal,
+            Some(_) => CalibrationTier::Weak,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CalibrationTier {
+    Strong,    // >= 0.6 — green
+    Marginal,  // 0.5..0.6 — yellow
+    Weak,      // < 0.5 — red
+    Unknown,   // missing hit-rate — grey
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// SOTA §4.5 — Spike explanation (transient toast popup)
+// ────────────────────────────────────────────────────────────────────────────
+
+/// SOTA §4.5 — spike-explanation toast payload. Pushed by ApexData (which in
+/// turn subscribes to the apex-spike-explainer Redis pubsub) as a `spike`
+/// frame. `id` is derived client-side from `{symbol}:{t_ms}` so the popup
+/// state machine can dedup on it without coordination with the server.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SpikeExplanation {
+    pub symbol: String,
+    pub t_ms: i64,
+    pub sigma: f32,
+    pub pct_move: f32,
+    pub headline: String,
+    pub explanation: String,
+    #[serde(default)]
+    pub sources: Vec<String>,
+    /// Stable dedup key: `format!("{symbol}:{t_ms}")`. Skipped on the wire —
+    /// derived in `From<SpikeWire>` so producers don't have to send it.
+    #[serde(skip)]
+    pub id: String,
+}
+
+impl SpikeExplanation {
+    /// Derive the dedup key. Called from `from_wire` below; exposed publicly
+    /// so the popup component can synthesize ids for test fixtures.
+    pub fn derive_id(symbol: &str, t_ms: i64) -> String {
+        format!("{symbol}:{t_ms}")
+    }
+
+    /// Convenience constructor: build a `SpikeExplanation` with the id
+    /// derived from `(symbol, t_ms)`.
+    pub fn new(
+        symbol: String, t_ms: i64, sigma: f32, pct_move: f32,
+        headline: String, explanation: String, sources: Vec<String>,
+    ) -> Self {
+        let id = Self::derive_id(&symbol, t_ms);
+        Self { symbol, t_ms, sigma, pct_move, headline, explanation, sources, id }
     }
 }

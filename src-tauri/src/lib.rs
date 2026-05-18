@@ -279,6 +279,17 @@ pub fn run() {
                             apex_data::live_state::push_toast(format!("ApexData: {message}"));
                         }
                     }
+                    // SOTA §4.4 — TradePlan v2: stash the latest plan keyed
+                    // by symbol. The new trade_plan_panel reads from there.
+                    Frame::TradePlan(plan) => {
+                        apex_data::live_state::push_trade_plan(plan.clone());
+                    }
+                    // SOTA §4.5 — Spike explanation: push into the recent
+                    // ring; the SpikeExplanationPopup component polls the
+                    // ring once per frame and renders new ids as toasts.
+                    Frame::Spike(spike) => {
+                        apex_data::live_state::push_spike(spike.clone());
+                    }
                     _ => {}
                 }
             });
