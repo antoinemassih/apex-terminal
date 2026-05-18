@@ -5270,7 +5270,7 @@ impl GpuCtx {
         let _ = crate::NATIVE_EGUI_CTX.set(egui_ctx.clone());
         let mut visuals = egui::Visuals::dark();
         // Subtle rounded corners on all widgets
-        let r3 = egui::CornerRadius::same(3);
+        let r3 = egui::CornerRadius::same(style::radius_sm() as u8);
         let r6 = egui::CornerRadius::same(6);
         visuals.window_corner_radius = r6;
         visuals.menu_corner_radius = egui::CornerRadius::same(4);

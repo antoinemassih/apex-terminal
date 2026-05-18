@@ -377,7 +377,7 @@ fn render_scroll_column(
                         if is_sel || item_resp.hovered() {
                             painter.rect_filled(
                                 item_rect,
-                                CornerRadius::same(3), // TODO: off-token
+                                CornerRadius::same(st::radius_sm() as u8),
                                 if item_resp.hovered() && !is_sel {
                                     st::color_alpha(theme.dim(), 20)
                                 } else {

@@ -163,7 +163,7 @@ pub(crate) fn draw(
     );
     // Subtle background tint so the trigger reads as a button even at rest.
     painter.rect_filled(mode_rect,
-        egui::CornerRadius::same(3), // TODO: off-token
+        egui::CornerRadius::same(radius_sm() as u8),
         color_alpha(t.toolbar_border, alpha_subtle()));
     {
         // Action enum so item_render and trigger_render get a real value to

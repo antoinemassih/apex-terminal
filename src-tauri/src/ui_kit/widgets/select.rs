@@ -694,7 +694,7 @@ fn chip_paint(
     let painter = ui.painter_at(chip_rect);
     painter.rect_filled(
         chip_rect,
-        CornerRadius::same(3), // TODO: off-token
+        CornerRadius::same(st::radius_sm() as u8),
         st::color_alpha(theme.accent(), st::ALPHA_GHOST + 10),
     );
     painter.text(
@@ -837,12 +837,12 @@ fn render_panel<'a, T>(
                 let painter = ui.painter_at(s_rect);
                 painter.rect_filled(
                     s_rect,
-                    CornerRadius::same(3), // TODO: off-token
+                    CornerRadius::same(st::radius_sm() as u8),
                     st::color_alpha(theme.bg(), 200),
                 );
                 painter.rect_stroke(
                     s_rect,
-                    CornerRadius::same(3), // TODO: off-token
+                    CornerRadius::same(st::radius_sm() as u8),
                     Stroke::new(st::stroke_std(), st::color_alpha(theme.border(), st::alpha_line())),
                     StrokeKind::Inside,
                 );
@@ -998,7 +998,7 @@ fn render_row<'a, T>(
     let bg_sel = st::color_alpha(theme.accent(), st::ALPHA_GHOST);
     let mut bg = motion::lerp_color(Color32::TRANSPARENT, bg_hover, hover_t);
     bg = motion::lerp_color(bg, bg_sel, sel_t);
-    painter.rect_filled(rect, CornerRadius::same(3), bg); // TODO: off-token
+    painter.rect_filled(rect, CornerRadius::same(st::radius_sm() as u8), bg);
 
     let cy = rect.center().y;
     let pad = st::gap_xs();

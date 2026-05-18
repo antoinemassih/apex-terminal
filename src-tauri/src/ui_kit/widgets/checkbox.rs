@@ -172,7 +172,7 @@ fn paint_checkbox(ui: &mut Ui, theme: &dyn ComponentTheme, mut cb: Checkbox<'_>)
     }
 
     let painter = ui.painter_at(rect);
-    let cr = CornerRadius::same(3); // TODO: off-token
+    let cr = CornerRadius::same(st::radius_sm() as u8);
     painter.rect_filled(box_rect, cr, bg_final);
     painter.rect_stroke(box_rect, cr, Stroke::new(st::stroke_std(), border_final), StrokeKind::Inside);
 

@@ -220,7 +220,7 @@ fn render_row<T: TreeNode>(
     let hovered = response.hovered();
     let selected = state.selected == Some(id);
     let hover_t = motion::ease_bool(ui.ctx(), row_id.with("hov"), hovered, motion::FAST);
-    let cr = CornerRadius::same(3); // TODO: off-token
+    let cr = CornerRadius::same(st::radius_sm() as u8);
 
     if selected {
         painter.rect_filled(rect, cr, st::color_alpha(theme.accent(), st::ALPHA_GHOST));

@@ -3,7 +3,7 @@
 use egui::Context;
 use crate::chart_renderer::gpu::{Theme, Chart, DrawingAction, drawing_persist_key, drawing_to_db};
 use crate::chart_renderer::{DrawingKind, LineStyle};
-use crate::chart_renderer::ui::style::{hex_to_color, COLOR_AMBER, gap_xs, font_xs, font_sm, font_md, row_height_compact, row_height_dense, stroke_bold};
+use crate::chart_renderer::ui::style::{hex_to_color, COLOR_AMBER, gap_xs, font_xs, font_sm, font_md, row_height_compact, row_height_dense, stroke_bold, radius_sm};
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
 #[cfg(target_os = "windows")]
@@ -111,7 +111,7 @@ pub fn show_drawing_properties_bar_ui(
                         let resp = crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new("")
                             .fill(c)
                             .min_size(egui::vec2(20.0, row_height_compact()))
-                            .corner_radius(3.0) // TODO: off-token
+                            .corner_radius(radius_sm())
                             .stroke(if is_cur { egui::Stroke::new(stroke_bold(), t.text) } else { egui::Stroke::NONE }));
                         if resp.clicked() {
                             if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
