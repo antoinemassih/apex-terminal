@@ -19,6 +19,7 @@ use super::{OrderSide, OrderStatus, OrderLevel, APEXIB_URL};
 use super::{snapshot, inflight, paper};
 use super::broker::{
     Broker, LiveBroker,
+    SubmitArgs, ModifyArgs, ModifyKind,
     BracketSubmitArgs, OcoSubmitArgs, OcoLeg,
     ConditionalSubmitArgs, ConditionalCondition,
     OptionsTriggerArgs,
@@ -655,10 +656,9 @@ impl OrderManager {
     pub(crate) fn engage_kill(&mut self) -> Result<(), String> {
         self.cancel_all("");
         self.kill_engaged = true;
-        std::thread::spawn(|| {
-            let client = reqwest::blocking::Client::new();
-            let _ = client.post(format!("{}/risk/kill", APEXIB_URL))
-                .timeout(std::time::Duration::from_secs(10)).send();
+        let broker = Arc::clone(&self.broker);
+        std::thread::spawn(move || {
+            let _ = broker.kill();
         });
         eprintln!("[kill] ENGAGED (local + broker)");
         Ok(())
@@ -672,10 +672,9 @@ impl OrderManager {
 
     pub(crate) fn halt_inner(&mut self) -> Result<(), String> {
         self.halted = true;
-        std::thread::spawn(|| {
-            let client = reqwest::blocking::Client::new();
-            let _ = client.post(format!("{}/risk/halt", APEXIB_URL))
-                .timeout(std::time::Duration::from_secs(5)).send();
+        let broker = Arc::clone(&self.broker);
+        std::thread::spawn(move || {
+            let _ = broker.halt();
         });
         eprintln!("[halt] ENGAGED (local + broker)");
         Ok(())
@@ -683,70 +682,18 @@ impl OrderManager {
 
     pub(crate) fn resume_inner(&mut self) -> Result<(), String> {
         self.halted = false;
-        std::thread::spawn(|| {
-            let client = reqwest::blocking::Client::new();
-            let _ = client.post(format!("{}/risk/resume", APEXIB_URL))
-                .timeout(std::time::Duration::from_secs(5)).send();
+        let broker = Arc::clone(&self.broker);
+        std::thread::spawn(move || {
+            let _ = broker.resume();
         });
         eprintln!("[resume] (local + broker)");
         Ok(())
     }
 
-    /// Resolve a symbol to its IB conId.
-    fn resolve_con_id(client: &reqwest::blocking::Client, symbol: &str) -> Option<i64> {
-        client.get(format!("{}/contract/{}", APEXIB_URL, symbol))
-            .timeout(std::time::Duration::from_secs(5)).send()
-            .and_then(|r| r.json::<serde_json::Value>())
-            .ok()
-            .and_then(|j| j["conId"].as_i64())
-    }
-
-    /// Extract orderId from a JSON response.
-    fn extract_order_id(json: &serde_json::Value) -> Option<String> {
-        json["orderId"].as_str().map(|s| s.to_string())
-            .or_else(|| json["orderId"].as_i64().map(|n| n.to_string()))
-    }
-
-    /// Submit an order to ApexIB and return the backend order ID.
-    /// Handles all order types: market, limit, stop, stop_limit, trailing_stop.
-    fn submit_to_ib(symbol: &str, side: &str, qty: u32, order_type_idx: usize,
-                    price: f32, stop_price: f32,
-                    trail_amount: Option<f32>, trail_percent: Option<f32>,
-                    idempotency_key: &str, intent_tif: u8, outside_rth: bool) -> Option<String> {
-        let client = reqwest::blocking::Client::new();
-        let con_id = Self::resolve_con_id(&client, symbol)?;
-
-        let order_type = match order_type_idx {
-            0 => "market", 1 => "limit", 2 => "stop",
-            3 => "stop_limit", 4 => "trailing_stop", _ => "market"
-        };
-        let tif = match intent_tif { 0 => "day", 1 => "gtc", 2 => "ioc", _ => "day" };
-        let mut body = serde_json::json!({
-            "conId": con_id, "side": side, "quantity": qty,
-            "orderType": order_type, "tif": tif,
-            "idempotencyKey": idempotency_key,
-        });
-        if outside_rth { body["outsideRth"] = serde_json::json!(true); }
-        match order_type {
-            "limit" => { body["limitPrice"] = serde_json::json!(price); }
-            "stop" => { body["stopPrice"] = serde_json::json!(if stop_price != 0.0 { stop_price } else { price }); }
-            "stop_limit" => {
-                body["limitPrice"] = serde_json::json!(price);
-                body["stopPrice"] = serde_json::json!(stop_price);
-            }
-            "trailing_stop" => {
-                if let Some(amt) = trail_amount { body["trailAmount"] = serde_json::json!(amt); }
-                if let Some(pct) = trail_percent { body["trailPercent"] = serde_json::json!(pct); }
-                if stop_price != 0.0 { body["stopPrice"] = serde_json::json!(stop_price); }
-            }
-            _ => {} // market — no price fields
-        }
-
-        let resp = client.post(format!("{}/orders", APEXIB_URL))
-            .json(&body).timeout(std::time::Duration::from_secs(5)).send().ok()?;
-        let json: serde_json::Value = resp.json().ok()?;
-        Self::extract_order_id(&json)
-    }
+    // Wave 7D: single-order submit/cancel/modify HTTP moved behind `Broker`.
+    // The old static `submit_to_ib` / `resolve_con_id` / `extract_order_id`
+    // helpers that lived here are now in `broker::LiveBroker`. Callers build
+    // `SubmitArgs` and call `self.broker.submit(...)` from a spawned thread.
 
     /// Submit an order intent. Returns the result.
     #[tracing::instrument(skip(self, intent), level = "debug", fields(symbol = %intent.symbol, side = ?intent.side, qty = intent.qty, price = intent.price))]
@@ -1043,9 +990,25 @@ impl OrderManager {
             } else {
                 // Fire async backend submission — captures IB order ID back into the manager
                 let cid_thread = cid.clone();
+                let side_owned: String = side_str.to_string();
+                let sym_owned = sym;
+                let idem_owned = idem_key;
+                let broker = Arc::clone(&self.broker);
                 std::thread::spawn(move || {
-                    match Self::submit_to_ib(&sym, side_str, qty, ot_idx, price, stop_price, trail_amount, trail_percent, &idem_key, intent_tif, outside_rth) {
-                        Some(ib_oid) => {
+                    let args = SubmitArgs {
+                        symbol: &sym_owned,
+                        side: &side_owned,
+                        qty,
+                        order_type_idx: ot_idx,
+                        price: Price::from_f32(price),
+                        stop_price: Price::from_f32(stop_price),
+                        trail_amount, trail_percent,
+                        client_order_id: &idem_owned,
+                        tif: intent_tif,
+                        outside_rth,
+                    };
+                    match broker.submit(&args) {
+                        Ok(ib_oid) => {
                             with_mgr(|mgr| {
                                 if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == order_id_copy) {
                                     o.backend_order_id = Some(ib_oid.clone());
@@ -1055,9 +1018,9 @@ impl OrderManager {
                                 client_id: cid_thread, backend_id: Some(ib_oid), ts_ms: epoch_ms(),
                             });
                         }
-                        None => {
+                        Err(reason) => {
                             journal::append(JournalEvent::Fail {
-                                client_id: cid_thread, reason: "submit_to_ib returned None".into(),
+                                client_id: cid_thread, reason,
                                 ts_ms: epoch_ms(),
                             });
                         }
@@ -1096,8 +1059,22 @@ impl OrderManager {
             let outside_rth = o.outside_rth;
             let idem_key = o.client_order_id.clone();
             let order_id_copy = order_id;
+            let side_owned: String = side_str.to_string();
+            let broker = Arc::clone(&self.broker);
             std::thread::spawn(move || {
-                if let Some(ib_oid) = Self::submit_to_ib(&sym, side_str, qty, ot_idx, price, stop_price, trail_amount, trail_percent, &idem_key, intent_tif, outside_rth) {
+                let args = SubmitArgs {
+                    symbol: &sym,
+                    side: &side_owned,
+                    qty,
+                    order_type_idx: ot_idx,
+                    price: Price::from_f32(price),
+                    stop_price: Price::from_f32(stop_price),
+                    trail_amount, trail_percent,
+                    client_order_id: &idem_key,
+                    tif: intent_tif,
+                    outside_rth,
+                };
+                if let Ok(ib_oid) = broker.submit(&args) {
                     with_mgr(|mgr| {
                         if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == order_id_copy) {
                             o.backend_order_id = Some(ib_oid);
@@ -1692,13 +1669,11 @@ impl OrderManager {
             } else {
                 let cid_thread = cid.clone();
                 let bid = backend_id.clone();
+                let broker = Arc::clone(&self.broker);
                 std::thread::spawn(move || {
-                    let client = reqwest::blocking::Client::new();
-                    let res = client.delete(format!("{}/orders/{}", APEXIB_URL, bid))
-                        .timeout(std::time::Duration::from_secs(5)).send();
-                    match res {
-                        Ok(_) => journal::append(JournalEvent::Ack { client_id: cid_thread, backend_id: Some(bid), ts_ms: epoch_ms() }),
-                        Err(e) => journal::append(JournalEvent::Fail { client_id: cid_thread, reason: format!("cancel http: {e}"), ts_ms: epoch_ms() }),
+                    match broker.cancel(&bid, &cid_thread) {
+                        Ok(()) => journal::append(JournalEvent::Ack { client_id: cid_thread, backend_id: Some(bid), ts_ms: epoch_ms() }),
+                        Err(e) => journal::append(JournalEvent::Fail { client_id: cid_thread, reason: e, ts_ms: epoch_ms() }),
                     }
                 });
             }
@@ -1713,10 +1688,12 @@ impl OrderManager {
                 self.transition(pid, OrderState::Cancelled);
                 // Cancel paired order on backend too
                 if let Some(pair_backend_id) = self.orders.iter().find(|o| o.id == pid).and_then(|o| o.backend_order_id.clone()) {
+                    let pair_cid = self.orders.iter().find(|o| o.id == pid)
+                        .map(|o| o.client_order_id.clone())
+                        .unwrap_or_default();
+                    let broker = Arc::clone(&self.broker);
                     std::thread::spawn(move || {
-                        let client = reqwest::blocking::Client::new();
-                        let _ = client.delete(format!("{}/orders/{}", APEXIB_URL, pair_backend_id))
-                            .timeout(std::time::Duration::from_secs(5)).send();
+                        let _ = broker.cancel(&pair_backend_id, &pair_cid);
                     });
                 }
             }
@@ -1734,6 +1711,10 @@ impl OrderManager {
         });
         let paper = self.paper_mode;
         // Send cancel-all to IB backend (skip in paper)
+        // Wave 7D note: kept inline — this is a single bulk DELETE on
+        // /orders that the `Broker` trait doesn't model (the trait's
+        // `cancel` is per-order). The per-order cancels that follow this
+        // bulk call DO go through `self.broker.cancel(...)` via `self.cancel(id)`.
         if !paper {
             let cid_thread = cid.clone();
             std::thread::spawn(move || {
@@ -1807,25 +1788,25 @@ impl OrderManager {
                 } else {
                     let cid_thread = cid.clone();
                     let bid_thread = bid.clone();
-                    let np = new_price_f;
+                    let kind = if is_stop { ModifyKind::Stop }
+                        else if is_stop_limit { ModifyKind::StopLimit }
+                        else { ModifyKind::Limit };
+                    let broker = Arc::clone(&self.broker);
                     std::thread::spawn(move || {
-                        let client = reqwest::blocking::Client::new();
-                        let body = if is_stop {
-                            serde_json::json!({"stopPrice": np, "modifyVersion": version})
-                        } else if is_stop_limit {
-                            serde_json::json!({"limitPrice": np, "stopPrice": np, "modifyVersion": version})
-                        } else {
-                            serde_json::json!({"limitPrice": np, "modifyVersion": version})
+                        let args = ModifyArgs {
+                            backend_id: &bid_thread,
+                            client_order_id: &cid_thread,
+                            new_price,
+                            new_qty: 0,
+                            kind,
+                            modify_version: version,
                         };
-                        let res = client.put(format!("{}/orders/{}", APEXIB_URL, bid_thread))
-                            .json(&body)
-                            .timeout(std::time::Duration::from_secs(5)).send();
-                        match res {
-                            Ok(_) => journal::append(JournalEvent::Ack {
-                                client_id: cid_thread, backend_id: Some(bid), ts_ms: epoch_ms(),
+                        match broker.modify(&args) {
+                            Ok(()) => journal::append(JournalEvent::Ack {
+                                client_id: cid_thread.clone(), backend_id: Some(bid), ts_ms: epoch_ms(),
                             }),
                             Err(e) => journal::append(JournalEvent::Fail {
-                                client_id: cid_thread, reason: format!("modify http: {e}"), ts_ms: epoch_ms(),
+                                client_id: cid_thread.clone(), reason: e, ts_ms: epoch_ms(),
                             }),
                         }
                         // Spawned thread does not hold the manager lock, so it
@@ -2224,6 +2205,9 @@ pub(crate) fn next_order_id() -> u64 {
 
 /// What-if margin check for a proposed order
 pub(crate) fn check_margin(symbol: &str, side: &str, qty: u32, order_type: &str, price: f32) -> Option<serde_json::Value> {
+    // Wave 7D note: kept inline — `Broker` exposes order actions, not
+    // contract/margin lookups. If we add `Broker::resolve_contract` +
+    // `Broker::what_if_margin` later, route through there.
     let client = reqwest::blocking::Client::new();
     let con_id = client.get(format!("{}/contract/{}", APEXIB_URL, symbol))
         .timeout(std::time::Duration::from_secs(5)).send()
@@ -2718,13 +2702,11 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
         } else {
             let cid_thread = cid_str;
             let bid_thread = bid.clone();
+            let broker = Arc::clone(&mgr.broker);
             std::thread::spawn(move || {
-                let client = reqwest::blocking::Client::new();
-                let res = client.delete(format!("{}/orders/{}", APEXIB_URL, bid_thread))
-                    .timeout(std::time::Duration::from_secs(5)).send();
-                match res {
-                    Ok(_) => journal::append(JournalEvent::Ack { client_id: cid_thread, backend_id: Some(bid_thread), ts_ms: epoch_ms() }),
-                    Err(e) => journal::append(JournalEvent::Fail { client_id: cid_thread, reason: format!("rule4 recancel: {e}"), ts_ms: epoch_ms() }),
+                match broker.cancel(&bid_thread, &cid_thread) {
+                    Ok(()) => journal::append(JournalEvent::Ack { client_id: cid_thread.clone(), backend_id: Some(bid_thread), ts_ms: epoch_ms() }),
+                    Err(e) => journal::append(JournalEvent::Fail { client_id: cid_thread.clone(), reason: format!("rule4 recancel: {e}"), ts_ms: epoch_ms() }),
                 }
             });
         }
@@ -2782,6 +2764,13 @@ pub(crate) enum BrokerOrderState {
 /// available the request returns 404 → `Some(NotFound)`, which is the safe
 /// outcome (we'll mark the local order Rejected with a clear reason).
 fn query_broker_by_client_id(cid: &str) -> Option<BrokerOrderState> {
+    // Wave 7D note: NOT routed through `Broker::lookup_by_client_id`. That
+    // method collapses transport failures into `NotFound`, but this recovery
+    // path must distinguish them — returning `None` on transport failure
+    // leaves the orphan alone for retry on next startup; `Some(NotFound)`
+    // would prematurely mark the local order Rejected. Kept as inline
+    // reqwest for now; revisit if `BrokerOrderState` grows a `TransportError`
+    // variant.
     let client = reqwest::blocking::Client::new();
     let url = format!("{}/orders/by-client-id/{}", APEXIB_URL, cid);
     let resp = client.get(&url)
@@ -3824,5 +3813,100 @@ mod tests {
         let entry_id = match entry { OrderResult::Accepted(id) => id, _ => unreachable!() };
         let children: Vec<_> = snap.iter().filter(|o| o.pair_id == Some(entry_id)).collect();
         assert_eq!(children.len(), 2, "TP + SL must both pair back to entry");
+    }
+
+    // ── L. Wave 7D: single-order paths route through Broker ──────────────────
+    //
+    // These tests verify that submit / cancel / modify on `OrderManager`
+    // delegate to the injected `Broker` trait rather than going inline to
+    // HTTP. They use `MockBroker` (records every call) so we can assert
+    // the broker actually saw the action without standing up a fake HTTP
+    // server. `paper_mode` is OFF — paper mode short-circuits the broker
+    // entirely via `paper::submit_paper` and friends.
+
+    use crate::chart::renderer::trading::broker::{MockBroker, MockCall, MockResponse};
+
+    fn live_mock_manager() -> (OrderManager, Arc<MockBroker>) {
+        let mock = Arc::new(MockBroker::new());
+        let mut m = OrderManager::with_broker(mock.clone() as Arc<dyn Broker>);
+        m.paper_mode = false;
+        m.armed = true;
+        m.risk_limits.dedup_cooldown_ms = 50;
+        m.initial_reconcile_done = true;
+        (m, mock)
+    }
+
+    /// Wait for the spawned broker thread to record its call. The submit /
+    /// cancel / modify paths in `OrderManager` fire-and-forget through
+    /// `std::thread::spawn` so the test must briefly poll. Timeout is
+    /// generous — `MockBroker` does no I/O, so the call typically lands in
+    /// well under 100ms.
+    fn wait_for_mock_call(mock: &Arc<MockBroker>, want: usize) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            if mock.calls().len() >= want { return; }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        panic!("timeout waiting for {} mock broker calls; got {}", want, mock.calls().len());
+    }
+
+    #[test]
+    fn manager_submit_single_via_mock_broker() {
+        let (mut m, mock) = live_mock_manager();
+        mock.enqueue_response(MockResponse::SubmitOk("broker-123".into()));
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 5));
+        assert!(matches!(r, OrderResult::Accepted(_)),
+                "submit should accept and dispatch to broker, got {:?}", r);
+        wait_for_mock_call(&mock, 1);
+        let calls = mock.calls();
+        assert!(matches!(calls[0],
+            MockCall::Submit { ref symbol, ref side, qty: 5, .. }
+                if symbol == "AAPL" && side == "buy"),
+            "expected Submit(AAPL, buy, 5), got {:?}", calls[0]);
+    }
+
+    #[test]
+    fn manager_cancel_via_mock_broker() {
+        let (mut m, mock) = live_mock_manager();
+        mock.enqueue_response(MockResponse::SubmitOk("broker-bid".into()));
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 5));
+        let id = order_id(&r).expect("submit should yield an id");
+        wait_for_mock_call(&mock, 1);
+        // The submit-thread's `with_mgr(...)` writes `backend_order_id` to
+        // the GLOBAL `ORDER_MANAGER`, not our local `m`. For the cancel
+        // path to issue a broker call we need it locally — set it directly.
+        if let Some(o) = m.orders.iter_mut().find(|o| o.id == id) {
+            o.backend_order_id = Some("broker-bid".into());
+        }
+        let cancelled = m.cancel(id);
+        assert!(cancelled, "cancel should succeed");
+        wait_for_mock_call(&mock, 2);
+        let calls = mock.calls();
+        assert!(matches!(calls[1], MockCall::Cancel { ref backend_id, .. }
+            if backend_id == "broker-bid"),
+            "expected Cancel(broker-bid), got {:?}", calls[1]);
+    }
+
+    #[test]
+    fn manager_modify_via_mock_broker() {
+        let (mut m, mock) = live_mock_manager();
+        mock.enqueue_response(MockResponse::SubmitOk("broker-bid".into()));
+        let r = m.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 5));
+        let id = order_id(&r).expect("submit should yield an id");
+        wait_for_mock_call(&mock, 1);
+        // Same note as `manager_cancel_via_mock_broker`: the async submit
+        // callback lands in the global manager, not this local one. Wire
+        // the backend_id directly so `modify_price` takes the broker path.
+        if let Some(o) = m.orders.iter_mut().find(|o| o.id == id) {
+            o.backend_order_id = Some("broker-bid".into());
+        }
+        let ok = m.modify_price(id, Price::from_f32(101.25));
+        assert!(ok, "modify should succeed");
+        wait_for_mock_call(&mock, 2);
+        let calls = mock.calls();
+        assert!(matches!(calls[1], MockCall::Modify {
+            ref backend_id, kind: ModifyKind::Limit, new_price, ..
+        } if backend_id == "broker-bid" && (new_price.to_f32() - 101.25).abs() < 1e-4),
+            "expected Modify(broker-bid, Limit, 101.25), got {:?}", calls[1]);
     }
 }
