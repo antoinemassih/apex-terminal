@@ -6,6 +6,7 @@
 //! Falls back gracefully — if Redis is unreachable, all ops return None/Ok.
 
 use crate::data::Bar;
+use crate::data::connectivity::errors_sink::{report, ErrorLevel};
 use redis::{Client, Connection};
 use std::sync::{Mutex, OnceLock};
 
@@ -19,8 +20,8 @@ pub fn init() {
             .ok()
             .and_then(|c| c.get_connection().ok());
         match &conn {
-            Some(_) => eprintln!("[bar-cache] Redis connected at 192.168.1.89:6379"),
-            None    => eprintln!("[bar-cache] Redis unreachable — caching disabled"),
+            Some(_) => report(ErrorLevel::Info, "bar_cache", "redis_connected", "Redis connected at 192.168.1.89:6379"),
+            None    => report(ErrorLevel::Warn, "bar_cache", "redis_unreachable", "Redis unreachable — caching disabled"),
         }
         Mutex::new(conn)
     });

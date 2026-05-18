@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use super::events::JournalEvent;
+use crate::data::connectivity::errors_sink::{report, ErrorLevel};
 
 const ROTATE_BYTES: u64 = 10 * 1024 * 1024;
 
@@ -48,20 +49,20 @@ pub(crate) fn append(event: &JournalEvent) {
 
     let mut line = match serde_json::to_string(event) {
         Ok(s) => s,
-        Err(e) => { eprintln!("[wal] serialize failed: {e}"); return; }
+        Err(e) => { report(ErrorLevel::Error, "wal", "serialize_failed", e.to_string()); return; }
     };
     line.push('\n');
 
     let mut f = match OpenOptions::new().append(true).create(true).open(&path) {
         Ok(f) => f,
-        Err(e) => { eprintln!("[wal] open failed: {e}"); return; }
+        Err(e) => { report(ErrorLevel::Error, "wal", "open_failed", e.to_string()); return; }
     };
     if let Err(e) = f.write_all(line.as_bytes()) {
-        eprintln!("[wal] write failed: {e}");
+        report(ErrorLevel::Error, "wal", "write_failed", e.to_string());
         return;
     }
     if let Err(e) = f.sync_data() {
-        eprintln!("[wal] fsync failed: {e}");
+        report(ErrorLevel::Error, "wal", "fsync_failed", e.to_string());
     }
 }
 

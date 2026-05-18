@@ -33,6 +33,7 @@ use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandChild;
 use std::sync::Mutex;
 use std::time::Duration;
+use crate::data::connectivity::errors_sink::{report, ErrorLevel};
 
 /// Global senders for forwarding ticks/data to ALL native chart windows
 pub static NATIVE_CHART_TXS: std::sync::OnceLock<Mutex<Vec<std::sync::mpsc::Sender<chart_renderer::ChartCommand>>>> = std::sync::OnceLock::new();
@@ -63,7 +64,7 @@ fn native_chart_data(symbol: String, timeframe: String, bars: Vec<JsBar>) {
     bar_cache::set(&symbol, &timeframe, &cache_bars);
 
     let (gpu_bars, timestamps) = convert_js_bars(&bars);
-    eprintln!("[native-chart] Received {} bars for {} from WebView", gpu_bars.len(), symbol);
+    tracing::debug!(target: "native_chart", count = gpu_bars.len(), %symbol, "received bars from WebView");
     send_to_native_chart(chart_renderer::ChartCommand::LoadBars {
         symbol, timeframe, bars: gpu_bars, timestamps,
     });
@@ -113,7 +114,8 @@ fn convert_js_bars(bars: &[JsBar]) -> (Vec<chart_renderer::Bar>, Vec<i64>) {
 
 #[tauri::command]
 async fn open_native_chart(app: tauri::AppHandle, symbol: String, timeframe: String, bars: Option<Vec<JsBar>>) -> Result<String, String> {
-    eprintln!("[native-chart] Opening for {} {} (bars from WebView: {})", symbol, timeframe, bars.as_ref().map_or(0, |b| b.len()));
+    report(ErrorLevel::Info, "native_chart", "open",
+        format!("opening for {} {} (bars from WebView: {})", symbol, timeframe, bars.as_ref().map_or(0, |b| b.len())));
 
     let (gpu_bars, timestamps) = bars.as_ref()
         .filter(|b| !b.is_empty())
@@ -177,7 +179,7 @@ pub fn run() {
             .and_then(|s| toml::from_str(&s).ok())
             .unwrap_or_default();
         design_tokens::init(tokens);
-        eprintln!("[design-mode] active — press Ctrl+Shift+D to toggle the panel");
+        report(ErrorLevel::Info, "design_mode", "active", "active — press Ctrl+Shift+D to toggle the panel");
     }
 
     tauri::Builder::default()
@@ -195,7 +197,7 @@ pub fn run() {
                     .await;
                 match connect {
                     Err(e) => {
-                        eprintln!("[apex] PostgreSQL unavailable ({e}) — drawings use fallback");
+                        report(ErrorLevel::Warn, "apex", "postgres_unavailable", format!("({e}) — drawings use fallback"));
                         None
                     }
                     Ok(p) => Some(p),
@@ -286,13 +288,13 @@ pub fn run() {
                         crate::apex_log!("ws.chain", "{} delta: {} rows", d.underlying, d.rows.len());
                     }
                     Frame::Resync { reason } => {
-                        eprintln!("[apex_data] resync: {reason}");
+                        report(ErrorLevel::Warn, "apex_data", "resync", reason.to_string());
                     }
                     Frame::Connection(connected) => {
                         apex_data::live_state::set_connected(*connected);
                     }
                     Frame::Error { code, message } => {
-                        eprintln!("[apex_data] server error {code}: {message}");
+                        report(ErrorLevel::Warn, "apex_data", "server_error", format!("{code}: {message}"));
                         // Surface sub_rejected (cap reached, no feed handle) as a toast.
                         // Other soft errors stay in stderr — too noisy for the UI.
                         if code == "sub_rejected" {
@@ -322,9 +324,9 @@ pub fn run() {
 
             // Spawn ococo-api sidecar — bundled Node.js server
             match app.shell().sidecar("ococo-api") {
-                Err(e) => eprintln!("[apex] ococo-api sidecar not found: {e}"),
+                Err(e) => report(ErrorLevel::Error, "apex", "sidecar_not_found", format!("ococo-api: {e}")),
                 Ok(cmd) => match cmd.spawn() {
-                    Err(e) => eprintln!("[apex] Failed to spawn ococo-api: {e}"),
+                    Err(e) => report(ErrorLevel::Error, "apex", "sidecar_spawn_failed", format!("ococo-api: {e}")),
                     Ok((mut rx, child)) => {
                         // Drain sidecar stdout/stderr so the channel doesn't block.
                         tauri::async_runtime::spawn(async move {
@@ -342,10 +344,10 @@ pub fn run() {
                                         }
                                     }
                                     CommandEvent::Error(e) => {
-                                        eprintln!("[ococo] error: {e}");
+                                        report(ErrorLevel::Error, "ococo", "sidecar_error", e.to_string());
                                     }
                                     CommandEvent::Terminated(status) => {
-                                        eprintln!("[ococo] exited: {:?}", status);
+                                        report(ErrorLevel::Warn, "ococo", "sidecar_exited", format!("{:?}", status));
                                         break;
                                     }
                                     _ => {}

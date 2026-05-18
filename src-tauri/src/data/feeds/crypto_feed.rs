@@ -173,7 +173,7 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
 
             if last_log.elapsed().as_secs() >= 30 {
-                eprintln!("[crypto-feed] chart: {}/30s, prices: {}/30s, tape: {}/30s", chart_updates, price_updates, tape_updates);
+                tracing::debug!(target: "crypto_feed", chart = chart_updates, prices = price_updates, tape = tape_updates, "30s tick metrics");
                 chart_updates = 0;
                 price_updates = 0;
                 tape_updates = 0;

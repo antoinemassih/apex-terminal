@@ -14,6 +14,7 @@ pub(crate) mod broker;
 
 use std::sync::{Mutex, OnceLock};
 use crate::chart_renderer::ui::style::COLOR_PROFIT_GREEN;
+use crate::data::connectivity::errors_sink::{report, ErrorLevel};
 
 /// ApexIB endpoint configuration (duplicated from gpu.rs where it's also used)
 pub(crate) const APEXIB_URL: &str = "https://apexib-dev.xllio.com";
@@ -169,22 +170,23 @@ pub(crate) static ACCOUNT_DATA: OnceLock<Mutex<Option<(AccountSummary, Vec<Posit
 /// ceiling), snaps back to base on first success. Used by the hot-orders and
 /// slow-account threads so a downed broker doesn't get hammered every cycle.
 struct PollBackoff {
+    source: &'static str,
     base_secs: u64,
     current_secs: u64,
     max_secs: u64,
 }
 impl PollBackoff {
-    fn new(base: u64) -> Self { Self { base_secs: base, current_secs: base, max_secs: 30 } }
+    fn new(source: &'static str, base: u64) -> Self { Self { source, base_secs: base, current_secs: base, max_secs: 30 } }
     fn on_success(&mut self) {
         if self.current_secs != self.base_secs {
-            eprintln!("[poll-backoff] reconnected after backoff (was {}s)", self.current_secs);
+            report(ErrorLevel::Info, self.source, "reconnected", format!("reconnected after backoff (was {}s)", self.current_secs));
         }
         self.current_secs = self.base_secs;
     }
     fn on_failure(&mut self) {
         let next = (self.current_secs * 2).min(self.max_secs);
         if next != self.current_secs {
-            eprintln!("[poll-backoff] backing off {}s -> {}s", self.current_secs, next);
+            report(ErrorLevel::Warn, self.source, "backoff", format!("backing off {}s -> {}s", self.current_secs, next));
             self.current_secs = next;
         }
     }
@@ -217,7 +219,7 @@ pub(crate) fn start_account_poller() {
             let client = reqwest::blocking::Client::builder()
                 .timeout(std::time::Duration::from_secs(3))
                 .build().unwrap_or_else(|_| reqwest::blocking::Client::new());
-            let mut backoff = PollBackoff::new(1);
+            let mut backoff = PollBackoff::new("trading.poll_hot", 1);
             loop {
                 let (ib_orders, any_ok) = fetch_ib_orders(&client);
                 // Feed the reconciler — even if the slow thread hasn't yet
@@ -251,7 +253,7 @@ pub(crate) fn start_account_poller() {
             let client = reqwest::blocking::Client::builder()
                 .timeout(std::time::Duration::from_secs(3))
                 .build().unwrap_or_else(|_| reqwest::blocking::Client::new());
-            let mut backoff = PollBackoff::new(5);
+            let mut backoff = PollBackoff::new("trading.poll_slow", 5);
             loop {
                 let mut summary = AccountSummary::default();
                 let mut positions = Vec::new();
