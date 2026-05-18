@@ -4000,4 +4000,38 @@ mod tests {
         } if backend_id == "broker-bid" && (new_price.to_f32() - 101.25).abs() < 1e-4),
             "expected Modify(broker-bid, Limit, 101.25), got {:?}", calls[1]);
     }
+
+    // ── Wave 9e: property-based dedup-signature invariants ─────────────────
+    //
+    // proptest variants of the hand-written Wave 3 regression tests above.
+    // Two properties: distinct prices ⇒ distinct signatures; identical inputs
+    // ⇒ identical signatures. 256 cases each by default.
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn order_signature_distinct_prices_distinct_signatures(
+            p1 in 1.0f64..=10_000.0,
+            p2 in 1.0f64..=10_000.0,
+        ) {
+            // Skip pairs that round into the same micro-unit bucket — by
+            // construction the signatures would (correctly) compare equal.
+            let pa = Price::from_dollars(p1);
+            let pb = Price::from_dollars(p2);
+            prop_assume!(pa != pb);
+            let s1 = OrderSignature::new("AAPL", OrderSide::Buy, pa, 100);
+            let s2 = OrderSignature::new("AAPL", OrderSide::Buy, pb, 100);
+            prop_assert_ne!(s1, s2);
+        }
+
+        #[test]
+        fn order_signature_same_inputs_same_signature(
+            p in 1.0f64..=10_000.0,
+            qty in 1u32..=10_000,
+        ) {
+            let s1 = OrderSignature::new("AAPL", OrderSide::Buy, Price::from_dollars(p), qty);
+            let s2 = OrderSignature::new("AAPL", OrderSide::Buy, Price::from_dollars(p), qty);
+            prop_assert_eq!(s1, s2);
+        }
+    }
 }
