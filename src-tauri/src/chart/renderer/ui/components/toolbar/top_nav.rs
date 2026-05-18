@@ -2158,12 +2158,9 @@ pub(crate) fn render(
         }
     }
 
-    // ── RegimeTape (SOTA UX §4.3) — always-visible top strip.
-    // Registered BEFORE any side panels so it occupies its top dock zone
-    // before SidePanels claim the remaining rect. Reads from
-    // `apex_data::live_state::get_regime()`; no Watchlist state needed.
-    span_begin("top.regime_tape");
-    crate::chart_renderer::ui::panels::regime_tape::draw(ctx, t);
+    // RegimeTape moved off the top dock — it now lives as a tab inside the
+    // Signals sidebar (signals_panel.rs → SignalsTab::Regime). Top dock space
+    // was too valuable to reserve for a 40-48px always-visible cell strip.
 
     // ── ProvenancePane (SOTA UX §4.1) — right side panel, evidence DAG.
     // Hidden by default; opens when `provenance_pane::request_open(lineage_id)`

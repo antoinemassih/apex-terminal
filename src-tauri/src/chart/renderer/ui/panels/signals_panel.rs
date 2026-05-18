@@ -20,6 +20,7 @@ use crate::ui_kit::widgets::{Button, SplitSectionPanel};
 const ALL_TABS: &[(SignalsTab, &str)] = &[
     (SignalsTab::Alerts, "Alerts"),
     (SignalsTab::Signals, "Signals"),
+    (SignalsTab::Regime, "Regime"),
 ];
 
 pub(crate) fn draw(
@@ -57,6 +58,8 @@ pub(crate) fn draw(
                     super::alerts_panel::draw_content(ui, watchlist, panes, ap, t),
                 SignalsTab::Signals =>
                     draw_signals_toggles(ui, panes, ap, t),
+                SignalsTab::Regime =>
+                    super::regime_tape::draw_in_ui(ui, t),
             }
         });
 

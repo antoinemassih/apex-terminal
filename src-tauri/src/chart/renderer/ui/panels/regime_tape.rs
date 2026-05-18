@@ -111,8 +111,19 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-/// Render the tape. Always visible — there's no toggle. If no regime frame
-/// has arrived yet, renders four "—" placeholders so the layout is stable.
+/// Render the regime cells + transitions INSIDE an arbitrary `Ui` (no
+/// `TopBottomPanel` chrome). Used by the Signals sidebar's Regime tab —
+/// the old top-of-terminal strip wasted persistent vertical space, so the
+/// 4-cell tape now lives as a tab inside an existing side panel.
+pub(crate) fn draw_in_ui(ui: &mut egui::Ui, t: &Theme) {
+    let frame_data = live_state::get_regime();
+    let transitions = live_state::get_regime_transitions();
+    draw_inner(ui, frame_data.as_ref(), &transitions, t);
+}
+
+/// Legacy top-strip render. Retained for compatibility; no longer called.
+/// Use [`draw_in_ui`] (Signals sidebar → Regime tab) instead.
+#[allow(dead_code)]
 pub(crate) fn draw(ctx: &egui::Context, t: &Theme) {
     let frame_data = live_state::get_regime();
     let transitions = live_state::get_regime_transitions();
