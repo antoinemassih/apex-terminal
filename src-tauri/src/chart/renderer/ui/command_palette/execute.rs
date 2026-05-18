@@ -25,24 +25,18 @@ pub(super) fn execute(
     // Symbols
     if let Some(sym) = id.strip_prefix("sym:") {
         let tf = panes[ap].timeframe.clone();
-        let group = panes[ap].link_group;
         panes[ap].symbol = sym.to_string();
         panes[ap].symbol_meta = crate::foundation::types::symbol_or_guess(sym);
         panes[ap].pending_symbol_change = Some(sym.to_string());
         fetch_bars_background(sym.to_string(), tf);
-        // Wave 5: publish the symbol change so future subscribers (sibling
-        // panes in the same link group, broadcast-mode listeners) can react
-        // without each call site having to know about them. The legacy
-        // imperative propagation in `gpu.rs::link_group_propagation` is
-        // still authoritative until follow-up work migrates it to subscribe.
-        if group != 0 {
-            watchlist.subscriptions.publish(
-                crate::state::PaneEvent::SymbolChanged {
-                    group,
-                    symbol: sym.to_string(),
-                },
-            );
-        }
+        // Wave 12c: the cross-pane SubscriptionBus publish for this
+        // symbol change happens centrally in `App::about_to_wait` when
+        // `pending_symbol_change` is consumed. No per-call-site publish
+        // is needed — the centralized publisher knows the originating
+        // pane index (required for the drain-and-apply step to skip the
+        // origin), which we can't accurately reconstruct here when the
+        // pending change has not yet been applied.
+        let _ = watchlist; // bus is reached from about_to_wait, not here
         return;
     }
 
