@@ -63,6 +63,7 @@ smallvec = { version = "1", features = ["serde", "union"] }
 arcstr = { version = "1", features = ["serde"] }
 bitflags = { version = "2", features = ["serde"] }
 thiserror = "1"
+parking_lot = "0.12"
 rand = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

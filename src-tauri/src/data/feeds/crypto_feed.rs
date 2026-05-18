@@ -3,7 +3,8 @@
 //! Subscribes to chart timeframes + 1s for price tracking.
 //! Pushes UpdateLastBar / AppendBar / WatchlistPrice to the chart renderer.
 
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
+use parking_lot::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, Ordering};
 use std::time::Duration;
 
@@ -50,7 +51,7 @@ static SHUTDOWN: OnceLock<Arc<AtomicBool>> = OnceLock::new();
 
 pub fn start() {
     let running = FEED_RUNNING.get_or_init(|| Mutex::new(false));
-    let mut guard = running.lock().unwrap();
+    let mut guard = running.lock();
     if *guard { return; }
     *guard = true;
     drop(guard);

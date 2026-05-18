@@ -13,7 +13,7 @@ pub mod resolver;
 
 use std::{collections::{HashMap, HashSet}, sync::Arc, sync::OnceLock, time::Duration};
 use std::sync::atomic::{AtomicI64, AtomicU32, AtomicU64};
-use std::sync::Mutex as StdMutex;
+use parking_lot::Mutex as StdMutex;
 use crate::data::connectivity::ConnectionState;
 use crate::data::feeds::apex_data::types::{AssetClass, BarWire, Quote, Trade};
 
@@ -68,7 +68,7 @@ fn active_tfs() -> &'static StdMutex<HashMap<String, HashSet<String>>> {
 /// Snapshot of timeframes currently subscribed for `symbol`. Cloned out so
 /// the tick path can iterate without holding the mutex.
 pub(crate) fn active_tfs_for(symbol: &str) -> Vec<String> {
-    let map = active_tfs().lock().expect("active_tfs poisoned");
+    let map = active_tfs().lock();
     map.get(symbol).map(|s| s.iter().cloned().collect()).unwrap_or_default()
 }
 
@@ -79,7 +79,7 @@ pub(crate) fn hub_subscribe<T>(hub: &'static Hub<T>, symbol: &str)
     -> tokio::sync::mpsc::UnboundedReceiver<T>
 {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-    let mut map = hub.lock().expect("ib_ws hub poisoned");
+    let mut map = hub.lock();
     map.entry(symbol.to_string()).or_default().push(tx);
     rx
 }
@@ -92,11 +92,11 @@ pub(crate) fn bar_hub_subscribe(symbol: &str, tf: &str)
 {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     {
-        let mut map = bar_hub().lock().expect("ib_ws bar_hub poisoned");
+        let mut map = bar_hub().lock();
         map.entry((symbol.to_string(), tf.to_string())).or_default().push(tx);
     }
     {
-        let mut tfs = active_tfs().lock().expect("active_tfs poisoned");
+        let mut tfs = active_tfs().lock();
         tfs.entry(symbol.to_string()).or_default().insert(tf.to_string());
     }
     rx
@@ -106,7 +106,7 @@ pub(crate) fn bar_hub_subscribe(symbol: &str, tf: &str)
 /// senders in the same pass. Cheap when nobody is subscribed (early return
 /// on empty entry; lock held for the duration of the inner `retain`).
 fn hub_fanout<T: Clone>(hub: &'static Hub<T>, symbol: &str, value: T) {
-    let mut map = hub.lock().expect("ib_ws hub poisoned");
+    let mut map = hub.lock();
     let Some(senders) = map.get_mut(symbol) else { return };
     if senders.is_empty() { return; }
     senders.retain(|s| s.send(value.clone()).is_ok());
@@ -121,7 +121,7 @@ fn hub_fanout<T: Clone>(hub: &'static Hub<T>, symbol: &str, value: T) {
 /// ticks into a bucket nobody is listening for.
 pub(crate) fn bar_hub_fanout(symbol: &str, tf: &str, value: BarWire) {
     let became_empty = {
-        let mut map = bar_hub().lock().expect("ib_ws bar_hub poisoned");
+        let mut map = bar_hub().lock();
         let key = (symbol.to_string(), tf.to_string());
         let Some(senders) = map.get_mut(&key) else { return };
         if senders.is_empty() { return; }
@@ -131,7 +131,7 @@ pub(crate) fn bar_hub_fanout(symbol: &str, tf: &str, value: BarWire) {
         empty
     };
     if became_empty {
-        let mut tfs = active_tfs().lock().expect("active_tfs poisoned");
+        let mut tfs = active_tfs().lock();
         if let Some(set) = tfs.get_mut(symbol) {
             set.remove(tf);
             if set.is_empty() { tfs.remove(symbol); }
@@ -643,15 +643,15 @@ mod hub_tests {
         let rx = bar_hub_subscribe(sym, "1m");
         // Before any fanout, sender is parked in the hub.
         let key = (sym.to_string(), "1m".to_string());
-        assert_eq!(bar_hub().lock().unwrap().get(&key).map(|v| v.len()), Some(1));
+        assert_eq!(bar_hub().lock().get(&key).map(|v| v.len()), Some(1));
 
         drop(rx);
         // Trigger a fanout — `retain` should prune the dead sender and the
         // empty entry is removed in the same pass.
         bar_hub_fanout(sym, "1m", mk_bar(sym, 300.0));
-        assert!(bar_hub().lock().unwrap().get(&key).is_none());
+        assert!(bar_hub().lock().get(&key).is_none());
         // And the active-TF set entry is gone too.
-        assert!(active_tfs().lock().unwrap().get(sym).is_none());
+        assert!(active_tfs().lock().get(sym).is_none());
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -786,6 +786,6 @@ mod hub_tests {
         // No panic, no hub entry created.
         bar_hub_fanout("TEST_FANOUT_GHOST", "1m", mk_bar("TEST_FANOUT_GHOST", 1.0));
         let key = ("TEST_FANOUT_GHOST".to_string(), "1m".to_string());
-        assert!(bar_hub().lock().unwrap().get(&key).is_none());
+        assert!(bar_hub().lock().get(&key).is_none());
     }
 }
