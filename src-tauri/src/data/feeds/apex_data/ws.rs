@@ -28,6 +28,21 @@ pub(crate) static PARSE_ERRORS:       AtomicU64 = AtomicU64::new(0);
 pub(crate) static RECONNECT_COUNT:    AtomicU32 = AtomicU32::new(0);
 pub(crate) static LAST_MESSAGE_AT_MS: AtomicI64 = AtomicI64::new(0);
 
+// ── Wave 7E: WS resilience ───────────────────────────────────────────────────
+// Heartbeat: send a tungstenite Ping every HEARTBEAT_SECS to keep the socket
+// warm and surface dead peers fast (OS TCP keep-alive is ≥2hr by default).
+// Watchdog: if no inbound frame for STALE_TIMEOUT_MS, force a reconnect.
+const HEARTBEAT_SECS: u64 = 30;
+const STALE_TIMEOUT_MS: i64 = 30_000;
+const WATCHDOG_TICK_SECS: u64 = 10;
+/// Flipped to `true` by the watchdog when the feed has been silent past
+/// `STALE_TIMEOUT_MS`. The inner WS loop observes this each select tick and
+/// breaks out so the outer reconnect logic takes over.
+pub(crate) static FORCE_RECONNECT: AtomicBool = AtomicBool::new(false);
+/// Last reason recorded by the watchdog so the provider's ConnectionState
+/// can surface a meaningful Backoff reason after a tick-stall reconnect.
+pub(crate) static LAST_STALL_AT_MS: AtomicI64 = AtomicI64::new(0);
+
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -157,6 +172,10 @@ pub fn start() {
 
     let mgr_bg = mgr.clone();
     runtime().spawn(async move { run_connection_loop(mgr_bg, rx_ctrl).await; });
+    // Wave 7E: tick-age watchdog. Runs independently of the WS loop; when it
+    // detects silence past STALE_TIMEOUT_MS it sets FORCE_RECONNECT, which the
+    // inner select breaks on, triggering the existing reconnect path.
+    runtime().spawn(async move { run_watchdog().await; });
 
     // Register a real Shutdown handler so process exit can drain cleanly.
     connectivity::register("apex_data.ws", Arc::new(ApexDataWsShutdown { mgr: mgr.clone() }));
@@ -311,6 +330,24 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
         broadcast(&mgr, &Frame::Connection(true));
         backoff.reset();
 
+        // Wave 7E: gap-fill replay through the SubscriptionManager on every
+        // reconnect (not the initial connect — RECONNECT_COUNT > 0 means we
+        // dropped). Spawned so we don't block the WS read loop.
+        if RECONNECT_COUNT.load(Ordering::Relaxed) > 0 {
+            tokio::spawn(async {
+                let mgr = crate::data::providers::registry::subscription_manager();
+                let n = mgr.gap_fill_on_reconnect_all().await;
+                if n > 0 {
+                    report(
+                        ErrorLevel::Info,
+                        "apex_data.ws",
+                        "gap_fill",
+                        format!("replayed {n} bars after reconnect"),
+                    );
+                }
+            });
+        }
+
         let (mut tx_ws, mut rx_ws) = ws.split();
 
         // Send initial subs
@@ -318,9 +355,35 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
             let _ = tx_ws.send(Message::Text(frame)).await;
         }
 
+        // Wave 7E: clear stale flag at connect-time so a previous stall doesn't
+        // immediately tear down the fresh socket.
+        FORCE_RECONNECT.store(false, Ordering::SeqCst);
+        let mut heartbeat = tokio::time::interval(Duration::from_secs(HEARTBEAT_SECS));
+        // Skip the immediate first tick — server hasn't had time to reply.
+        heartbeat.tick().await;
+        // Cheap check (every second) on the watchdog flag so we don't have to
+        // route the signal through a channel.
+        let mut force_check = tokio::time::interval(Duration::from_secs(1));
+        force_check.tick().await;
+
         // Main loop: pump inbound + handle control
         loop {
+            if FORCE_RECONNECT.swap(false, Ordering::SeqCst) {
+                report(ErrorLevel::Warn, "apex_data.ws", "force_reconnect", "watchdog tripped");
+                let _ = tx_ws.close().await;
+                break;
+            }
             tokio::select! {
+                _ = heartbeat.tick() => {
+                    // Tungstenite Ping — protocol-level keepalive; server's
+                    // pong arrives back through rx_ws and is counted in
+                    // LAST_MESSAGE_AT_MS via the default Message arm (no-op).
+                    if let Err(e) = tx_ws.send(Message::Ping(Vec::new().into())).await {
+                        report(ErrorLevel::Warn, "apex_data.ws", "ping_failed", e.to_string());
+                        break;
+                    }
+                }
+                _ = force_check.tick() => { /* loop top re-checks FORCE_RECONNECT */ }
                 msg = rx_ws.next() => {
                     match msg {
                         Some(Ok(Message::Binary(bytes))) => handle_binary(&mgr, &bytes),
@@ -355,6 +418,30 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
         if mgr.shutdown.load(Ordering::SeqCst) { break; }
         if let Some(d) = backoff.next_delay() {
             tokio::time::sleep(d).await;
+        }
+    }
+}
+
+/// Wave 7E: tick-age watchdog. Forces a reconnect when no inbound frame has
+/// arrived for `STALE_TIMEOUT_MS`. The inner WS select observes
+/// `FORCE_RECONNECT` and breaks; the outer reconnect loop dials again.
+async fn run_watchdog() {
+    let mut tick = tokio::time::interval(Duration::from_secs(WATCHDOG_TICK_SECS));
+    loop {
+        tick.tick().await;
+        let last = LAST_MESSAGE_AT_MS.load(Ordering::Relaxed);
+        let now = now_ms();
+        if last > 0 && now - last > STALE_TIMEOUT_MS && !FORCE_RECONNECT.load(Ordering::Relaxed) {
+            LAST_STALL_AT_MS.store(now, Ordering::Relaxed);
+            report(
+                ErrorLevel::Warn,
+                "apex_data.ws",
+                "tick_stalled",
+                format!("no frames for {}ms — forcing reconnect", now - last),
+            );
+            FORCE_RECONNECT.store(true, Ordering::SeqCst);
+            // Wave 7E: hook for SubscriptionManager gap-fill — fires on the
+            // *next* successful reconnect via the broadcast wired below.
         }
     }
 }

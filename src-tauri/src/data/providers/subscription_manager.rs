@@ -270,6 +270,11 @@ impl SubscriptionManager {
             }
         };
         if last_ts == 0 {
+            tracing::info!(
+                target: "providers.sub_mgr",
+                symbol, timeframe,
+                "gap_fill_on_reconnect: no last_seen_ts yet — skipping"
+            );
             return Ok(0);
         }
         let now_ms = std::time::SystemTime::now()
@@ -281,10 +286,41 @@ impl SubscriptionManager {
             .bars(symbol, timeframe, last_ts, now_ms, None)
             .await?;
         let n = bars.len();
+        tracing::info!(
+            target: "providers.sub_mgr",
+            symbol, timeframe, last_ts, now_ms, replayed = n,
+            "gap_fill_on_reconnect: replayed bars through fanout"
+        );
         for b in bars {
             let _ = fanout.send(b);
         }
         Ok(n)
+    }
+
+    /// Walk every active bar subscription and trigger a gap-fill replay.
+    ///
+    /// Wave 7E entry point — called from a WS feed's reconnect-success hook.
+    /// Returns total bars replayed across all subs. Errors per-sub are logged
+    /// and swallowed so one bad symbol can't block the others.
+    pub async fn gap_fill_on_reconnect_all(&self) -> usize {
+        let keys: Vec<(String, String)> = match self.bars.lock() {
+            Ok(g) => g.keys().cloned().collect(),
+            Err(_) => return 0,
+        };
+        let mut total = 0usize;
+        for (sym, tf) in keys {
+            match self.gap_fill_on_reconnect(&sym, &tf).await {
+                Ok(n) => total = total.saturating_add(n),
+                Err(e) => {
+                    tracing::warn!(
+                        target: "providers.sub_mgr",
+                        symbol = %sym, timeframe = %tf, err = %e,
+                        "gap_fill_on_reconnect_all: per-sub error swallowed"
+                    );
+                }
+            }
+        }
+        total
     }
 
     /// Walk every cached subscription; warn (via `tracing`) when activity is

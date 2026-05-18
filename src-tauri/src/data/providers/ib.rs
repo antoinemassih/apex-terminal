@@ -32,8 +32,16 @@ impl Default for IbProvider {
 impl Connection for IbProvider {
     fn name(&self) -> &str { "ib_ws" }
     fn state(&self) -> ConnectionState {
-        // No connection-state hook in feeds::ib_ws yet — return Idle. Wave-3
-        // can plumb the connect/disconnect events through here.
+        use std::sync::atomic::Ordering;
+        // Wave 7E: surface the watchdog stall through ConnectionState so the
+        // UI status dot can flip amber the moment we lose tick liveness.
+        if crate::data::feeds::ib_ws::FORCE_RECONNECT.load(Ordering::Relaxed) {
+            return ConnectionState::Backoff {
+                until: std::time::Instant::now() + std::time::Duration::from_secs(1),
+                attempt: crate::data::feeds::ib_ws::RECONNECT_COUNT.load(Ordering::Relaxed),
+                reason: "tick_stalled".into(),
+            };
+        }
         ConnectionState::Idle
     }
     fn metrics(&self) -> ConnectionMetrics {

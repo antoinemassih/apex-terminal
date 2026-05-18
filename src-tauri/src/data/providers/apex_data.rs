@@ -108,8 +108,17 @@ impl Connection for ApexDataProvider {
     fn name(&self) -> &str { "apex_data" }
 
     fn state(&self) -> ConnectionState {
-        // Best-effort mapping: real Backoff / Failed states ship in a later
-        // cleanup. For now, mirror the existing connected flag honestly.
+        use std::sync::atomic::Ordering;
+        // Wave 7E: watchdog can flip FORCE_RECONNECT before the WS loop has
+        // observed it. While that flag is set we are effectively in
+        // Backoff{reason="tick_stalled"} from the UI's perspective.
+        if ws::FORCE_RECONNECT.load(Ordering::Relaxed) {
+            return ConnectionState::Backoff {
+                until: std::time::Instant::now() + std::time::Duration::from_secs(1),
+                attempt: ws::RECONNECT_COUNT.load(Ordering::Relaxed),
+                reason: "tick_stalled".into(),
+            };
+        }
         if ws::is_connected() {
             let count = {
                 let r = match routes().lock() { Ok(g) => g, Err(_) => return ConnectionState::Authenticated };
