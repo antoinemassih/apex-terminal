@@ -3448,6 +3448,107 @@ pub(crate) fn update_simulation(panes: &mut [Chart]) {
     span_end();
 }
 
+/// Apply a batch of cross-pane `PaneEvent`s to the pane vector.
+///
+/// Pulled out of `App::about_to_wait` so the propagation contract is
+/// testable in isolation. Each `(event, origin)` pair from the drained
+/// SubscriptionBus is applied to every sibling pane whose `link_group`
+/// matches (or to all panes for `BROADCAST_GROUP`), skipping the
+/// originating pane by index.
+///
+/// `group_count` validates non-broadcast groups against the
+/// `Watchlist::link_groups` vector length, mirroring the prior
+/// imperative loop's guard against stale group ids. `apply_bars_fetch`
+/// is `true` in production (kicks off background bar loads); tests
+/// set it to `false` to avoid the network side-effect.
+///
+/// Behavior parity with the prior imperative detector:
+/// - Sibling whose current symbol/timeframe already matches is skipped.
+/// - Sibling-symbol-change preserves timeframe, indicators, drawings
+///   (only the bars + meta swap).
+/// - Sibling-timeframe-change mirrors the per-pane tab-cache stash +
+///   cache-hit restore from `App::about_to_wait`.
+pub(crate) fn apply_pane_events(
+    panes: &mut [Chart],
+    events: &[(crate::state::PaneEvent, Option<usize>)],
+    group_count: u8,
+    apply_bars_fetch: bool,
+) {
+    use crate::state::{PaneEvent, BROADCAST_GROUP};
+    for (event, origin) in events {
+        match event {
+            PaneEvent::SymbolChanged { group, symbol } => {
+                let is_broadcast = *group == BROADCAST_GROUP;
+                if !is_broadcast && (*group == 0 || *group > group_count) {
+                    continue;
+                }
+                for (pi, pane) in panes.iter_mut().enumerate() {
+                    if Some(pi) == *origin { continue; }
+                    let matches = is_broadcast || pane.link_group == *group;
+                    if !matches { continue; }
+                    if pane.symbol == *symbol { continue; }
+                    let tf = pane.timeframe.clone();
+                    pane.symbol = symbol.clone();
+                    pane.symbol_meta = crate::foundation::types::symbol_or_guess(symbol);
+                    pane.bars.clear();
+                    pane.timestamps.clear();
+                    pane.indicator_bar_count = 0;
+                    pane.vol_analytics_computed = 0;
+                    pane.history_loading = false;
+                    pane.history_exhausted = false;
+                    pane.drawings_requested = false;
+                    pane.drawings.clear();
+                    if apply_bars_fetch {
+                        fetch_bars_background(symbol.clone(), tf);
+                    }
+                }
+            }
+            PaneEvent::TimeframeChanged { group, timeframe } => {
+                let is_broadcast = *group == BROADCAST_GROUP;
+                if !is_broadcast && (*group == 0 || *group > group_count) {
+                    continue;
+                }
+                for (pi, pane) in panes.iter_mut().enumerate() {
+                    if Some(pi) == *origin { continue; }
+                    let matches = is_broadcast || pane.link_group == *group;
+                    if !matches { continue; }
+                    if pane.timeframe == *timeframe { continue; }
+                    if !pane.symbol.is_empty() && !pane.bars.is_empty() {
+                        evict_oldest_if_full(&mut pane.tab_cache);
+                        pane.tab_cache.insert(
+                            (pane.symbol.clone(), pane.timeframe.clone()),
+                            (pane.bars.clone(), pane.timestamps.clone(), std::time::Instant::now()),
+                        );
+                    }
+                    pane.timeframe = timeframe.clone();
+                    let sym = pane.symbol.clone();
+                    let tf = pane.timeframe.clone();
+                    let cache_hit = pane.tab_cache.get(&(sym.clone(), tf.clone())).cloned();
+                    if let Some((cb, cts, _)) = cache_hit {
+                        pane.bars = cb;
+                        pane.timestamps = cts;
+                        pane.indicator_bar_count = 0;
+                    } else {
+                        pane.bars.clear();
+                        pane.timestamps.clear();
+                    }
+                    pane.indicators.clear();
+                    pane.drawings.clear();
+                    pane.drawings_requested = false;
+                    pane.history_loading = false;
+                    pane.history_exhausted = false;
+                    if apply_bars_fetch {
+                        fetch_bars_background(sym, tf);
+                    }
+                }
+            }
+            PaneEvent::LayoutChanged | PaneEvent::BroadcastEnabled { .. } => {
+                // No subscribers today; queue drain still removes them.
+            }
+        }
+    }
+}
+
 /// Phase 4: Apply theme, font scale, cache account data, get window ref.
 pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchlist: &Watchlist) -> (usize, Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>, Option<Arc<Window>>) {
     let theme_idx = panes[active_pane].theme_idx;
@@ -5793,82 +5894,13 @@ impl ApplicationHandler for App {
             // IDs from prior sessions (or the old click-cycle UI) would
             // silently link panes the user never explicitly grouped.
             let group_count = cw.watchlist.link_groups.len() as u8;
-            let events = cw.watchlist.subscriptions.drain();
-            for (i, event) in events.into_iter().enumerate() {
-                let origin = pane_origins.get(i).copied().flatten();
-                match event {
-                    crate::state::PaneEvent::SymbolChanged { group, symbol } => {
-                        let is_broadcast = group == crate::state::BROADCAST_GROUP;
-                        // Validate non-broadcast groups against link_groups.len()
-                        if !is_broadcast && (group == 0 || group > group_count) {
-                            continue;
-                        }
-                        for (pi, pane) in cw.panes.iter_mut().enumerate() {
-                            if Some(pi) == origin { continue; }
-                            let matches = is_broadcast || pane.link_group == group;
-                            if !matches { continue; }
-                            if pane.symbol == symbol { continue; }
-                            // Preserve timeframe, indicators, etc. — only swap symbol + bars.
-                            let tf = pane.timeframe.clone();
-                            pane.symbol = symbol.clone();
-                            pane.symbol_meta = crate::foundation::types::symbol_or_guess(&symbol);
-                            pane.bars.clear();
-                            pane.timestamps.clear();
-                            pane.indicator_bar_count = 0;
-                            pane.vol_analytics_computed = 0;
-                            pane.history_loading = false;
-                            pane.history_exhausted = false;
-                            pane.drawings_requested = false;
-                            pane.drawings.clear();
-                            fetch_bars_background(symbol.clone(), tf);
-                        }
-                    }
-                    crate::state::PaneEvent::TimeframeChanged { group, timeframe } => {
-                        let is_broadcast = group == crate::state::BROADCAST_GROUP;
-                        if !is_broadcast && (group == 0 || group > group_count) {
-                            continue;
-                        }
-                        for (pi, pane) in cw.panes.iter_mut().enumerate() {
-                            if Some(pi) == origin { continue; }
-                            let matches = is_broadcast || pane.link_group == group;
-                            if !matches { continue; }
-                            if pane.timeframe == timeframe { continue; }
-                            // Mirror the per-pane tf-change path: stash old bars
-                            // into the tab cache, clear, refetch.
-                            if !pane.symbol.is_empty() && !pane.bars.is_empty() {
-                                evict_oldest_if_full(&mut pane.tab_cache);
-                                pane.tab_cache.insert(
-                                    (pane.symbol.clone(), pane.timeframe.clone()),
-                                    (pane.bars.clone(), pane.timestamps.clone(), std::time::Instant::now()),
-                                );
-                            }
-                            pane.timeframe = timeframe.clone();
-                            let sym = pane.symbol.clone();
-                            let tf = pane.timeframe.clone();
-                            let cache_hit = pane.tab_cache.get(&(sym.clone(), tf.clone())).cloned();
-                            if let Some((cb, cts, _)) = cache_hit {
-                                pane.bars = cb;
-                                pane.timestamps = cts;
-                                pane.indicator_bar_count = 0;
-                            } else {
-                                pane.bars.clear();
-                                pane.timestamps.clear();
-                            }
-                            pane.indicators.clear();
-                            pane.drawings.clear();
-                            pane.drawings_requested = false;
-                            pane.history_loading = false;
-                            pane.history_exhausted = false;
-                            fetch_bars_background(sym, tf);
-                        }
-                    }
-                    // Layout / broadcast-toggle events are queued for
-                    // future subscribers (none today). The drain still
-                    // empties the queue so events don't accumulate.
-                    crate::state::PaneEvent::LayoutChanged
-                    | crate::state::PaneEvent::BroadcastEnabled { .. } => {}
-                }
-            }
+            let drained = cw.watchlist.subscriptions.drain();
+            let paired: Vec<(crate::state::PaneEvent, Option<usize>)> = drained
+                .into_iter()
+                .enumerate()
+                .map(|(i, e)| (e, pane_origins.get(i).copied().flatten()))
+                .collect();
+            apply_pane_events(&mut cw.panes, &paired, group_count, true);
 
             // Request redraw only when something actually needs to repaint.
             // Egui tracks pending repaint requests internally (animations,
@@ -6794,3 +6826,158 @@ mod tab_cache_lru_tests {
     }
 }
 
+
+#[cfg(test)]
+mod pane_event_apply_tests {
+    //! Wave 12c: contract tests for `apply_pane_events`. The render
+    //! loop in `App::about_to_wait` drains the SubscriptionBus once per
+    //! frame and delegates to this helper; these tests exercise it in
+    //! isolation (no winit / wgpu / network) so the propagation
+    //! contract is locked in.
+
+    use super::*;
+    use crate::state::{PaneEvent, BROADCAST_GROUP};
+
+    fn chart(symbol: &str, tf: &str, link_group: u8) -> Chart {
+        let mut c = Chart::new_with(symbol, tf);
+        c.link_group = link_group;
+        // Give the pane non-empty bars so timeframe-change's tab-cache
+        // stash branch is exercised; symbol-change tests don't care.
+        c.bars.push(Bar { open: 1.0, high: 1.0, low: 1.0, close: 1.0, volume: 1.0, _pad: 0.0 });
+        c.timestamps.push(0);
+        c
+    }
+
+    #[test]
+    fn symbol_change_propagates_to_link_group_siblings_only() {
+        // 4 panes: pane 0 in group 1, panes 1+2 in group 1, pane 3 unlinked.
+        let mut panes = vec![
+            chart("AAPL", "5m", 1), // originator
+            chart("MSFT", "5m", 1),
+            chart("NVDA", "5m", 1),
+            chart("TSLA", "5m", 0), // unlinked
+        ];
+        let events = vec![(
+            PaneEvent::SymbolChanged { group: 1, symbol: "AAPL".into() },
+            Some(0usize),
+        )];
+        // group_count=2 (groups 1..=2 are valid). apply_bars_fetch=false
+        // so we don't kick a background HTTP request from tests.
+        apply_pane_events(&mut panes, &events, 2, false);
+
+        assert_eq!(panes[0].symbol, "AAPL", "originator unchanged");
+        assert_eq!(panes[1].symbol, "AAPL", "sibling in group 1 updated");
+        assert_eq!(panes[2].symbol, "AAPL", "sibling in group 1 updated");
+        assert_eq!(panes[3].symbol, "TSLA", "unlinked pane untouched");
+
+        // Sibling panes had bars cleared + indicator counters reset
+        // (the contract the imperative loop also enforced).
+        assert!(panes[1].bars.is_empty());
+        assert!(panes[2].bars.is_empty());
+        assert_eq!(panes[1].indicator_bar_count, 0);
+        assert_eq!(panes[2].indicator_bar_count, 0);
+
+        // Originator's own bars are untouched by apply (the per-pane
+        // loop in about_to_wait handles the originator separately).
+        assert!(!panes[0].bars.is_empty());
+        assert!(!panes[3].bars.is_empty());
+    }
+
+    #[test]
+    fn broadcast_group_applies_to_every_pane_except_origin() {
+        let mut panes = vec![
+            chart("AAPL", "5m", 0),
+            chart("MSFT", "5m", 1),
+            chart("NVDA", "5m", 2),
+            chart("TSLA", "5m", 0),
+        ];
+        let events = vec![(
+            PaneEvent::SymbolChanged { group: BROADCAST_GROUP, symbol: "SPY".into() },
+            Some(0usize),
+        )];
+        // group_count=0: real groups would be rejected, but BROADCAST_GROUP
+        // bypasses validation by design.
+        apply_pane_events(&mut panes, &events, 0, false);
+
+        assert_eq!(panes[0].symbol, "AAPL", "originator skipped");
+        assert_eq!(panes[1].symbol, "SPY");
+        assert_eq!(panes[2].symbol, "SPY");
+        assert_eq!(panes[3].symbol, "SPY");
+    }
+
+    #[test]
+    fn invalid_group_id_is_dropped() {
+        // group=5 but only 2 link groups exist → don't propagate to anyone.
+        let mut panes = vec![
+            chart("AAPL", "5m", 5),
+            chart("MSFT", "5m", 5),
+        ];
+        let events = vec![(
+            PaneEvent::SymbolChanged { group: 5, symbol: "ZZZ".into() },
+            Some(0usize),
+        )];
+        apply_pane_events(&mut panes, &events, 2, false);
+        assert_eq!(panes[0].symbol, "AAPL");
+        assert_eq!(panes[1].symbol, "MSFT", "stale group id must not propagate");
+    }
+
+    #[test]
+    fn zero_group_id_is_dropped() {
+        // group=0 means "unlinked" — should never propagate via apply.
+        let mut panes = vec![
+            chart("AAPL", "5m", 0),
+            chart("MSFT", "5m", 0),
+        ];
+        let events = vec![(
+            PaneEvent::SymbolChanged { group: 0, symbol: "ZZZ".into() },
+            Some(0usize),
+        )];
+        apply_pane_events(&mut panes, &events, 2, false);
+        assert_eq!(panes[0].symbol, "AAPL");
+        assert_eq!(panes[1].symbol, "MSFT", "group=0 must not propagate");
+    }
+
+    #[test]
+    fn matching_symbol_sibling_is_skipped() {
+        // Sibling already has the target symbol — apply should be a no-op
+        // for it (preserves the prior loop's `pane.symbol != sym` guard).
+        let mut panes = vec![
+            chart("AAPL", "5m", 1),
+            chart("AAPL", "5m", 1),
+        ];
+        let events = vec![(
+            PaneEvent::SymbolChanged { group: 1, symbol: "AAPL".into() },
+            Some(0usize),
+        )];
+        apply_pane_events(&mut panes, &events, 2, false);
+        assert_eq!(panes[1].symbol, "AAPL");
+        assert!(!panes[1].bars.is_empty(), "matching-symbol sibling: bars preserved");
+    }
+
+    #[test]
+    fn timeframe_change_propagates_to_link_group() {
+        let mut panes = vec![
+            chart("AAPL", "5m", 1),
+            chart("MSFT", "5m", 1),
+            chart("TSLA", "5m", 0),
+        ];
+        let events = vec![(
+            PaneEvent::TimeframeChanged { group: 1, timeframe: "1h".into() },
+            Some(0usize),
+        )];
+        apply_pane_events(&mut panes, &events, 2, false);
+        assert_eq!(panes[0].timeframe, "5m", "originator unchanged");
+        assert_eq!(panes[1].timeframe, "1h", "sibling group 1 updated");
+        assert_eq!(panes[2].timeframe, "5m", "unlinked pane untouched");
+    }
+
+    #[test]
+    fn layout_event_drains_without_effect() {
+        let mut panes = vec![chart("AAPL", "5m", 1)];
+        let events = vec![(PaneEvent::LayoutChanged, None)];
+        apply_pane_events(&mut panes, &events, 2, false);
+        // No fields changed — but the drain still consumed the event.
+        assert_eq!(panes[0].symbol, "AAPL");
+        assert_eq!(panes[0].timeframe, "5m");
+    }
+}
