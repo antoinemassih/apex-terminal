@@ -849,6 +849,12 @@ pub enum ChartCommand {
         prev_close: f32,
         volume: u64,
     },
+    /// Heatmap cold-start: full-market grouped daily bars mapped to
+    /// `(symbol, change_pct, dollar_volume)`. Sent once at startup; live
+    /// updates flow through the existing watchlist `set_price` path.
+    HeatmapBars {
+        cells: Vec<(String, f32, f64)>,
+    },
     /// Signal drawings from analysis server
     SignalDrawings {
         symbol: String,

@@ -1,16 +1,27 @@
 //! Heatmap pane — market/sector treemap visualization.
+//!
+//! Cold-start: pulls one day of full-market grouped bars from ApexData
+//! (`/api/stocks/grouped/:date`) and treemaps them by dollar-volume.
+//! Live updates ride the existing watchlist `set_price` path — for any
+//! cell whose symbol is also in the watchlist, `change_pct` is rederived
+//! from `(price - prev_close) / prev_close * 100` on each frame.
 
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use super::super::widgets::headers::PaneHeader;
 
-/// Placeholder sector heatmap data.
+/// Refresh the grouped-daily backing snapshot at most once an hour — the
+/// data only changes on session close and intraday changes already flow
+/// through the watchlist price path.
+const HEATMAP_REFRESH_INTERVAL_SECS: u64 = 3600;
+
+/// Treemap cell built from the backing data on each frame.
 struct HeatmapCell {
-    symbol: &'static str,
+    symbol: String,
     change_pct: f32,
-    market_cap: f64, // determines cell size
-    sector: &'static str,
+    /// Dollar volume (vw * v) — proxy for market cap weight in the treemap.
+    weight: f64,
 }
 
 pub(crate) fn render(
@@ -42,35 +53,52 @@ pub(crate) fn render(
         header_ui.add(PaneHeader::new("Market Heatmap").theme(t));
     }
 
-    // Placeholder data — S&P 500 top holdings by sector
-    let cells = vec![
-        HeatmapCell { symbol: "AAPL", change_pct: 1.2, market_cap: 3200.0, sector: "Tech" },
-        HeatmapCell { symbol: "MSFT", change_pct: 0.8, market_cap: 3100.0, sector: "Tech" },
-        HeatmapCell { symbol: "NVDA", change_pct: -2.1, market_cap: 2800.0, sector: "Tech" },
-        HeatmapCell { symbol: "GOOG", change_pct: 0.3, market_cap: 2200.0, sector: "Tech" },
-        HeatmapCell { symbol: "AMZN", change_pct: 1.5, market_cap: 2000.0, sector: "Consumer" },
-        HeatmapCell { symbol: "META", change_pct: -0.6, market_cap: 1400.0, sector: "Tech" },
-        HeatmapCell { symbol: "BRK.B", change_pct: 0.1, market_cap: 900.0, sector: "Finance" },
-        HeatmapCell { symbol: "JPM", change_pct: -0.3, market_cap: 600.0, sector: "Finance" },
-        HeatmapCell { symbol: "V", change_pct: 0.5, market_cap: 550.0, sector: "Finance" },
-        HeatmapCell { symbol: "JNJ", change_pct: -0.8, market_cap: 400.0, sector: "Health" },
-        HeatmapCell { symbol: "UNH", change_pct: 1.1, market_cap: 500.0, sector: "Health" },
-        HeatmapCell { symbol: "XOM", change_pct: -1.5, market_cap: 450.0, sector: "Energy" },
-        HeatmapCell { symbol: "CVX", change_pct: -0.9, market_cap: 300.0, sector: "Energy" },
-        HeatmapCell { symbol: "PG", change_pct: 0.2, market_cap: 380.0, sector: "Consumer" },
-        HeatmapCell { symbol: "HD", change_pct: 0.7, market_cap: 350.0, sector: "Consumer" },
-        HeatmapCell { symbol: "DIS", change_pct: -1.8, market_cap: 200.0, sector: "Comms" },
-        HeatmapCell { symbol: "NFLX", change_pct: 2.3, market_cap: 280.0, sector: "Comms" },
-        HeatmapCell { symbol: "LLY", change_pct: 0.9, market_cap: 700.0, sector: "Health" },
-        HeatmapCell { symbol: "AVGO", change_pct: -0.4, market_cap: 650.0, sector: "Tech" },
-        HeatmapCell { symbol: "TSLA", change_pct: 3.1, market_cap: 800.0, sector: "Consumer" },
-    ];
+    // ── Cold-start / refresh ───────────────────────────────────────────────
+    let needs_fetch = match watchlist.heatmap_last_fetch {
+        None => true,
+        Some(t) => t.elapsed().as_secs() >= HEATMAP_REFRESH_INTERVAL_SECS,
+    };
+    if needs_fetch {
+        watchlist.heatmap_last_fetch = Some(std::time::Instant::now());
+        super::super::super::io::fetch::fetch_heatmap_cold_start();
+    }
+
+    // ── Build display cells from backing snapshot ──────────────────────────
+    // Pick the top-N by dollar volume so the treemap stays legible. Override
+    // change_pct with live watchlist data when present.
+    const TOP_N: usize = 60;
+    let mut cells: Vec<HeatmapCell> = {
+        let mut src: Vec<(String, f32, f64)> = watchlist.heatmap_cells.clone();
+        src.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+        src.truncate(TOP_N);
+        src.into_iter().map(|(symbol, change_pct, weight)| {
+            // Live override: if the watchlist has a fresh price for this symbol,
+            // recompute change_pct from current price / prev_close.
+            let live_change = watchlist.get_change_pct(&symbol);
+            HeatmapCell {
+                symbol,
+                change_pct: live_change.unwrap_or(change_pct),
+                weight,
+            }
+        }).collect()
+    };
+
+    if cells.is_empty() {
+        // No data yet — empty pane (cold-start fetch is in flight).
+        painter.text(rect.center(), egui::Align2::CENTER_CENTER,
+            "Loading heatmap…", egui::FontId::proportional(12.0), t.dim);
+        return;
+    }
+
+    // Best-effort stable layout: sort by weight desc (already done above), then
+    // pass through to the slice-and-dice layout below.
+    let _ = &mut cells;
 
     // Simple treemap layout — squarified algorithm simplified
     let map_rect = egui::Rect::from_min_max(
         egui::pos2(rect.left() + 8.0, rect.top() + header_h),
         egui::pos2(rect.right() - 8.0, rect.bottom() - 8.0));
-    let total_cap: f64 = cells.iter().map(|c| c.market_cap).sum();
+    let total_cap: f64 = cells.iter().map(|c| c.weight).sum();
     let map_area = map_rect.width() * map_rect.height();
 
     // Layout cells using simple slice-and-dice
@@ -78,7 +106,7 @@ pub(crate) fn render(
     let mut horizontal = remaining.width() > remaining.height();
 
     for (i, cell) in cells.iter().enumerate() {
-        let frac = (cell.market_cap / total_cap) as f32;
+        let frac = if total_cap > 0.0 { (cell.weight / total_cap) as f32 } else { 0.0 };
         let cell_area = map_area * frac;
 
         let cell_rect = if horizontal {
@@ -133,7 +161,7 @@ pub(crate) fn render(
                 else if inset.width() > 50.0 { 10.0 }
                 else { 7.0 };
             painter.text(inset.center() - egui::vec2(0.0, 6.0), egui::Align2::CENTER_CENTER,
-                cell.symbol, egui::FontId::proportional(font_size), t.text);
+                &cell.symbol, egui::FontId::proportional(font_size), t.text);
             // Change %
             if inset.height() > 30.0 {
                 painter.text(inset.center() + egui::vec2(0.0, 8.0), egui::Align2::CENTER_CENTER,

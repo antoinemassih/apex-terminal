@@ -282,6 +282,40 @@ pub fn fetch_holdings(ticker: &str) -> Option<Vec<(String, Option<f32>)>> {
     Some(resp.holdings.into_iter().map(|h| (h.symbol, h.weight)).collect())
 }
 
+// ── §5.6 stocks bulk / movers / grouped ────────────────────────────────────
+
+/// `GET /api/stocks/snap/bulk?tickers=AAPL,MSFT,...`
+/// Returns the full Polygon snapshot envelope for each ticker. Empty list →
+/// empty `Vec`; callers should *not* pass more than a few hundred tickers
+/// (URL length limit at the gateway).
+pub fn snap_bulk(tickers: &[String]) -> Option<Vec<StockSnapshot>> {
+    if tickers.is_empty() { return Some(Vec::new()); }
+    // Upper-case and dedup defensively — backend is strict about ticker shape.
+    let mut seen = std::collections::HashSet::new();
+    let joined: String = tickers.iter()
+        .map(|s| s.to_uppercase())
+        .filter(|s| seen.insert(s.clone()))
+        .collect::<Vec<_>>()
+        .join(",");
+    get(&format!("/api/stocks/snap/bulk?tickers={joined}"))
+}
+
+/// `GET /api/stocks/movers?direction=gainers|losers` — Polygon top-20 movers.
+/// `direction` must be "gainers" or "losers"; anything else is rejected by
+/// the backend (and short-circuited here to `None`).
+pub fn stocks_movers(direction: &str) -> Option<Vec<StockSnapshot>> {
+    let dir = direction.trim().to_lowercase();
+    if dir != "gainers" && dir != "losers" { return None; }
+    get(&format!("/api/stocks/movers?direction={dir}"))
+}
+
+/// `GET /api/stocks/grouped/:date` — full-market 1d grouped bars for the
+/// given YYYY-MM-DD session date. Returns `None` if the backend has no data
+/// (weekend / holiday / future date / not-yet-published).
+pub fn stocks_grouped_daily(date: &str) -> Option<Vec<GroupedDailyBar>> {
+    get(&format!("/api/stocks/grouped/{date}"))
+}
+
 /// Liveness — text "ok". Returns true on HTTP 200.
 pub fn is_live() -> bool {
     let url = format!("{}/api/health/live", apex_url());

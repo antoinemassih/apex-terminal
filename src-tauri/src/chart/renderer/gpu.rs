@@ -3257,6 +3257,9 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                     });
                 }
             }
+            ChartCommand::HeatmapBars { cells } => {
+                watchlist.heatmap_cells = cells.clone();
+            }
             ChartCommand::TapeEntry { symbol, price, qty, time, is_buy } => {
                 watchlist.tape_entries.push(TapeRow {
                     symbol: symbol.clone(), price: *price, qty: *qty, time: *time, is_buy: *is_buy,
@@ -4224,6 +4227,10 @@ pub(crate) struct Watchlist {
     pub(crate) scanner_results: Vec<ScanResult>, // raw bulk quote pool
     pub(crate) scanner_last_fetch: Option<std::time::Instant>,
     pub(crate) scanner_fetching: bool,
+    // Heatmap pane — cold-started from /api/stocks/grouped/:date.
+    // Each cell: (symbol, change_pct, dollar_volume).
+    pub(crate) heatmap_cells: Vec<(String, f32, f64)>,
+    pub(crate) heatmap_last_fetch: Option<std::time::Instant>,
     // Custom scanner builder
     // Spread Builder panel
     pub(crate) spread_open: bool,
@@ -4393,6 +4400,8 @@ impl Watchlist {
                scanner_results: vec![],
                scanner_last_fetch: None,
                scanner_fetching: false,
+               heatmap_cells: vec![],
+               heatmap_last_fetch: None,
                scanner_new_name: String::new(),
                scanner_new_min_change: -999.0,
                scanner_new_max_change: 999.0,
@@ -4479,6 +4488,19 @@ impl Watchlist {
                 item.loaded = true;
             }
         }
+    }
+
+    /// Look up live change% for `sym` from the watchlist's loaded items
+    /// (returns None if the symbol isn't in the watchlist or has no prev_close).
+    pub(crate) fn get_change_pct(&self, sym: &str) -> Option<f32> {
+        for sec in &self.sections {
+            if let Some(item) = sec.items.iter().find(|i| i.symbol == sym) {
+                if item.loaded && item.prev_close > 0.0 {
+                    return Some((item.price - item.prev_close) / item.prev_close * 100.0);
+                }
+            }
+        }
+        None
     }
 
     /// Collect all symbols across all sections.
@@ -5303,6 +5325,9 @@ impl ApplicationHandler for App {
                                     symbol: symbol.clone(), price, change_pct, volume,
                                 });
                             }
+                        }
+                        ChartCommand::HeatmapBars { ref cells } => {
+                            cw.watchlist.heatmap_cells = cells.clone();
                         }
                         ChartCommand::TapeEntry { ref symbol, price, qty, time, is_buy } => {
                             cw.watchlist.tape_entries.push(TapeRow {

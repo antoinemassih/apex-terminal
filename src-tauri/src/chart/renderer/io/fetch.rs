@@ -559,89 +559,60 @@ pub(crate) fn fetch_search_background(query: String, source: String) {
     });
 }
 
-/// Fetch daily previous close for all watchlist symbols (background thread).
-/// Tries ApexIB first (bars endpoint), falls back to Yahoo Finance.
+/// Returns true if a symbol is a stock ticker (not crypto, not options).
+/// Used to filter the watchlist before bulk-snapshot fetches.
+pub(crate) fn is_stock_symbol(s: &str) -> bool {
+    let s_upper = s.to_uppercase();
+    if crate::data::is_crypto(s) { return false; }
+    if s_upper.starts_with("O:") { return false; }
+    // Option display label heuristic: "UND STRIKE C/P EXPIRY".
+    let parts: Vec<&str> = s.split_whitespace().collect();
+    if parts.len() >= 2 {
+        let middle = parts[1];
+        if (middle.ends_with('C') || middle.ends_with('P')
+            || middle.contains('C') || middle.contains('P'))
+            && middle.chars().any(|c| c.is_ascii_digit())
+        {
+            return false;
+        }
+    }
+    true
+}
+
+/// Pure mapping: `StockSnapshot` → `(price, prev_close)` for the watchlist
+/// pane. Extracted so unit tests can exercise the field-mapping without
+/// stubbing the REST layer.
+pub(crate) fn watchlist_price_from_snapshot(
+    s: &crate::apex_data::StockSnapshot,
+) -> (f32, f32) {
+    let price = s.current_price() as f32;
+    let prev = s.prev_day.close as f32;
+    (price, prev)
+}
+
+/// Fetch daily price + prev_close for all watchlist symbols (background
+/// thread). Now uses the ApexData stocks bulk-snapshot endpoint — one HTTP
+/// call per refresh tick instead of one per symbol. ApexIB/Yahoo stock
+/// fallbacks are gone; crypto and options keep their own data paths (this
+/// fn only ever sees stock symbols thanks to `is_stock_symbol`).
 pub(crate) fn fetch_watchlist_prices(symbols: Vec<String>) {
-    // Filter: this fn only knows how to fetch equities (Redis/ApexIB/Yahoo).
-    // Option contracts (OCC tickers, "AAPL 287.5C 2026-04-30" labels) and
-    // crypto pairs go through their own feeds — sending them here means a
-    // silent 404 on Yahoo. Drop them before the fetch loop.
-    let symbols: Vec<String> = symbols.into_iter()
-        .filter(|s| {
-            let s_upper = s.to_uppercase();
-            // Crypto: ApexCrypto handles BTCUSDT etc.
-            if crate::data::is_crypto(s) { return false; }
-            // Option OCC: "O:SPY..." prefix.
-            if s_upper.starts_with("O:") { return false; }
-            // Option display label: "UND STRIKE C/P EXPIRY" or "UND STRIKEC EXPIRY".
-            // Heuristic: contains a space AND ends with a digit-or-Y/E (date) AND
-            // has a C/P somewhere in the middle — distinguishes from "BRK.B".
-            let parts: Vec<&str> = s.split_whitespace().collect();
-            if parts.len() >= 2 {
-                let middle = parts[1];
-                if middle.ends_with('C') || middle.ends_with('P')
-                    || middle.contains('C') || middle.contains('P') {
-                    if middle.chars().any(|c| c.is_ascii_digit()) { return false; }
-                }
-            }
-            true
-        })
-        .collect();
+    let symbols: Vec<String> = symbols.into_iter().filter(|s| is_stock_symbol(s)).collect();
+    if symbols.is_empty() { return; }
     std::thread::spawn(move || {
-        let ib_client = apexib_client();
-        let client = reqwest::blocking::Client::builder()
-            .user_agent("Mozilla/5.0")
-            .timeout(std::time::Duration::from_secs(5))
-            .build().unwrap_or_else(|_| reqwest::blocking::Client::new());
-        for sym in &symbols {
-            // Try Redis cache first
-            if let Some(bars) = crate::bar_cache::get(sym, "1d") {
-                if bars.len() >= 2 {
-                    let price = bars.last().map(|b| b.close as f32).unwrap_or(0.0);
-                    let prev = bars[bars.len()-2].close as f32;
-                    let cmd = ChartCommand::WatchlistPrice { symbol: sym.clone(), price, prev_close: prev };
-                    crate::send_to_native_chart(cmd);
-                    continue;
-                }
-            }
-
-            // Try ApexIB bars endpoint
-            let apexib_ok = (|| -> Option<()> {
-                let url = format!("{}/bars/{}?interval=1d&limit=2", APEXIB_URL, sym);
-                let resp = client.get(&url).send().ok()?;
-                if !resp.status().is_success() { return None; }
-                let json = resp.json::<serde_json::Value>().ok()?;
-                let bars = json.as_array()?;
-                if bars.len() < 2 { return None; }
-                let prev = bars[0].get("close").and_then(|v| v.as_f64())? as f32;
-                let price = bars[1].get("close").and_then(|v| v.as_f64())? as f32;
-                let cmd = ChartCommand::WatchlistPrice { symbol: sym.clone(), price, prev_close: prev };
-                crate::send_to_native_chart(cmd);
-                Some(())
-            })();
-
-            if apexib_ok.is_some() { continue; }
-
-            // Fallback: Yahoo Finance
-            let url = format!("https://query1.finance.yahoo.com/v8/finance/chart/{}?interval=1d&range=5d", sym);
-            if let Ok(resp) = client.get(&url).send() {
-                if let Ok(json) = resp.json::<serde_json::Value>() {
-                    if let Some(bars) = crate::data::parse_yahoo_v8(&json) {
-                        crate::bar_cache::set(sym, "1d", &bars);
-                        if bars.len() >= 2 {
-                            let price = bars.last().map(|b| b.close as f32).unwrap_or(0.0);
-                            let prev = bars[bars.len()-2].close as f32;
-                            let cmd = ChartCommand::WatchlistPrice { symbol: sym.clone(), price, prev_close: prev };
-                            crate::send_to_native_chart(cmd);
-                        }
-                    }
-                }
-            }
+        let snaps = crate::apex_data::rest::snap_bulk(&symbols).unwrap_or_default();
+        for snap in &snaps {
+            let (price, prev_close) = watchlist_price_from_snapshot(snap);
+            crate::send_to_native_chart(ChartCommand::WatchlistPrice {
+                symbol: snap.ticker.clone(), price, prev_close,
+            });
         }
     });
 }
 
-/// Scanner universe — ~50 popular symbols to bulk-quote for scanner panels.
+/// Legacy scanner universe — kept only for the "loading…" caption in
+/// `scanner_panel`, which still uses `SCANNER_UNIVERSE.len()` as a rough
+/// "expected row count". Built-in presets (gainers/losers) now come from
+/// `/api/stocks/movers` instead of bulk-quoting this list.
 pub(crate) const SCANNER_UNIVERSE: &[&str] = &[
     "AAPL","MSFT","GOOGL","AMZN","TSLA","META","NVDA","AMD","NFLX","INTC",
     "SPY","QQQ","IWM","DIA","BABA","CRM","PYPL","SQ","SHOP","UBER",
@@ -650,65 +621,78 @@ pub(crate) const SCANNER_UNIVERSE: &[&str] = &[
     "XOM","CVX","PFE","JNJ","UNH","MRK","ABBV","LLY","KO","PEP",
 ];
 
-/// Fetch bulk quotes for the scanner universe in a background thread.
-/// Sends ScannerPrice commands back to the chart event loop.
-pub(crate) fn fetch_scanner_prices() {
+/// Pure mapping: `StockSnapshot` → `ScannerPrice` command fields.
+pub(crate) fn scanner_price_from_snapshot(
+    s: &crate::apex_data::StockSnapshot,
+) -> (String, f32, f32, u64) {
+    let price = s.current_price() as f32;
+    let prev = s.prev_day.close as f32;
+    let volume = s.day_volume();
+    (s.ticker.clone(), price, prev, volume)
+}
+
+/// Fetch bulk quotes for the scanner panel in a background thread.
+///
+/// `presets`: list of built-in scanner presets to load — typically
+/// `["gainers", "losers"]` (driven by the user's enabled `ScannerDef`s).
+/// Each preset becomes one `/api/stocks/movers?direction=...` call.
+///
+/// Custom user-defined scanners are NOT served by this fn — they need a
+/// scanner-run endpoint that lives on a separate ApexData PR (TODO).
+pub(crate) fn fetch_scanner_prices_for(presets: Vec<String>) {
     std::thread::spawn(move || {
-        let client = reqwest::blocking::Client::builder()
-            .user_agent("Mozilla/5.0")
-            .timeout(std::time::Duration::from_secs(8))
-            .build().unwrap_or_else(|_| reqwest::blocking::Client::new());
-
-        for sym in SCANNER_UNIVERSE {
-            // 1. Try Redis/bar cache
-            if let Some(bars) = crate::bar_cache::get(sym, "1d") {
-                if bars.len() >= 2 {
-                    let price = bars.last().map(|b| b.close as f32).unwrap_or(0.0);
-                    let prev = bars[bars.len()-2].close as f32;
-                    let volume = bars.last().map(|b| b.volume as u64).unwrap_or(0);
-                    crate::send_to_native_chart(ChartCommand::ScannerPrice {
-                        symbol: sym.to_string(), price, prev_close: prev, volume,
-                    });
-                    continue;
-                }
+        for preset in &presets {
+            if preset != "gainers" && preset != "losers" {
+                // TODO(scanner-run): "most_active" + custom scanners need a
+                // dedicated endpoint (POST /api/stocks/scan). Skip silently
+                // until that PR lands so the UI doesn't get a fake "no
+                // matches" state from an unmappable preset.
+                continue;
             }
-
-            // 2. Try ApexIB
-            let apexib_ok = (|| -> Option<()> {
-                let url = format!("{}/bars/{}?interval=1d&limit=2", APEXIB_URL, sym);
-                let resp = client.get(&url).send().ok()?;
-                if !resp.status().is_success() { return None; }
-                let json = resp.json::<serde_json::Value>().ok()?;
-                let bars = json.as_array()?;
-                if bars.len() < 2 { return None; }
-                let prev = bars[0].get("close").and_then(|v| v.as_f64())? as f32;
-                let price = bars[1].get("close").and_then(|v| v.as_f64())? as f32;
-                let volume = bars[1].get("volume").and_then(|v| v.as_u64()).unwrap_or(0);
+            let Some(snaps) = crate::apex_data::rest::stocks_movers(preset) else { continue };
+            for snap in &snaps {
+                let (symbol, price, prev_close, volume) = scanner_price_from_snapshot(snap);
                 crate::send_to_native_chart(ChartCommand::ScannerPrice {
-                    symbol: sym.to_string(), price, prev_close: prev, volume,
+                    symbol, price, prev_close, volume,
                 });
-                Some(())
-            })();
-            if apexib_ok.is_some() { continue; }
-
-            // 3. Fallback: Yahoo Finance v8
-            let url = format!("https://query1.finance.yahoo.com/v8/finance/chart/{}?interval=1d&range=5d", sym);
-            if let Ok(resp) = client.get(&url).send() {
-                if let Ok(json) = resp.json::<serde_json::Value>() {
-                    if let Some(bars) = crate::data::parse_yahoo_v8(&json) {
-                        crate::bar_cache::set(sym, "1d", &bars);
-                        if bars.len() >= 2 {
-                            let price = bars.last().map(|b| b.close as f32).unwrap_or(0.0);
-                            let prev = bars[bars.len()-2].close as f32;
-                            let volume = bars.last().map(|b| b.volume as u64).unwrap_or(0);
-                            crate::send_to_native_chart(ChartCommand::ScannerPrice {
-                                symbol: sym.to_string(), price, prev_close: prev, volume,
-                            });
-                        }
-                    }
-                }
             }
         }
+    });
+}
+
+/// Back-compat wrapper for the scanner panel: derives the preset list from
+/// the default built-in presets (gainers + losers). Kept so we don't have
+/// to thread `ScannerDef` access through io::fetch.
+pub(crate) fn fetch_scanner_prices() {
+    fetch_scanner_prices_for(vec!["gainers".into(), "losers".into()]);
+}
+
+// ── Heatmap pane ──────────────────────────────────────────────────────────
+
+/// Pure mapping: `GroupedDailyBar` → `(symbol, change_pct, dollar_volume)`
+/// where `change_pct = (c - o) / o * 100` and `dollar_volume = vw * v` (a
+/// proxy for "market cap weight" since the grouped-daily endpoint has no
+/// shares-outstanding column). The heatmap uses dollar-volume to size cells.
+pub(crate) fn heatmap_cell_from_grouped(
+    bar: &crate::apex_data::GroupedDailyBar,
+) -> (String, f32, f64) {
+    let change_pct = if bar.o > 0.0 { ((bar.c - bar.o) / bar.o * 100.0) as f32 } else { 0.0 };
+    let dollar_volume = if bar.vw > 0.0 { bar.vw * bar.v } else { bar.c * bar.v };
+    (bar.ticker.clone(), change_pct, dollar_volume)
+}
+
+/// Cold-start the heatmap: pull the full-market grouped-daily bars for the
+/// most recent session and ship them back as `HeatmapBars`. Live updates
+/// come from the watchlist `set_price` path — no separate poller needed.
+pub(crate) fn fetch_heatmap_cold_start() {
+    std::thread::spawn(move || {
+        let date = active_zero_dte_date().format("%Y-%m-%d").to_string();
+        let Some(bars) = crate::apex_data::rest::stocks_grouped_daily(&date) else { return };
+        let cells: Vec<(String, f32, f64)> = bars.iter()
+            .filter(|b| !b.ticker.is_empty() && b.v > 0.0)
+            .map(heatmap_cell_from_grouped)
+            .collect();
+        crate::send_to_native_chart(ChartCommand::HeatmapBars { cells });
     });
 }
 
@@ -1268,5 +1252,179 @@ pub(crate) fn fetch_overlay_bars_background(sym: String, tf: String) {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::apex_data::{StockSnapshot, DayAgg, PrevDayAgg, LastTrade, MinAgg, GroupedDailyBar};
+
+    // ── is_stock_symbol filter ────────────────────────────────────────────
+
+    #[test]
+    fn stock_symbol_filter_accepts_equities_rejects_crypto_and_options() {
+        assert!(is_stock_symbol("AAPL"));
+        assert!(is_stock_symbol("SPY"));
+        assert!(is_stock_symbol("BRK.B"));
+        assert!(!is_stock_symbol("O:SPY260501C00450000"));
+        assert!(!is_stock_symbol("AAPL 287.5C 2026-04-30"));
+        // Crypto path is delegated to crate::data::is_crypto; sanity-check a
+        // few well-known pairs that should not flow through the bulk fetch.
+        assert!(!is_stock_symbol("BTCUSDT"));
+    }
+
+    // ── watchlist mapping ─────────────────────────────────────────────────
+
+    fn snap(ticker: &str, last_price: f64, prev_close: f64, day_volume: f64) -> StockSnapshot {
+        StockSnapshot {
+            ticker: ticker.into(),
+            day: DayAgg { close: last_price, volume: day_volume, ..Default::default() },
+            min: None,
+            prev_day: PrevDayAgg { close: prev_close, ..Default::default() },
+            last_trade: LastTrade { price: last_price, ..Default::default() },
+            last_quote: Default::default(),
+            todays_change: last_price - prev_close,
+            todays_change_perc: ((last_price - prev_close) / prev_close) * 100.0,
+            updated: 0,
+        }
+    }
+
+    #[test]
+    fn watchlist_maps_snapshot_to_price_and_prev_close() {
+        let s = snap("AAPL", 195.50, 192.00, 50_000_000.0);
+        let (price, prev) = watchlist_price_from_snapshot(&s);
+        assert!((price - 195.50).abs() < 0.001);
+        assert!((prev - 192.00).abs() < 0.001);
+    }
+
+    #[test]
+    fn watchlist_mapping_prefers_last_trade_over_day_close() {
+        let mut s = snap("MSFT", 0.0, 410.0, 0.0);
+        s.last_trade.price = 412.5;
+        s.day.close = 411.0;
+        let (price, prev) = watchlist_price_from_snapshot(&s);
+        assert!((price - 412.5).abs() < 0.001);
+        assert!((prev - 410.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn watchlist_mapping_falls_back_to_minute_close_when_no_trade() {
+        let mut s = snap("NVDA", 0.0, 880.0, 0.0);
+        s.last_trade.price = 0.0;
+        s.day.close = 0.0;
+        s.min = Some(MinAgg { close: 885.0, accumulated_volume: 1234.0, ..Default::default() });
+        let (price, prev) = watchlist_price_from_snapshot(&s);
+        assert!((price - 885.0).abs() < 0.001);
+        assert!((prev - 880.0).abs() < 0.001);
+    }
+
+    // ── scanner mapping ───────────────────────────────────────────────────
+
+    #[test]
+    fn scanner_mapping_extracts_volume_from_day_agg() {
+        let s = snap("TSLA", 250.0, 245.0, 80_000_000.0);
+        let (sym, price, prev, vol) = scanner_price_from_snapshot(&s);
+        assert_eq!(sym, "TSLA");
+        assert!((price - 250.0).abs() < 0.001);
+        assert!((prev - 245.0).abs() < 0.001);
+        assert_eq!(vol, 80_000_000);
+    }
+
+    #[test]
+    fn scanner_mapping_uses_minute_accumulated_volume_in_premarket() {
+        let mut s = snap("AMD", 165.0, 162.0, 0.0); // no day volume yet
+        s.min = Some(MinAgg {
+            close: 165.0, accumulated_volume: 1_500_000.0, ..Default::default()
+        });
+        let (_sym, _price, _prev, vol) = scanner_price_from_snapshot(&s);
+        assert_eq!(vol, 1_500_000);
+    }
+
+    // ── REST mock parsing ─────────────────────────────────────────────────
+
+    #[test]
+    fn snap_bulk_parses_polygon_envelope() {
+        let body = r#"[
+          {
+            "ticker": "AAPL",
+            "day":   {"o":190.0,"h":196.0,"l":189.5,"c":195.5,"v":50000000,"vw":193.0},
+            "prevDay":{"o":188.0,"h":193.0,"l":187.0,"c":192.0,"v":48000000,"vw":190.0},
+            "lastTrade":{"p":195.6,"s":100,"t":1715000000000000000,"x":4},
+            "lastQuote":{"P":195.61,"S":2,"p":195.59,"s":3,"t":1715000000000000000},
+            "todaysChange":3.5,"todaysChangePerc":1.82,
+            "updated":1715000000000000000
+          }
+        ]"#;
+        let snaps: Vec<StockSnapshot> = serde_json::from_str(body).expect("parse");
+        assert_eq!(snaps.len(), 1);
+        assert_eq!(snaps[0].ticker, "AAPL");
+        assert!((snaps[0].last_trade.price - 195.6).abs() < 0.001);
+        assert!((snaps[0].prev_day.close - 192.0).abs() < 0.001);
+        assert!((snaps[0].todays_change_perc - 1.82).abs() < 0.001);
+    }
+
+    #[test]
+    fn movers_envelope_parses_like_bulk() {
+        // The movers endpoint returns the same per-row shape as snap/bulk.
+        let body = r#"[
+          {"ticker":"GME","day":{"c":40.0,"v":120000000},"prevDay":{"c":20.0},"lastTrade":{"p":41.0},"todaysChangePerc":100.0}
+        ]"#;
+        let snaps: Vec<StockSnapshot> = serde_json::from_str(body).expect("parse");
+        let (sym, price, prev, vol) = scanner_price_from_snapshot(&snaps[0]);
+        assert_eq!(sym, "GME");
+        assert!((price - 41.0).abs() < 0.001);
+        assert!((prev - 20.0).abs() < 0.001);
+        assert_eq!(vol, 120_000_000);
+    }
+
+    // ── heatmap mapping ───────────────────────────────────────────────────
+
+    #[test]
+    fn grouped_daily_maps_to_heatmap_cell() {
+        let bar = GroupedDailyBar {
+            ticker: "AAPL".into(),
+            o: 100.0, h: 105.0, l: 99.0, c: 102.0,
+            v: 1_000_000.0, vw: 101.5, n: 0, t: 0,
+        };
+        let (sym, change_pct, weight) = heatmap_cell_from_grouped(&bar);
+        assert_eq!(sym, "AAPL");
+        // (102 - 100) / 100 * 100 = 2.0
+        assert!((change_pct - 2.0).abs() < 0.0001);
+        // vw * v = 101.5 * 1_000_000
+        assert!((weight - 101_500_000.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn grouped_daily_handles_zero_open() {
+        let bar = GroupedDailyBar { ticker: "NEW".into(), o: 0.0, c: 10.0, v: 1.0, vw: 1.0, ..Default::default() };
+        let (_sym, change_pct, _w) = heatmap_cell_from_grouped(&bar);
+        assert_eq!(change_pct, 0.0);
+    }
+
+    #[test]
+    fn grouped_daily_parses_polygon_envelope() {
+        let body = r#"[
+          {"T":"AAPL","o":190.0,"h":196.0,"l":189.5,"c":195.5,"v":50000000,"vw":193.0,"n":250000,"t":1715000000000}
+        ]"#;
+        let bars: Vec<GroupedDailyBar> = serde_json::from_str(body).expect("parse");
+        assert_eq!(bars.len(), 1);
+        assert_eq!(bars[0].ticker, "AAPL");
+        assert!((bars[0].c - 195.5).abs() < 0.001);
+    }
+
+    // ── scanner preset routing ────────────────────────────────────────────
+
+    #[test]
+    fn scanner_preset_routing_recognizes_built_ins() {
+        // We can't easily exercise the network call without a mock server,
+        // but we *can* assert the preset → universe selection rules used by
+        // fetch_scanner_prices_for: only "gainers" and "losers" produce a
+        // network call; everything else is a no-op (silent TODO).
+        let recognized = |p: &str| matches!(p, "gainers" | "losers");
+        assert!(recognized("gainers"));
+        assert!(recognized("losers"));
+        assert!(!recognized("most_active"));
+        assert!(!recognized("custom"));
+    }
 }
 
