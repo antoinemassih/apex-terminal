@@ -14,6 +14,7 @@ use super::provider::{
     BarStream, ChainSnapshot, ChainStream, MarketDataProvider, ProviderCapabilities,
     QuoteStream, TradeStream,
 };
+use crate::data::feeds::ib_ws;
 use crate::data::connectivity::{
     ApiError, Connection, ConnectionMetrics, ConnectionState,
 };
@@ -93,16 +94,33 @@ impl MarketDataProvider for IbProvider {
     async fn bars(&self, _: &str, _: &str, _: i64, _: i64, _: Option<usize>) -> Result<Vec<BarWire>, ApiError> {
         Err(ApiError::NotSupported("ib: historical bars not exposed".into()))
     }
-    fn subscribe_bars(&self, _: &str, _: &str) -> Result<BarStream, ApiError> {
-        Err(ApiError::NotSupported("ib: bar stream — use Tauri ib-tick events".into()))
+    // Wave 12a: bridge to the per-symbol fanout hubs in `feeds::ib_ws`.
+    // The hubs are populated by `ws_loop`'s tick decoder — each decoded
+    // tick is fanned to bar / trade hubs unconditionally and to the
+    // quote hub when bid/ask are present in the payload.
+    //
+    // IB ticks are trade-print shaped, so the bar stream synthesizes a
+    // degenerate 1m OHLC (open=high=low=close=tick price). A real bar
+    // aggregator is deferred — callers that need true bars should
+    // resample downstream or use `MarketDataProvider::bars` for history.
+    fn subscribe_bars(&self, sym: &str, tf: &str) -> Result<BarStream, ApiError> {
+        if tf != "1m" {
+            return Err(ApiError::NotSupported(format!(
+                "ib: stream synthesizes 1m only, not {tf}"
+            )));
+        }
+        Ok(ib_ws::hub_subscribe(ib_ws::bar_hub(), sym))
     }
-    fn unsubscribe_bars(&self, _: &str, _: &str) {}
-    fn subscribe_quotes(&self, _: &str) -> Result<QuoteStream, ApiError> {
-        Err(ApiError::NotSupported("ib: quotes — use Tauri ib-tick events".into()))
+    fn unsubscribe_bars(&self, _: &str, _: &str) {
+        // Receiver-drop is sufficient — `hub_fanout` prunes the dead
+        // sender on the next tick that touches the symbol.
+    }
+    fn subscribe_quotes(&self, sym: &str) -> Result<QuoteStream, ApiError> {
+        Ok(ib_ws::hub_subscribe(ib_ws::quote_hub(), sym))
     }
     fn unsubscribe_quotes(&self, _: &str) {}
-    fn subscribe_trades(&self, _: &str) -> Result<TradeStream, ApiError> {
-        Err(ApiError::NotSupported("ib: trades — use Tauri ib-tick events".into()))
+    fn subscribe_trades(&self, sym: &str) -> Result<TradeStream, ApiError> {
+        Ok(ib_ws::hub_subscribe(ib_ws::trade_hub(), sym))
     }
     fn unsubscribe_trades(&self, _: &str) {}
     async fn chain_snapshot(&self, _: &str) -> Result<ChainSnapshot, ApiError> {
@@ -114,9 +132,11 @@ impl MarketDataProvider for IbProvider {
     fn unsubscribe_chain(&self, _: &str) {}
     fn capabilities(&self) -> ProviderCapabilities {
         ProviderCapabilities {
-            // Honest: the trait surface isn't wired yet for IB.
-            bars: false, quotes: false, trades: false, chain: false,
-            crypto_only: false, historical: false, realtime: false,
+            // Wave 12a: bars/quotes/trades stream via per-symbol fanout hubs
+            // in `feeds::ib_ws`. Chain handling is its own beast and stays
+            // off until a dedicated wave.
+            bars: true, quotes: true, trades: true, chain: false,
+            crypto_only: false, historical: false, realtime: true,
             fundamentals: false, news: false, earnings: false, corporate_actions: false,
         }
     }
