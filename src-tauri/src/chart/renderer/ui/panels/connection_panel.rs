@@ -23,6 +23,15 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
         .corner_radius(r_lg_cr());
 
     // Snapshot live status once per frame.
+    // TODO(wave-11c-ui-migration): this panel polls `is_connected()` /
+    // `apex_health` every frame. The `Connection` trait now offers
+    // `subscribe_state() -> Option<broadcast::Receiver<ConnectionState>>` on
+    // ApexData / IB / Crypto / Signals providers (see
+    // `data/connectivity/state.rs`). A future UI wave can switch this panel
+    // to react to state-change events instead of polling — pulling the
+    // receiver once in the chrome layer and stashing the last-seen state in
+    // app state. Migration left to a separate UI wave so we can rework the
+    // status-flash / amber-pulse UX alongside it.
     let redis_ok = crate::bar_cache::is_connected();
     let ib_ok = read_account_data().map(|(a, _, _)| a.connected).unwrap_or(false);
     let apex_enabled = crate::apex_data::is_enabled();
