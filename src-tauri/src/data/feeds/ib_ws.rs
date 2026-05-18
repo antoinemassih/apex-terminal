@@ -196,8 +196,26 @@ async fn ws_loop(
                                         ) {
                                             let p = price as f32;
                                             let v = volume as f32;
+                                            let sym = map.get("symbol").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                            // Wave 8c: bump SubscriptionManager so IB-fed
+                                            // (sym, "5m") subs become visible to gap-fill.
+                                            // IB subscribes per-conId (not per-symbol), so
+                                            // the bumper at frame ingress is the only
+                                            // symbol-keyed integration point. Time field
+                                            // is best-effort: prefer payload `time` (ms),
+                                            // otherwise fall back to wall-clock now.
+                                            let ts_ms = map.get("time")
+                                                .and_then(|v| v.as_i64())
+                                                .unwrap_or_else(now_ms);
+                                            crate::data::providers::registry::subscription_manager()
+                                                .bump_last_seen_bar(
+                                                    &sym,
+                                                    "5m",
+                                                    crate::data::providers::subscription_manager::BarSource::Last,
+                                                    ts_ms,
+                                                );
                                             crate::send_to_native_chart(crate::chart_renderer::ChartCommand::UpdateLastBar {
-                                                symbol: map.get("symbol").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                                                symbol: sym,
                                                 timeframe: "5m".to_string(),
                                                 bar: crate::chart_renderer::Bar {
                                                     open: p, high: p, low: p, close: p, volume: v, _pad: 0.0,
@@ -267,6 +285,13 @@ pub async fn ib_ws_send(
     msg: Value,
     state: tauri::State<'_, IbWsHandle>,
 ) -> Result<(), String> {
+    // Wave 8c: IB subscribes by numeric conId, not by (symbol, timeframe),
+    // so we cannot route the subscribe site through SubscriptionManager
+    // without a conId→symbol resolver. The symbol-keyed state is wired in
+    // at the binary tick frame ingress (see ws_loop) where the payload
+    // carries the symbol string. TODO(wave9): once a conId map exists,
+    // route subscribe/unsubscribe through SubscriptionManager too.
+
     // Track subscription state for reconnect restoration
     if let Value::Object(ref map) = msg {
         let action = map.get("action").and_then(|v| v.as_str()).unwrap_or("");
