@@ -90,6 +90,7 @@ pub mod panel_sub_section;
 pub mod table_header;
 pub mod pill_row;
 pub mod status_pill;
+pub mod panel_error;
 
 pub use tokens::{Size, Variant};
 pub use panel::{Panel, PanelCtx, PanelResponse};
@@ -111,6 +112,7 @@ pub use panel_list_row::{Column as PanelColumn, ColAlign as PanelColAlign};
 pub use table_header::TableHeader;
 pub use pill_row::{PillRow, PillRowResponse};
 pub use status_pill::StatusPill;
+pub use panel_error::PanelError;
 pub use panel_card::PanelCard;
 pub use panel_key_value_row::PanelKeyValueRow;
 pub use range_slider::RangeSlider;
