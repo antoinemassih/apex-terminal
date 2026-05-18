@@ -23,16 +23,18 @@ fn main() {
     let _tracing_guard = _scaffold_lib::data::connectivity::init_tracing(&log_dir);
     tracing::info!(target: "apex_native", log_dir = %log_dir.display(), "tracing initialized");
 
-    // Initialize Redis bar cache
-    _scaffold_lib::bar_cache::init();
+    // Initialize Redis bar cache. URL comes from APEX_REDIS_URL env
+    // (defaults to the homelab dev Redis).
+    _scaffold_lib::bar_cache::init(&_scaffold_lib::data::apex_data::config::apex_redis_url());
 
     // Initialize PostgreSQL drawing persistence
     let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
     rt.block_on(async {
+        let pg_url = _scaffold_lib::data::apex_data::config::apex_pg_url();
         match sqlx::postgres::PgPoolOptions::new()
             .max_connections(5)
             .acquire_timeout(std::time::Duration::from_secs(3))
-            .connect("postgresql://postgres:monkeyxx@192.168.1.143:5432/ococo")
+            .connect(&pg_url)
             .await
         {
             Ok(pool) => {

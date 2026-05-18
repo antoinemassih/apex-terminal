@@ -188,11 +188,14 @@ pub fn run() {
             // acquire_timeout caps the initial connection attempt at 3 s instead of
             // blocking the setup thread indefinitely (which leaves the window blank).
             let pool_opt = async_runtime::block_on(async {
+                let pg_url = data::apex_data::config::apex_pg_url();
                 let connect = PgPoolOptions::new()
                     .max_connections(5)
                     .acquire_timeout(Duration::from_secs(3))
-                    .connect("postgresql://postgres:monkeyxx@192.168.1.143:5432/ococo")
+                    .connect(&pg_url)
                     .await;
+                // Do NOT include `pg_url` in any error message — it carries
+                // the password. The sqlx error already names the host:port.
                 match connect {
                     Err(e) => {
                         eprintln!("[apex] PostgreSQL unavailable ({e}) — drawings use fallback");
@@ -219,8 +222,9 @@ pub fn run() {
                 crate::watchlist::refresh::refresh_universes_in_background();
             }
 
-            // Redis bar cache — optional, app works without it
-            bar_cache::init();
+            // Redis bar cache — optional, app works without it. URL comes
+            // from APEX_REDIS_URL env (defaults to the homelab dev Redis).
+            bar_cache::init(&data::apex_data::config::apex_redis_url());
 
             // System monitoring — GPU, CPU, memory, frame timing → :9091/metrics
             monitoring::start();
