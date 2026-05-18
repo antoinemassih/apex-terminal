@@ -1254,6 +1254,7 @@ impl ApertureOrderTicket {
         use super::inputs::Stepper;
         use crate::ui_kit::widgets::Button;
         use crate::ui_kit::widgets::tokens::Size as KitSize;
+        use crate::ui_kit::widgets::Input;
 
         let panel_w = if self.panel_w > 0.0 { self.panel_w } else { ui.available_width() };
         let pad     = 8.0_f32;
@@ -1331,12 +1332,9 @@ impl ApertureOrderTicket {
                 ui.add_space(gap_sm());
                 let premium = last;
                 let mult    = if s.is_option { 100.0_f32 } else { 1.0_f32 };
-                // TODO: Input migration deferred — order-form numeric fields
-                // below (notional/limit/stop/trail/tp/sl) need right- and
-                // center-aligned text for price/qty legibility; ui_kit::Input
-                // doesn't expose horizontal_align on the inner TextEdit.
-                ui.add(egui::TextEdit::singleline(s.order_notional_amount)
-                    .desired_width(70.0).font(mono_sm()).hint_text("Amount"));
+                Input::new(s.order_notional_amount)
+                    .placeholder("Amount").width(70.0)
+                    .show(ui, &t_stub);
                 let notional: f32 = s.order_notional_amount.parse().unwrap_or(0.0);
                 let qty = if premium > 0.0 && mult > 0.0 {
                     (notional / (premium * mult)).floor() as i32
@@ -1361,10 +1359,11 @@ impl ApertureOrderTicket {
                     .theme(&t_stub)
                     .show(ui);
             } else {
-                let _ = ui.add(
-                    egui::TextEdit::singleline(&mut format!("{} contracts", s.order_qty))
-                        .desired_width(100.0).font(mono_sm())
-                        .horizontal_align(egui::Align::Center).interactive(false));
+                let mut qty_display = format!("{} contracts", s.order_qty);
+                Input::new(&mut qty_display)
+                    .disabled(true).width(100.0)
+                    .horizontal_align(egui::Align::Center)
+                    .show(ui, &t_stub);
             }
             ui.add_space(gap_sm());
             let cursor = ui.cursor().min;
@@ -1377,9 +1376,10 @@ impl ApertureOrderTicket {
                     ui.label(egui::RichText::new(format!("{:.2}", last))
                         .monospace().size(font_md()).color(self.dim));
                 } else {
-                    ui.add(egui::TextEdit::singleline(s.order_limit_price)
-                        .desired_width(68.0).font(mono_sm())
-                        .hint_text("Price").horizontal_align(egui::Align::RIGHT));
+                    Input::new(s.order_limit_price)
+                        .placeholder("Price").width(68.0)
+                        .horizontal_align(egui::Align::RIGHT)
+                        .show(ui, &t_stub);
                 }
                 ui.add_space(gap_xs());
                 let mkt_label = if *s.order_market { "MKT" } else { "LMT" };
@@ -1409,27 +1409,30 @@ impl ApertureOrderTicket {
             if oti == 1 || oti == 3 {
                 FormRow::new("Limit").leading_space(pad).label_width(32.0).hint("Limit price")
                     .show(ui, &t_stub, |ui| {
-                        ui.add(egui::TextEdit::singleline(s.order_limit_price)
-                            .desired_width(80.0).font(mono_sm())
-                            .horizontal_align(egui::Align::RIGHT));
+                        Input::new(s.order_limit_price)
+                            .width(80.0)
+                            .horizontal_align(egui::Align::RIGHT)
+                            .show(ui, &t_stub);
                     });
             }
             if oti == 2 || oti == 3 {
                 FormRow::new("Stop").leading_space(pad).label_width(32.0)
                     .label_color(self.bear).hint("Stop price")
                     .show(ui, &t_stub, |ui| {
-                        ui.add(egui::TextEdit::singleline(s.order_stop_price)
-                            .desired_width(80.0).font(mono_sm())
-                            .horizontal_align(egui::Align::RIGHT));
+                        Input::new(s.order_stop_price)
+                            .width(80.0)
+                            .horizontal_align(egui::Align::RIGHT)
+                            .show(ui, &t_stub);
                     });
             }
             if oti == 4 {
                 FormRow::new("Trail").leading_space(pad).label_width(32.0)
                     .label_color(self.accent).hint("Trail amt")
                     .show(ui, &t_stub, |ui| {
-                        ui.add(egui::TextEdit::singleline(s.order_trail_amt)
-                            .desired_width(80.0).font(mono_sm())
-                            .horizontal_align(egui::Align::RIGHT));
+                        Input::new(s.order_trail_amt)
+                            .width(80.0)
+                            .horizontal_align(egui::Align::RIGHT)
+                            .show(ui, &t_stub);
                     });
             }
         }
@@ -1452,13 +1455,15 @@ impl ApertureOrderTicket {
                 if *s.order_bracket {
                     ui.add_space(gap_sm());
                     ui.label(egui::RichText::new("TP").monospace().size(font_sm()).color(self.bull));
-                    ui.add(egui::TextEdit::singleline(s.order_tp_price)
-                        .desired_width(52.0).font(mono_sm()).hint_text("Take")
-                        .horizontal_align(egui::Align::RIGHT));
+                    Input::new(s.order_tp_price)
+                        .placeholder("Take").width(52.0)
+                        .horizontal_align(egui::Align::RIGHT)
+                        .show(ui, &t_stub);
                     ui.label(egui::RichText::new("SL").monospace().size(font_sm()).color(self.bear));
-                    ui.add(egui::TextEdit::singleline(s.order_sl_price)
-                        .desired_width(52.0).font(mono_sm()).hint_text("Stop")
-                        .horizontal_align(egui::Align::RIGHT));
+                    Input::new(s.order_sl_price)
+                        .placeholder("Stop").width(52.0)
+                        .horizontal_align(egui::Align::RIGHT)
+                        .show(ui, &t_stub);
                 }
             });
         }

@@ -17,7 +17,7 @@
 
 use egui::{Color32, Response, RichText, Stroke, Ui, Vec2};
 use super::super::style::*;
-use crate::ui_kit::widgets::{Button, tokens::Variant};
+use crate::ui_kit::widgets::{Button, Input, tokens::Variant};
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
@@ -145,14 +145,13 @@ impl<'a, V: NumericValue> NumericStepper<'a, V> {
                                         ui.label(RichText::new(sf).monospace()
                                             .size(font_xs()).color(color_subtle(dim)));
                                     }
-                                    let te = egui::TextEdit::singleline(&mut buf)
-                                        .font(egui::FontId::monospace(font_md()))
+                                    let r = Input::new(&mut buf)
+                                        .frameless(true)
                                         .text_color(text)
-                                        .desired_width(ui.available_width())
+                                        .full_width()
                                         .horizontal_align(egui::Align::Center)
-                                        .frame(false);
-                                    let r = ui.add(te);
-                                    if r.lost_focus() {
+                                        .show(ui, theme);
+                                    if r.lost_focus {
                                         self.value.set_from_str(&buf);
                                     }
                                 });

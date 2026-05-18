@@ -1,6 +1,8 @@
 //! Inline text-note editor overlay (shown when a TextNote drawing is placed/activated).
 
 use egui::Context;
+use crate::ui_kit::widgets::Input;
+use crate::ui_kit::widgets::theme::active_theme;
 
 /// Everything the text-note editor needs (read) plus mutable text buffer.
 pub struct TextNoteCtx<'a> {
@@ -33,14 +35,13 @@ pub fn show_text_note_editor(c: TextNoteCtx<'_>) -> TextNoteOutput {
         .fixed_pos(egui::pos2(c.x, c.y))
         .order(egui::Order::Foreground)
         .show(c.ctx, |ui| {
-            // TODO: Input migration deferred — canvas overlay needs custom
-            // font size (from drawing object) + WHITE text color override
-            // that ui_kit::Input doesn't expose.
-            let resp = ui.add(egui::TextEdit::singleline(c.text_buf)
-                .font(egui::FontId::proportional(c.font_size))
-                .desired_width(200.0)
-                .text_color(egui::Color32::WHITE));
-            resp.request_focus();
+            let r = Input::new(c.text_buf)
+                .font_size(c.font_size)
+                .proportional(true)
+                .text_color(egui::Color32::WHITE)
+                .width(200.0)
+                .show(ui, active_theme(c.ctx));
+            r.request_focus(c.ctx);
             if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 if c.text_buf.is_empty() {
                     discard = true;

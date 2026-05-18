@@ -3,6 +3,12 @@
 
 use super::super::style::*;
 use egui::{self, Color32, Response, RichText, Sense, Stroke, Ui, Vec2};
+use crate::ui_kit::widgets::Input;
+
+#[inline(always)]
+fn ambient_theme(ctx: &egui::Context) -> &'static crate::chart_renderer::gpu::Theme {
+    crate::ui_kit::widgets::theme::active_theme(ctx)
+}
 
 // ─── Search input ─────────────────────────────────────────────────────────────
 
@@ -35,12 +41,13 @@ pub fn search_input(
     frame.show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.label(RichText::new("\u{1F50D}").size(font_sm()).color(dim));
-            let edit = egui::TextEdit::singleline(buffer)
-                .desired_width(avail - 36.0)
-                .hint_text(RichText::new(placeholder).color(color_alpha(dim, alpha_muted())))
+            let r = Input::new(buffer)
+                .frameless(true)
                 .text_color(accent)
-                .frame(false);
-            resp_out = Some(ui.add(edit));
+                .placeholder(placeholder)
+                .width(avail - 36.0)
+                .show(ui, ambient_theme(ui.ctx()));
+            resp_out = Some(r.response);
         });
     });
     resp_out.expect("search_input response")
@@ -219,13 +226,13 @@ pub fn text_input_field(
         .corner_radius(radius_sm());
     let mut resp_opt: Option<Response> = None;
     frame.show(ui, |ui| {
-        let te = egui::TextEdit::singleline(buffer)
+        let r = Input::new(buffer)
             .id(id)
-            .hint_text(placeholder)
-            .font(egui::FontSelection::FontId(egui::FontId::monospace(font_sm())))
-            .frame(false)
-            .desired_width(ui.available_width());
-        resp_opt = Some(ui.add(te));
+            .frameless(true)
+            .placeholder(placeholder)
+            .full_width()
+            .show(ui, ambient_theme(ui.ctx()));
+        resp_opt = Some(r.response);
     });
     resp_opt.unwrap_or_else(|| ui.label(""))
 }
