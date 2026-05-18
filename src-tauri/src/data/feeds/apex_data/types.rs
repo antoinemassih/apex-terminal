@@ -783,4 +783,110 @@ impl SpikeExplanation {
         let id = Self::derive_id(&symbol, t_ms);
         Self { symbol, t_ms, sigma, pct_move, headline, explanation, sources, id }
     }
+// ── §5.6 Stocks: bulk snapshots / movers / grouped daily ──────────────────
+
+/// Polygon-shape minute aggregate inside a `StockSnapshot`.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct MinAgg {
+    #[serde(default, alias = "av")] pub accumulated_volume: f64,
+    #[serde(default, alias = "o")]  pub open: f64,
+    #[serde(default, alias = "h")]  pub high: f64,
+    #[serde(default, alias = "l")]  pub low: f64,
+    #[serde(default, alias = "c")]  pub close: f64,
+    #[serde(default, alias = "v")]  pub volume: f64,
+    #[serde(default, alias = "vw")] pub vwap: f64,
+    /// Epoch millis end of the minute window.
+    #[serde(default, alias = "t")]  pub timestamp_ms: i64,
+    #[serde(default, alias = "n")]  pub trades: u64,
+}
+
+/// Polygon-shape day aggregate inside a `StockSnapshot`.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct DayAgg {
+    #[serde(default, alias = "o")]  pub open: f64,
+    #[serde(default, alias = "h")]  pub high: f64,
+    #[serde(default, alias = "l")]  pub low: f64,
+    #[serde(default, alias = "c")]  pub close: f64,
+    #[serde(default, alias = "v")]  pub volume: f64,
+    #[serde(default, alias = "vw")] pub vwap: f64,
+}
+
+/// Previous-day aggregate inside a `StockSnapshot`.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct PrevDayAgg {
+    #[serde(default, alias = "o")]  pub open: f64,
+    #[serde(default, alias = "h")]  pub high: f64,
+    #[serde(default, alias = "l")]  pub low: f64,
+    #[serde(default, alias = "c")]  pub close: f64,
+    #[serde(default, alias = "v")]  pub volume: f64,
+    #[serde(default, alias = "vw")] pub vwap: f64,
+}
+
+/// Last trade nested inside a `StockSnapshot`.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct LastTrade {
+    #[serde(default, alias = "p")]  pub price: f64,
+    #[serde(default, alias = "s")]  pub size: f64,
+    #[serde(default, alias = "t")]  pub timestamp_ns: i64,
+    #[serde(default, alias = "x")]  pub exchange: i32,
+}
+
+/// Last NBBO quote nested inside a `StockSnapshot`.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct LastQuote {
+    #[serde(default, alias = "P")]  pub ask_price: f64,
+    #[serde(default, alias = "S")]  pub ask_size: f64,
+    #[serde(default, alias = "p")]  pub bid_price: f64,
+    #[serde(default, alias = "s")]  pub bid_size: f64,
+    #[serde(default, alias = "t")]  pub timestamp_ns: i64,
+}
+
+/// §5.6.a — `GET /api/stocks/snap/bulk?tickers=...` and
+/// `GET /api/stocks/movers?direction=gainers|losers`. Mirrors the Polygon v2
+/// snapshot envelope so it can be reused for both endpoints.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct StockSnapshot {
+    pub ticker: String,
+    #[serde(default)] pub day: DayAgg,
+    #[serde(default)] pub min: Option<MinAgg>,
+    #[serde(default, alias = "prevDay")] pub prev_day: PrevDayAgg,
+    #[serde(default, alias = "lastTrade")] pub last_trade: LastTrade,
+    #[serde(default, alias = "lastQuote")] pub last_quote: LastQuote,
+    #[serde(default, alias = "todaysChange")] pub todays_change: f64,
+    #[serde(default, alias = "todaysChangePerc")] pub todays_change_perc: f64,
+    /// Epoch nanos — `updated` per Polygon spec.
+    #[serde(default)] pub updated: i64,
+}
+
+impl StockSnapshot {
+    /// Best-effort "current price": last trade → minute close → day close → prev close.
+    pub fn current_price(&self) -> f64 {
+        if self.last_trade.price > 0.0 { return self.last_trade.price; }
+        if let Some(m) = &self.min { if m.close > 0.0 { return m.close; } }
+        if self.day.close > 0.0 { return self.day.close; }
+        self.prev_day.close
+    }
+
+    /// Best-effort total day volume: prefer the running day agg, fall back to
+    /// the minute window's accumulated_volume (covers pre-open / early session).
+    pub fn day_volume(&self) -> u64 {
+        if self.day.volume > 0.0 { return self.day.volume as u64; }
+        if let Some(m) = &self.min { return m.accumulated_volume as u64; }
+        0
+    }
+}
+
+/// §5.6.c — `GET /api/stocks/grouped/:date` row (Polygon "grouped daily bars").
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct GroupedDailyBar {
+    #[serde(alias = "T")] pub ticker: String,
+    #[serde(default, alias = "o")]  pub o: f64,
+    #[serde(default, alias = "h")]  pub h: f64,
+    #[serde(default, alias = "l")]  pub l: f64,
+    #[serde(default, alias = "c")]  pub c: f64,
+    #[serde(default, alias = "v")]  pub v: f64,
+    #[serde(default, alias = "vw")] pub vw: f64,
+    #[serde(default, alias = "n")]  pub n: u64,
+    /// Epoch millis at session end.
+    #[serde(default, alias = "t")]  pub t: i64,
 }
