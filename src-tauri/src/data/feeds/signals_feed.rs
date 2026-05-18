@@ -13,6 +13,15 @@ pub(crate) static PARSE_ERRORS:       AtomicU64 = AtomicU64::new(0);
 pub(crate) static RECONNECT_COUNT:    AtomicU32 = AtomicU32::new(0);
 pub(crate) static LAST_MESSAGE_AT_MS: AtomicI64 = AtomicI64::new(0);
 
+// ── Wave 7E: WS resilience ───────────────────────────────────────────────────
+// Signals traffic is bursty (patterns + alerts on bar-close) — quiet for
+// minutes is normal, so the heartbeat is unconditional, not conditional.
+const HEARTBEAT_SECS: u64 = 30;
+const STALE_TIMEOUT_MS: i64 = 60_000; // signals can be legitimately quiet
+const WATCHDOG_TICK_SECS: u64 = 10;
+pub(crate) static FORCE_RECONNECT: AtomicBool = AtomicBool::new(false);
+pub(crate) static LAST_STALL_AT_MS: AtomicI64 = AtomicI64::new(0);
+
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -43,6 +52,7 @@ pub fn start() {
             .build()
             .unwrap();
         rt.block_on(async {
+            tokio::spawn(run_watchdog());
             let mut backoff = Backoff::new().with_max_attempts(None);
             let mut first = true;
             loop {
@@ -94,9 +104,36 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     )).await?;
     report(ErrorLevel::Info, "signals_feed", "connected", "patterns/alerts/trendlines/significance");
 
-    while let Some(msg) = read.next().await {
-        let msg = msg?;
-        if !msg.is_text() { continue; }
+    // Wave 7E: heartbeat + force-reconnect plumbing.
+    FORCE_RECONNECT.store(false, Ordering::SeqCst);
+    let mut heartbeat = tokio::time::interval(Duration::from_secs(HEARTBEAT_SECS));
+    heartbeat.tick().await;
+    let mut force_check = tokio::time::interval(Duration::from_secs(1));
+    force_check.tick().await;
+
+    loop {
+        if FORCE_RECONNECT.swap(false, Ordering::SeqCst) {
+            report(ErrorLevel::Warn, "signals_feed", "force_reconnect", "watchdog tripped");
+            return Err("watchdog forced reconnect".into());
+        }
+        let msg = tokio::select! {
+            _ = heartbeat.tick() => {
+                if let Err(e) = write.send(tokio_tungstenite::tungstenite::Message::Ping(Vec::new().into())).await {
+                    report(ErrorLevel::Warn, "signals_feed", "ping_failed", e.to_string());
+                    return Err(e.into());
+                }
+                continue;
+            }
+            _ = force_check.tick() => { continue; }
+            frame = read.next() => match frame {
+                Some(m) => m?,
+                None => break,
+            }
+        };
+        if !msg.is_text() {
+            LAST_MESSAGE_AT_MS.store(now_ms(), Ordering::Relaxed);
+            continue;
+        }
         let text = msg.to_text()?;
 
         MESSAGES_IN.fetch_add(1, Ordering::Relaxed);
@@ -154,6 +191,27 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 
     Err("WebSocket closed".into())
+}
+
+// ── Wave 7E: tick-age watchdog ───────────────────────────────────────────────
+
+async fn run_watchdog() {
+    let mut tick = tokio::time::interval(Duration::from_secs(WATCHDOG_TICK_SECS));
+    loop {
+        tick.tick().await;
+        let last = LAST_MESSAGE_AT_MS.load(Ordering::Relaxed);
+        let now = now_ms();
+        if last > 0 && now - last > STALE_TIMEOUT_MS && !FORCE_RECONNECT.load(Ordering::Relaxed) {
+            LAST_STALL_AT_MS.store(now, Ordering::Relaxed);
+            report(
+                ErrorLevel::Warn,
+                "signals_feed",
+                "tick_stalled",
+                format!("no frames for {}ms — forcing reconnect", now - last),
+            );
+            FORCE_RECONNECT.store(true, Ordering::SeqCst);
+        }
+    }
 }
 
 fn send_to_charts(cmd: ChartCommand) {
