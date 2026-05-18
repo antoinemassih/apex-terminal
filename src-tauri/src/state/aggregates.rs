@@ -213,90 +213,727 @@ impl Persistable for TradingDefaults {
     const VERSION: u32 = 1;
 }
 
-/// Alerts list + their state.
+// ─── AlertsState aggregate ───────────────────────────────────────────────────
+
+/// Serializable mirror of a price alert.
 ///
-/// Migrate from `Watchlist`:
-/// - `alerts: Vec<Alert>`
-/// - `next_alert_id: u32`
-/// - `alert_query: String`
-/// - `alerts_panel_open: bool` (UI-only — could go in SidebarState)
-#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct AlertsState {}
+/// Mirrors `chart::renderer::trading::Alert` but adds `Serialize + Deserialize`
+/// so the aggregate can be persisted.  The original `Alert` derives only
+/// `Debug + Clone`; this copy is kept in sync manually until a follow-up
+/// wave makes the trading module re-export a serializable version directly.
+///
+/// Source: `src-tauri/src/chart/renderer/trading/mod.rs`, line 440.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PersistedAlert {
+    /// Stable alert identifier (`Watchlist::next_alert_id` counter).
+    pub id: u32,
+    /// Ticker the alert watches (e.g. "AAPL").
+    pub symbol: String,
+    /// Price level that triggers the alert.
+    pub price: f32,
+    /// `true` = fire when price crosses *above*, `false` = *below*.
+    pub above: bool,
+    /// `true` once the alert has fired at least once this session.
+    pub triggered: bool,
+    /// Human-readable note shown in the alerts panel.
+    pub message: String,
+}
+
+/// Alert configurations and list.
+///
+/// **P2 Round 2** populates this aggregate.  Fields are sourced from
+/// `Watchlist` (the legacy god-object).  Call sites are **not** migrated in
+/// this PR; the struct is landed so follow-up waves can migrate one field at
+/// a time.
+///
+/// Field sources (Watchlist field → this aggregate field):
+/// - `Watchlist::alerts: Vec<Alert>`         → `alerts` (via `PersistedAlert`)
+/// - `Watchlist::next_alert_id: u32`         → `next_alert_id`
+/// - `Watchlist::alert_query: String`        → `alert_query`
+/// - `Watchlist::alerts_panel_open: bool`    → `alerts_panel_open`
+///   (UI-only; `SidebarState` is the eventual home, but the field is
+///   small enough to co-locate here until a dedicated sidebar sweep lands.)
+///
+/// Fields NOT included here:
+/// - No additional `alerts_*` fields were found in gpu.rs beyond the four
+///   listed above.  `alert_query` has `#[allow(dead_code)]` in gpu.rs,
+///   suggesting it is stub / future use — included here for completeness.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AlertsState {
+    /// The live alert list.
+    /// Source: `Watchlist::alerts: Vec<Alert>`.
+    #[serde(default)]
+    pub alerts: Vec<PersistedAlert>,
+
+    /// Monotonically-increasing counter used to assign stable alert IDs.
+    /// Source: `Watchlist::next_alert_id: u32` (default 1).
+    #[serde(default = "AlertsState::default_next_alert_id")]
+    pub next_alert_id: u32,
+
+    /// Search / filter string in the alerts panel input box.
+    /// Source: `Watchlist::alert_query: String` (`#[allow(dead_code)]` in gpu.rs).
+    #[serde(default)]
+    pub alert_query: String,
+
+    /// Whether the alerts side-panel is currently visible.
+    /// Source: `Watchlist::alerts_panel_open: bool`.
+    #[serde(default)]
+    pub alerts_panel_open: bool,
+}
+
+impl AlertsState {
+    fn default_next_alert_id() -> u32 { 1 }
+}
+
+impl Default for AlertsState {
+    fn default() -> Self {
+        Self {
+            alerts: Vec::new(),
+            next_alert_id: Self::default_next_alert_id(),
+            alert_query: String::new(),
+            alerts_panel_open: false,
+        }
+    }
+}
 
 impl Persistable for AlertsState {
     const KEY: &'static str = "alerts_state";
     const VERSION: u32 = 1;
 }
 
-/// Discord / signals chat state.
+// ─── ChatState aggregate ─────────────────────────────────────────────────────
+
+/// Discord / signals chat panel state — selected guild/channel, cached
+/// messages, input buffer, connection flags.
 ///
-/// Migrate from `Watchlist`:
-/// - `discord_open: bool` (UI — SidebarState candidate)
-/// - `discord_messages: Vec<DiscordMessage>`
-/// - `discord_input: String`
-/// - `discord_channel: String`
-/// - `discord_authenticated: bool`
-/// - `discord_username: String`, `discord_user_id: String`
-/// - `discord_guilds`, `discord_selected_guild`
-/// - `discord_channels`, `discord_selected_channel`
-/// - `discord_connecting: bool`
-/// - `discord_guild_icons: HashMap<String, TextureHandle>` (runtime only — exclude)
-/// - `discord_last_msg_id: Option<String>`
-/// - `discord_poll_timer: Option<Instant>` (runtime only — exclude)
-/// - `discord_channels_loading: bool` → migrate to `InFlightRegistry`
-/// - `discord_messages_loading: bool` → migrate to `InFlightRegistry`
-#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ChatState {}
+/// **P2 Round 2** populates this aggregate.
+///
+/// Field sources (Watchlist field → this aggregate field):
+/// - `Watchlist::discord_open: bool`                      → `discord_open`
+/// - `Watchlist::discord_input: String`                   → `discord_input`
+/// - `Watchlist::discord_channel: String`                 → `discord_channel`
+/// - `Watchlist::discord_authenticated: bool`             → `discord_authenticated`
+/// - `Watchlist::discord_username: String`                → `discord_username`
+/// - `Watchlist::discord_user_id: String`                 → `discord_user_id`
+/// - `Watchlist::discord_selected_guild: Option<String>`  → `discord_selected_guild`
+/// - `Watchlist::discord_selected_channel: Option<String>`→ `discord_selected_channel`
+/// - `Watchlist::discord_last_msg_id: Option<String>`     → `discord_last_msg_id`
+///
+/// Fields NOT included here (with reason):
+/// - `discord_messages: Vec<DiscordMessage>` — runtime cache; re-fetched on
+///   open.  `DiscordMessage` is not `Serialize`; persisting would risk
+///   stale messages on next launch.
+/// - `discord_guilds: Vec<DiscordGuild>` / `discord_channels: Vec<DiscordChannel>`
+///   — fetched fresh each session from the Discord API; not worth persisting.
+/// - `discord_guild_icons: HashMap<String, TextureHandle>` — runtime GPU
+///   textures, not serializable.
+/// - `discord_poll_timer: Option<Instant>` — runtime timer, not serializable.
+/// - `discord_connecting: bool` — transient connection state; always starts
+///   `false` on launch.
+/// - `discord_channels_loading: bool`, `discord_messages_loading: bool`
+///   — in-flight flags; migrate to `InFlightRegistry` in a follow-up wave.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ChatState {
+    /// Whether the Discord chat side-panel is open.
+    /// Source: `Watchlist::discord_open: bool`.
+    #[serde(default)]
+    pub discord_open: bool,
+
+    /// Text currently typed in the message input box (drafts across restarts).
+    /// Source: `Watchlist::discord_input: String`.
+    #[serde(default)]
+    pub discord_input: String,
+
+    /// Display name of the currently selected channel.
+    /// Source: `Watchlist::discord_channel: String`.
+    #[serde(default)]
+    pub discord_channel: String,
+
+    /// Whether the user has completed Discord OAuth and is logged in.
+    /// Source: `Watchlist::discord_authenticated: bool`.
+    /// NOTE: auth tokens live in the system keychain, not here.
+    #[serde(default)]
+    pub discord_authenticated: bool,
+
+    /// Discord display name of the logged-in user.
+    /// Source: `Watchlist::discord_username: String`.
+    #[serde(default)]
+    pub discord_username: String,
+
+    /// Discord snowflake ID of the logged-in user.
+    /// Source: `Watchlist::discord_user_id: String`.
+    #[serde(default)]
+    pub discord_user_id: String,
+
+    /// Snowflake ID of the guild (server) the user had selected.
+    /// Source: `Watchlist::discord_selected_guild: Option<String>`.
+    #[serde(default)]
+    pub discord_selected_guild: Option<String>,
+
+    /// Snowflake ID of the channel the user had selected within the guild.
+    /// Source: `Watchlist::discord_selected_channel: Option<String>`.
+    #[serde(default)]
+    pub discord_selected_channel: Option<String>,
+
+    /// Snowflake ID of the last message received, used for incremental polling.
+    /// Source: `Watchlist::discord_last_msg_id: Option<String>`.
+    #[serde(default)]
+    pub discord_last_msg_id: Option<String>,
+}
+
+impl Default for ChatState {
+    fn default() -> Self {
+        Self {
+            discord_open: false,
+            discord_input: String::new(),
+            discord_channel: String::new(),
+            discord_authenticated: false,
+            discord_username: String::new(),
+            discord_user_id: String::new(),
+            discord_selected_guild: None,
+            discord_selected_channel: None,
+            discord_last_msg_id: None,
+        }
+    }
+}
 
 impl Persistable for ChatState {
     const KEY: &'static str = "chat_state";
     const VERSION: u32 = 1;
 }
 
-/// Sidebar / side-panel open state, widths, focus.
+// ─── SidebarState aggregate ──────────────────────────────────────────────────
+
+/// Which sidebar / side-panel slots are open, plus their per-tab indices and
+/// section-split fractions.
 ///
-/// Migrate from `Watchlist` (the `*_panel_open: bool` / `*_open: bool` family):
-/// - `open: bool` (watchlist itself)
-/// - `orders_panel_open`, `order_entry_open`
-/// - `order_ledger_open`, `order_ledger_view`, `order_ledger_filter`, `order_ledger_search`
-/// - `order_health_open`
-/// - `account_strip_open`, `object_tree_open`, `trendline_filter_open`
-/// - `apex_diag_open`, `widget_gallery_open`
-/// - `filter_open`, `wl_columns_open`
-/// - `cmd_palette_open` + the whole cmd_palette_* family (UI scratch state)
-/// - `layout_dropdown_open`, `timeframe_dropdown_open`
-/// - `tape_open`, `news_open`, `journal_open`
-/// - `scanner_open`, `scanner_builder_open`
-/// - `spread_open`, `script_open`, `screenshot_open`, `rrg_open`
-/// - `analysis_open`, `signals_panel_open`, `indicators_panel_open`
-/// - `feed_panel_open`, `playbook_panel_open`, `journal_panel_open`
-/// - `settings_open`, `discord_open` (overlap with ChatState — pick one)
-/// - the split-section fraction arrays + tab indices for each side panel
-#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SidebarState {}
+/// **P2 Round 2** populates this aggregate.
+///
+/// Field sources (Watchlist field → this aggregate field):
+/// - `Watchlist::open: bool`                    → `watchlist_open`
+/// - `Watchlist::settings_open: bool`           → `settings_open`
+/// - `Watchlist::orders_panel_open: bool`       → `orders_panel_open`
+/// - `Watchlist::order_entry_open: bool`        → `order_entry_open`
+/// - `Watchlist::order_ledger_open: bool`       → `order_ledger_open`
+/// - `Watchlist::order_ledger_view: u8`         → `order_ledger_view`
+/// - `Watchlist::order_ledger_filter: u8`       → `order_ledger_filter`
+/// - `Watchlist::order_health_open: bool`       → `order_health_open`
+/// - `Watchlist::account_strip_open: bool`      → `account_strip_open`
+/// - `Watchlist::object_tree_open: bool`        → `object_tree_open`
+/// - `Watchlist::trendline_filter_open: bool`   → `trendline_filter_open`
+/// - `Watchlist::apex_diag_open: bool`          → `apex_diag_open`
+/// - `Watchlist::widget_gallery_open: bool`     → `widget_gallery_open`
+/// - `Watchlist::filter_open: bool`             → `filter_open`
+/// - `Watchlist::wl_columns_open: bool`         → `wl_columns_open`
+/// - `Watchlist::tape_open: bool`               → `tape_open`
+/// - `Watchlist::news_open: bool`               → `news_open`
+/// - `Watchlist::journal_open: bool`            → `journal_open`
+/// - `Watchlist::scanner_open: bool`            → `scanner_open`
+/// - `Watchlist::scanner_builder_open: bool`    → `scanner_builder_open`
+/// - `Watchlist::spread_open: bool`             → `spread_open`
+/// - `Watchlist::script_open: bool`             → `script_open`
+/// - `Watchlist::screenshot_open: bool`         → `screenshot_open`
+/// - `Watchlist::rrg_open: bool`                → `rrg_open`
+/// - `Watchlist::analysis_open: bool`           → `analysis_open`
+/// - `Watchlist::signals_panel_open: bool`      → `signals_panel_open`
+/// - `Watchlist::indicators_panel_open: bool`   → `indicators_panel_open`
+/// - `Watchlist::indicators_section_fracs: [f32;3]` → `indicators_section_fracs`
+/// - `Watchlist::feed_panel_open: bool`         → `feed_panel_open`
+/// - `Watchlist::playbook_panel_open: bool`     → `playbook_panel_open`
+/// - `Watchlist::journal_panel_open: bool`      → `journal_panel_open`
+/// - `Watchlist::provenance_open: bool`         → `provenance_open`
+/// - `Watchlist::replay_pane_open: bool`        → `replay_pane_open`
+/// - `Watchlist::hotkey_editor_open: bool`      → `hotkey_editor_open`
+///
+/// Fields NOT included here (with reason):
+/// - `cmd_palette_open`, `cmd_palette_query`, `cmd_palette_results`,
+///   `cmd_palette_sel`, `cmd_palette_recent`, `cmd_palette_freq`,
+///   `cmd_palette_ai_mode`, `cmd_palette_ai_input` — the palette is
+///   ephemeral; state should not survive a restart.
+/// - `hotkey_editing_id: Option<u32>` — transient UI scratch, not worth
+///   persisting.
+/// - `layout_dropdown_open`, `layout_dropdown_pos`,
+///   `timeframe_dropdown_open`, `timeframe_dropdown_pos` — transient
+///   dropdown gates; always closed on launch.
+/// - `discord_open` — lives in `ChatState` to keep all Discord state
+///   co-located; not duplicated here.
+/// - `analysis_tab`, `signals_tab`, `feed_tab`, `signals_splits`,
+///   `analysis_splits`, `feed_splits` — typed enums that reference
+///   crate-internal types not currently `Serialize`; deferred to follow-up.
+/// - `order_ledger_search: String` — transient search buffer, resets on open.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SidebarState {
+    /// Whether the main watchlist side-panel is open.
+    /// Source: `Watchlist::open`.
+    #[serde(default)]
+    pub watchlist_open: bool,
+
+    /// Whether the Settings modal is open.
+    /// Source: `Watchlist::settings_open`.
+    #[serde(default)]
+    pub settings_open: bool,
+
+    // ── Orders / trading panels ────────────────────────────────────────────
+
+    /// Orders panel (active orders list).
+    /// Source: `Watchlist::orders_panel_open`.
+    #[serde(default)]
+    pub orders_panel_open: bool,
+
+    /// Order entry ticket.
+    /// Source: `Watchlist::order_entry_open`.
+    #[serde(default)]
+    pub order_entry_open: bool,
+
+    /// Order ledger panel (order history).
+    /// Source: `Watchlist::order_ledger_open`.
+    #[serde(default)]
+    pub order_ledger_open: bool,
+
+    /// Active tab in the order ledger (0=Active, 1=Journal, 2=All).
+    /// Source: `Watchlist::order_ledger_view: u8`.
+    #[serde(default)]
+    pub order_ledger_view: u8,
+
+    /// Active filter in the order ledger.
+    /// Source: `Watchlist::order_ledger_filter: u8`.
+    #[serde(default)]
+    pub order_ledger_filter: u8,
+
+    /// Order system health panel (Ctrl+Shift+O).
+    /// Source: `Watchlist::order_health_open`.
+    #[serde(default)]
+    pub order_health_open: bool,
+
+    // ── Chart-adjacent panels ──────────────────────────────────────────────
+
+    /// Account summary bar below the toolbar.
+    /// Source: `Watchlist::account_strip_open`.
+    #[serde(default)]
+    pub account_strip_open: bool,
+
+    /// Object tree panel (drawings, indicators, overlays).
+    /// Source: `Watchlist::object_tree_open`.
+    #[serde(default)]
+    pub object_tree_open: bool,
+
+    /// Trendline filter dropdown.
+    /// Source: `Watchlist::trendline_filter_open`.
+    #[serde(default)]
+    pub trendline_filter_open: bool,
+
+    // ── Developer / debug panels ───────────────────────────────────────────
+
+    /// Apex diagnostics panel.
+    /// Source: `Watchlist::apex_diag_open`.
+    #[serde(default)]
+    pub apex_diag_open: bool,
+
+    /// Widget gallery panel (Ctrl+Shift+G).
+    /// Source: `Watchlist::widget_gallery_open`.
+    #[serde(default)]
+    pub widget_gallery_open: bool,
+
+    // ── Watchlist panel internals ──────────────────────────────────────────
+
+    /// Watchlist row filter dropdown.
+    /// Source: `Watchlist::filter_open`.
+    #[serde(default)]
+    pub filter_open: bool,
+
+    /// Column config popup.
+    /// Source: `Watchlist::wl_columns_open`.
+    #[serde(default)]
+    pub wl_columns_open: bool,
+
+    // ── Data-feed side-panels ──────────────────────────────────────────────
+
+    /// Time & Sales tape panel.
+    /// Source: `Watchlist::tape_open`.
+    #[serde(default)]
+    pub tape_open: bool,
+
+    /// News feed panel.
+    /// Source: `Watchlist::news_open`.
+    #[serde(default)]
+    pub news_open: bool,
+
+    /// Trade journal floating panel (legacy; separate from `journal_panel_open`).
+    /// Source: `Watchlist::journal_open`.
+    #[serde(default)]
+    pub journal_open: bool,
+
+    // ── Tool panels ────────────────────────────────────────────────────────
+
+    /// Scanner panel.
+    /// Source: `Watchlist::scanner_open`.
+    #[serde(default)]
+    pub scanner_open: bool,
+
+    /// Custom scanner builder panel.
+    /// Source: `Watchlist::scanner_builder_open`.
+    #[serde(default)]
+    pub scanner_builder_open: bool,
+
+    /// Spread builder panel.
+    /// Source: `Watchlist::spread_open`.
+    #[serde(default)]
+    pub spread_open: bool,
+
+    /// Scripting / backtesting panel.
+    /// Source: `Watchlist::script_open`.
+    #[serde(default)]
+    pub script_open: bool,
+
+    /// Screenshot library panel.
+    /// Source: `Watchlist::screenshot_open`.
+    #[serde(default)]
+    pub screenshot_open: bool,
+
+    /// Relative Rotation Graph panel.
+    /// Source: `Watchlist::rrg_open`.
+    #[serde(default)]
+    pub rrg_open: bool,
+
+    // ── Multi-section side panels ──────────────────────────────────────────
+
+    /// Analysis sidebar.
+    /// Source: `Watchlist::analysis_open`.
+    #[serde(default)]
+    pub analysis_open: bool,
+
+    /// Signals sidebar.
+    /// Source: `Watchlist::signals_panel_open`.
+    #[serde(default)]
+    pub signals_panel_open: bool,
+
+    /// Indicators sidebar.
+    /// Source: `Watchlist::indicators_panel_open`.
+    #[serde(default)]
+    pub indicators_panel_open: bool,
+
+    /// Fractional heights for the three sections in the indicators panel
+    /// (TOOLS / ACTIVE / LIBRARY). Sum is always 1.0.
+    /// Source: `Watchlist::indicators_section_fracs: [f32; 3]`.
+    #[serde(default = "SidebarState::default_indicators_section_fracs")]
+    pub indicators_section_fracs: [f32; 3],
+
+    /// Feed sidebar (News / Tape / Scanner tabs).
+    /// Source: `Watchlist::feed_panel_open`.
+    #[serde(default)]
+    pub feed_panel_open: bool,
+
+    /// Playbook sidebar.
+    /// Source: `Watchlist::playbook_panel_open`.
+    #[serde(default)]
+    pub playbook_panel_open: bool,
+
+    /// Trade Journal sidebar.
+    /// Source: `Watchlist::journal_panel_open`.
+    #[serde(default)]
+    pub journal_panel_open: bool,
+
+    // ── Misc panels ────────────────────────────────────────────────────────
+
+    /// ProvenancePane (evidence DAG, right side panel).
+    /// Source: `Watchlist::provenance_open`.
+    #[serde(default)]
+    pub provenance_open: bool,
+
+    /// Historical replay scrubber panel.
+    /// Source: `Watchlist::replay_pane_open`.
+    #[serde(default)]
+    pub replay_pane_open: bool,
+
+    /// Hotkey editor dialog.
+    /// Source: `Watchlist::hotkey_editor_open`.
+    #[serde(default)]
+    pub hotkey_editor_open: bool,
+}
+
+impl SidebarState {
+    fn default_indicators_section_fracs() -> [f32; 3] { [0.18, 0.25, 0.57] }
+}
+
+impl Default for SidebarState {
+    fn default() -> Self {
+        Self {
+            watchlist_open: false,
+            settings_open: false,
+            orders_panel_open: false,
+            order_entry_open: false,
+            order_ledger_open: false,
+            order_ledger_view: 0,
+            order_ledger_filter: 0,
+            order_health_open: false,
+            account_strip_open: false,
+            object_tree_open: false,
+            trendline_filter_open: false,
+            apex_diag_open: false,
+            widget_gallery_open: false,
+            filter_open: false,
+            wl_columns_open: false,
+            tape_open: false,
+            news_open: false,
+            journal_open: false,
+            scanner_open: false,
+            scanner_builder_open: false,
+            spread_open: false,
+            script_open: false,
+            screenshot_open: false,
+            rrg_open: false,
+            analysis_open: false,
+            signals_panel_open: false,
+            indicators_panel_open: false,
+            indicators_section_fracs: Self::default_indicators_section_fracs(),
+            feed_panel_open: false,
+            playbook_panel_open: false,
+            journal_panel_open: false,
+            provenance_open: false,
+            replay_pane_open: false,
+            hotkey_editor_open: false,
+        }
+    }
+}
 
 impl Persistable for SidebarState {
     const KEY: &'static str = "sidebar_state";
     const VERSION: u32 = 1;
 }
 
-/// Layout state — grid choice, pane split ratios, link groups, broadcast mode.
+// ─── LayoutState aggregate ───────────────────────────────────────────────────
+
+/// A single named, colored pane link group.
 ///
-/// Migrate from `Watchlist`:
-/// - `link_groups: Vec<LinkGroup>`
-/// - `broadcast_mode: bool`
-/// - `pane_split_h`, `pane_split_v`, `pane_split_h2`, `pane_split_v2`
-/// - `pane_split_v3`..`pane_split_v6`
-/// - `pane_divider_dragging: bool` (runtime only — exclude)
-/// - `layout_favorites: Vec<String>`
-/// - `timeframe_favorites: Vec<String>`
-/// - `maximized_pane: Option<usize>`
-/// - `pane_templates`, `portfolio_templates`, `dashboard_templates`,
-///   `heatmap_templates`, `spreadsheet_templates`
-/// - `dragging_tab: Option<TabDragState>` (runtime only — exclude)
-/// - `active_workspace`, `pending_workspace_load`, `workspace_save_name`
-#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct LayoutState {}
+/// Mirrors `chart::renderer::gpu::LinkGroup`, which uses `egui::Color32`
+/// (not serializable).  Here the color is stored as `[u8; 4]` (RGBA) so
+/// the aggregate can be persisted without pulling in egui as a serialization
+/// dependency.
+///
+/// Source: `src-tauri/src/chart/renderer/gpu.rs`, `LinkGroup`, line 4347.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PersistedLinkGroup {
+    /// Human-readable label ("Group 1", etc.).
+    pub name: String,
+    /// RGBA color bytes — maps to/from `egui::Color32::to_array()`.
+    pub color_rgba: [u8; 4],
+}
+
+impl Default for PersistedLinkGroup {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            color_rgba: [70, 130, 255, 255],
+        }
+    }
+}
+
+/// Layout state — grid choice, pane split ratios, link groups, broadcast mode,
+/// workspace management, and favorites.
+///
+/// **P2 Round 2** populates this aggregate.
+///
+/// Field sources (Watchlist field → this aggregate field):
+/// - `Watchlist::link_groups: Vec<LinkGroup>`          → `link_groups` (via `PersistedLinkGroup`)
+/// - `Watchlist::broadcast_mode: bool`                 → `broadcast_mode`
+/// - `Watchlist::pane_split_h: f32`                    → `pane_split_h`
+/// - `Watchlist::pane_split_v: f32`                    → `pane_split_v`
+/// - `Watchlist::pane_split_h2: f32`                   → `pane_split_h2`
+/// - `Watchlist::pane_split_v2: f32`                   → `pane_split_v2`
+/// - `Watchlist::pane_split_v3: f32`                   → `pane_split_v3`
+/// - `Watchlist::pane_split_v4: f32`                   → `pane_split_v4`
+/// - `Watchlist::pane_split_v5: f32`                   → `pane_split_v5`
+/// - `Watchlist::pane_split_v6: f32`                   → `pane_split_v6`
+/// - `Watchlist::layout_favorites: Vec<String>`        → `layout_favorites`
+/// - `Watchlist::timeframe_favorites: Vec<String>`     → `timeframe_favorites`
+/// - `Watchlist::maximized_pane: Option<usize>`        → `maximized_pane`
+/// - `Watchlist::pane_templates: Vec<(String, …)>`     → `pane_template_names` (names only)
+/// - `Watchlist::portfolio_templates: Vec<String>`     → `portfolio_templates`
+/// - `Watchlist::dashboard_templates: Vec<String>`     → `dashboard_templates`
+/// - `Watchlist::heatmap_templates: Vec<String>`       → `heatmap_templates`
+/// - `Watchlist::spreadsheet_templates: Vec<String>`   → `spreadsheet_templates`
+/// - `Watchlist::active_workspace: String`             → `active_workspace`
+/// - `Watchlist::workspace_save_name: String`          → `workspace_save_name`
+///
+/// Fields NOT included here (with reason):
+/// - `pane_divider_dragging: bool` — runtime-only, always `false` on launch.
+/// - `dragging_tab: Option<TabDragState>` — runtime drag state; `TabDragState`
+///   holds `egui::Response` internals that are not serializable.
+/// - `pending_workspace_load: Option<String>` — transient task queue signal;
+///   not meaningful across restarts.
+/// - Full `pane_templates` payloads — the `serde_json::Value` inner type
+///   is intentionally opaque and large; names are persisted here so the
+///   UI can enumerate them; the payloads remain in the chart save/load flow.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct LayoutState {
+    /// Named, colored link groups shared across all panes.
+    /// Source: `Watchlist::link_groups: Vec<LinkGroup>`.
+    #[serde(default = "LayoutState::default_link_groups")]
+    pub link_groups: Vec<PersistedLinkGroup>,
+
+    /// When true, toolbar actions (symbol change, timeframe, etc.) apply to
+    /// all panes simultaneously.
+    /// Source: `Watchlist::broadcast_mode: bool`.
+    #[serde(default)]
+    pub broadcast_mode: bool,
+
+    // ── Pane split ratios ──────────────────────────────────────────────────
+    // All default to 0.5 (equal split).
+
+    /// Primary left/right (vertical-bar) split ratio.
+    /// Source: `Watchlist::pane_split_h: f32`.
+    #[serde(default = "LayoutState::default_split")]
+    pub pane_split_h: f32,
+
+    /// Primary top/bottom (horizontal-bar) split ratio.
+    /// Source: `Watchlist::pane_split_v: f32`.
+    #[serde(default = "LayoutState::default_split")]
+    pub pane_split_v: f32,
+
+    /// Secondary left/right split (3-column layouts).
+    /// Source: `Watchlist::pane_split_h2: f32`.
+    #[serde(default = "LayoutState::default_split")]
+    pub pane_split_h2: f32,
+
+    /// Secondary top/bottom split (3-row layouts).
+    /// Source: `Watchlist::pane_split_v2: f32`.
+    #[serde(default = "LayoutState::default_split")]
+    pub pane_split_v2: f32,
+
+    /// Extra horizontal divider 3 (FiveL / SixL / EightH layouts).
+    /// Source: `Watchlist::pane_split_v3: f32`.
+    #[serde(default = "LayoutState::default_split")]
+    pub pane_split_v3: f32,
+
+    /// Extra horizontal divider 4.
+    /// Source: `Watchlist::pane_split_v4: f32`.
+    #[serde(default = "LayoutState::default_split")]
+    pub pane_split_v4: f32,
+
+    /// Extra horizontal divider 5.
+    /// Source: `Watchlist::pane_split_v5: f32`.
+    #[serde(default = "LayoutState::default_split")]
+    pub pane_split_v5: f32,
+
+    /// Extra horizontal divider 6.
+    /// Source: `Watchlist::pane_split_v6: f32`.
+    #[serde(default = "LayoutState::default_split")]
+    pub pane_split_v6: f32,
+
+    // ── Favorites ─────────────────────────────────────────────────────────
+
+    /// Layout preset names pinned to the toolbar (e.g. `["1", "2", "2H", "4"]`).
+    /// Source: `Watchlist::layout_favorites: Vec<String>`.
+    #[serde(default = "LayoutState::default_layout_favorites")]
+    pub layout_favorites: Vec<String>,
+
+    /// Timeframe strings pinned to the toolbar (e.g. `["1m", "5m", "1d"]`).
+    /// Source: `Watchlist::timeframe_favorites: Vec<String>`.
+    #[serde(default = "LayoutState::default_timeframe_favorites")]
+    pub timeframe_favorites: Vec<String>,
+
+    // ── Pane state ─────────────────────────────────────────────────────────
+
+    /// Index of the pane currently shown fullscreen, or `None`.
+    /// Source: `Watchlist::maximized_pane: Option<usize>`.
+    #[serde(default)]
+    pub maximized_pane: Option<usize>,
+
+    // ── Templates ─────────────────────────────────────────────────────────
+
+    /// Names of saved pane templates (indicator + toggle configs).
+    /// The full payloads live in the chart save/load flow; only names
+    /// are persisted here for enumeration.
+    /// Source: `Watchlist::pane_templates: Vec<(String, serde_json::Value)>` (names only).
+    #[serde(default)]
+    pub pane_template_names: Vec<String>,
+
+    /// Saved portfolio view templates.
+    /// Source: `Watchlist::portfolio_templates: Vec<String>`.
+    #[serde(default = "LayoutState::default_portfolio_templates")]
+    pub portfolio_templates: Vec<String>,
+
+    /// Saved dashboard templates.
+    /// Source: `Watchlist::dashboard_templates: Vec<String>`.
+    #[serde(default = "LayoutState::default_dashboard_templates")]
+    pub dashboard_templates: Vec<String>,
+
+    /// Saved heatmap templates.
+    /// Source: `Watchlist::heatmap_templates: Vec<String>`.
+    #[serde(default = "LayoutState::default_heatmap_templates")]
+    pub heatmap_templates: Vec<String>,
+
+    /// Saved spreadsheet templates.
+    /// Source: `Watchlist::spreadsheet_templates: Vec<String>`.
+    #[serde(default = "LayoutState::default_spreadsheet_templates")]
+    pub spreadsheet_templates: Vec<String>,
+
+    // ── Workspace ─────────────────────────────────────────────────────────
+
+    /// Name of the currently active workspace.
+    /// Source: `Watchlist::active_workspace: String`.
+    #[serde(default = "LayoutState::default_workspace")]
+    pub active_workspace: String,
+
+    /// Buffer for the "save workspace as…" input field.
+    /// Source: `Watchlist::workspace_save_name: String`.
+    #[serde(default)]
+    pub workspace_save_name: String,
+}
+
+impl LayoutState {
+    fn default_split() -> f32 { 0.5 }
+    fn default_workspace() -> String { "Default".into() }
+
+    fn default_layout_favorites() -> Vec<String> {
+        vec!["1".into(), "2".into(), "2H".into(), "3".into(), "4".into()]
+    }
+    fn default_timeframe_favorites() -> Vec<String> {
+        vec![
+            "1m".into(), "5m".into(), "15m".into(), "30m".into(),
+            "1h".into(), "4h".into(), "1d".into(), "1wk".into(),
+        ]
+    }
+    fn default_link_groups() -> Vec<PersistedLinkGroup> {
+        vec![
+            PersistedLinkGroup { name: "Group 1".into(), color_rgba: [70, 130, 255, 255] },
+            PersistedLinkGroup { name: "Group 2".into(), color_rgba: [80, 200, 120, 255] },
+            PersistedLinkGroup { name: "Group 3".into(), color_rgba: [255, 160, 60, 255] },
+            PersistedLinkGroup { name: "Group 4".into(), color_rgba: [180, 100, 255, 255] },
+        ]
+    }
+    fn default_portfolio_templates() -> Vec<String> { vec!["Default".into()] }
+    fn default_dashboard_templates() -> Vec<String> { vec!["Default".into()] }
+    fn default_heatmap_templates() -> Vec<String> { vec!["Default".into()] }
+    fn default_spreadsheet_templates() -> Vec<String> { vec!["Default".into()] }
+}
+
+impl Default for LayoutState {
+    fn default() -> Self {
+        Self {
+            link_groups: Self::default_link_groups(),
+            broadcast_mode: false,
+            pane_split_h: 0.5,
+            pane_split_v: 0.5,
+            pane_split_h2: 0.5,
+            pane_split_v2: 0.5,
+            pane_split_v3: 0.5,
+            pane_split_v4: 0.5,
+            pane_split_v5: 0.5,
+            pane_split_v6: 0.5,
+            layout_favorites: Self::default_layout_favorites(),
+            timeframe_favorites: Self::default_timeframe_favorites(),
+            maximized_pane: None,
+            pane_template_names: Vec::new(),
+            portfolio_templates: Self::default_portfolio_templates(),
+            dashboard_templates: Self::default_dashboard_templates(),
+            heatmap_templates: Self::default_heatmap_templates(),
+            spreadsheet_templates: Self::default_spreadsheet_templates(),
+            active_workspace: Self::default_workspace(),
+            workspace_save_name: String::new(),
+        }
+    }
+}
 
 impl Persistable for LayoutState {
     const KEY: &'static str = "layout_state";
@@ -489,5 +1126,282 @@ mod tests {
         assert_eq!(loaded.font_idx, 2);
         assert_eq!(loaded.style_idx, 1);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── AlertsState tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn alerts_state_default_values_are_sane() {
+        let s = AlertsState::default();
+        assert!(s.alerts.is_empty(), "no alerts by default");
+        assert_eq!(s.next_alert_id, 1, "IDs start at 1");
+        assert!(s.alert_query.is_empty());
+        assert!(!s.alerts_panel_open);
+    }
+
+    #[test]
+    fn alerts_state_round_trips_through_persistable() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_alerts_state_roundtrip");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("alerts_state.json");
+        let v = AlertsState {
+            alerts: vec![
+                PersistedAlert {
+                    id: 1,
+                    symbol: "AAPL".into(),
+                    price: 150.0,
+                    above: true,
+                    triggered: false,
+                    message: "AAPL breakout".into(),
+                },
+            ],
+            next_alert_id: 2,
+            alert_query: "SPY".into(),
+            alerts_panel_open: true,
+        };
+        save(&path, &v).unwrap();
+        let loaded: AlertsState = load(&path).unwrap();
+        assert_eq!(loaded.alerts.len(), 1);
+        assert_eq!(loaded.alerts[0].symbol, "AAPL");
+        assert_eq!(loaded.alerts[0].price, 150.0);
+        assert!(loaded.alerts[0].above);
+        assert!(!loaded.alerts[0].triggered);
+        assert_eq!(loaded.next_alert_id, 2);
+        assert_eq!(loaded.alert_query, "SPY");
+        assert!(loaded.alerts_panel_open);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn alerts_state_missing_fields_fall_back_to_defaults() {
+        use super::super::persistence::load;
+        let dir = std::env::temp_dir().join("apex_state_alerts_state_partial");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("alerts_state.json");
+        let envelope = serde_json::json!({
+            "key": "alerts_state",
+            "version": 1,
+            "payload": {
+                "next_alert_id": 5,
+            }
+        });
+        std::fs::write(&path, serde_json::to_vec_pretty(&envelope).unwrap()).unwrap();
+        let loaded: AlertsState = load(&path).expect("partial payload should load");
+        assert_eq!(loaded.next_alert_id, 5);
+        assert!(loaded.alerts.is_empty());
+        assert!(loaded.alert_query.is_empty());
+        assert!(!loaded.alerts_panel_open);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── ChatState tests ──────────────────────────────────────────────────────
+
+    #[test]
+    fn chat_state_default_values_are_sane() {
+        let s = ChatState::default();
+        assert!(!s.discord_open);
+        assert!(s.discord_input.is_empty());
+        assert!(!s.discord_authenticated);
+        assert!(s.discord_selected_guild.is_none());
+        assert!(s.discord_selected_channel.is_none());
+        assert!(s.discord_last_msg_id.is_none());
+    }
+
+    #[test]
+    fn chat_state_round_trips_through_persistable() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_chat_state_roundtrip");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("chat_state.json");
+        let v = ChatState {
+            discord_open: true,
+            discord_input: "hello".into(),
+            discord_channel: "general".into(),
+            discord_authenticated: true,
+            discord_username: "traderbro".into(),
+            discord_user_id: "123456789".into(),
+            discord_selected_guild: Some("guild_abc".into()),
+            discord_selected_channel: Some("ch_xyz".into()),
+            discord_last_msg_id: Some("msg_999".into()),
+        };
+        save(&path, &v).unwrap();
+        let loaded: ChatState = load(&path).unwrap();
+        assert!(loaded.discord_open);
+        assert_eq!(loaded.discord_input, "hello");
+        assert_eq!(loaded.discord_channel, "general");
+        assert!(loaded.discord_authenticated);
+        assert_eq!(loaded.discord_username, "traderbro");
+        assert_eq!(loaded.discord_user_id, "123456789");
+        assert_eq!(loaded.discord_selected_guild.as_deref(), Some("guild_abc"));
+        assert_eq!(loaded.discord_selected_channel.as_deref(), Some("ch_xyz"));
+        assert_eq!(loaded.discord_last_msg_id.as_deref(), Some("msg_999"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn chat_state_missing_fields_fall_back_to_defaults() {
+        use super::super::persistence::load;
+        let dir = std::env::temp_dir().join("apex_state_chat_state_partial");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("chat_state.json");
+        let envelope = serde_json::json!({
+            "key": "chat_state",
+            "version": 1,
+            "payload": {
+                "discord_authenticated": true,
+                "discord_username": "alice",
+            }
+        });
+        std::fs::write(&path, serde_json::to_vec_pretty(&envelope).unwrap()).unwrap();
+        let loaded: ChatState = load(&path).expect("partial payload should load");
+        assert!(loaded.discord_authenticated);
+        assert_eq!(loaded.discord_username, "alice");
+        assert!(!loaded.discord_open);
+        assert!(loaded.discord_selected_guild.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── SidebarState tests ───────────────────────────────────────────────────
+
+    #[test]
+    fn sidebar_state_default_values_are_sane() {
+        let s = SidebarState::default();
+        assert!(!s.watchlist_open);
+        assert!(!s.orders_panel_open);
+        assert!(!s.indicators_panel_open);
+        assert_eq!(s.indicators_section_fracs, [0.18, 0.25, 0.57]);
+        assert_eq!(s.order_ledger_view, 0);
+        assert_eq!(s.order_ledger_filter, 0);
+    }
+
+    #[test]
+    fn sidebar_state_round_trips_through_persistable() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_sidebar_state_roundtrip");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("sidebar_state.json");
+        let mut v = SidebarState::default();
+        v.watchlist_open = true;
+        v.orders_panel_open = true;
+        v.order_ledger_open = true;
+        v.order_ledger_view = 2;
+        v.indicators_panel_open = true;
+        v.indicators_section_fracs = [0.20, 0.30, 0.50];
+        v.signals_panel_open = true;
+        save(&path, &v).unwrap();
+        let loaded: SidebarState = load(&path).unwrap();
+        assert!(loaded.watchlist_open);
+        assert!(loaded.orders_panel_open);
+        assert!(loaded.order_ledger_open);
+        assert_eq!(loaded.order_ledger_view, 2);
+        assert!(loaded.indicators_panel_open);
+        assert_eq!(loaded.indicators_section_fracs, [0.20, 0.30, 0.50]);
+        assert!(loaded.signals_panel_open);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sidebar_state_missing_fields_fall_back_to_defaults() {
+        use super::super::persistence::load;
+        let dir = std::env::temp_dir().join("apex_state_sidebar_state_partial");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("sidebar_state.json");
+        let envelope = serde_json::json!({
+            "key": "sidebar_state",
+            "version": 1,
+            "payload": {
+                "tape_open": true,
+            }
+        });
+        std::fs::write(&path, serde_json::to_vec_pretty(&envelope).unwrap()).unwrap();
+        let loaded: SidebarState = load(&path).expect("partial payload should load");
+        assert!(loaded.tape_open);
+        assert!(!loaded.watchlist_open);
+        // fracs should fall back to the explicit default
+        assert_eq!(loaded.indicators_section_fracs, [0.18, 0.25, 0.57]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── LayoutState tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn layout_state_default_values_are_sane() {
+        let s = LayoutState::default();
+        assert_eq!(s.link_groups.len(), 4, "four default link groups");
+        assert_eq!(s.link_groups[0].name, "Group 1");
+        assert_eq!(s.pane_split_h, 0.5);
+        assert_eq!(s.pane_split_v6, 0.5);
+        assert!(!s.broadcast_mode);
+        assert!(s.maximized_pane.is_none());
+        assert_eq!(s.active_workspace, "Default");
+        assert!(!s.layout_favorites.is_empty());
+        assert!(!s.timeframe_favorites.is_empty());
+    }
+
+    #[test]
+    fn layout_state_round_trips_through_persistable() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_layout_state_roundtrip");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("layout_state.json");
+        let mut v = LayoutState::default();
+        v.broadcast_mode = true;
+        v.pane_split_h = 0.35;
+        v.pane_split_v = 0.65;
+        v.maximized_pane = Some(2);
+        v.active_workspace = "MyWorkspace".into();
+        v.layout_favorites = vec!["1".into(), "4".into()];
+        v.link_groups[0].name = "Blue".into();
+        save(&path, &v).unwrap();
+        let loaded: LayoutState = load(&path).unwrap();
+        assert!(loaded.broadcast_mode);
+        assert_eq!(loaded.pane_split_h, 0.35);
+        assert_eq!(loaded.pane_split_v, 0.65);
+        assert_eq!(loaded.maximized_pane, Some(2));
+        assert_eq!(loaded.active_workspace, "MyWorkspace");
+        assert_eq!(loaded.layout_favorites, &["1", "4"]);
+        assert_eq!(loaded.link_groups[0].name, "Blue");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn layout_state_missing_fields_fall_back_to_defaults() {
+        use super::super::persistence::load;
+        let dir = std::env::temp_dir().join("apex_state_layout_state_partial");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("layout_state.json");
+        let envelope = serde_json::json!({
+            "key": "layout_state",
+            "version": 1,
+            "payload": {
+                "broadcast_mode": true,
+            }
+        });
+        std::fs::write(&path, serde_json::to_vec_pretty(&envelope).unwrap()).unwrap();
+        let loaded: LayoutState = load(&path).expect("partial payload should load");
+        assert!(loaded.broadcast_mode);
+        // All other fields should be defaults
+        assert_eq!(loaded.pane_split_h, 0.5);
+        assert_eq!(loaded.link_groups.len(), 4);
+        assert_eq!(loaded.active_workspace, "Default");
+        assert!(!loaded.layout_favorites.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn persisted_link_group_rgba_round_trips() {
+        let group = PersistedLinkGroup {
+            name: "Alpha".into(),
+            color_rgba: [255, 80, 30, 200],
+        };
+        let json = serde_json::to_string(&group).unwrap();
+        let back: PersistedLinkGroup = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.name, "Alpha");
+        assert_eq!(back.color_rgba, [255, 80, 30, 200]);
     }
 }
