@@ -402,27 +402,299 @@ impl Persistable for ChatState {
     const VERSION: u32 = 1;
 }
 
-/// Sidebar / side-panel open state, widths, focus.
+// ─── SidebarState aggregate ──────────────────────────────────────────────────
+
+/// Which sidebar / side-panel slots are open, plus their per-tab indices and
+/// section-split fractions.
 ///
-/// Migrate from `Watchlist` (the `*_panel_open: bool` / `*_open: bool` family):
-/// - `open: bool` (watchlist itself)
-/// - `orders_panel_open`, `order_entry_open`
-/// - `order_ledger_open`, `order_ledger_view`, `order_ledger_filter`, `order_ledger_search`
-/// - `order_health_open`
-/// - `account_strip_open`, `object_tree_open`, `trendline_filter_open`
-/// - `apex_diag_open`, `widget_gallery_open`
-/// - `filter_open`, `wl_columns_open`
-/// - `cmd_palette_open` + the whole cmd_palette_* family (UI scratch state)
-/// - `layout_dropdown_open`, `timeframe_dropdown_open`
-/// - `tape_open`, `news_open`, `journal_open`
-/// - `scanner_open`, `scanner_builder_open`
-/// - `spread_open`, `script_open`, `screenshot_open`, `rrg_open`
-/// - `analysis_open`, `signals_panel_open`, `indicators_panel_open`
-/// - `feed_panel_open`, `playbook_panel_open`, `journal_panel_open`
-/// - `settings_open`, `discord_open` (overlap with ChatState — pick one)
-/// - the split-section fraction arrays + tab indices for each side panel
-#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SidebarState {}
+/// **P2 Round 2** populates this aggregate.
+///
+/// Field sources (Watchlist field → this aggregate field):
+/// - `Watchlist::open: bool`                    → `watchlist_open`
+/// - `Watchlist::settings_open: bool`           → `settings_open`
+/// - `Watchlist::orders_panel_open: bool`       → `orders_panel_open`
+/// - `Watchlist::order_entry_open: bool`        → `order_entry_open`
+/// - `Watchlist::order_ledger_open: bool`       → `order_ledger_open`
+/// - `Watchlist::order_ledger_view: u8`         → `order_ledger_view`
+/// - `Watchlist::order_ledger_filter: u8`       → `order_ledger_filter`
+/// - `Watchlist::order_health_open: bool`       → `order_health_open`
+/// - `Watchlist::account_strip_open: bool`      → `account_strip_open`
+/// - `Watchlist::object_tree_open: bool`        → `object_tree_open`
+/// - `Watchlist::trendline_filter_open: bool`   → `trendline_filter_open`
+/// - `Watchlist::apex_diag_open: bool`          → `apex_diag_open`
+/// - `Watchlist::widget_gallery_open: bool`     → `widget_gallery_open`
+/// - `Watchlist::filter_open: bool`             → `filter_open`
+/// - `Watchlist::wl_columns_open: bool`         → `wl_columns_open`
+/// - `Watchlist::tape_open: bool`               → `tape_open`
+/// - `Watchlist::news_open: bool`               → `news_open`
+/// - `Watchlist::journal_open: bool`            → `journal_open`
+/// - `Watchlist::scanner_open: bool`            → `scanner_open`
+/// - `Watchlist::scanner_builder_open: bool`    → `scanner_builder_open`
+/// - `Watchlist::spread_open: bool`             → `spread_open`
+/// - `Watchlist::script_open: bool`             → `script_open`
+/// - `Watchlist::screenshot_open: bool`         → `screenshot_open`
+/// - `Watchlist::rrg_open: bool`                → `rrg_open`
+/// - `Watchlist::analysis_open: bool`           → `analysis_open`
+/// - `Watchlist::signals_panel_open: bool`      → `signals_panel_open`
+/// - `Watchlist::indicators_panel_open: bool`   → `indicators_panel_open`
+/// - `Watchlist::indicators_section_fracs: [f32;3]` → `indicators_section_fracs`
+/// - `Watchlist::feed_panel_open: bool`         → `feed_panel_open`
+/// - `Watchlist::playbook_panel_open: bool`     → `playbook_panel_open`
+/// - `Watchlist::journal_panel_open: bool`      → `journal_panel_open`
+/// - `Watchlist::provenance_open: bool`         → `provenance_open`
+/// - `Watchlist::replay_pane_open: bool`        → `replay_pane_open`
+/// - `Watchlist::hotkey_editor_open: bool`      → `hotkey_editor_open`
+///
+/// Fields NOT included here (with reason):
+/// - `cmd_palette_open`, `cmd_palette_query`, `cmd_palette_results`,
+///   `cmd_palette_sel`, `cmd_palette_recent`, `cmd_palette_freq`,
+///   `cmd_palette_ai_mode`, `cmd_palette_ai_input` — the palette is
+///   ephemeral; state should not survive a restart.
+/// - `hotkey_editing_id: Option<u32>` — transient UI scratch, not worth
+///   persisting.
+/// - `layout_dropdown_open`, `layout_dropdown_pos`,
+///   `timeframe_dropdown_open`, `timeframe_dropdown_pos` — transient
+///   dropdown gates; always closed on launch.
+/// - `discord_open` — lives in `ChatState` to keep all Discord state
+///   co-located; not duplicated here.
+/// - `analysis_tab`, `signals_tab`, `feed_tab`, `signals_splits`,
+///   `analysis_splits`, `feed_splits` — typed enums that reference
+///   crate-internal types not currently `Serialize`; deferred to follow-up.
+/// - `order_ledger_search: String` — transient search buffer, resets on open.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SidebarState {
+    /// Whether the main watchlist side-panel is open.
+    /// Source: `Watchlist::open`.
+    #[serde(default)]
+    pub watchlist_open: bool,
+
+    /// Whether the Settings modal is open.
+    /// Source: `Watchlist::settings_open`.
+    #[serde(default)]
+    pub settings_open: bool,
+
+    // ── Orders / trading panels ────────────────────────────────────────────
+
+    /// Orders panel (active orders list).
+    /// Source: `Watchlist::orders_panel_open`.
+    #[serde(default)]
+    pub orders_panel_open: bool,
+
+    /// Order entry ticket.
+    /// Source: `Watchlist::order_entry_open`.
+    #[serde(default)]
+    pub order_entry_open: bool,
+
+    /// Order ledger panel (order history).
+    /// Source: `Watchlist::order_ledger_open`.
+    #[serde(default)]
+    pub order_ledger_open: bool,
+
+    /// Active tab in the order ledger (0=Active, 1=Journal, 2=All).
+    /// Source: `Watchlist::order_ledger_view: u8`.
+    #[serde(default)]
+    pub order_ledger_view: u8,
+
+    /// Active filter in the order ledger.
+    /// Source: `Watchlist::order_ledger_filter: u8`.
+    #[serde(default)]
+    pub order_ledger_filter: u8,
+
+    /// Order system health panel (Ctrl+Shift+O).
+    /// Source: `Watchlist::order_health_open`.
+    #[serde(default)]
+    pub order_health_open: bool,
+
+    // ── Chart-adjacent panels ──────────────────────────────────────────────
+
+    /// Account summary bar below the toolbar.
+    /// Source: `Watchlist::account_strip_open`.
+    #[serde(default)]
+    pub account_strip_open: bool,
+
+    /// Object tree panel (drawings, indicators, overlays).
+    /// Source: `Watchlist::object_tree_open`.
+    #[serde(default)]
+    pub object_tree_open: bool,
+
+    /// Trendline filter dropdown.
+    /// Source: `Watchlist::trendline_filter_open`.
+    #[serde(default)]
+    pub trendline_filter_open: bool,
+
+    // ── Developer / debug panels ───────────────────────────────────────────
+
+    /// Apex diagnostics panel.
+    /// Source: `Watchlist::apex_diag_open`.
+    #[serde(default)]
+    pub apex_diag_open: bool,
+
+    /// Widget gallery panel (Ctrl+Shift+G).
+    /// Source: `Watchlist::widget_gallery_open`.
+    #[serde(default)]
+    pub widget_gallery_open: bool,
+
+    // ── Watchlist panel internals ──────────────────────────────────────────
+
+    /// Watchlist row filter dropdown.
+    /// Source: `Watchlist::filter_open`.
+    #[serde(default)]
+    pub filter_open: bool,
+
+    /// Column config popup.
+    /// Source: `Watchlist::wl_columns_open`.
+    #[serde(default)]
+    pub wl_columns_open: bool,
+
+    // ── Data-feed side-panels ──────────────────────────────────────────────
+
+    /// Time & Sales tape panel.
+    /// Source: `Watchlist::tape_open`.
+    #[serde(default)]
+    pub tape_open: bool,
+
+    /// News feed panel.
+    /// Source: `Watchlist::news_open`.
+    #[serde(default)]
+    pub news_open: bool,
+
+    /// Trade journal floating panel (legacy; separate from `journal_panel_open`).
+    /// Source: `Watchlist::journal_open`.
+    #[serde(default)]
+    pub journal_open: bool,
+
+    // ── Tool panels ────────────────────────────────────────────────────────
+
+    /// Scanner panel.
+    /// Source: `Watchlist::scanner_open`.
+    #[serde(default)]
+    pub scanner_open: bool,
+
+    /// Custom scanner builder panel.
+    /// Source: `Watchlist::scanner_builder_open`.
+    #[serde(default)]
+    pub scanner_builder_open: bool,
+
+    /// Spread builder panel.
+    /// Source: `Watchlist::spread_open`.
+    #[serde(default)]
+    pub spread_open: bool,
+
+    /// Scripting / backtesting panel.
+    /// Source: `Watchlist::script_open`.
+    #[serde(default)]
+    pub script_open: bool,
+
+    /// Screenshot library panel.
+    /// Source: `Watchlist::screenshot_open`.
+    #[serde(default)]
+    pub screenshot_open: bool,
+
+    /// Relative Rotation Graph panel.
+    /// Source: `Watchlist::rrg_open`.
+    #[serde(default)]
+    pub rrg_open: bool,
+
+    // ── Multi-section side panels ──────────────────────────────────────────
+
+    /// Analysis sidebar.
+    /// Source: `Watchlist::analysis_open`.
+    #[serde(default)]
+    pub analysis_open: bool,
+
+    /// Signals sidebar.
+    /// Source: `Watchlist::signals_panel_open`.
+    #[serde(default)]
+    pub signals_panel_open: bool,
+
+    /// Indicators sidebar.
+    /// Source: `Watchlist::indicators_panel_open`.
+    #[serde(default)]
+    pub indicators_panel_open: bool,
+
+    /// Fractional heights for the three sections in the indicators panel
+    /// (TOOLS / ACTIVE / LIBRARY). Sum is always 1.0.
+    /// Source: `Watchlist::indicators_section_fracs: [f32; 3]`.
+    #[serde(default = "SidebarState::default_indicators_section_fracs")]
+    pub indicators_section_fracs: [f32; 3],
+
+    /// Feed sidebar (News / Tape / Scanner tabs).
+    /// Source: `Watchlist::feed_panel_open`.
+    #[serde(default)]
+    pub feed_panel_open: bool,
+
+    /// Playbook sidebar.
+    /// Source: `Watchlist::playbook_panel_open`.
+    #[serde(default)]
+    pub playbook_panel_open: bool,
+
+    /// Trade Journal sidebar.
+    /// Source: `Watchlist::journal_panel_open`.
+    #[serde(default)]
+    pub journal_panel_open: bool,
+
+    // ── Misc panels ────────────────────────────────────────────────────────
+
+    /// ProvenancePane (evidence DAG, right side panel).
+    /// Source: `Watchlist::provenance_open`.
+    #[serde(default)]
+    pub provenance_open: bool,
+
+    /// Historical replay scrubber panel.
+    /// Source: `Watchlist::replay_pane_open`.
+    #[serde(default)]
+    pub replay_pane_open: bool,
+
+    /// Hotkey editor dialog.
+    /// Source: `Watchlist::hotkey_editor_open`.
+    #[serde(default)]
+    pub hotkey_editor_open: bool,
+}
+
+impl SidebarState {
+    fn default_indicators_section_fracs() -> [f32; 3] { [0.18, 0.25, 0.57] }
+}
+
+impl Default for SidebarState {
+    fn default() -> Self {
+        Self {
+            watchlist_open: false,
+            settings_open: false,
+            orders_panel_open: false,
+            order_entry_open: false,
+            order_ledger_open: false,
+            order_ledger_view: 0,
+            order_ledger_filter: 0,
+            order_health_open: false,
+            account_strip_open: false,
+            object_tree_open: false,
+            trendline_filter_open: false,
+            apex_diag_open: false,
+            widget_gallery_open: false,
+            filter_open: false,
+            wl_columns_open: false,
+            tape_open: false,
+            news_open: false,
+            journal_open: false,
+            scanner_open: false,
+            scanner_builder_open: false,
+            spread_open: false,
+            script_open: false,
+            screenshot_open: false,
+            rrg_open: false,
+            analysis_open: false,
+            signals_panel_open: false,
+            indicators_panel_open: false,
+            indicators_section_fracs: Self::default_indicators_section_fracs(),
+            feed_panel_open: false,
+            playbook_panel_open: false,
+            journal_panel_open: false,
+            provenance_open: false,
+            replay_pane_open: false,
+            hotkey_editor_open: false,
+        }
+    }
+}
 
 impl Persistable for SidebarState {
     const KEY: &'static str = "sidebar_state";
@@ -773,6 +1045,68 @@ mod tests {
         assert_eq!(loaded.discord_username, "alice");
         assert!(!loaded.discord_open);
         assert!(loaded.discord_selected_guild.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── SidebarState tests ───────────────────────────────────────────────────
+
+    #[test]
+    fn sidebar_state_default_values_are_sane() {
+        let s = SidebarState::default();
+        assert!(!s.watchlist_open);
+        assert!(!s.orders_panel_open);
+        assert!(!s.indicators_panel_open);
+        assert_eq!(s.indicators_section_fracs, [0.18, 0.25, 0.57]);
+        assert_eq!(s.order_ledger_view, 0);
+        assert_eq!(s.order_ledger_filter, 0);
+    }
+
+    #[test]
+    fn sidebar_state_round_trips_through_persistable() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_sidebar_state_roundtrip");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("sidebar_state.json");
+        let mut v = SidebarState::default();
+        v.watchlist_open = true;
+        v.orders_panel_open = true;
+        v.order_ledger_open = true;
+        v.order_ledger_view = 2;
+        v.indicators_panel_open = true;
+        v.indicators_section_fracs = [0.20, 0.30, 0.50];
+        v.signals_panel_open = true;
+        save(&path, &v).unwrap();
+        let loaded: SidebarState = load(&path).unwrap();
+        assert!(loaded.watchlist_open);
+        assert!(loaded.orders_panel_open);
+        assert!(loaded.order_ledger_open);
+        assert_eq!(loaded.order_ledger_view, 2);
+        assert!(loaded.indicators_panel_open);
+        assert_eq!(loaded.indicators_section_fracs, [0.20, 0.30, 0.50]);
+        assert!(loaded.signals_panel_open);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sidebar_state_missing_fields_fall_back_to_defaults() {
+        use super::super::persistence::load;
+        let dir = std::env::temp_dir().join("apex_state_sidebar_state_partial");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("sidebar_state.json");
+        let envelope = serde_json::json!({
+            "key": "sidebar_state",
+            "version": 1,
+            "payload": {
+                "tape_open": true,
+            }
+        });
+        std::fs::write(&path, serde_json::to_vec_pretty(&envelope).unwrap()).unwrap();
+        let loaded: SidebarState = load(&path).expect("partial payload should load");
+        assert!(loaded.tape_open);
+        assert!(!loaded.watchlist_open);
+        // fracs should fall back to the explicit default
+        assert_eq!(loaded.indicators_section_fracs, [0.18, 0.25, 0.57]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
