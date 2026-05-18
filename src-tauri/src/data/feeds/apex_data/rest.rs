@@ -397,6 +397,39 @@ pub fn get_breadth(index: &str) -> Option<BreadthReading> {
 /// gainers/losers; this one covers gainers/losers/active/rvol_leaders/gappers.
 pub fn get_movers(kind: MoverKind) -> Option<MoversReading> {
     get(&format!("/api/stocks/movers/{}", kind.as_str()))
+// ── Wave 10 projector REST endpoints ─────────────────────────────────────
+
+/// `GET /api/stocks/news/:ticker?since=<epoch_ms>` — cached `news_sentiment`
+/// projector output. Backend may return `404` when no articles cached yet;
+/// we surface that as `None` so callers can fall back to empty state.
+pub fn get_news(ticker: &str, since_ms: Option<i64>) -> Option<NewsResponse> {
+    let path = match since_ms {
+        Some(s) => format!("/api/stocks/news/{ticker}?since={s}"),
+        None    => format!("/api/stocks/news/{ticker}"),
+    };
+    get(&path)
+}
+
+/// `GET /api/stocks/iv_rank/:underlying?lookback=<sessions>` — projector
+/// reading from the `vol_surface` migration. Defaults to 252-session lookback
+/// when `lookback` is `None`.
+pub fn get_iv_rank(underlying: &str, lookback: Option<u32>) -> Option<IvRankV2> {
+    let path = match lookback {
+        Some(l) => format!("/api/stocks/iv_rank/{underlying}?lookback={l}"),
+        None    => format!("/api/stocks/iv_rank/{underlying}"),
+    };
+    get(&path)
+}
+
+/// `GET /api/stocks/iiv/:etf` — `etf_iiv` projector reading (market vs NAV).
+pub fn get_etf_iiv(etf: &str) -> Option<EtfIivReading> {
+    get(&format!("/api/stocks/iiv/{etf}"))
+}
+
+/// `GET /api/stocks/corporate_actions/:ticker` — `corporate_actions`
+/// projector reading (halts, dividends, splits, earnings).
+pub fn get_corp_actions(ticker: &str) -> Option<CorporateActionsReading> {
+    get(&format!("/api/stocks/corporate_actions/{ticker}"))
 }
 
 /// Liveness — text "ok". Returns true on HTTP 200.

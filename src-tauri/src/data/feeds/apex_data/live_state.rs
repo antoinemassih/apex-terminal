@@ -11,6 +11,7 @@ use super::types::{
 use super::types::{Quote, Trade, Snapshot, HealthReady, FeedsResponse, GreeksRow, ChainRow,
     TradePlanV2, SpikeExplanation};
     SectorRotationReading, BreadthReading, MoversReading, MoverKind, HaltReading, HaltKind,
+    NewsResponse, IvRankV2, EtfIivReading, CorporateActionsReading,
 };
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Mutex, OnceLock};
@@ -347,6 +348,141 @@ pub fn chain_summary() -> Vec<(String, usize, u64)> {
 }
 
 // ── Toasts (cross-thread) ──────────────────────────────────────────────────
+
+// ── Wave 10 projector caches (per-ticker, TTL-gated REST fetch) ──────────
+//
+// Each cache stores `(value, fetched_at)`. Callers ask `get_or_fetch_*` from
+// any thread; if the entry is missing or stale beyond the TTL, a single
+// detached thread fetches the projector reading and writes it back. Multiple
+// concurrent callers may briefly race, but the cost is one duplicate REST
+// hit — acceptable for our cardinality (≤ ~200 tickers).
+
+use std::collections::HashMap as StdHashMap;
+
+const NEWS_TTL:   Duration = Duration::from_secs(60);
+const IVRANK_TTL: Duration = Duration::from_secs(60);
+const IIV_TTL:    Duration = Duration::from_secs(10);
+const CORP_TTL:   Duration = Duration::from_secs(300);
+
+struct ProjectorCaches {
+    news:    Mutex<StdHashMap<String, (NewsResponse, Instant)>>,
+    iv_rank: Mutex<StdHashMap<String, (IvRankV2, Instant)>>,
+    iiv:     Mutex<StdHashMap<String, (EtfIivReading, Instant)>>,
+    corp:    Mutex<StdHashMap<String, (CorporateActionsReading, Instant)>>,
+    /// Tickers currently being fetched (per cache). Prevents thread storms
+    /// when many UI frames request the same key while the first is in flight.
+    inflight: Mutex<std::collections::HashSet<String>>,
+}
+
+static PROJ: OnceLock<ProjectorCaches> = OnceLock::new();
+fn proj() -> &'static ProjectorCaches {
+    PROJ.get_or_init(|| ProjectorCaches {
+        news:    Mutex::new(StdHashMap::new()),
+        iv_rank: Mutex::new(StdHashMap::new()),
+        iiv:     Mutex::new(StdHashMap::new()),
+        corp:    Mutex::new(StdHashMap::new()),
+        inflight: Mutex::new(std::collections::HashSet::new()),
+    })
+}
+
+fn try_claim_inflight(key: String) -> bool {
+    if let Ok(mut g) = proj().inflight.lock() { g.insert(key) } else { false }
+}
+fn release_inflight(key: &str) {
+    if let Ok(mut g) = proj().inflight.lock() { g.remove(key); }
+}
+
+// News --------------------------------------------------------------------
+
+pub fn get_news(ticker: &str) -> Option<NewsResponse> {
+    proj().news.lock().ok()?.get(&ticker.to_uppercase()).map(|(v, _)| v.clone())
+}
+
+pub fn get_or_fetch_news(ticker: &str) {
+    let key = ticker.to_uppercase();
+    let needs_fetch = proj().news.lock().ok().and_then(|g| g.get(&key).map(|(_, t)| t.elapsed() >= NEWS_TTL))
+        .unwrap_or(true);
+    if !needs_fetch { return; }
+    let claim_key = format!("news:{key}");
+    if !try_claim_inflight(claim_key.clone()) { return; }
+    let owned = key.clone();
+    std::thread::Builder::new().name("apex-news".into()).spawn(move || {
+        let resp = super::rest::get_news(&owned, None).unwrap_or_default();
+        if let Ok(mut g) = proj().news.lock() {
+            g.insert(owned.clone(), (resp, Instant::now()));
+        }
+        release_inflight(&claim_key);
+    }).ok();
+}
+
+// IV rank -----------------------------------------------------------------
+
+pub fn get_iv_rank(underlying: &str) -> Option<IvRankV2> {
+    proj().iv_rank.lock().ok()?.get(&underlying.to_uppercase()).map(|(v, _)| v.clone())
+}
+
+pub fn get_or_fetch_iv_rank(underlying: &str, lookback: Option<u32>) {
+    let key = underlying.to_uppercase();
+    let needs_fetch = proj().iv_rank.lock().ok().and_then(|g| g.get(&key).map(|(_, t)| t.elapsed() >= IVRANK_TTL))
+        .unwrap_or(true);
+    if !needs_fetch { return; }
+    let claim_key = format!("ivrank:{key}");
+    if !try_claim_inflight(claim_key.clone()) { return; }
+    let owned = key.clone();
+    std::thread::Builder::new().name("apex-ivrank".into()).spawn(move || {
+        let resp = super::rest::get_iv_rank(&owned, lookback).unwrap_or_default();
+        if let Ok(mut g) = proj().iv_rank.lock() {
+            g.insert(owned.clone(), (resp, Instant::now()));
+        }
+        release_inflight(&claim_key);
+    }).ok();
+}
+
+// ETF IIV -----------------------------------------------------------------
+
+pub fn get_etf_iiv(etf: &str) -> Option<EtfIivReading> {
+    proj().iiv.lock().ok()?.get(&etf.to_uppercase()).map(|(v, _)| v.clone())
+}
+
+pub fn get_or_fetch_etf_iiv(etf: &str) {
+    let key = etf.to_uppercase();
+    let needs_fetch = proj().iiv.lock().ok().and_then(|g| g.get(&key).map(|(_, t)| t.elapsed() >= IIV_TTL))
+        .unwrap_or(true);
+    if !needs_fetch { return; }
+    let claim_key = format!("iiv:{key}");
+    if !try_claim_inflight(claim_key.clone()) { return; }
+    let owned = key.clone();
+    std::thread::Builder::new().name("apex-iiv".into()).spawn(move || {
+        let resp = super::rest::get_etf_iiv(&owned).unwrap_or_default();
+        if let Ok(mut g) = proj().iiv.lock() {
+            g.insert(owned.clone(), (resp, Instant::now()));
+        }
+        release_inflight(&claim_key);
+    }).ok();
+}
+
+// Corporate actions -------------------------------------------------------
+
+pub fn get_corp_actions(ticker: &str) -> Option<CorporateActionsReading> {
+    proj().corp.lock().ok()?.get(&ticker.to_uppercase()).map(|(v, _)| v.clone())
+}
+
+pub fn get_or_fetch_corp_actions(ticker: &str) {
+    let key = ticker.to_uppercase();
+    let needs_fetch = proj().corp.lock().ok().and_then(|g| g.get(&key).map(|(_, t)| t.elapsed() >= CORP_TTL))
+        .unwrap_or(true);
+    if !needs_fetch { return; }
+    let claim_key = format!("corp:{key}");
+    if !try_claim_inflight(claim_key.clone()) { return; }
+    let owned = key.clone();
+    std::thread::Builder::new().name("apex-corp".into()).spawn(move || {
+        let resp = super::rest::get_corp_actions(&owned).unwrap_or_default();
+        if let Ok(mut g) = proj().corp.lock() {
+            g.insert(owned.clone(), (resp, Instant::now()));
+        }
+        release_inflight(&claim_key);
+    }).ok();
+}
 
 pub fn push_toast(msg: impl Into<String>) {
     if let Ok(mut g) = state().toasts.lock() { g.push(msg.into()); }

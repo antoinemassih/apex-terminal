@@ -4317,6 +4317,9 @@ pub(crate) struct Watchlist {
     pub(crate) journal_open: bool,
     pub(crate) news_items: Vec<NewsItem>,
     pub(crate) news_filter_symbol: bool, // true = filter to active chart symbol
+    /// Sentiment filter: -2=All, -1=Bearish, 0=Neutral, 1=Bullish. See
+    /// `panels::news_panel::next_sentiment_filter`.
+    pub(crate) news_sentiment_filter: i8,
     // Scanner
     pub(crate) scanner_open: bool,
     pub(crate) scanner_defs: Vec<ScannerDef>,
@@ -4496,14 +4499,11 @@ impl Watchlist {
                tape_entries: vec![],
                news_open: false,
                journal_open: false,
-               news_items: vec![
-                   NewsItem { headline: "Fed Holds Rates Steady, Signals Cautious Approach".into(), source: "Reuters".into(), timestamp: "10m".into(), symbol: "SPY".into(), sentiment: 0, url: String::new() },
-                   NewsItem { headline: "NVDA Beats Earnings Estimates, Guides Higher".into(), source: "Bloomberg".into(), timestamp: "25m".into(), symbol: "NVDA".into(), sentiment: 1, url: String::new() },
-                   NewsItem { headline: "Apple Announces Stock Buyback Program".into(), source: "CNBC".into(), timestamp: "1h".into(), symbol: "AAPL".into(), sentiment: 1, url: String::new() },
-                   NewsItem { headline: "Oil Prices Slide on Demand Concerns".into(), source: "Benzinga".into(), timestamp: "2h".into(), symbol: "USO".into(), sentiment: -1, url: String::new() },
-                   NewsItem { headline: "Tesla Deliveries Miss Expectations".into(), source: "Reuters".into(), timestamp: "3h".into(), symbol: "TSLA".into(), sentiment: -1, url: String::new() },
-               ],
+               // News items now populated from the `news_sentiment` projector
+               // via `panels::news_panel::refresh_from_projector` on each frame.
+               news_items: vec![],
                news_filter_symbol: false,
+               news_sentiment_filter: -2, // All
                scanner_open: false,
                scanner_defs: vec![ScannerDef::preset_gainers(), ScannerDef::preset_losers(), ScannerDef::preset_most_active()],
                scanner_results: vec![],

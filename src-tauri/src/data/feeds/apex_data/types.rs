@@ -998,6 +998,112 @@ pub struct HaltReading {
     #[serde(default)] pub time_ms: i64,
     /// Resumes-at timestamp for `HaltActive`; 0 when unknown.
     #[serde(default)] pub resumes_at_ms: i64,
+// ── Wave 10 projector outputs — news / IV rank / ETF IIV / corp actions ──
+
+/// Single news article reading from the `news_sentiment` projector.
+/// `published_ms` is epoch milliseconds. `sentiment` is the bucketed label
+/// returned by the spike_explainer (bullish/bearish/neutral); `score` is the
+/// raw signed sentiment score in `[-1.0, 1.0]`.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct NewsReading {
+    #[serde(default)] pub symbol: String,
+    #[serde(default)] pub headline: String,
+    #[serde(default)] pub source: String,
+    #[serde(default)] pub url: String,
+    #[serde(default)] pub published_ms: i64,
+    /// "bullish" | "bearish" | "neutral" (lowercase). Empty when projector
+    /// couldn't classify.
+    #[serde(default)] pub sentiment: String,
+    /// Signed score in [-1.0, 1.0]; `0.0` when missing.
+    #[serde(default)] pub score: f64,
+}
+
+impl NewsReading {
+    /// `-1 | 0 | 1` for the legacy NewsItem sentiment field.
+    pub fn sentiment_tristate(&self) -> i8 {
+        match self.sentiment.as_str() {
+            "bullish" | "bull" | "positive" => 1,
+            "bearish" | "bear" | "negative" => -1,
+            _ if self.score > 0.15 => 1,
+            _ if self.score < -0.15 => -1,
+            _ => 0,
+        }
+    }
+}
+
+/// REST envelope for `/api/stocks/news/:ticker`.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct NewsResponse {
+    #[serde(default)] pub ticker: String,
+    #[serde(default)] pub articles: Vec<NewsReading>,
+    #[serde(default)] pub updated_at_ms: i64,
+}
+
+/// `vol_surface` migration — current ATM IV and percentile rank over a
+/// configurable lookback (default 252 sessions).
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct IvRankV2 {
+    #[serde(default)] pub underlying: String,
+    /// Current ATM implied vol (annualized, decimal, e.g. 0.245 = 24.5%).
+    #[serde(default)] pub atm_iv: f64,
+    /// 0–100 percentile rank within the lookback window.
+    #[serde(default)] pub iv_rank: f64,
+    /// Number of session samples actually used for the rank.
+    #[serde(default)] pub n_samples: u32,
+    /// Sessions requested by the caller (echoed by backend).
+    #[serde(default)] pub lookback: u32,
+    /// Backend sets this true when n_samples < min_samples — UI shows the
+    /// "insufficient history" message instead of the bar.
+    #[serde(default)] pub insufficient_history: bool,
+    #[serde(default)] pub updated_at_ms: i64,
+}
+
+/// `etf_iiv` projector reading — ETF mark vs indicative NAV.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct EtfIivReading {
+    #[serde(default)] pub etf: String,
+    /// Last trade / mark.
+    #[serde(default)] pub market_price: f64,
+    /// Indicative intraday NAV.
+    #[serde(default)] pub iiv: f64,
+    /// (market_price - iiv) / iiv expressed in basis points.
+    #[serde(default)] pub premium_disc_bps: f64,
+    /// Stale fraction of the basket constituents (0.0–1.0).
+    #[serde(default)] pub staleness_pct: f64,
+    #[serde(default)] pub updated_at_ms: i64,
+}
+
+/// Kind of corporate action — used by both the UI badge picker and tests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActionKind {
+    Earnings,
+    ExDividend,
+    Split,
+    Halt,
+    Other,
+}
+
+impl Default for ActionKind {
+    fn default() -> Self { ActionKind::Other }
+}
+
+/// A scheduled / recently-fired corporate event for a ticker.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct UpcomingEvent {
+    #[serde(default)] pub kind: ActionKind,
+    /// Event time in epoch milliseconds (UTC).
+    #[serde(default)] pub event_ms: i64,
+    /// Free-form details, e.g. "EPS est 1.23" or "0.24/share".
+    #[serde(default)] pub detail: String,
+}
+
+/// `corporate_actions` projector reading for a single ticker.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct CorporateActionsReading {
+    #[serde(default)] pub ticker: String,
+    #[serde(default)] pub events: Vec<UpcomingEvent>,
+    #[serde(default)] pub updated_at_ms: i64,
 }
 
 /// §5.6.c — `GET /api/stocks/grouped/:date` row (Polygon "grouped daily bars").
