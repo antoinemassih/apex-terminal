@@ -14,7 +14,8 @@
 //! and contention has not been observed in practice.
 
 use std::collections::HashMap;
-use std::sync::{OnceLock, RwLock};
+use std::sync::OnceLock;
+use parking_lot::RwLock;
 
 use crate::data::connectivity::ApiError;
 
@@ -60,11 +61,11 @@ impl ConIdResolver {
             return;
         }
         {
-            let mut m = self.by_conid.write().expect("by_conid poisoned");
+            let mut m = self.by_conid.write();
             m.insert(conid, sym.clone());
         }
         {
-            let mut m = self.by_symbol.write().expect("by_symbol poisoned");
+            let mut m = self.by_symbol.write();
             m.insert(sym, conid);
         }
     }
@@ -72,7 +73,6 @@ impl ConIdResolver {
     pub fn symbol_for(&self, conid: i64) -> Option<String> {
         self.by_conid
             .read()
-            .expect("by_conid poisoned")
             .get(&conid)
             .cloned()
     }
@@ -81,7 +81,6 @@ impl ConIdResolver {
         let sym = canon(symbol);
         self.by_symbol
             .read()
-            .expect("by_symbol poisoned")
             .get(&sym)
             .copied()
     }
@@ -221,7 +220,7 @@ mod tests {
     #[async_trait::async_trait]
     impl ConIdLookup for MockLookup {
         async fn lookup(&self, _symbol: &str) -> Result<i64, ApiError> {
-            *self.calls.lock().unwrap() += 1;
+            *self.calls.lock() += 1;
             Ok(self.conid)
         }
     }
@@ -233,7 +232,7 @@ mod tests {
         let mock = MockLookup { conid: 1, calls: std::sync::Mutex::new(0) };
         let cid = r.resolve_conid("TSLA", &mock).await.unwrap();
         assert_eq!(cid, 7777);
-        assert_eq!(*mock.calls.lock().unwrap(), 0, "cache hit must not call lookup");
+        assert_eq!(*mock.calls.lock(), 0, "cache hit must not call lookup");
     }
 
     #[tokio::test]
@@ -242,11 +241,11 @@ mod tests {
         let mock = MockLookup { conid: 4242, calls: std::sync::Mutex::new(0) };
         let cid = r.resolve_conid("NVDA", &mock).await.unwrap();
         assert_eq!(cid, 4242);
-        assert_eq!(*mock.calls.lock().unwrap(), 1);
+        assert_eq!(*mock.calls.lock(), 1);
 
         // Second call hits the cache.
         let cid2 = r.resolve_conid("NVDA", &mock).await.unwrap();
         assert_eq!(cid2, 4242);
-        assert_eq!(*mock.calls.lock().unwrap(), 1, "second resolve must be cached");
+        assert_eq!(*mock.calls.lock(), 1, "second resolve must be cached");
     }
 }
