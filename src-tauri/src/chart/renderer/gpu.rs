@@ -1758,6 +1758,9 @@ pub(crate) struct Chart {
     pub(crate) overlay_puts: Vec<OptionRow>,
     pub(crate) overlay_chain_symbol: String, // symbol for which overlay data is loaded
     pub(crate) overlay_chain_loading: bool,
+    /// True when the overlay chain was synthesized locally (real upstream
+    /// unavailable). Renderer paints a "PLACEHOLDER" tag on the axis.
+    pub(crate) overlay_chain_placeholder: bool,
     pub(crate) floating_order_panes: Vec<FloatingOrderPane>, // floating order entry windows
     pub(crate) gamma_levels: Vec<(f32, f32)>, // (price, gamma_exposure) — positive = stabilizing, negative = accelerating
     pub(crate) gamma_call_wall: f32,
@@ -1977,7 +1980,7 @@ impl Chart {
             symbol_overlays: vec![], overlay_editing: false, overlay_editing_idx: None, overlay_input: String::new(),
             show_gamma: false, hit_highlight: false, hit_highlights: vec![], hit_cooldowns: vec![],
             show_events: false, event_markers: vec![],
-            show_strikes_overlay: false, overlay_calls: vec![], overlay_puts: vec![], overlay_chain_symbol: String::new(), overlay_chain_loading: false, floating_order_panes: vec![], gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0,
+            show_strikes_overlay: false, overlay_calls: vec![], overlay_puts: vec![], overlay_chain_symbol: String::new(), overlay_chain_loading: false, overlay_chain_placeholder: false, floating_order_panes: vec![], gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0,
             fundamentals: FundamentalData::default(), show_analyst_targets: false,
             show_pe_band: false, show_insider_trades: false, insider_trades: vec![],
             econ_calendar: vec![],
@@ -3424,7 +3427,7 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                     watchlist.tape_entries.drain(..watchlist.tape_entries.len() - 500);
                 }
             }
-            ChartCommand::ChainData { symbol, dte, underlying_price, calls, puts } => {
+            ChartCommand::ChainData { symbol, dte, underlying_price, calls, puts, placeholder } => {
                 if *symbol == watchlist.chain_symbol {
                     let to_rows = |data: &[(f32,f32,f32,f32,i32,i32,f32,bool,String)]| -> Vec<OptionRow> {
                         data.iter().map(|(strike,last,bid,ask,vol,oi,iv,itm,contract)| OptionRow {
@@ -3434,8 +3437,10 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                     };
                     if *dte == 0 {
                         watchlist.chain_0dte = (to_rows(calls), to_rows(puts));
+                        watchlist.chain_0dte_placeholder = *placeholder;
                     } else {
                         watchlist.chain_far = (to_rows(calls), to_rows(puts));
+                        watchlist.chain_far_placeholder = *placeholder;
                     }
                     watchlist.chain_loading = false;
                     // Wave 5: mirror the legacy boolean into the InFlightRegistry
@@ -3453,7 +3458,7 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                         symbol, dte, underlying_price);
                 }
             }
-            ChartCommand::OverlayChainData { symbol, calls, puts } => {
+            ChartCommand::OverlayChainData { symbol, calls, puts, placeholder } => {
                 let to_rows = |data: &[(f32,f32,f32,f32,i32,i32,f32,bool,String)]| -> Vec<OptionRow> {
                     data.iter().map(|(strike,last,bid,ask,vol,oi,iv,itm,contract)| OptionRow {
                         strike: *strike, last: *last, bid: *bid, ask: *ask,
@@ -3466,7 +3471,10 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                         chart.overlay_puts = to_rows(puts);
                         chart.overlay_chain_symbol = symbol.clone();
                         chart.overlay_chain_loading = false;
-                        eprintln!("[overlay-chain] Loaded {} calls + {} puts for {}", chart.overlay_calls.len(), chart.overlay_puts.len(), symbol);
+                        chart.overlay_chain_placeholder = *placeholder;
+                        eprintln!("[overlay-chain] Loaded {} calls + {} puts for {}{}",
+                            chart.overlay_calls.len(), chart.overlay_puts.len(), symbol,
+                            if *placeholder { " (placeholder)" } else { "" });
                     }
                 }
             }
@@ -4414,6 +4422,10 @@ pub(crate) struct Watchlist {
     pub(crate) chain_far_dte: i32,
     pub(crate) chain_0dte: (Vec<OptionRow>, Vec<OptionRow>), // (calls, puts) for 0DTE
     pub(crate) chain_far: (Vec<OptionRow>, Vec<OptionRow>), // (calls, puts) for far DTE
+    /// True when chain_0dte / chain_far rows are locally-synthesized
+    /// Black-Scholes placeholder data (real upstream unavailable).
+    pub(crate) chain_0dte_placeholder: bool,
+    pub(crate) chain_far_placeholder: bool,
     pub(crate) chain_select_mode: bool,
     pub(crate) chain_loading: bool, // true while fetching chain from ApexIB
     pub(crate) chain_underlying_price: f32, // real-time underlying price from IB chain response
@@ -4664,7 +4676,7 @@ impl Watchlist {
                orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(), alerts_panel_open: false,
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
                chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
-               chain_select_mode: false, chain_loading: false, chain_last_fetch: None, chain_frozen: false, chain_center_offset: 0, chain_underlying_price: 0.0,
+               chain_select_mode: false, chain_loading: false, chain_last_fetch: None, chain_frozen: false, chain_center_offset: 0, chain_underlying_price: 0.0, chain_0dte_placeholder: false, chain_far_placeholder: false,
                chain_0_num_strikes: 10, chain_0_frozen: false, chain_0_offset: 0, chain_0_strike_mode: StrikeMode::Count, chain_0_nmf: 0,
                chain_far_num_strikes: 10, chain_far_frozen: false, chain_far_offset: 0, chain_far_strike_mode: StrikeMode::Count, chain_far_nmf: 0,
                saved_options: vec![], dte_filter: -1,
@@ -5677,7 +5689,8 @@ impl ApplicationHandler for App {
                                 cw.watchlist.tape_entries.drain(..cw.watchlist.tape_entries.len() - 500);
                             }
                         }
-                        ChartCommand::ChainData { ref symbol, dte, underlying_price, ref calls, ref puts } => {
+                        ChartCommand::ChainData { ref symbol, dte, underlying_price, ref calls, ref puts, placeholder } => {
+                            let _ = underlying_price;
                             if *symbol == cw.watchlist.chain_symbol {
                                 let to_rows = |data: &[(f32,f32,f32,f32,i32,i32,f32,bool,String)]| -> Vec<OptionRow> {
                                     data.iter().map(|(strike,last,bid,ask,vol,oi,iv,itm,contract)| OptionRow {
@@ -5687,8 +5700,10 @@ impl ApplicationHandler for App {
                                 };
                                 if dte == 0 {
                                     cw.watchlist.chain_0dte = (to_rows(calls), to_rows(puts));
+                                    cw.watchlist.chain_0dte_placeholder = placeholder;
                                 } else {
                                     cw.watchlist.chain_far = (to_rows(calls), to_rows(puts));
+                                    cw.watchlist.chain_far_placeholder = placeholder;
                                 }
                                 cw.watchlist.chain_loading = false;
                             }

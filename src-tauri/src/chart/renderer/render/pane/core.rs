@@ -3179,6 +3179,25 @@ fn render_chart_pane(
             let hover_pos = ui.input(|i| i.pointer.hover_pos());
             let price_y = py(last_price);
 
+            // Placeholder badge: when the overlay chain is locally synthesized
+            // (real upstream unavailable), tag the strike strip so the user
+            // doesn't trade off fabricated bids/asks.
+            if chart.overlay_chain_placeholder {
+                let badge_y = rect.top() + pt + 8.0;
+                let badge_rect = egui::Rect::from_min_size(
+                    egui::pos2(pill_left, badge_y),
+                    egui::vec2(pill_w, 14.0),
+                );
+                ui.painter().rect_filled(badge_rect, 2.0, color_alpha(t.warn, style::alpha_dim()));
+                ui.painter().text(
+                    badge_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "PLACEHOLDER",
+                    egui::FontId::monospace(style::font_xs()),
+                    t.warn,
+                );
+            }
+
             // Collect visible strikes with their natural Y positions
             struct StrikeInfo { strike: f32, bid: f32, ask: f32, is_call: bool, natural_y: f32, display_y: f32, contract: String }
             let mut strikes: Vec<StrikeInfo> = Vec::new();

@@ -183,8 +183,28 @@ pub(crate) fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i3
                 underlying_price: und_price,
                 calls,
                 puts,
+                placeholder: false,
             };
             crate::send_to_native_chart(cmd);
+        };
+        let send_placeholder_chain = |und_price: f32| {
+            // Last-resort fallback: synthesize a Black-Scholes chain so the
+            // panel + chart axes have *something* to render while the user
+            // sees a "PLACEHOLDER DATA" strip.
+            let spot = if und_price > 0.0 { und_price } else { 100.0 };
+            let (calls_rows, puts_rows) = build_chain(spot, num_strikes, dte);
+            let to_tuple = |r: &OptionRow| (
+                r.strike, r.last, r.bid, r.ask, r.volume, r.oi, r.iv, r.itm, r.contract.clone()
+            );
+            let calls = calls_rows.iter().map(to_tuple).collect();
+            let puts  = puts_rows.iter().map(to_tuple).collect();
+            crate::send_to_native_chart(ChartCommand::ChainData {
+                symbol: symbol.clone(),
+                dte,
+                underlying_price: spot,
+                calls, puts,
+                placeholder: true,
+            });
         };
 
         // 0. ApexData — preferred. §5.4.c default filters (dte_max=14,
@@ -299,9 +319,9 @@ pub(crate) fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i3
                 }
             }
             crate::apex_log!("chain", "still no chain for {} after prime+retry — fallback", symbol);
-            crate::apex_data::live_state::push_toast(format!(
-                "No chain data for {} — not in server's tracked underlyings",
-                symbol));
+            // Toast intentionally removed — the panel + axes already show a
+            // permanent "PLACEHOLDER DATA" strip when the synthetic chain
+            // lands; constant toast pings are noise.
         }
 
         // Use curl for fast TLS (reqwest's native-tls is slow on this machine)
@@ -344,13 +364,15 @@ pub(crate) fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i3
             eprintln!("[apexib] Chain fetch for {} dte={} failed (curl)", symbol, dte);
         }
 
-        // No simulated chain — fake strikes produce OCCs that don't exist upstream, which
-        // means every click on a sim row silently fails to load bars. Send an empty chain
-        // and a toast so the user knows the real feed is unavailable.
-        crate::apex_log!("chain", "no real chain available for {} dte={} — sending empty", symbol, dte);
-        crate::apex_data::live_state::push_toast(format!(
-            "No chain data for {} — real feed unavailable", symbol));
-        send_chain(vec![], vec![], underlying_price);
+        // Real upstream is gone — fall back to a locally-synthesized
+        // Black-Scholes chain (placeholder). Clicking a row still won't
+        // load real bars (OCCs don't exist upstream), but the panel + axes
+        // get something to show, gated by a "PLACEHOLDER DATA" strip.
+        crate::apex_log!("chain", "no real chain for {} dte={} — sending placeholder", symbol, dte);
+        // No toast — the PLACEHOLDER strip in the panel + axes is the
+        // permanent user-visible indicator. Toasting on every refetch
+        // (which happens on panel re-entry) spammed the UI.
+        send_placeholder_chain(underlying_price);
     });
 }
 
@@ -488,7 +510,8 @@ pub(crate) fn fetch_overlay_chain_background(symbol: String, underlying_price: f
                            };
                 let (calls, puts, _eff) = apex_data_chain_to_tuples(&chain.rows, 0, 75, spot);
                 if !calls.is_empty() || !puts.is_empty() {
-                    crate::send_to_native_chart(ChartCommand::OverlayChainData { symbol: symbol.clone(), calls, puts });
+                    crate::send_to_native_chart(ChartCommand::OverlayChainData {
+                        symbol: symbol.clone(), calls, puts, placeholder: false });
                     return;
                 }
             }
@@ -522,13 +545,23 @@ pub(crate) fn fetch_overlay_chain_background(symbol: String, underlying_price: f
             let calls = parse_rows("calls");
             let puts = parse_rows("puts");
             if !calls.is_empty() || !puts.is_empty() {
-                crate::send_to_native_chart(ChartCommand::OverlayChainData { symbol, calls, puts });
+                crate::send_to_native_chart(ChartCommand::OverlayChainData {
+                    symbol, calls, puts, placeholder: false });
                 return;
             }
         }
-        // No simulated fallback — send an empty overlay so the chart reflects reality
-        // rather than drawing fabricated strikes over a real symbol.
-        crate::send_to_native_chart(ChartCommand::OverlayChainData { symbol, calls: vec![], puts: vec![] });
+        // Real upstream unavailable — synthesize a placeholder overlay chain.
+        // Strikes are fabricated but the chart will paint a "PLACEHOLDER"
+        // tag on the right edge so the user knows.
+        let spot = if underlying_price > 0.0 { underlying_price } else { 100.0 };
+        let (calls_rows, puts_rows) = build_chain(spot, 75, 0);
+        let to_tuple = |r: &OptionRow| (
+            r.strike, r.last, r.bid, r.ask, r.volume, r.oi, r.iv, r.itm, r.contract.clone()
+        );
+        let calls = calls_rows.iter().map(to_tuple).collect();
+        let puts  = puts_rows.iter().map(to_tuple).collect();
+        crate::send_to_native_chart(ChartCommand::OverlayChainData {
+            symbol, calls, puts, placeholder: true });
     });
 }
 
@@ -1193,27 +1226,33 @@ pub(crate) fn fetch_bars_background(sym: String, tf: String) {
                 return;
             }
         };
-        let result = rt.block_on(chain.bars(&sym, &tf, 0, 0, None));
+        // Run BOTH the bars fetch AND the subscribe_bars call inside the
+        // runtime context. subscribe_bars internally uses tokio::spawn to
+        // pump the fanout — that requires Handle::current() which is only
+        // set while block_on is active.
+        let sym_is_crypto = crate::foundation::types::registry()
+            .get(&sym)
+            .map(|s| s.is_crypto())
+            .unwrap_or_else(|| crate::data::is_crypto(&sym));
+        let result = rt.block_on(async {
+            let bars = chain.bars(&sym, &tf, 0, 0, None).await;
+            // Wave 8: route through SubscriptionManager so gap-fill on
+            // reconnect sees this sub. Receiver is unused; the data path
+            // is unchanged.
+            // Wave 9c: registry-preferred crypto check so non-crypto
+            // tickers whose strings end in `USDT` still get the ApexData
+            // WS subscription.
+            if crate::apex_data::is_enabled() && !sym_is_crypto {
+                let _ = crate::data::providers::registry::subscription_manager()
+                    .subscribe_bars(&sym, &tf);
+            }
+            bars
+        });
         let bars = match result {
             Ok(b) if !b.is_empty() => b,
             Ok(_) => { eprintln!("[native-chart] {} {} empty", sym, tf); return; }
             Err(e) => { eprintln!("[native-chart] {} {} all sources failed: {e}", sym, tf); return; }
         };
-        // For ApexData live updates: subscribe to the WS bar stream so
-        // incremental bar updates flow into NATIVE_CHART_TXS via the existing
-        // apex_data::ws frame listener. The previous inline path did this.
-        // Wave 8: route through SubscriptionManager so gap-fill on reconnect
-        // sees this sub. Receiver is unused; the data path is unchanged.
-        // Wave 9c: registry-preferred crypto check so non-crypto tickers
-        // whose strings end in `USDT` still get the ApexData WS subscription.
-        let sym_is_crypto = crate::foundation::types::registry()
-            .get(&sym)
-            .map(|s| s.is_crypto())
-            .unwrap_or_else(|| crate::data::is_crypto(&sym));
-        if crate::apex_data::is_enabled() && !sym_is_crypto {
-            let _ = crate::data::providers::registry::subscription_manager()
-                .subscribe_bars(&sym, &tf);
-        }
         let gpu_bars: Vec<Bar> = bars.iter().map(|b| Bar {
             open: b.open as f32, high: b.high as f32, low: b.low as f32,
             close: b.close as f32, volume: b.volume as f32, _pad: 0.0,

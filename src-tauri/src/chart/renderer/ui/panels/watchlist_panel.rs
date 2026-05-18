@@ -1324,6 +1324,29 @@ if watchlist.open {
                         fetch_chain_background(sym, ns, far_dte, chain_price);
                     }
 
+                    // ── Placeholder-data banner (Wave: chain fallback) ──
+                    // When the real upstream chain is unavailable we render a
+                    // Black-Scholes synthesized chain so the panel isn't empty.
+                    // Surface it loudly so the user doesn't trade off fake bids.
+                    if watchlist.chain_0dte_placeholder || watchlist.chain_far_placeholder {
+                        let strip_h = 18.0;
+                        let avail = ui.available_width();
+                        let (strip_rect, _) = ui.allocate_exact_size(
+                            egui::vec2(avail, strip_h),
+                            egui::Sense::hover(),
+                        );
+                        ui.painter().rect_filled(
+                            strip_rect, 0.0, color_alpha(t.warn, alpha_dim()));
+                        ui.painter().text(
+                            strip_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            "PLACEHOLDER DATA — real chain unavailable",
+                            mono_sm(),
+                            t.warn,
+                        );
+                        ui.add_space(gap_xs());
+                    }
+
                     // ── Controls: DTE selector | sel toggle | Spread ──
                     ui.horizontal(|ui| {
                         // DTE dropdown

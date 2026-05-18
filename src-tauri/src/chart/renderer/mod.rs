@@ -25,9 +25,9 @@ pub use types::*;
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum AnalysisTab { Rrg, TimeSales, Scanner, Scripts, Seasonality, Research }
 
-/// Tab selector for the unified Signals sidebar (Alerts + Signals).
+/// Tab selector for the unified Signals sidebar (Alerts + Signals + Regime).
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-pub(crate) enum SignalsTab { Alerts, Signals }
+pub(crate) enum SignalsTab { Alerts, Signals, Regime }
 
 /// Tab selector for the unified Feed sidebar (News + Discord + Screenshots).
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -874,6 +874,9 @@ pub enum ChartCommand {
         underlying_price: f32, // real-time price from IB
         calls: Vec<(f32, f32, f32, f32, i32, i32, f32, bool, String)>, // strike, last, bid, ask, vol, oi, iv, itm, contract
         puts: Vec<(f32, f32, f32, f32, i32, i32, f32, bool, String)>,
+        /// True when the rows came from the local Black-Scholes fallback
+        /// (real upstream chain unavailable). UI surfaces a "PLACEHOLDER" strip.
+        placeholder: bool,
     },
     /// Event markers (earnings, dividends, splits, economic) for overlay display
     EventData {
@@ -885,6 +888,8 @@ pub enum ChartCommand {
         symbol: String,
         calls: Vec<(f32, f32, f32, f32, i32, i32, f32, bool, String)>,
         puts: Vec<(f32, f32, f32, f32, i32, i32, f32, bool, String)>,
+        /// True when the rows came from the local Black-Scholes fallback.
+        placeholder: bool,
     },
     /// Symbol search results from ApexIB
     SearchResults {
