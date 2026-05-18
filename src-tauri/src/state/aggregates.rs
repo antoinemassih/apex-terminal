@@ -301,25 +301,101 @@ impl Persistable for AlertsState {
     const VERSION: u32 = 1;
 }
 
-/// Discord / signals chat state.
+// ─── ChatState aggregate ─────────────────────────────────────────────────────
+
+/// Discord / signals chat panel state — selected guild/channel, cached
+/// messages, input buffer, connection flags.
 ///
-/// Migrate from `Watchlist`:
-/// - `discord_open: bool` (UI — SidebarState candidate)
-/// - `discord_messages: Vec<DiscordMessage>`
-/// - `discord_input: String`
-/// - `discord_channel: String`
-/// - `discord_authenticated: bool`
-/// - `discord_username: String`, `discord_user_id: String`
-/// - `discord_guilds`, `discord_selected_guild`
-/// - `discord_channels`, `discord_selected_channel`
-/// - `discord_connecting: bool`
-/// - `discord_guild_icons: HashMap<String, TextureHandle>` (runtime only — exclude)
-/// - `discord_last_msg_id: Option<String>`
-/// - `discord_poll_timer: Option<Instant>` (runtime only — exclude)
-/// - `discord_channels_loading: bool` → migrate to `InFlightRegistry`
-/// - `discord_messages_loading: bool` → migrate to `InFlightRegistry`
-#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ChatState {}
+/// **P2 Round 2** populates this aggregate.
+///
+/// Field sources (Watchlist field → this aggregate field):
+/// - `Watchlist::discord_open: bool`                      → `discord_open`
+/// - `Watchlist::discord_input: String`                   → `discord_input`
+/// - `Watchlist::discord_channel: String`                 → `discord_channel`
+/// - `Watchlist::discord_authenticated: bool`             → `discord_authenticated`
+/// - `Watchlist::discord_username: String`                → `discord_username`
+/// - `Watchlist::discord_user_id: String`                 → `discord_user_id`
+/// - `Watchlist::discord_selected_guild: Option<String>`  → `discord_selected_guild`
+/// - `Watchlist::discord_selected_channel: Option<String>`→ `discord_selected_channel`
+/// - `Watchlist::discord_last_msg_id: Option<String>`     → `discord_last_msg_id`
+///
+/// Fields NOT included here (with reason):
+/// - `discord_messages: Vec<DiscordMessage>` — runtime cache; re-fetched on
+///   open.  `DiscordMessage` is not `Serialize`; persisting would risk
+///   stale messages on next launch.
+/// - `discord_guilds: Vec<DiscordGuild>` / `discord_channels: Vec<DiscordChannel>`
+///   — fetched fresh each session from the Discord API; not worth persisting.
+/// - `discord_guild_icons: HashMap<String, TextureHandle>` — runtime GPU
+///   textures, not serializable.
+/// - `discord_poll_timer: Option<Instant>` — runtime timer, not serializable.
+/// - `discord_connecting: bool` — transient connection state; always starts
+///   `false` on launch.
+/// - `discord_channels_loading: bool`, `discord_messages_loading: bool`
+///   — in-flight flags; migrate to `InFlightRegistry` in a follow-up wave.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ChatState {
+    /// Whether the Discord chat side-panel is open.
+    /// Source: `Watchlist::discord_open: bool`.
+    #[serde(default)]
+    pub discord_open: bool,
+
+    /// Text currently typed in the message input box (drafts across restarts).
+    /// Source: `Watchlist::discord_input: String`.
+    #[serde(default)]
+    pub discord_input: String,
+
+    /// Display name of the currently selected channel.
+    /// Source: `Watchlist::discord_channel: String`.
+    #[serde(default)]
+    pub discord_channel: String,
+
+    /// Whether the user has completed Discord OAuth and is logged in.
+    /// Source: `Watchlist::discord_authenticated: bool`.
+    /// NOTE: auth tokens live in the system keychain, not here.
+    #[serde(default)]
+    pub discord_authenticated: bool,
+
+    /// Discord display name of the logged-in user.
+    /// Source: `Watchlist::discord_username: String`.
+    #[serde(default)]
+    pub discord_username: String,
+
+    /// Discord snowflake ID of the logged-in user.
+    /// Source: `Watchlist::discord_user_id: String`.
+    #[serde(default)]
+    pub discord_user_id: String,
+
+    /// Snowflake ID of the guild (server) the user had selected.
+    /// Source: `Watchlist::discord_selected_guild: Option<String>`.
+    #[serde(default)]
+    pub discord_selected_guild: Option<String>,
+
+    /// Snowflake ID of the channel the user had selected within the guild.
+    /// Source: `Watchlist::discord_selected_channel: Option<String>`.
+    #[serde(default)]
+    pub discord_selected_channel: Option<String>,
+
+    /// Snowflake ID of the last message received, used for incremental polling.
+    /// Source: `Watchlist::discord_last_msg_id: Option<String>`.
+    #[serde(default)]
+    pub discord_last_msg_id: Option<String>,
+}
+
+impl Default for ChatState {
+    fn default() -> Self {
+        Self {
+            discord_open: false,
+            discord_input: String::new(),
+            discord_channel: String::new(),
+            discord_authenticated: false,
+            discord_username: String::new(),
+            discord_user_id: String::new(),
+            discord_selected_guild: None,
+            discord_selected_channel: None,
+            discord_last_msg_id: None,
+        }
+    }
+}
 
 impl Persistable for ChatState {
     const KEY: &'static str = "chat_state";
@@ -629,6 +705,74 @@ mod tests {
         assert!(loaded.alerts.is_empty());
         assert!(loaded.alert_query.is_empty());
         assert!(!loaded.alerts_panel_open);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── ChatState tests ──────────────────────────────────────────────────────
+
+    #[test]
+    fn chat_state_default_values_are_sane() {
+        let s = ChatState::default();
+        assert!(!s.discord_open);
+        assert!(s.discord_input.is_empty());
+        assert!(!s.discord_authenticated);
+        assert!(s.discord_selected_guild.is_none());
+        assert!(s.discord_selected_channel.is_none());
+        assert!(s.discord_last_msg_id.is_none());
+    }
+
+    #[test]
+    fn chat_state_round_trips_through_persistable() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_chat_state_roundtrip");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("chat_state.json");
+        let v = ChatState {
+            discord_open: true,
+            discord_input: "hello".into(),
+            discord_channel: "general".into(),
+            discord_authenticated: true,
+            discord_username: "traderbro".into(),
+            discord_user_id: "123456789".into(),
+            discord_selected_guild: Some("guild_abc".into()),
+            discord_selected_channel: Some("ch_xyz".into()),
+            discord_last_msg_id: Some("msg_999".into()),
+        };
+        save(&path, &v).unwrap();
+        let loaded: ChatState = load(&path).unwrap();
+        assert!(loaded.discord_open);
+        assert_eq!(loaded.discord_input, "hello");
+        assert_eq!(loaded.discord_channel, "general");
+        assert!(loaded.discord_authenticated);
+        assert_eq!(loaded.discord_username, "traderbro");
+        assert_eq!(loaded.discord_user_id, "123456789");
+        assert_eq!(loaded.discord_selected_guild.as_deref(), Some("guild_abc"));
+        assert_eq!(loaded.discord_selected_channel.as_deref(), Some("ch_xyz"));
+        assert_eq!(loaded.discord_last_msg_id.as_deref(), Some("msg_999"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn chat_state_missing_fields_fall_back_to_defaults() {
+        use super::super::persistence::load;
+        let dir = std::env::temp_dir().join("apex_state_chat_state_partial");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("chat_state.json");
+        let envelope = serde_json::json!({
+            "key": "chat_state",
+            "version": 1,
+            "payload": {
+                "discord_authenticated": true,
+                "discord_username": "alice",
+            }
+        });
+        std::fs::write(&path, serde_json::to_vec_pretty(&envelope).unwrap()).unwrap();
+        let loaded: ChatState = load(&path).expect("partial payload should load");
+        assert!(loaded.discord_authenticated);
+        assert_eq!(loaded.discord_username, "alice");
+        assert!(!loaded.discord_open);
+        assert!(loaded.discord_selected_guild.is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
