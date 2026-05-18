@@ -10,6 +10,7 @@
 
 use egui::{Color32, RichText, Ui, Stroke};
 use crate::design_tokens::*;
+use crate::chart_renderer::ui::style::font_xs;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
 use std::path::PathBuf;
@@ -475,7 +476,7 @@ impl Inspector {
                                 ui.label(RichText::new(*field).monospace().size(9.5)
                                     .color(Color32::from_rgb(137, 180, 250)));
                                 ui.add_space(4.0);
-                                ui.label(RichText::new(format!("({})", ty)).monospace().size(9.0)
+                                ui.label(RichText::new(format!("({})", ty)).monospace().size(font_xs())
                                     .color(Color32::from_rgb(100, 100, 110)));
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                     ui.label(RichText::new(*affects).size(9.5)
@@ -487,7 +488,7 @@ impl Inspector {
                         ui.add_space(8.0);
                         ui.separator();
                         ui.label(RichText::new("Full trace: docs/design-mode-field-trace.md")
-                            .monospace().size(9.0).color(Color32::from_rgb(100, 100, 110)));
+                            .monospace().size(font_xs()).color(Color32::from_rgb(100, 100, 110)));
                     });
                 });
             if !open { self.show_help = false; }
@@ -658,7 +659,7 @@ impl Inspector {
                                 if let Some(fam) = self.selected_family {
                                     ui.separator();
                                     ui.horizontal(|ui| {
-                                        ui.label(RichText::new(format!("LOCKED: {fam}")).monospace().size(9.0)
+                                        ui.label(RichText::new(format!("LOCKED: {fam}")).monospace().size(font_xs())
                                             .color(Color32::from_rgb(250, 179, 135)));
                                         if ui.add(egui::Button::new(
                                             RichText::new("×").monospace().size(10.0).color(Color32::from_rgb(150,150,160)))
@@ -737,11 +738,11 @@ impl Inspector {
                             let fields = family_affecting_fields(fam);
                             if fields.is_empty() {
                                 ui.label(RichText::new("No field mapping registered.")
-                                    .monospace().size(9.0)
+                                    .monospace().size(font_xs())
                                     .color(Color32::from_rgb(100, 100, 110)));
                             } else {
                                 ui.add_space(4.0);
-                                ui.label(RichText::new("Affecting fields:").monospace().size(9.0)
+                                ui.label(RichText::new("Affecting fields:").monospace().size(font_xs())
                                     .color(Color32::from_rgb(130, 130, 140)));
                                 ui.add_space(2.0);
 
@@ -753,7 +754,7 @@ impl Inspector {
                                             .color(badge_color));
                                         ui.label(RichText::new("·").monospace().size(8.0)
                                             .color(Color32::from_rgb(70, 70, 80)));
-                                        ui.label(RichText::new(field).monospace().size(9.0)
+                                        ui.label(RichText::new(field).monospace().size(font_xs())
                                             .color(Color32::from_rgb(200, 200, 215)));
                                     });
                                 }
@@ -786,7 +787,7 @@ impl Inspector {
                         .fill(Color32::from_rgb(14, 14, 20))
                         .inner_margin(8.0)
                         .show(ui, |ui| {
-                            ui.label(RichText::new(&self.status).monospace().size(9.0)
+                            ui.label(RichText::new(&self.status).monospace().size(font_xs())
                                 .color(Color32::from_rgb(150, 150, 160)));
                         });
                 }
@@ -885,7 +886,7 @@ impl Inspector {
                 changed |= drag_f32(ui, "margin_bottom", &mut tokens.panel.margin_bottom, 0.0..=30.0);
                 changed |= drag_f32(ui, "compact_margin_x", &mut tokens.panel.compact_margin_x, 0.0..=20.0);
                 ui.add_space(4.0);
-                ui.label(RichText::new("Widths").monospace().size(9.0).color(Color32::from_rgb(130, 130, 140)));
+                ui.label(RichText::new("Widths").monospace().size(font_xs()).color(Color32::from_rgb(130, 130, 140)));
                 changed |= drag_f32(ui, "width_sm (240)", &mut tokens.panel.width_sm, 100.0..=500.0);
                 changed |= drag_f32(ui, "width_md (260)", &mut tokens.panel.width_md, 100.0..=500.0);
                 changed |= drag_f32(ui, "width_default (280)", &mut tokens.panel.width_default, 100.0..=500.0);
@@ -1018,7 +1019,7 @@ fn drag_f32(ui: &mut Ui, label: &str, value: &mut f32, range: std::ops::RangeInc
     let mut changed = false;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
-        ui.label(RichText::new(label).monospace().size(9.0).color(Color32::from_rgb(170, 170, 180)));
+        ui.label(RichText::new(label).monospace().size(font_xs()).color(Color32::from_rgb(170, 170, 180)));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let resp = ui.add(egui::DragValue::new(value)
                 .range(range)
@@ -1063,7 +1064,7 @@ fn color_edit(ui: &mut Ui, label: &str, color: &mut Rgba) -> bool {
         ui.painter().rect_stroke(rect, 2.0,
             Stroke::new(0.5, Color32::from_rgb(60, 60, 70)), egui::StrokeKind::Outside);
 
-        ui.label(RichText::new(label).monospace().size(9.0).color(Color32::from_rgb(170, 170, 180)));
+        ui.label(RichText::new(label).monospace().size(font_xs()).color(Color32::from_rgb(170, 170, 180)));
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             // Alpha
@@ -1330,7 +1331,7 @@ fn render_style_editor(ui: &mut Ui) -> bool {
     // ── Preset management row ──────────────────────────────────────────────────
     ui.horizontal(|ui| {
         // "+ New Preset" button
-        if ui.add(egui::Button::new(RichText::new("+ New Preset").monospace().size(9.0).strong().color(green_col))
+        if ui.add(egui::Button::new(RichText::new("+ New Preset").monospace().size(font_xs()).strong().color(green_col))
             .fill(Color32::from_rgba_unmultiplied(166, 227, 161, 15))
             .stroke(Stroke::new(0.8, Color32::from_rgba_unmultiplied(166, 227, 161, 80)))
             .corner_radius(3.0)
@@ -1342,7 +1343,7 @@ fn render_style_editor(ui: &mut Ui) -> bool {
 
         // Save to source button (only for canonical 3)
         if ui.add(egui::Button::new(
-            RichText::new("Save to source").monospace().size(9.0).strong().color(green_col))
+            RichText::new("Save to source").monospace().size(font_xs()).strong().color(green_col))
             .fill(Color32::from_rgba_unmultiplied(166, 227, 161, 20))
             .stroke(Stroke::new(0.8, Color32::from_rgba_unmultiplied(166, 227, 161, 100)))
             .corner_radius(3.0)
@@ -1355,7 +1356,7 @@ fn render_style_editor(ui: &mut Ui) -> bool {
         STYLE_SAVE_STATUS.with(|s| {
             let msg = s.borrow();
             if !msg.is_empty() {
-                ui.label(RichText::new(msg.as_str()).monospace().size(9.0).color(dim_col));
+                ui.label(RichText::new(msg.as_str()).monospace().size(font_xs()).color(dim_col));
             }
         });
     });
@@ -1373,13 +1374,13 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                 ui.add_space(4.0);
                 STYLE_NEW_PRESET_NAME.with(|n| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Name:").monospace().size(9.0).color(dim_col));
+                        ui.label(RichText::new("Name:").monospace().size(font_xs()).color(dim_col));
                         ui.text_edit_singleline(&mut *n.borrow_mut());
                     });
                 });
                 STYLE_NEW_PRESET_CLONE_FROM.with(|c| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Clone from:").monospace().size(9.0).color(dim_col));
+                        ui.label(RichText::new("Clone from:").monospace().size(font_xs()).color(dim_col));
                         egui::ComboBox::from_id_salt("new_preset_clone")
                             .selected_text(list_style_presets().get(*c.borrow()).map(|(_, n)| n.clone()).unwrap_or_default())
                             .show_ui(ui, |ui| {
@@ -1440,7 +1441,7 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                         let mut bufs = bufs.borrow_mut();
                         let entry = bufs.entry(id).or_insert_with(|| preset_name.clone());
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("Name:").monospace().size(9.0).color(dim_col));
+                            ui.label(RichText::new("Name:").monospace().size(font_xs()).color(dim_col));
                             let r = ui.text_edit_singleline(entry);
                             if r.lost_focus() && !entry.is_empty() {
                                 rename_style_preset(id, entry.clone());
@@ -1454,7 +1455,7 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                 let mut local_changed = false;
 
                 // Corner radii
-                ui.label(RichText::new("Corner radii").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                ui.label(RichText::new("Corner radii").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
                 local_changed |= style_drag_u8(ui, "r_xs", &mut s.r_xs);
                 local_changed |= style_drag_u8(ui, "r_sm", &mut s.r_sm);
                 local_changed |= style_drag_u8(ui, "r_md", &mut s.r_md);
@@ -1466,10 +1467,10 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                 // Button treatment
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
-                    ui.label(RichText::new("button_treatment").monospace().size(9.0).color(Color32::from_rgb(170,170,180)));
+                    ui.label(RichText::new("button_treatment").monospace().size(font_xs()).color(Color32::from_rgb(170,170,180)));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         egui::ComboBox::from_id_salt(egui::Id::new(("bt_combo", id)))
-                            .selected_text(RichText::new(format!("{:?}", s.button_treatment)).monospace().size(9.0))
+                            .selected_text(RichText::new(format!("{:?}", s.button_treatment)).monospace().size(font_xs()))
                             .show_ui(ui, |ui| {
                                 for bt in [ButtonTreatment::SoftPill, ButtonTreatment::OutlineAccent,
                                            ButtonTreatment::UnderlineActive, ButtonTreatment::RaisedActive,
@@ -1498,7 +1499,7 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                 ui.add_space(4.0);
 
                 // Stroke widths
-                ui.label(RichText::new("Stroke widths").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                ui.label(RichText::new("Stroke widths").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
                 local_changed |= style_drag_f32(ui, "stroke_hair", &mut s.stroke_hair, 0.0..=3.0);
                 local_changed |= style_drag_f32(ui, "stroke_thin", &mut s.stroke_thin, 0.0..=3.0);
                 local_changed |= style_drag_f32(ui, "stroke_std",  &mut s.stroke_std,  0.0..=4.0);
@@ -1518,7 +1519,7 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                 ui.add_space(4.0);
 
                 // ── Layout & spacing ──────────────────────────────────────────
-                ui.label(RichText::new("Layout & Spacing").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                ui.label(RichText::new("Layout & Spacing").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
                 local_changed |= style_drag_f32(ui, "pane_border_width", &mut s.pane_border_width, 0.0..=4.0);
                 local_changed |= style_drag_f32(ui, "pane_gap",          &mut s.pane_gap,          0.0..=20.0);
                 local_changed |= style_drag_f32(ui, "card_padding_y",    &mut s.card_padding_y,    0.0..=32.0);
@@ -1531,7 +1532,7 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                 ui.add_space(4.0);
 
                 // ── Typography ────────────────────────────────────────────────
-                ui.label(RichText::new("Typography").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                ui.label(RichText::new("Typography").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
                 local_changed |= style_drag_f32(ui, "font_section_label", &mut s.font_section_label, 6.0..=18.0);
                 local_changed |= style_drag_f32(ui, "font_body",          &mut s.font_body,          6.0..=18.0);
                 local_changed |= style_drag_f32(ui, "font_caption",       &mut s.font_caption,       5.0..=14.0);
@@ -1539,7 +1540,7 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                 ui.add_space(4.0);
 
                 // ── Interaction ───────────────────────────────────────────────
-                ui.label(RichText::new("Interaction").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                ui.label(RichText::new("Interaction").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
                 local_changed |= style_drag_u8(ui,  "hover_bg_alpha",   &mut s.hover_bg_alpha);
                 local_changed |= style_drag_u8(ui,  "active_bg_alpha",  &mut s.active_bg_alpha);
                 local_changed |= style_drag_f32(ui, "focus_ring_width", &mut s.focus_ring_width, 0.0..=4.0);
@@ -1549,7 +1550,7 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                 ui.add_space(4.0);
 
                 // ── Shadow ────────────────────────────────────────────────────
-                ui.label(RichText::new("Shadow").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                ui.label(RichText::new("Shadow").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
                 local_changed |= style_drag_f32(ui, "shadow_blur",     &mut s.shadow_blur,     0.0..=64.0);
                 local_changed |= style_drag_f32(ui, "shadow_offset_y", &mut s.shadow_offset_y, 0.0..=32.0);
                 local_changed |= style_drag_u8(ui,  "shadow_alpha",    &mut s.shadow_alpha);
@@ -1557,14 +1558,14 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                 ui.add_space(4.0);
 
                 // ── Density & color ───────────────────────────────────────────
-                ui.label(RichText::new("Density & Color").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                ui.label(RichText::new("Density & Color").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
                 local_changed |= style_drag_u8(ui,  "density",         &mut s.density);
                 local_changed |= style_drag_f32(ui, "accent_emphasis", &mut s.accent_emphasis, 0.5..=2.0);
 
                 ui.add_space(4.0);
 
                 // ── Reference Match (Newsprint/editorial) ─────────────────────
-                ui.label(RichText::new("Reference Match").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                ui.label(RichText::new("Reference Match").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
 
                 // active_fill_color
                 {
@@ -1622,7 +1623,7 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                 ui.add_space(4.0);
 
                 // ── New knobs — design-pass 2 ─────────────────────────────────
-                ui.label(RichText::new("Pane Chrome").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                ui.label(RichText::new("Pane Chrome").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
                 local_changed |= style_drag_u8(ui,  "pane_gap_alpha",       &mut s.pane_gap_alpha);
                 local_changed |= style_drag_u8(ui,  "pane_active_indicator",&mut s.pane_active_indicator);
                 local_changed |= style_drag_u8(ui,  "nav_active_col_alpha", &mut s.nav_active_col_alpha);
@@ -1643,24 +1644,24 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                 }
 
                 ui.add_space(4.0);
-                ui.label(RichText::new("Tabs").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                ui.label(RichText::new("Tabs").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
                 local_changed |= style_drag_f32(ui, "tab_inactive_alpha",  &mut s.tab_inactive_alpha,  0.0..=1.0);
                 local_changed |= style_drag_u8(ui,  "tab_hover_bg_alpha",  &mut s.tab_hover_bg_alpha);
 
                 ui.add_space(4.0);
-                ui.label(RichText::new("Labels & Cards").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                ui.label(RichText::new("Labels & Cards").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
                 local_changed |= style_drag_f32(ui, "section_label_padding_top",    &mut s.section_label_padding_top,    0.0..=16.0);
                 local_changed |= style_drag_f32(ui, "section_label_padding_bottom", &mut s.section_label_padding_bottom, 0.0..=16.0);
                 local_changed |= style_drag_u8(ui,  "card_stripe_alpha",            &mut s.card_stripe_alpha);
                 local_changed |= style_drag_u8(ui,  "r_chip",                       &mut s.r_chip);
 
                 ui.add_space(4.0);
-                ui.label(RichText::new("Drag Handles").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                ui.label(RichText::new("Drag Handles").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
                 local_changed |= style_drag_f32(ui, "drag_handle_alpha",     &mut s.drag_handle_alpha,     0.0..=1.0);
                 local_changed |= style_drag_f32(ui, "drag_handle_dot_scale", &mut s.drag_handle_dot_scale, 0.25..=3.0);
 
                 ui.add_space(4.0);
-                ui.label(RichText::new("Overlays & Toasts").monospace().size(9.0).color(Color32::from_rgb(130,130,140)));
+                ui.label(RichText::new("Overlays & Toasts").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
                 local_changed |= style_drag_u8(ui,  "toast_bg_alpha",        &mut s.toast_bg_alpha);
                 local_changed |= style_drag_u8(ui,  "dialog_backdrop_alpha", &mut s.dialog_backdrop_alpha);
                 // input_focus_color optional override
@@ -1683,7 +1684,7 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                 if !is_canonical {
                     ui.add_space(6.0);
                     if ui.add(egui::Button::new(
-                        RichText::new("Delete preset").monospace().size(9.0).color(Color32::from_rgb(243, 139, 168)))
+                        RichText::new("Delete preset").monospace().size(font_xs()).color(Color32::from_rgb(243, 139, 168)))
                         .fill(Color32::from_rgba_unmultiplied(243, 139, 168, 15))
                         .stroke(Stroke::new(0.8, Color32::from_rgba_unmultiplied(243, 139, 168, 80)))
                         .corner_radius(3.0)
@@ -1807,7 +1808,7 @@ fn style_drag_u8(ui: &mut Ui, label: &str, value: &mut u8) -> bool {
     let resp = ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
         let dim = Color32::from_rgb(170, 170, 180);
-        ui.label(RichText::new(label).monospace().size(9.0).color(dim));
+        ui.label(RichText::new(label).monospace().size(font_xs()).color(dim));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.add(egui::Slider::new(value, 0u8..=99u8).suffix("px")).changed() {
                 changed = true;
@@ -1824,7 +1825,7 @@ fn style_drag_f32(ui: &mut Ui, label: &str, value: &mut f32, range: std::ops::Ra
     let resp = ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
         let dim = Color32::from_rgb(170, 170, 180);
-        ui.label(RichText::new(label).monospace().size(9.0).color(dim));
+        ui.label(RichText::new(label).monospace().size(font_xs()).color(dim));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.add(egui::Slider::new(value, range)).changed() {
                 changed = true;
@@ -1840,7 +1841,7 @@ fn style_checkbox(ui: &mut Ui, label: &str, value: &mut bool) -> bool {
     let mut changed = false;
     let resp = ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
-        ui.label(RichText::new(label).monospace().size(9.0).color(Color32::from_rgb(170,170,180)));
+        ui.label(RichText::new(label).monospace().size(font_xs()).color(Color32::from_rgb(170,170,180)));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.checkbox(value, "").changed() { changed = true; }
         });
@@ -2135,7 +2136,7 @@ fn theme_color_row(ui: &mut Ui, label: &str, color: &mut egui::Color32) -> bool 
     let mut changed = false;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 6.0;
-        ui.label(RichText::new(label).monospace().size(9.0).color(Color32::from_rgb(170, 170, 180)));
+        ui.label(RichText::new(label).monospace().size(font_xs()).color(Color32::from_rgb(170, 170, 180)));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if egui::color_picker::color_edit_button_srgba(
                 ui, color, egui::color_picker::Alpha::Opaque
@@ -2231,14 +2232,14 @@ fn render_theme_editor(ui: &mut Ui) {
         }
         let msg = theme_save_status().lock().unwrap().clone();
         if !msg.is_empty() {
-            ui.label(RichText::new(msg).monospace().size(9.0).color(Color32::from_rgb(150,150,160)));
+            ui.label(RichText::new(msg).monospace().size(font_xs()).color(Color32::from_rgb(150,150,160)));
         }
     });
 
     ui.add_space(4.0);
 
     if ui.add(egui::Button::new(
-        RichText::new("Reset all to defaults").monospace().size(9.0).color(Color32::from_rgb(200,150,150)))
+        RichText::new("Reset all to defaults").monospace().size(font_xs()).color(Color32::from_rgb(200,150,150)))
         .fill(Color32::TRANSPARENT)
         .stroke(egui::Stroke::new(0.5, Color32::from_rgb(80,60,60)))
         .corner_radius(2.0)
@@ -2313,7 +2314,7 @@ fn render_style_preview(ui: &mut Ui) {
                     .find(|(id, _)| *id == cols[col_idx])
                     .map(|(_, n)| n.as_str())
                     .unwrap_or("?");
-                ui.label(RichText::new(label).monospace().size(9.0)
+                ui.label(RichText::new(label).monospace().size(font_xs())
                     .color(Color32::from_rgb(140, 140, 150)));
                 egui::ComboBox::from_id_salt(egui::Id::new(("preview_col", col_idx)))
                     .selected_text(RichText::new(selected_name).monospace().size(10.0))
@@ -2371,7 +2372,7 @@ fn render_style_preview(ui: &mut Ui) {
                                     .color(Color32::from_rgb(203, 166, 247)));
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                     if ui.add(egui::Button::new(
-                                        RichText::new("Set Active").monospace().size(9.0).strong()
+                                        RichText::new("Set Active").monospace().size(font_xs()).strong()
                                             .color(Color32::from_rgb(166, 227, 161)))
                                         .fill(Color32::from_rgba_unmultiplied(166, 227, 161, 20))
                                         .stroke(Stroke::new(0.8, Color32::from_rgba_unmultiplied(166, 227, 161, 100)))
@@ -2499,7 +2500,7 @@ fn preview_widgets(ui: &mut Ui, st: &crate::chart_renderer::ui::style::StyleSett
             let dot_pos = egui::pos2(ui.cursor().left() + 5.0, ui.cursor().top() + 7.0);
             ui.painter().circle_filled(dot_pos, 4.0, color);
             ui.add_space(12.0);
-            ui.label(RichText::new(label).monospace().size(9.0).color(color));
+            ui.label(RichText::new(label).monospace().size(font_xs()).color(color));
             ui.add_space(4.0);
         }
     });
