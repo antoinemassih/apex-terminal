@@ -395,8 +395,16 @@ pub(crate) fn draw_content(
                     }
 
                     if results.is_empty() {
-                        ui.add_space(4.0);
-                        ui.add(MonospaceCode::new("No matches").size_px(font_xs()).color(t.dim).gamma(0.3));
+                        let def = &watchlist.scanner_defs[scanner_idx];
+                        let filter_active = def.min_change > -999.0
+                            || def.max_change < 999.0
+                            || def.min_volume > 0;
+                        let hint = if filter_active {
+                            "Try widening the filter"
+                        } else {
+                            "Run a scan to see results"
+                        };
+                        PanelEmpty::new("No matches").hint(hint).show(ui, t);
                     }
                 }
 

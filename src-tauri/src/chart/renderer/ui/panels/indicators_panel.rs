@@ -525,10 +525,11 @@ fn draw_active_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
     }
 
     // Indicators (real entries with id)
+    let bar_count = chart.bars.len();
     let mut remove_id: Option<u32> = None;
     let mut edit_id: Option<u32> = None;
     for ind in chart.indicators.iter_mut() {
-        active_indicator_row(ui, t, ind, &mut remove_id, &mut edit_id);
+        active_indicator_row(ui, t, ind, bar_count, &mut remove_id, &mut edit_id);
     }
     if let Some(id) = remove_id { chart.indicators.retain(|i| i.id != id); }
     if let Some(id) = edit_id { chart.editing_indicator = Some(id); }
@@ -657,10 +658,21 @@ fn library_active_toggles() -> Vec<Tg> {
     ]
 }
 
+/// Minimum number of bars needed before the indicator produces meaningful output.
+/// RSI(14) needs 14+1=15; MACD(12,26,9) needs 26+9=35; others use period+1.
+fn indicator_min_bars(ind: &Indicator) -> usize {
+    match ind.kind {
+        IndicatorType::RSI => ind.period + 1,
+        IndicatorType::MACD => 26 + 9, // slow EMA + signal smoothing
+        _ => ind.period + 1,
+    }
+}
+
 fn active_indicator_row(
     ui: &mut egui::Ui,
     t: &Theme,
     ind: &mut Indicator,
+    bar_count: usize,
     remove_id: &mut Option<u32>,
     edit_id: &mut Option<u32>,
 ) {
@@ -669,6 +681,15 @@ fn active_indicator_row(
     let swatch_col = hex_to_color(&ind.color, 1.0);
     let name = ind.display_name();
     let id_salt = format!("ind_{}", id);
+
+    // Show a warning state if insufficient bars are loaded for this indicator.
+    let min = indicator_min_bars(ind);
+    if bar_count < min {
+        let title = format!("{} needs {} bars", name, min);
+        let hint = format!("{} loaded", bar_count);
+        PanelEmpty::new(&title).hint(&hint).show(ui, t);
+        return;
+    }
 
     let want_remove = std::cell::Cell::new(false);
     let want_edit = std::cell::Cell::new(false);
