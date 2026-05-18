@@ -101,19 +101,21 @@ impl PanelFrame {
 pub struct CardFrame {
     bg: Color32,
     border: Color32,
+    /// Themed shadow base color; `None` falls back to the legacy black tint.
+    shadow_color: Option<Color32>,
 }
 
 impl CardFrame {
     pub fn new() -> Self {
-        Self { bg: Color32::TRANSPARENT, border: Color32::TRANSPARENT }
+        Self { bg: Color32::TRANSPARENT, border: Color32::TRANSPARENT, shadow_color: None }
     }
 
     pub fn theme(self, t: &Theme) -> Self {
-        Self { bg: t.toolbar_bg, border: t.toolbar_border }
+        Self { bg: t.toolbar_bg, border: t.toolbar_border, shadow_color: Some(t.shadow_color) }
     }
 
     pub fn colors(self, bg: Color32, border: Color32) -> Self {
-        Self { bg, border }
+        Self { bg, border, ..self }
     }
 
     /// Build the `egui::Frame`. Body mirrors the frame construction inside
@@ -142,11 +144,16 @@ impl CardFrame {
 
         if st.shadows_enabled {
             // shadow_blur / shadow_offset_y / shadow_alpha knobs override global tokens.
+            let shadow_col = if let Some(sc) = self.shadow_color {
+                color_alpha(sc, st.shadow_alpha)
+            } else {
+                Color32::from_black_alpha(st.shadow_alpha)
+            };
             frame = frame.shadow(egui::epaint::Shadow {
                 offset: [0, st.shadow_offset_y as i8],
                 blur:   st.shadow_blur as u8,
                 spread: 0,
-                color:  Color32::from_black_alpha(st.shadow_alpha),
+                color:  shadow_col,
             });
         }
 
@@ -172,15 +179,17 @@ pub struct DialogFrame<'a> {
     bg: Color32,
     border: Color32,
     ctx: Option<&'a egui::Context>,
+    /// Themed shadow base color; `None` falls back to the legacy black tint.
+    shadow_color: Option<Color32>,
 }
 
 impl<'a> DialogFrame<'a> {
     pub fn new() -> Self {
-        Self { bg: Color32::TRANSPARENT, border: Color32::TRANSPARENT, ctx: None }
+        Self { bg: Color32::TRANSPARENT, border: Color32::TRANSPARENT, ctx: None, shadow_color: None }
     }
 
     pub fn theme(self, t: &Theme) -> Self {
-        Self { bg: t.toolbar_bg, border: t.toolbar_border, ..self }
+        Self { bg: t.toolbar_bg, border: t.toolbar_border, shadow_color: Some(t.shadow_color), ..self }
     }
 
     pub fn colors(self, bg: Color32, border: Color32) -> Self {
@@ -217,11 +226,16 @@ impl<'a> DialogFrame<'a> {
             // Dialogs use a stronger shadow than cards; offset_y and alpha still scale with style.
             let alpha = (st.shadow_alpha as u16).saturating_add(40).min(255) as u8;
             let blur = (st.shadow_blur * 1.2).min(64.0) as u8;
+            let shadow_col = if let Some(sc) = self.shadow_color {
+                color_alpha(sc, alpha)
+            } else {
+                Color32::from_black_alpha(alpha)
+            };
             frame = frame.shadow(egui::epaint::Shadow {
                 offset: [0, st.shadow_offset_y as i8],
                 blur,
                 spread: 2,
-                color:  Color32::from_black_alpha(alpha),
+                color:  shadow_col,
             });
         } else {
             frame = frame.shadow(egui::epaint::Shadow::NONE);
@@ -258,6 +272,8 @@ pub struct PopupFrame<'a> {
     inner_margin: Option<egui::Margin>,
     corner_radius_override: Option<f32>,
     border_alpha: BorderAlpha,
+    /// Themed shadow base color; `None` falls back to the legacy black tint.
+    shadow_color: Option<Color32>,
 }
 
 impl<'a> PopupFrame<'a> {
@@ -269,11 +285,12 @@ impl<'a> PopupFrame<'a> {
             inner_margin: None,
             corner_radius_override: None,
             border_alpha: BorderAlpha::Strong,
+            shadow_color: None,
         }
     }
 
     pub fn theme(self, t: &Theme) -> Self {
-        Self { bg: t.toolbar_bg, border: t.toolbar_border, ..self }
+        Self { bg: t.toolbar_bg, border: t.toolbar_border, shadow_color: Some(t.shadow_color), ..self }
     }
 
     pub fn colors(self, bg: Color32, border: Color32) -> Self {
@@ -344,11 +361,16 @@ impl<'a> PopupFrame<'a> {
         }
 
         if st.shadows_enabled {
+            let shadow_col = if let Some(sc) = self.shadow_color {
+                color_alpha(sc, st.shadow_alpha)
+            } else {
+                Color32::from_black_alpha(st.shadow_alpha)
+            };
             frame = frame.shadow(egui::epaint::Shadow {
                 offset: [0, st.shadow_offset_y as i8],
                 blur:   st.shadow_blur as u8,
                 spread: 1,
-                color:  Color32::from_black_alpha(st.shadow_alpha),
+                color:  shadow_col,
             });
         } else {
             frame = frame.shadow(egui::epaint::Shadow::NONE);
