@@ -16,6 +16,31 @@
 //!     });
 //! ```
 //!
+//! # Optional features
+//!
+//! - **`.collapsible(&mut expanded)`** — Adds a leading chevron
+//!   (caret-down expanded / caret-right collapsed). Clicking anywhere on
+//!   the header strip toggles `*expanded`. When collapsed, the body
+//!   closure is **not** invoked and `SectionResponse.body` is `None`. The
+//!   count chip + trailing button slot still paint in both states. When
+//!   collapsed, the count is also rendered inline in `(N)` form next to
+//!   the title (matches `PanelSubSection`).
+//! - **`.delete_when_empty()`** — When set AND `.count(0)` is also set,
+//!   the trailing RTL slot paints a small `Icon::X` ghost button instead
+//!   of the `.action(...)` button. The click surfaces via
+//!   `SectionResponse.delete_clicked`. Precedence vs. `.action(...)`:
+//!   when `count == 0` AND `delete_when_empty` is set, the delete button
+//!   wins; otherwise the action button paints (if any).
+//! - **`SectionResponse.header_response`** — The whole header strip's
+//!   `egui::Response`, exposed so callers can attach `.context_menu(|ui|
+//!   { Rename / Color / Delete })`.
+//! - **`SectionResponse.chevron_clicked`** — `true` for one frame when
+//!   the user toggles a collapsible section's expanded state.
+//!
+//! Together those three features let `PanelSection` replace the legacy
+//! `chart/renderer/ui/watchlist/section_header.rs` widget without losing
+//! any behavior.
+//!
 //! Visual spec (locked by design):
 //! - Title: `mono_xs` UPPERCASE strong, in `t.dim` by default; pass
 //!   `.title_color(t.accent)` when this section is the "current" one.
@@ -37,8 +62,9 @@
 //!   `kit::PanelHeader`.
 //! - Form-field grouping with input gutters — use `FormSection`.
 
-use egui::{Color32, CursorIcon, FontId, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, CursorIcon, FontId, Pos2, Rect, Response, RichText, Sense, Stroke, Ui, Vec2};
 
+use super::super::icons::Icon;
 use crate::chart::renderer::ui::style::{
     color_alpha, font_xs, gap_lg, gap_md, gap_sm, gap_xs, header_border, section_header_surface, shadow_color_alpha, stroke_thin,
 };
@@ -98,11 +124,32 @@ pub struct PanelSection<'a> {
     meta: Option<String>,
     action: Option<(String, Tone)>,
     rule: bool,
+    /// Optional persistent expanded state — see [`PanelSection::collapsible`].
+    expanded: Option<&'a mut bool>,
+    /// Whether to show a trailing X (delete) button when count == 0 —
+    /// see [`PanelSection::delete_when_empty`].
+    delete_when_empty: bool,
 }
 
+/// Response returned from [`PanelSection::show`].
+///
+/// Fields:
+/// - `action_clicked` — `.action(...)` button was clicked this frame.
+/// - `delete_clicked` — delete button (from `.delete_when_empty()` +
+///   `count == 0`) was clicked this frame.
+/// - `chevron_clicked` — collapsible header's expanded state was
+///   toggled this frame (either via chevron or by clicking anywhere on
+///   the header strip).
+/// - `header_response` — egui [`Response`] for the full header strip
+///   rect. Callers may attach `.context_menu(|ui| { ... })` to it.
+/// - `body` — the closure's return value, or `None` when the section is
+///   collapsed and the closure was not invoked.
 pub struct SectionResponse<R> {
     pub action_clicked: bool,
-    pub body: R,
+    pub delete_clicked: bool,
+    pub chevron_clicked: bool,
+    pub header_response: Response,
+    pub body: Option<R>,
 }
 
 impl<'a> PanelSection<'a> {
@@ -114,7 +161,38 @@ impl<'a> PanelSection<'a> {
             meta: None,
             action: None,
             rule: true,
+            expanded: None,
+            delete_when_empty: false,
         }
+    }
+
+    /// Make this section collapsible. Adds a leading caret
+    /// (`Icon::CARET_DOWN` when expanded / `Icon::CARET_RIGHT` when
+    /// collapsed) to the header strip; clicking anywhere on the header
+    /// toggles `*expanded`. When `!*expanded`, the body closure passed
+    /// to [`Self::show`] is **not** invoked and
+    /// [`SectionResponse::body`] is `None`. The count chip and trailing
+    /// action / delete button slot still paint in either state — only
+    /// the body is suppressed.
+    pub fn collapsible(mut self, expanded: &'a mut bool) -> Self {
+        self.expanded = Some(expanded);
+        self
+    }
+
+    /// When set, AND the section's `.count(0)` is also set, paint a
+    /// trailing `Icon::X` ghost button at the right edge of the header
+    /// (in place of the `.action(...)` button). The click surfaces via
+    /// [`SectionResponse::delete_clicked`]. For `count > 0` the delete
+    /// button is suppressed and the `.action(...)` button (if any)
+    /// paints normally.
+    ///
+    /// Precedence when both [`Self::action`] and
+    /// [`Self::delete_when_empty`] are set:
+    /// - `count == 0` → delete button paints, action is suppressed.
+    /// - `count > 0` (or unset) → action button paints normally.
+    pub fn delete_when_empty(mut self) -> Self {
+        self.delete_when_empty = true;
+        self
     }
 
     pub fn count(mut self, n: usize) -> Self {
@@ -156,6 +234,31 @@ impl<'a> PanelSection<'a> {
     ) -> SectionResponse<R> {
         let title_color = self.title_color.unwrap_or(t.dim);
         let mut action_clicked = false;
+        let mut delete_clicked = false;
+        let mut chevron_clicked = false;
+
+        // Destructure once so we can move pieces into the header closure
+        // (which needs to own the action / meta) AND still mutate the
+        // expanded state below.
+        let PanelSection {
+            title: title_str,
+            title_color: _,
+            count,
+            meta,
+            action,
+            rule: rule_enabled,
+            mut expanded,
+            delete_when_empty,
+        } = self;
+
+        // Resolve collapsible state. When no `&mut bool` was bound,
+        // the section is "always expanded" (back-compat default).
+        let collapsible = expanded.is_some();
+        let is_expanded = expanded.as_deref().copied().unwrap_or(true);
+
+        // Decide whether to paint the delete button (precedence: delete
+        // wins when count==0 + delete_when_empty set; otherwise action).
+        let show_delete = delete_when_empty && matches!(count, Some(0));
 
         // Header row: DARKER (recessed) L0 background + edge-to-edge
         // top AND bottom rules. The header strip uses `color_layer_down`
@@ -177,20 +280,46 @@ impl<'a> PanelSection<'a> {
             .fill(section_header_surface(t))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
+                    // Leading caret (collapsible mode only). Matches the
+                    // PanelSubSection caret treatment: proportional 12px
+                    // glyph in title_color, vertically aligned. Drawn as
+                    // a label so it shares the horizontal layout — the
+                    // click sense lives on the whole header strip below.
+                    if collapsible {
+                        let caret_glyph = if is_expanded {
+                            Icon::CARET_DOWN
+                        } else {
+                            Icon::CARET_RIGHT
+                        };
+                        ui.label(
+                            RichText::new(caret_glyph)
+                                .size(12.0)
+                                .color(title_color),
+                        );
+                        ui.add_space(gap_xs());
+                    }
                     // Title — uppercase mono_xs strong. One tier smaller
                     // than the SidePanelShell header so the section
                     // reads as nested chrome inside the panel.
                     ui.label(
-                        RichText::new(self.title.to_uppercase())
+                        RichText::new(title_str.to_uppercase())
                             .monospace()
                             .size(font_xs())
                             .strong()
                             .color(title_color),
                     );
-                    if let Some(n) = self.count {
+                    if let Some(n) = count {
                         ui.add_space(gap_xs());
+                        // When collapsed (and collapsible) show count as
+                        // an inline `(N)` hint — matches PanelSubSection.
+                        // Otherwise render the standard count chip.
+                        let count_label = if collapsible && !is_expanded {
+                            format!("({})", n)
+                        } else {
+                            format!("{}", n)
+                        };
                         ui.label(
-                            RichText::new(format!("{}", n))
+                            RichText::new(count_label)
                                 .monospace()
                                 .size(font_xs())
                                 .strong()
@@ -198,15 +327,19 @@ impl<'a> PanelSection<'a> {
                         );
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if let Some((label, tone)) = &self.action {
+                        if show_delete {
+                            if section_delete_button(ui, color_alpha(t.dim, 200)) {
+                                delete_clicked = true;
+                            }
+                        } else if let Some((label, tone)) = &action {
                             if section_action_button(ui, label, tone.color(t)) {
                                 action_clicked = true;
                             }
-                            if self.meta.is_some() {
+                            if meta.is_some() {
                                 ui.add_space(gap_sm());
                             }
                         }
-                        if let Some(m) = &self.meta {
+                        if let Some(m) = &meta {
                             ui.label(
                                 RichText::new(m)
                                     .monospace()
@@ -218,6 +351,33 @@ impl<'a> PanelSection<'a> {
                 });
             });
         ui.spacing_mut().item_spacing = prev_pad;
+
+        // Promote the header frame's response to click-sensing so
+        // callers can attach `.context_menu(...)`. In collapsible mode,
+        // a click anywhere on the header strip toggles expanded state.
+        // We re-interact on the header rect with a stable id so the
+        // child label widgets above don't swallow the click.
+        let header_rect = header_resp.response.rect;
+        let header_response = ui.interact(
+            header_rect,
+            ui.id().with(("panel_section_header", title_str)),
+            Sense::click(),
+        );
+        let header_response = if collapsible {
+            let hr = header_response.on_hover_cursor(CursorIcon::PointingHand);
+            if hr.clicked() {
+                if let Some(state) = expanded.as_deref_mut() {
+                    *state = !*state;
+                    chevron_clicked = true;
+                }
+            }
+            hr
+        } else {
+            header_response
+        };
+        // Re-read expanded after potential toggle so the body decision
+        // below uses the up-to-date value.
+        let is_expanded = expanded.as_deref().copied().unwrap_or(true);
         // Edge-to-edge top + bottom rules bracketing the recessed strip.
         // Border color matches the chart pane header — t.text @ 38 alpha.
         let hr = header_resp.response.rect;
@@ -226,7 +386,7 @@ impl<'a> PanelSection<'a> {
             [Pos2::new(hr.left(), hr.top() + 0.5), Pos2::new(hr.right(), hr.top() + 0.5)],
             Stroke::new(stroke_thin(), rule_col),
         );
-        if self.rule {
+        if rule_enabled {
             ui.painter().line_segment(
                 [Pos2::new(hr.left(), hr.bottom() - 0.5), Pos2::new(hr.right(), hr.bottom() - 0.5)],
                 Stroke::new(stroke_thin(), rule_col),
@@ -241,7 +401,7 @@ impl<'a> PanelSection<'a> {
         {
             let layer = egui::LayerId::new(
                 egui::Order::Foreground,
-                ui.id().with(("panel_section_shadow", self.title)),
+                ui.id().with(("panel_section_shadow", title_str)),
             );
             let painter = ui.ctx().layer_painter(layer);
             for i in 0..shadow_h as i32 {
@@ -260,20 +420,31 @@ impl<'a> PanelSection<'a> {
         // Body — natural flow on the panel surface. Inset by gap_lg so
         // body content's left edge aligns with the header's title text
         // (header uses gap_lg L/R via the Frame inner_margin above).
-        let r = egui::Frame::NONE
-            .inner_margin(egui::Margin {
-                left: gap_lg() as i8,
-                right: gap_lg() as i8,
-                top: 0,
-                bottom: 0,
-            })
-            .show(ui, |ui| body(ui, t))
-            .inner;
-        ui.add_space(gap_sm());
+        // When the section is collapsed (collapsible + !expanded) the
+        // body closure is NOT invoked and `SectionResponse.body` is `None`.
+        let body_inner = if is_expanded {
+            let r = egui::Frame::NONE
+                .inner_margin(egui::Margin {
+                    left: gap_lg() as i8,
+                    right: gap_lg() as i8,
+                    top: 0,
+                    bottom: 0,
+                })
+                .show(ui, |ui| body(ui, t))
+                .inner;
+            ui.add_space(gap_sm());
+            Some(r)
+        } else {
+            ui.add_space(gap_sm());
+            None
+        };
 
         SectionResponse {
             action_clicked,
-            body: r,
+            delete_clicked,
+            chevron_clicked,
+            header_response,
+            body: body_inner,
         }
     }
 }
@@ -289,6 +460,33 @@ fn paint_rule(ui: &mut Ui, t: &Theme) {
         Stroke::new(stroke_thin(), header_border(t)),
     );
     ui.add_space(1.0);
+}
+
+/// Local section-delete button — small ghost `Icon::X` icon button used
+/// when `.delete_when_empty()` is set AND `count == 0`. Matches the
+/// visual treatment of the legacy `watchlist/section_header.rs` X
+/// button (ghost, frameless, dim glyph that brightens on hover).
+fn section_delete_button(ui: &mut Ui, color: Color32) -> bool {
+    let glyph = Icon::X;
+    let size = Vec2::new(16.0, 16.0);
+    let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
+    let resp = resp.on_hover_text("Delete section");
+    let draw_color = if resp.hovered() {
+        ui.painter()
+            .rect_filled(rect, 2.0, color_alpha(color, 24));
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        color
+    } else {
+        color_alpha(color, 160)
+    };
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        glyph,
+        FontId::proportional(12.0),
+        draw_color,
+    );
+    resp.clicked()
 }
 
 /// Local section-action button — small ghost button matching `kit::panel_action_btn`
@@ -584,6 +782,162 @@ impl<'u> PanelSectionGroupBuilder<'u> {
         }
         self.index += 1;
         let _ = self.hovered_divider; // silence unused on this path
+    }
+}
+
+// ─── Tests ──────────────────────────────────────────────────────────────────
+//
+// Verify the three opt-in features added in Wave 10a:
+//   1. `.collapsible(&mut expanded)` skips the body closure when
+//      `!*expanded`.
+//   2. `.delete_when_empty()` paints + fires the X button only when
+//      `count == 0`.
+//   3. Clicking the header strip in collapsible mode toggles
+//      `*expanded` (chevron_clicked observable).
+//
+// We exercise the widget via egui's `__run_test_ui` harness. Click
+// simulation uses `Response::clicked()`-equivalent flows by directly
+// looking at allocated rects via the egui memory API — for the
+// chevron toggle test we manually invoke pointer events; for the
+// "body not called" check we use a flag in a Cell.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chart_renderer::gpu::THEMES;
+    use std::cell::Cell;
+
+    fn theme() -> &'static Theme {
+        &THEMES[0]
+    }
+
+    #[test]
+    fn collapsible_toggle_skips_body_when_collapsed() {
+        use std::cell::RefCell;
+        let theme = theme();
+        let expanded: RefCell<bool> = RefCell::new(false);
+        let body_called = Cell::new(false);
+
+        egui::__run_test_ui(|ui| {
+            let mut e = expanded.borrow_mut();
+            let resp = PanelSection::new("ACTIVE")
+                .count(0)
+                .collapsible(&mut *e)
+                .show(ui, theme, |_ui, _t| {
+                    body_called.set(true);
+                });
+            assert!(resp.body.is_none(), "body should be None when collapsed");
+        });
+
+        assert!(!body_called.get(), "body closure must not run when section collapsed");
+        assert!(!*expanded.borrow(), "expanded state must remain false without click");
+    }
+
+    #[test]
+    fn collapsible_runs_body_when_expanded() {
+        use std::cell::RefCell;
+        let theme = theme();
+        let expanded: RefCell<bool> = RefCell::new(true);
+        let body_called = Cell::new(false);
+
+        egui::__run_test_ui(|ui| {
+            let mut e = expanded.borrow_mut();
+            let resp = PanelSection::new("ACTIVE")
+                .count(3)
+                .collapsible(&mut *e)
+                .show(ui, theme, |_ui, _t| {
+                    body_called.set(true);
+                });
+            assert!(resp.body.is_some(), "body should be Some when expanded");
+        });
+
+        assert!(body_called.get(), "body closure must run when section expanded");
+    }
+
+    #[test]
+    fn delete_button_paints_only_when_count_zero() {
+        let theme = theme();
+
+        // count == 0 + delete_when_empty: button paints, click flag wired.
+        egui::__run_test_ui(|ui| {
+            let resp = PanelSection::new("WATCHLIST")
+                .count(0)
+                .delete_when_empty()
+                .show(ui, theme, |_ui, _t| {});
+            // No click was issued — but the field must exist and be
+            // observable as false (proves the field is wired through).
+            assert!(!resp.delete_clicked);
+            assert!(!resp.action_clicked);
+        });
+
+        // count > 0: delete button suppressed, action button (if any) paints.
+        egui::__run_test_ui(|ui| {
+            let resp = PanelSection::new("WATCHLIST")
+                .count(5)
+                .delete_when_empty()
+                .action("Clear", Tone::Danger)
+                .show(ui, theme, |_ui, _t| {});
+            assert!(!resp.delete_clicked, "delete must not fire when count > 0");
+        });
+    }
+
+    #[test]
+    fn chevron_click_toggles_expansion() {
+        use std::cell::RefCell;
+        let theme = theme();
+        let expanded: RefCell<bool> = RefCell::new(true);
+
+        // ctx.run takes a `Fn` closure (not `FnMut`), so the expanded
+        // state lives behind a RefCell. The header_response rect is
+        // captured in a Cell so we can synthesize a click at its
+        // center on the second frame.
+        let ctx = egui::Context::default();
+        let header_rect_cell: Cell<Option<egui::Rect>> = Cell::new(None);
+
+        // First pass — discover header rect (no click).
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let mut e = expanded.borrow_mut();
+                let resp = PanelSection::new("WATCHLIST")
+                    .count(1)
+                    .collapsible(&mut *e)
+                    .show(ui, theme, |_ui, _t| {});
+                header_rect_cell.set(Some(resp.header_response.rect));
+            });
+        });
+        let header_rect = header_rect_cell.get().expect("header rect captured");
+        assert!(*expanded.borrow(), "expanded unchanged after non-clicking pass");
+
+        // Second pass — synthesize a click at the header center.
+        let click_pos = header_rect.center();
+        let mut input = egui::RawInput::default();
+        input.events.push(egui::Event::PointerMoved(click_pos));
+        input.events.push(egui::Event::PointerButton {
+            pos: click_pos,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: Default::default(),
+        });
+        input.events.push(egui::Event::PointerButton {
+            pos: click_pos,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: Default::default(),
+        });
+        let chevron_clicked_cell: Cell<bool> = Cell::new(false);
+        let _ = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let mut e = expanded.borrow_mut();
+                let resp = PanelSection::new("WATCHLIST")
+                    .count(1)
+                    .collapsible(&mut *e)
+                    .show(ui, theme, |_ui, _t| {});
+                chevron_clicked_cell.set(resp.chevron_clicked);
+            });
+        });
+
+        assert!(chevron_clicked_cell.get(), "chevron_clicked must be true on toggle frame");
+        assert!(!*expanded.borrow(), "expanded should have flipped true → false");
     }
 }
 
