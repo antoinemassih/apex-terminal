@@ -103,25 +103,34 @@ pub const FONT_XL:      f32 = 22.0;
 pub const FONT_2XL:     f32 = 22.0;
 
 // ─── Spacing tokens ───────────────────────────────────────────────────────────
-// Spacing scale — strict 4px grid, anchored at 4 for density-first chrome.
+// Spacing scale — density-first chrome, anchored on a ~4px grid.
 //
-// Use ONLY these. Anything outside is a bug.
-//   gap_2xs() =  4.0  — same as gap_xs (kept for back-compat)
-//   gap_xs()  =  4.0  — minimum (intra-cluster, between adjacent buttons)
-//   gap_sm()  =  8.0  — default inter-element gap
-//   gap_md()  = 12.0  — section padding, list-row vertical
-//   gap_lg()  = 16.0  — panel inner margin
-//   gap_xl()  = 20.0  — between sections in a panel
-//   gap_2xl() = 24.0  — between distinct panel groups
-//   gap_3xl() = 32.0  — page-level breaks (rare)
+// Tier summary (reach for these in order of specificity):
+//   gap_2xs()     =  2.0  — icon-internal padding, [icon][badge] overlays
+//   gap_xs()      =  4.0  — minimum intra-cluster gap (adjacent buttons)
+//   gap_xs_mid()  =  6.0  — micro-gap between xs and sm; for icon-label
+//                           pairs and compact chip rows where 4px is too
+//                           tight and 8px is too loose (DS-IMPL-3)
+//   gap_sm()      =  8.0  — default inter-element gap
+//   gap_md()      = 12.0  — section padding, list-row vertical
+//   gap_lg()      = 16.0  — panel inner margin
+//   gap_xl()      = 20.0  — between sections in a panel
+//   gap_2xl()     = 24.0  — between distinct panel groups
+//   gap_3xl()     = 32.0  — page-level breaks (rare)
 //
-// If you find yourself wanting 6px or 10px, the answer is gap_sm (8) or gap_md (12).
+// If you are unsure, prefer gap_sm (8). Reach for gap_xs_mid only when you
+// have a specific tight composition that needs exactly 6px.
 //
 // 2026-05: gap_2xs was previously aliased to gap_xs (both 4.0). It is now a
 // real 2.0 token for icon-internal padding and tightly-packed compositions
 // (the gap inside `[icon][badge]` overlays, etc.).
+// 2026-05 DS-IMPL-3: gap_xs_mid (6.0) added as a micro-gap tier.
 pub fn gap_2xs() -> f32 { 2.0 }
 pub fn gap_xs()  -> f32 { 4.0 }
+/// 6.0 — micro-gap tier between `gap_xs` (4.0) and `gap_sm` (8.0).
+/// Use for icon-label pairs and compact chip rows. Backed by
+/// `spacing.xs_mid` design token (DS-IMPL-3).
+pub fn gap_xs_mid() -> f32 { crate::dt_f32!(spacing.xs_mid, 6.0) }
 pub fn gap_sm()  -> f32 { 8.0 }
 pub fn gap_md()  -> f32 { 12.0 }
 pub fn gap_lg()  -> f32 { 16.0 }
@@ -129,9 +138,12 @@ pub fn gap_xl()  -> f32 { 20.0 }
 pub fn gap_2xl() -> f32 { 24.0 }
 pub fn gap_3xl() -> f32 { 32.0 }
 
-pub const GAP_2XS: f32 =  2.0;
-pub const GAP_XS:  f32 =  4.0;
-pub const GAP_SM:  f32 =  8.0;
+pub const GAP_2XS:    f32 =  2.0;
+pub const GAP_XS:     f32 =  4.0;
+/// Compile-time fallback for `gap_xs_mid()`. Prefer the function when
+/// a design-token override is needed at runtime.
+pub const GAP_XS_MID: f32 =  6.0;
+pub const GAP_SM:     f32 =  8.0;
 pub const GAP_MD:  f32 = 12.0;
 pub const GAP_LG:  f32 = 16.0;
 pub const GAP_XL:  f32 = 20.0;
@@ -335,10 +347,26 @@ pub mod cursor {
 }
 
 // ─── Stroke width tokens ─────────────────────────────────────────────────────
-pub fn stroke_hair()        -> f32 { crate::dt_f32!(stroke.hair, 0.3) }
-pub fn stroke_thin()        -> f32 { crate::dt_f32!(stroke.thin, 0.5) }
-pub fn stroke_medium()      -> f32 { 0.8 }
-pub fn stroke_std()         -> f32 { crate::dt_f32!(stroke.std, 1.0) }
+// Stroke scale — sub-pixel to multi-pixel hairlines for borders and rules.
+//
+// Tier summary:
+//   stroke_hair()   = 0.3  — sub-pixel separator; nearly invisible hairline
+//   stroke_thin()   = 0.5  — light border, table column divider
+//   stroke_medium() = 0.8  — mid-weight border; between thin and std
+//                            (DS-IMPL-3: now backed by `stroke.medium` token)
+//   stroke_std()    = 1.0  — default UI border (buttons, inputs, panels)
+//   stroke_bold()   = 1.5  — emphasis border (active selection, focus ring)
+//   stroke_thick()  = 2.0  — strong visual separator
+//   stroke_heavy()  = 3.0  — decorative / accent rule
+//
+// Use `stroke_medium()` when `stroke_thin()` feels too ghost-like and
+// `stroke_std()` is heavier than desired for the context.
+pub fn stroke_hair()        -> f32 { crate::dt_f32!(stroke.hair,   0.3) }
+pub fn stroke_thin()        -> f32 { crate::dt_f32!(stroke.thin,   0.5) }
+/// 0.8 — mid-weight border tier between `stroke_thin` (0.5) and
+/// `stroke_std` (1.0). Backed by `stroke.medium` design token (DS-IMPL-3).
+pub fn stroke_medium()      -> f32 { crate::dt_f32!(stroke.medium, 0.8) }
+pub fn stroke_std()         -> f32 { crate::dt_f32!(stroke.std,    1.0) }
 pub fn stroke_bold()        -> f32 { crate::dt_f32!(stroke.bold, 1.5) }
 pub fn stroke_thick()       -> f32 { crate::dt_f32!(stroke.thick, 2.0) }
 pub fn stroke_extra_thick() -> f32 { 2.5 }
@@ -515,6 +543,50 @@ pub fn shadow_dropdown_themed(t: &super::super::gpu::Theme) -> egui::epaint::Sha
         return shadow_from_preset_themed(t, p.offset, p.blur, p.spread, p.alpha);
     }
     shadow_from_preset_themed(t, [0, 8], 24, 1, 40)
+}
+
+// ─── Elevation tints ─────────────────────────────────────────────────────────
+// Surface elevation scale — three tints for layered dark-UI backgrounds.
+//
+// Elevation tints slightly brighten `theme.bg` to communicate Z-depth.
+// Three levels are intentionally perceptual constants chosen for dark themes:
+//
+//   elevation_1() = bg × 0.95  — resting card / panel surface (subtle lift)
+//   elevation_2() = bg × 0.88  — raised panel, popover body, inline editor
+//   elevation_3() = bg × 0.85  — modal / dialog surface (highest layer)
+//
+// The gamma multipliers are DARK-THEME perceptual constants. Light themes
+// would need a different strategy (additive tint or a separate lookup) because
+// gamma_multiply(< 1.0) darkens on light backgrounds, inverting the intended
+// depth cue.
+//
+// TODO: When light-theme elevation support is added, split on `theme.is_light()`
+// (or equivalent flag) and use `gamma_multiply(1.05 | 1.10 | 1.15)` for light
+// surfaces so the depth direction stays consistent across all 15 themes.
+//
+// These do NOT use design tokens — the gamma values are perceptual constants,
+// not tweakable style decisions. If you find yourself wanting to override them,
+// consider whether a dedicated surface color token would be more appropriate.
+
+/// Elevation 1 — resting card / panel surface. Subtle lift above the base bg.
+/// `theme.bg` darkened/lightened by gamma × 0.95 for dark themes.
+#[inline]
+pub fn elevation_1(theme: &super::super::gpu::Theme) -> Color32 {
+    theme.bg.gamma_multiply(0.95)
+}
+
+/// Elevation 2 — raised panel, popover body, inline editor surface.
+/// `theme.bg` × 0.88 for dark themes.
+#[inline]
+pub fn elevation_2(theme: &super::super::gpu::Theme) -> Color32 {
+    theme.bg.gamma_multiply(0.88)
+}
+
+/// Elevation 3 — modal / dialog surface (highest Z-layer).
+/// `theme.bg` × 0.85 for dark themes.
+#[inline]
+pub fn elevation_3(theme: &super::super::gpu::Theme) -> Color32 {
+    theme.bg.gamma_multiply(0.85)
 }
 
 // ─── Semantic color accessors ────────────────────────────────────────────────
@@ -2368,5 +2440,66 @@ pub fn chrome_tile_fg(state: ChromeTileState, t: &crate::chart_renderer::gpu::Th
         ChromeTileState::Active  => t.accent,
         ChromeTileState::Hovered => t.text,
         ChromeTileState::Idle    => t.dim.gamma_multiply(0.8),
+    }
+}
+
+// ─── DS-IMPL-3 token tests ───────────────────────────────────────────────────
+
+#[cfg(test)]
+mod ds_impl_3_tests {
+    use super::*;
+
+    /// gap_xs_mid() must return 6.0 (sits between gap_xs=4.0 and gap_sm=8.0).
+    #[test]
+    fn gap_xs_mid_literal() {
+        // design-mode is off in tests by default, so the dt_f32! macro falls
+        // through to its compile-time default.
+        assert_eq!(gap_xs_mid(), 6.0_f32);
+    }
+
+    /// GAP_XS_MID const must match the function's fallback value.
+    #[test]
+    fn gap_xs_mid_const_matches_fn() {
+        assert_eq!(GAP_XS_MID, gap_xs_mid());
+    }
+
+    /// stroke_medium() must return 0.8 — the promoted design-token value.
+    #[test]
+    fn stroke_medium_literal() {
+        assert_eq!(stroke_medium(), 0.8_f32);
+    }
+
+    /// STROKE_MEDIUM const must match the function fallback.
+    #[test]
+    fn stroke_medium_const_matches_fn() {
+        assert_eq!(STROKE_MEDIUM, stroke_medium());
+    }
+
+    /// elevation_1/2/3 must return theme.bg gamma-multiplied by the documented
+    /// perceptual constants (0.95 / 0.88 / 0.85).
+    #[test]
+    fn elevation_tints_use_correct_gamma() {
+        let t = &crate::chart_renderer::gpu::THEMES[0];
+        let expected_1 = t.bg.gamma_multiply(0.95);
+        let expected_2 = t.bg.gamma_multiply(0.88);
+        let expected_3 = t.bg.gamma_multiply(0.85);
+        assert_eq!(elevation_1(t), expected_1, "elevation_1 gamma constant");
+        assert_eq!(elevation_2(t), expected_2, "elevation_2 gamma constant");
+        assert_eq!(elevation_3(t), expected_3, "elevation_3 gamma constant");
+    }
+
+    /// elevation_1 must be brighter (higher in RGBA sum) than elevation_2,
+    /// which must be brighter than elevation_3, for a typical dark background.
+    #[test]
+    fn elevation_depth_order_is_monotonic() {
+        let t = &crate::chart_renderer::gpu::THEMES[0];
+        // Sum RGB channels as a proxy for luminance.
+        let lum = |c: egui::Color32| c.r() as u32 + c.g() as u32 + c.b() as u32;
+        // On dark bg, gamma_multiply < 1 darkens — so lum(e1) >= lum(e2) >= lum(e3).
+        // (They may be equal if bg is black, but that's not the case for real themes.)
+        assert!(lum(elevation_1(t)) >= lum(elevation_2(t)),
+            "elevation_1 should be >= elevation_2 in luminance");
+        assert!(lum(elevation_2(t)) >= lum(elevation_3(t)),
+            "elevation_2 should be >= elevation_3 in luminance");
     }
 }
