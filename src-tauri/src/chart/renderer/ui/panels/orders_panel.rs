@@ -565,7 +565,7 @@ fn draw_book(
                 }
             });
         if let Some(id) = remove_alert {
-            watchlist.alerts.retain(|a| a.id != id);
+            watchlist.update_alerts_state(|s| s.alerts.retain(|a| a.id != id));
         }
     }
 

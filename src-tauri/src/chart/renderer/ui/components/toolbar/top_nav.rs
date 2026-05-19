@@ -2972,16 +2972,31 @@ pub(crate) fn render(
         let active_prices: Vec<(String, f32)> = panes.iter()
             .filter_map(|p| p.bars.last().map(|b| (p.symbol.clone(), b.close)))
             .collect();
-        for alert in &mut watchlist.alerts {
-            if alert.triggered { continue; }
-            if let Some((_, price)) = active_prices.iter().find(|(s, _)| *s == alert.symbol) {
-                if (alert.above && *price >= alert.price) || (!alert.above && *price <= alert.price) {
-                    alert.triggered = true;
-                    let dir = if alert.above { "above" } else { "below" };
-                    let msg = format!("ALERT: {} {} {:.2}", alert.symbol, dir, alert.price);
-                    eprintln!("[ALERT TRIGGERED] {} -- sound notification placeholder", msg);
-                    PENDING_TOASTS.with(|ts| ts.borrow_mut().push((msg, alert.price, alert.above)));
+        // Collect ids + toast info for alerts that need to fire; then batch-update.
+        let to_trigger: Vec<(u32, String, f32, bool)> = watchlist.alerts.iter()
+            .filter(|a| !a.triggered)
+            .filter_map(|alert| {
+                active_prices.iter().find(|(s, _)| *s == alert.symbol).and_then(|(_, price)| {
+                    if (alert.above && *price >= alert.price) || (!alert.above && *price <= alert.price) {
+                        Some((alert.id, alert.symbol.clone(), alert.price, alert.above))
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect();
+        if !to_trigger.is_empty() {
+            let ids: Vec<u32> = to_trigger.iter().map(|(id, ..)| *id).collect();
+            watchlist.update_alerts_state(|s| {
+                for a in s.alerts.iter_mut() {
+                    if ids.contains(&a.id) { a.triggered = true; }
                 }
+            });
+            for (_, symbol, price, above) in to_trigger {
+                let dir = if above { "above" } else { "below" };
+                let msg = format!("ALERT: {} {} {:.2}", symbol, dir, price);
+                eprintln!("[ALERT TRIGGERED] {} -- sound notification placeholder", msg);
+                PENDING_TOASTS.with(|ts| ts.borrow_mut().push((msg, price, above)));
             }
         }
     }

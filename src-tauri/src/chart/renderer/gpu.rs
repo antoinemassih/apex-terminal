@@ -6350,8 +6350,11 @@ impl ApplicationHandler for App {
                 }
                 // Process pending alerts from context menu
                 if let Some((sym, price, above)) = PENDING_ALERT.with(|a| a.borrow_mut().take()) {
-                    let id = cw.watchlist.next_alert_id; cw.watchlist.next_alert_id += 1;
-                    cw.watchlist.alerts.push(Alert { id, symbol: sym, price, above, triggered: false, message: String::new() });
+                    cw.watchlist.update_alerts_state(|s| {
+                        let id = s.next_alert_id;
+                        s.next_alert_id += 1;
+                        s.alerts.push(crate::state::PersistedAlert { id, symbol: sym, price, above, triggered: false, message: String::new() });
+                    });
                 }
                 // Collect order execution toasts
                 let new_toasts = PENDING_TOASTS.with(|ts| {
