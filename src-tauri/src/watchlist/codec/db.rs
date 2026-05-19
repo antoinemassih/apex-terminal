@@ -201,6 +201,8 @@ pub async fn load_watchlists(
                     earnings_days: -1,
                     alert_triggered: false,
                     price_history: vec![],
+                    prev_price: 0.0,
+                    price_change_at: None,
                 });
             }
 

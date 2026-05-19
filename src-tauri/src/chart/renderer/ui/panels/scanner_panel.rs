@@ -429,6 +429,7 @@ pub(crate) fn draw_content(
                 pinned: false, tags: vec![], rvol: rvol_seed, atr: 0.0,
                 high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,
                 avg_daily_range: 2.0, earnings_days: -1, alert_triggered: false, price_history: vec![],
+                prev_price: 0.0, price_change_at: None,
             }
         }).collect();
 
