@@ -264,9 +264,9 @@ fn draw_price_row(
         // Hover tooltip with CI bounds — the "Calibrated fields" requirement.
         let resp = ui.interact(band_rect,
             ui.id().with(("range_tip", label)), egui::Sense::hover());
-        resp.on_hover_text(format!(
+        Tooltip::new(format!(
             "{label} band\n  low:  ${:.2}\n  high: ${:.2}\n  point: ${:.2}",
-            lo, hi, point));
+            lo, hi, point)).show(ui, &resp, t);
     }
     ui.add_space(2.0);
 }

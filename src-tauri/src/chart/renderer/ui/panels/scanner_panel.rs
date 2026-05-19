@@ -389,9 +389,8 @@ pub(crate) fn draw_content(
                             .fg(t.text)
                             .hover_overlay(color_alpha(t.accent, alpha_ghost()))
                             .show(ui);
-                        if resp.response.hovered() {
-                            resp.response.clone().on_hover_text(format!("Vol: {}", fmt_volume(r.volume)));
-                        }
+                        Tooltip::new(format!("Vol: {}", fmt_volume(r.volume)))
+                            .show(ui, &resp.response, t);
                         if resp.response.clicked() {
                             *pending_symbol = Some(r.symbol.clone());
                         }

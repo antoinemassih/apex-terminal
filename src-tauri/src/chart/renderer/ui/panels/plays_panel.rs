@@ -579,9 +579,11 @@ fn pct_stepper(ui: &mut egui::Ui, pct_str: &mut String, t: &Theme) {
 fn click_to_set_btn(ui: &mut egui::Ui, icon: &str, t: &Theme, active: bool) -> bool {
     let fg = if active { t.accent } else { color_dim(t.dim) };
     let bg = if active { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
-    ui.add(Button::icon(icon).variant(Variant::Chrome).glyph_color(fg).size(Size::Sm)
+    let resp = ui.add(Button::icon(icon).variant(Variant::Chrome).glyph_color(fg).size(Size::Sm)
         .fill(bg).corner_radius(current().r_sm as f32)
-        .min_size(egui::vec2(18.0, row_height_dense())).placement(IconPlacement::ListRow)).on_hover_text("Click chart to set price").clicked()
+        .min_size(egui::vec2(18.0, row_height_dense())).placement(IconPlacement::ListRow));
+    Tooltip::new("Click chart to set price").show(ui, &resp, t);
+    resp.clicked()
 }
 
 fn sync_form_to_lines(watchlist: &Watchlist, chart: Option<&mut Chart>) {

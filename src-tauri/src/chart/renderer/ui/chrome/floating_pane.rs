@@ -212,8 +212,8 @@ impl<'a> FloatingPaneChrome<'a> {
                             if self.show_close {
                                 let cr = ui.add(Button::icon(Icon::X)
                                     .variant(Variant::InlineClose)
-                                    .placement(IconPlacement::PanelHeader))
-                                    .on_hover_text("Close");
+                                    .placement(IconPlacement::PanelHeader));
+                                Tooltip::new("Close").show(ui, &cr, theme);
                                 if cr.clicked() { close_clicked = true; }
                                 if cr.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                             }
