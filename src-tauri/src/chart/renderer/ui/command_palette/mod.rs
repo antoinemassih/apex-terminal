@@ -314,6 +314,18 @@ fn draw_normal_mode(
             }
         }
     } else {
+        // Frecency context: last 10 of recent get a position bonus;
+        // position 0 (most recent) = +300, position 9 = +30.
+        let recent_10: Vec<&String> = watchlist.cmd_palette_recent.iter().take(10).collect();
+        let recent_bonus = |id: &str| -> i32 {
+            if let Some(pos) = recent_10.iter().position(|r| r.as_str() == id) {
+                // Linear decay: 300 at pos 0, 30 at pos 9
+                300 - (pos as i32 * 27)
+            } else {
+                0
+            }
+        };
+
         // Search
         let registry = build_registry(watchlist, pane_type);
         for e in &registry {
@@ -322,9 +334,10 @@ fn draw_normal_mode(
             }
             let hay = format!("{} {} {}", e.label, e.id, e.desc);
             if let Some(s) = fuzzy_score(&q, &hay) {
-                // Frequency boost
-                let bonus = *watchlist.cmd_palette_freq.get(&e.id).unwrap_or(&0) as i32 * 5;
-                results.push((e.id.clone(), e.label.clone(), e.cat.label().into(), s + bonus));
+                // Frecency: recent position (primary after fuzzy) + frequency (secondary)
+                let freq_bonus = *watchlist.cmd_palette_freq.get(&e.id).unwrap_or(&0) as i32 * 5;
+                let rec_bonus = recent_bonus(&e.id);
+                results.push((e.id.clone(), e.label.clone(), e.cat.label().into(), s + rec_bonus + freq_bonus));
             }
         }
 
@@ -334,11 +347,14 @@ fn draw_normal_mode(
         };
         if allow_symbols && !q.is_empty() {
             for si in crate::ui_kit::symbols::search_symbols(&q.to_uppercase(), 12) {
+                let sym_id = format!("sym:{}", si.symbol);
+                let freq_bonus = *watchlist.cmd_palette_freq.get(&sym_id).unwrap_or(&0) as i32 * 5;
+                let rec_bonus = recent_bonus(&sym_id);
                 results.push((
-                    format!("sym:{}", si.symbol),
+                    sym_id,
                     format!("{}  ·  {}", si.symbol, si.name),
                     Category::Symbol.label().into(),
-                    800,
+                    800 + rec_bonus + freq_bonus,
                 ));
             }
         }
@@ -392,8 +408,12 @@ fn draw_normal_mode(
                     .id_salt("cmd_palette_results")
                     .show(ui, |ui| {
                         let entries = watchlist.cmd_palette_results.clone();
+                        // Last 5 items in recent list: show a "•" recency dot.
+                        let recent_5: Vec<String> = watchlist.cmd_palette_recent
+                            .iter().take(5).cloned().collect();
                         for (ri, (id, label, cat_label)) in entries.iter().enumerate() {
                             let is_sel = ri as i32 == watchlist.cmd_palette_sel;
+                            let is_recent = recent_5.contains(id);
                             let row_h = 26.0;
                             let (rect, resp) = ui.allocate_exact_size(
                                 egui::vec2(ui.available_width(), row_h),
@@ -420,11 +440,26 @@ fn draw_normal_mode(
                                 if is_sel { t.text } else { color_subtle(t.text) },
                             );
 
-                            if let Some(hk) = hotkey_for(id) {
+                            // Recency dot "•" shown at right edge for recently-used items.
+                            // Placed before the hotkey (or alone when no hotkey exists).
+                            let right_x = if let Some(hk) = hotkey_for(id) {
+                                let hk_x = rect.max.x - 6.0;
                                 painter.text(
-                                    egui::pos2(rect.max.x - 6.0, rect.center().y),
+                                    egui::pos2(hk_x, rect.center().y),
                                     egui::Align2::RIGHT_CENTER,
                                     hk, egui::FontId::monospace(super::style::font_sm()), t.dim);
+                                hk_x - 28.0 // place dot to the left of the hotkey
+                            } else {
+                                rect.max.x - 6.0
+                            };
+                            if is_recent {
+                                painter.text(
+                                    egui::pos2(right_x, rect.center().y),
+                                    egui::Align2::RIGHT_CENTER,
+                                    "•",
+                                    egui::FontId::proportional(super::style::font_sm()),
+                                    color_alpha(t.accent, 180),
+                                );
                             }
 
                             if resp.clicked() { execute_idx = Some(ri); }
@@ -474,7 +509,7 @@ fn draw_normal_mode(
             execute(&id, watchlist, panes, layout, active_pane);
             watchlist.cmd_palette_recent.retain(|r| r != &id);
             watchlist.cmd_palette_recent.insert(0, id.clone());
-            watchlist.cmd_palette_recent.truncate(16);
+            watchlist.cmd_palette_recent.truncate(50);
             *watchlist.cmd_palette_freq.entry(id.clone()).or_insert(0) += 1;
 
             // Chain: run remaining steps

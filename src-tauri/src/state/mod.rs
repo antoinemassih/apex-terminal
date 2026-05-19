@@ -18,8 +18,8 @@ pub mod persistence;
 pub mod subscriptions;
 
 pub use aggregates::{
-    AlertsState, ChatState, DefaultOrderType, DefaultTimeInForce, LayoutState, SidebarState,
-    TradingDefaults, UiSettings,
+    AlertsState, ChatState, CmdPaletteState, DefaultOrderType, DefaultTimeInForce, LayoutState,
+    PersistedAlert, PersistedLinkGroup, SidebarState, TradingDefaults, UiSettings,
 };
 pub use inflight::{InFlight, InFlightKind, InFlightRegistry, RequestId};
 pub use persistence::{load, save, Persistable};

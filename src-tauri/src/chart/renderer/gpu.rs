@@ -5892,6 +5892,13 @@ impl App {
             wl.trading_defaults_store.update(|s| *s = loaded_td);
             wl.sync_trading_defaults_from_store();
         }
+        // P2 (command-palette-frecency): restore frecency data if present.
+        if let Some(ps) =
+            crate::state::load::<crate::state::CmdPaletteState>(&cmd_palette_state_path())
+        {
+            wl.cmd_palette_recent = ps.recent;
+            wl.cmd_palette_freq = ps.freq;
+        }
         // Load persisted hotkeys (override defaults)
         load_hotkeys(&mut wl.hotkeys);
         // Load persisted templates
@@ -6482,6 +6489,15 @@ fn trading_defaults_path() -> std::path::PathBuf {
     p
 }
 
+/// P2 (command-palette-frecency): persist path for the `CmdPaletteState`
+/// aggregate.  Lives alongside `native-chart-state.json` in the same directory.
+fn cmd_palette_state_path() -> std::path::PathBuf {
+    let mut p = state_path();
+    p.pop();
+    p.push("cmd_palette_state.json");
+    p
+}
+
 fn workspace_dir() -> std::path::PathBuf {
     let mut p = state_path(); p.pop(); p.push("workspaces"); let _ = std::fs::create_dir_all(&p); p
 }
@@ -6569,6 +6585,24 @@ pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &mut Watchl
     watchlist.push_to_ui_settings();
     if let Err(e) = crate::state::save(&ui_settings_path(), &watchlist.ui_settings) {
         eprintln!("[state] ui_settings save failed: {e}");
+    }
+    // P2 (command-palette-frecency): persist frecency data.  Prune freq to
+    // the top 200 by count before saving to keep the file bounded.
+    {
+        let mut freq = watchlist.cmd_palette_freq.clone();
+        if freq.len() > 200 {
+            let mut pairs: Vec<_> = freq.iter().map(|(k, &v)| (k.clone(), v)).collect();
+            pairs.sort_by(|a, b| b.1.cmp(&a.1));
+            pairs.truncate(200);
+            freq = pairs.into_iter().collect();
+        }
+        let ps = crate::state::CmdPaletteState {
+            recent: watchlist.cmd_palette_recent.clone(),
+            freq,
+        };
+        if let Err(e) = crate::state::save(&cmd_palette_state_path(), &ps) {
+            eprintln!("[state] cmd_palette_state save failed: {e}");
+        }
     }
     let pane_data: Vec<serde_json::Value> = panes.iter().map(|p| {
         // Serialize indicators — include ALL styling fields
