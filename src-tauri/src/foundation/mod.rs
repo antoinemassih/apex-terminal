@@ -1,6 +1,7 @@
 pub mod shortcuts;
 pub mod monitoring;
 pub mod frame_profiler;
+pub mod perf_log;
 pub mod design_tokens;
 #[cfg(feature = "design-mode")]
 pub mod design_inspector;
