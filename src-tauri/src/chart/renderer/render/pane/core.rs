@@ -3697,6 +3697,7 @@ fn render_chart_pane(
                                         start_slot: ps, start_val: pv,
                                         end_slot: slot, end_val: v,
                                         color: col, thickness: thick * ppp,
+                                        dash_period_px: 0.0, dash_duty: 1.0,
                                     });
                                 }
                                 prev = Some((slot, v));
@@ -3794,6 +3795,7 @@ fn render_chart_pane(
                                         start_slot: ps, start_val: pv,
                                         end_slot: slot, end_val: v,
                                         color: col, thickness: thick * ppp,
+                                        dash_period_px: 0.0, dash_duty: 1.0,
                                     });
                                 }
                                 prev = Some((slot, v));
@@ -3958,6 +3960,7 @@ fn render_chart_pane(
                                 end_val:    v,
                                 color:      lin_color,
                                 thickness:  thickness_px,
+                                dash_period_px: 0.0, dash_duty: 1.0,
                             });
                         }
                         prev = Some((slot, v));
@@ -4083,12 +4086,24 @@ fn render_chart_pane(
         let sc = egui::Stroke::new(if is_sel { d.thickness + 1.0 } else { d.thickness }, if is_sel { t.accent } else { dc });
         let ls = d.line_style;
 
-        let use_gpu_drawing: bool = {
-            #[cfg(feature = "gpu_chart_v2")]
-            { d.line_style == LineStyle::Solid }
-            #[cfg(not(feature = "gpu_chart_v2"))]
-            { false }
+        // GPU drawing gate: with stipple support in the line shader (Stage 5),
+        // every LineStyle now routes to GPU. The legacy egui path still serves
+        // as the !feature fallback for A/B comparison.
+        let use_gpu_drawing: bool = cfg!(feature = "gpu_chart_v2");
+        // Dash params for any LineSegment this drawing pushes — keyed off the
+        // drawing's configured line_style. Solid is (0, 1), so the shader
+        // collapses to a no-op.
+        #[cfg(feature = "gpu_chart_v2")]
+        let (drawing_dash_period, drawing_dash_duty): (f32, f32) = {
+            use crate::chart::renderer_gpu::LineSegment as LS;
+            match d.line_style {
+                LineStyle::Solid  => LS::SOLID,
+                LineStyle::Dashed => LS::DASHED,
+                LineStyle::Dotted => LS::DOTTED,
+            }
         };
+        #[cfg(not(feature = "gpu_chart_v2"))]
+        let (drawing_dash_period, drawing_dash_duty): (f32, f32) = (0.0, 1.0);
 
         match &d.kind {
             DrawingKind::HLine{price}=>{
@@ -4107,6 +4122,7 @@ fn render_chart_pane(
                                 end_val:    *price,
                                 color:      _drawing_c32(line_color),
                                 thickness:  line_thick * drawing_ppp,
+                                dash_period_px: drawing_dash_period, dash_duty: drawing_dash_duty,
                             });
                         }
                     } else {
@@ -4157,6 +4173,7 @@ fn render_chart_pane(
                                 end_val:    vb,
                                 color:      _drawing_c32(line_color),
                                 thickness:  line_thick * drawing_ppp,
+                                dash_period_px: drawing_dash_period, dash_duty: drawing_dash_duty,
                             });
                         }
                     } else {
@@ -4226,11 +4243,13 @@ fn render_chart_pane(
                                 start_slot: edge_left_slot, start_val: top_p,
                                 end_slot: edge_right_slot, end_val: top_p,
                                 color: lc, thickness: th,
+                                dash_period_px: drawing_dash_period, dash_duty: drawing_dash_duty,
                             });
                             chart.gpu_render_params.line_segments.push(LineSegment {
                                 start_slot: edge_left_slot, start_val: bot_p,
                                 end_slot: edge_right_slot, end_val: bot_p,
                                 color: lc, thickness: th,
+                                dash_period_px: drawing_dash_period, dash_duty: drawing_dash_duty,
                             });
                         }
                     } else {
@@ -4308,6 +4327,7 @@ fn render_chart_pane(
                                     end_slot:   slot_r, end_val:   lp,
                                     color: _drawing_c32(color_alpha(dc, alpha as u8)),
                                     thickness: lsc.width * drawing_ppp,
+                                    dash_period_px: drawing_dash_period, dash_duty: drawing_dash_duty,
                                 });
                             }
                         } else {
@@ -4441,11 +4461,13 @@ fn render_chart_pane(
                                 start_slot: bsa, start_val: bva,
                                 end_slot: bsb, end_val: bvb,
                                 color: lc, thickness: th,
+                                dash_period_px: drawing_dash_period, dash_duty: drawing_dash_duty,
                             });
                             chart.gpu_render_params.line_segments.push(LineSegment {
                                 start_slot: qsa, start_val: qva,
                                 end_slot: qsb, end_val: qvb,
                                 color: lc, thickness: th,
+                                dash_period_px: drawing_dash_period, dash_duty: drawing_dash_duty,
                             });
                         }
                     } else {
@@ -4770,24 +4792,28 @@ fn render_chart_pane(
                             start_slot: sl, start_val: top_p,
                             end_slot:   sr, end_val:   top_p,
                             color: lc, thickness: th,
+                            dash_period_px: drawing_dash_period, dash_duty: drawing_dash_duty,
                         });
                         // Bottom edge
                         chart.gpu_render_params.line_segments.push(LineSegment {
                             start_slot: sl, start_val: bot_p,
                             end_slot:   sr, end_val:   bot_p,
                             color: lc, thickness: th,
+                            dash_period_px: drawing_dash_period, dash_duty: drawing_dash_duty,
                         });
                         // Left edge — vertical (same slot, top→bot).
                         chart.gpu_render_params.line_segments.push(LineSegment {
                             start_slot: sl, start_val: top_p,
                             end_slot:   sl, end_val:   bot_p,
                             color: lc, thickness: th,
+                            dash_period_px: drawing_dash_period, dash_duty: drawing_dash_duty,
                         });
                         // Right edge — vertical
                         chart.gpu_render_params.line_segments.push(LineSegment {
                             start_slot: sr, start_val: top_p,
                             end_slot:   sr, end_val:   bot_p,
                             color: lc, thickness: th,
+                            dash_period_px: drawing_dash_period, dash_duty: drawing_dash_duty,
                         });
                     }
                 } else {
@@ -4861,11 +4887,15 @@ fn render_chart_pane(
                             let bot_val = pr_lo - pr_range * 2.0;
                             let line_color = if is_sel { t.accent } else { dc };
                             let line_thick = if is_sel { d.thickness + 1.0 } else { d.thickness };
+                            // VerticalLine is always dashed in the egui path; match that
+                            // in the GPU path now that the line shader supports stipple.
+                            let (dp, dd) = LineSegment::DASHED;
                             chart.gpu_render_params.line_segments.push(LineSegment {
                                 start_slot: slot, start_val: top_val,
                                 end_slot:   slot, end_val:   bot_val,
                                 color:      _drawing_c32(line_color),
                                 thickness:  line_thick * drawing_ppp,
+                                dash_period_px: dp, dash_duty: dd,
                             });
                         }
                     } else {
@@ -4930,6 +4960,7 @@ fn render_chart_pane(
                                 end_slot:   sb, end_val:   vb,
                                 color:      _drawing_c32(line_color),
                                 thickness:  line_thick * drawing_ppp,
+                                dash_period_px: drawing_dash_period, dash_duty: drawing_dash_duty,
                             });
                         }
                     } else {
@@ -4984,6 +5015,7 @@ fn render_chart_pane(
                                     end_val:    lp,
                                     color:      _drawing_c32(color_alpha(dc, alpha)),
                                     thickness:  lsc.width * drawing_ppp,
+                                    dash_period_px: drawing_dash_period, dash_duty: drawing_dash_duty,
                                 });
                             }
                         } else {
@@ -5365,6 +5397,7 @@ fn render_chart_pane(
                                 start_slot: ps, start_val: pv,
                                 end_slot:   slot, end_val: pseudo,
                                 color: lc, thickness: th,
+                                dash_period_px: 0.0, dash_duty: 1.0,
                             });
                         }
                         prev = Some((slot, pseudo));
@@ -5405,6 +5438,7 @@ fn render_chart_pane(
                                     start_slot: ps, start_val: pv,
                                     end_slot:   slot, end_val: pseudo,
                                     color: lc, thickness: th,
+                                    dash_period_px: 0.0, dash_duty: 1.0,
                                 });
                             }
                             prev = Some((slot, pseudo));
@@ -5443,6 +5477,7 @@ fn render_chart_pane(
                                     start_slot: ps, start_val: pv,
                                     end_slot:   slot, end_val: pseudo,
                                     color: lc, thickness: th,
+                                    dash_period_px: 0.0, dash_duty: 1.0,
                                 });
                             }
                             prev = Some((slot, pseudo));
@@ -6931,6 +6966,7 @@ fn render_chart_pane(
                         start_slot: edge_left_slot, start_val: order.price,
                         end_slot:   edge_right_slot, end_val:   order.price,
                         color: lc, thickness: th,
+                        dash_period_px: 0.0, dash_duty: 1.0,
                     });
                 } else {
                     let dash_w_slot = dash_w_px / bs;
@@ -6944,6 +6980,7 @@ fn render_chart_pane(
                             start_slot: s, start_val: order.price,
                             end_slot:   e, end_val:   order.price,
                             color: lc, thickness: th,
+                            dash_period_px: 0.0, dash_duty: 1.0,
                         });
                         s += stride_slot;
                     }

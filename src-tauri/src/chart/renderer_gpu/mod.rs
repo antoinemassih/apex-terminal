@@ -29,9 +29,18 @@ pub struct CandleInstance {
     pub flags:    u32,
 }
 
-/// One segment of an indicator line. 36 bytes. The CPU side splits a polyline
+/// One segment of an indicator line. 44 bytes. The CPU side splits a polyline
 /// into consecutive segments and pushes one of these per gap-free pair so NaN
 /// gaps in the indicator history skip cleanly.
+///
+/// `dash_period_px` and `dash_duty` enable stippled line styles (dashed,
+/// dotted, dash-dot). `dash_period_px = 0.0` → solid line (no modulation).
+/// `dash_period_px > 0.0` → fragment alpha multiplied by
+/// `step(fract(along_px / dash_period_px), dash_duty)`. Typical values:
+///   • solid    — period=0.0, duty=1.0 (or any)
+///   • dashed   — period=12.0, duty=0.5  (6px on, 6px off)
+///   • dotted   — period=6.0, duty=0.35 (~2px on, ~4px off)
+/// Helpers `solid()`, `dashed()`, `dotted()` provide the canonical values.
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct LineSegment {
@@ -41,6 +50,15 @@ pub struct LineSegment {
     pub end_val:    f32,
     pub color:      [f32; 4],  // linear RGBA
     pub thickness:  f32,       // physical pixels — full line width
+    pub dash_period_px: f32,   // 0 = solid; >0 = stipple period in physical px
+    pub dash_duty:      f32,   // 0..1 = fraction of period that is "on"
+}
+
+impl LineSegment {
+    /// Style constants matching `chart_renderer::LineStyle`.
+    pub const SOLID:  (f32, f32) = (0.0, 1.0);
+    pub const DASHED: (f32, f32) = (12.0, 0.5);
+    pub const DOTTED: (f32, f32) = (6.0, 0.35);
 }
 
 /// One quad of a band fill (e.g. Bollinger Bands area between upper and lower).
@@ -321,6 +339,9 @@ impl ChartPipeline {
             wgpu::VertexAttribute { offset: 12, shader_location: 3, format: wgpu::VertexFormat::Float32   },
             wgpu::VertexAttribute { offset: 16, shader_location: 4, format: wgpu::VertexFormat::Float32x4 },
             wgpu::VertexAttribute { offset: 32, shader_location: 5, format: wgpu::VertexFormat::Float32   },
+            // dash_period_px (offset 36) + dash_duty (offset 40) — Stage 5
+            wgpu::VertexAttribute { offset: 36, shader_location: 6, format: wgpu::VertexFormat::Float32   },
+            wgpu::VertexAttribute { offset: 40, shader_location: 7, format: wgpu::VertexFormat::Float32   },
         ];
         let line_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label:  Some("chart_pipeline.line"),

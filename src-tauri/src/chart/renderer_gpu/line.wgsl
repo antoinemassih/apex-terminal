@@ -32,7 +32,9 @@ struct LineIn {
     @location(2) end_slot:   f32,
     @location(3) end_val:    f32,
     @location(4) color:      vec4<f32>,
-    @location(5) thickness:  f32,    // physical pixels — full width
+    @location(5) thickness:  f32,        // physical pixels — full width
+    @location(6) dash_period_px: f32,    // 0 = solid; >0 = stipple period (px)
+    @location(7) dash_duty:      f32,    // 0..1 = "on" fraction of period
 }
 
 struct VertOut {
@@ -45,6 +47,14 @@ struct VertOut {
     // instance, passed flat so the fragment shader knows where the
     // alpha-fall-off band starts.
     @location(2) half_t: f32,
+    // Distance along the line from start (p0) toward end (p1), in physical
+    // pixels. Interpolates linearly from 0 at p0 to len_px at p1. Used by
+    // the fragment shader for dash pattern modulation.
+    @location(3) along_px: f32,
+    // Dash period in physical pixels (constant for an instance). 0.0 = solid.
+    @location(4) dash_period_px: f32,
+    // Dash duty cycle (0..1) — fraction of `dash_period_px` that is "on".
+    @location(5) dash_duty: f32,
 }
 
 fn slot_to_ndc_x(slot: f32) -> f32 {
@@ -94,14 +104,18 @@ fn vs_main(@builtin(vertex_index) vid: u32, seg: LineIn) -> VertOut {
 
     var pos: vec2<f32>;
     var edge_sign: f32 = 0.0;
+    // `along_t` is 0 at the p0 end and 1 at the p1 end. Verts 0,1,3 are
+    // at the +off side; verts 2,4,5 are at the -off side; within each side
+    // half the verts sit at p0 (along_t=0) and the other half at p1 (=1).
+    var along_t: f32 = 0.0;
     // 6 verts forming a quad: (p0+off, p1+off, p0-off) + (p1+off, p1-off, p0-off)
     switch vid {
-        case 0u: { pos = p0 + off_ndc; edge_sign =  1.0; }
-        case 1u: { pos = p1 + off_ndc; edge_sign =  1.0; }
-        case 2u: { pos = p0 - off_ndc; edge_sign = -1.0; }
-        case 3u: { pos = p1 + off_ndc; edge_sign =  1.0; }
-        case 4u: { pos = p1 - off_ndc; edge_sign = -1.0; }
-        case 5u: { pos = p0 - off_ndc; edge_sign = -1.0; }
+        case 0u: { pos = p0 + off_ndc; edge_sign =  1.0; along_t = 0.0; }
+        case 1u: { pos = p1 + off_ndc; edge_sign =  1.0; along_t = 1.0; }
+        case 2u: { pos = p0 - off_ndc; edge_sign = -1.0; along_t = 0.0; }
+        case 3u: { pos = p1 + off_ndc; edge_sign =  1.0; along_t = 1.0; }
+        case 4u: { pos = p1 - off_ndc; edge_sign = -1.0; along_t = 1.0; }
+        case 5u: { pos = p0 - off_ndc; edge_sign = -1.0; along_t = 0.0; }
         default: { pos = vec2<f32>(0.0, 0.0); }
     }
 
@@ -112,17 +126,40 @@ fn vs_main(@builtin(vertex_index) vid: u32, seg: LineIn) -> VertOut {
     // Multiplied by half_t_aa gives signed pixel distance from line centre.
     out.dist_px = edge_sign * half_t_aa;
     out.half_t = half_t;
+    // Linearly interpolate along the line: 0 px at p0, len_px at p1. The
+    // fragment shader uses this to drive the dash pattern.
+    out.along_px = along_t * len_px;
+    out.dash_period_px = seg.dash_period_px;
+    out.dash_duty = seg.dash_duty;
     return out;
 }
 
 @fragment
 fn fs_main(in: VertOut) -> @location(0) vec4<f32> {
-    // Smooth alpha falloff in the 1-pixel band outside the line's "true" edge.
-    // Inside the line proper (|d| <= half_t - 0.5): full alpha.
+    // Edge AA: smooth alpha falloff in the 1-pixel band outside the line's
+    // "true" edge. Inside the line proper (|d| <= half_t - 0.5): full alpha.
     // Outside the AA band (|d| >= half_t + 0.5): zero alpha (clipped).
     // In between: smoothstep to feather the edge so diagonal lines don't
     // look stair-stepped.
     let abs_d = abs(in.dist_px);
-    let alpha_mult = 1.0 - smoothstep(in.half_t - 0.5, in.half_t + 0.5, abs_d);
-    return vec4<f32>(in.color.rgb, in.color.a * alpha_mult);
+    let edge_alpha = 1.0 - smoothstep(in.half_t - 0.5, in.half_t + 0.5, abs_d);
+
+    // Dash pattern: when dash_period_px > 0, modulate alpha along the line
+    // by a square wave of duty `dash_duty`. Sub-pixel feathering at the
+    // dash/gap transitions prevents shimmering during pan. When period == 0
+    // (solid), this collapses to a no-op (multiplier stays 1.0).
+    var dash_alpha: f32 = 1.0;
+    if (in.dash_period_px > 0.5) {
+        let phase = (in.along_px / in.dash_period_px) - floor(in.along_px / in.dash_period_px); // fract()
+        // Anti-alias the dash transitions: smoothstep across one pixel of
+        // phase rather than a hard step. Pixel→phase conversion uses
+        // 1/period so the AA band is exactly 1 physical pixel wide at the
+        // start and end of the "on" segment.
+        let aa_px = 1.0 / in.dash_period_px;
+        let on_in  = smoothstep(0.0, aa_px, phase);
+        let on_out = 1.0 - smoothstep(in.dash_duty - aa_px, in.dash_duty, phase);
+        dash_alpha = on_in * on_out;
+    }
+
+    return vec4<f32>(in.color.rgb, in.color.a * edge_alpha * dash_alpha);
 }
