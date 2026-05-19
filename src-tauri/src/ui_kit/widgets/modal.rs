@@ -126,6 +126,10 @@ pub struct Modal<'a> {
     close_on_click_outside: bool,
     draggable_header: bool,
     header_painter: Option<HeaderPainter<'a>>,
+    /// Whether to paint a full-viewport scrim behind the modal. Defaults to
+    /// `true` for `Anchor::Window` modals. The scrim fades with `appear_t`
+    /// and uses a theme-aware semi-transparent color (`~50 % bg overlay`).
+    scrim: bool,
     // ── HeaderStyle::Panel side-channel state ─────────────────────────────
     /// Optional subtitle rendered next to the title (monospace, dim).
     header_subtitle: Option<&'a str>,
@@ -155,6 +159,7 @@ impl<'a> Modal<'a> {
             close_on_click_outside: false,
             draggable_header: false,
             header_painter: None,
+            scrim: true, // Window-anchored modals show a scrim by default.
             header_subtitle: None,
             panel_accent: None,
             panel_dim: None,
@@ -185,6 +190,10 @@ impl<'a> Modal<'a> {
     pub fn draggable_header(mut self, on: bool) -> Self {
         self.draggable_header = on; self
     }
+    /// Control the scrim (background dim overlay) for `Anchor::Window` modals.
+    /// Default is `true`. Pass `false` to suppress the scrim for floating
+    /// palettes or non-blocking overlays that shouldn't dim the background.
+    pub fn scrim(mut self, on: bool) -> Self { self.scrim = on; self }
     /// Optional escape hatch: caller paints a fully custom header strip. The
     /// closure runs in place of the auto-header (regardless of `header_style`)
     /// and should return `true` if the user clicked close. The default
@@ -390,6 +399,35 @@ impl<'a> Modal<'a> {
                     win_pos_base.x,
                     win_pos_base.y + (1.0 - appear_t) * 8.0,
                 );
+                // ── Scrim ────────────────────────────────────────────────
+                // Paint a full-viewport semi-transparent overlay behind the
+                // modal. Order::Background puts it below all other egui
+                // layers (panels, windows, tooltips) but above the app's
+                // native content. Alpha tracks appear_t so it fades with the
+                // modal. Clicking the scrim does NOT dismiss the modal —
+                // caller controls dismiss via ModalResponse::closed.
+                if self.scrim {
+                    let scrim_id = Id::new(("apex_modal_scrim", id));
+                    let viewport  = ctx.screen_rect();
+                    // Theme-aware scrim: use the theme bg color at ~50% alpha
+                    // (alpha_strong = 80/255 ≈ 31 %). We use a slightly higher
+                    // base value (120/255 ≈ 47 %) so light themes also dim
+                    // noticeably. The color inherits from `t.bg()` which is
+                    // dark for dark themes and light for light themes.
+                    let scrim_base = color_alpha(t.bg(), 120);
+                    let scrim_alpha = (scrim_base.a() as f32 * appear_t) as u8;
+                    let scrim_color = Color32::from_rgba_unmultiplied(
+                        scrim_base.r(), scrim_base.g(), scrim_base.b(), scrim_alpha,
+                    );
+                    let _ = egui::Area::new(scrim_id)
+                        .order(egui::Order::Background)
+                        .fixed_pos(viewport.min)
+                        .interactable(false)
+                        .show(ctx, |ui| {
+                            ui.painter().rect_filled(viewport, 0.0, scrim_color);
+                        });
+                }
+
                 // Paint a soft drop shadow behind fixed-position windows.
                 // We can't easily track the rect of a movable window across
                 // frames, so the shadow only goes on pinned modals.
