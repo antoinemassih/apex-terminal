@@ -269,6 +269,8 @@ pub fn tool_button(ui: &mut Ui, icon: &str, label: &str, active: bool) -> bool {
 pub fn delete_button(ui: &mut Ui) -> bool {
     button::Button::icon(Icon::X)
         .variant(tokens::Variant::Danger)
+        .placement(IconPlacement::ListRow)
+        .tone_destructive()
         .show(ui, theme::active_theme(ui.ctx()))
         .on_hover_text("Delete")
         .clicked()

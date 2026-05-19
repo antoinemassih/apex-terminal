@@ -697,7 +697,8 @@ impl<'a> MeridienOrderTicket<'a> {
                         .variant(Variant::Chrome)
                         .glyph_size(9.0)
                         .min_size(Vec2::new(caret_w, pill_h))
-                        .corner_radius(0.0))
+                        .corner_radius(0.0)
+                        .placement(crate::ui_kit::widgets::icon_placement::IconPlacement::ListRow))
                         .on_hover_text("More options");
                     let popup_id = ui.make_persistent_id(("pill_more", id_salt));
                     if caret.clicked() {
