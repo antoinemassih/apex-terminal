@@ -278,7 +278,8 @@ mod tests {
             ],
             updated_at_ms: 0,
         };
-        let t = &THEMES[0];
+        let t = THEMES.iter().find(|t| t.name == "Midnight")
+            .expect("Midnight theme must exist");
         let colors: Vec<egui::Color32> = r.rows.iter().map(|row| quadrant_color(row.quadrant, t)).collect();
         // All four should be distinct.
         for i in 0..colors.len() {

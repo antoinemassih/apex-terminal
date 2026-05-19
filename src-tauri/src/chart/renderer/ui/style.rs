@@ -2480,7 +2480,9 @@ mod ds_impl_3_tests {
     /// perceptual constants (0.95 / 0.88 / 0.85).
     #[test]
     fn elevation_tints_use_correct_gamma() {
-        let t = &crate::chart_renderer::gpu::THEMES[0];
+        let t = crate::chart_renderer::gpu::THEMES
+            .iter().find(|t| t.name == "Midnight")
+            .expect("Midnight theme must exist");
         let expected_1 = t.bg.gamma_multiply(0.95);
         let expected_2 = t.bg.gamma_multiply(0.88);
         let expected_3 = t.bg.gamma_multiply(0.85);
@@ -2493,7 +2495,9 @@ mod ds_impl_3_tests {
     /// which must be brighter than elevation_3, for a typical dark background.
     #[test]
     fn elevation_depth_order_is_monotonic() {
-        let t = &crate::chart_renderer::gpu::THEMES[0];
+        let t = crate::chart_renderer::gpu::THEMES
+            .iter().find(|t| t.name == "Midnight")
+            .expect("Midnight theme must exist");
         // Sum RGB channels as a proxy for luminance.
         let lum = |c: egui::Color32| c.r() as u32 + c.g() as u32 + c.b() as u32;
         // On dark bg, gamma_multiply < 1 darkens — so lum(e1) >= lum(e2) >= lum(e3).
