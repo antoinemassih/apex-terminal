@@ -2,7 +2,18 @@
 
 **Date:** 2026-05-20
 **Spec:** `SPEC_GPU_CHART_REFACTOR.md`
-**Status:** Phase 1-4b enabled by default. Phases 5 (drawings) partial. Phase 7 (cutover) not done.
+**Status:** Phase 1-4b enabled. Phase 5 advanced through Stage 5 (drawings + stipple). Phase 7 (cutover) not done.
+
+## Stage progression (this investigation, oldest → newest)
+
+| Stage | Commit | Delivered |
+|---|---|---|
+| 1 | `e93e4785` | Shadow pipeline texture race fix — `Texture[Id(2,2)] does not exist` panic gone |
+| 2 | `f57409cd` | `gpu_chart_v2` flipped on by default — instanced candle pipeline live |
+| 3 | `d5c52fed` | This perf report |
+| 4 | `894a7d8e` | GPU paths for Ray, PriceRange, VerticalLine, FibExtension projections |
+| 4b | `fcfcf7ff` | Indicator line overlays go GPU on inactive panes too (consistency fix with `fcb26b2d`) |
+| 5 | `3a04beff` | Dashed/dotted line patterns in the line shader — LineSegment grows 36→44 bytes |
 
 ---
 
@@ -49,29 +60,41 @@ The user-visible "buttery" feel is now backed by data — 60 fps held with no 2-
 
 ---
 
-## What ships in the GPU pipeline today
+## What ships in the GPU pipeline today (post-Stage-5)
 
 | Component | GPU? | Notes |
 |---|---|---|
 | Candle bodies + wicks | ✓ instanced | Phase 2 — `CandleInstance` (24 B/bar), 6 verts body + 6 verts wick |
-| Single-line indicators (SMA/EMA/WMA/DEMA/TEMA/VWAP) | ✓ instanced | Phase 4a — segment quads, screen-space thickness |
+| Single-line indicators (SMA/EMA/WMA/DEMA/TEMA/VWAP) | ✓ all panes | Phase 4a + Stage 4b — active and inactive panes |
 | Multi-line indicators (BB, KC, MACD, Ichimoku) | ✓ partial | Phase 4b — each line as separate instance set |
 | Band fills (BB upper/lower) | ✓ instanced | Phase 4b — `FillQuad` (40 B), alpha-blended |
 | Oscillator pane main lines (RSI/MACD/Stoch/ADX/CCI/Williams/ATR) | ✓ | Commit `5b7975c6` |
 | Volume bars | ✓ partial | Some routes through GPU pipeline; alt-mode bars (Renko/Range/Tick) still egui |
-| Trendline drawings (solid, active pane) | ✓ | Phase 5 partial — commit `f2974cbf` |
-| HLine drawings (solid, active pane) | ✓ | Phase 5 partial |
-| Inactive-pane drawings | egui | Phase 5 didn't extend |
+| Trendline drawings | ✓ | Phase 5a — commit `f2974cbf` |
+| HLine drawings | ✓ | Phase 5a |
+| HZone drawings | ✓ | Phase 5a — fill quad + 2 edge lines |
+| Fibonacci retracements | ✓ solid levels | Phase 5a — extensions still egui (dashed style) |
+| Channel base + parallel + fill | ✓ | Phase 5a |
+| Ray drawings | ✓ | **Stage 4** — commit `894a7d8e` |
+| PriceRange (rectangles bounded in time) | ✓ | **Stage 4** — fill + 4 edges including vertical |
+| VerticalLine (dashed) | ✓ | **Stage 4** + **Stage 5** — vertical segment, stippled |
+| FibExtension projected levels | ✓ | **Stage 4** — construction lines (A→B, B→C) still egui (dashed) |
+| Dashed / dotted line styles | ✓ | **Stage 5** — line shader stipple support (commit `3a04beff`) |
 | Selection handles | egui | Phase 5 — explicitly deferred |
-| Dashed / dotted line variants | egui | Phase 5 — shader doesn't support patterns yet |
-| Rectangles, Fib levels, channels, arrows, text annotations | egui | Phase 5 incomplete |
-| FVG / Order Block / ICT structure drawings | egui | Phase 5 incomplete |
+| Channel subdivisions (-0.25, 0.25, …) | egui | Built from screen-space pts; slot-space conversion = follow-up |
+| FibChannel fib internals | egui | Same as above |
+| Fibonacci extension dashed levels | egui | Built from screen-space pts |
+| RegressionChannel σ bands | egui | Not yet ported |
+| RiskReward zones + lines | egui | Complex mixed coloring + zones |
+| Pitchfork, GannFan, XABCD, ElliottWave, AnchoredVWAP, FibTimeZone, FibArc, GannBox | egui | Each needs a small port |
+| TextNote / labels everywhere | egui | Needs glyph atlas — biggest single open item |
+| BarMarker triangles | egui | Tiny shapes — not worth porting |
 | Axes, gridlines, crosshair, price labels | egui | Phase 6 — spec says "defer unless chasing 144Hz" |
 | Toolbars, sidebars, panels, modals | egui | Chrome — correct placement |
 | Shadow pipeline | ✓ | Independent GPU widget — texture-pool race fixed in `e93e4785` |
 | Text subpixel pipeline | ✓ | Independent GPU widget |
 
-48 `cfg(feature = "gpu_chart_v2")` gates still exist (41 in `render/pane/core.rs`, 7 in `gpu.rs`).
+47 `cfg(feature = "gpu_chart_v2")` gates remain (40 in `render/pane/core.rs`, 7 in `gpu.rs`).
 Most guard the legacy egui paint paths that are now dead in the default build.
 
 ---
