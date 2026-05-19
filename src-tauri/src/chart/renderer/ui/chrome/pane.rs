@@ -14,9 +14,10 @@ use egui::{Color32, Pos2, Rect, Response, RichText, Sense, Stroke, StrokeKind, U
 use super::super::style::*;
 use super::super::components::{pane_header_bar, pane_title, section_label_widget};
 use super::super::components::PaneHeader;
-use super::super::components::{RemovableChip, DisplayChip, StatusBadge};
 use crate::ui_kit::widgets::{Button as KitButton, Tooltip, tokens::Variant};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
+use crate::ui_kit::widgets::{Tag, TagTone};
+use crate::ui_kit::widgets::theme::active_theme;
 
 // Color fields in builder `new()` constructors below are seeded with
 // `Color32::TRANSPARENT` placeholders. Every call site calls `.theme(t)` which
@@ -74,7 +75,7 @@ impl<'a> Widget for PaneSymbolBadge<'a> {
                 );
             }
             if let Some(ac) = self.asset_class {
-                ui.add(DisplayChip::new(ac).color(self.accent));
+                ui.add(Tag::new(ac).tone(TagTone::Accent));
             }
         }).response
     }
@@ -165,7 +166,9 @@ impl<'a> PaneIndicatorChip<'a> {
     }
     /// Render. Returns `(label_response, x_was_clicked)`.
     pub fn show(self, ui: &mut Ui) -> (Response, bool) {
-        RemovableChip::new(self.label).palette(self.accent, self.dim).show(ui)
+        let theme = active_theme(ui.ctx());
+        let r = Tag::new(self.label).tone(TagTone::Accent).closable(true).show(ui, theme);
+        (r.response, r.closed)
     }
 }
 
@@ -246,12 +249,12 @@ impl Widget for PaneStatusStrip {
                 );
             }
             if let Some(q) = self.data_quality {
-                let (col, label) = match q {
-                    DataQuality::Good     => (self.bull, "OK"),
-                    DataQuality::Degraded => (self.warn, "DEGR"),
-                    DataQuality::Stale    => (self.bear, "STALE"),
+                let (tone, label) = match q {
+                    DataQuality::Good     => (TagTone::Bull,    "OK"),
+                    DataQuality::Degraded => (TagTone::Warn,    "DEGR"),
+                    DataQuality::Stale    => (TagTone::Bear,    "STALE"),
                 };
-                ui.add(DisplayChip::new(label).color(col));
+                ui.add(Tag::new(label).tone(tone));
             }
             if let Some(c) = self.connected {
                 paint_status_dot(ui, if c { self.bull } else { self.bear });
