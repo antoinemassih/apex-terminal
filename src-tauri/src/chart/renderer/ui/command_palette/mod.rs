@@ -408,8 +408,12 @@ fn draw_normal_mode(
                     .id_salt("cmd_palette_results")
                     .show(ui, |ui| {
                         let entries = watchlist.cmd_palette_results.clone();
+                        // Last 5 items in recent list: show a "•" recency dot.
+                        let recent_5: Vec<String> = watchlist.cmd_palette_recent
+                            .iter().take(5).cloned().collect();
                         for (ri, (id, label, cat_label)) in entries.iter().enumerate() {
                             let is_sel = ri as i32 == watchlist.cmd_palette_sel;
+                            let is_recent = recent_5.contains(id);
                             let row_h = 26.0;
                             let (rect, resp) = ui.allocate_exact_size(
                                 egui::vec2(ui.available_width(), row_h),
@@ -436,11 +440,26 @@ fn draw_normal_mode(
                                 if is_sel { t.text } else { color_subtle(t.text) },
                             );
 
-                            if let Some(hk) = hotkey_for(id) {
+                            // Recency dot "•" shown at right edge for recently-used items.
+                            // Placed before the hotkey (or alone when no hotkey exists).
+                            let right_x = if let Some(hk) = hotkey_for(id) {
+                                let hk_x = rect.max.x - 6.0;
                                 painter.text(
-                                    egui::pos2(rect.max.x - 6.0, rect.center().y),
+                                    egui::pos2(hk_x, rect.center().y),
                                     egui::Align2::RIGHT_CENTER,
                                     hk, egui::FontId::monospace(super::style::font_sm()), t.dim);
+                                hk_x - 28.0 // place dot to the left of the hotkey
+                            } else {
+                                rect.max.x - 6.0
+                            };
+                            if is_recent {
+                                painter.text(
+                                    egui::pos2(right_x, rect.center().y),
+                                    egui::Align2::RIGHT_CENTER,
+                                    "•",
+                                    egui::FontId::proportional(super::style::font_sm()),
+                                    color_alpha(t.accent, 180),
+                                );
                             }
 
                             if resp.clicked() { execute_idx = Some(ri); }
