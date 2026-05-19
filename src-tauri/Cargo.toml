@@ -90,11 +90,13 @@ libloading = "0.8"
 toml = { version = "0.8", optional = true }
 
 [features]
-default = []
+default = ["gpu_chart_v2"]
 design-mode = ["dep:toml"]
-# Activates the GPU chart render pass (SPEC_GPU_CHART_REFACTOR.md).
-# Phase 1: paints a magenta debug rect over the surface.
-# When off, the egui chart path is unaffected.
+# Activates the GPU chart render pass (SPEC_GPU_CHART_REFACTOR.md, Phase 1-4b).
+# Renders candle bodies + wicks, indicator lines, and band fills through an
+# instanced wgpu pipeline (renderer_gpu/) BEFORE the egui pass. egui retains
+# chrome (axes, gridlines, drawings, panels). Disable with --no-default-features
+# to fall back to the legacy egui-only chart path for A/B comparison.
 gpu_chart_v2 = []
 
 [dev-dependencies]
