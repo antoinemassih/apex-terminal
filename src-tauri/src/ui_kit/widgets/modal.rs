@@ -341,12 +341,18 @@ impl<'a> Modal<'a> {
         match self.anchor {
             Anchor::Window { pos } => {
                 let screen = ctx.screen_rect();
-                let win_pos = pos.unwrap_or_else(|| {
+                let win_pos_base = pos.unwrap_or_else(|| {
                     egui::pos2(
                         screen.center().x - self.size.x * 0.5,
                         (screen.center().y - self.size.y * 0.5).max(40.0),
                     )
                 });
+                // Slide-in: eases from 8px below the final position while
+                // appear_t goes 0 → 1. No vertical offset once fully open.
+                let win_pos = egui::pos2(
+                    win_pos_base.x,
+                    win_pos_base.y + (1.0 - appear_t) * 8.0,
+                );
                 // Paint a soft drop shadow behind fixed-position windows.
                 // We can't easily track the rect of a movable window across
                 // frames, so the shadow only goes on pinned modals.
