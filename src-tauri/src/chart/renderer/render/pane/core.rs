@@ -4737,10 +4737,60 @@ fn render_chart_pane(
                 if !in_bounds(p0) && !in_bounds(p1) { continue; }
                 let xl = p0.x.min(p1.x); let xr = p0.x.max(p1.x);
                 let yt = p0.y.min(p1.y); let yb = p0.y.max(p1.y);
-                painter.rect_filled(egui::Rect::from_min_max(egui::pos2(xl,yt), egui::pos2(xr,yb)),
-                    0.0, hex_to_color(&d.color, d.opacity * 0.08));
-                painter.rect_stroke(egui::Rect::from_min_max(egui::pos2(xl,yt), egui::pos2(xr,yb)),
-                    0.0, sc, egui::StrokeKind::Outside);
+                if use_gpu_drawing {
+                    #[cfg(feature = "gpu_chart_v2")]
+                    {
+                        use crate::chart::renderer_gpu::{LineSegment, FillQuad};
+                        let bar0 = SignalDrawing::time_to_bar(*time0, &chart.timestamps);
+                        let bar1 = SignalDrawing::time_to_bar(*time1, &chart.timestamps);
+                        let s0 = bar0 - vs_floor;
+                        let s1 = bar1 - vs_floor;
+                        let sl = s0.min(s1); let sr = s0.max(s1);
+                        let top_p = price0.max(*price1);
+                        let bot_p = price0.min(*price1);
+                        // Filled body (bounded in time, unlike HZone which is full-width).
+                        chart.gpu_render_params.fill_quads.push(FillQuad {
+                            start_slot: sl, start_top: top_p, start_bot: bot_p,
+                            end_slot:   sr, end_top:   top_p, end_bot:   bot_p,
+                            color: _drawing_c32(hex_to_color(&d.color, d.opacity * 0.08)),
+                        });
+                        // Four edges. Top + bottom are horizontal in price space.
+                        // Left + right are vertical in slot space (start_slot == end_slot).
+                        let line_color = if is_sel { t.accent } else { dc };
+                        let line_thick = if is_sel { d.thickness + 1.0 } else { d.thickness };
+                        let lc = _drawing_c32(line_color);
+                        let th = line_thick * drawing_ppp;
+                        // Top edge
+                        chart.gpu_render_params.line_segments.push(LineSegment {
+                            start_slot: sl, start_val: top_p,
+                            end_slot:   sr, end_val:   top_p,
+                            color: lc, thickness: th,
+                        });
+                        // Bottom edge
+                        chart.gpu_render_params.line_segments.push(LineSegment {
+                            start_slot: sl, start_val: bot_p,
+                            end_slot:   sr, end_val:   bot_p,
+                            color: lc, thickness: th,
+                        });
+                        // Left edge — vertical (same slot, top→bot).
+                        chart.gpu_render_params.line_segments.push(LineSegment {
+                            start_slot: sl, start_val: top_p,
+                            end_slot:   sl, end_val:   bot_p,
+                            color: lc, thickness: th,
+                        });
+                        // Right edge — vertical
+                        chart.gpu_render_params.line_segments.push(LineSegment {
+                            start_slot: sr, start_val: top_p,
+                            end_slot:   sr, end_val:   bot_p,
+                            color: lc, thickness: th,
+                        });
+                    }
+                } else {
+                    painter.rect_filled(egui::Rect::from_min_max(egui::pos2(xl,yt), egui::pos2(xr,yb)),
+                        0.0, hex_to_color(&d.color, d.opacity * 0.08));
+                    painter.rect_stroke(egui::Rect::from_min_max(egui::pos2(xl,yt), egui::pos2(xr,yb)),
+                        0.0, sc, egui::StrokeKind::Outside);
+                }
                 let dp_range = *price1 - *price0;
                 let pct = if *price0 != 0.0 { dp_range / *price0 * 100.0 } else { 0.0 };
                 let b0i = SignalDrawing::time_to_bar(*time0, &chart.timestamps).round() as isize;
@@ -4784,7 +4834,38 @@ fn render_chart_pane(
             DrawingKind::VerticalLine{time} => {
                 let x = bx(SignalDrawing::time_to_bar(*time, &chart.timestamps));
                 if x.is_finite() && x >= rect.left() && x <= rect.left() + cw {
-                    dashed_line(&painter, egui::pos2(x, rect.top()+pt), egui::pos2(x, rect.top()+pt+ch), sc, LineStyle::Dashed);
+                    // Note: VerticalLine's egui path uses LineStyle::Dashed unconditionally
+                    // (regardless of d.line_style). The GPU path matches that semantics —
+                    // only route when the dashed-vs-solid distinction is fine for users.
+                    // We treat VerticalLine as solid for the GPU path since dashed isn't
+                    // supported by the line shader yet. If the user wants strict dashed
+                    // behaviour they can disable gpu_chart_v2.
+                    if use_gpu_drawing {
+                        #[cfg(feature = "gpu_chart_v2")]
+                        {
+                            use crate::chart::renderer_gpu::LineSegment;
+                            let bar_g = SignalDrawing::time_to_bar(*time, &chart.timestamps);
+                            let slot = bar_g - vs_floor;
+                            // Span well beyond the visible price range so the vertical
+                            // line covers the whole chart pane regardless of zoom level.
+                            // Scissor on the GPU pass clips to the actual chart rect.
+                            let pr_lo = chart.gpu_render_params.price_low;
+                            let pr_hi = chart.gpu_render_params.price_high;
+                            let pr_range = (pr_hi - pr_lo).max(1.0);
+                            let top_val = pr_hi + pr_range * 2.0;
+                            let bot_val = pr_lo - pr_range * 2.0;
+                            let line_color = if is_sel { t.accent } else { dc };
+                            let line_thick = if is_sel { d.thickness + 1.0 } else { d.thickness };
+                            chart.gpu_render_params.line_segments.push(LineSegment {
+                                start_slot: slot, start_val: top_val,
+                                end_slot:   slot, end_val:   bot_val,
+                                color:      _drawing_c32(line_color),
+                                thickness:  line_thick * drawing_ppp,
+                            });
+                        }
+                    } else {
+                        dashed_line(&painter, egui::pos2(x, rect.top()+pt), egui::pos2(x, rect.top()+pt+ch), sc, LineStyle::Dashed);
+                    }
                     let ts_label = *time;
                     let dt = chrono::NaiveDateTime::from_timestamp_opt(ts_label, 0).map(|d| d.format("%m/%d %H:%M").to_string()).unwrap_or_default();
                     painter.text(egui::pos2(x + 3.0, rect.top()+pt+4.0), egui::Align2::LEFT_TOP,
@@ -4811,7 +4892,44 @@ fn render_chart_pane(
                             draw_b = egui::pos2(chart_right, right_y);
                         }
                     }
-                    dashed_line(&painter, clamp_pt(draw_a), clamp_pt(draw_b), sc, ls);
+                    if use_gpu_drawing {
+                        #[cfg(feature = "gpu_chart_v2")]
+                        {
+                            use crate::chart::renderer_gpu::LineSegment;
+                            // Same coordinate strategy as TrendLine: compute endpoints in
+                            // slot/value space, then extend toward chart edges if requested.
+                            let bar0 = SignalDrawing::time_to_bar(*time0, &chart.timestamps);
+                            let bar1 = SignalDrawing::time_to_bar(*time1, &chart.timestamps);
+                            let mut sa = bar0 - vs_floor;
+                            let mut va = *price0;
+                            let mut sb = bar1 - vs_floor;
+                            let mut vb = *price1;
+                            let dslot = sb - sa;
+                            if dslot.abs() > 0.001 {
+                                let slope = (vb - va) / dslot;
+                                if d.extend_left {
+                                    let new_v = va + slope * (edge_left_slot - sa);
+                                    sa = edge_left_slot;
+                                    va = new_v;
+                                }
+                                if d.extend_right {
+                                    let new_v = va + slope * (edge_right_slot - sa);
+                                    sb = edge_right_slot;
+                                    vb = new_v;
+                                }
+                            }
+                            let line_color = if is_sel { t.accent } else { dc };
+                            let line_thick = if is_sel { d.thickness + 1.0 } else { d.thickness };
+                            chart.gpu_render_params.line_segments.push(LineSegment {
+                                start_slot: sa, start_val: va,
+                                end_slot:   sb, end_val:   vb,
+                                color:      _drawing_c32(line_color),
+                                thickness:  line_thick * drawing_ppp,
+                            });
+                        }
+                    } else {
+                        dashed_line(&painter, clamp_pt(draw_a), clamp_pt(draw_b), sc, ls);
+                    }
                     if is_sel {
                         painter.circle_filled(clamp_pt(p0), 5.0, COLOR_INFO_CYAN);
                         painter.circle_filled(clamp_pt(p1), 5.0, COLOR_INFO_CYAN);
@@ -4838,13 +4956,34 @@ fn render_chart_pane(
                     (0.0, "0%"), (0.618, "61.8%"), (1.0, "100%"),
                     (1.272, "127.2%"), (1.618, "161.8%"), (2.0, "200%"), (2.618, "261.8%"),
                 ];
+                // Projected level lines are solid — eligible for GPU routing when
+                // gpu_chart_v2 is on. Compute the C-anchor's slot once outside the
+                // loop; each level pushes one horizontal LineSegment from C's slot
+                // to the chart's right edge.
+                #[cfg(feature = "gpu_chart_v2")]
+                let c_slot = SignalDrawing::time_to_bar(*time2, &chart.timestamps) - vs_floor;
                 for &(ratio, label) in levels {
                     let lp = *price2 + dir * ratio * ab_range.abs();
                     let y = py(lp);
                     if y.is_finite() && y.abs() < 50000.0 {
                         let alpha = if ratio == 0.0 || ratio == 1.0 { 220u8 } else if ratio <= 1.618 { 160 } else { 100 };
                         let lsc = egui::Stroke::new(d.thickness * 0.7, color_alpha(dc, alpha));
-                        dashed_line(&painter, egui::pos2(x2.min(chart_right), y), egui::pos2(chart_right, y), lsc, LineStyle::Solid);
+                        if use_gpu_drawing {
+                            #[cfg(feature = "gpu_chart_v2")]
+                            {
+                                use crate::chart::renderer_gpu::LineSegment;
+                                chart.gpu_render_params.line_segments.push(LineSegment {
+                                    start_slot: c_slot.min(edge_right_slot),
+                                    start_val:  lp,
+                                    end_slot:   edge_right_slot,
+                                    end_val:    lp,
+                                    color:      _drawing_c32(color_alpha(dc, alpha)),
+                                    thickness:  lsc.width * drawing_ppp,
+                                });
+                            }
+                        } else {
+                            dashed_line(&painter, egui::pos2(x2.min(chart_right), y), egui::pos2(chart_right, y), lsc, LineStyle::Solid);
+                        }
                         painter.text(egui::pos2(chart_right + 3.0, y), egui::Align2::LEFT_CENTER,
                             &format!("{} {:.2}", label, lp), mono_3xs(), color_alpha(dc, alpha));
                     }
