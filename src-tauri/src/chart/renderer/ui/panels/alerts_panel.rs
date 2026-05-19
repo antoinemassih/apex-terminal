@@ -14,6 +14,7 @@ use egui;
 use super::super::style::*;
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::tokens::Size as KitSize;
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::widgets::{
     Button, PanelEmpty, PanelListRow, PanelSection, PanelTone, SidePanelShell, Tooltip, Width,
 };
@@ -241,7 +242,7 @@ fn alert_row(
         .primary(symbol)
         .secondary(&secondary)
         .trailing(move |ui, t| {
-            let r = Button::close().show(ui, t);
+            let r = Button::close().placement(IconPlacement::ListRow).show(ui, t);
             Tooltip::new("Delete alert").show(ui, &r, t);
             if r.clicked() { delete_ref.set(true); }
         })
@@ -282,7 +283,7 @@ fn draft_row(
         .primary(&alert.symbol)
         .secondary(&secondary)
         .trailing(move |ui, t| {
-            let r = Button::close().show(ui, t);
+            let r = Button::close().placement(IconPlacement::ListRow).show(ui, t);
             Tooltip::new("Discard draft").show(ui, &r, t);
             if r.clicked() { delete_ref.set(true); }
             if Button::small_action("Place").tint(accent).show(ui, t).clicked() {

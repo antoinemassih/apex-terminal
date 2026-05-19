@@ -22,6 +22,7 @@ use crate::ui_kit::widgets::{
     Button, PanelEmpty, PanelListRow, PanelSection, SidePanelShell, Tooltip, Width,
 };
 use crate::ui_kit::widgets::tokens::{Variant, Size};
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::widgets::{GuildAvatarGrid, GuildEntry};
 use super::super::super::gpu::{Watchlist, DiscordMessage, Theme};
 use crate::ui_kit::icons::Icon;
@@ -197,6 +198,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
             ui.add_space(4.0);
             let r = Button::close()
                 .tint(t.bear)
+                .placement(IconPlacement::PanelHeader)
                 .show(ui, t);
             Tooltip::new("Disconnect").show(ui, &r, t);
             if r.clicked() {

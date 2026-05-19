@@ -34,6 +34,7 @@ use crate::data::apex_data::types::{CalibrationTier, TradePlanV2};
 use crate::ui_kit::widgets::Button as KitButton;
 use crate::ui_kit::widgets::Tooltip;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 
 /// Min historical samples for the hit-rate to be considered trustworthy. Below
 /// this the panel greys out the percentage and adds a "low confidence" tag.
@@ -88,6 +89,7 @@ pub(crate) fn draw(
                     .size(FONT_SM).color(t.text));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let r = crate::ui_kit::widgets::Button::close()
+                        .placement(IconPlacement::PanelHeader)
                         .show(ui, t);
                     Tooltip::new("Close").show(ui, &r, t);
                     if r.clicked() {

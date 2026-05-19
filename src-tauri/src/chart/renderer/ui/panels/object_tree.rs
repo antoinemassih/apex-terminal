@@ -35,6 +35,7 @@ use crate::ui_kit::widgets::{
     Tooltip, TrailingBtn, TrailingTone, Width,
 };
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use super::super::widgets::context_menu::{MenuItem, DangerMenuItem, Submenu, MenuItemWithIcon, MenuRow as _MenuRow};
 use crate::ui_kit::icons::Icon;
 
@@ -326,6 +327,7 @@ fn draw_drawings_section(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &s
                             .variant(Variant::Ghost)
                             .glyph_color(if is_hidden { color_very_dim(t.dim) } else { t.dim })
                             .size(KitSize::Xs)
+                            .placement(IconPlacement::PanelHeader)
                             .show(ui, t);
                         Tooltip::new("Show / hide group").show(ui, &r, t);
                         if r.clicked() {
@@ -618,6 +620,7 @@ fn draw_bulk_actions(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &str, 
         let lock_icon = if any_unlocked { Icon::LOCK } else { Icon::LOCK_OPEN };
         let lock_tip = if any_unlocked { "Lock selected" } else { "Unlock selected" };
         let r = Button::icon(lock_icon).variant(Variant::Ghost).glyph_color(t.dim).size(KitSize::Sm)
+            .placement(IconPlacement::PanelHeader)
             .show(ui, t);
         Tooltip::new(lock_tip).show(ui, &r, t);
         if r.clicked() {
@@ -645,6 +648,7 @@ fn draw_bulk_actions(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &str, 
         }
         // Bulk delete
         let r = Button::icon(Icon::TRASH).variant(Variant::Ghost).glyph_color(t.bear).size(KitSize::Sm)
+            .placement(IconPlacement::PanelHeader).tone_destructive()
             .show(ui, t);
         Tooltip::new("Delete selected").show(ui, &r, t);
         if r.clicked() {
@@ -702,6 +706,7 @@ fn draw_indicators_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
                     .variant(Variant::Ghost)
                     .glyph_color(if visible { t.dim } else { color_very_dim(t.dim) })
                     .size(KitSize::Xs)
+                    .placement(IconPlacement::ListRow)
                     .show(ui, t);
                 Tooltip::new("Show / hide").show(ui, &r, t);
                 if r.clicked() { t_ref.set(true); }
@@ -812,6 +817,7 @@ fn draw_widgets_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
                     .variant(Variant::Ghost)
                     .glyph_color(t.bear)
                     .size(KitSize::Xs)
+                    .placement(IconPlacement::ListRow).tone_destructive()
                     .show(ui, t);
                 Tooltip::new("Remove widget").show(ui, &r, t);
                 if r.clicked() { d_ref.set(true); }
@@ -820,6 +826,7 @@ fn draw_widgets_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
                     .variant(Variant::Ghost)
                     .glyph_color(if vis { t.dim } else { color_very_dim(t.dim) })
                     .size(KitSize::Xs)
+                    .placement(IconPlacement::ListRow)
                     .show(ui, t);
                 Tooltip::new("Show / hide").show(ui, &r, t);
                 if r.clicked() { t_ref.set(true); }

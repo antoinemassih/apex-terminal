@@ -31,6 +31,7 @@ use super::super::style::*;
 use crate::ui_kit::widgets::Button as KitButton;
 use crate::ui_kit::widgets::Tooltip;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -332,6 +333,7 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
             .monospace().size(FONT_SM).strong().color(t.text));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let r = crate::ui_kit::widgets::Button::close()
+                .placement(IconPlacement::PanelHeader)
                 .show(ui, t);
             Tooltip::new("Close").show(ui, &r, t);
             if r.clicked() {

@@ -23,6 +23,7 @@ use crate::ui_kit::widgets::{
     Button, Input, NumberStepper, Skeleton, PanelCard, PanelEmpty, SidePanelShell, Tooltip, Width,
 };
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 
 const REFRESH_INTERVAL_SECS: u64 = 30;
 
@@ -101,6 +102,7 @@ pub(crate) fn draw_content(
             let r = Button::icon(Icon::ARROW_COUNTER_CLOCKWISE)
                 .variant(Variant::Ghost)
                 .size(KitSize::Sm)
+                .placement(IconPlacement::PanelHeader)
                 .show(ui, t);
             Tooltip::new("Refresh now").show(ui, &r, t);
             if r.clicked() {
@@ -109,6 +111,7 @@ pub(crate) fn draw_content(
             let r = Button::icon(Icon::PLUS)
                 .variant(Variant::Ghost)
                 .size(KitSize::Sm)
+                .placement(IconPlacement::PanelHeader)
                 .show(ui, t);
             Tooltip::new("New custom scanner").show(ui, &r, t);
             if r.clicked() {

@@ -30,6 +30,7 @@ use super::super::style::{
 use super::super::components::text::SectionLabel;
 use crate::chart_renderer::gpu::{Theme, Watchlist};
 use crate::ui_kit::widgets::{Button, tokens::{Size as KitSize, Variant}};
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 
 /// Resolve the chart-pane header height + title font from a `Watchlist`. Routes
 /// through `gpu::pane_tabs_header_h` so style-token adjustments
@@ -127,6 +128,7 @@ fn paint_header_shadow(ui: &Ui, header_rect: Rect) {
 
 fn paint_close_btn(ui: &mut Ui, painter: &egui::Painter, rect: Rect, t: &Theme) -> bool {
     crate::ui_kit::widgets::Button::close()
+        .placement(IconPlacement::PanelHeader)
         .show_at(ui, painter, rect, t)
         .on_hover_text("Close")
         .clicked()

@@ -12,6 +12,7 @@ use super::super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
 use super::super::widgets::text::SectionLabelSize;
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::tokens::Size as KitSize;
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 
 // ─── Data Structures ────────────────────────────────────────────────────────
 
@@ -353,7 +354,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         );
                         // Render an IconBtn inside the pre-allocated rect using a child UI.
                         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(x_rect));
-                        let r = child.add(Button::icon("\u{00D7}").variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim));
+                        let r = child.add(Button::icon("\u{00D7}").variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim).placement(IconPlacement::ListRow));
                         Tooltip::new("Remove leg").show(&mut child, &r, t);
                         if r.clicked() {
                             remove_leg = Some(idx);
@@ -371,11 +372,11 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                             leg.side = if leg.side == "BUY" { "SELL".into() } else { "BUY".into() };
                         }
                         // Qty
-                        let r = ui.add(Button::icon(Icon::MINUS).variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim));
+                        let r = ui.add(Button::icon(Icon::MINUS).variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim).placement(IconPlacement::ListRow));
                         Tooltip::new("Decrease quantity").show(ui, &r, t);
                         if r.clicked() && leg.qty > 1 { leg.qty -= 1; }
                         ui.add(MonospaceCode::new(&format!("{}", leg.qty)).size_px(9.0).color(t.text));
-                        let r = ui.add(Button::icon(Icon::PLUS).variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim));
+                        let r = ui.add(Button::icon(Icon::PLUS).variant(Variant::Ghost).size(Size::Sm).glyph_color(t.dim).placement(IconPlacement::ListRow));
                         Tooltip::new("Increase quantity").show(ui, &r, t);
                         if r.clicked() { leg.qty += 1; }
                         // Option type toggle
@@ -448,13 +449,13 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     ui.add_space(m);
                     ui.add(MonospaceCode::new("Qty").size_px(9.0).color(t.dim));
                     ui.add_space(8.0);
-                    let r = ui.add(Button::icon("-").variant(Variant::Ghost).glyph_color(t.dim));
+                    let r = ui.add(Button::icon("-").variant(Variant::Ghost).glyph_color(t.dim).placement(IconPlacement::ListRow));
                     Tooltip::new("Decrease quantity").show(ui, &r, t);
                     if r.clicked() && watchlist.spread_state.combo_qty > 1 {
                         watchlist.spread_state.combo_qty -= 1;
                     }
                     ui.add(MonospaceCode::new(&format!("{}", watchlist.spread_state.combo_qty)).size_px(12.0).strong(true).color(t.text));
-                    let r = ui.add(Button::icon("+").variant(Variant::Ghost).glyph_color(t.dim));
+                    let r = ui.add(Button::icon("+").variant(Variant::Ghost).glyph_color(t.dim).placement(IconPlacement::ListRow));
                     Tooltip::new("Increase quantity").show(ui, &r, t);
                     if r.clicked() {
                         watchlist.spread_state.combo_qty += 1;
