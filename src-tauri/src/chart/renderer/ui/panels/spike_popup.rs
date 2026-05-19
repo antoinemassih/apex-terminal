@@ -35,6 +35,7 @@ use crate::chart_renderer::ui::style::icon_md;
 use crate::data::apex_data::live_state;
 use crate::data::apex_data::types::SpikeExplanation;
 use crate::ui_kit::widgets::Button as KitButton;
+use crate::ui_kit::widgets::Tooltip;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 /// Max active toasts displayed simultaneously (oldest first, newer ones queued
@@ -280,11 +281,11 @@ fn draw_toast_body(
         ui.label(egui::RichText::new(format!("{:+.2}%", spike.pct_move))
             .monospace().color(move_col).size(11.0));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if crate::ui_kit::widgets::Button::close()
-                .show(ui, &crate::ui_kit::widgets::theme::active_theme(ui.ctx()))
-                .on_hover_text("Dismiss")
-                .clicked()
-            {
+            let spike_theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+            let r = crate::ui_kit::widgets::Button::close()
+                .show(ui, &spike_theme);
+            Tooltip::new("Dismiss").show(ui, &r, &spike_theme);
+            if r.clicked() {
                 dismiss_buf.push(spike.id.clone());
             }
         });

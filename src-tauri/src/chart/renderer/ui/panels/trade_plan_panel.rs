@@ -32,6 +32,7 @@ use super::super::super::gpu::{Chart, Theme, Watchlist};
 use crate::data::apex_data::live_state;
 use crate::data::apex_data::types::{CalibrationTier, TradePlanV2};
 use crate::ui_kit::widgets::Button as KitButton;
+use crate::ui_kit::widgets::Tooltip;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 /// Min historical samples for the hit-rate to be considered trustworthy. Below
@@ -86,11 +87,10 @@ pub(crate) fn draw(
                 ui.label(egui::RichText::new("TRADE PLAN v2").monospace().strong()
                     .size(FONT_SM).color(t.text));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if crate::ui_kit::widgets::Button::close()
-                        .show(ui, t)
-                        .on_hover_text("Close")
-                        .clicked()
-                    {
+                    let r = crate::ui_kit::widgets::Button::close()
+                        .show(ui, t);
+                    Tooltip::new("Close").show(ui, &r, t);
+                    if r.clicked() {
                         close(watchlist);
                     }
                 });

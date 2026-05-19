@@ -15,7 +15,7 @@ use super::super::style::*;
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 use crate::ui_kit::widgets::{
-    Button, PanelEmpty, PanelListRow, PanelSection, PanelTone, SidePanelShell, Width,
+    Button, PanelEmpty, PanelListRow, PanelSection, PanelTone, SidePanelShell, Tooltip, Width,
 };
 use super::super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
@@ -241,9 +241,9 @@ fn alert_row(
         .primary(symbol)
         .secondary(&secondary)
         .trailing(move |ui, t| {
-            if Button::close().show(ui, t).on_hover_text("Delete alert").clicked() {
-                delete_ref.set(true);
-            }
+            let r = Button::close().show(ui, t);
+            Tooltip::new("Delete alert").show(ui, &r, t);
+            if r.clicked() { delete_ref.set(true); }
         })
         .dense(false)
         .show(ui, t);
@@ -282,9 +282,9 @@ fn draft_row(
         .primary(&alert.symbol)
         .secondary(&secondary)
         .trailing(move |ui, t| {
-            if Button::close().show(ui, t).on_hover_text("Discard draft").clicked() {
-                delete_ref.set(true);
-            }
+            let r = Button::close().show(ui, t);
+            Tooltip::new("Discard draft").show(ui, &r, t);
+            if r.clicked() { delete_ref.set(true); }
             if Button::small_action("Place").tint(accent).show(ui, t).clicked() {
                 place_ref.set(true);
             }

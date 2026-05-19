@@ -32,7 +32,7 @@ use super::super::super::gpu::{Watchlist, Chart, Theme, DrawingAction, drawing_t
 use super::super::super::DrawingKind;
 use crate::ui_kit::widgets::{
     Button, PanelEmpty, PanelListRow, PanelSection, PanelSubSection, SidePanelShell, Side,
-    TrailingBtn, TrailingTone, Width,
+    Tooltip, TrailingBtn, TrailingTone, Width,
 };
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 use super::super::widgets::context_menu::{MenuItem, DangerMenuItem, Submenu, MenuItemWithIcon, MenuRow as _MenuRow};
@@ -322,14 +322,13 @@ fn draw_drawings_section(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &s
                             paint_swatch(ui, gc);
                         }
                         let vis_icon = if is_hidden { Icon::EYE_SLASH } else { Icon::EYE };
-                        if Button::icon(vis_icon)
+                        let r = Button::icon(vis_icon)
                             .variant(Variant::Ghost)
                             .glyph_color(if is_hidden { color_very_dim(t.dim) } else { t.dim })
                             .size(KitSize::Xs)
-                            .show(ui, t)
-                            .on_hover_text("Show / hide group")
-                            .clicked()
-                        {
+                            .show(ui, t);
+                        Tooltip::new("Show / hide group").show(ui, &r, t);
+                        if r.clicked() {
                             toggle_vis_group = Some(group_id_for_sub.clone());
                         }
                         // Group opacity (avg of all)
@@ -618,9 +617,10 @@ fn draw_bulk_actions(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &str, 
         let any_unlocked = chart.drawings.iter().any(|d| sel_ids.contains(&d.id) && !d.locked);
         let lock_icon = if any_unlocked { Icon::LOCK } else { Icon::LOCK_OPEN };
         let lock_tip = if any_unlocked { "Lock selected" } else { "Unlock selected" };
-        if Button::icon(lock_icon).variant(Variant::Ghost).glyph_color(t.dim).size(KitSize::Sm)
-            .show(ui, t).on_hover_text(lock_tip).clicked()
-        {
+        let r = Button::icon(lock_icon).variant(Variant::Ghost).glyph_color(t.dim).size(KitSize::Sm)
+            .show(ui, t);
+        Tooltip::new(lock_tip).show(ui, &r, t);
+        if r.clicked() {
             let target = any_unlocked;
             let sym3 = sym.to_string(); let tf3 = tf.to_string();
             for d in &mut chart.drawings {
@@ -644,9 +644,10 @@ fn draw_bulk_actions(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &str, 
             }
         }
         // Bulk delete
-        if Button::icon(Icon::TRASH).variant(Variant::Ghost).glyph_color(t.bear).size(KitSize::Sm)
-            .show(ui, t).on_hover_text("Delete selected").clicked()
-        {
+        let r = Button::icon(Icon::TRASH).variant(Variant::Ghost).glyph_color(t.bear).size(KitSize::Sm)
+            .show(ui, t);
+        Tooltip::new("Delete selected").show(ui, &r, t);
+        if r.clicked() {
             let ids = chart.selected_ids.clone();
             for id in &ids {
                 if let Some(d) = chart.drawings.iter().find(|d| d.id == *id) {
@@ -697,16 +698,13 @@ fn draw_indicators_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
             .primary(label.as_str())
             .trailing(move |ui, t| {
                 let eye = if visible { Icon::EYE } else { Icon::EYE_SLASH };
-                if Button::icon(eye)
+                let r = Button::icon(eye)
                     .variant(Variant::Ghost)
                     .glyph_color(if visible { t.dim } else { color_very_dim(t.dim) })
                     .size(KitSize::Xs)
-                    .show(ui, t)
-                    .on_hover_text("Show / hide")
-                    .clicked()
-                {
-                    t_ref.set(true);
-                }
+                    .show(ui, t);
+                Tooltip::new("Show / hide").show(ui, &r, t);
+                if r.clicked() { t_ref.set(true); }
             })
             .show(ui, t);
 
@@ -810,27 +808,21 @@ fn draw_widgets_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
             .leading(move |ui, _t| { paint_swatch(ui, dot_col); })
             .primary(label)
             .trailing(move |ui, t| {
-                if Button::icon(Icon::TRASH)
+                let r = Button::icon(Icon::TRASH)
                     .variant(Variant::Ghost)
                     .glyph_color(t.bear)
                     .size(KitSize::Xs)
-                    .show(ui, t)
-                    .on_hover_text("Remove widget")
-                    .clicked()
-                {
-                    d_ref.set(true);
-                }
+                    .show(ui, t);
+                Tooltip::new("Remove widget").show(ui, &r, t);
+                if r.clicked() { d_ref.set(true); }
                 let eye = if vis { Icon::EYE } else { Icon::EYE_SLASH };
-                if Button::icon(eye)
+                let r = Button::icon(eye)
                     .variant(Variant::Ghost)
                     .glyph_color(if vis { t.dim } else { color_very_dim(t.dim) })
                     .size(KitSize::Xs)
-                    .show(ui, t)
-                    .on_hover_text("Show / hide")
-                    .clicked()
-                {
-                    t_ref.set(true);
-                }
+                    .show(ui, t);
+                Tooltip::new("Show / hide").show(ui, &r, t);
+                if r.clicked() { t_ref.set(true); }
                 if let Some(op) = opacity_picker(ui, opacity, &format!("wop_{wi}")) {
                     o_ref.set(Some(op));
                 }

@@ -29,6 +29,7 @@ use crate::chart_renderer::gpu::{Theme, Watchlist};
 
 use super::super::style::*;
 use crate::ui_kit::widgets::Button as KitButton;
+use crate::ui_kit::widgets::Tooltip;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -330,11 +331,10 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
         ui.label(egui::RichText::new("PROVENANCE")
             .monospace().size(FONT_SM).strong().color(t.text));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if crate::ui_kit::widgets::Button::close()
-                .show(ui, t)
-                .on_hover_text("Close")
-                .clicked()
-            {
+            let r = crate::ui_kit::widgets::Button::close()
+                .show(ui, t);
+            Tooltip::new("Close").show(ui, &r, t);
+            if r.clicked() {
                 watchlist.provenance_open = false;
             }
         });
@@ -363,7 +363,8 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
         let label = egui::RichText::new(format!("lineage: {}", active_id))
             .monospace().size(FONT_XS).color(t.accent);
         let resp = ui.label(label);
-        if resp.on_hover_text("Click to copy").clicked() {
+        Tooltip::new("Click to copy").show(ui, &resp, t);
+        if resp.clicked() {
             ui.output_mut(|o| o.copied_text = active_id.clone());
         }
     });

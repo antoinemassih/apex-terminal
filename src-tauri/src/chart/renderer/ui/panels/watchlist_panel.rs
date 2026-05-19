@@ -17,7 +17,7 @@ use crate::ui_kit::widgets::SearchInput;
 use super::super::widgets::frames::PopupFrame;
 use super::super::widgets::watchlist::NmfToggle;
 use crate::ui_kit::widgets::{
-    Input, PanelEmpty, PanelLoading, PanelSection, SidePanelShell, Tag, TagTone, Width,
+    Input, PanelEmpty, PanelLoading, PanelSection, SidePanelShell, Tag, TagTone, Tooltip, Width,
 };
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 
@@ -137,7 +137,9 @@ if watchlist.open {
                                 }
                             });
                             // "+" button to create new watchlist
-                            if ui.add(Button::icon(Icon::PLUS).variant(Variant::TextOnly).glyph_color(t.dim).size(Size::Md)).on_hover_text("New watchlist").clicked() {
+                            let r = ui.add(Button::icon(Icon::PLUS).variant(Variant::TextOnly).glyph_color(t.dim).size(Size::Md));
+                            Tooltip::new("New watchlist").show(ui, &r, t);
+                            if r.clicked() {
                                 let n = watchlist.saved_watchlists.len() + 1;
                                 let syms = watchlist.create_watchlist(&format!("Watchlist {}", n));
                                 if !syms.is_empty() { wl_fetch_syms = syms; }
@@ -151,8 +153,8 @@ if watchlist.open {
                             let opt_icon = if watchlist.options_visible { Icon::RADIO_BUTTON } else { Icon::DOT };
                             let opt_color = if watchlist.options_visible { t.accent } else { t.dim };
                             let opt_resp = ui.add(Button::icon(opt_icon).variant(Variant::Chrome).glyph_color(opt_color).size(Size::Sm)
-                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, row_height_dense())))
-                                .on_hover_text("Show / hide options");
+                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, row_height_dense())));
+                            Tooltip::new("Show / hide options").show(ui, &opt_resp, t);
                             if opt_resp.clicked() { watchlist.options_visible = !watchlist.options_visible; }
                             if opt_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
 
@@ -331,8 +333,10 @@ if watchlist.open {
                                     ui.horizontal(|ui| {
                                         let icon = if visible { Icon::EYE } else { Icon::EYE_SLASH };
                                         let col = if visible { t.accent } else { color_very_dim(t.dim) };
-                                        if ui.add(Button::icon(icon).variant(Variant::Chrome).glyph_color(col).size(Size::Sm)
-                                            .frameless(true).min_size(egui::vec2(18.0, 16.0))).on_hover_text("Show / hide column").clicked() {
+                                        let r = ui.add(Button::icon(icon).variant(Variant::Chrome).glyph_color(col).size(Size::Sm)
+                                            .frameless(true).min_size(egui::vec2(18.0, 16.0)));
+                                        Tooltip::new("Show / hide column").show(ui, &r, t);
+                                        if r.clicked() {
                                             if visible {
                                                 watchlist.wl_columns.retain(|c| *c != s.id);
                                             } else {
@@ -370,7 +374,9 @@ if watchlist.open {
                                             .size(KitSize::Xs)
                                             .show(ui, t);
                                         if !watchlist.filter_text.is_empty() {
-                                            if ui.add(Button::icon(Icon::X).variant(Variant::TextOnly).glyph_color(t.dim).size(Size::Xs)).on_hover_text("Clear filter").clicked() {
+                                            let r = ui.add(Button::icon(Icon::X).variant(Variant::TextOnly).glyph_color(t.dim).size(Size::Xs));
+                                            Tooltip::new("Clear filter").show(ui, &r, t);
+                                            if r.clicked() {
                                                 watchlist.filter_text.clear();
                                             }
                                         }
@@ -588,7 +594,9 @@ if watchlist.open {
                                         ui.horizontal(|ui| {
                                             for hex in row {
                                                 let c = hex_to_color(hex, 1.0);
-                                                if ui.add(Button::icon("\u{25CF}").variant(Variant::TextOnly).glyph_color(c).size(Size::Lg)).on_hover_text(*hex).clicked() {
+                                                let r = ui.add(Button::icon("\u{25CF}").variant(Variant::TextOnly).glyph_color(c).size(Size::Lg));
+                                                Tooltip::new(*hex).show(ui, &r, t);
+                                                if r.clicked() {
                                                     if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                                         sec.color = Some(hex.to_string());
                                                     }
@@ -740,7 +748,9 @@ if watchlist.open {
                                             ui.add(MonospaceCode::new(&item_sym).size_px(font_sm()).strong(true).color(sym_color));
                                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                                 // X button
-                                                if ui.add(Button::icon(Icon::X).variant(Variant::TextOnly).glyph_color(color_very_dim(t.dim)).size(Size::Sm)).on_hover_text("Remove option").clicked() {
+                                                let r = ui.add(Button::icon(Icon::X).variant(Variant::TextOnly).glyph_color(color_very_dim(t.dim)).size(Size::Sm));
+                                                Tooltip::new("Remove option").show(ui, &r, t);
+                                                if r.clicked() {
                                                     remove_sym = Some(item_sym.clone());
                                                 }
                                                 // Bid x Ask (or price fallback)
@@ -1153,7 +1163,9 @@ if watchlist.open {
                                         ui.horizontal(|ui| {
                                             for hex in row {
                                                 let c = hex_to_color(hex, 1.0);
-                                                if ui.add(Button::icon("\u{25CF}").variant(Variant::TextOnly).glyph_color(c).size(Size::Lg)).on_hover_text(*hex).clicked() {
+                                                let r = ui.add(Button::icon("\u{25CF}").variant(Variant::TextOnly).glyph_color(c).size(Size::Lg));
+                                                Tooltip::new(*hex).show(ui, &r, t);
+                                                if r.clicked() {
                                                     if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                                         sec.color = Some(hex.to_string());
                                                     }
@@ -1786,13 +1798,19 @@ if watchlist.open {
                             // Freeze + arrows
                             let fr_col = if watchlist.chain_0_frozen { t.accent } else { color_dim(t.dim) };
                             let fr_icon_0 = if watchlist.chain_0_frozen { Icon::PAUSE } else { Icon::PLAY };
-                            if ui.add(Button::icon(fr_icon_0).variant(Variant::Chrome).glyph_color(fr_col).size(Size::Sm).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(icon_xs(), icon_xs()))).on_hover_text("Freeze strikes").clicked() {
+                            let r = ui.add(Button::icon(fr_icon_0).variant(Variant::Chrome).glyph_color(fr_col).size(Size::Sm).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(icon_xs(), icon_xs())));
+                            Tooltip::new("Freeze strikes").show(ui, &r, t);
+                            if r.clicked() {
                                 watchlist.chain_0_frozen = !watchlist.chain_0_frozen;
                                 if !watchlist.chain_0_frozen { watchlist.chain_0_offset = 0; }
                             }
                             if watchlist.chain_0_frozen {
-                                if ui.add(Button::icon(Icon::ARROW_FAT_UP).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(icon_xs(), icon_xs()))).on_hover_text("Shift strikes up").clicked() { watchlist.chain_0_offset += 1; }
-                                if ui.add(Button::icon(Icon::ARROW_FAT_DOWN).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(icon_xs(), icon_xs()))).on_hover_text("Shift strikes down").clicked() { watchlist.chain_0_offset -= 1; }
+                                let r = ui.add(Button::icon(Icon::ARROW_FAT_UP).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(icon_xs(), icon_xs())));
+                                Tooltip::new("Shift strikes up").show(ui, &r, t);
+                                if r.clicked() { watchlist.chain_0_offset += 1; }
+                                let r = ui.add(Button::icon(Icon::ARROW_FAT_DOWN).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(icon_xs(), icon_xs())));
+                                Tooltip::new("Shift strikes down").show(ui, &r, t);
+                                if r.clicked() { watchlist.chain_0_offset -= 1; }
                             }
                         });
                         let ns_0 = watchlist.chain_0_num_strikes;
@@ -1838,13 +1856,19 @@ if watchlist.open {
                             NmfToggle::new(&mut watchlist.chain_far_nmf).theme(t).show(ui);
                             let fr_col = if watchlist.chain_far_frozen { t.accent } else { color_dim(t.dim) };
                             let fr_icon_far = if watchlist.chain_far_frozen { Icon::PAUSE } else { Icon::PLAY };
-                            if ui.add(Button::icon(fr_icon_far).variant(Variant::Chrome).glyph_color(fr_col).size(Size::Sm).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(icon_xs(), icon_xs()))).on_hover_text("Freeze strikes").clicked() {
+                            let r = ui.add(Button::icon(fr_icon_far).variant(Variant::Chrome).glyph_color(fr_col).size(Size::Sm).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(icon_xs(), icon_xs())));
+                            Tooltip::new("Freeze strikes").show(ui, &r, t);
+                            if r.clicked() {
                                 watchlist.chain_far_frozen = !watchlist.chain_far_frozen;
                                 if !watchlist.chain_far_frozen { watchlist.chain_far_offset = 0; }
                             }
                             if watchlist.chain_far_frozen {
-                                if ui.add(Button::icon(Icon::ARROW_FAT_UP).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(icon_xs(), icon_xs()))).on_hover_text("Shift strikes up").clicked() { watchlist.chain_far_offset += 1; }
-                                if ui.add(Button::icon(Icon::ARROW_FAT_DOWN).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(icon_xs(), icon_xs()))).on_hover_text("Shift strikes down").clicked() { watchlist.chain_far_offset -= 1; }
+                                let r = ui.add(Button::icon(Icon::ARROW_FAT_UP).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(icon_xs(), icon_xs())));
+                                Tooltip::new("Shift strikes up").show(ui, &r, t);
+                                if r.clicked() { watchlist.chain_far_offset += 1; }
+                                let r = ui.add(Button::icon(Icon::ARROW_FAT_DOWN).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(icon_xs(), icon_xs())));
+                                Tooltip::new("Shift strikes down").show(ui, &r, t);
+                                if r.clicked() { watchlist.chain_far_offset -= 1; }
                             }
                         });
                         let ns_f = watchlist.chain_far_num_strikes;
