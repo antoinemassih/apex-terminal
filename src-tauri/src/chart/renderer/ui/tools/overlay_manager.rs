@@ -5,7 +5,7 @@ use super::super::style::*;
 use super::super::super::gpu::*;
 use super::super::widgets::text::MonospaceCode;
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::{Button, Input};
+use crate::ui_kit::widgets::{Button, Input, Tooltip};
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 use crate::ui_kit::widgets::modal::{Modal, HeaderStyle};
 
@@ -52,11 +52,15 @@ if panes[ap].overlay_editing {
                     // Candle toggle
                     let candle_icon = if ov_candles { Icon::CHART_BAR } else { Icon::CHART_LINE };
                     let candle_col = if ov_candles { t.accent } else { color_half(t.dim) };
-                    if ui.add(Button::icon(candle_icon).variant(Variant::Ghost).glyph_color(candle_col).size(KitSize::Sm)).on_hover_text("Toggle candles / line").clicked() {
+                    let r = ui.add(Button::icon(candle_icon).variant(Variant::Ghost).glyph_color(candle_col).size(KitSize::Sm));
+                    Tooltip::new("Toggle candles / line").show(ui, &r, t);
+                    if r.clicked() {
                         panes[ap].symbol_overlays[oi].show_candles = !panes[ap].symbol_overlays[oi].show_candles;
                     }
                     // Delete
-                    if ui.add(Button::icon(Icon::X).variant(Variant::Ghost).glyph_color(color_half(t.bear)).size(KitSize::Sm)).on_hover_text("Remove overlay").clicked() {
+                    let r = ui.add(Button::icon(Icon::X).variant(Variant::Ghost).glyph_color(color_half(t.bear)).size(KitSize::Sm));
+                    Tooltip::new("Remove overlay").show(ui, &r, t);
+                    if r.clicked() {
                         delete_idx = Some(oi);
                     }
                 });

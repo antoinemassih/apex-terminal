@@ -10,7 +10,7 @@ use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::Button as KitButton;
-use crate::ui_kit::widgets::PanelLoading;
+use crate::ui_kit::widgets::{PanelLoading, Tooltip};
 
 const DTE_LIST: &[i32] = &[0, 1, 2, 3, 7, 14, 30, 60];
 
@@ -85,7 +85,9 @@ pub(crate) fn draw(
                             ui.label(egui::RichText::new(format!("@ {:.2}", spot))
                                 .monospace().size(font_sm()).color(t.dim));
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if KitButton::close().show(ui, t).on_hover_text("Close").clicked() { close_picker = true; }
+                                let r = KitButton::close().show(ui, t);
+                                Tooltip::new("Close").show(ui, &r, t);
+                                if r.clicked() { close_picker = true; }
                             });
                         });
                         ui.add_space(gap_sm());

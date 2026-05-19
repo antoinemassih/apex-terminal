@@ -5,7 +5,7 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::{self, Watchlist, Chart, Theme, CandleMode, INDICATOR_COLORS};
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::{Button as KitButton, Input};
+use crate::ui_kit::widgets::{Button as KitButton, Input, Tooltip};
 use crate::ui_kit::widgets::tokens::{Size as KitSize, Variant as KitVariant};
 
 pub(crate) fn draw(
@@ -51,7 +51,9 @@ pub(crate) fn draw(
                 ui.horizontal(|ui| {
                     ui.add(SectionLabel::new("TEMPLATES").lg().color(t.accent));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if KitButton::close().show(ui, t).on_hover_text("Close").clicked() { close_popup = true; }
+                        let r = KitButton::close().show(ui, t);
+                        Tooltip::new("Close").show(ui, &r, t);
+                        if r.clicked() { close_popup = true; }
                     });
                 });
                 ui.add_space(gap_sm());
@@ -120,9 +122,9 @@ pub(crate) fn draw(
 
                                             // Delete button (right side)
                                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                                if icon_btn(ui, Icon::TRASH, color_dim(t.dim), font_sm())
-                                                    .on_hover_text("Delete template").clicked()
-                                                {
+                                                let r = icon_btn(ui, Icon::TRASH, color_dim(t.dim), font_sm());
+                                                Tooltip::new("Delete template").show(ui, &r, t);
+                                                if r.clicked() {
                                                     delete_idx = Some(i);
                                                 }
                                             });
