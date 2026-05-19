@@ -4414,6 +4414,14 @@ pub(crate) struct Watchlist {
     pub(crate) order_ledger_view: u8,    // 0=Active, 1=Journal, 2=All
     pub(crate) order_ledger_filter: u8,  // index into LedgerFilter
     pub(crate) order_ledger_search: String,
+    /// P2: per-symbol sub-section expanded state — keys are symbol strings.
+    #[serde(skip)]
+    pub(crate) order_ledger_sym_expanded: std::collections::HashMap<String, bool>,
+    /// P2: pending bulk-cancel confirmation. When `Some(symbol)`, the ledger
+    /// renders an inline confirm row asking the user to confirm before cancelling.
+    /// Set on "Cancel all" button click; cleared on confirm or dismiss.
+    #[serde(skip)]
+    pub(crate) order_ledger_pending_bulk_cancel: Option<String>,
     /// Order System Health panel — operator observability for the order
     /// subsystem. Toggled via Ctrl+Shift+O. See
     /// `chart::renderer::ui::panels::order_health_panel`.
@@ -4745,6 +4753,8 @@ impl Watchlist {
                toolbar_scroll: 0.0, shortcuts_open: false,
                hotkey_editor_open: false, hotkey_editing_id: None, hotkeys: default_hotkeys(),
                order_ledger_open: false, order_ledger_view: 0, order_ledger_filter: 0, order_ledger_search: String::new(),
+               order_ledger_sym_expanded: std::collections::HashMap::new(),
+               order_ledger_pending_bulk_cancel: None,
                order_health_open: false,
                settings_open: false, font_scale: 1.6, native_dpi_scale: 1.0, font_idx: 0,
                default_stock_qty: 100, default_options_qty: 1, default_order_type: 0, default_tif: 0, default_outside_rth: false,
