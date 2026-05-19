@@ -237,11 +237,37 @@ impl<'a> Modal<'a> {
         let t   = self.theme.expect("Modal::show requires .theme(t)");
         let id  = self.id.unwrap_or(self.title);
 
+        // ── Exit-animation state ─────────────────────────────────────────
+        // `closing_id` stores a bool in egui temp memory: true once the
+        // header X has been clicked. While closing, we keep rendering the
+        // modal for one MED cycle so the slide-down + fade-out plays before
+        // we report `closed = true` to the caller.
+        let closing_id    = Id::new(("apex_modal_closing", id));
+        let closing_val_id = Id::new(("apex_modal_closing_t", id));
+
+        // Read persistent closing flag from temp memory (survives across frames).
+        let already_closing: bool = ctx.memory(|m| {
+            m.data.get_temp(closing_id).unwrap_or(false)
+        });
+        // Animate closing_t: 0.0 at rest, eases to 1.0 over MED once closing.
+        let closing_t = motion::ease_value(ctx, closing_val_id,
+            if already_closing { 1.0 } else { 0.0 },
+            motion::MED,
+        );
+
         // Drive a presence animation keyed on this modal's id. While the
         // builder is invoked the modal is "open" (t -> 1). The fade-in
         // happens on first show. Used for scrim/panel alpha in Area mode.
+        // During exit, appear_t is overridden to 1.0 - closing_t so the
+        // modal fades/slides out.
         let anim_id = Id::new(("apex_modal_anim", id));
-        let appear_t = motion::ease_bool(ctx, anim_id, true, motion::MED);
+        let appear_t = if already_closing {
+            // Exit path: override the open animation with the inverse of
+            // closing_t so opacity and Y-offset reverse cleanly.
+            (1.0 - closing_t).max(0.0)
+        } else {
+            motion::ease_bool(ctx, anim_id, true, motion::MED)
+        };
 
         // elevation_3: modal is the deepest overlay layer (bg × 0.85).
         // Inlined from style::elevation_3 — ComponentTheme exposes bg() so we
@@ -338,6 +364,17 @@ impl<'a> Modal<'a> {
         let mut closed = false;
         let mut inner: Option<R> = None;
 
+        // If closing_t has fully settled at 1.0, the exit animation is done —
+        // report closed and clear the temp state so the next show starts fresh.
+        if already_closing && closing_t >= 0.999 {
+            ctx.memory_mut(|m| {
+                m.data.remove::<bool>(closing_id);
+                // The closing_val_id animate_value_with_time entry lives in egui's
+                // own animation map and will decay naturally; we just clean our flag.
+            });
+            return ModalResponse { inner: None, closed: true };
+        }
+
         match self.anchor {
             Anchor::Window { pos } => {
                 let screen = ctx.screen_rect();
@@ -394,9 +431,18 @@ impl<'a> Modal<'a> {
 
                 let render_cell = std::cell::Cell::new(Some(render));
                 win.show(ctx, |ui| {
+                    // Apply fade alpha so the Window content fades in/out.
+                    ui.set_opacity(appear_t);
                     if let Some(r) = render_cell.take() {
                         let (hc, val) = r(ui);
-                        if hc { closed = true; }
+                        if hc && !already_closing {
+                            // Header X clicked — start exit animation.
+                            // Don't report closed immediately; wait for
+                            // closing_t to reach 1.0 (handled above).
+                            ctx.memory_mut(|m| {
+                                m.data.insert_temp(closing_id, true);
+                            });
+                        }
                         inner = Some(val);
                     }
                 });
