@@ -17,7 +17,7 @@ use super::super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
 use super::super::widgets::status::Spinner;
 use super::super::widgets::text::{SectionLabel, MonospaceCode};
-use super::super::widgets::form::FormRow;
+use crate::ui_kit::widgets::FormRow;
 use super::super::widgets::rows::WatchlistRow;
 use crate::ui_kit::widgets::{
     Button, Input, NumberStepper, Skeleton, PanelCard, PanelEmpty, SidePanelShell, Width,
