@@ -7364,6 +7364,35 @@ fn render_chart_pane(
         }
     }
 
+    // Trackpad-friendly equivalents to middle-click:
+    //   • Option (⌥) + primary click anywhere on chart → open picker at cursor
+    //   • `D` key pressed anywhere → open picker at cursor (or close if open)
+    // Both go straight to the picker — no quick-path activation — so trackpad
+    // users have a predictable, one-step way to switch draw tools.
+    let alt_click = ui.input(|i| {
+        i.pointer.button_clicked(egui::PointerButton::Primary) && i.modifiers.alt
+    });
+    let d_pressed = ui.input(|i| {
+        // Ignore D when typing in a text field (egui handles that gating via
+        // wants_keyboard_input on the focused widget; key_pressed only fires
+        // when no widget has captured the key event).
+        i.key_pressed(egui::Key::D) && !i.modifiers.command && !i.modifiers.ctrl
+    });
+    if (alt_click || d_pressed) && pointer_in_pane {
+        if chart.draw_picker_open {
+            chart.draw_picker_open = false;
+        } else if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+            chart.draw_picker_pos = pos;
+            chart.draw_picker_open = true;
+            // Opt+click drag-starts a new drawing on the underlying pointer
+            // press — clear pending-state so the picker click doesn't begin
+            // a phantom line.
+            chart.pending_pt = None;
+            chart.pending_pt2 = None;
+            chart.pending_pts.clear();
+        }
+    }
+
     // ── OHLC Magnet snap ─────────────────────────────────────────────────
     // When magnet is on and we're either placing or dragging a drawing,
     // snap to the nearest Open/High/Low/Close of the bar under the cursor.
