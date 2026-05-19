@@ -14,9 +14,11 @@
 
 #![allow(dead_code, unused_imports)]
 
-use egui::{Color32, Response, RichText, Stroke, Ui, Widget};
+use egui::{Color32, Response, Stroke, Ui, Widget};
 use super::super::style::*;
 use crate::chart::renderer::ui::foundation::{ChipVariant, Size, Radius};
+use crate::ui_kit::widgets::Button as KitButton;
+use crate::ui_kit::widgets::tokens::Variant as KitVariant;
 
 // ─── Re-export ActionSize so callers only need one import ─────────────────────
 pub use super::super::components_extra::ActionSize;
@@ -30,7 +32,8 @@ pub use super::super::components_extra::ActionSize;
 // palette colors the caller supplied — matching ChipShell visually while
 // preserving API parity with the pre-4.5b implementation.
 struct ChipBody<'a> {
-    label: RichText,
+    label: &'a str,
+    label_color: Color32,
     fill: Color32,
     border: Color32,
     radius: egui::CornerRadius,
@@ -45,14 +48,20 @@ impl<'a> ChipBody<'a> {
     fn render(self, ui: &mut Ui) -> Response {
         let prev_pad = ui.spacing().button_padding;
         ui.spacing_mut().button_padding = egui::vec2(self.pad_x, self.pad_y);
-        // deferred — needs ui_kit::Button API extension: custom egui::Sense override (.sense())
+        // Migrated to ui_kit::Button. Note: label is rendered as proportional
+        // (not monospace) since ui_kit::Button takes &str + resolves font via Size.
+        // Color is preserved via .fg(); monospace styling is a known visual delta
+        // in this deprecated file. fill/stroke/sense/corner_radius use the new
+        // escape-hatch APIs added in Part 1 of the pills migration.
         let resp = ui.add(
-            egui::Button::new(self.label)
+            KitButton::new(self.label)
+                .variant(KitVariant::Chrome)
                 .fill(self.fill)
                 .stroke(Stroke::new(stroke_thin(), self.border))
-                .corner_radius(self.radius)
+                .corner_radius_asymmetric(self.radius)
                 .min_size(egui::vec2(0.0, self.height))
-                .sense(self.sense),
+                .sense(self.sense)
+                .fg(self.label_color),
         );
         ui.spacing_mut().button_padding = prev_pad;
         resp
@@ -114,29 +123,31 @@ impl<'a> RemovableChip<'a> {
             ui.spacing_mut().item_spacing.x = gap_xs();
             let prev_pad = ui.spacing().button_padding;
             ui.spacing_mut().button_padding = egui::vec2(gap_md(), 0.0);
-            // Body label (left half of pill).
-            // deferred — needs ui_kit::Button API extension: asymmetric per-corner CornerRadius (nw/sw only)
+            // Body label (left half of pill) — migrated to ui_kit::Button.
+            // Asymmetric CornerRadius: nw+sw rounded (outer), ne+se=0 (inner join).
+            // Note: rendered as proportional font (not monospace) — known visual
+            // delta in this deprecated file. Use ui_kit::Tag for new call sites.
             let body = ui.add(
-                egui::Button::new(
-                    RichText::new(self.text).monospace().size(font_sm()).color(self.dim),
-                )
-                .fill(fill)
-                .stroke(Stroke::new(stroke_thin(), border))
-                .corner_radius(egui::CornerRadius { nw: 99, sw: 99, ne: 0, se: 0 })
-                .min_size(egui::vec2(0.0, row_height_dense())),
+                KitButton::new(self.text)
+                    .variant(KitVariant::Chrome)
+                    .fill(fill)
+                    .stroke(Stroke::new(stroke_thin(), border))
+                    .corner_radius_asymmetric(egui::CornerRadius { nw: 99, sw: 99, ne: 0, se: 0 })
+                    .min_size(egui::vec2(0.0, row_height_dense()))
+                    .fg(self.dim),
             );
             // ✕ remove button (right half of pill — the closable affordance).
             // Icon::X replaces the raw \u{00D7} glyph; pill corner radii are
             // preserved because this must visually be the right half of the chip.
-            // deferred — needs ui_kit::Button API extension: asymmetric per-corner CornerRadius (ne/se only)
+            // Migrated to ui_kit::Button with asymmetric CornerRadius: ne+se rounded.
             let x = ui.add(
-                egui::Button::new(
-                    RichText::new(crate::ui_kit::icons::Icon::X).monospace().size(font_sm()).color(self.dim),
-                )
-                .fill(fill)
-                .stroke(Stroke::new(stroke_thin(), border))
-                .corner_radius(egui::CornerRadius { nw: 0, sw: 0, ne: 99, se: 99 })
-                .min_size(egui::vec2(18.0, row_height_dense())),
+                KitButton::new(crate::ui_kit::icons::Icon::X)
+                    .variant(KitVariant::Chrome)
+                    .fill(fill)
+                    .stroke(Stroke::new(stroke_thin(), border))
+                    .corner_radius_asymmetric(egui::CornerRadius { nw: 0, sw: 0, ne: 99, se: 99 })
+                    .min_size(egui::vec2(18.0, row_height_dense()))
+                    .fg(self.dim),
             );
             ui.spacing_mut().button_padding = prev_pad;
             if x.clicked() { x_clicked = true; }
@@ -182,7 +193,8 @@ impl<'a> Widget for DisplayChip<'a> {
         // ChipVariant::Subtle/Outline (semantic-tinted, non-interactive), Size::Xs.
         let _variant = ChipVariant::Subtle;
         ChipBody {
-            label: RichText::new(self.label).monospace().size(font_xs()).strong().color(self.color),
+            label: self.label,
+            label_color: self.color,
             fill: color_alpha(self.color, alpha_tint()),
             border: color_alpha(self.color, alpha_dim()),
             radius: Radius::Pill.corner(),
@@ -247,23 +259,19 @@ impl<'a> Widget for StatusBadge<'a> {
         } else {
             self.text.to_string()
         };
-        // ChipBody renders frame+border+pill radius; the StatusBadge variant
-        // toggles stroke width based on hairline mode, so we keep the explicit
-        // stroke construction inline.
+        // Migrated to ui_kit::Button with Sense::hover() (display-only badge).
+        // Note: rendered as proportional font (not monospace) — known visual delta
+        // in this deprecated file. Use ui_kit::Tag/Badge for new call sites.
         let prev_pad = ui.spacing().button_padding;
-        // deferred — display-only badge (Sense::hover), non-interactive; ui_kit::Button always allocates a click sense
         let resp = ui.add(
-            egui::Button::new(
-                RichText::new(txt)
-                    .monospace()
-                    .size(crate::dt_f32!(badge.font_size, 8.0))
-                    .strong()
-                    .color(self.color),
-            )
-            .fill(fill)
-            .stroke(Stroke::new(stroke_w, stroke_col))
-            .corner_radius(Radius::Pill.corner())
-            .min_size(egui::vec2(0.0, crate::dt_f32!(badge.height, 16.0))),
+            KitButton::new(txt.as_str())
+                .variant(KitVariant::Chrome)
+                .fill(fill)
+                .stroke(Stroke::new(stroke_w, stroke_col))
+                .corner_radius_asymmetric(Radius::Pill.corner())
+                .min_size(egui::vec2(0.0, crate::dt_f32!(badge.height, 16.0)))
+                .sense(egui::Sense::hover())
+                .fg(self.color),
         );
         ui.spacing_mut().button_padding = prev_pad;
         resp
@@ -325,18 +333,18 @@ impl<'a> Widget for KeybindChip<'a> {
         } else {
             Stroke::new(st.stroke_thin, color_alpha(self.bg_border, alpha_muted()))
         };
-        // deferred — display-only keybind chip (Sense::hover); ui_kit::Button always allocates a click sense
+        // Migrated to ui_kit::Button with Sense::hover() (display-only keybind chip).
+        // Note: rendered as proportional font (not monospace) — known visual delta
+        // in this deprecated file. Use ui_kit::Tag/Badge for new call sites.
         ui.add(
-            egui::Button::new(
-                RichText::new(self.hint)
-                    .monospace()
-                    .size(font_xs())
-                    .color(self.fg),
-            )
-            .fill(Color32::TRANSPARENT)
-            .stroke(stroke)
-            .corner_radius(cr)
-            .min_size(egui::vec2(0.0, 14.0)),
+            KitButton::new(self.hint)
+                .variant(KitVariant::Chrome)
+                .fill(Color32::TRANSPARENT)
+                .stroke(stroke)
+                .corner_radius_asymmetric(cr)
+                .min_size(egui::vec2(0.0, 14.0))
+                .sense(egui::Sense::hover())
+                .fg(self.fg),
         )
     }
 }
