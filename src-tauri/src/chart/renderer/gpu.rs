@@ -4713,6 +4713,14 @@ pub(crate) struct Watchlist {
     /// `daily_loss_cap` and `max_position_pct` are new fields that live ONLY in
     /// the store (no corresponding legacy flat field existed).
     pub(crate) trading_defaults_store: std::sync::Arc<crate::state::Store<crate::state::TradingDefaults>>,
+    /// Wave 3 (state): `Store<AlertsState>` wraps the alerts aggregate so
+    /// mutations are debounce-persisted by the background supervisor.
+    ///
+    /// The flat fields (`alerts`, `next_alert_id`, `alert_query`,
+    /// `alerts_panel_open`) stay in place as the read source of truth for
+    /// existing callers; they are kept in sync via
+    /// `update_alerts_state()` / `sync_from_alerts_store()`.
+    pub(crate) alerts_store: std::sync::Arc<crate::state::Store<crate::state::AlertsState>>,
     // ── Top-nav symbol input (UX-1 Fix 1) ──────────────────────────────────
     /// Buffer for the editable symbol input in the top toolbar.
     pub(crate) top_nav_sym_input: String,
@@ -4897,6 +4905,11 @@ impl Watchlist {
                    crate::state::TradingDefaults::default(),
                    Some(trading_defaults_path()),
                ),
+               alerts_store: crate::state::Store::new(
+                   "alerts_state",
+                   crate::state::AlertsState::default(),
+                   Some(alerts_state_path()),
+               ),
                top_nav_sym_input: String::new(),
                top_nav_sym_focused: false,
                // Welcome wizard is initialized after load (when ui_settings is populated).
@@ -5067,6 +5080,75 @@ impl Watchlist {
             crate::state::DefaultTimeInForce::Fok => 3,
         };
         self.default_outside_rth = snap.default_outside_rth;
+    }
+
+    // ── Wave 3 (state): Store<AlertsState> accessor / mutator ────────────────
+
+    /// Read the current `AlertsState` from the store.
+    /// The returned guard holds a read lock — release it before calling
+    /// `update_alerts_state` to avoid a deadlock.
+    pub(crate) fn alerts_state_snapshot(
+        &self,
+    ) -> parking_lot::RwLockReadGuard<crate::state::AlertsState> {
+        self.alerts_store.read()
+    }
+
+    /// Mutate `AlertsState` through the store.
+    ///
+    /// The store bumps its version counter and starts the debounce clock;
+    /// the background persist supervisor will write to disk within ~250ms.
+    ///
+    /// The flat legacy fields (`alerts`, `next_alert_id`, `alert_query`,
+    /// `alerts_panel_open`) on Watchlist are kept in sync so existing
+    /// callers that read them directly continue to see the latest values.
+    pub(crate) fn update_alerts_state(&mut self, f: impl FnOnce(&mut crate::state::AlertsState)) {
+        self.alerts_store.update(|s| f(s));
+        self.sync_from_alerts_store();
+    }
+
+    /// Push flat legacy fields → `alerts_store`.
+    ///
+    /// Call this after any batch mutation to the flat alert fields so
+    /// the store stays in sync and the persist supervisor can write to disk.
+    pub(crate) fn push_to_alerts_store(&mut self) {
+        let persisted: Vec<crate::state::PersistedAlert> = self.alerts.iter().map(|a| {
+            crate::state::PersistedAlert {
+                id: a.id,
+                symbol: a.symbol.clone(),
+                price: a.price,
+                above: a.above,
+                triggered: a.triggered,
+                message: a.message.clone(),
+            }
+        }).collect();
+        let next_id = self.next_alert_id;
+        let query = self.alert_query.clone();
+        let panel_open = self.alerts_panel_open;
+        self.alerts_store.update(|s| {
+            s.alerts = persisted;
+            s.next_alert_id = next_id;
+            s.alert_query = query;
+            s.alerts_panel_open = panel_open;
+        });
+    }
+
+    /// Copy the store's current `AlertsState` into the flat legacy fields.
+    /// Called after `update_alerts_state()` and at load time.
+    pub(crate) fn sync_from_alerts_store(&mut self) {
+        let snap = self.alerts_store.read().clone();
+        self.alerts = snap.alerts.iter().map(|pa| {
+            crate::chart_renderer::trading::Alert {
+                id: pa.id,
+                symbol: pa.symbol.clone(),
+                price: pa.price,
+                above: pa.above,
+                triggered: pa.triggered,
+                message: pa.message.clone(),
+            }
+        }).collect();
+        self.next_alert_id = snap.next_alert_id;
+        self.alert_query = snap.alert_query;
+        self.alerts_panel_open = snap.alerts_panel_open;
     }
 
     /// Add symbol to the last section (creates one if none exist).
@@ -5924,11 +6006,24 @@ impl App {
         load_hotkeys(&mut wl.hotkeys);
         // Load persisted templates
         wl.pane_templates = load_templates();
-        // Load persisted alerts
-        let (wl_alerts, pane_alerts_map) = load_alerts();
-        wl.alerts = wl_alerts;
-        if !wl.alerts.is_empty() {
-            wl.next_alert_id = wl.alerts.iter().map(|a| a.id).max().unwrap_or(0) + 1;
+        // Load persisted alerts (always needed for pane-level price alerts).
+        let (wl_alerts_legacy, pane_alerts_map) = load_alerts();
+        // Wave 3 (state): load AlertsState from the new store format if present.
+        // Falls back to the legacy load_alerts() data so existing alerts are migrated
+        // on first launch after the upgrade.
+        if let Some(loaded_as) =
+            crate::state::load::<crate::state::AlertsState>(&alerts_state_path())
+        {
+            wl.alerts_store.update(|s| *s = loaded_as);
+            wl.sync_from_alerts_store();
+        } else {
+            // Legacy path: seed from the custom JSON format used before Wave 3.
+            wl.alerts = wl_alerts_legacy;
+            if !wl.alerts.is_empty() {
+                wl.next_alert_id = wl.alerts.iter().map(|a| a.id).max().unwrap_or(0) + 1;
+            }
+            // Seed the store so future saves use the new format.
+            wl.push_to_alerts_store();
         }
         let wl_syms: Vec<String> = wl.all_symbols();
         let mut cw = ChartWindow { id, win: Arc::clone(&w), gpu, rx, panes, active_pane: 0, layout, maximized_pane: None, close_requested: false, watchlist: wl, toasts: vec![], conn_panel_open: false, last_save: None };
@@ -5955,6 +6050,10 @@ impl App {
         );
         self.store_registry.register(
             cw.watchlist.trading_defaults_store.clone() as std::sync::Arc<dyn crate::state::PersistableStore>
+        );
+        // Wave 3 (state): register the alerts store.
+        self.store_registry.register(
+            cw.watchlist.alerts_store.clone() as std::sync::Arc<dyn crate::state::PersistableStore>
         );
         self.windows.push(cw);
     }
@@ -6516,6 +6615,15 @@ fn cmd_palette_state_path() -> std::path::PathBuf {
     let mut p = state_path();
     p.pop();
     p.push("cmd_palette_state.json");
+    p
+}
+
+/// Wave 3 (state): persist path for the `AlertsState` aggregate.
+/// Lives alongside `native-chart-state.json` in the same directory.
+fn alerts_state_path() -> std::path::PathBuf {
+    let mut p = state_path();
+    p.pop();
+    p.push("alerts_state.json");
     p
 }
 
