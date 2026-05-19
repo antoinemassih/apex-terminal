@@ -963,6 +963,53 @@ impl Persistable for LayoutState {
     const VERSION: u32 = 1;
 }
 
+// ─── CmdPaletteState aggregate ───────────────────────────────────────────────
+
+/// Frecency data for the command palette — recent items list and per-item
+/// use-count.  Persisted so that power users retain their "SPY first" ordering
+/// across restarts.
+///
+/// **P2 (command-palette-frecency)** introduces this aggregate.
+///
+/// Field sources (Watchlist field → this aggregate field):
+/// - `Watchlist::cmd_palette_recent: Vec<String>` → `recent`
+/// - `Watchlist::cmd_palette_freq: HashMap<String, u32>` → `freq`
+///
+/// Bounds enforced at runtime (NOT in serde):
+/// - `recent`: last 50 entries, most-recent first, deduped.
+/// - `freq`: top 200 by count; entries beyond 200 are pruned when saving.
+///
+/// Fields NOT included here:
+/// - `cmd_palette_open`, `cmd_palette_query`, `cmd_palette_results`,
+///   `cmd_palette_sel`, `cmd_palette_ai_mode`, `cmd_palette_ai_input`
+///   — ephemeral UI state; always reset on open.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CmdPaletteState {
+    /// Most-recently-used command/symbol IDs, newest first (max 50).
+    /// Source: `Watchlist::cmd_palette_recent`.
+    #[serde(default)]
+    pub recent: Vec<String>,
+
+    /// Use-count per command/symbol ID (max 200 entries by count).
+    /// Source: `Watchlist::cmd_palette_freq`.
+    #[serde(default)]
+    pub freq: std::collections::HashMap<String, u32>,
+}
+
+impl Default for CmdPaletteState {
+    fn default() -> Self {
+        Self {
+            recent: Vec::new(),
+            freq: std::collections::HashMap::new(),
+        }
+    }
+}
+
+impl Persistable for CmdPaletteState {
+    const KEY: &'static str = "cmd_palette_state";
+    const VERSION: u32 = 1;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -976,6 +1023,7 @@ mod tests {
             ChatState::KEY,
             SidebarState::KEY,
             LayoutState::KEY,
+            CmdPaletteState::KEY,
         ];
         let mut sorted = keys.to_vec();
         sorted.sort_unstable();
