@@ -72,6 +72,11 @@ pub mod time_picker;
 pub mod range_slider;
 pub mod form_row;
 pub mod form_section;
+// P2: forms foundation primitives
+pub mod form_field;
+pub mod form_action_bar;
+pub mod input_group;
+pub mod fieldset;
 pub mod panel;
 pub mod header;
 // Outer side-panel chrome (Agent J)
@@ -94,9 +99,45 @@ pub mod panel_error;
 pub mod panel_toolbar;
 // P2: icon placement foundation (wire step)
 pub mod icon_placement;
-pub use icon_placement::{IconPlacement, IconTone, IconState, icon_glyph_color, icon_hover_bg};
 
+// ─── Foundation ──────────────────────────────────────────────────────
 pub use tokens::{Size, Variant};
+pub use shadow::{ShadowSpec, paint as paint_shadow, paint_gpu as paint_shadow_gpu};
+pub use placement::{Align, Placement, Side};
+
+// ─── Buttons & Links ─────────────────────────────────────────────────
+pub use button::{Button, show_button_gallery};
+pub use link::Link;
+
+// ─── Inputs & Forms ──────────────────────────────────────────────────
+pub use input::{Input, InputResponse};
+pub use text_area::TextArea;
+pub use search_input::SearchInput;
+pub use select::{Select, SelectResponse};
+pub use tag_input::TagInput;
+pub use date_picker::{DatePicker, DatePickerResponse};
+pub use time_picker::TimePicker;
+pub use self::color_picker::ColorPicker;
+pub use opacity_picker::{OpacityPicker, OPACITY_LEVELS as PICKER_OPACITY_LEVELS};
+pub use number_stepper::NumberStepper;
+pub use slider::Slider;
+pub use range_slider::RangeSlider;
+pub use form_row::{FormRow, FormRowAlign};
+pub use form_section::{FormSection, FieldSet, FormActions};
+pub use form_field::{FormField, FormFieldResponse};
+pub use form_action_bar::{FormActionBar, FormActionBarResponse, ActionBarPrimary};
+pub use input_group::InputGroup;
+pub use fieldset::Fieldset;
+
+// ─── Toggles ─────────────────────────────────────────────────────────
+pub use checkbox::{Checkbox, CheckState};
+pub use radio::Radio;
+pub use switch::Switch;
+pub use toggle_row::ToggleRow;
+pub use toggle_group::ToggleGroup;
+pub use segmented_control::SegmentedControl;
+
+// ─── Panel Ecosystem ─────────────────────────────────────────────────
 pub use panel::{Panel, PanelCtx, PanelResponse};
 pub use header::{Header, HeaderVariant, HeaderResponse};
 pub use side_panel_shell::{SidePanelShell, SidePanelShellResponse, SidePanelShellTabs, Width};
@@ -104,83 +145,62 @@ pub use split_section_panel::SplitSectionPanel;
 pub use panel_section::{
     PanelSection, PanelSectionGroup, PanelSectionGroupBuilder, SectionResponse, Tone as PanelTone,
 };
+pub use panel_sub_section::PanelSubSection;
+pub use panel_card::PanelCard;
 pub use panel_empty::PanelEmpty;
 pub use panel_loading::PanelLoading;
+pub use panel_error::PanelError;
 pub use panel_list_row::{PanelListRow, PanelListRowResponse, TrailingBtn, TrailingTone};
-// Foundation extension wave 2 (Agent V)
-// NOTE: Agent U is also adding re-exports in this file — merge conflict
-// expected here and trivial to resolve.
-pub use panel_sub_section::PanelSubSection;
 pub use panel_list_row::{Column as PanelColumn, ColAlign as PanelColAlign};
-// DS-IMPL-2: new panel primitives (wave 3)
+pub use panel_key_value_row::PanelKeyValueRow;
+pub use metric_row::{MetricRow, Tone as MetricTone};
+pub use panel_toolbar::PanelToolbar;
 pub use table_header::TableHeader;
 pub use pill_row::{PillRow, PillRowResponse};
 pub use status_pill::StatusPill;
-pub use panel_error::PanelError;
-pub use panel_toolbar::PanelToolbar;
-pub use panel_card::PanelCard;
-pub use panel_key_value_row::PanelKeyValueRow;
-pub use range_slider::RangeSlider;
-pub use form_row::{FormRow, FormRowAlign};
-pub use form_section::{FormSection, FieldSet, FormActions};
 
-pub use shadow::{ShadowSpec, paint as paint_shadow, paint_gpu as paint_shadow_gpu};
-pub use calendar::{Calendar, CalendarResponse};
-pub use date_picker::{DatePicker, DatePickerResponse};
-pub use select::{Select, SelectResponse};
+// ─── Surfaces ────────────────────────────────────────────────────────
+pub use modal::Modal;
+pub use sheet::{Sheet, SheetSide, SheetSize};
+pub use popover::Popover;
+pub use hover_card::HoverCard;
+pub use tooltip::Tooltip;
+pub use context_menu::ContextMenu;
+pub use alert::{Alert, AlertVariant, AlertResponse};
+pub use toast::Toast;
+
+// ─── Data / Display ──────────────────────────────────────────────────
+pub use table::{ColAlign, ColWidth, Column, SortDir, Table, TableResponse, TableState};
+pub use pagination::Pagination;
 pub use tree::{Tree, TreeNode, TreeState, TreeResponse};
-pub use slider::Slider;
+pub use tabs::{Tabs, TabsResponse, TabItem, TabTreatment, TabAlign};
+pub use breadcrumb::{Breadcrumb, BreadcrumbItem, BreadcrumbSep, BreadcrumbResponse};
 pub use progress::Progress;
 pub use spinner::Spinner;
 pub use skeleton::Skeleton;
-
-pub use tabs::{Tabs, TabsResponse, TabItem, TabTreatment, TabAlign};
-pub use button::{Button, show_button_gallery};
-pub use number_stepper::NumberStepper;
-pub use metric_row::{MetricRow, Tone as MetricTone};
-pub use input::{Input, InputResponse};
-pub use modal::Modal;
-pub use toast::Toast;
-pub use context_menu::ContextMenu;
-pub use switch::Switch;
-pub use checkbox::{Checkbox, CheckState};
-pub use radio::Radio;
-pub use placement::{Align, Placement, Side};
-pub use tooltip::Tooltip;
-pub use popover::Popover;
-pub use hover_card::HoverCard;
-pub use label::Label;
-pub use polished_label::{PolishedLabel, FontWeight as PolishedFontWeight};
-pub use tag::{Tag, TagTone, TagResponse};
+pub use indicator::{Indicator, IndicatorStyle, IndicatorTone};
 pub use badge::Badge;
+pub use tag::{Tag, TagTone, TagResponse};
 pub use kbd::Kbd;
 pub use separator::Separator;
-pub use sheet::{Sheet, SheetSide, SheetSize};
-pub use table::{ColAlign, ColWidth, Column, SortDir, Table, TableResponse, TableState};
-pub use pagination::Pagination;
-pub use breadcrumb::{Breadcrumb, BreadcrumbItem, BreadcrumbSep, BreadcrumbResponse};
-pub use link::Link;
-pub use alert::{Alert, AlertVariant, AlertResponse};
+pub use label::Label;
+pub use polished_label::{PolishedLabel, FontWeight as PolishedFontWeight};
 pub use stepper::Stepper;
+pub use calendar::{Calendar, CalendarResponse};
+
+// ─── Icons ───────────────────────────────────────────────────────────
+pub use icon_placement::{IconPlacement, IconTone, IconState, icon_glyph_color, icon_hover_bg};
+
+// ─── Specialist / Domain ─────────────────────────────────────────────
+pub use guild_avatar_grid::{GuildAvatarGrid, GuildEntry};
+pub use heatmap_grid::{HeatmapGrid, HeatmapCell};
+pub use trade_card::{TradeCard, TradeCardData};
+pub use risk_reward_bar::RiskRewardBar;
 pub use sidebar::{Sidebar, SidebarStyle, SidebarItem, SidebarSection};
 pub use resizable::Resizable;
 pub use scroll_area::{ScrollDirection, ThemedScrollArea};
-pub use self::color_picker::ColorPicker;
-pub use indicator::{Indicator, IndicatorStyle, IndicatorTone};
-pub use toggle_row::ToggleRow;
 pub use theme_preview_card::ThemePreviewCard;
 pub use selectable_row::SelectableRow;
-pub use opacity_picker::{OpacityPicker, OPACITY_LEVELS as PICKER_OPACITY_LEVELS};
-pub use risk_reward_bar::RiskRewardBar;
-pub use heatmap_grid::{HeatmapGrid, HeatmapCell};
-pub use trade_card::{TradeCard, TradeCardData};
-pub use guild_avatar_grid::{GuildAvatarGrid, GuildEntry};
-pub use text_area::TextArea;
-pub use search_input::SearchInput;
-pub use segmented_control::SegmentedControl;
-pub use toggle_group::ToggleGroup;
-pub use tag_input::TagInput;
-pub use time_picker::TimePicker;
 
 use egui::{Color32, Ui, Sense, RichText};
 use super::theme::{ChartTheme, DRAW_COLORS};
