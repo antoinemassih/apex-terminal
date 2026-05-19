@@ -113,11 +113,13 @@ use crate::chart_renderer::ui::style::{
     BTN_ICON_SM, BTN_ICON_LG,
     icon_sm,
     set_toolbar_rect, tb_group_break, current as style_current,
-    font_4xs, font_xs, font_2xs, font_sm, font_md, font_lg, font_xl, alpha_muted, alpha_ghost, alpha_strong, alpha_dim,
+    font_4xs, font_xs, font_2xs, font_sm, font_md, font_lg, font_xl,
+    alpha_soft, alpha_muted, alpha_ghost, alpha_strong, alpha_dim,
     mono_xs, mono_sm, mono_md, mono_lg,
     gap_2xs, gap_xs, gap_sm, gap_md, gap_lg, gap_xl,
     row_height_default,
     stroke_std, stroke_thin, r_md_cr,
+    elevation_3, shadow_card_themed,
 };
 use crate::chart_renderer::ui::widgets::foundation::text_style::TextStyle;
 use crate::chart_renderer::trading::{AccountSummary, Position, IbOrder, OrderStatus};
@@ -2389,46 +2391,336 @@ pub(crate) fn render(
         }
     }
 
-    // ── Order execution toasts ───────────────────────────────────────────────
-    // Messages from errors_sink carry a leading severity byte:
-    //   \x01 = Warning  (yellow, t.warn)
-    //   \x02 = Danger   (red,    t.bear)
-    // All other messages use is_buy to pick bull (green) vs bear (red).
-    // Toasts are staggered by 80 ms per slot: a toast only becomes visible
-    // after `idx * 0.08` seconds have elapsed since it was created, so a
-    // burst of simultaneous pushes slides in one by one instead of all at once.
+    // ── Toast 2.0 — bottom-left anchor, fixed 360px, severity-coded ─────────
+    //
+    // Severity byte vocabulary (prefix stripped before display):
+    //   no prefix / \x00 → Info     (accent tint, Icon::INFO)
+    //   \x01             → Warning  (warn tint,   Icon::WARNING)
+    //   \x02             → Danger   (bear tint,   Icon::SHIELD_WARNING)
+    //   \x03             → Critical (bear tint + pulse + stronger alpha, Icon::SHIELD_WARNING_FILL)
+    //   \x04             → Success  (bull tint,   Icon::CHECK_CIRCLE)
+    //
+    // Layout rules:
+    //   - Anchored bottom-left: 16px from left edge, 16px from bottom.
+    //   - Fixed width: 360px. Long messages wrap inside.
+    //   - Newest toast at the bottom (closest to anchor), oldest floats up.
+    //   - Max 4 visible; beyond that a "+N more" pill appears above the stack.
+    //   - Pinned toasts (click-to-pin) float to the TOP of the stack.
+    //   - Stagger: 80ms per slot (preserved from previous impl).
+    //   - Slide-up: each toast slides in 8px from below + fades in over 120ms.
+    //
+    // Pin state is stored in egui temp memory keyed on toast index + creation
+    // time hash. Pinning is session-only (egui memory is not persisted).
+    //
+    // "Expand" state (N more chip click) is stored in egui temp memory.
     if !toasts.is_empty() {
+        use egui::{Id, pos2, vec2, Rect, CornerRadius, Stroke};
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
         let screen = ctx.screen_rect();
-        for (i, (msg, _price, created, is_buy)) in toasts.iter().enumerate() {
+        const TOAST_W: f32 = 360.0;
+        const TOAST_MARGIN: f32 = 16.0;
+        const LEFT: f32 = TOAST_MARGIN;
+        const MAX_VISIBLE: usize = 4;
+        const MAX_PINNED: usize = 5;
+        const LEFT_BAR_W: f32 = 3.0;
+        const DISMISS_SECS: f32 = 5.0;
+
+        // ── Severity decode helpers ─────────────────────────────────────────
+        // Returns (display_msg, accent_color, icon, is_critical)
+        fn decode_severity<'m>(msg: &'m str, is_buy: bool, t: &crate::chart_renderer::gpu::Theme)
+            -> (&'m str, egui::Color32, &'static str, bool)
+        {
+            if let Some(rest) = msg.strip_prefix('\x01') {
+                (rest, t.warn, Icon::WARNING, false)
+            } else if let Some(rest) = msg.strip_prefix('\x02') {
+                (rest, t.bear, Icon::SHIELD_WARNING, false)
+            } else if let Some(rest) = msg.strip_prefix('\x03') {
+                (rest, t.bear, Icon::SHIELD_WARNING_FILL, true)
+            } else if let Some(rest) = msg.strip_prefix('\x04') {
+                (rest, t.bull, Icon::CHECK_CIRCLE, false)
+            } else {
+                // no prefix — Info or legacy is_buy path
+                let color = if is_buy { t.bull } else { t.accent };
+                (msg, color, Icon::INFO, false)
+            }
+        }
+
+        // ── Toast id — stable hash of (msg, created nanos) ─────────────────
+        fn toast_id(msg: &str, created: &std::time::Instant) -> u64 {
+            let mut h = DefaultHasher::new();
+            msg.hash(&mut h);
+            created.elapsed().as_nanos().hash(&mut h);
+            h.finish()
+        }
+
+        // ── Expand state (show all beyond MAX_VISIBLE) ──────────────────────
+        let expand_id = Id::new("toast_v2_expand");
+        let expand_until: f64 = ctx.data(|d| d.get_temp(expand_id).unwrap_or(0.0f64));
+        let expanded = ctx.input(|i| i.time) < expand_until;
+
+        // ── Separate pinned vs normal toasts ────────────────────────────────
+        let mut pinned_indices: Vec<usize> = Vec::new();
+        let mut normal_indices: Vec<usize> = Vec::new();
+        for (i, (msg, _price, created, _is_buy)) in toasts.iter().enumerate() {
+            let tid = toast_id(msg, created);
+            let pin_id = Id::new(("toast_pin", tid));
+            let is_pinned: bool = ctx.data(|d| d.get_temp(pin_id).unwrap_or(false));
+            if is_pinned { pinned_indices.push(i); } else { normal_indices.push(i); }
+        }
+
+        // Build render order: pinned first (float to top = rendered highest),
+        // then normal newest-at-bottom. "Top" means highest Y index = smallest
+        // Y coordinate in bottom-left layout.
+        // We render bottom-up, so normal order first (oldest top), then pinned.
+        // Actual render order for Y calculation: [pinned..., normal...]
+        // where index 0 is the topmost (highest above anchor), last is closest to anchor.
+        let render_order: Vec<usize> = {
+            let mut v = pinned_indices.clone();
+            v.extend(normal_indices.iter().cloned());
+            v
+        };
+
+        let total = render_order.len();
+        let visible_limit = if expanded { total } else { MAX_VISIBLE };
+        let hidden_count = total.saturating_sub(visible_limit);
+        let visible_indices: Vec<usize> = render_order.iter().cloned().take(visible_limit).collect();
+
+        // ── Chip height (if needed) ─────────────────────────────────────────
+        let chip_h: f32 = if hidden_count > 0 { 24.0 } else { 0.0 };
+        let chip_gap: f32 = if hidden_count > 0 { 4.0 } else { 0.0 };
+
+        // ── Compute Y positions bottom-up ───────────────────────────────────
+        // We need approximate heights. We can estimate based on message
+        // wrapping, but for simplicity we use egui's auto-sizing windows
+        // and stack them with a fixed pitch. Messages that wrap will push the
+        // next toast up — use a min pitch of 68px (icon+2 lines comfortable).
+        // The actual positions are calculated after we know the count.
+        let toast_pitch: f32 = 72.0; // estimated height per toast + gap
+        let base_y = screen.bottom() - TOAST_MARGIN - chip_h - chip_gap;
+
+        // ── Render visible toasts ───────────────────────────────────────────
+        let now_time = ctx.input(|i| i.time);
+        let mut close_toast_idx: Option<usize> = None;
+        let mut pin_toggle_idx: Option<(usize, bool)> = None; // (toast_idx, new_pin_state)
+
+        for (slot, &toast_i) in visible_indices.iter().enumerate() {
+            let (msg, _price, created, is_buy) = &toasts[toast_i];
             let age = created.elapsed().as_secs_f32();
-            // Stagger: toast at index i only starts appearing after i*80ms.
-            let stagger_delay = i as f32 * 0.08;
-            let visible_age = age - stagger_delay;
-            if visible_age <= 0.0 { continue; } // still waiting for its slot
-            let alpha = ((5.0 - age) / 1.0).min(visible_age / 0.12).min(1.0).max(0.0);
+            // Stagger: toast at slot only starts appearing after slot*80ms (preserve existing stagger).
+            let stagger_delay = toast_i as f32 * 0.08;
+            let visible_age = (age - stagger_delay).max(0.0);
+            if visible_age <= 0.0 { continue; }
+
+            let tid = toast_id(msg, created);
+            let pin_id = Id::new(("toast_pin", tid));
+            let is_pinned: bool = ctx.data(|d| d.get_temp(pin_id).unwrap_or(false));
+
+            // Alpha: fade in over 120ms, start fading out 1s before expiry.
+            // Pinned toasts don't fade out.
+            let fade_in  = (visible_age / 0.12).min(1.0);
+            let fade_out = if is_pinned { 1.0f32 } else { ((DISMISS_SECS - age) / 1.0).min(1.0).max(0.0) };
+            let alpha = (fade_in * fade_out).min(1.0).max(0.0);
             if alpha <= 0.0 { continue; }
 
-            // Decode severity prefix set by errors_sink / push_toast_with_severity.
-            let (display_msg, color, icon) = if let Some(rest) = msg.strip_prefix('\x01') {
-                (rest, t.warn, Icon::SHIELD_WARNING)
-            } else if let Some(rest) = msg.strip_prefix('\x02') {
-                (rest, t.bear, Icon::X)
+            let (display_msg, sev_color, icon, is_critical) = decode_severity(msg, *is_buy, t);
+
+            // Slide-up: offset 8px at start, resolves to 0 over 120ms.
+            let slide_offset = 8.0 * (1.0 - fade_in);
+
+            // Y position: bottom-up from base_y, slot 0 is topmost visible.
+            // Slot `visible_indices.len()-1` is bottommost (closest to anchor).
+            let slot_from_bottom = (visible_indices.len() - 1 - slot) as f32;
+            let y_top = base_y - (slot_from_bottom + 1.0) * toast_pitch + slide_offset;
+
+            // ── Critical pulse on left bar ──────────────────────────────────
+            // Alpha oscillates 0.8→1.0 on a 0.6s cycle. Stops when pinned.
+            let bar_alpha_f = if is_critical && !is_pinned {
+                let t_cycle = (now_time % 0.6) as f32 / 0.6;
+                0.8 + 0.2 * (t_cycle * std::f32::consts::TAU).sin().abs()
             } else {
-                (msg.as_str(), if *is_buy { t.bull } else { t.bear }, Icon::CHECK)
+                1.0
             };
 
-            let y_offset = screen.top() + 44.0 + i as f32 * 28.0;
-            egui::Window::new(format!("toast_{}", i))
-                .fixed_pos(egui::pos2(screen.center().x - 100.0, y_offset))
-                .fixed_size(egui::vec2(200.0, 20.0))
+            // ── Colors ──────────────────────────────────────────────────────
+            let base_bg    = elevation_3(t);
+            let tint_alpha = if is_critical { alpha_muted() } else { alpha_soft() };
+            // Tint is painted additively over the base using alpha blend.
+            // We approximate by lerping toward the severity color.
+            let tint_col   = color_alpha(sev_color, (tint_alpha as f32 * alpha) as u8);
+            let body_bg    = egui::Color32::from_rgba_unmultiplied(
+                base_bg.r(), base_bg.g(), base_bg.b(), (230.0 * alpha) as u8);
+            let bar_col    = color_alpha(sev_color, (255.0 * bar_alpha_f * alpha) as u8);
+            let text_col   = color_alpha(t.text, (230.0 * alpha) as u8);
+            let icon_col   = color_alpha(sev_color, (200.0 * alpha) as u8);
+            let dim_col    = color_alpha(t.dim, (160.0 * alpha) as u8);
+            let border_col = if is_pinned {
+                color_alpha(sev_color, (alpha_muted() as f32 * alpha) as u8)
+            } else {
+                egui::Color32::TRANSPARENT
+            };
+            let border_w   = if is_pinned { 1.5 } else { 0.0 };
+
+            let corner = r_md_cr();
+            let win_id = format!("toast_v2_{}", toast_i);
+
+            // Use egui::Window for auto-sizing (wraps long text).
+            // Shadow via Frame.
+            let shadow = shadow_card_themed(t);
+            egui::Window::new(&win_id)
+                .id(Id::new(win_id.as_str()))
+                .fixed_pos(pos2(screen.left() + LEFT, y_top))
+                .fixed_size(vec2(TOAST_W, 0.0)) // height is auto
+                .max_width(TOAST_W)
+                .min_width(TOAST_W)
                 .title_bar(false)
-                .frame(egui::Frame::popup(&ctx.style())
-                    .fill(egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), (40.0 * alpha) as u8))
-                    .inner_margin(gap_sm()))
+                .resizable(false)
+                .frame(
+                    egui::Frame::NONE
+                        .fill(body_bg)
+                        .shadow(shadow)
+                        .corner_radius(corner)
+                        .stroke(Stroke::new(border_w, border_col))
+                        .inner_margin(egui::Margin::same(0i8))
+                )
                 .show(ctx, |ui| {
-                    ui.label(egui::RichText::new(format!("{} {}", icon, display_msg)).monospace().size(font_sm())
-                        .color(egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), (255.0 * alpha) as u8)));
+                    // Paint severity tint OVER the base bg.
+                    let r = ui.max_rect();
+                    ui.painter().rect_filled(r, corner, tint_col);
+
+                    // Paint left accent bar.
+                    let bar_rect = Rect::from_min_size(r.min, egui::vec2(LEFT_BAR_W, r.height()));
+                    ui.painter().rect_filled(bar_rect, CornerRadius {
+                        nw: corner.nw, sw: corner.sw, ne: 0, se: 0,
+                    }, bar_col);
+
+                    ui.set_width(TOAST_W);
+                    let inner = ui.available_rect_before_wrap();
+                    // Main content row inside left margin for the bar + padding.
+                    let content_x = LEFT_BAR_W + gap_sm();
+                    ui.add_space(gap_xs());
+                    egui::Frame::NONE
+                        .inner_margin(egui::Margin {
+                            left: content_x as i8, right: gap_sm() as i8, top: 0i8, bottom: 0i8,
+                        })
+                        .show(ui, |ui| {
+                            // ── Top row: icon + message + close button ──────
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(egui::RichText::new(icon).size(font_md()).color(icon_col));
+                                ui.add_space(4.0);
+                                // Message — wraps at TOAST_W boundary.
+                                ui.label(
+                                    egui::RichText::new(display_msg)
+                                        .size(font_sm())
+                                        .color(text_col)
+                                );
+                            });
+
+                            // ── Bottom row: age label + pin hint + close ────
+                            ui.horizontal(|ui| {
+                                let age_str = if age < 60.0 {
+                                    format!("{}s ago", age as u32)
+                                } else {
+                                    "1m+ ago".to_string()
+                                };
+                                ui.label(egui::RichText::new(age_str).size(font_xs()).color(dim_col));
+
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    // Close button — always dismisses (even if pinned).
+                                    let close_resp = ui.add(
+                                        egui::Button::new(
+                                            egui::RichText::new(Icon::X).size(font_sm()).color(dim_col)
+                                        ).frame(false)
+                                    );
+                                    if close_resp.clicked() {
+                                        close_toast_idx = Some(toast_i);
+                                    }
+
+                                    // Pin button (visible on hover + always if pinned).
+                                    // We approximate hover by checking if any widget in the
+                                    // window rect is hovered. Since we can't get the window
+                                    // rect here easily, we show pin always for pinned toasts
+                                    // and on hover for unpinned (egui will repaint on hover).
+                                    let pin_icon = if is_pinned { Icon::PUSH_PIN } else { Icon::PUSH_PIN };
+                                    let pin_col = if is_pinned {
+                                        color_alpha(sev_color, (180.0 * alpha) as u8)
+                                    } else {
+                                        dim_col
+                                    };
+                                    let pin_resp = ui.add(
+                                        egui::Button::new(
+                                            egui::RichText::new(pin_icon).size(font_sm()).color(pin_col)
+                                        ).frame(false)
+                                    ).on_hover_text(if is_pinned { "Unpin (right-click)" } else { "Pin toast" })
+                                    ;
+                                    if pin_resp.clicked() && !is_pinned {
+                                        pin_toggle_idx = Some((toast_i, true));
+                                    }
+                                    if pin_resp.secondary_clicked() && is_pinned {
+                                        pin_toggle_idx = Some((toast_i, false));
+                                    }
+                                });
+                            });
+                        });
+                    ui.add_space(gap_xs());
                 });
+        }
+
+        // ── "+N more" chip ──────────────────────────────────────────────────
+        if hidden_count > 0 {
+            let chip_y = base_y - visible_indices.len() as f32 * toast_pitch - chip_h - 2.0;
+            let chip_col = color_alpha(t.dim, alpha_muted());
+            let chip_bg  = color_alpha(t.toolbar_bg, alpha_muted());
+            egui::Window::new("toast_v2_chip")
+                .id(Id::new("toast_v2_chip"))
+                .fixed_pos(pos2(screen.left() + LEFT, chip_y))
+                .auto_sized()
+                .title_bar(false)
+                .resizable(false)
+                .frame(egui::Frame::NONE.fill(chip_bg).corner_radius(CornerRadius::same(12u8)))
+                .show(ctx, |ui| {
+                    let lbl = format!(" +{hidden_count} more ");
+                    let resp = ui.add(
+                        egui::Button::new(egui::RichText::new(lbl).size(font_xs()).color(chip_col)).frame(false)
+                    );
+                    if resp.clicked() {
+                        let expand_until_new: f64 = ctx.input(|i| i.time) + 10.0;
+                        ctx.data_mut(|d| d.insert_temp(expand_id, expand_until_new));
+                    }
+                });
+        }
+
+        // ── Apply pin toggles ───────────────────────────────────────────────
+        if let Some((toast_i, new_pin)) = pin_toggle_idx {
+            let (msg, _, created, _) = &toasts[toast_i];
+            let tid = toast_id(msg, created);
+            let pin_id = Id::new(("toast_pin", tid));
+            if new_pin {
+                // Enforce max 5 pinned: unpin oldest if at cap.
+                if pinned_indices.len() >= MAX_PINNED {
+                    if let Some(&oldest_i) = pinned_indices.first() {
+                        let (om, _, oc, _) = &toasts[oldest_i];
+                        let old_tid = toast_id(om, oc);
+                        let old_pin_id = Id::new(("toast_pin", old_tid));
+                        ctx.data_mut(|d| d.insert_temp::<bool>(old_pin_id, false));
+                    }
+                }
+            }
+            ctx.data_mut(|d| d.insert_temp(pin_id, new_pin));
+        }
+
+        // Note: close_toast_idx is informational — the actual expiry is handled
+        // by gpu.rs (retain toasts where age < 5s). For pinned toasts that the
+        // user explicitly closes, we force-expire them by clearing the pin flag
+        // so the normal 5s window covers them. Since the toast tuple has no
+        // mutable "dismissed" flag, we rely on the window being gone next frame
+        // after the 5s window passes. For pinned closes, we unpin immediately.
+        if let Some(toast_i) = close_toast_idx {
+            let (msg, _, created, _) = &toasts[toast_i];
+            let tid = toast_id(msg, created);
+            let pin_id = Id::new(("toast_pin", tid));
+            ctx.data_mut(|d| d.insert_temp::<bool>(pin_id, false));
         }
     }
 

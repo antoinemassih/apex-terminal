@@ -5,9 +5,9 @@
 //!
 //! 1. Pushes a `ReportedError` into a bounded ring buffer (cap 200, FIFO).
 //! 2. Emits a `tracing` event at the matching level.
-//! 3. Forwards `Warn`/`Error`/`Critical` to `apex_data::live_state::push_toast`
-//!    so the existing toast UX keeps working without each call site needing
-//!    to know about it.
+//! 3. Forwards `Warn`/`Error`/`Critical` to `apex_data::live_state::push_toast_with_severity`
+//!    so the toast UX receives severity-coded messages (Warn=\x01, Error=\x02, Critical=\x03)
+//!    without each call site needing to know about it.
 //!
 //! The ring buffer is drained by the UI status panel via `drain_recent()`.
 //! Draining returns and clears the current buffer, so successive calls see
@@ -74,12 +74,15 @@ pub fn report(level: ErrorLevel, source: &str, code: &str, message: impl Into<St
 
     // Surface to the existing toast pipeline for anything actionable.
     // Info-level events stay silent — they're for log scrubbing, not the user.
-    // Severity mapping: Warn → 1 (yellow prefix \x01), Error/Critical → 2 (red prefix \x02).
+    // Severity mapping:
+    //   Warn     → \x01  (yellow warning)
+    //   Error    → \x02  (red danger)
+    //   Critical → \x03  (red critical with pulse animation — distinct from plain Error)
     let sev = match level {
         ErrorLevel::Info     => return, // silent
         ErrorLevel::Warn     => 1u8,    // yellow warning (\x01 prefix)
         ErrorLevel::Error    => 2u8,    // red danger (\x02 prefix)
-        ErrorLevel::Critical => 2u8,    // red danger (\x02 prefix)
+        ErrorLevel::Critical => 3u8,    // red critical (\x03 prefix — stronger + pulse)
     };
     let toast = format!("{source}: {message}");
     crate::data::apex_data::live_state::push_toast_with_severity(toast, sev);

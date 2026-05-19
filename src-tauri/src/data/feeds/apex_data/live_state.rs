@@ -32,7 +32,7 @@ struct State {
     greeks: Mutex<HashMap<String, (GreeksRow, Instant)>>,   // per-contract (OCC ticker)
     greeks_watch: Mutex<HashSet<String>>,          // contracts the poller should keep fresh
     fmv: Mutex<HashMap<String, Fmv>>,              // per-symbol FMV (options)
-    toasts: Mutex<Vec<String>>,                    // pending server-error toasts (severity encoded as leading \x01=warn \x02=danger)
+    toasts: Mutex<Vec<String>>,                    // pending toasts (severity prefix: \x01=warn \x02=danger \x03=critical \x04=success; no prefix=info)
     /// Per-underlying chain cache (§5.4.d): `HashMap<underlying, HashMap<ticker, row>>`.
     /// Seeded from REST, merged from `chain_delta` frames.
     chains: Mutex<HashMap<String, HashMap<String, ChainRow>>>,
@@ -512,14 +512,22 @@ pub fn get_or_fetch_corp_actions(ticker: &str) {
 }
 
 /// Push a toast with explicit severity encoded as a leading control byte.
-/// `sev`: 1 = warn (yellow, `\x01` prefix), 2 = danger (red, `\x02` prefix).
-/// Other values push the message with no prefix (bear/default rendering).
-/// The prefix is stripped by the render site (`top_nav.rs`) before display.
+///
+/// Severity byte vocabulary (stripped by `top_nav.rs` before display):
+///   `0x00` / no prefix → Info   (accent tint)
+///   `0x01`             → Warning (warn tint)
+///   `0x02`             → Danger  (bear tint, opaque)
+///   `0x03`             → Critical (bear tint, stronger + pulse animation)
+///   `0x04`             → Success  (bull tint)
+///
+/// Other values push the message with no prefix (falls back to Info rendering).
 pub fn push_toast_with_severity(msg: impl Into<String>, sev: u8) {
     let raw = msg.into();
     let encoded = match sev {
         1 => format!("\x01{raw}"),
         2 => format!("\x02{raw}"),
+        3 => format!("\x03{raw}"),
+        4 => format!("\x04{raw}"),
         _ => raw,
     };
     if let Ok(mut g) = state().toasts.lock() { g.push(encoded); }
