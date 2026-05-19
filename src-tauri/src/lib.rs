@@ -159,6 +159,32 @@ static TRACING_GUARD: std::sync::OnceLock<tracing_appender::non_blocking::Worker
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Install a panic hook that writes a best-effort session summary before
+    // propagating to the default handler. This gives us a data point even on
+    // crashes, not just graceful exits.
+    {
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let snap = crate::foundation::monitoring::current_snapshot();
+            let summary = serde_json::json!({
+                "exit_reason": "panic",
+                "panic_info": info.to_string(),
+                "session_end_iso": chrono::Utc::now().to_rfc3339(),
+                "git_sha": crate::foundation::perf_log::git_sha(),
+                "frame_count": snap.frames.total_frames,
+                "jank_count": snap.jank_events.len(),
+                "uptime_secs": snap.uptime_secs,
+                "avg_frame_us": snap.frames.avg_frame_us,
+                "p99_frame_us": snap.frames.p99_frame_us,
+                "max_frame_us": snap.frames.max_frame_us,
+                "fps": snap.frames.fps,
+            });
+            crate::foundation::perf_log::flush_jank();
+            crate::foundation::perf_log::write_session_summary(&summary);
+            prev(info);
+        }));
+    }
+
     // Initialize tracing FIRST so any startup error / log line gets captured.
     // Log dir: ~/Library/Logs/apex-terminal (macOS) or std::env::temp_dir()
     // fallback. The non-blocking writer guard MUST live for the program's
@@ -433,6 +459,35 @@ pub fn run() {
         .run(|app, event| {
             // Kill ococo-api cleanly when the app exits
             if let tauri::RunEvent::Exit = event {
+                // Write a per-session perf summary so any regression in frame
+                // times is grep-able by git SHA after the fact.
+                {
+                    let snap = crate::foundation::monitoring::current_snapshot();
+                    let now = chrono::Utc::now().to_rfc3339();
+                    // Compute simple percentiles from the ring data via the
+                    // existing FrameStats (p99 already computed there).
+                    let summary = serde_json::json!({
+                        "exit_reason": "graceful",
+                        "session_end_iso": now,
+                        "git_sha": crate::foundation::perf_log::git_sha(),
+                        "uptime_secs": snap.uptime_secs,
+                        "frame_count": snap.frames.total_frames,
+                        "jank_count": snap.jank_events.len(),
+                        "dropped_frames": snap.frames.dropped_frames,
+                        "avg_frame_us": snap.frames.avg_frame_us,
+                        "min_frame_us": snap.frames.min_frame_us,
+                        "max_frame_us": snap.frames.max_frame_us,
+                        "p99_frame_us": snap.frames.p99_frame_us,
+                        "fps": snap.frames.fps,
+                        "avg_layout_us": snap.phases.avg_layout_us,
+                        "max_layout_us": snap.phases.max_layout_us,
+                        "avg_render_us": snap.phases.avg_render_us,
+                        "max_render_us": snap.phases.max_render_us,
+                    });
+                    crate::foundation::perf_log::flush_jank();
+                    crate::foundation::perf_log::write_session_summary(&summary);
+                }
+
                 // Wave 1: drain all registered connections within 3 s before
                 // killing sidecars. Best-effort — failures are logged via
                 // tracing inside `drain_all`.
