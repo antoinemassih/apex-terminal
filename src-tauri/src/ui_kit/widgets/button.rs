@@ -72,6 +72,14 @@ pub struct Button<'a> {
     placement: Option<IconPlacement>,
     /// Semantic tone for icon glyph color resolution (used when placement is set).
     icon_tone: IconTone,
+    /// Override the interaction sense. Use `Sense::hover()` for display-only badges
+    /// that should still receive hover state but not respond to clicks.
+    sense_override: Option<egui::Sense>,
+    /// Override the corner radius with a full asymmetric `CornerRadius`. Use this for
+    /// pill halves where only the outer corners should be rounded (e.g. left half:
+    /// `CornerRadius { nw: 99, sw: 99, ne: 0, se: 0 }`). Takes precedence over
+    /// `.corner_radius(f32)` when both are set.
+    corner_radius_override: Option<egui::CornerRadius>,
 }
 
 impl<'a> Button<'a> {
@@ -106,6 +114,8 @@ impl<'a> Button<'a> {
             glyph_px: None,
             placement: None,
             icon_tone: IconTone::Neutral,
+            sense_override: None,
+            corner_radius_override: None,
         }
     }
 
@@ -280,6 +290,22 @@ impl<'a> Button<'a> {
     pub fn trailing_icon(mut self, icon: &'a str) -> Self { self.trailing_icon = Some(icon); self }
     pub fn glyph_size(mut self, px: f32) -> Self { self.glyph_px = Some(px); self }
     pub fn corner_radius(mut self, r: f32) -> Self { self.corner_radius = Some(r); self }
+
+    /// Override the interaction [`egui::Sense`]. Use `Sense::hover()` for display-only
+    /// badges that should still receive hover state but not respond to clicks.
+    pub fn sense(mut self, s: egui::Sense) -> Self {
+        self.sense_override = Some(s);
+        self
+    }
+
+    /// Override the corner radius with a full asymmetric [`egui::CornerRadius`]. Use this
+    /// for pill halves where only the outer corners should be rounded (e.g. left half:
+    /// `CornerRadius { nw: 99, sw: 99, ne: 0, se: 0 }`). Takes precedence over
+    /// `.corner_radius(f32)` when both are set.
+    pub fn corner_radius_asymmetric(mut self, r: egui::CornerRadius) -> Self {
+        self.corner_radius_override = Some(r);
+        self
+    }
 
     /// Set the [`IconPlacement`] for this button. When set, placement drives
     /// glyph size and hit-target size (overriding `min_size` / `glyph_size`),
@@ -622,7 +648,9 @@ fn paint_button<'a>(
 
     // StatusIndicator is a non-interactive decoration — use Sense::hover().
     let is_non_interactive = placement.map_or(false, |p| !p.interactive());
-    let sense = if disabled || loading || is_non_interactive { Sense::hover() } else { Sense::click() };
+    let sense = btn.sense_override.unwrap_or_else(|| {
+        if disabled || loading || is_non_interactive { Sense::hover() } else { Sense::click() }
+    });
     let (rect, response) = match placed {
         Some((r, _)) => {
             let id = ui.id().with(("ui_kit_button_show_at", r.min.x.to_bits(), r.min.y.to_bits()));
@@ -717,8 +745,10 @@ fn paint_button<'a>(
             fg = with_alpha_scale(fg, 0.5);
         }
 
-        let radius = corner_radius.unwrap_or(default_radius(variant));
-        let cr = CornerRadius::same(radius as u8);
+        let cr = btn.corner_radius_override.unwrap_or_else(|| {
+            let radius = corner_radius.unwrap_or(default_radius(variant));
+            CornerRadius::same(radius as u8)
+        });
 
         let owned_painter = match placed {
             Some(_) => None,
