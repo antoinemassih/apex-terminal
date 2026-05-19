@@ -5367,6 +5367,15 @@ struct App {
     iw: u32, ih: u32,
     windows: Vec<ChartWindow>,
     spawn_rx: mpsc::Receiver<SpawnRequest>,
+    /// Wave 2 (state): registry shared with the persist supervisor thread.
+    /// All `Store<T>` instances created for the process lifetime are
+    /// registered here so the supervisor can walk them every ~50ms.
+    store_registry: std::sync::Arc<crate::state::StoreRegistry>,
+    /// Wave 2 (state): handle that keeps the persist supervisor thread alive
+    /// for the duration of the process. The thread loops until the OS
+    /// cleans it up at exit; there is no shutdown channel by design.
+    #[allow(dead_code)]
+    persist_supervisor: std::thread::JoinHandle<()>,
 }
 
 struct GpuCtx {
@@ -5908,6 +5917,14 @@ impl App {
             // Route initial LoadBars to first pane
             if let Some(p) = cw.panes.first_mut() { p.process(cmd); }
         }
+        // Wave 2 (state): register both stores with the persist supervisor
+        // registry so they are walked every ~50ms from this point on.
+        self.store_registry.register(
+            cw.watchlist.ui_settings_store.clone() as std::sync::Arc<dyn crate::state::PersistableStore>
+        );
+        self.store_registry.register(
+            cw.watchlist.trading_defaults_store.clone() as std::sync::Arc<dyn crate::state::PersistableStore>
+        );
         self.windows.push(cw);
     }
 }
@@ -5947,6 +5964,12 @@ impl ApplicationHandler for App {
             WindowEvent::CloseRequested => {
                 save_state(&cw.panes, cw.layout, &mut cw.watchlist);
                 cw.watchlist.persist();
+                // Wave 2 (state): synchronous final flush so stores are written
+                // to disk before the process exits (debounce may not have elapsed yet).
+                let flush_failures = self.store_registry.flush_all();
+                for (key, e) in &flush_failures {
+                    eprintln!("[state] final flush failed for '{key}': {e}");
+                }
                 self.windows.retain(|w| w.id != wid);
             }
             WindowEvent::Resized(s) => {
@@ -7207,9 +7230,15 @@ pub fn open_window(rx: mpsc::Receiver<ChartCommand>, initial_cmd: ChartCommand, 
         };
         #[cfg(not(target_os = "windows"))]
         let el = EventLoop::builder().build().unwrap();
+        // Wave 2 (state): create the registry and spawn the persist supervisor
+        // before the first window opens so every Store<T> registered during
+        // spawn_window() is already being walked on the next tick.
+        let store_registry = crate::state::StoreRegistry::new();
+        let persist_supervisor = crate::state::spawn_persist_supervisor(store_registry.clone());
         let mut app = App {
             app_handle: handle, iw: 1920, ih: 1080,
             windows: Vec::new(), spawn_rx,
+            store_registry, persist_supervisor,
         };
         let _ = el.run_app(&mut app);
         // All windows closed — clear the spawn sender so next call restarts
@@ -7234,7 +7263,10 @@ pub fn open_window_blocking(rx: mpsc::Receiver<ChartCommand>, initial_cmd: Chart
         .with_activate_ignoring_other_apps(true)
         .build()
         .unwrap();
-    let mut app = App { app_handle, iw: 1920, ih: 1080, windows: Vec::new(), spawn_rx };
+    // Wave 2 (state): create the registry and spawn the persist supervisor.
+    let store_registry = crate::state::StoreRegistry::new();
+    let persist_supervisor = crate::state::spawn_persist_supervisor(store_registry.clone());
+    let mut app = App { app_handle, iw: 1920, ih: 1080, windows: Vec::new(), spawn_rx, store_registry, persist_supervisor };
     let _ = el.run_app(&mut app);
     *spawn_tx_lock.lock().unwrap() = None;
 }
