@@ -20,16 +20,6 @@ use crate::chart_renderer::ui::style::{
     alpha_dim, alpha_strong, color_alpha, font_md, font_sm, gap_lg, r_md_cr, radius_xs, stroke_thin,
 };
 
-type Theme = crate::chart_renderer::gpu::Theme;
-
-fn ft(ctx: Option<&egui::Context>) -> &'static Theme {
-    let idx = ctx
-        .map(|c| super::theme::active_theme_idx(c))
-        .unwrap_or(0)
-        .min(crate::chart_renderer::gpu::THEMES.len() - 1);
-    &crate::chart_renderer::gpu::THEMES[idx]
-}
-
 /// Toast variant — affects accent / icon color.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ToastVariant { Info, Success, Warning, Danger }
@@ -47,15 +37,22 @@ pub struct ToastResponse {
 /// Temporary notification card with a title + optional body. Stateless —
 /// the caller owns the lifecycle and consults `auto_dismiss_due` to decide
 /// when to remove it from its render list.
+///
+/// Colors default to `None` and are resolved from the egui-stashed active
+/// theme at `show()` time, so they always reflect the current theme even
+/// when the builder chain doesn't call `.theme()`.
 #[must_use = "Toast must be shown with `.show(ui)` to render"]
 pub struct Toast<'a> {
     title: &'a str,
     body: Option<&'a str>,
     variant: ToastVariant,
     accent: Option<Color32>,
-    bg: Color32,
-    border: Color32,
-    text: Color32,
+    /// `None` = resolved from active theme in `show()`.
+    bg: Option<Color32>,
+    /// `None` = resolved from active theme in `show()`.
+    border: Option<Color32>,
+    /// `None` = resolved from active theme in `show()`.
+    text: Option<Color32>,
     auto_dismiss_secs: Option<f32>,
     width: f32,
     id: Option<&'a str>,
@@ -68,9 +65,9 @@ impl<'a> Toast<'a> {
             body: None,
             variant: ToastVariant::Info,
             accent: None,
-            bg: ft(None).toolbar_bg,
-            border: ft(None).toolbar_border,
-            text: ft(None).text,
+            bg: None,
+            border: None,
+            text: None,
             auto_dismiss_secs: None,
             width: 280.0,
             id: None,
@@ -89,9 +86,9 @@ impl<'a> Toast<'a> {
     pub fn id(mut self, id: &'a str) -> Self { self.id = Some(id); self }
     /// Theme — accepts any `ComponentTheme`.
     pub fn theme<T: ComponentTheme>(mut self, t: &T) -> Self {
-        self.bg = t.surface();
-        self.border = t.border();
-        self.text = t.text();
+        self.bg = Some(t.surface());
+        self.border = Some(t.border());
+        self.text = Some(t.text());
         self.accent = Some(match self.variant {
             ToastVariant::Info    => t.accent(),
             ToastVariant::Success => t.bull(),
@@ -102,7 +99,12 @@ impl<'a> Toast<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> ToastResponse {
-        let accent = self.accent.unwrap_or_else(|| ft(Some(ui.ctx())).accent);
+        // Resolve colors from the egui-stashed active theme if not set by .theme().
+        let t = super::theme::active_theme(ui.ctx());
+        let bg     = self.bg.unwrap_or(t.toolbar_bg);
+        let border = self.border.unwrap_or(t.toolbar_border);
+        let text   = self.text.unwrap_or(t.text);
+        let accent = self.accent.unwrap_or(t.accent);
         let due = self.auto_dismiss_secs
             .map(|s| ui.ctx().input(|i| i.time) + s as f64);
 
@@ -115,10 +117,10 @@ impl<'a> Toast<'a> {
 
         // toast_bg_alpha controls how opaque the toast background is (semi-transparent = glassmorphic).
         let st_toast = crate::chart_renderer::ui::style::current();
-        let toast_fill = color_alpha(self.bg, st_toast.toast_bg_alpha);
+        let toast_fill = color_alpha(bg, st_toast.toast_bg_alpha);
         let frame = egui::Frame::NONE
             .fill(toast_fill)
-            .stroke(Stroke::new(stroke_thin(), color_alpha(self.border, alpha_strong())))
+            .stroke(Stroke::new(stroke_thin(), color_alpha(border, alpha_strong())))
             .corner_radius(r_md_cr())
             .inner_margin(egui::Margin::same(gap_lg() as i8));
 
@@ -146,9 +148,9 @@ impl<'a> Toast<'a> {
                 );
                 ui.add_space(8.0);
                 ui.vertical(|ui| {
-                    ui.label(RichText::new(self.title).monospace().size(font_md()).strong().color(self.text));
+                    ui.label(RichText::new(self.title).monospace().size(font_md()).strong().color(text));
                     if let Some(b) = self.body {
-                        ui.label(RichText::new(b).monospace().size(font_sm()).color(color_alpha(self.text, alpha_dim())));
+                        ui.label(RichText::new(b).monospace().size(font_sm()).color(color_alpha(text, alpha_dim())));
                     }
                 });
             });

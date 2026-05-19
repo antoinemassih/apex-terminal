@@ -804,11 +804,12 @@ impl<'u> PanelSectionGroupBuilder<'u> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chart_renderer::gpu::THEMES;
     use std::cell::Cell;
 
+    /// Returns the active theme from a fresh egui context (falls back to index 0
+    /// when no theme is stashed, which is correct for headless tests).
     fn theme() -> &'static Theme {
-        &THEMES[0]
+        super::super::theme::active_theme(&egui::Context::default())
     }
 
     #[test]
