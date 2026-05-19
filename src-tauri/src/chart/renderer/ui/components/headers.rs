@@ -3,6 +3,8 @@
 use super::super::style::*;
 use super::labels::section_label_widget;
 use egui::{self, Color32, Pos2, RichText, Sense, Stroke, Ui, Vec2};
+use crate::ui_kit::widgets::Button as KitButton;
+use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 // ─── Tab strip ────────────────────────────────────────────────────────────────
 
@@ -29,34 +31,17 @@ pub fn tab_strip(
 
             if is_active && !st.hairline_borders {
                 // Relay: pill background behind active tab.
-                let resp = ui.add(
-                    egui::Button::new(
-                        RichText::new(text).monospace().size(font_md()).strong().color(fg),
-                    )
-                    .fill(color_alpha(accent, alpha_tint()))
-                    .stroke(Stroke::NONE)
-                    .corner_radius(r_pill())
-                    .min_size(Vec2::new(0.0, 20.0)),
-                );
+                let resp = KitButton::toggle(text.as_str(), true).size(KitSize::Sm)
+                    .min_size(Vec2::new(0.0, 20.0)).show(ui, &crate::ui_kit::widgets::theme::active_theme(ui.ctx()));
                 if resp.clicked() {
                     clicked = Some(i);
-                }
-                if resp.hovered() {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                 }
             } else {
-                let resp = ui.add(
-                    egui::Button::new(
-                        RichText::new(text).monospace().size(font_md()).strong().color(fg),
-                    )
-                    .frame(false)
-                    .min_size(Vec2::new(0.0, 20.0)),
-                );
+                let resp = KitButton::new(text.as_str()).variant(KitVariant::Ghost).size(KitSize::Sm)
+                    .fg(fg).frameless(!is_active).min_size(Vec2::new(0.0, 20.0))
+                    .show(ui, &crate::ui_kit::widgets::theme::active_theme(ui.ctx()));
                 if resp.clicked() {
                     clicked = Some(i);
-                }
-                if resp.hovered() {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                 }
                 if is_active && st.hairline_borders {
                     let r = resp.rect;
@@ -143,22 +128,10 @@ pub fn panel_header(
     ui.horizontal(|ui| {
         section_label_widget(ui, title, title_color);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let resp = ui.add(
-                egui::Button::new(
-                    RichText::new("×")
-                        .monospace()
-                        .size(font_md())
-                        .color(title_color),
-                )
-                .frame(false)
-                .min_size(Vec2::new(16.0, 16.0)),
-            );
-            if resp.clicked() {
+            let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+            if KitButton::close().show(ui, theme).clicked() {
                 *open = false;
                 closed = true;
-            }
-            if resp.hovered() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             }
         });
     });

@@ -3,6 +3,7 @@
 use super::super::style::*;
 use egui::{self, Color32, Response, RichText, Stroke, Ui, Vec2};
 use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 // ─── Header action button ─────────────────────────────────────────────────────
 
@@ -10,20 +11,10 @@ use crate::ui_kit::widgets::Button;
 /// Frameless, dim color, hover changes cursor. Used in compact header rows
 /// where a full `icon_btn` is too prominent.
 pub fn header_action_btn(ui: &mut Ui, glyph: &str, dim: Color32) -> Response {
-    let resp = ui.add(
-        egui::Button::new(
-            RichText::new(glyph)
-                .monospace()
-                .size(font_md())
-                .color(dim),
-        )
-        .frame(false)
-        .min_size(Vec2::new(14.0, 14.0)),
-    );
-    if resp.hovered() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-    }
-    resp
+    let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    Button::icon(glyph).variant(KitVariant::Ghost).size(KitSize::Xs)
+        .glyph_color(dim).min_size(Vec2::new(14.0, 14.0))
+        .show(ui, theme)
 }
 
 /// Smaller, dimmer variant of `style::close_button` for secondary close
@@ -70,32 +61,16 @@ pub fn tab_bar_with_close(
                 let prev_inner = ui.spacing().item_spacing.x;
                 ui.spacing_mut().item_spacing.x = 1.0;
 
+                let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
                 if is_active && !st.hairline_borders {
-                    let resp = ui.add(
-                        egui::Button::new(
-                            RichText::new(s).monospace().size(font_sm()).strong().color(fg),
-                        )
-                        .fill(color_alpha(accent, alpha_tint()))
-                        .stroke(Stroke::NONE)
-                        .corner_radius(r_pill())
-                        .min_size(Vec2::new(0.0, 18.0)),
-                    );
+                    let resp = Button::toggle(s.as_str(), true).size(KitSize::Sm)
+                        .min_size(Vec2::new(0.0, 18.0)).show(ui, theme);
                     if resp.clicked() { action = TabAction::Selected(i); }
-                    if resp.hovered() {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    }
                 } else {
-                    let resp = ui.add(
-                        egui::Button::new(
-                            RichText::new(s).monospace().size(font_sm()).strong().color(fg),
-                        )
-                        .frame(false)
-                        .min_size(Vec2::new(0.0, 18.0)),
-                    );
+                    let resp = Button::new(s.as_str()).variant(KitVariant::Ghost).size(KitSize::Sm)
+                        .fg(fg).frameless(!is_active).min_size(Vec2::new(0.0, 18.0))
+                        .show(ui, theme);
                     if resp.clicked() { action = TabAction::Selected(i); }
-                    if resp.hovered() {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    }
                     if is_active && st.hairline_borders {
                         let r = resp.rect;
                         ui.painter().line_segment(

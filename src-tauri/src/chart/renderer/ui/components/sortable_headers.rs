@@ -2,6 +2,8 @@
 
 use super::super::style::*;
 use egui::{self, Color32, Response, RichText, Ui, Vec2};
+use crate::ui_kit::widgets::Button as KitButton;
+use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 // ─── Sortable column header ───────────────────────────────────────────────────
 
@@ -31,15 +33,9 @@ pub fn sortable_col_header(
     let text = format!("{}{}", s, arrow);
     let mut resp_out: Option<Response> = None;
     ui.allocate_ui_with_layout(Vec2::new(width, 14.0), layout, |ui| {
-        let resp = ui.add(
-            egui::Button::new(
-                RichText::new(text).monospace().size(font_xs()).color(color),
-            )
-            .frame(false),
-        );
-        if resp.hovered() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        }
+        let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+        let resp = KitButton::new(text.as_str()).variant(KitVariant::Ghost).size(KitSize::Xs)
+            .fg(color).frameless(true).show(ui, theme);
         resp_out = Some(resp);
     });
     resp_out.expect("sortable_col_header response")

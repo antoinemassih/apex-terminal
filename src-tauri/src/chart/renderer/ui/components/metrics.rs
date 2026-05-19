@@ -3,6 +3,8 @@
 use super::super::style::*;
 use super::labels::section_label_xs;
 use egui::{self, Color32, Rect, Response, RichText, Sense, Ui, Vec2};
+use crate::ui_kit::widgets::Button as KitButton;
+use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 // ─── Metric / stat displays ───────────────────────────────────────────────────
 
@@ -94,35 +96,20 @@ pub fn colored_direction_badge(
 /// Small action button — minimal, text-only, monospace; frameless, returns Response.
 /// Used in tight header rows. Distinct from style::small_action_btn (which returns bool).
 pub fn text_action_btn(ui: &mut Ui, text: &str, color: Color32) -> Response {
-    let resp = ui.add(
-        egui::Button::new(
-            RichText::new(text)
-                .monospace()
-                .size(font_xs())
-                .strong()
-                .color(color),
-        )
-        .frame(false)
-        .min_size(Vec2::new(0.0, 14.0)),
-    );
-    if resp.hovered() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-    }
-    resp
+    let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    KitButton::new(text).variant(KitVariant::Ghost).size(KitSize::Xs)
+        .fg(color).frameless(true).min_size(Vec2::new(0.0, 14.0))
+        .show(ui, theme)
 }
 
 /// Icon-only button — frameless, smaller, hover changes cursor, returns Response.
 /// Distinct from style::icon_btn (which has different sizing behavior).
 pub fn inline_icon_btn(ui: &mut Ui, icon: &str, color: Color32, size: f32) -> Response {
-    let resp = ui.add(
-        egui::Button::new(RichText::new(icon).size(size).color(color))
-            .frame(false)
-            .min_size(Vec2::new(size + 2.0, size + 2.0)),
-    );
-    if resp.hovered() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-    }
-    resp
+    let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    KitButton::icon(icon).variant(KitVariant::Ghost)
+        .glyph_color(color).glyph_size(size)
+        .min_size(Vec2::new(size + 2.0, size + 2.0))
+        .show(ui, theme)
 }
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
