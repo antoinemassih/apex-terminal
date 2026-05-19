@@ -45,6 +45,7 @@ impl<'a> ChipBody<'a> {
     fn render(self, ui: &mut Ui) -> Response {
         let prev_pad = ui.spacing().button_padding;
         ui.spacing_mut().button_padding = egui::vec2(self.pad_x, self.pad_y);
+        // deferred — needs ui_kit::Button API extension: custom egui::Sense override (.sense())
         let resp = ui.add(
             egui::Button::new(self.label)
                 .fill(self.fill)
@@ -114,6 +115,7 @@ impl<'a> RemovableChip<'a> {
             let prev_pad = ui.spacing().button_padding;
             ui.spacing_mut().button_padding = egui::vec2(gap_md(), 0.0);
             // Body label (left half of pill).
+            // deferred — needs ui_kit::Button API extension: asymmetric per-corner CornerRadius (nw/sw only)
             let body = ui.add(
                 egui::Button::new(
                     RichText::new(self.text).monospace().size(font_sm()).color(self.dim),
@@ -126,6 +128,7 @@ impl<'a> RemovableChip<'a> {
             // ✕ remove button (right half of pill — the closable affordance).
             // Icon::X replaces the raw \u{00D7} glyph; pill corner radii are
             // preserved because this must visually be the right half of the chip.
+            // deferred — needs ui_kit::Button API extension: asymmetric per-corner CornerRadius (ne/se only)
             let x = ui.add(
                 egui::Button::new(
                     RichText::new(crate::ui_kit::icons::Icon::X).monospace().size(font_sm()).color(self.dim),
@@ -248,6 +251,7 @@ impl<'a> Widget for StatusBadge<'a> {
         // toggles stroke width based on hairline mode, so we keep the explicit
         // stroke construction inline.
         let prev_pad = ui.spacing().button_padding;
+        // deferred — display-only badge (Sense::hover), non-interactive; ui_kit::Button always allocates a click sense
         let resp = ui.add(
             egui::Button::new(
                 RichText::new(txt)
@@ -321,6 +325,7 @@ impl<'a> Widget for KeybindChip<'a> {
         } else {
             Stroke::new(st.stroke_thin, color_alpha(self.bg_border, alpha_muted()))
         };
+        // deferred — display-only keybind chip (Sense::hover); ui_kit::Button always allocates a click sense
         ui.add(
             egui::Button::new(
                 RichText::new(self.hint)

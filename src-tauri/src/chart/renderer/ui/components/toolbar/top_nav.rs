@@ -87,7 +87,7 @@ use std::sync::Arc;
 use winit::window::Window;
 
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::{Button as KitButton, NumberStepper, SelectableRow, tokens::Variant as KitVariant};
+use crate::ui_kit::widgets::{Button as KitButton, NumberStepper, SelectableRow, tokens::{Variant as KitVariant, Size as KitSize}};
 use crate::chart_renderer::gpu::{
     Chart, Layout, Watchlist, Theme,
     CURRENT_WINDOW, CLOSE_REQUESTED, TB_BTN_CLICKED, PENDING_TOASTS, PENDING_WL_TOOLTIP,
@@ -461,15 +461,9 @@ pub(crate) fn render(
                 } else {
                     "PAPER — practice mode (no real orders). Click to switch to Live."
                 };
-                let resp = ui.add(
-                    egui::Button::new(
-                        egui::RichText::new("$").monospace().size(font_md()).strong().color(fg),
-                    )
-                    .fill(fill)
-                    .corner_radius(r_md_cr())
-                    .min_size(egui::vec2(28.0, row_height_default())),
-                );
-                crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
+                let resp = KitButton::new("$").variant(KitVariant::Ghost).size(KitSize::Sm)
+                    .fg(fg).fill(fill).min_size(egui::vec2(28.0, row_height_default()))
+                    .show(ui, t);
                 if resp.on_hover_text(tip).clicked() {
                     crate::chart_renderer::trading::order_manager::set_paper_mode(!paper);
                 }
@@ -591,14 +585,12 @@ pub(crate) fn render(
 
                         let mut chosen: Option<String> = None;
                         for sym in &matches {
-                            let row_resp = child.add_sized(
+                            let row_resp = child.allocate_ui_with_layout(
                                 egui::vec2(dropdown_w, row_h),
-                                egui::Button::new(
-                                    egui::RichText::new(sym.as_str()).monospace().size(font_sm()).color(t.text)
-                                )
-                                .fill(egui::Color32::TRANSPARENT)
-                                .frame(false),
-                            );
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| KitButton::new(sym.as_str()).variant(KitVariant::Ghost).size(KitSize::Sm)
+                                    .fg(t.text).frameless(true).full_width(true).show(ui, t),
+                            ).inner;
                             if row_resp.hovered() {
                                 child.painter().rect_filled(row_resp.rect, 0.0, color_alpha(t.toolbar_border, alpha_ghost()));
                             }
@@ -937,9 +929,9 @@ pub(crate) fn render(
                 CandleMode::Renko => {
                     let is_auto = panes[ap].renko_brick_size == 0.0;
                     let auto_label = if is_auto { "Auto" } else { "Manual" };
-                    if crate::chart_renderer::ui::style::cursor::click_widget(ui,
-                        egui::Button::new(egui::RichText::new(auto_label).monospace().size(font_sm()).color(if is_auto { t.accent } else { t.dim }))
-                        .frame(false).min_size(egui::vec2(32.0, 16.0))).clicked() {
+                    if KitButton::new(auto_label).variant(KitVariant::Ghost).size(KitSize::Sm)
+                        .fg(if is_auto { t.accent } else { t.dim }).frameless(true)
+                        .min_size(egui::vec2(32.0, 16.0)).show(ui, t).clicked() {
                         if is_auto {
                             panes[ap].renko_brick_size = Chart::auto_brick_size(&panes[ap].bars, 0.5);
                         } else {
@@ -959,9 +951,9 @@ pub(crate) fn render(
                 CandleMode::RangeBar => {
                     let is_auto = panes[ap].range_bar_size == 0.0;
                     let auto_label = if is_auto { "Auto" } else { "Manual" };
-                    if crate::chart_renderer::ui::style::cursor::click_widget(ui,
-                        egui::Button::new(egui::RichText::new(auto_label).monospace().size(font_sm()).color(if is_auto { t.accent } else { t.dim }))
-                        .frame(false).min_size(egui::vec2(32.0, 16.0))).clicked() {
+                    if KitButton::new(auto_label).variant(KitVariant::Ghost).size(KitSize::Sm)
+                        .fg(if is_auto { t.accent } else { t.dim }).frameless(true)
+                        .min_size(egui::vec2(32.0, 16.0)).show(ui, t).clicked() {
                         if is_auto {
                             panes[ap].range_bar_size = Chart::auto_brick_size(&panes[ap].bars, 1.0);
                         } else {
@@ -1666,9 +1658,8 @@ pub(crate) fn render(
                             .show(ui, t);
                         let can_save = !watchlist.workspace_save_name.trim().is_empty();
                         if can_save {
-                            if crate::chart_renderer::ui::style::cursor::click_widget(ui,
-                                egui::Button::new(egui::RichText::new("Save As").monospace().size(font_sm()).color(t.accent)))
-                                .clicked() {
+                            if KitButton::new("Save As").variant(KitVariant::Primary).size(KitSize::Sm)
+                                .tint(t.accent).show(ui, t).clicked() {
                                 let name = watchlist.workspace_save_name.trim().to_string();
                                 save_workspace(&name, panes, *layout);
                                 watchlist.active_workspace = name;
@@ -2628,11 +2619,8 @@ pub(crate) fn render(
 
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                     // Close button — always dismisses (even if pinned).
-                                    let close_resp = ui.add(
-                                        egui::Button::new(
-                                            egui::RichText::new(Icon::X).size(font_sm()).color(dim_col)
-                                        ).frame(false)
-                                    );
+                                    let close_resp = KitButton::new(Icon::X).variant(KitVariant::Ghost)
+                                        .size(KitSize::Xs).fg(dim_col).frameless(true).show(ui, t);
                                     if close_resp.clicked() {
                                         close_toast_idx = Some(toast_i);
                                     }
@@ -2648,11 +2636,9 @@ pub(crate) fn render(
                                     } else {
                                         dim_col
                                     };
-                                    let pin_resp = ui.add(
-                                        egui::Button::new(
-                                            egui::RichText::new(pin_icon).size(font_sm()).color(pin_col)
-                                        ).frame(false)
-                                    ).on_hover_text(if is_pinned { "Unpin (right-click)" } else { "Pin toast" })
+                                    let pin_resp = KitButton::new(pin_icon).variant(KitVariant::Ghost)
+                                        .size(KitSize::Xs).fg(pin_col).frameless(true).show(ui, t)
+                                        .on_hover_text(if is_pinned { "Unpin (right-click)" } else { "Pin toast" })
                                     ;
                                     if pin_resp.clicked() && !is_pinned {
                                         pin_toggle_idx = Some((toast_i, true));
@@ -2680,10 +2666,9 @@ pub(crate) fn render(
                 .resizable(false)
                 .frame(egui::Frame::NONE.fill(chip_bg).corner_radius(CornerRadius::same(12u8)))
                 .show(ctx, |ui| {
-                    let lbl = format!(" +{hidden_count} more ");
-                    let resp = ui.add(
-                        egui::Button::new(egui::RichText::new(lbl).size(font_xs()).color(chip_col)).frame(false)
-                    );
+                    let lbl = format!("+{hidden_count} more");
+                    let resp = KitButton::new(lbl.as_str()).variant(KitVariant::Ghost).size(KitSize::Xs)
+                        .fg(chip_col).frameless(true).show(ui, t);
                     if resp.clicked() {
                         let expand_until_new: f64 = ctx.input(|i| i.time) + 10.0;
                         ctx.data_mut(|d| d.insert_temp(expand_id, expand_until_new));

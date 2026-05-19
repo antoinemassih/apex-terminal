@@ -4,6 +4,8 @@
 use super::super::style::*;
 use egui::{self, Color32, Response, RichText, Sense, Stroke, Ui, Vec2};
 use crate::ui_kit::widgets::Input;
+use crate::ui_kit::widgets::Button as KitButton;
+use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 #[inline(always)]
 fn ambient_theme(ctx: &egui::Context) -> &'static crate::chart_renderer::gpu::Theme {
@@ -76,16 +78,11 @@ pub fn compact_stepper(
             Stroke::new(st.stroke_thin, color_alpha(border, alpha_muted()))
         };
 
+        let theme = ambient_theme(ui.ctx());
         let mut mk_btn = |ui: &mut Ui, sym: &str| -> Response {
-            ui.add(
-                egui::Button::new(
-                    RichText::new(sym).monospace().size(font_xs()).color(dim),
-                )
-                .fill(Color32::TRANSPARENT)
-                .stroke(stroke)
-                .corner_radius(cr)
-                .min_size(Vec2::new(14.0, 14.0)),
-            )
+            KitButton::new(sym).variant(KitVariant::Ghost).size(KitSize::Xs)
+                .fg(dim).stroke(stroke).min_size(Vec2::new(14.0, 14.0))
+                .show(ui, theme)
         };
 
         if mk_btn(ui, "-").clicked() { delta = -1; }
@@ -123,16 +120,11 @@ pub fn numeric_stepper(
             Stroke::new(st.stroke_thin, color_alpha(border, alpha_muted()))
         };
 
+        let theme = ambient_theme(ui.ctx());
         let mut mk_btn = |ui: &mut Ui, sym: &str| -> Response {
-            ui.add(
-                egui::Button::new(
-                    RichText::new(sym).monospace().size(font_sm()).strong().color(dim),
-                )
-                .fill(Color32::TRANSPARENT)
-                .stroke(stroke)
-                .corner_radius(cr)
-                .min_size(Vec2::new(18.0, 18.0)),
-            )
+            KitButton::new(sym).variant(KitVariant::Ghost).size(KitSize::Sm)
+                .fg(dim).stroke(stroke).min_size(Vec2::new(18.0, 18.0))
+                .show(ui, theme)
         };
 
         if mk_btn(ui, "-").clicked() { delta = -1; }
@@ -279,21 +271,12 @@ pub fn radio_button_row<T: PartialEq + Clone>(
     let mut changed = false;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = gap_md();
+        let theme = ambient_theme(ui.ctx());
         for (value, label) in options {
             let active = *current_val == *value;
-            let fg = if active { accent } else { color_alpha(dim, alpha_muted()) };
-            let bg = if active { color_alpha(accent, alpha_subtle()) } else { Color32::TRANSPARENT };
-            let border = if active { color_alpha(accent, alpha_dim()) } else { color_alpha(dim, alpha_line()) };
-            let resp = ui.add(
-                egui::Button::new(RichText::new(*label).monospace().size(font_sm()).strong().color(fg))
-                    .fill(bg)
-                    .stroke(Stroke::new(stroke_std(), border))
-                    .corner_radius(radius_sm())
-                    .min_size(egui::vec2(0.0, row_height_compact())),
-            );
-            if resp.hovered() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            }
+            let resp = KitButton::toggle(*label, active).size(KitSize::Sm)
+                .min_size(egui::vec2(0.0, row_height_compact()))
+                .show(ui, theme);
             if resp.clicked() && !active {
                 *current_val = value.clone();
                 changed = true;
