@@ -1369,44 +1369,79 @@ impl ApertureOrderTicket {
             });
         }
 
-        ui.add_space(gap_sm());
-
-        // ── BUY / SELL ────────────────────────────────────────────────────
+        // ── BUY / SELL — FormActionBar separator + trade button row ──────
+        // Prices computed before rendering so labels can be built up front.
         let buy_price = if *s.order_market { last + spread }
             else { s.order_limit_price.parse::<f32>().unwrap_or(last) };
         let sell_price = if *s.order_market { last - spread }
             else { s.order_limit_price.parse::<f32>().unwrap_or(last) };
-        ui.horizontal(|ui| {
-            ui.add_space(pad);
-            ui.spacing_mut().item_spacing.x = gap_sm();
-            let btn_w = (panel_w - pad * 2.0 - 8.0) / 2.0;
-            let is_und = adv && *s.order_type_idx == 5 && s.is_option;
-            let buy_label = if is_und {
-                format!("BUY {} on UND", s.option_type)
-            } else {
-                format!("BUY {:.2}", buy_price)
-            };
-            let sell_label = if is_und {
-                format!("SELL {} on UND", s.option_type)
-            } else {
-                format!("SELL {:.2}", sell_price)
-            };
-            if Button::buy(buy_label.as_str())
-                .min_size(egui::vec2(btn_w, btn_trade_height()))
-                .size(KitSize::Md)
-                .show(ui, &t_stub).clicked() {
-                action = if is_und { ApertureAction::TriggerBuy }
-                         else      { ApertureAction::Buy { price: buy_price } };
+        let is_und = adv && *s.order_type_idx == 5 && s.is_option;
+        let buy_label = if is_und {
+            format!("BUY {} on UND", s.option_type)
+        } else {
+            format!("BUY {:.2}", buy_price)
+        };
+        let sell_label = if is_und {
+            format!("SELL {} on UND", s.option_type)
+        } else {
+            format!("SELL {:.2}", sell_price)
+        };
+
+        // FormActionBar: separator + right-aligned button row.
+        // SELL (tertiary, left-aligned ghost) — BUY (primary, rightmost).
+        // Trade-color styling is applied via Button::buy/Button::sell inside
+        // a custom horizontal strip placed inside the FormActionBar's layout
+        // slot. The separator and padding come from FormActionBar.
+        //
+        // Layout: we manually draw the separator+padding (same tokens as
+        // FormActionBar) and then render the buttons with Button::buy/sell
+        // so the bull/bear tints are preserved. This avoids an extra button
+        // layer while using the same visual rhythm.
+        {
+            ui.add_space(gap_md());
+            let avail = ui.available_width();
+            let (sep_rect, _) = ui.allocate_exact_size(
+                egui::Vec2::new(avail, stroke_thin()),
+                egui::Sense::hover(),
+            );
+            if ui.is_rect_visible(sep_rect) {
+                let sep_col = color_alpha(self.toolbar_border, alpha_dim());
+                ui.painter().hline(
+                    sep_rect.x_range(),
+                    sep_rect.center().y,
+                    Stroke::new(stroke_thin(), sep_col),
+                );
             }
-            if Button::sell(sell_label.as_str())
-                .min_size(egui::vec2(btn_w, btn_trade_height()))
-                .size(KitSize::Md)
-                .show(ui, &t_stub).clicked() {
-                action = if is_und { ApertureAction::TriggerSell }
-                         else      { ApertureAction::Sell { price: sell_price } };
-            }
-        });
-        ui.add_space(gap_md());
+            ui.add_space(gap_md());
+
+            // Right-to-left layout: BUY is rightmost (primary), SELL is left.
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add_space(pad);
+                ui.spacing_mut().item_spacing.x = gap_sm();
+                let btn_w = (panel_w - pad * 2.0 - gap_sm()) / 2.0;
+
+                // Primary (rightmost) — BUY
+                if Button::buy(buy_label.as_str())
+                    .min_size(egui::vec2(btn_w, btn_trade_height()))
+                    .size(KitSize::Md)
+                    .show(ui, &t_stub).clicked()
+                {
+                    action = if is_und { ApertureAction::TriggerBuy }
+                             else      { ApertureAction::Buy { price: buy_price } };
+                }
+
+                // Secondary (left of primary) — SELL
+                if Button::sell(sell_label.as_str())
+                    .min_size(egui::vec2(btn_w, btn_trade_height()))
+                    .size(KitSize::Md)
+                    .show(ui, &t_stub).clicked()
+                {
+                    action = if is_und { ApertureAction::TriggerSell }
+                             else      { ApertureAction::Sell { price: sell_price } };
+                }
+            });
+            ui.add_space(gap_md());
+        }
 
         ApertureOrderOutcome { action }
     }
