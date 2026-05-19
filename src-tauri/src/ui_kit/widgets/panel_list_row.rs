@@ -102,7 +102,8 @@
 use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Response, Sense, Ui, Vec2};
 
 use crate::chart::renderer::ui::style::{
-    alpha_ghost, color_alpha, color_muted, font_sm, font_xs, gap_lg, gap_md, gap_xs, radius_sm,
+    self as st, alpha_ghost, color_alpha, color_muted, font_sm, font_xs, gap_lg, gap_md, gap_xs,
+    radius_sm,
 };
 use crate::chart_renderer::gpu::Theme;
 use crate::ui_kit::widgets::{motion, Tooltip};
@@ -717,6 +718,15 @@ impl<'a> PanelListRow<'a> {
                     trailing_clicked_idx = Some(i);
                 }
             }
+        }
+
+        // Focus ring — painted on top of all other visuals so it's always
+        // visible. Only for hoverable rows (streaming/tape rows with
+        // `hoverable(false)` are never navigated via Tab). egui's built-in
+        // `Sense::click()` already handles Enter/Space → clicked() natively,
+        // so the ring is the only missing piece for full keyboard support.
+        if hoverable {
+            st::cursor::focus_ring(ui, &resp, t.accent);
         }
 
         PanelListRowResponse {
