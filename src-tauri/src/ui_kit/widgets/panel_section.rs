@@ -65,6 +65,8 @@
 use egui::{Color32, CursorIcon, FontId, Pos2, Rect, Response, RichText, Sense, Stroke, Ui, Vec2};
 
 use super::super::icons::Icon;
+use super::tooltip::Tooltip;
+use super::theme::active_theme;
 use crate::chart::renderer::ui::style::{
     color_alpha, font_xs, gap_lg, gap_md, gap_sm, gap_xs, header_border, section_header_surface, shadow_color_alpha, stroke_thin,
 };
@@ -470,7 +472,7 @@ fn section_delete_button(ui: &mut Ui, color: Color32) -> bool {
     let glyph = Icon::X;
     let size = Vec2::new(16.0, 16.0);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
-    let resp = resp.on_hover_text("Delete section");
+    Tooltip::new("Delete section").show(ui, &resp, active_theme(ui.ctx()));
     let draw_color = if resp.hovered() {
         ui.painter()
             .rect_filled(rect, 2.0, color_alpha(color, 24));

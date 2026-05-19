@@ -907,8 +907,8 @@ if watchlist.open {
                                                 t.dim,
                                             );
                                             let badge_resp = ui.interact(badge_rect, badge_id, egui::Sense::hover());
-                                            if badge_resp.hovered() && !badge_tip.is_empty() {
-                                                badge_resp.on_hover_text(badge_tip);
+                                            if !badge_tip.is_empty() {
+                                                Tooltip::new(badge_tip).show(ui, &badge_resp, t);
                                             }
                                         }
 

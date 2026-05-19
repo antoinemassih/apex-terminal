@@ -489,8 +489,8 @@ fn tool_btn(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart, tg: Tg, tooltip: &s
         .active(active)
         .size(KitSize::Sm)
         .min_size(egui::vec2(26.0, row_height_spacious()))
-        .show(ui, t)
-        .on_hover_text(format!("{}\n{}", bool_label(tg), tooltip));
+        .show(ui, t);
+    Tooltip::new(format!("{}\n{}", bool_label(tg), tooltip)).show(ui, &resp, t);
     if resp.clicked() { bool_set(chart, tg, !active); }
 }
 
