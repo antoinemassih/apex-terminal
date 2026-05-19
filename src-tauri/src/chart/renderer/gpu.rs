@@ -4243,6 +4243,9 @@ pub(crate) struct WatchlistItem {
     pub(crate) earnings_days: i32, // days until earnings (-1 = unknown)
     pub(crate) alert_triggered: bool,
     pub(crate) price_history: Vec<f32>, // last ~30 price snapshots for sparkline
+    // Flash animation fields — transient, not persisted.
+    pub(crate) prev_price: f32,                              // price value from the previous quote update
+    pub(crate) price_change_at: Option<std::time::Instant>, // when price last changed (None = never changed)
 }
 
 #[derive(Clone)]
@@ -5079,6 +5082,7 @@ impl Watchlist {
             pinned: false, tags: vec![], rvol: rvol_seed, atr: 0.0,
             high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,
             avg_daily_range: 2.0, earnings_days: -1, alert_triggered: false, price_history: vec![],
+            prev_price: 0.0, price_change_at: None,
         });
     }
 
@@ -5092,6 +5096,12 @@ impl Watchlist {
     pub(crate) fn set_price(&mut self, sym: &str, price: f32) {
         for sec in &mut self.sections {
             if let Some(item) = sec.items.iter_mut().find(|i| i.symbol == sym) {
+                // Flash animation: capture prev price and timestamp on actual change,
+                // but only if the item had a prior non-zero price (not initial load).
+                if (item.price - price).abs() > f32::EPSILON && item.price > 0.0 {
+                    item.prev_price = item.price;
+                    item.price_change_at = Some(std::time::Instant::now());
+                }
                 item.price = price;
                 item.price_history.push(price);
                 if item.price_history.len() > 30 { item.price_history.remove(0); }
@@ -5179,6 +5189,7 @@ impl Watchlist {
             pinned: false, tags: vec![], rvol: 1.0, atr: 0.0,
             high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,
             avg_daily_range: 2.0, earnings_days: -1, alert_triggered: false, price_history: vec![],
+            prev_price: 0.0, price_change_at: None,
         });
         true
     }
@@ -7193,6 +7204,7 @@ fn load_watchlists() -> (Vec<SavedWatchlist>, usize) {
                                 pinned: false, tags: vec![], rvol: rvol_seed, atr: 0.0,
                                 high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,
                                 avg_daily_range: 2.0, earnings_days: -1, alert_triggered: false, price_history: vec![],
+                                prev_price: 0.0, price_change_at: None,
                             });
                         }
                     }
@@ -7218,6 +7230,7 @@ fn default_watchlists() -> (Vec<SavedWatchlist>, usize) {
                 pinned: false, tags: vec![], rvol: rvol_seed, atr: 0.0,
                 high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,
                 avg_daily_range: 2.0, earnings_days: -1, alert_triggered: false, price_history: vec![],
+                prev_price: 0.0, price_change_at: None,
             }
         }).collect()
     };
