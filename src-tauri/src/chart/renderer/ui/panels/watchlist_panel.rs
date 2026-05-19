@@ -225,6 +225,7 @@ if watchlist.open {
                     let filter_btn_rect = btn_rect; // capture for popup anchor
                     ui.painter().text(btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::FUNNEL, egui::FontId::proportional(font_sm()), icon_col);
                     let btn_resp = ui.interact(btn_rect, egui::Id::new("wl_filter_btn"), egui::Sense::click());
+                    cursor::focus_ring(ui, &btn_resp, t.accent);
                     if btn_resp.clicked() { watchlist.filter_open = !watchlist.filter_open; }
                     crate::chart_renderer::ui::style::cursor::clickable(ui, &btn_resp);
                     // Columns config button (sliders icon)
@@ -232,6 +233,7 @@ if watchlist.open {
                     let col_icon_col = if watchlist.wl_columns_open { t.accent } else { color_dim(t.dim) };
                     ui.painter().text(col_btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::SLIDERS, egui::FontId::proportional(font_sm()), col_icon_col);
                     let col_resp = ui.interact(col_btn_rect, egui::Id::new("wl_columns_btn"), egui::Sense::click());
+                    cursor::focus_ring(ui, &col_resp, t.accent);
                     if col_resp.clicked() { watchlist.wl_columns_open = !watchlist.wl_columns_open; }
                     crate::chart_renderer::ui::style::cursor::clickable(ui, &col_resp);
                     // Refocus after adding a symbol
@@ -1243,6 +1245,7 @@ if watchlist.open {
                                         if resp.hovered() {
                                             painter.rect_filled(rect, 0.0, color_alpha(t.toolbar_border, alpha_subtle()));
                                         }
+                                        cursor::focus_ring(ui, &resp, t.accent);
                                         crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
 
                                         let badge = if is_call { "C" } else { "P" };
@@ -1555,6 +1558,7 @@ if watchlist.open {
                         let bg = if row_resp.hovered() { color_alpha(t.toolbar_border, alpha_line()) } else { saved_bg };
                         ui.painter().rect_filled(rect, 0.0, bg);
                         if row_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                        cursor::focus_ring(ui, &row_resp, t.accent);
 
                         let mut x = rect.left();
                         let y_center = rect.center().y;

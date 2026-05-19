@@ -135,6 +135,7 @@ pub(crate) fn draw(
                                         let click_resp = ui.interact(row_rect,
                                             egui::Id::new(("tmpl_apply", pi, i)), egui::Sense::click());
                                         crate::chart_renderer::ui::style::cursor::clickable(ui, &click_resp);
+                                        cursor::focus_ring(ui, &click_resp, t.accent);
                                         if click_resp.hovered() {
                                             ui.painter().rect_filled(row_rect, radius_sm(),
                                                 color_alpha(t.accent, alpha_faint()));

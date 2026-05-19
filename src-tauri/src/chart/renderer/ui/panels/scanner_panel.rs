@@ -193,7 +193,9 @@ pub(crate) fn draw_content(
                             egui::RichText::new(rvol_str).monospace().size(font_xs()).color(t.dim)
                         ));
                     });
-                    if row_resp.response.interact(egui::Sense::click()).clicked() {
+                    let click_resp = row_resp.response.interact(egui::Sense::click());
+                    cursor::focus_ring(ui, &click_resp, t.accent);
+                    if click_resp.clicked() {
                         *pending_symbol = Some(r.symbol.clone());
                     }
                 }

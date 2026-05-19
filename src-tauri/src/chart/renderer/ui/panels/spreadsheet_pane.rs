@@ -570,6 +570,7 @@ pub(crate) fn render(
         p2.text(br.center(), egui::Align2::CENTER_CENTER, "Add row",
             mono_xs(), t.accent);
         crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
+        cursor::focus_ring(ui, &resp, t.accent);
         if resp.clicked() {
             let cols = chart.spreadsheet_cols.max(1);
             chart.spreadsheet_cols = cols;

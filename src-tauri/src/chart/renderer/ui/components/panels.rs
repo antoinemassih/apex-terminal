@@ -136,6 +136,9 @@ pub fn symbol_row(
             color_alpha(accent, alpha_strong()),
         );
     }
+    // Focus ring for keyboard navigation (egui Sense::click() natively fires
+    // clicked() on Enter/Space when the widget has focus).
+    cursor::focus_ring(ui, &resp, accent);
     resp
 }
 

@@ -855,6 +855,7 @@ fn draw_library_section(
         painter.text(chip_rect.center(), egui::Align2::CENTER_CENTER,
             chip_text, mono_xs(), t.dim);
 
+        cursor::focus_ring(ui, &h_resp, t.accent);
         if h_resp.clicked() && !force_open {
             if collapsed { watchlist.indicators_lib_collapsed.remove(&key); }
             else { watchlist.indicators_lib_collapsed.insert(key); }

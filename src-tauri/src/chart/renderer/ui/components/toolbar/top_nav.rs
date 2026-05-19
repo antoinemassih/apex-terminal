@@ -1535,6 +1535,7 @@ pub(crate) fn render(
                             let p = ui.painter();
 
                             crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
+                            crate::chart_renderer::ui::style::cursor::focus_ring(ui, &resp, t.accent);
                             if resp.hovered() {
                                 p.rect_filled(r, 4.0, color_alpha(t.accent, ALPHA_GHOST));
                             }
@@ -1863,6 +1864,7 @@ pub(crate) fn render(
                     let (dot_rect, resp) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
                     ui.painter().circle_filled(dot_rect.center(), 3.0, dot_color);
                     crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
+                    crate::chart_renderer::ui::style::cursor::focus_ring(ui, &resp, t.accent);
                     let tip_detail_clone = tip_detail.clone();
                     Tooltip::rich(move |ui, theme| {
                         ui.label(egui::RichText::new(&tip_detail_clone).size(font_xs()).color(theme.text()));

@@ -200,6 +200,7 @@ pub fn show_drawing_tool_picker(
                                 if hov {
                                     Tooltip::new(drawing_label(tool)).show(ui, &resp, t);
                                 }
+                                cursor::focus_ring(ui, &resp, t.accent);
                                 if resp.clicked() { chosen = Some(tool.clone()); }
                                 if resp.secondary_clicked() { star_toggle = Some(tool.clone()); }
                             }
@@ -303,6 +304,7 @@ pub fn show_drawing_tool_picker(
                                 ui.painter().text(
                                     star_rect.center(), egui::Align2::CENTER_CENTER,
                                     star, egui::FontId::proportional(font_lg()), s_col);
+                                cursor::focus_ring(ui, &star_resp, t.accent);
                                 if star_resp.clicked() { star_toggle = Some(tool.to_string()); }
                                 let txt_x = row_rect.left() + star_size + 8.0;
                                 let row_col = if is_cur { t.accent }
@@ -314,6 +316,7 @@ pub fn show_drawing_tool_picker(
                                     mono_sm(),
                                     row_col,
                                 );
+                                cursor::focus_ring(ui, &resp, t.accent);
                                 if resp.clicked() { chosen = Some(tool.to_string()); }
                             }
                         });

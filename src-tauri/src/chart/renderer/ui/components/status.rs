@@ -686,6 +686,9 @@ impl SearchPill {
             egui::FontId::monospace(font_xs()),
             label_color,
         );
+        // Focus ring for keyboard navigation (egui Sense::click() natively
+        // fires clicked() on Enter/Space when focused).
+        cursor::focus_ring(ui, &resp, amb.accent);
         resp
     }
 }

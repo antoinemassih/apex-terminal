@@ -242,6 +242,7 @@ pub(crate) fn draw(
                                             ui.painter().text(crect.center(), egui::Align2::CENTER_CENTER,
                                                 &call_text, egui::FontId::monospace(font_sm()),
                                                 if call_row.is_some() { t.bull } else { color_dim(t.dim) });
+                                            cursor::focus_ring(ui, &cresp, t.bull);
                                             if cresp.clicked() && call_row.is_some() {
                                                 pending_load = Some((*strike, true));
                                             }
@@ -268,6 +269,7 @@ pub(crate) fn draw(
                                             ui.painter().text(prect.center(), egui::Align2::CENTER_CENTER,
                                                 &put_text, egui::FontId::monospace(font_sm()),
                                                 if put_row.is_some() { t.bear } else { color_dim(t.dim) });
+                                            cursor::focus_ring(ui, &presp, t.bear);
                                             if presp.clicked() && put_row.is_some() {
                                                 pending_load = Some((*strike, false));
                                             }

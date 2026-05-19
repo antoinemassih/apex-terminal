@@ -253,6 +253,8 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                                 egui::Align2::RIGHT_CENTER,
                                 "0123 AAPL $9.50", mono_xs(), sample_col);
 
+                            // Focus ring for keyboard navigation.
+                            cursor::focus_ring(ui, &resp, t.accent);
                             if resp.clicked() && !sel {
                                 watchlist.font_idx = i;
                                 crate::ui_kit::icons::init_fonts(ui.ctx(), i);

@@ -236,6 +236,10 @@ impl<'a> ThemePreviewCard<'a> {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
 
+        // Focus ring for keyboard navigation — egui's Sense::click() already
+        // fires clicked() on Enter/Space when the widget has keyboard focus.
+        st::cursor::focus_ring(ui, &response, theme.accent());
+
         response
     }
 }

@@ -1568,6 +1568,7 @@ pub fn order_card(ui: &mut egui::Ui, accent: Color32, bg: Color32, add_content: 
     let card_rect = resp.response.rect;
     let click_resp = ui.interact(card_rect, ui.id().with(("card_click", card_rect.min.x as i32, card_rect.min.y as i32)), egui::Sense::click());
     if click_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    cursor::focus_ring(ui, &click_resp, accent);
     ui.add_space(gap_sm());
     click_resp.clicked()
 }

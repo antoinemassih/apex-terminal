@@ -207,6 +207,8 @@ impl<'a> PlayCard<'a> {
             }
         }
 
+        // Focus ring for keyboard navigation.
+        cursor::focus_ring(ui, &resp, t.accent);
         let clicked = resp.clicked() && !btn_clicked;
 
         ui.add_space(GAP_MD);
