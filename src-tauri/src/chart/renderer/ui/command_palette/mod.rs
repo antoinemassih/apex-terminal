@@ -16,7 +16,7 @@ use super::widgets::frames::PopupFrame;
 use super::widgets::text::BodyLabel;
 use crate::ui_kit::widgets::Input;
 use super::super::gpu::*;
-use crate::ui_kit::widgets::{Button as KitButton, tokens::{Variant, Size}};
+use crate::ui_kit::widgets::{Button as KitButton, tokens::{Variant, Size}, Kbd};
 use crate::ui_kit::icons::Icon;
 
 mod registry;
@@ -223,7 +223,7 @@ fn draw_normal_mode(
     // Prefix legend
     ui.horizontal(|ui| {
         let chip = |ui: &mut egui::Ui, p: &str, lbl: &str| {
-            ui.add(KeybindChip::new(p).palette(t.accent, t.accent));
+            ui.add(Kbd::new(p));
             ui.add(BodyLabel::new(lbl).color(t.dim));
             ui.add_space(gap_md());
         };
@@ -488,7 +488,7 @@ fn draw_normal_mode(
     ui.add_space(gap_md()); ui.separator();
     ui.horizontal(|ui| {
         let hint = |ui: &mut egui::Ui, k: &str, l: &str| {
-            ui.add(KeybindChip::new(k).palette(t.text, t.dim));
+            ui.add(Kbd::new(k));
             ui.add(BodyLabel::new(l).color(t.dim));
             ui.add_space(gap_lg());
         };
