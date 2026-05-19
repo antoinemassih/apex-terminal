@@ -5,7 +5,7 @@ use crate::chart_renderer::gpu::{Theme, Chart, DrawingAction, drawing_persist_ke
 use crate::chart_renderer::{DrawingKind, LineStyle};
 use crate::chart_renderer::ui::style::{hex_to_color, COLOR_AMBER, gap_xs, font_xs, font_sm, font_md, row_height_compact, row_height_dense, stroke_bold, radius_sm};
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
+use crate::ui_kit::widgets::{Button as KitButton, tokens::{Variant as KitVariant, Size as KitSize}};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
@@ -108,11 +108,13 @@ pub fn show_drawing_properties_bar_ui(
                     for hex in SWATCHES {
                         let c = hex_to_color(hex, 1.0);
                         let is_cur = sel_draw.color == *hex;
-                        let resp = crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new("")
+                        // Chrome variant: swatch color fills the button surface.
+                        let resp = KitButton::new("").variant(KitVariant::Chrome)
                             .fill(c)
                             .min_size(egui::vec2(20.0, row_height_compact()))
                             .corner_radius(radius_sm())
-                            .stroke(if is_cur { egui::Stroke::new(stroke_bold(), t.text) } else { egui::Stroke::NONE }));
+                            .stroke(if is_cur { egui::Stroke::new(stroke_bold(), t.text) } else { egui::Stroke::NONE })
+                            .show(ui, t);
                         if resp.clicked() {
                             if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
                                 chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
@@ -233,7 +235,9 @@ pub fn show_drawing_properties_bar_ui(
 
         // Extension toggles (lines only)
         if matches!(&sel_draw.kind, DrawingKind::TrendLine{..} | DrawingKind::Ray{..}) {
-            if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new("\u{2190}").monospace().size(font_md()).color(if sel_draw.extend_left { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, row_height_dense()))).on_hover_text("Extend left").clicked() {
+            if KitButton::new("\u{2190}").variant(KitVariant::Ghost).size(KitSize::Sm)
+                .fg(if sel_draw.extend_left { t.accent } else { dim })
+                .min_size(egui::vec2(18.0, row_height_dense())).show(ui, t).on_hover_text("Extend left").clicked() {
                 if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
                     chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
                     chart.redo_stack.clear();
@@ -241,7 +245,9 @@ pub fn show_drawing_properties_bar_ui(
                     crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
                 }
             }
-            if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new("\u{2192}").monospace().size(font_md()).color(if sel_draw.extend_right { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, row_height_dense()))).on_hover_text("Extend right").clicked() {
+            if KitButton::new("\u{2192}").variant(KitVariant::Ghost).size(KitSize::Sm)
+                .fg(if sel_draw.extend_right { t.accent } else { dim })
+                .min_size(egui::vec2(18.0, row_height_dense())).show(ui, t).on_hover_text("Extend right").clicked() {
                 if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
                     chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
                     chart.redo_stack.clear();
@@ -253,7 +259,9 @@ pub fn show_drawing_properties_bar_ui(
         }
 
         // Lock
-        if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new(if sel_draw.locked { "Locked" } else { "Lock" }).monospace().size(font_sm()).color(if sel_draw.locked { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT)).clicked() {
+        if KitButton::new(if sel_draw.locked { "Locked" } else { "Lock" })
+            .variant(KitVariant::Ghost).size(KitSize::Sm)
+            .fg(if sel_draw.locked { t.accent } else { dim }).show(ui, t).clicked() {
             if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) { d.locked = !d.locked; }
         }
 
@@ -275,7 +283,8 @@ pub fn show_drawing_properties_bar_ui(
         let has_alert = sel_draw.alert_enabled;
         let bell_col = if has_alert { COLOR_AMBER } else { dim };
         let bell_label = if has_alert { "\u{1F514} ON" } else { "\u{1F514}" };
-        if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new(bell_label).monospace().size(font_sm()).color(bell_col)).fill(egui::Color32::TRANSPARENT)).clicked() {
+        if KitButton::new(bell_label).variant(KitVariant::Ghost).size(KitSize::Sm)
+            .fg(bell_col).show(ui, t).clicked() {
             if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
                 d.alert_enabled = !d.alert_enabled;
                 let drawing_id = d.id.clone();
