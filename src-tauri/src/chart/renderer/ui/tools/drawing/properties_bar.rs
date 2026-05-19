@@ -233,7 +233,7 @@ pub fn show_drawing_properties_bar_ui(
 
         // Extension toggles (lines only)
         if matches!(&sel_draw.kind, DrawingKind::TrendLine{..} | DrawingKind::Ray{..}) {
-            if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new("\u{2190}").monospace().size(font_md()).color(if sel_draw.extend_left { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, row_height_dense()))).clicked() {
+            if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new("\u{2190}").monospace().size(font_md()).color(if sel_draw.extend_left { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, row_height_dense()))).on_hover_text("Extend left").clicked() {
                 if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
                     chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
                     chart.redo_stack.clear();
@@ -241,7 +241,7 @@ pub fn show_drawing_properties_bar_ui(
                     crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
                 }
             }
-            if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new("\u{2192}").monospace().size(font_md()).color(if sel_draw.extend_right { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, row_height_dense()))).clicked() {
+            if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new("\u{2192}").monospace().size(font_md()).color(if sel_draw.extend_right { t.accent } else { dim })).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, row_height_dense()))).on_hover_text("Extend right").clicked() {
                 if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
                     chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
                     chart.redo_stack.clear();
