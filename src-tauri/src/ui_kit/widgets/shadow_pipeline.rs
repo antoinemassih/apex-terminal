@@ -127,7 +127,7 @@ fn bytes_of<T: Copy>(value: &T) -> &[u8] {
 // ---------- Pool ----------
 
 struct PoolTexture {
-    _texture: wgpu::Texture,
+    texture: wgpu::Texture,
     view: wgpu::TextureView,
 }
 
@@ -148,10 +148,7 @@ impl PoolTexture {
             view_formats: &[],
         });
         let view = texture.create_view(&Default::default());
-        Self {
-            _texture: texture,
-            view,
-        }
+        Self { texture, view }
     }
 }
 
@@ -227,6 +224,16 @@ struct PreparedShadow {
     bucket: u32,
     blurred: PoolTexture, // released next frame
     composite_bg: wgpu::BindGroup,
+    /// Clone of the silhouette texture view referenced by `composite_bg`.
+    /// The bind group only stores the view's *ID* internally (not an Arc-clone),
+    /// so we must hold a clone here to keep the GPU resource alive until the
+    /// bind group is dropped. Without this, releasing `blurred` back to the
+    /// pool can destroy the view while the bind group's command stream still
+    /// references it — wgpu then panics: `Texture[Id(X,Y)] does not exist`.
+    _composite_view: wgpu::TextureView,
+    /// Clone of the parent Texture for the same reason — wgpu only refcounts
+    /// inside individual resource types, not across the View → Texture link.
+    _composite_texture: wgpu::Texture,
     _composite_ubo: wgpu::Buffer,
 }
 
@@ -733,10 +740,20 @@ impl CallbackTrait for ShadowCallback {
         // Free the ping-pong texture; keep silhouette_tex (now holds the
         // blurred result) until next frame.
         res.pool.release(bucket, ping_tex);
+        // Clone the texture + view handles BEFORE moving silh_tex into the
+        // pool's PreparedShadow slot. These clones are stored alongside
+        // `composite_bg` so the bind group's referenced GPU resource stays
+        // alive even when the pool later recycles the underlying PoolTexture.
+        // wgpu's internal Arc'ing on Texture and TextureView Clone makes
+        // this nearly free.
+        let composite_view_keepalive = silh_tex.view.clone();
+        let composite_texture_keepalive = silh_tex.texture.clone();
         res.prepared.push(PreparedShadow {
             bucket,
             blurred: silh_tex,
             composite_bg,
+            _composite_view: composite_view_keepalive,
+            _composite_texture: composite_texture_keepalive,
             _composite_ubo: composite_ubo,
         });
         Vec::new()
