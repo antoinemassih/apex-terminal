@@ -5275,22 +5275,25 @@ impl GpuCtx {
         }, None)).ok()?;
         let caps = surface.get_capabilities(&adapter);
         let fmt = caps.formats.iter().find(|f| f.is_srgb()).copied().unwrap_or(caps.formats[0]);
-        // Present mode tradeoff for pan/zoom feel:
-        //   Mailbox        — vsync, no queue, swap to latest frame. Lowest input
-        //                    lag, no tearing. Preferred for interactive chart.
-        //   Fifo + lat=2   — queued vsync, smoothest pacing but up to 2-frame
-        //                    (~33ms) input lag. Falls back here if Mailbox is
-        //                    unavailable on the platform.
-        //   AutoVsync      — last-resort fallback.
+        // Present mode + frame_latency tradeoff for pan/zoom feel:
+        //   Mailbox        — vsync, no queue. Lowest input lag, but wgpu on
+        //                    macOS Metal doesn't always advertise it; we try
+        //                    it first and gracefully fall back.
+        //   Fifo + lat=1   — vsync with single-frame queue. ~16ms max input
+        //                    lag. May exhibit brief acquire stalls if GPU work
+        //                    spikes, but per-frame work is now cheap enough
+        //                    (post spinner-repaint-storm fix) for this to be
+        //                    viable.
+        //   Fifo + lat=2   — last-resort fallback. Smooth pacing but up to
+        //                    33ms input lag.
         //
-        // User-reported symptom that motivated the switch: "the chart movement
-        // feels behind my drag" + "micro-stuttering". Mailbox addresses both:
-        // input lag is eliminated by killing the queue; missed-frame stutter is
-        // mitigated because GPU re-presents latest available frame at each vsync.
+        // User-reported symptom that motivated the switch: "movement feels
+        // behind my drag" + "micro-stuttering during pan".
+        eprintln!("[native-chart] available present modes: {:?}", caps.present_modes);
         let (present_mode, frame_latency) = if caps.present_modes.contains(&wgpu::PresentMode::Mailbox) {
             (wgpu::PresentMode::Mailbox, 1u32)
         } else if caps.present_modes.contains(&wgpu::PresentMode::Fifo) {
-            (wgpu::PresentMode::Fifo, 2u32)
+            (wgpu::PresentMode::Fifo, 1u32)
         } else {
             (wgpu::PresentMode::AutoVsync, 2u32)
         };
