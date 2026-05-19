@@ -21,6 +21,7 @@ use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Response, RichText, Sense,
 use super::motion;
 use super::theme::ComponentTheme;
 use super::tokens::{Size, Variant};
+use super::Tooltip;
 use super::icon_placement::{IconPlacement, IconTone, IconState, icon_glyph_color, icon_hover_bg};
 use crate::chart::renderer::ui::style as st;
 
@@ -1241,7 +1242,8 @@ pub fn show_button_gallery(ui: &mut Ui, theme: &dyn ComponentTheme) {
     ui.separator();
     ui.label("Modifiers");
     ui.horizontal(|ui| {
-        let _ = Button::icon(Icon::GEAR).size(Size::Md).show(ui, theme).on_hover_text("Settings");
+        let r = Button::icon(Icon::GEAR).size(Size::Md).show(ui, theme);
+        Tooltip::new("Settings").show(ui, &r, theme);
         let _ = Button::new("Loading").loading(true).show(ui, theme);
         let _ = Button::new("Disabled").disabled(true).show(ui, theme);
         let _ = Button::new("Active").active(true).variant(Variant::Secondary).show(ui, theme);
@@ -1269,11 +1271,11 @@ pub fn show_button_gallery(ui: &mut Ui, theme: &dyn ComponentTheme) {
     ui.label("Escape hatches (legacy parity)");
     ui.horizontal(|ui| {
         // IconBtn parity: Ghost + glyph_color.
-        let _ = Button::icon(Icon::GEAR)
+        let r = Button::icon(Icon::GEAR)
             .variant(Variant::Ghost)
             .glyph_color(theme.accent())
-            .show(ui, theme)
-            .on_hover_text("Settings");
+            .show(ui, theme);
+        Tooltip::new("Settings").show(ui, &r, theme);
         // ChromeBtn parity: Chrome variant with explicit fill/stroke/min_size.
         let _ = Button::new("Connect")
             .variant(Variant::Chrome)

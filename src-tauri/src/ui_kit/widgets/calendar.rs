@@ -23,6 +23,7 @@ use super::popover::Popover;
 use super::theme::ComponentTheme;
 use super::tokens::Size;
 use super::button::Button;
+use super::tooltip::Tooltip;
 use crate::chart::renderer::ui::style as st;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -245,14 +246,11 @@ fn paint_calendar<'a>(
             Vec2::new(total_w, size.height()),
             egui::Layout::left_to_right(egui::Align::Center),
             |ui| {
-                if Button::icon(super::super::icons::Icon::CARET_LEFT)
+                let r = Button::icon(super::super::icons::Icon::CARET_LEFT)
                     .size(Size::Sm)
-                    .show(ui, theme)
-                    .on_hover_text("Previous month")
-                    .clicked()
-                {
-                    pending_view = Some(add_months(view_month, -1));
-                }
+                    .show(ui, theme);
+                Tooltip::new("Previous month").show(ui, &r, theme);
+                if r.clicked() { pending_view = Some(add_months(view_month, -1)); }
 
                 // Title fills the middle.
                 let title_w = total_w - cell_px * 2.0 - st::gap_xs() * 2.0;
@@ -378,14 +376,11 @@ fn paint_calendar<'a>(
                     if !open { state.year_picker_open = false; }
                 }
 
-                if Button::icon(super::super::icons::Icon::CARET_RIGHT)
+                let r = Button::icon(super::super::icons::Icon::CARET_RIGHT)
                     .size(Size::Sm)
-                    .show(ui, theme)
-                    .on_hover_text("Next month")
-                    .clicked()
-                {
-                    pending_view = Some(add_months(view_month, 1));
-                }
+                    .show(ui, theme);
+                Tooltip::new("Next month").show(ui, &r, theme);
+                if r.clicked() { pending_view = Some(add_months(view_month, 1)); }
             },
         );
 

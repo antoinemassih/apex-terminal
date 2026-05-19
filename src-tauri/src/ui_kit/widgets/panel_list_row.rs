@@ -105,7 +105,7 @@ use crate::chart::renderer::ui::style::{
     alpha_ghost, color_alpha, color_muted, font_sm, font_xs, gap_lg, gap_md, gap_xs, radius_sm,
 };
 use crate::chart_renderer::gpu::Theme;
-use crate::ui_kit::widgets::motion;
+use crate::ui_kit::widgets::{motion, Tooltip};
 
 /// Horizontal alignment for a `Column` cell in `PanelListRow::columns` mode.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
@@ -676,9 +676,9 @@ impl<'a> PanelListRow<'a> {
             for (i, btn) in btns.iter().enumerate() {
                 let r = trail_btn_rects[i];
                 let id = ui.id().with(("panel_list_row_trail_btn", id_salt, i));
-                let mut br = ui.interact(r, id, Sense::click());
+                let br = ui.interact(r, id, Sense::click());
                 if let Some(tip) = btn.tooltip {
-                    br = br.on_hover_text(tip);
+                    Tooltip::new(tip).show(ui, &br, t);
                 }
                 crate::chart::renderer::ui::style::cursor::clickable(ui, &br);
 

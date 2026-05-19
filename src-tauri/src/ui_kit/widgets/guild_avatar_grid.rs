@@ -18,6 +18,7 @@
 use egui::{Color32, Response, TextureHandle, Ui};
 use std::collections::HashMap;
 use super::theme::ComponentTheme;
+use super::Tooltip;
 use crate::chart::renderer::ui::style as st;
 
 // ── Widget ────────────────────────────────────────────────────────────────────
@@ -52,7 +53,7 @@ impl<'a> GuildAvatarGrid<'a> {
 
     /// Render all guild avatars inline (no scroll — caller must wrap in ScrollArea).
     /// Returns a combined Response (last allocated rect; click info is handled via callback).
-    pub fn show(mut self, ui: &mut Ui, _theme: &dyn ComponentTheme) -> Response {
+    pub fn show(mut self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
         let discord_blurple = st::discord_blurple();
         let icon_size = 32.0_f32;
 
@@ -131,7 +132,9 @@ impl<'a> GuildAvatarGrid<'a> {
                 if let Some(cb) = self.on_click.as_mut() { cb(guild.id); }
             }
 
-            let resp = if self.on_hover_name { resp.on_hover_text(guild.name) } else { resp };
+            if self.on_hover_name {
+                Tooltip::new(guild.name).show(ui, &resp, theme);
+            }
             last_resp = Some(resp);
         }
 

@@ -51,6 +51,7 @@ use egui::{Align, CornerRadius, FontId, Layout, Response, RichText, Sense, Strok
 
 use crate::chart_renderer::ui::style as st;
 use super::theme::ComponentTheme;
+use super::Tooltip;
 
 /// Which surface this header sits on. Drives height, font tier, padding,
 /// and whether a bottom rule is drawn.
@@ -242,8 +243,8 @@ impl<'a> Header<'a> {
                 Vec2::new(18.0, 18.0),
             );
             let close_resp = super::button::Button::close()
-                .show_at(ui, &painter, close_rect, theme)
-                .on_hover_text("Close");
+                .show_at(ui, &painter, close_rect, theme);
+            Tooltip::new("Close").show(ui, &close_resp, theme);
             if close_resp.clicked() {
                 out.close_clicked = true;
             }

@@ -47,6 +47,7 @@ use super::placement::Side;
 use super::side_panel_shell::{SidePanelShellResponse, Width};
 use crate::chart::renderer::ui::components::frames_widget::PanelFrame;
 use crate::chart::renderer::ui::panels::kit::PanelHeader;
+use super::Tooltip;
 use crate::chart::renderer::ui::style::{
     alpha_faint, color_alpha, color_dim, font_xs, gap_xs, split_divider, stroke_thin,
 };
@@ -243,13 +244,9 @@ impl<'a, T: PartialEq + Copy + Clone + 'a> SplitSectionPanel<'a, T> {
                         ui.with_layout(
                             egui::Layout::right_to_left(egui::Align::Center),
                             |ui| {
-                                if crate::ui_kit::widgets::Button::close()
-                                    .show(ui, t)
-                                    .on_hover_text("Close section")
-                                    .clicked()
-                                {
-                                    remove_idx = Some(i);
-                                }
+                                let r = crate::ui_kit::widgets::Button::close().show(ui, t);
+                                Tooltip::new("Close section").show(ui, &r, t);
+                                if r.clicked() { remove_idx = Some(i); }
                             },
                         );
                     }
