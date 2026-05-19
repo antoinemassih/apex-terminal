@@ -3,6 +3,8 @@
 
 use super::super::style::*;
 use egui::{self, Color32, Response, RichText, Stroke, Ui};
+use crate::ui_kit::widgets::Button as KitButton;
+use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 // ─── Helper: luminance-aware contrast color ──────────────────────────────────
 
@@ -36,42 +38,18 @@ pub fn big_action_btn(
     disabled: bool,
 ) -> Response {
     let height: f32 = match size { ActionSize::Small => 24.0, ActionSize::Medium => 32.0, ActionSize::Large => 40.0 };
-    let font_size: f32 = match size { ActionSize::Small => font_sm(), ActionSize::Medium => font_md(), ActionSize::Large => font_lg() };
-    let (bg, fg, border) = if disabled {
-        (color_alpha(dim, alpha_subtle()), color_alpha(dim, alpha_dim()), color_alpha(dim, alpha_line()))
-    } else {
-        match tier {
-            ActionTier::Primary => (accent, ds_contrast_fg(accent), color_alpha(accent, alpha_active())),
-            ActionTier::Destructive => (bear, ds_contrast_fg(bear), color_alpha(bear, alpha_active())),
-            ActionTier::Secondary => (color_alpha(accent, alpha_faint()), accent, color_alpha(accent, alpha_muted())),
-        }
+    let kit_size = match size { ActionSize::Small => KitSize::Sm, ActionSize::Medium => KitSize::Md, ActionSize::Large => KitSize::Lg };
+    let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    let variant = match tier {
+        ActionTier::Primary => KitVariant::Primary,
+        ActionTier::Destructive => KitVariant::Danger,
+        ActionTier::Secondary => KitVariant::Secondary,
     };
-    let prev_pad = ui.spacing().button_padding;
-    ui.spacing_mut().button_padding = egui::vec2(gap_xl(), gap_xs());
-    let resp = ui.add_enabled(
-        !disabled,
-        egui::Button::new(RichText::new(label).size(font_size).strong().color(fg))
-            .fill(bg)
-            .stroke(Stroke::new(stroke_thin(), border))
-            .corner_radius(radius_md())
-            .min_size(egui::vec2(0.0, height)),
-    );
-    ui.spacing_mut().button_padding = prev_pad;
-    let inspect = crate::design_tokens::is_inspect_mode();
-    let interactive = !disabled && !inspect;
-    if resp.hovered() && interactive {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-    }
-    use super::motion;
-    let hover_id = resp.id.with("big_action_btn_hover");
-    let hover_t = motion::ease_bool(ui.ctx(), hover_id, resp.hovered() && interactive, motion::FAST);
-    if hover_t > 0.001 {
-        // Hover wash: tint toward `contrast_fg(bg)` so light-themed buttons
-        // darken on hover and dark-themed ones lighten.
-        ui.painter().rect_filled(resp.rect, radius_md(),
-            motion::fade_in(color_alpha(contrast_fg(bg), 12), hover_t));
-    }
-    resp
+    KitButton::new(label).variant(variant).size(kit_size)
+        .tint(if matches!(tier, ActionTier::Primary) { accent } else if matches!(tier, ActionTier::Destructive) { bear } else { accent })
+        .disabled(disabled)
+        .min_size(egui::vec2(0.0, height))
+        .show(ui, theme)
 }
 
 // ─── SidePaneActionButton ────────────────────────────────────────────────────
@@ -84,35 +62,14 @@ pub fn side_pane_action_btn(
     accent: Color32,
     dim: Color32,
 ) -> Response {
-    let fg = accent;
-    let bg = color_alpha(accent, alpha_soft());
-    let border = color_alpha(accent, alpha_dim());
     let display = match icon {
         Some(ic) => format!("{} {}", ic, label),
         None => label.to_owned(),
     };
-    let prev_pad = ui.spacing().button_padding;
-    ui.spacing_mut().button_padding = egui::vec2(gap_lg(), gap_xs());
-    let resp = ui.add(
-        egui::Button::new(RichText::new(display).size(font_sm()).strong().color(fg))
-            .fill(bg)
-            .stroke(Stroke::new(stroke_thin(), border))
-            .corner_radius(radius_sm())
-            .min_size(egui::vec2(0.0, row_height_default())),
-    );
-    ui.spacing_mut().button_padding = prev_pad;
-    let inspect = crate::design_tokens::is_inspect_mode();
-    if resp.hovered() && !inspect {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-    }
-    use super::motion;
-    let hover_id = resp.id.with("side_pane_action_btn_hover");
-    let hover_t = motion::ease_bool(ui.ctx(), hover_id, resp.hovered() && !inspect, motion::FAST);
-    if hover_t > 0.001 {
-        ui.painter().rect_filled(resp.rect, radius_sm(),
-            motion::fade_in(color_alpha(accent, alpha_faint()), hover_t));
-    }
-    resp
+    let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    KitButton::new(display.as_str()).variant(KitVariant::Secondary).size(KitSize::Sm)
+        .tint(accent).min_size(egui::vec2(0.0, row_height_default()))
+        .show(ui, theme)
 }
 
 // ─── Brand CTA ────────────────────────────────────────────────────────────────
@@ -130,31 +87,12 @@ pub fn brand_cta_button(
     disabled: bool,
 ) -> Response {
     let height: f32 = match size { ActionSize::Small => 24.0, ActionSize::Medium => 32.0, ActionSize::Large => 40.0 };
-    let font_size: f32 = match size { ActionSize::Small => font_sm(), ActionSize::Medium => font_md(), ActionSize::Large => font_lg() };
-    let prev_pad = ui.spacing().button_padding;
-    ui.spacing_mut().button_padding = egui::vec2(gap_xl(), gap_xs());
-    let resp = ui.add_enabled(
-        !disabled,
-        egui::Button::new(RichText::new(label).size(font_size).strong().color(fg_color))
-            .fill(brand_color)
-            .stroke(Stroke::new(stroke_thin(), color_alpha(brand_color, alpha_active())))
-            .corner_radius(radius_md())
-            .min_size(egui::vec2(0.0, height)),
-    );
-    ui.spacing_mut().button_padding = prev_pad;
-    let inspect = crate::design_tokens::is_inspect_mode();
-    let interactive = !disabled && !inspect;
-    if resp.hovered() && interactive {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-    }
-    use super::motion;
-    let hover_id = resp.id.with("brand_cta_btn_hover");
-    let hover_t = motion::ease_bool(ui.ctx(), hover_id, resp.hovered() && interactive, motion::FAST);
-    if hover_t > 0.001 {
-        // Hover wash: tint toward contrast of the brand fill so the overlay
-        // brightens dark brands and darkens light ones.
-        ui.painter().rect_filled(resp.rect, radius_md(),
-            motion::fade_in(color_alpha(contrast_fg(brand_color), 12), hover_t));
-    }
-    resp
+    let kit_size = match size { ActionSize::Small => KitSize::Sm, ActionSize::Medium => KitSize::Md, ActionSize::Large => KitSize::Lg };
+    let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    // Chrome variant: brand_color is a custom fill (e.g. Discord blurple) that doesn't map to Primary/Danger.
+    KitButton::new(label).variant(KitVariant::Chrome).size(kit_size)
+        .fill(brand_color).fg(fg_color)
+        .stroke(Stroke::new(stroke_thin(), color_alpha(brand_color, alpha_active())))
+        .disabled(disabled).min_size(egui::vec2(0.0, height))
+        .show(ui, theme)
 }

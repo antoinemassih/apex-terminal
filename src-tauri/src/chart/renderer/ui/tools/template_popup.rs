@@ -6,7 +6,7 @@ use super::super::style::*;
 use super::super::super::gpu::{self, Watchlist, Chart, Theme, CandleMode, INDICATOR_COLORS};
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button as KitButton, Input};
-use crate::ui_kit::widgets::tokens::Size as KitSize;
+use crate::ui_kit::widgets::tokens::{Size as KitSize, Variant as KitVariant};
 
 pub(crate) fn draw(
     ctx: &egui::Context,
@@ -70,12 +70,9 @@ pub(crate) fn draw(
                                 let active = panes[pi].pane_type == ptype;
                                 let fg = if active { t.accent } else { color_half(t.dim) };
                                 let bg = if active { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
-                                if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new(format!("{} {}", icon, label))
-                                    .monospace().size(font_xs()).color(fg))
-                                    .fill(bg).corner_radius(r_sm_cr())
-                                    .stroke(egui::Stroke::new(if active { stroke_thin() } else { 0.0 },
-                                        if active { color_alpha(t.accent, alpha_line()) } else { egui::Color32::TRANSPARENT }))
-                                    .min_size(egui::vec2(0.0, row_height_compact()))).clicked() {
+                                let btn_label = format!("{} {}", icon, label);
+                                if KitButton::toggle(btn_label.as_str(), active)
+                                    .size(KitSize::Xs).show(ui, t).clicked() {
                                     panes[pi].pane_type = ptype;
                                 }
                             }

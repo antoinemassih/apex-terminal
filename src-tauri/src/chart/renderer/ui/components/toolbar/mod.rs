@@ -19,6 +19,8 @@ pub mod top_nav;
 
 use egui::{Color32, Response, RichText, Stroke, Ui, Widget};
 use super::super::style::*;
+use crate::ui_kit::widgets::Button as KitButton;
+use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 #[inline(always)]
 fn ambient(ctx: &egui::Context) -> &'static super::super::super::gpu::Theme {
@@ -118,22 +120,12 @@ impl<'a> TimeframeSelector<'a> {
         ui.spacing_mut().item_spacing.x = gap_xs();
         let prev_pad = ui.spacing().button_padding;
         ui.spacing_mut().button_padding = egui::vec2(gap_md(), gap_xs());
+        let theme = ambient(ui.ctx());
         for (i, &label) in self.options.iter().enumerate() {
             let active = i == self.active_idx;
-            let fg = if active { accent_c } else { dim_c };
-            let (bg, border) = if active {
-                (color_alpha(accent_c, alpha_tint()), color_alpha(accent_c, alpha_dim()))
-            } else {
-                (Color32::TRANSPARENT, Color32::TRANSPARENT)
-            };
-            let resp = ui.add(
-                egui::Button::new(RichText::new(label).monospace().size(font_sm()).strong().color(fg))
-                    .fill(bg)
-                    .stroke(Stroke::new(stroke_thin(), border))
-                    .corner_radius(pill_r)
-                    .min_size(egui::vec2(0.0, row_height_default())),
-            );
-            super::super::style::cursor::clickable(ui, &resp);
+            let resp = KitButton::toggle(label, active).size(KitSize::Sm)
+                .min_size(egui::vec2(0.0, row_height_default()))
+                .show(ui, theme);
             if resp.clicked() && i != self.active_idx {
                 clicked = Some(i);
             }

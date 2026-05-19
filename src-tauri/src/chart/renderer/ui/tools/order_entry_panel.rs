@@ -9,7 +9,8 @@ use crate::chart_renderer::gpu::Watchlist;
 use crate::chart_renderer::ui::style::{color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, cursor, gap_xs, gap_sm, gap_lg, gap_2xl, font_xs, font_sm, font_md, radius_sm, radius_lg, stroke_std};
 use crate::chart_renderer::ui::widgets::frames::PopupFrame;
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::PanelEmpty;
+use crate::ui_kit::widgets::{PanelEmpty, Button as KitButton};
+use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 /// Layout parameters passed in from gpu.rs.
 pub struct OrderEntryPanelCtx<'a> {
@@ -228,7 +229,9 @@ fn render_dom_ladder(
             let col_w = (panel_w - gap_lg()) / 3.0;
             let bc = if rh { t.bull } else { color_muted(t.bull) };
             let bbg = if rh { color_alpha(t.bull, 15) } else { egui::Color32::TRANSPARENT };
-            if cursor::click_widget(ui, egui::Button::new(egui::RichText::new(format!("{}", bid_size)).monospace().size(font_sm()).color(bc)).fill(bbg).frame(false).min_size(egui::vec2(col_w, row_h))).clicked() {
+            let bid_lbl = format!("{}", bid_size);
+            if KitButton::new(bid_lbl.as_str()).variant(KitVariant::Ghost).size(KitSize::Sm).fg(bc)
+                .min_size(egui::vec2(col_w, row_h)).frameless(true).show(ui, t).clicked() {
                 use crate::chart_renderer::trading::order_manager::*;
                 if let Some(id) = submit_and_get_id(OrderIntent {
                     symbol: chart.symbol.clone(), side: OrderSide::Buy,
@@ -244,7 +247,9 @@ fn render_dom_ladder(
             ui.add_sized(egui::vec2(col_w, row_h), egui::Label::new(egui::RichText::new(pf).monospace().size(font_sm()).strong().color(pc)));
             let ac = if rh { t.bear } else { color_muted(t.bear) };
             let abg = if rh { color_alpha(t.bear, 15) } else { egui::Color32::TRANSPARENT };
-            if cursor::click_widget(ui, egui::Button::new(egui::RichText::new(format!("{}", ask_size)).monospace().size(font_sm()).color(ac)).fill(abg).frame(false).min_size(egui::vec2(col_w, row_h))).clicked() {
+            let ask_lbl = format!("{}", ask_size);
+            if KitButton::new(ask_lbl.as_str()).variant(KitVariant::Ghost).size(KitSize::Sm).fg(ac)
+                .min_size(egui::vec2(col_w, row_h)).frameless(true).show(ui, t).clicked() {
                 use crate::chart_renderer::trading::order_manager::*;
                 if let Some(id) = submit_and_get_id(OrderIntent {
                     symbol: chart.symbol.clone(), side: OrderSide::Sell,

@@ -31,6 +31,8 @@ use super::super::widgets as widgets;
 use super::super::super::gpu::{Chart, Theme, Watchlist};
 use crate::data::apex_data::live_state;
 use crate::data::apex_data::types::{CalibrationTier, TradePlanV2};
+use crate::ui_kit::widgets::Button as KitButton;
+use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 /// Min historical samples for the hit-rate to be considered trustworthy. Below
 /// this the panel greys out the percentage and adds a "low confidence" tag.
@@ -211,12 +213,8 @@ fn draw_plan(ui: &mut egui::Ui, plan: &TradePlanV2, t: &Theme) {
     // ── [🔍 prov] button ────────────────────────────────────────────────────
     if let Some(prov) = plan.provenance.as_ref() {
         let lineage = prov.lineage_id.clone();
-        let resp = ui.add(egui::Button::new(egui::RichText::new("\u{1F50D} prov")
-                .monospace().size(FONT_XS).color(t.accent))
-            .fill(color_alpha(t.accent, alpha_ghost()))
-            .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.accent, alpha_muted())))
-            .corner_radius(radius_sm())
-            .min_size(egui::vec2(0.0, 18.0)));
+        let resp = KitButton::new("\u{1F50D} prov").variant(KitVariant::Ghost).size(KitSize::Xs)
+            .fg(t.accent).min_size(egui::vec2(0.0, 18.0)).show(ui, t);
         if resp.clicked() {
             fire_provenance(OpenProvenanceFor { lineage_id: lineage });
         }

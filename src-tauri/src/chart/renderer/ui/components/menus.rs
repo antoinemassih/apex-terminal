@@ -6,6 +6,8 @@
 use egui::{Color32, Response, RichText, Stroke, Ui, Widget};
 use super::super::style::*;
 use super::semantic_label::{SemanticLabel, LabelVariant};
+use crate::ui_kit::widgets::Button as KitButton;
+use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 #[inline(always)]
 fn ambient(ctx: &egui::Context) -> &'static super::super::super::gpu::Theme {
@@ -48,28 +50,10 @@ impl<'a> Widget for MenuTrigger<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let amb = ambient(ui.ctx());
         let accent = self.accent.unwrap_or(amb.accent);
-        let dim = self.dim.unwrap_or(amb.dim);
-        let fg = if self.open { accent } else { dim };
-        let bg = if self.open { color_alpha(accent, alpha_soft()) } else { Color32::TRANSPARENT };
-        let border = if self.open { color_alpha(accent, alpha_muted()) } else { Color32::TRANSPARENT };
-        let display = format!("{} \u{25BE}", self.label);
-        let prev_pad = ui.spacing().button_padding;
-        ui.spacing_mut().button_padding = egui::vec2(gap_md(), gap_sm());
-        let resp = ui.add(
-            egui::Button::new(
-                SemanticLabel::new(display, LabelVariant::MenuItem).monospace(false).color(fg).into_rich_text()
-            )
-                .fill(bg)
-                .stroke(Stroke::new(stroke_thin(), border))
-                .corner_radius(radius_sm())
-                .min_size(egui::vec2(0.0, row_height_compact())),
-        );
-        ui.spacing_mut().button_padding = prev_pad;
-        if resp.hovered() && !self.open && !crate::design_tokens::is_inspect_mode() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            ui.painter().rect_filled(resp.rect, radius_sm(), color_alpha(accent, alpha_ghost()));
-        }
-        resp
+        // Button::toolbar (status=true, Ghost, Sm) with active state matches open/closed toggle.
+        KitButton::toolbar(self.label).active(self.open).tint(accent)
+            .min_size(egui::vec2(0.0, row_height_compact()))
+            .show(ui, amb)
     }
 }
 
@@ -153,18 +137,11 @@ impl<'a> Widget for MenuItem<'a> {
             _ => "",
         };
         let display = format!("{}{}{}", prefix, self.label, suffix);
-        let fg = dim;
-        let prev_pad = ui.spacing().button_padding;
-        ui.spacing_mut().button_padding = egui::vec2(gap_lg(), gap_xs());
         let resp = ui.horizontal(|ui| {
-            let r = ui.add(
-                egui::Button::new(
-                    SemanticLabel::new(&display, LabelVariant::MenuItem).monospace(false).color(fg).into_rich_text()
-                )
-                    .fill(Color32::TRANSPARENT)
-                    .stroke(Stroke::NONE)
-                    .min_size(egui::vec2(ui.available_width().max(80.0), row_height_compact())),
-            );
+            let min_w = ui.available_width().max(80.0);
+            let r = KitButton::new(display.as_str()).variant(KitVariant::Ghost).size(KitSize::Sm)
+                .fg(dim).min_size(egui::vec2(min_w, row_height_compact()))
+                .full_width(true).show(ui, amb);
             if let Some(sc) = self.shortcut {
                 let sc_color = color_alpha(dim, alpha_muted());
                 let max_x = r.rect.right() - gap_sm();
@@ -179,11 +156,6 @@ impl<'a> Widget for MenuItem<'a> {
             }
             r
         }).inner;
-        ui.spacing_mut().button_padding = prev_pad;
-        if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            ui.painter().rect_filled(resp.rect, radius_sm(), color_alpha(accent, alpha_ghost()));
-        }
         resp
     }
 }
@@ -225,30 +197,12 @@ impl<'a> Widget for SidePaneAction<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let amb = ambient(ui.ctx());
         let accent = self.accent.unwrap_or(amb.accent);
-        let _dim = self.dim.unwrap_or(amb.dim);
-        let fg = accent;
-        let bg = color_alpha(accent, alpha_soft());
-        let border = color_alpha(accent, alpha_dim());
         let display = match self.icon {
             Some(ic) => format!("{} {}", ic, self.label),
             None => self.label.to_owned(),
         };
-        let prev_pad = ui.spacing().button_padding;
-        ui.spacing_mut().button_padding = egui::vec2(gap_lg(), gap_xs());
-        let resp = ui.add(
-            egui::Button::new(
-                SemanticLabel::new(display, LabelVariant::MenuItem).monospace(false).strong(true).color(fg).into_rich_text()
-            )
-                .fill(bg)
-                .stroke(Stroke::new(stroke_thin(), border))
-                .corner_radius(radius_sm())
-                .min_size(egui::vec2(0.0, row_height_default())),
-        );
-        ui.spacing_mut().button_padding = prev_pad;
-        if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            ui.painter().rect_filled(resp.rect, radius_sm(), color_alpha(accent, alpha_faint()));
-        }
-        resp
+        KitButton::new(display.as_str()).variant(KitVariant::Secondary).size(KitSize::Sm)
+            .tint(accent).min_size(egui::vec2(0.0, row_height_default()))
+            .show(ui, amb)
     }
 }

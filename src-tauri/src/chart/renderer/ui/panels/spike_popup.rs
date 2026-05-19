@@ -34,6 +34,8 @@ use egui;
 use crate::chart_renderer::ui::style::icon_md;
 use crate::data::apex_data::live_state;
 use crate::data::apex_data::types::SpikeExplanation;
+use crate::ui_kit::widgets::Button as KitButton;
+use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 /// Max active toasts displayed simultaneously (oldest first, newer ones queued
 /// off-screen until an active slot frees). Anything beyond is invisible until
@@ -329,12 +331,14 @@ fn draw_toast_body(
 }
 
 fn small_btn(ui: &mut egui::Ui, label: &str) -> egui::Response {
-    ui.add(egui::Button::new(egui::RichText::new(label).size(10.0)
-            .color(egui::Color32::from_rgb(180, 200, 230)))
+    // Chrome variant: legacy hardcoded night-blue palette (custom brand — no standard Variant match).
+    KitButton::new(label).variant(KitVariant::Chrome).size(KitSize::Xs)
+        .fg(egui::Color32::from_rgb(180, 200, 230))
         .fill(egui::Color32::from_rgba_unmultiplied(60, 80, 110, 100))
         .stroke(egui::Stroke::new(0.5, egui::Color32::from_rgb(90, 110, 140)))
         .corner_radius(4.0)
-        .min_size(egui::vec2(0.0, 18.0)))
+        .min_size(egui::vec2(0.0, 18.0))
+        .show(ui, &crate::ui_kit::widgets::theme::active_theme(ui.ctx()))
 }
 
 fn shorten_source(url: &str) -> String {

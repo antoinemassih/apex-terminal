@@ -284,13 +284,9 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     // "Use active" chip
                     if !active_symbol.is_empty() && active_symbol != watchlist.spread_state.symbol {
                         ui.add_space(4.0);
-                        if ui.add(egui::Button::new(
-                            egui::RichText::new(active_symbol).monospace().size(font_xs()).color(t.accent))
-                            .fill(color_alpha(t.accent, alpha_ghost()))
-                            .corner_radius(r_md_cr())
-                            .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.accent, alpha_muted())))
-                            .min_size(egui::vec2(0.0, 16.0))
-                        ).on_hover_text("Use chart symbol").clicked() {
+                        if Button::new(active_symbol).variant(Variant::Ghost).size(Size::Xs)
+                        .fg(t.accent).min_size(egui::vec2(0.0, 16.0))
+                        .show(ui, t).on_hover_text("Use chart symbol").clicked() {
                             watchlist.spread_state.symbol = active_symbol.to_string();
                         }
                     }

@@ -4,7 +4,7 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::ui_kit::widgets::Button;
-use crate::ui_kit::widgets::tokens::Variant;
+use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 use crate::ui_kit::widgets::NumberStepper;
 use super::super::widgets::form::{IndicatorParamRow, IndicatorParamRowF};
 use crate::ui_kit::widgets::FormRow;
@@ -287,9 +287,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                             egui::CornerRadius::ZERO
                         };
                         let stroke_col = if sel { color_alpha(t.accent, alpha_heavy()) } else { color_alpha(t.toolbar_border, alpha_line()) };
-                        if crate::chart_renderer::ui::style::cursor::click_widget(ui, egui::Button::new(egui::RichText::new(label).monospace().size(font_sm()).color(fg))
-                            .fill(bg).corner_radius(rounding).min_size(egui::vec2(0.0, row_height_compact()))
-                            .stroke(egui::Stroke::new(stroke_thin(), stroke_col)))
+                        if Button::toggle(label, sel).size(KitSize::Sm).show(ui, t)
                             .clicked() && !sel
                         {
                             ind.source_tf = tf.to_string();

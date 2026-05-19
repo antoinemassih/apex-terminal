@@ -639,27 +639,10 @@ fn section_rule(ui: &mut Ui, t: &Theme) {
 /// Compact ghost button used inline in section headers ("Clear All", "Place").
 /// Replaces `style::small_action_btn` with a cleaner ghost/hover treatment.
 pub fn panel_action_btn(ui: &mut Ui, label: &str, color: Color32) -> bool {
-    let st = current();
-    let resp = ui.add(
-        egui::Button::new(
-            RichText::new(label)
-                .monospace()
-                .size(font_xs())
-                .strong()
-                .color(color),
-        )
-        .fill(Color32::TRANSPARENT)
-        .stroke(Stroke::new(stroke_thin(), color_alpha(color, alpha_dim())))
-        .corner_radius(st.r_xs as f32)
-        .min_size(Vec2::new(0.0, 16.0)),
-    );
-    if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
-        // Hover lift: faint tone fill.
-        let r = resp.rect;
-        ui.painter().rect_filled(r, st.r_xs as f32, color_alpha(color, alpha_ghost()));
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-    }
-    resp.clicked()
+    let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    Button::new(label).variant(Variant::Ghost).size(KitSize::Xs)
+        .fg(color).min_size(Vec2::new(0.0, 16.0))
+        .show(ui, theme).clicked()
 }
 
 // ── PanelEmpty ───────────────────────────────────────────────────────────────
