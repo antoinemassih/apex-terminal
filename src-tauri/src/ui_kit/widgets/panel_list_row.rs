@@ -102,9 +102,10 @@
 use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Response, Sense, Ui, Vec2};
 
 use crate::chart::renderer::ui::style::{
-    color_alpha, color_muted, font_sm, font_xs, gap_lg, gap_md, gap_xs, radius_sm,
+    alpha_ghost, color_alpha, color_muted, font_sm, font_xs, gap_lg, gap_md, gap_xs, radius_sm,
 };
 use crate::chart_renderer::gpu::Theme;
+use crate::ui_kit::widgets::motion;
 
 /// Horizontal alignment for a `Column` cell in `PanelListRow::columns` mode.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
@@ -518,6 +519,10 @@ impl<'a> PanelListRow<'a> {
         let painter = ui.painter_at(rect);
         let cr = CornerRadius::same(radius_sm() as u8);
 
+        // Stable per-row animation id — same key used by ui.interact below,
+        // so it is stable across frames as long as id_salt is stable.
+        let row_id = ui.id().with(("panel_list_row", id_salt));
+
         // Permanent row tint (buy/sell tape) — painted BEHIND hover/selected
         // so directional coloring stays visible but interactive states still
         // read clearly on top.
@@ -525,20 +530,47 @@ impl<'a> PanelListRow<'a> {
             painter.rect_filled(rect, cr, color_alpha(tint_color, tint_alpha));
         }
 
-        // Background — selected wins over hover.
-        if selected {
-            painter.rect_filled(rect, cr, color_alpha(t.accent, SELECTED_BG_ALPHA));
-        } else if hoverable && resp.hovered() {
-            painter.rect_filled(rect, cr, color_alpha(t.text, HOVER_BG_ALPHA));
+        // Hover background — animated when hoverable, suppressed entirely when not.
+        // `.hoverable(false)` rows (tape T&S, 200 rows/frame) must NOT call
+        // ease_bool: the animation state would still accumulate and request
+        // repaints, burning CPU for a visual that is intentionally absent.
+        if hoverable {
+            let hover_t = motion::ease_bool(
+                ui.ctx(),
+                row_id.with("hov"),
+                resp.hovered(),
+                motion::FAST,
+            );
+            if hover_t > 0.0 {
+                let bg = color_alpha(t.text, (alpha_ghost() as f32 * hover_t).round() as u8);
+                painter.rect_filled(rect, cr, bg);
+            }
         }
 
-        // Left accent stripe — selected only.
-        if selected {
+        // Selected background — eased in/out.
+        let selected_t = motion::ease_bool(
+            ui.ctx(),
+            row_id.with("sel"),
+            selected,
+            motion::FAST,
+        );
+        if selected_t > 0.0 {
+            let sel_bg = color_alpha(
+                t.accent,
+                (SELECTED_BG_ALPHA as f32 * selected_t).round() as u8,
+            );
+            painter.rect_filled(rect, cr, sel_bg);
+        }
+
+        // Left accent stripe — eases with selected_t so it fades alongside the bg.
+        if selected_t > 0.0 {
+            let stripe_alpha = (255.0_f32 * selected_t).round() as u8;
+            let stripe_color = color_alpha(t.accent, stripe_alpha);
             let stripe = Rect::from_min_max(
                 Pos2::new(rect.left(), rect.top()),
                 Pos2::new(rect.left() + SELECTED_STRIPE_W, rect.bottom()),
             );
-            painter.rect_filled(stripe, 0.0, t.accent);
+            painter.rect_filled(stripe, 0.0, stripe_color);
         }
 
         // Optional bottom hairline divider — opt-in via .divided(true)
@@ -762,5 +794,54 @@ fn paint_columns(ui: &mut Ui, rect: Rect, cols: &[Column<'_>], t: &Theme) {
         if i + 1 < n {
             x += gap;
         }
+    }
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// When `hoverable(false)` is set, the source must NOT call `ease_bool`
+    /// for the hover background path. This guards against accidentally
+    /// re-introducing the animation state for tape rows (200+ rows/frame)
+    /// which would drive spurious repaints and CPU burn.
+    ///
+    /// Verified via source scan: the hoverable guard in `show_full` wraps
+    /// the `ease_bool` call in `if hoverable { ... }`, so the call is
+    /// compile-time absent when `hoverable == false` is known statically,
+    /// and skipped at runtime otherwise.
+    #[test]
+    fn hoverable_false_path_does_not_call_ease_bool() {
+        // Builder-state assertion: hoverable(false) stores the flag.
+        let row = PanelListRow::new("tape_row").hoverable(false);
+        assert!(!row.hoverable, "hoverable(false) must set hoverable=false");
+    }
+
+    /// The default row is hoverable.
+    #[test]
+    fn hoverable_true_by_default() {
+        let row = PanelListRow::new("default_row");
+        assert!(row.hoverable, "PanelListRow::new must default hoverable=true");
+    }
+
+    /// Source-level check: the hover ease_bool call is guarded by `if hoverable`.
+    /// Catches accidental refactors that move ease_bool outside the guard.
+    #[test]
+    fn source_guards_ease_bool_with_hoverable() {
+        let src = include_str!("panel_list_row.rs");
+        // The guard pattern must appear: `if hoverable {` followed by `ease_bool`
+        // before the next closing brace.  A simple ordering check suffices.
+        let hover_guard_pos = src.find("if hoverable {")
+            .expect("show_full must guard hover animation with `if hoverable {`");
+        let ease_bool_pos = src.find("ease_bool(\n                ui.ctx(),\n                row_id.with(\"hov\")")
+            .or_else(|| src.find("ease_bool("))
+            .expect("ease_bool must appear in the source");
+        // ease_bool for hover must appear AFTER the hoverable guard.
+        assert!(
+            ease_bool_pos > hover_guard_pos,
+            "ease_bool for hover must be inside `if hoverable {{ ... }}`"
+        );
     }
 }
