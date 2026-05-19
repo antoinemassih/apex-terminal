@@ -23,7 +23,7 @@
 
 use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2};
 use super::super::style::*;
-use crate::ui_kit::widgets::{Button, tokens::Variant};
+use crate::ui_kit::widgets::{Button, Tooltip, tokens::Variant};
 use crate::ui_kit::icons::Icon;
 
 type Theme = crate::chart_renderer::gpu::Theme;

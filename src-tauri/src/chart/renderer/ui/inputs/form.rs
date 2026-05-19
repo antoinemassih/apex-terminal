@@ -14,7 +14,7 @@
 use egui::{Color32, Response, RichText, Stroke, Ui, Vec2};
 use super::super::style::*;
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::FormRow;
+use crate::ui_kit::widgets::{FormRow, Tooltip};
 
 // Shorthand for the Theme type used across the codebase.
 type Theme = crate::chart_renderer::gpu::Theme;
@@ -1153,13 +1153,12 @@ impl ApertureOrderTicket {
                 } else {
                     color_alpha(self.toolbar_border, 40)
                 });
-                if ui.add(egui::Button::new(
+                let r = ui.add(egui::Button::new(
                         egui::RichText::new("EXT").monospace().size(font_xs()).color(rth_fg))
                     .fill(rth_bg).corner_radius(r_xs()).stroke(rth_stroke)
-                    .min_size(egui::vec2(26.0, row_height_dense())))
-                    .on_hover_text("Trade outside regular trading hours")
-                    .clicked()
-                {
+                    .min_size(egui::vec2(26.0, row_height_dense())));
+                Tooltip::new("Trade outside regular trading hours").show(ui, &r, &t_stub);
+                if r.clicked() {
                     *s.order_outside_rth = !*s.order_outside_rth;
                 }
             });
