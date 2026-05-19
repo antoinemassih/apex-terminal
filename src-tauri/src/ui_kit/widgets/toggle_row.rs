@@ -216,6 +216,8 @@ fn paint_toggle_row<'a>(
         response.mark_changed();
     }
 
+    st::cursor::focus_ring(ui, &response, theme.accent());
+
     response
 }
 

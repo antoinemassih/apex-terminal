@@ -218,6 +218,8 @@ fn paint_checkbox(ui: &mut Ui, theme: &dyn ComponentTheme, mut cb: Checkbox<'_>)
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
 
+    st::cursor::focus_ring(ui, &response, theme.accent());
+
     response
 }
 

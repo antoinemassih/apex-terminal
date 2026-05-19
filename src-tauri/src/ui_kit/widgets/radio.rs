@@ -165,6 +165,8 @@ fn paint_radio<T: PartialEq + Copy>(
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
 
+    st::cursor::focus_ring(ui, &response, theme.accent());
+
     response
 }
 

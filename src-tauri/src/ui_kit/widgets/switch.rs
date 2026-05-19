@@ -153,6 +153,8 @@ fn paint_switch(ui: &mut Ui, theme: &dyn ComponentTheme, sw: Switch<'_>) -> Resp
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
 
+    st::cursor::focus_ring(ui, &response, theme.accent());
+
     response
 }
 
