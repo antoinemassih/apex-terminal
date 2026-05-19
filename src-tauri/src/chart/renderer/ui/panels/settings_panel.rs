@@ -297,8 +297,10 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                 .show(ui, t)
                 .clicked()
             {
-                watchlist.ui_settings.has_seen_welcome = false;
-                watchlist.ui_settings.welcome_step_resume = 0;
+                watchlist.update_ui_settings(|s| {
+                    s.has_seen_welcome = false;
+                    s.welcome_step_resume = 0;
+                });
                 watchlist.welcome_wizard = Some(
                     crate::chart_renderer::ui::welcome::WelcomeWizard::from_settings(false, 0)
                 );
@@ -425,29 +427,42 @@ fn draw_trading(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
     });
 
     // ── ORDER DEFAULTS ──
+    // Wave 2 (state): flat fields are mutated in-place for SegmentedControl
+    // compatibility; push_to_trading_defaults_store() propagates every change
+    // into the Store<TradingDefaults> so the persist supervisor can write.
+    let mut trading_changed = false;
     PanelSection::new("ORDER DEFAULTS").show(ui, t, |ui, t| {
         setting_form_row("Stock Qty", t).show(ui, t, |ui| {
             let mut v = watchlist.default_stock_qty as i32;
             if NumberStepper::new(&mut v).range(1..=100_000).step(10.0).suffix(" shares").integer().show(ui, t).changed() {
                 watchlist.default_stock_qty = v.max(1) as u32;
+                trading_changed = true;
             }
         });
         setting_form_row("Options Qty", t).show(ui, t, |ui| {
             let mut v = watchlist.default_options_qty as i32;
             if NumberStepper::new(&mut v).range(1..=10_000).step(1.0).suffix(" contracts").integer().show(ui, t).changed() {
                 watchlist.default_options_qty = v.max(1) as u32;
+                trading_changed = true;
             }
         });
         setting_form_row("Order Type", t).show(ui, t, |ui| {
             const ORDER_TYPES: &[(usize, &str)] = &[(0, "MKT"), (1, "LMT"), (2, "STP")];
+            let before = watchlist.default_order_type;
             SegmentedControl::new(&mut watchlist.default_order_type, ORDER_TYPES).show(ui, t);
+            if watchlist.default_order_type != before { trading_changed = true; }
         });
         setting_form_row("Time in Force", t).show(ui, t, |ui| {
             const TIF_OPTS: &[(usize, &str)] = &[(0, "DAY"), (1, "GTC"), (2, "IOC")];
+            let before = watchlist.default_tif;
             SegmentedControl::new(&mut watchlist.default_tif, TIF_OPTS).show(ui, t);
+            if watchlist.default_tif != before { trading_changed = true; }
         });
+        let before_rth = watchlist.default_outside_rth;
         setting_toggle(ui, "Outside RTH", t, &mut watchlist.default_outside_rth);
+        if watchlist.default_outside_rth != before_rth { trading_changed = true; }
     });
+    if trading_changed { watchlist.push_to_trading_defaults_store(); }
 
     // ── RISK MANAGEMENT ──
     PanelSection::new("RISK MANAGEMENT").show(ui, t, |ui, t| {

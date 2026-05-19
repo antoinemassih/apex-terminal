@@ -4686,6 +4686,22 @@ pub(crate) struct Watchlist {
     /// copies legacy → aggregate before serialization and
     /// `pull_from_ui_settings` copies aggregate → legacy after load.
     pub(crate) ui_settings: crate::state::UiSettings,
+    /// Wave 2 (state): `Store<UiSettings>` wraps the aggregate so mutations
+    /// are debounce-persisted by the background supervisor.  The plain
+    /// `ui_settings` field above stays in place as a mirror for the sacred
+    /// `core.rs` paint pipeline and the legacy load/save path; it is kept in
+    /// sync via `update_ui_settings()` / `pull_from_ui_settings()`.
+    pub(crate) ui_settings_store: std::sync::Arc<crate::state::Store<crate::state::UiSettings>>,
+    /// Wave 2 (state): `Store<TradingDefaults>` wraps the trading defaults so
+    /// mutations are debounce-persisted by the background supervisor.
+    ///
+    /// The flat legacy fields (`default_stock_qty`, `default_options_qty`,
+    /// `default_order_type`, `default_tif`, `default_outside_rth`) stay in
+    /// place as the read source of truth for existing callers; they are kept
+    /// in sync via `update_trading_defaults()` / `sync_trading_defaults_from_store()`.
+    /// `daily_loss_cap` and `max_position_pct` are new fields that live ONLY in
+    /// the store (no corresponding legacy flat field existed).
+    pub(crate) trading_defaults_store: std::sync::Arc<crate::state::Store<crate::state::TradingDefaults>>,
     // ── Top-nav symbol input (UX-1 Fix 1) ──────────────────────────────────
     /// Buffer for the editable symbol input in the top toolbar.
     pub(crate) top_nav_sym_input: String,
@@ -4858,6 +4874,16 @@ impl Watchlist {
                subscriptions: crate::state::SubscriptionBus::new(),
                inflight: crate::state::InFlightRegistry::new(),
                ui_settings: crate::state::UiSettings::default(),
+               ui_settings_store: crate::state::Store::new(
+                   "ui_settings",
+                   crate::state::UiSettings::default(),
+                   Some(ui_settings_path()),
+               ),
+               trading_defaults_store: crate::state::Store::new(
+                   "trading_defaults",
+                   crate::state::TradingDefaults::default(),
+                   Some(trading_defaults_path()),
+               ),
                top_nav_sym_input: String::new(),
                top_nav_sym_focused: false,
                // Welcome wizard is initialized after load (when ui_settings is populated).
@@ -4872,6 +4898,10 @@ impl Watchlist {
     /// `Watchlist`. The legacy fields stay the authoritative read source
     /// for now (sacred `core.rs` reads `pane_header_size`,
     /// `shared_x_axis`, etc. directly).
+    ///
+    /// Wave 2 addendum: also writes the merged value into
+    /// `ui_settings_store` so the persist supervisor sees the latest state
+    /// in addition to the one-shot save in `save_state`.
     pub(crate) fn push_to_ui_settings(&mut self) {
         self.ui_settings.font_scale = self.font_scale;
         self.ui_settings.font_idx = self.font_idx;
@@ -4883,6 +4913,9 @@ impl Watchlist {
         self.ui_settings.shared_x_axis = self.shared_x_axis;
         self.ui_settings.shared_y_axis = self.shared_y_axis;
         self.ui_settings.style_idx = self.style_idx;
+        // Propagate into the store so the supervisor can persist it as well.
+        let snapshot = self.ui_settings.clone();
+        self.ui_settings_store.update(|s| *s = snapshot);
     }
 
     /// P2: Initialise the welcome wizard from the loaded `ui_settings`.
@@ -4916,6 +4949,111 @@ impl Watchlist {
         self.shared_x_axis = self.ui_settings.shared_x_axis;
         self.shared_y_axis = self.ui_settings.shared_y_axis;
         self.style_idx = self.ui_settings.style_idx;
+        // Keep the store in sync with the freshly-loaded values so the
+        // persist supervisor starts from the restored state, not the Default.
+        self.ui_settings_store.update(|s| *s = self.ui_settings.clone());
+    }
+
+    // ── Wave 2 (state): Store<UiSettings> accessor / mutator ─────────────────
+
+    /// Read the current `UiSettings` from the store.
+    /// The returned guard holds a read lock — release it before calling
+    /// `update_ui_settings` to avoid a deadlock.
+    pub(crate) fn ui_settings_snapshot(
+        &self,
+    ) -> parking_lot::RwLockReadGuard<crate::state::UiSettings> {
+        self.ui_settings_store.read()
+    }
+
+    /// Mutate `UiSettings` through the store.
+    ///
+    /// The store bumps its version counter and starts the debounce clock;
+    /// the background persist supervisor will write to disk within
+    /// `state::DEBOUNCE_MS` + `state::PERSIST_TICK_MS` (~250ms).
+    ///
+    /// The plain `ui_settings` mirror is updated in-place so the legacy
+    /// serialization path (`push_to_ui_settings` / `save_state`) and the
+    /// `init_welcome_wizard` logic continue to see the latest values.
+    pub(crate) fn update_ui_settings(&mut self, f: impl FnOnce(&mut crate::state::UiSettings)) {
+        self.ui_settings_store.update(|s| f(s));
+        // Mirror the store's new value into the plain field used by the
+        // legacy load/save path and `init_welcome_wizard`.
+        self.ui_settings = self.ui_settings_store.read().clone();
+    }
+
+    // ── Wave 2 (state): Store<TradingDefaults> accessor / mutator ────────────
+
+    /// Read the current `TradingDefaults` from the store.
+    pub(crate) fn trading_defaults_snapshot(
+        &self,
+    ) -> parking_lot::RwLockReadGuard<crate::state::TradingDefaults> {
+        self.trading_defaults_store.read()
+    }
+
+    /// Mutate `TradingDefaults` through the store.
+    ///
+    /// The store bumps its version counter and starts the debounce clock;
+    /// the background persist supervisor writes to disk within ~250ms.
+    ///
+    /// The flat legacy fields (`default_stock_qty`, etc.) on Watchlist are
+    /// kept in sync so existing callers that read them directly continue to
+    /// see the latest values. `daily_loss_cap` and `max_position_pct` have
+    /// no legacy counterpart — they live only in the store.
+    pub(crate) fn update_trading_defaults(&mut self, f: impl FnOnce(&mut crate::state::TradingDefaults)) {
+        self.trading_defaults_store.update(|s| f(s));
+        self.sync_trading_defaults_from_store();
+    }
+
+    /// Push flat legacy fields → `trading_defaults_store`.
+    ///
+    /// Called from `settings_panel` after any mutation to the flat fields so
+    /// the store stays in sync and the persist supervisor can write to disk.
+    pub(crate) fn push_to_trading_defaults_store(&mut self) {
+        let order_type = match self.default_order_type {
+            0 => crate::state::DefaultOrderType::Market,
+            1 => crate::state::DefaultOrderType::Limit,
+            2 => crate::state::DefaultOrderType::Stop,
+            _ => crate::state::DefaultOrderType::StopLimit,
+        };
+        let tif = match self.default_tif {
+            0 => crate::state::DefaultTimeInForce::Day,
+            1 => crate::state::DefaultTimeInForce::Gtc,
+            2 => crate::state::DefaultTimeInForce::Ioc,
+            _ => crate::state::DefaultTimeInForce::Fok,
+        };
+        let qty = self.default_stock_qty;
+        let opts_qty = self.default_options_qty;
+        let rth = self.default_outside_rth;
+        self.trading_defaults_store.update(|s| {
+            s.default_stock_qty   = qty;
+            s.default_options_qty = opts_qty;
+            s.default_order_type  = order_type;
+            s.default_tif         = tif;
+            s.default_outside_rth = rth;
+        });
+    }
+
+    /// Copy the store's current `TradingDefaults` into the flat legacy fields.
+    /// Called after `update_trading_defaults()` and at load time.
+    pub(crate) fn sync_trading_defaults_from_store(&mut self) {
+        let snap = self.trading_defaults_store.read().clone();
+        self.default_stock_qty   = snap.default_stock_qty;
+        self.default_options_qty = snap.default_options_qty;
+        // Map typed enum → legacy usize index (0=MKT,1=LMT,2=STP,3=STPLMT)
+        self.default_order_type  = match snap.default_order_type {
+            crate::state::DefaultOrderType::Market    => 0,
+            crate::state::DefaultOrderType::Limit     => 1,
+            crate::state::DefaultOrderType::Stop      => 2,
+            crate::state::DefaultOrderType::StopLimit => 3,
+        };
+        // Map typed enum → legacy usize index (0=DAY,1=GTC,2=IOC,3=FOK)
+        self.default_tif         = match snap.default_tif {
+            crate::state::DefaultTimeInForce::Day => 0,
+            crate::state::DefaultTimeInForce::Gtc => 1,
+            crate::state::DefaultTimeInForce::Ioc => 2,
+            crate::state::DefaultTimeInForce::Fok => 3,
+        };
+        self.default_outside_rth = snap.default_outside_rth;
     }
 
     /// Add symbol to the last section (creates one if none exist).
@@ -5232,6 +5370,15 @@ struct App {
     iw: u32, ih: u32,
     windows: Vec<ChartWindow>,
     spawn_rx: mpsc::Receiver<SpawnRequest>,
+    /// Wave 2 (state): registry shared with the persist supervisor thread.
+    /// All `Store<T>` instances created for the process lifetime are
+    /// registered here so the supervisor can walk them every ~50ms.
+    store_registry: std::sync::Arc<crate::state::StoreRegistry>,
+    /// Wave 2 (state): handle that keeps the persist supervisor thread alive
+    /// for the duration of the process. The thread loops until the OS
+    /// cleans it up at exit; there is no shutdown channel by design.
+    #[allow(dead_code)]
+    persist_supervisor: std::thread::JoinHandle<()>,
 }
 
 struct GpuCtx {
@@ -5737,6 +5884,14 @@ impl App {
         }
         // P2: Initialize the welcome wizard from loaded ui_settings.
         wl.init_welcome_wizard();
+        // Wave 2 (state): load TradingDefaults from disk, seed the store and
+        // mirror into the flat legacy fields.
+        if let Some(loaded_td) =
+            crate::state::load::<crate::state::TradingDefaults>(&trading_defaults_path())
+        {
+            wl.trading_defaults_store.update(|s| *s = loaded_td);
+            wl.sync_trading_defaults_from_store();
+        }
         // Load persisted hotkeys (override defaults)
         load_hotkeys(&mut wl.hotkeys);
         // Load persisted templates
@@ -5765,6 +5920,14 @@ impl App {
             // Route initial LoadBars to first pane
             if let Some(p) = cw.panes.first_mut() { p.process(cmd); }
         }
+        // Wave 2 (state): register both stores with the persist supervisor
+        // registry so they are walked every ~50ms from this point on.
+        self.store_registry.register(
+            cw.watchlist.ui_settings_store.clone() as std::sync::Arc<dyn crate::state::PersistableStore>
+        );
+        self.store_registry.register(
+            cw.watchlist.trading_defaults_store.clone() as std::sync::Arc<dyn crate::state::PersistableStore>
+        );
         self.windows.push(cw);
     }
 }
@@ -5804,6 +5967,12 @@ impl ApplicationHandler for App {
             WindowEvent::CloseRequested => {
                 save_state(&cw.panes, cw.layout, &mut cw.watchlist);
                 cw.watchlist.persist();
+                // Wave 2 (state): synchronous final flush so stores are written
+                // to disk before the process exits (debounce may not have elapsed yet).
+                let flush_failures = self.store_registry.flush_all();
+                for (key, e) in &flush_failures {
+                    eprintln!("[state] final flush failed for '{key}': {e}");
+                }
                 self.windows.retain(|w| w.id != wid);
             }
             WindowEvent::Resized(s) => {
@@ -6301,6 +6470,15 @@ fn ui_settings_path() -> std::path::PathBuf {
     let mut p = state_path();
     p.pop();
     p.push("ui_settings.json");
+    p
+}
+
+/// Wave 2 (state): persist path for the `TradingDefaults` aggregate.
+/// Lives alongside `native-chart-state.json` in the same directory.
+fn trading_defaults_path() -> std::path::PathBuf {
+    let mut p = state_path();
+    p.pop();
+    p.push("trading_defaults.json");
     p
 }
 
@@ -7055,9 +7233,15 @@ pub fn open_window(rx: mpsc::Receiver<ChartCommand>, initial_cmd: ChartCommand, 
         };
         #[cfg(not(target_os = "windows"))]
         let el = EventLoop::builder().build().unwrap();
+        // Wave 2 (state): create the registry and spawn the persist supervisor
+        // before the first window opens so every Store<T> registered during
+        // spawn_window() is already being walked on the next tick.
+        let store_registry = crate::state::StoreRegistry::new();
+        let persist_supervisor = crate::state::spawn_persist_supervisor(store_registry.clone());
         let mut app = App {
             app_handle: handle, iw: 1920, ih: 1080,
             windows: Vec::new(), spawn_rx,
+            store_registry, persist_supervisor,
         };
         let _ = el.run_app(&mut app);
         // All windows closed — clear the spawn sender so next call restarts
@@ -7082,7 +7266,10 @@ pub fn open_window_blocking(rx: mpsc::Receiver<ChartCommand>, initial_cmd: Chart
         .with_activate_ignoring_other_apps(true)
         .build()
         .unwrap();
-    let mut app = App { app_handle, iw: 1920, ih: 1080, windows: Vec::new(), spawn_rx };
+    // Wave 2 (state): create the registry and spawn the persist supervisor.
+    let store_registry = crate::state::StoreRegistry::new();
+    let persist_supervisor = crate::state::spawn_persist_supervisor(store_registry.clone());
+    let mut app = App { app_handle, iw: 1920, ih: 1080, windows: Vec::new(), spawn_rx, store_registry, persist_supervisor };
     let _ = el.run_app(&mut app);
     *spawn_tx_lock.lock().unwrap() = None;
 }
