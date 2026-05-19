@@ -88,6 +88,7 @@ use winit::window::Window;
 
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button as KitButton, NumberStepper, SelectableRow, Tooltip, tokens::{Variant as KitVariant, Size as KitSize}};
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::chart_renderer::gpu::{
     Chart, Layout, Watchlist, Theme,
     CURRENT_WINDOW, CLOSE_REQUESTED, TB_BTN_CLICKED, PENDING_TOASTS, PENDING_WL_TOOLTIP,
@@ -1022,12 +1023,12 @@ pub(crate) fn render(
                                     if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == *eid) { ind.visible = nv; }
                                 }
                             }
-                            let r = KitButton::icon(Icon::PENCIL_LINE).variant(KitVariant::MutedIcon).show(ui, t);
+                            let r = KitButton::icon(Icon::PENCIL_LINE).variant(KitVariant::MutedIcon).placement(IconPlacement::Toolbar).show(ui, t);
                             Tooltip::new("Edit indicator").show(ui, &r, t);
                             if r.clicked() {
                                 panes[ap].editing_indicator = Some(*eid);
                             }
-                            let r = KitButton::icon(Icon::X).variant(KitVariant::MutedIcon).glyph_color(color_half(t.bear)).show(ui, t);
+                            let r = KitButton::icon(Icon::X).variant(KitVariant::MutedIcon).placement(IconPlacement::Toolbar).tone_destructive().show(ui, t);
                             Tooltip::new("Remove indicator").show(ui, &r, t);
                             if r.clicked() {
                                 let shift = ui.input(|i| i.modifiers.shift);
@@ -1361,7 +1362,7 @@ pub(crate) fn render(
                         ui.add_space(gap_xl());
                         let label_resp = ui.label(egui::RichText::new(&ov.symbol).monospace().size(font_sm()).color(oc));
                         if label_resp.double_clicked() { edit_idx = Some(oi); }
-                        let r = KitButton::icon(Icon::X).variant(KitVariant::Ghost).glyph_color(color_half(t.bear)).show(ui, t);
+                        let r = KitButton::icon(Icon::X).variant(KitVariant::Ghost).placement(IconPlacement::Toolbar).tone_destructive().show(ui, t);
                         Tooltip::new("Remove overlay").show(ui, &r, t);
                         if r.clicked() {
                             remove_idx = Some(oi);

@@ -4,6 +4,7 @@ use super::super::style::*;
 use egui::{self, Color32, Response, RichText, Stroke, Ui, Vec2};
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 
 // ─── Header action button ─────────────────────────────────────────────────────
 
@@ -14,6 +15,7 @@ pub fn header_action_btn(ui: &mut Ui, glyph: &str, dim: Color32) -> Response {
     let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
     Button::icon(glyph).variant(KitVariant::Ghost).size(KitSize::Xs)
         .glyph_color(dim).min_size(Vec2::new(14.0, 14.0))
+        .placement(IconPlacement::PanelHeader)
         .show(ui, theme)
 }
 
@@ -21,6 +23,7 @@ pub fn header_action_btn(ui: &mut Ui, glyph: &str, dim: Color32) -> Response {
 /// affordances inside split sections / nested headers.
 pub fn secondary_close_btn(ui: &mut Ui, _dim: Color32) -> bool {
     Button::close()
+        .placement(IconPlacement::TabClose)
         .show(ui, &crate::ui_kit::widgets::theme::active_theme(ui.ctx()))
         .on_hover_text("Close")
         .clicked()

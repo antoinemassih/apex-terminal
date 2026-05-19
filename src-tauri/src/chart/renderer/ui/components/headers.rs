@@ -5,6 +5,7 @@ use super::labels::section_label_widget;
 use egui::{self, Color32, Pos2, RichText, Sense, Stroke, Ui, Vec2};
 use crate::ui_kit::widgets::Button as KitButton;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 
 // ─── Tab strip ────────────────────────────────────────────────────────────────
 
@@ -129,7 +130,7 @@ pub fn panel_header(
         section_label_widget(ui, title, title_color);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
-            if KitButton::close().show(ui, theme).clicked() {
+            if KitButton::close().placement(IconPlacement::PanelHeader).show(ui, theme).clicked() {
                 *open = false;
                 closed = true;
             }
