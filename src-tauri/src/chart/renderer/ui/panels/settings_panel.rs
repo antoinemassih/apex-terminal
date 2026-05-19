@@ -10,7 +10,7 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme, Chart, THEMES};
 use super::super::super::commands::{self, AppCommand};
-use super::super::widgets::form::{FormRow, FormRowAlign};
+use crate::ui_kit::widgets::{FormRow, FormRowAlign};
 use super::super::widgets::text::{BodyLabel, SectionLabel};
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::{Variant, Size};
