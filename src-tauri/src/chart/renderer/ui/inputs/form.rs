@@ -1103,6 +1103,8 @@ impl ApertureOrderTicket {
         use crate::ui_kit::widgets::Button;
         use crate::ui_kit::widgets::tokens::Size as KitSize;
         use crate::ui_kit::widgets::Input;
+        use crate::ui_kit::widgets::FormField;
+        use crate::ui_kit::widgets::InputGroup;
 
         let panel_w = if self.panel_w > 0.0 { self.panel_w } else { ui.available_width() };
         let pad     = 8.0_f32;
@@ -1179,9 +1181,13 @@ impl ApertureOrderTicket {
                 ui.add_space(gap_sm());
                 let premium = last;
                 let mult    = if s.is_option { 100.0_f32 } else { 1.0_f32 };
-                Input::new(s.order_notional_amount)
-                    .placeholder("Amount").width(70.0)
-                    .show(ui, &t_stub);
+                InputGroup::new()
+                    .prefix("$")
+                    .show(ui, &t_stub, |ui| {
+                        Input::new(s.order_notional_amount)
+                            .placeholder("Amount").width(70.0)
+                            .show(ui, &t_stub);
+                    });
                 let notional: f32 = s.order_notional_amount.parse().unwrap_or(0.0);
                 let qty = if premium > 0.0 && mult > 0.0 {
                     (notional / (premium * mult)).floor() as i32
@@ -1193,91 +1199,139 @@ impl ApertureOrderTicket {
         });
         ui.add_space(gap_xs());
 
-        // ── QTY stepper + compact price / MKT-LMT ────────────────────────
+        // ── QTY + Price row — FormField-wrapped ───────────────────────────
+        // Inline validation: qty must be > 0 for the submit to be valid.
+        let qty_invalid = *s.order_qty == 0;
+        let limit_price_val: f32 = s.order_limit_price.parse().unwrap_or(0.0);
+        let limit_invalid = !*s.order_market && !adv && limit_price_val < 0.0;
+
         ui.horizontal(|ui| {
             ui.add_space(pad);
             ui.spacing_mut().item_spacing.x = gap_xs();
-            let step = if *s.order_qty >= 100 { 10u32 }
-                       else if *s.order_qty >= 10 { 5 }
-                       else { 1 };
-            if !*s.order_notional_mode {
-                Stepper::new(s.order_qty)
-                    .step(step).range(1, u32::MAX)
-                    .theme(&t_stub)
-                    .show(ui);
-            } else {
-                let mut qty_display = format!("{} contracts", s.order_qty);
-                Input::new(&mut qty_display)
-                    .disabled(true).width(100.0)
-                    .horizontal_align(egui::Align::Center)
-                    .show(ui, &t_stub);
-            }
+
+            // ── Quantity FormField ─────────────────────────────────────────
+            FormField::new("Qty")
+                .error_if(qty_invalid, "Must be > 0")
+                .helper("e.g., 100 contracts")
+                .show(ui, &t_stub, |ui| {
+                    let step = if *s.order_qty >= 100 { 10u32 }
+                               else if *s.order_qty >= 10 { 5 }
+                               else { 1 };
+                    if !*s.order_notional_mode {
+                        Stepper::new(s.order_qty)
+                            .step(step).range(1, u32::MAX)
+                            .theme(&t_stub)
+                            .show(ui);
+                    } else {
+                        let mut qty_display = format!("{} contracts", s.order_qty);
+                        Input::new(&mut qty_display)
+                            .disabled(true).width(100.0)
+                            .horizontal_align(egui::Align::Center)
+                            .show(ui, &t_stub);
+                    }
+                });
+
+            // Vertical separator between qty and price columns.
             ui.add_space(gap_sm());
             let cursor = ui.cursor().min;
             ui.painter().line_segment(
                 [egui::pos2(cursor.x, cursor.y), egui::pos2(cursor.x, cursor.y + 20.0)],
                 Stroke::new(stroke_std(), color_alpha(self.toolbar_border, 80)));
             ui.add_space(gap_md());
+
+            // ── Price FormField (compact / non-advanced mode) ─────────────
             if !adv {
-                if *s.order_market {
-                    ui.label(egui::RichText::new(format!("{:.2}", last))
-                        .monospace().size(font_md()).color(self.dim));
-                } else {
-                    Input::new(s.order_limit_price)
-                        .placeholder("Price").width(68.0)
-                        .horizontal_align(egui::Align::RIGHT)
-                        .show(ui, &t_stub);
-                }
-                ui.add_space(gap_xs());
-                let mkt_label = if *s.order_market { "MKT" } else { "LMT" };
-                if ui.add(egui::Button::new(
-                        egui::RichText::new(mkt_label).monospace().size(font_sm()).strong()
-                            .color(if *s.order_market { self.accent } else { self.dim }))
-                    .fill(if *s.order_market { color_alpha(self.accent, 35) } else { self.toolbar_bg })
-                    .stroke(Stroke::new(stroke_thin(), color_alpha(self.toolbar_border, 90))).corner_radius(r_xs())
-                    .min_size(egui::vec2(30.0, row_height_compact())))
-                    .clicked()
-                {
-                    *s.order_market = !*s.order_market;
-                    if !*s.order_market && s.order_limit_price.is_empty() {
-                        *s.order_limit_price = format!("{:.2}", last);
-                    }
-                }
+                FormField::new("Price")
+                    .error_if(limit_invalid, "Must be > 0")
+                    .helper(if *s.order_market { "market order" } else { "limit price" })
+                    .show(ui, &t_stub, |ui| {
+                        if *s.order_market {
+                            ui.label(egui::RichText::new(format!("{:.2}", last))
+                                .monospace().size(font_md()).color(self.dim));
+                        } else {
+                            InputGroup::new()
+                                .prefix("$")
+                                .invalid(limit_invalid)
+                                .show(ui, &t_stub, |ui| {
+                                    Input::new(s.order_limit_price)
+                                        .placeholder("0.00").width(60.0)
+                                        .horizontal_align(egui::Align::RIGHT)
+                                        .show(ui, &t_stub);
+                                });
+                        }
+                        ui.add_space(gap_xs());
+                        let mkt_label = if *s.order_market { "MKT" } else { "LMT" };
+                        if ui.add(egui::Button::new(
+                                egui::RichText::new(mkt_label).monospace().size(font_sm()).strong()
+                                    .color(if *s.order_market { self.accent } else { self.dim }))
+                            .fill(if *s.order_market { color_alpha(self.accent, 35) } else { self.toolbar_bg })
+                            .stroke(Stroke::new(stroke_thin(), color_alpha(self.toolbar_border, 90)))
+                            .corner_radius(r_xs())
+                            .min_size(egui::vec2(30.0, row_height_compact())))
+                            .clicked()
+                        {
+                            *s.order_market = !*s.order_market;
+                            if !*s.order_market && s.order_limit_price.is_empty() {
+                                *s.order_limit_price = format!("{:.2}", last);
+                            }
+                        }
+                    });
             } else {
                 ui.label(egui::RichText::new(format!("Last {:.2}", last))
                     .monospace().size(font_sm()).color(color_alpha(self.dim, 60)));
             }
         });
 
-        // ── Advanced: per-order-type price fields ─────────────────────────
+        // ── Advanced: per-order-type price fields — FormField-wrapped ──────
         if adv {
             let oti = *s.order_type_idx;
             ui.add_space(gap_xs());
             if oti == 1 || oti == 3 {
-                FormRow::new("Limit").leading_space(pad).label_width(32.0).hint("Limit price")
+                let lp: f32 = s.order_limit_price.parse().unwrap_or(0.0);
+                let lp_err = lp < 0.0;
+                ui.add_space(gap_xs());
+                FormField::new("Limit Price")
+                    .leading_indent(pad)
+                    .helper("e.g., 150.25")
+                    .error_if(lp_err, "Must be ≥ 0")
                     .show(ui, &t_stub, |ui| {
-                        Input::new(s.order_limit_price)
-                            .width(80.0)
-                            .horizontal_align(egui::Align::RIGHT)
-                            .show(ui, &t_stub);
+                        InputGroup::new()
+                            .prefix("$")
+                            .invalid(lp_err)
+                            .show(ui, &t_stub, |ui| {
+                                Input::new(s.order_limit_price)
+                                    .width(panel_w - pad * 2.0 - 4.0)
+                                    .horizontal_align(egui::Align::RIGHT)
+                                    .show(ui, &t_stub);
+                            });
                     });
             }
             if oti == 2 || oti == 3 {
-                FormRow::new("Stop").leading_space(pad).label_width(32.0)
-                    .label_color(self.bear).hint("Stop price")
+                let sp: f32 = s.order_stop_price.parse().unwrap_or(0.0);
+                let sp_err = sp < 0.0;
+                FormField::new("Stop Price")
+                    .leading_indent(pad)
+                    .helper("trigger price")
+                    .error_if(sp_err, "Must be ≥ 0")
                     .show(ui, &t_stub, |ui| {
-                        Input::new(s.order_stop_price)
-                            .width(80.0)
-                            .horizontal_align(egui::Align::RIGHT)
-                            .show(ui, &t_stub);
+                        InputGroup::new()
+                            .prefix("$")
+                            .invalid(sp_err)
+                            .show(ui, &t_stub, |ui| {
+                                Input::new(s.order_stop_price)
+                                    .width(panel_w - pad * 2.0 - 4.0)
+                                    .horizontal_align(egui::Align::RIGHT)
+                                    .show(ui, &t_stub);
+                            });
                     });
             }
             if oti == 4 {
-                FormRow::new("Trail").leading_space(pad).label_width(32.0)
-                    .label_color(self.accent).hint("Trail amt")
+                FormField::new("Trail Amount")
+                    .leading_indent(pad)
+                    .helper("trailing offset")
                     .show(ui, &t_stub, |ui| {
                         Input::new(s.order_trail_amt)
-                            .width(80.0)
+                            .width(panel_w - pad * 2.0 - 4.0)
                             .horizontal_align(egui::Align::RIGHT)
                             .show(ui, &t_stub);
                     });
@@ -1315,44 +1369,79 @@ impl ApertureOrderTicket {
             });
         }
 
-        ui.add_space(gap_sm());
-
-        // ── BUY / SELL ────────────────────────────────────────────────────
+        // ── BUY / SELL — FormActionBar separator + trade button row ──────
+        // Prices computed before rendering so labels can be built up front.
         let buy_price = if *s.order_market { last + spread }
             else { s.order_limit_price.parse::<f32>().unwrap_or(last) };
         let sell_price = if *s.order_market { last - spread }
             else { s.order_limit_price.parse::<f32>().unwrap_or(last) };
-        ui.horizontal(|ui| {
-            ui.add_space(pad);
-            ui.spacing_mut().item_spacing.x = gap_sm();
-            let btn_w = (panel_w - pad * 2.0 - 8.0) / 2.0;
-            let is_und = adv && *s.order_type_idx == 5 && s.is_option;
-            let buy_label = if is_und {
-                format!("BUY {} on UND", s.option_type)
-            } else {
-                format!("BUY {:.2}", buy_price)
-            };
-            let sell_label = if is_und {
-                format!("SELL {} on UND", s.option_type)
-            } else {
-                format!("SELL {:.2}", sell_price)
-            };
-            if Button::buy(buy_label.as_str())
-                .min_size(egui::vec2(btn_w, btn_trade_height()))
-                .size(KitSize::Md)
-                .show(ui, &t_stub).clicked() {
-                action = if is_und { ApertureAction::TriggerBuy }
-                         else      { ApertureAction::Buy { price: buy_price } };
+        let is_und = adv && *s.order_type_idx == 5 && s.is_option;
+        let buy_label = if is_und {
+            format!("BUY {} on UND", s.option_type)
+        } else {
+            format!("BUY {:.2}", buy_price)
+        };
+        let sell_label = if is_und {
+            format!("SELL {} on UND", s.option_type)
+        } else {
+            format!("SELL {:.2}", sell_price)
+        };
+
+        // FormActionBar: separator + right-aligned button row.
+        // SELL (tertiary, left-aligned ghost) — BUY (primary, rightmost).
+        // Trade-color styling is applied via Button::buy/Button::sell inside
+        // a custom horizontal strip placed inside the FormActionBar's layout
+        // slot. The separator and padding come from FormActionBar.
+        //
+        // Layout: we manually draw the separator+padding (same tokens as
+        // FormActionBar) and then render the buttons with Button::buy/sell
+        // so the bull/bear tints are preserved. This avoids an extra button
+        // layer while using the same visual rhythm.
+        {
+            ui.add_space(gap_md());
+            let avail = ui.available_width();
+            let (sep_rect, _) = ui.allocate_exact_size(
+                egui::Vec2::new(avail, stroke_thin()),
+                egui::Sense::hover(),
+            );
+            if ui.is_rect_visible(sep_rect) {
+                let sep_col = color_alpha(self.toolbar_border, alpha_dim());
+                ui.painter().hline(
+                    sep_rect.x_range(),
+                    sep_rect.center().y,
+                    Stroke::new(stroke_thin(), sep_col),
+                );
             }
-            if Button::sell(sell_label.as_str())
-                .min_size(egui::vec2(btn_w, btn_trade_height()))
-                .size(KitSize::Md)
-                .show(ui, &t_stub).clicked() {
-                action = if is_und { ApertureAction::TriggerSell }
-                         else      { ApertureAction::Sell { price: sell_price } };
-            }
-        });
-        ui.add_space(gap_md());
+            ui.add_space(gap_md());
+
+            // Right-to-left layout: BUY is rightmost (primary), SELL is left.
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add_space(pad);
+                ui.spacing_mut().item_spacing.x = gap_sm();
+                let btn_w = (panel_w - pad * 2.0 - gap_sm()) / 2.0;
+
+                // Primary (rightmost) — BUY
+                if Button::buy(buy_label.as_str())
+                    .min_size(egui::vec2(btn_w, btn_trade_height()))
+                    .size(KitSize::Md)
+                    .show(ui, &t_stub).clicked()
+                {
+                    action = if is_und { ApertureAction::TriggerBuy }
+                             else      { ApertureAction::Buy { price: buy_price } };
+                }
+
+                // Secondary (left of primary) — SELL
+                if Button::sell(sell_label.as_str())
+                    .min_size(egui::vec2(btn_w, btn_trade_height()))
+                    .size(KitSize::Md)
+                    .show(ui, &t_stub).clicked()
+                {
+                    action = if is_und { ApertureAction::TriggerSell }
+                             else      { ApertureAction::Sell { price: sell_price } };
+                }
+            });
+            ui.add_space(gap_md());
+        }
 
         ApertureOrderOutcome { action }
     }
