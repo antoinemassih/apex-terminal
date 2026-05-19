@@ -5275,20 +5275,31 @@ impl GpuCtx {
         }, None)).ok()?;
         let caps = surface.get_capabilities(&adapter);
         let fmt = caps.formats.iter().find(|f| f.is_srgb()).copied().unwrap_or(caps.formats[0]);
-        // Fifo (vsync) + frame latency 2 = smooth consistent frame pacing.
-        // Latency 2 lets us pipeline: CPU prepares frame N+1 while GPU presents frame N.
-        // This eliminates the 10ms acquire stalls we had with latency 1.
-        let present_mode = if caps.present_modes.contains(&wgpu::PresentMode::Fifo) {
-            wgpu::PresentMode::Fifo
+        // Present mode tradeoff for pan/zoom feel:
+        //   Mailbox        — vsync, no queue, swap to latest frame. Lowest input
+        //                    lag, no tearing. Preferred for interactive chart.
+        //   Fifo + lat=2   — queued vsync, smoothest pacing but up to 2-frame
+        //                    (~33ms) input lag. Falls back here if Mailbox is
+        //                    unavailable on the platform.
+        //   AutoVsync      — last-resort fallback.
+        //
+        // User-reported symptom that motivated the switch: "the chart movement
+        // feels behind my drag" + "micro-stuttering". Mailbox addresses both:
+        // input lag is eliminated by killing the queue; missed-frame stutter is
+        // mitigated because GPU re-presents latest available frame at each vsync.
+        let (present_mode, frame_latency) = if caps.present_modes.contains(&wgpu::PresentMode::Mailbox) {
+            (wgpu::PresentMode::Mailbox, 1u32)
+        } else if caps.present_modes.contains(&wgpu::PresentMode::Fifo) {
+            (wgpu::PresentMode::Fifo, 2u32)
         } else {
-            wgpu::PresentMode::AutoVsync
+            (wgpu::PresentMode::AutoVsync, 2u32)
         };
-        eprintln!("[native-chart] PresentMode::{:?}, frame latency 2", present_mode);
+        eprintln!("[native-chart] PresentMode::{:?}, frame latency {}", present_mode, frame_latency);
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT, format: fmt,
             width: size.width.max(1), height: size.height.max(1),
             present_mode, alpha_mode: caps.alpha_modes[0],
-            view_formats: vec![], desired_maximum_frame_latency: 2,
+            view_formats: vec![], desired_maximum_frame_latency: frame_latency,
         };
         surface.configure(&device, &config);
 
