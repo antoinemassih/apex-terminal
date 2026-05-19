@@ -74,10 +74,15 @@ pub fn report(level: ErrorLevel, source: &str, code: &str, message: impl Into<St
 
     // Surface to the existing toast pipeline for anything actionable.
     // Info-level events stay silent — they're for log scrubbing, not the user.
-    if matches!(level, ErrorLevel::Warn | ErrorLevel::Error | ErrorLevel::Critical) {
-        let toast = format!("{source}: {message}");
-        crate::data::apex_data::live_state::push_toast(toast);
-    }
+    // Severity mapping: Warn → 1 (yellow prefix \x01), Error/Critical → 2 (red prefix \x02).
+    let sev = match level {
+        ErrorLevel::Info     => return, // silent
+        ErrorLevel::Warn     => 1u8,    // yellow warning (\x01 prefix)
+        ErrorLevel::Error    => 2u8,    // red danger (\x02 prefix)
+        ErrorLevel::Critical => 2u8,    // red danger (\x02 prefix)
+    };
+    let toast = format!("{source}: {message}");
+    crate::data::apex_data::live_state::push_toast_with_severity(toast, sev);
 }
 
 /// Drain and return all buffered errors. Subsequent calls see only new events.

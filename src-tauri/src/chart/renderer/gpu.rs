@@ -3856,14 +3856,17 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
             });
         }
     }
-    // Drain ApexData toasts (sub_rejected, feed errors) into PENDING_TOASTS
+    // Drain ApexData toasts (sub_rejected, feed errors) into PENDING_TOASTS.
+    // Messages may carry a leading control-byte severity prefix (\x01=warn, \x02=danger)
+    // which top_nav strips and maps to accent color. is_buy=false keeps the bear path
+    // as the fallback for messages without a prefix.
     {
         let apex_toasts = crate::apex_data::live_state::drain_toasts();
         if !apex_toasts.is_empty() {
             PENDING_TOASTS.with(|ts| {
                 let mut v = ts.borrow_mut();
                 for msg in apex_toasts {
-                    v.push((msg, 0.0, false)); // bearish/warn color
+                    v.push((msg, 0.0, false));
                 }
             });
         }
