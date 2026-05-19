@@ -2386,15 +2386,34 @@ pub(crate) fn render(
     }
 
     // ── Order execution toasts ───────────────────────────────────────────────
+    // Messages from errors_sink carry a leading severity byte:
+    //   \x01 = Warning  (yellow, t.warn)
+    //   \x02 = Danger   (red,    t.bear)
+    // All other messages use is_buy to pick bull (green) vs bear (red).
+    // Toasts are staggered by 80 ms per slot: a toast only becomes visible
+    // after `idx * 0.08` seconds have elapsed since it was created, so a
+    // burst of simultaneous pushes slides in one by one instead of all at once.
     if !toasts.is_empty() {
         let screen = ctx.screen_rect();
         for (i, (msg, _price, created, is_buy)) in toasts.iter().enumerate() {
             let age = created.elapsed().as_secs_f32();
-            let alpha = ((5.0 - age) / 1.0).min(1.0).max(0.0); // fade out in last second
+            // Stagger: toast at index i only starts appearing after i*80ms.
+            let stagger_delay = i as f32 * 0.08;
+            let visible_age = age - stagger_delay;
+            if visible_age <= 0.0 { continue; } // still waiting for its slot
+            let alpha = ((5.0 - age) / 1.0).min(visible_age / 0.12).min(1.0).max(0.0);
             if alpha <= 0.0 { continue; }
-            let color = if *is_buy { t.bull } else { t.bear };
-            let y_offset = screen.top() + 44.0 + i as f32 * 28.0;
 
+            // Decode severity prefix set by errors_sink / push_toast_with_severity.
+            let (display_msg, color, icon) = if let Some(rest) = msg.strip_prefix('\x01') {
+                (rest, t.warn, Icon::SHIELD_WARNING)
+            } else if let Some(rest) = msg.strip_prefix('\x02') {
+                (rest, t.bear, Icon::X)
+            } else {
+                (msg.as_str(), if *is_buy { t.bull } else { t.bear }, Icon::CHECK)
+            };
+
+            let y_offset = screen.top() + 44.0 + i as f32 * 28.0;
             egui::Window::new(format!("toast_{}", i))
                 .fixed_pos(egui::pos2(screen.center().x - 100.0, y_offset))
                 .fixed_size(egui::vec2(200.0, 20.0))
@@ -2403,7 +2422,7 @@ pub(crate) fn render(
                     .fill(egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), (40.0 * alpha) as u8))
                     .inner_margin(gap_sm()))
                 .show(ctx, |ui| {
-                    ui.label(egui::RichText::new(format!("{} {}", Icon::CHECK, msg)).monospace().size(font_sm())
+                    ui.label(egui::RichText::new(format!("{} {}", icon, display_msg)).monospace().size(font_sm())
                         .color(egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), (255.0 * alpha) as u8)));
                 });
         }

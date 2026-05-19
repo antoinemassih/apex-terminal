@@ -32,7 +32,7 @@ struct State {
     greeks: Mutex<HashMap<String, (GreeksRow, Instant)>>,   // per-contract (OCC ticker)
     greeks_watch: Mutex<HashSet<String>>,          // contracts the poller should keep fresh
     fmv: Mutex<HashMap<String, Fmv>>,              // per-symbol FMV (options)
-    toasts: Mutex<Vec<String>>,                    // pending server-error toasts
+    toasts: Mutex<Vec<String>>,                    // pending server-error toasts (severity encoded as leading \x01=warn \x02=danger)
     /// Per-underlying chain cache (§5.4.d): `HashMap<underlying, HashMap<ticker, row>>`.
     /// Seeded from REST, merged from `chain_delta` frames.
     chains: Mutex<HashMap<String, HashMap<String, ChainRow>>>,
@@ -511,9 +511,24 @@ pub fn get_or_fetch_corp_actions(ticker: &str) {
     }).ok();
 }
 
+/// Push a toast with explicit severity encoded as a leading control byte.
+/// `sev`: 1 = warn (yellow, `\x01` prefix), 2 = danger (red, `\x02` prefix).
+/// Other values push the message with no prefix (bear/default rendering).
+/// The prefix is stripped by the render site (`top_nav.rs`) before display.
+pub fn push_toast_with_severity(msg: impl Into<String>, sev: u8) {
+    let raw = msg.into();
+    let encoded = match sev {
+        1 => format!("\x01{raw}"),
+        2 => format!("\x02{raw}"),
+        _ => raw,
+    };
+    if let Ok(mut g) = state().toasts.lock() { g.push(encoded); }
+}
+/// Push a plain toast (no severity prefix). Kept for call-site compatibility.
 pub fn push_toast(msg: impl Into<String>) {
     if let Ok(mut g) = state().toasts.lock() { g.push(msg.into()); }
 }
+/// Drain all pending toasts. Messages may have a leading control-byte severity prefix.
 pub fn drain_toasts() -> Vec<String> {
     state().toasts.lock().ok().map(|mut g| std::mem::take(&mut *g)).unwrap_or_default()
 }
