@@ -11,7 +11,6 @@ use egui;
 use super::style::*;
 use super::components::*;
 use super::components_extra::*;
-use super::widgets::pills::*;
 use super::widgets::frames::PopupFrame;
 use super::widgets::text::BodyLabel;
 use crate::ui_kit::widgets::Input;

@@ -38,7 +38,6 @@ pub mod design_mode_panel;
 // Widget variants (legacy builder API)
 pub mod frames_widget;
 pub mod headers_widget;
-pub mod pills_widget;
 
 pub mod semantic_label;
 pub mod toolbar;
@@ -59,4 +58,3 @@ pub use menus::*;
 pub use layout::*;
 pub use frames_widget::*;
 pub use headers_widget::*;
-pub use pills_widget::*;
