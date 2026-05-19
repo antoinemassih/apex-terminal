@@ -174,7 +174,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
         .show(ctx, |ui| {
             // ── Header + close ───────────────────────────────────────────
             if PanelHeaderWithClose::new("ORDER SYSTEM HEALTH").theme(t).watchlist(watchlist).show(ui) {
-                watchlist.order_health_open = false;
+                watchlist.update_sidebar_state(|s| s.order_health_open = false);
             }
             separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
             ui.add_space(gap_xs());
@@ -277,7 +277,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
     // would normally drive this; we use title_bar(false) so this branch is
     // mostly a no-op, but keep the wire for future symmetry).
     if !open {
-        watchlist.order_health_open = false;
+        watchlist.update_sidebar_state(|s| s.order_health_open = false);
     }
 }
 

@@ -114,11 +114,11 @@ pub(super) fn execute(
 
     // Settings
     match id {
-        "setting:hotkeys"        => { watchlist.hotkey_editor_open = true; return; }
-        "setting:settings"       => { watchlist.settings_open = true; return; }
-        "setting:apex-diag"      => { watchlist.apex_diag_open = true; return; }
-        "setting:replay"         => { watchlist.replay_pane_open = true; return; }
-        "setting:workspace"      => { watchlist.settings_open = true; return; }
+        "setting:hotkeys"        => { watchlist.update_sidebar_state(|s| s.hotkey_editor_open = true); return; }
+        "setting:settings"       => { watchlist.update_sidebar_state(|s| s.settings_open = true); return; }
+        "setting:apex-diag"      => { watchlist.update_sidebar_state(|s| s.apex_diag_open = true); return; }
+        "setting:replay"         => { watchlist.update_sidebar_state(|s| s.replay_pane_open = true); return; }
+        "setting:workspace"      => { watchlist.update_sidebar_state(|s| s.settings_open = true); return; }
         "setting:pane-chart"     => { panes[ap].pane_type = PaneType::Chart; return; }
         "setting:pane-portfolio" => { panes[ap].pane_type = PaneType::Portfolio; return; }
         "setting:pane-dashboard" => { panes[ap].pane_type = PaneType::Dashboard; return; }

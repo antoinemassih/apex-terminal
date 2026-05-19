@@ -53,7 +53,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
         });
 
     if reset_breaker { crate::apex_data::rest::reset_breaker(); }
-    if resp.closed { watchlist.apex_diag_open = false; }
+    if resp.closed { watchlist.update_sidebar_state(|s| s.apex_diag_open = false); }
 }
 
 // ────────────────────────────────────────────────────────────────────────────

@@ -22,5 +22,5 @@ pub(crate) fn draw(
         .show(ctx, t, |ui, t| {
             super::plays_panel::draw_content(ui, watchlist, panes, ap, t);
         });
-    if resp.close_clicked { watchlist.playbook_panel_open = false; }
+    if resp.close_clicked { watchlist.update_sidebar_state(|s| s.playbook_panel_open = false); }
 }

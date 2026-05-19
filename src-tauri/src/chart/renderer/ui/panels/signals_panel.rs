@@ -65,7 +65,7 @@ pub(crate) fn draw(
         });
 
     watchlist.signals_splits = splits;
-    if resp.close_clicked { watchlist.signals_panel_open = false; }
+    if resp.close_clicked { watchlist.update_sidebar_state(|s| s.signals_panel_open = false); }
 }
 
 /// Per-signal visibility toggles.

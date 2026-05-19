@@ -157,7 +157,7 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
             ui.add_space(gap_xs());
         });
 
-    if open_diag { _watchlist.apex_diag_open = true; }
+    if open_diag { _watchlist.update_sidebar_state(|s| s.apex_diag_open = true); }
     if resp.closed { *conn_panel_open = false; }
 }
 

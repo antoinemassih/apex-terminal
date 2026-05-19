@@ -137,7 +137,7 @@ pub(crate) fn draw(
                     ).sense(egui::Sense::click()));
                     let r = resp.rect.expand2(egui::vec2(4.0, 1.0));
                     ui.painter().rect_filled(r, radius_sm(), bg);
-                    if resp.clicked() { watchlist.order_ledger_view = v as u8; }
+                    if resp.clicked() { let v8 = v as u8; watchlist.update_sidebar_state(|s| s.order_ledger_view = v8); }
                 }
             });
             ui.add_space(gap_xs());
@@ -266,7 +266,7 @@ pub(crate) fn draw(
                             egui::RichText::new(f.label()).monospace().size(font_xs()).color(fg)
                         ).sense(egui::Sense::click()));
                         ui.painter().rect_filled(resp.rect.expand2(egui::vec2(3.0, 1.0)), radius_sm(), bg);
-                        if resp.clicked() { watchlist.order_ledger_filter = i as u8; }
+                        if resp.clicked() { let i8 = i as u8; watchlist.update_sidebar_state(|s| s.order_ledger_filter = i8); }
                     }
                 });
                 ui.add_space(2.0);
@@ -318,7 +318,7 @@ pub(crate) fn draw(
                 });
             }
         });
-    if resp.close_clicked { watchlist.order_ledger_open = false; }
+    if resp.close_clicked { watchlist.update_sidebar_state(|s| s.order_ledger_open = false); }
 }
 
 // ── Inline bulk-cancel confirmation ─────────────────────────────────────────

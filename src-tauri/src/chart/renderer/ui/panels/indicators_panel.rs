@@ -416,11 +416,11 @@ pub(crate) fn draw(
                             });
                     });
                 });
-            watchlist.indicators_section_fracs = fracs;
+            watchlist.update_sidebar_state(|s| s.indicators_section_fracs = fracs);
         });
 
     if resp.close_clicked {
-        watchlist.indicators_panel_open = false;
+        watchlist.update_sidebar_state(|s| s.indicators_panel_open = false);
     }
 }
 

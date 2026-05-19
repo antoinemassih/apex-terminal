@@ -68,7 +68,7 @@ if watchlist.hotkey_editor_open {
             ui.add_space(gap_md());
             draw_content(ui, watchlist, t);
         });
-    if resp.closed { watchlist.hotkey_editor_open = false; }
+    if resp.closed { watchlist.update_sidebar_state(|s| s.hotkey_editor_open = false); }
 }
 
 

@@ -282,7 +282,7 @@ pub(crate) fn draw(
         .show(ctx, t, |ui, t| {
             draw_content(ui, watchlist, t);
         });
-    if resp.close_clicked { watchlist.rrg_open = false; }
+    if resp.close_clicked { watchlist.update_sidebar_state(|s| s.rrg_open = false); }
 }
 
 /// Draw the RRG scatter plot content into a given rect.

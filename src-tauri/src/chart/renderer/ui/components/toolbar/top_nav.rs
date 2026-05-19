@@ -442,7 +442,7 @@ pub(crate) fn render(
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                 }
                 if acct_resp.clicked() {
-                    watchlist.account_strip_open = !watchlist.account_strip_open;
+                    watchlist.update_sidebar_state(|s| s.account_strip_open = !s.account_strip_open);
                 }
             }
 
@@ -848,7 +848,7 @@ pub(crate) fn render(
                         );
                     }
                     if tree_resp.clicked() {
-                        watchlist.object_tree_open = !watchlist.object_tree_open;
+                        watchlist.update_sidebar_state(|s| s.object_tree_open = !s.object_tree_open);
                     }
                 }
 
@@ -867,7 +867,7 @@ pub(crate) fn render(
                 let r = toolbar_btn(ui, Icon::FUNNEL, watchlist.trendline_filter_open, t);
                 Tooltip::new("Trendline Filter").show(ui, &r, t);
                 if r.clicked() {
-                    watchlist.trendline_filter_open = !watchlist.trendline_filter_open;
+                    watchlist.update_sidebar_state(|s| s.trendline_filter_open = !s.trendline_filter_open);
                 }
 
                 ui.spacing_mut().item_spacing.x = prev_sp;
@@ -1912,12 +1912,12 @@ pub(crate) fn render(
                     let cmd_comma = ctx.input(|i| {
                         i.key_pressed(egui::Key::Comma) && i.modifiers.command
                     });
-                    if cmd_comma { watchlist.settings_open = !watchlist.settings_open; }
+                    if cmd_comma { watchlist.update_sidebar_state(|s| s.settings_open = !s.settings_open); }
 
                     let settings_resp = toolbar_btn(ui, Icon::GEAR, watchlist.settings_open, t);
                     Tooltip::new("Settings (Cmd+,)").show(ui, &settings_resp, t);
                     paint_nav_col_tint(ui, tb_rect, settings_resp.rect, t, settings_resp.hovered(), watchlist.settings_open, "right_settings");
-                    if settings_resp.clicked() { watchlist.settings_open = !watchlist.settings_open; }
+                    if settings_resp.clicked() { watchlist.update_sidebar_state(|s| s.settings_open = !s.settings_open); }
                 }
 
                 // Search / command palette — icon-only ToolbarBtn.
@@ -1977,42 +1977,42 @@ pub(crate) fn render(
                 let resp = toolbar_btn(ui, &nav_label(Icon::NEWSPAPER, "Feed"), watchlist.feed_panel_open, t);
                 Tooltip::new("Feed (News, Discord, Screenshots)").show(ui, &resp, t);
                 paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.feed_panel_open, "right_feed");
-                if resp.clicked() { watchlist.feed_panel_open = !watchlist.feed_panel_open; }
+                if resp.clicked() { watchlist.update_sidebar_state(|s| s.feed_panel_open = !s.feed_panel_open); }
                 nav_divider!(ui, resp);
 
                 // Playbook
                 let resp = toolbar_btn(ui, &nav_label(Icon::STAR, "Playbook"), watchlist.playbook_panel_open, t);
                 Tooltip::new("Playbook (Trade Ideas)").show(ui, &resp, t);
                 paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.playbook_panel_open, "right_playbook");
-                if resp.clicked() { watchlist.playbook_panel_open = !watchlist.playbook_panel_open; }
+                if resp.clicked() { watchlist.update_sidebar_state(|s| s.playbook_panel_open = !s.playbook_panel_open); }
                 nav_divider!(ui, resp);
 
                 // Watchlist toggle
                 let resp = toolbar_btn(ui, &nav_label(Icon::LIST, "Watchlist"), watchlist.open, t);
                 Tooltip::new("Watchlist").show(ui, &resp, t);
                 paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.open, "right_watchlist");
-                if resp.clicked() { watchlist.open = !watchlist.open; }
+                if resp.clicked() { watchlist.update_sidebar_state(|s| s.watchlist_open = !s.watchlist_open); }
                 nav_divider!(ui, resp);
 
                 // Orders panel
                 let resp = toolbar_btn(ui, &nav_label(Icon::CURRENCY_DOLLAR, "Orders"), watchlist.orders_panel_open, t);
                 Tooltip::new("Orders Panel").show(ui, &resp, t);
                 paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.orders_panel_open, "right_orders");
-                if resp.clicked() { watchlist.orders_panel_open = !watchlist.orders_panel_open; }
+                if resp.clicked() { watchlist.update_sidebar_state(|s| s.orders_panel_open = !s.orders_panel_open); }
                 nav_divider!(ui, resp);
 
                 // Analysis sidebar toggle
                 let resp = toolbar_btn(ui, &nav_label(Icon::CHART_LINE, "Analysis"), watchlist.analysis_open, t);
                 Tooltip::new("Analysis Sidebar").show(ui, &resp, t);
                 paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.analysis_open, "right_analysis");
-                if resp.clicked() { watchlist.analysis_open = !watchlist.analysis_open; }
+                if resp.clicked() { watchlist.update_sidebar_state(|s| s.analysis_open = !s.analysis_open); }
                 nav_divider!(ui, resp);
 
                 // Indicators panel — manage active indicators + library + tool toggles
                 let resp = toolbar_btn(ui, &nav_label(Icon::PULSE, "Indicators"), watchlist.indicators_panel_open, t);
                 Tooltip::new("Indicators (Active + Library + Tools)").show(ui, &resp, t);
                 paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.indicators_panel_open, "right_indicators");
-                if resp.clicked() { watchlist.indicators_panel_open = !watchlist.indicators_panel_open; }
+                if resp.clicked() { watchlist.update_sidebar_state(|s| s.indicators_panel_open = !s.indicators_panel_open); }
                 nav_divider!(ui, resp);
 
                 // Signals panel (Alerts + Signals) — no divider after, it's the last in the group
@@ -2054,7 +2054,7 @@ pub(crate) fn render(
                         );
                         Badge::count(active_count as u32).max(99).tone(TagTone::Accent).show(&mut child, t);
                     }
-                    if signals_resp.clicked() { watchlist.signals_panel_open = !watchlist.signals_panel_open; }
+                    if signals_resp.clicked() { watchlist.update_sidebar_state(|s| s.signals_panel_open = !s.signals_panel_open); }
                 }
 
                 ui.spacing_mut().item_spacing.x = prev_spacing;
@@ -2895,7 +2895,7 @@ pub(crate) fn render(
     // slice for active-order display; cancel actions dispatch through the
     // global `order_manager` API.
     if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::L)) {
-        watchlist.order_ledger_open = !watchlist.order_ledger_open;
+        watchlist.update_sidebar_state(|s| s.order_ledger_open = !s.order_ledger_open);
     }
     span_begin("sidebar.order_ledger");
     crate::chart_renderer::ui::panels::order_ledger_panel::draw(ctx, watchlist, panes, t);
@@ -2905,7 +2905,7 @@ pub(crate) fn render(
     // reject-rate, top reject reasons, active-state counts and broker contact
     // age. Recomputes journal aggregates at most once/sec via in-panel cache.
     if ctx.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::O)) {
-        watchlist.order_health_open = !watchlist.order_health_open;
+        watchlist.update_sidebar_state(|s| s.order_health_open = !s.order_health_open);
     }
     span_begin("sidebar.order_health");
     crate::chart_renderer::ui::panels::order_health_panel::draw(ctx, watchlist, t);

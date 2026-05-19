@@ -484,7 +484,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
             });
         });
 
-    if resp.closed { watchlist.spread_open = false; }
+    if resp.closed { watchlist.update_sidebar_state(|s| s.spread_open = false); }
 
     // Apply deferred actions outside the closure
     if let Some(strat) = pending_strategy {

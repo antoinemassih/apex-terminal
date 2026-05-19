@@ -226,7 +226,7 @@ if watchlist.open {
                     ui.painter().text(btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::FUNNEL, egui::FontId::proportional(font_sm()), icon_col);
                     let btn_resp = ui.interact(btn_rect, egui::Id::new("wl_filter_btn"), egui::Sense::click());
                     cursor::focus_ring(ui, &btn_resp, t.accent);
-                    if btn_resp.clicked() { watchlist.filter_open = !watchlist.filter_open; }
+                    if btn_resp.clicked() { watchlist.update_sidebar_state(|s| s.filter_open = !s.filter_open); }
                     crate::chart_renderer::ui::style::cursor::clickable(ui, &btn_resp);
                     // Columns config button (sliders icon)
                     let col_btn_rect = egui::Rect::from_min_size(egui::pos2(btn_rect.left() - btn_w, full_rect.top()), egui::vec2(btn_w, search_h));
@@ -234,7 +234,7 @@ if watchlist.open {
                     ui.painter().text(col_btn_rect.center(), egui::Align2::CENTER_CENTER, Icon::SLIDERS, egui::FontId::proportional(font_sm()), col_icon_col);
                     let col_resp = ui.interact(col_btn_rect, egui::Id::new("wl_columns_btn"), egui::Sense::click());
                     cursor::focus_ring(ui, &col_resp, t.accent);
-                    if col_resp.clicked() { watchlist.wl_columns_open = !watchlist.wl_columns_open; }
+                    if col_resp.clicked() { watchlist.update_sidebar_state(|s| s.wl_columns_open = !s.wl_columns_open); }
                     crate::chart_renderer::ui::style::cursor::clickable(ui, &col_resp);
                     // Refocus after adding a symbol
                     if watchlist.search_refocus {
@@ -386,6 +386,7 @@ if watchlist.open {
                                     });
                                     ui.add_space(gap_xs());
                                     // Preset pills
+                                    let mut close_filter_on_preset = false;
                                     ui.horizontal_wrapped(|ui| {
                                         ui.spacing_mut().item_spacing.x = gap_xs();
                                         let presets: Vec<(&str, f32, f32)> = {
@@ -405,10 +406,13 @@ if watchlist.open {
                                                 watchlist.filter_preset = name.to_string();
                                                 watchlist.filter_min_change = *min_chg;
                                                 watchlist.filter_max_change = *max_chg;
-                                                watchlist.filter_open = false;
+                                                close_filter_on_preset = true;
                                             }
                                         }
                                     });
+                                    if close_filter_on_preset {
+                                        watchlist.update_sidebar_state(|s| s.filter_open = false);
+                                    }
                                 });
                             });
                         // Close popup when clicking outside
@@ -418,7 +422,7 @@ if watchlist.open {
                                 egui::vec2(200.0, 200.0), // approximate — close on any outside click
                             );
                             if !popup_area.contains(ui.ctx().input(|i| i.pointer.interact_pos().unwrap_or(egui::Pos2::ZERO))) {
-                                watchlist.filter_open = false;
+                                watchlist.update_sidebar_state(|s| s.filter_open = false);
                             }
                         }
                     }
@@ -1425,7 +1429,7 @@ if watchlist.open {
                         // Spread Builder shortcut
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if Button::small_action("Spread").tint(t.dim).show(ui, t).clicked() {
-                                watchlist.spread_open = !watchlist.spread_open;
+                                watchlist.update_sidebar_state(|s| s.spread_open = !s.spread_open);
                             }
                         });
                     });
@@ -1947,7 +1951,7 @@ if watchlist.open {
             }
         }); // close SidePanelShell::tabs body closure
 
-    if shell_resp.close_clicked { watchlist.open = false; }
+    if shell_resp.close_clicked { watchlist.update_sidebar_state(|s| s.watchlist_open = false); }
     watchlist.tab = active_tab;
 }
 

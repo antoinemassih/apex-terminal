@@ -75,7 +75,7 @@ pub(crate) fn draw(
         });
 
     watchlist.analysis_splits = splits;
-    if resp.close_clicked { watchlist.analysis_open = false; }
+    if resp.close_clicked { watchlist.update_sidebar_state(|s| s.analysis_open = false); }
 
     if let Some(sym) = pending_symbol {
         if let Some(p) = panes.get_mut(ap) {

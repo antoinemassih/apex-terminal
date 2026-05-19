@@ -61,5 +61,5 @@ pub(crate) fn draw(
         });
 
     watchlist.feed_splits = splits;
-    if resp.close_clicked { watchlist.feed_panel_open = false; }
+    if resp.close_clicked { watchlist.update_sidebar_state(|s| s.feed_panel_open = false); }
 }
