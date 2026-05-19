@@ -16,6 +16,7 @@ use crate::chart_renderer::SignalsTab;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::side_panel_shell::Width;
 use crate::ui_kit::widgets::{Button, SplitSectionPanel};
+use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 const ALL_TABS: &[(SignalsTab, &str)] = &[
     (SignalsTab::Alerts, "Alerts"),
@@ -190,14 +191,11 @@ pub(crate) fn draw_signal_row_calibrated(
             let lineage = sig.provenance.as_ref().map(|p| p.lineage_id.clone())
                 .or_else(|| sig.top_contributors.first()
                     .and_then(|c| c.lineage_id.clone()));
-            let btn = ui.add_enabled(
-                lineage.is_some(),
-                egui::Button::new(egui::RichText::new("🔍")
-                    .monospace().size(FONT_XS)
-                    .color(if lineage.is_some() { t.accent } else { t.dim.gamma_multiply(0.4) }))
-                    .fill(egui::Color32::TRANSPARENT)
-                    .min_size(egui::vec2(18.0, 16.0)),
-            );
+            let btn = Button::new("🔍").variant(KitVariant::Ghost).size(KitSize::Xs)
+                .fg(if lineage.is_some() { t.accent } else { t.dim.gamma_multiply(0.4) })
+                .min_size(egui::vec2(18.0, 16.0))
+                .disabled(!lineage.is_some())
+                .show(ui, t);
             if btn.clicked() {
                 if let Some(l) = lineage {
                     super::provenance_pane::request_open(l);

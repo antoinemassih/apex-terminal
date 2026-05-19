@@ -346,12 +346,8 @@ fn draw_form(ui: &mut egui::Ui, s: &mut ReplayPaneState, t: &Theme) {
         ui.add(MonospaceCode::new("class  ").color(t.dim));
         for (label, val) in &[("Stock", AssetClass::Stock), ("Option", AssetClass::Option)] {
             let sel = s.asset_class == *val;
-            let col = if sel { t.accent } else { t.dim.gamma_multiply(0.6) };
-            let resp = ui.add_enabled(editable, egui::Button::new(
-                egui::RichText::new(*label).monospace().size(font_sm()).color(col))
-                .fill(if sel { color_alpha(t.accent, alpha_ghost()) } else { egui::Color32::TRANSPARENT })
-                .stroke(egui::Stroke::new(stroke_thin(), color_alpha(col, alpha_muted())))
-                .min_size(egui::vec2(54.0, 20.0)));
+            let resp = Button::toggle(*label, sel).size(KitSize::Sm)
+                .min_size(egui::vec2(54.0, 20.0)).enabled(editable).show(ui, t);
             if resp.clicked() && editable { s.asset_class = *val; }
         }
     });
@@ -362,12 +358,8 @@ fn draw_form(ui: &mut egui::Ui, s: &mut ReplayPaneState, t: &Theme) {
         ui.add(MonospaceCode::new("source ").color(t.dim));
         for src in &["last", "mark"] {
             let sel = s.source == *src;
-            let col = if sel { t.accent } else { t.dim.gamma_multiply(0.6) };
-            let resp = ui.add_enabled(editable, egui::Button::new(
-                egui::RichText::new(*src).monospace().size(font_sm()).color(col))
-                .fill(if sel { color_alpha(t.accent, alpha_ghost()) } else { egui::Color32::TRANSPARENT })
-                .stroke(egui::Stroke::new(stroke_thin(), color_alpha(col, alpha_muted())))
-                .min_size(egui::vec2(54.0, 20.0)));
+            let resp = Button::toggle(*src, sel).size(KitSize::Sm)
+                .min_size(egui::vec2(54.0, 20.0)).enabled(editable).show(ui, t);
             if resp.clicked() && editable { s.source = src; }
         }
     });
@@ -391,11 +383,8 @@ fn draw_form(ui: &mut egui::Ui, s: &mut ReplayPaneState, t: &Theme) {
             let col = if sel { t.accent }
                       else if implemented { t.dim.gamma_multiply(0.7) }
                       else { t.dim.gamma_multiply(0.4) };
-            let resp = ui.add_enabled(editable && implemented, egui::Button::new(
-                egui::RichText::new(label).monospace().size(font_xs()).color(col))
-                .fill(if sel { color_alpha(t.accent, alpha_ghost()) } else { egui::Color32::TRANSPARENT })
-                .stroke(egui::Stroke::new(stroke_thin(), color_alpha(col, alpha_muted())))
-                .min_size(egui::vec2(0.0, 20.0)));
+            let resp = Button::toggle(label.as_str(), sel).size(KitSize::Xs)
+                .min_size(egui::vec2(0.0, 20.0)).enabled(editable && implemented).show(ui, t);
             if resp.clicked() && editable && implemented { s.mode = m; }
         }
     });
@@ -405,8 +394,8 @@ fn draw_form(ui: &mut egui::Ui, s: &mut ReplayPaneState, t: &Theme) {
     ui.horizontal(|ui| {
         let icon = if s.overlay_on_chart { "[x]" } else { "[ ]" };
         let col = if s.overlay_on_chart { t.accent } else { t.dim };
-        if ui.add(egui::Button::new(egui::RichText::new(icon).monospace().color(col))
-            .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(28.0, 18.0))).clicked()
+        if Button::new(icon).variant(Variant::Ghost).size(KitSize::Xs)
+            .fg(col).min_size(egui::vec2(28.0, 18.0)).show(ui, t).clicked()
         {
             s.overlay_on_chart = !s.overlay_on_chart;
         }
@@ -474,10 +463,8 @@ fn draw_controls(ui: &mut egui::Ui, s: &mut ReplayPaneState, t: &Theme) {
         for preset in SpeedPreset::ALL {
             let sel = s.speed == *preset;
             let col = if sel { t.accent } else { t.dim.gamma_multiply(0.7) };
-            if ui.add(egui::Button::new(egui::RichText::new(preset.label()).monospace().size(font_xs()).color(col))
-                .fill(if sel { color_alpha(t.accent, alpha_ghost()) } else { egui::Color32::TRANSPARENT })
-                .stroke(egui::Stroke::new(stroke_thin(), color_alpha(col, alpha_muted())))
-                .min_size(egui::vec2(40.0, 18.0))).clicked()
+            if Button::toggle(preset.label(), sel).size(KitSize::Xs)
+                .min_size(egui::vec2(40.0, 18.0)).show(ui, t).clicked()
             {
                 s.speed = *preset;
             }

@@ -28,6 +28,8 @@ use crate::apex_data::rest::{get_provenance, ProvenanceError};
 use crate::chart_renderer::gpu::{Theme, Watchlist};
 
 use super::super::style::*;
+use crate::ui_kit::widgets::Button as KitButton;
+use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -504,11 +506,9 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
         let cur_depth = runtime().state.lock().ok().map(|s| s.depth).unwrap_or(DEFAULT_DEPTH);
         for &d in DEPTH_CHOICES {
             let selected = d == cur_depth;
-            let col = if selected { t.accent } else { t.dim.gamma_multiply(0.6) };
-            if ui.add(egui::Button::new(egui::RichText::new(format!("{}", d))
-                .monospace().size(FONT_XS).color(col))
-                .fill(egui::Color32::TRANSPARENT)
-                .min_size(egui::vec2(20.0, 18.0))).clicked()
+            let depth_lbl = format!("{}", d);
+            if KitButton::toggle(depth_lbl.as_str(), selected).size(KitSize::Xs)
+                .min_size(egui::vec2(20.0, 18.0)).show(ui, t).clicked()
             {
                 if let Ok(mut s) = runtime().state.lock() { s.depth = d; }
                 // Re-fetch root with new depth.
@@ -521,10 +521,8 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
         ui.add_space(gap_sm());
         let cur_mode = runtime().state.lock().ok().map(|s| s.mode).unwrap_or_default();
         let mode_label = match cur_mode { ProvenanceMode::Tree => "tree", ProvenanceMode::Dag => "dag" };
-        if ui.add(egui::Button::new(egui::RichText::new(mode_label)
-            .monospace().size(FONT_XS).color(t.accent))
-            .fill(egui::Color32::TRANSPARENT)
-            .min_size(egui::vec2(0.0, 18.0))).clicked()
+        if KitButton::new(mode_label).variant(KitVariant::Ghost).size(KitSize::Xs)
+            .fg(t.accent).min_size(egui::vec2(0.0, 18.0)).show(ui, t).clicked()
         {
             if let Ok(mut s) = runtime().state.lock() {
                 s.mode = match s.mode { ProvenanceMode::Tree => ProvenanceMode::Dag, ProvenanceMode::Dag => ProvenanceMode::Tree };
@@ -538,10 +536,8 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
             }
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.add(egui::Button::new(egui::RichText::new("copy JSON")
-                .monospace().size(FONT_XS).color(t.dim))
-                .fill(egui::Color32::TRANSPARENT)
-                .min_size(egui::vec2(0.0, 18.0))).clicked()
+            if KitButton::new("copy JSON").variant(KitVariant::Ghost).size(KitSize::Xs)
+                .fg(t.dim).min_size(egui::vec2(0.0, 18.0)).show(ui, t).clicked()
             {
                 let id_opt = watchlist.provenance_active_lineage.clone();
                 if let Some(id) = id_opt {
@@ -584,10 +580,8 @@ fn draw_tree_node(
         let marker = if node.children.is_empty() { "·" }
                      else if is_expanded { "▾" } else { "▸" };
         let col_marker = if node.children.is_empty() { t.dim.gamma_multiply(0.5) } else { t.dim };
-        if ui.add(egui::Button::new(egui::RichText::new(marker)
-            .monospace().size(FONT_XS).color(col_marker))
-            .fill(egui::Color32::TRANSPARENT)
-            .min_size(egui::vec2(icon_sm(), icon_sm()))).clicked()
+        if KitButton::new(marker).variant(KitVariant::Ghost).size(KitSize::Xs)
+            .fg(col_marker).min_size(egui::vec2(icon_sm(), icon_sm())).show(ui, t).clicked()
         {
             if !node.children.is_empty() || indent > 0 {
                 *toggled = Some(id.clone());
