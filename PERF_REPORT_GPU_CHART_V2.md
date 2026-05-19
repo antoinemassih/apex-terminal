@@ -14,6 +14,14 @@
 | 4 | `894a7d8e` | GPU paths for Ray, PriceRange, VerticalLine, FibExtension projections |
 | 4b | `fcfcf7ff` | Indicator line overlays go GPU on inactive panes too (consistency fix with `fcb26b2d`) |
 | 5 | `3a04beff` | Dashed/dotted line patterns in the line shader — LineSegment grows 36→44 bytes |
+| 5b | `ebc34151` | Perf report updated with Stage 4+5 coverage |
+| 6 | `29688b32` | Channel subdivisions + FibChannel internals + Fib extension dashed levels → GPU slot-space |
+| 7 | `6543dbcd` | RegressionChannel, GannFan, Pitchfork, FibTimeZone, RiskReward, XABCD, ElliottWave, AnchoredVWAP → GPU |
+
+**As of Stage 7, the only drawing geometry still on egui is:** FibArc (curved arcs —
+need arc tessellation), GannBox (price/time grid), BarMarker (tiny triangle), all
+text labels, and all selection handles. Everything else — every line, every fill —
+rides the renderer_gpu instanced pipeline.
 
 ---
 
@@ -73,21 +81,26 @@ The user-visible "buttery" feel is now backed by data — 60 fps held with no 2-
 | Trendline drawings | ✓ | Phase 5a — commit `f2974cbf` |
 | HLine drawings | ✓ | Phase 5a |
 | HZone drawings | ✓ | Phase 5a — fill quad + 2 edge lines |
-| Fibonacci retracements | ✓ solid levels | Phase 5a — extensions still egui (dashed style) |
+| Fibonacci retracements + extensions | ✓ | Phase 5a + **Stage 6** — all levels, solid + dashed |
 | Channel base + parallel + fill | ✓ | Phase 5a |
+| Channel subdivisions (-0.25 … 1.25) | ✓ | **Stage 6** — slot-space conversion + stipple |
+| FibChannel internal fib lines | ✓ | **Stage 6** |
 | Ray drawings | ✓ | **Stage 4** — commit `894a7d8e` |
 | PriceRange (rectangles bounded in time) | ✓ | **Stage 4** — fill + 4 edges including vertical |
 | VerticalLine (dashed) | ✓ | **Stage 4** + **Stage 5** — vertical segment, stippled |
-| FibExtension projected levels | ✓ | **Stage 4** — construction lines (A→B, B→C) still egui (dashed) |
+| FibExtension projected levels + construction lines | ✓ | **Stage 4** + **Stage 6** |
 | Dashed / dotted line styles | ✓ | **Stage 5** — line shader stipple support (commit `3a04beff`) |
-| Selection handles | egui | Phase 5 — explicitly deferred |
-| Channel subdivisions (-0.25, 0.25, …) | egui | Built from screen-space pts; slot-space conversion = follow-up |
-| FibChannel fib internals | egui | Same as above |
-| Fibonacci extension dashed levels | egui | Built from screen-space pts |
-| RegressionChannel σ bands | egui | Not yet ported |
-| RiskReward zones + lines | egui | Complex mixed coloring + zones |
-| Pitchfork, GannFan, XABCD, ElliottWave, AnchoredVWAP, FibTimeZone, FibArc, GannBox | egui | Each needs a small port |
-| TextNote / labels everywhere | egui | Needs glyph atlas — biggest single open item |
+| RegressionChannel — line + σ bands + fill | ✓ | **Stage 7** — collinear ⇒ 5 segments + 1 quad |
+| RiskReward — entry/stop/target + zones | ✓ | **Stage 7** — 3 lines + 2 fill quads |
+| GannFan — 9 radiating lines | ✓ | **Stage 7** — screen-slope → price-per-slot conversion |
+| Pitchfork — median + parallels + dotted + fill | ✓ | **Stage 7** |
+| FibTimeZone — fib-interval verticals | ✓ | **Stage 7** |
+| XABCD / ElliottWave — connecting segments | ✓ | **Stage 7** — labels + handles still egui |
+| AnchoredVWAP — VWAP curve | ✓ | **Stage 7** — polyline as consecutive segments |
+| Selection handles | egui | Need a glyph/handle atlas — deferred |
+| Text labels (all drawing types) | egui | Needs glyph atlas — biggest single open item |
+| FibArc | egui | Curved arcs — needs arc tessellation |
+| GannBox | egui | Price/time grid — many cells |
 | BarMarker triangles | egui | Tiny shapes — not worth porting |
 | Axes, gridlines, crosshair, price labels | egui | Phase 6 — spec says "defer unless chasing 144Hz" |
 | Toolbars, sidebars, panels, modals | egui | Chrome — correct placement |
@@ -95,7 +108,8 @@ The user-visible "buttery" feel is now backed by data — 60 fps held with no 2-
 | Text subpixel pipeline | ✓ | Independent GPU widget |
 
 47 `cfg(feature = "gpu_chart_v2")` gates remain (40 in `render/pane/core.rs`, 7 in `gpu.rs`).
-Most guard the legacy egui paint paths that are now dead in the default build.
+They guard the legacy egui paint paths — now dead in the default build, kept for
+`--no-default-features` A/B comparison until a ~1-month bake window passes.
 
 ---
 
@@ -128,25 +142,18 @@ session.
 
 ## Remaining Phase 5 work (drawings on GPU)
 
-**The egui drawing paint path is still active for most drawing types.** When the user adds a
-rectangle, arrow, FVG zone, or selection handle, it goes through egui mesh tessellation.
+**Phase 5 is now ~95% complete.** Every drawing's *line and fill geometry* renders on the GPU.
+What's left is small and well-bounded:
 
-Estimated effort to complete Phase 5 per drawing type:
-
-| Drawing type | Effort | Reason |
+| Item | Effort | Reason |
 |---|---|---|
-| Trendline dashed/dotted | 0.5 day | Add stipple pattern to `line.wgsl` fragment shader |
-| HLine dashed/dotted | 0.5 day | Same shader update |
-| Rectangle | 0.5 day | 2 triangles, reuse `FillQuad` instance type |
-| Fib level set | 1 day | Multi-line + label positioning |
-| Channel | 0.5 day | 2 parallel lines + optional fill |
-| Arrow | 1 day | Body line + arrowhead triangle |
-| Text annotation | 2 days | Needs SDF text or glyph atlas integration |
-| Selection handles | 1 day | Per-vertex draw, simple |
-| FVG / Order Block | 0.5 day | Rectangles, reuse FillQuad |
-| ICT structure markers | 1 day | Various geometric primitives |
-| Inactive-pane drawings | 0.5 day | Extend Phase 5 to iterate all panes, not just active |
-| **Total** | **~9 days** | Spec estimated 3-5 days; revised up given partial Phase 5 |
+| Text labels (all drawing types) | 2-3 days | Needs an SDF glyph atlas. Currently every drawing's label still goes through egui's text engine. This is the single biggest open item — it's also what blocks "no egui inside the chart rect" entirely. |
+| Selection handles | 1 day | Small filled circles + strokes at anchor points. Could be a simple instanced-quad pass, or wait for the glyph/handle atlas. |
+| FibArc | 1 day | Curved arcs — needs an arc-to-segment tessellator (subdivide the arc into N short LineSegments). |
+| GannBox | 1 day | Price/time grid with diagonals — many cells; straightforward but tedious. |
+| BarMarker | skip | A 3-vertex triangle. Not worth a GPU instance type; egui handles it fine. |
+| XABCD triangle fill | 0.5 day | The XAD shaded triangle. FillQuad is a quad, not a triangle — needs a degenerate quad or a small tri-fill instance type. |
+| **Total** | **~6 days** | Down from the ~9-day estimate; the bulk (all line/fill geometry) is done. |
 
 ---
 
@@ -177,14 +184,17 @@ pursue Phase 6 unless chasing 144 Hz or 240 Hz.
 
 ## Next session priorities (recommended)
 
-1. **Visual diff audit.** Render the same chart through egui path and GPU path; pixel-diff. The
-   coordinate unification commit (`f2974cbf`) addressed the obvious one (half-bar offset at frac=0.5)
-   but other subtleties may remain (anti-aliasing, sub-pixel positioning, color blending).
-2. **Finish Phase 5 drawings.** Rectangle + dashed/dotted are quick wins. Text annotations are the
-   biggest open item (needs glyph atlas).
-3. **Acquire phase tuning.** Profile what specifically is consuming GPU time per frame; consider
-   Mailbox present mode for non-macOS.
-4. **Delete dead code** when confident no regressions exist (~1 month bake time recommended).
+1. **Visual diff audit.** Render the same chart through egui path (`--no-default-features`) and
+   GPU path; pixel-diff. The coordinate unification commit (`f2974cbf`) fixed the obvious half-bar
+   offset; verify the Stage 4-7 drawing conversions match egui pixel-for-pixel — especially the
+   GannFan angle conversion, Pitchfork median slope, and dashed stipple phase alignment.
+2. **Glyph atlas for in-chart text.** The single biggest remaining item — drawing labels, axis
+   labels, and Fib level percentages all still route through egui. An SDF atlas would let the
+   chart rect be 100% egui-free and unblock Phase 6.
+3. **Acquire phase tuning.** Profile what consumes GPU time per frame; consider Mailbox present
+   mode for non-macOS. Recovering the 3.5 ms baseline acquire would push p99 to ~14 ms.
+4. **FibArc / GannBox / XABCD-fill** — the last three drawing geometries on egui (~2.5 days).
+5. **Delete dead code** — 47 `cfg(feature = "gpu_chart_v2")` gates — after a ~1-month bake window.
 
 ---
 
