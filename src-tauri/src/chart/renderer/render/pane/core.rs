@@ -4643,18 +4643,83 @@ fn render_chart_pane(
                 let up2 = egui::pos2(chart_right, p1.y + dy_per_dx * (chart_right - p1.x));
                 let lp1 = egui::pos2(chart_left, p2.y + dy_per_dx * (chart_left - p2.x));
                 let lp2 = egui::pos2(chart_right, p2.y + dy_per_dx * (chart_right - p2.x));
-                let fill_pts = vec![clamp_pt(up1), clamp_pt(up2), clamp_pt(lp2), clamp_pt(lp1)];
-                painter.add(egui::Shape::convex_polygon(fill_pts, hex_to_color(&d.color, d.opacity * 0.05), egui::Stroke::NONE));
-                dashed_line(&painter, clamp_pt(em0), clamp_pt(em1), sc, ls);
-                dashed_line(&painter, clamp_pt(up1), clamp_pt(up2), egui::Stroke::new(d.thickness * 0.8, color_alpha(dc, 180)), ls);
-                dashed_line(&painter, clamp_pt(lp1), clamp_pt(lp2), egui::Stroke::new(d.thickness * 0.8, color_alpha(dc, 180)), ls);
-                let h05_1 = egui::pos2(chart_left, (up1.y + em0.y) / 2.0);
-                let h05_2 = egui::pos2(chart_right, (up2.y + em1.y) / 2.0);
-                let l05_1 = egui::pos2(chart_left, (lp1.y + em0.y) / 2.0);
-                let l05_2 = egui::pos2(chart_right, (lp2.y + em1.y) / 2.0);
-                dashed_line(&painter, clamp_pt(h05_1), clamp_pt(h05_2), egui::Stroke::new(d.thickness * 0.4, color_alpha(dc, 80)), LineStyle::Dotted);
-                dashed_line(&painter, clamp_pt(l05_1), clamp_pt(l05_2), egui::Stroke::new(d.thickness * 0.4, color_alpha(dc, 80)), LineStyle::Dotted);
-                painter.line_segment([clamp_pt(p1), clamp_pt(p2)], egui::Stroke::new(d.thickness * 0.5, color_alpha(dc, 100)));
+                if use_gpu_drawing {
+                    #[cfg(feature = "gpu_chart_v2")]
+                    {
+                        use crate::chart::renderer_gpu::{LineSegment, FillQuad};
+                        let bar0g = SignalDrawing::time_to_bar(*time0, &chart.timestamps);
+                        let bar1g = SignalDrawing::time_to_bar(*time1, &chart.timestamps);
+                        let bar2g = SignalDrawing::time_to_bar(*time2, &chart.timestamps);
+                        let s0 = bar0g - vs_floor;
+                        let s1 = bar1g - vs_floor;
+                        let s2 = bar2g - vs_floor;
+                        // Median runs from anchor p0 through the p1/p2 midpoint.
+                        let mid_bar = (bar1g + bar2g) * 0.5;
+                        let mid_price = (*price1 + *price2) * 0.5;
+                        let mid_slot = mid_bar - vs_floor;
+                        let mslope = if (mid_slot - s0).abs() > 0.001 {
+                            (mid_price - *price0) / (mid_slot - s0)
+                        } else { 0.0 };
+                        // Value of a line with the median slope through (anchor_s, anchor_v)
+                        // evaluated at the chart's left/right slot edges.
+                        let line_at = |anchor_s: f32, anchor_v: f32| -> (f32, f32) {
+                            (anchor_v + mslope * (edge_left_slot  - anchor_s),
+                             anchor_v + mslope * (edge_right_slot - anchor_s))
+                        };
+                        let (med_l, med_r) = line_at(s0, *price0);
+                        let (up_l,  up_r)  = line_at(s1, *price1);
+                        let (lo_l,  lo_r)  = line_at(s2, *price2);
+                        // Parallelogram fill between upper and lower parallels.
+                        chart.gpu_render_params.fill_quads.push(FillQuad {
+                            start_slot: edge_left_slot,  start_top: up_l.max(lo_l), start_bot: up_l.min(lo_l),
+                            end_slot:   edge_right_slot, end_top:   up_r.max(lo_r), end_bot:   up_r.min(lo_r),
+                            color: _drawing_c32(hex_to_color(&d.color, d.opacity * 0.05)),
+                        });
+                        let (dp, dd) = match d.line_style {
+                            LineStyle::Solid  => LineSegment::SOLID,
+                            LineStyle::Dashed => LineSegment::DASHED,
+                            LineStyle::Dotted => LineSegment::DOTTED,
+                        };
+                        let push = |segs: &mut Vec<LineSegment>, l: f32, r: f32, col: egui::Color32, th: f32, pdp: f32, pdd: f32| {
+                            segs.push(LineSegment {
+                                start_slot: edge_left_slot,  start_val: l,
+                                end_slot:   edge_right_slot, end_val:   r,
+                                color: _drawing_c32(col), thickness: th * drawing_ppp,
+                                dash_period_px: pdp, dash_duty: pdd,
+                            });
+                        };
+                        let segs = &mut chart.gpu_render_params.line_segments;
+                        // Median + the two parallels (user line style).
+                        push(segs, med_l, med_r, if is_sel { t.accent } else { dc }, d.thickness, dp, dd);
+                        push(segs, up_l, up_r, color_alpha(dc, 180), d.thickness * 0.8, dp, dd);
+                        push(segs, lo_l, lo_r, color_alpha(dc, 180), d.thickness * 0.8, dp, dd);
+                        // Half-way dotted lines (median↔parallel midpoints).
+                        let (hdp, hdd) = LineSegment::DOTTED;
+                        push(segs, (med_l + up_l) * 0.5, (med_r + up_r) * 0.5, color_alpha(dc, 80), d.thickness * 0.4, hdp, hdd);
+                        push(segs, (med_l + lo_l) * 0.5, (med_r + lo_r) * 0.5, color_alpha(dc, 80), d.thickness * 0.4, hdp, hdd);
+                        // Connector p1→p2 (solid, short).
+                        segs.push(LineSegment {
+                            start_slot: s1, start_val: *price1,
+                            end_slot:   s2, end_val:   *price2,
+                            color: _drawing_c32(color_alpha(dc, 100)),
+                            thickness: d.thickness * 0.5 * drawing_ppp,
+                            dash_period_px: 0.0, dash_duty: 1.0,
+                        });
+                    }
+                } else {
+                    let fill_pts = vec![clamp_pt(up1), clamp_pt(up2), clamp_pt(lp2), clamp_pt(lp1)];
+                    painter.add(egui::Shape::convex_polygon(fill_pts, hex_to_color(&d.color, d.opacity * 0.05), egui::Stroke::NONE));
+                    dashed_line(&painter, clamp_pt(em0), clamp_pt(em1), sc, ls);
+                    dashed_line(&painter, clamp_pt(up1), clamp_pt(up2), egui::Stroke::new(d.thickness * 0.8, color_alpha(dc, 180)), ls);
+                    dashed_line(&painter, clamp_pt(lp1), clamp_pt(lp2), egui::Stroke::new(d.thickness * 0.8, color_alpha(dc, 180)), ls);
+                    let h05_1 = egui::pos2(chart_left, (up1.y + em0.y) / 2.0);
+                    let h05_2 = egui::pos2(chart_right, (up2.y + em1.y) / 2.0);
+                    let l05_1 = egui::pos2(chart_left, (lp1.y + em0.y) / 2.0);
+                    let l05_2 = egui::pos2(chart_right, (lp2.y + em1.y) / 2.0);
+                    dashed_line(&painter, clamp_pt(h05_1), clamp_pt(h05_2), egui::Stroke::new(d.thickness * 0.4, color_alpha(dc, 80)), LineStyle::Dotted);
+                    dashed_line(&painter, clamp_pt(l05_1), clamp_pt(l05_2), egui::Stroke::new(d.thickness * 0.4, color_alpha(dc, 80)), LineStyle::Dotted);
+                    painter.line_segment([clamp_pt(p1), clamp_pt(p2)], egui::Stroke::new(d.thickness * 0.5, color_alpha(dc, 100)));
+                }
                 if is_sel {
                     for &pt in &[p0, p1, p2] {
                         painter.circle_filled(pt, 5.0, COLOR_INFO_CYAN);
@@ -4674,13 +4739,49 @@ fn render_chart_pane(
                     (1.0, 200, "1x1"),
                     (0.5, 90, "2x1"), (1.0/3.0, 70, "3x1"), (0.25, 60, "4x1"), (0.125, 50, "8x1"),
                 ];
+                // Slot/value reference for the GPU path. The fan's price-per-slot
+                // slope at ratio R is `pv_slope * R` where pv_slope is the
+                // reference line's price delta over slot delta. Rendered through
+                // the shared bx()/py() transform this reproduces the egui fan's
+                // screen angles exactly (both use the same pixels-per-unit).
+                #[cfg(feature = "gpu_chart_v2")]
+                let gann_slot_val = {
+                    let bar0g = SignalDrawing::time_to_bar(*time0, &chart.timestamps);
+                    let bar1g = SignalDrawing::time_to_bar(*time1, &chart.timestamps);
+                    let s0 = bar0g - vs_floor;
+                    let s1 = bar1g - vs_floor;
+                    let dslot = s1 - s0;
+                    let pv_slope = if dslot.abs() > 0.001 { (*price1 - *price0) / dslot } else { 0.0 };
+                    (s0, pv_slope)
+                };
                 for &(ratio, alpha, label) in fans {
                     let slope = ref_dy / ref_dx * ratio;
                     let right_y = p0.y + slope * (chart_right - p0.x);
                     let end = egui::pos2(chart_right, right_y);
                     let thick = if (ratio - 1.0).abs() < 0.01 { d.thickness } else { d.thickness * 0.6 };
                     let fan_ls = if (ratio - 1.0).abs() < 0.01 { ls } else { LineStyle::Dashed };
-                    dashed_line(&painter, clamp_pt(p0), clamp_pt(end), egui::Stroke::new(thick, color_alpha(dc, alpha)), fan_ls);
+                    if use_gpu_drawing {
+                        #[cfg(feature = "gpu_chart_v2")]
+                        {
+                            use crate::chart::renderer_gpu::LineSegment;
+                            let (s0, pv_slope) = gann_slot_val;
+                            let fan_val_at = |slot: f32| *price0 + pv_slope * ratio * (slot - s0);
+                            let (fan_dp, fan_dd) = match fan_ls {
+                                LineStyle::Solid  => LineSegment::SOLID,
+                                LineStyle::Dashed => LineSegment::DASHED,
+                                LineStyle::Dotted => LineSegment::DOTTED,
+                            };
+                            chart.gpu_render_params.line_segments.push(LineSegment {
+                                start_slot: s0, start_val: *price0,
+                                end_slot:   edge_right_slot, end_val: fan_val_at(edge_right_slot),
+                                color: _drawing_c32(color_alpha(dc, alpha)),
+                                thickness: thick * drawing_ppp,
+                                dash_period_px: fan_dp, dash_duty: fan_dd,
+                            });
+                        }
+                    } else {
+                        dashed_line(&painter, clamp_pt(p0), clamp_pt(end), egui::Stroke::new(thick, color_alpha(dc, alpha)), fan_ls);
+                    }
                     let label_y = right_y.clamp(rect.top() + pt, rect.top() + pt + ch);
                     painter.text(egui::pos2(chart_right + 4.0, label_y), egui::Align2::LEFT_CENTER,
                         label, mono_3xs(), color_alpha(dc, alpha));
@@ -4714,36 +4815,83 @@ fn render_chart_pane(
                     ss += (chart.bars[i].close as f64 - (intercept + slope * x)).powi(2);
                 }
                 let sigma = (ss / nf).sqrt() as f32;
+                // The regression line and its σ bands are all collinear
+                // (predicted = intercept + slope·x), so each reduces to a
+                // single straight LineSegment / parallelogram FillQuad — no
+                // per-bar polyline needed.
                 let reg_pts: Vec<egui::Pos2> = (start_idx..=end_idx).map(|i| {
                     let predicted = (intercept + slope * (i - start_idx) as f64) as f32;
                     egui::pos2(bx(i as f32), py(predicted))
                 }).collect();
-                if reg_pts.len() > 1 { painter.add(egui::Shape::line(reg_pts.clone(), sc)); }
-                for &(sig, alpha) in &[(sigma, 120u8), (sigma * 2.0, 70u8)] {
-                    let upper: Vec<egui::Pos2> = (start_idx..=end_idx).map(|i| {
-                        let pred = (intercept + slope * (i - start_idx) as f64) as f32;
-                        egui::pos2(bx(i as f32), py(pred + sig))
-                    }).collect();
-                    let lower: Vec<egui::Pos2> = (start_idx..=end_idx).map(|i| {
-                        let pred = (intercept + slope * (i - start_idx) as f64) as f32;
-                        egui::pos2(bx(i as f32), py(pred - sig))
-                    }).collect();
-                    let band_sc = egui::Stroke::new(d.thickness * 0.6, color_alpha(dc, alpha));
-                    if upper.len() > 1 { painter.add(egui::Shape::line(upper, band_sc)); }
-                    if lower.len() > 1 { painter.add(egui::Shape::line(lower, band_sc)); }
-                }
-                // 1σ shaded band
-                if reg_pts.len() > 1 {
-                    let mut fill_pts: Vec<egui::Pos2> = (start_idx..=end_idx).map(|i| {
-                        let pred = (intercept + slope * (i - start_idx) as f64) as f32;
-                        egui::pos2(bx(i as f32), py(pred + sigma))
-                    }).collect();
-                    let lower_rev: Vec<egui::Pos2> = (start_idx..=end_idx).rev().map(|i| {
-                        let pred = (intercept + slope * (i - start_idx) as f64) as f32;
-                        egui::pos2(bx(i as f32), py(pred - sigma))
-                    }).collect();
-                    fill_pts.extend(lower_rev);
-                    painter.add(egui::Shape::convex_polygon(fill_pts, hex_to_color(&d.color, d.opacity * 0.06), egui::Stroke::NONE));
+                // Endpoint values in price space.
+                let pred_start = intercept as f32;
+                let pred_end   = (intercept + slope * (n_reg - 1) as f64) as f32;
+                if use_gpu_drawing {
+                    #[cfg(feature = "gpu_chart_v2")]
+                    {
+                        use crate::chart::renderer_gpu::{LineSegment, FillQuad};
+                        let s_a = start_idx as f32 - vs_floor;
+                        let s_b = end_idx as f32 - vs_floor;
+                        // 1σ shaded band (parallelogram between +σ and -σ).
+                        chart.gpu_render_params.fill_quads.push(FillQuad {
+                            start_slot: s_a, start_top: pred_start + sigma, start_bot: pred_start - sigma,
+                            end_slot:   s_b, end_top:   pred_end + sigma,   end_bot:   pred_end - sigma,
+                            color: _drawing_c32(hex_to_color(&d.color, d.opacity * 0.06)),
+                        });
+                        // Center regression line.
+                        chart.gpu_render_params.line_segments.push(LineSegment {
+                            start_slot: s_a, start_val: pred_start,
+                            end_slot:   s_b, end_val:   pred_end,
+                            color: _drawing_c32(if is_sel { t.accent } else { dc }),
+                            thickness: (if is_sel { d.thickness + 1.0 } else { d.thickness }) * drawing_ppp,
+                            dash_period_px: drawing_dash_period, dash_duty: drawing_dash_duty,
+                        });
+                        // ±σ and ±2σ band lines.
+                        for &(sig, alpha) in &[(sigma, 120u8), (sigma * 2.0, 70u8)] {
+                            let band_lc = _drawing_c32(color_alpha(dc, alpha));
+                            let band_th = d.thickness * 0.6 * drawing_ppp;
+                            chart.gpu_render_params.line_segments.push(LineSegment {
+                                start_slot: s_a, start_val: pred_start + sig,
+                                end_slot:   s_b, end_val:   pred_end + sig,
+                                color: band_lc, thickness: band_th,
+                                dash_period_px: drawing_dash_period, dash_duty: drawing_dash_duty,
+                            });
+                            chart.gpu_render_params.line_segments.push(LineSegment {
+                                start_slot: s_a, start_val: pred_start - sig,
+                                end_slot:   s_b, end_val:   pred_end - sig,
+                                color: band_lc, thickness: band_th,
+                                dash_period_px: drawing_dash_period, dash_duty: drawing_dash_duty,
+                            });
+                        }
+                    }
+                } else {
+                    if reg_pts.len() > 1 { painter.add(egui::Shape::line(reg_pts.clone(), sc)); }
+                    for &(sig, alpha) in &[(sigma, 120u8), (sigma * 2.0, 70u8)] {
+                        let upper: Vec<egui::Pos2> = (start_idx..=end_idx).map(|i| {
+                            let pred = (intercept + slope * (i - start_idx) as f64) as f32;
+                            egui::pos2(bx(i as f32), py(pred + sig))
+                        }).collect();
+                        let lower: Vec<egui::Pos2> = (start_idx..=end_idx).map(|i| {
+                            let pred = (intercept + slope * (i - start_idx) as f64) as f32;
+                            egui::pos2(bx(i as f32), py(pred - sig))
+                        }).collect();
+                        let band_sc = egui::Stroke::new(d.thickness * 0.6, color_alpha(dc, alpha));
+                        if upper.len() > 1 { painter.add(egui::Shape::line(upper, band_sc)); }
+                        if lower.len() > 1 { painter.add(egui::Shape::line(lower, band_sc)); }
+                    }
+                    // 1σ shaded band
+                    if reg_pts.len() > 1 {
+                        let mut fill_pts: Vec<egui::Pos2> = (start_idx..=end_idx).map(|i| {
+                            let pred = (intercept + slope * (i - start_idx) as f64) as f32;
+                            egui::pos2(bx(i as f32), py(pred + sigma))
+                        }).collect();
+                        let lower_rev: Vec<egui::Pos2> = (start_idx..=end_idx).rev().map(|i| {
+                            let pred = (intercept + slope * (i - start_idx) as f64) as f32;
+                            egui::pos2(bx(i as f32), py(pred - sigma))
+                        }).collect();
+                        fill_pts.extend(lower_rev);
+                        painter.add(egui::Shape::convex_polygon(fill_pts, hex_to_color(&d.color, d.opacity * 0.06), egui::Stroke::NONE));
+                    }
                 }
                 if is_sel {
                     if let Some(&fp) = reg_pts.first() { painter.circle_filled(fp, 5.0, COLOR_INFO_CYAN); }
@@ -4755,9 +4903,29 @@ fn render_chart_pane(
                     egui::pos2(bx(SignalDrawing::time_to_bar(t, &chart.timestamps)), py(p))
                 }).collect();
                 let labels = ["X","A","B","C","D"];
-                for i in 0..pts.len().saturating_sub(1) {
-                    if in_bounds(pts[i]) || in_bounds(pts[i+1]) {
-                        dashed_line(&painter, clamp_pt(pts[i]), clamp_pt(pts[i+1]), sc, ls);
+                if use_gpu_drawing {
+                    #[cfg(feature = "gpu_chart_v2")]
+                    {
+                        use crate::chart::renderer_gpu::LineSegment;
+                        let lc = _drawing_c32(if is_sel { t.accent } else { dc });
+                        let th = (if is_sel { d.thickness + 1.0 } else { d.thickness }) * drawing_ppp;
+                        for i in 0..points.len().saturating_sub(1) {
+                            if !(in_bounds(pts[i]) || in_bounds(pts[i+1])) { continue; }
+                            let sa = SignalDrawing::time_to_bar(points[i].0,   &chart.timestamps) - vs_floor;
+                            let sb = SignalDrawing::time_to_bar(points[i+1].0, &chart.timestamps) - vs_floor;
+                            chart.gpu_render_params.line_segments.push(LineSegment {
+                                start_slot: sa, start_val: points[i].1,
+                                end_slot:   sb, end_val:   points[i+1].1,
+                                color: lc, thickness: th,
+                                dash_period_px: drawing_dash_period, dash_duty: drawing_dash_duty,
+                            });
+                        }
+                    }
+                } else {
+                    for i in 0..pts.len().saturating_sub(1) {
+                        if in_bounds(pts[i]) || in_bounds(pts[i+1]) {
+                            dashed_line(&painter, clamp_pt(pts[i]), clamp_pt(pts[i+1]), sc, ls);
+                        }
                     }
                 }
                 if pts.len() >= 5 {
@@ -4802,9 +4970,29 @@ fn render_chart_pane(
                 let pts: Vec<egui::Pos2> = points.iter().map(|&(t, p)| {
                     egui::pos2(bx(SignalDrawing::time_to_bar(t, &chart.timestamps)), py(p))
                 }).collect();
-                for i in 0..pts.len().saturating_sub(1) {
-                    if in_bounds(pts[i]) || in_bounds(pts[i+1]) {
-                        dashed_line(&painter, clamp_pt(pts[i]), clamp_pt(pts[i+1]), sc, ls);
+                if use_gpu_drawing {
+                    #[cfg(feature = "gpu_chart_v2")]
+                    {
+                        use crate::chart::renderer_gpu::LineSegment;
+                        let lc = _drawing_c32(if is_sel { t.accent } else { dc });
+                        let th = (if is_sel { d.thickness + 1.0 } else { d.thickness }) * drawing_ppp;
+                        for i in 0..points.len().saturating_sub(1) {
+                            if !(in_bounds(pts[i]) || in_bounds(pts[i+1])) { continue; }
+                            let sa = SignalDrawing::time_to_bar(points[i].0,   &chart.timestamps) - vs_floor;
+                            let sb = SignalDrawing::time_to_bar(points[i+1].0, &chart.timestamps) - vs_floor;
+                            chart.gpu_render_params.line_segments.push(LineSegment {
+                                start_slot: sa, start_val: points[i].1,
+                                end_slot:   sb, end_val:   points[i+1].1,
+                                color: lc, thickness: th,
+                                dash_period_px: drawing_dash_period, dash_duty: drawing_dash_duty,
+                            });
+                        }
+                    }
+                } else {
+                    for i in 0..pts.len().saturating_sub(1) {
+                        if in_bounds(pts[i]) || in_bounds(pts[i+1]) {
+                            dashed_line(&painter, clamp_pt(pts[i]), clamp_pt(pts[i+1]), sc, ls);
+                        }
                     }
                 }
                 for (i, &pt) in pts.iter().enumerate() {
@@ -4825,7 +5013,11 @@ fn render_chart_pane(
                 let vwap_sc = egui::Stroke::new(d.thickness, if is_sel { t.accent } else { vwap_color });
                 let mut cum_tp_vol = 0.0_f64;
                 let mut cum_vol = 0.0_f64;
-                let mut pts = Vec::new();
+                // VWAP is a curve — collect (slot, value) samples and push one
+                // LineSegment per consecutive pair (same approach the indicator
+                // line pipeline uses for SMA/EMA polylines).
+                let mut pts = Vec::new();          // screen-space (egui fallback)
+                let mut sv: Vec<(f32, f32)> = Vec::new(); // (slot, vwap) for GPU
                 for i in start_idx..chart.bars.len() {
                     let b = &chart.bars[i];
                     let tp = (b.high + b.low + b.close) as f64 / 3.0;
@@ -4834,13 +5026,44 @@ fn render_chart_pane(
                     if cum_vol > 0.0 {
                         let vwap = (cum_tp_vol / cum_vol) as f32;
                         let sx = bx(i as f32); let sy = py(vwap);
-                        if sy.is_finite() && sy.abs() < 50000.0 { pts.push(egui::pos2(sx, sy)); }
+                        if sy.is_finite() && sy.abs() < 50000.0 {
+                            pts.push(egui::pos2(sx, sy));
+                            sv.push((i as f32 - vs_floor, vwap));
+                        }
                     }
                 }
-                if pts.len() > 1 { painter.add(egui::Shape::line(pts, vwap_sc)); }
                 let ax = bx(anchor_bar);
-                painter.line_segment([egui::pos2(ax, rect.top()+pt), egui::pos2(ax, rect.top()+pt+ch)],
-                    egui::Stroke::new(0.5, color_alpha(vwap_color, 60)));
+                if use_gpu_drawing {
+                    #[cfg(feature = "gpu_chart_v2")]
+                    {
+                        use crate::chart::renderer_gpu::LineSegment;
+                        let lc = _drawing_c32(if is_sel { t.accent } else { vwap_color });
+                        let th = d.thickness * drawing_ppp;
+                        for w in sv.windows(2) {
+                            chart.gpu_render_params.line_segments.push(LineSegment {
+                                start_slot: w[0].0, start_val: w[0].1,
+                                end_slot:   w[1].0, end_val:   w[1].1,
+                                color: lc, thickness: th,
+                                dash_period_px: 0.0, dash_duty: 1.0,
+                            });
+                        }
+                        // Faint anchor marker line (vertical).
+                        let lo = chart.gpu_render_params.price_low;
+                        let hi = chart.gpu_render_params.price_high;
+                        let r = (hi - lo).max(1.0);
+                        chart.gpu_render_params.line_segments.push(LineSegment {
+                            start_slot: anchor_bar - vs_floor, start_val: hi + r * 2.0,
+                            end_slot:   anchor_bar - vs_floor, end_val:   lo - r * 2.0,
+                            color: _drawing_c32(color_alpha(vwap_color, 60)),
+                            thickness: 0.5 * drawing_ppp,
+                            dash_period_px: 0.0, dash_duty: 1.0,
+                        });
+                    }
+                } else {
+                    if pts.len() > 1 { painter.add(egui::Shape::line(pts, vwap_sc)); }
+                    painter.line_segment([egui::pos2(ax, rect.top()+pt), egui::pos2(ax, rect.top()+pt+ch)],
+                        egui::Stroke::new(0.5, color_alpha(vwap_color, 60)));
+                }
                 if is_sel {
                     let anchor_close = chart.bars.get(start_idx).map(|b| b.close).unwrap_or(0.0);
                     painter.circle_filled(egui::pos2(ax, py(anchor_close)), 5.0, vwap_color);
@@ -4928,16 +5151,54 @@ fn render_chart_pane(
                 let chart_right = rect.left() + cw;
                 let ey = py(*entry_price); let sy = py(*stop_price); let ty = py(*target_price);
                 if !ey.is_finite() || !sy.is_finite() || !ty.is_finite() { continue; }
-                painter.rect_filled(egui::Rect::from_min_max(egui::pos2(ex, ey.min(ty)), egui::pos2(chart_right, ey.max(ty))),
-                    0.0, egui::Color32::from_rgba_unmultiplied(46, 204, 113, 30));
-                painter.rect_filled(egui::Rect::from_min_max(egui::pos2(ex, ey.min(sy)), egui::pos2(chart_right, ey.max(sy))),
-                    0.0, egui::Color32::from_rgba_unmultiplied(231, 76, 60, 30));
-                painter.line_segment([egui::pos2(ex, ey), egui::pos2(chart_right, ey)],
-                    egui::Stroke::new(d.thickness, color_alpha(dc, 200)));
-                painter.line_segment([egui::pos2(ex, sy), egui::pos2(chart_right, sy)],
-                    egui::Stroke::new(d.thickness * 0.8, COLOR_LOSS_RED));
-                painter.line_segment([egui::pos2(ex, ty), egui::pos2(chart_right, ty)],
-                    egui::Stroke::new(d.thickness * 0.8, COLOR_PROFIT_GREEN));
+                if use_gpu_drawing {
+                    #[cfg(feature = "gpu_chart_v2")]
+                    {
+                        use crate::chart::renderer_gpu::{LineSegment, FillQuad};
+                        let entry_bar = SignalDrawing::time_to_bar(*entry_time, &chart.timestamps);
+                        let s_entry = entry_bar - vs_floor;
+                        // Reward zone (entry→target) — green tint.
+                        let rt_top = entry_price.max(*target_price);
+                        let rt_bot = entry_price.min(*target_price);
+                        chart.gpu_render_params.fill_quads.push(FillQuad {
+                            start_slot: s_entry, start_top: rt_top, start_bot: rt_bot,
+                            end_slot:   edge_right_slot, end_top: rt_top, end_bot: rt_bot,
+                            color: _drawing_c32(egui::Color32::from_rgba_unmultiplied(46, 204, 113, 30)),
+                        });
+                        // Risk zone (entry→stop) — red tint.
+                        let rk_top = entry_price.max(*stop_price);
+                        let rk_bot = entry_price.min(*stop_price);
+                        chart.gpu_render_params.fill_quads.push(FillQuad {
+                            start_slot: s_entry, start_top: rk_top, start_bot: rk_bot,
+                            end_slot:   edge_right_slot, end_top: rk_top, end_bot: rk_bot,
+                            color: _drawing_c32(egui::Color32::from_rgba_unmultiplied(231, 76, 60, 30)),
+                        });
+                        // Entry / stop / target lines, entry-bar → chart right.
+                        let push_h = |segs: &mut Vec<LineSegment>, val: f32, col: egui::Color32, th: f32| {
+                            segs.push(LineSegment {
+                                start_slot: s_entry, start_val: val,
+                                end_slot:   edge_right_slot, end_val: val,
+                                color: _drawing_c32(col), thickness: th * drawing_ppp,
+                                dash_period_px: 0.0, dash_duty: 1.0,
+                            });
+                        };
+                        let segs = &mut chart.gpu_render_params.line_segments;
+                        push_h(segs, *entry_price,  color_alpha(dc, 200), d.thickness);
+                        push_h(segs, *stop_price,   COLOR_LOSS_RED,       d.thickness * 0.8);
+                        push_h(segs, *target_price, COLOR_PROFIT_GREEN,   d.thickness * 0.8);
+                    }
+                } else {
+                    painter.rect_filled(egui::Rect::from_min_max(egui::pos2(ex, ey.min(ty)), egui::pos2(chart_right, ey.max(ty))),
+                        0.0, egui::Color32::from_rgba_unmultiplied(46, 204, 113, 30));
+                    painter.rect_filled(egui::Rect::from_min_max(egui::pos2(ex, ey.min(sy)), egui::pos2(chart_right, ey.max(sy))),
+                        0.0, egui::Color32::from_rgba_unmultiplied(231, 76, 60, 30));
+                    painter.line_segment([egui::pos2(ex, ey), egui::pos2(chart_right, ey)],
+                        egui::Stroke::new(d.thickness, color_alpha(dc, 200)));
+                    painter.line_segment([egui::pos2(ex, sy), egui::pos2(chart_right, sy)],
+                        egui::Stroke::new(d.thickness * 0.8, COLOR_LOSS_RED));
+                    painter.line_segment([egui::pos2(ex, ty), egui::pos2(chart_right, ty)],
+                        egui::Stroke::new(d.thickness * 0.8, COLOR_PROFIT_GREEN));
+                }
                 let reward = (*target_price - *entry_price).abs();
                 let risk   = (*entry_price - *stop_price).abs();
                 if risk > 0.0 {
@@ -5151,6 +5412,14 @@ fn render_chart_pane(
                 let anchor_bar = SignalDrawing::time_to_bar(*time, &chart.timestamps);
                 let fib_nums: &[u32] = &[1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
                 let chart_right = rect.left() + cw;
+                // Vertical-line price span (2× beyond visible range; scissor clips).
+                #[cfg(feature = "gpu_chart_v2")]
+                let (vz_top, vz_bot) = {
+                    let lo = chart.gpu_render_params.price_low;
+                    let hi = chart.gpu_render_params.price_high;
+                    let r = (hi - lo).max(1.0);
+                    (hi + r * 2.0, lo - r * 2.0)
+                };
                 let mut seen_bars: std::collections::HashSet<u32> = std::collections::HashSet::new();
                 for (idx, &fib) in fib_nums.iter().enumerate() {
                     if seen_bars.contains(&fib) { continue; }
@@ -5160,15 +5429,46 @@ fn render_chart_pane(
                     if x < rect.left() || x > chart_right { continue; }
                     let alpha = (220_u8).saturating_sub((idx as u8) * 18);
                     let zone_sc = egui::Stroke::new(d.thickness * 0.7, color_alpha(dc, alpha));
-                    dashed_line(&painter, egui::pos2(x, rect.top()+pt), egui::pos2(x, rect.top()+pt+ch), zone_sc, LineStyle::Dashed);
+                    if use_gpu_drawing {
+                        #[cfg(feature = "gpu_chart_v2")]
+                        {
+                            use crate::chart::renderer_gpu::LineSegment;
+                            let slot = target_bar - vs_floor;
+                            let (dp, dd) = LineSegment::DASHED;
+                            chart.gpu_render_params.line_segments.push(LineSegment {
+                                start_slot: slot, start_val: vz_top,
+                                end_slot:   slot, end_val:   vz_bot,
+                                color: _drawing_c32(color_alpha(dc, alpha)),
+                                thickness: d.thickness * 0.7 * drawing_ppp,
+                                dash_period_px: dp, dash_duty: dd,
+                            });
+                        }
+                    } else {
+                        dashed_line(&painter, egui::pos2(x, rect.top()+pt), egui::pos2(x, rect.top()+pt+ch), zone_sc, LineStyle::Dashed);
+                    }
                     painter.text(egui::pos2(x + 2.0, rect.top()+pt+4.0), egui::Align2::LEFT_TOP,
                         &fib.to_string(), mono_3xs(), color_alpha(dc, alpha));
                 }
-                // Anchor line
+                // Anchor line (solid).
                 let ax = bx(anchor_bar);
                 if ax.is_finite() && ax >= rect.left() && ax <= chart_right {
-                    dashed_line(&painter, egui::pos2(ax, rect.top()+pt), egui::pos2(ax, rect.top()+pt+ch),
-                        egui::Stroke::new(d.thickness, color_alpha(dc, 200)), LineStyle::Solid);
+                    if use_gpu_drawing {
+                        #[cfg(feature = "gpu_chart_v2")]
+                        {
+                            use crate::chart::renderer_gpu::LineSegment;
+                            let slot = anchor_bar - vs_floor;
+                            chart.gpu_render_params.line_segments.push(LineSegment {
+                                start_slot: slot, start_val: vz_top,
+                                end_slot:   slot, end_val:   vz_bot,
+                                color: _drawing_c32(color_alpha(dc, 200)),
+                                thickness: d.thickness * drawing_ppp,
+                                dash_period_px: 0.0, dash_duty: 1.0,
+                            });
+                        }
+                    } else {
+                        dashed_line(&painter, egui::pos2(ax, rect.top()+pt), egui::pos2(ax, rect.top()+pt+ch),
+                            egui::Stroke::new(d.thickness, color_alpha(dc, 200)), LineStyle::Solid);
+                    }
                 }
                 if is_sel { painter.circle_filled(egui::pos2(ax, rect.top()+pt+ch*0.5), 4.0, COLOR_INFO_CYAN); }
             }
