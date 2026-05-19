@@ -122,7 +122,10 @@ impl<'a> Tooltip<'a> {
 
         let appear_t = motion::ease_bool(&ctx, id.with("anim"), true, motion::FAST);
 
-        let bg = theme.surface();
+        // elevation_2: tooltip is a mid-tier overlay (bg × 0.88).
+        // Inlined from style::elevation_2 — ComponentTheme::bg() is sufficient;
+        // no concrete &Theme needed.
+        let bg = theme.bg().gamma_multiply(0.88);
         let border = color_alpha(theme.border(), alpha_line());
         let fg = theme.text();
 
@@ -240,9 +243,10 @@ pub fn paint_tooltip_card(
         );
     }
 
-    // Surface fill — theme.surface() at near-solid alpha so the chart bleeds
-    // through faintly behind text, matching the previous 240-alpha fidelity.
-    let surf = theme.surface();
+    // Surface fill — elevation_2 (bg × 0.88) at near-solid alpha so the chart
+    // bleeds through faintly behind text, matching the previous 240-alpha
+    // fidelity while applying the correct depth tier.
+    let surf = theme.bg().gamma_multiply(0.88);
     painter.rect_filled(
         rect,
         cr,

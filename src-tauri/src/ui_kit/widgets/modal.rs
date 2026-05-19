@@ -243,7 +243,10 @@ impl<'a> Modal<'a> {
         let anim_id = Id::new(("apex_modal_anim", id));
         let appear_t = motion::ease_bool(ctx, anim_id, true, motion::MED);
 
-        let bg = t.surface();
+        // elevation_3: modal is the deepest overlay layer (bg × 0.85).
+        // Inlined from style::elevation_3 — ComponentTheme exposes bg() so we
+        // don't need the concrete &Theme to replicate the gamma-multiply.
+        let bg = t.bg().gamma_multiply(0.85);
         let border = t.border();
 
         let frame = match self.frame_kind {
