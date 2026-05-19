@@ -689,9 +689,10 @@ fn paint_button<'a>(
         let mut bg = motion::lerp_color(idle_bg, hover_bg, hover_t);
         bg = motion::lerp_color(bg, active_bg, active_t);
 
-        // Press snap (instant darken, no animation).
-        if pressed {
-            bg = darken(bg, 0.12);
+        // Press darken: snap in (fast rise), ease out over ~60ms on release.
+        let press_t = motion::ease_bool(ui.ctx(), id.with("btn_press"), pressed, 0.06_f32);
+        if press_t > 0.0 {
+            bg = darken(bg, 0.12 * press_t);
         }
 
         let mut fg = motion::lerp_color(fg_idle, fg_hover, hover_t);
