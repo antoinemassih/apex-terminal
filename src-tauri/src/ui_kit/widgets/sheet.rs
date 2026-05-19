@@ -33,7 +33,7 @@ use egui::{Color32, Id, Key, Rect, Sense, Stroke, StrokeKind, Ui, Vec2};
 
 use super::motion;
 use super::theme::ComponentTheme;
-use super::Button;
+use super::{Button, Tooltip};
 use super::{PolishedLabel, PolishedFontWeight};
 use super::tokens::{Size as KitSize, Variant};
 use crate::ui_kit::icons::Icon;
@@ -297,15 +297,12 @@ impl<'a> Sheet<'a> {
                         // it goes on the right by convention.
                         let close_first = matches!(side, SheetSide::Left);
                         if close_first {
-                            if Button::icon(Icon::X)
+                            let r = Button::icon(Icon::X)
                                 .variant(Variant::Ghost)
                                 .size(KitSize::Sm)
-                                .show(ui, theme)
-                                .on_hover_text("Close")
-                                .clicked()
-                            {
-                                header_close = true;
-                            }
+                                .show(ui, theme);
+                            Tooltip::new("Close").show(ui, &r, theme);
+                            if r.clicked() { header_close = true; }
                             ui.add_space(gap_md() * 0.5);
                         }
                         PolishedLabel::new(t_str.clone())
@@ -318,15 +315,12 @@ impl<'a> Sheet<'a> {
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
-                                    if Button::icon(Icon::X)
+                                    let r = Button::icon(Icon::X)
                                         .variant(Variant::Ghost)
                                         .size(KitSize::Sm)
-                                        .show(ui, theme)
-                                        .on_hover_text("Close")
-                                        .clicked()
-                                    {
-                                        header_close = true;
-                                    }
+                                        .show(ui, theme);
+                                    Tooltip::new("Close").show(ui, &r, theme);
+                                    if r.clicked() { header_close = true; }
                                 },
                             );
                         }

@@ -3,7 +3,7 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
-use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::{Button, Tooltip};
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 use crate::ui_kit::widgets::NumberStepper;
 use super::super::widgets::form::{IndicatorParamRow, IndicatorParamRowF};
@@ -80,9 +80,9 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 ui.label(egui::RichText::new(&hdr_name).monospace().size(font_sm()).strong().color(TEXT_PRIMARY));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_space(4.0);
-                    if icon_btn(ui, Icon::X, color_subtle(t.dim), font_lg()).on_hover_text("Close").clicked() {
-                        hdr_close = true;
-                    }
+                    let r = icon_btn(ui, Icon::X, color_subtle(t.dim), font_lg());
+                    Tooltip::new("Close").show(ui, &r, t);
+                    if r.clicked() { hdr_close = true; }
                 });
             });
             // Make header draggable — interact for grab cursor; egui::Window
@@ -391,7 +391,8 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         .corner_radius(current().r_sm as f32)
                         .min_size(egui::vec2(24.0, row_height_default()))
                         .frameless(true));
-                    if vr.on_hover_text("Toggle Visibility").clicked() { ind.visible = !ind.visible; }
+                    Tooltip::new("Toggle Visibility").show(ui, &vr, t);
+                    if vr.clicked() { ind.visible = !ind.visible; }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(m);
                         let del_color = COLOR_DANGER;
@@ -403,7 +404,8 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                             .stroke(egui::Stroke::new(stroke_thin(), color_alpha(del_color, alpha_dim())))
                             .min_size(egui::vec2(24.0, row_height_default()))
                             .frameless(true));
-                        if dr.on_hover_text("Delete Indicator").clicked() {
+                        Tooltip::new("Delete Indicator").show(ui, &dr, t);
+                        if dr.clicked() {
                             delete_id = Some(edit_id); close_editor = true;
                         }
                     });

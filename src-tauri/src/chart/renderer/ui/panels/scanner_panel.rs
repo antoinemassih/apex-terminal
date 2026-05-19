@@ -20,7 +20,7 @@ use super::super::widgets::text::{SectionLabel, MonospaceCode};
 use crate::ui_kit::widgets::FormRow;
 use super::super::widgets::rows::WatchlistRow;
 use crate::ui_kit::widgets::{
-    Button, Input, NumberStepper, Skeleton, PanelCard, PanelEmpty, SidePanelShell, Width,
+    Button, Input, NumberStepper, Skeleton, PanelCard, PanelEmpty, SidePanelShell, Tooltip, Width,
 };
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 
@@ -98,22 +98,20 @@ pub(crate) fn draw_content(
             ui.add(Spinner::new().sm().theme(t));
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if Button::icon(Icon::ARROW_COUNTER_CLOCKWISE)
+            let r = Button::icon(Icon::ARROW_COUNTER_CLOCKWISE)
                 .variant(Variant::Ghost)
                 .size(KitSize::Sm)
-                .show(ui, t)
-                .on_hover_text("Refresh now")
-                .clicked()
-            {
+                .show(ui, t);
+            Tooltip::new("Refresh now").show(ui, &r, t);
+            if r.clicked() {
                 watchlist.scanner_last_fetch = None;
             }
-            if Button::icon(Icon::PLUS)
+            let r = Button::icon(Icon::PLUS)
                 .variant(Variant::Ghost)
                 .size(KitSize::Sm)
-                .show(ui, t)
-                .on_hover_text("New custom scanner")
-                .clicked()
-            {
+                .show(ui, t);
+            Tooltip::new("New custom scanner").show(ui, &r, t);
+            if r.clicked() {
                 watchlist.scanner_builder_open = !watchlist.scanner_builder_open;
             }
         });
@@ -340,15 +338,15 @@ pub(crate) fn draw_content(
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if !is_preset {
-                            if icon_btn(ui, Icon::X, color_half(t.dim), 8.0)
-                                .on_hover_text("Remove scanner").clicked()
-                            {
+                            let r = icon_btn(ui, Icon::X, color_half(t.dim), 8.0);
+                            Tooltip::new("Remove scanner").show(ui, &r, t);
+                            if r.clicked() {
                                 delete_scanner_idx = Some(scanner_idx);
                             }
                         }
-                        if icon_btn(ui, Icon::FOLDER, color_half(t.dim), 8.0)
-                            .on_hover_text("Save as Watchlist").clicked()
-                        {
+                        let r = icon_btn(ui, Icon::FOLDER, color_half(t.dim), 8.0);
+                        Tooltip::new("Save as Watchlist").show(ui, &r, t);
+                        if r.clicked() {
                             save_as_watchlist = Some((scanner_name.clone(), results.clone()));
                         }
                     });

@@ -18,7 +18,7 @@
 use egui;
 use super::super::style::*;
 use crate::ui_kit::widgets::{
-    Button, PanelEmpty, PanelListRow, PanelSection, PanelSectionGroup, SidePanelShell, Width,
+    Button, PanelEmpty, PanelListRow, PanelSection, PanelSectionGroup, SidePanelShell, Tooltip, Width,
 };
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 use crate::ui_kit::widgets::Input;
@@ -603,27 +603,21 @@ fn active_symbol_overlay_row(
         .primary(&primary)
         .secondary(secondary)
         .trailing(move |ui, t| {
-            if Button::close().show(ui, t).on_hover_text("Remove overlay").clicked() {
-                r_ref.set(true);
-            }
-            if Button::icon(Icon::PENCIL_LINE)
+            let r = Button::close().show(ui, t);
+            Tooltip::new("Remove overlay").show(ui, &r, t);
+            if r.clicked() { r_ref.set(true); }
+            let r = Button::icon(Icon::PENCIL_LINE)
                 .size(KitSize::Xs)
-                .show(ui, t)
-                .on_hover_text("Edit symbol / color")
-                .clicked()
-            {
-                e_ref.set(true);
-            }
+                .show(ui, t);
+            Tooltip::new("Edit symbol / color").show(ui, &r, t);
+            if r.clicked() { e_ref.set(true); }
             let eye = if visible { Icon::EYE } else { Icon::EYE_SLASH };
-            if Button::icon(eye)
+            let r = Button::icon(eye)
                 .size(KitSize::Xs)
                 .active(visible)
-                .show(ui, t)
-                .on_hover_text("Show / hide")
-                .clicked()
-            {
-                v_ref.set(true);
-            }
+                .show(ui, t);
+            Tooltip::new("Show / hide").show(ui, &r, t);
+            if r.clicked() { v_ref.set(true); }
         })
         .dense(false)
         .show(ui, t);
@@ -702,25 +696,21 @@ fn active_indicator_row(
         .leading(move |ui, _t| { paint_swatch(ui, swatch_col); })
         .primary(&name)
         .trailing(move |ui, t| {
-            if Button::close().show(ui, t).on_hover_text("Remove indicator").clicked() { r_ref.set(true); }
-            if Button::icon(Icon::GEAR)
+            let r = Button::close().show(ui, t);
+            Tooltip::new("Remove indicator").show(ui, &r, t);
+            if r.clicked() { r_ref.set(true); }
+            let r = Button::icon(Icon::GEAR)
                 .size(KitSize::Xs)
-                .show(ui, t)
-                .on_hover_text("Edit")
-                .clicked()
-            {
-                e_ref.set(true);
-            }
+                .show(ui, t);
+            Tooltip::new("Edit").show(ui, &r, t);
+            if r.clicked() { e_ref.set(true); }
             let eye = if visible { Icon::EYE } else { Icon::EYE_SLASH };
-            if Button::icon(eye)
+            let r = Button::icon(eye)
                 .size(KitSize::Xs)
                 .active(visible)
-                .show(ui, t)
-                .on_hover_text("Show / hide")
-                .clicked()
-            {
-                v_ref.set(true);
-            }
+                .show(ui, t);
+            Tooltip::new("Show / hide").show(ui, &r, t);
+            if r.clicked() { v_ref.set(true); }
         })
         .show(ui, t);
 
@@ -738,9 +728,9 @@ fn active_bool_row(ui: &mut egui::Ui, t: &Theme, tg: Tg, to_disable: &mut Option
         .leading(move |ui, _t| { paint_swatch(ui, accent); })
         .primary(bool_label(tg))
         .trailing(move |ui, t| {
-            if Button::close().show(ui, t).on_hover_text("Disable").clicked() {
-                d_ref.set(true);
-            }
+            let r = Button::close().show(ui, t);
+            Tooltip::new("Disable").show(ui, &r, t);
+            if r.clicked() { d_ref.set(true); }
         })
         .show(ui, t);
     if want_disable.get() { *to_disable = Some(tg); }
@@ -755,9 +745,9 @@ fn active_vp_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
         .leading(move |ui, _t| { paint_swatch(ui, accent); })
         .primary(&primary)
         .trailing(move |ui, t| {
-            if Button::close().show(ui, t).on_hover_text("Disable").clicked() {
-                d_ref.set(true);
-            }
+            let r = Button::close().show(ui, t);
+            Tooltip::new("Disable").show(ui, &r, t);
+            if r.clicked() { d_ref.set(true); }
         })
         .show(ui, t);
     if want_disable.get() {
@@ -774,9 +764,9 @@ fn active_swing_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
         .leading(move |ui, _t| { paint_swatch(ui, accent); })
         .primary(&primary)
         .trailing(move |ui, t| {
-            if Button::close().show(ui, t).on_hover_text("Disable").clicked() {
-                d_ref.set(true);
-            }
+            let r = Button::close().show(ui, t);
+            Tooltip::new("Disable").show(ui, &r, t);
+            if r.clicked() { d_ref.set(true); }
         })
         .show(ui, t);
     if want_disable.get() { chart.swing_leg_mode = 0; }

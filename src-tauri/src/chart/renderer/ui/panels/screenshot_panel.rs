@@ -13,7 +13,7 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
 use crate::ui_kit::widgets::{
-    Button, PanelEmpty, PanelListRow, PanelSection, SidePanelShell, Width,
+    Button, PanelEmpty, PanelListRow, PanelSection, SidePanelShell, Tooltip, Width,
 };
 use crate::ui_kit::icons::Icon;
 
@@ -185,9 +185,9 @@ pub(crate) fn draw_content(
                             .primary(&primary)
                             .secondary(&secondary)
                             .trailing(move |ui, t| {
-                                if Button::close().show(ui, t).on_hover_text("Delete screenshot").clicked() {
-                                    delete_ref.set(true);
-                                }
+                                let r = Button::close().show(ui, t);
+                                Tooltip::new("Delete screenshot").show(ui, &r, t);
+                                if r.clicked() { delete_ref.set(true); }
                                 if Button::small_action("View").tint(accent_col).show(ui, t).clicked() {
                                     view_ref.set(true);
                                 }

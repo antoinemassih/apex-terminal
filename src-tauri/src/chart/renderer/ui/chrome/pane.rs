@@ -15,7 +15,7 @@ use super::super::style::*;
 use super::super::components::{pane_header_bar, pane_title, section_label_widget};
 use super::super::components::PaneHeader;
 use super::super::components::{RemovableChip, DisplayChip, StatusBadge};
-use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant};
+use crate::ui_kit::widgets::{Button as KitButton, Tooltip, tokens::Variant};
 
 // Color fields in builder `new()` constructors below are seeded with
 // `Color32::TRANSPARENT` placeholders. Every call site calls `.theme(t)` which
@@ -1019,8 +1019,8 @@ impl<'a> FloatingOrderPaneChrome<'a> {
                     .unwrap_or_else(|| crate::ui_kit::widgets::theme::active_theme(ui.ctx()));
                 let close_resp = KitButton::icon(Icon::X)
                     .variant(Variant::Ghost)
-                    .show(ui, theme_for_close)
-                    .on_hover_text("Close");
+                    .show(ui, theme_for_close);
+                Tooltip::new("Close").show(ui, &close_resp, theme_for_close);
                 if close_resp.clicked() { close_clicked = true; }
 
                 ui.add(egui::Separator::default().spacing(2.0));
@@ -1035,7 +1035,8 @@ impl<'a> FloatingOrderPaneChrome<'a> {
                     .fill(Color32::TRANSPARENT)
                     .min_size(egui::vec2(20.0, row_height_dense()))
                     .corner_radius(radius_sm()),
-                ).on_hover_text(exp_tip);
+                );
+                Tooltip::new(exp_tip).show(ui, &exp_resp, theme_for_close);
                 if exp_resp.clicked() { advanced_toggled = true; }
                 if exp_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             });

@@ -22,7 +22,7 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
-use crate::ui_kit::widgets::{Button, PanelEmpty, PanelSection, PanelTone};
+use crate::ui_kit::widgets::{Button, PanelEmpty, PanelSection, PanelTone, Tooltip};
 use crate::ui_kit::widgets::tokens::{Variant, Size};
 use crate::ui_kit::widgets::Input;
 use crate::chart_renderer::{Play, PlayDirection, PlayStatus, PlayType, PlayLine, PlayLineKind, PlayTarget};
@@ -335,10 +335,10 @@ fn draw_play_editor(
                         if let Some(ref mut c) = chart { c.play_click_to_set = Some(PlayLineKind::Target2); }
                     }
                     pct_stepper(ui, &mut watchlist.play_editor_t2_pct, t);
-                    if ui.add(Button::icon(Icon::X).variant(Variant::Chrome).glyph_color(color_muted(t.bear)).size(Size::Sm)
-                        .fill(egui::Color32::TRANSPARENT).min_size(BTN_ICON_SM)).on_hover_text("Remove target").clicked() {
-                        remove_t2 = true;
-                    }
+                    let r = ui.add(Button::icon(Icon::X).variant(Variant::Chrome).glyph_color(color_muted(t.bear)).size(Size::Sm)
+                        .fill(egui::Color32::TRANSPARENT).min_size(BTN_ICON_SM));
+                    Tooltip::new("Remove target").show(ui, &r, t);
+                    if r.clicked() { remove_t2 = true; }
                 });
                 if remove_t2 {
                     watchlist.play_editor_has_t2 = false;
@@ -362,10 +362,10 @@ fn draw_play_editor(
                         if let Some(ref mut c) = chart { c.play_click_to_set = Some(PlayLineKind::Target3); }
                     }
                     pct_stepper(ui, &mut watchlist.play_editor_t3_pct, t);
-                    if ui.add(Button::icon(Icon::X).variant(Variant::Chrome).glyph_color(color_muted(t.bear)).size(Size::Sm)
-                        .fill(egui::Color32::TRANSPARENT).min_size(BTN_ICON_SM)).on_hover_text("Remove target").clicked() {
-                        remove_t3 = true;
-                    }
+                    let r = ui.add(Button::icon(Icon::X).variant(Variant::Chrome).glyph_color(color_muted(t.bear)).size(Size::Sm)
+                        .fill(egui::Color32::TRANSPARENT).min_size(BTN_ICON_SM));
+                    Tooltip::new("Remove target").show(ui, &r, t);
+                    if r.clicked() { remove_t3 = true; }
                 });
                 if remove_t3 {
                     watchlist.play_editor_has_t3 = false;

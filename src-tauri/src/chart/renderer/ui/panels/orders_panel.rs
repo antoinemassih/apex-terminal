@@ -13,7 +13,7 @@ use super::super::super::gpu::*;
 use super::super::widgets::rows::order_row::{OrderRow, OrderSideTag};
 use crate::ui_kit::widgets::{
     Badge, Button, MetricRow, MetricTone, PanelCard, PanelEmpty, PanelSection,
-    PanelTone, SidePanelShell, TagTone, Width,
+    PanelTone, SidePanelShell, TagTone, Tooltip, Width,
 };
 use crate::ui_kit::widgets::tokens::Variant;
 use super::super::widgets::text::{self as wtext, MonospaceCode};
@@ -128,13 +128,15 @@ fn draw_book(
                                                     egui::Align::Center),
                                                 |ui| {
                                                     let close_color = t.bear;
-                                                    if ui.add(Button::icon(Icon::X)
+                                                    let r = ui.add(Button::icon(Icon::X)
                                                         .variant(Variant::Chrome)
                                                         .glyph_color(close_color)
                                                         .fill(color_alpha(close_color, 12))
                                                         .corner_radius(current().r_sm as f32)
                                                         .min_size(egui::vec2(18.0, 16.0))
-                                                        .frameless(true)).on_hover_text("Close position").clicked() {
+                                                        .frameless(true));
+                                                    Tooltip::new("Close position").show(ui, &r, t);
+                                                    if r.clicked() {
                                                         let qty = pos.qty;
                                                         let con_id = pos.con_id;
                                                         std::thread::spawn(move || {
@@ -339,11 +341,13 @@ fn draw_book(
                     ui.horizontal(|ui| {
                         let check_icon = if all_selected { Icon::CHECK_SQUARE } else { Icon::SQUARE_EMPTY };
                         let check_color = if all_selected { t.accent } else { color_dim(t.dim) };
-                        if ui.add(Button::icon(check_icon)
+                        let r = ui.add(Button::icon(check_icon)
                             .variant(Variant::Chrome)
                             .glyph_color(check_color)
                             .frameless(true)
-                            .min_size(egui::vec2(icon_xs(), icon_xs()))).on_hover_text("Select all").clicked() {
+                            .min_size(egui::vec2(icon_xs(), icon_xs())));
+                        Tooltip::new("Select all").show(ui, &r, t);
+                        if r.clicked() {
                             if all_selected {
                                 watchlist.selected_order_ids.clear();
                             } else {
@@ -536,11 +540,13 @@ fn draw_book(
                                 ui.with_layout(
                                     egui::Layout::right_to_left(egui::Align::Center),
                                     |ui| {
-                                        if ui.add(Button::icon(Icon::X)
+                                        let r = ui.add(Button::icon(Icon::X)
                                             .variant(Variant::Chrome)
                                             .glyph_color(color_half(t.dim))
                                             .frameless(true)
-                                            .min_size(egui::vec2(icon_xs(), icon_xs()))).on_hover_text("Remove alert").clicked() {
+                                            .min_size(egui::vec2(icon_xs(), icon_xs())));
+                                        Tooltip::new("Remove alert").show(ui, &r, t);
+                                        if r.clicked() {
                                             remove_alert = Some(alert.id);
                                         }
                                     });

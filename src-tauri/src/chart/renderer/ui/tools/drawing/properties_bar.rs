@@ -5,7 +5,7 @@ use crate::chart_renderer::gpu::{Theme, Chart, DrawingAction, drawing_persist_ke
 use crate::chart_renderer::{DrawingKind, LineStyle};
 use crate::chart_renderer::ui::style::{hex_to_color, COLOR_AMBER, gap_xs, font_xs, font_sm, font_md, row_height_compact, row_height_dense, stroke_bold, radius_sm};
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::{Button as KitButton, tokens::{Variant as KitVariant, Size as KitSize}};
+use crate::ui_kit::widgets::{Button as KitButton, Tooltip, tokens::{Variant as KitVariant, Size as KitSize}};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
@@ -97,7 +97,7 @@ pub fn show_drawing_properties_bar_ui(
         ];
         let cur_color = hex_to_color(&sel_draw.color, 1.0);
         // TODO: Button::menu doesn't cover per-drawing color swatch as the trigger label (cur_color varies, fg is fixed to t.dim).
-        ui.menu_button(
+        let color_menu = ui.menu_button(
             egui::RichText::new("\u{25A0}").size(font_md() + 2.0).color(cur_color),
             |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
@@ -127,7 +127,8 @@ pub fn show_drawing_properties_bar_ui(
                     }
                 });
             },
-        ).response.on_hover_text("Color");
+        );
+        Tooltip::new("Color").show(ui, &color_menu.response, t);
 
         ui.add(egui::Separator::default().spacing(gap_xs()));
 
@@ -235,9 +236,11 @@ pub fn show_drawing_properties_bar_ui(
 
         // Extension toggles (lines only)
         if matches!(&sel_draw.kind, DrawingKind::TrendLine{..} | DrawingKind::Ray{..}) {
-            if KitButton::new("\u{2190}").variant(KitVariant::Ghost).size(KitSize::Sm)
+            let r = KitButton::new("\u{2190}").variant(KitVariant::Ghost).size(KitSize::Sm)
                 .fg(if sel_draw.extend_left { t.accent } else { dim })
-                .min_size(egui::vec2(18.0, row_height_dense())).show(ui, t).on_hover_text("Extend left").clicked() {
+                .min_size(egui::vec2(18.0, row_height_dense())).show(ui, t);
+            Tooltip::new("Extend left").show(ui, &r, t);
+            if r.clicked() {
                 if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
                     chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
                     chart.redo_stack.clear();
@@ -245,9 +248,11 @@ pub fn show_drawing_properties_bar_ui(
                     crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
                 }
             }
-            if KitButton::new("\u{2192}").variant(KitVariant::Ghost).size(KitSize::Sm)
+            let r = KitButton::new("\u{2192}").variant(KitVariant::Ghost).size(KitSize::Sm)
                 .fg(if sel_draw.extend_right { t.accent } else { dim })
-                .min_size(egui::vec2(18.0, row_height_dense())).show(ui, t).on_hover_text("Extend right").clicked() {
+                .min_size(egui::vec2(18.0, row_height_dense())).show(ui, t);
+            Tooltip::new("Extend right").show(ui, &r, t);
+            if r.clicked() {
                 if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
                     chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
                     chart.redo_stack.clear();
@@ -268,7 +273,9 @@ pub fn show_drawing_properties_bar_ui(
         ui.add(egui::Separator::default().spacing(gap_xs()));
 
         // Delete
-        if KitButton::icon(Icon::TRASH).variant(KitVariant::Ghost).glyph_color(t.bear).show(ui, t).on_hover_text("Delete").clicked() {
+        let r = KitButton::icon(Icon::TRASH).variant(KitVariant::Ghost).glyph_color(t.bear).show(ui, t);
+        Tooltip::new("Delete").show(ui, &r, t);
+        if r.clicked() {
             if let Some(d) = chart.drawings.iter().find(|d| d.id == sel_id) {
                 chart.undo_stack.push(DrawingAction::Remove(d.clone()));
             }

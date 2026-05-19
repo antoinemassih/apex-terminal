@@ -4,6 +4,7 @@ use egui::Context;
 use crate::chart_renderer::gpu::{Theme, Chart};
 use crate::chart_renderer::gpu::Watchlist;
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::widgets::Tooltip;
 use crate::chart_renderer::ui::style::{cursor, gap_xs, gap_sm, gap_md, gap_lg, font_sm, font_lg, mono_sm, color_subtle, color_muted, color_half, color_very_dim};
 use crate::chart_renderer::ui::widgets::frames::PopupFrame;
 
@@ -197,7 +198,7 @@ pub fn show_drawing_tool_picker(
                                 ui.painter().text(cell.center(), egui::Align2::CENTER_CENTER,
                                     icon, egui::FontId::proportional((cell_w * 0.55).max(11.0)), txt_col);
                                 if hov {
-                                    resp.clone().on_hover_text(drawing_label(tool));
+                                    Tooltip::new(drawing_label(tool)).show(ui, &resp, t);
                                 }
                                 if resp.clicked() { chosen = Some(tool.clone()); }
                                 if resp.secondary_clicked() { star_toggle = Some(tool.clone()); }

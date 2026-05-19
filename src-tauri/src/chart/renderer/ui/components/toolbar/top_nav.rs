@@ -87,7 +87,7 @@ use std::sync::Arc;
 use winit::window::Window;
 
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::{Button as KitButton, NumberStepper, SelectableRow, tokens::{Variant as KitVariant, Size as KitSize}};
+use crate::ui_kit::widgets::{Button as KitButton, NumberStepper, SelectableRow, Tooltip, tokens::{Variant as KitVariant, Size as KitSize}};
 use crate::chart_renderer::gpu::{
     Chart, Layout, Watchlist, Theme,
     CURRENT_WINDOW, CLOSE_REQUESTED, TB_BTN_CLICKED, PENDING_TOASTS, PENDING_WL_TOOLTIP,
@@ -428,8 +428,8 @@ pub(crate) fn render(
                     concat!("IBKR ", "\u{F198}")  // CIRCLE
                 };
                 let acct_active = watchlist.account_strip_open;
-                let acct_resp = toolbar_btn(ui, &acct_label_owned, acct_active, t)
-                    .on_hover_text("Account Summary");
+                let acct_resp = toolbar_btn(ui, &acct_label_owned, acct_active, t);
+                Tooltip::new("Account Summary").show(ui, &acct_resp, t);
                 if style_current().vertical_group_dividers && acct_resp.hovered() {
                     let col = color_alpha(t.toolbar_border, 80);
                     let btn_rect = acct_resp.rect;
@@ -464,7 +464,8 @@ pub(crate) fn render(
                 let resp = KitButton::new("$").variant(KitVariant::Ghost).size(KitSize::Sm)
                     .fg(fg).fill(fill).min_size(egui::vec2(28.0, row_height_default()))
                     .show(ui, t);
-                if resp.on_hover_text(tip).clicked() {
+                Tooltip::new(tip).show(ui, &resp, t);
+                if resp.clicked() {
                     crate::chart_renderer::trading::order_manager::set_paper_mode(!paper);
                 }
             }
@@ -676,8 +677,8 @@ pub(crate) fn render(
                     ui.add_space(gap_xs());
                 }
                 // Dropdown caret — opens the full timeframe picker with star-favorite toggles.
-                let tf_dd_btn = toolbar_btn(ui, Icon::CARET_DOWN, watchlist.timeframe_dropdown_open, t)
-                    .on_hover_text("Timeframe picker");
+                let tf_dd_btn = toolbar_btn(ui, Icon::CARET_DOWN, watchlist.timeframe_dropdown_open, t);
+                Tooltip::new("Timeframe picker").show(ui, &tf_dd_btn, t);
                 if tf_dd_btn.clicked() {
                     watchlist.timeframe_dropdown_open = !watchlist.timeframe_dropdown_open;
                     watchlist.timeframe_dropdown_pos = egui::pos2(tf_dd_btn.rect.left(), tf_dd_btn.rect.bottom() + 2.0);
@@ -820,15 +821,17 @@ pub(crate) fn render(
                 ui.spacing_mut().button_padding = egui::vec2(gap_sm(), gap_sm());
 
                 // Magnet snap
-                if toolbar_btn(ui, Icon::MAGNET, panes[ap].magnet, t).on_hover_text("Magnet Snap").clicked() {
+                let r = toolbar_btn(ui, Icon::MAGNET, panes[ap].magnet, t);
+                Tooltip::new("Magnet Snap").show(ui, &r, t);
+                if r.clicked() {
                     panes[ap].magnet = !panes[ap].magnet;
                 }
 
                 // Object tree — icon button with a count badge painted in the top-right corner
                 {
                     let draw_count = panes[ap].drawings.len();
-                    let tree_resp = toolbar_btn(ui, Icon::TREE_STRUCTURE, watchlist.object_tree_open, t)
-                        .on_hover_text("Object Tree");
+                    let tree_resp = toolbar_btn(ui, Icon::TREE_STRUCTURE, watchlist.object_tree_open, t);
+                    Tooltip::new("Object Tree").show(ui, &tree_resp, t);
                     if draw_count > 0 {
                         let painter = ui.painter();
                         let r = tree_resp.rect;
@@ -851,20 +854,18 @@ pub(crate) fn render(
                 // Broadcast
                 {
                     let bc = watchlist.broadcast_mode;
-                    if toolbar_btn(ui, Icon::BROADCAST, bc, t)
-                        .on_hover_text("Broadcast — changes apply to all panes")
-                        .clicked()
-                    {
+                    let r = toolbar_btn(ui, Icon::BROADCAST, bc, t);
+                    Tooltip::new("Broadcast — changes apply to all panes").show(ui, &r, t);
+                    if r.clicked() {
                         watchlist.broadcast_mode = !watchlist.broadcast_mode;
                         TB_BTN_CLICKED.with(|f| f.set(true));
                     }
                 }
 
                 // Trendline filter
-                if toolbar_btn(ui, Icon::FUNNEL, watchlist.trendline_filter_open, t)
-                    .on_hover_text("Trendline Filter")
-                    .clicked()
-                {
+                let r = toolbar_btn(ui, Icon::FUNNEL, watchlist.trendline_filter_open, t);
+                Tooltip::new("Trendline Filter").show(ui, &r, t);
+                if r.clicked() {
                     watchlist.trendline_filter_open = !watchlist.trendline_filter_open;
                 }
 
@@ -1021,10 +1022,14 @@ pub(crate) fn render(
                                     if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == *eid) { ind.visible = nv; }
                                 }
                             }
-                            if KitButton::icon(Icon::PENCIL_LINE).variant(KitVariant::MutedIcon).show(ui, t).on_hover_text("Edit indicator").clicked() {
+                            let r = KitButton::icon(Icon::PENCIL_LINE).variant(KitVariant::MutedIcon).show(ui, t);
+                            Tooltip::new("Edit indicator").show(ui, &r, t);
+                            if r.clicked() {
                                 panes[ap].editing_indicator = Some(*eid);
                             }
-                            if KitButton::icon(Icon::X).variant(KitVariant::MutedIcon).glyph_color(color_half(t.bear)).show(ui, t).on_hover_text("Remove indicator").clicked() {
+                            let r = KitButton::icon(Icon::X).variant(KitVariant::MutedIcon).glyph_color(color_half(t.bear)).show(ui, t);
+                            Tooltip::new("Remove indicator").show(ui, &r, t);
+                            if r.clicked() {
                                 let shift = ui.input(|i| i.modifiers.shift);
                                 let fan = shift || watchlist.broadcast_mode;
                                 if fan {
@@ -1356,7 +1361,9 @@ pub(crate) fn render(
                         ui.add_space(gap_xl());
                         let label_resp = ui.label(egui::RichText::new(&ov.symbol).monospace().size(font_sm()).color(oc));
                         if label_resp.double_clicked() { edit_idx = Some(oi); }
-                        if KitButton::icon(Icon::X).variant(KitVariant::Ghost).glyph_color(color_half(t.bear)).show(ui, t).on_hover_text("Remove overlay").clicked() {
+                        let r = KitButton::icon(Icon::X).variant(KitVariant::Ghost).glyph_color(color_half(t.bear)).show(ui, t);
+                        Tooltip::new("Remove overlay").show(ui, &r, t);
+                        if r.clicked() {
                             remove_idx = Some(oi);
                         }
                     });
@@ -1592,8 +1599,8 @@ pub(crate) fn render(
 
             // Hit-highlight toggle — trendline/swing hit detection flash
             {
-                let hh_resp = toolbar_btn(ui, Icon::LINE_SEGMENT, panes[ap].hit_highlight, t)
-                    .on_hover_text("Trendline Hit Detection");
+                let hh_resp = toolbar_btn(ui, Icon::LINE_SEGMENT, panes[ap].hit_highlight, t);
+                Tooltip::new("Trendline Hit Detection").show(ui, &hh_resp, t);
                 if hh_resp.clicked() {
                     let shift = ui.input(|i| i.modifiers.shift);
                     let nv = !panes[ap].hit_highlight;
@@ -1727,8 +1734,8 @@ pub(crate) fn render(
                     ui.add_space(gap_xs());
                 }
                 // Dropdown caret for the full layout picker
-                let dd_btn = toolbar_btn(ui, Icon::CARET_DOWN, watchlist.layout_dropdown_open, t)
-                    .on_hover_text("Layout picker");
+                let dd_btn = toolbar_btn(ui, Icon::CARET_DOWN, watchlist.layout_dropdown_open, t);
+                Tooltip::new("Layout picker").show(ui, &dd_btn, t);
                 if dd_btn.clicked() {
                     watchlist.layout_dropdown_open = !watchlist.layout_dropdown_open;
                     watchlist.layout_dropdown_pos = egui::pos2(dd_btn.rect.left(), dd_btn.rect.bottom() + 2.0);
@@ -1820,7 +1827,7 @@ pub(crate) fn render(
                     ui.painter().circle_filled(rect.center(), 3.0, dot_color);
                     crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
                     let tip = if connected { "Connection: OK" } else { "Connection: Issue" };
-                    let resp = resp.on_hover_text(tip);
+                    Tooltip::new(tip).show(ui, &resp, t);
                     if resp.clicked() { *conn_panel_open = !*conn_panel_open; }
                 }
 
@@ -1865,8 +1872,8 @@ pub(crate) fn render(
                     });
                     if cmd_comma { watchlist.settings_open = !watchlist.settings_open; }
 
-                    let settings_resp = toolbar_btn(ui, Icon::GEAR, watchlist.settings_open, t)
-                        .on_hover_text("Settings (Cmd+,)");
+                    let settings_resp = toolbar_btn(ui, Icon::GEAR, watchlist.settings_open, t);
+                    Tooltip::new("Settings (Cmd+,)").show(ui, &settings_resp, t);
                     paint_nav_col_tint(ui, tb_rect, settings_resp.rect, t, settings_resp.hovered(), watchlist.settings_open, "right_settings");
                     if settings_resp.clicked() { watchlist.settings_open = !watchlist.settings_open; }
                 }
@@ -1925,37 +1932,43 @@ pub(crate) fn render(
                 }
 
                 // Feed pane (News + Discord + Screenshots)
-                let resp = toolbar_btn(ui, &nav_label(Icon::NEWSPAPER, "Feed"), watchlist.feed_panel_open, t).on_hover_text("Feed (News, Discord, Screenshots)");
+                let resp = toolbar_btn(ui, &nav_label(Icon::NEWSPAPER, "Feed"), watchlist.feed_panel_open, t);
+                Tooltip::new("Feed (News, Discord, Screenshots)").show(ui, &resp, t);
                 paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.feed_panel_open, "right_feed");
                 if resp.clicked() { watchlist.feed_panel_open = !watchlist.feed_panel_open; }
                 nav_divider!(ui, resp);
 
                 // Playbook
-                let resp = toolbar_btn(ui, &nav_label(Icon::STAR, "Playbook"), watchlist.playbook_panel_open, t).on_hover_text("Playbook (Trade Ideas)");
+                let resp = toolbar_btn(ui, &nav_label(Icon::STAR, "Playbook"), watchlist.playbook_panel_open, t);
+                Tooltip::new("Playbook (Trade Ideas)").show(ui, &resp, t);
                 paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.playbook_panel_open, "right_playbook");
                 if resp.clicked() { watchlist.playbook_panel_open = !watchlist.playbook_panel_open; }
                 nav_divider!(ui, resp);
 
                 // Watchlist toggle
-                let resp = toolbar_btn(ui, &nav_label(Icon::LIST, "Watchlist"), watchlist.open, t).on_hover_text("Watchlist");
+                let resp = toolbar_btn(ui, &nav_label(Icon::LIST, "Watchlist"), watchlist.open, t);
+                Tooltip::new("Watchlist").show(ui, &resp, t);
                 paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.open, "right_watchlist");
                 if resp.clicked() { watchlist.open = !watchlist.open; }
                 nav_divider!(ui, resp);
 
                 // Orders panel
-                let resp = toolbar_btn(ui, &nav_label(Icon::CURRENCY_DOLLAR, "Orders"), watchlist.orders_panel_open, t).on_hover_text("Orders Panel");
+                let resp = toolbar_btn(ui, &nav_label(Icon::CURRENCY_DOLLAR, "Orders"), watchlist.orders_panel_open, t);
+                Tooltip::new("Orders Panel").show(ui, &resp, t);
                 paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.orders_panel_open, "right_orders");
                 if resp.clicked() { watchlist.orders_panel_open = !watchlist.orders_panel_open; }
                 nav_divider!(ui, resp);
 
                 // Analysis sidebar toggle
-                let resp = toolbar_btn(ui, &nav_label(Icon::CHART_LINE, "Analysis"), watchlist.analysis_open, t).on_hover_text("Analysis Sidebar");
+                let resp = toolbar_btn(ui, &nav_label(Icon::CHART_LINE, "Analysis"), watchlist.analysis_open, t);
+                Tooltip::new("Analysis Sidebar").show(ui, &resp, t);
                 paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.analysis_open, "right_analysis");
                 if resp.clicked() { watchlist.analysis_open = !watchlist.analysis_open; }
                 nav_divider!(ui, resp);
 
                 // Indicators panel — manage active indicators + library + tool toggles
-                let resp = toolbar_btn(ui, &nav_label(Icon::PULSE, "Indicators"), watchlist.indicators_panel_open, t).on_hover_text("Indicators (Active + Library + Tools)");
+                let resp = toolbar_btn(ui, &nav_label(Icon::PULSE, "Indicators"), watchlist.indicators_panel_open, t);
+                Tooltip::new("Indicators (Active + Library + Tools)").show(ui, &resp, t);
                 paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.indicators_panel_open, "right_indicators");
                 if resp.clicked() { watchlist.indicators_panel_open = !watchlist.indicators_panel_open; }
                 nav_divider!(ui, resp);
@@ -1964,7 +1977,8 @@ pub(crate) fn render(
                 {
                     let active_count = watchlist.alerts.iter().filter(|a| !a.triggered).count()
                         + panes.iter().flat_map(|p| p.price_alerts.iter()).filter(|a| !a.triggered && !a.draft).count();
-                    let signals_resp = toolbar_btn(ui, &nav_label(Icon::LIGHTNING, "Signals"), watchlist.signals_panel_open, t).on_hover_text("Signals (Alerts + Signals)");
+                    let signals_resp = toolbar_btn(ui, &nav_label(Icon::LIGHTNING, "Signals"), watchlist.signals_panel_open, t);
+                    Tooltip::new("Signals (Alerts + Signals)").show(ui, &signals_resp, t);
                     paint_nav_col_tint(ui, tb_rect, signals_resp.rect, t, signals_resp.hovered(), watchlist.signals_panel_open, "right_signals");
                     if active_count > 0 {
                         // Overlay a Badge at the top-right corner of the Signals button.
@@ -2005,7 +2019,9 @@ pub(crate) fn render(
                 ui.spacing_mut().button_padding = prev_panel_pad;
 
                 // New window — single icon button.
-                if toolbar_btn(ui, Icon::CIRCLES_THREE_PLUS, false, t).on_hover_text("New chart window").clicked() {
+                let r = toolbar_btn(ui, Icon::CIRCLES_THREE_PLUS, false, t);
+                Tooltip::new("New chart window").show(ui, &r, t);
+                if r.clicked() {
                     let (tx, rx) = std::sync::mpsc::channel();
                     let sym = panes[ap].symbol.clone();
                     let tf = panes[ap].timeframe.clone();
@@ -2637,9 +2653,8 @@ pub(crate) fn render(
                                         dim_col
                                     };
                                     let pin_resp = KitButton::new(pin_icon).variant(KitVariant::Ghost)
-                                        .size(KitSize::Xs).fg(pin_col).frameless(true).show(ui, t)
-                                        .on_hover_text(if is_pinned { "Unpin (right-click)" } else { "Pin toast" })
-                                    ;
+                                        .size(KitSize::Xs).fg(pin_col).frameless(true).show(ui, t);
+                                    Tooltip::new(if is_pinned { "Unpin (right-click)" } else { "Pin toast" }).show(ui, &pin_resp, t);
                                     if pin_resp.clicked() && !is_pinned {
                                         pin_toggle_idx = Some((toast_i, true));
                                     }

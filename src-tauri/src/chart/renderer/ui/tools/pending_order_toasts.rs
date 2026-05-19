@@ -5,7 +5,7 @@ use crate::chart_renderer::gpu::{Theme, Chart};
 use crate::chart_renderer::trading::OrderStatus;
 use crate::chart_renderer::ui::style::{gap_sm, font_sm, stroke_std};
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
+use crate::ui_kit::widgets::{Button as KitButton, Tooltip, tokens::Variant as KitVariant};
 
 pub struct PendingOrderToastsCtx<'a> {
     pub ctx: &'a Context,
@@ -39,12 +39,12 @@ pub fn show_pending_order_toasts(c: PendingOrderToastsCtx<'_>) {
                 .show(c.ctx, |ui| {
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new(format!("{} x{} @ {:.2}", label, qty, price)).monospace().size(font_sm()).color(color));
-                        if KitButton::icon(Icon::CHECK).variant(KitVariant::Ghost).glyph_color(c.t.bull).show(ui, c.t).on_hover_text("Confirm order").clicked() {
-                            confirm_ids.push(*oid);
-                        }
-                        if KitButton::icon(Icon::X).variant(KitVariant::Ghost).glyph_color(c.t.bear).show(ui, c.t).on_hover_text("Cancel order").clicked() {
-                            cancel_ids.push(*oid);
-                        }
+                        let r = KitButton::icon(Icon::CHECK).variant(KitVariant::Ghost).glyph_color(c.t.bull).show(ui, c.t);
+                        Tooltip::new("Confirm order").show(ui, &r, c.t);
+                        if r.clicked() { confirm_ids.push(*oid); }
+                        let r = KitButton::icon(Icon::X).variant(KitVariant::Ghost).glyph_color(c.t.bear).show(ui, c.t);
+                        Tooltip::new("Cancel order").show(ui, &r, c.t);
+                        if r.clicked() { cancel_ids.push(*oid); }
                     });
                 });
         } else {

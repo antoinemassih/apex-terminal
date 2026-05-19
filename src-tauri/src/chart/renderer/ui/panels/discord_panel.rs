@@ -19,7 +19,7 @@ use super::super::style::*;
 use super::super::widgets;
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::{
-    Button, PanelEmpty, PanelListRow, PanelSection, SidePanelShell, Width,
+    Button, PanelEmpty, PanelListRow, PanelSection, SidePanelShell, Tooltip, Width,
 };
 use crate::ui_kit::widgets::tokens::{Variant, Size};
 use crate::ui_kit::widgets::{GuildAvatarGrid, GuildEntry};
@@ -195,12 +195,11 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
         ui.add_space(4.0);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add_space(4.0);
-            if Button::close()
+            let r = Button::close()
                 .tint(t.bear)
-                .show(ui, t)
-                .on_hover_text("Disconnect")
-                .clicked()
-            {
+                .show(ui, t);
+            Tooltip::new("Disconnect").show(ui, &r, t);
+            if r.clicked() {
                 crate::discord::disconnect();
                 watchlist.discord_authenticated = false;
                 watchlist.discord_username.clear();
@@ -384,11 +383,12 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
         // Back button + channel name
         ui.horizontal(|ui| {
             ui.add_space(8.0);
-            if ui.add(Button::new(Icon::CARET_RIGHT)
+            let r = ui.add(Button::new(Icon::CARET_RIGHT)
                 .variant(Variant::TextOnly)
                 .size(Size::Sm)
-                .fg(t.dim)
-            ).on_hover_text("Back to channels").clicked() {
+                .fg(t.dim));
+            Tooltip::new("Back to channels").show(ui, &r, t);
+            if r.clicked() {
                 watchlist.discord_selected_channel = None;
                 watchlist.discord_messages.clear();
                 watchlist.discord_last_msg_id = None;
