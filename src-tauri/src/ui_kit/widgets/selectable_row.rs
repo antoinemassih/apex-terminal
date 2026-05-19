@@ -133,6 +133,12 @@ impl<'a> SelectableRow<'a> {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
 
+        // Focus ring for keyboard navigation — egui's Sense::click() already
+        // fires clicked() on Enter/Space when the widget has keyboard focus.
+        if !disabled {
+            st::cursor::focus_ring(ui, &response, theme.accent());
+        }
+
         // Layout: leading icon, then label.
         let cy = rect.center().y;
         let mut x = rect.left() + pad_x;

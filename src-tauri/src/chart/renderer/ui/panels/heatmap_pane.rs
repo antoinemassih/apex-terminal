@@ -201,6 +201,9 @@ pub(crate) fn render(
         if cell_hovered {
             painter.rect_stroke(inset, 2.0, egui::Stroke::new(stroke_bold(), t.text), egui::StrokeKind::Outside);
         }
+        // Focus ring for keyboard navigation (egui Sense::click() already
+        // fires clicked() on Enter/Space when focused).
+        cursor::focus_ring(ui, &cell_resp, t.accent);
         if cell_resp.clicked() {
             // Load this symbol into pane 0 (or the active chart pane)
             panes[pane_idx].pane_type = PaneType::Chart;
