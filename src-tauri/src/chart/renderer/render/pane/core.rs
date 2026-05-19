@@ -3914,12 +3914,17 @@ fn render_chart_pane(
             }
 
             // ── Generic overlay (SMA, EMA, WMA, DEMA, TEMA, VWAP) ──
-            // GPU path (Phase 4a): solid lines on the active pane go to the GPU
-            // line pipeline as instanced segments. Dashed/dotted styles, multi-line
-            // indicators, and inactive panes stay on the egui mesh path.
+            // GPU path (Phase 4a): solid lines on EVERY visible pane (active and
+            // inactive) go to the GPU line pipeline as instanced segments. Dashed
+            // and dotted styles stay on the egui mesh path until the line shader
+            // supports stipple patterns.
+            //
+            // The previous restriction to `is_active` was a Phase-4a artifact;
+            // commit fcb26b2d ("perf(chart): per-pane GPU rendering") removed
+            // the same gate for band fills but missed line overlays here.
             let use_gpu_line: bool = {
                 #[cfg(feature = "gpu_chart_v2")]
-                { is_active && ind.line_style == LineStyle::Solid }
+                { ind.line_style == LineStyle::Solid }
                 #[cfg(not(feature = "gpu_chart_v2"))]
                 { false }
             };
