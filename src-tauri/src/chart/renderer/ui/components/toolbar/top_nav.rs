@@ -1816,19 +1816,58 @@ pub(crate) fn render(
                 ui.spacing_mut().item_spacing.x = gap_sm();
 
 
-                // Connection status — small painted dot, no button frame
+                // Connection status — apex_data feed dot mapped from ConnectionState.
+                // Green = Subscribed, Amber = Connecting/Authenticated, Red = Backoff/Failed/Idle.
                 {
-                    let connected = account_data_cached.as_ref().map_or(false, |(s, _, _)| s.connected);
-                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
-                    let dot_color = if connected {
-                        t.bull
-                    } else {
-                        rgb(230, 160, 40)
+                    use crate::chart_renderer::ui::panels::connection_state_snapshot;
+                    use crate::data::connectivity::ConnectionState;
+                    let apex_state = connection_state_snapshot::get("apex_data");
+                    let (dot_color, tip_label, tip_detail) = match &apex_state {
+                        ConnectionState::Subscribed { count } => (
+                            t.bull,
+                            "apex-data: connected",
+                            format!("apex-data: connected ({count} subscriptions)"),
+                        ),
+                        ConnectionState::Authenticated => (
+                            t.warn,
+                            "apex-data: authenticated",
+                            "apex-data: authenticated (awaiting subscriptions)".to_string(),
+                        ),
+                        ConnectionState::Connecting { attempt } => (
+                            t.warn,
+                            "apex-data: connecting",
+                            format!("apex-data: connecting (attempt {attempt})"),
+                        ),
+                        ConnectionState::Backoff { attempt, reason, .. } => (
+                            t.bear,
+                            "apex-data: reconnecting",
+                            format!("apex-data: backoff before attempt {attempt} — {reason}"),
+                        ),
+                        ConnectionState::Failed { reason } => (
+                            t.bear,
+                            "apex-data: failed",
+                            format!("apex-data: failed — {reason}"),
+                        ),
+                        ConnectionState::ShuttingDown => (
+                            t.bear,
+                            "apex-data: shutting down",
+                            "apex-data: shutting down".to_string(),
+                        ),
+                        ConnectionState::Idle => (
+                            t.bear,
+                            "apex-data: idle",
+                            "apex-data: idle (not started)".to_string(),
+                        ),
                     };
-                    ui.painter().circle_filled(rect.center(), 3.0, dot_color);
+                    let _ = tip_label; // used in tooltip below
+                    let (dot_rect, resp) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+                    ui.painter().circle_filled(dot_rect.center(), 3.0, dot_color);
                     crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
-                    let tip = if connected { "Connection: OK" } else { "Connection: Issue" };
-                    Tooltip::new(tip).show(ui, &resp, t);
+                    let tip_detail_clone = tip_detail.clone();
+                    Tooltip::rich(move |ui, theme| {
+                        ui.label(egui::RichText::new(&tip_detail_clone).size(font_xs()).color(theme.text()));
+                        ui.label(egui::RichText::new("Click to open Connection panel").size(font_xs()).color(theme.dim()));
+                    }).show(ui, &resp, t);
                     if resp.clicked() { *conn_panel_open = !*conn_panel_open; }
                 }
 
