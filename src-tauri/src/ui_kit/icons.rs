@@ -57,6 +57,16 @@ impl Icon {
     pub const HAND_PALM: &'static str = ph::HAND_PALM;
     pub const BRACKETS_CURLY: &'static str = ph::BRACKETS_CURLY;
     pub const SHIELD_WARNING: &'static str = ph::SHIELD_WARNING;
+    /// Phosphor Bold "info" — used as the icon for Info-severity toasts.
+    pub const INFO: &'static str = ph::INFO;
+    /// Phosphor Bold "check-circle" — used as the icon for Success-severity toasts.
+    pub const CHECK_CIRCLE: &'static str = ph::CHECK_CIRCLE;
+    /// Phosphor Bold "warning" — used as the icon for Warning-severity toasts.
+    pub const WARNING: &'static str = ph::WARNING;
+    /// Phosphor Bold "push-pin" — used to indicate a pinned toast.
+    pub const PUSH_PIN: &'static str = ph::PUSH_PIN;
+    /// Phosphor Fill "shield-warning" — stronger critical indicator for Critical-severity toasts.
+    pub const SHIELD_WARNING_FILL: &'static str = ph_fill::SHIELD_WARNING;
     pub const RULER: &'static str = ph::RULER;
     pub const ARROWS_OUT: &'static str = ph::ARROWS_OUT;
     pub const ARROWS_OUT_SIMPLE: &'static str = ph::ARROWS_OUT_SIMPLE;
