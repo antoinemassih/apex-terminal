@@ -5290,10 +5290,19 @@ impl GpuCtx {
         // User-reported symptom that motivated the switch: "movement feels
         // behind my drag" + "micro-stuttering during pan".
         eprintln!("[native-chart] available present modes: {:?}", caps.present_modes);
-        let (present_mode, frame_latency) = if caps.present_modes.contains(&wgpu::PresentMode::Mailbox) {
-            (wgpu::PresentMode::Mailbox, 1u32)
-        } else if caps.present_modes.contains(&wgpu::PresentMode::Fifo) {
-            (wgpu::PresentMode::Fifo, 1u32)
+        // Reverted to the original baseline after diagnostic showed:
+        //   1. macOS Metal only advertises [Fifo, Immediate] (no Mailbox).
+        //   2. Immediate (no vsync) still stutters AND tears — confirms the
+        //      paint pipeline has variable frame times, not a vsync issue.
+        //   3. Fifo+lat=1 is responsive but stuttery (variance exposed).
+        //   4. Fifo+lat=2 buffers the variance behind a 2-frame queue (~33ms
+        //      input lag) — produces the "buttery" feel users remember.
+        //
+        // The real fix for the underlying variance requires profiling +
+        // targeted work in the chart paint hot path (sacred core.rs, single-
+        // owner pass). Until then, keep the original config.
+        let (present_mode, frame_latency) = if caps.present_modes.contains(&wgpu::PresentMode::Fifo) {
+            (wgpu::PresentMode::Fifo, 2u32)
         } else {
             (wgpu::PresentMode::AutoVsync, 2u32)
         };
