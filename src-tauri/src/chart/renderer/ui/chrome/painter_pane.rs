@@ -291,6 +291,8 @@ pub struct PainterPaneHeader<'a> {
     link_group: u8,
     /// Resolved color for the current link group (None = unlinked/hollow).
     link_group_color: Option<Color32>,
+    /// Human-readable name for the current link group, shown as a tooltip on the dot.
+    link_group_name: Option<String>,
     show_back_fwd: bool,
     can_go_back: bool,
     can_go_fwd: bool,
@@ -348,6 +350,7 @@ impl<'a> PainterPaneHeader<'a> {
             show_link_dot: false,
             link_group: 0,
             link_group_color: None,
+            link_group_name: None,
             show_back_fwd: false,
             can_go_back: false,
             can_go_fwd: false,
@@ -387,6 +390,10 @@ impl<'a> PainterPaneHeader<'a> {
     pub fn show_link_dot(mut self, v: bool) -> Self { self.show_link_dot = v; self }
     pub fn link_group(mut self, g: u8) -> Self { self.link_group = g; self }
     pub fn link_group_color(mut self, c: Option<Color32>) -> Self { self.link_group_color = c; self }
+    /// Set the human-readable label for the link group dot tooltip (e.g. "Group 1").
+    pub fn link_group_name(mut self, name: impl Into<String>) -> Self {
+        self.link_group_name = Some(name.into()); self
+    }
     pub fn show_back_fwd(mut self, v: bool) -> Self { self.show_back_fwd = v; self }
     pub fn can_go_back(mut self, v: bool) -> Self { self.can_go_back = v; self }
     pub fn can_go_fwd(mut self, v: bool) -> Self { self.can_go_fwd = v; self }
@@ -500,9 +507,20 @@ impl<'a> PainterPaneHeader<'a> {
         let mut cx = rect.left() + gap_sm();
 
         // Link group — passive region; caller places a Select widget here via link_dot_rect.
+        // We also emit a tooltip when a group name is supplied so users can discover
+        // what the colored dot means without opening the group picker.
         if self.show_link_dot {
             let hit = Rect::from_min_size(pos2(cx, rect.top()), Vec2::new(LINK_SELECT_W, h));
-            ui.allocate_rect(hit, Sense::hover());
+            let dot_resp = ui.allocate_rect(hit, Sense::hover());
+            // Tooltip: "Group 1 (link group 1)" or "Not linked — click to join a link group"
+            let tip = if self.link_group == 0 {
+                "Not linked — click to join a link group".to_string()
+            } else if let Some(ref name) = self.link_group_name {
+                format!("{name} (link group {})", self.link_group)
+            } else {
+                format!("Link group {}", self.link_group)
+            };
+            dot_resp.on_hover_text(tip);
             out.link_dot_rect = Some(hit);
             cx += LINK_SELECT_W + gap_sm();
         }

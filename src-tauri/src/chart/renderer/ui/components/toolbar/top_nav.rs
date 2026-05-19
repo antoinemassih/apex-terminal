@@ -101,7 +101,7 @@ use crate::chart_renderer::gpu::{
     EventMarker, DarkPoolPrint,
     get_theme,
     rgb,
-    save_workspace, list_workspaces, save_state,
+    save_workspace, list_workspaces, save_state, save_templates,
     widget_description, paint_widget_preview,
     new_uuid,
 };
@@ -1816,19 +1816,58 @@ pub(crate) fn render(
                 ui.spacing_mut().item_spacing.x = gap_sm();
 
 
-                // Connection status — small painted dot, no button frame
+                // Connection status — apex_data feed dot mapped from ConnectionState.
+                // Green = Subscribed, Amber = Connecting/Authenticated, Red = Backoff/Failed/Idle.
                 {
-                    let connected = account_data_cached.as_ref().map_or(false, |(s, _, _)| s.connected);
-                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
-                    let dot_color = if connected {
-                        t.bull
-                    } else {
-                        rgb(230, 160, 40)
+                    use crate::chart_renderer::ui::panels::connection_state_snapshot;
+                    use crate::data::connectivity::ConnectionState;
+                    let apex_state = connection_state_snapshot::get("apex_data");
+                    let (dot_color, tip_label, tip_detail) = match &apex_state {
+                        ConnectionState::Subscribed { count } => (
+                            t.bull,
+                            "apex-data: connected",
+                            format!("apex-data: connected ({count} subscriptions)"),
+                        ),
+                        ConnectionState::Authenticated => (
+                            t.warn,
+                            "apex-data: authenticated",
+                            "apex-data: authenticated (awaiting subscriptions)".to_string(),
+                        ),
+                        ConnectionState::Connecting { attempt } => (
+                            t.warn,
+                            "apex-data: connecting",
+                            format!("apex-data: connecting (attempt {attempt})"),
+                        ),
+                        ConnectionState::Backoff { attempt, reason, .. } => (
+                            t.bear,
+                            "apex-data: reconnecting",
+                            format!("apex-data: backoff before attempt {attempt} — {reason}"),
+                        ),
+                        ConnectionState::Failed { reason } => (
+                            t.bear,
+                            "apex-data: failed",
+                            format!("apex-data: failed — {reason}"),
+                        ),
+                        ConnectionState::ShuttingDown => (
+                            t.bear,
+                            "apex-data: shutting down",
+                            "apex-data: shutting down".to_string(),
+                        ),
+                        ConnectionState::Idle => (
+                            t.bear,
+                            "apex-data: idle",
+                            "apex-data: idle (not started)".to_string(),
+                        ),
                     };
-                    ui.painter().circle_filled(rect.center(), 3.0, dot_color);
+                    let _ = tip_label; // used in tooltip below
+                    let (dot_rect, resp) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+                    ui.painter().circle_filled(dot_rect.center(), 3.0, dot_color);
                     crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
-                    let tip = if connected { "Connection: OK" } else { "Connection: Issue" };
-                    Tooltip::new(tip).show(ui, &resp, t);
+                    let tip_detail_clone = tip_detail.clone();
+                    Tooltip::rich(move |ui, theme| {
+                        ui.label(egui::RichText::new(&tip_detail_clone).size(font_xs()).color(theme.text()));
+                        ui.label(egui::RichText::new("Click to open Connection panel").size(font_xs()).color(theme.dim()));
+                    }).show(ui, &resp, t);
                     if resp.clicked() { *conn_panel_open = !*conn_panel_open; }
                 }
 
@@ -2283,6 +2322,108 @@ pub(crate) fn render(
                     }
 
                     ui.allocate_space(egui::vec2(236.0, 26.0));
+                }
+
+                // ── Saved layout templates ─────────────────────────────────────
+                // List existing pane templates saved from this dropdown, each
+                // with an "Apply" button that restores the layout + symbols.
+                if !watchlist.pane_templates.is_empty() {
+                    ui.add_space(gap_xs());
+                    let y = ui.cursor().min.y;
+                    ui.painter().line_segment(
+                        [egui::pos2(ui.min_rect().left() + 8.0, y), egui::pos2(ui.min_rect().left() + 236.0, y)],
+                        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, 50)));
+                    ui.add_space(gap_sm());
+                    ui.horizontal(|ui| {
+                        ui.add_space(gap_md());
+                        ui.label(egui::RichText::new("SAVED LAYOUTS").monospace().size(font_xs()).strong().color(color_half(t.dim)));
+                    });
+                    ui.add_space(gap_xs());
+                    let templates_snapshot: Vec<String> = watchlist.pane_templates.iter().map(|(n, _)| n.clone()).collect();
+                    for tpl_name in &templates_snapshot {
+                        let row_min = ui.cursor().min;
+                        let row_rect = egui::Rect::from_min_size(row_min, egui::vec2(236.0, 24.0));
+                        let row_hover = hover_pos.map_or(false, |p| row_rect.contains(p));
+                        if row_hover {
+                            ui.painter().rect_filled(row_rect, 3.0, color_alpha(t.toolbar_border, 30));
+                        }
+                        let lc = if row_hover { t.text } else { t.dim };
+                        ui.painter().text(
+                            egui::pos2(row_rect.left() + 8.0, row_rect.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            tpl_name.as_str(),
+                            mono_sm(),
+                            lc,
+                        );
+                        // Apply button — right-aligned
+                        let apply_w = 42.0;
+                        let apply_rect = egui::Rect::from_min_size(
+                            egui::pos2(row_rect.right() - apply_w - 4.0, row_rect.center().y - 10.0),
+                            egui::vec2(apply_w, 20.0),
+                        );
+                        let apply_hov = hover_pos.map_or(false, |p| apply_rect.contains(p));
+                        let apply_fill = if apply_hov { color_alpha(t.accent, 40) } else { color_alpha(t.accent, 15) };
+                        ui.painter().rect_filled(apply_rect, 3.0, apply_fill);
+                        ui.painter().text(
+                            apply_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            "Apply",
+                            mono_sm(),
+                            if apply_hov { t.accent } else { color_alpha(t.accent, 180) },
+                        );
+                        if apply_hov { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                        if apply_hov && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
+                            // Restore from workspace file with same name
+                            watchlist.active_workspace = tpl_name.clone();
+                            watchlist.pending_workspace_load = Some(tpl_name.clone());
+                            close_dd = true;
+                        }
+                        ui.allocate_space(egui::vec2(236.0, 24.0));
+                    }
+                }
+
+                // ── Save current layout as… ────────────────────────────────────
+                {
+                    ui.add_space(gap_xs());
+                    let y = ui.cursor().min.y;
+                    ui.painter().line_segment(
+                        [egui::pos2(ui.min_rect().left() + 8.0, y), egui::pos2(ui.min_rect().left() + 236.0, y)],
+                        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, 50)));
+                    ui.add_space(gap_sm());
+                    ui.horizontal(|ui| {
+                        use crate::ui_kit::widgets::Input;
+                        Input::new(&mut watchlist.pane_template_name)
+                            .placeholder("Save layout as…")
+                            .min_width(148.0)
+                            .size(KitSize::Sm)
+                            .show(ui, t);
+                        let can_save = !watchlist.pane_template_name.trim().is_empty();
+                        if can_save {
+                            if KitButton::new("Save").variant(KitVariant::Primary).size(KitSize::Sm)
+                                .tint(t.accent).show(ui, t).clicked()
+                            {
+                                let name = watchlist.pane_template_name.trim().to_string();
+                                // Persist via workspace machinery (handles layout + symbols + TF)
+                                save_workspace(&name, panes, *layout);
+                                // Also store in pane_templates so the list updates immediately
+                                let layout_val = serde_json::json!({
+                                    "kind": "layout_template",
+                                    "layout": layout.label(),
+                                    "panes": panes.iter().map(|p| serde_json::json!({
+                                        "symbol": p.symbol,
+                                        "timeframe": p.timeframe,
+                                        "link_group": p.link_group,
+                                    })).collect::<Vec<_>>(),
+                                });
+                                // Remove existing entry with same name, then push
+                                watchlist.pane_templates.retain(|(n, _)| n != &name);
+                                watchlist.pane_templates.push((name.clone(), layout_val));
+                                save_templates(&watchlist.pane_templates);
+                                watchlist.pane_template_name.clear();
+                                close_dd = true;
+                            }
+                        }
+                    });
                 }
             });
 
