@@ -6,6 +6,7 @@ use crate::chart_renderer::{DrawingKind, LineStyle};
 use crate::chart_renderer::ui::style::{hex_to_color, COLOR_AMBER, gap_xs, font_xs, font_sm, font_md, row_height_compact, row_height_dense, stroke_bold, radius_sm};
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button as KitButton, Tooltip, tokens::{Variant as KitVariant, Size as KitSize}};
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
@@ -273,7 +274,7 @@ pub fn show_drawing_properties_bar_ui(
         ui.add(egui::Separator::default().spacing(gap_xs()));
 
         // Delete
-        let r = KitButton::icon(Icon::TRASH).variant(KitVariant::Ghost).glyph_color(t.bear).show(ui, t);
+        let r = KitButton::icon(Icon::TRASH).variant(KitVariant::Ghost).glyph_color(t.bear).placement(IconPlacement::ChartChrome).tone_destructive().show(ui, t);
         Tooltip::new("Delete").show(ui, &r, t);
         if r.clicked() {
             if let Some(d) = chart.drawings.iter().find(|d| d.id == sel_id) {

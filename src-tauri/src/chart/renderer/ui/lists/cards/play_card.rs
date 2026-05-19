@@ -9,6 +9,7 @@
 #![allow(dead_code, unused_imports)]
 
 use egui::{self, Ui};
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 
 use super::super::super::style::*;
 use crate::chart_renderer::{Play, PlayDirection, PlayStatus, PlayType};
@@ -190,6 +191,7 @@ impl<'a> PlayCard<'a> {
             let del_rect = egui::Rect::from_min_size(egui::pos2(card_rect.right() - 18.0, card_rect.top() + 4.0), egui::vec2(icon_xs(), icon_xs()));
             let del_painter = ui.painter_at(del_rect);
             let del_resp = crate::ui_kit::widgets::Button::close()
+                .placement(IconPlacement::ListRow)
                 .show_at(ui, &del_painter, del_rect, t)
                 .on_hover_text("Delete");
             if del_resp.clicked() { delete_clicked = true; btn_clicked = true; }

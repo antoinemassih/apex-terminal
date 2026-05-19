@@ -21,6 +21,7 @@ use crate::ui_kit::widgets::{
     Button, PanelEmpty, PanelListRow, PanelSection, PanelSectionGroup, SidePanelShell, Tooltip, Width,
 };
 use crate::ui_kit::widgets::tokens::Size as KitSize;
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::widgets::Input;
 use super::super::super::gpu::{
     Watchlist, Chart, Theme, Indicator, IndicatorType, INDICATOR_COLORS, VolumeProfileMode,
@@ -603,11 +604,12 @@ fn active_symbol_overlay_row(
         .primary(&primary)
         .secondary(secondary)
         .trailing(move |ui, t| {
-            let r = Button::close().show(ui, t);
+            let r = Button::close().placement(IconPlacement::ListRow).show(ui, t);
             Tooltip::new("Remove overlay").show(ui, &r, t);
             if r.clicked() { r_ref.set(true); }
             let r = Button::icon(Icon::PENCIL_LINE)
                 .size(KitSize::Xs)
+                .placement(IconPlacement::ListRow)
                 .show(ui, t);
             Tooltip::new("Edit symbol / color").show(ui, &r, t);
             if r.clicked() { e_ref.set(true); }
@@ -615,6 +617,7 @@ fn active_symbol_overlay_row(
             let r = Button::icon(eye)
                 .size(KitSize::Xs)
                 .active(visible)
+                .placement(IconPlacement::ListRow)
                 .show(ui, t);
             Tooltip::new("Show / hide").show(ui, &r, t);
             if r.clicked() { v_ref.set(true); }
@@ -696,11 +699,12 @@ fn active_indicator_row(
         .leading(move |ui, _t| { paint_swatch(ui, swatch_col); })
         .primary(&name)
         .trailing(move |ui, t| {
-            let r = Button::close().show(ui, t);
+            let r = Button::close().placement(IconPlacement::ListRow).show(ui, t);
             Tooltip::new("Remove indicator").show(ui, &r, t);
             if r.clicked() { r_ref.set(true); }
             let r = Button::icon(Icon::GEAR)
                 .size(KitSize::Xs)
+                .placement(IconPlacement::ListRow)
                 .show(ui, t);
             Tooltip::new("Edit").show(ui, &r, t);
             if r.clicked() { e_ref.set(true); }
@@ -708,6 +712,7 @@ fn active_indicator_row(
             let r = Button::icon(eye)
                 .size(KitSize::Xs)
                 .active(visible)
+                .placement(IconPlacement::ListRow)
                 .show(ui, t);
             Tooltip::new("Show / hide").show(ui, &r, t);
             if r.clicked() { v_ref.set(true); }
@@ -728,7 +733,7 @@ fn active_bool_row(ui: &mut egui::Ui, t: &Theme, tg: Tg, to_disable: &mut Option
         .leading(move |ui, _t| { paint_swatch(ui, accent); })
         .primary(bool_label(tg))
         .trailing(move |ui, t| {
-            let r = Button::close().show(ui, t);
+            let r = Button::close().placement(IconPlacement::ListRow).show(ui, t);
             Tooltip::new("Disable").show(ui, &r, t);
             if r.clicked() { d_ref.set(true); }
         })
@@ -745,7 +750,7 @@ fn active_vp_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
         .leading(move |ui, _t| { paint_swatch(ui, accent); })
         .primary(&primary)
         .trailing(move |ui, t| {
-            let r = Button::close().show(ui, t);
+            let r = Button::close().placement(IconPlacement::ListRow).show(ui, t);
             Tooltip::new("Disable").show(ui, &r, t);
             if r.clicked() { d_ref.set(true); }
         })
@@ -764,7 +769,7 @@ fn active_swing_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
         .leading(move |ui, _t| { paint_swatch(ui, accent); })
         .primary(&primary)
         .trailing(move |ui, t| {
-            let r = Button::close().show(ui, t);
+            let r = Button::close().placement(IconPlacement::ListRow).show(ui, t);
             Tooltip::new("Disable").show(ui, &r, t);
             if r.clicked() { d_ref.set(true); }
         })

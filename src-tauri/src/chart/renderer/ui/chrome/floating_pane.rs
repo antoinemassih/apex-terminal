@@ -24,6 +24,7 @@
 use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2};
 use super::super::style::*;
 use crate::ui_kit::widgets::{Button, Tooltip, tokens::Variant};
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::icons::Icon;
 
 type Theme = crate::chart_renderer::gpu::Theme;
@@ -210,7 +211,8 @@ impl<'a> FloatingPaneChrome<'a> {
                             ui.add_space(pad);
                             if self.show_close {
                                 let cr = ui.add(Button::icon(Icon::X)
-                                    .variant(Variant::InlineClose))
+                                    .variant(Variant::InlineClose)
+                                    .placement(IconPlacement::PanelHeader))
                                     .on_hover_text("Close");
                                 if cr.clicked() { close_clicked = true; }
                                 if cr.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }

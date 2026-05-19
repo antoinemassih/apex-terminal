@@ -16,6 +16,7 @@ use super::super::components::{pane_header_bar, pane_title, section_label_widget
 use super::super::components::PaneHeader;
 use super::super::components::{RemovableChip, DisplayChip, StatusBadge};
 use crate::ui_kit::widgets::{Button as KitButton, Tooltip, tokens::Variant};
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 
 // Color fields in builder `new()` constructors below are seeded with
 // `Color32::TRANSPARENT` placeholders. Every call site calls `.theme(t)` which
@@ -1019,6 +1020,7 @@ impl<'a> FloatingOrderPaneChrome<'a> {
                     .unwrap_or_else(|| crate::ui_kit::widgets::theme::active_theme(ui.ctx()));
                 let close_resp = KitButton::icon(Icon::X)
                     .variant(Variant::Ghost)
+                    .placement(IconPlacement::ChartChrome)
                     .show(ui, theme_for_close);
                 Tooltip::new("Close").show(ui, &close_resp, theme_for_close);
                 if close_resp.clicked() { close_clicked = true; }

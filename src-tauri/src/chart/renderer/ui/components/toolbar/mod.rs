@@ -52,7 +52,7 @@ pub fn toolbar_btn(
     });
 
     let mut btn = if is_icon_only {
-        Button::icon(label).glyph_size(16.0)
+        Button::icon(label).glyph_size(16.0).placement(crate::ui_kit::widgets::icon_placement::IconPlacement::Toolbar)
     } else {
         Button::new(label)
     }

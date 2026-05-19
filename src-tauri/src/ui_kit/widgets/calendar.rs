@@ -24,6 +24,7 @@ use super::theme::ComponentTheme;
 use super::tokens::Size;
 use super::button::Button;
 use super::tooltip::Tooltip;
+use super::icon_placement::IconPlacement;
 use crate::chart::renderer::ui::style as st;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -248,6 +249,7 @@ fn paint_calendar<'a>(
             |ui| {
                 let r = Button::icon(super::super::icons::Icon::CARET_LEFT)
                     .size(Size::Sm)
+                    .placement(IconPlacement::PanelHeader)
                     .show(ui, theme);
                 Tooltip::new("Previous month").show(ui, &r, theme);
                 if r.clicked() { pending_view = Some(add_months(view_month, -1)); }
@@ -378,6 +380,7 @@ fn paint_calendar<'a>(
 
                 let r = Button::icon(super::super::icons::Icon::CARET_RIGHT)
                     .size(Size::Sm)
+                    .placement(IconPlacement::PanelHeader)
                     .show(ui, theme);
                 Tooltip::new("Next month").show(ui, &r, theme);
                 if r.clicked() { pending_view = Some(add_months(view_month, 1)); }

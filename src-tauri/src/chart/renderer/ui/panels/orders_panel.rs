@@ -16,6 +16,7 @@ use crate::ui_kit::widgets::{
     PanelTone, SidePanelShell, TagTone, Tooltip, Width,
 };
 use crate::ui_kit::widgets::tokens::Variant;
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use super::super::widgets::text::{self as wtext, MonospaceCode};
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::commands::{self, AppCommand};
@@ -134,7 +135,8 @@ fn draw_book(
                                                         .fill(color_alpha(close_color, 12))
                                                         .corner_radius(current().r_sm as f32)
                                                         .min_size(egui::vec2(18.0, 16.0))
-                                                        .frameless(true));
+                                                        .frameless(true)
+                                                        .placement(IconPlacement::ListRow).tone_destructive());
                                                     Tooltip::new("Close position").show(ui, &r, t);
                                                     if r.clicked() {
                                                         let qty = pos.qty;
@@ -345,7 +347,8 @@ fn draw_book(
                             .variant(Variant::Chrome)
                             .glyph_color(check_color)
                             .frameless(true)
-                            .min_size(egui::vec2(icon_xs(), icon_xs())));
+                            .min_size(egui::vec2(icon_xs(), icon_xs()))
+                            .placement(IconPlacement::ListRow));
                         Tooltip::new("Select all").show(ui, &r, t);
                         if r.clicked() {
                             if all_selected {
@@ -544,7 +547,8 @@ fn draw_book(
                                             .variant(Variant::Chrome)
                                             .glyph_color(color_half(t.dim))
                                             .frameless(true)
-                                            .min_size(egui::vec2(icon_xs(), icon_xs())));
+                                            .min_size(egui::vec2(icon_xs(), icon_xs()))
+                                            .placement(IconPlacement::ListRow));
                                         Tooltip::new("Remove alert").show(ui, &r, t);
                                         if r.clicked() {
                                             remove_alert = Some(alert.id);

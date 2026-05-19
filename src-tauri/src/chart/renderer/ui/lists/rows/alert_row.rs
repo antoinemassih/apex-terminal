@@ -7,6 +7,7 @@
 
 use std::cell::Cell;
 use egui::{Color32, Response, Ui};
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use super::super::super::style::*;
 use crate::ui_kit::icons::Icon;
 use crate::chart::renderer::ui::foundation::{
@@ -134,6 +135,7 @@ impl<'a> AlertRow<'a> {
                     egui::pos2(rect.right() - 22.0, cy - 8.0), egui::vec2(icon_sm(), icon_sm()));
                 let painter = ui.painter_at(db);
                 let db_resp = crate::ui_kit::widgets::Button::close()
+                    .placement(IconPlacement::ListRow)
                     .show_at(ui, &painter, db, theme_ref)
                     .on_hover_text("Delete alert");
                 if db_resp.clicked() { delete_ref.set(true); }

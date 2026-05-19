@@ -24,6 +24,7 @@ use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::ui_kit::widgets::{Button, PanelEmpty, PanelSection, PanelTone, Tooltip};
 use crate::ui_kit::widgets::tokens::{Variant, Size};
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::widgets::Input;
 use crate::chart_renderer::{Play, PlayDirection, PlayStatus, PlayType, PlayLine, PlayLineKind, PlayTarget};
 use crate::ui_kit::icons::Icon;
@@ -336,7 +337,7 @@ fn draw_play_editor(
                     }
                     pct_stepper(ui, &mut watchlist.play_editor_t2_pct, t);
                     let r = ui.add(Button::icon(Icon::X).variant(Variant::Chrome).glyph_color(color_muted(t.bear)).size(Size::Sm)
-                        .fill(egui::Color32::TRANSPARENT).min_size(BTN_ICON_SM));
+                        .fill(egui::Color32::TRANSPARENT).min_size(BTN_ICON_SM).placement(IconPlacement::ListRow).tone_destructive());
                     Tooltip::new("Remove target").show(ui, &r, t);
                     if r.clicked() { remove_t2 = true; }
                 });
@@ -363,7 +364,7 @@ fn draw_play_editor(
                     }
                     pct_stepper(ui, &mut watchlist.play_editor_t3_pct, t);
                     let r = ui.add(Button::icon(Icon::X).variant(Variant::Chrome).glyph_color(color_muted(t.bear)).size(Size::Sm)
-                        .fill(egui::Color32::TRANSPARENT).min_size(BTN_ICON_SM));
+                        .fill(egui::Color32::TRANSPARENT).min_size(BTN_ICON_SM).placement(IconPlacement::ListRow).tone_destructive());
                     Tooltip::new("Remove target").show(ui, &r, t);
                     if r.clicked() { remove_t3 = true; }
                 });
@@ -580,7 +581,7 @@ fn click_to_set_btn(ui: &mut egui::Ui, icon: &str, t: &Theme, active: bool) -> b
     let bg = if active { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
     ui.add(Button::icon(icon).variant(Variant::Chrome).glyph_color(fg).size(Size::Sm)
         .fill(bg).corner_radius(current().r_sm as f32)
-        .min_size(egui::vec2(18.0, row_height_dense()))).on_hover_text("Click chart to set price").clicked()
+        .min_size(egui::vec2(18.0, row_height_dense())).placement(IconPlacement::ListRow)).on_hover_text("Click chart to set price").clicked()
 }
 
 fn sync_form_to_lines(watchlist: &Watchlist, chart: Option<&mut Chart>) {

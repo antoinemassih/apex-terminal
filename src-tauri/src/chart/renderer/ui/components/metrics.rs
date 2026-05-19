@@ -5,6 +5,7 @@ use super::labels::section_label_xs;
 use egui::{self, Color32, Rect, Response, RichText, Sense, Ui, Vec2};
 use crate::ui_kit::widgets::Button as KitButton;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 
 // ─── Metric / stat displays ───────────────────────────────────────────────────
 
@@ -109,6 +110,7 @@ pub fn inline_icon_btn(ui: &mut Ui, icon: &str, color: Color32, size: f32) -> Re
     KitButton::icon(icon).variant(KitVariant::Ghost)
         .glyph_color(color).glyph_size(size)
         .min_size(Vec2::new(size + 2.0, size + 2.0))
+        .placement(IconPlacement::ListRow)
         .show(ui, theme)
 }
 

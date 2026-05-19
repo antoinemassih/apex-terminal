@@ -37,6 +37,7 @@ use crate::data::apex_data::types::SpikeExplanation;
 use crate::ui_kit::widgets::Button as KitButton;
 use crate::ui_kit::widgets::Tooltip;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 
 /// Max active toasts displayed simultaneously (oldest first, newer ones queued
 /// off-screen until an active slot frees). Anything beyond is invisible until
@@ -283,6 +284,7 @@ fn draw_toast_body(
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let spike_theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
             let r = crate::ui_kit::widgets::Button::close()
+                .placement(IconPlacement::PanelHeader)
                 .show(ui, &spike_theme);
             Tooltip::new("Dismiss").show(ui, &r, &spike_theme);
             if r.clicked() {

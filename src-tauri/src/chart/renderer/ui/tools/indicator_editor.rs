@@ -5,6 +5,7 @@ use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::ui_kit::widgets::{Button, Tooltip};
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::widgets::NumberStepper;
 use super::super::widgets::form::{IndicatorParamRow, IndicatorParamRowF};
 use crate::ui_kit::widgets::FormRow;
@@ -390,7 +391,8 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         .fill(if ind.visible { color_alpha(t.toolbar_border, alpha_soft()) } else { egui::Color32::TRANSPARENT })
                         .corner_radius(current().r_sm as f32)
                         .min_size(egui::vec2(24.0, row_height_default()))
-                        .frameless(true));
+                        .frameless(true)
+                        .placement(IconPlacement::PanelHeader));
                     Tooltip::new("Toggle Visibility").show(ui, &vr, t);
                     if vr.clicked() { ind.visible = !ind.visible; }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -403,7 +405,8 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                             .corner_radius(current().r_sm as f32)
                             .stroke(egui::Stroke::new(stroke_thin(), color_alpha(del_color, alpha_dim())))
                             .min_size(egui::vec2(24.0, row_height_default()))
-                            .frameless(true));
+                            .frameless(true)
+                            .placement(IconPlacement::PanelHeader).tone_destructive());
                         Tooltip::new("Delete Indicator").show(ui, &dr, t);
                         if dr.clicked() {
                             delete_id = Some(edit_id); close_editor = true;
