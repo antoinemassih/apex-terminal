@@ -122,7 +122,7 @@ pub use opacity_picker::{OpacityPicker, OPACITY_LEVELS as PICKER_OPACITY_LEVELS}
 pub use number_stepper::NumberStepper;
 pub use slider::Slider;
 pub use range_slider::RangeSlider;
-pub use form_row::{FormRow, FormRowAlign};
+pub use form_row::{FormRow, FormRowAlign, FormRowCx};
 pub use form_section::{FormSection, FieldSet, FormActions};
 pub use form_field::{FormField, FormFieldResponse};
 pub use form_action_bar::{FormActionBar, FormActionBarResponse, ActionBarPrimary};
