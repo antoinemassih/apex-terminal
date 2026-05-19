@@ -4683,6 +4683,12 @@ pub(crate) struct Watchlist {
     /// copies legacy → aggregate before serialization and
     /// `pull_from_ui_settings` copies aggregate → legacy after load.
     pub(crate) ui_settings: crate::state::UiSettings,
+    /// Wave 2 (state): `Store<UiSettings>` wraps the aggregate so mutations
+    /// are debounce-persisted by the background supervisor.  The plain
+    /// `ui_settings` field above stays in place as a mirror for the sacred
+    /// `core.rs` paint pipeline and the legacy load/save path; it is kept in
+    /// sync via `update_ui_settings()` / `pull_from_ui_settings()`.
+    pub(crate) ui_settings_store: std::sync::Arc<crate::state::Store<crate::state::UiSettings>>,
     // ── Top-nav symbol input (UX-1 Fix 1) ──────────────────────────────────
     /// Buffer for the editable symbol input in the top toolbar.
     pub(crate) top_nav_sym_input: String,
@@ -4855,6 +4861,11 @@ impl Watchlist {
                subscriptions: crate::state::SubscriptionBus::new(),
                inflight: crate::state::InFlightRegistry::new(),
                ui_settings: crate::state::UiSettings::default(),
+               ui_settings_store: crate::state::Store::new(
+                   "ui_settings",
+                   crate::state::UiSettings::default(),
+                   Some(ui_settings_path()),
+               ),
                top_nav_sym_input: String::new(),
                top_nav_sym_focused: false,
                // Welcome wizard is initialized after load (when ui_settings is populated).
@@ -4869,6 +4880,10 @@ impl Watchlist {
     /// `Watchlist`. The legacy fields stay the authoritative read source
     /// for now (sacred `core.rs` reads `pane_header_size`,
     /// `shared_x_axis`, etc. directly).
+    ///
+    /// Wave 2 addendum: also writes the merged value into
+    /// `ui_settings_store` so the persist supervisor sees the latest state
+    /// in addition to the one-shot save in `save_state`.
     pub(crate) fn push_to_ui_settings(&mut self) {
         self.ui_settings.font_scale = self.font_scale;
         self.ui_settings.font_idx = self.font_idx;
@@ -4880,6 +4895,9 @@ impl Watchlist {
         self.ui_settings.shared_x_axis = self.shared_x_axis;
         self.ui_settings.shared_y_axis = self.shared_y_axis;
         self.ui_settings.style_idx = self.style_idx;
+        // Propagate into the store so the supervisor can persist it as well.
+        let snapshot = self.ui_settings.clone();
+        self.ui_settings_store.update(|s| *s = snapshot);
     }
 
     /// P2: Initialise the welcome wizard from the loaded `ui_settings`.
@@ -4913,6 +4931,36 @@ impl Watchlist {
         self.shared_x_axis = self.ui_settings.shared_x_axis;
         self.shared_y_axis = self.ui_settings.shared_y_axis;
         self.style_idx = self.ui_settings.style_idx;
+        // Keep the store in sync with the freshly-loaded values so the
+        // persist supervisor starts from the restored state, not the Default.
+        self.ui_settings_store.update(|s| *s = self.ui_settings.clone());
+    }
+
+    // ── Wave 2 (state): Store<UiSettings> accessor / mutator ─────────────────
+
+    /// Read the current `UiSettings` from the store.
+    /// The returned guard holds a read lock — release it before calling
+    /// `update_ui_settings` to avoid a deadlock.
+    pub(crate) fn ui_settings_snapshot(
+        &self,
+    ) -> parking_lot::RwLockReadGuard<crate::state::UiSettings> {
+        self.ui_settings_store.read()
+    }
+
+    /// Mutate `UiSettings` through the store.
+    ///
+    /// The store bumps its version counter and starts the debounce clock;
+    /// the background persist supervisor will write to disk within
+    /// `state::DEBOUNCE_MS` + `state::PERSIST_TICK_MS` (~250ms).
+    ///
+    /// The plain `ui_settings` mirror is updated in-place so the legacy
+    /// serialization path (`push_to_ui_settings` / `save_state`) and the
+    /// `init_welcome_wizard` logic continue to see the latest values.
+    pub(crate) fn update_ui_settings(&mut self, f: impl FnOnce(&mut crate::state::UiSettings)) {
+        self.ui_settings_store.update(|s| f(s));
+        // Mirror the store's new value into the plain field used by the
+        // legacy load/save path and `init_welcome_wizard`.
+        self.ui_settings = self.ui_settings_store.read().clone();
     }
 
     /// Add symbol to the last section (creates one if none exist).

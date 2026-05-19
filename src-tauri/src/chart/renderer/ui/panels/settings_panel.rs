@@ -297,8 +297,10 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                 .show(ui, t)
                 .clicked()
             {
-                watchlist.ui_settings.has_seen_welcome = false;
-                watchlist.ui_settings.welcome_step_resume = 0;
+                watchlist.update_ui_settings(|s| {
+                    s.has_seen_welcome = false;
+                    s.welcome_step_resume = 0;
+                });
                 watchlist.welcome_wizard = Some(
                     crate::chart_renderer::ui::welcome::WelcomeWizard::from_settings(false, 0)
                 );

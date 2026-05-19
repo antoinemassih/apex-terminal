@@ -2371,7 +2371,7 @@ pub(crate) fn render(
         let step_now = watchlist.welcome_wizard.as_ref().map(|w| w.step).unwrap_or(0);
         // PERF: only mirror when the step actually changed (was: blind write every frame).
         if watchlist.ui_settings.welcome_step_resume != step_now {
-            watchlist.ui_settings.welcome_step_resume = step_now;
+            watchlist.update_ui_settings(|s| s.welcome_step_resume = step_now);
         }
 
         let still_open = {
@@ -2379,8 +2379,10 @@ pub(crate) fn render(
             wiz.show(ctx, t, conn_panel_open)
         };
         if !still_open {
-            watchlist.ui_settings.has_seen_welcome = true;
-            watchlist.ui_settings.welcome_step_resume = 0;
+            watchlist.update_ui_settings(|s| {
+                s.has_seen_welcome = true;
+                s.welcome_step_resume = 0;
+            });
             watchlist.welcome_wizard = None;
         }
     }
