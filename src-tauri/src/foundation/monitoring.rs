@@ -422,6 +422,39 @@ impl FrameTracker {
                 alloc_bytes_in_frame: frame_alloc_bytes,
                 timestamp_secs: start_time().elapsed().as_secs(),
             };
+
+            // Persistent log: append one JSON line to jank.jsonl so post-hoc
+            // analysis can grep by git SHA to see whether a commit moved the
+            // needle on frame times.
+            {
+                // Top-5 subsystems by microseconds for the log line.
+                let mut subs = event.subsystems.clone();
+                subs.sort_by(|a, b| b.1.cmp(&a.1));
+                subs.truncate(5);
+                let subs_json: Vec<serde_json::Value> = subs.iter()
+                    .map(|(name, us)| serde_json::json!({"name": name, "us": us}))
+                    .collect();
+                let line = serde_json::json!({
+                    "ts": chrono::Utc::now().to_rfc3339(),
+                    "git_sha": crate::foundation::perf_log::git_sha(),
+                    "frame": event.frame_number,
+                    "total_us": event.total_us,
+                    "acquire_us": event.phases.acquire_us,
+                    "layout_us": event.phases.layout_us,
+                    "tessellate_us": event.phases.tessellate_us,
+                    "upload_us": event.phases.upload_us,
+                    "render_us": event.phases.render_us,
+                    "present_us": event.phases.present_us,
+                    "allocs": event.allocs_in_frame,
+                    "alloc_bytes": event.alloc_bytes_in_frame,
+                    "top_subsystems": subs_json,
+                    "at_secs": event.timestamp_secs,
+                });
+                if let Ok(s) = serde_json::to_string(&line) {
+                    crate::foundation::perf_log::append_jank(&s);
+                }
+            }
+
             self.jank_events.push(event);
             if self.jank_events.len() > 50 {
                 self.jank_events.remove(0);
