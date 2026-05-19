@@ -4689,6 +4689,16 @@ pub(crate) struct Watchlist {
     /// `core.rs` paint pipeline and the legacy load/save path; it is kept in
     /// sync via `update_ui_settings()` / `pull_from_ui_settings()`.
     pub(crate) ui_settings_store: std::sync::Arc<crate::state::Store<crate::state::UiSettings>>,
+    /// Wave 2 (state): `Store<TradingDefaults>` wraps the trading defaults so
+    /// mutations are debounce-persisted by the background supervisor.
+    ///
+    /// The flat legacy fields (`default_stock_qty`, `default_options_qty`,
+    /// `default_order_type`, `default_tif`, `default_outside_rth`) stay in
+    /// place as the read source of truth for existing callers; they are kept
+    /// in sync via `update_trading_defaults()` / `sync_trading_defaults_from_store()`.
+    /// `daily_loss_cap` and `max_position_pct` are new fields that live ONLY in
+    /// the store (no corresponding legacy flat field existed).
+    pub(crate) trading_defaults_store: std::sync::Arc<crate::state::Store<crate::state::TradingDefaults>>,
     // ── Top-nav symbol input (UX-1 Fix 1) ──────────────────────────────────
     /// Buffer for the editable symbol input in the top toolbar.
     pub(crate) top_nav_sym_input: String,
@@ -4866,6 +4876,11 @@ impl Watchlist {
                    crate::state::UiSettings::default(),
                    Some(ui_settings_path()),
                ),
+               trading_defaults_store: crate::state::Store::new(
+                   "trading_defaults",
+                   crate::state::TradingDefaults::default(),
+                   Some(trading_defaults_path()),
+               ),
                top_nav_sym_input: String::new(),
                top_nav_sym_focused: false,
                // Welcome wizard is initialized after load (when ui_settings is populated).
@@ -4961,6 +4976,81 @@ impl Watchlist {
         // Mirror the store's new value into the plain field used by the
         // legacy load/save path and `init_welcome_wizard`.
         self.ui_settings = self.ui_settings_store.read().clone();
+    }
+
+    // ── Wave 2 (state): Store<TradingDefaults> accessor / mutator ────────────
+
+    /// Read the current `TradingDefaults` from the store.
+    pub(crate) fn trading_defaults_snapshot(
+        &self,
+    ) -> parking_lot::RwLockReadGuard<crate::state::TradingDefaults> {
+        self.trading_defaults_store.read()
+    }
+
+    /// Mutate `TradingDefaults` through the store.
+    ///
+    /// The store bumps its version counter and starts the debounce clock;
+    /// the background persist supervisor writes to disk within ~250ms.
+    ///
+    /// The flat legacy fields (`default_stock_qty`, etc.) on Watchlist are
+    /// kept in sync so existing callers that read them directly continue to
+    /// see the latest values. `daily_loss_cap` and `max_position_pct` have
+    /// no legacy counterpart — they live only in the store.
+    pub(crate) fn update_trading_defaults(&mut self, f: impl FnOnce(&mut crate::state::TradingDefaults)) {
+        self.trading_defaults_store.update(|s| f(s));
+        self.sync_trading_defaults_from_store();
+    }
+
+    /// Push flat legacy fields → `trading_defaults_store`.
+    ///
+    /// Called from `settings_panel` after any mutation to the flat fields so
+    /// the store stays in sync and the persist supervisor can write to disk.
+    pub(crate) fn push_to_trading_defaults_store(&mut self) {
+        let order_type = match self.default_order_type {
+            0 => crate::state::DefaultOrderType::Market,
+            1 => crate::state::DefaultOrderType::Limit,
+            2 => crate::state::DefaultOrderType::Stop,
+            _ => crate::state::DefaultOrderType::StopLimit,
+        };
+        let tif = match self.default_tif {
+            0 => crate::state::DefaultTimeInForce::Day,
+            1 => crate::state::DefaultTimeInForce::Gtc,
+            2 => crate::state::DefaultTimeInForce::Ioc,
+            _ => crate::state::DefaultTimeInForce::Fok,
+        };
+        let qty = self.default_stock_qty;
+        let opts_qty = self.default_options_qty;
+        let rth = self.default_outside_rth;
+        self.trading_defaults_store.update(|s| {
+            s.default_stock_qty   = qty;
+            s.default_options_qty = opts_qty;
+            s.default_order_type  = order_type;
+            s.default_tif         = tif;
+            s.default_outside_rth = rth;
+        });
+    }
+
+    /// Copy the store's current `TradingDefaults` into the flat legacy fields.
+    /// Called after `update_trading_defaults()` and at load time.
+    pub(crate) fn sync_trading_defaults_from_store(&mut self) {
+        let snap = self.trading_defaults_store.read().clone();
+        self.default_stock_qty   = snap.default_stock_qty;
+        self.default_options_qty = snap.default_options_qty;
+        // Map typed enum → legacy usize index (0=MKT,1=LMT,2=STP,3=STPLMT)
+        self.default_order_type  = match snap.default_order_type {
+            crate::state::DefaultOrderType::Market    => 0,
+            crate::state::DefaultOrderType::Limit     => 1,
+            crate::state::DefaultOrderType::Stop      => 2,
+            crate::state::DefaultOrderType::StopLimit => 3,
+        };
+        // Map typed enum → legacy usize index (0=DAY,1=GTC,2=IOC,3=FOK)
+        self.default_tif         = match snap.default_tif {
+            crate::state::DefaultTimeInForce::Day => 0,
+            crate::state::DefaultTimeInForce::Gtc => 1,
+            crate::state::DefaultTimeInForce::Ioc => 2,
+            crate::state::DefaultTimeInForce::Fok => 3,
+        };
+        self.default_outside_rth = snap.default_outside_rth;
     }
 
     /// Add symbol to the last section (creates one if none exist).
@@ -5782,6 +5872,14 @@ impl App {
         }
         // P2: Initialize the welcome wizard from loaded ui_settings.
         wl.init_welcome_wizard();
+        // Wave 2 (state): load TradingDefaults from disk, seed the store and
+        // mirror into the flat legacy fields.
+        if let Some(loaded_td) =
+            crate::state::load::<crate::state::TradingDefaults>(&trading_defaults_path())
+        {
+            wl.trading_defaults_store.update(|s| *s = loaded_td);
+            wl.sync_trading_defaults_from_store();
+        }
         // Load persisted hotkeys (override defaults)
         load_hotkeys(&mut wl.hotkeys);
         // Load persisted templates
@@ -6346,6 +6444,15 @@ fn ui_settings_path() -> std::path::PathBuf {
     let mut p = state_path();
     p.pop();
     p.push("ui_settings.json");
+    p
+}
+
+/// Wave 2 (state): persist path for the `TradingDefaults` aggregate.
+/// Lives alongside `native-chart-state.json` in the same directory.
+fn trading_defaults_path() -> std::path::PathBuf {
+    let mut p = state_path();
+    p.pop();
+    p.push("trading_defaults.json");
     p
 }
 
