@@ -4315,19 +4315,24 @@ fn render_chart_pane(
                         let thick = if is_retrace { d.thickness * 0.7 } else { d.thickness * 0.5 };
                         let lsc = egui::Stroke::new(if is_sel { thick + 0.5 } else { thick }, color_alpha(dc, alpha as u8));
                         let line_style = if is_retrace { ls } else { LineStyle::Dashed };
-                        // GPU path: solid retracement lines on the active pane.
-                        // Extensions are dashed, so they always go through egui.
-                        let route_gpu = use_gpu_drawing && is_retrace && line_style == LineStyle::Solid;
-                        if route_gpu {
+                        // Stage 6: All Fib levels — retracements + dashed extensions —
+                        // route through the GPU line shader. Extensions get DASHED
+                        // stipple params; retracements inherit `d.line_style`.
+                        if use_gpu_drawing {
                             #[cfg(feature = "gpu_chart_v2")]
                             {
                                 use crate::chart::renderer_gpu::LineSegment;
+                                let (lvl_dp, lvl_dd) = if is_retrace {
+                                    (drawing_dash_period, drawing_dash_duty)
+                                } else {
+                                    LineSegment::DASHED
+                                };
                                 chart.gpu_render_params.line_segments.push(LineSegment {
                                     start_slot: slot_l, start_val: lp,
                                     end_slot:   slot_r, end_val:   lp,
                                     color: _drawing_c32(color_alpha(dc, alpha as u8)),
                                     thickness: lsc.width * drawing_ppp,
-                                    dash_period_px: drawing_dash_period, dash_duty: drawing_dash_duty,
+                                    dash_period_px: lvl_dp, dash_duty: lvl_dd,
                                 });
                             }
                         } else {
@@ -4490,15 +4495,55 @@ fn render_chart_pane(
                             (0.75,  70, LineStyle::Dotted),  // three-quarter
                             (1.25,  50, LineStyle::Dashed),  // breakout extension above
                         ];
-                        for &(ratio, alpha, sub_ls) in subdivisions {
-                            let s0 = egui::pos2(p0.x, p0.y + (q0.y - p0.y) * ratio);
-                            let s1 = egui::pos2(p1.x, p1.y + (q1.y - p1.y) * ratio);
-                            let (es0, es1) = extend_line(s0, s1);
-                            let is_ext = ratio < 0.0 || ratio > 1.0;
-                            let sub_sc = egui::Stroke::new(
-                                d.thickness * if is_ext { 0.4 } else { 0.5 },
-                                color_alpha(dc, alpha));
-                            dashed_line(&painter, clamp_pt(es0), clamp_pt(es1), sub_sc, sub_ls);
+                        if use_gpu_drawing {
+                            #[cfg(feature = "gpu_chart_v2")]
+                            {
+                                use crate::chart::renderer_gpu::LineSegment;
+                                let bar0g = SignalDrawing::time_to_bar(*time0, &chart.timestamps);
+                                let bar1g = SignalDrawing::time_to_bar(*time1, &chart.timestamps);
+                                let s0g = bar0g - vs_floor;
+                                let s1g = bar1g - vs_floor;
+                                // Extend to chart edges in slot space — mirror of
+                                // the local `extend_line` helper but in (slot, val).
+                                let extend_slot = |sa: f32, va: f32, sb: f32, vb: f32| -> (f32, f32, f32, f32) {
+                                    let dslot = sb - sa;
+                                    if dslot.abs() < 0.001 { return (sa, va, sb, vb); }
+                                    let slope = (vb - va) / dslot;
+                                    let na = va + slope * (edge_left_slot - sa);
+                                    let nb = va + slope * (edge_right_slot - sa);
+                                    (edge_left_slot, na, edge_right_slot, nb)
+                                };
+                                for &(ratio, alpha, sub_ls) in subdivisions {
+                                    let va = *price0 + ratio * *offset;
+                                    let vb = *price1 + ratio * *offset;
+                                    let (sa, ya, sb, yb) = extend_slot(s0g, va, s1g, vb);
+                                    let is_ext = ratio < 0.0 || ratio > 1.0;
+                                    let sub_thick = d.thickness * if is_ext { 0.4 } else { 0.5 };
+                                    let (sub_dp, sub_dd) = match sub_ls {
+                                        LineStyle::Solid  => LineSegment::SOLID,
+                                        LineStyle::Dashed => LineSegment::DASHED,
+                                        LineStyle::Dotted => LineSegment::DOTTED,
+                                    };
+                                    chart.gpu_render_params.line_segments.push(LineSegment {
+                                        start_slot: sa, start_val: ya,
+                                        end_slot:   sb, end_val:   yb,
+                                        color: _drawing_c32(color_alpha(dc, alpha)),
+                                        thickness: sub_thick * drawing_ppp,
+                                        dash_period_px: sub_dp, dash_duty: sub_dd,
+                                    });
+                                }
+                            }
+                        } else {
+                            for &(ratio, alpha, sub_ls) in subdivisions {
+                                let s0 = egui::pos2(p0.x, p0.y + (q0.y - p0.y) * ratio);
+                                let s1 = egui::pos2(p1.x, p1.y + (q1.y - p1.y) * ratio);
+                                let (es0, es1) = extend_line(s0, s1);
+                                let is_ext = ratio < 0.0 || ratio > 1.0;
+                                let sub_sc = egui::Stroke::new(
+                                    d.thickness * if is_ext { 0.4 } else { 0.5 },
+                                    color_alpha(dc, alpha));
+                                dashed_line(&painter, clamp_pt(es0), clamp_pt(es1), sub_sc, sub_ls);
+                            }
                         }
                     }
                     // Fibonacci channel: internal lines at fib ratios + extensions
@@ -4509,20 +4554,63 @@ fn render_chart_pane(
                             (1.272, 50), (1.618, 50), (2.0, 40), (2.618, 35),
                             (-0.272, 50), (-0.618, 50),
                         ];
-                        for &(ratio, alpha) in fib_ratios {
-                            let f0 = egui::pos2(p0.x, p0.y + (q0.y - p0.y) * ratio);
-                            let f1 = egui::pos2(p1.x, p1.y + (q1.y - p1.y) * ratio);
-                            let (ef0, ef1) = extend_line(f0, f1);
-                            let is_ext = ratio < 0.0 || ratio > 1.0;
-                            let fib_sc = egui::Stroke::new(
-                                d.thickness * if is_ext { 0.4 } else { 0.5 },
-                                color_alpha(dc, alpha));
-                            let fib_ls = if is_ext { LineStyle::Dashed } else { LineStyle::Dotted };
-                            dashed_line(&painter, clamp_pt(ef0), clamp_pt(ef1), fib_sc, fib_ls);
-                            // Label on right edge
-                            let label_y = ef1.y.clamp(rect.top() + pt, rect.top() + pt + ch);
-                            painter.text(egui::pos2(chart_right + 4.0, label_y), egui::Align2::LEFT_CENTER,
-                                &format!("{:.1}%", ratio * 100.0), mono_3xs(), color_alpha(dc, alpha));
+                        if use_gpu_drawing {
+                            #[cfg(feature = "gpu_chart_v2")]
+                            {
+                                use crate::chart::renderer_gpu::LineSegment;
+                                let bar0g = SignalDrawing::time_to_bar(*time0, &chart.timestamps);
+                                let bar1g = SignalDrawing::time_to_bar(*time1, &chart.timestamps);
+                                let s0g = bar0g - vs_floor;
+                                let s1g = bar1g - vs_floor;
+                                let extend_slot = |sa: f32, va: f32, sb: f32, vb: f32| -> (f32, f32, f32, f32) {
+                                    let dslot = sb - sa;
+                                    if dslot.abs() < 0.001 { return (sa, va, sb, vb); }
+                                    let slope = (vb - va) / dslot;
+                                    let na = va + slope * (edge_left_slot - sa);
+                                    let nb = va + slope * (edge_right_slot - sa);
+                                    (edge_left_slot, na, edge_right_slot, nb)
+                                };
+                                for &(ratio, alpha) in fib_ratios {
+                                    let va = *price0 + ratio * *offset;
+                                    let vb = *price1 + ratio * *offset;
+                                    let (sa, ya, sb, yb) = extend_slot(s0g, va, s1g, vb);
+                                    let is_ext = ratio < 0.0 || ratio > 1.0;
+                                    let fib_thick = d.thickness * if is_ext { 0.4 } else { 0.5 };
+                                    let fib_ls = if is_ext { LineStyle::Dashed } else { LineStyle::Dotted };
+                                    let (fib_dp, fib_dd) = match fib_ls {
+                                        LineStyle::Solid  => LineSegment::SOLID,
+                                        LineStyle::Dashed => LineSegment::DASHED,
+                                        LineStyle::Dotted => LineSegment::DOTTED,
+                                    };
+                                    chart.gpu_render_params.line_segments.push(LineSegment {
+                                        start_slot: sa, start_val: ya,
+                                        end_slot:   sb, end_val:   yb,
+                                        color: _drawing_c32(color_alpha(dc, alpha)),
+                                        thickness: fib_thick * drawing_ppp,
+                                        dash_period_px: fib_dp, dash_duty: fib_dd,
+                                    });
+                                    // Label still drawn through egui (no glyph atlas yet).
+                                    let label_y = py(vb).clamp(rect.top() + pt, rect.top() + pt + ch);
+                                    painter.text(egui::pos2(chart_right + 4.0, label_y), egui::Align2::LEFT_CENTER,
+                                        &format!("{:.1}%", ratio * 100.0), mono_3xs(), color_alpha(dc, alpha));
+                                }
+                            }
+                        } else {
+                            for &(ratio, alpha) in fib_ratios {
+                                let f0 = egui::pos2(p0.x, p0.y + (q0.y - p0.y) * ratio);
+                                let f1 = egui::pos2(p1.x, p1.y + (q1.y - p1.y) * ratio);
+                                let (ef0, ef1) = extend_line(f0, f1);
+                                let is_ext = ratio < 0.0 || ratio > 1.0;
+                                let fib_sc = egui::Stroke::new(
+                                    d.thickness * if is_ext { 0.4 } else { 0.5 },
+                                    color_alpha(dc, alpha));
+                                let fib_ls = if is_ext { LineStyle::Dashed } else { LineStyle::Dotted };
+                                dashed_line(&painter, clamp_pt(ef0), clamp_pt(ef1), fib_sc, fib_ls);
+                                // Label on right edge
+                                let label_y = ef1.y.clamp(rect.top() + pt, rect.top() + pt + ch);
+                                painter.text(egui::pos2(chart_right + 4.0, label_y), egui::Align2::LEFT_CENTER,
+                                    &format!("{:.1}%", ratio * 100.0), mono_3xs(), color_alpha(dc, alpha));
+                            }
                         }
                     }
                     if is_sel {
@@ -4977,13 +5065,43 @@ fn render_chart_pane(
                 let x1 = bx(SignalDrawing::time_to_bar(*time1, &chart.timestamps));
                 let x2 = bx(SignalDrawing::time_to_bar(*time2, &chart.timestamps));
                 let chart_right = rect.left() + cw;
-                // Draw A→B and B→C construction lines
+                // Draw A→B and B→C construction lines (dashed).
                 let p0s = egui::pos2(x0, py(*price0));
                 let p1s = egui::pos2(x1, py(*price1));
                 let p2s = egui::pos2(x2, py(*price2));
                 let con_sc = egui::Stroke::new(d.thickness * 0.6, color_alpha(dc, 100));
-                dashed_line(&painter, clamp_pt(p0s), clamp_pt(p1s), con_sc, LineStyle::Dashed);
-                dashed_line(&painter, clamp_pt(p1s), clamp_pt(p2s), con_sc, LineStyle::Dashed);
+                if use_gpu_drawing {
+                    #[cfg(feature = "gpu_chart_v2")]
+                    {
+                        use crate::chart::renderer_gpu::LineSegment;
+                        let bar0g = SignalDrawing::time_to_bar(*time0, &chart.timestamps);
+                        let bar1g = SignalDrawing::time_to_bar(*time1, &chart.timestamps);
+                        let bar2g = SignalDrawing::time_to_bar(*time2, &chart.timestamps);
+                        let s0 = bar0g - vs_floor;
+                        let s1 = bar1g - vs_floor;
+                        let s2 = bar2g - vs_floor;
+                        let (dp, dd) = LineSegment::DASHED;
+                        let lc = _drawing_c32(color_alpha(dc, 100));
+                        let th = d.thickness * 0.6 * drawing_ppp;
+                        // A → B
+                        chart.gpu_render_params.line_segments.push(LineSegment {
+                            start_slot: s0, start_val: *price0,
+                            end_slot:   s1, end_val:   *price1,
+                            color: lc, thickness: th,
+                            dash_period_px: dp, dash_duty: dd,
+                        });
+                        // B → C
+                        chart.gpu_render_params.line_segments.push(LineSegment {
+                            start_slot: s1, start_val: *price1,
+                            end_slot:   s2, end_val:   *price2,
+                            color: lc, thickness: th,
+                            dash_period_px: dp, dash_duty: dd,
+                        });
+                    }
+                } else {
+                    dashed_line(&painter, clamp_pt(p0s), clamp_pt(p1s), con_sc, LineStyle::Dashed);
+                    dashed_line(&painter, clamp_pt(p1s), clamp_pt(p2s), con_sc, LineStyle::Dashed);
+                }
                 // AB range for projection
                 let ab_range = *price1 - *price0;
                 // Direction: if A<B (up) and C<B (pullback), targets project up; else down
