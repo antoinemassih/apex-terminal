@@ -125,7 +125,7 @@ pub(crate) fn draw(
         .show(ctx, t, |ui, t| {
             draw_content(ui, watchlist, t, panes, active_pane);
         });
-    if resp.close_clicked { watchlist.screenshot_open = false; }
+    if resp.close_clicked { watchlist.update_sidebar_state(|s| s.screenshot_open = false); }
 }
 
 /// Tab body content (no SidePanel wrapper, no header). Used by feed_panel Screenshots tab.

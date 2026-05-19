@@ -97,7 +97,7 @@ if watchlist.trendline_filter_open {
                 });
             close_clicked = cr.close_clicked;
         });
-    if close_clicked { watchlist.trendline_filter_open = false; }
+    if close_clicked { watchlist.update_sidebar_state(|s| s.trendline_filter_open = false); }
 }
 
 // Symbol picker popup — render for any pane that has it open

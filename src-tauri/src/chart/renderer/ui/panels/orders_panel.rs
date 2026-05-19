@@ -59,7 +59,7 @@ pub(crate) fn draw(
             }
         });
 
-    if resp.close_clicked { watchlist.orders_panel_open = false; }
+    if resp.close_clicked { watchlist.update_sidebar_state(|s| s.orders_panel_open = false); }
     watchlist.book_tab = book_tab;
 
     // Update position current prices from chart data.
@@ -301,7 +301,7 @@ fn draw_book(
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if Button::small_action("Spread").tint(t.dim).show(ui, t).clicked() {
-                        watchlist.spread_open = !watchlist.spread_open;
+                        watchlist.update_sidebar_state(|s| s.spread_open = !s.spread_open);
                     }
                 });
             });
@@ -565,7 +565,7 @@ fn draw_book(
                 }
             });
         if let Some(id) = remove_alert {
-            watchlist.alerts.retain(|a| a.id != id);
+            watchlist.update_alerts_state(|s| s.alerts.retain(|a| a.id != id));
         }
     }
 

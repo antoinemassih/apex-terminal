@@ -4713,6 +4713,22 @@ pub(crate) struct Watchlist {
     /// `daily_loss_cap` and `max_position_pct` are new fields that live ONLY in
     /// the store (no corresponding legacy flat field existed).
     pub(crate) trading_defaults_store: std::sync::Arc<crate::state::Store<crate::state::TradingDefaults>>,
+    /// Wave 3 (state): `Store<AlertsState>` wraps the alerts aggregate so
+    /// mutations are debounce-persisted by the background supervisor.
+    ///
+    /// The flat fields (`alerts`, `next_alert_id`, `alert_query`,
+    /// `alerts_panel_open`) stay in place as the read source of truth for
+    /// existing callers; they are kept in sync via
+    /// `update_alerts_state()` / `sync_from_alerts_store()`.
+    pub(crate) alerts_store: std::sync::Arc<crate::state::Store<crate::state::AlertsState>>,
+    /// Wave 3 (state): `Store<SidebarState>` wraps the sidebar open-flags
+    /// aggregate so mutations are debounce-persisted by the background supervisor.
+    ///
+    /// The flat boolean fields (`open`, `settings_open`, `tape_open`, etc.)
+    /// stay in place as the read source of truth for existing callers and the
+    /// sacred `core.rs` paint pipeline; they are kept in sync via
+    /// `update_sidebar_state()` / `sync_from_sidebar_store()`.
+    pub(crate) sidebar_state_store: std::sync::Arc<crate::state::Store<crate::state::SidebarState>>,
     // ── Top-nav symbol input (UX-1 Fix 1) ──────────────────────────────────
     /// Buffer for the editable symbol input in the top toolbar.
     pub(crate) top_nav_sym_input: String,
@@ -4897,6 +4913,16 @@ impl Watchlist {
                    crate::state::TradingDefaults::default(),
                    Some(trading_defaults_path()),
                ),
+               alerts_store: crate::state::Store::new(
+                   "alerts_state",
+                   crate::state::AlertsState::default(),
+                   Some(alerts_state_path()),
+               ),
+               sidebar_state_store: crate::state::Store::new(
+                   "sidebar_state",
+                   crate::state::SidebarState::default(),
+                   Some(sidebar_state_path()),
+               ),
                top_nav_sym_input: String::new(),
                top_nav_sym_focused: false,
                // Welcome wizard is initialized after load (when ui_settings is populated).
@@ -5067,6 +5093,215 @@ impl Watchlist {
             crate::state::DefaultTimeInForce::Fok => 3,
         };
         self.default_outside_rth = snap.default_outside_rth;
+    }
+
+    // ── Wave 3 (state): Store<AlertsState> accessor / mutator ────────────────
+
+    /// Read the current `AlertsState` from the store.
+    /// The returned guard holds a read lock — release it before calling
+    /// `update_alerts_state` to avoid a deadlock.
+    pub(crate) fn alerts_state_snapshot(
+        &self,
+    ) -> parking_lot::RwLockReadGuard<crate::state::AlertsState> {
+        self.alerts_store.read()
+    }
+
+    /// Mutate `AlertsState` through the store.
+    ///
+    /// The store bumps its version counter and starts the debounce clock;
+    /// the background persist supervisor will write to disk within ~250ms.
+    ///
+    /// The flat legacy fields (`alerts`, `next_alert_id`, `alert_query`,
+    /// `alerts_panel_open`) on Watchlist are kept in sync so existing
+    /// callers that read them directly continue to see the latest values.
+    pub(crate) fn update_alerts_state(&mut self, f: impl FnOnce(&mut crate::state::AlertsState)) {
+        self.alerts_store.update(|s| f(s));
+        self.sync_from_alerts_store();
+    }
+
+    /// Push flat legacy fields → `alerts_store`.
+    ///
+    /// Call this after any batch mutation to the flat alert fields so
+    /// the store stays in sync and the persist supervisor can write to disk.
+    pub(crate) fn push_to_alerts_store(&mut self) {
+        let persisted: Vec<crate::state::PersistedAlert> = self.alerts.iter().map(|a| {
+            crate::state::PersistedAlert {
+                id: a.id,
+                symbol: a.symbol.clone(),
+                price: a.price,
+                above: a.above,
+                triggered: a.triggered,
+                message: a.message.clone(),
+            }
+        }).collect();
+        let next_id = self.next_alert_id;
+        let query = self.alert_query.clone();
+        let panel_open = self.alerts_panel_open;
+        self.alerts_store.update(|s| {
+            s.alerts = persisted;
+            s.next_alert_id = next_id;
+            s.alert_query = query;
+            s.alerts_panel_open = panel_open;
+        });
+    }
+
+    /// Copy the store's current `AlertsState` into the flat legacy fields.
+    /// Called after `update_alerts_state()` and at load time.
+    pub(crate) fn sync_from_alerts_store(&mut self) {
+        let snap = self.alerts_store.read().clone();
+        self.alerts = snap.alerts.iter().map(|pa| {
+            crate::chart_renderer::trading::Alert {
+                id: pa.id,
+                symbol: pa.symbol.clone(),
+                price: pa.price,
+                above: pa.above,
+                triggered: pa.triggered,
+                message: pa.message.clone(),
+            }
+        }).collect();
+        self.next_alert_id = snap.next_alert_id;
+        self.alert_query = snap.alert_query;
+        self.alerts_panel_open = snap.alerts_panel_open;
+    }
+
+    // ── Wave 3 (state): Store<SidebarState> accessor / mutator ──────────────
+
+    /// Read the current `SidebarState` from the store.
+    /// The returned guard holds a read lock — release it before calling
+    /// `update_sidebar_state` to avoid a deadlock.
+    pub(crate) fn sidebar_state_snapshot(
+        &self,
+    ) -> parking_lot::RwLockReadGuard<crate::state::SidebarState> {
+        self.sidebar_state_store.read()
+    }
+
+    /// Mutate `SidebarState` through the store.
+    ///
+    /// The store bumps its version counter and starts the debounce clock;
+    /// the background persist supervisor will write to disk within ~250ms.
+    ///
+    /// The flat legacy fields on Watchlist are kept in sync so existing
+    /// callers that read them directly continue to see the latest values.
+    pub(crate) fn update_sidebar_state(&mut self, f: impl FnOnce(&mut crate::state::SidebarState)) {
+        self.sidebar_state_store.update(|s| f(s));
+        self.sync_from_sidebar_store();
+    }
+
+    /// Push flat legacy fields → `sidebar_state_store`.
+    ///
+    /// Call this after any batch mutation to the flat sidebar fields so
+    /// the store stays in sync and the persist supervisor can write to disk.
+    pub(crate) fn push_to_sidebar_store(&mut self) {
+        let open = self.open;
+        let settings_open = self.settings_open;
+        let orders_panel_open = self.orders_panel_open;
+        let order_entry_open = self.order_entry_open;
+        let order_ledger_open = self.order_ledger_open;
+        let order_ledger_view = self.order_ledger_view;
+        let order_ledger_filter = self.order_ledger_filter;
+        let order_health_open = self.order_health_open;
+        let account_strip_open = self.account_strip_open;
+        let object_tree_open = self.object_tree_open;
+        let trendline_filter_open = self.trendline_filter_open;
+        let apex_diag_open = self.apex_diag_open;
+        let widget_gallery_open = self.widget_gallery_open;
+        let filter_open = self.filter_open;
+        let wl_columns_open = self.wl_columns_open;
+        let tape_open = self.tape_open;
+        let news_open = self.news_open;
+        let journal_open = self.journal_open;
+        let scanner_open = self.scanner_open;
+        let scanner_builder_open = self.scanner_builder_open;
+        let spread_open = self.spread_open;
+        let script_open = self.script_open;
+        let screenshot_open = self.screenshot_open;
+        let rrg_open = self.rrg_open;
+        let analysis_open = self.analysis_open;
+        let signals_panel_open = self.signals_panel_open;
+        let indicators_panel_open = self.indicators_panel_open;
+        let indicators_section_fracs = self.indicators_section_fracs;
+        let feed_panel_open = self.feed_panel_open;
+        let playbook_panel_open = self.playbook_panel_open;
+        let journal_panel_open = self.journal_panel_open;
+        let provenance_open = self.provenance_open;
+        let replay_pane_open = self.replay_pane_open;
+        let hotkey_editor_open = self.hotkey_editor_open;
+        self.sidebar_state_store.update(|s| {
+            s.watchlist_open = open;
+            s.settings_open = settings_open;
+            s.orders_panel_open = orders_panel_open;
+            s.order_entry_open = order_entry_open;
+            s.order_ledger_open = order_ledger_open;
+            s.order_ledger_view = order_ledger_view;
+            s.order_ledger_filter = order_ledger_filter;
+            s.order_health_open = order_health_open;
+            s.account_strip_open = account_strip_open;
+            s.object_tree_open = object_tree_open;
+            s.trendline_filter_open = trendline_filter_open;
+            s.apex_diag_open = apex_diag_open;
+            s.widget_gallery_open = widget_gallery_open;
+            s.filter_open = filter_open;
+            s.wl_columns_open = wl_columns_open;
+            s.tape_open = tape_open;
+            s.news_open = news_open;
+            s.journal_open = journal_open;
+            s.scanner_open = scanner_open;
+            s.scanner_builder_open = scanner_builder_open;
+            s.spread_open = spread_open;
+            s.script_open = script_open;
+            s.screenshot_open = screenshot_open;
+            s.rrg_open = rrg_open;
+            s.analysis_open = analysis_open;
+            s.signals_panel_open = signals_panel_open;
+            s.indicators_panel_open = indicators_panel_open;
+            s.indicators_section_fracs = indicators_section_fracs;
+            s.feed_panel_open = feed_panel_open;
+            s.playbook_panel_open = playbook_panel_open;
+            s.journal_panel_open = journal_panel_open;
+            s.provenance_open = provenance_open;
+            s.replay_pane_open = replay_pane_open;
+            s.hotkey_editor_open = hotkey_editor_open;
+        });
+    }
+
+    /// Copy the store's current `SidebarState` into the flat legacy fields.
+    /// Called after `update_sidebar_state()` and at load time.
+    pub(crate) fn sync_from_sidebar_store(&mut self) {
+        let snap = self.sidebar_state_store.read().clone();
+        self.open = snap.watchlist_open;
+        self.settings_open = snap.settings_open;
+        self.orders_panel_open = snap.orders_panel_open;
+        self.order_entry_open = snap.order_entry_open;
+        self.order_ledger_open = snap.order_ledger_open;
+        self.order_ledger_view = snap.order_ledger_view;
+        self.order_ledger_filter = snap.order_ledger_filter;
+        self.order_health_open = snap.order_health_open;
+        self.account_strip_open = snap.account_strip_open;
+        self.object_tree_open = snap.object_tree_open;
+        self.trendline_filter_open = snap.trendline_filter_open;
+        self.apex_diag_open = snap.apex_diag_open;
+        self.widget_gallery_open = snap.widget_gallery_open;
+        self.filter_open = snap.filter_open;
+        self.wl_columns_open = snap.wl_columns_open;
+        self.tape_open = snap.tape_open;
+        self.news_open = snap.news_open;
+        self.journal_open = snap.journal_open;
+        self.scanner_open = snap.scanner_open;
+        self.scanner_builder_open = snap.scanner_builder_open;
+        self.spread_open = snap.spread_open;
+        self.script_open = snap.script_open;
+        self.screenshot_open = snap.screenshot_open;
+        self.rrg_open = snap.rrg_open;
+        self.analysis_open = snap.analysis_open;
+        self.signals_panel_open = snap.signals_panel_open;
+        self.indicators_panel_open = snap.indicators_panel_open;
+        self.indicators_section_fracs = snap.indicators_section_fracs;
+        self.feed_panel_open = snap.feed_panel_open;
+        self.playbook_panel_open = snap.playbook_panel_open;
+        self.journal_panel_open = snap.journal_panel_open;
+        self.provenance_open = snap.provenance_open;
+        self.replay_pane_open = snap.replay_pane_open;
+        self.hotkey_editor_open = snap.hotkey_editor_open;
     }
 
     /// Add symbol to the last section (creates one if none exist).
@@ -5924,11 +6159,35 @@ impl App {
         load_hotkeys(&mut wl.hotkeys);
         // Load persisted templates
         wl.pane_templates = load_templates();
-        // Load persisted alerts
-        let (wl_alerts, pane_alerts_map) = load_alerts();
-        wl.alerts = wl_alerts;
-        if !wl.alerts.is_empty() {
-            wl.next_alert_id = wl.alerts.iter().map(|a| a.id).max().unwrap_or(0) + 1;
+        // Load persisted alerts (always needed for pane-level price alerts).
+        let (wl_alerts_legacy, pane_alerts_map) = load_alerts();
+        // Wave 3 (state): load AlertsState from the new store format if present.
+        // Falls back to the legacy load_alerts() data so existing alerts are migrated
+        // on first launch after the upgrade.
+        if let Some(loaded_as) =
+            crate::state::load::<crate::state::AlertsState>(&alerts_state_path())
+        {
+            wl.alerts_store.update(|s| *s = loaded_as);
+            wl.sync_from_alerts_store();
+        } else {
+            // Legacy path: seed from the custom JSON format used before Wave 3.
+            wl.alerts = wl_alerts_legacy;
+            if !wl.alerts.is_empty() {
+                wl.next_alert_id = wl.alerts.iter().map(|a| a.id).max().unwrap_or(0) + 1;
+            }
+            // Seed the store so future saves use the new format.
+            wl.push_to_alerts_store();
+        }
+        // Wave 3 (state): load SidebarState from disk if present.
+        // Cold-start (no file yet) keeps the Watchlist::new() defaults.
+        if let Some(loaded_ss) =
+            crate::state::load::<crate::state::SidebarState>(&sidebar_state_path())
+        {
+            wl.sidebar_state_store.update(|s| *s = loaded_ss);
+            wl.sync_from_sidebar_store();
+        } else {
+            // Seed the store from the current defaults so it's ready to persist.
+            wl.push_to_sidebar_store();
         }
         let wl_syms: Vec<String> = wl.all_symbols();
         let mut cw = ChartWindow { id, win: Arc::clone(&w), gpu, rx, panes, active_pane: 0, layout, maximized_pane: None, close_requested: false, watchlist: wl, toasts: vec![], conn_panel_open: false, last_save: None };
@@ -5955,6 +6214,14 @@ impl App {
         );
         self.store_registry.register(
             cw.watchlist.trading_defaults_store.clone() as std::sync::Arc<dyn crate::state::PersistableStore>
+        );
+        // Wave 3 (state): register the alerts store.
+        self.store_registry.register(
+            cw.watchlist.alerts_store.clone() as std::sync::Arc<dyn crate::state::PersistableStore>
+        );
+        // Wave 3 (state): register the sidebar_state store.
+        self.store_registry.register(
+            cw.watchlist.sidebar_state_store.clone() as std::sync::Arc<dyn crate::state::PersistableStore>
         );
         self.windows.push(cw);
     }
@@ -6251,8 +6518,11 @@ impl ApplicationHandler for App {
                 }
                 // Process pending alerts from context menu
                 if let Some((sym, price, above)) = PENDING_ALERT.with(|a| a.borrow_mut().take()) {
-                    let id = cw.watchlist.next_alert_id; cw.watchlist.next_alert_id += 1;
-                    cw.watchlist.alerts.push(Alert { id, symbol: sym, price, above, triggered: false, message: String::new() });
+                    cw.watchlist.update_alerts_state(|s| {
+                        let id = s.next_alert_id;
+                        s.next_alert_id += 1;
+                        s.alerts.push(crate::state::PersistedAlert { id, symbol: sym, price, above, triggered: false, message: String::new() });
+                    });
                 }
                 // Collect order execution toasts
                 let new_toasts = PENDING_TOASTS.with(|ts| {
@@ -6516,6 +6786,24 @@ fn cmd_palette_state_path() -> std::path::PathBuf {
     let mut p = state_path();
     p.pop();
     p.push("cmd_palette_state.json");
+    p
+}
+
+/// Wave 3 (state): persist path for the `AlertsState` aggregate.
+/// Lives alongside `native-chart-state.json` in the same directory.
+fn alerts_state_path() -> std::path::PathBuf {
+    let mut p = state_path();
+    p.pop();
+    p.push("alerts_state.json");
+    p
+}
+
+/// Wave 3 (state): persist path for the `SidebarState` aggregate.
+/// Lives alongside `native-chart-state.json` in the same directory.
+fn sidebar_state_path() -> std::path::PathBuf {
+    let mut p = state_path();
+    p.pop();
+    p.push("sidebar_state.json");
     p
 }
 

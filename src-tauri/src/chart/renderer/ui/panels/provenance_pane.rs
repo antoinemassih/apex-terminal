@@ -290,7 +290,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
 
     // Promote any pending open-requests into the active lineage and force-open.
     if let Some(req) = drain_pending() {
-        watchlist.provenance_open = true;
+        watchlist.update_sidebar_state(|s| s.provenance_open = true);
         // Reset focused on a new root.
         if let Ok(mut s) = runtime().state.lock() {
             s.focused = Some(req.lineage_id.clone());
@@ -337,7 +337,7 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                 .show(ui, t);
             Tooltip::new("Close").show(ui, &r, t);
             if r.clicked() {
-                watchlist.provenance_open = false;
+                watchlist.update_sidebar_state(|s| s.provenance_open = false);
             }
         });
     });

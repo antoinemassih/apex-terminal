@@ -168,7 +168,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
     if cycle_sentiment {
         watchlist.news_sentiment_filter = next_sentiment_filter(watchlist.news_sentiment_filter);
     }
-    if resp.closed { watchlist.news_open = false; }
+    if resp.closed { watchlist.update_sidebar_state(|s| s.news_open = false); }
 }
 
 /// All → Bull → Bear → Neutral → All

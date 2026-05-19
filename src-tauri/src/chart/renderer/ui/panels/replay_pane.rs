@@ -302,7 +302,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
             });
         });
 
-    if resp.closed { watchlist.replay_pane_open = false; }
+    if resp.closed { watchlist.update_sidebar_state(|s| s.replay_pane_open = false); }
 }
 
 // ─── Sections ───────────────────────────────────────────────────────────────

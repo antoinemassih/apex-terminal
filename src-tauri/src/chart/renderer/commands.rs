@@ -214,15 +214,17 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         AppCommand::AddPriceAlert { pane, price, above } => {
             let Some(p) = panes.get_mut(pane) else { return; };
             let sym = p.symbol.clone();
-            let wl_id = watchlist.next_alert_id;
-            watchlist.next_alert_id += 1;
-            watchlist.alerts.push(Alert {
-                id: wl_id,
-                symbol: sym.clone(),
-                price,
-                above,
-                triggered: false,
-                message: String::new(),
+            watchlist.update_alerts_state(|s| {
+                let id = s.next_alert_id;
+                s.next_alert_id += 1;
+                s.alerts.push(crate::state::PersistedAlert {
+                    id,
+                    symbol: sym.clone(),
+                    price,
+                    above,
+                    triggered: false,
+                    message: String::new(),
+                });
             });
             let pid = p.next_alert_id;
             p.next_alert_id += 1;
@@ -260,7 +262,7 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         }
 
         AppCommand::CancelWatchlistAlert { id } => {
-            watchlist.alerts.retain(|a| a.id != id);
+            watchlist.update_alerts_state(|s| s.alerts.retain(|a| a.id != id));
         }
 
         AppCommand::SnoozeAlert { pane, id } => {

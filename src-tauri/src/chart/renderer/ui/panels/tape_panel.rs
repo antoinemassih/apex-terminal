@@ -137,5 +137,5 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
             });
             draw_content(ui, watchlist, active_symbol, t);
         });
-    if resp.close_clicked { watchlist.tape_open = false; }
+    if resp.close_clicked { watchlist.update_sidebar_state(|s| s.tape_open = false); }
 }

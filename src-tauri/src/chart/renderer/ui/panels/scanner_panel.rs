@@ -115,7 +115,7 @@ pub(crate) fn draw_content(
                 .show(ui, t);
             Tooltip::new("New custom scanner").show(ui, &r, t);
             if r.clicked() {
-                watchlist.scanner_builder_open = !watchlist.scanner_builder_open;
+                watchlist.update_sidebar_state(|s| s.scanner_builder_open = !s.scanner_builder_open);
             }
         });
     });
@@ -282,10 +282,10 @@ pub(crate) fn draw_content(
                         watchlist.scanner_new_min_change = -999.0;
                         watchlist.scanner_new_max_change = 999.0;
                         watchlist.scanner_new_min_volume.clear();
-                        watchlist.scanner_builder_open = false;
+                        watchlist.update_sidebar_state(|s| s.scanner_builder_open = false);
                     }
                     if Button::new("Cancel").variant(Variant::Secondary).simple_treatment(true).fg(t.dim).min_size(egui::vec2(50.0, 0.0)).show(ui, t).clicked() {
-                        watchlist.scanner_builder_open = false;
+                        watchlist.update_sidebar_state(|s| s.scanner_builder_open = false);
                     }
                 });
             });
@@ -482,7 +482,7 @@ pub(crate) fn draw(
             draw_content(ui, watchlist, panes, ap, t, &mut pending_symbol, panel_w);
         });
 
-    if resp.close_clicked { watchlist.scanner_open = false; }
+    if resp.close_clicked { watchlist.update_sidebar_state(|s| s.scanner_open = false); }
 
     if let Some(sym) = pending_symbol {
         if let Some(p) = panes.get_mut(ap) {

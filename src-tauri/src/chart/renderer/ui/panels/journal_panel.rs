@@ -106,7 +106,7 @@ pub(crate) fn draw(
                 });
             });
         });
-    if resp.close_clicked { watchlist.journal_panel_open = false; }
+    if resp.close_clicked { watchlist.update_sidebar_state(|s| s.journal_panel_open = false); }
 }
 
 fn draw_summary(ui: &mut egui::Ui, entries: &[JournalEntry], t: &Theme) {

@@ -119,7 +119,7 @@ let modal_resp = Modal::new("SETTINGS")
                 });
         });
     });
-    if modal_resp.closed { watchlist.settings_open = false; }
+    if modal_resp.closed { watchlist.update_sidebar_state(|s| s.settings_open = false); }
 }
 
 // ═══════════════════════════════════════════════════════════════

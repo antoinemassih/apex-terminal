@@ -42,7 +42,7 @@ pub(crate) fn draw(
             let cx = UiCtx::new(t);
             draw_content_cx(ui, watchlist, panes, ap, &cx);
         });
-    if resp.close_clicked { watchlist.alerts_panel_open = false; }
+    if resp.close_clicked { watchlist.update_alerts_state(|s| s.alerts_panel_open = false); }
 }
 
 /// Tab body content (no SidePanel wrapper, no header). Used by signals_panel.

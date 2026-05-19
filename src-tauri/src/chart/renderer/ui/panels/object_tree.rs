@@ -124,7 +124,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [
         .show(ctx, t, |ui, t| {
             draw_body(ui, watchlist, panes, ap, t);
         });
-    if resp.close_clicked { watchlist.object_tree_open = false; }
+    if resp.close_clicked { watchlist.update_sidebar_state(|s| s.object_tree_open = false); }
 }
 
 fn draw_body(

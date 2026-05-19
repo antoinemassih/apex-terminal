@@ -253,7 +253,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
         .show(ctx, t, |ui, t| {
             draw_body(ui, watchlist, t, true);
         });
-    if resp.close_clicked { watchlist.script_open = false; }
+    if resp.close_clicked { watchlist.update_sidebar_state(|s| s.script_open = false); }
 }
 
 // ── Output tab ──────────────────────────────────────────────────────────────
