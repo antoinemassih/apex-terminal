@@ -43,9 +43,6 @@ pub mod headers {
     pub use crate::chart::renderer::ui::components::headers::*;
     pub use crate::chart::renderer::ui::components::headers_widget::*;
 }
-pub mod pills {
-    pub use crate::chart::renderer::ui::components::pills_widget::*;
-}
 pub mod drawing {
     pub use crate::chart::renderer::ui::tools::drawing::*;
 }
