@@ -1,0 +1,655 @@
+/* ============================================================
+   NEWSLINE — broadsheet financial-press skin
+   Layered AFTER styles.css; consumes the same theme palette
+   tokens (--bg / --ink / --accent / --rule / --hair / --b1-b3)
+   so the 8 palette selectors keep working.
+   ============================================================ */
+
+:root {
+  --serif: 'Newsreader', 'Source Serif Pro', Georgia, 'Times New Roman', serif;
+  --sans:  'Inter Tight', system-ui, sans-serif;
+  --mono:  'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --gut:   28px;        /* gutter — broadsheet column gap */
+  --rule-thick: 2px;    /* heavy black rule */
+  --rule-mid:   1px;    /* normal hairline */
+  --kicker-size: 10px;
+  --kicker-track: 0.18em;
+}
+
+/* ---------- Base typography ---------- */
+body {
+  font-family: var(--sans) !important;
+  font-feature-settings: 'ss01','cv11','tnum';
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.005em;
+}
+.mono { font-family: var(--mono) !important; font-feature-settings: 'zero','ss02'; }
+
+/* Headlines & oversized numbers use Newsreader */
+.bignum, .midnum, .hero .mega,
+.panel-head .ttl .nm, .ttl .nm,
+.apex-chart-head .sym,
+.brand .name {
+  font-family: var(--serif) !important;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  font-feature-settings: 'lnum','tnum','onum' off;
+}
+.bignum, .hero .mega { font-style: italic; }
+
+/* Kicker / label — broadsheet small caps */
+.label, .panel-head .ttl .num, .brand .sub {
+  font-family: var(--mono) !important;
+  font-size: var(--kicker-size) !important;
+  letter-spacing: var(--kicker-track) !important;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ---------- Masthead (top bar) ---------- */
+.topbar {
+  border-bottom: var(--rule-thick) solid var(--b3);
+  position: relative;
+}
+.topbar::before {
+  content: '';
+  position: absolute; left: 0; right: 0; bottom: -4px; height: 1px;
+  background: var(--b3);
+}
+.brand {
+  padding: 14px 22px 10px;
+  border-right: 1px solid var(--b2);
+  min-width: 260px;
+  position: relative;
+}
+.brand .mark {
+  background: transparent;
+  color: var(--ink);
+  border: 1.5px solid var(--ink);
+  font-family: var(--serif);
+  font-style: italic; font-weight: 600; font-size: 16px;
+  width: 32px; height: 32px;
+}
+.brand .name {
+  font-size: 18px !important;
+  font-weight: 600 !important;
+  font-style: italic;
+  font-family: var(--serif) !important;
+  line-height: 1;
+}
+.brand .sub {
+  margin-top: 4px;
+  font-size: 9px !important;
+}
+
+.nav { padding: 0 8px; }
+.nav-item {
+  font-family: var(--mono) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.14em !important;
+  border-right: 0 !important;
+  border-left: 0 !important;
+  padding: 0 14px;
+  height: 100%;
+  position: relative;
+}
+.nav-item + .nav-item::before {
+  content: '·';
+  position: absolute; left: -2px; top: 50%; transform: translateY(-50%);
+  color: var(--muted); font-size: 14px;
+}
+.nav-item.on { background: transparent !important; color: var(--ink) !important; }
+.nav-item.on::after {
+  height: 3px !important;
+  background: var(--ink) !important;
+  bottom: -1px !important;
+}
+
+.quick-actions, .qa {
+  border-left-color: var(--b2) !important;
+  border-right-color: var(--b2) !important;
+  font-family: var(--mono) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.12em !important;
+}
+
+.kbd-hint {
+  border-left-color: var(--b2) !important;
+  font-family: var(--mono) !important;
+}
+.kbd-hint kbd {
+  border-color: var(--b2);
+  background: transparent;
+  border-radius: 0;
+}
+.session {
+  border-left-color: var(--b2) !important;
+}
+.session .live {
+  border-radius: 0;
+  width: 8px; height: 8px;
+}
+
+/* ---------- Ticker tape (broadsheet bottom rule) ---------- */
+.ticker {
+  background: var(--paper) !important;
+  border-bottom: 1px solid var(--b3) !important;
+  border-top: 1px solid var(--b2) !important;
+}
+.tick-item {
+  border-right-color: var(--b2);
+  padding: 8px 24px;
+}
+.tick-item .nm { font-family: var(--mono); font-size: 9px; letter-spacing: 0.15em; }
+
+/* ---------- Workspace, panels, hero ---------- */
+.workspace > *, .analysis > * { border-color: var(--b3) !important; }
+.panel {
+  border-right: 1px solid var(--b3);
+  border-bottom: 1px solid var(--b3);
+}
+.panel-head {
+  border-bottom: 1px solid var(--b3);
+  padding: 12px 18px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 14px;
+}
+.panel-head .ttl { display: contents; }
+.panel-head .ttl .num {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: var(--ink);
+  border-right: 1px solid var(--b2);
+  padding-right: 10px;
+}
+.panel-head .ttl .nm {
+  font-family: var(--serif) !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  font-style: italic;
+  letter-spacing: -0.01em !important;
+  color: var(--ink);
+}
+
+/* ---------- Hero (oversized symbol + price) ---------- */
+.hero {
+  border-bottom: var(--rule-thick) solid var(--b3);
+  position: relative;
+}
+.hero::before {
+  content: '';
+  position: absolute; left: 0; right: 0; bottom: -5px;
+  height: 1px; background: var(--b3);
+}
+.hero-cell { border-right-color: var(--b3); padding: 26px 32px; }
+.hero .sym {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  font-size: 26px;
+  font-weight: 600;
+}
+.hero .name {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  font-size: 14px;
+  color: var(--muted);
+}
+.hero .mega {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  font-feature-settings: 'lnum','tnum';
+}
+.hero .delta {
+  font-family: var(--mono) !important;
+  font-size: 20px;
+  letter-spacing: 0.005em;
+}
+.hero .stat .v {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  font-weight: 500;
+  font-size: 24px !important;
+  letter-spacing: -0.01em;
+}
+
+/* ---------- Watchlist ---------- */
+.wl { font-family: var(--mono); font-size: 11px; }
+.wl-head > div {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  border-bottom: 1px solid var(--b3);
+  color: var(--ink);
+  padding: 10px 14px;
+}
+.wl-row > div {
+  border-bottom: 1px solid var(--b1);
+  padding: 9px 14px;
+}
+.wl-row .sym { font-weight: 600; font-family: var(--serif); font-style: italic; font-size: 13px; }
+
+/* ---------- Order book ---------- */
+.ob-head > div { font-size: 9px; letter-spacing: 0.16em; border-bottom-color: var(--b3); }
+.ob-row { border-bottom-color: var(--b1); }
+.ob-spread {
+  border-block: 1px solid var(--b3);
+  background: var(--paper);
+}
+.ob-spread .mid {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  font-weight: 600;
+}
+
+/* ---------- Order ticket ---------- */
+.ticket { padding: 18px; gap: 14px; }
+.seg { border-color: var(--b3); border-radius: 0; }
+.seg > button {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  padding: 12px;
+}
+.field label { letter-spacing: 0.16em; }
+.input {
+  border: 1px solid var(--b3);
+  background: var(--paper);
+  border-radius: 0;
+  padding: 12px 14px;
+  font-family: var(--mono);
+}
+.input .stepper span { border-color: var(--b2); border-radius: 0; }
+.tif { border-color: var(--b3); }
+.tif > div { border-right-color: var(--b2); }
+.summary {
+  border-top: 1px solid var(--b3);
+  padding-top: 10px;
+}
+.summary .k { letter-spacing: 0.16em; }
+.btn-submit {
+  font-family: var(--mono);
+  letter-spacing: 0.18em;
+  border-radius: 0;
+}
+
+/* ---------- News (broadsheet headlines) ---------- */
+.news-row {
+  border-bottom: 1px solid var(--b2);
+  padding: 14px 18px;
+  grid-template-columns: 56px 60px 1fr 60px;
+}
+.news-row .t { font-family: var(--mono); font-size: 10px; }
+.news-row .src {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: var(--ink);
+  font-weight: 600;
+}
+.news-row .h {
+  font-family: var(--serif) !important;
+  font-size: 14px !important;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+}
+.news-row .tag {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+}
+
+/* ---------- Tape ---------- */
+.tape > div { border-bottom-color: var(--b1); }
+.tape .head { border-bottom-color: var(--b3); letter-spacing: 0.16em; }
+
+/* ---------- Positions table ---------- */
+.pos .head {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  border-bottom: 1px solid var(--b3);
+  color: var(--ink);
+}
+.pos .cell { border-bottom-color: var(--b1); }
+
+/* ---------- Status bar (broadsheet folio) ---------- */
+.statusbar {
+  border-top: var(--rule-thick) solid var(--b3);
+  background: var(--paper) !important;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+}
+.statusbar > div { border-right-color: var(--b2); padding: 9px 18px; }
+
+/* ---------- Chart toolbar + tools ---------- */
+.chart-toolbar { border-bottom: 1px solid var(--b3); }
+.chart-toolbar .grp { border-right-color: var(--b2); }
+.chart-toolbar .tf {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+.chart-tools { border-right-color: var(--b2); }
+.chart-tools .t { border-bottom-color: var(--b1); }
+
+/* ---------- Sector heatmap tiles ---------- */
+.heatmap .sec-head {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+}
+.htile .s {
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+/* ---------- Options chain ---------- */
+.opts .head > div {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  border-bottom: 1px solid var(--b3);
+  color: var(--ink);
+}
+.opts .row > div { border-bottom-color: var(--b1); }
+.opts .row .strike {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  font-weight: 600;
+  border-inline: 1px solid var(--b3);
+}
+
+/* ---------- Command palette ---------- */
+.cmd, .cmdv2 {
+  border-radius: 0;
+  border-top: 3px solid var(--ink);
+}
+.cmd-input .gt { background: var(--ink); color: var(--bg); border-radius: 0; }
+.cmd-input input,
+.cmdv2-input input {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  font-size: 24px !important;
+  letter-spacing: -0.01em;
+}
+.cmd-item, .cmdv2-row { font-family: var(--mono); }
+.cmd-item .nm, .cmdv2-nm {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  font-size: 14px !important;
+  letter-spacing: -0.005em;
+}
+.cmdv2-detail .hd {
+  font-family: var(--serif) !important;
+  font-style: italic;
+}
+
+/* ---------- Apex page (broadsheet treatment) ---------- */
+.apex-toolbar {
+  border-bottom: var(--rule-thick) solid var(--b3);
+  background: var(--paper);
+  height: 42px;
+}
+.apex-toolbar .grp { border-right-color: var(--b2); }
+.apex-toolbar .sym {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  font-size: 15px !important;
+  font-weight: 600;
+}
+.apex-toolbar .name {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  color: var(--muted);
+}
+.apex-toolbar .btn {
+  border-radius: 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+.apex-toolbar .lab { letter-spacing: 0.18em; }
+
+.apex-toolbar .seg-tf {
+  border-radius: 0;
+  border: 1px solid var(--b3);
+  background: transparent;
+  box-shadow: none;
+}
+.apex-toolbar .seg-tf .seg-btn {
+  border-right-color: var(--b2);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+.apex-toolbar .seg-tf .seg-btn.on {
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: none;
+}
+
+.tb-drop, .ctx-menu, .tools-pop, .ovl-drop {
+  border-radius: 0 !important;
+  border-top: 3px solid var(--ink) !important;
+  font-family: var(--sans);
+}
+.tb-drop-head, .ctx-sec, .od-sec, .tp-sec {
+  font-family: var(--mono) !important;
+  letter-spacing: 0.18em !important;
+  color: var(--ink);
+}
+.tb-drop-row, .ctx-row, .od-row {
+  font-family: var(--sans);
+  font-size: 13px;
+}
+.ctx-row .ic, .tb-drop-row .ic {
+  border-radius: 0;
+  font-family: var(--mono);
+}
+
+/* ---------- Apex chart, ladder, rail ---------- */
+.apex-cell { border-color: var(--b3); }
+.ladder-head { border-bottom: 1px solid var(--b3); }
+.ladder-head span { letter-spacing: 0.18em; border-right-color: var(--b2); }
+.ladder-row { border-bottom-color: var(--b1); }
+.ladder-row .price-cell {
+  border-left-color: var(--b2);
+  border-right-color: var(--b2);
+  font-family: var(--mono);
+}
+.ladder-row.last .price-cell {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+.ladder-foot { border-top: 1px solid var(--b3); }
+.ladder-foot .btn {
+  border-radius: 0;
+  font-family: var(--mono);
+  letter-spacing: 0.18em;
+}
+
+.apex-chart-head {
+  border-bottom: 1px solid var(--b3);
+  background: var(--paper);
+}
+.apex-chart-head .sym {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  font-size: 16px !important;
+}
+.apex-chart-head .ohlc { font-family: var(--mono); }
+
+.apex-rail .rail-head { border-bottom: 1px solid var(--b3); }
+.apex-rail .rail-head .num {
+  background: var(--ink);
+  color: var(--bg);
+  border-radius: 0;
+}
+.apex-rail .rail-head .nm {
+  font-family: var(--serif) !important;
+  font-style: italic;
+}
+.apex-rail .rail-row { border-bottom-color: var(--b1); }
+.apex-rail .rail-row .sym {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  font-weight: 600;
+}
+
+/* ---------- Floating order ticket ---------- */
+.float-tkt {
+  border-radius: 0;
+  border-top: 3px solid var(--ink);
+}
+.ft-head .ttl { font-family: var(--mono); letter-spacing: 0.18em; }
+.ft-head .sym {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  font-size: 15px !important;
+}
+.ft-quote .v {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  font-weight: 600;
+}
+.ft-side .ft-sb {
+  font-family: var(--mono);
+  letter-spacing: 0.18em;
+}
+.ft-grid .ipt { border-radius: 0; }
+.ft-grid .ipt input {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  font-weight: 600;
+}
+.ft-grid .presets span {
+  font-family: var(--mono);
+  letter-spacing: 0.14em;
+}
+.ft-submit {
+  font-family: var(--mono);
+  letter-spacing: 0.18em;
+}
+
+/* ---------- Sidebars ---------- */
+.sb {
+  border-left: 1px solid var(--b3);
+  border-top: 3px solid var(--ink);
+}
+.sb-head { border-bottom: 1px solid var(--b3); }
+.sb-ttl { font-family: var(--mono) !important; letter-spacing: 0.18em !important; }
+.sb-sub { font-family: var(--mono) !important; }
+
+/* News-feed sidebar — full broadsheet treatment */
+.nf-row { border-bottom: 1px solid var(--b2); padding: 16px 24px; }
+.nf-t {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  font-size: 15px !important;
+  line-height: 1.35 !important;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+.nf-src, .nf-meta .src { font-family: var(--mono); letter-spacing: 0.18em; }
+.nf-tic span { font-family: var(--mono); border-radius: 0; }
+
+/* Social feed */
+.sf-row { border-bottom-color: var(--b2); }
+.sf-t {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  font-size: 14px !important;
+  line-height: 1.4 !important;
+}
+.sf-meta .nm {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  font-weight: 600;
+}
+
+/* Portfolio sidebar */
+.ps-hero .bignum {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  font-weight: 600;
+}
+.ps-kpi .v {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  font-weight: 500;
+}
+.ps-pmeta .sym {
+  font-family: var(--serif) !important;
+  font-style: italic;
+}
+
+/* Options chain sidebar */
+.oc-row .strike {
+  font-family: var(--serif) !important;
+  font-style: italic;
+}
+.oc-foot .pill { border-radius: 0; }
+
+/* ---------- Settings modal ---------- */
+.setm {
+  border-radius: 0;
+  border-top: 3px solid var(--accent);
+}
+.setm-head .ttl {
+  font-family: var(--serif) !important;
+  font-style: italic;
+  font-size: 18px !important;
+}
+.setm-tabs .tab { font-family: var(--mono); letter-spacing: 0.16em; }
+.setm-sec { font-family: var(--mono); letter-spacing: 0.18em; }
+
+/* ---------- Sharp corners everywhere ---------- */
+.cmd, .cmdv2,
+.tb-drop, .ctx-menu, .tools-pop, .ovl-drop,
+.float-tkt,
+.sb,
+.setm,
+.tw-card,
+.htile,
+.ladder-row.last .price-cell { border-radius: 0 !important; }
+
+/* All buttons & pills lose their pills */
+.tbtn, .btn-submit, .ft-submit, .ladder-foot .btn,
+.qa, .nav-item, .seg > button, .tif > div,
+.apex-toolbar .btn, .ft-side .ft-sb,
+.opt-row .k,
+.nf-filter .pill, .oc-exp-strip .pill, .oc-foot .pill,
+.cmdv2-tag, .cmdv2-ai-pill, .cmdv2-key,
+.icon-btn,
+.kbd-hint kbd,
+.summary, .input, .ft-grid .ipt, .ft-grid .presets span,
+.tb-drop-row .ic, .ctx-row .ic
+{ border-radius: 0 !important; }
+
+/* ---------- Folio: bold drop-shadow rule under masthead ---------- */
+.shell { position: relative; }
+
+/* ---------- Subtle texture: tiny serif registration mark beside hero ---------- */
+.hero-cell:first-child::before {
+  content: '№ 01';
+  position: absolute; top: 14px; right: 18px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+}
+
+/* ---------- Tweaks panel (small theme override) ---------- */
+[class*="tweaks-panel"] h1, [class*="tweaks-panel"] h2, [class*="tweaks-panel"] h3 {
+  font-family: var(--serif) !important;
+  font-style: italic;
+}

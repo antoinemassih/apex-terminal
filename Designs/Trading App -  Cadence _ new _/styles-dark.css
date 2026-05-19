@@ -1,0 +1,500 @@
+/* Alto Trading App — Zed-inspired warm dark with subtle bevels */
+
+:root{
+  /* Warm dark surface stack — closer to Zed's One Dark warm */
+  --bg-0: #15120e;       /* deepest — body */
+  --bg-1: #1c1814;       /* panel */
+  --bg-2: #221d18;       /* card */
+  --bg-3: #2a241e;       /* raised / hover */
+  --bg-4: #332b24;       /* input well bottom */
+  --bg-5: #3d3429;       /* button face top */
+
+  --line-1: #2f2820;     /* hairline */
+  --line-2: #3d342b;     /* divider stronger */
+  --line-3: #4a4035;     /* loud divider (panel splits) */
+
+  /* Type tones */
+  --ink-0: #efe7d8;      /* primary text */
+  --ink-1: #cfc6b6;      /* secondary */
+  --ink-2: #9c9385;      /* tertiary / labels */
+  --ink-3: #6b6358;      /* muted */
+  --ink-4: #4a4339;      /* almost background */
+
+  /* Accent — amber by default; overridden by JS */
+  --accent: #d99858;
+  --accent-soft: #d9985830;
+  --accent-glow: #d9985824;
+  --accent-ink: #f5cfa3;
+
+  /* Trade colors — slightly more saturated than terminal default */
+  --buy:  #6fbf73;
+  --buy-soft: #6fbf7322;
+  --buy-ink: #b3e6b6;
+  --sell: #e25d5d;
+  --sell-soft: #e25d5d22;
+  --sell-ink: #f3a8a8;
+
+  /* Subtle bevel ingredients */
+  --hi-1: rgba(255,238,210,.06);   /* top inner highlight */
+  --hi-2: rgba(255,238,210,.10);
+  --sh-1: rgba(0,0,0,.35);
+  --sh-2: rgba(0,0,0,.55);
+
+  /* Geometry */
+  --r-1: 2px;
+  --r-2: 4px;
+  --r-3: 6px;
+  --r-4: 8px;
+
+  /* Type */
+  --sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Menlo", monospace;
+}
+
+/* Heavier hairlines on panel splits — Zed's visible 1px dividers */
+.split-v{ border-right: 1px solid var(--line-3); box-shadow: 1px 0 0 rgba(255,234,210,.025); }
+.split-h{ border-bottom: 1px solid var(--line-3); box-shadow: 0 1px 0 rgba(255,234,210,.025); }
+.split-vL{ border-left: 1px solid var(--line-3); box-shadow: -1px 0 0 rgba(255,234,210,.025); }
+.split-hT{ border-top: 1px solid var(--line-3); box-shadow: 0 -1px 0 rgba(255,234,210,.025); }
+
+*{ box-sizing: border-box; }
+html, body{
+  margin:0; padding:0;
+  background: var(--bg-0);
+  color: var(--ink-0);
+  font-family: var(--sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "ss01","cv11";
+  height:100%;
+  overflow:hidden;
+}
+
+/* Background grain — barely there warm noise */
+body::before{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background:
+    radial-gradient(1200px 800px at 70% -10%, #2a201640 0, transparent 60%),
+    radial-gradient(900px 700px at -10% 110%, #1f160e80 0, transparent 60%);
+}
+#root{ position:relative; z-index:1; height:100vh; }
+
+button{ font:inherit; color:inherit; background:none; border:0; padding:0; cursor: default; }
+input{ font:inherit; color:inherit; }
+
+/* ── Numerics ───────────────────────────────────────────────── */
+.mono{ font-family: var(--mono); font-feature-settings:"zero","ss01"; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing:-.01em; }
+.t-up{ color: var(--buy); }
+.t-dn{ color: var(--sell); }
+
+/* ── Bevel primitives ──────────────────────────────────────────
+   Cards: gentle outer drop + 1px inset hairline highlight at top
+   Buttons (tactile): subtle face gradient + top highlight + bottom shade
+   Wells: inset top-shade + bottom-highlight (opposite of buttons)
+*/
+.card{
+  background: linear-gradient(180deg, var(--bg-2) 0%, #1f1a15 100%);
+  border: 1px solid var(--line-3);
+  border-top-color: var(--line-2);
+  border-radius: var(--r-3);
+  box-shadow:
+    inset 0 1px 0 var(--hi-2),
+    inset 0 -1px 0 rgba(0,0,0,.55),
+    inset 1px 0 0 rgba(255,234,210,.02),
+    inset -1px 0 0 rgba(0,0,0,.3),
+    0 1px 0 rgba(0,0,0,.5),
+    0 12px 28px -16px rgba(0,0,0,.7);
+}
+.card-flat{
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-3);
+  box-shadow: inset 0 1px 0 var(--hi-1), inset 0 -1px 0 rgba(0,0,0,.4);
+}
+
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  height:28px; padding:0 12px; border-radius: var(--r-2);
+  font-size:12.5px;
+  background: linear-gradient(180deg, var(--bg-5) 0%, #2c241c 100%);
+  color: var(--ink-0);
+  border: .5px solid #1a1410;
+  box-shadow:
+    inset 0 .5px 0 var(--hi-2),
+    inset 0 -.5px 0 rgba(0,0,0,.55),
+    0 1px 0 rgba(0,0,0,.5);
+  font-size:12px; font-weight:500; letter-spacing:.01em;
+  transition: filter .12s ease, transform .04s ease;
+}
+.btn:hover{ filter: brightness(1.08); }
+.btn:active{ transform: translateY(.5px);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.6), inset 0 .5px 0 rgba(255,255,255,.02); }
+
+.btn-ghost{
+  background: transparent;
+  border: .5px solid transparent;
+  color: var(--ink-1);
+  box-shadow:none;
+}
+.btn-ghost:hover{ background: var(--bg-3); color: var(--ink-0); }
+
+.btn-accent{
+  background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 88%, white 12%) 0%, var(--accent) 100%);
+  color:#1a0f06;
+  border-color: rgba(0,0,0,.4);
+  box-shadow:
+    inset 0 .5px 0 rgba(255,255,255,.35),
+    inset 0 -.5px 0 rgba(0,0,0,.3),
+    0 1px 0 rgba(0,0,0,.5),
+    0 0 0 1px var(--accent-soft);
+}
+.btn-buy{
+  background: linear-gradient(180deg, color-mix(in oklab, var(--buy) 90%, white 10%), var(--buy));
+  color:#0c1a0d;
+  box-shadow: inset 0 .5px 0 rgba(255,255,255,.3), inset 0 -.5px 0 rgba(0,0,0,.3), 0 1px 0 rgba(0,0,0,.4);
+}
+.btn-sell{
+  background: linear-gradient(180deg, color-mix(in oklab, var(--sell) 90%, white 10%), var(--sell));
+  color:#1a0a0a;
+  box-shadow: inset 0 .5px 0 rgba(255,255,255,.3), inset 0 -.5px 0 rgba(0,0,0,.3), 0 1px 0 rgba(0,0,0,.4);
+}
+
+/* Inset well (input fields, sliders, search) — deeper inset */
+.well{
+  background: linear-gradient(180deg, #120e0a, #1a1611);
+  border: 1px solid #0a0703;
+  border-top-color: #050402;
+  border-radius: var(--r-2);
+  box-shadow:
+    inset 0 2px 3px rgba(0,0,0,.7),
+    inset 0 1px 0 rgba(0,0,0,.5),
+    inset 0 -1px 0 var(--hi-2),
+    0 .5px 0 var(--hi-1);
+}
+
+/* Tactile knob (used for steppers, dom buttons) */
+.knob{
+  width:24px; height:24px; border-radius:999px;
+  background:
+    radial-gradient(circle at 30% 25%, #4a3f33 0%, #2c251e 60%, #1a140f 100%);
+  border:.5px solid #0e0a07;
+  box-shadow:
+    inset 0 .5px 0 rgba(255,234,210,.18),
+    inset 0 -1px 1px rgba(0,0,0,.5),
+    0 1px 2px rgba(0,0,0,.5);
+  display:inline-flex; align-items:center; justify-content:center;
+  color: var(--ink-1); cursor:default;
+  transition: filter .1s ease;
+}
+.knob:hover{ filter: brightness(1.12); color: var(--ink-0); }
+.knob:active{
+  box-shadow: inset 0 1px 3px rgba(0,0,0,.7), inset 0 -.5px 0 rgba(255,255,255,.04);
+}
+
+/* Pill (tab-like) */
+.pill{
+  display:inline-flex; align-items:center; gap:6px;
+  height:22px; padding:0 8px;
+  border-radius: 999px;
+  font-size:11px; color: var(--ink-2); letter-spacing:.02em;
+}
+.pill-on{
+  background: linear-gradient(180deg, #2c241c, #221c16);
+  color: var(--ink-0);
+  box-shadow:
+    inset 0 .5px 0 rgba(255,234,210,.10),
+    inset 0 -.5px 0 rgba(0,0,0,.5),
+    0 1px 0 rgba(0,0,0,.4);
+}
+.pill-accent{
+  color: var(--accent-ink);
+  background: linear-gradient(180deg, #2d2014, #261a10);
+  box-shadow: inset 0 .5px 0 rgba(255,234,210,.12), inset 0 0 0 .5px var(--accent-soft);
+}
+
+/* ── Layout shells ─────────────────────────────────────────── */
+.app{
+  height:100vh; display:flex; flex-direction:column;
+  background: var(--bg-0);
+}
+
+/* App-level chrome — title bar with screen switcher */
+.titlebar{
+  height:42px; flex:none;
+  display:flex; align-items:center; gap:14px;
+  padding: 0 12px;
+  background: linear-gradient(180deg, #25201a 0%, #18140f 100%);
+  border-bottom: 1px solid #050402;
+  box-shadow: inset 0 1px 0 var(--hi-2), 0 1px 0 rgba(255,234,210,.03);
+  position:relative; z-index:5;
+}
+.tb-brand{
+  display:flex; align-items:center; gap:8px;
+  font-weight:600; letter-spacing:.04em; font-size:11px; text-transform:uppercase;
+  color: var(--ink-1);
+}
+.tb-brand .dot{
+  width:8px; height:8px; border-radius:99px;
+  background: radial-gradient(circle at 30% 30%, color-mix(in oklab, var(--accent) 80%, white 20%), var(--accent) 70%, #6a3a1a 100%);
+  box-shadow:
+    inset 0 .5px 0 rgba(255,255,255,.4),
+    inset 0 -.5px 0 rgba(0,0,0,.3),
+    0 0 8px var(--accent-glow);
+}
+
+.tb-tabs{ display:flex; gap:2px; background: var(--bg-0);
+  border-radius: 8px; padding:2px;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.45), inset 0 -.5px 0 var(--hi-1);
+}
+.tb-tab{
+  padding: 0 12px; height:24px; display:inline-flex; align-items:center; gap:8px;
+  border-radius:6px; font-size:11.5px; color: var(--ink-2); letter-spacing:.01em;
+  position:relative;
+}
+.tb-tab .idx{ font-family:var(--mono); font-size:9.5px; color:var(--ink-3); }
+.tb-tab:hover{ color: var(--ink-0); }
+.tb-tab.on{
+  color: var(--ink-0);
+  background: linear-gradient(180deg, #2c241c, #221c16);
+  box-shadow:
+    inset 0 .5px 0 var(--hi-2),
+    inset 0 -.5px 0 rgba(0,0,0,.5),
+    0 1px 0 rgba(0,0,0,.4);
+}
+.tb-tab.on .idx{ color: var(--accent); }
+
+.tb-spacer{ flex:1; }
+.tb-status{
+  display:flex; align-items:center; gap:14px;
+  font-family: var(--mono); font-size:11px; color: var(--ink-2);
+}
+.tb-status .ok{ color: var(--buy); }
+.tb-status .warn{ color: var(--accent); }
+.tb-status .pip{ display:inline-block; width:6px; height:6px; border-radius:99px; background: currentColor; box-shadow: 0 0 6px currentColor; margin-right:6px; vertical-align:1px; }
+
+.screen{ flex:1; min-height:0; position:relative; overflow:hidden; }
+
+/* ── Tickers strip (used in 2-3) ─────────────────────────── */
+.ticker-strip{
+  display:flex; align-items:center; gap:0;
+  height:30px; flex:none;
+  background: linear-gradient(180deg, #1a1612, #14110d);
+  border-bottom: 1px solid var(--line-3);
+  box-shadow: inset 0 1px 0 var(--hi-1);
+  overflow:hidden;
+}
+.ticker-cell{
+  display:flex; align-items:baseline; gap:6px;
+  padding: 0 14px; height:100%;
+  border-right: 1px solid var(--line-2);
+  box-shadow: 1px 0 0 rgba(255,234,210,.02);
+  font-family: var(--mono); font-size:11.5px;
+}
+.ticker-cell .sym{ color: var(--ink-1); font-weight:600; letter-spacing:.04em; }
+.ticker-cell .px{ color: var(--ink-0); }
+.ticker-cell .ch{ font-size:10px; }
+
+/* Section frame label (top-left of card) */
+.fr-label{
+  display:inline-flex; align-items:center; gap:7px;
+  font-family: var(--mono); font-size:10.5px; letter-spacing:.10em; text-transform:uppercase;
+  color: var(--ink-2); font-weight:500;
+}
+.fr-label .num{ color: var(--accent); font-weight:600; }
+
+/* Hairline */
+.hr{ height:.5px; background: var(--line-1); }
+
+/* SVG chart helpers */
+.grid-line{ stroke: var(--line-1); stroke-width:.5; }
+.axis-text{ fill: var(--ink-3); font-family: var(--mono); font-size:9.5px; }
+
+/* Scrollbars */
+.scroll{ overflow:auto; scrollbar-width:thin; scrollbar-color:#3a312a transparent; }
+.scroll::-webkit-scrollbar{ width:8px; height:8px; }
+.scroll::-webkit-scrollbar-thumb{ background:#3a312a; border-radius:4px; border:2px solid transparent; background-clip:content-box; }
+
+/* ── Order ticket bevel (shared) ─────────────────────────── */
+.tile-buy{
+  background: linear-gradient(180deg, #2a3a2c 0%, #1d2a1e 100%);
+  border:.5px solid #0a1109;
+  border-radius: var(--r-2);
+  box-shadow:
+    inset 0 .5px 0 rgba(170,255,170,.10),
+    inset 0 -.5px 0 rgba(0,0,0,.5),
+    0 1px 0 rgba(0,0,0,.5);
+}
+.tile-sell{
+  background: linear-gradient(180deg, #3a2828 0%, #2a1c1c 100%);
+  border:.5px solid #110806;
+  border-radius: var(--r-2);
+  box-shadow:
+    inset 0 .5px 0 rgba(255,170,170,.10),
+    inset 0 -.5px 0 rgba(0,0,0,.5),
+    0 1px 0 rgba(0,0,0,.5);
+}
+
+/* DOM ladder rows — depth bars baked into row bg */
+.dom-row{
+  display:grid; grid-template-columns: 60px 70px 60px;
+  align-items:center; height:20px; padding:0 8px;
+  font-family: var(--mono); font-size:11.5px;
+  border-bottom: 1px solid rgba(255,234,210,.04);
+}
+.dom-row.bid{ color: var(--ink-1); }
+.dom-row.ask{ color: var(--ink-1); }
+.dom-row.mid{ background: linear-gradient(90deg, transparent, #2a201430, transparent); color: var(--accent-ink); }
+.dom-row .delta{ color: var(--ink-3); font-size:10px; }
+.dom-row .vol{ text-align:right; color: var(--ink-2); }
+.dom-row .px{ text-align:center; color: var(--ink-0); }
+
+/* Status bar */
+.statusbar{
+  height: 24px; flex:none;
+  display:flex; align-items:center; gap:14px;
+  padding:0 12px;
+  background: linear-gradient(180deg, #1c1814, #14110d);
+  border-top: 1px solid #050402;
+  box-shadow: inset 0 1px 0 var(--hi-1);
+  font-family: var(--mono); font-size:11px; color: var(--ink-3);
+}
+.statusbar .item{ display:flex; align-items:center; gap:6px; }
+.statusbar .pip{ width:6px; height:6px; border-radius:99px; background: var(--buy); box-shadow: 0 0 6px var(--buy); }
+
+/* Panel header — stronger split, denser */
+.ph{
+  display:flex; align-items:center; justify-content:space-between;
+  padding: 8px 12px; min-height:34px;
+  border-bottom: 1px solid var(--line-3);
+  box-shadow: 0 1px 0 rgba(255,234,210,.025), inset 0 1px 0 var(--hi-1);
+  background: linear-gradient(180deg, #211c17 0%, #1c1813 100%);
+}
+.ph .ph-l{ display:flex; align-items:center; gap:10px; }
+.ph .ph-r{ display:flex; align-items:center; gap:4px; }
+.ph h3{ margin:0; font-size:12.5px; font-weight:600; color: var(--ink-0); letter-spacing:.01em; }
+.ph .sub{ font-family: var(--mono); font-size:10.5px; color: var(--ink-3); letter-spacing:.06em; text-transform:uppercase; }
+
+/* Soft glow on accent dot */
+@keyframes pulse-soft { 0%,100%{opacity:.85} 50%{opacity:1} }
+.pulse{ animation: pulse-soft 2.4s ease-in-out infinite; }
+
+/* Watchlist row */
+.wl-row{
+  display:grid; grid-template-columns: 54px 1fr 80px 64px;
+  align-items:center; height:32px; padding:0 12px;
+  font-family: var(--mono); font-size:12.5px;
+  border-bottom: 1px solid rgba(255,234,210,.04);
+  position:relative;
+}
+.wl-row:hover{ background: rgba(255,234,210,.025); }
+.wl-row.on{
+  background: linear-gradient(90deg, var(--accent-glow), transparent 70%);
+  color: var(--ink-0);
+}
+.wl-row.on::before{
+  content:""; position:absolute; left:0; top:3px; bottom:3px; width:2px;
+  background: var(--accent); border-radius: 0 2px 2px 0;
+  box-shadow: 0 0 8px var(--accent);
+}
+.wl-row .sym{ color: var(--ink-0); font-weight:600; letter-spacing:.04em; }
+.wl-row .nm{ color: var(--ink-3); font-family: var(--sans); font-size:11px; }
+.wl-row .px{ text-align:right; color: var(--ink-0); }
+.wl-row .ch{ text-align:right; font-size:10.5px; }
+
+/* Tile (dashboard) — slightly tinted faces */
+.tile{
+  position:relative;
+  border-radius: var(--r-4);
+  background: linear-gradient(180deg, #211c17 0%, #1a1611 100%);
+  border: 1px solid var(--line-3);
+  box-shadow:
+    inset 0 .5px 0 var(--hi-1),
+    inset 0 -.5px 0 rgba(0,0,0,.55),
+    0 1px 0 rgba(0,0,0,.45),
+    0 18px 36px -22px rgba(0,0,0,.7);
+  overflow:hidden;
+}
+.tile-amber{
+  background: linear-gradient(180deg, #2e2113 0%, #221710 100%);
+  box-shadow:
+    inset 0 .5px 0 rgba(255,200,140,.16),
+    inset 0 -.5px 0 rgba(0,0,0,.55),
+    inset 0 0 0 .5px rgba(217,152,88,.18),
+    0 1px 0 rgba(0,0,0,.45),
+    0 18px 36px -22px rgba(120,60,20,.4);
+}
+.tile-buy{
+  background: linear-gradient(180deg, #1d2c1f 0%, #16211a 100%);
+  box-shadow:
+    inset 0 .5px 0 rgba(170,255,180,.10),
+    inset 0 -.5px 0 rgba(0,0,0,.55),
+    inset 0 0 0 .5px rgba(111,191,115,.16),
+    0 1px 0 rgba(0,0,0,.45),
+    0 18px 36px -22px rgba(20,80,40,.4);
+}
+.tile-sell{
+  background: linear-gradient(180deg, #2c1d1d 0%, #211616 100%);
+  box-shadow:
+    inset 0 .5px 0 rgba(255,180,180,.10),
+    inset 0 -.5px 0 rgba(0,0,0,.55),
+    inset 0 0 0 .5px rgba(226,93,93,.16),
+    0 1px 0 rgba(0,0,0,.45),
+    0 18px 36px -22px rgba(80,20,20,.4);
+}
+
+/* Number stepper input */
+.stp{
+  display:inline-flex; align-items:center; gap:4px;
+  padding:2px;
+  background: linear-gradient(180deg, #100d09, #18130f);
+  border: 1px solid #050402;
+  border-radius: var(--r-2);
+  box-shadow: inset 0 2px 3px rgba(0,0,0,.65), inset 0 -1px 0 var(--hi-2);
+}
+.stp .stp-i{
+  flex:1; min-width:0; background:transparent; border:0; outline:none;
+  text-align:center; font-family: var(--mono); font-size:12px; color: var(--ink-0);
+  height:22px;
+}
+.stp .stp-b{
+  width:22px; height:22px; border-radius: 4px;
+  background: linear-gradient(180deg, var(--bg-5), #28201a);
+  border:.5px solid #0e0a07;
+  color: var(--ink-1); display:inline-flex; align-items:center; justify-content:center;
+  font-size:13px; line-height:1;
+  box-shadow: inset 0 .5px 0 var(--hi-2), inset 0 -.5px 0 rgba(0,0,0,.4);
+}
+.stp .stp-b:hover{ color: var(--ink-0); filter: brightness(1.1); }
+.stp .stp-b:active{ box-shadow: inset 0 1px 2px rgba(0,0,0,.6); }
+
+/* Segmented (BUY/SELL toggle) */
+.seg{
+  display:flex; padding:2px;
+  background: linear-gradient(180deg, #100d09, #18130f);
+  border:1px solid #050402; border-radius: var(--r-2);
+  box-shadow: inset 0 2px 3px rgba(0,0,0,.65), inset 0 -1px 0 var(--hi-2);
+}
+.seg .sg{
+  flex:1; height:24px; display:inline-flex; align-items:center; justify-content:center;
+  font-size:11px; font-weight:600; letter-spacing:.06em; color: var(--ink-2);
+  border-radius: 4px;
+}
+.seg .sg.on-buy{
+  color: var(--buy-ink);
+  background: linear-gradient(180deg, #25382a, #1a2a1d);
+  box-shadow: inset 0 .5px 0 rgba(170,255,170,.12), inset 0 -.5px 0 rgba(0,0,0,.5), 0 1px 0 rgba(0,0,0,.4);
+}
+.seg .sg.on-sell{
+  color: var(--sell-ink);
+  background: linear-gradient(180deg, #3a2525, #2a1a1a);
+  box-shadow: inset 0 .5px 0 rgba(255,170,170,.12), inset 0 -.5px 0 rgba(0,0,0,.5), 0 1px 0 rgba(0,0,0,.4);
+}
+.seg .sg.on-acc{
+  color: var(--accent-ink);
+  background: linear-gradient(180deg, #2d2014, #261a10);
+  box-shadow: inset 0 .5px 0 rgba(255,200,140,.16), inset 0 -.5px 0 rgba(0,0,0,.5), 0 1px 0 rgba(0,0,0,.4);
+}
+
+/* Selectable cell hover */
+.cell-hover:hover{ background: rgba(255,234,210,.03); }

@@ -418,7 +418,13 @@ pub(crate) fn render(
             //     hover fill spanning the entire toolbar height before the button widget.
             {
                 let connected = account_data_cached.as_ref().map_or(false, |(s,_,_)| s.connected);
-                let acct_label_owned = format!("IBKR {}", if connected { Icon::CIRCLE_FILL } else { Icon::CIRCLE });
+                // PERF: hoist the connected/disconnected variants to &'static strs so
+                // we skip a per-frame `format!` heap allocation in the account button.
+                let acct_label_owned: &'static str = if connected {
+                    concat!("IBKR ", "\u{F1A5}")  // CIRCLE_FILL
+                } else {
+                    concat!("IBKR ", "\u{F198}")  // CIRCLE
+                };
                 let acct_active = watchlist.account_strip_open;
                 let acct_resp = toolbar_btn(ui, &acct_label_owned, acct_active, t)
                     .on_hover_text("Account Summary");
@@ -477,13 +483,14 @@ pub(crate) fn render(
             {
                 use crate::ui_kit::widgets::Input;
 
-                // Sync the input buffer from the active pane symbol when NOT
-                // focused so it always reflects the current chart.
-                if !watchlist.top_nav_sym_focused {
-                    let sym = panes[ap].symbol.clone();
-                    if watchlist.top_nav_sym_input != sym {
-                        watchlist.top_nav_sym_input = sym;
-                    }
+                // PERF: compare as &str before cloning — skip the heap alloc on the
+                // hot path when the buffer already matches the active symbol (i.e. every
+                // frame in steady state). Previously `panes[ap].symbol.clone()` ran on
+                // every single frame, causing allocator jitter during pan/zoom.
+                if !watchlist.top_nav_sym_focused
+                    && panes[ap].symbol.as_str() != watchlist.top_nav_sym_input.as_str()
+                {
+                    watchlist.top_nav_sym_input = panes[ap].symbol.clone();
                 }
 
                 // Alt+S global shortcut: request focus on the symbol input.
@@ -2362,7 +2369,10 @@ pub(crate) fn render(
     // picks up where the user left off on the next launch.
     if watchlist.welcome_wizard.is_some() {
         let step_now = watchlist.welcome_wizard.as_ref().map(|w| w.step).unwrap_or(0);
-        watchlist.ui_settings.welcome_step_resume = step_now;
+        // PERF: only mirror when the step actually changed (was: blind write every frame).
+        if watchlist.ui_settings.welcome_step_resume != step_now {
+            watchlist.ui_settings.welcome_step_resume = step_now;
+        }
 
         let still_open = {
             let wiz = watchlist.welcome_wizard.as_mut().unwrap();

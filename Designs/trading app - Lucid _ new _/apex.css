@@ -1,0 +1,497 @@
+/* ============================================================
+   APEX LAYOUT — multi-pane chart trader, editorial styling
+   ============================================================ */
+
+.apex {
+  flex: 1 1 0%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+/* ---------- Toolbar ---------- */
+.apex-toolbar {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+  padding: 0 6px;
+  height: 38px;
+  gap: 12px;
+  overflow-x: auto;
+  flex: 0 0 auto;
+}
+.apex-toolbar .grp {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-right: 1px solid var(--hair);
+  padding: 0 8px;
+  height: 100%;
+}
+.apex-toolbar .grp:last-child { border-right: 0; }
+.apex-toolbar .grp.tic {
+  border-right: 1px solid var(--rule);
+  padding-right: 14px;
+}
+.apex-toolbar .grp .acc-dot {
+  width: 8px; height: 8px; background: var(--accent); border-radius: 50%;
+  margin-right: 8px;
+}
+.apex-toolbar .sym {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
+}
+.apex-toolbar .name {
+  font-size: 11px; color: var(--muted); margin-left: 6px;
+}
+.apex-toolbar .lab {
+  font-family: 'JetBrains Mono', monospace; font-size: 9px;
+  letter-spacing: 0.14em; color: var(--muted);
+  text-transform: uppercase; margin-right: 4px;
+}
+.apex-toolbar .btn {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; padding: 5px 9px; color: var(--ink-2);
+  cursor: pointer; user-select: none;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.apex-toolbar .btn:hover { background: var(--bg); border-color: var(--hair); }
+.apex-toolbar .btn.on {
+  background: var(--ink); color: var(--bg); border-color: var(--ink);
+}
+.apex-toolbar .btn.acc { color: var(--accent); }
+.apex-toolbar .btn.on.acc { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Buttons that open dropdowns: caret + open state */
+.apex-toolbar .btn.dd {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding-right: 7px;
+}
+.apex-toolbar .btn.dd .caret {
+  font-size: 8px; color: var(--muted); margin-left: 2px;
+  transition: transform .12s;
+}
+.apex-toolbar .btn.dd.open {
+  background: var(--bg); border-color: var(--rule);
+  color: var(--ink);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.04);
+}
+.apex-toolbar .btn.dd.open .caret { transform: rotate(180deg); color: var(--accent); }
+
+/* Segmented timeframe set — contiguous buttons w/ inset selection */
+.apex-toolbar .seg-tf {
+  display: inline-flex;
+  background: var(--paper);
+  border: 1px solid var(--hair);
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(0,0,0,0.02);
+  margin-left: 2px;
+}
+.apex-toolbar .seg-tf .seg-btn {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; padding: 5px 10px;
+  color: var(--muted);
+  cursor: pointer;
+  border-right: 1px solid var(--hair);
+  background: transparent;
+  letter-spacing: 0.02em;
+  transition: color .12s, background .12s;
+  user-select: none;
+}
+.apex-toolbar .seg-tf .seg-btn:last-child { border-right: 0; }
+.apex-toolbar .seg-tf .seg-btn:hover { color: var(--ink); }
+.apex-toolbar .seg-tf .seg-btn.on {
+  background: var(--ink); color: var(--bg);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06),
+              inset 0 -1px 0 rgba(0,0,0,0.18),
+              inset 1px 0 0 rgba(0,0,0,0.18),
+              inset -1px 0 0 rgba(0,0,0,0.18);
+  font-weight: 600;
+}
+
+/* Toolbar dropdowns (Vol/Studies/Widgets/Default/Window/Signals/Playback/Feed) */
+.tb-drop {
+  position: fixed;
+  z-index: 200;
+  width: 240px;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-top: 2px solid var(--accent);
+  box-shadow:
+    0 24px 60px rgba(20,20,15,.18),
+    0 4px 12px rgba(20,20,15,.08),
+    0 0 0 1px rgba(255,255,255,0.5) inset;
+  padding: 6px 0;
+  font-family: 'Inter Tight', sans-serif;
+  animation: tbDropIn .14s ease-out;
+}
+@keyframes tbDropIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.tb-drop-head {
+  font-size: 9px; letter-spacing: 0.16em;
+  color: var(--muted); text-transform: uppercase;
+  padding: 8px 14px 6px;
+  border-bottom: 1px solid var(--hair-2);
+}
+.tb-drop-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px;
+  font-size: 12.5px;
+  cursor: pointer;
+  color: var(--ink);
+  border-left: 2px solid transparent;
+  transition: background .1s, border-color .1s;
+}
+.tb-drop-row:hover { background: var(--paper); border-left-color: var(--ink); }
+.tb-drop-row.on { color: var(--ink); font-weight: 500; }
+.tb-drop-row.on .check { color: var(--accent); font-size: 11px; }
+.tb-drop-row.acc { color: var(--accent); }
+.tb-drop-row.acc:hover { border-left-color: var(--accent); }
+.tb-drop-row .ic {
+  width: 18px; font-size: 13px; color: var(--muted);
+  text-align: center;
+}
+.tb-drop-row.acc .ic, .tb-drop-row.on .ic { color: inherit; }
+.tb-drop-row .l { flex: 1; }
+.tb-drop-row .check { color: var(--muted); }
+
+/* ---------- Grid ---------- */
+.apex-grid {
+  flex: 1 1 0%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 220px 1fr 280px;
+  grid-template-rows: 1.7fr 1fr;
+  overflow: hidden;
+}
+.apex-cell {
+  border-right: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+.apex-cell:last-child { border-right: 0; }
+.apex-grid > .apex-cell:nth-last-child(-n+2),
+.apex-grid > .apex-cell.sub { border-bottom: 0; }
+.apex-cell.rail { border-right: 0; }
+
+/* ---------- DOM Ladder ---------- */
+.ladder-wrap {
+  display: flex; flex-direction: column;
+  height: 100%;
+  background: var(--paper);
+}
+.ladder-head {
+  display: grid;
+  grid-template-columns: 1fr 76px 1fr;
+  border-bottom: 1px solid var(--rule);
+  background: var(--bg);
+  flex: 0 0 auto;
+}
+.ladder-head span {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px; letter-spacing: 0.12em; color: var(--muted);
+  padding: 8px 10px;
+  text-align: center;
+  border-right: 1px solid var(--hair);
+}
+.ladder-head span:last-child { border-right: 0; }
+.ladder-head span:first-child { text-align: right; }
+.ladder-head span:last-child  { text-align: left; }
+
+.ladder-body {
+  flex: 1 1 0%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.ladder-row {
+  display: grid;
+  grid-template-columns: 1fr 76px 1fr;
+  height: 18px;
+  flex: 0 0 18px;
+  font-size: 10px;
+  border-bottom: 1px solid var(--hair-2);
+  position: relative;
+}
+.ladder-row .bid-cell,
+.ladder-row .ask-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  overflow: hidden;
+}
+.ladder-row .bid-cell { justify-content: flex-end; }
+.ladder-row .ask-cell { justify-content: flex-start; }
+.ladder-row .bar {
+  position: absolute; top: 1px; bottom: 1px;
+  background: var(--up); opacity: 0.18;
+}
+.ladder-row.ask .bar { background: var(--down); opacity: 0.18; right: auto; left: 0; }
+.ladder-row.bid .bar { right: 0; }
+.ladder-row .num {
+  position: relative; z-index: 1;
+  font-size: 10px; color: var(--ink-2);
+}
+.ladder-row.bid .num { color: var(--up); }
+.ladder-row.ask .num { color: var(--down); }
+
+.ladder-row .price-cell {
+  text-align: center;
+  font-size: 11px;
+  background: var(--bg);
+  border-left: 1px solid var(--hair);
+  border-right: 1px solid var(--hair);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 500;
+}
+.ladder-row.last {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.ladder-row.last .price-cell {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  border-color: var(--accent);
+}
+
+.ladder-foot {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 1px solid var(--rule);
+  flex: 0 0 auto;
+}
+.ladder-foot .btn {
+  font-size: 11px; letter-spacing: 0.12em;
+  padding: 10px;
+  text-align: center;
+  cursor: pointer;
+  font-weight: 600;
+}
+.ladder-foot .buy  { background: var(--up);   color: #fff; }
+.ladder-foot .sell { background: var(--down); color: #fff; border-left: 1px solid var(--rule); }
+
+/* ---------- Apex chart cell ---------- */
+.apex-chart {
+  display: flex; flex-direction: column;
+  height: 100%; min-height: 0;
+}
+.apex-chart-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hair);
+  background: var(--paper);
+  flex: 0 0 auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  gap: 10px;
+}
+.apex-chart-head .lhs { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.apex-chart-head .acc-dot {
+  width: 6px; height: 6px; background: var(--accent); border-radius: 50%;
+}
+.apex-chart-head .sym { font-weight: 700; }
+.apex-chart-head .tf { color: var(--muted); }
+.apex-chart-head .ohlc { color: var(--muted); font-size: 10px; }
+.apex-chart-head .ohlc b { color: var(--ink); font-weight: 500; }
+.apex-chart-head .chg { font-weight: 600; }
+.apex-chart-head .lab { color: var(--muted); font-size: 10px; }
+.apex-chart-head .lab b { color: var(--ink); font-weight: 500; }
+
+.apex-chart-body {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  background: var(--bg);
+}
+
+.apex-mini-ticket {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--hair);
+  background: var(--paper);
+  flex: 0 0 auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+.apex-mini-ticket .grp { display: flex; gap: 6px; align-items: center; padding-right: 8px; border-right: 1px solid var(--hair); }
+.apex-mini-ticket .lab { font-size: 9px; color: var(--muted); letter-spacing: 0.12em; }
+.apex-mini-ticket .v { font-weight: 600; }
+.apex-mini-ticket .btn {
+  padding: 5px 10px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.apex-mini-ticket .btn.buy  { background: var(--up); color: #fff; }
+.apex-mini-ticket .btn.sell { background: var(--down); color: #fff; }
+.apex-mini-ticket .btn:hover { filter: brightness(1.05); }
+
+/* ---------- Apex order ticket strip (under main chart) ---------- */
+.apex-ticket {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  border-top: 1px solid var(--rule);
+  background: var(--paper);
+  flex: 0 0 auto;
+  height: 46px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.apex-ticket .seg {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 12px;
+  border-right: 1px solid var(--hair);
+  height: 100%;
+}
+.apex-ticket .seg.quote { gap: 4px; color: var(--ink-2); font-size: 11px; }
+.apex-ticket .lab {
+  font-size: 9px; letter-spacing: 0.14em; color: var(--muted);
+  text-transform: uppercase;
+}
+.apex-ticket .v { font-size: 13px; font-weight: 700; }
+.apex-ticket .pill {
+  font-size: 10px; padding: 4px 8px; letter-spacing: 0.06em;
+  border: 1px solid var(--hair); cursor: pointer; color: var(--ink-2);
+  background: var(--bg);
+}
+.apex-ticket .pill.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.apex-ticket .in {
+  font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600;
+  border: 1px solid var(--hair); background: var(--bg); color: var(--ink);
+  padding: 4px 8px; width: 64px; outline: 0;
+}
+.apex-ticket .in.wide { width: 84px; }
+.apex-ticket .step {
+  display: flex; flex-direction: column;
+  font-size: 9px; line-height: 1; border: 1px solid var(--hair); margin-left: -1px;
+}
+.apex-ticket .step span {
+  padding: 3px 6px; cursor: pointer; color: var(--muted);
+  border-bottom: 1px solid var(--hair);
+}
+.apex-ticket .step span:last-child { border-bottom: 0; }
+.apex-ticket .step span:hover { background: var(--bg); color: var(--ink); }
+
+.apex-ticket .tbtn {
+  flex: 1 1 0;
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
+  cursor: pointer;
+  border-right: 1px solid var(--rule);
+}
+.apex-ticket .tbtn:last-child { border-right: 0; }
+.apex-ticket .tbtn.buy  { background: var(--up);   color: #fff; }
+.apex-ticket .tbtn.sell { background: var(--down); color: #fff; }
+.apex-ticket .tbtn:hover { filter: brightness(1.08); }
+.apex-ticket .tbtn.on { box-shadow: inset 0 0 0 3px var(--ink); }
+
+/* ---------- Right rail ---------- */
+.apex-rail {
+  display: flex; flex-direction: column;
+  height: 100%; min-height: 0;
+  background: var(--bg);
+}
+.rail-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+  flex: 0 0 auto;
+}
+.rail-head .ttl { display: flex; gap: 10px; align-items: baseline; }
+.rail-head .num {
+  font-size: 9px; color: var(--muted);
+  background: var(--ink); color: var(--bg);
+  padding: 2px 6px; letter-spacing: 0.12em;
+}
+.rail-head .nm {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+}
+.rail-head .add {
+  font-size: 9px; letter-spacing: 0.16em; color: var(--accent);
+  cursor: pointer;
+}
+.rail-search {
+  display: flex; gap: 8px; align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hair);
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted);
+  flex: 0 0 auto;
+}
+.rail-search .p { color: var(--muted-2); }
+
+.rail-list {
+  display: flex; flex-direction: column;
+  border-bottom: 1px solid var(--rule);
+  flex: 1 1 0%;
+  overflow-y: auto;
+  min-height: 0;
+}
+.rail-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--hair-2);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  cursor: pointer;
+  align-items: center;
+}
+.rail-row:hover { background: var(--paper); }
+.rail-row.on {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-left: 2px solid var(--accent);
+  padding-left: 10px;
+}
+.rail-row .sym { font-weight: 700; }
+.rail-row .pct { font-size: 10px; }
+.rail-row .px  { color: var(--ink-2); }
+
+.rail-section { flex: 0 0 auto; }
+.rail-shead {
+  display: flex; gap: 10px; align-items: baseline;
+  padding: 10px 12px 6px;
+}
+.rail-shead .num {
+  font-size: 9px; background: var(--ink); color: var(--bg);
+  padding: 2px 6px; letter-spacing: 0.12em;
+}
+.rail-shead .nm {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+}
+.rail-opt { display: flex; flex-direction: column; padding: 0 12px 14px; }
+.opt-row {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--hair);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  align-items: center;
+}
+.opt-row .k { font-weight: 700; text-align: center; }
+.opt-row .name { color: var(--ink-2); }
+.opt-row .v { color: var(--ink); }
+.opt-row .v .muted { color: var(--muted); }

@@ -1,0 +1,1641 @@
+/* ============================================================
+   ATRIUM v2 — TRUE reskin: new geometry, type, density, vocabulary
+   ============================================================
+   Not just a recolor of Bauhaus. The whole design system changes:
+   - Geometry: rounded surfaces, gutters between cards, NO hard
+     dividers — use tonal contrast and inset wells instead.
+   - Type: Inter humanist sans for UI, JetBrains Mono for numerics,
+     lighter weights, looser tracking on UI labels.
+   - Components: pills, capsule inputs, soft inner shadows, no bevels.
+   - Density: preserved via gutter rhythm, not hairline grids.
+   ============================================================ */
+
+:root,
+[data-theme="bauhaus"],
+[data-theme="atrium"] {
+  --bg:        #0b1224;
+  --bg-2:      #0f1730;
+  --paper:     #141d3a;
+  --ink:       #eaf0ff;
+  --ink-2:     #c5cee5;
+  --muted:     #7c8aae;
+  --muted-2:   #4f5a78;
+  --b3:        transparent;
+  --b2:        transparent;
+  --b1:        transparent;
+  --rule:      transparent;
+  --hair:      transparent;
+  --hair-2:    transparent;
+  --up:        #5fd6a8;
+  --down:      #ff7a8c;
+  --accent:    #7cc9ff;
+  --accent-2:  #b794ff;
+  --chip:      #1c2645;
+
+  --surf:   rgba(255, 255, 255, 0.025);
+  --surf-2: rgba(255, 255, 255, 0.05);
+  --surf-3: rgba(255, 255, 255, 0.085);
+  --surf-4: rgba(255, 255, 255, 0.12);
+  --inset:   inset 0 0 0 1px rgba(255,255,255,0.05), inset 0 1px 0 rgba(255,255,255,0.04);
+  --inset-2: inset 0 0 0 1px rgba(255,255,255,0.09), inset 0 1px 0 rgba(255,255,255,0.07);
+  --soft-shadow: 0 1px 0 rgba(255,255,255,0.035), 0 1px 2px rgba(0,0,0,0.18), 0 6px 18px rgba(0,0,0,0.22);
+  --soft-shadow-lg: 0 1px 0 rgba(255,255,255,0.05), 0 12px 32px rgba(0,0,0,0.32), 0 32px 80px rgba(0,0,0,0.48);
+  --glow-accent: 0 0 0 1px rgba(124,201,255,0.35), 0 6px 24px rgba(124,201,255,0.28);
+
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 18px;
+  --r-pill: 999px;
+
+  --gut: 8px;
+  --pad: 14px;
+
+  --tile-cream: #eaf0ff;
+  --tile-dark:  #0b1224;
+  --tile-warm:  #7cc9ff;
+  --tile-yellow:#f5d76e;
+  --tile-green: #5fd6a8;
+  --tile-red:   #ff7a8c;
+  --tile-blue:  #7cc9ff;
+  --tile-fg-on-warm: #0b1224;
+  --tile-bg:    #0f1730;
+  --tile-bg-2:  #141d3a;
+  --tile-stroke: rgba(255,255,255,0.08);
+  --tile-fg:    #eaf0ff;
+}
+
+/* === Body, type === */
+html, body {
+  background:
+    radial-gradient(ellipse 65% 50% at 12% -5%, rgba(124, 201, 255, 0.16), transparent 65%),
+    radial-gradient(ellipse 55% 40% at 95% 100%, rgba(183, 148, 255, 0.12), transparent 65%),
+    var(--bg) !important;
+  background-attachment: fixed !important;
+  color: var(--ink);
+}
+body, .alto-root, .panel, .panel *, .nav, .nav *, .topbar, .topbar *,
+.statusbar, .ticker, .ticker *, .workspace, .shell {
+  font-family: 'Inter', 'Söhne', 'Söhne Mono', system-ui, -apple-system, sans-serif !important;
+  font-feature-settings: 'cv11','ss01','ss03','ss07' !important;
+  letter-spacing: -0.005em;
+}
+.mono, .num, .v, .midnum, .bignum, .label, .ohlc, .ohlc *, .ohlc b,
+.tape, .tape *, .pos *, .wl-row .num, .wl-row .r-num,
+.input, .ipt, .ipt *, .price-cell, .ladder-row, .ladder-row *,
+.opt-row, .opt-row *, .seg-tf, .seg-tf *,
+.kbd-hint, .kbd-hint *, kbd {
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace !important;
+  font-feature-settings: 'tnum','zero' !important;
+  font-variant-numeric: tabular-nums !important;
+}
+.label, .small-caps, .qa, .nav-item, .panel-head .num,
+.tb-drop-head, .ctx-sec, .od-sec, .sb-ttl, .ft-head .ttl,
+.apex-toolbar .lab, .apex-toolbar .btn, .seg-tf .seg-btn,
+.tape .head, .pos .head, .ob-head > div, .wl-head > div {
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.bignum, .midnum, .hero .mega { font-weight: 500 !important; letter-spacing: -0.04em; }
+
+/* === SHELL: gutters around cards instead of hard borders === */
+.shell { background: transparent; padding: 0; }
+.workspace {
+  gap: var(--gut) !important;
+  padding: 0 var(--gut) var(--gut);
+}
+.workspace > * { overflow: visible !important; }
+.analysis { gap: var(--gut) !important; padding: 0 var(--gut) var(--gut); }
+
+/* === STRIP ALL HARD BORDERS === */
+.panel, .panel-head, .topbar, .ticker, .statusbar, .brand, .nav-item,
+.qa, .quick-actions, .kbd-hint, .session, .hero, .hero-cell,
+.tick-item, .news-row, .ob-row, .ob-row > div, .ob-head, .ob-head > div,
+.wl-head > div, .wl-row > div, .seg, .input, .tif, .tif > div,
+.tape > div, .tape .head, .pos .cell, .pos .head, .statusbar > div,
+.chart-toolbar, .chart-toolbar .grp, .chart-toolbar .tf, .chart-tools, .chart-tools .t,
+.apex-cell, .apex-toolbar, .apex-toolbar .grp,
+.ladder-head, .ladder-head span, .ladder-row, .ladder-row > div,
+.ladder-foot, .ladder-foot .btn,
+.apex-chart-head, .apex-mini-ticket, .apex-mini-ticket .grp, .apex-mini-ticket .btn,
+.apex-ticket, .apex-ticket .seg, .apex-ticket .pill, .apex-ticket .in, .apex-ticket .step,
+.opt-row, .rail-head, .rail-search, .rail-list, .rail-row,
+.float-tkt, .ft-head, .ft-quote, .ft-quote .qcol, .ft-side, .ft-side .ft-sb,
+.ft-row, .ft-row .seg, .ft-row .seg span, .ft-grid, .ft-grid .fld,
+.ft-grid .ipt, .ft-grid .presets span,
+.ft-bracket, .ft-summary, .ft-submit,
+.sb, .sb-head, .sb-body, .nf-row, .sf-row, .sf-av,
+.cmdv2, .cmdv2-input, .cmdv2-pills, .cmdv2-body, .cmdv2-list, .cmdv2-row, .cmdv2-foot,
+.tb-drop, .tb-drop-head, .tb-drop-row, .ctx-menu, .ctx-grp, .ctx-row, .ctx-row .ic,
+.tools-pop, .ovl-drop, .od-row,
+.setm, .setm-head, .setm-tabs, .setm-tabs .tab, .setm-row,
+.apex-tt, .apex-tt .tt-row, .apex-tt .tt-grid {
+  border: 0 !important;
+  border-radius: 0;
+}
+
+/* === PANELS: float as cards with soft shadow + inset edge === */
+.panel {
+  background: var(--surf) !important;
+  border-radius: var(--r-md) !important;
+  box-shadow: var(--inset), var(--soft-shadow) !important;
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+}
+.panel-head {
+  padding: 10px 14px !important;
+  background: transparent !important;
+  height: 38px;
+  min-height: 38px;
+}
+.panel-head .ttl { gap: 8px !important; }
+.panel-head .ttl .nm { font-weight: 600; font-size: 12px; letter-spacing: -0.005em; text-transform: none; color: var(--ink); }
+.panel-head .ttl .num {
+  background: linear-gradient(180deg, var(--surf-3), var(--surf-2));
+  color: var(--ink-2);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace !important;
+  box-shadow: var(--inset);
+}
+.panel-head .label {
+  text-transform: uppercase;
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+
+/* === TOP BAR: floating capsule === */
+.topbar {
+  margin: var(--gut) var(--gut) 0;
+  background: var(--surf-2) !important;
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border-radius: var(--r-md) !important;
+  box-shadow: var(--inset), var(--soft-shadow) !important;
+  grid-template-columns: auto 1fr auto;
+  height: 50px;
+  align-items: center;
+}
+.brand { padding: 12px 18px !important; }
+.brand .mark {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)) !important;
+  color: var(--bg) !important;
+  border-radius: var(--r-sm) !important;
+  width: 30px; height: 30px;
+  box-shadow: 0 4px 14px rgba(124, 201, 255, 0.35);
+  font-weight: 700;
+}
+.brand .name {
+  font-weight: 600;
+  font-size: 13.5px;
+  letter-spacing: -0.01em;
+}
+.brand .sub { font-size: 9.5px; color: var(--muted); letter-spacing: 0.1em; }
+
+.nav { padding: 0 6px !important; gap: 2px !important; align-items: center; }
+.nav-item {
+  padding: 6px 11px !important;
+  border-radius: var(--r-sm) !important;
+  height: 30px !important;
+  display: inline-flex !important;
+  align-items: center;
+  font-size: 12px !important;
+  letter-spacing: -0.005em !important;
+  text-transform: none !important;
+  color: var(--muted) !important;
+  font-weight: 500;
+  transition: background .14s, color .14s;
+}
+.nav-item:hover { background: var(--surf) !important; color: var(--ink-2) !important; }
+.nav-item.on {
+  background: var(--surf-3) !important;
+  color: var(--ink) !important;
+  font-weight: 600;
+  box-shadow: var(--inset-2);
+}
+.nav-item.on::after { display: none !important; }
+
+.topright { gap: 6px; padding: 6px 8px; align-items: center; }
+.quick-actions { gap: 1px !important; }
+.qa {
+  padding: 6px 10px !important;
+  border-radius: var(--r-sm) !important;
+  font-size: 11px !important;
+  height: 30px;
+  display: inline-flex !important;
+  align-items: center;
+  color: var(--muted) !important;
+  letter-spacing: -0.005em;
+  text-transform: none !important;
+  font-weight: 500;
+}
+.qa:hover { background: var(--surf) !important; color: var(--ink) !important; }
+
+.kbd-hint {
+  background: var(--surf);
+  border-radius: var(--r-sm);
+  padding: 6px 10px !important;
+  font-size: 11px;
+  color: var(--muted);
+  gap: 8px;
+  height: 30px;
+  align-items: center;
+}
+.kbd-hint kbd {
+  background: var(--surf-3) !important;
+  color: var(--ink-2) !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 600;
+  box-shadow: var(--inset);
+}
+
+.session {
+  padding: 5px 12px !important;
+  border-radius: var(--r-sm);
+  background: var(--surf);
+  gap: 1px;
+  min-width: auto !important;
+  height: 36px;
+  justify-content: center;
+}
+.session .label {
+  font-size: 9px !important;
+  letter-spacing: 0.08em !important;
+  color: var(--muted) !important;
+}
+.session .live {
+  background: var(--up) !important;
+  box-shadow: 0 0 0 3px rgba(95, 214, 168, 0.22);
+  width: 5px; height: 5px;
+}
+.session .mono { font-size: 10.5px !important; color: var(--ink) !important; }
+
+/* === TICKER === */
+.ticker {
+  margin: 6px var(--gut) 0;
+  background: var(--surf) !important;
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border-radius: var(--r-sm) !important;
+  box-shadow: var(--inset);
+  height: 30px;
+  align-items: center;
+}
+.tick-item {
+  padding: 4px 14px !important;
+  font-size: 10.5px;
+}
+.tick-item .nm { color: var(--muted) !important; text-transform: none !important; letter-spacing: 0 !important; font-size: 10.5px; }
+
+/* === STATUS BAR === */
+.statusbar {
+  margin: 0 var(--gut) var(--gut);
+  background: var(--surf) !important;
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border-radius: var(--r-sm) !important;
+  box-shadow: var(--inset);
+  padding: 0 6px;
+  height: 26px;
+  align-items: center;
+}
+.statusbar > div {
+  padding: 3px 12px !important;
+  font-size: 9.5px !important;
+  text-transform: none !important;
+  letter-spacing: 0.02em !important;
+  color: var(--muted);
+  gap: 6px;
+}
+.statusbar > div:not(:first-child)::before {
+  content: '·';
+  color: var(--muted-2);
+  margin-right: 0;
+}
+
+/* === HERO === */
+.hero {
+  background: linear-gradient(180deg, rgba(124, 201, 255, 0.05), transparent) !important;
+  border-radius: var(--r-lg) !important;
+  box-shadow: var(--inset);
+  overflow: hidden;
+}
+.hero-cell { padding: 24px 28px !important; }
+.hero .mega { font-weight: 500 !important; }
+.hero .sym {
+  background: var(--surf-2);
+  padding: 3px 12px;
+  border-radius: var(--r-pill);
+  font-size: 13px !important;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.hero .name { font-size: 13px; color: var(--muted); }
+
+/* === WATCHLIST: rows with rounded hover === */
+.wl { padding: 8px 10px; }
+.wl-head, .wl-row { gap: 0; }
+.wl-head > div {
+  background: transparent !important;
+  color: var(--muted) !important;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  padding: 8px 14px !important;
+  text-transform: uppercase;
+  position: static;
+}
+.wl-row > div {
+  padding: 9px 14px !important;
+  font-size: 12px;
+  transition: background .12s;
+}
+/* Round the row by applying radius to first/last cell */
+.wl-row > div:first-child { border-radius: 0; }
+.wl-row > div:last-child { border-radius: 0; }
+.wl-row:hover > div { background: var(--surf) !important; }
+.wl-row.on > div { background: var(--surf-3) !important; }
+.wl-row.on > div:first-child { box-shadow: inset 2px 0 0 var(--accent) !important; }
+
+/* === ORDER BOOK === */
+.ob { padding: 8px 10px; }
+.ob-head { background: transparent !important; }
+.ob-head > div {
+  background: transparent !important;
+  color: var(--muted) !important;
+  font-size: 9.5px;
+  padding: 6px 12px !important;
+  position: static;
+}
+.ob-row {
+  border-radius: var(--r-sm);
+  margin: 1px 0;
+}
+.ob-row > div { padding: 4px 12px !important; }
+.ob-row.bid .bar { background: linear-gradient(90deg, transparent, rgba(95, 214, 168, 0.22)) !important; border-radius: var(--r-sm); }
+.ob-row.ask .bar { background: linear-gradient(90deg, rgba(255, 122, 140, 0.22), transparent) !important; border-radius: var(--r-sm); }
+.ob-spread {
+  background: var(--surf-2) !important;
+  border-radius: var(--r-md) !important;
+  margin: 8px 6px;
+  padding: 10px 16px !important;
+}
+.ob-spread .label { color: var(--muted); font-size: 9.5px; letter-spacing: 0.1em; }
+.ob-spread .mid { font-size: 20px; font-weight: 600; }
+
+/* === NEWS rows: capsule cards === */
+.news-row {
+  margin: 4px 10px;
+  padding: 11px 14px !important;
+  border-radius: var(--r-md) !important;
+  background: transparent;
+  transition: background .12s;
+  border-left: 3px solid transparent !important;
+}
+.news-row:hover { background: var(--surf) !important; }
+.news-row.pos { border-left-color: var(--up) !important; }
+.news-row.neg { border-left-color: var(--down) !important; }
+.news-row.neu { border-left-color: var(--muted-2) !important; }
+.news-row .t, .news-row .src { color: var(--muted); font-family: 'JetBrains Mono', monospace !important; font-size: 9.5px; letter-spacing: 0.06em; text-transform: none; }
+.news-row .h { font-size: 12.5px; line-height: 1.42; font-weight: 500; }
+
+/* === TAPE === */
+.tape { padding: 6px 10px; }
+.tape .head {
+  background: transparent !important;
+  position: static;
+  font-size: 9.5px;
+  padding: 6px 12px !important;
+  color: var(--muted) !important;
+}
+.tape > div { padding: 4px 12px !important; font-size: 11px; }
+.tape > div:nth-child(8n+5),
+.tape > div:nth-child(8n+6),
+.tape > div:nth-child(8n+7),
+.tape > div:nth-child(8n+8) { background: var(--surf); }
+
+/* === POSITIONS === */
+.pos { padding: 8px 10px; }
+.pos .head {
+  background: transparent !important;
+  color: var(--muted) !important;
+  font-size: 9.5px;
+  padding: 8px 12px !important;
+  position: static;
+  letter-spacing: 0.1em;
+}
+.pos .cell { padding: 9px 12px !important; font-size: 12px; }
+
+/* === ORDER TICKET === */
+.ticket { padding: 16px 18px !important; gap: 12px; }
+.field label {
+  color: var(--muted) !important;
+  font-size: 9.5px !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase;
+}
+.seg {
+  background: var(--surf) !important;
+  border-radius: var(--r-sm) !important;
+  padding: 3px !important;
+  gap: 2px;
+  box-shadow: var(--inset);
+}
+.seg > button {
+  border-radius: 6px !important;
+  padding: 7px 12px !important;
+  font-size: 11px;
+  letter-spacing: -0.005em;
+  color: var(--muted) !important;
+  text-transform: none;
+  font-weight: 500;
+  transition: background .14s, color .14s, box-shadow .14s;
+}
+.seg > button:hover { color: var(--ink-2) !important; }
+.seg > button.on.buy {
+  background: linear-gradient(180deg, rgba(95,214,168,0.32), rgba(95,214,168,0.18)) !important;
+  color: var(--ink) !important;
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.14),
+    inset 0 0 0 1px rgba(95,214,168,0.28),
+    0 1px 6px rgba(95,214,168,0.20);
+}
+.seg > button.on.sell {
+  background: linear-gradient(180deg, rgba(255,122,140,0.32), rgba(255,122,140,0.18)) !important;
+  color: var(--ink) !important;
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.14),
+    inset 0 0 0 1px rgba(255,122,140,0.28),
+    0 1px 6px rgba(255,122,140,0.20);
+}
+.input {
+  background: var(--surf) !important;
+  border-radius: var(--r-md) !important;
+  padding: 11px 14px !important;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: var(--inset);
+}
+.input .stepper span {
+  width: 22px; height: 22px;
+  background: var(--surf-2);
+  border-radius: 6px !important;
+  border: 0 !important;
+  color: var(--ink-2);
+}
+.tif {
+  background: var(--surf) !important;
+  border-radius: var(--r-pill) !important;
+  padding: 3px !important;
+  gap: 2px;
+}
+.tif > div {
+  border-radius: var(--r-pill) !important;
+  padding: 7px 10px !important;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--muted) !important;
+}
+.tif > div.on {
+  background: var(--surf-3) !important;
+  color: var(--ink) !important;
+  box-shadow: var(--inset-2);
+}
+.summary { border: 0 !important; padding: 10px 0 !important; gap: 8px 0; }
+.summary .k { color: var(--muted); font-size: 9.5px; }
+/* === REFINED BUTTON & CONTROL SYSTEM ===
+   Unified: every button shares the same radius and edge vocabulary.
+   Difference between primary and ghost is color of fill, NOT shape.
+
+   Shared shape:
+   - radius: 6px
+   - inset 0 1px 0 white .14 (top highlight)
+   - inset 0 -1px 0 black .16 (bottom shade)
+   - inset 0 0 0 1px white .10 (inner ring)
+   - 0 1px 3px black .35 (single subtle drop)
+*/
+
+/* PRIMARY ACTION BUTTONS */
+.btn-submit, .ladder-foot .buy, .ladder-foot .sell,
+.ft-submit, .ft-submit.buy, .ft-submit.sell,
+.apex-mini-ticket .btn,
+.apex-mini-ticket .btn.buy, .apex-mini-ticket .btn.sell {
+  position: relative;
+  border: 0 !important;
+  border-radius: 6px !important;
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  text-transform: none;
+  color: var(--ink) !important;
+  transition: transform .14s cubic-bezier(0.2, 0.8, 0.2, 1),
+              filter .15s,
+              box-shadow .15s;
+}
+.btn-submit:active, .ladder-foot .buy:active, .ladder-foot .sell:active,
+.ft-submit:active, .apex-mini-ticket .btn:active { transform: translateY(0) scale(0.98); filter: brightness(0.94); }
+
+.btn-submit {
+  width: 100%;
+  padding: 11px 18px !important;
+  font-size: 12.5px !important;
+  background: linear-gradient(180deg, #7cc9ff 0%, #4ea3e6 100%) !important;
+  color: #061021 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.30),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    inset 0 0 0 1px rgba(255,255,255,0.14),
+    0 1px 3px rgba(0,0,0,0.35);
+}
+.btn-submit:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.40),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    inset 0 0 0 1px rgba(255,255,255,0.20),
+    0 2px 6px rgba(0,0,0,0.40);
+}
+
+.btn-submit.buy, .ladder-foot .buy, .ft-submit.buy, .apex-mini-ticket .btn.buy {
+  background: linear-gradient(180deg, #5fd6a8 0%, #3aba85 100%) !important;
+  color: #052a1a !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.30),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    inset 0 0 0 1px rgba(255,255,255,0.14),
+    0 1px 3px rgba(0,0,0,0.35) !important;
+}
+.btn-submit.buy:hover, .ladder-foot .buy:hover, .ft-submit.buy:hover, .apex-mini-ticket .btn.buy:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.40),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    inset 0 0 0 1px rgba(255,255,255,0.20),
+    0 2px 6px rgba(0,0,0,0.40) !important;
+}
+
+.btn-submit.sell, .ladder-foot .sell, .ft-submit.sell, .apex-mini-ticket .btn.sell {
+  background: linear-gradient(180deg, #ff7a8c 0%, #e5546a 100%) !important;
+  color: #2a0509 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.30),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    inset 0 0 0 1px rgba(255,255,255,0.14),
+    0 1px 3px rgba(0,0,0,0.35) !important;
+}
+.btn-submit.sell:hover, .ladder-foot .sell:hover, .ft-submit.sell:hover, .apex-mini-ticket .btn.sell:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.40),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    inset 0 0 0 1px rgba(255,255,255,0.20),
+    0 2px 6px rgba(0,0,0,0.40) !important;
+}
+
+.apex-mini-ticket .btn {
+  padding: 6px 12px !important;
+  font-size: 10.5px !important;
+}
+.ladder-foot .buy, .ladder-foot .sell {
+  padding: 9px !important;
+  font-size: 10.5px !important;
+}
+.ft-submit {
+  margin: 12px;
+  padding: 11px 18px !important;
+  font-size: 12.5px !important;
+  border-radius: 6px !important;
+}
+
+/* SEGMENTED CONTROLS — same active-state vocabulary as nav */
+.seg, .tif, .ft-row .seg, .apex-toolbar .seg-tf {
+  background: rgba(0,0,0,0.22) !important;
+  border-radius: 7px !important;
+  padding: 2px !important;
+  gap: 1px;
+  box-shadow:
+    inset 0 1px 1px rgba(0,0,0,0.22),
+    inset 0 0 0 1px rgba(255,255,255,0.04);
+}
+.seg > button, .tif > div, .ft-row .seg span, .apex-toolbar .seg-tf .seg-btn {
+  border-radius: 5px !important;
+  padding: 6px 11px !important;
+  font-size: 11px;
+  letter-spacing: -0.005em;
+  color: var(--muted) !important;
+  text-transform: none;
+  font-weight: 500;
+  font-family: 'Inter', sans-serif !important;
+  transition: background .12s, color .12s;
+  background: transparent !important;
+  border: 0 !important;
+}
+.seg > button:hover, .tif > div:hover, .ft-row .seg span:hover,
+.apex-toolbar .seg-tf .seg-btn:hover {
+  color: var(--ink-2) !important;
+  background: rgba(255,255,255,0.03) !important;
+}
+.seg > button.on, .tif > div.on, .ft-row .seg span.on,
+.apex-toolbar .seg-tf .seg-btn.on {
+  background: linear-gradient(180deg, var(--surf-4), var(--surf-3)) !important;
+  color: var(--ink) !important;
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.14),
+    inset 0 -1px 0 rgba(0,0,0,0.16),
+    inset 0 0 0 1px rgba(255,255,255,0.10),
+    0 1px 3px rgba(0,0,0,0.35) !important;
+}
+.seg > button.on.buy, .ft-row .seg span.on.buy {
+  background: linear-gradient(180deg, #5fd6a8, #3aba85) !important;
+  color: #052a1a !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.30),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    inset 0 0 0 1px rgba(255,255,255,0.14),
+    0 1px 3px rgba(0,0,0,0.35) !important;
+}
+.seg > button.on.sell, .ft-row .seg span.on.sell {
+  background: linear-gradient(180deg, #ff7a8c, #e5546a) !important;
+  color: #2a0509 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.30),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    inset 0 0 0 1px rgba(255,255,255,0.14),
+    0 1px 3px rgba(0,0,0,0.35) !important;
+}
+
+/* INPUTS — inset wells with focus ring */
+.input, .ft-grid .ipt, .apex-ticket .in {
+  background: rgba(0,0,0,0.22) !important;
+  border-radius: 6px !important;
+  padding: 9px 12px !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink) !important;
+  box-shadow:
+    inset 0 1px 1px rgba(0,0,0,0.30),
+    inset 0 0 0 1px rgba(255,255,255,0.05);
+  transition: box-shadow .15s, background .15s;
+}
+.input:focus-within, .ft-grid .ipt:focus-within, .apex-ticket .in:focus-within {
+  background: rgba(0,0,0,0.28) !important;
+  box-shadow:
+    inset 0 1px 1px rgba(0,0,0,0.30),
+    inset 0 0 0 1px rgba(124,201,255,0.40),
+    0 0 0 2px rgba(124,201,255,0.14);
+}
+.input .stepper { gap: 4px; }
+.input .stepper span {
+  width: 22px; height: 22px;
+  background: linear-gradient(180deg, var(--surf-3), var(--surf-2)) !important;
+  border-radius: 5px !important;
+  border: 0 !important;
+  color: var(--ink-2);
+  font-size: 13px;
+  display: grid; place-items: center;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.10),
+    inset 0 0 0 1px rgba(255,255,255,0.06),
+    0 1px 2px rgba(0,0,0,0.22);
+  transition: background .12s;
+}
+.input .stepper span:hover {
+  background: linear-gradient(180deg, var(--surf-4), var(--surf-3)) !important;
+  color: var(--ink);
+}
+
+/* GHOST BUTTONS — nav, qa, toolbar btns — unified */
+.nav-item, .qa, .apex-toolbar .btn,
+.chart-toolbar .tf, .chart-tools .t,
+.alto-pill, .ft-side .ft-sb {
+  position: relative;
+  border-radius: 6px !important;
+  transition: background .14s, color .14s, box-shadow .14s;
+}
+.nav-item.on, .qa.on, .apex-toolbar .btn.on,
+.chart-toolbar .tf.on, .chart-tools .t.on {
+  background: linear-gradient(180deg, var(--surf-4), var(--surf-3)) !important;
+  color: var(--ink) !important;
+  font-weight: 600 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.14),
+    inset 0 -1px 0 rgba(0,0,0,0.16),
+    inset 0 0 0 1px rgba(255,255,255,0.10),
+    0 1px 3px rgba(0,0,0,0.35) !important;
+}
+
+/* FT-SIDE buy/sell toggles (floating ticket) match the same vocab */
+.ft-side { padding: 8px 12px 0; gap: 6px; display: flex; }
+.ft-side .ft-sb {
+  flex: 1;
+  border-radius: 6px !important;
+  padding: 10px 14px !important;
+  font-size: 11px !important;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  text-align: center;
+  background: rgba(255,255,255,0.03) !important;
+  color: var(--muted) !important;
+  cursor: pointer;
+  text-transform: none;
+  box-shadow:
+    inset 0 1px 1px rgba(0,0,0,0.18),
+    inset 0 0 0 1px rgba(255,255,255,0.05);
+}
+.ft-side .ft-sb:hover { color: var(--ink-2) !important; background: rgba(255,255,255,0.05) !important; }
+.ft-side .ft-sb.buy.on {
+  background: linear-gradient(180deg, #5fd6a8, #3aba85) !important;
+  color: #052a1a !important;
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.30),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    inset 0 0 0 1px rgba(255,255,255,0.14),
+    0 1px 3px rgba(0,0,0,0.35) !important;
+}
+.ft-side .ft-sb.sell.on {
+  background: linear-gradient(180deg, #ff7a8c, #e5546a) !important;
+  color: #2a0509 !important;
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.30),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    inset 0 0 0 1px rgba(255,255,255,0.14),
+    0 1px 3px rgba(0,0,0,0.35) !important;
+}
+
+
+/* placeholder removed — see unified system above */
+  position: relative;
+  border: 0 !important;
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  text-transform: none;
+  color: var(--ink) !important;
+  transition: transform .14s cubic-bezier(0.2, 0.8, 0.2, 1),
+              box-shadow .18s, filter .18s;
+}
+.btn-submit::before, .ladder-foot .buy::before, .ladder-foot .sell::before,
+.ft-submit::before {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0));
+  pointer-events: none;
+  opacity: 0.9;
+}
+.btn-submit:active, .ladder-foot .buy:active, .ladder-foot .sell:active,
+.ft-submit:active { transform: translateY(0) scale(0.98); filter: brightness(0.95); }
+
+.btn-submit {
+  width: 100%;
+  padding: 12px 18px !important;
+  font-size: 12.5px !important;
+  border-radius: var(--r-sm) !important;
+  background: linear-gradient(180deg, #87ceff 0%, #4ea3e6 100%) !important;
+  color: #061021 !important;
+  border: 1px solid rgba(124,201,255,0.92) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.55),
+    inset 0 -1px 0 rgba(0,0,0,0.25),
+    inset 0 0 0 1px rgba(255,255,255,0.18),
+    0 0 0 1px rgba(0,0,0,0.35),
+    0 1px 2px rgba(0,0,0,0.30),
+    0 8px 22px rgba(124,201,255,0.34);
+}
+.btn-submit:hover {
+  transform: translateY(-1px);
+  background: linear-gradient(180deg, #9bd9ff 0%, #5fb4f4 100%) !important;
+  border-color: rgba(255,255,255,0.65) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.65),
+    inset 0 -1px 0 rgba(0,0,0,0.25),
+    inset 0 0 0 1px rgba(255,255,255,0.28),
+    0 0 0 1px rgba(0,0,0,0.45),
+    0 4px 8px rgba(0,0,0,0.32),
+    0 14px 34px rgba(124,201,255,0.48);
+}
+
+.btn-submit.buy, .ladder-foot .buy, .ft-submit.buy {
+  background: linear-gradient(180deg, #6fe5b8 0%, #3aba85 100%) !important;
+  color: #052a1a !important;
+  border: 1px solid rgba(95,214,168,0.95) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.50),
+    inset 0 -1px 0 rgba(0,0,0,0.25),
+    inset 0 0 0 1px rgba(255,255,255,0.20),
+    0 0 0 1px rgba(0,0,0,0.35),
+    0 1px 2px rgba(0,0,0,0.30),
+    0 8px 22px rgba(95,214,168,0.36);
+}
+.btn-submit.buy:hover, .ladder-foot .buy:hover, .ft-submit.buy:hover {
+  transform: translateY(-1px);
+  background: linear-gradient(180deg, #84ecc4 0%, #4fce96 100%) !important;
+  border-color: rgba(255,255,255,0.68) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.60),
+    inset 0 -1px 0 rgba(0,0,0,0.25),
+    inset 0 0 0 1px rgba(255,255,255,0.32),
+    0 0 0 1px rgba(0,0,0,0.45),
+    0 4px 8px rgba(0,0,0,0.32),
+    0 14px 34px rgba(95,214,168,0.50);
+}
+
+.btn-submit.sell, .ladder-foot .sell, .ft-submit.sell {
+  background: linear-gradient(180deg, #ff8a9a 0%, #e5546a 100%) !important;
+  color: #2a0509 !important;
+  border: 1px solid rgba(255,122,140,0.95) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.50),
+    inset 0 -1px 0 rgba(0,0,0,0.25),
+    inset 0 0 0 1px rgba(255,255,255,0.20),
+    0 0 0 1px rgba(0,0,0,0.35),
+    0 1px 2px rgba(0,0,0,0.30),
+    0 8px 22px rgba(255,122,140,0.36);
+}
+.btn-submit.sell:hover, .ladder-foot .sell:hover, .ft-submit.sell:hover {
+  transform: translateY(-1px);
+  background: linear-gradient(180deg, #ff9bab 0%, #ed6479 100%) !important;
+  border-color: rgba(255,255,255,0.68) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.60),
+    inset 0 -1px 0 rgba(0,0,0,0.25),
+    inset 0 0 0 1px rgba(255,255,255,0.32),
+    0 0 0 1px rgba(0,0,0,0.45),
+    0 4px 8px rgba(0,0,0,0.32),
+    0 14px 34px rgba(255,122,140,0.50);
+}
+
+/* SEGMENTED CONTROLS (Buy/Sell toggle, TF segments, TIF) */
+.seg, .tif, .ft-row .seg, .apex-toolbar .seg-tf {
+  background: rgba(0,0,0,0.18) !important;
+  border-radius: 7px !important;
+  padding: 2px !important;
+  gap: 1px;
+  box-shadow:
+    inset 0 1px 1px rgba(0,0,0,0.25),
+    inset 0 0 0 1px rgba(255,255,255,0.04);
+}
+.seg > button, .tif > div, .ft-row .seg span, .apex-toolbar .seg-tf .seg-btn {
+  border-radius: 5px !important;
+  padding: 6px 12px !important;
+  font-size: 11px;
+  letter-spacing: -0.005em;
+  color: var(--muted) !important;
+  text-transform: none;
+  font-weight: 500;
+  font-family: 'Inter', sans-serif !important;
+  transition: background .12s, color .12s, box-shadow .12s;
+  background: transparent !important;
+  border: 0 !important;
+}
+.seg > button:hover, .tif > div:hover, .ft-row .seg span:hover,
+.apex-toolbar .seg-tf .seg-btn:hover {
+  color: var(--ink-2) !important;
+  background: rgba(255,255,255,0.03) !important;
+}
+.seg > button.on, .tif > div.on, .ft-row .seg span.on,
+.apex-toolbar .seg-tf .seg-btn.on {
+  background: linear-gradient(180deg, var(--surf-4), var(--surf-3)) !important;
+  color: var(--ink) !important;
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.18),
+    inset 0 -1px 0 rgba(0,0,0,0.20),
+    inset 0 0 0 1px rgba(255,255,255,0.14),
+    0 0 0 1px rgba(0,0,0,0.45),
+    0 2px 6px rgba(0,0,0,0.40) !important;
+}
+.seg > button.on.buy, .ft-row .seg span.on.buy {
+  background: linear-gradient(180deg, rgba(95,214,168,0.38), rgba(95,214,168,0.22)) !important;
+  color: #052a1a !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.30),
+    inset 0 0 0 1px rgba(95,214,168,0.45),
+    0 1px 2px rgba(0,0,0,0.20),
+    0 2px 8px rgba(95,214,168,0.24) !important;
+}
+.seg > button.on.sell, .ft-row .seg span.on.sell {
+  background: linear-gradient(180deg, rgba(255,122,140,0.38), rgba(255,122,140,0.22)) !important;
+  color: #2a0509 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.30),
+    inset 0 0 0 1px rgba(255,122,140,0.45),
+    0 1px 2px rgba(0,0,0,0.20),
+    0 2px 8px rgba(255,122,140,0.24) !important;
+}
+.tif > div.on {
+  background: linear-gradient(180deg, var(--surf-4), var(--surf-3)) !important;
+  color: var(--ink) !important;
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.14),
+    inset 0 0 0 1px rgba(255,255,255,0.08),
+    0 1px 3px rgba(0,0,0,0.25) !important;
+}
+
+/* INPUTS — refined wells with focus ring */
+.input, .ft-grid .ipt, .apex-ticket .in {
+  background: rgba(0,0,0,0.22) !important;
+  border-radius: 7px !important;
+  padding: 9px 12px !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink) !important;
+  box-shadow:
+    inset 0 1px 1px rgba(0,0,0,0.30),
+    inset 0 0 0 1px rgba(255,255,255,0.05);
+  transition: box-shadow .15s, background .15s;
+}
+.input:focus-within, .ft-grid .ipt:focus-within, .apex-ticket .in:focus-within {
+  background: rgba(0,0,0,0.28) !important;
+  box-shadow:
+    inset 0 1px 1px rgba(0,0,0,0.30),
+    inset 0 0 0 1px rgba(124,201,255,0.45),
+    0 0 0 3px rgba(124,201,255,0.14);
+}
+.input .stepper { gap: 4px; }
+.input .stepper span {
+  width: 24px; height: 24px;
+  background: linear-gradient(180deg, var(--surf-3), var(--surf-2)) !important;
+  border-radius: 6px !important;
+  border: 0 !important;
+  color: var(--ink-2);
+  font-size: 13px;
+  display: grid; place-items: center;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.10),
+    inset 0 0 0 1px rgba(255,255,255,0.06),
+    0 1px 2px rgba(0,0,0,0.25);
+  transition: background .12s;
+}
+.input .stepper span:hover {
+  background: linear-gradient(180deg, var(--surf-4), var(--surf-3)) !important;
+  color: var(--ink);
+}
+
+/* GHOST BUTTONS — nav, qa, toolbar btns — sharper active state */
+.nav-item, .qa, .apex-toolbar .btn,
+.chart-toolbar .tf, .chart-tools .t,
+.alto-pill {
+  position: relative;
+  transition: background .14s, color .14s, box-shadow .14s;
+}
+.nav-item.on, .qa.on, .apex-toolbar .btn.on,
+.chart-toolbar .tf.on, .chart-tools .t.on {
+  background: linear-gradient(180deg, var(--surf-4), var(--surf-3)) !important;
+  color: var(--ink) !important;
+  font-weight: 600 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.16),
+    inset 0 -1px 0 rgba(0,0,0,0.16),
+    inset 0 0 0 1px rgba(255,255,255,0.12),
+    0 0 0 1px rgba(0,0,0,0.40),
+    0 1px 4px rgba(0,0,0,0.30) !important;
+}
+
+/* MINI TICKET (apex sub-charts) — proper buttons */
+.apex-mini-ticket .btn {
+  border-radius: var(--r-sm) !important;
+  padding: 6px 12px !important;
+  font-size: 10.5px !important;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  border: 0 !important;
+  font-family: 'Inter', sans-serif !important;
+  text-transform: none;
+  transition: transform .12s, box-shadow .14s;
+}
+.apex-mini-ticket .btn:hover { transform: translateY(-1px); }
+.apex-mini-ticket .btn.buy {
+  background: linear-gradient(180deg, #6fe5b8 0%, #3aba85 100%) !important;
+  color: #052a1a !important;
+  border: 1px solid rgba(95,214,168,0.95) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.50),
+    inset 0 -1px 0 rgba(0,0,0,0.22),
+    inset 0 0 0 1px rgba(255,255,255,0.20),
+    0 0 0 1px rgba(0,0,0,0.35),
+    0 1px 2px rgba(0,0,0,0.28),
+    0 4px 12px rgba(95,214,168,0.34);
+}
+.apex-mini-ticket .btn.sell {
+  background: linear-gradient(180deg, #ff8a9a 0%, #e5546a 100%) !important;
+  color: #2a0509 !important;
+  border: 1px solid rgba(255,122,140,0.95) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.50),
+    inset 0 -1px 0 rgba(0,0,0,0.22),
+    inset 0 0 0 1px rgba(255,255,255,0.20),
+    0 0 0 1px rgba(0,0,0,0.35),
+    0 1px 2px rgba(0,0,0,0.28),
+    0 4px 12px rgba(255,122,140,0.34);
+}
+
+/* QUICK ORDER PILLS (BUY MKT / SELL MKT / BUY LMT / SELL LMT in Trade) — match primary system */
+.trade-page button, button.qbuy, button.qsell {
+  border-radius: var(--r-sm) !important;
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.005em !important;
+  text-transform: none !important;
+  border: 0 !important;
+  transition: transform .12s, box-shadow .14s;
+}
+
+
+/* === CHART === */
+.chart-toolbar { padding: 8px 12px; background: transparent !important; gap: 2px; }
+.chart-toolbar .grp { gap: 2px; padding: 0 4px; }
+.chart-toolbar .tf {
+  border-radius: var(--r-pill) !important;
+  padding: 6px 12px !important;
+  margin: 0 1px;
+  color: var(--muted) !important;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  transition: background .12s, color .12s;
+}
+.chart-toolbar .tf:hover { background: var(--surf) !important; color: var(--ink) !important; }
+.chart-toolbar .tf.on {
+  background: var(--surf-3) !important;
+  color: var(--ink) !important;
+  box-shadow: var(--inset-2);
+}
+.chart-tools { background: transparent; width: 40px; padding: 4px 0; }
+.chart-tools .t {
+  width: 32px; height: 32px;
+  margin: 2px 4px;
+  border-radius: var(--r-sm) !important;
+  color: var(--muted) !important;
+}
+.chart-tools .t:hover, .chart-tools .t.on {
+  background: var(--surf-2) !important;
+  color: var(--ink) !important;
+  box-shadow: var(--inset);
+}
+.chart-canvas { background: transparent !important; }
+
+/* === APEX layout === */
+.apex { gap: var(--gut); padding: 0 var(--gut) var(--gut); }
+.apex-toolbar {
+  background: var(--surf-2) !important;
+  backdrop-filter: blur(24px) saturate(150%);
+  border-radius: var(--r-md) !important;
+  box-shadow: var(--inset), var(--soft-shadow) !important;
+  margin: 6px 0 var(--gut);
+  height: 40px !important;
+  padding: 0 8px !important;
+  gap: 3px !important;
+  align-items: center;
+}
+.apex-toolbar .grp { padding: 0 4px !important; gap: 1px !important; align-items: center; }
+.apex-toolbar .lab {
+  color: var(--muted) !important;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  margin-right: 6px;
+  font-weight: 600;
+}
+.apex-toolbar .btn {
+  border-radius: 6px !important;
+  padding: 5px 10px !important;
+  height: 26px;
+  display: inline-flex !important;
+  align-items: center;
+  color: var(--muted) !important;
+  font-size: 11px;
+  letter-spacing: -0.005em;
+  font-family: 'Inter', sans-serif !important;
+  text-transform: none;
+  font-weight: 500;
+  transition: background .14s, color .14s, box-shadow .14s;
+}
+.apex-toolbar .btn:hover { background: var(--surf) !important; color: var(--ink-2) !important; }
+.apex-toolbar .btn.on {
+  background: var(--surf-3) !important;
+  color: var(--ink) !important;
+  font-weight: 600;
+  box-shadow: var(--inset-2);
+}
+.apex-toolbar .btn.acc { color: var(--accent) !important; }
+.apex-toolbar .seg-tf {
+  background: var(--surf) !important;
+  border-radius: 6px !important;
+  padding: 2px !important;
+  gap: 1px;
+  box-shadow: var(--inset);
+}
+.apex-toolbar .seg-tf .seg-btn {
+  border-radius: 4px !important;
+  padding: 4px 9px !important;
+  font-size: 10.5px;
+  color: var(--muted) !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-weight: 500;
+  transition: background .12s, color .12s;
+}
+.apex-toolbar .seg-tf .seg-btn:hover { color: var(--ink-2) !important; }
+.apex-toolbar .seg-tf .seg-btn.on {
+  background: linear-gradient(180deg, var(--surf-4), var(--surf-3)) !important;
+  color: var(--ink) !important;
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    inset 0 0 0 1px rgba(255,255,255,0.08),
+    0 1px 3px rgba(0,0,0,0.18) !important;
+}
+.apex-toolbar .grp.tic {
+  background: var(--surf) !important;
+  border-radius: 6px !important;
+  margin: 0 6px 0 0;
+  padding: 0 12px !important;
+  height: 28px;
+  box-shadow: var(--inset);
+}
+.apex-toolbar .grp.tic .acc-dot {
+  width: 8px; height: 8px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)) !important;
+  box-shadow: 0 0 8px rgba(124, 201, 255, 0.55);
+  border-radius: 50%;
+}
+.apex-toolbar .grp.tic .sym { font-weight: 600; font-size: 12px; }
+.apex-toolbar .grp.tic .name { color: var(--muted) !important; font-size: 10.5px; }
+
+.apex-grid { gap: var(--gut) !important; }
+.apex-cell {
+  background: var(--surf) !important;
+  backdrop-filter: blur(16px) saturate(140%);
+  border-radius: var(--r-md) !important;
+  box-shadow: var(--inset), var(--soft-shadow) !important;
+  overflow: hidden !important;
+}
+.ladder-wrap { background: transparent !important; padding: 4px; }
+.ladder-head {
+  background: transparent !important;
+}
+.ladder-head span {
+  font-family: 'JetBrains Mono', monospace !important;
+  color: var(--muted) !important;
+  font-size: 9.5px;
+}
+.ladder-row {
+  border-radius: 4px;
+  margin: 0 4px;
+}
+.ladder-row .price-cell {
+  background: transparent !important;
+  font-family: 'JetBrains Mono', monospace !important;
+}
+.ladder-row.last {
+  background: rgba(124,201,255,0.12) !important;
+  margin: 2px 4px;
+  border-radius: 4px;
+}
+.ladder-row.last .price-cell {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)) !important;
+  color: var(--bg) !important;
+  border-radius: 4px;
+  font-weight: 700;
+}
+.ladder-foot { background: transparent !important; padding: 6px; gap: 6px; display: flex; }
+.ladder-foot .btn {
+  flex: 1;
+  text-align: center;
+  padding: 9px !important;
+  font-size: 10.5px !important;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  border-radius: var(--r-sm) !important;
+  text-transform: none;
+  transition: transform .12s, box-shadow .14s;
+}
+.ladder-foot .btn:hover { transform: translateY(-1px); }
+.ladder-foot .buy {
+  background: linear-gradient(180deg, rgba(95,214,168,0.32), rgba(95,214,168,0.20)) !important;
+  color: var(--ink) !important;
+  box-shadow: 0 2px 10px rgba(95,214,168,0.25);
+}
+.ladder-foot .sell {
+  background: linear-gradient(180deg, rgba(255,122,140,0.32), rgba(255,122,140,0.20)) !important;
+  color: var(--ink) !important;
+  box-shadow: 0 2px 10px rgba(255,122,140,0.25);
+}
+
+.apex-chart-head { background: transparent !important; padding: 10px 14px !important; }
+.apex-chart-head .sym { font-weight: 600; font-size: 13px; }
+.apex-chart-head .tf { color: var(--muted) !important; font-size: 10.5px; }
+.apex-chart-head .acc-dot {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)) !important;
+  box-shadow: 0 0 8px rgba(124,201,255,0.55);
+}
+.apex-chart-body { background: transparent !important; }
+.apex-mini-ticket { background: transparent !important; padding: 8px 14px; gap: 8px; }
+.apex-mini-ticket .grp { padding-right: 12px; }
+.apex-mini-ticket .btn {
+  border-radius: var(--r-pill) !important;
+  padding: 6px 14px !important;
+  font-size: 10.5px !important;
+}
+.apex-mini-ticket .btn.buy {
+  background: linear-gradient(180deg, rgba(95,214,168,0.32), rgba(95,214,168,0.20)) !important;
+  color: var(--ink) !important;
+}
+.apex-mini-ticket .btn.sell {
+  background: linear-gradient(180deg, rgba(255,122,140,0.32), rgba(255,122,140,0.20)) !important;
+  color: var(--ink) !important;
+}
+
+.apex-rail { background: transparent; padding: 0; }
+.rail-head {
+  background: transparent !important;
+  padding: 12px 14px !important;
+}
+.rail-head .num {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)) !important;
+  color: var(--bg) !important;
+  border-radius: 4px;
+}
+.rail-head .nm { font-weight: 600; font-size: 12px; letter-spacing: -0.005em; text-transform: none; }
+.rail-search { padding: 8px 14px; background: var(--surf); margin: 0 8px; border-radius: var(--r-pill); }
+.rail-list { padding: 4px 6px; }
+.rail-row { padding: 8px 10px; border-radius: var(--r-sm) !important; margin: 2px 0; }
+.rail-row:hover { background: var(--surf) !important; }
+.rail-row.on { background: rgba(124,201,255,0.14) !important; box-shadow: inset 2px 0 0 var(--accent); }
+
+/* === FLOATING TICKET === */
+.float-tkt {
+  background: rgba(20, 29, 58, 0.85) !important;
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  border-radius: var(--r-lg) !important;
+  box-shadow: var(--inset-2), var(--soft-shadow-lg) !important;
+  overflow: hidden;
+}
+.ft-head { padding: 14px 18px !important; }
+.ft-head .acc-dot {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)) !important;
+  box-shadow: 0 0 8px rgba(124,201,255,0.55);
+}
+.ft-head .ttl { font-size: 10px; letter-spacing: 0.1em; color: var(--muted); }
+.ft-head .sym { font-weight: 600; font-size: 13px; color: var(--ink); }
+.ft-quote .qcol { padding: 12px 16px !important; }
+.ft-quote .qcol.main { background: var(--surf) !important; }
+.ft-quote .lab { font-size: 9.5px; color: var(--muted); }
+.ft-quote .v { font-family: 'JetBrains Mono', monospace !important; font-size: 18px; font-weight: 500; }
+.ft-quote .qcol.main .v { font-size: 22px; }
+
+.ft-side { padding: 8px 12px 0; gap: 8px; display: flex; }
+.ft-side .ft-sb {
+  flex: 1;
+  border-radius: var(--r-sm) !important;
+  padding: 10px 14px !important;
+  font-size: 11px !important;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  text-align: center;
+  background: var(--surf) !important;
+  color: var(--muted) !important;
+  transition: background .15s, color .15s, box-shadow .15s;
+  cursor: pointer;
+  text-transform: none;
+}
+.ft-side .ft-sb:hover { color: var(--ink-2) !important; background: var(--surf-2) !important; }
+.ft-side .ft-sb.buy.on {
+  background: linear-gradient(180deg, rgba(95,214,168,0.32), rgba(95,214,168,0.20)) !important;
+  color: var(--ink) !important;
+  box-shadow: 0 2px 10px rgba(95,214,168,0.30);
+}
+.ft-side .ft-sb.sell.on {
+  background: linear-gradient(180deg, rgba(255,122,140,0.32), rgba(255,122,140,0.20)) !important;
+  color: var(--ink) !important;
+  box-shadow: 0 2px 10px rgba(255,122,140,0.30);
+}
+
+.ft-row { padding: 10px 14px !important; gap: 10px; }
+.ft-row .lab { font-size: 9.5px; color: var(--muted); }
+.ft-row .seg {
+  background: var(--surf) !important;
+  border-radius: var(--r-pill) !important;
+  padding: 3px !important;
+}
+.ft-row .seg span {
+  border-radius: var(--r-pill) !important;
+  padding: 6px 10px !important;
+  font-size: 10px;
+  color: var(--muted) !important;
+}
+.ft-row .seg span.on {
+  background: var(--surf-3) !important;
+  color: var(--ink) !important;
+  box-shadow: var(--inset-2);
+}
+
+.ft-grid { padding: 6px 8px; gap: 0; }
+.ft-grid .fld { padding: 8px 8px !important; }
+.ft-grid .lab { font-size: 9.5px; color: var(--muted); }
+.ft-grid .ipt {
+  background: var(--surf) !important;
+  border-radius: var(--r-md) !important;
+  margin-top: 4px;
+  padding: 0 !important;
+  box-shadow: var(--inset);
+}
+.ft-grid .ipt input {
+  font-family: 'JetBrains Mono', monospace !important;
+  color: var(--ink) !important;
+  font-size: 14px !important;
+  font-weight: 500;
+  padding: 9px 12px !important;
+}
+.ft-grid .presets { margin-top: 6px; gap: 4px; }
+.ft-grid .presets span {
+  border-radius: var(--r-pill) !important;
+  padding: 4px 10px !important;
+  background: var(--surf);
+  font-size: 9.5px !important;
+  color: var(--muted) !important;
+}
+.ft-grid .presets span:hover { background: var(--surf-2); color: var(--ink) !important; }
+
+.ft-summary { background: var(--surf) !important; padding: 12px 18px !important; }
+.ft-summary .lab { color: var(--muted); font-size: 9.5px; }
+.ft-summary .v { font-family: 'JetBrains Mono', monospace !important; font-size: 12px !important; }
+
+.ft-submit {
+  margin: 12px;
+  border-radius: var(--r-md) !important;
+  padding: 14px !important;
+  font-size: 12px !important;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.ft-submit.buy {
+  background: linear-gradient(180deg, rgba(95,214,168,0.34), rgba(95,214,168,0.22)) !important;
+  color: var(--ink) !important;
+  box-shadow: 0 4px 18px rgba(95,214,168,0.30), var(--inset-2);
+}
+.ft-submit.sell {
+  background: linear-gradient(180deg, rgba(255,122,140,0.34), rgba(255,122,140,0.22)) !important;
+  color: var(--ink) !important;
+  box-shadow: 0 4px 18px rgba(255,122,140,0.30), var(--inset-2);
+}
+
+/* === COMMAND PALETTE === */
+.cmdv2 {
+  background: rgba(20, 29, 58, 0.85) !important;
+  backdrop-filter: blur(28px) saturate(160%);
+  border-radius: var(--r-lg) !important;
+  box-shadow: var(--inset-2), var(--soft-shadow-lg) !important;
+  overflow: hidden;
+}
+.cmdv2-input { padding: 18px 24px !important; }
+.cmdv2-input .gt {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)) !important;
+  color: var(--bg) !important;
+  border-radius: var(--r-sm) !important;
+  padding: 4px 8px;
+  font-weight: 700;
+  font-size: 11px;
+}
+.cmdv2-input input { color: var(--ink) !important; font-size: 18px; }
+.cmdv2-pills { padding: 10px 24px !important; gap: 6px; }
+.cmdv2-pill {
+  background: var(--surf);
+  border-radius: var(--r-pill);
+  padding: 4px 10px;
+  font-size: 10.5px;
+}
+.cmdv2-body { display: grid !important; grid-template-columns: 1fr 320px; }
+.cmdv2-list { padding: 8px !important; }
+.cmdv2-row {
+  border-radius: var(--r-sm) !important;
+  padding: 10px 14px !important;
+  margin: 2px 0;
+}
+.cmdv2-row.on { background: var(--surf-2) !important; }
+.cmdv2-detail { background: var(--surf); padding: 18px 22px; }
+.cmdv2-foot { padding: 10px 24px; background: var(--surf); }
+
+/* === SIDEBARS === */
+.sb {
+  background: rgba(20, 29, 58, 0.85) !important;
+  backdrop-filter: blur(28px) saturate(160%);
+  border-radius: var(--r-lg) 0 0 var(--r-lg) !important;
+  box-shadow: var(--inset-2), var(--soft-shadow-lg) !important;
+  margin: var(--gut) 0;
+  height: calc(100vh - 2 * var(--gut)) !important;
+}
+.sb-head { padding: 16px 20px !important; }
+.sb-dot {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)) !important;
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(124,201,255,0.55);
+}
+.sb-ttl { font-weight: 600; font-size: 13px; text-transform: none; letter-spacing: -0.005em; color: var(--ink); }
+
+/* === DROPDOWNS, CONTEXT MENUS, POPOVERS === */
+.tb-drop, .ctx-menu, .tools-pop, .ovl-drop {
+  background: rgba(20, 29, 58, 0.92) !important;
+  backdrop-filter: blur(24px) saturate(160%);
+  border-radius: var(--r-md) !important;
+  box-shadow: var(--inset-2), var(--soft-shadow-lg) !important;
+  overflow: hidden;
+  padding: 6px !important;
+}
+.tb-drop-head, .ctx-sec, .od-sec {
+  padding: 8px 12px !important;
+  color: var(--muted) !important;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+}
+.tb-drop-row, .ctx-row, .od-row {
+  border-radius: var(--r-sm) !important;
+  padding: 9px 12px !important;
+  margin: 2px 0;
+}
+.tb-drop-row:hover, .ctx-row:hover, .od-row:hover { background: var(--surf-2) !important; }
+.tb-drop-row.on { background: var(--surf-3) !important; }
+.ctx-row .ic {
+  background: var(--surf-2) !important;
+  border-radius: 4px !important;
+  width: 22px; height: 22px;
+}
+
+/* === SETTINGS MODAL === */
+.setm {
+  background: rgba(20, 29, 58, 0.92) !important;
+  backdrop-filter: blur(28px) saturate(160%);
+  border-radius: var(--r-lg) !important;
+  box-shadow: var(--inset-2), var(--soft-shadow-lg) !important;
+}
+.setm-head { padding: 18px 24px !important; }
+.setm-tabs .tab { color: var(--muted); padding: 10px 0 12px; }
+.setm-tabs .tab.on { color: var(--accent) !important; }
+
+/* === TICKET TOOLTIP === */
+.apex-tt {
+  background: rgba(20, 29, 58, 0.92) !important;
+  backdrop-filter: blur(20px) saturate(150%);
+  border-radius: var(--r-md) !important;
+  box-shadow: var(--inset), var(--soft-shadow) !important;
+  padding: 10px 14px !important;
+}
+
+/* === ACCENT DOTS === */
+.acc, .accent { color: var(--accent) !important; }
+
+/* === HEATMAP TILES === */
+.htile {
+  border-radius: var(--r-sm);
+  margin: 1px;
+}
+
+/* === SCROLLBARS === */
+*::-webkit-scrollbar { width: 10px !important; height: 10px !important; }
+*::-webkit-scrollbar-track { background: transparent !important; }
+*::-webkit-scrollbar-thumb { background: transparent !important; transition: background .2s; }
+*:hover::-webkit-scrollbar-thumb {
+  background: var(--surf-3) !important;
+  border-radius: 99px !important;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--accent) !important;
+  box-shadow: 0 0 8px rgba(124,201,255,0.55);
+}
+* { scrollbar-color: transparent transparent; }
+*:hover { scrollbar-color: var(--accent) transparent; }
+
+/* === LIVE CARDS / OPS / ETC === */
+.options-page .body, .research-page .body, .risk-page .body,
+.portfolio-page .body { background: transparent; }
+
+/* === BORDER STRENGTH OVERRIDE === */
+[data-borders="strong"], [data-borders="subtle"], [data-borders="default"], [data-borders="off"] {
+  --hair: transparent;
+  --rule: transparent;
+}
+[data-borders="strong"] .panel { box-shadow: var(--inset-2), var(--soft-shadow) !important; }
+[data-borders="subtle"] .panel { box-shadow: var(--inset), var(--soft-shadow) !important; }
+[data-borders="off"] .panel { box-shadow: var(--soft-shadow) !important; }
+
+/* Headings */
+.bignum, .midnum { color: var(--ink); }
+hr { background: transparent !important; }
+
+
+/* === Late-cascade unifiers — pin the stragglers to the new system === */
+
+/* Watchlist row hover: keep flat, no left rounding */
+.wl-row > div:first-child,
+.wl-row > div:last-child { border-radius: 0 !important; }
+.wl-row.on > div:first-child {
+  box-shadow: inset 2px 0 0 var(--accent) !important;
+  border-radius: 0 !important;
+}
+
+/* Apex toolbar Ticket button (on:true) — match other toolbar active states exactly */
+.apex-toolbar .btn.on {
+  background: linear-gradient(180deg, var(--surf-4), var(--surf-3)) !important;
+  color: var(--ink) !important;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.14),
+    inset 0 -1px 0 rgba(0,0,0,0.16),
+    inset 0 0 0 1px rgba(255,255,255,0.10),
+    0 1px 3px rgba(0,0,0,0.35) !important;
+}
+.apex-toolbar .btn.on.acc {
+  background: linear-gradient(180deg, var(--surf-4), var(--surf-3)) !important;
+  color: var(--accent) !important;
+}
+
+/* Apex mini ticket (under SPY) — same unified primary look */
+.apex-mini-ticket .btn,
+.apex-mini-ticket .btn.buy,
+.apex-mini-ticket .btn.sell {
+  border-radius: 6px !important;
+  padding: 7px 14px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  font-family: 'Inter', sans-serif !important;
+  text-transform: none !important;
+  letter-spacing: -0.005em !important;
+  border: 0 !important;
+  cursor: pointer;
+  transition: transform .14s, filter .15s, box-shadow .15s;
+}
+.apex-mini-ticket .btn.buy {
+  background: linear-gradient(180deg, #5fd6a8, #3aba85) !important;
+  color: #052a1a !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.30),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    inset 0 0 0 1px rgba(255,255,255,0.14),
+    0 1px 3px rgba(0,0,0,0.35) !important;
+}
+.apex-mini-ticket .btn.sell {
+  background: linear-gradient(180deg, #ff7a8c, #e5546a) !important;
+  color: #2a0509 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.30),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    inset 0 0 0 1px rgba(255,255,255,0.14),
+    0 1px 3px rgba(0,0,0,0.35) !important;
+}
+.apex-mini-ticket .btn:hover { transform: translateY(-1px); filter: brightness(1.08); }
+
+/* Order ticket bottom submit — identical to .btn-submit */
+.ft-submit, .ft-submit.buy, .ft-submit.sell {
+  border-radius: 6px !important;
+  padding: 11px 18px !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  font-family: 'Inter', sans-serif !important;
+  text-transform: none !important;
+  letter-spacing: -0.005em !important;
+  text-align: center;
+  cursor: pointer;
+  border: 0 !important;
+}
+.ft-submit.buy {
+  background: linear-gradient(180deg, #5fd6a8, #3aba85) !important;
+  color: #052a1a !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.30),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    inset 0 0 0 1px rgba(255,255,255,0.14),
+    0 1px 3px rgba(0,0,0,0.35) !important;
+}
+.ft-submit.sell {
+  background: linear-gradient(180deg, #ff7a8c, #e5546a) !important;
+  color: #2a0509 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.30),
+    inset 0 -1px 0 rgba(0,0,0,0.18),
+    inset 0 0 0 1px rgba(255,255,255,0.14),
+    0 1px 3px rgba(0,0,0,0.35) !important;
+}
+.ft-submit:hover { transform: translateY(-1px); filter: brightness(1.08); }

@@ -1,0 +1,1167 @@
+/* Alto Trading App — Zed-inspired warm dark with subtle bevels */
+
+:root{
+  /* Warm dark surface stack — closer to Zed's One Dark warm */
+  --bg-0: #15120e;       /* deepest — body */
+  --bg-1: #1c1814;       /* panel */
+  --bg-2: #221d18;       /* card */
+  --bg-3: #2a241e;       /* raised / hover */
+  --bg-4: #332b24;       /* input well bottom */
+  --bg-5: #3d3429;       /* button face top */
+
+  --line-1: #2f2820;     /* hairline */
+  --line-2: #3d342b;     /* divider stronger */
+  --line-3: #4a4035;     /* loud divider (panel splits) */
+
+  /* Type tones */
+  --ink-0: #efe7d8;      /* primary text */
+  --ink-1: #cfc6b6;      /* secondary */
+  --ink-2: #9c9385;      /* tertiary / labels */
+  --ink-3: #6b6358;      /* muted */
+  --ink-4: #4a4339;      /* almost background */
+
+  /* Accent — amber by default; overridden by JS */
+  --accent: #d99858;
+  --accent-soft: #d9985830;
+  --accent-glow: #d9985824;
+  --accent-ink: #f5cfa3;
+
+  /* Trade colors — slightly more saturated than terminal default */
+  --buy:  #6fbf73;
+  --buy-soft: #6fbf7322;
+  --buy-ink: #b3e6b6;
+  --sell: #e25d5d;
+  --sell-soft: #e25d5d22;
+  --sell-ink: #f3a8a8;
+
+  /* Subtle bevel ingredients */
+  --hi-1: rgba(255,238,210,.06);   /* top inner highlight */
+  --hi-2: rgba(255,238,210,.10);
+  --sh-1: rgba(0,0,0,.35);
+  --sh-2: rgba(0,0,0,.55);
+
+  /* Geometry */
+  --r-1: 2px;
+  --r-2: 4px;
+  --r-3: 6px;
+  --r-4: 8px;
+
+  /* Type */
+  --sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Menlo", monospace;
+}
+
+/* ── Light theme — TE-aluminum / cream paper ──────────────── */
+:root.light{
+  --bg-0: #ecebe7;
+  --bg-1: var(--bg-1);
+  --bg-2: var(--bg-2);
+  --bg-3: var(--bg-3);
+  --bg-4: var(--bg-4);
+  --bg-5: #e7e3da;
+
+  --line-1: #d8d3c8;
+  --line-2: #c4bdaf;
+  --line-3: #a89f8d;
+
+  --ink-0: #1f1c16;
+  --ink-1: #3d3830;
+  --ink-2: #6e6557;
+  --ink-3: #948b7c;
+  --ink-4: var(--line-3);
+
+  --hi-1: rgba(255,255,255,.55);
+  --hi-2: rgba(255,255,255,.85);
+  --sh-1: rgba(0,0,0,.10);
+  --sh-2: rgba(0,0,0,.18);
+
+  --accent-soft: #d9985840;
+  --accent-glow: #d9985830;
+  --accent-ink: #8a4f1c;
+
+  --buy: #2e8a3a;
+  --buy-soft: #2e8a3a22;
+  --buy-ink: #1c5a23;
+  --sell: #c43d3d;
+  --sell-soft: #c43d3d22;
+  --sell-ink: #7a2222;
+}
+:root.light body{
+  background:
+    radial-gradient(1200px 800px at 70% -10%, color-mix(in oklab, var(--bg-1) 70%, white) 0, transparent 60%),
+    radial-gradient(900px 700px at -10% 110%, color-mix(in oklab, var(--bg-3) 50%, transparent) 0, transparent 60%),
+    var(--bg-0);
+}
+
+/* Light-mode bevel overrides — softer, brushed metal */
+:root.light .card{
+  background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 100%);
+  border: 1px solid var(--line-3);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.85),
+    inset 0 -1px 0 rgba(0,0,0,.06),
+    0 1px 0 rgba(0,0,0,.05),
+    0 8px 22px -14px rgba(0,0,0,.18);
+}
+:root.light .card-flat{
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.7), inset 0 -1px 0 rgba(0,0,0,.04);
+}
+:root.light .btn{
+  background: linear-gradient(180deg, var(--bg-5) 0%, var(--bg-3) 100%);
+  color: var(--ink-0);
+  border: 1px solid var(--line-3);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.85),
+    inset 0 -1px 0 rgba(0,0,0,.06),
+    0 1px 0 rgba(0,0,0,.04);
+}
+:root.light .btn-ghost{ border-color: transparent; background: transparent; box-shadow:none; }
+:root.light .btn-ghost:hover{ background: rgba(0,0,0,.04); }
+:root.light .well{
+  background: linear-gradient(180deg, var(--bg-4), var(--bg-3));
+  border: 1px solid var(--line-3);
+  box-shadow:
+    inset 0 2px 3px rgba(0,0,0,.12),
+    inset 0 -1px 0 rgba(255,255,255,.6);
+}
+:root.light .knob{
+  background:
+    radial-gradient(circle at 30% 25%, #ffffff 0%, var(--bg-2) 50%, var(--bg-4) 100%);
+  border:1px solid var(--line-3);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.95),
+    inset 0 -1px 1px rgba(0,0,0,.15),
+    0 1px 2px rgba(0,0,0,.15);
+  color: var(--ink-1);
+}
+:root.light .stp{
+  background: linear-gradient(180deg, var(--bg-4), var(--bg-3));
+  border: 1px solid var(--line-3);
+  box-shadow: inset 0 2px 3px rgba(0,0,0,.12), inset 0 -1px 0 rgba(255,255,255,.6);
+}
+:root.light .stp .stp-b{
+  background: linear-gradient(180deg, var(--bg-5), var(--bg-3));
+  border: 1px solid var(--line-3);
+  color: var(--ink-1);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.85), inset 0 -1px 0 rgba(0,0,0,.06);
+}
+:root.light .seg{
+  background: linear-gradient(180deg, var(--bg-4), var(--bg-3));
+  border: 1px solid var(--line-3);
+  box-shadow: inset 0 2px 3px rgba(0,0,0,.12);
+}
+:root.light .seg .sg{ color: var(--ink-2); }
+:root.light .seg .sg.on-acc{
+  color: #6a3a14;
+  background: linear-gradient(180deg, #f3d8b6, #e7c294);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.7), inset 0 -1px 0 rgba(0,0,0,.08), 0 1px 0 rgba(0,0,0,.05);
+}
+:root.light .seg .sg.on-buy{
+  color: #1c5a23;
+  background: linear-gradient(180deg, #cfe6c8, #b6d6ad);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.7), inset 0 -1px 0 rgba(0,0,0,.08), 0 1px 0 rgba(0,0,0,.05);
+}
+:root.light .seg .sg.on-sell{
+  color: #7a2222;
+  background: linear-gradient(180deg, #f0c8c8, #dca8a8);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.7), inset 0 -1px 0 rgba(0,0,0,.08), 0 1px 0 rgba(0,0,0,.05);
+}
+:root.light .pill-on{
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-4));
+  color: var(--ink-0);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.7), inset 0 -1px 0 rgba(0,0,0,.06), 0 1px 0 rgba(0,0,0,.04);
+}
+:root.light .titlebar{
+  background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-3) 100%);
+  border-bottom: 1px solid var(--line-3);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.85), 0 1px 0 rgba(255,255,255,.5);
+}
+:root.light .tb-tabs{
+  background: var(--bg-4);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.18), inset 0 -1px 0 rgba(255,255,255,.6);
+}
+:root.light .tb-tab.on{
+  background: linear-gradient(180deg, var(--bg-5), var(--bg-2));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.85), inset 0 -1px 0 rgba(0,0,0,.08), 0 1px 0 rgba(0,0,0,.05);
+}
+:root.light .ph{
+  background: linear-gradient(180deg, var(--bg-2) 0%, var(--bg-3) 100%);
+  border-bottom: 1px solid var(--line-3);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 1px 0 rgba(0,0,0,.04);
+}
+:root.light .statusbar{
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-4));
+  border-top: 1px solid var(--line-3);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.6);
+}
+:root.light .ticker-strip{
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-3));
+  border-bottom: 1px solid var(--line-3);
+}
+:root.light .ticker-cell{ border-right: 1px solid var(--line-2); }
+:root.light .tile{
+  background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 100%);
+  border: 1px solid var(--line-3);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.85),
+    inset 0 -1px 0 rgba(0,0,0,.06),
+    0 1px 0 rgba(0,0,0,.05),
+    0 14px 28px -18px rgba(0,0,0,.18);
+}
+:root.light .tile-amber{
+  background: linear-gradient(180deg, #f0e0c4 0%, #e3cfa8 100%);
+  border-color: var(--line-3);
+}
+:root.light .tile-buy{
+  background: linear-gradient(180deg, #d8e8d0 0%, #c2d8b8 100%);
+  border-color: var(--line-3);
+}
+:root.light .tile-sell{
+  background: linear-gradient(180deg, #f0d6d6 0%, #e0bcbc 100%);
+  border-color: var(--line-3);
+}
+:root.light .grid-line{ stroke: rgba(0,0,0,.10); }
+:root.light .axis-text{ fill: var(--ink-3); }
+:root.light .scroll::-webkit-scrollbar-thumb{ background:var(--line-2); }
+
+/* Light: dim the body radial overlay so charts read */
+:root.light body::before{ opacity:.5; }
+
+/* Heavier hairlines on panel splits — Zed's visible 1px dividers */
+.split-v{ border-right: 1px solid var(--line-3); box-shadow: 1px 0 0 rgba(255,234,210,.025); }
+.split-h{ border-bottom: 1px solid var(--line-3); box-shadow: 0 1px 0 rgba(255,234,210,.025); }
+.split-vL{ border-left: 1px solid var(--line-3); box-shadow: -1px 0 0 rgba(255,234,210,.025); }
+.split-hT{ border-top: 1px solid var(--line-3); box-shadow: 0 -1px 0 rgba(255,234,210,.025); }
+
+*{ box-sizing: border-box; }
+html, body{
+  margin:0; padding:0;
+  background: var(--bg-0);
+  color: var(--ink-0);
+  font-family: var(--sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "ss01","cv11";
+  height:100%;
+  overflow:hidden;
+}
+
+/* Background grain — barely there warm noise */
+body::before{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background:
+    radial-gradient(1200px 800px at 70% -10%, color-mix(in oklab, var(--accent) 14%, transparent) 0, transparent 60%),
+    radial-gradient(900px 700px at -10% 110%, color-mix(in oklab, var(--bg-0) 90%, black) 0, transparent 60%);
+  opacity:.5;
+}
+#root{ position:relative; z-index:1; height:100vh; }
+
+button{ font:inherit; color:inherit; background:none; border:0; padding:0; cursor: default; }
+input{ font:inherit; color:inherit; }
+
+/* ── Numerics ───────────────────────────────────────────────── */
+.mono{ font-family: var(--mono); font-feature-settings:"zero","ss01"; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing:-.01em; }
+.t-up{ color: var(--buy); }
+.t-dn{ color: var(--sell); }
+
+/* ── Bevel primitives ──────────────────────────────────────────
+   Cards: gentle outer drop + 1px inset hairline highlight at top
+   Buttons (tactile): subtle face gradient + top highlight + bottom shade
+   Wells: inset top-shade + bottom-highlight (opposite of buttons)
+*/
+.card{
+  background: linear-gradient(180deg, var(--bg-2) 0%, var(--bg-1) 100%);
+  border: 1px solid var(--line-3);
+  border-top-color: var(--line-2);
+  border-radius: var(--r-3);
+  box-shadow:
+    inset 0 1px 0 var(--hi-2),
+    inset 0 -1px 0 rgba(0,0,0,.55),
+    inset 1px 0 0 rgba(255,234,210,.02),
+    inset -1px 0 0 rgba(0,0,0,.3),
+    0 1px 0 rgba(0,0,0,.5),
+    0 12px 28px -16px rgba(0,0,0,.7);
+}
+.card-flat{
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-3);
+  box-shadow: inset 0 1px 0 var(--hi-1), inset 0 -1px 0 rgba(0,0,0,.4);
+}
+
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  height:28px; padding:0 12px; border-radius: var(--r-2);
+  font-size:12.5px;
+  background: linear-gradient(180deg, var(--bg-5) 0%, var(--bg-3) 100%);
+  color: var(--ink-0);
+  border: .5px solid #1a1410;
+  box-shadow:
+    inset 0 .5px 0 var(--hi-2),
+    inset 0 -.5px 0 rgba(0,0,0,.55),
+    0 1px 0 rgba(0,0,0,.5);
+  font-size:12px; font-weight:500; letter-spacing:.01em;
+  transition: filter .12s ease, transform .04s ease;
+}
+.btn:hover{ filter: brightness(1.08); }
+.btn:active{ transform: translateY(.5px);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.6), inset 0 .5px 0 rgba(255,255,255,.02); }
+
+.btn-ghost{
+  background: transparent;
+  border: .5px solid transparent;
+  color: var(--ink-1);
+  box-shadow:none;
+}
+.btn-ghost:hover{ background: var(--bg-3); color: var(--ink-0); }
+
+.btn-accent{
+  background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 88%, white 12%) 0%, var(--accent) 100%);
+  color:#1a0f06;
+  border-color: rgba(0,0,0,.4);
+  box-shadow:
+    inset 0 .5px 0 rgba(255,255,255,.35),
+    inset 0 -.5px 0 rgba(0,0,0,.3),
+    0 1px 0 rgba(0,0,0,.5),
+    0 0 0 1px var(--accent-soft);
+}
+.btn-buy{
+  background: linear-gradient(180deg, color-mix(in oklab, var(--buy) 90%, white 10%), var(--buy));
+  color:#0c1a0d;
+  box-shadow: inset 0 .5px 0 rgba(255,255,255,.3), inset 0 -.5px 0 rgba(0,0,0,.3), 0 1px 0 rgba(0,0,0,.4);
+}
+.btn-sell{
+  background: linear-gradient(180deg, color-mix(in oklab, var(--sell) 90%, white 10%), var(--sell));
+  color:#1a0a0a;
+  box-shadow: inset 0 .5px 0 rgba(255,255,255,.3), inset 0 -.5px 0 rgba(0,0,0,.3), 0 1px 0 rgba(0,0,0,.4);
+}
+
+/* Inset well (input fields, sliders, search) — deeper inset */
+.well{
+  background: linear-gradient(180deg, color-mix(in oklab, var(--bg-0) 70%, black) 0%, var(--bg-0) 100%);
+  border: 1px solid #0a0703;
+  border-top-color: #050402;
+  border-radius: var(--r-2);
+  box-shadow:
+    inset 0 2px 3px rgba(0,0,0,.7),
+    inset 0 1px 0 rgba(0,0,0,.5),
+    inset 0 -1px 0 var(--hi-2),
+    0 .5px 0 var(--hi-1);
+}
+
+/* Tactile knob (used for steppers, dom buttons) */
+.knob{
+  width:24px; height:24px; border-radius:999px;
+  background:
+    radial-gradient(circle at 30% 25%, #4a3f33 0%, #2c251e 60%, #1a140f 100%);
+  border:.5px solid #0e0a07;
+  box-shadow:
+    inset 0 .5px 0 rgba(255,234,210,.18),
+    inset 0 -1px 1px rgba(0,0,0,.5),
+    0 1px 2px rgba(0,0,0,.5);
+  display:inline-flex; align-items:center; justify-content:center;
+  color: var(--ink-1); cursor:default;
+  transition: filter .1s ease;
+}
+.knob:hover{ filter: brightness(1.12); color: var(--ink-0); }
+.knob:active{
+  box-shadow: inset 0 1px 3px rgba(0,0,0,.7), inset 0 -.5px 0 rgba(255,255,255,.04);
+}
+
+/* Pill (tab-like) */
+.pill{
+  display:inline-flex; align-items:center; gap:6px;
+  height:22px; padding:0 8px;
+  border-radius: 999px;
+  font-size:11px; color: var(--ink-2); letter-spacing:.02em;
+}
+.pill-on{
+  background: linear-gradient(180deg, var(--bg-3), var(--bg-2));
+  color: var(--ink-0);
+  box-shadow:
+    inset 0 .5px 0 rgba(255,234,210,.10),
+    inset 0 -.5px 0 rgba(0,0,0,.5),
+    0 1px 0 rgba(0,0,0,.4);
+}
+.pill-accent{
+  color: var(--accent-ink);
+  background: linear-gradient(180deg, var(--accent-soft), var(--accent-glow));
+  box-shadow: inset 0 .5px 0 rgba(255,234,210,.12), inset 0 0 0 .5px var(--accent-soft);
+}
+
+/* ── Layout shells ─────────────────────────────────────────── */
+.app{
+  height:100vh; display:flex; flex-direction:column;
+  background: var(--bg-0);
+}
+
+/* App-level chrome — title bar with screen switcher */
+.titlebar{
+  height:42px; flex:none;
+  display:flex; align-items:center; gap:14px;
+  padding: 0 12px;
+  background: linear-gradient(180deg, var(--bg-2) 0%, var(--bg-0) 100%);
+  border-bottom: 1px solid #050402;
+  box-shadow: inset 0 1px 0 var(--hi-2), 0 1px 0 rgba(255,234,210,.03);
+  position:relative; z-index:5;
+}
+.tb-brand{
+  display:flex; align-items:center; gap:8px;
+  font-weight:600; letter-spacing:.04em; font-size:11px; text-transform:uppercase;
+  color: var(--ink-1);
+}
+.tb-brand .dot{
+  width:8px; height:8px; border-radius:99px;
+  background: radial-gradient(circle at 30% 30%, color-mix(in oklab, var(--accent) 80%, white 20%), var(--accent) 70%, #6a3a1a 100%);
+  box-shadow:
+    inset 0 .5px 0 rgba(255,255,255,.4),
+    inset 0 -.5px 0 rgba(0,0,0,.3),
+    0 0 8px var(--accent-glow);
+}
+
+.tb-tabs{ display:flex; gap:2px; background: var(--bg-0);
+  border-radius: 8px; padding:2px;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.45), inset 0 -.5px 0 var(--hi-1);
+}
+.tb-tab{
+  padding: 0 12px; height:24px; display:inline-flex; align-items:center; gap:8px;
+  border-radius:6px; font-size:11.5px; color: var(--ink-2); letter-spacing:.01em;
+  position:relative;
+}
+.tb-tab .idx{ font-family:var(--mono); font-size:9.5px; color:var(--ink-3); }
+.tb-tab:hover{ color: var(--ink-0); }
+.tb-tab.on{
+  color: var(--ink-0);
+  background: linear-gradient(180deg, var(--bg-3), var(--bg-2));
+  box-shadow:
+    inset 0 .5px 0 var(--hi-2),
+    inset 0 -.5px 0 rgba(0,0,0,.5),
+    0 1px 0 rgba(0,0,0,.4);
+}
+.tb-tab.on .idx{ color: var(--accent); }
+
+.tb-spacer{ flex:1; }
+.tb-status{
+  display:flex; align-items:center; gap:14px;
+  font-family: var(--mono); font-size:11px; color: var(--ink-2);
+}
+.tb-status .ok{ color: var(--buy); }
+.tb-status .warn{ color: var(--accent); }
+.tb-status .pip{ display:inline-block; width:6px; height:6px; border-radius:99px; background: currentColor; box-shadow: 0 0 6px currentColor; margin-right:6px; vertical-align:1px; }
+
+.screen{ flex:1; min-height:0; position:relative; overflow:hidden; }
+
+/* ── Tickers strip (used in 2-3) ─────────────────────────── */
+.ticker-strip{
+  display:flex; align-items:center; gap:0;
+  height:30px; flex:none;
+  background: linear-gradient(180deg, var(--bg-1), var(--bg-0));
+  border-bottom: 1px solid var(--line-3);
+  box-shadow: inset 0 1px 0 var(--hi-1);
+  overflow:hidden;
+}
+.ticker-cell{
+  display:flex; align-items:baseline; gap:6px;
+  padding: 0 14px; height:100%;
+  border-right: 1px solid var(--line-2);
+  box-shadow: 1px 0 0 rgba(255,234,210,.02);
+  font-family: var(--mono); font-size:11.5px;
+}
+.ticker-cell .sym{ color: var(--ink-1); font-weight:600; letter-spacing:.04em; }
+.ticker-cell .px{ color: var(--ink-0); }
+.ticker-cell .ch{ font-size:10px; }
+
+/* Section frame label (top-left of card) */
+.fr-label{
+  display:inline-flex; align-items:center; gap:7px;
+  font-family: var(--mono); font-size:10.5px; letter-spacing:.10em; text-transform:uppercase;
+  color: var(--ink-2); font-weight:500;
+}
+.fr-label .num{ color: var(--accent); font-weight:600; }
+
+/* Hairline */
+.hr{ height:.5px; background: var(--line-1); }
+
+/* SVG chart helpers */
+.grid-line{ stroke: var(--line-1); stroke-width:.5; }
+.axis-text{ fill: var(--ink-3); font-family: var(--mono); font-size:9.5px; }
+
+/* Scrollbars */
+.scroll{ overflow:auto; scrollbar-width:thin; scrollbar-color:#3a312a transparent; }
+.scroll::-webkit-scrollbar{ width:8px; height:8px; }
+.scroll::-webkit-scrollbar-thumb{ background:#3a312a; border-radius:4px; border:2px solid transparent; background-clip:content-box; }
+
+/* ── Order ticket bevel (shared) ─────────────────────────── */
+.tile-buy{
+  background: linear-gradient(180deg, #2a3a2c 0%, #1d2a1e 100%);
+  border:.5px solid #0e0a07;
+  border-radius: var(--r-2);
+  box-shadow:
+    inset 0 .5px 0 rgba(170,255,170,.10),
+    inset 0 -.5px 0 rgba(0,0,0,.5),
+    0 1px 0 rgba(0,0,0,.5);
+}
+.tile-sell{
+  background: linear-gradient(180deg, #3a2828 0%, #2a1c1c 100%);
+  border:.5px solid #0e0a07;
+  border-radius: var(--r-2);
+  box-shadow:
+    inset 0 .5px 0 rgba(255,170,170,.10),
+    inset 0 -.5px 0 rgba(0,0,0,.5),
+    0 1px 0 rgba(0,0,0,.5);
+}
+
+/* DOM ladder rows — depth bars baked into row bg */
+.dom-row{
+  display:grid; grid-template-columns: 60px 70px 60px;
+  align-items:center; height:20px; padding:0 8px;
+  font-family: var(--mono); font-size:11.5px;
+  border-bottom: 1px solid rgba(255,234,210,.04);
+}
+.dom-row.bid{ color: var(--ink-1); }
+.dom-row.ask{ color: var(--ink-1); }
+.dom-row.mid{ background: linear-gradient(90deg, transparent, #2a201430, transparent); color: var(--accent-ink); }
+.dom-row .delta{ color: var(--ink-3); font-size:10px; }
+.dom-row .vol{ text-align:right; color: var(--ink-2); }
+.dom-row .px{ text-align:center; color: var(--ink-0); }
+
+/* Status bar */
+.statusbar{
+  height: 24px; flex:none;
+  display:flex; align-items:center; gap:14px;
+  padding:0 12px;
+  background: linear-gradient(180deg, var(--bg-1), var(--bg-0));
+  border-top: 1px solid #050402;
+  box-shadow: inset 0 1px 0 var(--hi-1);
+  font-family: var(--mono); font-size:11px; color: var(--ink-3);
+}
+.statusbar .item{ display:flex; align-items:center; gap:6px; }
+.statusbar .pip{ width:6px; height:6px; border-radius:99px; background: var(--buy); box-shadow: 0 0 6px var(--buy); }
+
+/* Panel header — stronger split, denser */
+.ph{
+  display:flex; align-items:center; justify-content:space-between;
+  padding: 8px 12px; min-height:34px;
+  border-bottom: 1px solid var(--line-3);
+  box-shadow: 0 1px 0 rgba(255,234,210,.025), inset 0 1px 0 var(--hi-1);
+  background: linear-gradient(180deg, var(--bg-2) 0%, var(--bg-1) 100%);
+}
+.ph .ph-l{ display:flex; align-items:center; gap:10px; }
+.ph .ph-r{ display:flex; align-items:center; gap:4px; }
+.ph h3{ margin:0; font-size:12.5px; font-weight:600; color: var(--ink-0); letter-spacing:.01em; }
+.ph .sub{ font-family: var(--mono); font-size:10.5px; color: var(--ink-3); letter-spacing:.06em; text-transform:uppercase; }
+
+/* Soft glow on accent dot */
+@keyframes pulse-soft { 0%,100%{opacity:.85} 50%{opacity:1} }
+.pulse{ animation: pulse-soft 2.4s ease-in-out infinite; }
+
+/* Watchlist row */
+.wl-row{
+  display:grid; grid-template-columns: 54px 1fr 80px 64px;
+  align-items:center; height:32px; padding:0 12px;
+  font-family: var(--mono); font-size:12.5px;
+  border-bottom: 1px solid rgba(255,234,210,.04);
+  position:relative;
+}
+.wl-row:hover{ background: rgba(255,234,210,.025); }
+.wl-row.on{
+  background: linear-gradient(90deg, var(--accent-glow), transparent 70%);
+  color: var(--ink-0);
+}
+.wl-row.on::before{
+  content:""; position:absolute; left:0; top:3px; bottom:3px; width:2px;
+  background: var(--accent); border-radius: 0 2px 2px 0;
+  box-shadow: 0 0 8px var(--accent);
+}
+.wl-row .sym{ color: var(--ink-0); font-weight:600; letter-spacing:.04em; }
+.wl-row .nm{ color: var(--ink-3); font-family: var(--sans); font-size:11px; }
+.wl-row .px{ text-align:right; color: var(--ink-0); }
+.wl-row .ch{ text-align:right; font-size:10.5px; }
+
+/* Tile (dashboard) — slightly tinted faces */
+.tile{
+  position:relative;
+  border-radius: var(--r-4);
+  background: linear-gradient(180deg, var(--bg-2) 0%, var(--bg-1) 100%);
+  border: 1px solid var(--line-3);
+  box-shadow:
+    inset 0 .5px 0 var(--hi-1),
+    inset 0 -.5px 0 rgba(0,0,0,.55),
+    0 1px 0 rgba(0,0,0,.45),
+    0 18px 36px -22px rgba(0,0,0,.7);
+  overflow:hidden;
+}
+.tile-amber{
+  background: linear-gradient(180deg, #2e2113 0%, #221710 100%);
+  box-shadow:
+    inset 0 .5px 0 rgba(255,200,140,.16),
+    inset 0 -.5px 0 rgba(0,0,0,.55),
+    inset 0 0 0 .5px rgba(217,152,88,.18),
+    0 1px 0 rgba(0,0,0,.45),
+    0 18px 36px -22px rgba(120,60,20,.4);
+}
+.tile-buy{
+  background: linear-gradient(180deg, #1d2c1f 0%, #16211a 100%);
+  box-shadow:
+    inset 0 .5px 0 rgba(170,255,180,.10),
+    inset 0 -.5px 0 rgba(0,0,0,.55),
+    inset 0 0 0 .5px rgba(111,191,115,.16),
+    0 1px 0 rgba(0,0,0,.45),
+    0 18px 36px -22px rgba(20,80,40,.4);
+}
+.tile-sell{
+  background: linear-gradient(180deg, #2c1d1d 0%, #211616 100%);
+  box-shadow:
+    inset 0 .5px 0 rgba(255,180,180,.10),
+    inset 0 -.5px 0 rgba(0,0,0,.55),
+    inset 0 0 0 .5px rgba(226,93,93,.16),
+    0 1px 0 rgba(0,0,0,.45),
+    0 18px 36px -22px rgba(80,20,20,.4);
+}
+
+/* Number stepper input */
+.stp{
+  display:inline-flex; align-items:center; gap:4px;
+  padding:2px;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--bg-0) 70%, black) 0%, var(--bg-0) 100%);
+  border: 1px solid #050402;
+  border-radius: var(--r-2);
+  box-shadow: inset 0 2px 3px rgba(0,0,0,.65), inset 0 -1px 0 var(--hi-2);
+}
+.stp .stp-i{
+  flex:1; min-width:0; background:transparent; border:0; outline:none;
+  text-align:center; font-family: var(--mono); font-size:12px; color: var(--ink-0);
+  height:22px;
+}
+.stp .stp-b{
+  width:22px; height:22px; border-radius: 4px;
+  background: linear-gradient(180deg, var(--bg-5), var(--bg-3));
+  border:.5px solid #0e0a07;
+  color: var(--ink-1); display:inline-flex; align-items:center; justify-content:center;
+  font-size:13px; line-height:1;
+  box-shadow: inset 0 .5px 0 var(--hi-2), inset 0 -.5px 0 rgba(0,0,0,.4);
+}
+.stp .stp-b:hover{ color: var(--ink-0); filter: brightness(1.1); }
+.stp .stp-b:active{ box-shadow: inset 0 1px 2px rgba(0,0,0,.6); }
+
+/* Segmented (BUY/SELL toggle) */
+.seg{
+  display:flex; padding:2px;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--bg-0) 70%, black) 0%, var(--bg-0) 100%);
+  border:1px solid #050402; border-radius: var(--r-2);
+  box-shadow: inset 0 2px 3px rgba(0,0,0,.65), inset 0 -1px 0 var(--hi-2);
+}
+.seg .sg{
+  flex:1; height:24px; display:inline-flex; align-items:center; justify-content:center;
+  font-size:11px; font-weight:600; letter-spacing:.06em; color: var(--ink-2);
+  border-radius: 4px;
+}
+.seg .sg.on-buy{
+  color: var(--buy-ink);
+  background: linear-gradient(180deg, var(--buy-soft), var(--buy-soft));
+  box-shadow: inset 0 .5px 0 rgba(170,255,170,.12), inset 0 -.5px 0 rgba(0,0,0,.5), 0 1px 0 rgba(0,0,0,.4);
+}
+.seg .sg.on-sell{
+  color: var(--sell-ink);
+  background: linear-gradient(180deg, var(--sell-soft), var(--sell-soft));
+  box-shadow: inset 0 .5px 0 rgba(255,170,170,.12), inset 0 -.5px 0 rgba(0,0,0,.5), 0 1px 0 rgba(0,0,0,.4);
+}
+.seg .sg.on-acc{
+  color: var(--accent-ink);
+  background: linear-gradient(180deg, var(--accent-soft), var(--accent-glow));
+  box-shadow: inset 0 .5px 0 rgba(255,200,140,.16), inset 0 -.5px 0 rgba(0,0,0,.5), 0 1px 0 rgba(0,0,0,.4);
+}
+
+/* Selectable cell hover */
+.cell-hover:hover{ background: rgba(255,234,210,.03); }
+:root.light .cell-hover:hover{ background: rgba(0,0,0,.03); }
+
+/* Vertical-line bar chart — tightly packed thin lines (moodboard) */
+.vlines{ display:flex; align-items:flex-end; gap:1px; }
+.vlines > i{ flex:1; min-width:1px; background: currentColor; opacity:.85; display:block; }
+
+/* Dot grid background */
+.dotgrid{
+  background-image: radial-gradient(circle, rgba(255,234,210,.10) 1px, transparent 1px);
+  background-size: 10px 10px;
+}
+:root.light .dotgrid{
+  background-image: radial-gradient(circle, rgba(0,0,0,.16) 1px, transparent 1px);
+}
+
+/* Pill action button (moodboard CTA) */
+.pill-btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  height:40px; padding:0 22px;
+  border-radius:999px;
+  border:1px solid var(--line-3);
+  background: linear-gradient(180deg, var(--bg-5) 0%, var(--bg-3) 100%);
+  color: var(--ink-0);
+  font-size:11.5px; letter-spacing:.10em; text-transform:uppercase; font-weight:600;
+  box-shadow:
+    inset 0 1px 0 var(--hi-2),
+    inset 0 -1px 0 rgba(0,0,0,.4),
+    0 1px 0 rgba(0,0,0,.4);
+}
+.pill-btn:hover{ filter: brightness(1.08); }
+:root.light .pill-btn{
+  background: linear-gradient(180deg, var(--bg-5), var(--bg-3));
+  border-color: var(--line-3);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.85), inset 0 -1px 0 rgba(0,0,0,.06), 0 1px 0 rgba(0,0,0,.05);
+}
+
+/* Big mono numeric — hero numbers */
+.bignum{
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing:-.04em;
+  line-height:.9;
+  color: var(--ink-0);
+}
+
+/* ── Symbol search — flat, functional, Zed-like ─────────────
+   Replaces the rounded "well + magnifier" pattern. Sharp 2px corners,
+   1px hairline, deep inset shadow, monospace input, kbd hint right.
+*/
+.symsearch-wrap{
+  padding: 6px 8px;
+  background: linear-gradient(180deg, var(--bg-1), var(--bg-0));
+  border-bottom: 1px solid var(--line-3);
+  box-shadow: inset 0 1px 0 var(--hi-1), 0 1px 0 rgba(0,0,0,.4);
+}
+.symsearch{
+  display:flex; align-items:center; gap:7px;
+  height: 26px;
+  padding: 0 8px 0 8px;
+  background: color-mix(in oklab, var(--bg-0) 80%, black);
+  border: 1px solid #050402;
+  border-top-color: #050402;
+  border-radius: 2px;
+  box-shadow:
+    inset 0 2px 3px rgba(0,0,0,.7),
+    inset 0 -1px 0 var(--hi-1);
+}
+.symsearch:focus-within{
+  border-color: var(--accent);
+  box-shadow:
+    inset 0 2px 3px rgba(0,0,0,.7),
+    inset 0 -1px 0 var(--hi-1),
+    0 0 0 1px var(--accent-soft);
+}
+.symsearch-icon{ color: var(--ink-3); display:inline-flex; }
+.symsearch-input{
+  flex:1; min-width:0;
+  background: transparent; border:0; outline:none;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: .04em;
+  color: var(--ink-0);
+  text-transform: uppercase;
+  height: 100%;
+}
+.symsearch-input::placeholder{
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-weight: 400;
+}
+.symsearch-kbd{
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: .04em;
+  color: var(--ink-3);
+  padding: 1px 5px;
+  border: 1px solid var(--line-2);
+  border-radius: 2px;
+  background: var(--bg-1);
+  box-shadow: inset 0 -1px 0 rgba(0,0,0,.3);
+  flex-shrink: 0;
+}
+
+:root.light .symsearch-wrap{
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-3));
+}
+:root.light .symsearch{
+  background: #ffffff;
+  border-color: var(--line-3);
+  box-shadow: inset 0 2px 3px rgba(0,0,0,.10), inset 0 -1px 0 rgba(255,255,255,.5);
+}
+:root.light .symsearch-kbd{
+  background: var(--bg-2);
+  border-color: var(--line-2);
+  color: var(--ink-2);
+}
+
+/* ── Watchlist v2 — Zed-style crisp rows ────────────────── */
+.wl-group{
+  display:flex; align-items:center; justify-content:space-between;
+  padding: 6px 12px;
+  background: rgba(0,0,0,.22);
+  border-bottom: 1px solid var(--line-2);
+  font-family: var(--mono); font-size: 10px;
+  color: var(--ink-2);
+  letter-spacing: .10em; text-transform: uppercase;
+}
+:root.light .wl-group{
+  background: var(--bg-4);
+  border-bottom: 1px solid var(--line-3);
+  color: var(--ink-2);
+}
+.wl-col{
+  display:grid; grid-template-columns: 48px 1fr 70px 56px;
+  align-items:center;
+  padding: 5px 12px;
+  background: rgba(0,0,0,.12);
+  border-bottom: 1px solid var(--line-2);
+  font-family: var(--mono); font-size: 9.5px;
+  color: var(--ink-3);
+  letter-spacing: .10em; text-transform: uppercase;
+}
+:root.light .wl-col{
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--line-2);
+}
+.wl-row2{
+  display:grid; grid-template-columns: 48px 1fr 70px 56px;
+  align-items:center;
+  padding: 7px 12px;
+  border-bottom: 1px solid rgba(255,234,210,.04);
+  position: relative;
+  cursor: default;
+  font-family: var(--mono);
+}
+:root.light .wl-row2{ border-bottom: 1px solid rgba(0,0,0,.05); }
+.wl-row2:hover{ background: rgba(255,234,210,.025); }
+:root.light .wl-row2:hover{ background: rgba(0,0,0,.03); }
+.wl-row2.on{
+  background: linear-gradient(90deg, var(--accent-glow), transparent 75%);
+}
+.wl-row2 .wl-rail{
+  position:absolute; left:0; top:3px; bottom:3px; width:2px;
+  background: var(--accent); box-shadow: 0 0 8px var(--accent);
+}
+.wl-row2 .sym{ font-size: 11.5px; font-weight: 600; color: var(--ink-0); letter-spacing: .04em; }
+.wl-row2 .nm { font-size: 10.5px; color: var(--ink-3); font-family: var(--sans); }
+.wl-row2 .px { font-size: 11.5px; color: var(--ink-1); text-align:right; }
+.wl-row2 .ch { font-size: 10.5px; text-align:right; }
+
+/* Zed-style sharper corners on chrome elements */
+.split-v, .split-h, .split-vL, .split-hT{ border-radius: 0 !important; }
+
+/* ── TE refinement layer — tasteful, subtle ─────────────────
+   Applied only inside <div class="te"> wrapper. Pulls in TE design
+   language without overwhelming the trading info hierarchy.
+
+   Refinements:
+   - micro dot-matrix watermark behind chart areas (not data)
+   - 0.5px engraved keylines on panel headers
+   - more disciplined accent (drops accent on inactive tab text)
+   - rim → recess → key cap edge contrast on wells & steppers
+   - 2-digit slot labels (faint A/B/01/02) anchoring sections
+*/
+.te{ background: var(--bg-0); }
+
+/* Panel headers — flatter, engraved keyline + serial label */
+.te .ph{
+  background: linear-gradient(180deg, var(--bg-2) 0%, var(--bg-1) 100%);
+  border-bottom: 1px solid var(--line-3);
+  box-shadow:
+    inset 0 1px 0 rgba(255,234,210,.04),
+    inset 0 -1px 0 rgba(0,0,0,.45),
+    0 1px 0 rgba(255,234,210,.02);
+  padding: 7px 12px;
+}
+:root.light .te .ph{
+  background: linear-gradient(180deg, var(--bg-2) 0%, var(--bg-3) 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.7), inset 0 -1px 0 rgba(0,0,0,.06), 0 1px 0 rgba(0,0,0,.04);
+}
+
+/* Disciplined accent — only loud on the *active* tab number */
+.te .fr-label{ color: var(--ink-3); }
+.te .fr-label .num{
+  color: var(--ink-2);
+  padding: 1px 4px;
+  border: 1px solid var(--line-2);
+  border-radius: 2px;
+  background: rgba(0,0,0,.25);
+  box-shadow: inset 0 -1px 0 rgba(255,234,210,.04);
+  font-size: 9px;
+  letter-spacing: .08em;
+  font-weight: 600;
+}
+:root.light .te .fr-label .num{
+  background: var(--bg-3);
+  border-color: var(--line-3);
+  box-shadow: inset 0 -1px 0 rgba(255,255,255,.7);
+  color: var(--ink-2);
+}
+
+/* Wells — deeper recess, sharper rim */
+.te .well, .te .symsearch, .te .stp, .te .seg{
+  border-radius: 2px;
+  box-shadow:
+    inset 0 2px 4px rgba(0,0,0,.75),
+    inset 0 -1px 0 rgba(255,234,210,.06),
+    inset 1px 0 0 rgba(0,0,0,.4),
+    inset -1px 0 0 rgba(255,234,210,.02);
+}
+:root.light .te .well, :root.light .te .symsearch,
+:root.light .te .stp, :root.light .te .seg{
+  box-shadow: inset 0 2px 3px rgba(0,0,0,.14), inset 0 -1px 0 rgba(255,255,255,.6);
+}
+
+/* Stepper / segment button caps — keycap-like */
+.te .stp .stp-b, .te .seg .sg{
+  border-radius: 2px;
+  border: 1px solid #0a0703;
+}
+.te .stp .stp-b{
+  background: linear-gradient(180deg, #3a3128 0%, #261f19 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,234,210,.14),
+    inset 0 -1px 0 rgba(0,0,0,.55),
+    0 1px 0 rgba(0,0,0,.45);
+}
+
+/* Tactile knobs — anodised look (subtle) */
+.te .knob{
+  background:
+    radial-gradient(circle at 32% 22%, #5c4f40 0%, #322a22 55%, #1a140f 100%);
+  border-color: #050402;
+  box-shadow:
+    inset 0 .5px 0 rgba(255,234,210,.22),
+    inset 0 -1px 1px rgba(0,0,0,.55),
+    0 1px 2px rgba(0,0,0,.55),
+    0 0 0 .5px rgba(255,234,210,.03);
+}
+
+/* Chart canvas watermark — dot-matrix grille */
+.te .te-grille{
+  position: absolute; inset: 0; pointer-events: none;
+  background-image: radial-gradient(circle, rgba(255,234,210,.05) 1px, transparent 1px);
+  background-size: 6px 6px;
+  mix-blend-mode: lighten;
+  opacity: .5;
+  z-index: 1;
+}
+:root.light .te .te-grille{
+  background-image: radial-gradient(circle, rgba(0,0,0,.08) 1px, transparent 1px);
+  mix-blend-mode: multiply;
+  opacity: .35;
+}
+
+/* Slot label — A/B/C anchored bottom-right of a chart, like device front */
+.te .te-slot{
+  position: absolute; bottom: 6px; right: 10px;
+  font-family: var(--mono); font-size: 9px; letter-spacing: .14em;
+  color: var(--ink-3); text-transform: uppercase;
+  padding: 1px 5px;
+  border: 1px solid var(--line-2);
+  border-radius: 2px;
+  background: rgba(0,0,0,.32);
+  box-shadow: inset 0 -1px 0 rgba(255,234,210,.04);
+  z-index: 2;
+}
+:root.light .te .te-slot{
+  background: rgba(255,255,255,.55); border-color: var(--line-3);
+}
+
+/* Live recording dot — TE orange button. Only visible on actively-streaming panels. */
+.te .te-live{
+  display:inline-flex; align-items:center; gap:6px;
+  font-family: var(--mono); font-size:9.5px; letter-spacing:.14em;
+  color: var(--ink-3); text-transform: uppercase;
+}
+.te .te-live::before{
+  content:""; width:7px; height:7px; border-radius:99px;
+  background: var(--accent);
+  box-shadow:
+    inset 0 .5px 0 rgba(255,255,255,.45),
+    inset 0 -.5px 0 rgba(0,0,0,.25),
+    0 0 8px var(--accent-glow);
+  animation: pulse-soft 2.4s ease-in-out infinite;
+}
+
+/* Strip flashy backgrounds from non-active rows for hierarchy */
+.te .wl-row2.on{ background: linear-gradient(90deg, var(--accent-glow), transparent 78%); }
+.te .symsearch{ border-color: #020100; }
+
+/* ─────────────────────────────────────────────────────────────
+   TE rotary knob, keycaps, field labels
+   ───────────────────────────────────────────────────────────── */
+.teknob-wrap{
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+  padding: 4px 2px;
+}
+.teknob-ringwrap{
+  position:relative; display:flex; align-items:center; justify-content:center;
+}
+.teknob-ticks{
+  position:absolute; inset:0; pointer-events:none;
+}
+.teknob-body{
+  position:relative; border-radius:50%;
+  background:
+    radial-gradient(circle at 32% 22%, #6a5a48 0%, #3a3128 42%, #1a140f 100%);
+  border: 1px solid #0a0703;
+  box-shadow:
+    inset 0 1px 0 rgba(255,234,210,.15),
+    inset 0 -8px 14px rgba(0,0,0,.55),
+    0 2px 4px rgba(0,0,0,.55),
+    0 0 0 1px rgba(0,0,0,.4);
+  cursor: ns-resize;
+  touch-action: none;
+  transition: filter .15s;
+}
+.teknob-body:hover{ filter: brightness(1.06); }
+.teknob-body:active{ filter: brightness(.94); cursor: grabbing; }
+:root.light .teknob-body{
+  background: radial-gradient(circle at 32% 22%, #fdfaf2 0%, var(--bg-3) 50%, var(--line-3) 100%);
+  border-color: var(--line-3);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.85),
+    inset 0 -6px 10px rgba(0,0,0,.18),
+    0 1px 2px rgba(0,0,0,.18);
+}
+
+/* Knurl ring around the rim */
+.teknob-knurl{
+  position:absolute; inset:3px; border-radius:50%;
+  background:
+    repeating-conic-gradient(
+      from 0deg,
+      rgba(0,0,0,.18) 0deg 2deg,
+      transparent 2deg 4deg
+    );
+  -webkit-mask: radial-gradient(circle, transparent 56%, #000 58%, #000 72%, transparent 74%);
+          mask: radial-gradient(circle, transparent 56%, #000 58%, #000 72%, transparent 74%);
+  opacity:.55;
+  pointer-events:none;
+}
+:root.light .teknob-knurl{ opacity:.4; }
+
+/* Pointer notch */
+.teknob-pointer{
+  position:absolute; top:5px; left:50%; transform:translateX(-50%);
+  width:2px; height:30%; border-radius:1px;
+}
+/* Centre dot */
+.teknob-dot{
+  position:absolute; top:50%; left:50%;
+  transform: translate(-50%, -50%);
+  width:7px; height:7px; border-radius:50%;
+  background: radial-gradient(circle at 35% 30%, #2a221b 0%, #0a0703 100%);
+  border: 1px solid #0a0703;
+  box-shadow: inset 0 1px 0 rgba(255,234,210,.12);
+}
+
+.teknob-label{
+  display:flex; flex-direction:column; align-items:center; gap:1px;
+  font-family: var(--mono); line-height:1.05;
+}
+.teknob-num{
+  color: var(--ink-1); font-size: 13px; font-weight: 600;
+  letter-spacing: .02em; font-variant-numeric: tabular-nums;
+}
+.teknob-name{
+  color: var(--ink-3); font-size: 8.5px; letter-spacing: .18em;
+  text-transform: uppercase;
+}
+.teknob-sub{
+  color: var(--ink-4); font-size: 8px; letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+/* ── KeyCap button ─────────────────────────────────────────── */
+.keycap{
+  position:relative;
+  display:inline-flex; flex-direction:column; align-items:center; justify-content:center;
+  padding: 0 6px;
+  background: linear-gradient(180deg, #3a3128 0%, #261f19 100%);
+  border: 1px solid #0a0703;
+  border-radius: 2px;
+  color: var(--ink-2);
+  font-family: var(--mono); font-size: 10px; letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255,234,210,.08),
+    inset 0 -2px 0 rgba(0,0,0,.4),
+    0 1px 0 rgba(0,0,0,.4);
+  transition: transform .05s, filter .1s, box-shadow .05s;
+}
+.keycap:hover{ filter: brightness(1.08); }
+.keycap:active, .keycap.on{
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 2px 3px rgba(0,0,0,.55),
+    inset 0 -1px 0 rgba(255,234,210,.04);
+}
+.keycap.on{
+  background: linear-gradient(180deg, #2a2018 0%, #1d1611 100%);
+  color: var(--accent);
+}
+.keycap.on::after{
+  content:""; position:absolute; top:3px; right:3px;
+  width:4px; height:4px; border-radius:50%;
+  background: var(--accent);
+  box-shadow: 0 0 4px var(--accent);
+}
+:root.light .keycap{
+  background: linear-gradient(180deg, var(--bg-5) 0%, var(--bg-3) 100%);
+  border-color: var(--line-3); color: #3a3128;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.85),
+    inset 0 -2px 0 rgba(0,0,0,.06),
+    0 1px 0 rgba(0,0,0,.08);
+}
+:root.light .keycap.on{
+  background: linear-gradient(180deg, var(--bg-3) 0%, var(--bg-4) 100%);
+  color: var(--accent);
+}
+
+.keycap-idx{
+  position:absolute; top:2px; left:3px;
+  font-size: 7.5px; color: var(--ink-4); letter-spacing: .08em;
+}
+.keycap-main{ font-weight:600; }
+.keycap-sub{ font-size: 7.5px; color: var(--ink-4); margin-top:1px; }
+
+/* ── TE field label (order ticket, etc.) ──────────────────── */
+.te-field-label{
+  display:inline-flex; align-items:center; gap:6px;
+  font-family: var(--mono);
+}
+.te-field-idx{
+  display:inline-flex; align-items:center; justify-content:center;
+  min-width: 16px; height: 13px; padding: 0 3px;
+  background: #1a140f; color: var(--ink-3);
+  border: 1px solid #0a0703;
+  border-radius: 2px;
+  font-size: 8.5px; letter-spacing: .04em;
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 1px 0 rgba(255,234,210,.06);
+}
+:root.light .te-field-idx{
+  background: var(--bg-3); color: #6b5d4a; border-color: var(--line-3);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
+}
+.te-field-name{
+  font-size: 9px; letter-spacing: .18em;
+  color: var(--ink-2); text-transform: uppercase;
+}
+.te-field-hint{
+  font-size: 8.5px; letter-spacing: .12em; color: var(--ink-4);
+  text-transform: uppercase;
+}
+
+/* ── Disciplined accent in .te scope ──────────────────────── */
+/* Neutralize accent on things that aren't actively "live" */
+.te .stp .stp-b:hover{ color: var(--ink-1); }
+.te .seg .sg:not(.on){ color: var(--ink-3); }
+.te .ticker-num{ color: var(--ink-2); }
+/* Active "REC" pip remains amber via .te-live */

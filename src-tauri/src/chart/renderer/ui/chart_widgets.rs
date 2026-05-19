@@ -3118,7 +3118,10 @@ pub(crate) fn draw_refined_spinner(p: &egui::Painter, center: egui::Pos2, radius
         points.push(egui::pos2(center.x + rad.cos() * r, center.y + rad.sin() * r));
     }
     p.add(egui::Shape::line(points, egui::Stroke::new(stroke_w, color)));
-    p.ctx().request_repaint();
+    // PERF: cap spinner repaint to ~60fps instead of unconditional `request_repaint()`
+    // which forced egui to never sleep — that drove the GPU at max rate whenever the
+    // spinner was on screen, stealing frame budget from pan/zoom.
+    p.ctx().request_repaint_after(std::time::Duration::from_millis(16));
 }
 
 /// Ui-level refined spinner — drop-in replacement for `ui.spinner()`.
@@ -3126,7 +3129,7 @@ pub(crate) fn refined_spinner(ui: &mut egui::Ui, color: egui::Color32) {
     let size = ui.spacing().interact_size.y.max(14.0);
     let (rect, _) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::hover());
     draw_refined_spinner(ui.painter(), rect.center(), size * 0.42, color);
-    ui.ctx().request_repaint();
+    ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
 }
 
 /// Compute aggregate conviction from all signal sources (0-100).
