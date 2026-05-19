@@ -126,6 +126,10 @@ pub struct Modal<'a> {
     close_on_click_outside: bool,
     draggable_header: bool,
     header_painter: Option<HeaderPainter<'a>>,
+    /// Whether to paint a full-viewport scrim behind the modal. Defaults to
+    /// `true` for `Anchor::Window` modals. The scrim fades with `appear_t`
+    /// and uses a theme-aware semi-transparent color (`~50 % bg overlay`).
+    scrim: bool,
     // ── HeaderStyle::Panel side-channel state ─────────────────────────────
     /// Optional subtitle rendered next to the title (monospace, dim).
     header_subtitle: Option<&'a str>,
@@ -155,6 +159,7 @@ impl<'a> Modal<'a> {
             close_on_click_outside: false,
             draggable_header: false,
             header_painter: None,
+            scrim: true, // Window-anchored modals show a scrim by default.
             header_subtitle: None,
             panel_accent: None,
             panel_dim: None,
@@ -185,6 +190,10 @@ impl<'a> Modal<'a> {
     pub fn draggable_header(mut self, on: bool) -> Self {
         self.draggable_header = on; self
     }
+    /// Control the scrim (background dim overlay) for `Anchor::Window` modals.
+    /// Default is `true`. Pass `false` to suppress the scrim for floating
+    /// palettes or non-blocking overlays that shouldn't dim the background.
+    pub fn scrim(mut self, on: bool) -> Self { self.scrim = on; self }
     /// Optional escape hatch: caller paints a fully custom header strip. The
     /// closure runs in place of the auto-header (regardless of `header_style`)
     /// and should return `true` if the user clicked close. The default
@@ -237,11 +246,37 @@ impl<'a> Modal<'a> {
         let t   = self.theme.expect("Modal::show requires .theme(t)");
         let id  = self.id.unwrap_or(self.title);
 
+        // ── Exit-animation state ─────────────────────────────────────────
+        // `closing_id` stores a bool in egui temp memory: true once the
+        // header X has been clicked. While closing, we keep rendering the
+        // modal for one MED cycle so the slide-down + fade-out plays before
+        // we report `closed = true` to the caller.
+        let closing_id    = Id::new(("apex_modal_closing", id));
+        let closing_val_id = Id::new(("apex_modal_closing_t", id));
+
+        // Read persistent closing flag from temp memory (survives across frames).
+        let already_closing: bool = ctx.memory(|m| {
+            m.data.get_temp(closing_id).unwrap_or(false)
+        });
+        // Animate closing_t: 0.0 at rest, eases to 1.0 over MED once closing.
+        let closing_t = motion::ease_value(ctx, closing_val_id,
+            if already_closing { 1.0 } else { 0.0 },
+            motion::MED,
+        );
+
         // Drive a presence animation keyed on this modal's id. While the
         // builder is invoked the modal is "open" (t -> 1). The fade-in
         // happens on first show. Used for scrim/panel alpha in Area mode.
+        // During exit, appear_t is overridden to 1.0 - closing_t so the
+        // modal fades/slides out.
         let anim_id = Id::new(("apex_modal_anim", id));
-        let appear_t = motion::ease_bool(ctx, anim_id, true, motion::MED);
+        let appear_t = if already_closing {
+            // Exit path: override the open animation with the inverse of
+            // closing_t so opacity and Y-offset reverse cleanly.
+            (1.0 - closing_t).max(0.0)
+        } else {
+            motion::ease_bool(ctx, anim_id, true, motion::MED)
+        };
 
         // elevation_3: modal is the deepest overlay layer (bg × 0.85).
         // Inlined from style::elevation_3 — ComponentTheme exposes bg() so we
@@ -338,15 +373,61 @@ impl<'a> Modal<'a> {
         let mut closed = false;
         let mut inner: Option<R> = None;
 
+        // If closing_t has fully settled at 1.0, the exit animation is done —
+        // report closed and clear the temp state so the next show starts fresh.
+        if already_closing && closing_t >= 0.999 {
+            ctx.memory_mut(|m| {
+                m.data.remove::<bool>(closing_id);
+                // The closing_val_id animate_value_with_time entry lives in egui's
+                // own animation map and will decay naturally; we just clean our flag.
+            });
+            return ModalResponse { inner: None, closed: true };
+        }
+
         match self.anchor {
             Anchor::Window { pos } => {
                 let screen = ctx.screen_rect();
-                let win_pos = pos.unwrap_or_else(|| {
+                let win_pos_base = pos.unwrap_or_else(|| {
                     egui::pos2(
                         screen.center().x - self.size.x * 0.5,
                         (screen.center().y - self.size.y * 0.5).max(40.0),
                     )
                 });
+                // Slide-in: eases from 8px below the final position while
+                // appear_t goes 0 → 1. No vertical offset once fully open.
+                let win_pos = egui::pos2(
+                    win_pos_base.x,
+                    win_pos_base.y + (1.0 - appear_t) * 8.0,
+                );
+                // ── Scrim ────────────────────────────────────────────────
+                // Paint a full-viewport semi-transparent overlay behind the
+                // modal. Order::Background puts it below all other egui
+                // layers (panels, windows, tooltips) but above the app's
+                // native content. Alpha tracks appear_t so it fades with the
+                // modal. Clicking the scrim does NOT dismiss the modal —
+                // caller controls dismiss via ModalResponse::closed.
+                if self.scrim {
+                    let scrim_id = Id::new(("apex_modal_scrim", id));
+                    let viewport  = ctx.screen_rect();
+                    // Theme-aware scrim: use the theme bg color at ~50% alpha
+                    // (alpha_strong = 80/255 ≈ 31 %). We use a slightly higher
+                    // base value (120/255 ≈ 47 %) so light themes also dim
+                    // noticeably. The color inherits from `t.bg()` which is
+                    // dark for dark themes and light for light themes.
+                    let scrim_base = color_alpha(t.bg(), 120);
+                    let scrim_alpha = (scrim_base.a() as f32 * appear_t) as u8;
+                    let scrim_color = Color32::from_rgba_unmultiplied(
+                        scrim_base.r(), scrim_base.g(), scrim_base.b(), scrim_alpha,
+                    );
+                    let _ = egui::Area::new(scrim_id)
+                        .order(egui::Order::Background)
+                        .fixed_pos(viewport.min)
+                        .interactable(false)
+                        .show(ctx, |ui| {
+                            ui.painter().rect_filled(viewport, 0.0, scrim_color);
+                        });
+                }
+
                 // Paint a soft drop shadow behind fixed-position windows.
                 // We can't easily track the rect of a movable window across
                 // frames, so the shadow only goes on pinned modals.
@@ -388,9 +469,18 @@ impl<'a> Modal<'a> {
 
                 let render_cell = std::cell::Cell::new(Some(render));
                 win.show(ctx, |ui| {
+                    // Apply fade alpha so the Window content fades in/out.
+                    ui.set_opacity(appear_t);
                     if let Some(r) = render_cell.take() {
                         let (hc, val) = r(ui);
-                        if hc { closed = true; }
+                        if hc && !already_closing {
+                            // Header X clicked — start exit animation.
+                            // Don't report closed immediately; wait for
+                            // closing_t to reach 1.0 (handled above).
+                            ctx.memory_mut(|m| {
+                                m.data.insert_temp(closing_id, true);
+                            });
+                        }
                         inner = Some(val);
                     }
                 });
