@@ -4418,12 +4418,12 @@ pub(crate) struct Watchlist {
     pub(crate) order_ledger_filter: u8,  // index into LedgerFilter
     pub(crate) order_ledger_search: String,
     /// P2: per-symbol sub-section expanded state — keys are symbol strings.
-    #[serde(skip)]
+    /// Not persisted (ephemeral UI state).
     pub(crate) order_ledger_sym_expanded: std::collections::HashMap<String, bool>,
     /// P2: pending bulk-cancel confirmation. When `Some(symbol)`, the ledger
     /// renders an inline confirm row asking the user to confirm before cancelling.
     /// Set on "Cancel all" button click; cleared on confirm or dismiss.
-    #[serde(skip)]
+    /// Not persisted (ephemeral UI state).
     pub(crate) order_ledger_pending_bulk_cancel: Option<String>,
     /// Order System Health panel — operator observability for the order
     /// subsystem. Toggled via Ctrl+Shift+O. See
