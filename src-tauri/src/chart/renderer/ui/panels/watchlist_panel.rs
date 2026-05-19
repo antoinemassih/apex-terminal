@@ -680,6 +680,11 @@ if watchlist.open {
                                     let item_earnings_days = item.earnings_days;
                                     let item_alert_triggered = item.alert_triggered;
                                     let _item_price_history = item.price_history.clone();
+                                    // Flash animation: compute tint+alpha from elapsed time since last tick.
+                                    // Duration: 400 ms linear fade. Peak alpha = alpha_soft() (~20).
+                                    // No flash on initial load (prev_price == 0) or options (too dense).
+                                    let item_prev_price = item.prev_price;
+                                    let item_price_change_at = item.price_change_at;
                                     let is_dragged = drag_confirmed && dragging == Some((si, ii));
 
                                     // Skip rendering the dragged item in-place (it's shown as floating)
@@ -786,6 +791,27 @@ if watchlist.open {
                                         let row_h = if item_pinned { 34.0 } else { 28.0 };
                                         let font_sz = if item_pinned { 15.0 } else { 14.0 };
 
+                                        // ── Price-flash tint ────────────────────────────────────────
+                                        // Show a subtle bull/bear tint behind the price column for 400 ms
+                                        // after a quote change. Skip if prev_price is 0 (initial load) or
+                                        // if no change has occurred yet.
+                                        let price_flash_tint_col: Option<egui::Color32> = (|| {
+                                            let changed_at = item_price_change_at?;
+                                            if item_prev_price <= 0.0 { return None; }
+                                            const FLASH_MS: f32 = 400.0;
+                                            let age_ms = changed_at.elapsed().as_millis() as f32;
+                                            if age_ms >= FLASH_MS { return None; }
+                                            let flash_alpha = ((1.0 - age_ms / FLASH_MS) * alpha_soft() as f32) as u8;
+                                            if flash_alpha == 0 { return None; }
+                                            // Request a repaint in ~16 ms to keep the fade smooth.
+                                            ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
+                                            if item_price >= item_prev_price {
+                                                Some(color_alpha(t.bull, flash_alpha))
+                                            } else {
+                                                Some(color_alpha(t.bear, flash_alpha))
+                                            }
+                                        })();
+
                                         // Pinned section: slightly distinct background tint (active wins).
                                         let row_tint = if is_active {
                                             color_alpha(t.accent, 18)
@@ -831,6 +857,9 @@ if watchlist.open {
                                             // Panel symbol layout: star at left+16, sym at star+10 when star
                                             // visible, else at left+18.
                                             .sym_layout(0.0, 10.0, 18.0);
+                                        if let Some(flash_col) = price_flash_tint_col {
+                                            row_b = row_b.price_flash_tint(flash_col);
+                                        }
                                         if item_earnings_days >= 0 && (item_earnings_days as u32) <= 14 {
                                             row_b = row_b.earnings_days(Some(item_earnings_days as u32));
                                         }

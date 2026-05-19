@@ -147,6 +147,10 @@ pub struct WatchlistRow<'a> {
     sym_x_offset: f32,
     sym_x_offset_no_star: f32,
     fg_override: Option<Color32>,
+
+    // Price-flash animation — caller pre-computes the tint color with baked-in
+    // alpha and passes it here. None = no flash this frame.
+    price_flash_tint: Option<Color32>,
 }
 
 impl<'a> WatchlistRow<'a> {
@@ -191,6 +195,7 @@ impl<'a> WatchlistRow<'a> {
             sym_x_offset: 10.0,
             sym_x_offset_no_star: 10.0,
             fg_override: None,
+            price_flash_tint: None,
         }
     }
     pub fn spark(mut self, s: &'a [f32]) -> Self { self.spark = Some(s); self }
@@ -258,6 +263,10 @@ impl<'a> WatchlistRow<'a> {
     /// Override the foreground (symbol + price) colour. Used by pinned rows
     /// to render active-row symbol text in white.
     pub fn fg(mut self, c: Color32) -> Self { self.fg_override = Some(c); self }
+    /// Pre-baked flash tint color (alpha already folded in by the caller).
+    /// Paints a subtle rect behind the price cell to signal up/down tick.
+    pub fn price_flash_tint(mut self, c: Color32) -> Self { self.price_flash_tint = Some(c); self }
+
     pub fn sym_layout(mut self, star_x_offset: f32, sym_x_after_star: f32, sym_x_no_star: f32) -> Self {
         self.star_x_offset = star_x_offset;
         self.sym_x_offset = sym_x_after_star;
@@ -319,6 +328,7 @@ impl<'a> WatchlistRow<'a> {
         let self_show_x_on_hover = self.show_x_on_hover;
         let hover_overlay_col = self.hover_overlay;
         let user_sense = self.sense;
+        let price_flash_tint = self.price_flash_tint;
 
         // Pre-compute hover so the body knows whether to paint hover-conditional
         // glyphs (star, X). Use the cursor position + available_width + row_h to
@@ -537,6 +547,18 @@ impl<'a> WatchlistRow<'a> {
                         }
                         x += w + gap;
                     }
+                }
+
+                // ── Price-flash tint (up/down tick micro-animation) ──────
+                // Caller pre-computes the color+alpha; we just paint it behind
+                // the price cell. A ~56px strip from the right edge covers the
+                // price text without touching the symbol column.
+                if let Some(flash_col) = price_flash_tint {
+                    let flash_rect = egui::Rect::from_min_max(
+                        egui::pos2(rect.right() - 56.0, rect.top()),
+                        rect.max,
+                    );
+                    painter.rect_filled(flash_rect, 0.0, flash_col);
                 }
 
                 // ── Price (right-aligned) ───────────────────────────────
