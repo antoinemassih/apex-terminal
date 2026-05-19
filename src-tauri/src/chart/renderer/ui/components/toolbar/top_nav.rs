@@ -682,7 +682,8 @@ pub(crate) fn render(
                     ui.add_space(gap_xs());
                 }
                 // Dropdown caret — opens the full timeframe picker with star-favorite toggles.
-                let tf_dd_btn = toolbar_btn(ui, Icon::CARET_DOWN, watchlist.timeframe_dropdown_open, t);
+                let tf_dd_btn = toolbar_btn(ui, Icon::CARET_DOWN, watchlist.timeframe_dropdown_open, t)
+                    .on_hover_text("Timeframe picker");
                 if tf_dd_btn.clicked() {
                     watchlist.timeframe_dropdown_open = !watchlist.timeframe_dropdown_open;
                     watchlist.timeframe_dropdown_pos = egui::pos2(tf_dd_btn.rect.left(), tf_dd_btn.rect.bottom() + 2.0);
@@ -1733,7 +1734,8 @@ pub(crate) fn render(
                     ui.add_space(gap_xs());
                 }
                 // Dropdown caret for the full layout picker
-                let dd_btn = toolbar_btn(ui, Icon::CARET_DOWN, watchlist.layout_dropdown_open, t);
+                let dd_btn = toolbar_btn(ui, Icon::CARET_DOWN, watchlist.layout_dropdown_open, t)
+                    .on_hover_text("Layout picker");
                 if dd_btn.clicked() {
                     watchlist.layout_dropdown_open = !watchlist.layout_dropdown_open;
                     watchlist.layout_dropdown_pos = egui::pos2(dd_btn.rect.left(), dd_btn.rect.bottom() + 2.0);

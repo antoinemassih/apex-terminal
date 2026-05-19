@@ -1027,6 +1027,7 @@ impl<'a> FloatingOrderPaneChrome<'a> {
 
                 // Expand/collapse toggle
                 let exp_icon = if advanced { Icon::MINUS } else { Icon::PLUS };
+                let exp_tip = if advanced { "Collapse" } else { "Expand" };
                 let exp_resp = ui.add(
                     egui::Button::new(
                         egui::RichText::new(exp_icon).size(font_xs_plus()).color(color_half(dim)),
@@ -1034,7 +1035,7 @@ impl<'a> FloatingOrderPaneChrome<'a> {
                     .fill(Color32::TRANSPARENT)
                     .min_size(egui::vec2(20.0, row_height_dense()))
                     .corner_radius(radius_sm()),
-                );
+                ).on_hover_text(exp_tip);
                 if exp_resp.clicked() { advanced_toggled = true; }
                 if exp_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             });
