@@ -10071,17 +10071,23 @@ fn render_chart_pane(
     }
 
     // ── PRIORITY 6: Scroll / pinch / trackpad pan ─────────────────────
-    // Trackpad gestures (read all in one egui input lock):
-    //   • Pinch (zoom_delta != 1.0) → zoom X (bar count).
-    //   • Horizontal scroll (raw_scroll_delta.x) → pan time.
-    //   • Vertical scroll (raw_scroll_delta.y) → zoom X (keeps mouse-wheel
-    //     behavior intact; trackpad users still get pan-X via horizontal
-    //     swipe and pinch for zoom).
-    let (scroll_x, scroll_y, zoom_delta) = ui.input(|i| {
-        (i.raw_scroll_delta.x, i.raw_scroll_delta.y, i.zoom_delta())
+    // Input mapping (TradingView-style):
+    //   • Pinch (zoom_delta != 1.0)            → zoom X (bar count).
+    //   • Trackpad 2-finger horizontal swipe   → pan X (time).
+    //   • Trackpad 2-finger vertical swipe     → pan Y (price).
+    //   • Mouse wheel (large discrete delta)   → zoom X.
+    //   • Cmd / Ctrl + scroll                  → zoom X (modifier escape).
+    //
+    // Mouse-wheel vs trackpad heuristic: macOS mouse wheels typically emit
+    // ≥ 30 px per tick in a single frame, while trackpad swipes emit small
+    // continuous deltas (1-20 px). We use |Δy| > 30 OR a modifier as the
+    // "this is a zoom intent" signal.
+    let (scroll_x, scroll_y, zoom_delta, cmd_or_ctrl) = ui.input(|i| {
+        (i.raw_scroll_delta.x, i.raw_scroll_delta.y, i.zoom_delta(),
+         i.modifiers.command || i.modifiers.ctrl)
     });
     if resp.hovered() && in_chart_body {
-        // Pinch zoom — trackpad gesture
+        // Pinch zoom — trackpad gesture (always wins over scroll deltas)
         if (zoom_delta - 1.0).abs() > 0.001 {
             // zoom_delta > 1.0 = pinch out = zoom IN (fewer bars, more detail)
             let f = 1.0 / zoom_delta;
@@ -10090,22 +10096,34 @@ fn render_chart_pane(
             chart.vc_target = new_vc;
             chart.auto_scroll = false;
             chart.last_input = std::time::Instant::now();
-        }
-        // Horizontal trackpad pan — 2-finger swipe left/right
-        if scroll_x.abs() > 0.1 {
-            chart.vs = (chart.vs - scroll_x / bs).max(0.0).min(n as f32 + 200.0);
-            chart.auto_scroll = false;
-            chart.last_input = std::time::Instant::now();
-        }
-        // Vertical scroll — mouse wheel zoom (trackpad vertical also zooms X
-        // here; users wanting price pan should use cursor drag or Y-axis drag)
-        if scroll_y != 0.0 {
-            let f = if scroll_y > 0.0 { 0.9 } else { 1.1 };
-            let old_target = chart.vc_target;
-            let new_vc = ((old_target as f32 * f).round() as u32).max(20).min(n as u32);
-            chart.vc_target = new_vc;
-            chart.auto_scroll = false;
-            chart.last_input = std::time::Instant::now();
+        } else {
+            // Treat as scroll (trackpad swipe OR mouse wheel)
+            let is_wheel_zoom = cmd_or_ctrl || scroll_y.abs() > 30.0;
+
+            // Horizontal trackpad pan — 2-finger swipe left/right
+            if scroll_x.abs() > 0.1 {
+                chart.vs = (chart.vs - scroll_x / bs).max(0.0).min(n as f32 + 200.0);
+                chart.auto_scroll = false;
+                chart.last_input = std::time::Instant::now();
+            }
+
+            if scroll_y != 0.0 {
+                if is_wheel_zoom {
+                    // Mouse wheel zoom (or Cmd+scroll on trackpad)
+                    let f = if scroll_y > 0.0 { 0.9 } else { 1.1 };
+                    let old_target = chart.vc_target;
+                    let new_vc = ((old_target as f32 * f).round() as u32).max(20).min(n as u32);
+                    chart.vc_target = new_vc;
+                } else {
+                    // Trackpad 2-finger vertical swipe → pan price
+                    let (lo, hi) = chart.price_range();
+                    let price_per_px = (hi - lo) / ch;
+                    let shift = scroll_y * price_per_px;
+                    chart.price_lock = Some((lo + shift, hi + shift));
+                }
+                chart.auto_scroll = false;
+                chart.last_input = std::time::Instant::now();
+            }
         }
     }
 
