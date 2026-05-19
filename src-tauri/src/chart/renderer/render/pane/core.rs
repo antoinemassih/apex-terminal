@@ -9323,9 +9323,9 @@ fn render_chart_pane(
         if resp.dragged_by(egui::PointerButton::Primary) {
             let dy = resp.drag_delta().y;
             if dy.abs() > 1.0 {
-                // Zoom step bumped 20% (0.05 → 0.06 deviation per frame)
-                // so y-axis drag feels more responsive without wheel use.
-                let f = if dy > 0.0 { 1.06_f32 } else { 0.94 };
+                // Zoom step: was 0.06 deviation/frame (1.06 / 0.94). User asked
+                // for 1.5x more responsive → 0.09 deviation/frame (1.09 / 0.91).
+                let f = if dy > 0.0 { 1.09_f32 } else { 0.91 };
                 let (lo, hi) = chart.price_range();
                 let center = (lo + hi) / 2.0;
                 let half = ((hi - lo) / 2.0) * f;
@@ -10070,15 +10070,43 @@ fn render_chart_pane(
         }
     }
 
-    // ── PRIORITY 6: Scroll zoom (smooth via vc_target) ────────────────
-    let scroll = ui.input(|i| i.raw_scroll_delta.y);
-    if scroll != 0.0 && resp.hovered() && in_chart_body {
-        let f = if scroll > 0.0 { 0.9 } else { 1.1 };
-        let old_target = chart.vc_target;
-        let new_vc = ((old_target as f32 * f).round() as u32).max(20).min(n as u32);
-        chart.vc_target = new_vc;
-        chart.auto_scroll = false;
-        chart.last_input = std::time::Instant::now();
+    // ── PRIORITY 6: Scroll / pinch / trackpad pan ─────────────────────
+    // Trackpad gestures (read all in one egui input lock):
+    //   • Pinch (zoom_delta != 1.0) → zoom X (bar count).
+    //   • Horizontal scroll (raw_scroll_delta.x) → pan time.
+    //   • Vertical scroll (raw_scroll_delta.y) → zoom X (keeps mouse-wheel
+    //     behavior intact; trackpad users still get pan-X via horizontal
+    //     swipe and pinch for zoom).
+    let (scroll_x, scroll_y, zoom_delta) = ui.input(|i| {
+        (i.raw_scroll_delta.x, i.raw_scroll_delta.y, i.zoom_delta())
+    });
+    if resp.hovered() && in_chart_body {
+        // Pinch zoom — trackpad gesture
+        if (zoom_delta - 1.0).abs() > 0.001 {
+            // zoom_delta > 1.0 = pinch out = zoom IN (fewer bars, more detail)
+            let f = 1.0 / zoom_delta;
+            let old_target = chart.vc_target;
+            let new_vc = ((old_target as f32 * f).round() as u32).max(20).min(n as u32);
+            chart.vc_target = new_vc;
+            chart.auto_scroll = false;
+            chart.last_input = std::time::Instant::now();
+        }
+        // Horizontal trackpad pan — 2-finger swipe left/right
+        if scroll_x.abs() > 0.1 {
+            chart.vs = (chart.vs - scroll_x / bs).max(0.0).min(n as f32 + 200.0);
+            chart.auto_scroll = false;
+            chart.last_input = std::time::Instant::now();
+        }
+        // Vertical scroll — mouse wheel zoom (trackpad vertical also zooms X
+        // here; users wanting price pan should use cursor drag or Y-axis drag)
+        if scroll_y != 0.0 {
+            let f = if scroll_y > 0.0 { 0.9 } else { 1.1 };
+            let old_target = chart.vc_target;
+            let new_vc = ((old_target as f32 * f).round() as u32).max(20).min(n as u32);
+            chart.vc_target = new_vc;
+            chart.auto_scroll = false;
+            chart.last_input = std::time::Instant::now();
+        }
     }
 
     // ── Double-click dispatch ────────────────────────────────────────────
