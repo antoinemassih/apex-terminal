@@ -1739,6 +1739,28 @@ impl OrderManager {
         true
     }
 
+    /// Cancel all active orders for a symbol and return how many were cancelled.
+    /// Symbol must be non-empty. Delegates to `cancel_all` for the serialisation
+    /// (journal, broker thread, per-order cancel) and returns a count so the UI
+    /// can surface a confirmation toast without calling the order list twice.
+    pub(crate) fn cancel_all_for_symbol(&mut self, symbol: &str) -> usize {
+        debug_assert!(!symbol.is_empty(), "cancel_all_for_symbol: symbol must be non-empty");
+        // Collect IDs first (one pass), then cancel them. This avoids holding
+        // a borrow over the mutable `cancel` call while also ensuring we only
+        // count orders that were actually active at the start of the operation.
+        let ids: Vec<u64> = self.orders.iter()
+            .filter(|o| o.state.is_active() && o.symbol == symbol)
+            .map(|o| o.id)
+            .collect();
+        let count = ids.len();
+        if count == 0 { return 0; }
+        // `cancel_all` re-collects, but that's fine — it also fires the bulk
+        // broker DELETE and appends the CancelAll journal entry.  We pass the
+        // non-empty symbol string so the broker call is scoped to the symbol.
+        self.cancel_all(symbol);
+        count
+    }
+
     /// Cancel all active orders for a symbol (or all if symbol is empty)
     /// Also sends cancel to ApexIB backend
     pub(crate) fn cancel_all(&mut self, symbol: &str) {
@@ -2070,6 +2092,26 @@ pub(crate) fn cancel_order(id: u64) -> bool {
 pub(crate) fn cancel_all_orders(symbol: &str) {
     with_mgr(|mgr| mgr.cancel_all(symbol));
     with_mgr(|mgr| mgr.save_to_disk());
+}
+
+/// Cancel all active orders for a specific (non-empty) symbol and return the
+/// number that were cancelled. Used by the per-symbol bulk-cancel affordance in
+/// the order-ledger panel after the user confirms the confirmation dialog.
+pub(crate) fn cancel_all_for_symbol(symbol: &str) -> usize {
+    let n = with_mgr(|mgr| mgr.cancel_all_for_symbol(symbol));
+    if n > 0 {
+        with_mgr(|mgr| mgr.save_to_disk());
+    }
+    n
+}
+
+/// Count active (non-terminal) orders for a symbol. Used by the ledger panel
+/// to decide whether to show the bulk-cancel affordance.
+pub(crate) fn working_count_for_symbol(symbol: &str) -> usize {
+    let snap = orders_snapshot();
+    snap.orders.iter()
+        .filter(|o| o.state.is_active() && o.symbol == symbol)
+        .count()
 }
 
 /// Modify order price
@@ -4459,5 +4501,67 @@ mod tests {
             !has_active_tpsl,
             "expected no active TP/SL once all bracket legs are Filled"
         );
+    }
+
+    // ── P2. Bulk cancel by symbol ────────────────────────────────────────────
+
+    #[test]
+    fn cancel_all_for_symbol_only_cancels_matching_non_terminal() {
+        let mut m = fresh_manager();
+
+        // Submit three orders: 2 for SPY, 1 for AAPL.
+        let spy1 = m.submit(limit_intent("SPY", OrderSide::Buy, 450.0, 10));
+        let spy2 = m.submit(limit_intent("SPY", OrderSide::Sell, 451.0, 5));
+        let aapl = m.submit(limit_intent("AAPL", OrderSide::Buy, 180.0, 1));
+
+        let spy1_id = order_id(&spy1).expect("spy1 should be accepted");
+        let spy2_id = order_id(&spy2).expect("spy2 should be accepted");
+        let aapl_id = order_id(&aapl).expect("aapl should be accepted");
+
+        // Manually force spy2 to Filled (terminal) before the bulk cancel.
+        m.transition(spy2_id, OrderState::Filled);
+
+        // Cancel all SPY orders. Should only cancel spy1 (the active one).
+        let n = m.cancel_all_for_symbol("SPY");
+        assert_eq!(n, 1, "should cancel exactly 1 active SPY order (spy2 is terminal)");
+
+        let spy1_order = m.orders.iter().find(|o| o.id == spy1_id).unwrap();
+        let spy2_order = m.orders.iter().find(|o| o.id == spy2_id).unwrap();
+        let aapl_order = m.orders.iter().find(|o| o.id == aapl_id).unwrap();
+
+        assert!(spy1_order.state.is_terminal(),
+            "spy1 should be in terminal state after cancel_all_for_symbol");
+        assert_eq!(spy2_order.state, OrderState::Filled,
+            "spy2 (already Filled) must not be changed");
+        assert!(aapl_order.state.is_active(),
+            "AAPL order must not be touched by SPY bulk cancel");
+    }
+
+    #[test]
+    fn cancel_all_for_symbol_returns_zero_when_no_active() {
+        let mut m = fresh_manager();
+
+        // Submit one SPY order and fill it.
+        let r = m.submit(limit_intent("SPY", OrderSide::Buy, 450.0, 10));
+        let id = order_id(&r).unwrap();
+        m.transition(id, OrderState::Filled);
+
+        let n = m.cancel_all_for_symbol("SPY");
+        assert_eq!(n, 0, "no active SPY orders — count must be 0");
+    }
+
+    #[test]
+    fn cancel_all_for_symbol_does_not_cancel_different_symbol() {
+        let mut m = fresh_manager();
+
+        let r = m.submit(limit_intent("TSLA", OrderSide::Buy, 250.0, 3));
+        let id = order_id(&r).unwrap();
+
+        // Cancel all for SPY — TSLA must survive untouched.
+        let n = m.cancel_all_for_symbol("SPY");
+        assert_eq!(n, 0);
+
+        let tsla = m.orders.iter().find(|o| o.id == id).unwrap();
+        assert!(tsla.state.is_active(), "TSLA order must remain active");
     }
 }

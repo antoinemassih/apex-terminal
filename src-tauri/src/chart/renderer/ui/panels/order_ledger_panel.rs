@@ -17,11 +17,13 @@ use super::super::style::{self, *};
 use super::super::super::gpu::{Watchlist, Chart, Theme};
 use super::super::widgets::text::{SectionLabel, MonospaceCode};
 use crate::ui_kit::widgets::Input;
-use crate::ui_kit::widgets::tokens::Size as KitSize;
+use crate::ui_kit::widgets::tokens::{Size as KitSize, Variant};
 use crate::ui_kit::widgets::side_panel_shell::{SidePanelShell, Width};
+use crate::ui_kit::widgets::{Button, PanelSubSection};
 use crate::chart_renderer::trading::OrderSide;
 use crate::chart_renderer::trading::order_manager::{self, OrderState};
 use crate::chart_renderer::trading::journal::{self, JournalEvent, AttemptKind};
+use crate::data::connectivity::errors_sink::{report, ErrorLevel};
 
 /// Lightweight active-order row, derived from the lock-free snapshot.
 /// Avoids cloning the full `ManagedOrder` per render frame.
@@ -144,7 +146,7 @@ pub(crate) fn draw(
                 0 => LedgerView::Active, 1 => LedgerView::Journal, _ => LedgerView::All,
             };
 
-            // ── Section 1: Active Orders ─────────────────────────────────
+            // ── Section 1: Active Orders (grouped by symbol) ────────────
             if matches!(view, LedgerView::Active | LedgerView::All) {
                 ui.add(SectionLabel::new(&format!("ACTIVE ORDERS ({})", active_count)).tiny().color(t.accent));
                 ui.add_space(gap_xs());
@@ -155,6 +157,29 @@ pub(crate) fn draw(
                     ui.available_height() - gap_sm()
                 };
 
+                // Pre-build ordered symbol list and per-symbol counts outside of
+                // closures so the borrow checker is happy with the `watchlist`
+                // mutable borrow inside the scroll area.
+                let mut symbols: Vec<String> = Vec::new();
+                for row in &active_orders {
+                    if !symbols.contains(&row.symbol) {
+                        symbols.push(row.symbol.clone());
+                    }
+                }
+                // Seed expanded state for any new symbols before we enter the
+                // scroll area closure (avoids entry API inside nested borrows).
+                for sym in &symbols {
+                    watchlist.order_ledger_sym_expanded
+                        .entry(sym.clone())
+                        .or_insert(true);
+                }
+
+                // Trampoline: "Cancel all" clicks inside header_trailing cannot
+                // mutate `watchlist` directly (already borrowed by the iterator).
+                // Collect the symbol that was clicked and apply it after the loop.
+                use std::cell::Cell;
+                let cancel_all_clicked: Cell<Option<String>> = Cell::new(None);
+
                 egui::ScrollArea::vertical()
                     .id_salt("ledger_active")
                     .max_height(max_h)
@@ -164,17 +189,62 @@ pub(crate) fn draw(
                             ui.add(MonospaceCode::new("No active orders").size_px(font_sm()).color(t.dim).gamma(0.5));
                             ui.add_space(gap_sm());
                         } else {
-                            // Column header
-                            ui.horizontal(|ui| {
-                                ui.add(MonospaceCode::new("TIME    SYM   SIDE TYPE  QTY/FILL  PRICE   STATE      SRC  CID")
-                                    .size_px(font_xs()).color(t.dim).gamma(0.4));
-                            });
-                            ui.add_space(2.0);
-                            for row in &active_orders {
-                                draw_active_row(ui, t, row);
+                            // Render one PanelSubSection per symbol.
+                            for sym in &symbols {
+                                let sym_rows: Vec<&ActiveRow> = active_orders.iter()
+                                    .filter(|r| &r.symbol == sym)
+                                    .collect();
+                                let working_count = sym_rows.len();
+
+                                // Safety: we pre-seeded all entries above.
+                                let expanded = watchlist.order_ledger_sym_expanded
+                                    .get_mut(sym)
+                                    .expect("pre-seeded above");
+
+                                let sym_for_trail = sym.clone();
+                                PanelSubSection::new(sym, sym)
+                                    .count(working_count)
+                                    .expanded(expanded)
+                                    .header_trailing(|ui, t| {
+                                        // Show "Cancel all" only when ≥2 working orders —
+                                        // the per-row × already covers the single-order case.
+                                        if working_count >= 2 {
+                                            if Button::new("Cancel all")
+                                                .variant(Variant::Ghost)
+                                                .fg(t.bear)
+                                                .show(ui, t).clicked()
+                                            {
+                                                cancel_all_clicked.set(Some(sym_for_trail.clone()));
+                                            }
+                                        }
+                                    })
+                                    .show(ui, t, |ui, t| {
+                                        // Column header (symbol omitted — it's in the sub-section title)
+                                        ui.horizontal(|ui| {
+                                            ui.add(MonospaceCode::new("TIME    SIDE TYPE  QTY/FILL  PRICE   STATE      CID")
+                                                .size_px(font_xs()).color(t.dim).gamma(0.4));
+                                        });
+                                        ui.add_space(2.0);
+                                        for row in &sym_rows {
+                                            draw_active_row(ui, t, row);
+                                        }
+                                    });
                             }
                         }
                     });
+
+                // Apply the trampoline: a "Cancel all" button was clicked inside
+                // the scroll area — set the pending confirmation symbol.
+                if let Some(sym) = cancel_all_clicked.into_inner() {
+                    watchlist.order_ledger_pending_bulk_cancel = Some(sym);
+                }
+
+                // ── Inline confirmation for pending bulk cancel ───────────
+                if let Some(pending_sym) = watchlist.order_ledger_pending_bulk_cancel.clone() {
+                    let working = order_manager::working_count_for_symbol(&pending_sym);
+                    draw_bulk_cancel_confirm(ui, t, watchlist, &pending_sym, working);
+                }
+
                 ui.add_space(gap_xs());
             }
 
@@ -249,6 +319,84 @@ pub(crate) fn draw(
             }
         });
     if resp.close_clicked { watchlist.order_ledger_open = false; }
+}
+
+// ── Inline bulk-cancel confirmation ─────────────────────────────────────────
+
+/// Render the inline confirmation row for a pending bulk cancel.
+/// Placed directly below the scroll area, stays visible even when the
+/// sub-section is collapsed.
+///
+/// Layout (single horizontal strip):
+///   ⚠ Cancel N working orders for SYM?  [Cancel all]  [Keep]
+///
+/// "Cancel all" confirms; "Keep" dismisses without action.
+fn draw_bulk_cancel_confirm(
+    ui: &mut egui::Ui,
+    t: &Theme,
+    watchlist: &mut Watchlist,
+    sym: &str,
+    working: usize,
+) {
+    let warn_color = color_alpha(t.bear, 220);
+    let bg = color_alpha(t.bear, 18);
+    let avail = ui.available_width();
+
+    // Outer frame with a subtle danger tint.
+    egui::Frame::NONE
+        .fill(bg)
+        .inner_margin(egui::Margin::symmetric(gap_sm() as i8, gap_xs() as i8))
+        .corner_radius(egui::CornerRadius::same(radius_sm() as u8))
+        .show(ui, |ui| {
+            ui.set_min_width(avail);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = gap_sm();
+
+                // Warning message
+                let msg = format!("Cancel {} working order{} for {}?",
+                    working,
+                    if working == 1 { "" } else { "s" },
+                    sym,
+                );
+                ui.add(MonospaceCode::new(&msg)
+                    .size_px(font_sm())
+                    .strong(true)
+                    .color(warn_color));
+
+                // Right-align the action buttons.
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.spacing_mut().item_spacing.x = gap_xs();
+
+                    // Keep (dismiss)
+                    if Button::new("Keep")
+                        .variant(Variant::Ghost)
+                        .fg(t.dim)
+                        .show(ui, t).clicked()
+                    {
+                        watchlist.order_ledger_pending_bulk_cancel = None;
+                    }
+
+                    // Cancel all (confirm — the dangerous action)
+                    if Button::new("Cancel all")
+                        .variant(Variant::Ghost)
+                        .fg(t.bear)
+                        .show(ui, t).clicked()
+                    {
+                        let n = order_manager::cancel_all_for_symbol(sym);
+                        if n > 0 {
+                            report(
+                                ErrorLevel::Info,
+                                "order_manager",
+                                "bulk_cancel",
+                                format!("Cancelled {} order{} for {}", n,
+                                    if n == 1 { "" } else { "s" }, sym),
+                            );
+                        }
+                        watchlist.order_ledger_pending_bulk_cancel = None;
+                    }
+                });
+            });
+        });
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
