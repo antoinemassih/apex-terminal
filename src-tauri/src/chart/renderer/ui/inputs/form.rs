@@ -1104,6 +1104,7 @@ impl ApertureOrderTicket {
         use crate::ui_kit::widgets::tokens::Size as KitSize;
         use crate::ui_kit::widgets::Input;
         use crate::ui_kit::widgets::FormField;
+        use crate::ui_kit::widgets::InputGroup;
 
         let panel_w = if self.panel_w > 0.0 { self.panel_w } else { ui.available_width() };
         let pad     = 8.0_f32;
@@ -1180,9 +1181,13 @@ impl ApertureOrderTicket {
                 ui.add_space(gap_sm());
                 let premium = last;
                 let mult    = if s.is_option { 100.0_f32 } else { 1.0_f32 };
-                Input::new(s.order_notional_amount)
-                    .placeholder("Amount").width(70.0)
-                    .show(ui, &t_stub);
+                InputGroup::new()
+                    .prefix("$")
+                    .show(ui, &t_stub, |ui| {
+                        Input::new(s.order_notional_amount)
+                            .placeholder("Amount").width(70.0)
+                            .show(ui, &t_stub);
+                    });
                 let notional: f32 = s.order_notional_amount.parse().unwrap_or(0.0);
                 let qty = if premium > 0.0 && mult > 0.0 {
                     (notional / (premium * mult)).floor() as i32
@@ -1244,10 +1249,15 @@ impl ApertureOrderTicket {
                             ui.label(egui::RichText::new(format!("{:.2}", last))
                                 .monospace().size(font_md()).color(self.dim));
                         } else {
-                            Input::new(s.order_limit_price)
-                                .placeholder("Price").width(68.0)
-                                .horizontal_align(egui::Align::RIGHT)
-                                .show(ui, &t_stub);
+                            InputGroup::new()
+                                .prefix("$")
+                                .invalid(limit_invalid)
+                                .show(ui, &t_stub, |ui| {
+                                    Input::new(s.order_limit_price)
+                                        .placeholder("0.00").width(60.0)
+                                        .horizontal_align(egui::Align::RIGHT)
+                                        .show(ui, &t_stub);
+                                });
                         }
                         ui.add_space(gap_xs());
                         let mkt_label = if *s.order_market { "MKT" } else { "LMT" };
@@ -1285,10 +1295,15 @@ impl ApertureOrderTicket {
                     .helper("e.g., 150.25")
                     .error_if(lp_err, "Must be ≥ 0")
                     .show(ui, &t_stub, |ui| {
-                        Input::new(s.order_limit_price)
-                            .width(panel_w - pad * 2.0 - 4.0)
-                            .horizontal_align(egui::Align::RIGHT)
-                            .show(ui, &t_stub);
+                        InputGroup::new()
+                            .prefix("$")
+                            .invalid(lp_err)
+                            .show(ui, &t_stub, |ui| {
+                                Input::new(s.order_limit_price)
+                                    .width(panel_w - pad * 2.0 - 4.0)
+                                    .horizontal_align(egui::Align::RIGHT)
+                                    .show(ui, &t_stub);
+                            });
                     });
             }
             if oti == 2 || oti == 3 {
@@ -1299,10 +1314,15 @@ impl ApertureOrderTicket {
                     .helper("trigger price")
                     .error_if(sp_err, "Must be ≥ 0")
                     .show(ui, &t_stub, |ui| {
-                        Input::new(s.order_stop_price)
-                            .width(panel_w - pad * 2.0 - 4.0)
-                            .horizontal_align(egui::Align::RIGHT)
-                            .show(ui, &t_stub);
+                        InputGroup::new()
+                            .prefix("$")
+                            .invalid(sp_err)
+                            .show(ui, &t_stub, |ui| {
+                                Input::new(s.order_stop_price)
+                                    .width(panel_w - pad * 2.0 - 4.0)
+                                    .horizontal_align(egui::Align::RIGHT)
+                                    .show(ui, &t_stub);
+                            });
                     });
             }
             if oti == 4 {
