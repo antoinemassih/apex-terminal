@@ -14,7 +14,7 @@ use crate::apex_data::types::{Calibrated, CombinedSignalV2};
 use crate::chart_renderer::SignalsTab;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::side_panel_shell::Width;
-use crate::ui_kit::widgets::{Button, SplitSectionPanel};
+use crate::ui_kit::widgets::{Button, PanelListRow, SplitSectionPanel};
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 const ALL_TABS: &[(SignalsTab, &str)] = &[
@@ -138,19 +138,19 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
 
     let signals = live_state::all_combined_sorted();
     if signals.is_empty() {
-        ui.label(egui::RichText::new("No signals yet").monospace().size(FONT_XS).color(t.dim.gamma_multiply(0.5)));
+        ui.label(egui::RichText::new("No signals yet").monospace().size(font_xs()).color(color_muted(t.dim)));
     } else {
         // Column header — keep alignment monospace-friendly so eyes can scan.
         ui.horizontal(|ui| {
             ui.add_space(gap_sm());
-            ui.label(egui::RichText::new("score").monospace().size(FONT_3XS).color(t.dim));
-            ui.label(egui::RichText::new("engine").monospace().size(FONT_3XS).color(t.dim));
+            ui.label(egui::RichText::new("score").monospace().size(font_3xs()).color(t.dim));
+            ui.label(egui::RichText::new("engine").monospace().size(font_3xs()).color(t.dim));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(egui::RichText::new("🔍").monospace().size(FONT_3XS).color(t.dim));
+                ui.label(egui::RichText::new("🔍").monospace().size(font_3xs()).color(t.dim));
                 ui.add_space(gap_xs());
-                ui.label(egui::RichText::new("trust").monospace().size(FONT_3XS).color(t.dim));
+                ui.label(egui::RichText::new("trust").monospace().size(font_3xs()).color(t.dim));
                 ui.add_space(gap_xs());
-                ui.label(egui::RichText::new("calibrated").monospace().size(FONT_3XS).color(t.dim));
+                ui.label(egui::RichText::new("calibrated").monospace().size(font_3xs()).color(t.dim));
             });
         });
         ui.add_space(gap_2xs());
@@ -167,61 +167,100 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
 /// ```
 /// score │ engine │ symbol │ time │ calibrated │ trust │ 🔍
 /// ```
+///
+/// Row chrome (hover background, row height, consistent padding) is provided
+/// by `PanelListRow`. The left cells (score / engine / symbol) are rendered
+/// in the `.leading` slot with per-cell theme colours; the right controls
+/// (calibrated label / trust bar / 🔍 button) live in the `.trailing` slot
+/// in a right-to-left layout.
+///
+/// The trust bar is genuinely custom: `ui_kit::Progress::linear` uses a fixed
+/// accent colour and auto-width, whereas this bar needs three threshold colours
+/// (accent / warn / dim) and an exact 32 × 6 px bounding box. It is therefore
+/// kept as inline painter calls routed through theme colours.
 pub(crate) fn draw_signal_row_calibrated(
     ui: &mut egui::Ui,
     sig: &CombinedSignalV2,
     t: &Theme,
 ) {
-    ui.horizontal(|ui| {
-        ui.add_space(gap_sm());
-        // Score (large, accent if positive direction).
-        let score_col = match sig.direction.as_str() {
-            "long"  => t.bull,
-            "short" => t.bear,
-            _ => t.text,
-        };
-        ui.label(egui::RichText::new(format!("{:>3.0}", sig.score))
-            .monospace().size(FONT_XS).color(score_col));
-        // Engine (first contributor's engine, or "—").
-        let engine = sig.top_contributors.first()
-            .map(|c| c.engine.as_str()).unwrap_or("—");
-        ui.label(egui::RichText::new(engine).monospace().size(FONT_XS).color(t.text));
-        // Symbol.
-        ui.label(egui::RichText::new(&sig.symbol).monospace().size(FONT_XS).color(t.dim));
+    // Resolve all per-row data before the closures borrow `sig`.
+    let score_col = match sig.direction.as_str() {
+        "long"  => t.bull,
+        "short" => t.bear,
+        _       => t.text,
+    };
+    let score_text = format!("{:>3.0}", sig.score);
+    let engine = sig.top_contributors.first()
+        .map(|c| c.engine.as_str()).unwrap_or("—");
+    let symbol = sig.symbol.as_str();
+    let calibrated = sig.top_contributors.first()
+        .and_then(|c| sig.calibrated_contributors.get(&c.engine).cloned())
+        .unwrap_or_default();
+    let lineage = sig.provenance.as_ref().map(|p| p.lineage_id.clone())
+        .or_else(|| sig.top_contributors.first()
+            .and_then(|c| c.lineage_id.clone()));
+    let calib_label = format_calibrated_label(&calibrated);
+    let calib_col = if calibrated.is_calibrated() { t.text } else { color_muted(t.dim) };
+    let trust = calibrated.trust_factor(); // 0.0..=1.0
 
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+    // `id_salt` must be stable per-row; use symbol + score as a cheap key.
+    let id_salt = format!("sig_{}_{:.0}", sig.symbol, sig.score);
+
+    PanelListRow::new(id_salt.as_str())
+        .hoverable(false) // display-only streaming row — no pointer cursor
+        .leading(move |ui, _t| {
+            ui.add_space(gap_sm());
+            // Score — coloured by direction.
+            ui.label(egui::RichText::new(&score_text)
+                .monospace().size(font_xs()).color(score_col));
+            // Engine.
+            ui.label(egui::RichText::new(engine)
+                .monospace().size(font_xs()).color(_t.text));
+            // Symbol.
+            ui.label(egui::RichText::new(symbol)
+                .monospace().size(font_xs()).color(_t.dim));
+        })
+        .trailing(move |ui, _t| {
+            // Layout is right-to-left; items are appended in reverse display order.
             // 🔍 button → opens ProvenancePane via the cross-panel event bus.
-            let lineage = sig.provenance.as_ref().map(|p| p.lineage_id.clone())
-                .or_else(|| sig.top_contributors.first()
-                    .and_then(|c| c.lineage_id.clone()));
+            let has_lineage = lineage.is_some();
             let btn = Button::new("🔍").variant(KitVariant::Ghost).size(KitSize::Xs)
-                .fg(if lineage.is_some() { t.accent } else { t.dim.gamma_multiply(0.4) })
+                .fg(if has_lineage { _t.accent } else { color_muted(_t.dim) })
                 .min_size(egui::vec2(18.0, 16.0))
-                .disabled(!lineage.is_some())
-                .show(ui, t);
+                .disabled(!has_lineage)
+                .show(ui, _t);
             if btn.clicked() {
-                if let Some(l) = lineage {
-                    super::provenance_pane::request_open(l);
+                if let Some(ref l) = lineage {
+                    super::provenance_pane::request_open(l.clone());
                 }
             }
             ui.add_space(gap_xs());
 
-            // Trust bar — visual `min(n,50)/50`. Pull the strongest
-            // contributor's calibration (matches the spec — first column
-            // engine drives the row).
-            let calibrated = sig.top_contributors.first()
-                .and_then(|c| sig.calibrated_contributors.get(&c.engine).cloned())
-                .unwrap_or_default();
-            draw_trust_bar(ui, &calibrated, t);
+            // Trust bar — genuinely custom: three threshold colours + fixed
+            // 32 × 6 px bounding box (see fn doc). Kept as painter calls;
+            // all colours route through the theme.
+            let bar_w = 32.0;
+            let bar_h = 6.0;
+            let (rect, _) = ui.allocate_exact_size(
+                egui::vec2(bar_w, bar_h), egui::Sense::hover());
+            let painter = ui.painter_at(rect);
+            painter.rect_filled(rect, 0.0, color_alpha(_t.dim, alpha_ghost()));
+            let fill_w = (bar_w * trust).clamp(0.0, bar_w);
+            if fill_w > 0.0 {
+                let fill_rect = egui::Rect::from_min_max(
+                    rect.min, egui::pos2(rect.min.x + fill_w, rect.max.y));
+                let col = if trust > 0.6 { _t.accent }
+                          else if trust > 0.3 { _t.warn }
+                          else { _t.dim };
+                painter.rect_filled(fill_rect, 0.0, col);
+            }
             ui.add_space(gap_xs());
 
             // Calibrated hit_rate + sample-size, or "—" if uncalibrated.
-            let label = format_calibrated_label(&calibrated);
-            ui.label(egui::RichText::new(label)
-                .monospace().size(FONT_XS)
-                .color(if calibrated.is_calibrated() { t.text } else { t.dim.gamma_multiply(0.5) }));
-        });
-    });
+            ui.label(egui::RichText::new(&calib_label)
+                .monospace().size(font_xs()).color(calib_col));
+        })
+        .show(ui, t);
     ui.add_space(gap_2xs());
 }
 
@@ -230,22 +269,6 @@ pub(crate) fn format_calibrated_label(c: &Calibrated) -> String {
     if !c.is_calibrated() { return "—".into(); }
     let hr = c.hit_rate.unwrap_or(0.0) * 100.0;
     format!("{:.0}% (n={})", hr, c.n_samples)
-}
-
-fn draw_trust_bar(ui: &mut egui::Ui, c: &Calibrated, t: &Theme) {
-    let trust = c.trust_factor(); // 0..=1
-    let w = 32.0;
-    let h = 6.0;
-    let (rect, _resp) = ui.allocate_exact_size(egui::vec2(w, h), egui::Sense::hover());
-    let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 0.0, color_alpha(t.dim, alpha_ghost()));
-    let fill_w = (w * trust).clamp(0.0, w);
-    let fill_rect = egui::Rect::from_min_max(
-        rect.min, egui::pos2(rect.min.x + fill_w, rect.max.y));
-    let col = if trust > 0.6 { t.accent }
-              else if trust > 0.3 { t.warn }
-              else { t.dim };
-    painter.rect_filled(fill_rect, 0.0, col);
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
