@@ -35,6 +35,9 @@ use crate::ui_kit::widgets::Button as KitButton;
 use crate::ui_kit::widgets::Tooltip;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
+use crate::ui_kit::widgets::PanelKeyValueRow;
+use crate::ui_kit::widgets::PanelTone;
+use crate::ui_kit::widgets::{MetricRow, MetricTone};
 
 /// Min historical samples for the hit-rate to be considered trustworthy. Below
 /// this the panel greys out the percentage and adds a "low confidence" tag.
@@ -181,13 +184,13 @@ fn draw_plan(ui: &mut egui::Ui, plan: &TradePlanV2, t: &Theme) {
     ui.add_space(gap_sm());
 
     // ── Price ladder (ENTRY / TARGET / STOP) with optional range bands ──────
-    draw_price_row(ui, "ENTRY",  plan.entry_price,  None,                  t.text, t);
-    draw_price_row(ui, "TARGET", plan.target_price, plan.target_range,     t.bull, t);
-    draw_price_row(ui, "STOP",   plan.stop_price,   plan.stop_range,       t.bear, t);
+    price_row(ui, "ENTRY",  plan.entry_price,  None,               PanelTone::Text, t);
+    price_row(ui, "TARGET", plan.target_price, plan.target_range,  PanelTone::Bull, t);
+    price_row(ui, "STOP",   plan.stop_price,   plan.stop_range,    PanelTone::Bear, t);
     ui.add_space(gap_sm());
 
     // ── Hit-rate progress bar ───────────────────────────────────────────────
-    draw_hit_rate(ui, plan, t);
+    hit_rate_row(ui, plan, t);
     ui.add_space(gap_sm());
 
     // ── Exit rule ───────────────────────────────────────────────────────────
@@ -223,22 +226,22 @@ fn draw_plan(ui: &mut egui::Ui, plan: &TradePlanV2, t: &Theme) {
     }
 }
 
-fn draw_price_row(
+/// Label + price value row using `PanelKeyValueRow`, with an optional range
+/// band below (bespoke CI visualization — kept custom because it encodes
+/// three values: lo, hi, and point estimate as an inner tick; no standard
+/// primitive carries all three). Colors route through `PanelTone → Theme`.
+fn price_row(
     ui: &mut egui::Ui,
     label: &str,
     point: f64,
     range: Option<(f64, f64)>,
-    color: egui::Color32,
+    tone: PanelTone,
     t: &Theme,
 ) {
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(label).monospace()
-            .size(FONT_2XS).color(color_half(t.dim)));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(egui::RichText::new(format!("${:.2}", point))
-                .monospace().size(FONT_SM).color(color));
-        });
-    });
+    let color = tone.color(t);
+    PanelKeyValueRow::new(label, format!("${:.2}", point))
+        .tone(tone)
+        .show(ui, t);
     if let Some((lo, hi)) = range {
         // Edge case (per spec): tiny target_range — degenerate band collapses
         // to ~1px; we still draw the band but make sure the inner tick is
@@ -271,44 +274,38 @@ fn draw_price_row(
     ui.add_space(gap_2xs());
 }
 
-fn draw_hit_rate(ui: &mut egui::Ui, plan: &TradePlanV2, t: &Theme) {
+/// Hit-rate label+value+bar row using `MetricRow::bar()`. The bar is a
+/// hairline rule under the row (MetricRow's built-in). An additional
+/// sample-count caption line is appended below — this is presentation data
+/// not captured by MetricRow and preserved from the original spec.
+fn hit_rate_row(ui: &mut egui::Ui, plan: &TradePlanV2, t: &Theme) {
     let tier = plan.calibration_tier();
-    let (bar_col, label_col) = match tier {
-        CalibrationTier::Strong   => (t.bull,                                       t.bull),
-        CalibrationTier::Marginal => (egui::Color32::from_rgb(255, 191, 0),        egui::Color32::from_rgb(255, 191, 0)),
-        CalibrationTier::Weak     => (t.bear,                                       t.bear),
-        CalibrationTier::Unknown  => (color_alpha(t.dim, alpha_muted()),           t.dim),
-    };
     let untrusted = plan.historical_n_samples < MIN_TRUSTED_SAMPLES;
-    let display_col = if untrusted { color_alpha(label_col, alpha_muted()) } else { label_col };
 
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("HIT RATE").monospace()
-            .size(FONT_2XS).color(color_half(t.dim)));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let txt = match plan.historical_hit_rate {
-                Some(r) => format!("{:.0}%", r * 100.0),
-                None => "—".to_string(),
-            };
-            ui.label(egui::RichText::new(txt).monospace()
-                .size(FONT_SM).color(display_col));
-        });
-    });
-    // Bar.
-    let bar_w = ui.available_width().max(40.0);
-    let bar_h = 6.0;
-    let (rect, _) = ui.allocate_exact_size(
-        egui::vec2(bar_w, bar_h), egui::Sense::hover());
-    let painter = ui.painter();
-    painter.rect_filled(rect, 2.0, color_alpha(t.toolbar_border, alpha_muted()));
-    let frac = plan.historical_hit_rate.unwrap_or(0.0).clamp(0.0, 1.0);
-    if frac > 0.0 {
-        painter.rect_filled(
-            egui::Rect::from_min_size(rect.min, egui::vec2(bar_w * frac, bar_h)),
-            2.0, bar_col,
-        );
-    }
-    // Caption — sample count.
+    // Map calibration tier → MetricTone. Marginal uses `Warn` (= t.warn,
+    // previously a raw Color32::from_rgb(255,191,0) which broke light themes).
+    let base_tone = match tier {
+        CalibrationTier::Strong   => MetricTone::Bull,
+        CalibrationTier::Marginal => MetricTone::Warn,
+        CalibrationTier::Weak     => MetricTone::Bear,
+        CalibrationTier::Unknown  => MetricTone::Muted,
+    };
+    // When n < MIN_TRUSTED_SAMPLES, fall back to Muted to grey out the value.
+    let tone = if untrusted { MetricTone::Muted } else { base_tone };
+
+    let value_txt = match plan.historical_hit_rate {
+        Some(r) => format!("{:.0}%", r * 100.0),
+        None => "—".to_string(),
+    };
+    let frac = plan.historical_hit_rate.unwrap_or(0.0).clamp(0.0, 1.0) as f32;
+
+    MetricRow::new("HIT RATE")
+        .value(value_txt)
+        .tone(tone)
+        .bar(frac)
+        .show(ui, t);
+
+    // Sample-count caption — below the MetricRow+bar composite.
     let caption = if plan.historical_n_samples == 0 {
         "no calibration data".to_string()
     } else if untrusted {
