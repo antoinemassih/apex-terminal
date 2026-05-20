@@ -7,7 +7,7 @@
 
 use egui;
 use super::super::style::*;
-use super::super::widgets as widgets;
+use super::super::components::text as widgets_text;
 use super::super::super::gpu::{Watchlist, Chart, Theme, SplitSection};
 use crate::apex_data::live_state;
 use crate::apex_data::types::{Calibrated, CombinedSignalV2};
@@ -74,7 +74,7 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
     let chart = &mut panes[ap];
     let demo_on = chart.trend_health_score > 0.0 || chart.precursor_active || chart.trade_plan.is_some();
     ui.horizontal(|ui| {
-        ui.add(widgets::text::SectionLabel::new("DEMO SIGNALS").tiny().color(t.dim));
+        ui.add(widgets_text::SectionLabel::new("DEMO SIGNALS").tiny().color(t.dim));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let label = if demo_on { "Stop Demo" } else { "Start Demo" };
             let color = if demo_on { t.bear } else { t.accent };
@@ -85,7 +85,7 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
     separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
     ui.add_space(gap_md());
 
-    ui.add(widgets::text::SectionLabel::new("VISIBILITY").tiny().color(t.dim));
+    ui.add(widgets_text::SectionLabel::new("VISIBILITY").tiny().color(t.dim));
     ui.add_space(gap_sm());
 
     let toggles: &mut [(&str, &str, &mut bool)] = &mut [
@@ -117,8 +117,8 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
                 .clicked() { **flag = !**flag; }
             ui.vertical(|ui| {
                 let lc = if **flag { t.text } else { color_half(t.dim) };
-                ui.add(widgets::text::BodyLabel::new(*name).monospace(true).strong(true).size(font_sm()).color(lc));
-                ui.add(widgets::text::MonospaceCode::new(*hint).xs().color(color_half(t.dim)));
+                ui.add(widgets_text::BodyLabel::new(*name).monospace(true).strong(true).size(font_sm()).color(lc));
+                ui.add(widgets_text::MonospaceCode::new(*hint).xs().color(color_half(t.dim)));
             });
         });
         ui.add_space(gap_xs());
@@ -133,7 +133,7 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
     ui.add_space(gap_md());
     separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
     ui.add_space(gap_sm());
-    ui.add(widgets::text::SectionLabel::new("CALIBRATED SIGNALS").tiny().color(t.dim));
+    ui.add(widgets_text::SectionLabel::new("CALIBRATED SIGNALS").tiny().color(t.dim));
     ui.add_space(gap_xs());
 
     let signals = live_state::all_combined_sorted();

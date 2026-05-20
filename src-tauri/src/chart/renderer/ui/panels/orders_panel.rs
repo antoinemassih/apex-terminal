@@ -17,7 +17,7 @@ use crate::ui_kit::widgets::{
 };
 use crate::ui_kit::widgets::tokens::Variant;
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
-use super::super::widgets::text::{self as wtext, MonospaceCode};
+use super::super::components::text::{self as wtext, MonospaceCode};
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::commands::{self, AppCommand};
 use crate::chart_renderer::trading::{AccountSummary, IbOrder, Position, OrderSide, OrderStatus};

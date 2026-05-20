@@ -1,22 +1,16 @@
 //! Backward-compat shim. Content has moved to ui/components/, ui/chrome/, ui/inputs/,
 //! ui/lists/, ui/foundation/, ui/tools/.
-//! Re-export from new locations so old `widgets::foo` paths keep compiling.
+//!
+//! Pure re-export paths (text, frames, headers, inputs) have been removed — all
+//! consumers now import from the canonical locations directly.
+//!
+//! The following shim entries remain because `render/pane/core.rs` uses them
+//! via absolute `crate::chart_renderer::ui::widgets::*` paths and that file
+//! is sacred (cannot be edited).
 
 pub use super::components::*;
 pub use super::chrome::*;
-pub use super::inputs::*;
-pub use super::foundation::*;
 
-// Sub-module shims for `widgets::frames`, `widgets::inputs` etc.
-pub mod frames {
-    pub use crate::chart::renderer::ui::components::frames_widget::*;
-}
-pub mod inputs {
-    pub use crate::chart::renderer::ui::inputs::inputs::*;
-}
-pub mod text {
-    pub use crate::chart::renderer::ui::components::text::*;
-}
 // cards — kept in-place in widgets/cards/mod.rs (contains Card struct + redirects domain cards)
 pub mod cards;
 pub mod rows; // kept in-place; still contains ListRow. Domain rows moved to lists::rows.
@@ -37,10 +31,6 @@ pub mod foundation {
     pub mod interaction {
         pub use crate::chart::renderer::ui::foundation::interaction::*;
     }
-}
-pub mod headers {
-    pub use crate::chart::renderer::ui::components::headers::*;
-    pub use crate::chart::renderer::ui::components::headers_widget::*;
 }
 pub mod drawing {
     pub use crate::chart::renderer::ui::tools::drawing::*;

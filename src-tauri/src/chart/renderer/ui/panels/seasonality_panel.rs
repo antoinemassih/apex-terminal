@@ -12,7 +12,7 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Chart, Theme};
-use super::super::widgets::text::{DimLabel, MonospaceCode};
+use super::super::components::text::{DimLabel, MonospaceCode};
 use crate::ui_kit::widgets::{PanelEmpty, PanelSection};
 use crate::ui_kit::icons::Icon;
 

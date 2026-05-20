@@ -35,7 +35,7 @@ pub use trade_card::TradeCard;
 
 use egui::{Color32, RichText, Stroke, Ui};
 use super::super::style::*;
-use super::frames::CardFrame;
+use super::super::components::frames_widget::CardFrame;
 
 type Theme = crate::chart_renderer::gpu::Theme;
 

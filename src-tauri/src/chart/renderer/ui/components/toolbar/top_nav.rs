@@ -122,7 +122,7 @@ use crate::chart_renderer::ui::style::{
     stroke_std, stroke_thin, r_md_cr,
     elevation_3, shadow_card_themed,
 };
-use crate::chart_renderer::ui::widgets::foundation::text_style::TextStyle;
+use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 use crate::chart_renderer::trading::{AccountSummary, Position, IbOrder, OrderStatus};
 use crate::chart_renderer::{ChartCommand, ChartWidgetKind, ChartWidget, DrawingGroup};
 use crate::state::{BROADCAST_GROUP, PaneEvent, PaneToggle};

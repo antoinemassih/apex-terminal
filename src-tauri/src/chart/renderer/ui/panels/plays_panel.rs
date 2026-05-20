@@ -210,7 +210,7 @@ fn draw_play_editor(
         .corner_radius(r_lg_cr())
         .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())))
         .show(ui, |ui| {
-            ui.add(super::super::widgets::text::SectionLabel::new("NEW PLAY").color(t.accent));
+            ui.add(super::super::components::text::SectionLabel::new("NEW PLAY").color(t.accent));
             ui.add_space(gap_xs());
 
             // ── Play type selector ──
@@ -242,7 +242,7 @@ fn draw_play_editor(
                 PlayType::Spread      => "Multi-leg strategy",
                 PlayType::Event       => "Catalyst-driven with pre/post levels",
             };
-            ui.add(super::super::widgets::text::MonospaceCode::new(desc).xs().color(t.dim).gamma(0.4));
+            ui.add(super::super::components::text::MonospaceCode::new(desc).xs().color(t.dim).gamma(0.4));
             ui.add_space(gap_xs());
 
             // ── Direction toggle ──
@@ -404,7 +404,7 @@ fn draw_play_editor(
                 ui.horizontal(|ui| {
                     dim_label(ui, "R:R", t.dim);
                     let rr_col = if rr >= 2.0 { t.bull } else if rr >= 1.0 { t.warn } else { t.bear };
-                    ui.add(super::super::widgets::text::MonospaceCode::new(&format!("{:.1} : 1", rr)).sm().color(rr_col).strong(true));
+                    ui.add(super::super::components::text::MonospaceCode::new(&format!("{:.1} : 1", rr)).sm().color(rr_col).strong(true));
                     let bar_w = ui.available_width().min(120.0);
                     crate::ui_kit::widgets::RiskRewardBar::new(risk, reward).width(bar_w).show(ui, t);
                 });
@@ -562,7 +562,7 @@ fn pct_stepper(ui: &mut egui::Ui, pct_str: &mut String, t: &Theme) {
         .width(22.0)
         .horizontal_align(egui::Align::Center)
         .show(ui, t);
-    ui.add(super::super::widgets::text::MonospaceCode::new("%").xs().color(t.dim).gamma(0.4));
+    ui.add(super::super::components::text::MonospaceCode::new("%").xs().color(t.dim).gamma(0.4));
     if ui.add(Button::new("+").variant(Variant::Chrome).size(Size::Xs).fg(t.dim)
         .min_size(BTN_ICON_SM).fill(color_alpha(t.toolbar_border, alpha_faint()))).clicked() {
         val = (val + step).min(100);

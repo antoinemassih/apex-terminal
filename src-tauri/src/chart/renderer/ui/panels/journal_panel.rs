@@ -13,7 +13,7 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme, JournalEntry};
-use super::super::widgets::text::MonospaceCode;
+use super::super::components::text::MonospaceCode;
 use crate::ui_kit::widgets::{
     PanelEmpty, PanelSection, Pagination, SidePanelShell, TradeCard, TradeCardData, Width,
 };

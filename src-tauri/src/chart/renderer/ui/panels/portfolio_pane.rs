@@ -4,7 +4,7 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::chart_renderer::trading::{AccountSummary, Position};
-use super::super::widgets::headers::PaneHeader;
+use super::super::components::headers_widget::PaneHeader;
 use super::super::components::{
     metric_value_with_label, monospace_label_row,
 };

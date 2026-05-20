@@ -8,8 +8,8 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
-use super::super::widgets::text::MonospaceCode;
-use super::super::widgets::status::StatusDot;
+use super::super::components::text::MonospaceCode;
+use super::super::components::status::StatusDot;
 use crate::ui_kit::widgets::Slider;
 use crate::ui_kit::widgets::{PanelSection, SidePanelShell, Width};
 use crate::ui_kit::icons::Icon;

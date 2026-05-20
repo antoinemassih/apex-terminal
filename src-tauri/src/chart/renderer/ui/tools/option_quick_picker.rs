@@ -55,7 +55,7 @@ pub(crate) fn draw(
         let cur_strike = panes[pi].option_strike;
         let cur_is_call = panes[pi].option_type == "C";
 
-        use super::super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
+        use super::super::chrome::modal::{Modal, Anchor, HeaderStyle, FrameKind};
         let custom_frame = egui::Frame::popup(&ctx.style())
             .fill(t.toolbar_bg)
             .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())))

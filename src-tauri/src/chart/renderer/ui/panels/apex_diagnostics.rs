@@ -10,7 +10,7 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
-use super::super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
+use super::super::chrome::modal::{Modal, Anchor, HeaderStyle, FrameKind};
 use crate::ui_kit::widgets::{Alert, PanelEmpty, PanelKeyValueRow, PanelSection, PanelTone, Progress};
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 
@@ -21,7 +21,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
     let w = 620.0_f32;
     let h = (screen.height() * 0.85).min(720.0);
 
-    let frame = super::super::widgets::frames::PopupFrame::new()
+    let frame = super::super::components::frames_widget::PopupFrame::new()
         .colors(t.toolbar_bg, t.toolbar_border)
         .ctx(ctx)
         .build();

@@ -16,7 +16,7 @@
 
 use egui;
 use super::super::style::*;
-use super::super::widgets;
+use super::super::components::text as widgets_text;
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::{
     Button, PanelEmpty, PanelListRow, PanelSection, SidePanelShell, Tooltip, Width,
@@ -160,11 +160,11 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                         .hint("Add discord.env with credentials")
                         .show(ui, t);
                 } else if watchlist.discord_connecting {
-                    ui.add(widgets::text::MonospaceCode::new("Waiting for authorization...").xs().color(t.dim));
+                    ui.add(widgets_text::MonospaceCode::new("Waiting for authorization...").xs().color(t.dim));
                     ui.add_space(gap_sm());
                     crate::ui_kit::widgets::Spinner::new().show(ui, t);
                     ui.add_space(gap_xs());
-                    ui.add(widgets::text::MonospaceCode::new("Complete sign-in in your browser").xs().color(color_half(t.dim)));
+                    ui.add(widgets_text::MonospaceCode::new("Complete sign-in in your browser").xs().color(color_half(t.dim)));
                 } else {
                     // WHITE foreground is intentional brand contrast on the Discord blurple fill.
                     if ui.add(Button::new("  Connect Discord  ")
@@ -179,7 +179,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                         crate::discord::start_oauth2();
                     }
                     ui.add_space(gap_sm());
-                    ui.add(widgets::text::MonospaceCode::new("Chat with your trading community").xs().color(color_half(t.dim)));
+                    ui.add(widgets_text::MonospaceCode::new("Chat with your trading community").xs().color(color_half(t.dim)));
                 }
             },
         );
@@ -278,7 +278,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
             ui.horizontal(|ui| {
                 ui.add_space(gap_sm());
                 crate::ui_kit::widgets::Spinner::new().show(ui, t);
-                ui.add(widgets::text::MonospaceCode::new("Loading channels...").xs().color(t.dim));
+                ui.add(widgets_text::MonospaceCode::new("Loading channels...").xs().color(t.dim));
             });
         } else if watchlist.discord_channels.is_empty() {
             // Bot not in this server — show invite button
@@ -290,9 +290,9 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                     ui.add_space(avail.y * 0.2);
                     ui.label(egui::RichText::new(Icon::PLUGS_CONNECTED).size(32.0).color(color_half(t.dim)));
                     ui.add_space(gap_sm());
-                    ui.add(widgets::text::MonospaceCode::new("Bot not in this server").xs().color(t.dim));
+                    ui.add(widgets_text::MonospaceCode::new("Bot not in this server").xs().color(t.dim));
                     ui.add_space(gap_xs());
-                    ui.add(widgets::text::MonospaceCode::new("Add the Apex bot to enable\nchannels & messaging").xs().color(color_half(t.dim)));
+                    ui.add(widgets_text::MonospaceCode::new("Add the Apex bot to enable\nchannels & messaging").xs().color(color_half(t.dim)));
                     ui.add_space(gap_sm());
                     // WHITE foreground is intentional brand contrast on the Discord blurple fill.
                     if ui.add(Button::new("  Add Bot to Server  ")
@@ -311,7 +311,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                         let _ = open::that(&url);
                     }
                     ui.add_space(gap_sm());
-                    ui.add(widgets::text::CaptionLabel::new("Server admins can also\nadd the bot themselves").color(t.dim).gamma(0.4));
+                    ui.add(widgets_text::CaptionLabel::new("Server admins can also\nadd the bot themselves").color(t.dim).gamma(0.4));
                     ui.add_space(gap_md());
                     if ui.add(Button::new("Retry")
                         .variant(Variant::Chrome)
@@ -357,8 +357,8 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                             let name_for_leading = name.clone();
                             let resp = PanelListRow::new(&row_id)
                                 .leading(move |ui, _t| {
-                                    ui.add(widgets::text::MonospaceCode::new("#").xs().color(dim));
-                                    ui.add(widgets::text::MonospaceCode::new(&name_for_leading).xs().color(ch_text));
+                                    ui.add(widgets_text::MonospaceCode::new("#").xs().color(dim));
+                                    ui.add(widgets_text::MonospaceCode::new(&name_for_leading).xs().color(ch_text));
                                 })
                                 .show(ui, t);
                             if resp.clicked() {
@@ -396,7 +396,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                 watchlist.discord_last_msg_id = None;
                 watchlist.discord_poll_timer = None;
             }
-            ui.add(widgets::text::MonospaceCode::new(&watchlist.discord_channel).xs().color(t.dim));
+            ui.add(widgets_text::MonospaceCode::new(&watchlist.discord_channel).xs().color(t.dim));
         });
         ui.add_space(gap_xs());
 
@@ -450,8 +450,8 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                                 // Author color dot (matches legacy left_painter_circle).
                                 let (rect, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
                                 ui.painter().circle_filled(rect.center(), 3.0, author_col);
-                                ui.add(widgets::text::MonospaceCode::new(&author).xs().strong(true).color(author_col));
-                                ui.add(widgets::text::CaptionLabel::new(&timestamp).color(dim).gamma(0.4));
+                                ui.add(widgets_text::MonospaceCode::new(&author).xs().strong(true).color(author_col));
+                                ui.add(widgets_text::CaptionLabel::new(&timestamp).color(dim).gamma(0.4));
                             })
                             .show(ui, t);
                     }

@@ -15,7 +15,7 @@ use egui;
 
 use super::super::style::{self, *};
 use super::super::super::gpu::{Watchlist, Chart, Theme};
-use super::super::widgets::text::{SectionLabel, MonospaceCode};
+use super::super::components::text::{SectionLabel, MonospaceCode};
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::tokens::{Size as KitSize, Variant};
 use crate::ui_kit::widgets::side_panel_shell::{SidePanelShell, Width};

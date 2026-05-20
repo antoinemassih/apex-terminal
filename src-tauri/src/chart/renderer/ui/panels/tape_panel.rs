@@ -15,7 +15,7 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, TapeRow, Theme};
-use super::super::widgets::text::MonospaceCode;
+use super::super::components::text::MonospaceCode;
 use crate::ui_kit::widgets::{
     PanelColAlign, PanelColumn, PanelEmpty, PanelListRow, PanelSection,
     SidePanelShell, Skeleton, Width,

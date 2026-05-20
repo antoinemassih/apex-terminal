@@ -3,7 +3,7 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
-use super::super::widgets::text::MonospaceCode;
+use super::super::components::text::MonospaceCode;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button, Input, Tooltip};
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};

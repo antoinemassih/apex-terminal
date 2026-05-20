@@ -15,7 +15,7 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Chart, Theme};
-use super::super::widgets::text::MonospaceCode;
+use super::super::components::text::MonospaceCode;
 use crate::ui_kit::widgets::{PanelEmpty, PanelKeyValueRow, PanelSection, PanelTone};
 use crate::ui_kit::icons::Icon;
 
@@ -109,7 +109,7 @@ pub(crate) fn draw_content(
             ui.add_space(gap_xs());
             ui.horizontal(|ui| {
                 ui.add_space(gap_sm());
-                ui.add(super::super::widgets::text::DimLabel::new("Price Targets:").color(t.dim));
+                ui.add(super::super::components::text::DimLabel::new("Price Targets:").color(t.dim));
             });
             ui.horizontal(|ui| {
                 ui.add_space(gap_sm() + 4.0);

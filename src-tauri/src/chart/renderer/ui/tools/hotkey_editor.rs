@@ -3,7 +3,7 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
-use super::super::widgets::text::{BodyLabel, SectionLabel};
+use super::super::components::text::{BodyLabel, SectionLabel};
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::{Variant, Size};
 
@@ -53,7 +53,7 @@ if let Some(edit_id) = watchlist.hotkey_editing_id {
 
 // ── Hotkey editor dialog ────────────────────────────────────────────────
 if watchlist.hotkey_editor_open {
-    use super::super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
+    use super::super::chrome::modal::{Modal, Anchor, HeaderStyle, FrameKind};
     let screen = ctx.screen_rect();
     let resp = Modal::new("KEYBOARD SHORTCUTS")
         .id("hotkey_editor")
