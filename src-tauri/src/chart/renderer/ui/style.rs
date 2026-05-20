@@ -568,25 +568,34 @@ pub fn shadow_dropdown_themed(t: &super::super::gpu::Theme) -> egui::epaint::Sha
 // not tweakable style decisions. If you find yourself wanting to override them,
 // consider whether a dedicated surface color token would be more appropriate.
 
+// Elevation gamma factors — the single source of truth for the perceptual
+// depth ramp applied to `theme.bg`. DARK-THEME constants (see the light-theme
+// TODO above). Phase B3 promotes these to `StyleSystem.elevation` so a style
+// system can override the ramp; until then a `const` is the correct home for
+// a perceptual constant (vs the magic literal repeated across call sites).
+pub const ELEVATION_1_FACTOR: f32 = 0.95;
+pub const ELEVATION_2_FACTOR: f32 = 0.88;
+pub const ELEVATION_3_FACTOR: f32 = 0.85;
+
 /// Elevation 1 — resting card / panel surface. Subtle lift above the base bg.
 /// `theme.bg` darkened/lightened by gamma × 0.95 for dark themes.
 #[inline]
 pub fn elevation_1(theme: &super::super::gpu::Theme) -> Color32 {
-    theme.bg.gamma_multiply(0.95)
+    theme.bg.gamma_multiply(ELEVATION_1_FACTOR)
 }
 
 /// Elevation 2 — raised panel, popover body, inline editor surface.
 /// `theme.bg` × 0.88 for dark themes.
 #[inline]
 pub fn elevation_2(theme: &super::super::gpu::Theme) -> Color32 {
-    theme.bg.gamma_multiply(0.88)
+    theme.bg.gamma_multiply(ELEVATION_2_FACTOR)
 }
 
 /// Elevation 3 — modal / dialog surface (highest Z-layer).
 /// `theme.bg` × 0.85 for dark themes.
 #[inline]
 pub fn elevation_3(theme: &super::super::gpu::Theme) -> Color32 {
-    theme.bg.gamma_multiply(0.85)
+    theme.bg.gamma_multiply(ELEVATION_3_FACTOR)
 }
 
 // ─── Semantic color accessors ────────────────────────────────────────────────
@@ -1409,7 +1418,7 @@ pub(crate) fn color_layer_up(t: &crate::chart_renderer::gpu::Theme, n: u8) -> Co
 /// reads as adjacent to the chart pane.
 #[inline]
 pub(crate) fn header_surface(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
-    t.bg.gamma_multiply(0.95)
+    t.bg.gamma_multiply(ELEVATION_1_FACTOR)
 }
 
 /// Section header surface — one shade darker than `header_surface` so
@@ -1418,7 +1427,7 @@ pub(crate) fn header_surface(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
 /// PanelSection → PanelSubSection → panel body (darkest).
 #[inline]
 pub(crate) fn section_header_surface(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
-    t.bg.gamma_multiply(0.88)
+    t.bg.gamma_multiply(ELEVATION_2_FACTOR)
 }
 
 /// Panel body surface — darker than `t.bg` so the side panel body
@@ -1427,7 +1436,7 @@ pub(crate) fn section_header_surface(t: &crate::chart_renderer::gpu::Theme) -> C
 /// recessed) — readable depth without high-contrast slabs.
 #[inline]
 pub(crate) fn panel_surface(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
-    t.bg.gamma_multiply(0.85)
+    t.bg.gamma_multiply(ELEVATION_3_FACTOR)
 }
 
 /// Header border — matches the chart pane header's perimeter hairline:
