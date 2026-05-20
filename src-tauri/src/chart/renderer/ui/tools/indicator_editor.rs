@@ -81,7 +81,10 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 ui.label(egui::RichText::new(&hdr_name).monospace().size(font_sm()).strong().color(TEXT_PRIMARY));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_space(4.0);
-                    let r = icon_btn(ui, Icon::X, color_subtle(t.dim), font_lg());
+                    let r = Button::icon(Icon::X)
+                        .variant(Variant::Ghost)
+                        .placement(IconPlacement::Modal)
+                        .show(ui, t);
                     Tooltip::new("Close").show(ui, &r, t);
                     if r.clicked() { hdr_close = true; }
                 });

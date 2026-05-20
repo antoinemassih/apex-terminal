@@ -331,7 +331,10 @@ pub(crate) fn draw_content(
 
                 let header_resp = ui.horizontal(|ui| {
                     let caret = if collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
-                    icon_btn(ui, caret, t.dim, font_md());
+                    Button::icon(caret)
+                        .variant(Variant::Ghost)
+                        .placement(IconPlacement::PanelHeader)
+                        .show(ui, t);
 
                     let color = if is_preset { t.accent } else { t.dim };
                     let label_resp = ui.add(egui::Label::new(
@@ -343,13 +346,20 @@ pub(crate) fn draw_content(
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if !is_preset {
-                            let r = icon_btn(ui, Icon::X, color_half(t.dim), 8.0);
+                            let r = Button::icon(Icon::X)
+                                .variant(Variant::Ghost)
+                                .placement(IconPlacement::PanelHeader)
+                                .tone_destructive()
+                                .show(ui, t);
                             Tooltip::new("Remove scanner").show(ui, &r, t);
                             if r.clicked() {
                                 delete_scanner_idx = Some(scanner_idx);
                             }
                         }
-                        let r = icon_btn(ui, Icon::FOLDER, color_half(t.dim), 8.0);
+                        let r = Button::icon(Icon::FOLDER)
+                            .variant(Variant::Ghost)
+                            .placement(IconPlacement::PanelHeader)
+                            .show(ui, t);
                         Tooltip::new("Save as Watchlist").show(ui, &r, t);
                         if r.clicked() {
                             save_as_watchlist = Some((scanner_name.clone(), results.clone()));

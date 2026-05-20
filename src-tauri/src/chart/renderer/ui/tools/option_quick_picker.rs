@@ -99,8 +99,13 @@ pub(crate) fn draw(
                             ui.add_space(gap_md());
                             // Back arrow
                             let can_back = dte_idx > 0;
-                            let back_col = if can_back { t.accent } else { color_very_dim(t.dim) };
-                            if icon_btn(ui, Icon::CARET_LEFT, back_col, font_lg()).clicked() && can_back {
+                            if KitButton::icon(Icon::CARET_LEFT)
+                                .variant(crate::ui_kit::widgets::tokens::Variant::Ghost)
+                                .placement(crate::ui_kit::widgets::icon_placement::IconPlacement::Modal)
+                                .enabled(can_back)
+                                .show(ui, t)
+                                .clicked() && can_back
+                            {
                                 panes[pi].option_quick_dte_idx = dte_idx - 1;
                                 let new_dte = DTE_LIST[dte_idx - 1];
                                 fetch_chain_background(underlying.clone(), 15, new_dte, spot);
@@ -112,10 +117,15 @@ pub(crate) fn draw(
                             });
                             // Forward arrow
                             let can_fwd = dte_idx < DTE_LIST.len() - 1;
-                            let fwd_col = if can_fwd { t.accent } else { color_very_dim(t.dim) };
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 ui.add_space(gap_md());
-                                if icon_btn(ui, Icon::CARET_RIGHT, fwd_col, font_lg()).clicked() && can_fwd {
+                                if KitButton::icon(Icon::CARET_RIGHT)
+                                    .variant(crate::ui_kit::widgets::tokens::Variant::Ghost)
+                                    .placement(crate::ui_kit::widgets::icon_placement::IconPlacement::Modal)
+                                    .enabled(can_fwd)
+                                    .show(ui, t)
+                                    .clicked() && can_fwd
+                                {
                                     panes[pi].option_quick_dte_idx = dte_idx + 1;
                                     let new_dte = DTE_LIST[dte_idx + 1];
                                     fetch_chain_background(underlying.clone(), 15, new_dte, spot);
