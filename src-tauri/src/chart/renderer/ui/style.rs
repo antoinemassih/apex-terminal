@@ -1575,24 +1575,9 @@ pub fn order_card(ui: &mut egui::Ui, accent: Color32, bg: Color32, add_content: 
 
 // ─── Buttons ──────────────────────────────────────────────────────────────────
 
-/// Action button — tinted bg, for Place/Cancel/Clear. Disabled = greyed out.
-#[deprecated(note = "use `ui_kit::Button::action(label).tint(color).enabled(b).show(ui, theme)`")]
-pub fn action_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool) -> bool {
-    let bg     = if enabled { color_alpha(color, alpha_muted())  } else { color_alpha(color, alpha_faint())  };
-    let fg     = if enabled { color                              } else { color_alpha(color, alpha_active()) };
-    let border = if enabled { color_alpha(color, alpha_active()) } else { color_alpha(color, alpha_line())   };
-    let resp = ui.add_enabled(enabled,
-        egui::Button::new(RichText::new(label).monospace().size(font_sm_tight()).strong().color(fg))
-            .fill(bg).stroke(Stroke::new(stroke_thin(), border))
-            .corner_radius(radius_sm()).min_size(egui::vec2(0.0, row_height_compact())));
-    hit(&resp.rect, "ACTION_BTN", "Buttons");
-    if resp.hovered() && !crate::design_tokens::is_inspect_mode() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-    resp.clicked()
-}
-
-// trade_btn / cta_btn / small_action_btn / simple_btn removed — zero call
-// sites. Use the canonical ui_kit::Button presets:
-//   ui_kit::Button::trade / ::cta / ::small_action / ::simple
+// action_btn / trade_btn / cta_btn / small_action_btn / simple_btn removed —
+// zero call sites. Use the canonical ui_kit::Button presets:
+//   ui_kit::Button::action / ::trade / ::cta / ::small_action / ::simple
 
 // ─── Drawing helpers ──────────────────────────────────────────────────────────
 
