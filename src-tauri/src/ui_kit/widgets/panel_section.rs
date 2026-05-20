@@ -68,7 +68,7 @@ use super::super::icons::Icon;
 use super::tooltip::Tooltip;
 use super::theme::active_theme;
 use crate::chart::renderer::ui::style::{
-    color_alpha, font_xs, gap_lg, gap_md, gap_sm, gap_xs, header_border, section_header_surface, shadow_color_alpha, stroke_thin,
+    color_alpha, font_sm, font_xs, gap_lg, gap_md, gap_sm, gap_xs, header_border, section_header_surface, shadow_color_alpha, stroke_thin,
 };
 use crate::chart_renderer::gpu::Theme;
 
@@ -485,7 +485,7 @@ fn section_delete_button(ui: &mut Ui, color: Color32) -> bool {
         rect.center(),
         egui::Align2::CENTER_CENTER,
         glyph,
-        FontId::proportional(12.0),
+        FontId::proportional(font_sm()),
         draw_color,
     );
     resp.clicked()

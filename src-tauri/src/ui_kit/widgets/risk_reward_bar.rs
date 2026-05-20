@@ -103,7 +103,7 @@ impl RiskRewardBar {
                 bar_rect.center(),
                 egui::Align2::CENTER_CENTER,
                 format!("R/R: {:.2}", rr),
-                egui::FontId::monospace(9.0),
+                egui::FontId::monospace(st::font_xs()),
                 theme.text(),
             );
         }

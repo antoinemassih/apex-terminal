@@ -257,7 +257,7 @@ fn render_row<T: TreeNode>(
             caret_rect.center(),
             Align2::CENTER_CENTER,
             glyph,
-            FontId::proportional(12.0),
+            FontId::proportional(st::font_sm()),
             caret_color,
         );
         if caret_resp.clicked() {

@@ -852,7 +852,7 @@ fn render_panel<'a, T>(
                     Pos2::new(s_rect.left() + pad, cy),
                     egui::Align2::LEFT_CENTER,
                     Icon::MAGNIFYING_GLASS,
-                    FontId::proportional(13.0),
+                    FontId::proportional(st::font_md()),
                     theme.dim(),
                 );
                 let edit_id = id.with("filter_edit");
@@ -873,7 +873,7 @@ fn render_panel<'a, T>(
                     .margin(egui::Margin::ZERO)
                     .frame(false)
                     .text_color(theme.text())
-                    .font(egui::FontSelection::FontId(FontId::monospace(12.0)));
+                    .font(egui::FontSelection::FontId(FontId::monospace(st::font_sm())));
                 let _ = child.add(te);
                 if s_resp.clicked() {
                     ui.memory_mut(|m| m.request_focus(edit_id));
