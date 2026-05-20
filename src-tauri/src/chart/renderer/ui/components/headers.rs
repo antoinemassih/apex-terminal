@@ -1,67 +1,10 @@
-//! Tab strip, pane header bar, and panel header row (title + close × button).
+//! Pane header bar and panel header row (title + close × button).
 
 use super::super::style::*;
 use super::labels::section_label_widget;
-use egui::{self, Color32, Pos2, RichText, Sense, Stroke, Ui, Vec2};
+use egui::{self, Color32, Pos2, Sense, Stroke, Ui, Vec2};
 use crate::ui_kit::widgets::Button as KitButton;
-use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
-
-// ─── Tab strip ────────────────────────────────────────────────────────────────
-
-/// Horizontal tab strip. Returns the index clicked, or None.
-/// Relay: pill background on active. Meridien: 1px bottom rule under active.
-pub fn tab_strip(
-    ui: &mut Ui,
-    tabs: &[&str],
-    active: usize,
-    accent: Color32,
-    dim: Color32,
-) -> Option<usize> {
-    let st = current();
-    let mut clicked = None;
-
-    ui.horizontal(|ui| {
-        let prev = ui.spacing().item_spacing.x;
-        ui.spacing_mut().item_spacing.x = gap_md();
-
-        for (i, label) in tabs.iter().enumerate() {
-            let is_active = i == active;
-            let text = style_label_case(label);
-            let fg = if is_active { accent } else { dim };
-
-            if is_active && !st.hairline_borders {
-                // Relay: pill background behind active tab.
-                let resp = KitButton::toggle(text.as_str(), true).size(KitSize::Sm)
-                    .min_size(Vec2::new(0.0, 20.0)).show(ui, &crate::ui_kit::widgets::theme::active_theme(ui.ctx()));
-                if resp.clicked() {
-                    clicked = Some(i);
-                }
-            } else {
-                let resp = KitButton::new(text.as_str()).variant(KitVariant::Ghost).size(KitSize::Sm)
-                    .fg(fg).frameless(!is_active).min_size(Vec2::new(0.0, 20.0))
-                    .show(ui, &crate::ui_kit::widgets::theme::active_theme(ui.ctx()));
-                if resp.clicked() {
-                    clicked = Some(i);
-                }
-                if is_active && st.hairline_borders {
-                    let r = resp.rect;
-                    ui.painter().line_segment(
-                        [
-                            Pos2::new(r.left(), r.bottom() + 0.5),
-                            Pos2::new(r.right(), r.bottom() + 0.5),
-                        ],
-                        Stroke::new(st.stroke_std, accent),
-                    );
-                }
-            }
-        }
-
-        ui.spacing_mut().item_spacing.x = prev;
-    });
-
-    clicked
-}
 
 // ─── Pane header bar ──────────────────────────────────────────────────────────
 
