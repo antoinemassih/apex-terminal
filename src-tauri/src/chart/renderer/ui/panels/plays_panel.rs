@@ -22,7 +22,7 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
-use crate::ui_kit::widgets::{Button, PanelEmpty, PanelSection, PanelTone, Tooltip};
+use crate::ui_kit::widgets::{Button, PanelCard, PanelEmpty, PanelKeyValueRow, PanelSection, PanelTone, RiskRewardBar, Tooltip};
 use crate::ui_kit::widgets::tokens::{Variant, Size};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::widgets::Input;
@@ -82,7 +82,7 @@ pub(crate) fn draw_content(
 
     egui::ScrollArea::vertical().id_salt("plays_scroll").show(ui, |ui| {
         for play in &watchlist.plays {
-            draw_play_card(ui, play, t, &mut remove_id, &mut activate_id, &mut display_id);
+            render_play_card(ui, play, t, &mut remove_id, &mut activate_id, &mut display_id);
         }
     });
 
@@ -660,17 +660,183 @@ fn convert_play_to_orders(play: &Play, chart: &mut Chart) {
     }
 }
 
-/// A polished play card with shadow, direction stripe, and rich layout.
+/// Play card rebuilt on `ui_kit::PanelCard`.
 ///
-/// Wave 5: thin delegation to the `PlayCard` widget in the cards system.
-/// All visuals + action wiring live in `widgets::cards::play_card`. The
-/// distinctive shadow/bevel/stripe look is preserved per user intent
-/// (intentional showcase styling — NOT collapsed into `PanelCard`).
-fn draw_play_card(ui: &mut egui::Ui, play: &Play, t: &Theme, remove_id: &mut Option<String>, activate_id: &mut Option<String>, display_id: &mut Option<String>) {
-    use super::super::widgets::cards::PlayCard;
-    let r = PlayCard::new(play, t).show(ui);
-    if r.delete_clicked   { *remove_id   = Some(play.id.clone()); }
-    if r.activate_clicked { *activate_id = Some(play.id.clone()); }
-    if r.clicked          { *display_id  = Some(play.id.clone()); }
+/// The outer frame, direction stripe, and elevation shadow come from
+/// `PanelCard`. The header row (direction pill + symbol + status + R:R),
+/// tags, and notes are laid out with normal egui; the Entry/Target/Stop
+/// row uses `PanelKeyValueRow` and the R:R bar uses `RiskRewardBar`.
+///
+/// The direction pill and status pill remain hand-painted via
+/// `ui.painter()` because they are small rounded inset badges with a
+/// border — there is no equivalent pill primitive in `ui_kit` yet. All
+/// colours route through the `Theme`.
+fn render_play_card(
+    ui: &mut egui::Ui,
+    play: &Play,
+    t: &Theme,
+    remove_id: &mut Option<String>,
+    activate_id: &mut Option<String>,
+    display_id: &mut Option<String>,
+) {
+    let is_long = play.direction == PlayDirection::Long;
+    let dir_color = if is_long { t.bull } else { t.bear };
+
+    let tone = if is_long { PanelTone::Bull } else { PanelTone::Bear };
+
+    // Track the rect before/after so we can sense a card-body click below.
+    let card_top = ui.cursor().top();
+
+    let card_resp = PanelCard::new()
+        .tone(tone)
+        .stripe(true)
+        .padding(gap_xs())
+        .show(ui, t, |ui, t| {
+            // ── Header row: direction pill · type icon · symbol · status pill · R:R ──
+            let mut delete_clicked   = false;
+            let mut activate_clicked = false;
+
+            ui.horizontal(|ui| {
+                // Direction pill — custom painter badge (no ui_kit pill primitive yet).
+                let pill_size = egui::vec2(42.0, 16.0);
+                let (pill_rect, _) = ui.allocate_exact_size(pill_size, egui::Sense::hover());
+                let p = ui.painter();
+                p.rect_filled(pill_rect, 3.0, color_alpha(dir_color, alpha_tint()));
+                p.rect_stroke(pill_rect, 3.0, egui::Stroke::new(stroke_thin(), color_alpha(dir_color, alpha_dim())), egui::StrokeKind::Outside);
+                p.text(pill_rect.center(), egui::Align2::CENTER_CENTER, play.direction.label(), mono_xs(), dir_color);
+
+                // Type icon + symbol.
+                ui.add_space(gap_xs());
+                ui.label(egui::RichText::new(play.play_type.icon()).size(font_sm()).color(color_half(t.dim)));
+                ui.label(egui::RichText::new(&play.symbol).monospace().size(font_lg()).color(t.text));
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // Delete button (always visible for discoverability, enabled on hover).
+                    let del = Button::close()
+                        .placement(IconPlacement::ListRow)
+                        .show(ui, t);
+                    if del.clicked() { delete_clicked = true; }
+                    Tooltip::new("Delete play").show(ui, &del, t);
+
+                    // R:R label.
+                    if play.risk_reward > 0.0 {
+                        ui.add_space(gap_xs());
+                        ui.label(egui::RichText::new(format!("{:.1}R", play.risk_reward))
+                            .monospace().size(font_sm()).color(t.accent));
+                    }
+
+                    // Status pill — custom painter badge (no ui_kit equivalent).
+                    let status_color = match play.status {
+                        PlayStatus::Draft     => t.dim,
+                        PlayStatus::Published => t.accent,
+                        PlayStatus::Active    => t.warn,
+                        PlayStatus::Won       => t.bull,
+                        PlayStatus::Lost      => t.bear,
+                        _                     => color_half(t.dim),
+                    };
+                    let pill_size = egui::vec2(48.0, 16.0);
+                    let (sr, _) = ui.allocate_exact_size(pill_size, egui::Sense::hover());
+                    let p = ui.painter();
+                    p.rect_filled(sr, 3.0, color_alpha(status_color, alpha_subtle()));
+                    p.text(sr.center(), egui::Align2::CENTER_CENTER, play.status.label(), mono_sm(), status_color);
+                });
+            });
+
+            ui.add_space(gap_xs());
+
+            // ── Entry / Target / Stop ──
+            ui.horizontal(|ui| {
+                PanelKeyValueRow::new("ENTRY", format!("${:.2}", play.entry_price))
+                    .show(ui, t);
+            });
+            ui.horizontal(|ui| {
+                PanelKeyValueRow::new("TARGET", format!("${:.2}", play.target_price))
+                    .tone(PanelTone::Bull)
+                    .show(ui, t);
+            });
+            if play.play_type != PlayType::Scalp && play.stop_price > 0.0 {
+                ui.horizontal(|ui| {
+                    PanelKeyValueRow::new("STOP", format!("${:.2}", play.stop_price))
+                        .tone(PanelTone::Bear)
+                        .show(ui, t);
+                });
+            }
+
+            // ── Additional targets with allocations ──
+            if play.targets.len() > 1 {
+                for tgt in &play.targets {
+                    ui.horizontal(|ui| {
+                        PanelKeyValueRow::new(
+                            tgt.label.as_str(),
+                            format!("${:.2}  {}%", tgt.price, (tgt.pct * 100.0) as i32),
+                        )
+                        .tone(PanelTone::Bull)
+                        .show(ui, t);
+                    });
+                }
+            }
+
+            ui.add_space(gap_xs());
+
+            // ── R:R bar ──
+            let risk   = (play.entry_price - play.stop_price).abs();
+            let reward = (play.target_price - play.entry_price).abs();
+            if risk > 0.001 && play.play_type != PlayType::Scalp {
+                let bar_w = ui.available_width();
+                RiskRewardBar::new(risk, reward).width(bar_w).show(ui, t);
+            }
+
+            // ── Tags ──
+            if !play.tags.is_empty() {
+                ui.add_space(gap_xs());
+                ui.horizontal_wrapped(|ui| {
+                    for tag in &play.tags {
+                        ui.label(egui::RichText::new(format!("#{}", tag))
+                            .monospace().size(font_xs()).color(color_half(t.accent)));
+                    }
+                });
+            }
+
+            // ── Notes ──
+            if !play.notes.is_empty() {
+                ui.label(egui::RichText::new(&play.notes)
+                    .monospace().size(font_xs()).color(color_half(t.dim)));
+            }
+
+            // ── Activate button (Draft plays only) ──
+            if play.status == PlayStatus::Draft {
+                ui.add_space(gap_xs());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if Button::action("Activate").tint(t.accent).show(ui, t).clicked() {
+                        activate_clicked = true;
+                    }
+                });
+            }
+
+            (delete_clicked, activate_clicked)
+        });
+
+    // Sense a click on the card body to display the play on chart.
+    // We interact on the rendered card's rect AFTER the frame paints.
+    let card_rect = egui::Rect::from_x_y_ranges(
+        ui.max_rect().x_range(),
+        card_top..=ui.cursor().top(),
+    );
+    let card_click_resp = ui.interact(
+        card_rect,
+        egui::Id::new(("play_card_click", play.id.as_str())),
+        egui::Sense::click(),
+    );
+    cursor::clickable(ui, &card_click_resp);
+
+    // Wire action signals to output.
+    let (delete_clicked, activate_clicked) = card_resp;
+    if delete_clicked                 { *remove_id   = Some(play.id.clone()); }
+    if activate_clicked               { *activate_id = Some(play.id.clone()); }
+    if card_click_resp.clicked()
+        && !delete_clicked
+        && !activate_clicked          { *display_id  = Some(play.id.clone()); }
+
+    ui.add_space(gap_xs());
 }
 
