@@ -1,17 +1,12 @@
 //! Builder primitives — frames family.
 //!
-//! Each builder mirrors an existing free-function helper (in `style.rs` /
-//! `components.rs` / `components_extra.rs`) but exposes a chained-setter API
-//! so call sites can write:
+//! Canonical builder API for all frame types. Call sites use the chained-setter
+//! pattern:
 //!
 //! ```ignore
 //! let frame = PanelFrame::new(bg, border).build();
 //! let frame = PanelFrame::new(bg, border).theme(t).build();
 //! ```
-//!
-//! **The legacy free-functions are NOT modified or removed.** This file only
-//! adds builder wrappers whose `.build()` bodies are byte-for-byte copies of
-//! the original helper bodies.
 
 #![allow(dead_code, unused_imports)]
 
@@ -89,11 +84,10 @@ impl PanelFrame {
 
 // ─── CardFrame ────────────────────────────────────────────────────────────────
 
-/// Builder for the card frame used by `components::card_frame`.
+/// Builder for card frames.
 ///
-/// Note: the original `card_frame` is a show-closure helper, not a plain
-/// `-> egui::Frame` function. This builder extracts the frame construction
-/// so callers can obtain the `egui::Frame` value directly.
+/// Extracts frame construction so callers can obtain the `egui::Frame` value
+/// directly and call `.show(ui, |ui| { ... })` themselves.
 ///
 /// ```ignore
 /// CardFrame::new().theme(t).build().show(ui, |ui| { ... });
@@ -118,8 +112,7 @@ impl CardFrame {
         Self { bg, border, ..self }
     }
 
-    /// Build the `egui::Frame`. Body mirrors the frame construction inside
-    /// `components::card_frame` byte-for-byte.
+    /// Build the `egui::Frame`.
     pub fn build(self) -> egui::Frame {
         let st = current();
         // card_padding_y / card_padding_x knobs let the user tune card insets per style.
@@ -167,7 +160,7 @@ impl Default for CardFrame {
 
 // ─── PopupFrame ───────────────────────────────────────────────────────────────
 
-/// Builder for `components::themed_popup_frame(ctx, bg, border) -> egui::Frame`.
+/// Builder for popup frames.
 ///
 /// ```ignore
 /// PopupFrame::new().theme(t).ctx(ctx).build()
@@ -237,8 +230,7 @@ impl<'a> PopupFrame<'a> {
         Self { border_alpha: a, ..self }
     }
 
-    /// Build the `egui::Frame`. Body mirrors `components::themed_popup_frame`
-    /// byte-for-byte, extended with the optional overrides.
+    /// Build the `egui::Frame`.
     pub fn build(self) -> egui::Frame {
         let st = current();
         let ctx = self.ctx.expect("PopupFrame::build requires a Context — call .ctx(ctx) first");
