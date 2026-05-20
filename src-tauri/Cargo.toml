@@ -110,3 +110,23 @@ mockito = "1"
 name = "font_showcase"
 path = "examples/font_showcase.rs"
 
+# ─── Profiles ────────────────────────────────────────────────────────────────
+# Make the DEFAULT `cargo run` (dev profile) perform near-release. egui's
+# layout/tessellate and wgpu are pure CPU work that an unoptimised debug build
+# runs 5-20x slower — that was the entire cause of the "38fps / laggy" debug
+# numbers. Fix: optimise the dependencies (compiled once, cached) at opt-level 3
+# and the app crate at opt-level 1 (keeps incremental recompiles fast).
+# This is the standard Rust graphics-app pattern (cf. the Bevy book).
+[profile.dev]
+opt-level = 1            # app code — light optimisation, fast to recompile
+
+[profile.dev.package."*"]
+opt-level = 3            # all dependencies (egui, wgpu, …) — full optimisation
+
+# Release: the shipping build. `build-native.sh` and `cargo run --release`
+# use this. LTO + single codegen unit for maximum runtime speed.
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+

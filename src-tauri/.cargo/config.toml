@@ -1,0 +1,13 @@
+# Cargo aliases — canonical run commands.
+#
+# `cargo apex`        → run the optimized RELEASE build (122fps, p99 under
+#                       budget). This is the default for *running* the app.
+# `cargo apex-dev`    → run the tuned dev build (~59fps; app code at
+#                       opt-level 1 for fast incremental recompiles). Use
+#                       this only while actively iterating on code.
+#
+# Profiles themselves are tuned in Cargo.toml ([profile.dev] optimises
+# dependencies so even the dev build is usable).
+[alias]
+apex     = "run --release --bin apex-native"
+apex-dev = "run --bin apex-native"
