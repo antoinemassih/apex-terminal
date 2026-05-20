@@ -4,9 +4,10 @@ use egui;
 use super::super::style as st;
 use super::super::super::gpu::*;
 use super::super::components::layout::EmptyState;
-use super::super::components::headers_widget::PaneHeader;
+use crate::ui_kit::widgets::Header;
 
 const TILE_GAP: f32 = 6.0;
+/// Must match `HeaderVariant::Panel.height()` = 28.0.
 const HEADER_H: f32 = 28.0;
 
 pub(crate) fn render(
@@ -28,7 +29,8 @@ pub(crate) fn render(
         }
     }
 
-    // Header (chrome widget) — matches heatmap_pane / portfolio_pane.
+    // Header — canonical ui_kit::Header::panel replaces legacy PaneHeader.
+    // Both are 28px; behaviour and density are identical.
     let header_rect = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), HEADER_H));
     {
         let mut header_ui = ui.new_child(
@@ -36,7 +38,7 @@ pub(crate) fn render(
                 .max_rect(header_rect)
                 .layout(egui::Layout::top_down(egui::Align::Min)),
         );
-        header_ui.add(PaneHeader::new("Dashboard").theme(t));
+        Header::panel("Dashboard").show(&mut header_ui, t);
     }
     let mut header_bottom = rect.top() + HEADER_H;
 
@@ -50,7 +52,7 @@ pub(crate) fn render(
             egui::pos2(rect.right() - 6.0, header_bottom + 2.0 + BREADTH_WIDGET_H),
         );
         let p = ui.painter_at(strip_rect);
-        p.rect_filled(strip_rect, 3.0, t.toolbar_bg);
+        p.rect_filled(strip_rect, st::radius_sm(), t.toolbar_bg);
         let bull_pct = if b.advancers + b.decliners > 0 {
             b.advancers as f32 / (b.advancers + b.decliners) as f32
         } else { 0.5 };
@@ -59,7 +61,7 @@ pub(crate) fn render(
         p.text(
             egui::pos2(strip_rect.left() + 8.0, strip_rect.center().y),
             egui::Align2::LEFT_CENTER, s1,
-            egui::FontId::monospace(st::font_xs_plus()),
+            st::mono_xs_plus(),
             if bull_pct >= 0.5 { t.bull } else { t.bear },
         );
         // Middle: NH/NL
@@ -67,14 +69,14 @@ pub(crate) fn render(
         p.text(
             strip_rect.center(),
             egui::Align2::CENTER_CENTER, s2,
-            egui::FontId::monospace(st::font_xs_plus()), t.text,
+            st::mono_xs_plus(), t.text,
         );
         // Right: % above SMA200
         let s3 = format!("{:.0}% > SMA200", b.pct_above_sma200);
         p.text(
             egui::pos2(strip_rect.right() - 8.0, strip_rect.center().y),
             egui::Align2::RIGHT_CENTER, s3,
-            egui::FontId::monospace(st::font_xs_plus()), t.dim,
+            st::mono_xs_plus(), t.dim,
         );
         header_bottom += BREADTH_WIDGET_H + 4.0;
     }
