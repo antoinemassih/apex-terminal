@@ -6,8 +6,9 @@ use super::super::super::gpu::*;
 use crate::chart_renderer::trading::{AccountSummary, Position};
 use super::super::widgets::headers::PaneHeader;
 use super::super::components::{
-    metric_value_with_label, section_label_xs, monospace_label_row,
+    metric_value_with_label, monospace_label_row,
 };
+use super::super::components::text::SectionLabel;
 
 pub(crate) fn render(
     ui: &mut egui::Ui, ctx: &egui::Context,
@@ -133,7 +134,7 @@ pub(crate) fn render(
         );
         for (i, header) in headers.iter().enumerate() {
             col_ui.allocate_ui(egui::vec2(col_widths[i], 14.0), |ui| {
-                section_label_xs(ui, header, color_dim(t.dim));
+                ui.add(SectionLabel::new(header).xs().color(color_dim(t.dim)));
             });
         }
     }
@@ -202,7 +203,7 @@ pub(crate) fn render(
                     .max_rect(sl_rect)
                     .layout(egui::Layout::left_to_right(egui::Align::Center)),
             );
-            section_label_xs(&mut sl_ui, "SECTOR ALLOCATION", color_dim(t.dim));
+            sl_ui.add(SectionLabel::new("SECTOR ALLOCATION").xs().color(color_dim(t.dim)));
         }
 
         // Simple donut (sacred geometry — stays inline)
@@ -245,7 +246,7 @@ pub(crate) fn render(
                         .max_rect(sl_rect)
                         .layout(egui::Layout::left_to_right(egui::Align::Center)),
                 );
-                section_label_xs(&mut sl_ui, "RISK METRICS", color_dim(t.dim));
+                sl_ui.add(SectionLabel::new("RISK METRICS").xs().color(color_dim(t.dim)));
             }
 
             let portfolio_beta = 1.12f32; // placeholder
@@ -290,7 +291,7 @@ pub(crate) fn render(
                             .max_rect(sl_rect)
                             .layout(egui::Layout::left_to_right(egui::Align::Center)),
                     );
-                    section_label_xs(&mut sl_ui, "MARGIN UTILIZATION", color_dim(t.dim));
+                    sl_ui.add(SectionLabel::new("MARGIN UTILIZATION").xs().color(color_dim(t.dim)));
                 }
                 painter.rect_filled(egui::Rect::from_min_size(
                     egui::pos2(sector_x, gauge_y), egui::vec2(gauge_w, 6.0)),
@@ -316,7 +317,7 @@ pub(crate) fn render(
                         .max_rect(sl_rect)
                         .layout(egui::Layout::left_to_right(egui::Align::Center)),
                 );
-                section_label_xs(&mut sl_ui, "CORRELATION (top 5)", color_dim(t.dim));
+                sl_ui.add(SectionLabel::new("CORRELATION (top 5)").xs().color(color_dim(t.dim)));
             }
 
             let syms: Vec<&str> = positions.iter().take(5).map(|p| p.symbol.as_str()).collect();
@@ -372,7 +373,7 @@ pub(crate) fn render(
                         .max_rect(sl_rect)
                         .layout(egui::Layout::left_to_right(egui::Align::Center)),
                 );
-                section_label_xs(&mut sl_ui, "SCENARIO: SPY -5%", color_dim(t.dim));
+                sl_ui.add(SectionLabel::new("SCENARIO: SPY -5%").xs().color(color_dim(t.dim)));
             }
 
             let spy_change = -5.0f32;

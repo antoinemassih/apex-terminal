@@ -1,7 +1,7 @@
 //! Metric / stat displays, action/icon buttons, empty-state, insight stat bar.
 
 use super::super::style::*;
-use super::labels::section_label_xs;
+use super::text::SectionLabel;
 use egui::{self, Color32, Rect, Response, RichText, Sense, Ui, Vec2};
 use crate::ui_kit::widgets::Button as KitButton;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
@@ -21,7 +21,7 @@ pub fn metric_value_with_label(
     label_color: Color32,
 ) {
     ui.vertical(|ui| {
-        section_label_xs(ui, label, label_color);
+        ui.add(SectionLabel::new(label).xs().color(label_color));
         let value_text = {
             let mut t = RichText::new(value).size(size).strong().color(color);
             if current().serif_headlines {
