@@ -1,13 +1,7 @@
 //! Builder + impl Widget primitives — status / feedback family.
 //!
-//! Adds builder wrappers for status dots, spinners, progress bars/rings,
-//! skeleton placeholders, toasts, notification badges, connection
-//! indicators, and trend arrows. **NEW additions only** — no migration of
-//! existing call sites (Wave 5).
-//!
-//! Reuses `widgets::{text, frames, pills}` plus `style::*` primitives where
-//! possible. Chart paint is sacred — `chart_widgets.rs` was read for visual
-//! reference only.
+//! Contains [`StatusDot`] and Toast re-exports.
+//! `Spinner` and `Skeleton` have been migrated to `ui_kit::widgets`.
 //!
 //! All builders implement `impl Widget` (or expose `.show(ui)` when they
 //! return non-`Response` data) and follow the ambient design-token rules.
@@ -26,7 +20,7 @@ fn ambient(ctx: &egui::Context) -> &'static Theme {
 
 // ─── Shared size enum ─────────────────────────────────────────────────────────
 
-/// Tri-size knob shared by [`Spinner`] and other loading primitives.
+/// Tri-size knob for loading primitives.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum LoadSize { Sm, Md, Lg }
 
@@ -137,129 +131,6 @@ impl<'a> Widget for StatusDot<'a> {
                 egui::FontId::monospace(font_sm()),
                 label_color,
             );
-        }
-        resp
-    }
-}
-
-// ─── Spinner ──────────────────────────────────────────────────────────────────
-
-/// Animated rotating arc loader.
-///
-/// ```ignore
-/// ui.add(Spinner::new().md().theme(t));
-/// ```
-#[must_use = "Spinner must be added with `ui.add(...)` to render"]
-pub struct Spinner {
-    size: LoadSize,
-    color: Option<Color32>,
-    width: f32,
-}
-
-impl Spinner {
-    pub fn new() -> Self {
-        Self { size: LoadSize::Md, color: None, width: 1.5 }
-    }
-    pub fn size(mut self, s: LoadSize) -> Self { self.size = s; self }
-    pub fn sm(mut self) -> Self { self.size = LoadSize::Sm; self }
-    pub fn md(mut self) -> Self { self.size = LoadSize::Md; self }
-    pub fn lg(mut self) -> Self { self.size = LoadSize::Lg; self }
-    pub fn color(mut self, c: Color32) -> Self { self.color = Some(c); self }
-    pub fn theme(mut self, t: &Theme) -> Self { self.color = Some(t.accent); self }
-}
-
-impl Default for Spinner {
-    fn default() -> Self { Self::new() }
-}
-
-impl Widget for Spinner {
-    fn ui(self, ui: &mut Ui) -> Response {
-        let color = self.color.unwrap_or(ambient(ui.ctx()).accent);
-        let d = self.size.px();
-        let (rect, resp) = ui.allocate_exact_size(Vec2::splat(d + 2.0), Sense::hover());
-        let center = rect.center();
-        let radius = d * 0.5;
-        let t = ui.ctx().input(|i| i.time) as f32;
-        ui.ctx().request_repaint();
-
-        // Arc: ~270° sweep rotating
-        let segments = 24;
-        let sweep = std::f32::consts::TAU * 0.75;
-        let start = t * 4.0;
-        let painter = ui.painter();
-        for i in 0..segments {
-            let a0 = start + sweep * (i as f32) / (segments as f32);
-            let a1 = start + sweep * ((i + 1) as f32) / (segments as f32);
-            let p0 = center + Vec2::new(a0.cos(), a0.sin()) * radius;
-            let p1 = center + Vec2::new(a1.cos(), a1.sin()) * radius;
-            // Fade older tail of the arc
-            let frac = i as f32 / segments as f32;
-            let alpha = (alpha_soft() as f32 + frac * (alpha_active() as f32 - alpha_soft() as f32)) as u8;
-            painter.line_segment([p0, p1], Stroke::new(self.width, color_alpha(color, alpha)));
-        }
-        resp
-    }
-}
-
-// ─── Skeleton ─────────────────────────────────────────────────────────────────
-
-/// Shimmer placeholder rectangle for loading states.
-///
-/// ```ignore
-/// ui.add(Skeleton::new().size(120.0, 14.0).rounding(4.0).theme(t));
-/// ```
-#[must_use = "Skeleton must be added with `ui.add(...)` to render"]
-pub struct Skeleton {
-    size: Vec2,
-    rounding: f32,
-    base: Option<Color32>,
-    highlight: Option<Color32>,
-}
-
-impl Skeleton {
-    pub fn new() -> Self {
-        Self {
-            size: Vec2::new(80.0, 12.0),
-            rounding: 3.0,
-            base: None,
-            highlight: None,
-        }
-    }
-    pub fn size(mut self, w: f32, h: f32) -> Self { self.size = Vec2::new(w, h); self }
-    pub fn width(mut self, w: f32) -> Self { self.size.x = w; self }
-    pub fn height(mut self, h: f32) -> Self { self.size.y = h; self }
-    pub fn rounding(mut self, r: f32) -> Self { self.rounding = r; self }
-    pub fn theme(mut self, t: &Theme) -> Self {
-        self.base = Some(color_alpha(t.toolbar_border, alpha_heavy()));
-        self.highlight = Some(color_alpha(t.dim, alpha_muted()));
-        self
-    }
-}
-
-impl Default for Skeleton {
-    fn default() -> Self { Self::new() }
-}
-
-impl Widget for Skeleton {
-    fn ui(self, ui: &mut Ui) -> Response {
-        let amb = ambient(ui.ctx());
-        let base = self.base.unwrap_or(color_alpha(amb.toolbar_border, alpha_heavy()));
-        let highlight = self.highlight.unwrap_or(color_alpha(amb.dim, alpha_muted()));
-        let (rect, resp) = ui.allocate_exact_size(self.size, Sense::hover());
-        let cr = egui::CornerRadius::same(self.rounding as u8);
-        let painter = ui.painter();
-        painter.rect_filled(rect, cr, base);
-
-        // Animated shimmer band moving left → right
-        let t = ui.ctx().input(|i| i.time) as f32;
-        ui.ctx().request_repaint();
-        let phase = (t * 0.6).fract();
-        let band_w = self.size.x * 0.35;
-        let x0 = rect.left() - band_w + phase * (self.size.x + band_w * 2.0);
-        let band = Rect::from_min_size(Pos2::new(x0, rect.top()), Vec2::new(band_w, self.size.y))
-            .intersect(rect);
-        if band.width() > 0.0 {
-            painter.rect_filled(band, cr, color_alpha(highlight, alpha_subtle()));
         }
         resp
     }
