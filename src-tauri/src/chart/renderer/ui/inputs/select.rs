@@ -19,7 +19,7 @@ use std::hash::Hash;
 use egui::{Color32, Response, RichText, Sense, Stroke, Ui, Vec2, Widget};
 use super::super::style::*;
 use crate::ui_kit::icons::Icon;
-use super::inputs::SearchInput;
+use crate::ui_kit::widgets::SearchInput;
 
 #[inline(always)]
 fn ambient(ctx: &egui::Context) -> &'static super::super::super::gpu::Theme {
@@ -183,8 +183,8 @@ impl<'a, T: PartialEq + Copy> Combobox<'a, T> {
                 ui.set_min_width(width);
                 let _ = SearchInput::new(&mut filter)
                     .placeholder(self.placeholder)
-                    .palette(accent, ambient(ui.ctx()).bear, dim)
-                    .show(ui);
+                    .full_width()
+                    .show(ui, crate::ui_kit::widgets::theme::active_theme(ui.ctx()));
                 ui.separator();
 
                 let needle = filter.trim().to_lowercase();
