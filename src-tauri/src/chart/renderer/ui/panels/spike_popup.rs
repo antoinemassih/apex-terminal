@@ -31,7 +31,7 @@ use std::time::{Duration, Instant};
 
 use egui;
 
-use crate::chart_renderer::ui::style::icon_md;
+use crate::chart_renderer::ui::style::{gap_2xs, gap_xs, icon_md};
 use crate::data::apex_data::live_state;
 use crate::data::apex_data::types::SpikeExplanation;
 use crate::ui_kit::widgets::Button as KitButton;
@@ -292,10 +292,10 @@ fn draw_toast_body(
             }
         });
     });
-    ui.add_space(4.0);
+    ui.add_space(gap_xs());
     ui.label(egui::RichText::new(&spike.headline).strong().size(12.0)
         .color(egui::Color32::from_rgb(230, 235, 245)));
-    ui.add_space(2.0);
+    ui.add_space(gap_2xs());
     // Explanation — truncate visually via egui's wrapping; the data itself is
     // unbounded. We give it a fixed height and rely on egui's clip rect.
     let explanation_h = 32.0;
@@ -303,7 +303,7 @@ fn draw_toast_body(
         ui.label(egui::RichText::new(&spike.explanation).size(10.5)
             .color(egui::Color32::from_rgb(180, 188, 200)));
     });
-    ui.add_space(2.0);
+    ui.add_space(gap_2xs());
     // Source chips — first 2 only.
     if !spike.sources.is_empty() {
         ui.horizontal_wrapped(|ui| {
@@ -318,7 +318,7 @@ fn draw_toast_body(
             }
         });
     }
-    ui.add_space(4.0);
+    ui.add_space(gap_xs());
     ui.horizontal(|ui| {
         if small_btn(ui, "view chart").clicked() {
             *jump_buf = Some((spike.symbol.clone(), spike.t_ms));

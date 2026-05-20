@@ -664,7 +664,7 @@ impl<'a> WatchlistRow<'a> {
                             .size(18.0)
                             .color(card_fg),
                     );
-                    ui.add_space(2.0);
+                    ui.add_space(gap_2xs());
 
                     // Last price.
                     let price_str = if card_price > 0.0 {
@@ -690,7 +690,7 @@ impl<'a> WatchlistRow<'a> {
                             .size(12.0)
                             .color(chg_col),
                     );
-                    ui.add_space(6.0);
+                    ui.add_space(gap_xs_mid());
 
                     // Compact stat helper: dim label + fg value.
                     fn stat_row(

@@ -261,12 +261,12 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
 fn draw_output_tab(ui: &mut egui::Ui, watchlist: &Watchlist, t: &Theme) {
     let m = 10.0;
     if watchlist.script_output.is_empty() {
-        ui.add_space(20.0);
+        ui.add_space(gap_xl());
         ui.vertical_centered(|ui| {
             ui.add(MonospaceCode::new("Run a script or backtest to see results here.").xs().color(t.dim).gamma(0.4));
         });
     } else {
-        ui.add_space(4.0);
+        ui.add_space(gap_xs());
         let is_error = watchlist.script_output.starts_with("Error");
         let (card_bg, card_border) = if is_error {
             (color_alpha(t.bear, 18), color_alpha(t.bear, alpha_line()))
@@ -281,7 +281,7 @@ fn draw_output_tab(ui: &mut egui::Ui, watchlist: &Watchlist, t: &Theme) {
             });
         });
     }
-    ui.add_space(8.0);
+    ui.add_space(gap_sm());
 }
 
 // ── Backtest tab ────────────────────────────────────────────────────────────
@@ -291,7 +291,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
     let result = match &watchlist.script_backtest {
         Some(r) => r,
         None => {
-            ui.add_space(20.0);
+            ui.add_space(gap_xl());
             ui.vertical_centered(|ui| {
                 ui.add(MonospaceCode::new("Click \"Backtest\" to generate results.").xs().color(t.dim).gamma(0.4));
             });
@@ -299,7 +299,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         }
     };
 
-    ui.add_space(8.0);
+    ui.add_space(gap_sm());
 
     // ── Stats row ───────────────────────────────────────────
     let stats = [
@@ -335,14 +335,14 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         }
     });
 
-    ui.add_space(8.0);
+    ui.add_space(gap_sm());
 
     // ── Trade list header ───────────────────────────────────
     ui.horizontal(|ui| {
         ui.add_space(m);
         ui.add(MonospaceCode::new(&format!("TRADES ({})", result.trades.len())).xs().color(t.dim).gamma(0.5).strong(true));
     });
-    ui.add_space(4.0);
+    ui.add_space(gap_xs());
 
     let col_x = [m, m + 42.0, m + 112.0, m + 192.0, m + 262.0];
     let header_y = ui.cursor().min.y;
@@ -368,7 +368,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         egui::vec2(w - m * 2.0, 1.0),
     );
     ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, alpha_muted()));
-    ui.add_space(4.0);
+    ui.add_space(gap_xs());
 
     for trade in &result.trades {
         let row_y = ui.cursor().min.y;
@@ -433,7 +433,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         );
     }
 
-    ui.add_space(12.0);
+    ui.add_space(gap_md());
 }
 
 // ── Helper widgets ──────────────────────────────────────────────────────────

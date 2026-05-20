@@ -496,7 +496,7 @@ if watchlist.open {
                                     egui::Stroke::new(stroke_thin(), color_alpha(t.text, 5)));
                             }
                             // 3px top padding so rows sit at the same position as before.
-                            ui.add_space(4.0);
+                            ui.add_space(gap_xs());
                             // Render each pinned row via the design-system WatchlistRow widget.
                             for (si, ii, pin_sym, pin_price, pin_prev, _pin_loaded, avg_range) in &pinned_items {
                                 let is_active = *pin_sym == active_sym;
@@ -1756,7 +1756,7 @@ if watchlist.open {
                         for row in &sorted_calls { render_row(ui, row, true, &exp_label, sym, saved, select_mode, w); }
 
                         // ── ATM price badge divider ──
-                        ui.add_space(4.0);
+                        ui.add_space(gap_xs());
                         {
                             let r = ui.available_rect_before_wrap();
                             let y = ui.cursor().min.y;
@@ -1783,7 +1783,7 @@ if watchlist.open {
                                 &badge_text, mono_md(),
                                 t.text);
                         }
-                        ui.add_space(20.0);
+                        ui.add_space(gap_xl());
 
                         // Puts (ATM at top, OTM at bottom)
                         for row in &sorted_puts { render_row(ui, row, false, &exp_label, sym, saved, select_mode, w); }

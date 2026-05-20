@@ -154,16 +154,16 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
             |ui| {
                 ui.add_space(avail.y * 0.25);
                 ui.label(egui::RichText::new(Icon::CHAT_DOTS).size(32.0).color(color_half(discord_blurple)));
-                ui.add_space(12.0);
+                ui.add_space(gap_md());
                 if !crate::discord::is_configured() {
                     PanelEmpty::new("Discord not configured")
                         .hint("Add discord.env with credentials")
                         .show(ui, t);
                 } else if watchlist.discord_connecting {
                     ui.add(widgets::text::MonospaceCode::new("Waiting for authorization...").xs().color(t.dim));
-                    ui.add_space(8.0);
+                    ui.add_space(gap_sm());
                     crate::ui_kit::widgets::Spinner::new().show(ui, t);
-                    ui.add_space(4.0);
+                    ui.add_space(gap_xs());
                     ui.add(widgets::text::MonospaceCode::new("Complete sign-in in your browser").xs().color(color_half(t.dim)));
                 } else {
                     // WHITE foreground is intentional brand contrast on the Discord blurple fill.
@@ -178,7 +178,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                         watchlist.discord_connecting = true;
                         crate::discord::start_oauth2();
                     }
-                    ui.add_space(8.0);
+                    ui.add_space(gap_sm());
                     ui.add(widgets::text::MonospaceCode::new("Chat with your trading community").xs().color(color_half(t.dim)));
                 }
             },
@@ -193,9 +193,9 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
     // standalone; when embedded the parent feed_panel header carries the
     // close). Disconnect lives inline at the top.
     ui.horizontal(|ui| {
-        ui.add_space(4.0);
+        ui.add_space(gap_xs());
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.add_space(4.0);
+            ui.add_space(gap_xs());
             let r = Button::close()
                 .tint(t.bear)
                 .placement(IconPlacement::PanelHeader)
@@ -230,7 +230,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
 
         egui::ScrollArea::horizontal().id_salt("guild_strip").show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.add_space(8.0);
+                ui.add_space(gap_sm());
                 let guild_entries: Vec<GuildEntry<'_>> = watchlist.discord_guilds.iter()
                     .map(|g| GuildEntry { id: &g.id, name: &g.name })
                     .collect();
@@ -249,10 +249,10 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                     watchlist.discord_channels_loading = true;
                     crate::discord::fetch_channels_bg(id);
                 }
-                ui.add_space(4.0);
+                ui.add_space(gap_xs());
             });
         });
-        ui.add_space(4.0);
+        ui.add_space(gap_xs());
         let sep_rect = ui.allocate_exact_size(egui::vec2(panel_w, 1.0), egui::Sense::hover()).0;
         ui.painter().rect_filled(sep_rect, 0.0, color_alpha(t.toolbar_border, alpha_dim()));
     }
@@ -276,7 +276,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
         // Server selected, show channel list
         if watchlist.discord_channels_loading {
             ui.horizontal(|ui| {
-                ui.add_space(8.0);
+                ui.add_space(gap_sm());
                 crate::ui_kit::widgets::Spinner::new().show(ui, t);
                 ui.add(widgets::text::MonospaceCode::new("Loading channels...").xs().color(t.dim));
             });
@@ -289,11 +289,11 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                 |ui| {
                     ui.add_space(avail.y * 0.2);
                     ui.label(egui::RichText::new(Icon::PLUGS_CONNECTED).size(32.0).color(color_half(t.dim)));
-                    ui.add_space(8.0);
+                    ui.add_space(gap_sm());
                     ui.add(widgets::text::MonospaceCode::new("Bot not in this server").xs().color(t.dim));
-                    ui.add_space(4.0);
+                    ui.add_space(gap_xs());
                     ui.add(widgets::text::MonospaceCode::new("Add the Apex bot to enable\nchannels & messaging").xs().color(color_half(t.dim)));
-                    ui.add_space(8.0);
+                    ui.add_space(gap_sm());
                     // WHITE foreground is intentional brand contrast on the Discord blurple fill.
                     if ui.add(Button::new("  Add Bot to Server  ")
                         .variant(Variant::Chrome)
@@ -310,9 +310,9 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                         );
                         let _ = open::that(&url);
                     }
-                    ui.add_space(8.0);
+                    ui.add_space(gap_sm());
                     ui.add(widgets::text::CaptionLabel::new("Server admins can also\nadd the bot themselves").color(t.dim).gamma(0.4));
-                    ui.add_space(12.0);
+                    ui.add_space(gap_md());
                     if ui.add(Button::new("Retry")
                         .variant(Variant::Chrome)
                         .size(Size::Xs)
@@ -380,11 +380,11 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
         }
     } else {
         // ── Channel selected: show messages + input ──
-        ui.add_space(4.0);
+        ui.add_space(gap_xs());
 
         // Back button + channel name
         ui.horizontal(|ui| {
-            ui.add_space(8.0);
+            ui.add_space(gap_sm());
             let r = ui.add(Button::new(Icon::CARET_RIGHT)
                 .variant(Variant::TextOnly)
                 .size(Size::Sm)
@@ -398,7 +398,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
             }
             ui.add(widgets::text::MonospaceCode::new(&watchlist.discord_channel).xs().color(t.dim));
         });
-        ui.add_space(4.0);
+        ui.add_space(gap_xs());
 
         // Messages — chat-bubble list intentionally bespoke (per Agent I's audit).
         let input_h = 36.0;
@@ -410,24 +410,24 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
             .show(ui, |ui| {
                 ui.set_min_width(content_w - 4.0);
                 if watchlist.discord_messages_loading {
-                    ui.add_space(8.0);
+                    ui.add_space(gap_sm());
                     let row_w = (content_w - 24.0).max(80.0);
                     for _ in 0..5 {
-                        ui.add_space(4.0);
+                        ui.add_space(gap_xs());
                         ui.horizontal(|ui| {
-                            ui.add_space(8.0);
+                            ui.add_space(gap_sm());
                             crate::ui_kit::widgets::Skeleton::circle(20.0).show(ui, t);
-                            ui.add_space(8.0);
+                            ui.add_space(gap_sm());
                             ui.vertical(|ui| {
                                 crate::ui_kit::widgets::Skeleton::text(row_w * 0.35).show(ui, t);
-                                ui.add_space(2.0);
+                                ui.add_space(gap_2xs());
                                 crate::ui_kit::widgets::Skeleton::text(row_w * 0.75).show(ui, t);
                             });
                         });
-                        ui.add_space(4.0);
+                        ui.add_space(gap_xs());
                     }
                 } else if watchlist.discord_messages.is_empty() {
-                    ui.add_space(8.0);
+                    ui.add_space(gap_sm());
                     PanelEmpty::new("No messages in this channel").show(ui, t);
                 }
                 let mut prev_author = String::new();
@@ -438,7 +438,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                     let same_author = msg.author == prev_author;
 
                     if !same_author {
-                        if !prev_author.is_empty() { ui.add_space(4.0); }
+                        if !prev_author.is_empty() { ui.add_space(gap_xs()); }
                         let author = msg.author.clone();
                         let timestamp = msg.timestamp.clone();
                         let dim = t.dim;
@@ -458,22 +458,22 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                     // Message content — INLINE EXCEPTION: egui::Label required for
                     // wrap_mode(Wrap); no widget currently supports wrapping body text.
                     ui.horizontal(|ui| {
-                        ui.add_space(20.0); // align with text after avatar dot
+                        ui.add_space(gap_xl()); // align with text after avatar dot
                         ui.add(egui::Label::new(
                             egui::RichText::new(&msg.content).monospace().size(font_sm()).color(t.text)
                         ).wrap_mode(egui::TextWrapMode::Wrap));
                     });
                     prev_author = msg.author.clone();
                 }
-                ui.add_space(4.0);
+                ui.add_space(gap_xs());
             });
 
         // Input area
         let sep_rect = ui.allocate_exact_size(egui::vec2(content_w, 1.0), egui::Sense::hover()).0;
         ui.painter().rect_filled(sep_rect, 0.0, color_alpha(t.toolbar_border, alpha_muted()));
-        ui.add_space(4.0);
+        ui.add_space(gap_xs());
         ui.horizontal(|ui| {
-            ui.add_space(8.0);
+            ui.add_space(gap_sm());
             let input = Input::new(&mut watchlist.discord_input)
                 .width(content_w - 60.0)
                 .text_color(t.text)
@@ -505,6 +505,6 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                 watchlist.discord_input.clear();
             }
         });
-        ui.add_space(4.0);
+        ui.add_space(gap_xs());
     }
 }

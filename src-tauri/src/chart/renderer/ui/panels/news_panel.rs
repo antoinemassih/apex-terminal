@@ -132,7 +132,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
         .draggable_header(true)
         .header_style(HeaderStyle::panel())
         .panel_title_actions(|ui| {
-            ui.add_space(8.0);
+            ui.add_space(gap_sm());
             if ui.add(Button::new(filter_label)
                 .variant(Variant::Chrome)
                 .fg(filter_col)
@@ -144,7 +144,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
             ).clicked() {
                 toggle_filter = true;
             }
-            ui.add_space(6.0);
+            ui.add_space(gap_xs_mid());
             if ui.add(Button::new(sent_label)
                 .variant(Variant::Chrome)
                 .fg(sent_col)

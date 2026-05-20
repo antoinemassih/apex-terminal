@@ -102,7 +102,7 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
                     });
                     ui.add_space(gap_md());
                     dialog_separator_shadow(ui, m, color_alpha(c.t.toolbar_border, 40));
-                    ui.add_space(4.0);
+                    ui.add_space(gap_xs());
                 }
             }
 

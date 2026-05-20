@@ -268,7 +268,7 @@ fn draw_price_row(
             "{label} band\n  low:  ${:.2}\n  high: ${:.2}\n  point: ${:.2}",
             lo, hi, point)).show(ui, &resp, t);
     }
-    ui.add_space(2.0);
+    ui.add_space(gap_2xs());
 }
 
 fn draw_hit_rate(ui: &mut egui::Ui, plan: &TradePlanV2, t: &Theme) {

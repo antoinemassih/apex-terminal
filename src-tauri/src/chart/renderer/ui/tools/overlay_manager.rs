@@ -23,7 +23,7 @@ if panes[ap].overlay_editing {
         .draggable_header(true)
         .show(|ui| {
             let m = 8.0;
-            ui.add_space(8.0);
+            ui.add_space(gap_sm());
 
             // ── Existing overlays ──
             let n_ov = panes[ap].symbol_overlays.len();
@@ -37,7 +37,7 @@ if panes[ap].overlay_editing {
                 ui.horizontal(|ui| {
                     ui.add_space(m);
                     ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 10.0), 4.0, oc);
-                    ui.add_space(12.0);
+                    ui.add_space(gap_md());
                     let status = if ov_loading { " ..." } else if ov_empty { " (no data)" } else { "" };
                     let ov_label = format!("{}{}", ov_sym, status);
                     ui.add(MonospaceCode::new(&ov_label).size_px(font_sm()).color(oc));
@@ -66,18 +66,18 @@ if panes[ap].overlay_editing {
                         delete_idx = Some(oi);
                     }
                 });
-                ui.add_space(4.0);
+                ui.add_space(gap_xs());
             }
 
             if n_ov > 0 {
-                ui.add_space(4.0);
+                ui.add_space(gap_xs());
                 dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, alpha_muted()));
-                ui.add_space(4.0);
+                ui.add_space(gap_xs());
             }
 
             // ── Add new overlay ──
             dialog_section(ui, "ADD OVERLAY", m, color_half(t.dim));
-            ui.add_space(4.0);
+            ui.add_space(gap_xs());
             ui.horizontal(|ui| {
                 ui.add_space(m);
                 Input::new(&mut panes[ap].overlay_input)
@@ -88,7 +88,7 @@ if panes[ap].overlay_editing {
             });
             let query = panes[ap].overlay_input.trim().to_uppercase();
             if !query.is_empty() {
-                ui.add_space(4.0);
+                ui.add_space(gap_xs());
                 let results = crate::ui_kit::symbols::search_symbols(&query, 5);
                 for si in &results {
                     ui.horizontal(|ui| {
@@ -114,7 +114,7 @@ if panes[ap].overlay_editing {
                 panes[ap].overlay_input.clear();
             }
 
-            ui.add_space(8.0);
+            ui.add_space(gap_sm());
         });
     if let Some(di) = delete_idx { panes[ap].symbol_overlays.remove(di); }
     if modal_resp.closed { panes[ap].overlay_editing = false; panes[ap].overlay_editing_idx = None; panes[ap].overlay_input.clear(); }

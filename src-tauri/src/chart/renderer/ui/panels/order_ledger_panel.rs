@@ -224,7 +224,7 @@ pub(crate) fn draw(
                                             ui.add(MonospaceCode::new("TIME    SIDE TYPE  QTY/FILL  PRICE   STATE      CID")
                                                 .size_px(font_xs()).color(t.dim).gamma(0.4));
                                         });
-                                        ui.add_space(2.0);
+                                        ui.add_space(gap_2xs());
                                         for row in &sym_rows {
                                             draw_active_row(ui, t, row);
                                         }
@@ -269,7 +269,7 @@ pub(crate) fn draw(
                         if resp.clicked() { let i8 = i as u8; watchlist.update_sidebar_state(|s| s.order_ledger_filter = i8); }
                     }
                 });
-                ui.add_space(2.0);
+                ui.add_space(gap_2xs());
 
                 // Search box
                 ui.horizontal(|ui| {
