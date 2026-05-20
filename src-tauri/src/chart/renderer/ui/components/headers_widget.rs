@@ -3,7 +3,7 @@
 
 #![allow(dead_code, unused_imports)]
 
-use egui::{Color32, Response, RichText, Sense, Ui, Vec2, Widget};
+use egui::{Color32, Response, Sense, Ui, Vec2, Widget};
 use super::super::style::*;
 use super::super::components::pane_header_bar;
 use super::text::{SectionLabel, SectionLabelSize};
