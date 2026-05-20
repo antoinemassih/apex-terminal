@@ -1,15 +1,32 @@
-# Theme System Spec — interchangeable `DesignSystem`
+# Theme System Spec — two-axis `StyleSystem × ColorScheme`
 
 Status: **proposal / blueprint** — no code changes yet. This is the design
-the implementation waves should follow.
+the implementation phases should follow.
+
+> **Revision (2026-05-20):** the monolithic `DesignSystem` of the first draft
+> is replaced by a **two-axis model** — a theme is a `StyleSystem` (all
+> dimensions) crossed with a `ColorScheme` (the palette), each selectable
+> independently. See §3. This revision also adds **Phase 0 — Untangle &
+> Unify** (§8), a prerequisite the monolithic model did not need.
 
 ## 1. Goal
 
-Make a "theme" a complete, swappable **design system** — not just a colour
-palette. The app must accept N externally-authored systems (currently 6,
-authored in React, refined in Figma) and switch between them at runtime, each
-carrying its own palette, type ramp, spacing, radii, stroke weights, density,
-and shadows.
+Make a "theme" two orthogonal, swappable axes — not just a colour palette:
+
+- **`StyleSystem`** — the structural design language: typography, spacing,
+  radii, stroke weights, corner sharpness, density, elevation factors, shadow
+  geometry, alpha values. **No colour.** (e.g. "Meridien", the 6 React systems.)
+- **`ColorScheme`** — the palette only: bg, surface, text, accent, bull, bear,
+  etc. (e.g. "Solarized", "Dracula", "Gruvbox", the ~20 existing `THEMES[]`.)
+
+Picked independently → "Meridien in Dracula", "Meridien in Solarized" — same
+layout language, different palette. N styles × M colorschemes = N·M valid
+combinations, switchable at runtime, no recompile.
+
+**This is making explicit what the app already half-has.** Today there is
+`Theme` (the ~20 palettes — the colour axis) *and* `StyleSettings` + `style_id`
+(Meridien is already a "style") — two things, tangled together and not
+independently pickable. The refactor separates and orthogonalises them.
 
 ## 2. Current-state diagnosis
 
@@ -17,111 +34,129 @@ A theme today is split across three disconnected layers:
 
 | Layer | Holds | Per-theme? |
 |---|---|---|
-| `gpu.rs::Theme` (×15 in `THEMES[]`) | palette colours only | yes |
+| `gpu.rs::Theme` (×~20 in `THEMES[]`) | palette colours only | yes |
 | `style.rs` global fns (`font_*`, `gap_*`, `radius_*`, `stroke_*`, `alpha_*`, `elevation_*`) | type / spacing / radii / strokes / alpha | **no — global** |
 | `StyleSettings` + `dt_f32!` (design-mode) | `r_sm`, `hairline_borders`, `cta_height_px`, density knobs | partially, design-mode only |
 
 Consequence: switching theme swaps **colours only**. Type scale, spacing,
-radii, density, stroke weight stay fixed. The 6 React systems differ in more
-than colour, so the current architecture physically cannot express them.
+radii, density, stroke weight stay fixed. The style axis cannot move.
 
 In shipping builds (`design-mode` off) the `style.rs` token fns compile to
 **constants** via `dt_f32!`'s `#[cfg(not(feature = "design-mode"))]` arm —
 free at runtime. A data-driven theme system must preserve "effectively free"
 token access (see §5).
 
-## 3. The `DesignSystem` struct
+### 2.1 Entanglement diagnosis (the two-axis blocker)
 
-One canonical struct. 100% data. `serde`-serializable. Nothing in globals.
+The final audit (2026-05-20) found the codebase is **not split-ready**: colour
+and dimension are fused in **18 discrete sites** across 4 files. Until these
+are untangled, "Meridien in Dracula" is physically impossible.
+
+| Category | Count | Where |
+|---|---|---|
+| `Option<Color32>` fields living inside the *style* struct `StyleSettings` | 8 fields | `style.rs:1753–1815` — `active_fill_color`, `active_text_color`, `idle_outline_color`, `input_focus_color`, `pane_gap_color`, `segmented_idle_fill`, `segmented_idle_text`, `header_outer_border_alpha` |
+| Elevation factors hardcoded as literals, not tokened | 6 sites | `style.rs:575,582,589,1412,1421,1430` — `0.95 / 0.88 / 0.85` |
+| `Stroke::new(width, literal_color)` — dimension + colour fused | 2 sites | `spike_popup.rs:227,341` |
+| Legacy black-shadow path | 1 site | `style.rs:1251` `paint_tooltip_shadow` |
+| Parallel `Variant` enum (two divergent button colour-lookup paths) | 1 structural | `ui_kit/widgets/tokens.rs` vs `chart/renderer/ui/foundation/variants.rs` |
+
+The `gpu.rs::Theme` struct itself is **clean** — pure colour, zero non-colour
+fields. The `DesignTokens` struct is correctly segregated. The structural debt
+is concentrated in `StyleSettings`, which was built as a style struct but
+accumulated colour overrides over time.
+
+## 3. The two structs
+
+Two canonical structs. 100% data. `serde`-serializable. Nothing in globals.
 
 ```rust
+/// Axis 2 — the palette. Pure colour. (Was `gpu.rs::Theme`.)
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct DesignSystem {
-    pub meta:       Meta,
-    pub palette:    Palette,
-    pub typography: Typography,
-    pub spacing:    Spacing,
-    pub radii:      Radii,
-    pub strokes:    Strokes,
-    pub alphas:     Alphas,
-    pub elevation:  Elevation,
-    pub density:    Density,
-    pub shadows:    Shadows,
-}
-
-pub struct Meta { pub id: String, pub name: String, pub is_dark: bool }
-
-pub struct Palette {
+pub struct ColorScheme {
+    pub meta:   Meta,                 // id, name, is_dark
     pub bg: Rgba, pub surface: Rgba, pub paper: Rgba,
     pub text: Rgba, pub dim: Rgba, pub border: Rgba,
     pub accent: Rgba, pub bull: Rgba, pub bear: Rgba, pub warn: Rgba,
     pub shadow: Rgba,
-    // accent aliases for the top-bar picker (cobalt / green / black / amber)
     pub accent_alts: Vec<Rgba>,
 }
 
-pub struct Typography {
-    pub mono_family: String,    // e.g. "JetBrains Mono"
-    pub prop_family: String,    // e.g. "Inter Tight"
-    pub size_2xs: f32, pub size_xs: f32, pub size_xs_plus: f32,
-    pub size_sm: f32,  pub size_md: f32, pub size_md_plus: f32,
-    pub size_lg: f32,  pub size_xl: f32,
-    // line-height multipliers; egui has limited support — see §7
-    pub line_tight: f32, pub line_normal: f32,
+/// Axis 1 — the design language. Pure dimension. No colour.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct StyleSystem {
+    pub meta:       Meta,
+    pub typography: Typography,
+    pub spacing:    Spacing,
+    pub radii:      Radii,
+    pub strokes:    Strokes,
+    pub alphas:     Alphas,      // alpha *values* — dimension-axis
+    pub elevation:  Elevation,   // gamma *factors* — dimension-axis
+    pub density:    Density,
+    pub shadows:    Shadows,     // blur/offset/spread *geometry* — no colour
+    pub treatments: Treatments,  // booleans/enums: solid_active_fills, hairline_borders, …
 }
-
-pub struct Spacing  { pub g2xs:f32, pub gxs:f32, pub gxs_mid:f32,
-                      pub gsm:f32, pub gmd:f32, pub glg:f32,
-                      pub gxl:f32, pub g2xl:f32, pub g3xl:f32 }
-
-pub struct Radii    { pub xs:f32, pub sm:f32, pub md:f32, pub lg:f32, pub pill:f32 }
-
-pub struct Strokes  { pub hair:f32, pub thin:f32, pub medium:f32,
-                      pub std:f32, pub bold:f32 }
-
-pub struct Alphas   { pub faint:u8, pub ghost:u8, pub soft:u8, pub subtle:u8,
-                      pub tint:u8, pub muted:u8, pub dim:u8, pub line:u8,
-                      pub strong:u8, pub active:u8, pub heavy:u8, pub solid:u8 }
-
-// elevation tints are gamma multipliers on bg (dark-theme model); a light
-// theme overrides with its own values rather than the audit's TODO gap.
-pub struct Elevation { pub e1:f32, pub e2:f32, pub e3:f32 }
-
-pub struct Density  { pub row_dense:f32, pub row_compact:f32, pub row_default:f32,
-                      pub row_spacious:f32, pub row_tall:f32,
-                      pub control_height:f32, pub cta_height:f32,
-                      pub button_pad_x:f32, pub button_pad_y:f32 }
-
-pub struct Shadows  { pub card:ShadowSpec, pub modal:ShadowSpec, pub tooltip:ShadowSpec }
 ```
+
+`Typography`, `Spacing`, `Radii`, `Strokes`, `Alphas`, `Elevation`, `Density`,
+`Shadows` are unchanged from the first draft (see git history of this file).
+`Treatments` is new — it absorbs the *non-colour* `StyleSettings` booleans
+(`solid_active_fills`, `hairline_borders`, `uppercase_section_labels`, …).
 
 `Rgba` is a plain `[u8;4]` (DTCG-friendly, no egui dependency in the schema).
 
-The 6 React systems become **6 `DesignSystem` JSON files**. The current 15
-`THEMES[]` palettes become 15 `DesignSystem`s that all share the *same*
-typography/spacing/radii block (their existing behaviour) until intentionally
-diverged.
+### 3.1 The active theme is a *pair*
+
+```rust
+pub struct ActiveTheme { pub style: Arc<StyleSystem>, pub colors: Arc<ColorScheme> }
+```
+
+A token like "muted border" resolves as `colors.border` at
+`style.alphas.muted` — the Resolver (§4) combines the two axes at render time.
+Colour and dimension never meet until the resolver joins them.
+
+### 3.2 Style fields specify *roles*, never literal colours
+
+The fix for the 8 entangled `Option<Color32>` fields: a `StyleSystem` field
+must never name a colour. It names a **role or a derivation**, and the
+`ColorScheme` provides the pixels.
+
+| Entangled field today | Two-axis replacement |
+|---|---|
+| `active_fill_color: Some(BLACK)` (Meridien) | `treatments.solid_active_fills: bool` — when true, active fill = `colors.text`, active text = `colors.bg` (palette inversion). Works for *any* colorscheme. |
+| `active_text_color: Some(WHITE)` | (same — derived inversion) |
+| `idle_outline_color: Some(rgb(60,56,44))` | derive from `colors.border` (optionally tinted via the resolver) |
+| `input_focus_color`, `pane_gap_color`, `segmented_idle_fill`, `segmented_idle_text` | drop the override; derive from the palette role (`accent`, `surface`, …) |
+| `header_outer_border_alpha: u8` | already an alpha — keep on the style axis; pairs with `colors.text` at render |
+
+Result: Meridien × Dracula inverts Dracula's palette for active elements;
+Meridien × Solarized inverts Solarized's. The style says *"invert for active"*;
+the colorscheme says *"with these colours."*
 
 ## 4. Framework — four pieces
 
-1. **Loader** — `DesignSystem::from_dtcg(json) -> DesignSystem`. Parses the
-   W3C DTCG token JSON that Figma / Tokens Studio exports (§6).
-2. **Registry** — `ThemeRegistry` owns all loaded `DesignSystem`s, tracks the
-   active id, persists the choice through `UiSettings`/`Store<T>`.
-3. **Resolver** — derived values (hover tints, `color-mix` equivalents,
-   elevation surfaces, focus-ring colour) are **pure functions** of a
-   `&DesignSystem`. Never stored, never a separate token.
-   `fn tint(base, over, alpha) -> Rgba` is the one primitive.
-4. **One trait** — widgets take `&DesignSystem` (extend or replace
-   `ComponentTheme`). No widget reads a global token fn.
+1. **Loader** — `StyleSystem::from_dtcg(json)` and `ColorScheme::from_dtcg(json)`.
+   Parses W3C DTCG token JSON (§6). Two file *kinds*, one parser family.
+2. **Registry** — `ThemeRegistry` owns all loaded `StyleSystem`s **and**
+   `ColorScheme`s as two separate lists, tracks the active *pair*, persists the
+   choice through `UiSettings`/`Store<T>`.
+3. **Resolver** — derived values (hover tints, elevation surfaces, focus-ring
+   colour, the active-element inversion of §3.2) are **pure functions** of
+   `(&StyleSystem, &ColorScheme)`. Never stored. `fn tint(base, over, alpha)`
+   is the one primitive.
+4. **One trait** — widgets take `&ActiveTheme` (extend `ComponentTheme`
+   additively). No widget reads a global token fn.
 
 ## 5. Performance — the load-bearing constraint
 
 Token access must stay **effectively free** in the chart hot path.
+**Confirmed by audit #198 (2026-05-20):** the main candle loop in `core.rs`
+(the only path running ×200–500/frame) contains **zero** named token-fn calls;
+the GPU pipeline (`renderer_gpu/`) is fully insulated (colours arrive as
+resolved `[f32;4]`). Net frame-time change of the refactor: **≈ 0 µs**.
 
-### Rule 1 — widget code passes `&DesignSystem` by reference
-Already the pattern for `&Theme`. `ds.spacing.gmd` is one in-cache pointer
-deref. Identical cost to today's `&Theme` field reads. **Free.**
+### Rule 1 — widget code passes `&ActiveTheme` by reference
+`active.style.spacing.gmd` is one in-cache pointer deref. Identical cost to
+today's `&Theme` field reads. **Free.**
 
 ### Rule 2 — `style.rs` fns keep stable signatures, backed by a per-frame snapshot
 `core.rs` (sacred) calls `style::font_sm()`, `style::gap_md()` etc. directly.
@@ -130,125 +165,144 @@ Those signatures **must not change** (no core.rs edits). Back them with a
 
 ```rust
 thread_local! {
-    static FRAME_DS: Cell<DesignSystemSnapshot> = Cell::new(DEFAULT_SNAPSHOT);
+    static FRAME: Cell<DesignSnapshot> = Cell::new(DEFAULT_SNAPSHOT);
 }
 // render loop, once per frame, before draw_chart:
-pub fn begin_frame(ds: &DesignSystem) { FRAME_DS.with(|c| c.set(ds.snapshot())); }
+pub fn begin_frame(t: &ActiveTheme) { FRAME.with(|c| c.set(t.snapshot())); }
 
 // style.rs — signature unchanged, body now reads the snapshot:
-pub fn font_sm() -> f32 { FRAME_DS.with(|c| c.get().size_sm) }
+pub fn font_sm() -> f32 { FRAME.with(|c| c.get().size_sm) }
 ```
 
-`DesignSystemSnapshot` is a flat `Copy` struct of primitive token values
-(no String, no Vec). A `thread_local` read of a `Copy` struct is ~1 ns and
-lock-free. At ~5,000 token calls/frame that is ~5 µs — **0.03 % of a 16 ms
-frame**. Imperceptible, and `core.rs` is never touched.
+`DesignSnapshot` is a flat `Copy` struct of the *resolved* pair's primitive
+token values (no String, no Vec). A `thread_local` read is ~1 ns, lock-free.
+Audit #198 measured the net added cost at ~30–120 ns/frame for the O(1)
+setup-zone token calls; `style::current()` actually gets *faster* (RwLock
+clone → Cell copy). `core.rs` is never touched.
 
 ### Rule 3 — never a lock or map lookup per token call
-No `RwLock::read()` per `font_sm()`. No `HashMap` lookup (today's design-mode
-`design_tokens::get()` path is map-based — the snapshot replaces it and is
-*faster* than the current design-mode path).
+No `RwLock::read()` per `font_sm()`. No `HashMap` lookup.
 
-### Rule 4 — theme switch is a pointer swap
-`registry.set_active(id)` swaps an `Arc<DesignSystem>`. Picked up by the next
-frame's `begin_frame`. One-time, rare, nil cost.
+### Rule 4 — a theme switch is two pointer swaps
+`registry.set_style(id)` / `registry.set_colors(id)` swap an `Arc`. Picked up
+by the next frame's `begin_frame`. One-time, rare, nil cost.
 
-**Net:** shipping-build perf is unchanged within noise. Design-mode builds get
-*faster* (snapshot vs map lookup). The risk is exactly one anti-pattern —
-per-call locking — which this spec forbids.
+### Hoist list (audit #198) — 7 token reads in O(D≤50) loops
+`core.rs:3290, 4220, 4223, 8780, 8781, 8805, 8847…8873` — token calls inside
+the drawings / tooltip loops. Worth hoisting to locals before the loop. Even
+unhoisted the overhead is <10 µs/frame; hoisting is hygiene, not correctness.
 
-## 6. DTCG JSON shape (one worked example)
+## 6. DTCG JSON shape
 
-Tokens Studio exports / imports W3C DTCG. One file per `DesignSystem`:
+Tokens Studio exports / imports W3C DTCG. **Two file kinds**, one per axis:
 
 ```json
-{
-  "meta": { "id": "midnight", "name": "Midnight", "is_dark": true },
+// colorscheme.dracula.json
+{ "meta": { "id": "dracula", "name": "Dracula", "is_dark": true },
   "palette": {
-    "bg":     { "$type": "color", "$value": "#0d0f14" },
-    "accent": { "$type": "color", "$value": "#3b82f6" },
-    "bull":   { "$type": "color", "$value": "#22c55e" },
-    "bear":   { "$type": "color", "$value": "#ef4444" }
-  },
-  "typography": {
-    "mono_family": { "$type": "fontFamily", "$value": "JetBrains Mono" },
-    "size_sm":     { "$type": "dimension",  "$value": 11 },
-    "size_md":     { "$type": "dimension",  "$value": 13 }
-  },
-  "spacing": { "gsm": { "$type": "dimension", "$value": 8 },
-               "gmd": { "$type": "dimension", "$value": 12 } },
-  "radii":   { "sm": { "$type": "dimension", "$value": 4 } }
-}
+    "bg":     { "$type": "color", "$value": "#282a36" },
+    "accent": { "$type": "color", "$value": "#bd93f9" },
+    "bull":   { "$type": "color", "$value": "#50fa7b" },
+    "bear":   { "$type": "color", "$value": "#ff5555" } } }
 ```
 
-In Figma each `DesignSystem` is one **mode** of a theme variable collection;
-Tokens Studio round-trips it to this JSON unchanged. The Rust `Loader` reads
-the same file. No hand-translation either direction.
+```json
+// style.meridien.json
+{ "meta": { "id": "meridien", "name": "Meridien", "is_dark": true },
+  "typography": { "size_sm": { "$type": "dimension", "$value": 11 } },
+  "spacing":    { "gmd": { "$type": "dimension", "$value": 12 } },
+  "radii":      { "sm": { "$type": "dimension", "$value": 0 } },
+  "treatments": { "solid_active_fills": { "$type": "boolean", "$value": true } } }
+```
+
+In Figma each axis is its own variable collection; Tokens Studio round-trips
+each to its JSON unchanged. No hand-translation either direction.
 
 ## 7. Honest non-translations
 
-Three things do not survive Figma → egui and must be flagged in the schema:
+Three things do not survive Figma → egui and are flagged in the schema as
+metadata only: **OpenType features** (`tnum`, `ss01`, slashed zero — bake into
+the `.ttf`); **letter-spacing / per-style line-height** (egui can't express
+letter spacing, coarse line height); **`color-mix()`** (computed at render via
+`tint()`; port to oklab once if the Figma source needs it).
 
-- **OpenType features** (`tnum`, `ss01`, slashed zero) — egui has no runtime
-  toggle. Bake them into the shipped `.ttf`. Schema records them as metadata
-  only.
-- **Letter-spacing / per-style line-height** — egui can't express letter
-  spacing and only coarsely supports line height. `line_tight/normal` are
-  kept as best-effort; letter-spacing is dropped.
-- **`color-mix()`** — computed at render via `tint()`. sRGB-blended. If the
-  Figma source mixes in oklab, port `tint()` to oklab once, globally.
+## 8. Phase 0 — Untangle & Unify (prerequisite)
 
-## 8. Migration plan — collapse three layers into one
+The two-axis split cannot begin until colour and dimension are separable.
+This phase did not exist in the monolithic draft.
 
-| Wave | Work | Risk | Touches core.rs? |
-|---|---|---|---|
-| 1 | Define `DesignSystem` + `DesignSystemSnapshot` + `Loader` + `Registry`. No call-site changes. | Low | No |
-| 2 | `begin_frame(ds)` snapshot pump; rewrite `style.rs` token fns to read the snapshot (signatures unchanged). | Med | No — signatures stable |
-| 3 | Fold `StyleSettings` / `dt_f32!` into `DesignSystem`; design-mode inspector edits the active `DesignSystem`. | Med | No |
-| 4 | Convert the 15 `THEMES[]` palettes → 15 `DesignSystem`s (shared type/spacing block initially). | Low | No |
-| 5 | Extend `ComponentTheme` to expose the full `DesignSystem`; widgets migrate off bare palette access. | Med | No |
-| 6 | Author the 6 React systems as DTCG JSON, load via `Registry`, wire the theme picker. | Low | No |
+| # | Work |
+|---|---|
+| 0a | **Unify the two `Variant` enums** → one canonical `ui_kit/widgets/tokens.rs`; migrate `lists/rows/*` off `foundation/variants.rs`; delete the legacy enum. |
+| 0b | **Untangle the 8 `Option<Color32>` fields** out of `StyleSettings` — replace with the role/derivation model of §3.2. |
+| 0c | **Token the elevation factors** — `0.95/0.88/0.85` (6 hardcoded sites) → `StyleSystem.elevation` fields. |
+| 0d | Fix `spike_popup.rs:227,341` fused strokes + the legacy black shadow at `style.rs:1251`. |
 
-`core.rs` is never edited — Rule 2 guarantees the `style::` fn signatures it
-calls stay identical. This is the same sacred-file discipline used for the
-`Store<T>` state migration.
+## 9. The full phased plan
 
-## 9. What this is NOT
+### Phase A — Styleability + Componentization
+| # | Work |
+|---|---|
+| A1 | Build the **one** genuinely-missing primitive `Sparkline` (absorbs the hand-rolled impls in `perf_hud.rs:26` + `watchlist_columns.rs:100`). Adopt the 4 zero-consumer primitives where applicable: `StatusPill`, `Toast`, `TagInput`, `TimePicker`. *NOTE: audit #5 found `PriceBadge`/`StatTile`/`SectionDivider` are NOT needed — `MetricRow`/`PanelKeyValueRow`/`Separator` already cover those patterns.* |
+| A2 | Migrate the ~75 `Variant::Chrome` leaks → named variants (`Chip`/`InlineClose`/`Tab`/`MutedIcon`, which exist but are unadopted); fix `PanelListRow` height drift (5 values: 14/18/22/28/52px); finish the `PanelSection` `trailing_buttons` migration. Consolidate the **3 duplicate widget clusters** (audit #5): text — `components/text.rs` + `semantic_label.rs` → `ui_kit::Label`; headers — `headers_widget.rs` → `ui_kit::Header`; buttons — `action_button.rs` / `header_buttons.rs` → `Button::` presets. Verify the `components/motion.rs` (190 sites) vs `ui_kit/motion.rs` overlap before retiring either. |
+| A3 | Rebuild the hand-rolled UI on primitives. Audit #4's complete 138-file census is the authoritative roster — ~46 `hand-rolled`/`mixed` files, including the entire `components/` subtree, `command_palette/`, `lists/cards/`, `inputs/form.rs`, `top_nav.rs` — all missed by earlier lens-based audits. Worst two: `chart_widgets.rs` (103 hardcoded values) and `style.rs` (token infra — its 38 colours / 24 strokes are addressed by Phase B). Fold the ~48 private mini-widgets into primitives. |
+| A4 | Wire remaining hardcoded sites to the theme — `shadow.rs` (active light-theme bug), `button.rs`, `form.rs` mini-`Theme`, ui_kit literals, `chart_widgets`. |
+| A5 | `core.rs` sacred wire-ups — vol-delta→`t.bull/bear`, gold→`t.warn`, 211 strokes→tokens. Single-owner. **Perf-confirmed safe** (audit #198). |
+
+### Phase B — The two-axis theme system
+| Wave | Work | Touches core.rs? |
+|---|---|---|
+| B1 | Define `StyleSystem` + `ColorScheme` + `DesignSnapshot` + `Loader` + `Registry`. No call-site changes. | No |
+| B2 | `begin_frame` snapshot pump; rewrite `style.rs` token fns to read the snapshot (signatures unchanged). | No — Rule 2 |
+| B3 | Fold the 62 clean `StyleSettings` dimension fields → `StyleSystem`; design-mode inspector edits the active pair. | No |
+| B4 | Convert the ~20 `THEMES[]` palettes → ~20 `ColorScheme`s. | No |
+| B5 | Extend `ComponentTheme` additively to expose `&ActiveTheme`; widgets migrate off bare palette access. | No |
+| B6 | Author the 6 React systems as DTCG `StyleSystem` JSON + decompose into style/colorscheme pairs; load via `Registry`; wire the two-dropdown theme picker. | No |
+
+`core.rs` is never edited in Phase B — Rule 2 guarantees the `style::` fn
+signatures stay identical. Phase A5 is the *only* sanctioned `core.rs` work,
+done as a single verified owner.
+
+## 10. Audits — complete & converged (2026-05-21)
+
+Five audits run. **Audit #5's verdict: the inventory has converged — start Phase 0.**
+
+- **#1 styleability** — hardcoded values; **#198 perf** — chart hot-path safety
+  (net ≈ 0 µs/frame); **#199 consistency** — usage drift + two-axis readiness.
+- **#4 exhaustive consumer census** — all 138 UI files classified; found ~25
+  hand-rolled files the lens-based audits missed (the `components/` subtree,
+  `chart_widgets.rs`, `inputs/form.rs`, `command_palette/`, `lists/cards/`).
+- **#5 library audit** — 60+ primitives catalogued; 4 zero-consumer primitives
+  (`TagInput`, `TimePicker`, `Toast`, `StatusPill`); 3 duplicate widget
+  clusters; the two `Variant` enums fully characterised; `ComponentTheme` is
+  23 methods (not 66), all colour-returning, correctly shaped for B5; only
+  `Sparkline` genuinely missing. Found exactly **one** new file
+  (`foundation/design_inspector.rs`, a dev tool) — convergence confirmed.
+
+No further audits needed. The roster is stable.
+
+## 11. What this is NOT
 
 - Not adopting the `rust-theme/theme.rs` scaffold from the Figma-export
-  conversation — that was generated from a separate web mockup and is unaware
-  of the 15 shipped themes + `ui_kit`. It would create a second, conflicting
-  token system.
-- Not a runtime CSS engine. No cascade, no selectors. A `DesignSystem` is
-  plain data; widgets read it explicitly.
-- Not recompiled per theme. A theme switch never triggers a build (see §10).
+  conversation — it is unaware of the shipped themes + `ui_kit` and would
+  create a second, conflicting token system.
+- Not a runtime CSS engine. No cascade, no selectors. Plain data.
+- Not recompiled per theme. A switch never triggers a build (see §12).
 
-## 10. Install model — built-in `const` + installed JSON, one registry
+## 12. Install model — built-in `const` + installed JSON, one registry
 
-This is how VSCode and JetBrains work, and it is the model here. Neither tool
-recompiles to switch themes; a theme is always *data*, loaded at runtime. A
-recompile-to-switch design would mean a 10–60 s build per colour change — and
-it buys nothing: with the §5 per-frame snapshot, a compiled-`const` token and
-a JSON-loaded token cost the *same* at the read site (~1 ns). Compiling a
-theme in only saves a few ms of one-time startup parsing, at the cost of
-making themes un-installable without a Rust rebuild.
+VSCode / JetBrains model: a theme is always *data*, loaded at runtime, never
+recompiled. With the §5 per-frame snapshot a compiled-`const` token and a
+JSON-loaded token cost the *same* at the read site (~1 ns).
 
-So two theme sources feed **one `ThemeRegistry`**:
+Two sources feed **one `ThemeRegistry`** (per axis):
 
-| Source | Form | Loaded | Why |
-|---|---|---|---|
-| **Built-in** (the final crafted set + the 15 existing) | compiled-in `const DesignSystem` | at startup, no file I/O | tamper-proof, never missing/corrupt, zero startup parse |
-| **Installed / user** | DTCG JSON in a `themes/` dir | scanned at startup + on "Install theme…" | author / install without a rebuild |
+| Source | Form | Loaded |
+|---|---|---|
+| **Built-in** (the crafted set + the ~20 existing) | compiled-in `const` | at startup, no file I/O |
+| **Installed / user** | DTCG JSON in a `themes/` dir | scanned at startup + on "Install…" |
 
-"Installing" a theme = drop its DTCG JSON in the themes dir (or import via a
-button) → the registry scans it → it appears in the picker. This is VSCode's
-extension model minus the `.vsix` packaging. Both sources deserialize into the
-same `DesignSystem`; the registry does not care which arm produced an entry.
-
-Switching stays an instant `Arc<DesignSystem>` pointer-swap picked up by the
-next frame's `begin_frame` (§5, Rule 4). No recompile, no relaunch, no UI
-rebuild — just the next frame reading a new snapshot.
-
-A built-in theme is the resolver's guaranteed fallback: if an installed JSON
-fails to parse or references a missing field, the registry logs via
-`errors_sink` and falls back to a named built-in rather than panicking.
+"Installing" = drop a DTCG JSON in the themes dir → the registry scans it → it
+appears in the relevant axis of the picker. Switching is two `Arc` pointer
+swaps picked up by the next frame's `begin_frame`. A built-in theme is the
+resolver's guaranteed fallback if an installed JSON fails to parse.
