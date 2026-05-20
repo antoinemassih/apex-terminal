@@ -15,12 +15,11 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
-use super::super::widgets::status::Spinner;
 use super::super::widgets::text::{SectionLabel, MonospaceCode};
 use crate::ui_kit::widgets::FormRow;
 use super::super::widgets::rows::WatchlistRow;
 use crate::ui_kit::widgets::{
-    Button, Input, NumberStepper, Skeleton, PanelCard, PanelEmpty, SidePanelShell, Tooltip, Width,
+    Button, Input, NumberStepper, Skeleton, Spinner, PanelCard, PanelEmpty, SidePanelShell, Tooltip, Width,
 };
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
@@ -96,7 +95,7 @@ pub(crate) fn draw_content(
             ui.add(MonospaceCode::new(&format!("{}s", remaining)).size_px(font_xs()).color(t.dim).gamma(0.4));
         }
         if watchlist.scanner_fetching {
-            ui.add(Spinner::new().sm().theme(t));
+            Spinner::new().size(KitSize::Sm).show(ui, t);
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let r = Button::icon(Icon::ARROW_COUNTER_CLOCKWISE)
@@ -205,7 +204,7 @@ pub(crate) fn draw_content(
             }
             None => {
                 ui.horizontal(|ui| {
-                    ui.add(Spinner::new().sm().theme(t));
+                    Spinner::new().size(KitSize::Sm).show(ui, t);
                     ui.add(MonospaceCode::new(&format!("loading {}…", kind.label())).size_px(font_xs()).color(t.dim));
                 });
                 ui.add(MonospaceCode::new(
@@ -306,7 +305,7 @@ pub(crate) fn draw_content(
             if pool.is_empty() {
                 ui.add_space(gap_lg());
                 ui.vertical_centered(|ui| {
-                    ui.add(Spinner::new().md().theme(t));
+                    Spinner::new().size(KitSize::Md).show(ui, t);
                     ui.add_space(gap_sm());
                 });
                 PanelEmpty::new("Fetching quotes")
