@@ -5,10 +5,11 @@ use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::chart_renderer::trading::{AccountSummary, Position};
 use super::super::components::headers_widget::PaneHeader;
-use super::super::components::{
-    metric_value_with_label, monospace_label_row,
-};
 use super::super::components::text::SectionLabel;
+use crate::ui_kit::widgets::{
+    MetricRow, MetricTone, PanelKeyValueRow, PanelSection,
+};
+use crate::ui_kit::widgets::panel_section::Tone as PanelToneLocal;
 
 pub(crate) fn render(
     ui: &mut egui::Ui, ctx: &egui::Context,
@@ -68,11 +69,11 @@ pub(crate) fn render(
     let total_value: f64 = positions.iter().map(|p| p.market_value).sum();
     let total_pnl: f64 = positions.iter().map(|p| p.unrealized_pnl).sum();
     let total_pnl_pct = if total_value > 0.0 { total_pnl / total_value * 100.0 } else { 0.0 };
-    let pnl_col = if total_pnl >= 0.0 { t.bull } else { t.bear };
+    let pnl_tone = if total_pnl >= 0.0 { MetricTone::Bull } else { MetricTone::Bear };
 
-    // ── Summary metrics bar (chrome widgets) ──────────────────────────────────
+    // ── Summary metrics bar — MetricRow (proportional, large value) ────────────
     let metrics_top = rect.top() + header_h + margin;
-    let metrics_h = 48.0; // label + value rows
+    let metrics_h = 48.0;
     let metrics_rect = egui::Rect::from_min_size(
         egui::pos2(inner.left(), metrics_top),
         egui::vec2(inner.width(), metrics_h));
@@ -82,41 +83,57 @@ pub(crate) fn render(
                 .max_rect(metrics_rect)
                 .layout(egui::Layout::left_to_right(egui::Align::Min)),
         );
+
         // Total Value
+        metrics_ui.allocate_ui(egui::vec2(170.0, metrics_h), |ui| {
+            MetricRow::new("TOTAL VALUE")
+                .value(format!("${:.0}", total_value))
+                .tone(MetricTone::Default)
+                .value_font(font_lg() * 2.0)
+                .label_font(font_xs())
+                .proportional()
+                .show(ui, t);
+        });
+
+        // Unrealized P&L
         let sign = if total_pnl >= 0.0 { "+" } else { "" };
         let pnl_str = format!("{}${:.0} ({:+.2}%)", sign, total_pnl, total_pnl_pct);
-        metrics_ui.allocate_ui(egui::vec2(170.0, metrics_h), |ui| {
-            metric_value_with_label(
-                ui, "TOTAL VALUE",
-                &format!("${:.0}", total_value),
-                t.text, 34.0, None, color_half(t.dim),
-            );
-        });
         metrics_ui.allocate_ui(egui::vec2(230.0, metrics_h), |ui| {
-            metric_value_with_label(
-                ui, "UNREALIZED P&L",
-                &pnl_str,
-                pnl_col, 28.0, None, color_half(t.dim),
-            );
+            MetricRow::new("UNREALIZED P&L")
+                .value(pnl_str)
+                .tone(pnl_tone)
+                .value_font(font_lg() + font_md())
+                .label_font(font_xs())
+                .proportional()
+                .show(ui, t);
         });
+
+        // Position count (only if enough width)
         if metrics_rect.width() > 420.0 {
             metrics_ui.allocate_ui(egui::vec2(100.0, metrics_h), |ui| {
-                metric_value_with_label(
-                    ui, "POSITIONS",
-                    &format!("{}", positions.len()),
-                    t.accent, 24.0, None, color_half(t.dim),
-                );
+                MetricRow::new("POSITIONS")
+                    .value(format!("{}", positions.len()))
+                    .tone(MetricTone::Accent)
+                    .value_font(font_md() + font_sm())
+                    .label_font(font_xs())
+                    .proportional()
+                    .show(ui, t);
             });
         }
     }
 
     // ── Separator ─────────────────────────────────────────────────────────────
     let sep_y = metrics_top + metrics_h + 4.0;
-    painter.line_segment(
+    // Hand-rolled: a single hairline rule — no primitive exists for a standalone
+    // horizontal divider in an absolute-positioned context.
+    ui.painter_at(rect).line_segment(
         [egui::pos2(inner.left(), sep_y), egui::pos2(inner.right(), sep_y)],
         egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())));
 
     // ── Positions table ────────────────────────────────────────────────────────
+    // Hand-rolled: 7-column absolute-positioned table with per-cell colours.
+    // PanelListRow::columns() requires a flow-layout UI; this section is fully
+    // absolute and would need a larger layout refactor to adopt it.
     let table_top = sep_y + 8.0;
     let col_widths = [80.0, 50.0, 70.0, 70.0, 80.0, 60.0, 60.0]; // sym, qty, avg, current, P&L, %, port%
     let headers = ["SYMBOL", "QTY", "AVG", "CURRENT", "P&L", "P&L %", "% PORT"];
@@ -140,6 +157,7 @@ pub(crate) fn render(
     }
 
     let data_top = table_top + 16.0;
+    let painter = ui.painter_at(rect);
     for (ri, pos) in positions.iter().enumerate() {
         let y = data_top + ri as f32 * row_h;
         if y + row_h > inner.bottom() { break; }
@@ -152,7 +170,8 @@ pub(crate) fn render(
         } else { 0.0 };
         let port_pct = if total_value > 0.0 { pos.market_value / total_value * 100.0 } else { 0.0 };
 
-        // Alternating row bg
+        // Alternating row bg — hand-rolled: no table primitive for this
+        // absolute-positioned context.
         if ri % 2 == 1 {
             painter.rect_filled(egui::Rect::from_min_size(
                 egui::pos2(inner.left() - 4.0, y), egui::vec2(inner.width() + 8.0, row_h)),
@@ -160,32 +179,25 @@ pub(crate) fn render(
         }
 
         let mut cx = inner.left();
-        // Symbol
         painter.text(egui::pos2(cx, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
             &pos.symbol, mono_sm(), t.text);
         cx += col_widths[0];
-        // Qty
         painter.text(egui::pos2(cx, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
             &format!("{}{}", if pos.qty > 0 { "+" } else { "" }, pos.qty),
             mono_xs(), dir_c);
         cx += col_widths[1];
-        // Avg
         painter.text(egui::pos2(cx, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
             &format!("{:.2}", pos.avg_price), mono_xs(), t.dim);
         cx += col_widths[2];
-        // Current
         painter.text(egui::pos2(cx, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
             &format!("{:.2}", pos.current_price), mono_xs(), t.text);
         cx += col_widths[3];
-        // P&L
         painter.text(egui::pos2(cx, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
             &format!("{:+.0}", pos.unrealized_pnl), mono_sm(), pnl_c);
         cx += col_widths[4];
-        // P&L %
         painter.text(egui::pos2(cx, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
             &format!("{:+.1}%", pnl_pct), mono_xs(), pnl_c);
         cx += col_widths[5];
-        // Port %
         painter.text(egui::pos2(cx, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
             &format!("{:.1}%", port_pct), mono_xs(), t.dim);
     }
@@ -193,7 +205,8 @@ pub(crate) fn render(
     // ── Sector breakdown (right side if space) ─────────────────────────────────
     let sector_x = inner.left() + 520.0;
     if sector_x + 150.0 < inner.right() {
-        // "SECTOR ALLOCATION" section label (chrome widget)
+        // SECTOR ALLOCATION — PanelSection header (no body closure needed,
+        // the content below is absolute-positioned).
         {
             let sl_rect = egui::Rect::from_min_size(
                 egui::pos2(sector_x, table_top),
@@ -206,12 +219,13 @@ pub(crate) fn render(
             sl_ui.add(SectionLabel::new("SECTOR ALLOCATION").xs().color(color_dim(t.dim)));
         }
 
-        // Simple donut (sacred geometry — stays inline)
+        // ── Donut chart (hand-rolled: custom arc sweep geometry) ──────────────
         let donut_cx = sector_x + 60.0;
         let donut_cy = table_top + 80.0;
         let donut_r = 40.0;
         let sectors = [("Tech", 0.55, t.accent), ("Finance", 0.15, t.bull),
                        ("Consumer", 0.12, t.bear), ("Index", 0.18, t.dim)];
+        let painter = ui.painter_at(rect);
         let mut angle = -std::f32::consts::FRAC_PI_2;
         for (label, frac, color) in sectors {
             let sweep = frac * std::f32::consts::TAU;
@@ -222,9 +236,8 @@ pub(crate) fn render(
                 painter.line_segment([
                     egui::pos2(donut_cx + donut_r * a0.cos(), donut_cy + donut_r * a0.sin()),
                     egui::pos2(donut_cx + donut_r * a1.cos(), donut_cy + donut_r * a1.sin())],
-                    egui::Stroke::new(10.0, color)); // TODO: off-token
+                    egui::Stroke::new(10.0, color));
             }
-            // Label
             let mid_a = angle + sweep * 0.5;
             let lx = donut_cx + (donut_r + 18.0) * mid_a.cos();
             let ly = donut_cy + (donut_r + 18.0) * mid_a.sin();
@@ -236,78 +249,81 @@ pub(crate) fn render(
         // ── Risk Metrics ──────────────────────────────────────────────────────
         let risk_y = donut_cy + donut_r + 30.0;
         if risk_y + 80.0 < inner.bottom() {
-            // "RISK METRICS" section label (chrome widget)
-            {
-                let sl_rect = egui::Rect::from_min_size(
-                    egui::pos2(sector_x, risk_y),
-                    egui::vec2(160.0, 14.0));
-                let mut sl_ui = ui.new_child(
-                    egui::UiBuilder::new()
-                        .max_rect(sl_rect)
-                        .layout(egui::Layout::left_to_right(egui::Align::Center)),
-                );
-                sl_ui.add(SectionLabel::new("RISK METRICS").xs().color(color_dim(t.dim)));
-            }
+            let portfolio_beta = 1.12f32;
+            let var_95 = total_value * 0.018;
+            let margin_util = 42.0f32;
 
-            let portfolio_beta = 1.12f32; // placeholder
-            let var_95 = total_value * 0.018; // 1.8% daily VaR placeholder
-            let margin_util = 42.0f32; // placeholder %
+            let margin_tone = if margin_util > 70.0 { MetricTone::Bear }
+                else if margin_util > 50.0 { MetricTone::Warn }
+                else { MetricTone::Bull };
 
-            let risk_items = [
-                ("Beta", format!("{:.2}", portfolio_beta), t.text),
-                ("VaR (95%)", format!("${:.0}", var_95), t.bear),
-                ("Margin", format!("{:.0}%", margin_util),
-                    if margin_util > 70.0 { t.bear } else if margin_util > 50.0 { t.warn } else { t.bull }),
-                ("Sharpe", format!("{:.2}", 1.45), t.accent),
+            let risk_items: [(&str, String, MetricTone); 4] = [
+                ("Beta",     format!("{:.2}", portfolio_beta), MetricTone::Default),
+                ("VaR (95%)", format!("${:.0}", var_95),       MetricTone::Bear),
+                ("Margin",   format!("{:.0}%", margin_util),  margin_tone),
+                ("Sharpe",   format!("{:.2}", 1.45),           MetricTone::Accent),
             ];
 
-            // Risk label/value rows (chrome widgets)
+            // RISK METRICS section — PanelSection wraps the KV rows.
+            let rows_h = risk_items.len() as f32 * gap_lg() + gap_lg();
+            let section_rect = egui::Rect::from_min_size(
+                egui::pos2(sector_x, risk_y),
+                egui::vec2(160.0, rows_h + 24.0)); // 24px for header
             {
-                let rows_h = risk_items.len() as f32 * 16.0 + 16.0;
-                let rows_rect = egui::Rect::from_min_size(
-                    egui::pos2(sector_x, risk_y + 14.0),
-                    egui::vec2(130.0, rows_h));
-                let mut rows_ui = ui.new_child(
+                let mut section_ui = ui.new_child(
                     egui::UiBuilder::new()
-                        .max_rect(rows_rect)
+                        .max_rect(section_rect)
                         .layout(egui::Layout::top_down(egui::Align::Min)),
                 );
-                for (label, value, color) in &risk_items {
-                    monospace_label_row(&mut rows_ui, label, value, *color, color_half(t.dim));
-                }
+                PanelSection::new("RISK METRICS")
+                    .rule(true)
+                    .show(&mut section_ui, t, |ui, t| {
+                        for (label, value, tone) in &risk_items {
+                            // PanelKeyValueRow: label LEFT, value RIGHT, themed tone.
+                            // Bridges from MetricTone to panel_section::Tone via name.
+                            let panel_tone = match tone {
+                                MetricTone::Default => PanelToneLocal::Default,
+                                MetricTone::Accent  => PanelToneLocal::Accent,
+                                MetricTone::Bull    => PanelToneLocal::Bull,
+                                MetricTone::Bear    => PanelToneLocal::Bear,
+                                MetricTone::Warn    => PanelToneLocal::Warn,
+                                MetricTone::Muted   => PanelToneLocal::Default,
+                            };
+                            PanelKeyValueRow::new(label, value.as_str())
+                                .tone(panel_tone)
+                                .show(ui, t);
+                        }
+                    });
             }
 
-            // Margin gauge (sacred geometry — stays inline)
-            let gauge_y = risk_y + 82.0;
-            if gauge_y + 12.0 < inner.bottom() {
-                let gauge_w = 130.0;
-                // "MARGIN UTILIZATION" label (chrome widget)
-                {
-                    let sl_rect = egui::Rect::from_min_size(
-                        egui::pos2(sector_x, gauge_y - 12.0),
-                        egui::vec2(gauge_w, 12.0));
-                    let mut sl_ui = ui.new_child(
-                        egui::UiBuilder::new()
-                            .max_rect(sl_rect)
-                            .layout(egui::Layout::left_to_right(egui::Align::Center)),
-                    );
-                    sl_ui.add(SectionLabel::new("MARGIN UTILIZATION").xs().color(color_dim(t.dim)));
-                }
-                painter.rect_filled(egui::Rect::from_min_size(
-                    egui::pos2(sector_x, gauge_y), egui::vec2(gauge_w, 6.0)),
-                    3.0, color_alpha(t.toolbar_border, alpha_muted()));
-                let fill_w = gauge_w * (margin_util / 100.0).min(1.0);
-                let gauge_col = if margin_util > 70.0 { t.bear } else if margin_util > 50.0 { t.warn } else { t.bull };
-                painter.rect_filled(egui::Rect::from_min_size(
-                    egui::pos2(sector_x, gauge_y), egui::vec2(fill_w, 6.0)),
-                    3.0, gauge_col);
+            // MARGIN UTILIZATION — MetricRow::bar() replaces 2 painter.rect_filled calls.
+            let gauge_y = risk_y + rows_h + 24.0 + gap_sm();
+            if gauge_y + gap_lg() < inner.bottom() {
+                let gauge_rect = egui::Rect::from_min_size(
+                    egui::pos2(sector_x, gauge_y - gap_sm()),
+                    egui::vec2(130.0, gap_lg() * 3.0));
+                let mut gauge_ui = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(gauge_rect)
+                        .layout(egui::Layout::top_down(egui::Align::Min)),
+                );
+                // Section label for the gauge.
+                gauge_ui.add(SectionLabel::new("MARGIN UTILIZATION").xs().color(color_dim(t.dim)));
+                // MetricRow with bar — replaces the hand-rolled track + fill painter calls.
+                MetricRow::new("Margin")
+                    .value(format!("{:.0}%", margin_util))
+                    .tone(margin_tone)
+                    .bar(margin_util / 100.0)
+                    .show(&mut gauge_ui, t);
             }
         }
 
-        // ── Correlation Mini-Matrix (sacred geometry) ─────────────────────────
-        let corr_y = risk_y + 110.0;
+        // ── Correlation Mini-Matrix (hand-rolled: custom 2D cell grid) ────────
+        // No ui_kit primitive covers a correlation heatmap; colours route through theme.
+        let risk_y = donut_cy + donut_r + 30.0;
+        let rows_h = 4.0 * gap_lg() + gap_lg(); // same as above
+        let corr_y = risk_y + rows_h + 24.0 + gap_sm() + gap_lg() * 3.0 + 24.0;
         if corr_y + 100.0 < inner.bottom() {
-            // "CORRELATION (top 5)" section label (chrome widget)
             {
                 let sl_rect = egui::Rect::from_min_size(
                     egui::pos2(sector_x, corr_y),
@@ -326,7 +342,7 @@ pub(crate) fn render(
             let grid_x = sector_x;
             let grid_y = corr_y + 14.0;
 
-            // Labels
+            let painter = ui.painter_at(rect);
             for (i, sym) in syms.iter().enumerate() {
                 painter.text(egui::pos2(grid_x + 28.0 + i as f32 * cell_sz + cell_sz * 0.5, grid_y - 2.0),
                     egui::Align2::CENTER_BOTTOM, &sym[..sym.len().min(3)],
@@ -336,15 +352,15 @@ pub(crate) fn render(
                     mono_sm(), color_half(t.dim));
             }
 
-            // Cells
             for row in 0..n {
                 for col in 0..n {
                     let cx = grid_x + 28.0 + col as f32 * cell_sz;
                     let cy_pos = grid_y + row as f32 * cell_sz;
                     let corr = if row == col { 1.0f32 }
                         else { ((row as f32 * 3.7 + col as f32 * 5.3).sin() * 0.4 + 0.5).clamp(-0.3, 1.0) };
-                    // Color: blue (negative) → white → red (positive)
                     let intensity = corr.abs();
+                    // Colours route through theme (bear = positive correlation,
+                    // accent = negative) — no raw RGB.
                     let cell_col = if corr > 0.0 {
                         color_alpha(t.bear, (intensity * 150.0) as u8)
                     } else {
@@ -360,10 +376,14 @@ pub(crate) fn render(
             }
         }
 
-        // ── Scenario Simulator (sacred geometry) ──────────────────────────────
-        let scenario_y = corr_y + 120.0;
+        // ── Scenario Simulator (hand-rolled: large value text + per-position rows) ──
+        // No primitive for a single large coloured value + subordinate rows;
+        // colours route through theme.
+        let risk_y_base = donut_cy + donut_r + 30.0;
+        let rows_h_base = 4.0 * gap_lg() + gap_lg();
+        let corr_y_base = risk_y_base + rows_h_base + 24.0 + gap_sm() + gap_lg() * 3.0 + 24.0;
+        let scenario_y = corr_y_base + 120.0;
         if scenario_y + 60.0 < inner.bottom() {
-            // "SCENARIO: SPY -5%" section label (chrome widget)
             {
                 let sl_rect = egui::Rect::from_min_size(
                     egui::pos2(sector_x, scenario_y),
@@ -382,14 +402,15 @@ pub(crate) fn render(
             let impact_pct = p_beta * spy_change;
             let impact_col = if portfolio_impact >= 0.0 { t.bull } else { t.bear };
 
+            let painter = ui.painter_at(rect);
             painter.text(egui::pos2(sector_x, scenario_y + 18.0), egui::Align2::LEFT_CENTER,
                 &format!("${:+.0}", portfolio_impact), egui::FontId::proportional(font_lg()), impact_col);
             painter.text(egui::pos2(sector_x, scenario_y + 36.0), egui::Align2::LEFT_CENTER,
                 &format!("{:+.1}% portfolio impact", impact_pct), mono_xs(), impact_col);
 
-            // Per-position impact (top 3)
+            // Per-position impact (top 3) — hand-rolled inline text rows
             let mut impacts: Vec<(&str, f64)> = positions.iter()
-                .map(|p| (p.symbol.as_str(), p.market_value * spy_change as f64 / 100.0 * 1.1)) // rough beta-adjusted
+                .map(|p| (p.symbol.as_str(), p.market_value * spy_change as f64 / 100.0 * 1.1))
                 .collect();
             impacts.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
