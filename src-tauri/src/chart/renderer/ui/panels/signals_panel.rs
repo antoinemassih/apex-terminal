@@ -9,7 +9,6 @@ use egui;
 use super::super::style::*;
 use super::super::widgets as widgets;
 use super::super::super::gpu::{Watchlist, Chart, Theme, SplitSection};
-use super::super::widgets::headers::PanelHeaderWithClose;
 use crate::apex_data::live_state;
 use crate::apex_data::types::{Calibrated, CombinedSignalV2};
 use crate::chart_renderer::SignalsTab;
