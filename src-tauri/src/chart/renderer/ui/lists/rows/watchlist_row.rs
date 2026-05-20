@@ -298,7 +298,12 @@ impl<'a> WatchlistRow<'a> {
         let earnings_days = self.earnings_days;
         let alert_indicator = self.alert_indicator;
         let correlation_dot = self.correlation_dot;
-        let columns: Vec<WatchlistColumnId> = self.columns.to_vec();
+        // Copy columns into a fixed-size stack array — WatchlistColumnId is Copy
+        // and the panel exposes at most 8 columns. Both values are moved into the
+        // painter closure to avoid a per-row heap allocation from .to_vec().
+        let mut col_buf = [WatchlistColumnId::ChangePct; 8];
+        let col_len = self.columns.len().min(8);
+        col_buf[..col_len].copy_from_slice(&self.columns[..col_len]);
         let range_today = self.range_today;
         let week52 = self.week52;
         let volume_v = self.volume_v;
@@ -312,13 +317,16 @@ impl<'a> WatchlistRow<'a> {
         let icon_set = self.icon_set;
         let row_tint = self.row_tint;
         let separator_on = self.separator;
-        let sym_font_id = self.sym_font_id.clone()
+        // Move FontId fields out of self (which is consumed by value) — avoids
+        // cloning the String-backed family name inside each FontId.
+        let sym_font_id = self.sym_font_id
             .unwrap_or_else(|| egui::FontId::monospace(font_sz));
-        let chg_font_id = self.chg_font_id.clone()
+        let chg_font_id = self.chg_font_id
             .unwrap_or_else(|| egui::FontId::proportional(font_sz));
-        let price_font_id = self.price_font_id.clone()
+        let price_font_id = self.price_font_id
             .unwrap_or_else(|| egui::FontId::proportional(font_sz));
-        let price_str_override = self.price_str_override.clone();
+        // Move out the price string override — no clone needed.
+        let price_str_override = self.price_str_override;
         let price_right_inset = self.price_right_inset;
         let star_x_offset = self.star_x_offset;
         let sym_x_offset_after_star = self.sym_x_offset;
@@ -505,7 +513,7 @@ impl<'a> WatchlistRow<'a> {
                     atr: atr_v,
                     market_cap: market_cap_v,
                 };
-                if !columns.is_empty() {
+                if col_len > 0 {
                     // Middle area starts after the indicator strip; for legacy
                     // visual parity with the old hand-tuned mid_x = 45% layout,
                     // start at max(ind_x + gap, rect.left()+45%).
@@ -513,7 +521,7 @@ impl<'a> WatchlistRow<'a> {
                     let middle_right = rect.right() - price_right_inset - 60.0;
                     let mut x = middle_left;
                     let gap = 6.0;
-                    for cid in columns.iter().copied() {
+                    for cid in col_buf[..col_len].iter().copied() {
                         let s = col_spec(cid);
                         if !(s.applicable)(&item_data) { continue; }
                         let w = s.default_width;
@@ -633,7 +641,7 @@ impl<'a> WatchlistRow<'a> {
         // ── HoverCard — rich symbol-detail card on prolonged hover ─────────
         // Suppressed during drag to avoid distracting the user mid-reorder.
         if !drag_confirmed {
-            let card_symbol: String = symbol.to_string();
+            // symbol is &'a str — no allocation needed here.
             let card_price = price;
             let card_change = change_pct;
             let card_range_today = range_today;
@@ -659,7 +667,7 @@ impl<'a> WatchlistRow<'a> {
 
                     // Symbol — large + bold.
                     ui.label(
-                        egui::RichText::new(&card_symbol)
+                        egui::RichText::new(symbol)
                             .strong()
                             .size(18.0)
                             .color(card_fg),

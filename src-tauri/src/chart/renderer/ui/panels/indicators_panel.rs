@@ -640,11 +640,12 @@ fn add_overlay_button(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
     }
 }
 
-fn library_active_toggles() -> Vec<Tg> {
-    // Toggles that appear in the Library and should also surface in Active when on.
-    // Tools-only toggles intentionally stay out of Active to keep that section
-    // focused on chart overlays / indicators.
-    vec![
+/// Toggles that appear in the Library and should also surface in Active when on.
+/// Returned as a static slice — zero allocation, no heap involvement.
+/// Tools-only toggles intentionally stay out of Active to keep that section
+/// focused on chart overlays / indicators.
+fn library_active_toggles() -> &'static [Tg] {
+    &[
         Tg::VolumeBars, Tg::DeltaVolume, Tg::Rvol, Tg::VwapBands,
         Tg::MaRibbon, Tg::Cvd, Tg::AutoSr,
         Tg::VolShelves, Tg::Confluence, Tg::PriceMemory, Tg::LiquidityVoids,
@@ -677,7 +678,15 @@ fn active_indicator_row(
     let visible = ind.visible;
     let swatch_col = hex_to_color(&ind.color, 1.0);
     let name = ind.display_name();
-    let id_salt = format!("ind_{}", id);
+    // Stack-format the id_salt (u32 → at most 10 digits + "ind_" prefix = 14 chars).
+    let mut id_buf = [0u8; 16];
+    let id_len = {
+        use std::io::Write as _;
+        let mut c = std::io::Cursor::new(id_buf.as_mut_slice());
+        let _ = write!(c, "ind_{}", id);
+        c.position() as usize
+    };
+    let id_salt = std::str::from_utf8(&id_buf[..id_len]).unwrap_or("ind_row");
 
     // Show a warning state if insufficient bars are loaded for this indicator.
     let min = indicator_min_bars(ind);
@@ -726,7 +735,15 @@ fn active_indicator_row(
 
 fn active_bool_row(ui: &mut egui::Ui, t: &Theme, tg: Tg, to_disable: &mut Option<Tg>) {
     let accent = color_alpha(t.accent, alpha_strong());
-    let id_salt = format!("act_bool_{:?}", tg as u8 as usize);
+    // Stack-format the id_salt — u8 discriminant, no heap allocation.
+    let mut id_buf = [0u8; 16];
+    let id_len = {
+        use std::io::Write as _;
+        let mut c = std::io::Cursor::new(id_buf.as_mut_slice());
+        let _ = write!(c, "act_bool_{}", tg as u8 as usize);
+        c.position() as usize
+    };
+    let id_salt = std::str::from_utf8(&id_buf[..id_len]).unwrap_or("act_bool");
     let want_disable = std::cell::Cell::new(false);
     let d_ref = &want_disable;
     PanelListRow::new(&id_salt)
@@ -799,20 +816,22 @@ fn draw_library_section(
     let query = watchlist.indicators_panel_search.trim().to_lowercase();
     let force_open = !query.is_empty();
 
-    // Build visible-section list first so we know where to draw dividers.
-    let visible: Vec<(usize, Vec<&LibItem>)> = LIB_SECTIONS
-        .iter()
-        .enumerate()
-        .filter_map(|(i, sec)| {
-            let m: Vec<&LibItem> = sec.items.iter().filter(|item| matches_query(**item, &query)).collect();
-            if m.is_empty() { None } else { Some((i, m)) }
-        })
-        .collect();
+    // Count visible sections first (needed to decide where to draw dividers)
+    // without allocating any intermediate Vec. We do two passes but both are
+    // O(#sections × #items) over a static array — no heap pressure.
+    let visible_count = LIB_SECTIONS.iter()
+        .filter(|sec| sec.items.iter().any(|item| matches_query(*item, &query)))
+        .count();
+    let mut visible_rendered = 0usize;
 
-    for (vi, (sec_idx, matches)) in visible.iter().enumerate() {
-        let sec = &LIB_SECTIONS[*sec_idx];
-        let key = sec.title.to_string();
-        let collapsed = !force_open && watchlist.indicators_lib_collapsed.contains(&key);
+    for (sec_idx, sec) in LIB_SECTIONS.iter().enumerate() {
+        // Check if any items in this section match the query (no Vec allocation).
+        let match_count = sec.items.iter().filter(|item| matches_query(**item, &query)).count();
+        if match_count == 0 { continue; }
+
+        // Use sec.title (&'static str) directly for the collapsed-set lookup —
+        // HashSet<String> supports &str queries via Borrow<str>.
+        let collapsed = !force_open && watchlist.indicators_lib_collapsed.contains(sec.title as &str);
 
         // ── Clickable category header (caret + title + count chip) ──
         let header_h = 24.0;
@@ -842,8 +861,8 @@ fn draw_library_section(
             mono_sm(),
             if hovered { t.text } else { color_subtle(t.text) },
         );
-        let chip_text = format!("{}", matches.len());
-        let galley = painter.layout_no_wrap(chip_text.clone(),
+        let chip_text = format!("{}", match_count);
+        let galley = painter.layout_no_wrap(chip_text,
             mono_xs(), t.dim);
         let chip_w = galley.size().x + 10.0;
         let chip_h = 14.0;
@@ -857,19 +876,23 @@ fn draw_library_section(
 
         cursor::focus_ring(ui, &h_resp, t.accent);
         if h_resp.clicked() && !force_open {
+            // Create the owned key only on click (rare), not every frame.
+            let key = sec.title.to_string();
             if collapsed { watchlist.indicators_lib_collapsed.remove(&key); }
             else { watchlist.indicators_lib_collapsed.insert(key); }
         }
 
         // ── Body — rows via PanelListRow (selected state encodes "on") ──
         if !collapsed {
-            for item in matches {
-                lib_row(ui, t, **item, chart, *sec_idx);
+            for item in sec.items.iter().filter(|item| matches_query(**item, &query)) {
+                lib_row(ui, t, *item, chart, sec_idx);
             }
         }
 
+        visible_rendered += 1;
+
         // ── Inset hairline divider between visible category sections ──
-        if vi + 1 < visible.len() {
+        if visible_rendered < visible_count {
             ui.add_space(gap_xs());
             let (div_rect, _) = ui.allocate_exact_size(
                 egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
@@ -903,11 +926,14 @@ fn lib_row(ui: &mut egui::Ui, t: &Theme, item: LibItem, chart: &mut Chart, sec_i
     }
 }
 
-/// Build a stable per-row id_salt that uniquely keys this library row
-/// across panel sections (since the same item enum could in principle appear
-/// twice).
-fn lib_id(sec_idx: usize, tag: &str) -> String {
-    format!("lib_{}_{}", sec_idx, tag)
+/// Build a stable per-row id_salt into the provided stack buffer.
+/// Returns a `&str` slice of `buf`. The caller must keep `buf` alive.
+/// Avoids heap allocation for per-row IDs in the library list.
+fn lib_id_buf(buf: &mut [u8; 48], sec_idx: usize, tag: &str) -> usize {
+    use std::io::Write as _;
+    let mut cursor = std::io::Cursor::new(buf.as_mut_slice());
+    let _ = write!(cursor, "lib_{}_{}", sec_idx, tag);
+    cursor.position() as usize
 }
 
 fn lib_ind_row(ui: &mut egui::Ui, t: &Theme, kind: IndicatorType, chart: &mut Chart, sec_idx: usize) {
@@ -916,7 +942,9 @@ fn lib_ind_row(ui: &mut egui::Ui, t: &Theme, kind: IndicatorType, chart: &mut Ch
     let active = count > 0;
     // For multi-instance: never show selected state (each click adds a new one).
     let selected = single && active;
-    let id_salt = lib_id(sec_idx, kind.label());
+    let mut id_buf = [0u8; 48];
+    let id_len = lib_id_buf(&mut id_buf, sec_idx, kind.label());
+    let id_salt = std::str::from_utf8(&id_buf[..id_len]).unwrap_or("lib_row");
     let trail_text: String = if single {
         if active { "ON".into() } else { "+".into() }
     } else if count > 0 {
@@ -960,7 +988,9 @@ fn lib_ind_row(ui: &mut egui::Ui, t: &Theme, kind: IndicatorType, chart: &mut Ch
 
 fn lib_bool_row(ui: &mut egui::Ui, t: &Theme, tg: Tg, chart: &mut Chart, sec_idx: usize) {
     let active = bool_get(chart, tg);
-    let id_salt = lib_id(sec_idx, bool_label(tg));
+    let mut id_buf = [0u8; 48];
+    let id_len = lib_id_buf(&mut id_buf, sec_idx, bool_label(tg));
+    let id_salt = std::str::from_utf8(&id_buf[..id_len]).unwrap_or("lib_row");
     let trail_text: &str = if active { "ON" } else { "+" };
     let trail_col = if active { t.accent } else { t.dim };
     let label = bool_label(tg);
@@ -982,7 +1012,9 @@ fn lib_bool_row(ui: &mut egui::Ui, t: &Theme, tg: Tg, chart: &mut Chart, sec_idx
 
 fn lib_vp_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart, sec_idx: usize) {
     let active = chart.vp_mode != VolumeProfileMode::Off;
-    let id_salt = lib_id(sec_idx, "VP");
+    let mut id_buf = [0u8; 48];
+    let id_len = lib_id_buf(&mut id_buf, sec_idx, "VP");
+    let id_salt = std::str::from_utf8(&id_buf[..id_len]).unwrap_or("lib_row");
     let trail_text: String = if active { vp_label(chart.vp_mode).to_string() } else { "+".to_string() };
     let trail_col = if active { t.accent } else { t.dim };
     let resp = PanelListRow::new(&id_salt)
@@ -1013,7 +1045,9 @@ fn lib_vp_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart, sec_idx: usize) {
 
 fn lib_swing_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart, sec_idx: usize) {
     let active = chart.swing_leg_mode > 0;
-    let id_salt = lib_id(sec_idx, "SR");
+    let mut id_buf = [0u8; 48];
+    let id_len = lib_id_buf(&mut id_buf, sec_idx, "SR");
+    let id_salt = std::str::from_utf8(&id_buf[..id_len]).unwrap_or("lib_row");
     let trail_text: String = if active { swing_label(chart.swing_leg_mode).to_string() } else { "+".to_string() };
     let trail_col = if active { t.accent } else { t.dim };
     let resp = PanelListRow::new(&id_salt)

@@ -459,6 +459,14 @@ if watchlist.open {
                         let dragging = watchlist.dragging;
                         let drag_confirmed = watchlist.drag_confirmed;
 
+                        // Compute once per frame (not per row) — avoids a syscall × N rows.
+                        let frame_now_ms = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_millis() as i64).unwrap_or(0);
+                        // Pre-uppercase the filter text once per frame so the per-row
+                        // filter check only needs to uppercase the symbol (not both).
+                        let filter_text_upper = watchlist.filter_text.to_uppercase();
+
                         // Section color presets for the color picker
                         let color_presets = ["#4a9eff","#e74c3c","#2ecc71","#f39c12","#9b59b6","#1abc9c","#e67e22","#3498db","#e91e63","#00bcd4","#8bc34a","#ff5722","#607d8b","#795548","#cddc39","#ff9800"];
 
@@ -660,21 +668,17 @@ if watchlist.open {
                             if !sec_collapsed {
                                 for ii in 0..sec_item_count {
                                     let item = &watchlist.sections[si].items[ii];
-                                    let item_sym = item.symbol.clone();
+                                    // ── Read non-String fields by value (no allocation) ──────────
                                     let item_price = item.price;
                                     let item_prev_close = item.prev_close;
                                     let item_loaded = item.loaded;
                                     let item_is_option = item.is_option;
-                                    let item_underlying = item.underlying.clone();
-                                    let item_option_type = item.option_type.clone();
                                     let item_strike = item.strike;
-                                    let item_expiry = item.expiry.clone();
                                     let item_bid = item.bid;
                                     let item_ask = item.ask;
                                     let item_pinned = item.pinned;
                                     // Skip pinned items in normal sections — they render in the PINNED section above
                                     if item_pinned && has_pinned { continue; }
-                                    let item_tags = item.tags.clone();
                                     let item_rvol = item.rvol;
                                     let item_atr = item.atr;
                                     // Populate range data from price if not set
@@ -685,7 +689,13 @@ if watchlist.open {
                                     let item_avg_daily_range = item.avg_daily_range;
                                     let item_earnings_days = item.earnings_days;
                                     let item_alert_triggered = item.alert_triggered;
-                                    let _item_price_history = item.price_history.clone();
+                                    // Borrow string fields as &str to avoid per-row heap allocations.
+                                    // Owned copies are made lazily, only at the use-sites that need
+                                    // owned values (click handlers, tooltip, etc.).
+                                    let item_sym: &str = &item.symbol;
+                                    let item_option_type: &str = &item.option_type;
+                                    // price_history: borrow slice — only clone Vec if we'll pass it to spark.
+                                    let item_price_history: &[f32] = &item.price_history;
                                     // Flash animation: compute tint+alpha from elapsed time since last tick.
                                     // Duration: 400 ms linear fade. Peak alpha = alpha_soft() (~20).
                                     // No flash on initial load (prev_price == 0) or options (too dense).
@@ -703,8 +713,7 @@ if watchlist.open {
 
                                     // ── Watchlist filter ──
                                     if !item_is_option {
-                                        let ft = &watchlist.filter_text;
-                                        if !ft.is_empty() && !item_sym.to_uppercase().contains(&ft.to_uppercase()) {
+                                        if !filter_text_upper.is_empty() && !item_sym.to_uppercase().contains(&filter_text_upper as &str) {
                                             continue;
                                         }
                                         if watchlist.filter_min_change > -999.0 || watchlist.filter_max_change < 999.0 {
@@ -750,7 +759,7 @@ if watchlist.open {
                                             // C/P badge
                                             let badge_bg = color_alpha(opt_color, 35);
                                             // legacy: monospace+strong; Button uses plain text
-                                            let badge_resp = ui.add(Button::new(item_option_type.as_str()).variant(Variant::Chrome).size(Size::Sm).fg(opt_color)
+                                            let badge_resp = ui.add(Button::new(item_option_type).variant(Variant::Chrome).size(Size::Sm).fg(opt_color)
                                                 .fill(badge_bg).corner_radius(current().r_sm as f32).stroke(egui::Stroke::NONE)
                                                 .min_size(BTN_ICON_SM));
                                             let _ = badge_resp;
@@ -763,7 +772,7 @@ if watchlist.open {
                                                 let r = ui.add(Button::icon(Icon::X).variant(Variant::TextOnly).glyph_color(color_very_dim(t.dim)).size(Size::Sm).placement(IconPlacement::ListRow));
                                                 Tooltip::new("Remove option").show(ui, &r, t);
                                                 if r.clicked() {
-                                                    remove_sym = Some(item_sym.clone());
+                                                    remove_sym = Some(item_sym.to_owned());
                                                 }
                                                 // Bid x Ask (or price fallback)
                                                 ui.add(MonospaceCode::new(&price_str).size_px(font_sm()).color(opt_color));
@@ -782,7 +791,10 @@ if watchlist.open {
                                         // Click opens option chart (not stock symbol change)
                                         if drag_resp.clicked() && !drag_confirmed {
                                             let is_call = item_option_type == "C";
-                                            click_opt = Some((item_underlying.clone(), item_strike, is_call, item_expiry.clone()));
+                                            // Re-borrow item here — item_underlying and item_expiry are
+                                            // not pre-extracted since clicks are rare (not every frame).
+                                            let item = &watchlist.sections[si].items[ii];
+                                            click_opt = Some((item.underlying.clone(), item_strike, is_call, item.expiry.clone()));
                                         }
                                         if drag_resp.hovered() && !drag_confirmed {
                                             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -875,8 +887,8 @@ if watchlist.open {
                                             // simplest: leave the widget to paint formatted change_pct (0.00%).
                                             // Visual delta: pre-load shows "+0.00%" briefly. Acceptable.
                                         }
-                                        if _item_price_history.len() > 3 {
-                                            row_b = row_b.spark(_item_price_history.as_slice());
+                                        if item_price_history.len() > 3 {
+                                            row_b = row_b.spark(item_price_history);
                                         }
                                         if item_day_high > item_day_low {
                                             row_b = row_b.day_range(item_day_low, item_day_high, item_price);
@@ -892,10 +904,8 @@ if watchlist.open {
                                         // Pure-data fetch via projector caches (TTL-gated, won't
                                         // thread-storm). Painted just to the left of the X / price
                                         // cluster so they don't overlap drag handle or symbol.
-                                        let now_ms = std::time::SystemTime::now()
-                                            .duration_since(std::time::UNIX_EPOCH)
-                                            .map(|d| d.as_millis() as i64).unwrap_or(0);
-                                        let (badge_text, badge_tip) = super::watchlist_badges::badges_for_ticker(&item_sym, now_ms);
+                                        // Use frame_now_ms hoisted outside the row loop (one syscall/frame).
+                                        let (badge_text, badge_tip) = super::watchlist_badges::badges_for_ticker(&item_sym, frame_now_ms);
                                         if !badge_text.is_empty() {
                                             let badge_id = egui::Id::new(("wl_badge", si, ii));
                                             let badge_w = 64.0_f32.min(rect.width() * 0.30);
@@ -917,13 +927,16 @@ if watchlist.open {
                                         }
 
                                         // ── Rich tooltip — deferred ──
+                                        // Clone sym + tags only when the row is actually hovered
+                                        // (rare, at most one row per frame) — not every row every frame.
                                         if row_hovered && !drag_confirmed {
+                                            let item = &watchlist.sections[si].items[ii];
                                             set_pending_wl_tooltip(Some(WlTooltipData {
-                                                sym: item_sym.clone(), price: item_price, prev_close: item_prev_close,
+                                                sym: item_sym.to_owned(), price: item_price, prev_close: item_prev_close,
                                                 day_high: item_day_high, day_low: item_day_low,
                                                 high_52wk: item_high_52wk, low_52wk: item_low_52wk,
                                                 atr: item_atr, rvol: item_rvol, avg_range: item_avg_daily_range,
-                                                earnings_days: item_earnings_days, tags: item_tags.clone(),
+                                                earnings_days: item_earnings_days, tags: item.tags.clone(),
                                                 alert_triggered: item_alert_triggered,
                                                 anchor_y: y_c, sidebar_left: rect.left() - 10.0,
                                             }));
@@ -940,13 +953,13 @@ if watchlist.open {
                                         // ── Click routing — X removes, Star toggles pin, Body activates ──
                                         if !drag_confirmed {
                                             if wresp.x_clicked {
-                                                remove_sym = Some(item_sym.clone());
+                                                remove_sym = Some(item_sym.to_owned());
                                             } else if wresp.star_clicked {
                                                 if let Some(sec) = watchlist.sections.get_mut(si) {
                                                     if let Some(item) = sec.items.get_mut(ii) { item.pinned = !item.pinned; }
                                                 }
                                             } else if wresp.response.clicked() {
-                                                click_sym = Some(item_sym.clone());
+                                                click_sym = Some(item_sym.to_owned());
                                             }
                                         }
                                     }
