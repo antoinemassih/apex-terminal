@@ -9,6 +9,7 @@
 //!   ui.add(Indicator::dot().tone(IndicatorTone::Bull));
 //!   ui.add(Indicator::pulsing().tone(IndicatorTone::Warn));
 //!   ui.add(Indicator::dot().custom_color(theme.bull()));
+//!   ui.add(Indicator::dot().custom_color(c).label("XLK").size_px(6.0));
 
 use egui::{Color32, Response, Sense, Stroke, Ui, Vec2, Widget};
 
@@ -51,20 +52,23 @@ pub enum IndicatorStyle {
 }
 
 #[must_use = "Indicator does nothing until `.show(ui, theme)` or `ui.add(indicator)` is called"]
-pub struct Indicator {
+pub struct Indicator<'a> {
     style: IndicatorStyle,
     tone: IndicatorTone,
     custom: Option<Color32>,
     size_px: f32,
+    /// Optional text label rendered immediately to the right of the dot.
+    label: Option<&'a str>,
 }
 
-impl Indicator {
+impl<'a> Indicator<'a> {
     pub fn dot() -> Self {
         Self {
             style: IndicatorStyle::Dot,
             tone: IndicatorTone::default(),
             custom: None,
             size_px: 6.0,
+            label: None,
         }
     }
 
@@ -94,12 +98,59 @@ impl Indicator {
         self
     }
 
+    /// Render a text label immediately to the right of the dot (small gap).
+    /// Uses monospace `font_sm()` in the theme's primary text color.
+    /// Existing callers that omit this method are unaffected.
+    pub fn label(mut self, text: &'a str) -> Self {
+        self.label = Some(text);
+        self
+    }
+
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
-        let color = self.tone.resolve(theme, self.custom);
+        // Destructure self up front so the borrow checker is happy whether
+        // we take the label path or the no-label path.
+        let Indicator { style, tone, custom, size_px, label } = self;
+        let color = tone.resolve(theme, custom);
+
+        if let Some(text) = label {
+            // Lay out horizontally: [dot] [gap_xs] [label].
+            let label_color = theme.text();
+            let combined = ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+
+                // Render the dot portion (label: None to stay non-recursive).
+                let dot_response = Indicator { style, tone, custom, size_px, label: None }
+                    .show(ui, theme);
+
+                // Small gap between dot and text.
+                ui.add_space(st::gap_xs());
+
+                // Monospace label in theme text color.
+                let cursor = ui.cursor();
+                let _ = ui.painter().text(
+                    egui::pos2(cursor.left(), cursor.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    text,
+                    egui::FontId::monospace(st::font_sm()),
+                    label_color,
+                );
+                // Allocate space for the text so egui accounts for its width.
+                let text_size = Vec2::new(
+                    text.len() as f32 * st::font_sm() * 0.6,
+                    st::font_sm() + 2.0,
+                );
+                let _ = ui.allocate_exact_size(text_size, Sense::hover());
+
+                dot_response
+            });
+            return combined.inner;
+        }
+
+        // No label — original single-dot path.
         // Reserve enough space for the pulsing outer ring (2x dot).
-        let alloc = match self.style {
-            IndicatorStyle::Pulsing => self.size_px * 2.0,
-            _ => self.size_px,
+        let alloc = match style {
+            IndicatorStyle::Pulsing => size_px * 2.0,
+            _ => size_px,
         };
         let (rect, response) = ui.allocate_exact_size(Vec2::splat(alloc), Sense::hover());
 
@@ -109,9 +160,9 @@ impl Indicator {
 
         let painter = ui.painter_at(rect);
         let center = rect.center();
-        let radius = self.size_px * 0.5;
+        let radius = size_px * 0.5;
 
-        match self.style {
+        match style {
             IndicatorStyle::Dot => {
                 painter.circle_filled(center, radius, color);
             }
@@ -152,7 +203,7 @@ impl Indicator {
     }
 }
 
-impl Widget for Indicator {
+impl<'a> Widget for Indicator<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let theme = super::theme::active_theme(ui.ctx());
         self.show(ui, theme)

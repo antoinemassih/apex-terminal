@@ -9,9 +9,8 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
 use super::super::components::text::MonospaceCode;
-use super::super::components::status::StatusDot;
 use crate::ui_kit::widgets::Slider;
-use crate::ui_kit::widgets::{PanelSection, SidePanelShell, Width};
+use crate::ui_kit::widgets::{Indicator, PanelSection, SidePanelShell, Width};
 use crate::ui_kit::icons::Icon;
 
 /// Fixed sector colors for the 11 SPDR sector ETFs.
@@ -254,13 +253,13 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
             ui.vertical(|ui| {
                 for s in legend_sectors.iter().take(half) {
                     let c = sector_color(&s.symbol);
-                    ui.add(StatusDot::new().color(c).label(&s.symbol).radius(3.0));
+                    ui.add(Indicator::dot().custom_color(c).label(&s.symbol));
                 }
             });
             ui.vertical(|ui| {
                 for s in legend_sectors.iter().skip(half) {
                     let c = sector_color(&s.symbol);
-                    ui.add(StatusDot::new().color(c).label(&s.symbol).radius(3.0));
+                    ui.add(Indicator::dot().custom_color(c).label(&s.symbol));
                 }
             });
         });
