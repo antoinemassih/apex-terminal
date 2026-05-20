@@ -20,7 +20,7 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
 use super::super::widgets::frames::PanelFrame;
-use super::super::widgets::headers::PanelHeaderWithClose;
+use super::kit::PanelHeader;
 use super::super::widgets::text::{SectionLabel, MonospaceCode};
 use crate::chart_renderer::trading::order_manager::{self, OrderState};
 use crate::chart_renderer::trading::journal::{self, JournalEvent, AttemptKind};
@@ -173,7 +173,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
         .frame(PanelFrame::new(t.toolbar_bg, t.toolbar_border).build())
         .show(ctx, |ui| {
             // ── Header + close ───────────────────────────────────────────
-            if PanelHeaderWithClose::new("ORDER SYSTEM HEALTH").theme(t).watchlist(watchlist).show(ui) {
+            if PanelHeader::new("ORDER SYSTEM HEALTH").watchlist(watchlist).show(ui, t) {
                 watchlist.update_sidebar_state(|s| s.order_health_open = false);
             }
             separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
