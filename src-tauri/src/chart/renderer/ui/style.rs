@@ -12,12 +12,148 @@
 //! All helpers below use these constants internally, so a single change propagates everywhere.
 
 use egui::{self, Color32, RichText, Stroke};
+use std::cell::Cell;
 
 /// Register an element hit for inspect mode. No-op when design-mode is off.
 #[inline(always)]
 fn hit(r: &egui::Rect, family: &'static str, category: &'static str) {
     crate::design_tokens::register_hit(
         [r.min.x, r.min.y, r.width(), r.height()], family, category);
+}
+
+// ─── Per-frame token snapshot (spec §5 Rule 2) ────────────────────────────────
+//
+// `FRAME_TOKENS` is a lock-free `thread_local` holding a flat `Copy` struct of
+// every design-token value that was previously computed via `dt_f32!`/`dt_u8!`
+// on each call site.  `begin_frame()` refreshes it once per frame (wired inside
+// `set_active_style`) so all token reads within that frame are a single `Cell`
+// get — ~1 ns, no lock, no map lookup (spec §5 Rule 3).
+//
+// Hardcoded-constant token fns (font_sm = 11.0, gap_sm = 8.0, …) are NOT
+// routed through this struct — they are already free compile-time constants and
+// adding them would gain nothing while breaking the "leave unchanged if already
+// guaranteed identical" contract.
+
+/// Flat resolved values for the design tokens that were previously backed by
+/// `dt_f32!` / `dt_u8!` lookups.  All fields are `f32` or `u8` (Copy primitives).
+#[derive(Clone, Copy, Debug)]
+pub struct TokenSnapshot {
+    // ── Spacing ─────────────────────────────────────────────────────────────
+    pub gap_xs_mid: f32,
+
+    // ── Radii ───────────────────────────────────────────────────────────────
+    pub radius_xs: f32,
+    pub radius_sm: f32,
+    pub radius_md: f32,
+    pub radius_lg: f32,
+
+    // ── Stroke widths ────────────────────────────────────────────────────────
+    pub stroke_hair:   f32,
+    pub stroke_thin:   f32,
+    pub stroke_medium: f32,
+    pub stroke_std:    f32,
+    pub stroke_bold:   f32,
+    pub stroke_thick:  f32,
+
+    // ── Alpha tiers (u8, 0-255) ──────────────────────────────────────────────
+    pub alpha_faint:  u8,
+    pub alpha_ghost:  u8,
+    pub alpha_soft:   u8,
+    pub alpha_subtle: u8,
+    pub alpha_tint:   u8,
+    pub alpha_muted:  u8,
+    pub alpha_dim:    u8,
+    pub alpha_line:   u8,
+    pub alpha_strong: u8,
+    pub alpha_active: u8,
+    pub alpha_heavy:  u8,
+    pub alpha_solid:  u8,
+
+    // ── Shadow primitives ───────────────────────────────────────────────────
+    pub shadow_offset: f32,
+    pub shadow_alpha:  u8,
+    pub shadow_spread: f32,
+}
+
+/// Compile-time default — matches every token fn's non-design-mode constant
+/// so the first frame (before `begin_frame` fires) returns identical values.
+const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
+    gap_xs_mid:    6.0,
+    radius_xs:     2.0,
+    radius_sm:     4.0,
+    radius_md:     6.0,
+    radius_lg:    12.0,
+    stroke_hair:   0.3,
+    stroke_thin:   0.5,
+    stroke_medium: 0.8,
+    stroke_std:    1.0,
+    stroke_bold:   1.5,
+    stroke_thick:  2.0,
+    alpha_faint:   10,
+    alpha_ghost:   15,
+    alpha_soft:    20,
+    alpha_subtle:  40,
+    alpha_tint:    48,
+    alpha_muted:   60,
+    alpha_dim:     60,
+    alpha_line:    80,
+    alpha_strong:  80,
+    alpha_active: 100,
+    alpha_heavy:  120,
+    alpha_solid:  200,
+    shadow_offset: 2.0,
+    shadow_alpha:   60,
+    shadow_spread:  4.0,
+};
+
+thread_local! {
+    static FRAME_TOKENS: Cell<TokenSnapshot> = Cell::new(DEFAULT_TOKEN_SNAPSHOT);
+}
+
+/// Refresh the per-frame token snapshot from the current active style /
+/// design-mode settings.  Call once per frame, after `set_active_style`.
+///
+/// This is wired inside `set_active_style` so callers in `core.rs` need no
+/// changes — they already call `set_active_style` at frame start.
+///
+/// **Behaviour-preservation contract**: every snapshot field is populated by
+/// executing the exact same expression the token fn used before this refactor
+/// (`dt_f32!(...)` / `dt_u8!(...)`).  In non-design-mode builds those macros
+/// expand to compile-time constants, so the snapshot values are identical to
+/// the previous per-call constants.  In design-mode builds the macros call
+/// `crate::design_tokens::get()` exactly as before, so live edits are still
+/// picked up on the next frame.
+#[inline]
+pub fn begin_frame() {
+    let snap = TokenSnapshot {
+        gap_xs_mid:    crate::dt_f32!(spacing.xs_mid, 6.0),
+        radius_xs:     crate::dt_f32!(radius.xs,   2.0),
+        radius_sm:     crate::dt_f32!(radius.sm,   4.0),
+        radius_md:     crate::dt_f32!(radius.md,   6.0),
+        radius_lg:     crate::dt_f32!(radius.lg,  12.0),
+        stroke_hair:   crate::dt_f32!(stroke.hair,   0.3),
+        stroke_thin:   crate::dt_f32!(stroke.thin,   0.5),
+        stroke_medium: crate::dt_f32!(stroke.medium, 0.8),
+        stroke_std:    crate::dt_f32!(stroke.std,    1.0),
+        stroke_bold:   crate::dt_f32!(stroke.bold,   1.5),
+        stroke_thick:  crate::dt_f32!(stroke.thick,  2.0),
+        alpha_faint:   crate::dt_u8!(alpha.faint,   10),
+        alpha_ghost:   crate::dt_u8!(alpha.ghost,   15),
+        alpha_soft:    crate::dt_u8!(alpha.soft,    20),
+        alpha_subtle:  crate::dt_u8!(alpha.subtle,  40),
+        alpha_tint:    crate::dt_u8!(alpha.tint,    48),
+        alpha_muted:   crate::dt_u8!(alpha.muted,   60),
+        alpha_dim:     crate::dt_u8!(alpha.dim,     60),
+        alpha_line:    crate::dt_u8!(alpha.line,    80),
+        alpha_strong:  crate::dt_u8!(alpha.strong,  80),
+        alpha_active:  crate::dt_u8!(alpha.active, 100),
+        alpha_heavy:   crate::dt_u8!(alpha.heavy,  120),
+        alpha_solid:   crate::dt_u8!(alpha.solid,  200),
+        shadow_offset: crate::dt_f32!(shadow.offset, 2.0),
+        shadow_alpha:  crate::dt_u8!(shadow.alpha,   60),
+        shadow_spread: crate::dt_f32!(shadow.spread,  4.0),
+    };
+    FRAME_TOKENS.with(|c| c.set(snap));
 }
 
 // ─── Typography scale ─────────────────────────────────────────────────────────
@@ -130,7 +266,7 @@ pub fn gap_xs()  -> f32 { 4.0 }
 /// 6.0 — micro-gap tier between `gap_xs` (4.0) and `gap_sm` (8.0).
 /// Use for icon-label pairs and compact chip rows. Backed by
 /// `spacing.xs_mid` design token (DS-IMPL-3).
-pub fn gap_xs_mid() -> f32 { crate::dt_f32!(spacing.xs_mid, 6.0) }
+pub fn gap_xs_mid() -> f32 { FRAME_TOKENS.with(|c| c.get().gap_xs_mid) }
 pub fn gap_sm()  -> f32 { 8.0 }
 pub fn gap_md()  -> f32 { 12.0 }
 pub fn gap_lg()  -> f32 { 16.0 }
@@ -183,10 +319,10 @@ pub const GAP_3XL: f32 = 32.0;
 
 // ─── Corner radius tokens ─────────────────────────────────────────────────────
 // 2026-05: function fallbacks reconciled with the const values (was 3/4/8).
-pub fn radius_xs() -> f32 { crate::dt_f32!(radius.xs, 2.0) }
-pub fn radius_sm() -> f32 { crate::dt_f32!(radius.sm, 4.0) }
-pub fn radius_md() -> f32 { crate::dt_f32!(radius.md, 6.0) }
-pub fn radius_lg() -> f32 { crate::dt_f32!(radius.lg, 12.0) }
+pub fn radius_xs() -> f32 { FRAME_TOKENS.with(|c| c.get().radius_xs) }
+pub fn radius_sm() -> f32 { FRAME_TOKENS.with(|c| c.get().radius_sm) }
+pub fn radius_md() -> f32 { FRAME_TOKENS.with(|c| c.get().radius_md) }
+pub fn radius_lg() -> f32 { FRAME_TOKENS.with(|c| c.get().radius_lg) }
 /// Pill (full-rounded). For toggle pills, status badges, etc.
 pub fn radius_pill() -> f32 { 999.0 }
 
@@ -361,14 +497,14 @@ pub mod cursor {
 //
 // Use `stroke_medium()` when `stroke_thin()` feels too ghost-like and
 // `stroke_std()` is heavier than desired for the context.
-pub fn stroke_hair()        -> f32 { crate::dt_f32!(stroke.hair,   0.3) }
-pub fn stroke_thin()        -> f32 { crate::dt_f32!(stroke.thin,   0.5) }
+pub fn stroke_hair()        -> f32 { FRAME_TOKENS.with(|c| c.get().stroke_hair) }
+pub fn stroke_thin()        -> f32 { FRAME_TOKENS.with(|c| c.get().stroke_thin) }
 /// 0.8 — mid-weight border tier between `stroke_thin` (0.5) and
 /// `stroke_std` (1.0). Backed by `stroke.medium` design token (DS-IMPL-3).
-pub fn stroke_medium()      -> f32 { crate::dt_f32!(stroke.medium, 0.8) }
-pub fn stroke_std()         -> f32 { crate::dt_f32!(stroke.std,    1.0) }
-pub fn stroke_bold()        -> f32 { crate::dt_f32!(stroke.bold, 1.5) }
-pub fn stroke_thick()       -> f32 { crate::dt_f32!(stroke.thick, 2.0) }
+pub fn stroke_medium()      -> f32 { FRAME_TOKENS.with(|c| c.get().stroke_medium) }
+pub fn stroke_std()         -> f32 { FRAME_TOKENS.with(|c| c.get().stroke_std) }
+pub fn stroke_bold()        -> f32 { FRAME_TOKENS.with(|c| c.get().stroke_bold) }
+pub fn stroke_thick()       -> f32 { FRAME_TOKENS.with(|c| c.get().stroke_thick) }
 pub fn stroke_extra_thick() -> f32 { 2.5 }
 pub fn stroke_heavy()       -> f32 { 3.0 }
 
@@ -388,22 +524,22 @@ pub const STROKE_HEAVY:       f32 = 3.0;
 // don't shift. Note: `alpha_muted == alpha_dim` (both 60) and
 // `alpha_line == alpha_strong` (both 80) by design — same value, different
 // semantic intent (muted/strong = chrome; dim/line = borders).
-pub fn alpha_faint()       -> u8 { crate::dt_u8!(alpha.faint, 10) }
-pub fn alpha_ghost()       -> u8 { crate::dt_u8!(alpha.ghost, 15) }
-pub fn alpha_soft()        -> u8 { crate::dt_u8!(alpha.soft, 20) }
+pub fn alpha_faint()       -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_faint) }
+pub fn alpha_ghost()       -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_ghost) }
+pub fn alpha_soft()        -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_soft) }
 pub fn alpha_whisper()     -> u8 { 25 }
 pub fn alpha_hint()        -> u8 { 30 }
-pub fn alpha_subtle()      -> u8 { crate::dt_u8!(alpha.subtle, 40) }
-pub fn alpha_tint()        -> u8 { crate::dt_u8!(alpha.tint, 48) }
-pub fn alpha_muted()       -> u8 { crate::dt_u8!(alpha.muted, 60) }
-pub fn alpha_dim()         -> u8 { crate::dt_u8!(alpha.dim, 60) }
-pub fn alpha_line()        -> u8 { crate::dt_u8!(alpha.line, 80) }
-pub fn alpha_strong()      -> u8 { crate::dt_u8!(alpha.strong, 80) }
-pub fn alpha_active()      -> u8 { crate::dt_u8!(alpha.active, 100) }
-pub fn alpha_heavy()       -> u8 { crate::dt_u8!(alpha.heavy, 120) }
+pub fn alpha_subtle()      -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_subtle) }
+pub fn alpha_tint()        -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_tint) }
+pub fn alpha_muted()       -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_muted) }
+pub fn alpha_dim()         -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_dim) }
+pub fn alpha_line()        -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_line) }
+pub fn alpha_strong()      -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_strong) }
+pub fn alpha_active()      -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_active) }
+pub fn alpha_heavy()       -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_heavy) }
 pub fn alpha_intense()     -> u8 { 140 }
 pub fn alpha_prominent()   -> u8 { 180 }
-pub fn alpha_solid()       -> u8 { crate::dt_u8!(alpha.solid, 200) }
+pub fn alpha_solid()       -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_solid) }
 pub fn alpha_near_opaque() -> u8 { 230 }
 
 /// Use with `color_alpha(color, ALPHA_*)` for consistent opacity tiers.
@@ -426,9 +562,9 @@ pub const ALPHA_SOLID:       u8 = 200;
 pub const ALPHA_NEAR_OPAQUE: u8 = 230;
 
 // ─── Drop shadow tokens ───────────────────────────────────────────────────────
-pub fn shadow_offset() -> f32 { crate::dt_f32!(shadow.offset, 2.0) }
-pub fn shadow_alpha()  -> u8  { crate::dt_u8!(shadow.alpha, 60) }
-pub fn shadow_spread() -> f32 { crate::dt_f32!(shadow.spread, 4.0) }
+pub fn shadow_offset() -> f32 { FRAME_TOKENS.with(|c| c.get().shadow_offset) }
+pub fn shadow_alpha()  -> u8  { FRAME_TOKENS.with(|c| c.get().shadow_alpha) }
+pub fn shadow_spread() -> f32 { FRAME_TOKENS.with(|c| c.get().shadow_spread) }
 
 pub const SHADOW_OFFSET: f32 = 2.0;
 pub const SHADOW_ALPHA:  u8  = 60;
@@ -1841,6 +1977,10 @@ static ACTIVE_STYLE: std::sync::atomic::AtomicU8 =
 
 pub fn set_active_style(id: u8) {
     ACTIVE_STYLE.store(id, std::sync::atomic::Ordering::Relaxed);
+    // Refresh the per-frame token snapshot (spec §5 Rule 2).  Called here so
+    // the one existing `set_active_style` call-site in `draw_chart` (core.rs)
+    // needs no modification — `core.rs` is sacred and must not be touched.
+    begin_frame();
 }
 
 // Toolbar rect — set once at the start of each toolbar frame so tb_btn can
