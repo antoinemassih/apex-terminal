@@ -8762,7 +8762,6 @@ fn render_chart_pane(
                     if let Some(bar_data) = chart.bars.get(bar_idx) {
                         let tooltip_x = pos.x + 15.0;
                         let tooltip_y = pos.y - 5.0;
-                        let font = egui::FontId::monospace(style::font_sm());
                         let o = bar_data.open; let h = bar_data.high; let l = bar_data.low; let c = bar_data.close; let v = bar_data.volume;
                         let is_bull = c >= o;
                         let change = c - o;
@@ -8880,35 +8879,21 @@ fn render_chart_pane(
                             }
                         }
 
-                        // Layout via spacing tokens — line height = gap_md (12),
-                        // padding = gap_xs (4), label inset = gap_sm (6 ≈ ).
-                        let line_h = style::gap_md();
-                        let pad_v = style::gap_xs();
-                        let pad_label = 6.0_f32; // gap_sm is 8; 6 reads tighter
-                        let tip_h = tip_lines.len() as f32 * line_h + pad_v * 2.0;
-                        let tip_w = 170.0; // content-driven max could come later
-                        let tx = if tooltip_x + tip_w > rect.left() + cw { pos.x - tip_w - 16.0 } else { tooltip_x };
-                        let ty = (tooltip_y - tip_h).max(rect.top() + pt).min(rect.top() + pt + ch - tip_h);
-                        let tip_rect = egui::Rect::from_min_size(egui::pos2(tx, ty), egui::vec2(tip_w, tip_h));
-                        // Tooltip chrome (shadow + surface fill + bevel + border)
-                        // owned by the ui_kit painter-mode helper.
-                        crate::ui_kit::widgets::tooltip::paint_tooltip_card(&painter, tip_rect, t);
-                        let sep_color = color_alpha(t.text, style::alpha_tint());
-                        for (i, (line, col)) in tip_lines.iter().enumerate() {
-                            if line == "---" {
-                                let sep_y = ty + pad_v + i as f32 * line_h + line_h / 2.0;
-                                painter.line_segment(
-                                    [egui::pos2(tx + pad_v, sep_y),
-                                     egui::pos2(tx + tip_w - pad_v, sep_y)],
-                                    egui::Stroke::new(style::stroke_thin(), sep_color),
-                                );
-                            } else {
-                                painter.text(
-                                    egui::pos2(tx + pad_label, ty + pad_v + i as f32 * line_h + line_h / 2.0),
-                                    egui::Align2::LEFT_CENTER, line, font.clone(), *col,
-                                );
-                            }
-                        }
+                        // Multi-line tooltip via the reusable ui_kit component.
+                        // PainterTooltip owns chrome + layout + text/separator
+                        // painting; core.rs only builds `tip_lines` and decides
+                        // where the card sits (flip left on right-edge overflow).
+                        let tip = crate::ui_kit::widgets::PainterTooltip::new(&tip_lines);
+                        let tip_size = tip.measure();
+                        let tx = if tooltip_x + tip_size.x > rect.left() + cw {
+                            pos.x - tip_size.x - 16.0
+                        } else {
+                            tooltip_x
+                        };
+                        let ty = (tooltip_y - tip_size.y)
+                            .max(rect.top() + pt)
+                            .min(rect.top() + pt + ch - tip_size.y);
+                        tip.paint(&painter, egui::pos2(tx, ty), t);
                     }
                 }
                 // ── Exploded Volume Footprint ─────────────────────────────────

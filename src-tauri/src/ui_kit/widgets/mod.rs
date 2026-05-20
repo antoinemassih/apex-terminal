@@ -164,7 +164,7 @@ pub use modal::Modal;
 pub use sheet::{Sheet, SheetSide, SheetSize};
 pub use popover::Popover;
 pub use hover_card::HoverCard;
-pub use tooltip::Tooltip;
+pub use tooltip::{Tooltip, PainterTooltip, paint_tooltip_card};
 pub use context_menu::ContextMenu;
 pub use alert::{Alert, AlertVariant, AlertResponse};
 pub use toast::Toast;

@@ -184,7 +184,7 @@ impl<'a> Tooltip<'a> {
                             // offset inside the Area. Grayscale mesh AA composites
                             // correctly and is imperceptibly different at this size.
                             PolishedLabel::new(s)
-                                .size(KitSize::Xs)
+                                .size(KitSize::Sm)
                                 .color(fg)
                                 .subpixel(false)
                                 .show(ui, theme);
@@ -281,4 +281,106 @@ pub fn paint_tooltip_card(
         egui::Stroke::new(stroke_w, border_col),
         egui::StrokeKind::Outside,
     );
+}
+
+// ─── PainterTooltip — reusable multi-line chart-canvas tooltip ────────────────
+//
+// Chart-canvas tooltips (OHLC readout, measure overlay, event-marker callouts)
+// are positioned by absolute pixel coordinates and have no `egui::Response` to
+// anchor a flow-mode `Tooltip` to. `PainterTooltip` gives them the same chrome
+// as `paint_tooltip_card` plus consistent token-driven multi-line text layout,
+// so chart tooltips visually match the rest of the application.
+//
+// Each line is `(text, color)`. A line whose text is exactly `"---"` renders
+// as a hairline separator rule instead of text.
+//
+// Performance: pure paint. `measure()` is arithmetic only. `paint()` issues
+// one `paint_tooltip_card` (2-4 ops) plus one draw per line — identical to the
+// inline loops these call sites used before. No allocation, no per-frame state.
+
+/// Multi-line painter-mode tooltip for chart-canvas overlays.
+pub struct PainterTooltip<'a> {
+    lines: &'a [(String, Color32)],
+    width: f32,
+}
+
+impl<'a> PainterTooltip<'a> {
+    /// Default content width when the caller doesn't override it.
+    pub const DEFAULT_WIDTH: f32 = 170.0;
+
+    pub fn new(lines: &'a [(String, Color32)]) -> Self {
+        Self { lines, width: Self::DEFAULT_WIDTH }
+    }
+
+    /// Override the fixed content width.
+    pub fn width(mut self, w: f32) -> Self {
+        self.width = w;
+        self
+    }
+
+    /// Per-line height — `gap_md` token.
+    fn line_h() -> f32 {
+        crate::chart_renderer::ui::style::gap_md()
+    }
+
+    /// Vertical padding inside the card — `gap_xs` token.
+    fn pad_v() -> f32 {
+        crate::chart_renderer::ui::style::gap_xs()
+    }
+
+    /// Left text inset (reads tighter than `gap_sm`).
+    fn pad_label() -> f32 {
+        6.0
+    }
+
+    /// Measured outer size of the tooltip card for the current line set.
+    /// Use this to position the card (e.g. flip left when it would overflow
+    /// the chart's right edge) before calling `paint`.
+    pub fn measure(&self) -> Vec2 {
+        let h = self.lines.len() as f32 * Self::line_h() + Self::pad_v() * 2.0;
+        Vec2::new(self.width, h)
+    }
+
+    /// Paint the tooltip with its top-left at `top_left`. Returns the painted
+    /// rect so callers can chain further overlay work if needed.
+    pub fn paint(
+        &self,
+        painter: &egui::Painter,
+        top_left: Pos2,
+        theme: &dyn ComponentTheme,
+    ) -> Rect {
+        use crate::chart_renderer::ui::style::{
+            alpha_tint, color_alpha, font_sm, stroke_thin,
+        };
+        let rect = Rect::from_min_size(top_left, self.measure());
+        paint_tooltip_card(painter, rect, theme);
+
+        let line_h = Self::line_h();
+        let pad_v = Self::pad_v();
+        let pad_label = Self::pad_label();
+        let font = egui::FontId::monospace(font_sm());
+        let sep_color = color_alpha(theme.text(), alpha_tint());
+
+        for (i, (line, col)) in self.lines.iter().enumerate() {
+            let cy = rect.top() + pad_v + i as f32 * line_h + line_h / 2.0;
+            if line == "---" {
+                painter.line_segment(
+                    [
+                        egui::pos2(rect.left() + pad_v, cy),
+                        egui::pos2(rect.right() - pad_v, cy),
+                    ],
+                    Stroke::new(stroke_thin(), sep_color),
+                );
+            } else {
+                painter.text(
+                    egui::pos2(rect.left() + pad_label, cy),
+                    egui::Align2::LEFT_CENTER,
+                    line,
+                    font.clone(),
+                    *col,
+                );
+            }
+        }
+        rect
+    }
 }
