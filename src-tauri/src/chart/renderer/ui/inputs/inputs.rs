@@ -288,54 +288,6 @@ impl<'a, 'b> NumericInput<'a, 'b> {
 }
 
 
-// ─── ToggleRow ────────────────────────────────────────────────────────────────
-
-/// Settings-style row: label left, checkbox right.
-/// Replaces `components_extra::toggle_row(...)`.
-///
-/// ```ignore
-/// ToggleRow::new("Enable feature", &mut flag).theme(t).show(ui);
-/// ```
-#[must_use = "ToggleRow must be rendered via `.show(ui)`"]
-pub struct ToggleRow<'a, 'b> {
-    label: &'a str,
-    value: &'b mut bool,
-    label_color: Option<Color32>,
-}
-
-impl<'a, 'b> ToggleRow<'a, 'b> {
-    pub fn new(label: &'a str, value: &'b mut bool) -> Self {
-        Self { label, value, label_color: None }
-    }
-    pub fn label_color(mut self, c: Color32) -> Self { self.label_color = Some(c); self }
-    pub fn palette(mut self, _accent: Color32, _bear: Color32, dim: Color32) -> Self {
-        self.label_color = Some(dim); self
-    }
-    pub fn theme(self, t: &Theme) -> Self {
-        self.palette(t.accent, t.bear, t.dim)
-    }
-
-    pub fn show(self, ui: &mut Ui) -> Response {
-        let label_color = self.label_color.unwrap_or(ambient(ui.ctx()).dim);
-        let label = self.label;
-        let value = self.value;
-
-        let mut resp = ui.allocate_response(Vec2::ZERO, Sense::hover());
-        ui.horizontal(|ui| {
-            let s = style_label_case(label);
-            ui.label(
-                RichText::new(s)
-                    .monospace()
-                    .size(font_sm())
-                    .color(label_color),
-            );
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                resp = ui.checkbox(value, "");
-            });
-        });
-        resp
-    }
-}
 
 
 
