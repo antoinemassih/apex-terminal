@@ -54,9 +54,9 @@ if watchlist.trendline_filter_open {
                 });
             }
 
-            ui.add_space(8.0);
+            ui.add_space(gap_sm());
             dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, alpha_line()));
-            ui.add_space(8.0);
+            ui.add_space(gap_sm());
 
             // Visibility toggles
             dialog_section(ui, "VISIBILITY", m, color_half(t.dim));
@@ -80,9 +80,9 @@ if watchlist.trendline_filter_open {
 
             // Groups
             if !chart.groups.is_empty() {
-                ui.add_space(8.0);
+                ui.add_space(gap_sm());
                 dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, alpha_line()));
-                ui.add_space(8.0);
+                ui.add_space(gap_sm());
                 dialog_section(ui, "GROUPS", m, color_half(t.dim));
                 for g in chart.groups.clone() {
                     let hidden = chart.hidden_groups.contains(&g.id);
@@ -93,7 +93,7 @@ if watchlist.trendline_filter_open {
                     }
                 }
             }
-            ui.add_space(8.0);
+            ui.add_space(gap_sm());
                 });
             close_clicked = cr.close_clicked;
         });
@@ -229,7 +229,7 @@ if chart.picker_open {
 
                 if show_recents && !chart.recent_symbols.is_empty() {
                     ui.add(MonospaceCode::new("RECENT").size_px(9.0).color(t.dim));
-                    ui.add_space(4.0);
+                    ui.add_space(gap_xs());
                     for (sym, name) in chart.recent_symbols.clone() {
                         let is_current = sym == chart.symbol;
                         let resp = ui.horizontal(|ui| {
@@ -243,11 +243,11 @@ if chart.picker_open {
                             close_picker = true;
                         }
                     }
-                    ui.add_space(8.0);
+                    ui.add_space(gap_sm());
                     ui.separator();
-                    ui.add_space(4.0);
+                    ui.add_space(gap_xs());
                     ui.add(MonospaceCode::new("POPULAR").size_px(9.0).color(t.dim));
-                    ui.add_space(4.0);
+                    ui.add_space(gap_xs());
                     // Show popular symbols from static catalog
                     for s in crate::ui_kit::symbols::search_symbols("", 20) {
                         if chart.recent_symbols.iter().any(|(r, _)| r == s.symbol) { continue; }
