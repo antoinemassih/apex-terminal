@@ -31,7 +31,14 @@ use std::time::{Duration, Instant};
 
 use egui;
 
-use crate::chart_renderer::ui::style::{gap_2xs, gap_xs, icon_md};
+use crate::chart_renderer::ui::style::{
+    gap_2xs, gap_xs,
+    color_alpha, alpha_solid, alpha_muted,
+    stroke_std,
+    radius_sm,
+    font_md, font_sm, font_xs_plus, font_xs,
+    shadow_tooltip_themed,
+};
 use crate::data::apex_data::live_state;
 use crate::data::apex_data::types::SpikeExplanation;
 use crate::ui_kit::widgets::Button as KitButton;
@@ -221,11 +228,13 @@ pub fn draw(ctx: &egui::Context, screen_rect: egui::Rect) {
             .order(egui::Order::Foreground)
             .fixed_pos(rect.min)
             .show(ctx, |ui| {
+                let t = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
                 ui.set_min_size(egui::vec2(TOAST_W, TOAST_H));
                 egui::Frame::popup(ui.style())
-                    .fill(egui::Color32::from_rgba_unmultiplied(28, 32, 40, 240))
-                    .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(80, 90, 110)))
-                    .corner_radius(8.0)
+                    .fill(color_alpha(t.toolbar_bg, alpha_solid()))
+                    .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_muted())))
+                    .corner_radius(radius_sm())
+                    .shadow(shadow_tooltip_themed(t))
                     .inner_margin(8.0)
                     .show(ui, |ui| {
                         ui.set_min_size(egui::vec2(TOAST_W - 16.0, TOAST_H - 16.0));
@@ -271,16 +280,14 @@ fn draw_toast_body(
 ) {
     // Header row: [SYM] [σ X.Y] [+1.7%] ··· [×]
     ui.horizontal(|ui| {
+        let t = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
         ui.label(egui::RichText::new(&spike.symbol).monospace().strong()
-            .color(egui::Color32::from_rgb(180, 220, 255)).size(13.0));
+            .color(t.accent).size(font_md()));
         ui.label(egui::RichText::new(format!("σ{:.1}", spike.sigma))
-            .monospace().color(egui::Color32::from_rgb(255, 191, 0)).size(11.0));
-        let move_col = if spike.pct_move >= 0.0
-            { egui::Color32::from_rgb(120, 220, 130) }
-        else
-            { egui::Color32::from_rgb(220, 110, 120) };
+            .monospace().color(t.warn).size(font_sm()));
+        let move_col = if spike.pct_move >= 0.0 { t.bull } else { t.bear };
         ui.label(egui::RichText::new(format!("{:+.2}%", spike.pct_move))
-            .monospace().color(move_col).size(11.0));
+            .monospace().color(move_col).size(font_sm()));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let spike_theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
             let r = crate::ui_kit::widgets::Button::close()
@@ -293,30 +300,33 @@ fn draw_toast_body(
         });
     });
     ui.add_space(gap_xs());
-    ui.label(egui::RichText::new(&spike.headline).strong().size(12.0)
-        .color(egui::Color32::from_rgb(230, 235, 245)));
-    ui.add_space(gap_2xs());
-    // Explanation — truncate visually via egui's wrapping; the data itself is
-    // unbounded. We give it a fixed height and rely on egui's clip rect.
-    let explanation_h = 32.0;
-    ui.allocate_ui(egui::vec2(ui.available_width(), explanation_h), |ui| {
-        ui.label(egui::RichText::new(&spike.explanation).size(10.5)
-            .color(egui::Color32::from_rgb(180, 188, 200)));
-    });
-    ui.add_space(gap_2xs());
-    // Source chips — first 2 only.
-    if !spike.sources.is_empty() {
-        ui.horizontal_wrapped(|ui| {
-            for src in spike.sources.iter().take(2) {
-                let label = shorten_source(src);
-                ui.add(egui::Hyperlink::from_label_and_url(
-                    egui::RichText::new(label).size(9.5)
-                        .color(egui::Color32::from_rgb(140, 180, 220))
-                        .underline(),
-                    src,
-                ));
-            }
+    {
+        let t = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+        ui.label(egui::RichText::new(&spike.headline).strong().size(font_sm())
+            .color(t.text));
+        ui.add_space(gap_2xs());
+        // Explanation — truncate visually via egui's wrapping; the data itself is
+        // unbounded. We give it a fixed height and rely on egui's clip rect.
+        let explanation_h = 32.0;
+        ui.allocate_ui(egui::vec2(ui.available_width(), explanation_h), |ui| {
+            ui.label(egui::RichText::new(&spike.explanation).size(font_xs_plus())
+                .color(t.dim));
         });
+        ui.add_space(gap_2xs());
+        // Source chips — first 2 only.
+        if !spike.sources.is_empty() {
+            ui.horizontal_wrapped(|ui| {
+                for src in spike.sources.iter().take(2) {
+                    let label = shorten_source(src);
+                    ui.add(egui::Hyperlink::from_label_and_url(
+                        egui::RichText::new(label).size(font_xs())
+                            .color(t.accent)
+                            .underline(),
+                        src,
+                    ));
+                }
+            });
+        }
     }
     ui.add_space(gap_xs());
     ui.horizontal(|ui| {
@@ -334,14 +344,10 @@ fn draw_toast_body(
 }
 
 fn small_btn(ui: &mut egui::Ui, label: &str) -> egui::Response {
-    // Chrome variant: legacy hardcoded night-blue palette (custom brand — no standard Variant match).
-    KitButton::new(label).variant(KitVariant::Chrome).size(KitSize::Xs)
-        .fg(egui::Color32::from_rgb(180, 200, 230))
-        .fill(egui::Color32::from_rgba_unmultiplied(60, 80, 110, 100))
-        .stroke(egui::Stroke::new(0.5, egui::Color32::from_rgb(90, 110, 140)))
-        .corner_radius(4.0)
+    let t = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    KitButton::new(label).variant(KitVariant::Ghost).size(KitSize::Xs)
         .min_size(egui::vec2(0.0, 18.0))
-        .show(ui, &crate::ui_kit::widgets::theme::active_theme(ui.ctx()))
+        .show(ui, t)
 }
 
 fn shorten_source(url: &str) -> String {
