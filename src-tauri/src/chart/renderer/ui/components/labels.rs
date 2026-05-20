@@ -32,27 +32,8 @@ pub fn section_label_widget(ui: &mut Ui, text: &str, color: Color32) -> Response
     ui.label(RichText::new(s).monospace().size(font_lg()).strong().color(color))
 }
 
-// ─── Text role helpers ────────────────────────────────────────────────────────
-
-/// Size variants for [`crate::chart::renderer::ui::components::text::MonospaceCode`].
-pub enum MonoSize {
-    /// `font_xs()` — column headers, supplemental info.
-    Xs,
-    /// `font_sm()` — default mono text.
-    Sm,
-    /// `font_md()` — emphasized mono.
-    Md,
-}
-
-/// Size variants for [`crate::chart::renderer::ui::components::text::NumericDisplay`].
-pub enum NumericSize {
-    /// `font_lg()` — compact price / change readout.
-    Lg,
-    /// `font_xl()` — secondary headline.
-    Xl,
-    /// 30 px — hero display (portfolio total, primary price).
-    Hero,
-}
+// Re-export size enums from text.rs (canonical home).
+pub use super::text::{MonoSize, NumericSize};
 
 /// Pane heading — large title at the top of a side pane ("Watchlist", "Orders").
 /// Renders `font_lg()` strong monospace.

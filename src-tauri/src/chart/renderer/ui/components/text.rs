@@ -29,8 +29,27 @@ fn ambient(ctx: &egui::Context) -> &'static super::super::super::gpu::Theme {
     crate::ui_kit::widgets::theme::active_theme(ctx)
 }
 
-// Re-export size enums so callers only need to import from this module.
-pub use super::super::components::{MonoSize, NumericSize};
+// ─── Size enums (moved from labels.rs) ───────────────────────────────────────
+
+/// Size variants for [`MonospaceCode`].
+pub enum MonoSize {
+    /// `font_xs()` — column headers, supplemental info.
+    Xs,
+    /// `font_sm()` — default mono text.
+    Sm,
+    /// `font_md()` — emphasized mono.
+    Md,
+}
+
+/// Size variants for numeric readouts.
+pub enum NumericSize {
+    /// `font_lg()` — compact price / change readout.
+    Lg,
+    /// `font_xl()` — secondary headline.
+    Xl,
+    /// 30 px — hero display (portfolio total, primary price).
+    Hero,
+}
 
 // ─── Escape-hatch overrides ───────────────────────────────────────────────────
 
