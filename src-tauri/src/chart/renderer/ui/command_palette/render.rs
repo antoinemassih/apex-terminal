@@ -7,6 +7,7 @@ use super::super::style::*;
 use super::super::components::*;
 use super::super::components_extra::*;
 use super::super::widgets::text::{BodyLabel, CaptionLabel};
+use super::super::components::text::SectionLabel;
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::{Variant, Size}};
 use super::super::super::gpu::*;
@@ -58,7 +59,7 @@ pub(super) fn draw_ai_mode(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
 
 pub(super) fn draw_help_mode(ui: &mut egui::Ui, topic: &str, t: &Theme, _pal_w: f32) {
     ui.add_space(gap_sm());
-    section_label_lg(ui, &format!("Help · {}", topic), t.text);
+    ui.add(SectionLabel::new(&format!("Help · {}", topic)).lg().color(t.text));
     ui.separator();
     ui.add_space(gap_md());
     egui::ScrollArea::vertical().max_height(380.0).id_salt("cmd_palette_help").show(ui, |ui| {

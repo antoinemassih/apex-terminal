@@ -12,7 +12,7 @@
 
 use egui::{Color32, Pos2, Rect, Response, RichText, Sense, Stroke, StrokeKind, Ui, Vec2, Widget};
 use super::super::style::*;
-use super::super::components::{pane_header_bar, pane_title, section_label_widget};
+use super::super::components::pane_header_bar;
 use super::super::components::PaneHeader;
 use crate::ui_kit::widgets::{Button as KitButton, Tooltip, tokens::Variant};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
@@ -65,7 +65,7 @@ impl<'a> Widget for PaneSymbolBadge<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = gap_xs();
-            pane_title(ui, self.symbol, self.accent);
+            ui.label(RichText::new(self.symbol).monospace().size(font_lg()).strong().color(self.accent));
             if let Some(ex) = self.exchange {
                 ui.label(
                     RichText::new(ex)

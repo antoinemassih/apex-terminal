@@ -5,7 +5,7 @@
 
 use egui::{Color32, Response, RichText, Sense, Ui, Vec2, Widget};
 use super::super::style::*;
-use super::super::components::{section_label_widget, pane_header_bar};
+use super::super::components::pane_header_bar;
 use super::text::{SectionLabel, SectionLabelSize};
 
 // Fallback colors used when no Theme is supplied via `.theme(t)`. Every concrete
@@ -309,7 +309,7 @@ impl<'a> Widget for PaneHeader<'a> {
         let title = self.title;
         let title_color = self.title_color;
         pane_header_bar(ui, self.height, self.bg, self.border, |ui| {
-            section_label_widget(ui, title, title_color);
+            ui.add(SectionLabel::new(title).color(title_color));
         });
         // Return an invisible response covering the allocated area.
         ui.allocate_response(Vec2::ZERO, Sense::hover())

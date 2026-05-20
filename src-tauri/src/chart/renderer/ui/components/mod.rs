@@ -11,7 +11,6 @@
 #![allow(dead_code)]
 
 // Original components
-pub mod labels;
 pub mod frames;
 pub mod headers;
 pub mod hairlines;
@@ -41,7 +40,6 @@ pub mod semantic_label;
 pub mod toolbar;
 pub mod motion;
 
-pub use labels::*;
 pub use frames::*;
 pub use headers::*;
 pub use hairlines::*;

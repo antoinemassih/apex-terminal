@@ -1,7 +1,7 @@
 //! Pane header bar and panel header row (title + close × button).
 
 use super::super::style::*;
-use super::labels::section_label_widget;
+use super::text::SectionLabel;
 use egui::{self, Color32, Pos2, Sense, Stroke, Ui, Vec2};
 use crate::ui_kit::widgets::Button as KitButton;
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
@@ -70,7 +70,7 @@ pub fn panel_header(
 ) -> bool {
     let mut closed = false;
     ui.horizontal(|ui| {
-        section_label_widget(ui, title, title_color);
+        ui.add(SectionLabel::new(title).color(title_color));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
             if KitButton::close().placement(IconPlacement::PanelHeader).show(ui, theme).clicked() {
