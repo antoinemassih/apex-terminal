@@ -10,7 +10,7 @@ use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
 use super::super::widgets::text::MonospaceCode;
 use super::super::widgets::status::StatusDot;
-use super::super::widgets::inputs::Slider;
+use crate::ui_kit::widgets::Slider;
 use crate::ui_kit::widgets::{PanelSection, SidePanelShell, Width};
 use crate::ui_kit::icons::Icon;
 
@@ -222,14 +222,13 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
             ui.spacing_mut().slider_width = plot_size - 50.0;
             Slider::new(&mut watchlist.rrg_time_offset, 0.0..=0.95)
                 .show_value(false)
-                .theme(t)
-                .show(ui);
+                .show(ui, t);
         });
         ui.horizontal(|ui| {
             ui.add(MonospaceCode::new("TAIL").xs().color(color_alpha(t.dim, alpha_active())));
             ui.spacing_mut().slider_width = plot_size - 50.0;
             let mut tail = watchlist.rrg_tail_length as f32;
-            if Slider::new(&mut tail, 1.0..=15.0).show_value(false).step(1.0).theme(t).show(ui).changed() {
+            if Slider::new(&mut tail, 1.0..=15.0).show_value(false).step(1.0).show(ui, t).changed() {
                 watchlist.rrg_tail_length = tail as usize;
             }
         });

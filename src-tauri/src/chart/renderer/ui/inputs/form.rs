@@ -1099,7 +1099,7 @@ impl ApertureOrderTicket {
 
     pub fn show(self, ui: &mut Ui, s: &mut ApertureOrderState<'_>) -> ApertureOrderOutcome {
         use super::select::SegmentedControl;
-        use super::inputs::Stepper;
+        use crate::ui_kit::widgets::NumberStepper;
         use crate::ui_kit::widgets::Button;
         use crate::ui_kit::widgets::tokens::Size as KitSize;
         use crate::ui_kit::widgets::Input;
@@ -1218,10 +1218,10 @@ impl ApertureOrderTicket {
                                else if *s.order_qty >= 10 { 5 }
                                else { 1 };
                     if !*s.order_notional_mode {
-                        Stepper::new(s.order_qty)
-                            .step(step).range(1, u32::MAX)
-                            .theme(&t_stub)
-                            .show(ui);
+                        NumberStepper::new(s.order_qty)
+                            .step(step as f64).range(1u32..=u32::MAX)
+                            .integer()
+                            .show(ui, &t_stub);
                     } else {
                         let mut qty_display = format!("{} contracts", s.order_qty);
                         Input::new(&mut qty_display)
