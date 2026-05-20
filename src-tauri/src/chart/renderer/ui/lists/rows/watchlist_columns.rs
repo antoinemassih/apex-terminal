@@ -101,24 +101,16 @@ fn render_sparkline(c: &mut ColumnCtx) {
     let s = match c.item.spark { Some(s) if s.len() >= 2 => s, _ => return };
     let cy = c.rect.center().y;
     let chg_col = if c.item.change_pct >= 0.0 { c.bull } else { c.bear };
-    let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
-    for &v in s { if v < lo { lo = v; } if v > hi { hi = v; } }
-    let span = (hi - lo).max(1e-6);
     let sw = 32.0;
     let sh = 12.0;
-    let sy = cy - sh * 0.5;
-    let n = s.len();
-    let x0_base = c.rect.left();
-    for j in 1..n {
-        let x0 = x0_base + (j - 1) as f32 * sw / (n - 1) as f32;
-        let y0 = sy + sh - (s[j - 1] - lo) / span * sh;
-        let x1 = x0_base + j as f32 * sw / (n - 1) as f32;
-        let y1 = sy + sh - (s[j] - lo) / span * sh;
-        c.painter.line_segment(
-            [egui::pos2(x0, y0), egui::pos2(x1, y1)],
-            Stroke::new(stroke_std(), color_alpha(chg_col, 120)),
-        );
-    }
+    let spark_rect = egui::Rect::from_min_size(
+        egui::pos2(c.rect.left(), cy - sh * 0.5),
+        egui::vec2(sw, sh),
+    );
+    crate::ui_kit::widgets::Sparkline::new(s)
+        .color(color_alpha(chg_col, 120))
+        .size(sw, sh)
+        .paint(c.painter, spark_rect);
 }
 
 fn render_rvol_badge(c: &mut ColumnCtx) {

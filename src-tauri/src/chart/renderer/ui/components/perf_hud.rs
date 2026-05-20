@@ -25,23 +25,15 @@ fn phase_color(ctx: &egui::Context, us: u64, warn_us: u64, bad_us: u64) -> Color
 /// Render a sparkline of frame times in a tiny painter strip.
 fn sparkline(ui: &mut egui::Ui, values: &[f64], width: f32, height: f32) {
     if values.is_empty() { return; }
-    let (min_v, max_v) = values.iter().fold((f64::MAX, 0_f64), |(mn, mx), &v| (mn.min(v), mx.max(v)));
-    let range = (max_v - min_v).max(1.0);
     let ctx = ui.ctx().clone();
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
-    let painter = ui.painter_at(rect);
-    let n = values.len();
-    let bar_w = (width / n as f32).max(1.0);
-    for (i, &v) in values.iter().enumerate() {
-        let norm = ((v - min_v) / range) as f32;
-        let bar_h = (norm * height).max(1.0);
-        let x = rect.left() + i as f32 * bar_w;
-        let col = phase_color(&ctx, (v * 1000.0) as u64, 16_000, 33_000);
-        painter.rect_filled(
-            egui::Rect::from_min_size(egui::pos2(x, rect.bottom() - bar_h), egui::vec2(bar_w - 0.5, bar_h)),
-            0.0, col,
-        );
-    }
+    let vals_f32: Vec<f32> = values.iter().map(|&v| v as f32).collect();
+    let color_fn = move |v: f32| phase_color(&ctx, (v * 1000.0) as u64, 16_000, 33_000);
+    let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    crate::ui_kit::widgets::Sparkline::new(&vals_f32)
+        .bars()
+        .bar_color(&color_fn)
+        .size(width, height)
+        .show(ui, theme);
 }
 
 /// Toggle-able perf overlay. Call once per frame after all panels.

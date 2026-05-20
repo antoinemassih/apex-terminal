@@ -99,6 +99,7 @@ pub mod panel_error;
 pub mod panel_toolbar;
 // P2: icon placement foundation (wire step)
 pub mod icon_placement;
+pub mod sparkline;
 
 // ─── Foundation ──────────────────────────────────────────────────────
 pub use tokens::{Size, Variant};
@@ -196,6 +197,7 @@ pub use guild_avatar_grid::{GuildAvatarGrid, GuildEntry};
 pub use heatmap_grid::{HeatmapGrid, HeatmapCell};
 pub use trade_card::{TradeCard, TradeCardData};
 pub use risk_reward_bar::RiskRewardBar;
+pub use sparkline::{Sparkline, SparkStyle};
 pub use sidebar::{Sidebar, SidebarStyle, SidebarItem, SidebarSection};
 pub use resizable::Resizable;
 pub use scroll_area::{ScrollDirection, ThemedScrollArea};
