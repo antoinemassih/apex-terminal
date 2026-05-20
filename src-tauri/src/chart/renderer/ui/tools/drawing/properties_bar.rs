@@ -97,7 +97,10 @@ pub fn show_drawing_properties_bar_ui(
             "#cc5de8", "#ff922b", "#ffffff", "#82dcb4",
         ];
         let cur_color = hex_to_color(&sel_draw.color, 1.0);
-        // TODO: Button::menu doesn't cover per-drawing color swatch as the trigger label (cur_color varies, fg is fixed to t.dim).
+        // KEEP: trigger label IS the current color swatch (cur_color varies per drawing);
+        // Button::menu's fg_override sets the text color but cannot paint a colored-square
+        // glyph whose fill matches an arbitrary drawing color. Needs a dedicated swatch
+        // trigger API (e.g. Button::swatch(color)) before this can be migrated.
         let color_menu = ui.menu_button(
             egui::RichText::new("\u{25A0}").size(font_md() + 2.0).color(cur_color),
             |ui| {
