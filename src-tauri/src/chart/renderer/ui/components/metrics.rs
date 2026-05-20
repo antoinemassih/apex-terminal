@@ -1,11 +1,8 @@
-//! Metric / stat displays, action/icon buttons, empty-state, insight stat bar.
+//! Metric / stat displays, empty-state.
 
 use super::super::style::*;
 use super::text::SectionLabel;
-use egui::{self, Color32, Rect, Response, RichText, Sense, Ui, Vec2};
-use crate::ui_kit::widgets::Button as KitButton;
-use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
-use crate::ui_kit::widgets::icon_placement::IconPlacement;
+use egui::{self, Color32, RichText, Ui};
 
 // ─── Metric / stat displays ───────────────────────────────────────────────────
 
@@ -70,51 +67,6 @@ pub fn monospace_label_row(
     });
 }
 
-/// Direction badge — ▲/▼ + price, colored bull/bear.
-pub fn colored_direction_badge(
-    ui: &mut Ui,
-    above: bool,
-    price: f32,
-    bull_col: Color32,
-    bear_col: Color32,
-) -> Response {
-    let (sym, col) = if above { ("\u{25B2}", bull_col) } else { ("\u{25BC}", bear_col) };
-    ui.horizontal(|ui| {
-        ui.label(RichText::new(sym).monospace().size(font_xs()).color(col));
-        ui.label(
-            RichText::new(format!("{:.2}", price))
-                .monospace()
-                .size(font_sm())
-                .strong()
-                .color(col),
-        );
-    })
-    .response
-}
-
-// ─── Buttons ──────────────────────────────────────────────────────────────────
-
-/// Small action button — minimal, text-only, monospace; frameless, returns Response.
-/// Used in tight header rows. Distinct from style::small_action_btn (which returns bool).
-pub fn text_action_btn(ui: &mut Ui, text: &str, color: Color32) -> Response {
-    let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
-    KitButton::new(text).variant(KitVariant::Ghost).size(KitSize::Xs)
-        .fg(color).frameless(true).min_size(Vec2::new(0.0, 14.0))
-        .show(ui, theme)
-}
-
-/// Icon-only button — frameless, smaller, hover changes cursor, returns Response.
-/// Distinct from style::icon_btn (which has different sizing behavior).
-pub fn inline_icon_btn(ui: &mut Ui, icon: &str, color: Color32, size: f32) -> Response {
-    let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
-    KitButton::icon(icon).variant(KitVariant::Ghost)
-        .glyph_color(color).glyph_size(size)
-        .min_size(Vec2::new(size + 2.0, size + 2.0))
-        .placement(IconPlacement::ListRow)
-        .show(ui, theme)
-}
-
-// ─── Empty state ──────────────────────────────────────────────────────────────
 
 /// Empty state — centered icon + title + subtitle for "No data" placeholders.
 pub fn empty_state_panel(
@@ -142,48 +94,6 @@ pub fn empty_state_panel(
                 .size(font_sm())
                 .color(color_alpha(dim, alpha_muted())),
         );
-    });
-}
-
-// ─── Stat bar ─────────────────────────────────────────────────────────────────
-
-/// Insight stat bar — label, filled progress bar, count + pct.
-pub fn insight_stat_bar(
-    ui: &mut Ui,
-    label: &str,
-    pct: f32,
-    count: u32,
-    bar_color: Color32,
-    track_color: Color32,
-    label_color: Color32,
-) {
-    ui.horizontal(|ui| {
-        ui.allocate_ui(Vec2::new(80.0, 14.0), |ui| {
-            ui.label(
-                RichText::new(label)
-                    .monospace()
-                    .size(font_sm())
-                    .color(label_color),
-            );
-        });
-
-        // Bar
-        let bar_w = ui.available_width() - 80.0;
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(bar_w.max(40.0), 6.0), Sense::hover());
-        ui.painter().rect_filled(rect, r_xs(), track_color);
-        let fill_w = rect.width() * pct.clamp(0.0, 1.0);
-        let fill_rect = Rect::from_min_size(rect.min, Vec2::new(fill_w, rect.height()));
-        ui.painter().rect_filled(fill_rect, r_xs(), bar_color);
-
-        // Right-aligned count + pct
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(
-                RichText::new(format!("{:>3.0}% · {}", pct * 100.0, count))
-                    .monospace()
-                    .size(font_xs())
-                    .color(label_color),
-            );
-        });
     });
 }
 
