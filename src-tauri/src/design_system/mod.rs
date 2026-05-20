@@ -36,6 +36,7 @@
 //! pub fn font_sm() -> f32 { FRAME.with(|c| c.get().size_sm) }
 //! ```
 
+pub mod builtin;
 pub mod color_scheme;
 pub mod loader;
 pub mod registry;
@@ -44,6 +45,7 @@ pub mod style_system;
 
 // ── Convenient top-level re-exports ──────────────────────────────────────────
 
+pub use builtin::{builtin_color_schemes, builtin_registry};
 pub use color_scheme::{ColorScheme, Meta, Rgba};
 pub use registry::{ActiveTheme, ThemeRegistry};
 pub use snapshot::{DesignSnapshot, DEFAULT_SNAPSHOT};
