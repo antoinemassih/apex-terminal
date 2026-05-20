@@ -2759,7 +2759,7 @@ pub(crate) fn render(
                             // ── Top row: icon + message + close button ──────
                             ui.horizontal_wrapped(|ui| {
                                 ui.label(egui::RichText::new(icon).size(font_md()).color(icon_col));
-                                ui.add_space(4.0);
+                                ui.add_space(gap_xs());
                                 // Message — wraps at TOAST_W boundary.
                                 ui.label(
                                     egui::RichText::new(display_msg)

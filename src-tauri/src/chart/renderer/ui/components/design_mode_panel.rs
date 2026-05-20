@@ -9,7 +9,7 @@
 //! ```
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use crate::chart_renderer::ui::style::{font_xs, font_sm, font_md_plus};
+use crate::chart_renderer::ui::style::{font_xs, font_sm, font_md_plus, gap_xs, gap_sm, gap_md};
 
 static DESIGN_PANEL_OPEN: AtomicBool = AtomicBool::new(false);
 
@@ -53,12 +53,12 @@ pub fn show(ctx: &egui::Context) {
                     .size(font_xs())
                     .color(egui::Color32::from_rgb(120, 120, 130)),
             );
-            ui.add_space(8.0);
+            ui.add_space(gap_sm());
             ui.separator();
 
             egui::ScrollArea::vertical().show(ui, |ui| {
                 // ── Global font scale ──────────────────────────────────────
-                ui.add_space(8.0);
+                ui.add_space(gap_sm());
                 ui.label(
                     egui::RichText::new("GLOBAL SCALE")
                         .monospace()
@@ -66,7 +66,7 @@ pub fn show(ctx: &egui::Context) {
                         .strong()
                         .color(egui::Color32::from_rgb(166, 227, 161)),
                 );
-                ui.add_space(4.0);
+                ui.add_space(gap_xs());
 
                 let mut pixels_per_point = ctx.pixels_per_point();
                 ui.horizontal(|ui| {
@@ -89,9 +89,9 @@ pub fn show(ctx: &egui::Context) {
                     }
                 });
 
-                ui.add_space(12.0);
+                ui.add_space(gap_md());
                 ui.separator();
-                ui.add_space(8.0);
+                ui.add_space(gap_sm());
 
                 // ── egui's built-in full style editor ─────────────────────
                 // Controls: spacing, colors, rounding, stroke widths,
@@ -112,7 +112,7 @@ pub fn show(ctx: &egui::Context) {
                     .size(font_xs())
                     .color(egui::Color32::from_rgb(120, 120, 130)),
                 );
-                ui.add_space(8.0);
+                ui.add_space(gap_sm());
 
                 let mut style = (*ctx.style()).clone();
                 style.ui(ui);
