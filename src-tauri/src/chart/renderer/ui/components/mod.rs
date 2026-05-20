@@ -27,7 +27,6 @@ pub mod sortable_headers;
 pub mod menus;
 pub mod layout;
 pub mod text;
-pub mod status;
 pub mod perf_hud;
 pub mod design_mode_panel;
 
