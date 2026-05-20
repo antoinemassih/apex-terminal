@@ -60,41 +60,6 @@ impl Overrides {
     }
 }
 
-// ─── PaneTitle ────────────────────────────────────────────────────────────────
-
-/// Builder for a pane heading. Replaces `components::pane_title(ui, text, color)`.
-///
-/// ```ignore
-/// ui.add(PaneTitle::new("Watchlist").color(theme.fg));
-/// ```
-#[must_use = "PaneTitle must be added with `ui.add(...)` to render"]
-pub struct PaneTitle<'a> {
-    text: &'a str,
-    color: Option<Color32>,
-    overrides: Overrides,
-}
-
-impl<'a> PaneTitle<'a> {
-    pub fn new(text: &'a str) -> Self {
-        Self { text, color: None, overrides: Overrides::default() }
-    }
-    pub fn color(mut self, c: Color32) -> Self { self.color = Some(c); self }
-    pub fn size(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }
-    pub fn strong(mut self, v: bool) -> Self { self.overrides.strong = Some(v); self }
-    pub fn italics(mut self, v: bool) -> Self { self.overrides.italics = Some(v); self }
-    pub fn monospace(mut self, v: bool) -> Self { self.overrides.monospace = Some(v); self }
-    pub fn gamma(mut self, g: f32) -> Self { self.overrides.gamma = Some(g); self }
-}
-
-impl<'a> Widget for PaneTitle<'a> {
-    fn ui(self, ui: &mut Ui) -> Response {
-        let resolved = self.color.unwrap_or(ambient(ui.ctx()).text);
-        let rt = TextStyle::HeadingMd.as_rich(self.text, resolved);
-        let (rt, color) = self.overrides.apply(rt, resolved);
-        ui.label(rt.color(color))
-    }
-}
-
 // ─── Subheader ────────────────────────────────────────────────────────────────
 
 /// Builder for a sub-section heading. Replaces `components::subheader(ui, text, color)`.
@@ -161,44 +126,6 @@ impl<'a> Widget for BodyLabel<'a> {
         let resolved = self.color.unwrap_or(ambient(ui.ctx()).text);
         let rt = TextStyle::Body.as_rich(self.text, resolved);
         let (rt, color) = self.overrides.apply(rt, resolved);
-        ui.label(rt.color(color))
-    }
-}
-
-// ─── MutedLabel ───────────────────────────────────────────────────────────────
-
-/// Builder for secondary / dim text. Replaces `components::muted_label(ui, text, base_color)`.
-///
-/// `base_color` has `alpha_muted()` applied internally, matching the legacy helper.
-///
-/// ```ignore
-/// ui.add(MutedLabel::new("Last updated 3m ago").color(theme.dim));
-/// ```
-#[must_use = "MutedLabel must be added with `ui.add(...)` to render"]
-pub struct MutedLabel<'a> {
-    text: &'a str,
-    base_color: Option<Color32>,
-    overrides: Overrides,
-}
-
-impl<'a> MutedLabel<'a> {
-    pub fn new(text: &'a str) -> Self {
-        Self { text, base_color: None, overrides: Overrides::default() }
-    }
-    pub fn color(mut self, c: Color32) -> Self { self.base_color = Some(c); self }
-    pub fn size(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }
-    pub fn strong(mut self, v: bool) -> Self { self.overrides.strong = Some(v); self }
-    pub fn italics(mut self, v: bool) -> Self { self.overrides.italics = Some(v); self }
-    pub fn monospace(mut self, v: bool) -> Self { self.overrides.monospace = Some(v); self }
-    pub fn gamma(mut self, g: f32) -> Self { self.overrides.gamma = Some(g); self }
-}
-
-impl<'a> Widget for MutedLabel<'a> {
-    fn ui(self, ui: &mut Ui) -> Response {
-        let base = self.base_color.unwrap_or(ambient(ui.ctx()).dim);
-        let c = color_alpha(base, alpha_muted());
-        let rt = TextStyle::BodySm.as_rich(self.text, c);
-        let (rt, color) = self.overrides.apply(rt, c);
         ui.label(rt.color(color))
     }
 }
@@ -289,59 +216,6 @@ impl<'a> Widget for MonospaceCode<'a> {
         let mut rt = style.as_rich(self.text, resolved);
         if matches!(self.size, MonoSize::Xs) {
             rt = RichText::new(self.text).monospace().size(font_xs()).color(resolved);
-        }
-        let (rt, color) = self.overrides.apply(rt, resolved);
-        ui.label(rt.color(color))
-    }
-}
-
-// ─── NumericDisplay ───────────────────────────────────────────────────────────
-
-/// Builder for large numeric readouts (price, P&L, account values).
-/// Replaces `components::numeric_display(ui, text, size, color)`.
-///
-/// Convenience shortcuts: `.lg()` / `.xl()` / `.hero()`.
-///
-/// ```ignore
-/// ui.add(NumericDisplay::new("+$1,234.56").hero().color(theme.bull));
-/// ```
-#[must_use = "NumericDisplay must be added with `ui.add(...)` to render"]
-pub struct NumericDisplay<'a> {
-    text: &'a str,
-    color: Option<Color32>,
-    size: NumericSize,
-    overrides: Overrides,
-}
-
-impl<'a> NumericDisplay<'a> {
-    pub fn new(text: &'a str) -> Self {
-        Self { text, color: None, size: NumericSize::Lg, overrides: Overrides::default() }
-    }
-    pub fn color(mut self, c: Color32) -> Self { self.color = Some(c); self }
-    pub fn size(mut self, s: NumericSize) -> Self { self.size = s; self }
-    pub fn lg(mut self) -> Self { self.size = NumericSize::Lg; self }
-    pub fn xl(mut self) -> Self { self.size = NumericSize::Xl; self }
-    pub fn hero(mut self) -> Self { self.size = NumericSize::Hero; self }
-    /// Override pixel size (escape-hatch; use `.size(NumericSize::*)` for semantic sizes).
-    pub fn size_px(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }
-    pub fn strong(mut self, v: bool) -> Self { self.overrides.strong = Some(v); self }
-    pub fn italics(mut self, v: bool) -> Self { self.overrides.italics = Some(v); self }
-    pub fn monospace(mut self, v: bool) -> Self { self.overrides.monospace = Some(v); self }
-    pub fn gamma(mut self, g: f32) -> Self { self.overrides.gamma = Some(g); self }
-}
-
-impl<'a> Widget for NumericDisplay<'a> {
-    fn ui(self, ui: &mut Ui) -> Response {
-        let resolved = self.color.unwrap_or(ambient(ui.ctx()).text);
-        let style = match self.size {
-            NumericSize::Lg   => TextStyle::Numeric,
-            NumericSize::Xl   => TextStyle::NumericLg,
-            NumericSize::Hero => TextStyle::NumericHero,
-        };
-        // Lg variant rendered legacy at font_lg(); Numeric uses font_md(). Preserve.
-        let mut rt = style.as_rich(self.text, resolved);
-        if matches!(self.size, NumericSize::Lg) {
-            rt = RichText::new(self.text).monospace().size(font_lg()).strong().color(resolved);
         }
         let (rt, color) = self.overrides.apply(rt, resolved);
         ui.label(rt.color(color))
@@ -468,41 +342,3 @@ impl<'a> Widget for DimLabel<'a> {
     }
 }
 
-// ─── CategoryHeader ───────────────────────────────────────────────────────────
-
-/// Builder for a nav/tree categorical section header.
-///
-/// Renders `RichText::new(text).monospace().size(font_xs()).color(color)` — the standard
-/// dim divider label used in watchlist groups, scanner categories, and tree nav headers.
-///
-/// ```ignore
-/// ui.add(CategoryHeader::new("WATCHLIST").color(t.dim));
-/// ui.add(CategoryHeader::new("TECHNICALS").color(t.accent));
-/// ```
-#[must_use = "CategoryHeader must be added with `ui.add(...)` to render"]
-pub struct CategoryHeader<'a> {
-    text: &'a str,
-    color: Option<Color32>,
-    overrides: Overrides,
-}
-
-impl<'a> CategoryHeader<'a> {
-    pub fn new(text: &'a str) -> Self {
-        Self { text, color: None, overrides: Overrides::default() }
-    }
-    pub fn color(mut self, c: Color32) -> Self { self.color = Some(c); self }
-    pub fn size(mut self, px: f32) -> Self { self.overrides.size = Some(px); self }
-    pub fn strong(mut self, v: bool) -> Self { self.overrides.strong = Some(v); self }
-    pub fn italics(mut self, v: bool) -> Self { self.overrides.italics = Some(v); self }
-    pub fn monospace(mut self, v: bool) -> Self { self.overrides.monospace = Some(v); self }
-    pub fn gamma(mut self, g: f32) -> Self { self.overrides.gamma = Some(g); self }
-}
-
-impl<'a> Widget for CategoryHeader<'a> {
-    fn ui(self, ui: &mut Ui) -> Response {
-        let resolved = self.color.unwrap_or(ambient(ui.ctx()).dim);
-        let rt = RichText::new(self.text).monospace().size(font_xs()).color(resolved);
-        let (rt, color) = self.overrides.apply(rt, resolved);
-        ui.label(rt.color(color))
-    }
-}
