@@ -1103,6 +1103,8 @@ mod tests {
             default_order_type: DefaultOrderType::Limit,
             default_tif: DefaultTimeInForce::Gtc,
             default_outside_rth: true,
+            daily_loss_cap: 0.0,
+            max_position_pct: 0.0,
         };
         save(&path, &v).unwrap();
         let loaded: TradingDefaults = load(&path).unwrap();
