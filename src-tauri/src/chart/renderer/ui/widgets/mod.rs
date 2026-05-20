@@ -10,7 +10,6 @@ pub use super::foundation::*;
 // Sub-module shims for `widgets::frames`, `widgets::inputs` etc.
 pub mod frames {
     pub use crate::chart::renderer::ui::components::frames_widget::*;
-    pub use crate::chart::renderer::ui::components::frames::*;
 }
 pub mod inputs {
     pub use crate::chart::renderer::ui::inputs::inputs::*;
