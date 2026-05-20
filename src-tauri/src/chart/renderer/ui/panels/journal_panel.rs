@@ -41,7 +41,20 @@ pub(crate) fn draw_content(
     let take = entries.len().min(5);
     PanelSection::new("RECENT TRADES").count(take).show(ui, t, |ui, t| {
         for entry in entries.iter().take(5) {
-            draw_card(ui, entry, t);
+            let data = TradeCardData {
+                symbol:        &entry.symbol,
+                side:          &entry.side,
+                entry_price:   entry.entry_price,
+                exit_price:    entry.exit_price,
+                pnl:           entry.pnl,
+                pnl_pct:       entry.pnl_pct,
+                setup_type:    &entry.setup_type,
+                duration_mins: entry.duration_mins,
+                r_multiple:    entry.r_multiple,
+                timeframe:     &entry.timeframe,
+                notes:         &entry.notes,
+            };
+            TradeCard::new(&data).show(ui, t);
         }
     });
 }
@@ -83,7 +96,20 @@ pub(crate) fn draw(
                 PanelSection::new("TRADE LOG").count(total).show(ui, t, |ui, t| {
                     if total <= TRADE_LOG_PAGE_SIZE {
                         for entry in &watchlist.journal_entries {
-                            draw_card(ui, entry, t);
+                            let data = TradeCardData {
+                                symbol:        &entry.symbol,
+                                side:          &entry.side,
+                                entry_price:   entry.entry_price,
+                                exit_price:    entry.exit_price,
+                                pnl:           entry.pnl,
+                                pnl_pct:       entry.pnl_pct,
+                                setup_type:    &entry.setup_type,
+                                duration_mins: entry.duration_mins,
+                                r_multiple:    entry.r_multiple,
+                                timeframe:     &entry.timeframe,
+                                notes:         &entry.notes,
+                            };
+                            TradeCard::new(&data).show(ui, t);
                         }
                     } else {
                         let total_pages = (total + TRADE_LOG_PAGE_SIZE - 1) / TRADE_LOG_PAGE_SIZE;
@@ -94,7 +120,20 @@ pub(crate) fn draw(
                         let start = page * TRADE_LOG_PAGE_SIZE;
                         let end = (start + TRADE_LOG_PAGE_SIZE).min(total);
                         for entry in &watchlist.journal_entries[start..end] {
-                            draw_card(ui, entry, t);
+                            let data = TradeCardData {
+                                symbol:        &entry.symbol,
+                                side:          &entry.side,
+                                entry_price:   entry.entry_price,
+                                exit_price:    entry.exit_price,
+                                pnl:           entry.pnl,
+                                pnl_pct:       entry.pnl_pct,
+                                setup_type:    &entry.setup_type,
+                                duration_mins: entry.duration_mins,
+                                r_multiple:    entry.r_multiple,
+                                timeframe:     &entry.timeframe,
+                                notes:         &entry.notes,
+                            };
+                            TradeCard::new(&data).show(ui, t);
                         }
                         ui.add_space(gap_xs());
                         ui.horizontal(|ui| {
@@ -203,9 +242,9 @@ fn draw_insight_row(ui: &mut egui::Ui, label: &str, total: u32, wr: f32, pnl: f6
         let bar_w = 40.0;
         let (br, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
         let p = ui.painter();
-        p.rect_filled(br, 2.0, color_alpha(t.toolbar_border, alpha_faint()));
+        p.rect_filled(br, radius_xs(), color_alpha(t.toolbar_border, alpha_faint()));
         p.rect_filled(egui::Rect::from_min_size(br.min, egui::vec2(bar_w * wr / 100.0, 8.0)),
-            2.0, color_alpha(col, alpha_dim()));
+            radius_xs(), color_alpha(col, alpha_dim()));
         ui.label(egui::RichText::new(format!("{:.0}%", wr)).monospace().size(font_xs()).color(col));
         ui.label(egui::RichText::new(format!("{}t", total)).monospace().size(font_xs()).color(color_dim(t.dim)));
         let pc = if pnl >= 0.0 { t.bull } else { t.bear };
@@ -213,19 +252,3 @@ fn draw_insight_row(ui: &mut egui::Ui, label: &str, total: u32, wr: f32, pnl: f6
     });
 }
 
-fn draw_card(ui: &mut egui::Ui, entry: &JournalEntry, t: &Theme) {
-    let data = TradeCardData {
-        symbol:        &entry.symbol,
-        side:          &entry.side,
-        entry_price:   entry.entry_price,
-        exit_price:    entry.exit_price,
-        pnl:           entry.pnl,
-        pnl_pct:       entry.pnl_pct,
-        setup_type:    &entry.setup_type,
-        duration_mins: entry.duration_mins,
-        r_multiple:    entry.r_multiple,
-        timeframe:     &entry.timeframe,
-        notes:         &entry.notes,
-    };
-    TradeCard::new(&data).show(ui, t);
-}
