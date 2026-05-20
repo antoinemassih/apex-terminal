@@ -537,7 +537,7 @@ fn draw_active_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
 
     // Active boolean toggles
     let mut to_disable: Option<Tg> = None;
-    for tg in &active_toggles {
+    for tg in active_toggles {
         if bool_get(chart, *tg) {
             active_bool_row(ui, t, *tg, &mut to_disable);
         }
@@ -862,7 +862,7 @@ fn draw_library_section(
             if hovered { t.text } else { color_subtle(t.text) },
         );
         let chip_text = format!("{}", match_count);
-        let galley = painter.layout_no_wrap(chip_text,
+        let galley = painter.layout_no_wrap(chip_text.clone(),
             mono_xs(), t.dim);
         let chip_w = galley.size().x + 10.0;
         let chip_h = 14.0;
