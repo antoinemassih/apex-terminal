@@ -24,6 +24,10 @@
 use super::{
     color_scheme::{ColorScheme, Meta, Rgba},
     registry::ThemeRegistry,
+    style_system::{
+        Alphas, Density, Elevation, FocusRingStyle, Radii, Shadows, ShadowSpec,
+        Spacing, Strokes, StyleSystem, Treatments, Typography,
+    },
 };
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -416,6 +420,238 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
     ]
 }
 
+/// Returns the 3 built-in `StyleSystem`s transcribed from `style_defaults(0/1/2)`.
+///
+/// # Mapping  (`StyleSettings` → `StyleSystem` sub-struct)
+///
+/// | StyleSettings field(s)                            | StyleSystem target          |
+/// |---------------------------------------------------|-----------------------------|
+/// | `r_xs / r_sm / r_md / r_lg / r_pill`             | `Radii.xs/sm/md/lg/full`    |
+/// | `stroke_hair / stroke_thin / stroke_std / stroke_bold / stroke_thick` | `Strokes.thin/std/md/heavy` |
+/// | `font_section_label / font_body / font_caption / font_hero` | `Typography` (section_label→xs, caption→xs, body→sm, hero→xl; md/lg/mono defaulted) |
+/// | `card_padding_y / card_padding_x / row_height_px / button_height_px / button_padding_x / pane_gap` | `Spacing` |
+/// | `hover_bg_alpha / active_bg_alpha`                | `Alphas.subtle/soft/muted/mid/strong` (hover→subtle, active→soft; others defaulted) |
+/// | `header_outer_border_alpha`                       | `Alphas.header_border`      |
+/// | `shadow_blur / shadow_offset_y / shadow_alpha`    | `Shadows.card` (modal/tooltip/dropdown use scaled defaults) |
+/// | `density`                                         | `Density.factor` (0=compact→0.8, 1=normal→1.0, 2=roomy→1.2) |
+/// | `solid_active_fills / hairline_borders / uppercase_section_labels` | `Treatments` booleans |
+/// | `focus_ring_width` ≤ 1.0 → `FocusRingStyle::Outline`; > 1.5 → `Glow`           | `Treatments.focus_ring` |
+///
+/// Fields with no clean source (`Elevation`, `Spacing.gmd`, mono sizes) use
+/// `Default::default()`.  Fields exclusive to `StyleSettings` that are pure
+/// color-layer concerns (`active_fill_color`, `toolbar_bg`, …) are dropped.
+pub fn builtin_style_systems() -> Vec<StyleSystem> {
+    // ── Meridien (id=0, the `_ =>` arm in style_defaults) ────────────────────
+    // Sharp corners, hairline borders, solid active fills, uppercase labels,
+    // no drop shadows, standard density.
+    let meridien = StyleSystem {
+        meta: Meta::new("meridien", "Meridien", true),
+        typography: Typography {
+            size_xs: 8.0,   // font_section_label / font_caption
+            size_sm: 10.0,  // font_body
+            size_md: 13.0,  // default — no explicit md in StyleSettings
+            size_lg: 15.0,  // default
+            size_xl: 36.0,  // font_hero
+            mono_sm: 11.0,
+            mono_md: 13.0,
+            mono_lg: 15.0,
+        },
+        spacing: Spacing {
+            xs: 2.0,
+            sm: 4.0,
+            md: 8.0,          // card_padding_y / 1 (approx)
+            lg: 10.0,         // card_padding_x
+            xl: 16.0,
+            xxl: 24.0,
+            gmd: 8.0,
+            cta_height: 36.0, // cta_height_px
+        },
+        radii: Radii {
+            none: 0.0,
+            xs: 0.0,      // r_xs = 0
+            sm: 0.0,      // r_sm = 0
+            md: 0.0,      // r_md = 0
+            lg: 0.0,      // r_lg = 0
+            full: 9999.0, // r_pill = 0 but pill means round — keep sentinel
+        },
+        strokes: Strokes {
+            thin: 0.5,  // stroke_hair
+            std: 1.0,   // stroke_thin / stroke_std (Meridien collapses to 1)
+            md: 1.0,    // stroke_bold = 1.0
+            heavy: 1.0, // stroke_thick = 1.0
+        },
+        alphas: Alphas {
+            subtle:        0.08,  // hover_bg_alpha = 20/255 ≈ 0.08
+            soft:          0.14,  // active_bg_alpha = 35/255 ≈ 0.14
+            muted:         0.24,
+            mid:           0.48,
+            strong:        0.72,
+            opaque:        1.0,
+            header_border: 38.0 / 255.0, // header_outer_border_alpha = 38
+        },
+        elevation: Elevation::default(),
+        density: Density {
+            factor: 1.0,               // density=1 → normal
+            row_height_dense: 22.0,    // row_height_px = 22
+            row_height_comfortable: 28.0,
+        },
+        shadows: Shadows {
+            // shadow_blur=0, shadow_offset_y=0, shadow_alpha=0 → no shadows
+            card:     ShadowSpec { blur: 0.0, spread: 0.0, offset_x: 0.0, offset_y: 0.0, alpha: 0.0 },
+            modal:    ShadowSpec { blur: 0.0, spread: 0.0, offset_x: 0.0, offset_y: 0.0, alpha: 0.0 },
+            tooltip:  ShadowSpec { blur: 0.0, spread: 0.0, offset_x: 0.0, offset_y: 0.0, alpha: 0.0 },
+            dropdown: ShadowSpec { blur: 0.0, spread: 0.0, offset_x: 0.0, offset_y: 0.0, alpha: 0.0 },
+        },
+        treatments: Treatments {
+            solid_active_fills:       true,  // solid_active_fills = true
+            hairline_borders:         true,  // hairline_borders = true
+            uppercase_section_labels: true,  // uppercase_section_labels = true
+            segmented_filled_idle:    false,
+            focus_ring: FocusRingStyle::Outline, // focus_ring_width = 1.0
+        },
+    };
+
+    // ── Aperture (id=1) ───────────────────────────────────────────────────────
+    // Soft-pill corners, full drop shadows, roomy density.
+    let aperture = StyleSystem {
+        meta: Meta::new("aperture", "Aperture", true),
+        typography: Typography {
+            size_xs: 9.0,   // font_caption = 9
+            size_sm: 11.0,  // font_body = 11
+            size_md: 13.0,
+            size_lg: 15.0,
+            size_xl: 22.0,  // font_hero = 22
+            mono_sm: 11.0,
+            mono_md: 13.0,
+            mono_lg: 15.0,
+        },
+        spacing: Spacing {
+            xs: 2.0,
+            sm: 4.0,
+            md: 12.0,         // card_padding_y = 12
+            lg: 14.0,         // card_padding_x = 14
+            xl: 16.0,
+            xxl: 24.0,
+            gmd: 8.0,
+            cta_height: 40.0, // cta_height_px = 40
+        },
+        radii: Radii {
+            none: 0.0,
+            xs: 4.0,      // r_xs = 4
+            sm: 6.0,      // r_sm = 6
+            md: 8.0,      // r_md = 8
+            lg: 12.0,     // r_lg = 12
+            full: 9999.0, // r_pill = 99
+        },
+        strokes: Strokes {
+            thin: 0.5,  // stroke_hair = 0.5
+            std: 1.0,   // stroke_thin = 1.0
+            md: 1.5,    // stroke_std / stroke_bold = 1.5
+            heavy: 2.0, // stroke_thick = 2.0
+        },
+        alphas: Alphas {
+            subtle:        0.06,  // hover_bg_alpha = 15/255 ≈ 0.06
+            soft:          0.10,  // active_bg_alpha = 25/255 ≈ 0.10
+            muted:         0.24,
+            mid:           0.48,
+            strong:        0.72,
+            opaque:        1.0,
+            header_border: 38.0 / 255.0, // header_outer_border_alpha = 38
+        },
+        elevation: Elevation::default(),
+        density: Density {
+            factor: 1.2,               // density=2 → roomy
+            row_height_dense: 26.0,    // row_height_px = 26
+            row_height_comfortable: 34.0,
+        },
+        shadows: Shadows {
+            // shadow_blur=24, shadow_offset_y=8, shadow_alpha=40 (≈0.157)
+            card:     ShadowSpec { blur: 24.0, spread: 0.0, offset_x: 0.0, offset_y: 8.0, alpha: 40.0 / 255.0 },
+            modal:    ShadowSpec { blur: 36.0, spread: 0.0, offset_x: 0.0, offset_y: 12.0, alpha: 40.0 / 255.0 },
+            tooltip:  ShadowSpec { blur: 12.0, spread: 0.0, offset_x: 0.0, offset_y: 4.0, alpha: 40.0 / 255.0 },
+            dropdown: ShadowSpec { blur: 24.0, spread: 0.0, offset_x: 0.0, offset_y: 8.0, alpha: 40.0 / 255.0 },
+        },
+        treatments: Treatments {
+            solid_active_fills:       false, // solid_active_fills = false
+            hairline_borders:         false, // hairline_borders = false
+            uppercase_section_labels: false, // uppercase_section_labels = false
+            segmented_filled_idle:    true,
+            focus_ring: FocusRingStyle::Glow, // focus_ring_width = 2.0 → Glow
+        },
+    };
+
+    // ── Octave (id=2) ─────────────────────────────────────────────────────────
+    // Minimal corners, hairline borders, solid active fills, compact density.
+    let octave = StyleSystem {
+        meta: Meta::new("octave", "Octave", true),
+        typography: Typography {
+            size_xs: 8.0,   // font_section_label=8, font_caption=8
+            size_sm: 10.0,  // font_body = 10
+            size_md: 13.0,
+            size_lg: 15.0,
+            size_xl: 22.0,  // font_hero = 22
+            mono_sm: 11.0,
+            mono_md: 13.0,
+            mono_lg: 15.0,
+        },
+        spacing: Spacing {
+            xs: 2.0,
+            sm: 4.0,
+            md: 6.0,          // card_padding_y = 6
+            lg: 8.0,          // card_padding_x = 8
+            xl: 16.0,
+            xxl: 24.0,
+            gmd: 8.0,
+            cta_height: 32.0, // cta_height_px = 32
+        },
+        radii: Radii {
+            none: 0.0,
+            xs: 1.0,      // r_xs = 1
+            sm: 2.0,      // r_sm = 2
+            md: 3.0,      // r_md = 3
+            lg: 4.0,      // r_lg = 4
+            full: 9999.0, // r_pill = 99
+        },
+        strokes: Strokes {
+            thin: 0.4,  // stroke_hair = 0.4
+            std: 0.6,   // stroke_thin = 0.6
+            md: 1.0,    // stroke_std / stroke_bold = 1.0
+            heavy: 1.4, // stroke_thick = 1.4
+        },
+        alphas: Alphas {
+            subtle:        0.07,  // hover_bg_alpha = 18/255 ≈ 0.07
+            soft:          0.12,  // active_bg_alpha = 30/255 ≈ 0.12
+            muted:         0.24,
+            mid:           0.48,
+            strong:        0.72,
+            opaque:        1.0,
+            header_border: 38.0 / 255.0, // header_outer_border_alpha = 38
+        },
+        elevation: Elevation::default(),
+        density: Density {
+            factor: 0.8,               // density=0 → compact
+            row_height_dense: 20.0,    // row_height_px = 20
+            row_height_comfortable: 28.0,
+        },
+        shadows: Shadows {
+            // shadow_blur=8, shadow_offset_y=4, shadow_alpha=20 (≈0.078)
+            card:     ShadowSpec { blur: 8.0,  spread: 0.0, offset_x: 0.0, offset_y: 4.0, alpha: 20.0 / 255.0 },
+            modal:    ShadowSpec { blur: 16.0, spread: 0.0, offset_x: 0.0, offset_y: 6.0, alpha: 20.0 / 255.0 },
+            tooltip:  ShadowSpec { blur: 6.0,  spread: 0.0, offset_x: 0.0, offset_y: 2.0, alpha: 20.0 / 255.0 },
+            dropdown: ShadowSpec { blur: 8.0,  spread: 0.0, offset_x: 0.0, offset_y: 4.0, alpha: 20.0 / 255.0 },
+        },
+        treatments: Treatments {
+            solid_active_fills:       true,  // solid_active_fills = true
+            hairline_borders:         true,  // hairline_borders = true
+            uppercase_section_labels: true,  // uppercase_section_labels = true
+            segmented_filled_idle:    false,
+            focus_ring: FocusRingStyle::Outline, // focus_ring_width = 1.5
+        },
+    };
+
+    vec![meridien, aperture, octave]
+}
+
 /// Builds a `ThemeRegistry` pre-populated with all built-in `ColorScheme`s
 /// (derived from `gpu::THEMES`) and the default `StyleSystem`(s).
 ///
@@ -425,6 +661,9 @@ pub fn builtin_registry() -> ThemeRegistry {
     let mut reg = ThemeRegistry::with_builtins();
     for scheme in builtin_color_schemes() {
         reg.register_colors(scheme);
+    }
+    for style in builtin_style_systems() {
+        reg.register_style(style);
     }
     reg
 }
@@ -492,5 +731,32 @@ mod tests {
         assert!(ids.contains(&"rose-pine"),    "Rose Pine must be in registry");
         assert!(ids.contains(&"bauhaus"),      "Bauhaus must be in registry");
         assert!(ids.contains(&"tokyo-night"),  "Tokyo Night must be in registry");
+    }
+
+    #[test]
+    fn builtin_style_systems_has_three_entries() {
+        let styles = builtin_style_systems();
+        assert_eq!(styles.len(), 3, "builtin_style_systems() must return exactly 3 entries");
+        for s in &styles {
+            assert!(!s.meta.id.is_empty(), "style '{}' has an empty id", s.meta.name);
+        }
+    }
+
+    #[test]
+    fn builtin_style_systems_ids_are_correct() {
+        let styles = builtin_style_systems();
+        let ids: Vec<&str> = styles.iter().map(|s| s.meta.id.as_str()).collect();
+        assert!(ids.contains(&"meridien"), "meridien must be present");
+        assert!(ids.contains(&"aperture"), "aperture must be present");
+        assert!(ids.contains(&"octave"),   "octave must be present");
+    }
+
+    #[test]
+    fn builtin_registry_has_style_systems() {
+        let reg = builtin_registry();
+        let ids = reg.style_ids();
+        assert!(ids.contains(&"meridien"), "meridien must be in registry");
+        assert!(ids.contains(&"aperture"), "aperture must be in registry");
+        assert!(ids.contains(&"octave"),   "octave must be in registry");
     }
 }

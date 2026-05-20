@@ -45,7 +45,7 @@ pub mod style_system;
 
 // ── Convenient top-level re-exports ──────────────────────────────────────────
 
-pub use builtin::{builtin_color_schemes, builtin_registry};
+pub use builtin::{builtin_color_schemes, builtin_registry, builtin_style_systems};
 pub use color_scheme::{ColorScheme, Meta, Rgba};
 pub use registry::{ActiveTheme, ThemeRegistry};
 pub use snapshot::{DesignSnapshot, DEFAULT_SNAPSHOT};
