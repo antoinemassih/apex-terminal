@@ -775,20 +775,22 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
     };
     let corner_r = st.r_sm as f32;
 
-    // Resolve active fill/text from style overrides or fallback to accent.
-    let active_fill = st.active_fill_color.unwrap_or(accent);
-    let active_text = st.active_text_color.unwrap_or(accent);
+    // Derive active fill/text from the invert-active discriminant (§3.2).
+    // invert_active_fill → palette inversion: fill=theme.text, text=theme.bg.
+    let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    let active_fill = if st.invert_active_fill { theme.text } else { color_alpha(accent, alpha_tint()) };
+    let active_text = if st.invert_active_fill { theme.bg } else { accent };
 
     // Button treatment dispatch (#18).
     let (bg, fg, border) = match st.button_treatment {
         ButtonTreatment::UnderlineActive => {
-            // Transparent idle; active uses active_fill/text overrides.
+            // Transparent idle; active uses derived fill/text.
             let fg = if active { active_text } else { dim };
             (Color32::TRANSPARENT, fg, Color32::TRANSPARENT)
         }
         _ => {
             let bg = if active {
-                if st.active_fill_color.is_some() { active_fill } else { color_alpha(accent, alpha_tint()) }
+                if st.invert_active_fill { active_fill } else { color_alpha(accent, alpha_tint()) }
             } else { color_alpha(toolbar_border, alpha_ghost()) };
             let fg = if active { active_text } else { dim };
             let border = if active { color_alpha(accent, alpha_active()) } else { color_alpha(toolbar_border, alpha_muted()) };
@@ -855,7 +857,7 @@ pub fn tb_btn(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32, dim
 
     use crate::chart::renderer::ui::components::motion;
     // Active fill target (what egui would have snapped to when active).
-    let active_bg_target = if st.active_fill_color.is_some() { active_fill } else { color_alpha(accent, alpha_tint()) };
+    let active_bg_target = if st.invert_active_fill { active_fill } else { color_alpha(accent, alpha_tint()) };
     let idle_bg = color_alpha(toolbar_border, alpha_ghost());
     // Animate active state for the button bg.
     let active_id = ui.id().with(("tb_btn_std_active", label));
@@ -1672,6 +1674,12 @@ pub struct StyleSettings {
     pub stroke_thick: f32,
     pub shadows_enabled: bool,
     pub solid_active_fills: bool,
+    /// True only for the style that paints active elements as a solid inverted
+    /// slab (fill = palette text, text = palette bg). Replaces the removed
+    /// `active_fill_color` / `active_text_color` `Option<Color32>` overrides
+    /// (Phase 0b): a dimension-axis boolean, not a colour. Distinct from
+    /// `solid_active_fills` — that flag is broader and true for more styles.
+    pub invert_active_fill: bool,
     pub uppercase_section_labels: bool,
     /// Letter spacing approximation (px) applied to tracked-out section labels.
     pub label_letter_spacing_px: f32,
@@ -1757,15 +1765,6 @@ pub struct StyleSettings {
     pub accent_emphasis: f32,
 
     // ── Reference-match fields (Newsprint/editorial style) ────────────────
-    /// Fill color for active segments/buttons. `None` = use theme.accent.
-    /// Meridien: Some(BLACK), Aperture/Octave: None.
-    pub active_fill_color: Option<Color32>,
-    /// Text color on active segments/buttons. `None` = contrast-auto.
-    /// Meridien: Some(WHITE), Aperture/Octave: None.
-    pub active_text_color: Option<Color32>,
-    /// Outline color for idle connected-pill segments.
-    /// `None` = use toolbar_border. Meridien: Some(near-black dim).
-    pub idle_outline_color: Option<Color32>,
     /// Letter-spacing added between glyphs in toolbar nav buttons (px).
     /// Meridien: 1.5, others: 0.
     pub nav_letter_spacing_px: f32,
@@ -1786,11 +1785,6 @@ pub struct StyleSettings {
     pub card_floating_shadow: bool,
     /// Alpha for the card floating shadow (0-255). Meridien: 25, others: 0.
     pub card_floating_shadow_alpha: u8,
-    /// Fill for idle segments in connected-pill SegmentedControl.
-    /// `None` = transparent. Meridien: None.
-    pub segmented_idle_fill: Option<Color32>,
-    /// Text color for idle segments. `None` = use dim.
-    pub segmented_idle_text: Option<Color32>,
     /// Height for the primary CTA button in px. Meridien: 36, Aperture: 40, Octave: 32.
     pub cta_height_px: f32,
     /// Horizontal padding for the primary CTA button in px. Meridien: 16, others: 12.
@@ -1818,8 +1812,6 @@ pub struct StyleSettings {
     pub section_label_padding_top: f32,
     /// Section label bottom padding in px (space below eyebrow labels before content).
     pub section_label_padding_bottom: f32,
-    /// Input border focus color override. None = use accent.
-    pub input_focus_color: Option<Color32>,
     /// Pane gap (gutter) fill color override. None = use toolbar_border at pane_gap_alpha.
     pub pane_gap_color: Option<Color32>,
     /// Drag handle (split divider) color alpha multiplier (0.0-1.0).
@@ -1892,7 +1884,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             hairline_borders: false,
             stroke_hair: 0.5, stroke_thin: 1.0, stroke_std: 1.5,
             stroke_bold: 1.5, stroke_thick: 2.0,
-            shadows_enabled: true, solid_active_fills: false,
+            shadows_enabled: true, solid_active_fills: false, invert_active_fill: false,
             uppercase_section_labels: false, label_letter_spacing_px: 0.0,
             toolbar_height_scale: 1.0, header_height_scale: 1.0,
             font_hero: 22.0, vertical_group_dividers: false,
@@ -1911,17 +1903,16 @@ fn style_defaults(id: u8) -> StyleSettings {
             focus_ring_width: 2.0, focus_ring_alpha: 90, disabled_opacity: 0.5,
             shadow_blur: 24.0, shadow_offset_y: 8.0, shadow_alpha: 40,
             density: 2, accent_emphasis: 1.1,
-            active_fill_color: None, active_text_color: None, idle_outline_color: None,
             nav_letter_spacing_px: 0.0, tab_underline_thickness: 0.0,
             nav_buttons_label_only: false, nav_buttons_uppercase_labels: false,
             tab_underline_under_text: false, card_floating_shadow: false,
-            card_floating_shadow_alpha: 0, segmented_idle_fill: None, segmented_idle_text: None,
+            card_floating_shadow_alpha: 0,
             cta_height_px: 40.0, cta_padding_x: 12.0,
             pane_gap_alpha: 30, pane_active_indicator: 2,
             nav_active_col_alpha: 0, dialog_backdrop_alpha: 0,
             tab_inactive_alpha: 0.55, tab_hover_bg_alpha: 18,
             section_label_padding_top: 6.0, section_label_padding_bottom: 2.0,
-            input_focus_color: None, pane_gap_color: None,
+            pane_gap_color: None,
             drag_handle_alpha: 0.7, drag_handle_dot_scale: 1.0,
             toast_bg_alpha: 200, card_stripe_alpha: 255,
             r_chip: 0,
@@ -1934,7 +1925,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             hairline_borders: true,
             stroke_hair: 0.4, stroke_thin: 0.6, stroke_std: 1.0,
             stroke_bold: 1.0, stroke_thick: 1.4,
-            shadows_enabled: false, solid_active_fills: true,
+            shadows_enabled: false, solid_active_fills: true, invert_active_fill: false,
             uppercase_section_labels: true, label_letter_spacing_px: 0.0,
             toolbar_height_scale: 1.0, header_height_scale: 1.0,
             font_hero: 22.0, vertical_group_dividers: false,
@@ -1953,17 +1944,16 @@ fn style_defaults(id: u8) -> StyleSettings {
             focus_ring_width: 1.5, focus_ring_alpha: 110, disabled_opacity: 0.45,
             shadow_blur: 8.0, shadow_offset_y: 4.0, shadow_alpha: 20,
             density: 0, accent_emphasis: 0.95,
-            active_fill_color: None, active_text_color: None, idle_outline_color: None,
             nav_letter_spacing_px: 0.0, tab_underline_thickness: 1.0,
             nav_buttons_label_only: false, nav_buttons_uppercase_labels: false,
             tab_underline_under_text: false, card_floating_shadow: false,
-            card_floating_shadow_alpha: 0, segmented_idle_fill: None, segmented_idle_text: None,
+            card_floating_shadow_alpha: 0,
             cta_height_px: 32.0, cta_padding_x: 12.0,
             pane_gap_alpha: 15, pane_active_indicator: 3,
             nav_active_col_alpha: 25, dialog_backdrop_alpha: 0,
             tab_inactive_alpha: 0.5, tab_hover_bg_alpha: 20,
             section_label_padding_top: 3.0, section_label_padding_bottom: 1.0,
-            input_focus_color: None, pane_gap_color: None,
+            pane_gap_color: None,
             drag_handle_alpha: 0.6, drag_handle_dot_scale: 0.85,
             toast_bg_alpha: 220, card_stripe_alpha: 255,
             r_chip: 0,
@@ -1976,7 +1966,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             hairline_borders: true,
             stroke_hair: 0.5, stroke_thin: 1.0, stroke_std: 1.0,
             stroke_bold: 1.0, stroke_thick: 1.0,
-            shadows_enabled: true, solid_active_fills: true,
+            shadows_enabled: true, solid_active_fills: true, invert_active_fill: true,
             uppercase_section_labels: true, label_letter_spacing_px: 0.0,
             toolbar_height_scale: 1.40, header_height_scale: 1.10,
             font_hero: 36.0, vertical_group_dividers: true,
@@ -1995,18 +1985,16 @@ fn style_defaults(id: u8) -> StyleSettings {
             focus_ring_width: 1.0, focus_ring_alpha: 120, disabled_opacity: 0.4,
             shadow_blur: 0.0, shadow_offset_y: 0.0, shadow_alpha: 0,
             density: 1, accent_emphasis: 1.0,
-            active_fill_color: Some(Color32::BLACK), active_text_color: Some(Color32::WHITE),
-            idle_outline_color: Some(Color32::from_rgb(60, 56, 44)),
             nav_letter_spacing_px: 0.0, tab_underline_thickness: 2.0,
             nav_buttons_label_only: true, nav_buttons_uppercase_labels: true,
             tab_underline_under_text: true, card_floating_shadow: true,
-            card_floating_shadow_alpha: 25, segmented_idle_fill: None, segmented_idle_text: None,
+            card_floating_shadow_alpha: 25,
             cta_height_px: 36.0, cta_padding_x: 16.0,
             pane_gap_alpha: 0, pane_active_indicator: 1,
             nav_active_col_alpha: 18, dialog_backdrop_alpha: 0,
             tab_inactive_alpha: 0.6, tab_hover_bg_alpha: 12,
             section_label_padding_top: 4.0, section_label_padding_bottom: 2.0,
-            input_focus_color: None, pane_gap_color: None,
+            pane_gap_color: None,
             drag_handle_alpha: 0.5, drag_handle_dot_scale: 1.0,
             toast_bg_alpha: 230, card_stripe_alpha: 255,
             r_chip: 0,
@@ -2204,7 +2192,7 @@ pub fn hero_text(text: &str, color: egui::Color32) -> egui::RichText {
 /// This is intentionally a *supplement* to the rich visual block already
 /// applied in `setup_theme`; it only overrides the fields that differ
 /// between styles so that non-Meridien themes remain visually unchanged.
-pub fn apply_ui_style(ctx: &egui::Context, settings: &StyleSettings, toolbar_border: egui::Color32, toolbar_bg: egui::Color32) {
+pub fn apply_ui_style(ctx: &egui::Context, settings: &StyleSettings, toolbar_border: egui::Color32, toolbar_bg: egui::Color32, accent: egui::Color32) {
     let mut style = (*ctx.style()).clone();
     let is_meridien = settings.hairline_borders && settings.serif_headlines;
 
@@ -2240,10 +2228,8 @@ pub fn apply_ui_style(ctx: &egui::Context, settings: &StyleSettings, toolbar_bor
         style.spacing.item_spacing     = egui::vec2(gap_sm(), gap_xs());
     }
 
-    // input_focus_color: override the focus-ring stroke on text inputs.
-    if let Some(focus_col) = settings.input_focus_color {
-        style.visuals.selection.stroke = egui::Stroke::new(settings.focus_ring_width, focus_col);
-    }
+    // input_focus_color: derived from accent (§3.2 — no per-style override).
+    style.visuals.selection.stroke = egui::Stroke::new(settings.focus_ring_width, accent);
 
     ctx.set_style(style);
     let _ = (toolbar_bg,); // may be used in future for popup fill overrides

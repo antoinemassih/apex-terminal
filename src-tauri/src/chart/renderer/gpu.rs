@@ -3830,7 +3830,7 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
     // Must run AFTER the rich visual block above so Meridien tweaks override where needed (#3).
     {
         let st = super::ui::style::current();
-        super::ui::style::apply_ui_style(ctx, &st, t.toolbar_border, t.toolbar_bg);
+        super::ui::style::apply_ui_style(ctx, &st, t.toolbar_border, t.toolbar_bg, t.accent);
     }
     // native_dpi_scale is the floor (never render below display resolution).
     // font_scale is the user zoom on top; on a 1x display it wins if > 1.0,

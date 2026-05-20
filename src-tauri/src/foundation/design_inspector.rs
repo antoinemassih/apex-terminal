@@ -463,7 +463,6 @@ impl Inspector {
                             ("tab_hover_bg_alpha",        "u8",   "Hovered tab background alpha"),
                             ("section_label_padding_top","f32",  "Space above section labels in px"),
                             ("section_label_padding_bottom","f32","Space below section labels in px"),
-                            ("input_focus_color",         "Color?","Focus ring color for text inputs"),
                             ("pane_gap_color",            "Color?","Pane gutter fill color (None=toolbar_border)"),
                             ("drag_handle_alpha",         "f32",  "Drag handle rest opacity (0–1)"),
                             ("drag_handle_dot_scale",     "f32",  "Drag handle dot size scale (1.0=default)"),
@@ -1164,14 +1163,12 @@ fn build_arm(id: u8, s: &crate::chart_renderer::ui::style::StyleSettings) -> Str
             Some(c) => format!("Some(Color32::from_rgb({},{},{}))", c.r(), c.g(), c.b()),
         }
     };
-    out.push_str(&format!("{i}active_fill_color: {}, active_text_color: {}, idle_outline_color: {},\n",
-        fmt_opt_col(s.active_fill_color), fmt_opt_col(s.active_text_color), fmt_opt_col(s.idle_outline_color)));
     out.push_str(&format!("{i}nav_letter_spacing_px: {}, tab_underline_thickness: {},\n",
         fmt_f32(s.nav_letter_spacing_px), fmt_f32(s.tab_underline_thickness)));
     out.push_str(&format!("{i}tab_underline_under_text: {}, card_floating_shadow: {},\n",
         fmt_bool(s.tab_underline_under_text), fmt_bool(s.card_floating_shadow)));
-    out.push_str(&format!("{i}card_floating_shadow_alpha: {}, segmented_idle_fill: {}, segmented_idle_text: {},\n",
-        s.card_floating_shadow_alpha, fmt_opt_col(s.segmented_idle_fill), fmt_opt_col(s.segmented_idle_text)));
+    out.push_str(&format!("{i}card_floating_shadow_alpha: {},\n",
+        s.card_floating_shadow_alpha));
     out.push_str(&format!("{i}cta_height_px: {}, cta_padding_x: {},\n",
         fmt_f32(s.cta_height_px), fmt_f32(s.cta_padding_x)));
     // New knobs — design-pass 2
@@ -1183,8 +1180,8 @@ fn build_arm(id: u8, s: &crate::chart_renderer::ui::style::StyleSettings) -> Str
         fmt_f32(s.tab_inactive_alpha), s.tab_hover_bg_alpha));
     out.push_str(&format!("{i}section_label_padding_top: {}, section_label_padding_bottom: {},\n",
         fmt_f32(s.section_label_padding_top), fmt_f32(s.section_label_padding_bottom)));
-    out.push_str(&format!("{i}input_focus_color: {}, pane_gap_color: {},\n",
-        fmt_opt_col(s.input_focus_color), fmt_opt_col(s.pane_gap_color)));
+    out.push_str(&format!("{i}pane_gap_color: {},\n",
+        fmt_opt_col(s.pane_gap_color)));
     out.push_str(&format!("{i}drag_handle_alpha: {}, drag_handle_dot_scale: {},\n",
         fmt_f32(s.drag_handle_alpha), fmt_f32(s.drag_handle_dot_scale)));
     out.push_str(&format!("{i}toast_bg_alpha: {}, card_stripe_alpha: {},\n",
@@ -1567,51 +1564,6 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                 // ── Reference Match (Newsprint/editorial) ─────────────────────
                 ui.label(RichText::new("Reference Match").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
 
-                // active_fill_color
-                {
-                    let mut enabled = s.active_fill_color.is_some();
-                    let prev = enabled;
-                    ui.horizontal(|ui| {
-                        if ui.checkbox(&mut enabled, "active_fill_color").changed() || enabled != prev {
-                            if enabled { s.active_fill_color = Some(Color32::BLACK); }
-                            else { s.active_fill_color = None; }
-                            local_changed = true;
-                        }
-                        if let Some(ref mut c) = s.active_fill_color {
-                            if ui.color_edit_button_srgba(c).changed() { local_changed = true; }
-                        }
-                    });
-                }
-                // active_text_color
-                {
-                    let mut enabled = s.active_text_color.is_some();
-                    let prev = enabled;
-                    ui.horizontal(|ui| {
-                        if ui.checkbox(&mut enabled, "active_text_color").changed() || enabled != prev {
-                            if enabled { s.active_text_color = Some(Color32::WHITE); }
-                            else { s.active_text_color = None; }
-                            local_changed = true;
-                        }
-                        if let Some(ref mut c) = s.active_text_color {
-                            if ui.color_edit_button_srgba(c).changed() { local_changed = true; }
-                        }
-                    });
-                }
-                // idle_outline_color
-                {
-                    let mut enabled = s.idle_outline_color.is_some();
-                    let prev = enabled;
-                    ui.horizontal(|ui| {
-                        if ui.checkbox(&mut enabled, "idle_outline_color").changed() || enabled != prev {
-                            if enabled { s.idle_outline_color = Some(Color32::from_rgb(60,56,44)); }
-                            else { s.idle_outline_color = None; }
-                            local_changed = true;
-                        }
-                        if let Some(ref mut c) = s.idle_outline_color {
-                            if ui.color_edit_button_srgba(c).changed() { local_changed = true; }
-                        }
-                    });
-                }
                 local_changed |= style_drag_f32(ui, "nav_letter_spacing_px",   &mut s.nav_letter_spacing_px,   0.0..=6.0);
                 local_changed |= style_drag_f32(ui, "tab_underline_thickness",  &mut s.tab_underline_thickness,  0.0..=8.0);
                 local_changed |= style_checkbox(ui,  "tab_underline_under_text", &mut s.tab_underline_under_text);
@@ -1664,21 +1616,6 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                 ui.label(RichText::new("Overlays & Toasts").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
                 local_changed |= style_drag_u8(ui,  "toast_bg_alpha",        &mut s.toast_bg_alpha);
                 local_changed |= style_drag_u8(ui,  "dialog_backdrop_alpha", &mut s.dialog_backdrop_alpha);
-                // input_focus_color optional override
-                {
-                    let mut enabled = s.input_focus_color.is_some();
-                    let prev = enabled;
-                    ui.horizontal(|ui| {
-                        if ui.checkbox(&mut enabled, "input_focus_color").changed() || enabled != prev {
-                            if enabled { s.input_focus_color = Some(egui::Color32::from_rgb(100,150,255)); }
-                            else { s.input_focus_color = None; }
-                            local_changed = true;
-                        }
-                        if let Some(ref mut c) = s.input_focus_color {
-                            if ui.color_edit_button_srgba(c).changed() { local_changed = true; }
-                        }
-                    });
-                }
 
                 // Delete button for user presets
                 if !is_canonical {
@@ -1792,7 +1729,6 @@ fn field_tip(name: &str) -> &'static str {
         "tab_hover_bg_alpha"         => "Background alpha on hovered inactive tab",
         "section_label_padding_top"  => "Space above eyebrow/section labels in px",
         "section_label_padding_bottom" => "Space below eyebrow/section labels before content in px",
-        "input_focus_color"          => "Focus ring color for text inputs (None=use accent)",
         "pane_gap_color"             => "Gutter fill color between panes (None=use toolbar_border)",
         "drag_handle_alpha"          => "Opacity of drag handles at rest (0=invisible, 1=full)",
         "drag_handle_dot_scale"      => "Size multiplier for drag handle dots (1.0=default)",

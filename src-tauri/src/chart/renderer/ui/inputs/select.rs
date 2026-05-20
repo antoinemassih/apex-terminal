@@ -298,19 +298,18 @@ impl<'a, T: PartialEq + Copy> SegmentedControl<'a, T> {
             for (i, (val, label)) in self.options.iter().enumerate() {
                 let active = val == current;
                 // Resolve active/idle colors from style overrides.
-                let active_fill = st.active_fill_color.unwrap_or_else(|| color_alpha(accent, alpha_tint()));
-                let active_fg   = st.active_text_color.unwrap_or(accent);
-                let idle_fg     = st.segmented_idle_text.unwrap_or(dim);
+                // Derive active/idle colors from the invert-active discriminant (§3.2).
+                let theme = ambient(ui.ctx());
+                let active_fill = if st.invert_active_fill { theme.text } else { color_alpha(accent, alpha_tint()) };
+                let active_fg   = if st.invert_active_fill { theme.bg } else { accent };
+                let idle_fg     = dim; // segmented_idle_text fallback was dim
                 let fg = if active { active_fg } else { idle_fg };
-                let idle_border_col = st.idle_outline_color
-                    .or(st.segmented_idle_fill)
-                    .unwrap_or(Color32::TRANSPARENT);
+                let idle_border_col = theme.toolbar_border; // idle_outline_color fallback was toolbar_border
                 let (bg, border) = if active {
-                    // solid black (or accent) fill; use active_fill for border too
-                    let fill = if st.active_fill_color.is_some() { active_fill } else { color_alpha(accent, alpha_tint()) };
+                    let fill = if st.invert_active_fill { active_fill } else { color_alpha(accent, alpha_tint()) };
                     (fill, color_alpha(accent, alpha_dim()))
                 } else {
-                    let idle_bg = st.segmented_idle_fill.unwrap_or(Color32::TRANSPARENT);
+                    let idle_bg = Color32::TRANSPARENT; // segmented_idle_fill fallback was TRANSPARENT
                     (idle_bg, idle_border_col)
                 };
 
