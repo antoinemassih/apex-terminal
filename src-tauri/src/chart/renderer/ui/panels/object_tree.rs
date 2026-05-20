@@ -36,7 +36,7 @@ use crate::ui_kit::widgets::{
 };
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
-use super::super::widgets::context_menu::{MenuItem, DangerMenuItem, Submenu, MenuItemWithIcon, MenuRow as _MenuRow};
+use crate::ui_kit::widgets::context_menu::{MenuItem, DangerMenuItem, Submenu, MenuItemWithIcon, MenuRow as _MenuRow};
 use crate::ui_kit::icons::Icon;
 
 /// Short type key for type-level opacity mapping.
@@ -474,7 +474,7 @@ fn draw_drawings_section(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &s
                                 }
                             });
                             ui.add(egui::Separator::default().spacing(2.0));
-                            let mt = super::super::widgets::context_menu::MenuTheme::from_theme(t);
+                            let mt = crate::ui_kit::widgets::context_menu::MenuTheme::from_theme(t);
                             // UX-3 Fix 4: inline rename via context menu.
                             if MenuItemWithIcon::new("Rename", Icon::PENCIL_LINE).show(ui, &mt).clicked() {
                                 rename_id = Some(ds_id_rename_menu);
