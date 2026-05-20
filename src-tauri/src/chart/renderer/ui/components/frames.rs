@@ -1,7 +1,7 @@
-//! Frames — card, dialog, themed popup, and order card with accent stripe.
+//! Frames — card, dialog, and themed popup.
 
 use super::super::style::*;
-use egui::{self, Color32, Rect, Stroke, Ui, Vec2};
+use egui::{self, Color32, Stroke, Ui};
 
 // ─── Frames ───────────────────────────────────────────────────────────────────
 
@@ -138,45 +138,3 @@ pub fn themed_popup_frame(
     frame
 }
 
-// ─── Cards ────────────────────────────────────────────────────────────────────
-
-/// Accent card — card with a left accent stripe and explicit border color param.
-/// Returns generic R from `add_contents`. Distinct from style::order_card (which
-/// takes no border param and returns bool).
-pub fn accent_card<R>(
-    ui: &mut Ui,
-    accent: Color32,
-    bg: Color32,
-    border: Color32,
-    add_contents: impl FnOnce(&mut Ui) -> R,
-) -> R {
-    let st = current();
-    let mut frame = egui::Frame::NONE
-        .fill(bg)
-        .corner_radius(r_md_cr())
-        .inner_margin(egui::Margin {
-            left: gap_md() as i8 + 3,
-            right: gap_lg() as i8,
-            top: gap_md() as i8,
-            bottom: gap_md() as i8,
-        });
-    if st.hairline_borders {
-        frame = frame.stroke(Stroke::new(st.stroke_std, border));
-    } else {
-        frame = frame.stroke(Stroke::new(st.stroke_thin, color_alpha(border, alpha_muted())));
-    }
-
-    let mut out: Option<R> = None;
-    let resp = frame.show(ui, |ui| {
-        // Paint the left accent stripe inside the frame.
-        let max = ui.max_rect();
-        ui.painter().rect_filled(
-            Rect::from_min_size(max.min, Vec2::new(2.5, max.height())),
-            r_xs(),
-            accent,
-        );
-        out = Some(add_contents(ui));
-    });
-    let _ = resp;
-    out.expect("accent_card contents")
-}
