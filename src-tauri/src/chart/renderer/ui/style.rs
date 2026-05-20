@@ -1590,84 +1590,9 @@ pub fn action_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool)
     resp.clicked()
 }
 
-/// Trade button — deep saturated bg for BUY/SELL. White bold text.
-#[deprecated(note = "use `ui_kit::Button::trade(label).tint(color).min_size((width, 24.0)).show(ui, theme)`")]
-pub fn trade_btn(ui: &mut egui::Ui, label: &str, color: Color32, width: f32) -> bool {
-    let bright = crate::dt_f32!(button.trade_brightness, 0.55);
-    let bg = Color32::from_rgb(
-        (color.r() as f32 * bright) as u8,
-        (color.g() as f32 * bright) as u8,
-        (color.b() as f32 * bright) as u8);
-    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(11.0).strong().color(contrast_fg(bg)))
-        .fill(bg).min_size(egui::vec2(width, row_height_spacious())).corner_radius(radius_sm()));
-    hit(&resp.rect, "TRADE_BTN", "Buttons");
-    if resp.hovered() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        let hb = crate::dt_f32!(button.trade_hover_brightness, 0.7);
-        let hover_bg = Color32::from_rgb(
-            (color.r() as f32 * hb).min(255.0) as u8,
-            (color.g() as f32 * hb).min(255.0) as u8,
-            (color.b() as f32 * hb).min(255.0) as u8);
-        ui.painter().rect_filled(resp.rect, radius_md(), hover_bg);
-        ui.painter().text(resp.rect.center(), egui::Align2::CENTER_CENTER,
-            label, egui::FontId::monospace(font_lg()), contrast_fg(hover_bg));
-    }
-    resp.clicked()
-}
-
-/// Primary CTA button — solid filled accent, style-driven height/padding.
-/// Use for the "REVIEW BUY" / "PLACE ORDER" terminal action at the bottom of order tickets.
-/// The fill color and text color follow `active_fill_color` / `active_text_color` overrides
-/// when set (Newsprint: black fill + white text), otherwise uses `color` directly.
-#[deprecated(note = "use `ui_kit::Button::cta(label).tint(color).enabled(b).show(ui, theme)`")]
-pub fn cta_btn(ui: &mut egui::Ui, label: &str, color: Color32, enabled: bool) -> bool {
-    let st = current();
-    let fill = st.active_fill_color.unwrap_or(color);
-    let fg   = st.active_text_color.unwrap_or_else(|| contrast_fg(fill));
-    let h    = st.cta_height_px;
-    let px   = st.cta_padding_x;
-    let cr   = st.r_sm as f32;
-    let prev_pad = ui.spacing().button_padding;
-    ui.spacing_mut().button_padding = egui::vec2(px, 4.0);
-    let resp = ui.add_enabled(enabled,
-        egui::Button::new(RichText::new(label).monospace().size(font_md()).strong().color(fg))
-            .fill(if enabled { fill } else { color_alpha(fill, alpha_muted()) })
-            .stroke(Stroke::NONE)
-            .corner_radius(cr)
-            .min_size(egui::vec2(ui.available_width(), h)));
-    ui.spacing_mut().button_padding = prev_pad;
-    hit(&resp.rect, "CTA_BTN", "Buttons");
-    if resp.hovered() && enabled && !crate::design_tokens::is_inspect_mode() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-    }
-    resp.clicked()
-}
-
-/// Small action button — for inline header actions like "Clear All", "Close All".
-#[deprecated(note = "use `ui_kit::Button::small_action(label).tint(color).show(ui, theme)`")]
-pub fn small_action_btn(ui: &mut egui::Ui, label: &str, color: Color32) -> bool {
-    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_sm()).strong().color(color))
-        .fill(color_alpha(color, alpha_soft()))
-        .corner_radius(radius_sm())
-        .stroke(Stroke::new(stroke_thin(), color_alpha(color, alpha_dim())))
-        .min_size(egui::vec2(0.0, 16.0)));
-    hit(&resp.rect, "SMALL_BTN", "Buttons");
-    if resp.hovered() && !crate::design_tokens::is_inspect_mode() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-    resp.clicked()
-}
-
-/// Simple button — subtle border, for form actions (Create, Cancel).
-#[deprecated(note = "use `ui_kit::Button::simple(label).tint(color).min_width(w).show(ui, theme)`")]
-pub fn simple_btn(ui: &mut egui::Ui, label: &str, color: Color32, min_width: f32) -> bool {
-    let resp = ui.add(egui::Button::new(RichText::new(label).monospace().size(font_sm()).color(color))
-        .fill(color_alpha(color, alpha_faint()))
-        .stroke(Stroke::new(stroke_thin(), color_alpha(color, alpha_muted())))
-        .corner_radius(radius_sm())
-        .min_size(egui::vec2(min_width, row_height_dense())));
-    hit(&resp.rect, "SIMPLE_BTN", "Buttons");
-    if resp.hovered() && !crate::design_tokens::is_inspect_mode() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-    resp.clicked()
-}
+// trade_btn / cta_btn / small_action_btn / simple_btn removed — zero call
+// sites. Use the canonical ui_kit::Button presets:
+//   ui_kit::Button::trade / ::cta / ::small_action / ::simple
 
 // ─── Drawing helpers ──────────────────────────────────────────────────────────
 
