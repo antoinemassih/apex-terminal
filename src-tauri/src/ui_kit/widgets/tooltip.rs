@@ -177,10 +177,16 @@ impl<'a> Tooltip<'a> {
                     ui.set_max_width(MAX_WIDTH);
                     match self.content {
                         Content::Text(s) => {
+                            // NOT subpixel: the tooltip Area uses `ui.set_opacity`
+                            // for fade-in, and egui's opacity multiply cannot touch
+                            // a `Shape::Callback` (the subpixel text path). Subpixel
+                            // text would ignore the fade and render at the wrong
+                            // offset inside the Area. Grayscale mesh AA composites
+                            // correctly and is imperceptibly different at this size.
                             PolishedLabel::new(s)
                                 .size(KitSize::Xs)
                                 .color(fg)
-                                .subpixel(true)
+                                .subpixel(false)
                                 .show(ui, theme);
                         }
                         Content::Rich(f) => {
