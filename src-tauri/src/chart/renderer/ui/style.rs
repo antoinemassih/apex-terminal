@@ -956,7 +956,7 @@ pub fn dialog_header(ui: &mut egui::Ui, title: &str, dim: Color32) -> bool {
 
 /// Dialog header bar with explicit header background.
 pub fn dialog_header_colored(ui: &mut egui::Ui, title: &str, dim: Color32, header_bg: Option<Color32>) -> bool {
-    use crate::ui_kit::icons::Icon;
+    let _ = dim; // previously used to tint the X glyph; now handled by Button::close placement
     let darken = crate::dt_u8!(dialog.header_darken, 8);
     let fill = header_bg.unwrap_or_else(|| {
         let bg = ui.visuals().window_fill();
@@ -972,7 +972,8 @@ pub fn dialog_header_colored(ui: &mut egui::Ui, title: &str, dim: Color32, heade
                 let text_col = ui.style().visuals.override_text_color.unwrap_or(TEXT_PRIMARY);
                 ui.label(RichText::new(title).monospace().size(font_lg()).strong().color(text_col));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if icon_btn(ui, Icon::X, dim.gamma_multiply(0.7), font_xl()).clicked() {
+                    let t = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+                    if crate::ui_kit::widgets::Button::close().show(ui, t).clicked() {
                         closed = true;
                     }
                 });
@@ -1180,56 +1181,18 @@ pub fn segmented_control(
 }
 
 // ─── Panel chrome ─────────────────────────────────────────────────────────────
+// icon_btn removed — use `ui_kit::Button::icon(icon).variant(Variant::Ghost).placement(p).show(ui, t)`.
 
-/// Square icon button with hover highlight — always renders as a true square hit target.
-/// Internally zeroes button_padding so egui doesn't add asymmetric whitespace around the icon.
-/// Returns the full Response so callers can chain `.clicked()`, `.on_hover_text()`, etc.
-pub fn icon_btn(ui: &mut egui::Ui, icon: &str, color: Color32, size: f32) -> egui::Response {
-    let side = (size + 8.0).max(22.0);
-    let prev_pad = ui.spacing().button_padding;
-    ui.spacing_mut().button_padding = egui::vec2(0.0, 0.0);
-    let resp = ui.add(
-        egui::Button::new(RichText::new(icon).size(size).color(color))
-            .frame(false)
-            .min_size(egui::vec2(side, side))
-    );
-    ui.spacing_mut().button_padding = prev_pad;
-    hit(&resp.rect, "ICON_BTN", "Icon Buttons");
-    if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        ui.painter().rect_filled(resp.rect, radius_sm(), color_alpha(color, alpha_ghost()));
-        ui.painter().rect_stroke(resp.rect, radius_sm(),
-            egui::Stroke::new(stroke_thin(), color_alpha(color, alpha_muted())), egui::StrokeKind::Inside);
-    }
-    resp
-}
-
-/// Close button (X icon) — square icon_btn, standard panel close.
+/// Close button (X icon) — standard panel close.
+/// Kept for ABI compatibility (imported in core.rs which is sacred).
 #[deprecated(note = "use `ui_kit::Button::close().show(ui, theme).clicked()`")]
 #[inline]
-pub fn close_button(ui: &mut egui::Ui, dim: Color32) -> bool {
-    icon_btn(ui, crate::ui_kit::icons::Icon::X, dim, font_lg()).clicked()
+pub fn close_button(ui: &mut egui::Ui, _dim: Color32) -> bool {
+    let t = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    crate::ui_kit::widgets::Button::close().show(ui, t).clicked()
 }
 
-/// Panel header — FONT_LG title + close button. Returns true if closed.
-pub fn panel_header(ui: &mut egui::Ui, title: &str, accent: Color32, dim: Color32) -> bool {
-    panel_header_sub(ui, title, None, accent, dim)
-}
-
-/// Panel header with optional subtitle text. Returns true if closed.
-pub fn panel_header_sub(ui: &mut egui::Ui, title: &str, subtitle: Option<&str>, accent: Color32, dim: Color32) -> bool {
-    let mut closed = false;
-    ui.horizontal(|ui| {
-        ui.label(RichText::new(title).monospace().size(font_md()).strong().color(accent));
-        if let Some(sub) = subtitle {
-            ui.label(RichText::new(sub).monospace().size(font_sm()).color(dim));
-        }
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if close_button(ui, dim) { closed = true; }
-        });
-    });
-    closed
-}
+// panel_header / panel_header_sub removed — use ui_kit::widgets::PanelHeader instead.
 
 /// Horizontal tab bar — 2px underline on active tab. Renders inline; wrap in `ui.horizontal`.
 pub fn tab_bar<T: PartialEq + Copy>(
