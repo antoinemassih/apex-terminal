@@ -97,13 +97,13 @@ pub fn show_drawing_properties_bar_ui(
             "#cc5de8", "#ff922b", "#ffffff", "#82dcb4",
         ];
         let cur_color = hex_to_color(&sel_draw.color, 1.0);
-        // KEEP: trigger label IS the current color swatch (cur_color varies per drawing);
-        // Button::menu's fg_override sets the text color but cannot paint a colored-square
-        // glyph whose fill matches an arbitrary drawing color. Needs a dedicated swatch
-        // trigger API (e.g. Button::swatch(color)) before this can be migrated.
-        let color_menu = ui.menu_button(
-            egui::RichText::new("\u{25A0}").size(font_md() + 2.0).color(cur_color),
-            |ui| {
+        // The trigger glyph (U+25A0 filled square) is colored to the current
+        // drawing color via Button::menu's fg override — a colored text glyph
+        // IS the swatch, so no dedicated Button::swatch API is needed.
+        let color_menu = KitButton::menu("\u{25A0}")
+            .glyph_size(font_md() + 2.0)
+            .fg(cur_color)
+            .show_menu(ui, t, |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 ui.spacing_mut().item_spacing = egui::vec2(gap_xs(), gap_xs());
@@ -130,8 +130,7 @@ pub fn show_drawing_properties_bar_ui(
                         }
                     }
                 });
-            },
-        );
+            });
         Tooltip::new("Color").show(ui, &color_menu.response, t);
 
         ui.add(egui::Separator::default().spacing(gap_xs()));
