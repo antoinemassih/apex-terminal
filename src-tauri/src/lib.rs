@@ -1,5 +1,6 @@
 #![recursion_limit = "512"]
 
+pub mod design_system;
 pub mod foundation;
 pub mod data;
 pub mod persistence;
