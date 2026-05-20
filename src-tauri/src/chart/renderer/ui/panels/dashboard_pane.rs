@@ -1,6 +1,7 @@
 //! Dashboard pane — auto-tiling grid of widgets.
 
 use egui;
+use super::super::style as st;
 use super::super::super::gpu::*;
 use super::super::widgets::layout::EmptyState;
 use super::super::widgets::headers::PaneHeader;
@@ -58,7 +59,7 @@ pub(crate) fn render(
         p.text(
             egui::pos2(strip_rect.left() + 8.0, strip_rect.center().y),
             egui::Align2::LEFT_CENTER, s1,
-            egui::FontId::monospace(10.0),
+            egui::FontId::monospace(st::font_xs_plus()),
             if bull_pct >= 0.5 { t.bull } else { t.bear },
         );
         // Middle: NH/NL
@@ -66,14 +67,14 @@ pub(crate) fn render(
         p.text(
             strip_rect.center(),
             egui::Align2::CENTER_CENTER, s2,
-            egui::FontId::monospace(10.0), t.text,
+            egui::FontId::monospace(st::font_xs_plus()), t.text,
         );
         // Right: % above SMA200
         let s3 = format!("{:.0}% > SMA200", b.pct_above_sma200);
         p.text(
             egui::pos2(strip_rect.right() - 8.0, strip_rect.center().y),
             egui::Align2::RIGHT_CENTER, s3,
-            egui::FontId::monospace(10.0), t.dim,
+            egui::FontId::monospace(st::font_xs_plus()), t.dim,
         );
         header_bottom += BREADTH_WIDGET_H + 4.0;
     }

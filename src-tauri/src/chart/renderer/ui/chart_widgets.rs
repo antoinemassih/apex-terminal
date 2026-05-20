@@ -1680,7 +1680,7 @@ fn draw_rsi_multi(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
     let avg: f32 = wd.rsi_multi.iter().sum::<f32>() / 7.0;
     let avg_col = if avg > 60.0 { t.bull } else if avg < 40.0 { t.bear } else { egui::Color32::from_rgb(255, 191, 0) };
     p.text(egui::pos2(cx, cy - 4.0), egui::Align2::CENTER_CENTER,
-        &format!("{:.0}", avg), egui::FontId::proportional(24.0), avg_col);
+        &format!("{:.0}", avg), egui::FontId::proportional(font_xl()), avg_col);
     p.text(egui::pos2(cx, cy + 12.0), egui::Align2::CENTER_CENTER,
         "RSI", egui::FontId::monospace(FONT_2XS), color_half(t.dim));
 
@@ -1705,7 +1705,7 @@ fn draw_rsi_multi(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
         let rsi = wd.rsi_multi[i];
         let color = if rsi > 70.0 { t.bull } else if rsi < 30.0 { t.bear } else { t.dim };
         p.text(egui::pos2(label_x, ly), egui::Align2::RIGHT_CENTER,
-            &format!("{} {:.0}", label, rsi), egui::FontId::monospace(6.5), color);
+            &format!("{} {:.0}", label, rsi), egui::FontId::monospace(font_4xs()), color);
     }
 }
 
@@ -1902,7 +1902,7 @@ fn draw_trend_align(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
     for (i, tf) in tf_labels.iter().enumerate() {
         // Row label
         p.text(egui::pos2(body.left() + 14.0, oy + i as f32 * gap_y + gap_y * 0.5),
-            egui::Align2::CENTER_CENTER, tf, egui::FontId::monospace(6.5), color_muted(t.dim));
+            egui::Align2::CENTER_CENTER, tf, egui::FontId::monospace(font_4xs()), color_muted(t.dim));
 
         for j in 0..cols {
             let bullish = wd.trend_grid[i][j];
@@ -2076,7 +2076,7 @@ fn draw_vol_regime(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
         "SQUEEZE" => t.bull, "EXPANSION" => t.bear, _ => t.dim
     };
     p.text(egui::pos2(cx, cy), egui::Align2::CENTER_CENTER, wd.vol_regime_label,
-        egui::FontId::proportional(14.0), regime_col);
+        egui::FontId::proportional(font_md_plus()), regime_col);
 }
 
 /// Momentum Heatmap — color strip barcode (chart9 dot grid adapted)
@@ -2140,7 +2140,7 @@ fn draw_breadth_thermo(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
     // Score on the right
     let sc = if score > 60.0 { t.bull } else if score < 40.0 { t.bear } else { egui::Color32::from_rgb(255, 191, 0) };
     p.text(egui::pos2(body.right() - 8.0, body.center().y - 8.0), egui::Align2::RIGHT_CENTER,
-        &format!("{:.0}", score), egui::FontId::proportional(24.0), sc);
+        &format!("{:.0}", score), egui::FontId::proportional(font_xl()), sc);
     p.text(egui::pos2(body.right() - 8.0, body.center().y + 12.0), egui::Align2::RIGHT_CENTER,
         if score > 60.0 { "HEALTHY" } else if score < 40.0 { "WEAK" } else { "MIXED" },
         egui::FontId::monospace(FONT_2XS), sc);
@@ -2233,7 +2233,7 @@ fn draw_rel_strength(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
     let avg = metrics.iter().map(|(_, v)| v).sum::<f32>() / 3.0;
     let ac = if avg > 60.0 { t.bull } else if avg < 40.0 { t.bear } else { t.dim };
     p.text(egui::pos2(cx, cy), egui::Align2::CENTER_CENTER,
-        &format!("{:.0}", avg), egui::FontId::proportional(20.0), ac);
+        &format!("{:.0}", avg), egui::FontId::proportional(font_xl()), ac);
 }
 
 /// Risk Dashboard — position sizing calculator
@@ -2291,7 +2291,7 @@ fn draw_earnings_mom(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &
         p.text(egui::pos2(cell.left() + 6.0, cell.top() + 8.0), egui::Align2::LEFT_CENTER,
             label, mono_4xs(), color_half(t.dim));
         p.text(egui::pos2(cell.center().x, cell.center().y + 4.0), egui::Align2::CENTER_CENTER,
-            val, egui::FontId::proportional(18.0), *color);
+            val, egui::FontId::proportional(font_lg()), *color);
     }
 }
 
@@ -2308,7 +2308,7 @@ fn draw_liquidity_score(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
         color_alpha(t.toolbar_border, ALPHA_MUTED));
 
     p.text(egui::pos2(cx, cy - 4.0), egui::Align2::CENTER_CENTER,
-        &format!("{:.0}", score), egui::FontId::proportional(24.0), color);
+        &format!("{:.0}", score), egui::FontId::proportional(font_xl()), color);
     p.text(egui::pos2(cx, cy + 14.0), egui::Align2::CENTER_CENTER,
         label, egui::FontId::monospace(FONT_2XS), color);
 }
@@ -2384,12 +2384,12 @@ fn draw_signal_radar(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
         let lx = cx + label_r * angle.cos();
         let ly = cy + label_r * angle.sin();
         p.text(egui::pos2(lx, ly), egui::Align2::CENTER_CENTER, name,
-            egui::FontId::monospace(5.5), if *active { color_subtle(t.accent) } else { color_very_dim(t.dim) });
+            egui::FontId::monospace(font_4xs()), if *active { color_subtle(t.accent) } else { color_very_dim(t.dim) });
     }
 
     // Center: active count
     p.text(egui::pos2(cx, cy - 4.0), egui::Align2::CENTER_CENTER,
-        &format!("{}", active_count), egui::FontId::proportional(20.0), t.accent);
+        &format!("{}", active_count), egui::FontId::proportional(font_xl()), t.accent);
     p.text(egui::pos2(cx, cy + 10.0), egui::Align2::CENTER_CENTER,
         "ACTIVE", mono_4xs(), color_half(t.dim));
 }
@@ -2463,7 +2463,7 @@ fn draw_tape_speed(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
 
     // Speed value
     p.text(egui::pos2(cx, cy + 14.0), egui::Align2::CENTER_CENTER,
-        &format!("{:.1}x", speed), egui::FontId::proportional(18.0), needle_col);
+        &format!("{:.1}x", speed), egui::FontId::proportional(font_lg()), needle_col);
 
     // Labels
     p.text(egui::pos2(cx - r + 4.0, cy + 4.0), egui::Align2::LEFT_CENTER,
@@ -2502,7 +2502,7 @@ fn draw_fundamentals(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
             label, mono_4xs(), color_dim(t.dim));
         // Value
         p.text(egui::pos2(x + 6.0, y + cell_h * 0.6), egui::Align2::LEFT_CENTER,
-            value, egui::FontId::proportional(14.0), *color);
+            value, egui::FontId::proportional(font_md_plus()), *color);
     }
 
     // Analyst consensus bar at bottom
@@ -2579,7 +2579,7 @@ fn draw_latency(p: &egui::Painter, body: egui::Rect, t: &Theme) {
     p.text(egui::pos2(body.left() + 8.0, body.top() + 6.0), egui::Align2::LEFT_CENTER,
         "RENDER", egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
     p.text(egui::pos2(body.left() + 8.0, body.top() + 22.0), egui::Align2::LEFT_CENTER,
-        &format!("{:.1}ms", frame_ms), egui::FontId::proportional(18.0), frame_col);
+        &format!("{:.1}ms", frame_ms), egui::FontId::proportional(font_lg()), frame_col);
     p.text(egui::pos2(body.left() + 75.0, body.top() + 22.0), egui::Align2::LEFT_CENTER,
         "60fps", egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
 
@@ -2861,7 +2861,7 @@ fn draw_custom(p: &egui::Painter, body: egui::Rect, t: &Theme) {
     let cx = body.center().x;
     let cy = body.center().y;
     p.text(egui::pos2(cx, cy - 6.0), egui::Align2::CENTER_CENTER,
-        "\u{2699}", egui::FontId::proportional(20.0), color_very_dim(t.dim));
+        "\u{2699}", egui::FontId::proportional(font_xl()), color_very_dim(t.dim));
     p.text(egui::pos2(cx, cy + 14.0), egui::Align2::CENTER_CENTER,
         "Drag to configure", egui::FontId::monospace(FONT_XS), color_very_dim(t.dim));
 }
@@ -3223,7 +3223,7 @@ fn draw_precursor_alert(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
 
     // Flash icon
     p.text(egui::pos2(cx, body.top() + 12.0), egui::Align2::CENTER_CENTER,
-        "\u{26A1}", egui::FontId::proportional(18.0), dir_col);
+        "\u{26A1}", egui::FontId::proportional(font_lg()), dir_col);
 
     // Score
     hero_number(p, egui::pos2(cx, body.top() + 34.0), &format!("{:.0}", wd.precursor_score), dir_col);

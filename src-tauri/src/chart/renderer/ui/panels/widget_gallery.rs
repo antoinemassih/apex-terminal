@@ -7,6 +7,7 @@
 //! Don't put real trading workflows in here. It's a flat showcase.
 
 use egui::{Color32, Id};
+use crate::chart::renderer::ui::style as st;
 
 use crate::chart_renderer::gpu::Theme;
 use crate::ui_kit::icons::Icon;
@@ -728,7 +729,7 @@ pub fn show_widget_gallery(ui: &mut egui::Ui, theme: &Theme) {
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
                 name,
-                egui::FontId::proportional(14.0),
+                egui::FontId::proportional(st::font_md_plus()),
                 theme.text(),
             );
         }

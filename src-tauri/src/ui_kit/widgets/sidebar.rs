@@ -388,7 +388,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
                 let s = if n > 99 { "99+".to_string() } else { n.to_string() };
                 // layout-only galley: only width is read below.
                 let bg_text = ui.fonts(|f| f.layout_no_wrap(
-                    s.clone(), FontId::monospace(10.0), Color32::WHITE,
+                    s.clone(), FontId::monospace(st::font_xs_plus()), Color32::WHITE,
                 ));
                 let bw = (bg_text.rect.width() + 10.0).max(18.0);
                 let bh = 14.0;
@@ -399,7 +399,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
                 );
                 p.rect_filled(br, CornerRadius::same(7), theme.bear()); // TODO: off-token
                 p.text(br.center(), Align2::CENTER_CENTER, &s,
-                    FontId::monospace(10.0), st::contrast_fg(theme.bear()));
+                    FontId::monospace(st::font_xs_plus()), st::contrast_fg(theme.bear()));
             }
         } else if let Some(n) = item.badge {
             // Rail mode: tiny dot-style badge in the top-right corner of the icon.
@@ -412,7 +412,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
             );
             p.rect_filled(br, CornerRadius::same(st::radius_md() as u8), theme.bear());
             p.text(br.center(), Align2::CENTER_CENTER, &s,
-                FontId::monospace(9.0), st::contrast_fg(theme.bear()));
+                FontId::monospace(st::font_xs()), st::contrast_fg(theme.bear()));
         }
 
         if resp.clicked() && !item.disabled {

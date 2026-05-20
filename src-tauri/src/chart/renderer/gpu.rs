@@ -4152,7 +4152,7 @@ pub(crate) fn paint_widget_preview(p: &egui::Painter, r: egui::Rect, kind: super
         // Hero number fallback
         _ => {
             p.text(egui::pos2(cx, cy), egui::Align2::CENTER_CENTER, kind.icon(),
-                egui::FontId::proportional(14.0), accent);
+                egui::FontId::proportional(style::font_md_plus()), accent);
         }
     }
 }

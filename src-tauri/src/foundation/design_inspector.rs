@@ -10,7 +10,7 @@
 
 use egui::{Color32, RichText, Ui, Stroke};
 use crate::design_tokens::*;
-use crate::chart_renderer::ui::style::{font_xs, radius_sm};
+use crate::chart_renderer::ui::style::{font_2xs, font_xs, font_xs_plus, radius_sm};
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
 use std::path::PathBuf;
@@ -250,13 +250,13 @@ impl Inspector {
                 // Family label above the element
                 let label_pos = egui::pos2(rect.left(), rect.top() - 2.0);
                 // Background for readability
-                let galley = painter.layout_no_wrap(h.family.to_string(), egui::FontId::monospace(10.0), Color32::WHITE);
+                let galley = painter.layout_no_wrap(h.family.to_string(), egui::FontId::monospace(font_xs_plus()), Color32::WHITE);
                 let label_rect = egui::Rect::from_min_size(
                     egui::pos2(label_pos.x - 2.0, label_pos.y - galley.size().y - 2.0),
                     egui::vec2(galley.size().x + 4.0, galley.size().y + 4.0));
                 painter.rect_filled(label_rect, 2.0, Color32::from_rgba_unmultiplied(20, 20, 30, 230));
                 painter.text(egui::pos2(label_pos.x, label_pos.y - 1.0), egui::Align2::LEFT_BOTTOM,
-                    h.family, egui::FontId::monospace(10.0), Color32::from_rgb(203, 166, 247));
+                    h.family, egui::FontId::monospace(font_xs_plus()), Color32::from_rgb(203, 166, 247));
 
                 self.hovered_family = Some(h.family);
 
@@ -677,7 +677,7 @@ impl Inspector {
                         ui.add(egui::TextEdit::singleline(&mut self.filter)
                             .hint_text("Filter tokens...")
                             .desired_width(ui.available_width())
-                            .font(egui::FontId::monospace(10.0)));
+                            .font(egui::FontId::monospace(font_xs_plus())));
                     });
 
                 // Category tabs (vertical list)
@@ -2425,7 +2425,7 @@ fn preview_widgets(ui: &mut Ui, st: &crate::chart_renderer::ui::style::StyleSett
         p.text(egui::pos2(rect.left() + 8.0, rect.center().y), egui::Align2::LEFT_CENTER,
             "AAPL", crate::chart_renderer::ui::style::mono_sm(), accent);
         p.text(egui::pos2(rect.right() - 8.0, rect.center().y), egui::Align2::RIGHT_CENTER,
-            "x", egui::FontId::monospace(10.0), dim);
+            "x", egui::FontId::monospace(font_xs_plus()), dim);
     }
     ui.add_space(6.0);
 
@@ -2442,9 +2442,9 @@ fn preview_widgets(ui: &mut Ui, st: &crate::chart_renderer::ui::style::StyleSett
         p.text(egui::pos2(rect.left() + 10.0, rect.top() + 10.0), egui::Align2::LEFT_TOP,
             "AAPL - 185.30", crate::chart_renderer::ui::style::mono_sm(), text);
         p.text(egui::pos2(rect.left() + 10.0, rect.top() + 24.0), egui::Align2::LEFT_TOP,
-            "1 call @ 1.45", egui::FontId::monospace(9.0), dim);
+            "1 call @ 1.45", egui::FontId::monospace(font_xs()), dim);
         p.text(egui::pos2(rect.right() - 8.0, rect.bottom() - 8.0), egui::Align2::RIGHT_BOTTOM,
-            "OPEN", egui::FontId::monospace(8.0), green);
+            "OPEN", egui::FontId::monospace(font_2xs()), green);
     }
     ui.add_space(6.0);
 
@@ -2465,7 +2465,7 @@ fn preview_widgets(ui: &mut Ui, st: &crate::chart_renderer::ui::style::StyleSett
             let (rect, _) = ui.allocate_exact_size(egui::vec2(50.0, 20.0), egui::Sense::hover());
             ui.painter().rect_stroke(rect, r_sm, Stroke::new(sw, preview_alpha(dim, 60)), egui::StrokeKind::Outside);
             ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
-                "Ghost", egui::FontId::monospace(9.0), dim);
+                "Ghost", egui::FontId::monospace(font_xs()), dim);
         }
         preview_btn(ui, "Delete", red, preview_alpha(red, 30), r_sm, sw);
     });
@@ -2480,7 +2480,7 @@ fn preview_widgets(ui: &mut Ui, st: &crate::chart_renderer::ui::style::StyleSett
             ui.painter().rect_filled(rect, pill_r, preview_alpha(accent, 40));
             ui.painter().rect_stroke(rect, pill_r, Stroke::new(sw, accent), egui::StrokeKind::Outside);
             ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
-                "Active", egui::FontId::monospace(9.0), accent);
+                "Active", egui::FontId::monospace(font_xs()), accent);
         }
         ui.add_space(4.0);
         {
@@ -2488,7 +2488,7 @@ fn preview_widgets(ui: &mut Ui, st: &crate::chart_renderer::ui::style::StyleSett
             ui.painter().rect_filled(rect, pill_r, preview_alpha(border, 20));
             ui.painter().rect_stroke(rect, pill_r, Stroke::new(sw, preview_alpha(border, 60)), egui::StrokeKind::Outside);
             ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
-                "Idle", egui::FontId::monospace(9.0), dim);
+                "Idle", egui::FontId::monospace(font_xs()), dim);
         }
     });
     ui.add_space(6.0);
@@ -2522,7 +2522,7 @@ fn preview_widgets(ui: &mut Ui, st: &crate::chart_renderer::ui::style::StyleSett
             let is_active = i == 0;
             let fg = if is_active { accent } else { dim };
             p.text(tab_rect.center(), egui::Align2::CENTER_CENTER,
-                *lbl, egui::FontId::monospace(10.0), fg);
+                *lbl, egui::FontId::monospace(font_xs_plus()), fg);
             if is_active && st.show_active_tab_underline {
                 p.line_segment(
                     [egui::pos2(tab_rect.left() + 2.0, tab_rect.bottom()),
@@ -2541,14 +2541,14 @@ fn preview_widgets(ui: &mut Ui, st: &crate::chart_renderer::ui::style::StyleSett
         let p = ui.painter();
         let lw = 70.0;
         p.text(egui::pos2(rect.left() + lw - 4.0, rect.center().y),
-            egui::Align2::RIGHT_CENTER, "Symbol", egui::FontId::monospace(9.0), dim);
+            egui::Align2::RIGHT_CENTER, "Symbol", egui::FontId::monospace(font_xs()), dim);
         let inp = egui::Rect::from_min_max(
             egui::pos2(rect.left() + lw + 4.0, rect.top() + 2.0),
             egui::pos2(rect.right(), rect.bottom() - 2.0));
         p.rect_filled(inp, r_sm, Color32::from_rgb(18, 20, 28));
         p.rect_stroke(inp, r_sm, Stroke::new(st.stroke_thin, preview_alpha(border, 80)), egui::StrokeKind::Outside);
         p.text(egui::pos2(inp.left() + 6.0, inp.center().y),
-            egui::Align2::LEFT_CENTER, "AAPL", egui::FontId::monospace(10.0), text);
+            egui::Align2::LEFT_CENTER, "AAPL", egui::FontId::monospace(font_xs_plus()), text);
     }
     ui.add_space(6.0);
 
@@ -2566,15 +2566,15 @@ fn preview_widgets(ui: &mut Ui, st: &crate::chart_renderer::ui::style::StyleSett
         p.text(egui::pos2(hdr.left() + 10.0, hdr.center().y), egui::Align2::LEFT_CENTER,
             "Confirm Order", crate::chart_renderer::ui::style::mono_sm(), text);
         p.text(egui::pos2(hdr.right() - 8.0, hdr.center().y), egui::Align2::RIGHT_CENTER,
-            "x", egui::FontId::monospace(10.0), dim);
+            "x", egui::FontId::monospace(font_xs_plus()), dim);
         p.text(egui::pos2(rect.left() + 10.0, rect.top() + 34.0), egui::Align2::LEFT_TOP,
-            "Buy 100 AAPL @ 185.30 limit", egui::FontId::monospace(9.0), dim);
+            "Buy 100 AAPL @ 185.30 limit", egui::FontId::monospace(font_xs()), dim);
         let btn_r = egui::Rect::from_min_size(
             egui::pos2(rect.right() - 60.0, rect.bottom() - 20.0), egui::vec2(52.0, 16.0));
         p.rect_filled(btn_r, r_sm, preview_alpha(green, 40));
         p.rect_stroke(btn_r, r_sm, Stroke::new(sw, green), egui::StrokeKind::Outside);
         p.text(btn_r.center(), egui::Align2::CENTER_CENTER,
-            "Place", egui::FontId::monospace(9.0), green);
+            "Place", egui::FontId::monospace(font_xs()), green);
     }
     ui.add_space(6.0);
 
@@ -2588,13 +2588,13 @@ fn preview_widgets(ui: &mut Ui, st: &crate::chart_renderer::ui::style::StyleSett
         p.rect_filled(rect, tip_r, Color32::from_rgb(20, 20, 30));
         p.rect_stroke(rect, tip_r, Stroke::new(st.stroke_thin, preview_alpha(border, 100)), egui::StrokeKind::Outside);
         p.text(egui::pos2(rect.left() + 8.0, rect.top() + 8.0),
-            egui::Align2::LEFT_TOP, "Volume", egui::FontId::monospace(8.0), dim);
+            egui::Align2::LEFT_TOP, "Volume", egui::FontId::monospace(font_2xs()), dim);
         p.text(egui::pos2(rect.right() - 8.0, rect.top() + 8.0),
-            egui::Align2::RIGHT_TOP, "1.23M", egui::FontId::monospace(10.0), text);
+            egui::Align2::RIGHT_TOP, "1.23M", egui::FontId::monospace(font_xs_plus()), text);
         p.text(egui::pos2(rect.left() + 8.0, rect.top() + 22.0),
-            egui::Align2::LEFT_TOP, "Avg Vol", egui::FontId::monospace(8.0), dim);
+            egui::Align2::LEFT_TOP, "Avg Vol", egui::FontId::monospace(font_2xs()), dim);
         p.text(egui::pos2(rect.right() - 8.0, rect.top() + 22.0),
-            egui::Align2::RIGHT_TOP, "980K", egui::FontId::monospace(10.0), text);
+            egui::Align2::RIGHT_TOP, "980K", egui::FontId::monospace(font_xs_plus()), text);
     }
     ui.add_space(4.0);
 }
@@ -2606,7 +2606,7 @@ fn preview_btn(ui: &mut Ui, label: &str, fg: Color32, bg: Color32, cr: egui::Cor
     ui.painter().rect_stroke(rect, cr,
         Stroke::new(sw, preview_alpha(fg, 150)), egui::StrokeKind::Outside);
     ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
-        label, egui::FontId::monospace(9.0), fg);
+        label, egui::FontId::monospace(font_xs()), fg);
 }
 
 fn preview_section_label(ui: &mut Ui, text: &str, color: Color32) {

@@ -36,6 +36,7 @@
 // sketch (texture pool, bind groups, shader source).
 
 use egui::{Color32, Painter, Rect, Vec2};
+use crate::chart::renderer::ui::style as st;
 
 /// Specification for a soft drop shadow.
 #[derive(Clone, Copy, Debug)]
@@ -306,7 +307,7 @@ pub fn show_shadow_gallery(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
                 name,
-                egui::FontId::proportional(14.0),
+                egui::FontId::proportional(st::font_md_plus()),
                 text,
             );
         }
