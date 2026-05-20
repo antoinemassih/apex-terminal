@@ -161,7 +161,7 @@ pub(crate) fn draw_content(
                     if age == u64::MAX { 0 } else { age.min(9999) },
                 )).size_px(font_2xs()).color(t.dim).gamma(0.4));
                 ui.horizontal(|ui| {
-                    ui.add_space(2.0);
+                    ui.add_space(gap_2xs());
                     let cw = (panel_w - 12.0) / 5.0;
                     let hdr_color = color_dim(t.dim);
                     col_header(ui, "SYM",   cw, hdr_color, false);
@@ -173,7 +173,7 @@ pub(crate) fn draw_content(
                 let max_rows = 20usize;
                 for r in m.rows.iter().take(max_rows) {
                     let row_resp = ui.horizontal(|ui| {
-                        ui.add_space(2.0);
+                        ui.add_space(gap_2xs());
                         let cw = (panel_w - 12.0) / 5.0;
                         ui.add_sized(egui::vec2(cw, 14.0), egui::Label::new(
                             egui::RichText::new(&r.symbol).monospace().size(font_xs()).color(t.text)
@@ -222,9 +222,9 @@ pub(crate) fn draw_content(
                 }
             });
         }
-        ui.add_space(4.0);
+        ui.add_space(gap_xs());
         separator(ui, color_alpha(t.toolbar_border, alpha_dim()));
-        ui.add_space(4.0);
+        ui.add_space(gap_xs());
     }
 
     // ── Custom scanner builder (collapsible) ──
@@ -316,7 +316,7 @@ pub(crate) fn draw_content(
                 ui.add_space(gap_sm());
                 let row_w = (panel_w - 8.0).max(80.0);
                 for _ in 0..6 {
-                    ui.add_space(2.0);
+                    ui.add_space(gap_2xs());
                     Skeleton::text(row_w).show(ui, t);
                 }
                 return;
@@ -373,7 +373,7 @@ pub(crate) fn draw_content(
 
                 if !collapsed {
                     ui.horizontal(|ui| {
-                        ui.add_space(4.0);
+                        ui.add_space(gap_xs());
                         let cw = (panel_w - 16.0) / 3.0;
                         let hdr_color = color_dim(t.dim);
                         col_header(ui, "SYMBOL", cw, hdr_color, false);
@@ -420,12 +420,12 @@ pub(crate) fn draw_content(
                     }
                 }
 
-                ui.add_space(4.0);
+                ui.add_space(gap_xs());
                 separator(ui, color_alpha(t.toolbar_border, alpha_dim()));
-                ui.add_space(4.0);
+                ui.add_space(gap_xs());
             }
 
-            ui.add_space(4.0);
+            ui.add_space(gap_xs());
             ui.add(MonospaceCode::new(&format!("{}/{} symbols loaded", pool.len(), SCANNER_UNIVERSE.len())).size_px(font_2xs()).color(t.dim).gamma(0.3));
         });
 

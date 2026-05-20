@@ -12,6 +12,7 @@
 
 use egui;
 use super::super::super::gpu::Theme;
+use super::super::style::{gap_2xs, gap_xs};
 use crate::data::feeds::apex_data::live_state as projector;
 use crate::data::feeds::apex_data::types::IvRankV2;
 
@@ -59,11 +60,11 @@ pub(crate) fn show_with(ui: &mut egui::Ui, underlying: &str, reading: Option<&Iv
     let state = classify(&reading.cloned());
     match state {
         IvRankState::Loading => {
-            ui.add_space(4.0);
+            ui.add_space(gap_xs());
             ui.label(egui::RichText::new("loading…").color(t.dim));
         }
         IvRankState::InsufficientHistory => {
-            ui.add_space(4.0);
+            ui.add_space(gap_xs());
             let n = reading.map(|r| r.n_samples).unwrap_or(0);
             ui.label(
                 egui::RichText::new(format!("insufficient history ({n} samples)"))
@@ -73,9 +74,9 @@ pub(crate) fn show_with(ui: &mut egui::Ui, underlying: &str, reading: Option<&Iv
         }
         IvRankState::Ready => {
             let r = reading.expect("Ready implies Some");
-            ui.add_space(4.0);
+            ui.add_space(gap_xs());
             draw_bar(ui, r.iv_rank.clamp(0.0, 100.0) as f32, t);
-            ui.add_space(2.0);
+            ui.add_space(gap_2xs());
             ui.label(
                 egui::RichText::new(format!("n={} · lookback={}", r.n_samples, r.lookback))
                     .color(t.dim)

@@ -216,7 +216,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
             watchlist.rrg_time_offset, watchlist.rrg_tail_length);
 
         // Time slider
-        ui.add_space(4.0);
+        ui.add_space(gap_xs());
         ui.horizontal(|ui| {
             ui.add(MonospaceCode::new("TIME").xs().color(color_alpha(t.dim, alpha_active())));
             ui.spacing_mut().slider_width = plot_size - 50.0;
@@ -235,7 +235,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
         });
 
         // Cycle phase text at the bottom
-        ui.add_space(4.0);
+        ui.add_space(gap_xs());
         let phase = if !watchlist.rrg_cycle_phase.is_empty() {
             watchlist.rrg_cycle_phase.as_str()
         } else {

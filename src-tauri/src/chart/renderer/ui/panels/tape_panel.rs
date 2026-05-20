@@ -30,7 +30,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
     PanelSection::new(&section_title).show(ui, t, |ui, t| {
         // Column headers
         ui.horizontal(|ui| {
-            ui.add_space(4.0);
+            ui.add_space(gap_xs());
             let hw = (panel_w - 12.0) / 3.0;
             let hdr_color = color_muted(t.dim);
             col_header(ui, "TIME",  hw, hdr_color, false);
@@ -51,12 +51,12 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
                     .collect();
 
                 if entries.is_empty() {
-                    ui.add_space(8.0);
+                    ui.add_space(gap_sm());
                     let cw = (panel_w - 12.0) / 3.0;
                     for _ in 0..5 {
-                        ui.add_space(2.0);
+                        ui.add_space(gap_2xs());
                         ui.horizontal(|ui| {
-                            ui.add_space(2.0);
+                            ui.add_space(gap_2xs());
                             Skeleton::text(cw * 0.7).show(ui, t);
                             ui.add_space(cw - cw * 0.7);
                             Skeleton::text(cw * 0.7).show(ui, t);
@@ -64,7 +64,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
                             Skeleton::text(cw * 0.6).show(ui, t);
                         });
                     }
-                    ui.add_space(8.0);
+                    ui.add_space(gap_sm());
                     // Wave 9c: prefer registry-backed asset class (avoids
                     // mis-classifying real equities whose ticker happens to
                     // end in USDT); fall back to the legacy string heuristic

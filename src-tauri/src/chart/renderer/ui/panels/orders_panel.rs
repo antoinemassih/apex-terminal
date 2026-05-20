@@ -188,7 +188,7 @@ fn draw_book(
                                                 .size_px(font_md())
                                                 .strong(true)
                                                 .color(pnl_color));
-                                            ui.add_space(4.0);
+                                            ui.add_space(gap_xs());
                                             ui.add(MonospaceCode::new(&format!(
                                                 "({:+.1}%)", pos.pnl_pct()))
                                                 .size_px(font_sm_tight())
@@ -212,7 +212,7 @@ fn draw_book(
                     } else {
                         MetricTone::Bear
                     };
-                    ui.add_space(4.0);
+                    ui.add_space(gap_xs());
                     MetricRow::new("Total P&L")
                         .value(format!("{:+.2}", total_pnl))
                         .tone(total_tone)
@@ -263,7 +263,7 @@ fn draw_book(
                     }
                     let active_only = active_count.saturating_sub(draft_count);
                     if active_only > 0 {
-                        if draft_count > 0 { ui.add_space(2.0); }
+                        if draft_count > 0 { ui.add_space(gap_2xs()); }
                         Badge::count(active_only as u32).tone(TagTone::Accent).show(ui, t);
                         ui.add(MonospaceCode::new("a")
                             .size_px(font_xs())
@@ -271,7 +271,7 @@ fn draw_book(
                             .gamma(0.5));
                     }
                 });
-                ui.add_space(4.0);
+                ui.add_space(gap_xs());
             }
 
             // Action bar: Place All / Cancel All / Clear / Spread.
@@ -305,7 +305,7 @@ fn draw_book(
                     }
                 });
             });
-            ui.add_space(4.0);
+            ui.add_space(gap_xs());
 
             // Group selection bar.
             let sel_count = watchlist.selected_order_ids.len();
@@ -326,7 +326,7 @@ fn draw_book(
                         watchlist.selected_order_ids.clear();
                     }
                 });
-                ui.add_space(4.0);
+                ui.add_space(gap_xs());
             }
 
             // Select-all toggle.
@@ -362,7 +362,7 @@ fn draw_book(
                             .color(t.dim)
                             .gamma(0.6));
                     });
-                    ui.add_space(4.0);
+                    ui.add_space(gap_xs());
                 }
             }
 

@@ -257,14 +257,14 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
         .show(|ui| {
             let w = ui.available_width();
 
-            ui.add_space(4.0);
+            ui.add_space(gap_xs());
             // Divider
             let div_rect = egui::Rect::from_min_size(
                 egui::pos2(ui.cursor().min.x, ui.cursor().min.y),
                 egui::vec2(w, 1.0),
             );
             ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, alpha_dim()));
-            ui.add_space(8.0);
+            ui.add_space(gap_sm());
 
             egui::ScrollArea::vertical().id_salt("spread_body").show(ui, |ui| {
                 ui.set_min_width(w - 4.0);
@@ -274,7 +274,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 ui.horizontal(|ui| {
                     ui.add_space(m);
                     ui.add(MonospaceCode::new("Symbol").size_px(9.0).color(t.dim));
-                    ui.add_space(4.0);
+                    ui.add_space(gap_xs());
                     let resp = Input::new(&mut watchlist.spread_state.symbol)
                         .min_width(80.0)
                         .size(KitSize::Sm)
@@ -284,7 +284,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     }
                     // "Use active" chip
                     if !active_symbol.is_empty() && active_symbol != watchlist.spread_state.symbol {
-                        ui.add_space(4.0);
+                        ui.add_space(gap_xs());
                         let r = Button::new(active_symbol).variant(Variant::Ghost).size(Size::Xs)
                         .fg(t.accent).min_size(egui::vec2(0.0, 16.0))
                         .show(ui, t);
@@ -294,13 +294,13 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         }
                     }
                 });
-                ui.add_space(8.0);
+                ui.add_space(gap_sm());
 
                 // ── Strategy selector ──
                 ui.horizontal(|ui| {
                     ui.add_space(m);
                     ui.add(MonospaceCode::new("Strategy").size_px(9.0).color(t.dim));
-                    ui.add_space(4.0);
+                    ui.add_space(gap_xs());
                     let strat_opts: Vec<(SpreadStrategy, &'static str)> = SpreadStrategy::all()
                         .iter().map(|s| (*s, s.label())).collect();
                     let mut cur_strat = watchlist.spread_state.strategy;
@@ -313,7 +313,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         pending_strategy = Some(cur_strat);
                     }
                 });
-                ui.add_space(8.0);
+                ui.add_space(gap_sm());
 
                 // ── Legs ──
                 let leg_count_for_header = watchlist.spread_state.legs.len();
@@ -361,7 +361,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         }
                     }
 
-                    ui.add_space(4.0);
+                    ui.add_space(gap_xs());
 
                     // Leg editor row (inline controls)
                     ui.horizontal(|ui| {
@@ -408,7 +408,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                             }
                         }
                     });
-                    ui.add_space(4.0);
+                    ui.add_space(gap_xs());
                 }
 
                 // Add leg button
@@ -418,7 +418,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         add_leg = true;
                     }
                 });
-                ui.add_space(8.0);
+                ui.add_space(gap_sm());
 
                 // ── Spread Metrics ──
                 let (net_dc, max_profit, max_loss, break_even) = compute_spread_metrics(&watchlist.spread_state.legs, active_symbol);
@@ -429,26 +429,26 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     ui.add_space(m);
                     MetricCard::new(dc_label, format!("${:.2}", net_dc.abs()))
                         .theme(t).show(ui);
-                    ui.add_space(4.0);
+                    ui.add_space(gap_xs());
                     MetricCard::new("Max Profit", format!("${:.2}", max_profit))
                         .theme(t).show(ui);
                 });
-                ui.add_space(4.0);
+                ui.add_space(gap_xs());
                 ui.horizontal(|ui| {
                     ui.add_space(m);
                     MetricCard::new("Max Loss", format!("${:.2}", max_loss))
                         .theme(t).show(ui);
-                    ui.add_space(4.0);
+                    ui.add_space(gap_xs());
                     MetricCard::new("Break Even", format!("${:.2}", break_even))
                         .theme(t).show(ui);
                 });
-                ui.add_space(8.0);
+                ui.add_space(gap_sm());
 
                 // ── Qty multiplier ──
                 ui.horizontal(|ui| {
                     ui.add_space(m);
                     ui.add(MonospaceCode::new("Qty").size_px(9.0).color(t.dim));
-                    ui.add_space(8.0);
+                    ui.add_space(gap_sm());
                     let r = ui.add(Button::icon("-").variant(Variant::Ghost).glyph_color(t.dim).placement(IconPlacement::ListRow));
                     Tooltip::new("Decrease quantity").show(ui, &r, t);
                     if r.clicked() && watchlist.spread_state.combo_qty > 1 {
@@ -461,7 +461,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         watchlist.spread_state.combo_qty += 1;
                     }
                 });
-                ui.add_space(8.0);
+                ui.add_space(gap_sm());
 
                 // ── Submit button ──
                 ui.horizontal(|ui| {
@@ -470,7 +470,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         do_submit = true;
                     }
                 });
-                ui.add_space(8.0);
+                ui.add_space(gap_sm());
 
                 // ── Submit result message ──
                 if let Some(ref msg) = watchlist.spread_state.submit_result {
@@ -479,7 +479,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         let col = if msg.starts_with("OK") { t.bull } else { t.bear };
                         ui.add(MonospaceCode::new(msg).size_px(9.0).color(col));
                     });
-                    ui.add_space(4.0);
+                    ui.add_space(gap_xs());
                 }
             });
         });
