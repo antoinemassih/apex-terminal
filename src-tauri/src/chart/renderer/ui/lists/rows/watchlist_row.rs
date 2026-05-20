@@ -413,7 +413,7 @@ impl<'a> WatchlistRow<'a> {
                 // ── Drag-handle grip ────────────────────────────────────
                 if drag_handle {
                     painter.text(egui::pos2(left + 6.0, cy), egui::Align2::LEFT_CENTER,
-                        icon_set.drag_handle, egui::FontId::proportional(11.0), color_very_dim(dim));
+                        icon_set.drag_handle, egui::FontId::proportional(font_sm()), color_very_dim(dim));
                     zones_body.borrow_mut().drag = Some(egui::Rect::from_min_size(
                         egui::pos2(left, rect.top()), egui::vec2(14.0, rect.height())));
                 }
@@ -430,7 +430,7 @@ impl<'a> WatchlistRow<'a> {
                     };
                     let star_x = left + 16.0 + star_x_offset;
                     painter.text(egui::pos2(star_x, cy), egui::Align2::CENTER_CENTER,
-                        icon_set.star, egui::FontId::proportional(11.0), star_col);
+                        icon_set.star, egui::FontId::proportional(font_sm()), star_col);
                 }
                 // Star click-zone always covers left..left+26 when pinned-or-hoverable
                 // so panel-style click partitioning works.
@@ -473,7 +473,7 @@ impl<'a> WatchlistRow<'a> {
                     painter.circle_filled(egui::pos2(ind_x + 5.0, cy), 5.5,
                         theme_ref.bear);
                     painter.text(egui::pos2(ind_x + 5.0, cy), egui::Align2::CENTER_CENTER,
-                        icon_set.alert, egui::FontId::proportional(11.0), contrast_fg(theme_ref.bear));
+                        icon_set.alert, egui::FontId::proportional(font_sm()), contrast_fg(theme_ref.bear));
                     zones_body.borrow_mut().alert = Some(egui::Rect::from_center_size(
                         egui::pos2(ind_x + 5.0, cy), egui::vec2(12.0, 12.0)));
                     ind_x += 14.0;
@@ -588,7 +588,7 @@ impl<'a> WatchlistRow<'a> {
                             egui::pos2(rect.right() - 8.0, cy),
                             egui::Align2::CENTER_CENTER,
                             icon_set.x,
-                            egui::FontId::proportional(11.0),
+                            egui::FontId::proportional(font_sm()),
                             color_half(dim),
                         );
                     }

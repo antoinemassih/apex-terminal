@@ -111,7 +111,7 @@ impl<'a> AlertRow<'a> {
                     (Icon::DOT, dim)
                 };
                 painter.text(egui::pos2(rect.left() + 8.0, cy), egui::Align2::LEFT_CENTER,
-                    glyph, egui::FontId::proportional(24.0), gcol);
+                    glyph, egui::FontId::proportional(font_xl()), gcol);
 
                 painter.text(egui::pos2(rect.left() + 22.0, cy), egui::Align2::LEFT_CENTER,
                     symbol, mono_sm(), fg);

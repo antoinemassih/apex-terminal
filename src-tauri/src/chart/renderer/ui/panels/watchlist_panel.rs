@@ -907,7 +907,7 @@ if watchlist.open {
                                                 badge_rect.right_center(),
                                                 egui::Align2::RIGHT_CENTER,
                                                 &badge_text,
-                                                egui::FontId::proportional(11.0),
+                                                egui::FontId::proportional(font_sm()),
                                                 t.dim,
                                             );
                                             let badge_resp = ui.interact(badge_rect, badge_id, egui::Sense::hover());

@@ -382,7 +382,7 @@ pub(crate) fn render(
             let impact_col = if portfolio_impact >= 0.0 { t.bull } else { t.bear };
 
             painter.text(egui::pos2(sector_x, scenario_y + 18.0), egui::Align2::LEFT_CENTER,
-                &format!("${:+.0}", portfolio_impact), egui::FontId::proportional(18.0), impact_col);
+                &format!("${:+.0}", portfolio_impact), egui::FontId::proportional(font_lg()), impact_col);
             painter.text(egui::pos2(sector_x, scenario_y + 36.0), egui::Align2::LEFT_CENTER,
                 &format!("{:+.1}% portfolio impact", impact_pct), mono_xs(), impact_col);
 

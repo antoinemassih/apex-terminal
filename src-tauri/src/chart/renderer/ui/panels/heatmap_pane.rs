@@ -107,7 +107,7 @@ pub(crate) fn render(
         painter.text(
             egui::pos2(strip_rect.left() + 6.0, strip_rect.center().y),
             egui::Align2::LEFT_CENTER, txt,
-            egui::FontId::monospace(10.0), t.text,
+            egui::FontId::monospace(font_xs_plus()), t.text,
         );
         extra_h += BREADTH_STRIP_H + 2.0;
     }
@@ -128,7 +128,7 @@ pub(crate) fn render(
                 let color = quadrant_color(row.quadrant, t);
                 painter.rect_filled(cr, 2.0, color);
                 painter.text(cr.center(), egui::Align2::CENTER_CENTER,
-                    &row.symbol, egui::FontId::monospace(9.0), t.text);
+                    &row.symbol, egui::FontId::monospace(font_xs()), t.text);
             }
             extra_h += SECTOR_ROW_H + 2.0;
         }
@@ -137,7 +137,7 @@ pub(crate) fn render(
     if cells.is_empty() {
         // No data yet — empty pane (cold-start fetch is in flight).
         painter.text(rect.center(), egui::Align2::CENTER_CENTER,
-            "Loading heatmap…", egui::FontId::proportional(12.0), t.dim);
+            "Loading heatmap…", egui::FontId::proportional(font_sm()), t.dim);
         return;
     }
 
