@@ -12,7 +12,9 @@
 
 use egui;
 use super::super::super::gpu::Theme;
-use super::super::style::{gap_2xs, gap_xs};
+use super::super::style::{
+    alpha_muted, color_alpha, gap_2xs, gap_xs, radius_xs, stroke_std,
+};
 use crate::data::feeds::apex_data::live_state as projector;
 use crate::data::feeds::apex_data::types::IvRankV2;
 
@@ -86,25 +88,34 @@ pub(crate) fn show_with(ui: &mut egui::Ui, underlying: &str, reading: Option<&Iv
     }
 }
 
+/// Paints a percentile-rank bar with ticks at 25 / 50 / 75.
+///
+/// Kept custom (not replaced by `ui_kit::Progress`) because:
+/// - `Progress` has no tick-marker API.
+/// - The fill colour changes semantically with rank (bull ≤ 25, bear ≥ 75,
+///   accent otherwise) — `Progress` only expresses `Primary` (accent) or
+///   `Danger` (bear).
+/// All colours and stroke widths route through `Theme` fields and style tokens.
 fn draw_bar(ui: &mut egui::Ui, rank_0_100: f32, t: &Theme) {
     let avail_w = ui.available_width().min(220.0);
     let (rect, _) = ui.allocate_exact_size(egui::vec2(avail_w, 10.0), egui::Sense::hover());
     let painter = ui.painter_at(rect);
-    // Background track
-    painter.rect_filled(rect, 2.0, t.dim.linear_multiply(0.25));
-    // Filled portion
+    let cr = egui::CornerRadius::same(radius_xs() as u8);
+    // Background track — dim at muted alpha (~25% opacity).
+    painter.rect_filled(rect, cr, color_alpha(t.dim, alpha_muted()));
+    // Filled portion — semantic colour by rank zone.
     let fill_w = (rank_0_100 / 100.0) * rect.width();
     let fill_rect = egui::Rect::from_min_size(rect.min, egui::vec2(fill_w, rect.height()));
     let bar_color = if rank_0_100 >= 75.0 { t.bear }
         else if rank_0_100 <= 25.0 { t.bull }
         else { t.accent };
-    painter.rect_filled(fill_rect, 2.0, bar_color);
-    // Ticks at 25/50/75
+    painter.rect_filled(fill_rect, cr, bar_color);
+    // Ticks at 25 / 50 / 75 — hairline rule in dim.
     for tick_pct in [25.0_f32, 50.0, 75.0] {
         let x = rect.min.x + (tick_pct / 100.0) * rect.width();
         painter.line_segment(
             [egui::pos2(x, rect.min.y), egui::pos2(x, rect.max.y)],
-            egui::Stroke::new(1.0, t.dim),
+            egui::Stroke::new(stroke_std(), t.dim),
         );
     }
 }
