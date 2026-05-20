@@ -19,7 +19,7 @@ use super::super::components::text::{SectionLabel, MonospaceCode};
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::tokens::{Size as KitSize, Variant};
 use crate::ui_kit::widgets::side_panel_shell::{SidePanelShell, Width};
-use crate::ui_kit::widgets::{Button, PanelSubSection};
+use crate::ui_kit::widgets::{Button, PanelSubSection, PanelListRow, PanelColumn};
 use crate::chart_renderer::trading::OrderSide;
 use crate::chart_renderer::trading::order_manager::{self, OrderState};
 use crate::chart_renderer::trading::journal::{self, JournalEvent, AttemptKind};
@@ -226,7 +226,54 @@ pub(crate) fn draw(
                                         });
                                         ui.add_space(gap_2xs());
                                         for row in &sym_rows {
-                                            draw_active_row(ui, t, row);
+                                            let time_label  = format_hms(row.updated_at);
+                                            let side_text   = match row.side {
+                                                OrderSide::Buy | OrderSide::TriggerBuy => "BUY",
+                                                OrderSide::Sell | OrderSide::TriggerSell => "SELL",
+                                                OrderSide::Stop | OrderSide::OcoStop => "STOP",
+                                                OrderSide::OcoTarget => "OCO",
+                                            };
+                                            let side_color  = match row.side {
+                                                OrderSide::Buy | OrderSide::TriggerBuy | OrderSide::OcoTarget => t.bull,
+                                                _ => t.bear,
+                                            };
+                                            let (state_text, state_color) = match row.state {
+                                                OrderState::Draft         => ("Pending", t.warn),
+                                                OrderState::PendingSubmit => ("PendSub", t.warn),
+                                                OrderState::Working       => ("Working", t.accent),
+                                                OrderState::PartialFill   => ("PartFil", t.accent),
+                                                OrderState::Filled        => ("Filled",  t.bull),
+                                                OrderState::PendingCancel => ("PendCxl", t.dim),
+                                                OrderState::Cancelled     => ("Cancel",  t.dim),
+                                                OrderState::Rejected      => ("Reject",  t.bear),
+                                                OrderState::PendingModify => ("PendMod", t.warn),
+                                                OrderState::Unknown       => ("Unknown", t.dim),
+                                            };
+                                            let qty_fill    = format!("{:>3}/{:<2}", row.qty, row.filled_qty);
+                                            let price_str   = format!("{:>7.2}", row.price);
+                                            let state_str   = format!(" {:<8}", state_text);
+                                            let cid_str     = format!("{:<8}", row.cid8);
+                                            let order_id    = row.id;
+
+                                            let resp = PanelListRow::new(&format!("active_row_{}", row.id))
+                                                .columns(&[
+                                                    PanelColumn::left(&time_label).color(color_half(t.dim)),
+                                                    PanelColumn::left(&format!("{:<5}", row.symbol)).color(t.text),
+                                                    PanelColumn::left(&format!("{:<4}", side_text)).color(side_color),
+                                                    PanelColumn::left("LMT ").color(t.dim),
+                                                    PanelColumn::right(&qty_fill).color(t.text),
+                                                    PanelColumn::right(&price_str).color(t.text),
+                                                    PanelColumn::left(&state_str).color(state_color),
+                                                    PanelColumn::left(" UI ").color(color_half(t.dim)),
+                                                    PanelColumn::left(&cid_str).color(color_half(t.dim)),
+                                                ])
+                                                .show(ui, t);
+                                            resp.context_menu(|ui| {
+                                                if ui.button("Cancel").clicked() {
+                                                    crate::chart_renderer::trading::order_manager::cancel_order(order_id);
+                                                    ui.close_menu();
+                                                }
+                                            });
                                         }
                                     });
                             }
@@ -311,8 +358,50 @@ pub(crate) fn draw(
                         ui.add_space(gap_sm());
                         ui.add(MonospaceCode::new("No journal events").size_px(font_sm()).color(t.dim).gamma(0.5));
                     } else {
-                        for ev in rows {
-                            draw_journal_row(ui, t, ev);
+                        for (idx, ev) in rows.iter().enumerate() {
+                            let (kind_label, kind_color, summary, ts_ms) = match ev {
+                                JournalEvent::Attempt { kind, ts_ms, payload, .. } => {
+                                    let k = match kind {
+                                        AttemptKind::Submit => "SUBMIT", AttemptKind::Cancel => "CANCEL",
+                                        AttemptKind::CancelAll => "CXALL", AttemptKind::Modify => "MODIFY",
+                                    };
+                                    let sym = payload.get("symbol").and_then(|v| v.as_str()).unwrap_or("");
+                                    (k, t.text, format!("{}", sym), *ts_ms)
+                                }
+                                JournalEvent::Ack  { backend_id, ts_ms, .. } => {
+                                    ("ACK   ", t.bull, backend_id.clone().unwrap_or_default(), *ts_ms)
+                                }
+                                JournalEvent::Fail { reason, ts_ms, .. } => {
+                                    ("FAIL  ", t.bear, reason.clone(), *ts_ms)
+                                }
+                                JournalEvent::StateChg { from, to, ts_ms, .. } => {
+                                    ("STATE ", t.dim, format!("{:?} -> {:?}", from, to), *ts_ms)
+                                }
+                                JournalEvent::Reconcile { local, broker, resolution, ts_ms, .. } => {
+                                    ("RECON ", style::order_state_recon(),
+                                     format!("{:?}/{} -> {}", local, broker, resolution), *ts_ms)
+                                }
+                                JournalEvent::Control { kind, ts_ms } => {
+                                    ("CTRL  ", style::order_state_ctrl(),
+                                     format!("{:?}", kind), *ts_ms)
+                                }
+                                JournalEvent::Shutdown { ts_ms } => {
+                                    ("SHUTDN", t.dim, "graceful shutdown".into(), *ts_ms)
+                                }
+                            };
+                            let cid8: String = ev.client_id().chars().take(8).collect();
+                            let time_label = format_hms(ts_ms);
+                            let cid_str = format!("{:<8}", cid8);
+
+                            PanelListRow::new(&format!("journal_row_{}", idx))
+                                .columns(&[
+                                    PanelColumn::left(&time_label).color(color_half(t.dim)),
+                                    PanelColumn::left(kind_label).color(kind_color),
+                                    PanelColumn::left(&cid_str).color(t.dim),
+                                    PanelColumn::left(&summary).color(t.text),
+                                ])
+                                .hoverable(false)
+                                .show(ui, t);
                         }
                     }
                 });
@@ -422,98 +511,6 @@ fn collect_active_from_snapshot() -> Vec<ActiveRow> {
     // Newest first so freshly placed orders appear at the top.
     out.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
     out
-}
-
-fn draw_active_row(ui: &mut egui::Ui, t: &Theme, row: &ActiveRow) {
-    let side_text = match row.side {
-        OrderSide::Buy | OrderSide::TriggerBuy => "BUY",
-        OrderSide::Sell | OrderSide::TriggerSell => "SELL",
-        OrderSide::Stop | OrderSide::OcoStop => "STOP",
-        OrderSide::OcoTarget => "OCO",
-    };
-    let side_color = match row.side {
-        OrderSide::Buy | OrderSide::TriggerBuy | OrderSide::OcoTarget => t.bull,
-        _ => t.bear,
-    };
-    let (state_text, state_color) = match row.state {
-        OrderState::Draft         => ("Pending", t.warn),
-        OrderState::PendingSubmit => ("PendSub", t.warn),
-        OrderState::Working       => ("Working", t.accent),
-        OrderState::PartialFill   => ("PartFil", t.accent),
-        OrderState::Filled        => ("Filled",  t.bull),
-        OrderState::PendingCancel => ("PendCxl", t.dim),
-        OrderState::Cancelled     => ("Cancel",  t.dim),
-        OrderState::Rejected      => ("Reject",  t.bear),
-        OrderState::PendingModify => ("PendMod", t.warn),
-        OrderState::Unknown       => ("Unknown", t.dim),
-    };
-
-    let resp = ui.horizontal(|ui| {
-        let time_label = format_hms(row.updated_at);
-        ui.add(MonospaceCode::new(&time_label).size_px(font_xs()).color(t.dim).gamma(0.5));
-        ui.add(MonospaceCode::new(&format!("{:<5}", row.symbol)).size_px(font_xs()).color(t.text));
-        ui.add(MonospaceCode::new(&format!("{:<4}", side_text)).size_px(font_xs()).strong(true).color(side_color));
-        ui.add(MonospaceCode::new("LMT ").size_px(font_xs()).color(t.dim));
-        ui.add(MonospaceCode::new(&format!("{:>3}/{:<2}", row.qty, row.filled_qty)).size_px(font_xs()).color(t.text));
-        ui.add(MonospaceCode::new(&format!("{:>7.2}", row.price)).size_px(font_xs()).color(t.text));
-        ui.add(MonospaceCode::new(&format!(" {:<8}", state_text)).size_px(font_xs()).strong(true).color(state_color));
-        ui.add(MonospaceCode::new(" UI ").size_px(font_xs()).color(t.dim).gamma(0.5));
-        ui.add(MonospaceCode::new(&format!("{:<8}", row.cid8)).size_px(font_xs()).color(t.dim).gamma(0.5));
-    }).response.interact(egui::Sense::click());
-
-    // Right-click → cancel via global API. The snapshot exposes the
-    // canonical u64 id, so cancellation no longer relies on the legacy
-    // truncated u32.
-    let order_id = row.id;
-    resp.context_menu(|ui| {
-        if ui.button("Cancel").clicked() {
-            crate::chart_renderer::trading::order_manager::cancel_order(order_id);
-            ui.close_menu();
-        }
-    });
-}
-
-fn draw_journal_row(ui: &mut egui::Ui, t: &Theme, ev: &JournalEvent) {
-    let (kind_label, kind_color, summary, ts_ms) = match ev {
-        JournalEvent::Attempt { kind, ts_ms, payload, .. } => {
-            let k = match kind {
-                AttemptKind::Submit => "SUBMIT", AttemptKind::Cancel => "CANCEL",
-                AttemptKind::CancelAll => "CXALL", AttemptKind::Modify => "MODIFY",
-            };
-            let sym = payload.get("symbol").and_then(|v| v.as_str()).unwrap_or("");
-            (k, t.text, format!("{}", sym), *ts_ms)
-        }
-        JournalEvent::Ack  { backend_id, ts_ms, .. } => {
-            ("ACK   ", t.bull, backend_id.clone().unwrap_or_default(), *ts_ms)
-        }
-        JournalEvent::Fail { reason, ts_ms, .. } => {
-            ("FAIL  ", t.bear, reason.clone(), *ts_ms)
-        }
-        JournalEvent::StateChg { from, to, ts_ms, .. } => {
-            ("STATE ", t.dim, format!("{:?} -> {:?}", from, to), *ts_ms)
-        }
-        JournalEvent::Reconcile { local, broker, resolution, ts_ms, .. } => {
-            ("RECON ", style::order_state_recon(),
-             format!("{:?}/{} -> {}", local, broker, resolution), *ts_ms)
-        }
-        JournalEvent::Control { kind, ts_ms } => {
-            ("CTRL  ", style::order_state_ctrl(),
-             format!("{:?}", kind), *ts_ms)
-        }
-        JournalEvent::Shutdown { ts_ms } => {
-            ("SHUTDN", t.dim, "graceful shutdown".into(), *ts_ms)
-        }
-    };
-
-    let cid8: String = ev.client_id().chars().take(8).collect();
-    let time_label = format_hms(ts_ms);
-
-    ui.horizontal(|ui| {
-        ui.add(MonospaceCode::new(&time_label).size_px(font_xs()).color(t.dim).gamma(0.5));
-        ui.add(MonospaceCode::new(kind_label).size_px(font_xs()).strong(true).color(kind_color));
-        ui.add(MonospaceCode::new(&format!("{:<8}", cid8)).size_px(font_xs()).color(t.dim));
-        ui.add(MonospaceCode::new(&summary).size_px(font_xs()).color(t.text));
-    });
 }
 
 fn format_hms(ts_ms: u64) -> String {
