@@ -3,7 +3,7 @@
 
 #![allow(dead_code, unused_imports)]
 
-use egui::{Color32, Response, RichText, Sense, Ui, Vec2, Widget};
+use egui::{Color32, Response, Sense, Ui, Vec2, Widget};
 use super::super::style::*;
 use super::super::components::pane_header_bar;
 use super::text::{SectionLabel, SectionLabelSize};
@@ -148,91 +148,6 @@ impl<'a> PanelHeaderWithClose<'a> {
         if let Some(px) = self.height_override { h = h.height(px); }
         if let Some(px) = self.font_size_override { h = h.font_size(px); }
         h.show_full(ui, theme, title_actions, actions)
-    }
-}
-
-// ─── PanelHeaderWithTabs ─────────────────────────────────────────────────────
-
-/// Builder for a tab-driven panel header: `TabBar` on the left, close button on
-/// the right, optional trailing controls (badges, icons) left of the close.
-///
-/// Used by panels where the *tabs* are the title — orders, watchlist — instead
-/// of a static label.
-///
-/// ```ignore
-/// let closed = PanelHeaderWithTabs::new(&mut tab, &[
-///     (Tab::A, "ALPHA"),
-///     (Tab::B, "BETA"),
-/// ]).theme(t).show(ui);
-/// if closed { open = false; }
-/// ```
-#[must_use]
-pub struct PanelHeaderWithTabs<'a, T: PartialEq + Copy> {
-    current:    &'a mut T,
-    tabs:       &'a [(T, &'a str)],
-    accent:     Color32,
-    dim:        Color32,
-    theme:      Option<&'a super::super::super::gpu::Theme>,
-    min_height: f32,
-    watchlist:  Option<&'a super::super::super::gpu::Watchlist>,
-    height_override:    Option<f32>,
-    font_size_override: Option<f32>,
-}
-
-impl<'a, T: PartialEq + Copy> PanelHeaderWithTabs<'a, T> {
-    pub fn new(current: &'a mut T, tabs: &'a [(T, &'a str)]) -> Self {
-        Self {
-            current,
-            tabs,
-            accent:     FALLBACK_ACCENT,
-            dim:        FALLBACK_DIM,
-            theme:      None,
-            min_height: 24.0,
-            watchlist:  None,
-            height_override:    None,
-            font_size_override: None,
-        }
-    }
-    pub fn accent(mut self, c: Color32) -> Self { self.accent = c; self }
-    pub fn dim(mut self, c: Color32) -> Self { self.dim = c; self }
-    pub fn min_height(mut self, h: f32) -> Self { self.min_height = h; self }
-    pub fn theme(mut self, t: &'a super::super::super::gpu::Theme) -> Self {
-        self.accent = t.accent;
-        self.dim = t.dim;
-        self.theme = Some(t);
-        self
-    }
-    /// Pin the header to the chart-pane height/font configured by this
-    /// `Watchlist` so the side-panel tab strip lines up with the strip
-    /// in the chart pane header above.
-    pub fn watchlist(mut self, w: &'a super::super::super::gpu::Watchlist) -> Self {
-        self.watchlist = Some(w); self
-    }
-    /// Override header height directly. Use when `.watchlist()` would
-    /// conflict with a mutable borrow inside the closure.
-    pub fn height(mut self, h: f32) -> Self { self.height_override = Some(h); self }
-    /// Override the tab label font size.
-    pub fn font_size(mut self, px: f32) -> Self { self.font_size_override = Some(px); self }
-
-    /// Render the header. Returns `true` if the close button was clicked.
-    pub fn show(self, ui: &mut Ui) -> bool {
-        self.show_with(ui, |_| {})
-    }
-
-    /// Render with extra controls placed to the LEFT of the close button (RTL
-    /// layout). Used for badges (e.g. watchlist's market-session indicator).
-    ///
-    /// Delegates to `panels::kit::PanelHeaderTabs` so all tabbed side panels
-    /// share the same chart-pane-parity chrome and tab paint.
-    pub fn show_with(self, ui: &mut Ui, actions: impl FnOnce(&mut Ui)) -> bool {
-        let theme = self.theme.unwrap_or_else(|| crate::ui_kit::widgets::theme::active_theme(ui.ctx()));
-        let mut h = super::super::super::ui::panels::kit::PanelHeaderTabs::new(self.current, self.tabs);
-        if let Some(w) = self.watchlist {
-            h = h.watchlist(w);
-        }
-        if let Some(px) = self.height_override { h = h.height(px); }
-        if let Some(px) = self.font_size_override { h = h.font_size(px); }
-        h.show_with(ui, theme, actions)
     }
 }
 
