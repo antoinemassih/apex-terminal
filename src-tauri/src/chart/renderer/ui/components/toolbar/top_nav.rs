@@ -752,8 +752,10 @@ pub(crate) fn render(
                 let has_tool = !panes[ap].draw_tool.is_empty();
                 let cur_tool = panes[ap].draw_tool.clone();
                 let mut new_tool: Option<String> = None;
-                // TODO: Button::menu doesn't cover conditional active-color (t.accent vs t.dim) + font_lg icon-as-label.
-                let drawing_menu = ui.menu_button(egui::RichText::new(draw_label).size(font_lg()).color(if has_tool { t.accent } else { t.dim }), |ui| {
+                let drawing_menu = KitButton::menu(draw_label)
+                    .glyph_size(font_lg())
+                    .fg(if has_tool { t.accent } else { t.dim })
+                    .show_menu(ui, t, |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
                     let cur = cur_tool.as_str();
@@ -985,8 +987,9 @@ pub(crate) fn render(
 
             // ── Indicators dropdown — single chart-icon entry point with nested
             //    submenus for MAs / Oscillators / Volume / Overlays / Tools / Suites.
-            // TODO: Button::menu doesn't cover icon-only-as-label at font_lg (Indicators entry point).
-            let indicators_menu = ui.menu_button(egui::RichText::new(Icon::CHART_LINE).size(font_lg()).color(t.dim), |ui| {
+            let indicators_menu = KitButton::menu(Icon::CHART_LINE)
+                .glyph_size(font_lg())
+                .show_menu(ui, t, |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
 
@@ -1484,8 +1487,9 @@ pub(crate) fn render(
             }
 
             // ── Widgets dropdown — two-layer categorized picker with mini previews ──
-            // TODO: Button::menu doesn't cover icon-only-as-label at font_lg (Widgets entry point).
-            let widgets_menu = ui.menu_button(egui::RichText::new(Icon::CIRCLES_FOUR).size(font_lg()).color(t.dim), |ui| {
+            let widgets_menu = KitButton::menu(Icon::CIRCLES_FOUR)
+                .glyph_size(font_lg())
+                .show_menu(ui, t, |ui| {
                 ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                 ui.style_mut().visuals.window_fill = t.toolbar_bg;
                 ui.set_min_width(160.0);
@@ -1520,9 +1524,9 @@ pub(crate) fn render(
                         format!("{} {}", cat_icon, cat_name)
                     };
 
-                    // TODO: Button::menu doesn't cover conditional active-color (t.accent vs t.dim) for widget categories.
-                    ui.menu_button(egui::RichText::new(&cat_label).monospace().size(font_sm())
-                        .color(if active_in_cat > 0 { t.accent } else { t.dim }), |ui| {
+                    KitButton::menu(cat_label.as_str())
+                        .fg(if active_in_cat > 0 { t.accent } else { t.dim })
+                        .show_menu(ui, t, |ui| {
                         ui.set_min_width(280.0);
                         ui.label(egui::RichText::new(*cat_name).monospace().size(font_xs()).strong().color(t.accent));
                         ui.add_space(gap_xs());
@@ -1617,8 +1621,9 @@ pub(crate) fn render(
             // ── Workspace — icon-only dropdown (active workspace shown inside the menu) ──
             {
                 let ws_names = list_workspaces();
-                // TODO: Button::menu doesn't cover icon-only-as-label at font_lg (Workspace entry point).
-                let ws_menu = ui.menu_button(egui::RichText::new(Icon::BROWSERS).size(font_lg()).color(t.dim), |ui| {
+                let ws_menu = KitButton::menu(Icon::BROWSERS)
+                    .glyph_size(font_lg())
+                    .show_menu(ui, t, |ui| {
                     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
                     ui.style_mut().visuals.window_fill = t.toolbar_bg;
                     ui.set_min_width(200.0);
