@@ -23,7 +23,7 @@ pub(crate) fn draw(
         let mut apply_idx: Option<usize> = None;
         let mut delete_idx: Option<usize> = None;
 
-        use super::super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
+        use super::super::chrome::modal::{Modal, Anchor, HeaderStyle, FrameKind};
         let custom_frame = egui::Frame::popup(&ctx.style())
             .fill(t.toolbar_bg)
             .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())))
@@ -47,7 +47,7 @@ pub(crate) fn draw(
                 ui.set_width(220.0);
 
                 // Header
-                use super::super::widgets::text::{BodyLabel, SectionLabel};
+                use super::super::components::text::{BodyLabel, SectionLabel};
                 ui.horizontal(|ui| {
                     ui.add(SectionLabel::new("TEMPLATES").lg().color(t.accent));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -59,7 +59,7 @@ pub(crate) fn draw(
                 ui.add_space(gap_sm());
 
                         // ── Pane Type selector ──
-                        ui.add(super::super::widgets::text::SectionLabel::new("PANE TYPE").tiny().color(t.dim));
+                        ui.add(super::super::components::text::SectionLabel::new("PANE TYPE").tiny().color(t.dim));
                         ui.add_space(gap_xs());
                         ui.horizontal(|ui| {
                             for (ptype, label, icon) in [

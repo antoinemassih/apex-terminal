@@ -465,7 +465,7 @@ pub(crate) const MAX_SEARCH_RESULTS: usize = 15;     // Max Yahoo/static search 
 // Shared helpers
 use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, color_dim, color_half, color_very_dim, separator, status_badge, order_card, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, segmented_control, paint_chrome_tile_button, ChromeTileState, chrome_tile_fg, FONT_LG, FONT_MD, FONT_SM, STROKE_THIN, STROKE_STD, ALPHA_FAINT, ALPHA_GHOST, ALPHA_SUBTLE, ALPHA_TINT, ALPHA_MUTED, ALPHA_LINE, ALPHA_DIM, ALPHA_STRONG, ALPHA_ACTIVE, ALPHA_HEAVY, TEXT_PRIMARY, COLOR_AMBER};
 use super::ui::style as style;
-use super::ui::widgets::foundation::text_style::TextStyle;
+use super::ui::foundation::text_style::TextStyle;
 use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner, compute_adx, compute_cci, compute_williams_r};
 
 // compute_sma, compute_ema — now in compute.rs
@@ -1300,7 +1300,7 @@ pub(crate) fn render_order_entry_body(
         let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
         let spread = (last_price * 0.0001).max(0.01);
         let oe_qty_snapshot = chart.order_qty;
-        let mut oe_state = super::ui::widgets::form::OrderTicketState {
+        let mut oe_state = super::ui::inputs::form::OrderTicketState {
             symbol:         &chart.symbol,
             is_buy:         &mut chart.order_is_buy,
             order_type_idx: &mut chart.order_type_idx,
@@ -1319,7 +1319,7 @@ pub(crate) fn render_order_entry_body(
             buying_power:   0.0, // TODO: thread real buying_power from account data
             slippage_bps:   0.0,
         };
-        let outcome = super::ui::widgets::form::MeridienOrderTicket::new()
+        let outcome = super::ui::inputs::form::MeridienOrderTicket::new()
             .theme(t)
             .show(ui, &mut oe_state);
         if outcome.review_clicked {
@@ -1343,7 +1343,7 @@ pub(crate) fn render_order_entry_body(
         return;
     }
     // ── Aperture / Octave path: delegated to ApertureOrderTicket widget ──────
-    use super::ui::widgets::form::{ApertureOrderTicket, ApertureOrderState, ApertureAction, ApertureVariant};
+    use super::ui::inputs::form::{ApertureOrderTicket, ApertureOrderState, ApertureAction, ApertureVariant};
 
     let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
     let spread = (last_price * 0.0001).max(0.01);

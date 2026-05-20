@@ -33,8 +33,8 @@ use egui;
 
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
-use super::super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
-use super::super::widgets::text::{MonospaceCode, SectionLabelSize};
+use super::super::chrome::modal::{Modal, Anchor, HeaderStyle, FrameKind};
+use super::super::components::text::{MonospaceCode, SectionLabelSize};
 use crate::apex_data::types::{
     AssetClass, ReplayConfig, ReplayEvent, ReplayMode, ReplayState, ReplayStatus,
 };

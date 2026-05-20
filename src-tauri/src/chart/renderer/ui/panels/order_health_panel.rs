@@ -19,9 +19,9 @@ use egui;
 
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
-use super::super::widgets::frames::PanelFrame;
+use super::super::components::frames_widget::PanelFrame;
 use super::kit::PanelHeader;
-use super::super::widgets::text::{SectionLabel, MonospaceCode};
+use super::super::components::text::{SectionLabel, MonospaceCode};
 use crate::chart_renderer::trading::order_manager::{self, OrderState};
 use crate::chart_renderer::trading::journal::{self, JournalEvent, AttemptKind};
 

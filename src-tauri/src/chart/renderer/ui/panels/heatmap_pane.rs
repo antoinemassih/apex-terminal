@@ -9,7 +9,7 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
-use super::super::widgets::headers::PaneHeader;
+use super::super::components::headers_widget::PaneHeader;
 
 /// Refresh the grouped-daily backing snapshot at most once an hour — the
 /// data only changes on session close and intraday changes already flow

@@ -27,7 +27,7 @@
 use egui;
 
 use super::super::style::*;
-use super::super::widgets as widgets;
+use super::super::components::frames_widget as widgets_frames;
 use super::super::super::gpu::{Chart, Theme, Watchlist};
 use crate::data::apex_data::live_state;
 use crate::data::apex_data::types::{CalibrationTier, TradePlanV2};
@@ -82,7 +82,7 @@ pub(crate) fn draw(
         .min_width(240.0)
         .max_width(360.0)
         .resizable(true)
-        .frame(widgets::frames::PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build())
+        .frame(widgets_frames::PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build())
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("TRADE PLAN v2").monospace().strong()

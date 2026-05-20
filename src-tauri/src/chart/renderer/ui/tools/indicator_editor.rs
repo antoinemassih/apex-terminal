@@ -7,12 +7,12 @@ use crate::ui_kit::widgets::{Button, Tooltip};
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::widgets::NumberStepper;
-use super::super::widgets::form::{IndicatorParamRow, IndicatorParamRowF};
+use super::super::inputs::form::{IndicatorParamRow, IndicatorParamRowF};
 use crate::ui_kit::widgets::FormRow;
-use super::super::widgets::inputs::{ColorSwatchPicker, ThicknessPicker};
-use super::super::widgets::modal::{Modal, Anchor, FrameKind, HeaderStyle};
-use super::super::widgets::frames::PopupFrame;
-use super::super::widgets::select::SegmentedControl;
+use super::super::inputs::inputs::{ColorSwatchPicker, ThicknessPicker};
+use super::super::chrome::modal::{Modal, Anchor, FrameKind, HeaderStyle};
+use super::super::components::frames_widget::PopupFrame;
+use super::super::inputs::select::SegmentedControl;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::LineStyle;
 

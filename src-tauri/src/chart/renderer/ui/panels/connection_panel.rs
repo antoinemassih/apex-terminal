@@ -56,7 +56,7 @@ pub(crate) fn status_from_snapshot(name: &str) -> (String, StatusColor) {
 pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mut [Chart], _ap: usize, t: &Theme, conn_panel_open: &mut bool) {
     if !*conn_panel_open { return; }
 
-    use super::super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
+    use super::super::chrome::modal::{Modal, Anchor, HeaderStyle, FrameKind};
     let screen = _ctx.screen_rect();
     let custom_frame = egui::Frame::popup(&_ctx.style())
         .fill(t.toolbar_bg)

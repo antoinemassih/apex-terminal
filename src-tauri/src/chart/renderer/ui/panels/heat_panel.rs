@@ -7,7 +7,7 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
-use super::super::widgets::text::MonospaceCode;
+use super::super::components::text::MonospaceCode;
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::Variant;
 use crate::ui_kit::icons::Icon;
@@ -57,7 +57,7 @@ pub(crate) fn render_heat_panel(
     ui.horizontal(|ui| {
         {
             let mut cur: &'static str = HEAT_OPTS.iter().map(|&(v, _)| v).find(|&s| s == watchlist.heat_index.as_str()).unwrap_or("Watchlist");
-            if super::super::widgets::select::Dropdown::new("heat_idx")
+            if super::super::inputs::select::Dropdown::new("heat_idx")
                 .options(HEAT_OPTS)
                 .width(100.0)
                 .theme(t)

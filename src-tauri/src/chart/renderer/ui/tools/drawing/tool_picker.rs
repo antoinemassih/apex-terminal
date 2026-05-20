@@ -6,7 +6,7 @@ use crate::chart_renderer::gpu::Watchlist;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::Tooltip;
 use crate::chart_renderer::ui::style::{cursor, gap_xs, gap_sm, gap_md, gap_lg, font_sm, font_lg, mono_sm, color_subtle, color_muted, color_half, color_very_dim};
-use crate::chart_renderer::ui::widgets::frames::PopupFrame;
+use crate::chart_renderer::ui::components::frames_widget::PopupFrame;
 
 /// Output from the picker.
 pub struct DrawingToolPickerOutput {

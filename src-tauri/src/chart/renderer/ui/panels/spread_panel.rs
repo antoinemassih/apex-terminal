@@ -3,13 +3,13 @@
 use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
-use super::super::widgets::text::MonospaceCode;
+use super::super::components::text::MonospaceCode;
 use crate::ui_kit::widgets::{Button, PanelSection, Tooltip};
 use crate::ui_kit::widgets::tokens::{Variant, Size};
 use crate::ui_kit::icons::Icon;
 use super::super::widgets::cards::metric_card::MetricCard;
-use super::super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
-use super::super::widgets::text::SectionLabelSize;
+use super::super::chrome::modal::{Modal, Anchor, HeaderStyle, FrameKind};
+use super::super::components::text::SectionLabelSize;
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
@@ -304,7 +304,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                     let strat_opts: Vec<(SpreadStrategy, &'static str)> = SpreadStrategy::all()
                         .iter().map(|s| (*s, s.label())).collect();
                     let mut cur_strat = watchlist.spread_state.strategy;
-                    if super::super::widgets::select::Dropdown::new("spread_strategy_combo")
+                    if super::super::inputs::select::Dropdown::new("spread_strategy_combo")
                         .options(&strat_opts)
                         .width(180.0)
                         .theme(t)
@@ -398,7 +398,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                             let expiry_id = format!("leg_expiry_{}", idx);
                             let opts: Vec<(&'static str, &'static str)> = EXPIRY_OPTIONS.iter().map(|&s| (s, s)).collect();
                             let mut cur: &'static str = EXPIRY_OPTIONS.iter().copied().find(|&s| s == leg.expiry.as_str()).unwrap_or("0DTE");
-                            if super::super::widgets::select::Dropdown::new(&expiry_id)
+                            if super::super::inputs::select::Dropdown::new(&expiry_id)
                                 .options(&opts)
                                 .width(52.0)
                                 .theme(t)

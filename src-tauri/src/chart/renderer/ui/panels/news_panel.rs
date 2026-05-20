@@ -13,7 +13,7 @@
 
 use egui;
 use super::super::style::*;
-use super::super::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
+use super::super::chrome::modal::{Modal, Anchor, HeaderStyle, FrameKind};
 use super::super::super::gpu::{Watchlist, NewsItem, Theme};
 use crate::ui_kit::widgets::{Button, Skeleton};
 use crate::ui_kit::widgets::tokens::Variant;

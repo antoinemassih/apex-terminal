@@ -15,7 +15,7 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
-use super::super::widgets::text::{SectionLabel, MonospaceCode};
+use super::super::components::text::{SectionLabel, MonospaceCode};
 use crate::ui_kit::widgets::FormRow;
 use super::super::widgets::rows::WatchlistRow;
 use crate::ui_kit::widgets::{

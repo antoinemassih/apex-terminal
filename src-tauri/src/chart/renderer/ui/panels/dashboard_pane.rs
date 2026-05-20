@@ -3,8 +3,8 @@
 use egui;
 use super::super::style as st;
 use super::super::super::gpu::*;
-use super::super::widgets::layout::EmptyState;
-use super::super::widgets::headers::PaneHeader;
+use super::super::components::layout::EmptyState;
+use super::super::components::headers_widget::PaneHeader;
 
 const TILE_GAP: f32 = 6.0;
 const HEADER_H: f32 = 28.0;

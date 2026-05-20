@@ -10,11 +10,11 @@ use super::super::lists::rows::watchlist_columns::{BUILTIN as WL_COLUMNS_BUILTIN
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::gpu::{fetch_chain_background, fetch_search_background, fetch_watchlist_prices, set_pending_wl_tooltip, WlTooltipData};
 use crate::chart_renderer::trading::market_session;
-use super::super::widgets::text::MonospaceCode;
+use super::super::components::text::MonospaceCode;
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::{Variant, Size};
 use crate::ui_kit::widgets::SearchInput;
-use super::super::widgets::frames::PopupFrame;
+use super::super::components::frames_widget::PopupFrame;
 use super::super::widgets::watchlist::NmfToggle;
 use crate::ui_kit::widgets::{
     Input, PanelEmpty, PanelLoading, PanelSection, SidePanelShell, Tag, TagTone, Tooltip, Width,
@@ -88,7 +88,7 @@ if watchlist.open {
                             let active_name = wl_names.get(active_idx).cloned().unwrap_or_else(|| "Default".into());
                             let wl_opts: Vec<(usize, String)> = wl_names.iter().enumerate()
                                 .map(|(i, n)| (i, n.clone())).collect();
-                            let (_, combo_resp) = super::super::widgets::select::DropdownOwned::new("wl_selector")
+                            let (_, combo_resp) = super::super::inputs::select::DropdownOwned::new("wl_selector")
                                 .options(wl_opts)
                                 .width(ui.available_width() - 60.0)
                                 .font_size(9.0)
@@ -1405,7 +1405,7 @@ if watchlist.open {
                             .map(|(d, l)| (*d, l.as_str())).collect();
                         dim_label(ui, "DTE", t.dim);
                         let mut cur_dte = watchlist.chain_far_dte;
-                        if super::super::widgets::select::Dropdown::new("far_dte")
+                        if super::super::inputs::select::Dropdown::new("far_dte")
                             .options(&dte_opts)
                             .width(100.0)
                             .theme(t)
@@ -1819,7 +1819,7 @@ if watchlist.open {
                                     sm_opts.push((StrikeMode::Pct(pi as u8), format!("{}%", pct)));
                                 }
                                 sm_opts.push((StrikeMode::StdDev, "Std Dev".into()));
-                                super::super::widgets::select::DropdownOwned::new("sm_0")
+                                super::super::inputs::select::DropdownOwned::new("sm_0")
                                     .options(sm_opts)
                                     .width(40.0)
                                     .font_size(8.0)
@@ -1880,7 +1880,7 @@ if watchlist.open {
                                     sm_opts.push((StrikeMode::Pct(pi as u8), format!("{}%", pct)));
                                 }
                                 sm_opts.push((StrikeMode::StdDev, "Std Dev".into()));
-                                super::super::widgets::select::DropdownOwned::new("sm_f")
+                                super::super::inputs::select::DropdownOwned::new("sm_f")
                                     .options(sm_opts)
                                     .width(40.0)
                                     .font_size(8.0)

@@ -17,7 +17,7 @@ use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::Variant;
-use super::super::widgets::text::MonospaceCode;
+use super::super::components::text::MonospaceCode;
 use crate::ui_kit::widgets::Input;
 
 const HEADER_H: f32 = 18.0;

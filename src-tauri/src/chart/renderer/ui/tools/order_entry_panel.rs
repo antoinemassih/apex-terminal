@@ -7,7 +7,7 @@ use crate::chart_renderer::gpu::{Theme, Chart, render_order_entry_body};
 use crate::chart_renderer::trading::{OrderSide, OrderLevel, OrderStatus, OrderState, AccountSummary, Position, IbOrder};
 use crate::chart_renderer::gpu::Watchlist;
 use crate::chart_renderer::ui::style::{color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, cursor, gap_xs, gap_sm, gap_lg, gap_2xl, font_xs, font_sm, font_md, radius_sm, radius_lg, stroke_std};
-use crate::chart_renderer::ui::widgets::frames::PopupFrame;
+use crate::chart_renderer::ui::components::frames_widget::PopupFrame;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{PanelEmpty, Button as KitButton};
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
