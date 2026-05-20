@@ -221,3 +221,34 @@ calls stay identical. This is the same sacred-file discipline used for the
   token system.
 - Not a runtime CSS engine. No cascade, no selectors. A `DesignSystem` is
   plain data; widgets read it explicitly.
+- Not recompiled per theme. A theme switch never triggers a build (see §10).
+
+## 10. Install model — built-in `const` + installed JSON, one registry
+
+This is how VSCode and JetBrains work, and it is the model here. Neither tool
+recompiles to switch themes; a theme is always *data*, loaded at runtime. A
+recompile-to-switch design would mean a 10–60 s build per colour change — and
+it buys nothing: with the §5 per-frame snapshot, a compiled-`const` token and
+a JSON-loaded token cost the *same* at the read site (~1 ns). Compiling a
+theme in only saves a few ms of one-time startup parsing, at the cost of
+making themes un-installable without a Rust rebuild.
+
+So two theme sources feed **one `ThemeRegistry`**:
+
+| Source | Form | Loaded | Why |
+|---|---|---|---|
+| **Built-in** (the final crafted set + the 15 existing) | compiled-in `const DesignSystem` | at startup, no file I/O | tamper-proof, never missing/corrupt, zero startup parse |
+| **Installed / user** | DTCG JSON in a `themes/` dir | scanned at startup + on "Install theme…" | author / install without a rebuild |
+
+"Installing" a theme = drop its DTCG JSON in the themes dir (or import via a
+button) → the registry scans it → it appears in the picker. This is VSCode's
+extension model minus the `.vsix` packaging. Both sources deserialize into the
+same `DesignSystem`; the registry does not care which arm produced an entry.
+
+Switching stays an instant `Arc<DesignSystem>` pointer-swap picked up by the
+next frame's `begin_frame` (§5, Rule 4). No recompile, no relaunch, no UI
+rebuild — just the next frame reading a new snapshot.
+
+A built-in theme is the resolver's guaranteed fallback: if an installed JSON
+fails to parse or references a missing field, the registry logs via
+`errors_sink` and falls back to a named built-in rather than panicking.
