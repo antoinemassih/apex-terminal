@@ -1641,6 +1641,13 @@ fn render_chart_pane(
         }
     };
     let bx = |i:f32| rect.left()+(i-vs)*bs+bs*0.5-off;
+    // Inverse of bx(): screen x → fractional bar index. Used by drawings whose
+    // geometry is defined in screen space (e.g. FibArc's circular arcs) and
+    // must be re-expressed in (slot, value) space for the GPU line pipeline.
+    let bx_inv = |x:f32| -> f32 {
+        if bs.abs() < 1e-6 { return vs; }
+        (x - rect.left() - bs * 0.5 + off) / bs + vs
+    };
     let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
     let painter = ui.painter_at(rect);
 
@@ -5482,7 +5489,10 @@ fn render_chart_pane(
                     (0.236, "23.6%"), (0.382, "38.2%"), (0.5, "50%"),
                     (0.618, "61.8%"), (0.786, "78.6%"), (1.0, "100%"),
                 ];
-                // Draw arcs centered at p1, curving on the left side
+                // Draw arcs centered at p1, curving on the left side. The arc is
+                // a true circle in SCREEN space; for the GPU path each arc point
+                // is converted screen → (slot, value) via bx_inv/py_inv so the
+                // line shader's bx()/py() maps it back identically.
                 for &(ratio, label) in ratios {
                     let r = dist * ratio;
                     let alpha = if ratio >= 0.618 { 200u8 } else { 120 };
@@ -5499,7 +5509,26 @@ fn render_chart_pane(
                             arc_pts.push(clamp_pt(apt));
                         }
                     }
-                    if arc_pts.len() > 1 {
+                    if use_gpu_drawing {
+                        #[cfg(feature = "gpu_chart_v2")]
+                        {
+                            use crate::chart::renderer_gpu::LineSegment;
+                            let lc = _drawing_c32(arc_color);
+                            let th = d.thickness * 0.7 * drawing_ppp;
+                            for w in arc_pts.windows(2) {
+                                let sa = bx_inv(w[0].x) - vs_floor;
+                                let va = py_inv(w[0].y);
+                                let sb = bx_inv(w[1].x) - vs_floor;
+                                let vb = py_inv(w[1].y);
+                                chart.gpu_render_params.line_segments.push(LineSegment {
+                                    start_slot: sa, start_val: va,
+                                    end_slot:   sb, end_val:   vb,
+                                    color: lc, thickness: th,
+                                    dash_period_px: 0.0, dash_duty: 1.0,
+                                });
+                            }
+                        }
+                    } else if arc_pts.len() > 1 {
                         painter.add(egui::Shape::line(arc_pts, egui::Stroke::new(d.thickness * 0.7, arc_color)));
                     }
                     // Label at the leftmost edge of the arc
@@ -5519,33 +5548,87 @@ fn render_chart_pane(
                 let xl = p0.x.min(p1.x); let xr = p0.x.max(p1.x);
                 let yt = p0.y.min(p1.y); let yb = p0.y.max(p1.y);
                 let pw = xr - xl; let ph = yb - yt;
-                // Outer box
-                painter.rect_stroke(egui::Rect::from_min_max(egui::pos2(xl,yt), egui::pos2(xr,yb)),
-                    0.0, sc, egui::StrokeKind::Outside);
-                painter.rect_filled(egui::Rect::from_min_max(egui::pos2(xl,yt), egui::pos2(xr,yb)),
-                    0.0, hex_to_color(&d.color, d.opacity * 0.04));
-                let sub_sc = egui::Stroke::new(d.thickness * 0.5, color_alpha(dc, 80));
-                let dot_sc = egui::Stroke::new(d.thickness * 0.4, color_alpha(dc, 50));
-                // Horizontal divisions at 25%, 50%, 75%
-                for &frac in &[0.25_f32, 0.5, 0.75] {
-                    let y = yt + ph * frac;
-                    dashed_line(&painter, egui::pos2(xl, y), egui::pos2(xr, y), if frac == 0.5 { sub_sc } else { dot_sc }, LineStyle::Dotted);
+                if use_gpu_drawing {
+                    #[cfg(feature = "gpu_chart_v2")]
+                    {
+                        use crate::chart::renderer_gpu::{LineSegment, FillQuad};
+                        let bar0g = SignalDrawing::time_to_bar(*time0, &chart.timestamps);
+                        let bar1g = SignalDrawing::time_to_bar(*time1, &chart.timestamps);
+                        let s0 = bar0g - vs_floor;
+                        let s1 = bar1g - vs_floor;
+                        let sl = s0.min(s1); let sr = s0.max(s1);
+                        let span = sr - sl;
+                        let top_p = price0.max(*price1);
+                        let bot_p = price0.min(*price1);
+                        let pp = top_p - bot_p;
+                        // Outer box fill.
+                        chart.gpu_render_params.fill_quads.push(FillQuad {
+                            start_slot: sl, start_top: top_p, start_bot: bot_p,
+                            end_slot:   sr, end_top:   top_p, end_bot:   bot_p,
+                            color: _drawing_c32(hex_to_color(&d.color, d.opacity * 0.04)),
+                        });
+                        let segs = &mut chart.gpu_render_params.line_segments;
+                        let box_lc = _drawing_c32(if is_sel { t.accent } else { dc });
+                        let box_th = (if is_sel { d.thickness + 1.0 } else { d.thickness }) * drawing_ppp;
+                        let push = |segs: &mut Vec<LineSegment>, sa: f32, va: f32, sb: f32, vb: f32, col: [f32;4], th: f32, dp: f32, dd: f32| {
+                            segs.push(LineSegment { start_slot: sa, start_val: va, end_slot: sb, end_val: vb,
+                                color: col, thickness: th, dash_period_px: dp, dash_duty: dd });
+                        };
+                        // Outer box outline (4 edges).
+                        push(segs, sl, top_p, sr, top_p, box_lc, box_th, 0.0, 1.0);
+                        push(segs, sl, bot_p, sr, bot_p, box_lc, box_th, 0.0, 1.0);
+                        push(segs, sl, top_p, sl, bot_p, box_lc, box_th, 0.0, 1.0);
+                        push(segs, sr, top_p, sr, bot_p, box_lc, box_th, 0.0, 1.0);
+                        // Internal divisions (25/50/75%), dotted.
+                        let (dotp, dotd) = LineSegment::DOTTED;
+                        for &frac in &[0.25_f32, 0.5, 0.75] {
+                            let a = if frac == 0.5 { 80u8 } else { 50 };
+                            let th = d.thickness * if frac == 0.5 { 0.5 } else { 0.4 } * drawing_ppp;
+                            let lc = _drawing_c32(color_alpha(dc, a));
+                            // Horizontal: price = top - pp*frac.
+                            let vp = top_p - pp * frac;
+                            push(segs, sl, vp, sr, vp, lc, th, dotp, dotd);
+                            // Vertical: slot = sl + span*frac.
+                            let vsl = sl + span * frac;
+                            push(segs, vsl, top_p, vsl, bot_p, lc, th, dotp, dotd);
+                        }
+                        // Main diagonals (solid).
+                        let diag_lc = _drawing_c32(color_alpha(dc, 140));
+                        let diag_th = d.thickness * 0.7 * drawing_ppp;
+                        push(segs, sl, top_p, sr, bot_p, diag_lc, diag_th, 0.0, 1.0);
+                        push(segs, sl, bot_p, sr, top_p, diag_lc, diag_th, 0.0, 1.0);
+                        // Gann angle diagonals from anchor p0 (dashed).
+                        let ang_lc = _drawing_c32(color_alpha(dc, 70));
+                        let ang_th = d.thickness * 0.5 * drawing_ppp;
+                        let (dp, dd) = LineSegment::DASHED;
+                        // p0 screen y + ph*0.5 → price0 - pp*0.5.
+                        push(segs, s0, *price0, sr, *price0 - pp * 0.5, ang_lc, ang_th, dp, dd);
+                        // p0 screen x + pw*0.5 → slot s0 + span*0.5; endpoint at bot_p.
+                        push(segs, s0, *price0, s0 + span * 0.5, bot_p, ang_lc, ang_th, dp, dd);
+                    }
+                } else {
+                    painter.rect_stroke(egui::Rect::from_min_max(egui::pos2(xl,yt), egui::pos2(xr,yb)),
+                        0.0, sc, egui::StrokeKind::Outside);
+                    painter.rect_filled(egui::Rect::from_min_max(egui::pos2(xl,yt), egui::pos2(xr,yb)),
+                        0.0, hex_to_color(&d.color, d.opacity * 0.04));
+                    let sub_sc = egui::Stroke::new(d.thickness * 0.5, color_alpha(dc, 80));
+                    let dot_sc = egui::Stroke::new(d.thickness * 0.4, color_alpha(dc, 50));
+                    for &frac in &[0.25_f32, 0.5, 0.75] {
+                        let y = yt + ph * frac;
+                        dashed_line(&painter, egui::pos2(xl, y), egui::pos2(xr, y), if frac == 0.5 { sub_sc } else { dot_sc }, LineStyle::Dotted);
+                    }
+                    for &frac in &[0.25_f32, 0.5, 0.75] {
+                        let x = xl + pw * frac;
+                        dashed_line(&painter, egui::pos2(x, yt), egui::pos2(x, yb), if frac == 0.5 { sub_sc } else { dot_sc }, LineStyle::Dotted);
+                    }
+                    let diag_sc = egui::Stroke::new(d.thickness * 0.7, color_alpha(dc, 140));
+                    dashed_line(&painter, egui::pos2(xl, yt), egui::pos2(xr, yb), diag_sc, LineStyle::Solid);
+                    dashed_line(&painter, egui::pos2(xl, yb), egui::pos2(xr, yt), diag_sc, LineStyle::Solid);
+                    let (corner_x, corner_y) = (p0.x, p0.y);
+                    let angles_sc = egui::Stroke::new(d.thickness * 0.5, color_alpha(dc, 70));
+                    dashed_line(&painter, clamp_pt(egui::pos2(corner_x, corner_y)), clamp_pt(egui::pos2(xr, corner_y + ph * 0.5)), angles_sc, LineStyle::Dashed);
+                    dashed_line(&painter, clamp_pt(egui::pos2(corner_x, corner_y)), clamp_pt(egui::pos2(corner_x + pw * 0.5, yb)), angles_sc, LineStyle::Dashed);
                 }
-                // Vertical divisions at 25%, 50%, 75%
-                for &frac in &[0.25_f32, 0.5, 0.75] {
-                    let x = xl + pw * frac;
-                    dashed_line(&painter, egui::pos2(x, yt), egui::pos2(x, yb), if frac == 0.5 { sub_sc } else { dot_sc }, LineStyle::Dotted);
-                }
-                // Main diagonals
-                let diag_sc = egui::Stroke::new(d.thickness * 0.7, color_alpha(dc, 140));
-                dashed_line(&painter, egui::pos2(xl, yt), egui::pos2(xr, yb), diag_sc, LineStyle::Solid);
-                dashed_line(&painter, egui::pos2(xl, yb), egui::pos2(xr, yt), diag_sc, LineStyle::Solid);
-                // Gann angle diagonals from the starting corner (top-left if P0 is top-left)
-                let (corner_x, corner_y) = (p0.x, p0.y);
-                let angles_sc = egui::Stroke::new(d.thickness * 0.5, color_alpha(dc, 70));
-                // 1x2 and 2x1 angles from corner
-                dashed_line(&painter, clamp_pt(egui::pos2(corner_x, corner_y)), clamp_pt(egui::pos2(xr, corner_y + ph * 0.5)), angles_sc, LineStyle::Dashed);
-                dashed_line(&painter, clamp_pt(egui::pos2(corner_x, corner_y)), clamp_pt(egui::pos2(corner_x + pw * 0.5, yb)), angles_sc, LineStyle::Dashed);
                 if is_sel {
                     painter.circle_filled(p0, 5.0, COLOR_INFO_CYAN);
                     painter.circle_filled(p1, 5.0, COLOR_INFO_CYAN);
