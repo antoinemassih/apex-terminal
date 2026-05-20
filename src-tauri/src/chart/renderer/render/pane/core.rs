@@ -5035,7 +5035,10 @@ fn render_chart_pane(
                         let sx = bx(i as f32); let sy = py(vwap);
                         if sy.is_finite() && sy.abs() < 50000.0 {
                             pts.push(egui::pos2(sx, sy));
-                            sv.push((i as f32 - vs_floor, vwap));
+                            // `vs.floor()` inline rather than the cfg-gated `vs_floor`
+                            // binding so this compiles in the --no-default-features
+                            // (egui-only) build too. `sv` is consumed only under cfg.
+                            sv.push((i as f32 - vs.floor(), vwap));
                         }
                     }
                 }
