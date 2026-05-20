@@ -122,7 +122,11 @@ pub(crate) fn draw(
 
                                             // Delete button (right side)
                                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                                let r = icon_btn(ui, Icon::TRASH, color_dim(t.dim), font_sm());
+                                                let r = KitButton::icon(Icon::TRASH)
+                                                    .variant(KitVariant::Ghost)
+                                                    .placement(crate::ui_kit::widgets::icon_placement::IconPlacement::Modal)
+                                                    .tone_destructive()
+                                                    .show(ui, t);
                                                 Tooltip::new("Delete template").show(ui, &r, t);
                                                 if r.clicked() {
                                                     delete_idx = Some(i);
