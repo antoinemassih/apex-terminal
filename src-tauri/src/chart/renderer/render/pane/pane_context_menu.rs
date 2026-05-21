@@ -11,13 +11,11 @@ use crate::chart_renderer::trading::*;
 use crate::chart_renderer::{LineStyle, PlayLineKind};
 use crate::chart_renderer::ui::style::{
     color_alpha, mono_xs,
+    font_2xs, font_xs,
     COLOR_AMBER,
     TEXT_PRIMARY,
 };
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::Button as KitButton;
-use crate::ui_kit::widgets::tokens::Variant as KitVariant;
-use crate::ui_kit::widgets::theme::active_theme;
 
 /// Render the right-click context menu body.
 ///
@@ -49,26 +47,24 @@ pub(super) fn pane_context_menu<F>(
         let click_price = raw_click_price.clamp(min_p, max_p);
         let click_pos = ui.input(|i| i.pointer.latest_pos());
 
-        let t_owned = active_theme(ui.ctx());
-        let t = &t_owned;
         // ── View controls (top) ──
-        if KitButton::new(&*format!("{} Reset View", Icon::ARROW_COUNTER_CLOCKWISE)).variant(KitVariant::Ghost).show(ui, t).clicked() {
+        if ui.button(format!("{} Reset View", Icon::ARROW_COUNTER_CLOCKWISE)).clicked() {
             chart.auto_scroll = true; chart.price_lock = None;
             chart.vs = (n as f32 - chart.vc as f32 + 8.0).max(0.0);
             ui.close_menu();
         }
-        if KitButton::new(&*format!("{} Drag Zoom", Icon::MAGNIFYING_GLASS_PLUS)).variant(KitVariant::Ghost).show(ui, t).clicked() {
+        if ui.button(format!("{} Drag Zoom", Icon::MAGNIFYING_GLASS_PLUS)).clicked() {
             chart.zoom_selecting = true; chart.zoom_start = egui::Pos2::ZERO;
             ui.close_menu();
         }
-        if KitButton::new(&*format!("{} Measure (Shift+Drag)", Icon::RULER)).variant(KitVariant::Ghost).show(ui, t).clicked() {
+        if ui.button(format!("{} Measure (Shift+Drag)", Icon::RULER)).clicked() {
             chart.measure_active = true; chart.measure_start = None;
             ui.close_menu();
         }
         ui.separator();
 
         ui.label(egui::RichText::new(format!("ORDERS @ {:.2}", click_price)).small().color(t.dim));
-        if KitButton::new(&*format!("{} Buy Order", Icon::ARROW_FAT_UP)).variant(KitVariant::Ghost).fg(t.bull).show(ui, t).clicked() {
+        if ui.button(egui::RichText::new(format!("{} Buy Order", Icon::ARROW_FAT_UP)).color(t.bull)).clicked() {
             use crate::chart_renderer::trading::order_manager::*;
             if let Some(id) = submit_and_get_id(OrderIntent {
                 symbol: chart.symbol.clone(), side: OrderSide::Buy,
@@ -80,7 +76,7 @@ pub(super) fn pane_context_menu<F>(
             }
             ui.close_menu();
         }
-        if KitButton::new(&*format!("{} Sell Order", Icon::ARROW_FAT_DOWN)).variant(KitVariant::Ghost).fg(t.bear).show(ui, t).clicked() {
+        if ui.button(egui::RichText::new(format!("{} Sell Order", Icon::ARROW_FAT_DOWN)).color(t.bear)).clicked() {
             use crate::chart_renderer::trading::order_manager::*;
             if let Some(id) = submit_and_get_id(OrderIntent {
                 symbol: chart.symbol.clone(), side: OrderSide::Sell,
@@ -92,7 +88,7 @@ pub(super) fn pane_context_menu<F>(
             }
             ui.close_menu();
         }
-        if KitButton::new(&*format!("{} Stop Loss", Icon::SHIELD_WARNING)).variant(KitVariant::Ghost).fg(t.bear).show(ui, t).clicked() {
+        if ui.button(egui::RichText::new(format!("{} Stop Loss", Icon::SHIELD_WARNING)).color(t.bear)).clicked() {
             use crate::chart_renderer::trading::order_manager::*;
             if let Some(id) = submit_and_get_id(OrderIntent {
                 symbol: chart.symbol.clone(), side: OrderSide::Stop,
@@ -105,7 +101,7 @@ pub(super) fn pane_context_menu<F>(
             ui.close_menu();
         }
         // OCO Bracket (simple) — routed through IB native OCO API
-        if KitButton::new("\u{21C5} OCO Bracket").variant(KitVariant::Ghost).fg(t.accent).show(ui, t).clicked() {
+        if ui.button(egui::RichText::new("\u{21C5} OCO Bracket").color(t.accent)).clicked() {
             use crate::chart_renderer::trading::order_manager::*;
             let target_price = click_price * 1.01;
             let stop_price = click_price * 0.99;
@@ -159,7 +155,7 @@ pub(super) fn pane_context_menu<F>(
             let mut delete_idx: Option<usize> = None;
             for (ti, tmpl) in templates.iter().enumerate() {
                 ui.horizontal(|ui| {
-                    if KitButton::new(&*format!("{} (+{}% / -{}%)", tmpl.name, tmpl.target_pct, tmpl.stop_pct)).variant(KitVariant::Ghost).show(ui, t).clicked() {
+                    if ui.button(format!("{} (+{}% / -{}%)", tmpl.name, tmpl.target_pct, tmpl.stop_pct)).clicked() {
                         use crate::chart_renderer::trading::order_manager::*;
                         let target_price = click_price * (1.0 + tmpl.target_pct / 100.0);
                         let stop_price   = click_price * (1.0 - tmpl.stop_pct  / 100.0);
@@ -203,7 +199,7 @@ pub(super) fn pane_context_menu<F>(
                         }
                         ui.close_menu();
                     }
-                    if KitButton::new(Icon::X).variant(KitVariant::Ghost).fg(t.dim).show(ui, t).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(font_2xs()).color(t.dim)).frame(false)).clicked() {
                         delete_idx = Some(ti);
                     }
                 });
@@ -211,21 +207,21 @@ pub(super) fn pane_context_menu<F>(
             if let Some(idx) = delete_idx { chart.bracket_templates.remove(idx); }
             ui.separator();
             // Create new preset inline
-            ui.label(egui::RichText::new("NEW PRESET").monospace().size(8.0).color(t.dim));
+            ui.label(egui::RichText::new("NEW PRESET").monospace().size(font_2xs()).color(t.dim));
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Name").monospace().size(9.0).color(t.dim));
+                ui.label(egui::RichText::new("Name").monospace().size(font_xs()).color(t.dim));
                 ui.add(egui::TextEdit::singleline(&mut chart.new_bracket_name).desired_width(60.0).font(mono_xs()));
             });
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Target %").monospace().size(9.0).color(t.dim));
+                ui.label(egui::RichText::new("Target %").monospace().size(font_xs()).color(t.dim));
                 ui.add(egui::TextEdit::singleline(&mut chart.new_bracket_target).desired_width(40.0).font(mono_xs()));
-                ui.label(egui::RichText::new("Stop %").monospace().size(9.0).color(t.dim));
+                ui.label(egui::RichText::new("Stop %").monospace().size(font_xs()).color(t.dim));
                 ui.add(egui::TextEdit::singleline(&mut chart.new_bracket_stop).desired_width(40.0).font(mono_xs()));
             });
             let can_create = !chart.new_bracket_name.trim().is_empty()
                 && chart.new_bracket_target.parse::<f32>().is_ok()
                 && chart.new_bracket_stop.parse::<f32>().is_ok();
-            if KitButton::new(&*format!("{} Create", Icon::PLUS)).variant(KitVariant::Ghost).fg(t.accent).enabled(can_create).show(ui, t).clicked() {
+            if ui.add_enabled(can_create, egui::Button::new(egui::RichText::new(format!("{} Create", Icon::PLUS)).color(t.accent))).clicked() {
                 chart.bracket_templates.push(BracketTemplate {
                     name: chart.new_bracket_name.trim().to_string(),
                     target_pct: chart.new_bracket_target.parse().unwrap_or(1.0),
@@ -236,7 +232,7 @@ pub(super) fn pane_context_menu<F>(
                 chart.new_bracket_stop.clear();
             }
         });
-        if KitButton::new("\u{27F2} Trigger Order").variant(KitVariant::Ghost).fg(t.accent).show(ui, t).clicked() {
+        if ui.button(egui::RichText::new("\u{27F2} Trigger Order").color(t.accent)).clicked() {
             use crate::chart_renderer::trading::order_manager::*;
             let target_price = click_price * 1.02;
             if let Some(id1) = submit_and_get_id(OrderIntent {
@@ -258,7 +254,7 @@ pub(super) fn pane_context_menu<F>(
             ui.close_menu();
         }
         if !chart.orders.is_empty() {
-            if KitButton::new(&*format!("{} Cancel All Orders", Icon::TRASH)).variant(KitVariant::Ghost).fg(t.bear).show(ui, t).clicked() {
+            if ui.button(egui::RichText::new(format!("{} Cancel All Orders", Icon::TRASH)).color(t.bear)).clicked() {
                 crate::chart_renderer::trading::order_manager::cancel_all_orders(&chart.symbol);
                 chart.orders.clear(); ui.close_menu();
             }
@@ -267,20 +263,20 @@ pub(super) fn pane_context_menu<F>(
         if !chart.play_lines.is_empty() {
             ui.separator();
             ui.label(egui::RichText::new("PLAY LEVELS").small().color(t.accent));
-            if KitButton::new(&*format!("\u{2295} Set Entry @ {:.2}", click_price)).variant(KitVariant::Ghost).show(ui, t).clicked() {
+            if ui.button(format!("\u{2295} Set Entry @ {:.2}", click_price)).clicked() {
                 if let Some(pl) = chart.play_lines.iter_mut().find(|l| l.kind == crate::chart_renderer::PlayLineKind::Entry) {
                     pl.price = click_price;
                 }
                 ui.close_menu();
             }
-            if KitButton::new(&*format!("\u{2295} Set Target @ {:.2}", click_price)).variant(KitVariant::Ghost).show(ui, t).clicked() {
+            if ui.button(format!("\u{2295} Set Target @ {:.2}", click_price)).clicked() {
                 if let Some(pl) = chart.play_lines.iter_mut().find(|l| l.kind == crate::chart_renderer::PlayLineKind::Target) {
                     pl.price = click_price;
                 }
                 ui.close_menu();
             }
             if chart.play_lines.iter().any(|l| l.kind == crate::chart_renderer::PlayLineKind::Stop) {
-                if KitButton::new(&*format!("\u{2295} Set Stop @ {:.2}", click_price)).variant(KitVariant::Ghost).show(ui, t).clicked() {
+                if ui.button(format!("\u{2295} Set Stop @ {:.2}", click_price)).clicked() {
                     if let Some(pl) = chart.play_lines.iter_mut().find(|l| l.kind == crate::chart_renderer::PlayLineKind::Stop) {
                         pl.price = click_price;
                     }
@@ -292,12 +288,12 @@ pub(super) fn pane_context_menu<F>(
         ui.label(egui::RichText::new(format!("ALERTS @ {:.2}", click_price)).small().color(t.dim));
         // Context-menu alerts are created as DRAFTS — user must Place them from the alerts panel
         // (same pattern as orders: draft → placed → active)
-        if KitButton::new(&*format!("{} Alert Above {:.2}", Icon::ARROW_FAT_UP, click_price)).variant(KitVariant::Ghost).show(ui, t).clicked() {
+        if ui.button(format!("{} Alert Above {:.2}", Icon::ARROW_FAT_UP, click_price)).clicked() {
             let id = chart.next_alert_id; chart.next_alert_id += 1;
             chart.price_alerts.push(PriceAlert { id, price: click_price, above: true, triggered: false, draft: true, symbol: chart.symbol.clone() });
             ui.close_menu();
         }
-        if KitButton::new(&*format!("{} Alert Below {:.2}", Icon::ARROW_FAT_DOWN, click_price)).variant(KitVariant::Ghost).show(ui, t).clicked() {
+        if ui.button(format!("{} Alert Below {:.2}", Icon::ARROW_FAT_DOWN, click_price)).clicked() {
             let id = chart.next_alert_id; chart.next_alert_id += 1;
             chart.price_alerts.push(PriceAlert { id, price: click_price, above: false, triggered: false, draft: true, symbol: chart.symbol.clone() });
             ui.close_menu();
@@ -419,7 +415,7 @@ pub(super) fn pane_context_menu<F>(
         let everything_hidden = chart.hide_all_drawings && chart.hide_all_indicators && chart.hide_signal_drawings;
         let hide_all_label = if everything_hidden { "Show All" } else { "Hide All" };
         let hide_all_icon = if everything_hidden { Icon::EYE } else { Icon::EYE_SLASH };
-        if KitButton::new(&*format!("{} {}", hide_all_icon, hide_all_label)).variant(KitVariant::Ghost).show(ui, t).clicked() {
+        if ui.button(format!("{} {}", hide_all_icon, hide_all_label)).clicked() {
             let target = !everything_hidden;
             chart.hide_all_drawings    = target;
             chart.hide_all_indicators  = target;
@@ -432,7 +428,7 @@ pub(super) fn pane_context_menu<F>(
             {
                 let icon = if chart.hide_all_drawings { Icon::EYE_SLASH } else { Icon::EYE };
                 let lbl  = if chart.hide_all_drawings { "Show All Drawings" } else { "Hide All Drawings" };
-                if KitButton::new(&*format!("{} {}", icon, lbl)).variant(KitVariant::Ghost).show(ui, t).clicked() {
+                if ui.button(format!("{} {}", icon, lbl)).clicked() {
                     chart.hide_all_drawings = !chart.hide_all_drawings;
                     ui.close_menu();
                 }
@@ -444,7 +440,7 @@ pub(super) fn pane_context_menu<F>(
                 let hidden = chart.hidden_groups.contains(&g.id);
                 let icon = if hidden { Icon::EYE_SLASH } else { Icon::EYE };
                 let label = format!("  {} {} ({})", icon, g.name, count);
-                if KitButton::new(&*label).variant(KitVariant::Ghost).show(ui, t).clicked() {
+                if ui.button(label).clicked() {
                     if hidden { chart.hidden_groups.retain(|x| x != &g.id); }
                     else      { chart.hidden_groups.push(g.id.clone()); }
                     ui.close_menu();
@@ -457,7 +453,7 @@ pub(super) fn pane_context_menu<F>(
             {
                 let icon = if chart.hide_all_indicators { Icon::EYE_SLASH } else { Icon::EYE };
                 let lbl  = if chart.hide_all_indicators { "Show All Indicators" } else { "Hide All Indicators" };
-                if KitButton::new(&*format!("{} {}", icon, lbl)).variant(KitVariant::Ghost).show(ui, t).clicked() {
+                if ui.button(format!("{} {}", icon, lbl)).clicked() {
                     chart.hide_all_indicators = !chart.hide_all_indicators;
                     ui.close_menu();
                 }
@@ -467,7 +463,7 @@ pub(super) fn pane_context_menu<F>(
             for (id, name, visible) in &ind_snapshot {
                 let icon = if *visible { Icon::EYE } else { Icon::EYE_SLASH };
                 let label = format!("  {} {}", icon, name);
-                if KitButton::new(&*label).variant(KitVariant::Ghost).show(ui, t).clicked() {
+                if ui.button(label).clicked() {
                     if let Some(ind) = chart.indicators.iter_mut().find(|i| i.id == *id) {
                         ind.visible = !ind.visible;
                     }
@@ -481,7 +477,7 @@ pub(super) fn pane_context_menu<F>(
             {
                 let icon = if chart.hide_signal_drawings { Icon::EYE_SLASH } else { Icon::EYE };
                 let lbl  = if chart.hide_signal_drawings { "Show Signal Lines" } else { "Hide Signal Lines" };
-                if KitButton::new(&*format!("{} {}", icon, lbl)).variant(KitVariant::Ghost).show(ui, t).clicked() {
+                if ui.button(format!("{} {}", icon, lbl)).clicked() {
                     chart.hide_signal_drawings = !chart.hide_signal_drawings;
                     ui.close_menu();
                 }
@@ -489,7 +485,7 @@ pub(super) fn pane_context_menu<F>(
             {
                 let icon = if chart.show_pattern_labels { Icon::EYE } else { Icon::EYE_SLASH };
                 let lbl  = if chart.show_pattern_labels { "Hide Pattern Labels" } else { "Show Pattern Labels" };
-                if KitButton::new(&*format!("{} {}", icon, lbl)).variant(KitVariant::Ghost).show(ui, t).clicked() {
+                if ui.button(format!("{} {}", icon, lbl)).clicked() {
                     chart.show_pattern_labels = !chart.show_pattern_labels;
                     ui.close_menu();
                 }
@@ -502,7 +498,7 @@ pub(super) fn pane_context_menu<F>(
         // ── DELETE section ──
         // ══════════════════════════════════════════════════════
         if !chart.selected_ids.is_empty() {
-            if KitButton::new(&*format!("{} Delete Selected ({})", Icon::TRASH, chart.selected_ids.len())).variant(KitVariant::Ghost).fg(t.bear).show(ui, t).clicked() {
+            if ui.button(egui::RichText::new(format!("{} Delete Selected ({})", Icon::TRASH, chart.selected_ids.len())).color(t.bear)).clicked() {
                 let ids = chart.selected_ids.clone();
                 for d in chart.drawings.iter().filter(|d| ids.contains(&d.id)) {
                     if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
@@ -516,7 +512,7 @@ pub(super) fn pane_context_menu<F>(
             }
         }
         if !chart.drawings.is_empty() {
-            if KitButton::new(&*format!("{} Delete All Drawings", Icon::TRASH)).variant(KitVariant::Ghost).fg(t.bear).show(ui, t).clicked() {
+            if ui.button(egui::RichText::new(format!("{} Delete All Drawings", Icon::TRASH)).color(t.bear)).clicked() {
                 for d in &chart.drawings {
                     if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
                     chart.undo_stack.push(DrawingAction::Remove(d.clone()));
@@ -530,7 +526,7 @@ pub(super) fn pane_context_menu<F>(
         }
         let temp_count = chart.drawings.iter().filter(|d| d.group_id == "default").count();
         if temp_count > 0 {
-            if KitButton::new(&*format!("{} Delete Temp Drawings ({})", Icon::TRASH, temp_count)).variant(KitVariant::Ghost).fg(t.bear).show(ui, t).clicked() {
+            if ui.button(egui::RichText::new(format!("{} Delete Temp Drawings ({})", Icon::TRASH, temp_count)).color(t.bear)).clicked() {
                 let to_remove: Vec<String> = chart.drawings.iter().filter(|d| d.group_id == "default").map(|d| d.id.clone()).collect();
                 for id in &to_remove { crate::drawing_db::remove(id); }
                 chart.drawings.retain(|d| d.group_id != "default");
@@ -544,7 +540,7 @@ pub(super) fn pane_context_menu<F>(
             // Drawings
             ui.label(egui::RichText::new("DRAWINGS").small().color(t.dim));
             if !chart.drawings.is_empty() {
-                if KitButton::new(&*format!("{} All Drawings", Icon::TRASH)).variant(KitVariant::Ghost).fg(red).show(ui, t).clicked() {
+                if ui.button(egui::RichText::new(format!("{} All Drawings", Icon::TRASH)).color(red)).clicked() {
                     for d in &chart.drawings {
                         if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
                         chart.undo_stack.push(DrawingAction::Remove(d.clone()));
@@ -561,7 +557,7 @@ pub(super) fn pane_context_menu<F>(
                 let count = chart.drawings.iter().filter(|d| d.group_id == g.id).count();
                 if count == 0 { continue; }
                 let label = format!("  {} {} ({})", Icon::TRASH, g.name, count);
-                if KitButton::new(&*label).variant(KitVariant::Ghost).fg(red).show(ui, t).clicked() {
+                if ui.button(egui::RichText::new(label).color(red)).clicked() {
                     let gid = g.id.clone();
                     let ids: Vec<String> = chart.drawings.iter().filter(|d| d.group_id == gid).map(|d| d.id.clone()).collect();
                     for d in chart.drawings.iter().filter(|d| d.group_id == gid) {
@@ -581,7 +577,7 @@ pub(super) fn pane_context_menu<F>(
             // Indicators
             ui.label(egui::RichText::new("INDICATORS").small().color(t.dim));
             if !chart.indicators.is_empty() {
-                if KitButton::new(&*format!("{} All Indicators", Icon::TRASH)).variant(KitVariant::Ghost).fg(red).show(ui, t).clicked() {
+                if ui.button(egui::RichText::new(format!("{} All Indicators", Icon::TRASH)).color(red)).clicked() {
                     chart.indicators.clear();
                     chart.indicator_bar_count = 0;
                     ui.close_menu();
@@ -591,7 +587,7 @@ pub(super) fn pane_context_menu<F>(
                 .map(|i| (i.id, i.display_name())).collect();
             for (id, name) in &ind_snapshot {
                 let label = format!("  {} {}", Icon::TRASH, name);
-                if KitButton::new(&*label).variant(KitVariant::Ghost).fg(red).show(ui, t).clicked() {
+                if ui.button(egui::RichText::new(label).color(red)).clicked() {
                     chart.indicators.retain(|i| i.id != *id);
                     ui.close_menu();
                 }
@@ -601,13 +597,13 @@ pub(super) fn pane_context_menu<F>(
             // Signals
             ui.label(egui::RichText::new("SIGNALS").small().color(t.dim));
             if !chart.signal_drawings.is_empty() {
-                if KitButton::new(&*format!("{} Signal Drawings ({})", Icon::TRASH, chart.signal_drawings.len())).variant(KitVariant::Ghost).fg(red).show(ui, t).clicked() {
+                if ui.button(egui::RichText::new(format!("{} Signal Drawings ({})", Icon::TRASH, chart.signal_drawings.len())).color(red)).clicked() {
                     chart.signal_drawings.clear();
                     ui.close_menu();
                 }
             }
             if !chart.pattern_labels.is_empty() {
-                if KitButton::new(&*format!("{} Pattern Labels ({})", Icon::TRASH, chart.pattern_labels.len())).variant(KitVariant::Ghost).fg(red).show(ui, t).clicked() {
+                if ui.button(egui::RichText::new(format!("{} Pattern Labels ({})", Icon::TRASH, chart.pattern_labels.len())).color(red)).clicked() {
                     chart.pattern_labels.clear();
                     ui.close_menu();
                 }
