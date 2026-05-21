@@ -14,8 +14,8 @@ use crate::chart::renderer::ui::foundation::{
     interaction::InteractionState,
     shell::RowShell,
     tokens::Size,
-    variants::RowVariant,
 };
+use crate::ui_kit::widgets::RowVariant;
 
 type Theme = crate::chart_renderer::gpu::Theme;
 

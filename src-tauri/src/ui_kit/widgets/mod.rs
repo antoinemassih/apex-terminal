@@ -100,9 +100,11 @@ pub mod panel_toolbar;
 // P2: icon placement foundation (wire step)
 pub mod icon_placement;
 pub mod sparkline;
+pub mod shell_variants;
 
 // ─── Foundation ──────────────────────────────────────────────────────
 pub use tokens::{Size, Variant};
+pub use shell_variants::{ButtonVariant, CardVariant, ChipVariant, RowVariant, InputVariant};
 pub use shadow::{ShadowSpec, paint as paint_shadow, paint_gpu as paint_shadow_gpu};
 pub use placement::{Align, Placement, Side};
 

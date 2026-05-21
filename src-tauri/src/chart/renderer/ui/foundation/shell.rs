@@ -12,7 +12,7 @@ use super::super::style::*;
 use super::interaction::{apply_interaction, HoverTreatment, InteractionState, InteractionTokens};
 use super::text_style::TextStyle;
 use super::tokens::{Radius, Size};
-use super::variants::{ButtonVariant, CardVariant, ChipVariant, InputVariant, RowVariant};
+use crate::ui_kit::widgets::{ButtonVariant, CardVariant, ChipVariant, InputVariant, RowVariant};
 
 type Theme = super::super::super::gpu::Theme;
 

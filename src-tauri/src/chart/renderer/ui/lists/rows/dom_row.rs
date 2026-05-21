@@ -26,8 +26,8 @@ use crate::chart::renderer::ui::foundation::{
     interaction::InteractionState,
     shell::RowShell,
     tokens::Size,
-    variants::RowVariant,
 };
+use crate::ui_kit::widgets::RowVariant;
 
 /// Pre-computed column geometry shared across all rows in a ladder.
 /// Captured once at the top of `dom_panel::draw` and passed in via

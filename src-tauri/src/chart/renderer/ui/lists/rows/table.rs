@@ -216,7 +216,7 @@ impl<'a, T> Table<'a, T> {
                     let cr = &mut cell_render;
                     let col_xs_ref = &col_xs_owned;
                     let row_resp = crate::chart::renderer::ui::foundation::shell::RowShell::new(theme_for_shell, "")
-                        .variant(crate::chart::renderer::ui::foundation::variants::RowVariant::Default)
+                        .variant(crate::ui_kit::widgets::RowVariant::Default)
                         .size(crate::chart::renderer::ui::foundation::tokens::Size::Md)
                         .state(crate::chart::renderer::ui::foundation::interaction::InteractionState::default()
                             .selected(is_sel))
