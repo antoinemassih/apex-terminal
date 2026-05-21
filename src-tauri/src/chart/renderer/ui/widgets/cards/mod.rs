@@ -36,23 +36,9 @@ pub use trade_card::TradeCard;
 use egui::{Color32, RichText, Stroke, Ui};
 use super::super::style::*;
 use super::super::components::frames_widget::CardFrame;
+use crate::ui_kit::widgets::CardVariant;
 
 type Theme = crate::chart_renderer::gpu::Theme;
-
-/// Visual variant of a `Card`.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum CardVariant {
-    /// Default — subtle border, panel bg.
-    Bordered,
-    /// Stronger fill + shadow.
-    Elevated,
-    /// No border, no fill — pure layout container.
-    Ghost,
-}
-
-impl Default for CardVariant {
-    fn default() -> Self { CardVariant::Bordered }
-}
 
 /// Base card builder. Use a body closure for content; pass an optional footer
 /// closure separately. Specialized cards live in sibling modules.
@@ -94,6 +80,7 @@ impl<'a> Card<'a> {
     pub fn bordered(mut self) -> Self { self.variant = CardVariant::Bordered; self }
     pub fn elevated(mut self) -> Self { self.variant = CardVariant::Elevated; self }
     pub fn ghost(mut self)    -> Self { self.variant = CardVariant::Ghost;    self }
+    pub fn filled(mut self)   -> Self { self.variant = CardVariant::Filled;   self }
 
     pub fn theme(mut self, t: &Theme) -> Self {
         self.bg     = t.toolbar_bg;
@@ -119,6 +106,7 @@ impl<'a> Card<'a> {
             CardVariant::Elevated => CardFrame::new().colors(self.bg, self.border).build(),
             CardVariant::Ghost    => egui::Frame::NONE
                 .inner_margin(egui::Margin::same(gap_md() as i8)),
+            CardVariant::Filled   => CardFrame::new().colors(self.bg, self.border).build(),
         };
         let mut out = None;
         frame.show(ui, |ui| {
