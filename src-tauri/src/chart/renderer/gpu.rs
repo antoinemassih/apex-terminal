@@ -1018,6 +1018,45 @@ impl Indicator {
 
 pub(crate) static INDICATOR_COLORS: &[&str] = &["#00bef0", "#f0961a", "#f0d732", "#b266e6", "#1abc9c", "#e74c3c", "#3498db", "#e67e22"];
 
+/// Return a theme-palette-derived default colour for a new indicator at position `slot`.
+///
+/// Cycles through 8 distinct, theme-coherent stops derived entirely from the active
+/// `Theme`'s semantic palette — no raw RGB beyond the arithmetic below:
+///
+/// | slot % 8 | source |
+/// |---|---|
+/// | 0 | `t.accent` |
+/// | 1 | `t.bull` |
+/// | 2 | `t.bear` |
+/// | 3 | `t.warn` |
+/// | 4 | `t.dim` brightened (×1.4, clamped) |
+/// | 5 | `t.accent` darkened (×0.65) |
+/// | 6 | `t.bull` darkened (×0.65) |
+/// | 7 | `t.bear` darkened (×0.65) |
+///
+/// The caller may still override the colour afterwards — this only sets the initial value.
+pub(crate) fn indicator_default_color(slot: usize, t: &Theme) -> String {
+    #[inline]
+    fn brighten(c: egui::Color32, factor: f32) -> egui::Color32 {
+        egui::Color32::from_rgb(
+            ((c.r() as f32 * factor).round() as u32).min(255) as u8,
+            ((c.g() as f32 * factor).round() as u32).min(255) as u8,
+            ((c.b() as f32 * factor).round() as u32).min(255) as u8,
+        )
+    }
+    let c = match slot % 8 {
+        0 => t.accent,
+        1 => t.bull,
+        2 => t.bear,
+        3 => t.warn,
+        4 => brighten(t.dim,    1.40),
+        5 => brighten(t.accent, 0.65),
+        6 => brighten(t.bull,   0.65),
+        _ => brighten(t.bear,   0.65),
+    };
+    format!("#{:02X}{:02X}{:02X}", c.r(), c.g(), c.b())
+}
+
 // compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences — now in compute.rs
 
 // ─── Signal drawings (auto-generated trendlines from analysis server) ────────

@@ -25,6 +25,7 @@ use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::widgets::Input;
 use super::super::super::gpu::{
     Watchlist, Chart, Theme, Indicator, IndicatorType, INDICATOR_COLORS, VolumeProfileMode,
+    indicator_default_color,
 };
 use crate::ui_kit::icons::Icon;
 
@@ -977,8 +978,8 @@ fn lib_ind_row(ui: &mut egui::Ui, t: &Theme, kind: IndicatorType, chart: &mut Ch
             chart.indicator_bar_count = 0;
         } else {
             let id = chart.next_indicator_id; chart.next_indicator_id += 1;
-            let color = INDICATOR_COLORS[chart.indicators.len() % INDICATOR_COLORS.len()];
-            let mut ind = Indicator::new(id, kind, kind.default_period(), color);
+            let color_owned = indicator_default_color(chart.indicators.len(), t);
+            let mut ind = Indicator::new(id, kind, kind.default_period(), &color_owned);
             ind.visible = true;
             chart.indicators.push(ind);
             chart.indicator_bar_count = 0;

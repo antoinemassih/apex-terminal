@@ -25,7 +25,7 @@
 //! migrate. Inline mutations and command emissions coexist during the
 //! transition — both work, no big-bang refactor required.
 
-use crate::chart_renderer::gpu::{Chart, Theme, Watchlist, IndicatorType, Indicator, PaneType};
+use crate::chart_renderer::gpu::{Chart, Theme, Watchlist, IndicatorType, Indicator, PaneType, get_theme, indicator_default_color};
 use crate::chart_renderer::trading::{Alert, OrderStatus, PriceAlert, cancel_order_with_pair};
 
 // ─── UiCtx ─────────────────────────────────────────────────────────────────
@@ -113,7 +113,7 @@ pub enum AppCommand {
 
     // ── Indicators ───────────────────────────────────────────────────────
     /// Append a new indicator of `kind` to a pane. Color is auto-assigned
-    /// from `INDICATOR_COLORS`; period defaults from `IndicatorType`.
+    /// from the active theme palette via `indicator_default_color`; period defaults from `IndicatorType`.
     /// Also opens the editor for the freshly-added indicator.
     AddIndicator { pane: usize, kind: IndicatorType },
     /// Remove an indicator by id from a pane.
@@ -441,11 +441,11 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         // ── Indicators ──────────────────────────────────────────────────
         AppCommand::AddIndicator { pane, kind } => {
             let Some(p) = panes.get_mut(pane) else { return; };
-            let color = crate::chart_renderer::gpu::INDICATOR_COLORS[
-                p.indicators.len() % crate::chart_renderer::gpu::INDICATOR_COLORS.len()];
+            let t = get_theme(p.theme_idx);
+            let color_owned = indicator_default_color(p.indicators.len(), &t);
             let id = p.next_indicator_id;
             p.next_indicator_id += 1;
-            p.indicators.push(Indicator::new(id, kind, kind.default_period(), color));
+            p.indicators.push(Indicator::new(id, kind, kind.default_period(), &color_owned));
             p.editing_indicator = Some(id);
             p.indicator_bar_count = 0;
         }

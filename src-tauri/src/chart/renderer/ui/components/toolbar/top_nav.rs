@@ -99,7 +99,7 @@ use crate::chart_renderer::gpu::{
     CandleMode, VolumeProfileMode,
     IndicatorType, IndicatorCategory, Indicator, INDICATOR_COLORS,
     EventMarker, DarkPoolPrint,
-    get_theme,
+    get_theme, indicator_default_color,
     rgb,
     save_workspace, list_workspaces, save_state, save_templates,
     widget_description, paint_widget_preview,
@@ -1060,8 +1060,8 @@ pub(crate) fn render(
                         let fan = shift || watchlist.broadcast_mode;
                         // Originator: allocate id from its own counter, push, reset bar count.
                         let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
-                        let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
-                        let new_ind = Indicator::new(id, itype, itype.default_period(), color);
+                        let color_owned = indicator_default_color(panes[ap].indicators.len(), t);
+                        let new_ind = Indicator::new(id, itype, itype.default_period(), &color_owned);
                         panes[ap].indicators.push(new_ind.clone());
                         panes[ap].indicator_bar_count = 0;
                         panes[ap].editing_indicator = Some(id);
@@ -1112,8 +1112,8 @@ pub(crate) fn render(
                             Sub::Vis(true)
                         } else {
                             let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
-                            let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
-                            let new_ind = Indicator::new(id, itype, itype.default_period(), color);
+                            let color_owned = indicator_default_color(panes[ap].indicators.len(), t);
+                            let new_ind = Indicator::new(id, itype, itype.default_period(), &color_owned);
                             panes[ap].indicators.push(new_ind.clone());
                             panes[ap].indicator_bar_count = 0;
                             Sub::Add(new_ind)
@@ -1228,8 +1228,8 @@ pub(crate) fn render(
                                 if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = true; }
                                 else {
                                     let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
-                                    let color = INDICATOR_COLORS[panes[ap].indicators.len() % INDICATOR_COLORS.len()];
-                                    panes[ap].indicators.push(Indicator::new(id, itype, itype.default_period(), color));
+                                    let color_owned = indicator_default_color(panes[ap].indicators.len(), t);
+                                    panes[ap].indicators.push(Indicator::new(id, itype, itype.default_period(), &color_owned));
                                     panes[ap].indicator_bar_count = 0;
                                 }
                             }
