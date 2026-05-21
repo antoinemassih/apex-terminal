@@ -3888,9 +3888,12 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
         style.visuals.selection.bg_fill              = color_alpha(t.accent, if is_light { 25 } else { 35 });
         style.visuals.selection.stroke               = egui::Stroke::new(style::stroke_std(), t.accent);
 
-        // Popup/menu window — more visible border, reduced rounding
+        // Popup/menu window — more visible border, reduced rounding.
+        // Border width is a fixed 1.2 px (the v0.9.7 value) — deliberately
+        // between stroke_std (1.0) and stroke_bold (1.5); the colour stays
+        // theme-wired off toolbar_border.
         style.visuals.window_fill                    = t.toolbar_bg;
-        style.visuals.window_stroke                  = egui::Stroke::new(style::stroke_std(), color_alpha(t.toolbar_border, if is_light { 80 } else { 60 }));
+        style.visuals.window_stroke                  = egui::Stroke::new(1.2, color_alpha(t.toolbar_border, if is_light { 80 } else { 60 }));
         style.visuals.window_corner_radius           = popup_r;
         style.visuals.menu_corner_radius             = popup_r;
 
