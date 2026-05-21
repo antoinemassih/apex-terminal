@@ -1,10 +1,13 @@
 //! Design-system menu item — the canonical primitive for every dropdown row.
 //!
 //! `MenuItem` replaces raw `ui.button(...)` / `egui::RichText::new(...).color(...)` calls
-//! inside `egui::context_menu` and `menu_button` closures. It allocates the full
-//! available width, renders a themed hover band with the same eased-fade animation as
-//! `ui_kit::Button`, applies a pointer-hand cursor when enabled, and surfaces a plain
-//! `egui::Response` so callers do `if MenuItem::new(...).show(ui, t).clicked() { ... }`.
+//! inside `egui::context_menu` and `menu_button` closures. The row sizes to its
+//! content (so the menu hugs its widest item, never the screen), and on hover draws
+//! the same themed treatment a native egui menu button gets — toolbar-border fill,
+//! accent-tinted border, rounded corners — eased in like `ui_kit::Button`. Idle label
+//! text is dim and brightens on hover. A pointer-hand cursor is applied when enabled.
+//! Surfaces a plain `egui::Response` so callers do
+//! `if MenuItem::new(...).show(ui, t).clicked() { ... }`.
 //!
 //! ## Variants (via builder methods)
 //! - `.icon(Icon::*)` — leading glyph (Phosphor Bold)
@@ -19,7 +22,7 @@
 //! - Use `ui_kit::Button` everywhere outside a menu context.
 //! - Use `ui.label(...)` + `ui.separator()` for section headers and dividers inside menus.
 
-use egui::{Color32, FontId, Pos2, Rect, Response, Sense, Ui, Vec2};
+use egui::{Color32, FontId, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
 
 use super::motion;
 use super::theme::ComponentTheme;
@@ -31,7 +34,6 @@ use crate::ui_kit::icons::Icon;
 const MENU_ROW_H: f32 = 26.0;
 
 /// Horizontal padding inside the row (left edge to icon/label, label to right edge).
-/// Mirrors the button_padding set in setup_theme (4px each side).
 const PAD_X: f32 = 8.0;
 
 /// Gap between icon glyph and label text.
@@ -129,65 +131,82 @@ impl<'a> MenuItem<'a> {
 // ── Internal rendering ─────────────────────────────────────────────────────────
 
 fn paint_menu_item(ui: &mut Ui, theme: &dyn ComponentTheme, item: MenuItem<'_>) -> Response {
-    // Allocate: full available width × MENU_ROW_H. Sense::hover() when disabled
-    // so the item still blocks the hover band from flickering through but does
-    // not respond to clicks.
-    let desired = Vec2::new(ui.available_width(), MENU_ROW_H);
-    let sense = if item.enabled { Sense::click() } else { Sense::hover() };
-    let (rect, response) = ui.allocate_exact_size(desired, sense);
+    // ── Measure content width so the menu hugs its content, not the screen ──
+    let label_galley = ui.painter().layout_no_wrap(
+        item.label.clone(),
+        FontId::proportional(LABEL_FONT),
+        Color32::WHITE,
+    );
+    let mut content_w = PAD_X * 2.0 + label_galley.size().x;
+    content_w += CHECK_FONT + ICON_GAP; // leading check slot — always reserved
+    if item.icon.is_some() {
+        content_w += ICON_FONT + ICON_GAP;
+    }
+    if item.submenu {
+        content_w += HINT_FONT + ICON_GAP;
+    }
+    if let Some(ref hint) = item.shortcut {
+        let g = ui.painter().layout_no_wrap(
+            hint.clone(),
+            FontId::monospace(HINT_FONT),
+            Color32::WHITE,
+        );
+        content_w += g.size().x + ICON_GAP * 2.0;
+    }
 
-    if ui.is_rect_visible(rect) {
+    // Allocate the CONTENT width — this drives the menu to size to its widest
+    // row. Interact + paint across the settled full menu width so every row's
+    // hover band is uniform (the menu's width settles in one frame).
+    let sense = if item.enabled { Sense::click() } else { Sense::hover() };
+    let band_w = ui.available_width().max(content_w);
+    let (rect, alloc_resp) =
+        ui.allocate_exact_size(Vec2::new(content_w, MENU_ROW_H), Sense::hover());
+    let band = Rect::from_min_size(rect.min, Vec2::new(band_w, MENU_ROW_H));
+    let response = ui.interact(band, alloc_resp.id, sense);
+
+    if ui.is_rect_visible(band) {
         let id = response.id;
         let hovered = response.hovered() && item.enabled;
         let pressed = response.is_pointer_button_down_on() && item.enabled;
-
-        // ── Eased hover band — matches Button's Ghost hover treatment ──────────
-        // Button uses `motion::ease_bool` with `motion::FAST` for hover (not status
-        // snap), so we do the same. Ghost variant hover_bg = text @ alpha 18.
         let hover_t = motion::ease_bool(ui.ctx(), id.with("mi_hover"), hovered, motion::FAST);
-        let press_t = motion::ease_bool(ui.ctx(), id.with("mi_press"), pressed, 0.06_f32);
 
-        // Hover band color: text @ alpha 18 (exact Ghost idle→hover from button.rs).
-        let hover_bg = st::color_alpha(theme.text(), 18);
-        let mut bg = st::color_alpha(theme.text(), (18.0 * hover_t) as u8);
-        // On press, darken by 12% (same as Button's press_t branch).
-        if press_t > 0.0 {
-            let darken_amt = 0.12 * press_t;
-            let f = (1.0 - darken_amt).clamp(0.0, 1.0);
-            bg = Color32::from_rgba_premultiplied(
-                ((bg.r() as f32) * f) as u8,
-                ((bg.g() as f32) * f) as u8,
-                ((bg.b() as f32) * f) as u8,
-                bg.a().saturating_add(((hover_bg.a() as f32) * 0.12 * press_t) as u8),
+        // Themed widget visuals — the SAME source a native `ui.button()` menu
+        // item draws from: hovered = toolbar-border fill + accent-tinted border
+        // + rounded corners; inactive text = dim, hovered text = bright.
+        let wv_hover = ui.visuals().widgets.hovered;
+        let wv_active = ui.visuals().widgets.active;
+        let wv_inactive = ui.visuals().widgets.inactive;
+
+        let painter = ui.painter().clone();
+
+        // ── Hover / press band: themed fill + accent border, eased in ────────
+        if hover_t > 0.0 {
+            let wv = if pressed { wv_active } else { wv_hover };
+            painter.rect(
+                band.shrink(1.0),
+                wv.corner_radius,
+                wv.bg_fill.gamma_multiply(hover_t),
+                Stroke::new(wv.bg_stroke.width, wv.bg_stroke.color.gamma_multiply(hover_t)),
+                egui::StrokeKind::Inside,
             );
         }
 
-        let painter = ui.painter_at(rect);
-
-        // Background hover band (no corner radius — menus use flat rows).
-        if bg.a() > 0 {
-            painter.rect_filled(rect, egui::CornerRadius::ZERO, bg);
-        }
-
-        // ── Resolve foreground color ──────────────────────────────────────────
-        let mut fg = item.tint.unwrap_or_else(|| theme.text());
+        // ── Foreground colour ────────────────────────────────────────────────
+        // Tinted items keep their tint at all times (matches the v0.9.7
+        // RichText colouring). Untinted items go dim → bright on hover, exactly
+        // as a native menu button does via inactive/hovered fg_stroke.
+        let mut fg = match item.tint {
+            Some(tint) => tint,
+            None => lerp_color(wv_inactive.fg_stroke.color, wv_hover.fg_stroke.color, hover_t),
+        };
         if !item.enabled {
-            // Dim to DISABLED_ALPHA.
-            fg = Color32::from_rgba_premultiplied(
-                fg.r(), fg.g(), fg.b(),
-                ((fg.a() as f32) * DISABLED_ALPHA) as u8,
-            );
+            fg = fg.gamma_multiply(DISABLED_ALPHA);
         }
-
         let dim_fg = st::color_alpha(theme.dim(), if item.enabled { 160 } else { 80 });
-        let cy = rect.center().y;
+        let cy = band.center().y;
 
-        // ── Left side: check-mark or icon, then label ──────────────────────────
-        let mut x = rect.left() + PAD_X;
-
-        // Leading check mark (selected state). Reserves a glyph slot even when
-        // not selected so label text is always at the same x position.
-        let check_slot_w = CHECK_FONT + ICON_GAP;
+        // ── Left: check-mark slot, icon, label ───────────────────────────────
+        let mut x = band.left() + PAD_X;
         if item.selected {
             painter.text(
                 Pos2::new(x, cy),
@@ -197,9 +216,8 @@ fn paint_menu_item(ui: &mut Ui, theme: &dyn ComponentTheme, item: MenuItem<'_>) 
                 fg,
             );
         }
-        x += check_slot_w;
+        x += CHECK_FONT + ICON_GAP;
 
-        // Leading icon (optional).
         if let Some(glyph) = item.icon {
             painter.text(
                 Pos2::new(x, cy),
@@ -211,7 +229,6 @@ fn paint_menu_item(ui: &mut Ui, theme: &dyn ComponentTheme, item: MenuItem<'_>) 
             x += ICON_FONT + ICON_GAP;
         }
 
-        // Label.
         if !item.label.is_empty() {
             painter.text(
                 Pos2::new(x, cy),
@@ -222,10 +239,8 @@ fn paint_menu_item(ui: &mut Ui, theme: &dyn ComponentTheme, item: MenuItem<'_>) 
             );
         }
 
-        // ── Right side: shortcut hint and/or submenu arrow ────────────────────
-        let mut rx = rect.right() - PAD_X;
-
-        // Submenu arrow ▸.
+        // ── Right: submenu arrow / shortcut hint ──────────────────────────────
+        let mut rx = band.right() - PAD_X;
         if item.submenu {
             painter.text(
                 Pos2::new(rx, cy),
@@ -236,8 +251,6 @@ fn paint_menu_item(ui: &mut Ui, theme: &dyn ComponentTheme, item: MenuItem<'_>) 
             );
             rx -= HINT_FONT + ICON_GAP;
         }
-
-        // Shortcut hint.
         if let Some(ref hint) = item.shortcut {
             painter.text(
                 Pos2::new(rx, cy),
@@ -254,10 +267,13 @@ fn paint_menu_item(ui: &mut Ui, theme: &dyn ComponentTheme, item: MenuItem<'_>) 
         }
     }
 
-    // Suppress hover bg animation noise when disabled.
-    if !item.enabled {
-        let _ = Rect::NOTHING;
-    }
-
     response
+}
+
+/// Linear blend between two colours through linear (`Rgba`) space.
+fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
+    let t = t.clamp(0.0, 1.0);
+    let a = egui::Rgba::from(a);
+    let b = egui::Rgba::from(b);
+    Color32::from(a * (1.0 - t) + b * t)
 }
