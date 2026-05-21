@@ -21,7 +21,7 @@ const COLOR_DANGER: egui::Color32 = egui::Color32::from_rgb(224, 85, 96);
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
 // ── Indicator editor popup (per-type properties panel) ──────────────────
-let t = &THEMES[panes[ap].theme_idx];
+// NOTE: do NOT shadow `t` here — the caller already passes the correct theme.
 if let Some(edit_id) = panes[ap].editing_indicator {
     let mut close_editor = false;
     let mut delete_id: Option<u32> = None;

@@ -1100,9 +1100,13 @@ pub fn popup_frame(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, f
 }
 
 /// Application-quality dialog window — zero inner padding, RADIUS_LG corners.
+///
+/// Fill and border now resolve from the active theme so light themes receive
+/// appropriate surface colors instead of the former hardcoded dark values.
 pub fn dialog_window(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, border_color: Option<Color32>) -> egui::Window<'static> {
-    let fill = Color32::from_rgb(26, 26, 32);
-    let border = border_color.unwrap_or(Color32::from_rgba_unmultiplied(60, 60, 70, 80));
+    let t = crate::ui_kit::widgets::theme::active_theme(ctx);
+    let fill = t.toolbar_bg;
+    let border = border_color.unwrap_or(color_alpha(t.toolbar_border, 80));
     egui::Window::new(id.to_string())
         .fixed_pos(pos).fixed_size(egui::vec2(width, 0.0))
         .title_bar(false)
@@ -1208,10 +1212,11 @@ pub fn dialog_separator(ui: &mut egui::Ui, margin: f32, color: Color32) {
 /// Inset separator + soft gradient shadow below (3 fading lines).
 /// Uses `stroke_thick` for the main divider line so bold-separator sites are style-driven.
 ///
-/// LEGACY: hardcoded black for the shadow gradient — breaks light themes.
-/// Prefer [`dialog_separator_shadow_themed`] in new code.
+/// Resolves the active theme from the UI context so light themes get a
+/// soft gray gradient instead of the former hardcoded black.
 pub fn dialog_separator_shadow(ui: &mut egui::Ui, margin: f32, color: Color32) {
-    dialog_separator_shadow_impl(ui, margin, color, Color32::BLACK);
+    let t = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    dialog_separator_shadow_impl(ui, margin, color, t.shadow_color);
 }
 
 /// Inset separator + soft gradient shadow below — theme-aware.
@@ -1438,11 +1443,12 @@ pub fn stat_row(ui: &mut egui::Ui, label: &str, value: &str, label_color: Color3
 
 /// Paint a drop shadow behind a painter-based tooltip rect (call BEFORE painting the bg).
 ///
-/// LEGACY: hardcoded black tint — breaks light themes. Prefer
-/// [`paint_tooltip_shadow_themed`] in new code.
+/// Resolves the active theme from the painter's context so light themes get a
+/// soft gray drop shadow instead of the former hardcoded black.
 pub fn paint_tooltip_shadow(painter: &egui::Painter, rect: egui::Rect, radius: f32) {
+    let t = crate::ui_kit::widgets::theme::active_theme(painter.ctx());
     let shadow_rect = rect.translate(egui::vec2(shadow_offset(), shadow_offset()));
-    painter.rect_filled(shadow_rect, radius, Color32::from_rgba_unmultiplied(0, 0, 0, shadow_alpha()));
+    painter.rect_filled(shadow_rect, radius, shadow_color_alpha(t, shadow_alpha()));
 }
 
 /// Theme-aware drop shadow behind a painter-based tooltip rect.
