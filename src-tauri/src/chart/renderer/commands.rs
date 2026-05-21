@@ -519,6 +519,10 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
             // chrome (panel headers, chart bg, watchlist rows) stays in sync.
             for p in panes.iter_mut() {
                 p.theme_idx = idx;
+                // Keep the drawing-tool default pen tracking the palette so a
+                // new trendline starts in a theme-coherent colour (accent).
+                // Still user-overridable per drawing afterwards.
+                p.draw_color = indicator_default_color(0, &get_theme(idx));
             }
         }
 

@@ -1986,7 +1986,7 @@ impl Chart {
             vix_spot: 0.0, vix_expiring_future: 0.0, vix_realized_vol: 0.0,
             vix_gap_pct: 0.0, vix_convergence_score: 0.0,
             last_signal_fetch: std::time::Instant::now(), drawings_requested: false,
-            draw_color: "#4a9eff".into(), group_manager_open: false, new_group_name: String::new(),
+            draw_color: indicator_default_color(0, &THEMES[5]), group_manager_open: false, new_group_name: String::new(),
             zoom_selecting: false, zoom_start: egui::Pos2::ZERO, axis_drag_mode: 0,
             picker_open: false, picker_query: String::new(), picker_results: vec![],
             picker_last_query: String::new(), picker_searching: false, picker_rx: None, picker_pos: egui::Pos2::ZERO,
