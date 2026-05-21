@@ -128,12 +128,13 @@ let modal_resp = Modal::new("SETTINGS")
 fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Chart, t: &Theme, ap: usize) {
     // ── THEME — big preview blocks with mini chart layout ──
     PanelSection::new("THEME").show(ui, t, |ui, t| {
-        ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
+        ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
         ui.horizontal_wrapped(|ui| {
             for (i, preview_theme) in THEMES.iter().enumerate() {
                 let resp = ThemePreviewCard::new(preview_theme.name, preview_theme)
                     .selected(chart.theme_idx == i)
                     .preview_kind(PreviewKind::Chart)
+                    .size(egui::vec2(86.0, 52.0))
                     .show(ui, t);
                 if resp.clicked() {
                     commands::push(AppCommand::SetThemeIdx { pane: ap, idx: i });
