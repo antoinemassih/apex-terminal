@@ -14,6 +14,7 @@ pub mod command_palette;
 pub mod chart_pane;
 pub mod chart_widgets;
 pub mod toolbar;
+pub mod tps_overlay;
 pub mod pane;
 pub mod welcome;
 

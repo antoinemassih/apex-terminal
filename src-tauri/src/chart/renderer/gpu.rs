@@ -4474,6 +4474,10 @@ pub(crate) struct Watchlist {
     pub(crate) broadcast_mode: bool, // when true, toolbar actions apply to all panes
     /// Drawing-tool favorites shown in the middle-click picker. Persisted.
     pub(crate) draw_favorites: Vec<String>,
+    /// Boss key: when true, a full-viewport fake Excel TPS-report overlay
+    /// is rendered over the entire app. Toggled by Cmd+Shift+H (configurable
+    /// under action "tps_toggle") or the "TPS" toolbar button.
+    pub(crate) boss_key_active: bool,
     /// UI style preset index (0..STYLE_NAMES.len()). Combines with `theme_idx`
     /// to form the full visual identity (e.g. "GruvBox/Meridien").
     pub(crate) style_idx: usize,
@@ -4822,6 +4826,7 @@ impl Watchlist {
                toolbar_auto_hide: false, toolbar_hover_time: None, shared_x_axis: false, shared_y_axis: false,
                trendline_filter_open: false, account_strip_open: false, object_tree_open: false, broadcast_mode: false,
                draw_favorites: vec!["trendline".into(), "magnifier".into(), "measure".into(), "hline".into(), "channel".into(), "fibonacci".into()],
+               boss_key_active: false,
                style_idx: 0,
                pending_opt_chart: None, pending_opt_chart_contract: None, apex_diag_open: false, replay_pane_open: false, widget_gallery_open: false,
                wl_columns: crate::chart::renderer::ui::lists::rows::watchlist_columns::default_columns(),
@@ -5594,7 +5599,7 @@ pub(crate) fn default_hotkeys() -> Vec<HotKey> {
         hk("Cancel All Orders",  "Trading", "cancel_all",     egui::Key::Q,      true,  true,  "Ctrl+Shift+Q"),
         hk("Flatten Position",   "Trading", "flatten",        egui::Key::F,      true,  true,  "Ctrl+Shift+F"),
         hk("Kill Switch",        "Trading", "kill_switch",    egui::Key::K,      true,  true,  "Ctrl+Shift+K"),
-        hk("Halt Trading",       "Trading", "halt_trading",   egui::Key::H,      true,  true,  "Ctrl+Shift+H"),
+        hk("Halt Trading",       "Trading", "halt_trading",   egui::Key::K,      true,  true,  "Ctrl+Shift+K"),
         hk("Resume Trading",     "Trading", "resume_trading", egui::Key::R,      true,  true,  "Ctrl+Shift+R"),
         hk("Trendline",          "Drawing", "tool_trendline", egui::Key::T,      false, false, "T"),
         hk("H-Line",             "Drawing", "tool_hline",     egui::Key::H,      false, false, "H"),
@@ -5615,6 +5620,7 @@ pub(crate) fn default_hotkeys() -> Vec<HotKey> {
         hk("Delete",             "General", "delete",         egui::Key::Delete, false, false, "Delete"),
         hk("Cancel / Deselect",  "General", "escape",         egui::Key::Escape, false, false, "Escape"),
         hk("Command Palette",    "General", "cmd_palette",    egui::Key::Space,  true,  false, "Ctrl+Space"),
+        hk("TPS Reports",        "General", "tps_toggle",     egui::Key::H,      true,  true,  "⌘⇧H"),
     ]
 }
 
@@ -5857,7 +5863,13 @@ impl GpuCtx {
         // Feed the profiler the input-event count so is_idle() can detect
         // genuinely quiet frames (no clicks, drags, key presses, scrolls).
         crate::foundation::frame_profiler::note_input_events(raw_input.events.len() as u32);
-        let full_output = self.egui_ctx.run(raw_input, |ctx| { draw_chart(ctx, panes, active_pane, layout, watchlist, toasts, conn_panel_open, rx); });
+        let full_output = self.egui_ctx.run(raw_input, |ctx| {
+            draw_chart(ctx, panes, active_pane, layout, watchlist, toasts, conn_panel_open, rx);
+            // Boss key: paint the TPS overlay on top of everything when active.
+            if watchlist.boss_key_active {
+                crate::chart_renderer::ui::tps_overlay::render_tps_overlay(ctx);
+            }
+        });
         self.egui_state.handle_platform_output(window, full_output.platform_output);
         let layout_us = t1.elapsed().as_micros() as u64;
 

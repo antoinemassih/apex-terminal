@@ -10583,8 +10583,9 @@ fn render_chart_pane(
             chart.orders.clear();
             PENDING_TOASTS.with(|ts| ts.borrow_mut().push(("KILL SWITCH ACTIVATED".into(), 0.0, false)));
         }
-        // Ctrl+Shift+H: Halt trading
-        if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::H)) {
+        // Ctrl+Shift+K: Halt trading (moved off ⌘⇧H — that chord is now the
+        // TPS-report boss key; see default_hotkeys / keyboard_shortcuts.rs).
+        if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::K)) {
             let _ = crate::chart_renderer::trading::order_manager::halt_trading();
             PENDING_TOASTS.with(|ts| ts.borrow_mut().push(("Trading HALTED".into(), 0.0, false)));
         }

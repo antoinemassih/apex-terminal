@@ -214,6 +214,23 @@ pub(super) fn handle_keyboard_shortcuts(
         }
     }
 
+    // TPS Reports boss-key — configurable, action "tps_toggle".
+    // Looks up the hotkey from watchlist.hotkeys so user reconfiguration is respected.
+    // Fires even when the overlay is active so it can be dismissed.
+    if let Some(hk) = watchlist.hotkeys.iter().find(|h| h.action == "tps_toggle") {
+        let key      = hk.key;
+        let ctrl     = hk.ctrl;
+        let shift    = hk.shift;
+        if ui.input(|i| {
+            i.key_pressed(key)
+                && i.modifiers.command == ctrl
+                && i.modifiers.shift   == shift
+                && !i.modifiers.alt
+        }) {
+            watchlist.boss_key_active = !watchlist.boss_key_active;
+        }
+    }
+
     // Ctrl+Shift+S: Screenshot — save metadata + open Windows Snip tool
     if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::S)) {
         // Save screenshot metadata to library
