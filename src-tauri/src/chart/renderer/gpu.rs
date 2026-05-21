@@ -432,7 +432,24 @@ use std::sync::{OnceLock, RwLock};
 static LIVE_THEMES: OnceLock<RwLock<Vec<Theme>>> = OnceLock::new();
 
 fn live_themes() -> &'static RwLock<Vec<Theme>> {
-    LIVE_THEMES.get_or_init(|| RwLock::new(THEMES.to_vec()))
+    LIVE_THEMES.get_or_init(|| {
+        // Phase B flip — the live theme list is now sourced from the
+        // design_system registry: each built-in ColorScheme is adapted to a
+        // Theme via color_scheme_to_theme(). The design_system equivalence
+        // test proves this is field-exact vs THEMES[] for all 16 themes, so
+        // the result is byte-identical to `THEMES.to_vec()` — but the colour
+        // axis now genuinely flows through design_system, making it the
+        // runtime source of truth (not dead scaffolding).
+        let themes: Vec<Theme> = crate::design_system::builtin_color_schemes()
+            .iter()
+            .map(crate::design_system::color_scheme_to_theme)
+            .collect();
+        debug_assert_eq!(
+            themes.len(), THEMES.len(),
+            "design_system colour-scheme count must match THEMES",
+        );
+        RwLock::new(themes)
+    })
 }
 
 pub(crate) fn get_theme(idx: usize) -> Theme {
