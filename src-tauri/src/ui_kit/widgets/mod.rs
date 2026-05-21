@@ -101,6 +101,7 @@ pub mod panel_toolbar;
 pub mod icon_placement;
 pub mod sparkline;
 pub mod shell_variants;
+pub mod menu_item;
 
 // ─── Foundation ──────────────────────────────────────────────────────
 pub use tokens::{Size, Variant};
@@ -111,6 +112,7 @@ pub use placement::{Align, Placement, Side};
 // ─── Buttons & Links ─────────────────────────────────────────────────
 pub use button::{Button, show_button_gallery};
 pub use link::Link;
+pub use menu_item::MenuItem;
 
 // ─── Inputs & Forms ──────────────────────────────────────────────────
 pub use input::{Input, InputResponse};
