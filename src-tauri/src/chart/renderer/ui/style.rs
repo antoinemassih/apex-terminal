@@ -125,20 +125,65 @@ thread_local! {
 /// per-style backing and stay on the `dt_f32!`/`dt_u8!` path.
 #[inline]
 pub fn begin_frame() {
+    // ── Hot-reload override (one RwLock::read per frame — ~20–50 ns) ──────────
+    // If a background watcher has installed a live StyleSystem override, source
+    // the per-style dimension tokens (radii, strokes) from it instead of from
+    // the active `StyleSettings`.  When no override is present (`None`) the
+    // existing `current()` path is used unchanged.
+    let override_style = crate::design_system::active_override();
+
     // Active style's StyleSettings — the live per-style dimension source.
     let st = current();
+
+    // Resolve radii from override when present, otherwise from StyleSettings.
+    let (r_xs, r_sm, r_md, r_lg) = if let Some(ref ov) = override_style {
+        (
+            ov.radii.xs,
+            ov.radii.sm,
+            ov.radii.md,
+            ov.radii.lg,
+        )
+    } else {
+        (
+            st.r_xs as f32,
+            st.r_sm as f32,
+            st.r_md as f32,
+            st.r_lg as f32,
+        )
+    };
+
+    // Resolve strokes from override when present, otherwise from StyleSettings.
+    let (stroke_hair, stroke_thin, stroke_std, stroke_bold, stroke_thick) =
+        if let Some(ref ov) = override_style {
+            (
+                ov.strokes.thin,   // thin  → hair (sub-pixel hairline)
+                ov.strokes.std,    // std   → thin (1 px standard)
+                ov.strokes.std,    // std   → std  (same level)
+                ov.strokes.md,     // md    → bold (1.5 px emphasis)
+                ov.strokes.heavy,  // heavy → thick (2 px)
+            )
+        } else {
+            (
+                st.stroke_hair,
+                st.stroke_thin,
+                st.stroke_std,
+                st.stroke_bold,
+                st.stroke_thick,
+            )
+        };
+
     let snap = TokenSnapshot {
         gap_xs_mid:    crate::dt_f32!(spacing.xs_mid, 6.0),
-        radius_xs:     st.r_xs as f32,
-        radius_sm:     st.r_sm as f32,
-        radius_md:     st.r_md as f32,
-        radius_lg:     st.r_lg as f32,
-        stroke_hair:   st.stroke_hair,
-        stroke_thin:   st.stroke_thin,
+        radius_xs:     r_xs,
+        radius_sm:     r_sm,
+        radius_md:     r_md,
+        radius_lg:     r_lg,
+        stroke_hair,
+        stroke_thin,
         stroke_medium: crate::dt_f32!(stroke.medium, 0.8),
-        stroke_std:    st.stroke_std,
-        stroke_bold:   st.stroke_bold,
-        stroke_thick:  st.stroke_thick,
+        stroke_std,
+        stroke_bold,
+        stroke_thick,
         alpha_faint:   crate::dt_u8!(alpha.faint,   10),
         alpha_ghost:   crate::dt_u8!(alpha.ghost,   15),
         alpha_soft:    crate::dt_u8!(alpha.soft,    20),

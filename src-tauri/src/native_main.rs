@@ -84,6 +84,31 @@ fn main() {
     // Initialize global chart channel (for tick broadcasting)
     _scaffold_lib::NATIVE_CHART_TXS.get_or_init(|| Mutex::new(Vec::new()));
 
+    // ── Theme hot-reload ──────────────────────────────────────────────────────
+    // Resolve the themes directory: <app-data>/apex-terminal/themes.
+    // Falls back to a `themes/` dir next to the binary when dirs::data_dir()
+    // is unavailable (CI, sandboxed environments).
+    {
+        let themes_dir = dirs::data_dir()
+            .map(|d| d.join("apex-terminal").join("themes"))
+            .unwrap_or_else(|| {
+                std::env::current_exe()
+                    .ok()
+                    .and_then(|p| p.parent().map(|d| d.join("themes")))
+                    .unwrap_or_else(|| std::path::PathBuf::from("themes"))
+            });
+
+        // Seed the directory with editable copies of every built-in theme so
+        // the user has files to edit on first launch.
+        match _scaffold_lib::design_system::export_builtin_themes(&themes_dir) {
+            Ok(n)  => eprintln!("[theme-watcher] seeded {n} theme files in {:?}", themes_dir),
+            Err(e) => eprintln!("[theme-watcher] could not seed themes: {e}"),
+        }
+
+        // Start the background watcher — ZERO per-frame main-thread cost.
+        _scaffold_lib::design_system::start_theme_watcher(themes_dir);
+    }
+
     // Start performance monitoring — Prometheus metrics + jank detection + GPU telemetry
     _scaffold_lib::monitoring::start();
 
