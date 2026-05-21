@@ -10,6 +10,9 @@
 //!
 //! Metrics are recomputed at most once per second and cached so the panel
 //! is cheap to render every frame.
+//!
+//! Chrome: `Modal + HeaderStyle::Dialog`. Body: `PanelSection` groups with
+//! `PanelKeyValueRow` (kv pairs) and `PanelListRow::columns` (state rows).
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -19,9 +22,12 @@ use egui;
 
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
-use super::super::components::frames_widget::PanelFrame;
-use super::kit::PanelHeader;
-use super::super::components::text::{SectionLabel, MonospaceCode};
+use crate::ui_kit::widgets::{
+    PanelKeyValueRow, PanelListRow, PanelSection, PanelTone,
+    modal::{Modal, Anchor, HeaderStyle},
+};
+use crate::ui_kit::widgets::panel_list_row::Column;
+use super::super::components::text::MonospaceCode;
 use crate::chart_renderer::trading::order_manager::{self, OrderState};
 use crate::chart_renderer::trading::journal::{self, JournalEvent, AttemptKind};
 
@@ -163,141 +169,152 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
 
     let metrics = cached_metrics();
 
-    let mut open = watchlist.order_health_open;
-    egui::Window::new("order_system_health")
-        .title_bar(false)
-        .open(&mut open)
-        .default_size([320.0, 480.0])
-        .min_width(280.0)
-        .resizable(true)
-        .frame(PanelFrame::new(t.toolbar_bg, t.toolbar_border).build())
-        .show(ctx, |ui| {
-            // ── Header + close ───────────────────────────────────────────
-            if PanelHeader::new("ORDER SYSTEM HEALTH").watchlist(watchlist).show(ui, t) {
-                watchlist.update_sidebar_state(|s| s.order_health_open = false);
-            }
-            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
-            ui.add_space(gap_xs());
+    let frame = super::super::components::frames_widget::PopupFrame::new()
+        .colors(t.toolbar_bg, t.toolbar_border)
+        .ctx(ctx)
+        .build();
 
-            // ── Section 1: Active orders by state ────────────────────────
-            ui.add(SectionLabel::new("ACTIVE ORDERS").tiny().color(t.accent));
-            ui.add_space(gap_xs());
-            state_row(ui, t, "PendingSubmit", metrics.active_pending_submit, t.warn);
-            state_row(ui, t, "Working",       metrics.active_working,        t.accent);
-            state_row(ui, t, "PartialFill",   metrics.active_partial_fill,   t.accent);
-            state_row(ui, t, "PendingCancel", metrics.active_pending_cancel, t.warn);
-            state_row(ui, t, "PendingModify", metrics.active_pending_modify, t.warn);
-            state_row(ui, t, "Unknown",       metrics.active_unknown,        t.bear);
-            ui.add_space(gap_sm());
+    let resp = Modal::new("ORDER SYSTEM HEALTH")
+        .id("order_system_health")
+        .ctx(ctx)
+        .theme(t)
+        .size(egui::vec2(320.0, 480.0))
+        .anchor(Anchor::Window { pos: None })
+        .frame(frame)
+        .header_style(HeaderStyle::Dialog)
+        .separator(true)
+        .show(|ui| {
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
 
-            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
-            ui.add_space(gap_xs());
-
-            // ── Section 2: Last 5 minutes ────────────────────────────────
-            ui.add(SectionLabel::new("LAST 5 MINUTES").tiny().color(t.accent));
-            ui.add_space(gap_xs());
-
-            let avg_label = match metrics.avg_pending_ack_ms {
-                Some(ms) => format!("{} ms", ms),
-                None => "—".to_string(),
-            };
-            let avg_color = match metrics.avg_pending_ack_ms {
-                Some(ms) if ms > 1000 => t.bear,
-                Some(ms) if ms > 250  => t.warn,
-                _ => t.text,
-            };
-            kv_row(ui, t, "Avg pending ack", &avg_label, avg_color);
-
-            let (rate_label, rate_color) = if metrics.submit_attempts_5m == 0 {
-                ("— (no submits)".to_string(), t.dim)
-            } else {
-                let pct = 100.0 * metrics.submit_fails_5m as f32 / metrics.submit_attempts_5m as f32;
-                let color = if pct >= 10.0 { t.bear } else if pct >= 1.0 { t.warn } else { t.bull };
-                (format!("{:.1}% ({}/{})", pct, metrics.submit_fails_5m, metrics.submit_attempts_5m), color)
-            };
-            kv_row(ui, t, "Submit reject rate", &rate_label, rate_color);
-
-            ui.add_space(gap_xs());
-            ui.add(MonospaceCode::new("Top rejects").size_px(font_xs()).color(t.dim));
-            if metrics.top_rejects.is_empty() {
-                ui.indent("oh_no_rejects", |ui| {
-                    ui.add(MonospaceCode::new("none").size_px(font_xs()).color(t.dim).gamma(0.5));
+                // ── Section 1: Active orders by state ──────────────────
+                PanelSection::new("ACTIVE ORDERS").show(ui, t, |ui, t| {
+                    render_state_row(ui, t, "PendingSubmit", metrics.active_pending_submit, t.warn);
+                    render_state_row(ui, t, "Working",       metrics.active_working,        t.accent);
+                    render_state_row(ui, t, "PartialFill",   metrics.active_partial_fill,   t.accent);
+                    render_state_row(ui, t, "PendingCancel", metrics.active_pending_cancel, t.warn);
+                    render_state_row(ui, t, "PendingModify", metrics.active_pending_modify, t.warn);
+                    render_state_row(ui, t, "Unknown",       metrics.active_unknown,        t.bear);
                 });
-            } else {
-                ui.indent("oh_rejects", |ui| {
-                    for (reason, count) in &metrics.top_rejects {
-                        let truncated: String = if reason.len() > 38 {
-                            format!("{}…", &reason[..37])
+
+                // ── Section 2: Last 5 minutes ───────────────────────────
+                PanelSection::new("LAST 5 MINUTES").show(ui, t, |ui, t| {
+                    let avg_label = match metrics.avg_pending_ack_ms {
+                        Some(ms) => format!("{} ms", ms),
+                        None => "—".to_string(),
+                    };
+                    let avg_tone = match metrics.avg_pending_ack_ms {
+                        Some(ms) if ms > 1000 => PanelTone::Bear,
+                        Some(ms) if ms > 250  => PanelTone::Warn,
+                        _ => PanelTone::Text,
+                    };
+                    PanelKeyValueRow::new("Avg pending ack", avg_label)
+                        .tone(avg_tone)
+                        .show(ui, t);
+
+                    let (rate_label, rate_tone) = if metrics.submit_attempts_5m == 0 {
+                        ("— (no submits)".to_string(), PanelTone::Default)
+                    } else {
+                        let pct = 100.0 * metrics.submit_fails_5m as f32
+                            / metrics.submit_attempts_5m as f32;
+                        let tone = if pct >= 10.0 {
+                            PanelTone::Bear
+                        } else if pct >= 1.0 {
+                            PanelTone::Warn
                         } else {
-                            reason.clone()
+                            PanelTone::Bull
                         };
-                        ui.horizontal(|ui| {
-                            ui.add(MonospaceCode::new(&format!("{:>3}\u{00d7}", count))
-                                .size_px(font_xs()).color(t.bear).strong(true));
-                            ui.add(MonospaceCode::new(&truncated).size_px(font_xs()).color(t.text));
+                        (format!("{:.1}% ({}/{})", pct, metrics.submit_fails_5m, metrics.submit_attempts_5m), tone)
+                    };
+                    PanelKeyValueRow::new("Submit reject rate", rate_label)
+                        .tone(rate_tone)
+                        .show(ui, t);
+
+                    ui.add_space(gap_xs());
+                    ui.add(MonospaceCode::new("Top rejects").size_px(font_xs()).color(t.dim));
+                    if metrics.top_rejects.is_empty() {
+                        ui.indent("oh_no_rejects", |ui| {
+                            ui.add(MonospaceCode::new("none").size_px(font_xs()).color(t.dim).gamma(0.5));
+                        });
+                    } else {
+                        ui.indent("oh_rejects", |ui| {
+                            for (reason, count) in &metrics.top_rejects {
+                                let truncated: String = if reason.len() > 38 {
+                                    format!("{}…", &reason[..37])
+                                } else {
+                                    reason.clone()
+                                };
+                                ui.horizontal(|ui| {
+                                    ui.add(MonospaceCode::new(&format!("{:>3}\u{00d7}", count))
+                                        .size_px(font_xs()).color(t.bear).strong(true));
+                                    ui.add(MonospaceCode::new(&truncated).size_px(font_xs()).color(t.text));
+                                });
+                            }
                         });
                     }
                 });
-            }
-            ui.add_space(gap_sm());
 
-            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
-            ui.add_space(gap_xs());
+                // ── Section 3: Broker contact ───────────────────────────
+                PanelSection::new("BROKER CONTACT").show(ui, t, |ui, t| {
+                    let (broker_label, broker_tone) = match metrics.broker_age_secs {
+                        None => ("never (cold start)".to_string(), PanelTone::Default),
+                        Some(s) => {
+                            let tone = if s > 10 {
+                                PanelTone::Bear
+                            } else if s > 5 {
+                                PanelTone::Warn
+                            } else {
+                                PanelTone::Bull
+                            };
+                            (format!("{}s ago", s), tone)
+                        }
+                    };
+                    PanelKeyValueRow::new("Last broker contact", broker_label)
+                        .tone(broker_tone)
+                        .show(ui, t);
+                });
 
-            // ── Section 3: Broker contact ────────────────────────────────
-            ui.add(SectionLabel::new("BROKER CONTACT").tiny().color(t.accent));
-            ui.add_space(gap_xs());
-            let (broker_label, broker_color) = match metrics.broker_age_secs {
-                None => ("never (cold start)".to_string(), t.dim),
-                Some(s) => {
-                    let c = if s > 10 { t.bear } else if s > 5 { t.warn } else { t.bull };
-                    (format!("{}s ago", s), c)
-                }
-            };
-            kv_row(ui, t, "Last broker contact", &broker_label, broker_color);
-            ui.add_space(gap_sm());
+                // ── Section 4: Last hour ────────────────────────────────
+                PanelSection::new("LAST HOUR").rule(false).show(ui, t, |ui, t| {
+                    let unk_tone = if metrics.unknown_terminal_1h > 0 {
+                        PanelTone::Bear
+                    } else {
+                        PanelTone::Bull
+                    };
+                    PanelKeyValueRow::new(
+                        "Orders ending Unknown",
+                        metrics.unknown_terminal_1h.to_string(),
+                    )
+                    .tone(unk_tone)
+                    .show(ui, t);
+                });
 
-            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
-            ui.add_space(gap_xs());
-
-            // ── Section 4: Last hour ─────────────────────────────────────
-            ui.add(SectionLabel::new("LAST HOUR").tiny().color(t.accent));
-            ui.add_space(gap_xs());
-            let unk_color = if metrics.unknown_terminal_1h > 0 { t.bear } else { t.bull };
-            kv_row(
-                ui, t,
-                "Orders ending Unknown",
-                &metrics.unknown_terminal_1h.to_string(),
-                unk_color,
-            );
-            ui.add_space(gap_xs());
+            });
         });
 
-    // Honor egui-window-close (X via the .open() handle on its title bar
-    // would normally drive this; we use title_bar(false) so this branch is
-    // mostly a no-op, but keep the wire for future symmetry).
-    if !open {
+    if resp.closed {
         watchlist.update_sidebar_state(|s| s.order_health_open = false);
     }
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ── Row helpers ──────────────────────────────────────────────────────────────
 
-fn state_row(ui: &mut egui::Ui, t: &Theme, label: &str, count: u32, color: egui::Color32) {
+/// Render one active-state row via `PanelListRow::columns`.
+/// Label left, count right. Count dims to `color_alpha(t.dim, alpha_strong())`
+/// when zero; uses the provided `color` otherwise.
+fn render_state_row(
+    ui: &mut egui::Ui,
+    t: &Theme,
+    label: &str,
+    count: u32,
+    color: egui::Color32,
+) {
+    let count_str = count.to_string();
     let count_color = if count == 0 { color_alpha(t.dim, alpha_strong()) } else { color };
-    ui.horizontal(|ui| {
-        ui.add(MonospaceCode::new(&format!("{:<14}", label))
-            .size_px(font_sm()).color(t.text));
-        ui.add(MonospaceCode::new(&format!("{:>4}", count))
-            .size_px(font_sm()).strong(true).color(count_color));
-    });
-}
-
-fn kv_row(ui: &mut egui::Ui, t: &Theme, key: &str, value: &str, value_color: egui::Color32) {
-    ui.horizontal(|ui| {
-        ui.add(MonospaceCode::new(&format!("{:<22}", key))
-            .size_px(font_sm()).color(t.dim));
-        ui.add(MonospaceCode::new(value)
-            .size_px(font_sm()).strong(true).color(value_color));
-    });
+    PanelListRow::new(label)
+        .columns(&[
+            Column::left(label).color(t.text),
+            Column::right(&count_str).color(count_color),
+        ])
+        .hoverable(false)
+        .show(ui, t);
 }

@@ -15,6 +15,8 @@ use egui::{self, Color32, Stroke};
 use super::style::*;
 use super::super::gpu::*;
 use crate::chart_renderer::{ChartWidgetKind, WidgetDisplayMode, WidgetDock};
+use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::tokens::Variant;
 use std::f32::consts::PI;
 
 // ─── Docking tuning ──────────────────────────────────────────────────────────
@@ -484,28 +486,29 @@ pub(crate) fn draw_widgets(
             egui::popup_below_widget(ui, popup_id, &anchor_resp,
                 egui::PopupCloseBehavior::CloseOnClickOutside, |ui: &mut egui::Ui| {
                 ui.set_min_width(120.0);
-                if ui.button(if is_locked { "\u{1F513} Unlock" } else { "\u{1F512} Lock" }).clicked() {
+                let lock_label = if is_locked { "\u{1F513} Unlock" } else { "\u{1F512} Lock" };
+                if Button::new(lock_label).variant(Variant::Ghost).show(ui, t).clicked() {
                     ctx_action = Some(CtxAction::Lock(wi));
                     ui.memory_mut(|m| m.close_popup());
                 }
-                if ui.button("\u{1F5D1} Delete").clicked() {
+                if Button::new("\u{1F5D1} Delete").variant(Variant::Ghost).show(ui, t).clicked() {
                     ctx_action = Some(CtxAction::Delete(wi));
                     ui.memory_mut(|m| m.close_popup());
                 }
-                if ui.button("\u{21BB} Reset Size").clicked() {
+                if Button::new("\u{21BB} Reset Size").variant(Variant::Ghost).show(ui, t).clicked() {
                     ctx_action = Some(CtxAction::ResetSize(wi));
                     ui.memory_mut(|m| m.close_popup());
                 }
-                if ui.button("\u{2B06} Dock Top").clicked() {
+                if Button::new("\u{2B06} Dock Top").variant(Variant::Ghost).show(ui, t).clicked() {
                     ctx_action = Some(CtxAction::DockTop(wi));
                     ui.memory_mut(|m| m.close_popup());
                 }
-                if ui.button("\u{2B07} Dock Bottom").clicked() {
+                if Button::new("\u{2B07} Dock Bottom").variant(Variant::Ghost).show(ui, t).clicked() {
                     ctx_action = Some(CtxAction::DockBottom(wi));
                     ui.memory_mut(|m| m.close_popup());
                 }
                 if is_docked {
-                    if ui.button("\u{2197} Undock").clicked() {
+                    if Button::new("\u{2197} Undock").variant(Variant::Ghost).show(ui, t).clicked() {
                         ctx_action = Some(CtxAction::Undock(wi));
                         ui.memory_mut(|m| m.close_popup());
                     }

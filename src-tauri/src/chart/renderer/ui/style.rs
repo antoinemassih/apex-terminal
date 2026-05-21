@@ -1117,6 +1117,7 @@ pub fn dialog_window(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32,
 /// Theme-aware dialog window — rich shadow when shadows_enabled, flat hairline when not (#16).
 pub fn dialog_window_themed(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, toolbar_bg: Color32, toolbar_border: Color32, border_color: Option<Color32>) -> egui::Window<'static> {
     let st = current();
+    let t = crate::ui_kit::widgets::theme::active_theme(ctx);
     let border = border_color.unwrap_or(color_alpha(toolbar_border, alpha_strong()));
     let corner_r = if st.r_lg == 0 { 0.0 } else { radius_lg() };
     let shadow = if st.shadows_enabled {
@@ -1124,14 +1125,14 @@ pub fn dialog_window_themed(ctx: &egui::Context, id: &str, pos: egui::Pos2, widt
             offset: [0, 8],
             blur: 28,
             spread: 2,
-            color: Color32::from_black_alpha(80),
+            color: shadow_color_alpha(t, 80),
         }
     } else if st.card_floating_shadow {
         egui::epaint::Shadow {
             offset: [0, 3],
             blur: 8,
             spread: 0,
-            color: Color32::from_black_alpha(st.card_floating_shadow_alpha),
+            color: shadow_color_alpha(t, st.card_floating_shadow_alpha),
         }
     } else {
         egui::epaint::Shadow::NONE

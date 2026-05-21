@@ -13,14 +13,12 @@
 // Original components
 pub mod headers;
 pub mod hairlines;
-pub mod metrics;
 
 // From components_extra
 pub mod action_button;
 pub mod dom_action;
 pub mod header_buttons;
 pub mod inputs;
-pub mod panels;
 pub mod sortable_headers;
 
 // From widgets
@@ -40,7 +38,6 @@ pub mod motion;
 
 pub use headers::*;
 pub use hairlines::*;
-pub use metrics::*;
 pub use action_button::*;
 pub use dom_action::*;
 pub use header_buttons::*;

@@ -95,21 +95,31 @@ impl PanelFrame {
 pub struct CardFrame {
     bg: Color32,
     border: Color32,
-    /// Themed shadow base color; `None` falls back to the legacy black tint.
+    /// Themed shadow base color; `None` resolves from the ambient theme via `ctx`
+    /// (if set), otherwise falls back to the legacy black tint.
     shadow_color: Option<Color32>,
+    /// Optional context used to resolve the ambient theme's shadow colour when
+    /// `shadow_color` is `None`. Set via `.ctx(ctx)` — existing callers are unaffected.
+    ctx: Option<egui::Context>,
 }
 
 impl CardFrame {
     pub fn new() -> Self {
-        Self { bg: Color32::TRANSPARENT, border: Color32::TRANSPARENT, shadow_color: None }
+        Self { bg: Color32::TRANSPARENT, border: Color32::TRANSPARENT, shadow_color: None, ctx: None }
     }
 
     pub fn theme(self, t: &Theme) -> Self {
-        Self { bg: t.toolbar_bg, border: t.toolbar_border, shadow_color: Some(t.shadow_color) }
+        Self { bg: t.toolbar_bg, border: t.toolbar_border, shadow_color: Some(t.shadow_color), ..self }
     }
 
     pub fn colors(self, bg: Color32, border: Color32) -> Self {
         Self { bg, border, ..self }
+    }
+
+    /// Provide the egui `Context` so the card can resolve the ambient theme's
+    /// shadow colour when no explicit `shadow_color` has been set via `.theme()`.
+    pub fn ctx(self, ctx: &egui::Context) -> Self {
+        Self { ctx: Some(ctx.clone()), ..self }
     }
 
     /// Build the `egui::Frame`.
@@ -139,6 +149,11 @@ impl CardFrame {
             // shadow_blur / shadow_offset_y / shadow_alpha knobs override global tokens.
             let shadow_col = if let Some(sc) = self.shadow_color {
                 color_alpha(sc, st.shadow_alpha)
+            } else if let Some(ref ctx) = self.ctx {
+                // No explicit shadow colour but ctx is available — resolve from the
+                // ambient theme so light themes get a soft gray drop instead of black.
+                let t = crate::ui_kit::widgets::theme::active_theme(ctx);
+                color_alpha(t.shadow_color, st.shadow_alpha)
             } else {
                 Color32::from_black_alpha(st.shadow_alpha)
             };
@@ -272,7 +287,11 @@ impl<'a> PopupFrame<'a> {
             let shadow_col = if let Some(sc) = self.shadow_color {
                 color_alpha(sc, st.shadow_alpha)
             } else {
-                Color32::from_black_alpha(st.shadow_alpha)
+                // No explicit shadow colour — resolve from the ambient theme so
+                // light themes (Bauhaus/Peach/Ivory/Newsprint) get a soft gray
+                // drop shadow instead of hardcoded black.
+                let t = crate::ui_kit::widgets::theme::active_theme(ctx);
+                color_alpha(t.shadow_color, st.shadow_alpha)
             };
             frame = frame.shadow(egui::epaint::Shadow {
                 offset: [0, st.shadow_offset_y as i8],

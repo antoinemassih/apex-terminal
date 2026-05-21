@@ -1095,7 +1095,7 @@ impl ApertureOrderTicket {
         use super::select::SegmentedControl;
         use crate::ui_kit::widgets::NumberStepper;
         use crate::ui_kit::widgets::Button;
-        use crate::ui_kit::widgets::tokens::Size as KitSize;
+        use crate::ui_kit::widgets::tokens::{Size as KitSize, Variant};
         use crate::ui_kit::widgets::Input;
         use crate::ui_kit::widgets::FormField;
         use crate::ui_kit::widgets::InputGroup;
@@ -1151,10 +1151,12 @@ impl ApertureOrderTicket {
                 } else {
                     color_alpha(self.toolbar_border, 40)
                 });
-                let r = ui.add(egui::Button::new(
-                        egui::RichText::new("EXT").monospace().size(font_xs()).color(rth_fg))
-                    .fill(rth_bg).corner_radius(r_xs()).stroke(rth_stroke)
-                    .min_size(egui::vec2(26.0, row_height_dense())));
+                let r = Button::new("EXT")
+                    .variant(Variant::Toggle)
+                    .active(*s.order_outside_rth)
+                    .tint(COLOR_AMBER)
+                    .min_size(egui::vec2(26.0, row_height_dense()))
+                    .show(ui, &t_stub);
                 Tooltip::new("Trade outside regular trading hours").show(ui, &r, &t_stub);
                 if r.clicked() {
                     *s.order_outside_rth = !*s.order_outside_rth;
@@ -1255,13 +1257,12 @@ impl ApertureOrderTicket {
                         }
                         ui.add_space(gap_xs());
                         let mkt_label = if *s.order_market { "MKT" } else { "LMT" };
-                        if ui.add(egui::Button::new(
-                                egui::RichText::new(mkt_label).monospace().size(font_sm()).strong()
-                                    .color(if *s.order_market { self.accent } else { self.dim }))
-                            .fill(if *s.order_market { color_alpha(self.accent, 35) } else { self.toolbar_bg })
-                            .stroke(Stroke::new(stroke_thin(), color_alpha(self.toolbar_border, 90)))
-                            .corner_radius(r_xs())
-                            .min_size(egui::vec2(30.0, row_height_compact())))
+                        if Button::new(mkt_label)
+                            .variant(Variant::Toggle)
+                            .active(*s.order_market)
+                            .tint(self.accent)
+                            .min_size(egui::vec2(30.0, row_height_compact()))
+                            .show(ui, &t_stub)
                             .clicked()
                         {
                             *s.order_market = !*s.order_market;
@@ -1337,12 +1338,12 @@ impl ApertureOrderTicket {
             ui.add_space(gap_xs());
             ui.horizontal(|ui| {
                 ui.add_space(pad);
-                let brk_color = if *s.order_bracket { self.accent } else { color_alpha(self.dim, 50) };
-                if ui.add(egui::Button::new(
-                        egui::RichText::new("Bracket").monospace().size(font_sm()).color(brk_color))
-                    .fill(if *s.order_bracket { color_alpha(self.accent, 25) } else { egui::Color32::TRANSPARENT })
-                    .stroke(Stroke::new(STROKE_THIN, color_alpha(self.toolbar_border, ALPHA_DIM)))
-                    .corner_radius(r_xs()).min_size(egui::vec2(0.0, row_height_dense())))
+                if Button::new("Bracket")
+                    .variant(Variant::Toggle)
+                    .active(*s.order_bracket)
+                    .tint(self.accent)
+                    .min_size(egui::vec2(0.0, row_height_dense()))
+                    .show(ui, &t_stub)
                     .clicked()
                 {
                     *s.order_bracket = !*s.order_bracket;

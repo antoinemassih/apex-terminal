@@ -1,21 +1,20 @@
 //! Builder primitives — layout family.
 //!
-//! Wraps existing layout helpers (`style::split_divider`,
-//! `components::empty_state_panel`, etc.) as chained-setter builders. The
-//! legacy free-functions are NOT modified — these builders delegate to the
-//! same paint code so output is byte-for-byte identical.
+//! Wraps existing layout helpers (`style::split_divider`, etc.) as
+//! chained-setter builders.
 //!
 //! Visual rule: CHART PAINT IS SACRED. None of these touch the chart canvas;
 //! they only compose UI chrome around it.
 
 #![allow(dead_code, unused_imports)]
 
-use egui::{Color32, Response, Sense, Ui, Vec2};
+use egui::{Color32, Response, RichText, Sense, Ui, Vec2};
 use crate::ui_kit::icons::Icon;
 use super::super::style::{
-    self, color_dim, color_muted, split_divider, gap_sm, gap_md, gap_lg, GAP_SM, GAP_MD, GAP_LG,
+    self, color_alpha, color_dim, color_muted, split_divider,
+    gap_sm, gap_md, gap_lg, gap_xs, GAP_SM, GAP_MD, GAP_LG,
+    font_md, font_sm, font_2xl, gap_3xl, alpha_muted,
 };
-use super::super::components::empty_state_panel;
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
@@ -217,7 +216,7 @@ impl<'a> Collapsible<'a> {
         let header = format!("{}  {}", chev, self.title);
         let resp = ui.add(
             egui::Label::new(
-                egui::RichText::new(header)
+                RichText::new(header)
                     .monospace()
                     .strong()
                     .color(self.title_color),
@@ -304,7 +303,26 @@ impl<'a> EmptyState<'a> {
     /// Returns Some(true) if the action button was clicked, Some(false) if
     /// rendered but not clicked, None if no action button was configured.
     pub fn show(self, ui: &mut Ui) -> Option<bool> {
-        empty_state_panel(ui, self.icon, self.title, self.subtitle, self.dim);
+        let dim = self.dim;
+        ui.vertical_centered(|ui| {
+            ui.add_space(gap_3xl());
+            ui.label(RichText::new(self.icon).size(font_2xl() * 1.5).color(dim));
+            ui.add_space(gap_md());
+            ui.label(
+                RichText::new(self.title)
+                    .monospace()
+                    .size(font_md())
+                    .strong()
+                    .color(dim),
+            );
+            ui.add_space(gap_xs());
+            ui.label(
+                RichText::new(self.subtitle)
+                    .monospace()
+                    .size(font_sm())
+                    .color(color_alpha(dim, alpha_muted())),
+            );
+        });
         self.action.map(|label| {
             ui.add_space(gap_md());
             let mut clicked = false;

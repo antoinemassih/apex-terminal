@@ -10,6 +10,8 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use crate::chart_renderer::ui::style::{font_xs, font_sm, font_md_plus, gap_xs, gap_sm, gap_md};
+use crate::ui_kit::widgets::side_panel_shell::{SidePanelShell, Width};
+use crate::ui_kit::widgets::theme::active_theme;
 
 static DESIGN_PANEL_OPEN: AtomicBool = AtomicBool::new(false);
 
@@ -29,29 +31,16 @@ pub fn show(ctx: &egui::Context) {
         return;
     }
 
-    egui::SidePanel::right("design_mode_panel")
-        .min_width(300.0)
-        .max_width(450.0)
-        .default_width(340.0)
-        .frame(
-            egui::Frame::NONE
-                .fill(egui::Color32::from_rgb(18, 18, 24))
-                .stroke(egui::Stroke::new(crate::chart::renderer::ui::style::stroke_std(), egui::Color32::from_rgb(40, 42, 54)))
-                .inner_margin(8.0),
-        )
-        .show(ctx, |ui| {
-            ui.label(
-                egui::RichText::new("DESIGN MODE")
-                    .monospace()
-                    .size(font_md_plus())
-                    .strong()
-                    .color(egui::Color32::from_rgb(203, 166, 247)),
-            );
+    let t = active_theme(ctx);
+    let resp = SidePanelShell::new("design_mode_panel", "DESIGN MODE")
+        .width(Width::Medium)
+        .resizable(300.0..=450.0)
+        .show(ctx, t, |ui, t| {
             ui.label(
                 egui::RichText::new("Every change affects ALL widgets globally")
                     .monospace()
                     .size(font_xs())
-                    .color(egui::Color32::from_rgb(120, 120, 130)),
+                    .color(t.dim),
             );
             ui.add_space(gap_sm());
             ui.separator();
@@ -64,7 +53,7 @@ pub fn show(ctx: &egui::Context) {
                         .monospace()
                         .size(font_sm())
                         .strong()
-                        .color(egui::Color32::from_rgb(166, 227, 161)),
+                        .color(t.bull),
                 );
                 ui.add_space(gap_xs());
 
@@ -74,7 +63,7 @@ pub fn show(ctx: &egui::Context) {
                         egui::RichText::new("UI Scale")
                             .monospace()
                             .size(font_xs())
-                            .color(egui::Color32::from_rgb(170, 170, 180)),
+                            .color(t.dim),
                     );
                     if ui
                         .add(
@@ -102,7 +91,7 @@ pub fn show(ctx: &egui::Context) {
                         .monospace()
                         .size(font_sm())
                         .strong()
-                        .color(egui::Color32::from_rgb(166, 227, 161)),
+                        .color(t.bull),
                 );
                 ui.label(
                     egui::RichText::new(
@@ -110,7 +99,7 @@ pub fn show(ctx: &egui::Context) {
                     )
                     .monospace()
                     .size(font_xs())
-                    .color(egui::Color32::from_rgb(120, 120, 130)),
+                    .color(t.dim),
                 );
                 ui.add_space(gap_sm());
 
@@ -119,4 +108,7 @@ pub fn show(ctx: &egui::Context) {
                 ctx.set_style(style);
             });
         });
+    if resp.close_clicked {
+        DESIGN_PANEL_OPEN.store(false, Ordering::Relaxed);
+    }
 }

@@ -474,13 +474,10 @@ fn draw_normal_mode(
             });
         });
     } else {
-        empty_state_panel(
-            ui,
-            "⌕",
-            "No matches",
-            "Press Tab for AI chat, or try a prefix (> @ # / ?).",
-            t.dim,
-        );
+        crate::ui_kit::widgets::PanelEmpty::new("No matches")
+            .glyph("⌕")
+            .hint("Press Tab for AI chat, or try a prefix (> @ # / ?).")
+            .show(ui, t);
     }
 
     // Footer

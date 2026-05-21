@@ -94,18 +94,17 @@ if watchlist.open {
                                 .font_size(9.0)
                                 .item_context_menu(|idx, ui| {
                                     let i = *idx;
-                                    if ui.button(egui::RichText::new("Rename").monospace().size(font_sm())).clicked() {
+                                    if Button::new("Rename").variant(Variant::Ghost).show(ui, t).clicked() {
                                         wl_rename_idx = Some(i);
                                         ui.close_menu();
                                     }
-                                    if ui.button(egui::RichText::new("Duplicate").monospace().size(font_sm())).clicked() {
+                                    if Button::new("Duplicate").variant(Variant::Ghost).show(ui, t).clicked() {
                                         wl_dup_idx = Some(i);
                                         ui.close_menu();
                                     }
                                     if wl_count > 1 {
                                         ui.separator();
-                                        if ui.button(egui::RichText::new("Delete").monospace().size(font_sm())
-                                            .color(status_error())).clicked() {
+                                        if Button::new("Delete").variant(Variant::Ghost).fg(status_error()).show(ui, t).clicked() {
                                             wl_delete_idx = Some(i);
                                             ui.close_menu();
                                         }
@@ -120,18 +119,17 @@ if watchlist.open {
                             }
                             // Right-click the combo header for rename/dup/delete of active
                             combo_resp.context_menu(|ui| {
-                                if ui.button(egui::RichText::new("Rename").monospace().size(font_sm())).clicked() {
+                                if Button::new("Rename").variant(Variant::Ghost).show(ui, t).clicked() {
                                     wl_rename_idx = Some(active_idx);
                                     ui.close_menu();
                                 }
-                                if ui.button(egui::RichText::new("Duplicate").monospace().size(font_sm())).clicked() {
+                                if Button::new("Duplicate").variant(Variant::Ghost).show(ui, t).clicked() {
                                     wl_dup_idx = Some(active_idx);
                                     ui.close_menu();
                                 }
                                 if wl_count > 1 {
                                     ui.separator();
-                                    if ui.button(egui::RichText::new("Delete").monospace().size(font_sm())
-                                        .color(status_error())).clicked() {
+                                    if Button::new("Delete").variant(Variant::Ghost).fg(status_error()).show(ui, t).clicked() {
                                         wl_delete_idx = Some(active_idx);
                                         ui.close_menu();
                                     }
@@ -595,7 +593,7 @@ if watchlist.open {
                                 // Right-click context menu on section header
                                 resp.header_response.context_menu(|ui| {
                                     // Rename
-                                    if ui.button(egui::RichText::new("Rename").monospace().size(font_sm())).clicked() {
+                                    if Button::new("Rename").variant(Variant::Ghost).show(ui, t).clicked() {
                                         watchlist.renaming_section = Some(sec_id);
                                         watchlist.rename_buf = sec_title.clone();
                                         ui.close_menu();
@@ -619,7 +617,7 @@ if watchlist.open {
                                             }
                                         });
                                     }
-                                    if ui.button(egui::RichText::new("No color").monospace().size(font_sm()).color(t.dim)).clicked() {
+                                    if Button::new("No color").variant(Variant::Ghost).fg(t.dim).show(ui, t).clicked() {
                                         if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                             sec.color = None;
                                         }
@@ -628,7 +626,7 @@ if watchlist.open {
                                     }
                                     ui.separator();
                                     if sec_item_count == 0 {
-                                        if ui.button(egui::RichText::new("Delete section").monospace().size(font_sm()).color(status_error())).clicked() {
+                                        if Button::new("Delete section").variant(Variant::Ghost).fg(status_error()).show(ui, t).clicked() {
                                             remove_section = Some(si);
                                             ui.close_menu();
                                         }
@@ -1198,7 +1196,7 @@ if watchlist.open {
                                 // Right-click context menu on option section header (same as stock sections)
                                 resp.header_response.context_menu(|ui| {
                                     // Rename
-                                    if ui.button(egui::RichText::new("Rename").monospace().size(font_sm())).clicked() {
+                                    if Button::new("Rename").variant(Variant::Ghost).show(ui, t).clicked() {
                                         watchlist.renaming_section = Some(sec_id);
                                         watchlist.rename_buf = sec_title.clone();
                                         ui.close_menu();
@@ -1222,7 +1220,7 @@ if watchlist.open {
                                             }
                                         });
                                     }
-                                    if ui.button(egui::RichText::new("No color").monospace().size(font_sm()).color(t.dim)).clicked() {
+                                    if Button::new("No color").variant(Variant::Ghost).fg(t.dim).show(ui, t).clicked() {
                                         if let Some(sec) = watchlist.sections.iter_mut().find(|s| s.id == sec_id) {
                                             sec.color = None;
                                         }
@@ -1231,7 +1229,7 @@ if watchlist.open {
                                     }
                                     ui.separator();
                                     if sec_item_count == 0 {
-                                        if ui.button(egui::RichText::new("Delete section").monospace().size(font_sm()).color(status_error())).clicked() {
+                                        if Button::new("Delete section").variant(Variant::Ghost).fg(status_error()).show(ui, t).clicked() {
                                             opt_remove_section = Some(si);
                                             ui.close_menu();
                                         }

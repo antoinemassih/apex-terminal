@@ -5,6 +5,5 @@
 pub use super::components::inputs::*;
 pub use super::components::sortable_headers::*;
 pub use super::components::header_buttons::*;
-pub use super::components::panels::*;
 pub use super::components::action_button::*;
 pub use super::components::dom_action::*;
