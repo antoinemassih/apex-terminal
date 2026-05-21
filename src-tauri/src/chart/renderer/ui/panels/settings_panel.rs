@@ -8,7 +8,7 @@
 
 use egui;
 use super::super::style::*;
-use super::super::super::gpu::{Watchlist, Theme, Chart, THEMES};
+use super::super::super::gpu::{Watchlist, Theme, Chart};
 use super::super::super::commands::{self, AppCommand};
 use crate::ui_kit::widgets::{FormRow, FormRowAlign};
 use super::super::components::text::{BodyLabel, SectionLabel};
@@ -130,7 +130,8 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
     PanelSection::new("THEME").show(ui, t, |ui, t| {
         ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
         ui.horizontal_wrapped(|ui| {
-            for (i, preview_theme) in THEMES.iter().enumerate() {
+            let all_themes = crate::chart_renderer::gpu::get_all_themes();
+            for (i, preview_theme) in all_themes.iter().enumerate() {
                 let resp = ThemePreviewCard::new(preview_theme.name, preview_theme)
                     .selected(chart.theme_idx == i)
                     .preview_kind(PreviewKind::Chart)

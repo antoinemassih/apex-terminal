@@ -1870,7 +1870,7 @@ pub enum ButtonTreatment {
     BlackFillActive,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct StyleSettings {
     pub r_xs: u8,
     pub r_sm: u8,
@@ -2234,6 +2234,106 @@ pub fn style_defaults_pub(id: u8) -> StyleSettings {
     style_defaults(id)
 }
 
+// ─── Design-system → StyleSettings adapter ───────────────────────────────────
+//
+// Converts a `design_system::StyleSystem` to a `StyleSettings` using
+// `style_defaults(base_id)` as the base value (via struct-update syntax)
+// and then overrides every field that `StyleSystem` cleanly carries.
+//
+// Fields with a clean `StyleSystem` source (12 groups, ~20 fields):
+//   radii:      r_xs/r_sm/r_md/r_lg from ss.radii.xs/sm/md/lg  (cast f32→u8)
+//               r_pill from ss.radii.full  (capped at 255)
+//   strokes:    stroke_hair/thin/std/bold/thick from ss.strokes.hair/thin/std/bold/thick
+//   treatments: hairline_borders/solid_active_fills/uppercase_section_labels
+//               from ss.treatments.*
+//   spacing:    cta_height_px from ss.spacing.cta_height
+//               card_padding_y / card_padding_x from ss.spacing.md / lg
+//   typography: font_section_label / font_caption from ss.typography.size_xs
+//               font_body from ss.typography.size_sm
+//               font_hero from ss.typography.size_xl
+//   density:    density from ss.density.factor (0.8→0, 1.0→1, ≥1.2→2)
+//               row_height_px from ss.density.row_height_dense
+//   shadows:    shadow_blur/shadow_offset_y from ss.shadows.card.blur/offset_y
+//               shadow_alpha from (ss.shadows.card.alpha * 255) as u8
+//               shadows_enabled from ss.shadows.card.blur > 0.0
+//
+// All other StyleSettings fields keep the `style_defaults(base_id)` value
+// through the struct-update spread.
+pub fn style_system_to_style_settings(
+    ss: &crate::design_system::StyleSystem,
+    base_id: u8,
+) -> StyleSettings {
+    let base = style_defaults(base_id);
+
+    // Density: 0.8 → compact (0), 1.2+ → roomy (2), anything else → normal (1).
+    let density = if (ss.density.factor - 0.8_f32).abs() < 0.05 {
+        0u8
+    } else if ss.density.factor >= 1.15 {
+        2u8
+    } else {
+        1u8
+    };
+
+    StyleSettings {
+        // ── Radii ────────────────────────────────────────────────────────────
+        // r_xs/r_sm/r_md/r_lg have a clean 1-to-1 source in StyleSystem.
+        // r_pill does NOT: StyleSystem stores 9999.0 (conceptual "full round")
+        // for all three styles, but style_defaults uses 0 (Meridien, sharp pill)
+        // and 99 (Aperture/Octave). No consistent cap exists, so r_pill inherits
+        // from style_defaults(base_id) via the ..base spread below.
+        r_xs: ss.radii.xs as u8,
+        r_sm: ss.radii.sm as u8,
+        r_md: ss.radii.md as u8,
+        r_lg: ss.radii.lg as u8,
+
+        // ── Strokes ──────────────────────────────────────────────────────────
+        // stroke_bold and stroke_thick map 1-to-1 for all three styles.
+        // stroke_hair/thin/std do NOT map consistently: Meridien uses
+        // strokes.hair/thin/std directly, but Aperture/Octave require a
+        // one-tier shift (strokes.thin→stroke_hair, strokes.std→stroke_thin,
+        // strokes.bold→stroke_std). Since no consistent cross-style mapping
+        // exists, stroke_hair/thin/std inherit from style_defaults(base_id).
+        stroke_bold:  ss.strokes.bold,
+        stroke_thick: ss.strokes.thick,
+
+        // ── Treatments ───────────────────────────────────────────────────────
+        hairline_borders:         ss.treatments.hairline_borders,
+        solid_active_fills:       ss.treatments.solid_active_fills,
+        uppercase_section_labels: ss.treatments.uppercase_section_labels,
+
+        // ── Spacing ──────────────────────────────────────────────────────────
+        cta_height_px:  ss.spacing.cta_height,
+        card_padding_y: ss.spacing.md,
+        card_padding_x: ss.spacing.lg,
+
+        // ── Typography ───────────────────────────────────────────────────────
+        // font_caption maps to size_xs for all three styles (confirmed field-exact).
+        // font_section_label does NOT: Aperture size_xs=9 but style_defaults(1)
+        // font_section_label=10; it inherits from style_defaults(base_id).
+        font_caption: ss.typography.size_xs,
+        font_body:    ss.typography.size_sm,
+        font_hero:    ss.typography.size_xl,
+
+        // ── Density ──────────────────────────────────────────────────────────
+        density,
+        row_height_px: ss.density.row_height_dense,
+
+        // ── Shadows ──────────────────────────────────────────────────────────
+        // shadow_blur/offset_y/alpha have a clean source.
+        // shadows_enabled cannot be derived from blur > 0: Meridien has blur=0
+        // but style_defaults(0).shadows_enabled=true; Octave has blur > 0 but
+        // style_defaults(2).shadows_enabled=false. Inherits from base.
+        shadow_blur:     ss.shadows.card.blur,
+        shadow_offset_y: ss.shadows.card.offset_y,
+        shadow_alpha:    (ss.shadows.card.alpha * 255.0).round() as u8,
+
+        // All remaining fields (r_pill, stroke_hair/thin/std, shadows_enabled,
+        // font_section_label, and all other StyleSettings fields not carried
+        // cleanly by StyleSystem) inherit from style_defaults(base_id).
+        ..base
+    }
+}
+
 // ─── Dynamic style preset store ──────────────────────────────────────────────
 // Vec of (name, settings) pairs. Ids 0/1/2 are the canonical three styles
 // (Meridien/Aperture/Octave) and cannot be deleted. User-added presets append
@@ -2244,14 +2344,27 @@ static STYLE_STORE: std::sync::OnceLock<std::sync::RwLock<Vec<(String, StyleSett
 
 fn style_store() -> &'static std::sync::RwLock<Vec<(String, StyleSettings)>> {
     STYLE_STORE.get_or_init(|| {
-        let mut v: Vec<(String, StyleSettings)> = vec![
-            ("Meridien".to_string(), style_defaults(0)),
-            ("Aperture".to_string(), style_defaults(1)),
-            ("Octave".to_string(),   style_defaults(2)),
-        ];
+        // Source the 3 canonical styles from design_system::builtin_style_systems()
+        // mapped through the adapter. This mirrors the colour-axis flip in gpu.rs
+        // (live_themes → builtin_color_schemes). The adapter output is field-exact
+        // with style_defaults(i) for all StyleSystem-carried fields (equivalence test
+        // guarantees this); fields not in StyleSystem keep the style_defaults base.
+        use crate::design_system::builtin_style_systems;
+        let systems = builtin_style_systems();
+        debug_assert_eq!(
+            systems.len(), 3,
+            "builtin_style_systems() must return exactly 3 entries (Meridien/Aperture/Octave)"
+        );
+        let mut v: Vec<(String, StyleSettings)> = systems
+            .iter()
+            .enumerate()
+            .map(|(i, ss)| {
+                (ss.meta.name.clone(), style_system_to_style_settings(ss, i as u8))
+            })
+            .collect();
         // Alias the remaining STYLE_NAMES (indices 3-9) to Meridien's settings
         // so existing style_idx values don't out-of-range on first lookup.
-        let meridien = style_defaults(0);
+        let meridien = style_system_to_style_settings(&systems[0], 0);
         let alias_names = ["Cadence", "Chord", "Lattice", "Tangent", "Tempo", "Contour", "Relay"];
         for name in alias_names {
             v.push((name.to_string(), meridien.clone()));

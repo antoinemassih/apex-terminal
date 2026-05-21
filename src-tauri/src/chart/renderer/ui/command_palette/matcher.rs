@@ -58,8 +58,11 @@ pub(super) fn resolve_chain_step(step: &str, watchlist: &Watchlist) -> Option<St
     if LAYOUT_IDS.iter().any(|(id, _)| id.eq_ignore_ascii_case(&body)) {
         return Some(format!("layout:{}", body.to_uppercase()));
     }
-    // Theme
-    if THEME_NAMES.iter().any(|n| n.eq_ignore_ascii_case(&body)) {
+    // Theme — check against live themes so installed names are resolved
+    if crate::chart_renderer::gpu::get_all_themes()
+        .iter()
+        .any(|th| th.name.eq_ignore_ascii_case(&body))
+    {
         return Some(format!("theme:{}", body_lc));
     }
     // Widget id

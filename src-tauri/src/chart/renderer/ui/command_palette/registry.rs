@@ -4,11 +4,9 @@ use super::{Category, Entry};
 use crate::chart_renderer::gpu::*;
 use crate::chart_renderer::ChartWidgetKind;
 
-pub(super) const THEME_NAMES: &[&str] = &[
-    "Midnight", "Nord", "Monokai", "Solarized", "Dracula", "Gruvbox",
-    "Catppuccin", "Tokyo Night", "Kanagawa", "Everforest", "Vesper", "Rosé Pine",
-    "Bauhaus", "Peach", "Ivory",
-];
+// THEME_NAMES removed — theme commands are now generated dynamically from
+// `gpu::get_all_themes()` so built-ins (incl. Newsprint) and any
+// user-installed themes are all reachable in the command palette.
 
 pub(super) const TF_IDS: &[&str] = &["1m","5m","15m","30m","1h","2h","4h","1D","1W","1M"];
 
@@ -94,8 +92,9 @@ pub(super) fn build_registry(watchlist: &Watchlist, active_pane_type: PaneType) 
         v.push(mk(&format!("layout:{id}"), &format!("Layout · {id}"), d, Category::Layout, None));
     }
 
-    // Themes
-    for name in THEME_NAMES {
+    // Themes — enumerate live themes (built-ins + any user-installed)
+    for theme in crate::chart_renderer::gpu::get_all_themes() {
+        let name = theme.name;
         v.push(mk(&format!("theme:{}", name.to_lowercase()), &format!("Theme · {name}"), "Switch global theme", Category::Theme, None));
     }
 

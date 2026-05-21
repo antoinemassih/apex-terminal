@@ -105,6 +105,30 @@ fn main() {
             Err(e) => eprintln!("[theme-watcher] could not seed themes: {e}"),
         }
 
+        // Scan for user-installed colour-scheme JSON files and register them
+        // with the live theme list BEFORE the first frame so the picker and
+        // command palette see them immediately.  Built-in indices 0–15 are
+        // never disturbed; installed themes append at 16+.
+        {
+            let (installed, _styles) = _scaffold_lib::design_system::scan_theme_dir(&themes_dir);
+            // Filter out built-ins (the seed step just wrote them, so they
+            // appear in the scan result). `append_installed_themes` dedupes by
+            // name, but filtering first avoids an unnecessary write-lock cycle.
+            let builtin_names: std::collections::HashSet<String> =
+                _scaffold_lib::design_system::builtin_color_schemes()
+                    .iter()
+                    .map(|cs| cs.meta.name.clone())
+                    .collect();
+            let user_schemes: Vec<_> = installed
+                .into_iter()
+                .filter(|cs| !builtin_names.contains(&cs.meta.name))
+                .collect();
+            if !user_schemes.is_empty() {
+                eprintln!("[theme-watcher] loading {} installed theme(s)", user_schemes.len());
+                _scaffold_lib::chart_renderer::gpu::append_installed_themes(user_schemes);
+            }
+        }
+
         // Start the background watcher — ZERO per-frame main-thread cost.
         _scaffold_lib::design_system::start_theme_watcher(themes_dir);
     }

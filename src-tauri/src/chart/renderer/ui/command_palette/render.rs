@@ -81,10 +81,11 @@ pub(super) fn draw_help_mode(ui: &mut egui::Ui, topic: &str, t: &Theme, _pal_w: 
                 }
             }
             "themes" => {
-                for n in THEME_NAMES {
+                for theme in crate::chart_renderer::gpu::get_all_themes() {
+                    let n = theme.name;
                     ui.horizontal(|ui| {
                         ui.add(BodyLabel::new(&format!("theme:{}", n.to_lowercase())).size(font_sm()).monospace(true).color(t.dim));
-                        ui.add(BodyLabel::new(*n).size(font_md()).color(t.text));
+                        ui.add(BodyLabel::new(n).size(font_md()).color(t.text));
                     });
                 }
             }

@@ -444,9 +444,10 @@ fn live_themes() -> &'static RwLock<Vec<Theme>> {
             .iter()
             .map(crate::design_system::color_scheme_to_theme)
             .collect();
-        debug_assert_eq!(
-            themes.len(), THEMES.len(),
-            "design_system colour-scheme count must match THEMES",
+        debug_assert!(
+            themes.len() >= THEMES.len(),
+            "design_system colour-scheme count must be >= THEMES (got {})",
+            themes.len(),
         );
         RwLock::new(themes)
     })
@@ -466,6 +467,24 @@ pub(crate) fn get_all_themes() -> Vec<Theme> {
 
 pub(crate) fn live_theme_count() -> usize {
     live_themes().read().unwrap().len()
+}
+
+/// Append user-installed colour schemes (from disk) to the live theme list.
+///
+/// Each scheme is converted via `color_scheme_to_theme` and appended only if
+/// no theme with the same name already exists in the list (deduplication
+/// against both built-ins and any previously-appended installed themes).
+/// Built-in indices 0–15 are never disturbed — installed themes start at
+/// index 16 and grow monotonically.
+pub fn append_installed_themes(schemes: Vec<crate::design_system::ColorScheme>) {
+    let mut guard = live_themes().write().unwrap();
+    for scheme in schemes {
+        let candidate = crate::design_system::color_scheme_to_theme(&scheme);
+        let already_present = guard.iter().any(|t| t.name == candidate.name);
+        if !already_present {
+            guard.push(candidate);
+        }
+    }
 }
 
 const PRESET_COLORS: &[&str] = &["#4a9eff","#e74c3c","#2ecc71","#f39c12","#9b59b6","#1abc9c","#e67e22","#3498db","#e91e63","#00bcd4","#8bc34a","#ff5722","#607d8b","#795548","#cddc39","#ff9800"];
@@ -6501,7 +6520,10 @@ impl ApplicationHandler for App {
                                     "6" => Layout::Six, "6H" => Layout::SixH, "6L" => Layout::SixL,
                                     "7" => Layout::Seven, "8H" => Layout::EightH, "9" => Layout::Nine, _ => Layout::One,
                                 };
-                                let theme_idx = json.get("theme_idx").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+                                let theme_idx = {
+                                    let raw = json.get("theme_idx").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+                                    raw.min(live_themes().read().unwrap().len().saturating_sub(1))
+                                };
                                 let recents: Vec<(String, String)> = json.get("recent_symbols").and_then(|v| v.as_array()).map(|arr| {
                                     arr.iter().filter_map(|v| {
                                         let a = v.as_array()?;
@@ -7140,7 +7162,10 @@ fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
         "2" => Layout::Two, "2H" => Layout::TwoH, "3" => Layout::Three, "4" => Layout::Four,
         "6" => Layout::Six, "6H" => Layout::SixH, "9" => Layout::Nine, _ => Layout::One,
     };
-    let theme_idx = json.get("theme_idx").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+    let theme_idx = {
+        let raw = json.get("theme_idx").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+        raw.min(live_themes().read().unwrap().len().saturating_sub(1))
+    };
     let recents: Vec<(String, String)> = json.get("recent_symbols").and_then(|v| v.as_array()).map(|arr| {
         arr.iter().filter_map(|v| {
             let a = v.as_array()?;

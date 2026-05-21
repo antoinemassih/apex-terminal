@@ -507,4 +507,154 @@ pub(crate) mod equivalence {
             deltas.len()
         );
     }
+
+    // ── Style adapter losslessness ────────────────────────────────────────────
+
+    /// Proves that `style_system_to_style_settings(&builtin_style_systems()[i], i as u8)`
+    /// is field-exact with `style_defaults_pub(i)` for all 3 built-in styles
+    /// (Meridien/Aperture/Octave).
+    ///
+    /// Collects every field mismatch into a `Vec<String>` delta list (no early panic).
+    /// The test passes only if that list is empty — this is the losslessness proof
+    /// for the style-axis adapter.
+    #[test]
+    fn style_adapter_lossless_equivalence() {
+        use crate::chart_renderer::ui::style::{
+            style_defaults_pub, style_system_to_style_settings,
+        };
+
+        let systems = builtin_style_systems();
+        assert_eq!(systems.len(), 3, "expected exactly 3 builtin style systems");
+
+        let mut deltas: Vec<String> = Vec::new();
+
+        for i in 0..3usize {
+            let ss  = &systems[i];
+            let adapted  = style_system_to_style_settings(ss, i as u8);
+            let expected = style_defaults_pub(i as u8);
+            let name     = &ss.meta.name;
+
+            macro_rules! chk {
+                ($field:ident) => {
+                    if adapted.$field != expected.$field {
+                        deltas.push(format!(
+                            "[{}][{}] {}: adapted={:?} expected={:?}",
+                            i, name, stringify!($field),
+                            adapted.$field, expected.$field,
+                        ));
+                    }
+                };
+            }
+
+            // ── Radii ──────────────────────────────────────────────────────
+            chk!(r_xs);
+            chk!(r_sm);
+            chk!(r_md);
+            chk!(r_lg);
+            chk!(r_pill);
+
+            // ── Strokes ────────────────────────────────────────────────────
+            chk!(stroke_hair);
+            chk!(stroke_thin);
+            chk!(stroke_std);
+            chk!(stroke_bold);
+            chk!(stroke_thick);
+
+            // ── Treatments ─────────────────────────────────────────────────
+            chk!(hairline_borders);
+            chk!(solid_active_fills);
+            chk!(uppercase_section_labels);
+
+            // ── Spacing ────────────────────────────────────────────────────
+            chk!(cta_height_px);
+            chk!(card_padding_y);
+            chk!(card_padding_x);
+
+            // ── Typography ─────────────────────────────────────────────────
+            chk!(font_section_label);
+            chk!(font_caption);
+            chk!(font_body);
+            chk!(font_hero);
+
+            // ── Density ────────────────────────────────────────────────────
+            chk!(density);
+            chk!(row_height_px);
+
+            // ── Shadows ────────────────────────────────────────────────────
+            chk!(shadows_enabled);
+            chk!(shadow_blur);
+            chk!(shadow_offset_y);
+            chk!(shadow_alpha);
+
+            // ── All fields inherited via ..base (spot-check a few) ─────────
+            chk!(serif_headlines);
+            chk!(button_treatment);
+            chk!(invert_active_fill);
+            chk!(label_letter_spacing_px);
+            chk!(toolbar_height_scale);
+            chk!(header_height_scale);
+            chk!(vertical_group_dividers);
+            chk!(show_active_tab_underline);
+            chk!(active_header_fill_multiply);
+            chk!(inactive_header_fill_multiply);
+            chk!(inactive_header_fill);
+            chk!(header_outer_border_alpha);
+            chk!(header_outer_border_width);
+            chk!(header_divider_alpha);
+            chk!(account_strip_height);
+            chk!(pane_border_width);
+            chk!(pane_gap);
+            chk!(button_height_px);
+            chk!(button_padding_x);
+            chk!(tab_height);
+            chk!(font_section_label);
+            chk!(hover_bg_alpha);
+            chk!(active_bg_alpha);
+            chk!(focus_ring_width);
+            chk!(focus_ring_alpha);
+            chk!(disabled_opacity);
+            chk!(accent_emphasis);
+            chk!(nav_letter_spacing_px);
+            chk!(nav_buttons_label_only);
+            chk!(nav_buttons_uppercase_labels);
+            chk!(tab_underline_thickness);
+            chk!(tab_underline_under_text);
+            chk!(card_floating_shadow);
+            chk!(card_floating_shadow_alpha);
+            chk!(cta_padding_x);
+            chk!(pane_gap_alpha);
+            chk!(pane_active_indicator);
+            chk!(nav_active_col_alpha);
+            chk!(dialog_backdrop_alpha);
+            chk!(tab_inactive_alpha);
+            chk!(tab_hover_bg_alpha);
+            chk!(section_label_padding_top);
+            chk!(section_label_padding_bottom);
+            chk!(pane_gap_color);
+            chk!(drag_handle_alpha);
+            chk!(drag_handle_dot_scale);
+            chk!(toast_bg_alpha);
+            chk!(card_stripe_alpha);
+            chk!(r_chip);
+            chk!(animations_enabled);
+        }
+
+        eprintln!("\n=== STYLE ADAPTER LOSSLESSNESS DELTA REPORT ===");
+        eprintln!("Styles compared: 3 (Meridien/Aperture/Octave)");
+        if deltas.is_empty() {
+            eprintln!("STATUS: PASS — all 3 styles field-exact across all fields");
+        } else {
+            eprintln!("STATUS: FAIL — {} field mismatch(es):", deltas.len());
+            for d in &deltas {
+                eprintln!("  DELTA: {}", d);
+            }
+        }
+        eprintln!("=== END STYLE ADAPTER DELTA ===\n");
+
+        assert!(
+            deltas.is_empty(),
+            "{} style-adapter mismatch(es) — see DELTA REPORT above",
+            deltas.len()
+        );
+    }
 }

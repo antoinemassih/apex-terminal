@@ -40,9 +40,10 @@ pub(super) fn execute(
         return;
     }
 
-    // Themes
+    // Themes — search the live list so installed themes are reachable
     if let Some(name) = id.strip_prefix("theme:") {
-        if let Some((i, _)) = THEMES.iter().enumerate().find(|(_, th)| th.name.eq_ignore_ascii_case(name)) {
+        let all = crate::chart_renderer::gpu::get_all_themes();
+        if let Some((i, _)) = all.iter().enumerate().find(|(_, th)| th.name.eq_ignore_ascii_case(name)) {
             for p in panes.iter_mut() { p.theme_idx = i; }
         }
         return;
