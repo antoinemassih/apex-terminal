@@ -27,17 +27,15 @@
 use egui;
 
 use super::super::style::*;
-use super::super::components::frames_widget as widgets_frames;
 use super::super::super::gpu::{Chart, Theme, Watchlist};
 use crate::data::apex_data::live_state;
 use crate::data::apex_data::types::{CalibrationTier, TradePlanV2};
 use crate::ui_kit::widgets::Button as KitButton;
 use crate::ui_kit::widgets::Tooltip;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
-use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::widgets::PanelKeyValueRow;
 use crate::ui_kit::widgets::PanelTone;
-use crate::ui_kit::widgets::{MetricRow, MetricTone};
+use crate::ui_kit::widgets::{MetricRow, MetricTone, SidePanelShell, Width};
 
 /// Min historical samples for the hit-rate to be considered trustworthy. Below
 /// this the panel greys out the percentage and adds a "low confidence" tag.
@@ -80,34 +78,19 @@ pub(crate) fn draw(
     if !is_open(watchlist) { return; }
     let sym = panes[ap].symbol.clone();
 
-    egui::SidePanel::right("trade_plan_panel_v2")
-        .default_width(280.0)
-        .min_width(240.0)
-        .max_width(360.0)
-        .resizable(true)
-        .frame(widgets_frames::PanelFrame::new(t.toolbar_bg, t.toolbar_border).theme(t).build())
-        .show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("TRADE PLAN v2").monospace().strong()
-                    .size(FONT_SM).color(t.text));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let r = crate::ui_kit::widgets::Button::close()
-                        .placement(IconPlacement::PanelHeader)
-                        .show(ui, t);
-                    Tooltip::new("Close").show(ui, &r, t);
-                    if r.clicked() {
-                        close(watchlist);
-                    }
-                });
-            });
-            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
-            ui.add_space(gap_sm());
-
+    let pane_h    = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
+    let pane_font = watchlist.pane_header_size.title_font();
+    let resp = SidePanelShell::new("trade_plan_panel_v2", "TRADE PLAN v2")
+        .width(Width::Narrow)
+        .resizable(240.0..=360.0)
+        .pane_metrics(pane_h, pane_font)
+        .show(ctx, t, |ui, t| {
             match live_state::get_trade_plan(&sym) {
                 None => draw_empty(ui, &sym, t),
                 Some(plan) => draw_plan(ui, &plan, t),
             }
         });
+    if resp.close_clicked { close(watchlist); }
 }
 
 /// Watchlist toggle helpers. Held here (rather than as a struct field) so the

@@ -31,7 +31,7 @@ use super::super::style::*;
 use crate::ui_kit::widgets::Button as KitButton;
 use crate::ui_kit::widgets::Tooltip;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
-use crate::ui_kit::widgets::icon_placement::IconPlacement;
+use crate::ui_kit::widgets::{SidePanelShell, Width};
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -308,43 +308,22 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
 
     if !watchlist.provenance_open { return; }
 
-    egui::SidePanel::right("provenance_pane")
-        .default_width(360.0)
-        .min_width(260.0)
-        .max_width(560.0)
-        .resizable(true)
-        .frame(egui::Frame::NONE
-            .fill(t.toolbar_bg)
-            .stroke(egui::Stroke::new(stroke_thin(),
-                color_alpha(t.toolbar_border, alpha_heavy())))
-            .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 }))
-        .show(ctx, |ui| {
+    let pane_h    = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
+    let pane_font = watchlist.pane_header_size.title_font();
+    let resp = SidePanelShell::new("provenance_pane", "PROVENANCE")
+        .width(Width::Wide)
+        .resizable(260.0..=560.0)
+        .pane_metrics(pane_h, pane_font)
+        .show(ctx, t, |ui, t| {
             draw_inner(ui, watchlist, t);
         });
+    if resp.close_clicked {
+        watchlist.update_sidebar_state(|s| s.provenance_open = false);
+    }
 }
 
 fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
     let active = watchlist.provenance_active_lineage.clone();
-
-    // ── Header ──
-    ui.horizontal(|ui| {
-        ui.add_space(gap_sm());
-        ui.label(egui::RichText::new("PROVENANCE")
-            .monospace().size(FONT_SM).strong().color(t.text));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let r = crate::ui_kit::widgets::Button::close()
-                .placement(IconPlacement::PanelHeader)
-                .show(ui, t);
-            Tooltip::new("Close").show(ui, &r, t);
-            if r.clicked() {
-                watchlist.update_sidebar_state(|s| s.provenance_open = false);
-            }
-        });
-    });
-    ui.painter().line_segment(
-        [egui::pos2(ui.min_rect().left(), ui.min_rect().bottom()),
-         egui::pos2(ui.min_rect().right(), ui.min_rect().bottom())],
-        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())));
 
     let Some(active_id) = active else {
         ui.add_space(gap_lg());
