@@ -133,6 +133,33 @@ pub struct ColorScheme {
     /// Additional accent tones (secondary accent, tertiary accent, …).
     /// May be empty.
     pub accent_alts: Vec<Rgba>,
+
+    // ── Hand-authored extras (per-theme, not derivable) ────────────────────
+    // These fields carry values that differ per theme and cannot be computed
+    // from the base fields. Required to make `color_scheme_to_theme` lossless.
+
+    /// Alert / notification badge colour (legacy: `t.notification_red`).
+    pub notification_red: Rgba,
+    /// Gold accent; typically a warm yellow used for highlights (legacy: `t.gold`).
+    pub gold: Rgba,
+    /// Overlay / HUD foreground text colour (legacy: `t.overlay_text`).
+    pub overlay_text: Rgba,
+    /// RRG leading quadrant colour (strong bull).
+    pub rrg_leading: Rgba,
+    /// RRG improving quadrant colour (trending up).
+    pub rrg_improving: Rgba,
+    /// RRG weakening quadrant colour (warning, trending down).
+    pub rrg_weakening: Rgba,
+    /// RRG lagging quadrant colour (strong bear).
+    pub rrg_lagging: Rgba,
+    /// Subtle tint applied behind pinned rows (premultiplied alpha).
+    pub pinned_row_tint: Rgba,
+    /// Muted text variant (secondary body copy).
+    pub text_muted: Rgba,
+    /// HUD / floating overlay background colour (premultiplied alpha).
+    pub hud_bg: Rgba,
+    /// HUD / floating overlay border colour.
+    pub hud_border: Rgba,
 }
 
 impl ColorScheme {
@@ -153,6 +180,18 @@ impl ColorScheme {
             warn:    rgba::rgb(251, 191,  36),
             shadow:  rgba::rgba(0, 0, 0, 180),
             accent_alts: Vec::new(),
+            // extras: sensible generic defaults
+            notification_red: rgba::rgb(231,  76,  60),
+            gold:             rgba::rgb(255, 193,  37),
+            overlay_text:     rgba::rgb(240, 240, 240),
+            rrg_leading:      rgba::rgb( 52, 211, 153),
+            rrg_improving:    rgba::rgb( 99, 102, 241),
+            rrg_weakening:    rgba::rgb(251, 191,  36),
+            rrg_lagging:      rgba::rgb(248, 113, 113),
+            pinned_row_tint:  rgba::rgba(  0,   0,   0, 12),
+            text_muted:       rgba::rgb(170, 170, 180),
+            hud_bg:           rgba::rgba(  0,   0,   0, 230),
+            hud_border:       rgba::rgb( 50,  50,  60),
         }
     }
 }
@@ -175,6 +214,17 @@ pub fn builtin_dark() -> ColorScheme {
         warn:    rgba::rgb(251, 191,  36),
         shadow:  rgba::rgba(0, 0, 0, 180),
         accent_alts: vec![rgba::rgb(139, 92, 246)],
+        notification_red: rgba::rgb(231,  76,  60),
+        gold:             rgba::rgb(255, 193,  37),
+        overlay_text:     rgba::rgb(240, 240, 240),
+        rrg_leading:      rgba::rgb( 52, 211, 153),
+        rrg_improving:    rgba::rgb( 99, 102, 241),
+        rrg_weakening:    rgba::rgb(251, 191,  36),
+        rrg_lagging:      rgba::rgb(248, 113, 113),
+        pinned_row_tint:  rgba::rgba(  0,   0,   0, 12),
+        text_muted:       rgba::rgb(170, 170, 180),
+        hud_bg:           rgba::rgba(  0,   0,   0, 230),
+        hud_border:       rgba::rgb( 50,  50,  60),
     }
 }
 
@@ -194,5 +244,16 @@ pub fn builtin_light() -> ColorScheme {
         warn:    rgba::rgb(202, 138,   4),
         shadow:  rgba::rgba(0, 0, 0, 80),
         accent_alts: vec![],
+        notification_red: rgba::rgb(220,  38,  38),
+        gold:             rgba::rgb(202, 138,   4),
+        overlay_text:     rgba::rgb(20,  20,  20),
+        rrg_leading:      rgba::rgb(22, 163,  74),
+        rrg_improving:    rgba::rgb(79,  70, 229),
+        rrg_weakening:    rgba::rgb(202, 138,   4),
+        rrg_lagging:      rgba::rgb(220,  38,  38),
+        pinned_row_tint:  rgba::rgba(  0,   0,   0, 12),
+        text_muted:       rgba::rgb(100, 100, 110),
+        hud_bg:           rgba::rgba( 20,  20,  20, 220),
+        hud_border:       rgba::rgb( 80,  80,  88),
     }
 }

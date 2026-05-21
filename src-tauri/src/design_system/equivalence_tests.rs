@@ -16,6 +16,7 @@
 #[cfg(test)]
 pub(crate) mod equivalence {
     use crate::design_system::builtin::{builtin_color_schemes, builtin_style_systems};
+    use crate::design_system::adapter::color_scheme_to_theme;
     use crate::chart_renderer::gpu::THEMES;
     use crate::chart_renderer::ui::style::style_defaults_pub;
 
@@ -377,6 +378,133 @@ pub(crate) mod equivalence {
             strict_mismatches.is_empty(),
             "{} style-axis strict mismatch(es) found — see DELTA REPORT above",
             strict_mismatches.len()
+        );
+    }
+
+    // ── Adapter equivalence ───────────────────────────────────────────────────
+
+    /// Proves that `color_scheme_to_theme(&builtin_color_schemes()[i])` produces
+    /// a `Theme` that is byte-identical to `THEMES[i]` across all ~37 fields for
+    /// all 16 built-in themes.
+    ///
+    /// Collects every field mismatch into a delta list; the test passes only if
+    /// that list is empty.  This is the losslessness proof for the adapter.
+    ///
+    /// ## Fields checked
+    /// - Core: `name`, `bg`, `toolbar_bg`, `text`, `dim`, `accent`, `bull`, `bear`, `warn`
+    /// - Derived: `toolbar_border`, `border_variant`, `element_hover`, `element_active`,
+    ///            `element_selected`, `element_disabled`, `ghost_hover`, `ghost_active`,
+    ///            `icon`, `icon_muted`, `icon_disabled`, `icon_accent`
+    /// - Hand-authored extras: `notification_red`, `gold`, `overlay_text`, `shadow_color`,
+    ///            `rrg_leading`, `rrg_improving`, `rrg_weakening`, `rrg_lagging`,
+    ///            `pinned_row_tint`, `text_muted`, `hud_bg`, `hud_border`
+    /// - Invariant: `cmd_palette` (all 11 slots)
+    #[test]
+    fn adapter_lossless_equivalence() {
+        let schemes = builtin_color_schemes();
+        let themes  = THEMES;
+
+        assert_eq!(
+            schemes.len(), themes.len(),
+            "scheme count {} ≠ theme count {}",
+            schemes.len(), themes.len()
+        );
+
+        let mut deltas: Vec<String> = Vec::new();
+
+        for (i, (scheme, expected)) in schemes.iter().zip(themes.iter()).enumerate() {
+            let adapted = color_scheme_to_theme(scheme);
+            let name    = &scheme.meta.name;
+
+            // Helper: compare two Color32 values (full 4-byte premultiplied equality)
+            macro_rules! chk {
+                ($field:ident) => {
+                    if adapted.$field != expected.$field {
+                        deltas.push(format!(
+                            "[{}][{}] {}: adapted={} expected={}",
+                            i, name, stringify!($field),
+                            fmt_c32(adapted.$field),
+                            fmt_c32(expected.$field),
+                        ));
+                    }
+                };
+            }
+
+            // ── name ──────────────────────────────────────────────────────────
+            if adapted.name != expected.name {
+                deltas.push(format!(
+                    "[{}][{}] name: adapted={:?} expected={:?}",
+                    i, name, adapted.name, expected.name,
+                ));
+            }
+
+            // ── Core base fields ──────────────────────────────────────────────
+            chk!(bg);
+            chk!(toolbar_bg);
+            chk!(text);
+            chk!(dim);
+            chk!(accent);
+            chk!(bull);
+            chk!(bear);
+            chk!(warn);
+            chk!(shadow_color);
+
+            // ── Derived fields ────────────────────────────────────────────────
+            chk!(toolbar_border);
+            chk!(border_variant);
+            chk!(element_hover);
+            chk!(element_active);
+            chk!(element_selected);
+            chk!(element_disabled);
+            chk!(ghost_hover);
+            chk!(ghost_active);
+            chk!(icon);
+            chk!(icon_muted);
+            chk!(icon_disabled);
+            chk!(icon_accent);
+
+            // ── Hand-authored extras ──────────────────────────────────────────
+            chk!(notification_red);
+            chk!(gold);
+            chk!(overlay_text);
+            chk!(rrg_leading);
+            chk!(rrg_improving);
+            chk!(rrg_weakening);
+            chk!(rrg_lagging);
+            chk!(pinned_row_tint);
+            chk!(text_muted);
+            chk!(hud_bg);
+            chk!(hud_border);
+
+            // ── cmd_palette (11 slots) ────────────────────────────────────────
+            for slot in 0..11 {
+                if adapted.cmd_palette[slot] != expected.cmd_palette[slot] {
+                    deltas.push(format!(
+                        "[{}][{}] cmd_palette[{}]: adapted={} expected={}",
+                        i, name, slot,
+                        fmt_c32(adapted.cmd_palette[slot]),
+                        fmt_c32(expected.cmd_palette[slot]),
+                    ));
+                }
+            }
+        }
+
+        eprintln!("\n=== ADAPTER LOSSLESSNESS DELTA REPORT ===");
+        eprintln!("Themes compared: {}", schemes.len());
+        if deltas.is_empty() {
+            eprintln!("STATUS: PASS — all {} themes field-exact across all ~37 fields", schemes.len());
+        } else {
+            eprintln!("STATUS: FAIL — {} field mismatch(es):", deltas.len());
+            for d in &deltas {
+                eprintln!("  DELTA: {}", d);
+            }
+        }
+        eprintln!("=== END ADAPTER DELTA ===\n");
+
+        assert!(
+            deltas.is_empty(),
+            "{} adapter mismatch(es) — see DELTA REPORT above",
+            deltas.len()
         );
     }
 }

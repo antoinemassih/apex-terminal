@@ -36,6 +36,7 @@
 //! pub fn font_sm() -> f32 { FRAME.with(|c| c.get().size_sm) }
 //! ```
 
+pub mod adapter;
 pub mod baseline;
 pub mod builtin;
 pub mod color_scheme;
@@ -49,6 +50,7 @@ pub mod style_system;
 
 // ── Convenient top-level re-exports ──────────────────────────────────────────
 
+pub use adapter::color_scheme_to_theme;
 pub use baseline::{baseline_color_scheme, baseline_style_system};
 pub use builtin::{builtin_color_schemes, builtin_registry, builtin_style_systems};
 pub use color_scheme::{ColorScheme, Meta, Rgba};

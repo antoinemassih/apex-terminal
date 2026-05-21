@@ -213,7 +213,28 @@ impl ColorScheme {
             })
             .unwrap_or_default();
 
-        Ok(ColorScheme { meta, bg, surface, paper, text, dim, border, accent, bull, bear, warn, shadow, accent_alts })
+        // ── Hand-authored extras — fall back to builtin_dark() defaults ───────
+        // Sparse / partial DTCG files (e.g. design-tool exports) may omit these
+        // fields; the fallback keeps the struct valid even for minimal overrides.
+        let notification_red = read_color_or(&pal, "notification_red", "palette", fallback.notification_red);
+        let gold             = read_color_or(&pal, "gold",             "palette", fallback.gold);
+        let overlay_text     = read_color_or(&pal, "overlay_text",     "palette", fallback.overlay_text);
+        let rrg_leading      = read_color_or(&pal, "rrg_leading",      "palette", fallback.rrg_leading);
+        let rrg_improving    = read_color_or(&pal, "rrg_improving",    "palette", fallback.rrg_improving);
+        let rrg_weakening    = read_color_or(&pal, "rrg_weakening",    "palette", fallback.rrg_weakening);
+        let rrg_lagging      = read_color_or(&pal, "rrg_lagging",      "palette", fallback.rrg_lagging);
+        let pinned_row_tint  = read_color_or(&pal, "pinned_row_tint",  "palette", fallback.pinned_row_tint);
+        let text_muted       = read_color_or(&pal, "text_muted",       "palette", fallback.text_muted);
+        let hud_bg           = read_color_or(&pal, "hud_bg",           "palette", fallback.hud_bg);
+        let hud_border       = read_color_or(&pal, "hud_border",       "palette", fallback.hud_border);
+
+        Ok(ColorScheme {
+            meta, bg, surface, paper, text, dim, border, accent, bull, bear, warn, shadow,
+            accent_alts,
+            notification_red, gold, overlay_text,
+            rrg_leading, rrg_improving, rrg_weakening, rrg_lagging,
+            pinned_row_tint, text_muted, hud_bg, hud_border,
+        })
     }
 
     /// Serialize this `ColorScheme` into a W3C DTCG JSON string.
@@ -240,6 +261,18 @@ impl ColorScheme {
         pal.insert("bear".into(),    color_token!(bear));
         pal.insert("warn".into(),    color_token!(warn));
         pal.insert("shadow".into(),  color_token!(shadow));
+        // Hand-authored extras
+        pal.insert("notification_red".into(), color_token!(notification_red));
+        pal.insert("gold".into(),             color_token!(gold));
+        pal.insert("overlay_text".into(),     color_token!(overlay_text));
+        pal.insert("rrg_leading".into(),      color_token!(rrg_leading));
+        pal.insert("rrg_improving".into(),    color_token!(rrg_improving));
+        pal.insert("rrg_weakening".into(),    color_token!(rrg_weakening));
+        pal.insert("rrg_lagging".into(),      color_token!(rrg_lagging));
+        pal.insert("pinned_row_tint".into(),  color_token!(pinned_row_tint));
+        pal.insert("text_muted".into(),       color_token!(text_muted));
+        pal.insert("hud_bg".into(),           color_token!(hud_bg));
+        pal.insert("hud_border".into(),       color_token!(hud_border));
 
         if !self.accent_alts.is_empty() {
             let alts: Vec<Value> = self

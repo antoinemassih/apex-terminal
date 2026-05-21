@@ -313,6 +313,21 @@ pub fn baseline_color_scheme() -> ColorScheme {
         shadow: rgba(0, 0, 0, 180),
 
         accent_alts: vec![],
+
+        // ── Hand-authored extras (Gruvbox / THEMES[5] values) ───────────
+        notification_red: rgb(251,  73,  52),
+        gold:             rgb(250, 189,  47),
+        overlay_text:     rgb(235, 219, 178),
+        rrg_leading:      rgb(184, 187,  38),
+        rrg_improving:    rgb(131, 165, 152),
+        rrg_weakening:    rgb(250, 189,  47),
+        rrg_lagging:      rgb(251,  73,  52),
+        // pinned_row_tint = rgba_pre(6,8,7,13) — premultiplied bytes stored as-is
+        pinned_row_tint:  [6, 8, 7, 13],
+        text_muted:       rgb(185, 178, 160),
+        // hud_bg = rgba_pre(28,28,28,230) — premultiplied bytes stored as-is
+        hud_bg:           [28, 28, 28, 230],
+        hud_border:       rgb( 60,  56,  50),
     }
 }
 

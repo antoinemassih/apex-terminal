@@ -1,25 +1,35 @@
 //! Built-in `ColorScheme` catalogue derived from `gpu::THEMES`.
 //!
-//! Each entry in `THEMES` is transcribed to a `ColorScheme` using the
-//! following lossy mapping (one-way; `gpu::THEMES` is not modified):
+//! Each entry in `THEMES` is transcribed to a `ColorScheme`. The base fields
+//! map 1-to-1 from `Theme`; derived fields are recomputed using the same
+//! helpers as `gpu.rs`; and the 11 hand-authored extra fields are transcribed
+//! verbatim from the `THEMES` literals so that `color_scheme_to_theme` is
+//! provably lossless.
 //!
-//! | `ColorScheme` field | `Theme` source                          |
-//! |---------------------|-----------------------------------------|
-//! | `bg`                | `bg`                                    |
-//! | `surface`           | `toolbar_bg`                            |
-//! | `paper`             | derived: toolbar_bg shifted +8 lum     |
-//! | `text`              | `text`                                  |
-//! | `dim`               | `dim`                                   |
-//! | `border`            | `toolbar_border` (= `Theme::border()`)  |
-//! | `accent`            | `accent`                                |
-//! | `bull`              | `bull`                                  |
-//! | `bear`              | `bear`                                  |
-//! | `warn`              | `warn`                                  |
-//! | `shadow`            | `shadow_color` (dark) / derived (light) |
-//!
-//! Fields with no direct analogue (`paper`, `shadow` on light themes) are
-//! derived as noted above. This is an intentionally lossy map — `ColorScheme`
-//! is a reduced canonical palette.
+//! | `ColorScheme` field  | `Theme` source / derivation                        |
+//! |----------------------|----------------------------------------------------|
+//! | `bg`                 | `bg`                                               |
+//! | `surface`            | `toolbar_bg`                                       |
+//! | `paper`              | derived: toolbar_bg shifted ±8 lum                 |
+//! | `text`               | `text`                                             |
+//! | `dim`                | `dim`                                              |
+//! | `border`             | `toolbar_border` (= `hairline_border(bg)`)         |
+//! | `accent`             | `accent`                                           |
+//! | `bull`               | `bull`                                             |
+//! | `bear`               | `bear`                                             |
+//! | `warn`               | `warn`                                             |
+//! | `shadow`             | `shadow_color` RGB + alpha 180/120 (dark/light)    |
+//! | `notification_red`   | `notification_red` (hand-authored)                 |
+//! | `gold`               | `gold` (hand-authored)                             |
+//! | `overlay_text`       | `overlay_text` (hand-authored)                     |
+//! | `rrg_leading`        | `rrg_leading` (hand-authored)                      |
+//! | `rrg_improving`      | `rrg_improving` (hand-authored)                    |
+//! | `rrg_weakening`      | `rrg_weakening` (hand-authored)                    |
+//! | `rrg_lagging`        | `rrg_lagging` (hand-authored)                      |
+//! | `pinned_row_tint`    | `pinned_row_tint` (premultiplied, hand-authored)   |
+//! | `text_muted`         | `text_muted` (hand-authored)                       |
+//! | `hud_bg`             | `hud_bg` (premultiplied, hand-authored)            |
+//! | `hud_border`         | `hud_border` (hand-authored)                       |
 
 use super::{
     color_scheme::{ColorScheme, Meta, Rgba},
@@ -39,6 +49,14 @@ const fn c(r: u8, g: u8, b: u8, a: u8) -> Rgba { [r, g, b, a] }
 /// Fully-opaque RGB to Rgba.
 #[inline]
 const fn rgb(r: u8, g: u8, b: u8) -> Rgba { [r, g, b, 255] }
+
+/// Premultiplied RGBA — mirrors `gpu::rgba_pre(r, g, b, a)`.
+///
+/// `gpu.rs` stores `pinned_row_tint` and `hud_bg` as premultiplied Color32
+/// values (via `rgba_pre`).  We store the same premultiplied bytes here so the
+/// adapter can emit them verbatim without re-premultiplying.
+#[inline]
+const fn pre_rgba(r: u8, g: u8, b: u8, a: u8) -> Rgba { [r, g, b, a] }
 
 /// Clamp an `i16` to `[0, 255]` and cast to `u8`.
 const fn clamp_u8(v: i16) -> u8 {
@@ -110,7 +128,7 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
     //   shadow_color→shadow (dark themes: alpha 180; light themes: alpha 120).
 
     vec![
-        // ── Dark themes ──────────────────────────────────────────────────────
+        // ── [0] Midnight ─────────────────────────────────────────────────────
         {
             let bg = rgb(14, 16, 21);
             let surf = rgb(10, 12, 17);
@@ -128,8 +146,20 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 warn:   rgb(255, 191, 0),
                 shadow: c(0, 0, 0, 180),
                 accent_alts: vec![],
+                notification_red: rgb(231,  76,  60),
+                gold:             rgb(255, 193,  37),
+                overlay_text:     rgb(240, 240, 250),
+                rrg_leading:      rgb( 56, 203, 137),
+                rrg_improving:    rgb( 74, 158, 255),
+                rrg_weakening:    rgb(230, 200,  50),
+                rrg_lagging:      rgb(224,  82,  82),
+                pinned_row_tint:  pre_rgba(3, 5, 9, 12),
+                text_muted:       rgb(180, 180, 195),
+                hud_bg:           pre_rgba(12, 12, 18, 230),
+                hud_border:       rgb( 50,  52,  64),
             }
         },
+        // ── [1] Nord ─────────────────────────────────────────────────────────
         {
             let bg = rgb(38, 44, 56);
             let surf = rgb(32, 38, 50);
@@ -143,12 +173,24 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 border,
                 accent: rgb(136, 192, 208),
                 bull:   rgb(163, 190, 140),
-                bear:   rgb(191, 97, 106),
+                bear:   rgb(191,  97, 106),
                 warn:   rgb(235, 203, 139),
                 shadow: c(0, 0, 0, 180),
                 accent_alts: vec![],
+                notification_red: rgb(191,  97, 106),
+                gold:             rgb(235, 203, 139),
+                overlay_text:     rgb(236, 239, 244),
+                rrg_leading:      rgb(163, 190, 140),
+                rrg_improving:    rgb(136, 192, 208),
+                rrg_weakening:    rgb(235, 203, 139),
+                rrg_lagging:      rgb(191,  97, 106),
+                pinned_row_tint:  pre_rgba(5, 7, 9, 14),
+                text_muted:       rgb(175, 180, 190),
+                hud_bg:           pre_rgba(30, 34, 46, 230),
+                hud_border:       rgb( 60,  66,  80),
             }
         },
+        // ── [2] Monokai ───────────────────────────────────────────────────────
         {
             let bg = rgb(39, 40, 34);
             let surf = rgb(33, 34, 28);
@@ -161,13 +203,25 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 dim:    rgb(165, 159, 133),
                 border,
                 accent: rgb(230, 219, 116),
-                bull:   rgb(166, 226, 46),
-                bear:   rgb(249, 38, 114),
+                bull:   rgb(166, 226,  46),
+                bear:   rgb(249,  38, 114),
                 warn:   rgb(230, 219, 116),
                 shadow: c(0, 0, 0, 180),
                 accent_alts: vec![],
+                notification_red: rgb(249,  38, 114),
+                gold:             rgb(255, 193,  37),
+                overlay_text:     rgb(248, 248, 240),
+                rrg_leading:      rgb(166, 226,  46),
+                rrg_improving:    rgb(102, 217, 239),
+                rrg_weakening:    rgb(230, 219, 116),
+                rrg_lagging:      rgb(249,  38, 114),
+                pinned_row_tint:  pre_rgba(4, 10, 11, 12),
+                text_muted:       rgb(180, 178, 160),
+                hud_bg:           pre_rgba(30, 30, 24, 230),
+                hud_border:       rgb( 55,  54,  44),
             }
         },
+        // ── [3] Solarized ─────────────────────────────────────────────────────
         {
             let bg = rgb(0, 43, 54);
             let surf = rgb(0, 37, 48);
@@ -179,14 +233,26 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text:   rgb(220, 220, 230),
                 dim:    rgb(131, 148, 150),
                 border,
-                accent: rgb(42, 161, 152),
-                bull:   rgb(133, 153, 0),
-                bear:   rgb(220, 50, 47),
-                warn:   rgb(181, 137, 0),
+                accent: rgb( 42, 161, 152),
+                bull:   rgb(133, 153,   0),
+                bear:   rgb(220,  50,  47),
+                warn:   rgb(181, 137,   0),
                 shadow: c(0, 0, 0, 180),
                 accent_alts: vec![],
+                notification_red: rgb(220,  50,  47),
+                gold:             rgb(181, 137,   0),
+                overlay_text:     rgb(253, 246, 227),
+                rrg_leading:      rgb(133, 153,   0),
+                rrg_improving:    rgb( 38, 139, 210),
+                rrg_weakening:    rgb(181, 137,   0),
+                rrg_lagging:      rgb(220,  50,  47),
+                pinned_row_tint:  pre_rgba(1, 6, 9, 12),
+                text_muted:       rgb(156, 172, 175),
+                hud_bg:           pre_rgba(0, 28, 36, 230),
+                hud_border:       rgb(  7,  54,  66),
             }
         },
+        // ── [4] Dracula ───────────────────────────────────────────────────────
         {
             let bg = rgb(40, 42, 54);
             let surf = rgb(34, 36, 48);
@@ -199,13 +265,25 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 dim:    rgb(189, 147, 249),
                 border,
                 accent: rgb(255, 121, 198),
-                bull:   rgb(80, 250, 123),
-                bear:   rgb(255, 85, 85),
+                bull:   rgb( 80, 250, 123),
+                bear:   rgb(255,  85,  85),
                 warn:   rgb(241, 250, 140),
                 shadow: c(0, 0, 0, 180),
                 accent_alts: vec![],
+                notification_red: rgb(255,  85,  85),
+                gold:             rgb(241, 250, 140),
+                overlay_text:     rgb(248, 248, 242),
+                rrg_leading:      rgb( 80, 250, 123),
+                rrg_improving:    rgb(139, 233, 253),
+                rrg_weakening:    rgb(241, 250, 140),
+                rrg_lagging:      rgb(255,  85,  85),
+                pinned_row_tint:  pre_rgba(6, 10, 11, 12),
+                text_muted:       rgb(190, 185, 215),
+                hud_bg:           pre_rgba(30, 32, 44, 230),
+                hud_border:       rgb( 55,  58,  75),
             }
         },
+        // ── [5] Gruvbox ───────────────────────────────────────────────────────
         {
             let bg = rgb(40, 40, 40);
             let surf = rgb(34, 34, 34);
@@ -217,14 +295,26 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text:   rgb(220, 220, 230),
                 dim:    rgb(213, 196, 161),
                 border,
-                accent: rgb(254, 128, 25),
-                bull:   rgb(184, 187, 38),
-                bear:   rgb(251, 73, 52),
-                warn:   rgb(250, 189, 47),
+                accent: rgb(254, 128,  25),
+                bull:   rgb(184, 187,  38),
+                bear:   rgb(251,  73,  52),
+                warn:   rgb(250, 189,  47),
                 shadow: c(0, 0, 0, 180),
                 accent_alts: vec![],
+                notification_red: rgb(251,  73,  52),
+                gold:             rgb(250, 189,  47),
+                overlay_text:     rgb(235, 219, 178),
+                rrg_leading:      rgb(184, 187,  38),
+                rrg_improving:    rgb(131, 165, 152),
+                rrg_weakening:    rgb(250, 189,  47),
+                rrg_lagging:      rgb(251,  73,  52),
+                pinned_row_tint:  pre_rgba(6, 8, 7, 13),
+                text_muted:       rgb(185, 178, 160),
+                hud_bg:           pre_rgba(28, 28, 28, 230),
+                hud_border:       rgb( 60,  56,  50),
             }
         },
+        // ── [6] Catppuccin ────────────────────────────────────────────────────
         {
             let bg = rgb(30, 30, 46);
             let surf = rgb(24, 24, 38);
@@ -242,8 +332,20 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 warn:   rgb(249, 226, 175),
                 shadow: c(0, 0, 0, 180),
                 accent_alts: vec![],
+                notification_red: rgb(243, 139, 168),
+                gold:             rgb(249, 226, 175),
+                overlay_text:     rgb(205, 214, 244),
+                rrg_leading:      rgb(166, 227, 161),
+                rrg_improving:    rgb(137, 220, 235),
+                rrg_weakening:    rgb(249, 226, 175),
+                rrg_lagging:      rgb(243, 139, 168),
+                pinned_row_tint:  pre_rgba(6, 8, 11, 12),
+                text_muted:       rgb(182, 186, 220),
+                hud_bg:           pre_rgba(20, 20, 36, 230),
+                hud_border:       rgb( 49,  50,  68),
             }
         },
+        // ── [7] Tokyo Night ───────────────────────────────────────────────────
         {
             let bg = rgb(26, 27, 38);
             let surf = rgb(21, 22, 32);
@@ -261,8 +363,20 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 warn:   rgb(224, 175, 104),
                 shadow: c(0, 0, 0, 180),
                 accent_alts: vec![],
+                notification_red: rgb(247, 118, 142),
+                gold:             rgb(224, 175, 104),
+                overlay_text:     rgb(192, 202, 245),
+                rrg_leading:      rgb(158, 206, 106),
+                rrg_improving:    rgb(125, 207, 255),
+                rrg_weakening:    rgb(224, 175, 104),
+                rrg_lagging:      rgb(247, 118, 142),
+                pinned_row_tint:  pre_rgba(5, 9, 12, 12),
+                text_muted:       rgb(172, 178, 220),
+                hud_bg:           pre_rgba(18, 18, 28, 230),
+                hud_border:       rgb( 40,  44,  62),
             }
         },
+        // ── [8] Kanagawa ─────────────────────────────────────────────────────
         {
             let bg = rgb(22, 22, 29);
             let surf = rgb(18, 18, 24);
@@ -272,16 +386,28 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 bg, surface: surf,
                 paper: paper_from_surface(surf, true),
                 text:   rgb(220, 220, 230),
-                dim:    rgb(84, 88, 104),
+                dim:    rgb( 84,  88, 104),
                 border,
                 accent: rgb(127, 180, 202),
                 bull:   rgb(118, 169, 130),
-                bear:   rgb(195, 64, 67),
-                warn:   rgb(228, 175, 69),
+                bear:   rgb(195,  64,  67),
+                warn:   rgb(228, 175,  69),
                 shadow: c(0, 0, 0, 180),
                 accent_alts: vec![],
+                notification_red: rgb(195,  64,  67),
+                gold:             rgb(228, 175,  69),
+                overlay_text:     rgb(220, 215, 186),
+                rrg_leading:      rgb(118, 169, 130),
+                rrg_improving:    rgb(127, 180, 202),
+                rrg_weakening:    rgb(228, 175,  69),
+                rrg_lagging:      rgb(195,  64,  67),
+                pinned_row_tint:  pre_rgba(5, 8, 9, 12),
+                text_muted:       rgb(155, 158, 175),
+                hud_bg:           pre_rgba(14, 14, 20, 230),
+                hud_border:       rgb( 36,  36,  50),
             }
         },
+        // ── [9] Everforest ────────────────────────────────────────────────────
         {
             let bg = rgb(39, 46, 38);
             let surf = rgb(33, 40, 32);
@@ -299,8 +425,20 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 warn:   rgb(223, 199, 118),
                 shadow: c(0, 0, 0, 180),
                 accent_alts: vec![],
+                notification_red: rgb(230, 126, 128),
+                gold:             rgb(223, 199, 118),
+                overlay_text:     rgb(211, 198, 170),
+                rrg_leading:      rgb(167, 192, 128),
+                rrg_improving:    rgb(131, 165, 152),
+                rrg_weakening:    rgb(223, 199, 118),
+                rrg_lagging:      rgb(230, 126, 128),
+                pinned_row_tint:  pre_rgba(6, 8, 7, 13),
+                text_muted:       rgb(175, 178, 162),
+                hud_bg:           pre_rgba(28, 34, 28, 230),
+                hud_border:       rgb( 52,  60,  50),
             }
         },
+        // ── [10] Vesper ───────────────────────────────────────────────────────
         {
             let bg = rgb(16, 16, 16);
             let surf = rgb(11, 11, 11);
@@ -314,12 +452,24 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 border,
                 accent: rgb(255, 199, 119),
                 bull:   rgb(166, 218, 149),
-                bear:   rgb(238, 130, 98),
+                bear:   rgb(238, 130,  98),
                 warn:   rgb(255, 199, 119),
                 shadow: c(0, 0, 0, 180),
                 accent_alts: vec![],
+                notification_red: rgb(238, 130,  98),
+                gold:             rgb(255, 193,  37),
+                overlay_text:     rgb(230, 230, 230),
+                rrg_leading:      rgb(166, 218, 149),
+                rrg_improving:    rgb( 74, 158, 255),
+                rrg_weakening:    rgb(255, 199, 119),
+                rrg_lagging:      rgb(238, 130,  98),
+                pinned_row_tint:  pre_rgba(3, 6, 11, 11),
+                text_muted:       rgb(170, 170, 180),
+                hud_bg:           pre_rgba(10, 10, 10, 230),
+                hud_border:       rgb( 42,  42,  42),
             }
         },
+        // ── [11] Rosé Pine ────────────────────────────────────────────────────
         {
             let bg = rgb(25, 23, 36);
             let surf = rgb(20, 18, 30);
@@ -338,9 +488,20 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 warn:   rgb(246, 193, 119),
                 shadow: c(0, 0, 0, 180),
                 accent_alts: vec![],
+                notification_red: rgb(235, 111, 146),
+                gold:             rgb(246, 193, 119),
+                overlay_text:     rgb(224, 222, 244),
+                rrg_leading:      rgb(156, 207, 216),
+                rrg_improving:    rgb(196, 167, 231),
+                rrg_weakening:    rgb(246, 193, 119),
+                rrg_lagging:      rgb(235, 111, 146),
+                pinned_row_tint:  pre_rgba(7, 9, 10, 12),
+                text_muted:       rgb(167, 162, 187),
+                hud_bg:           pre_rgba(18, 16, 28, 230),
+                hud_border:       rgb( 44,  40,  58),
             }
         },
-        // ── Light themes ─────────────────────────────────────────────────────
+        // ── [12] Bauhaus (light) ──────────────────────────────────────────────
         {
             let bg = rgb(242, 242, 238);
             let surf = rgb(248, 248, 245);
@@ -349,17 +510,29 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 meta: Meta { id: to_id("Bauhaus"), name: "Bauhaus".into(), is_dark: false },
                 bg, surface: surf,
                 paper: paper_from_surface(surf, false),
-                text:   rgb(22, 22, 24),
+                text:   rgb( 22,  22,  24),
                 dim:    rgb(120, 125, 130),
                 border,
-                accent: rgb(232, 93, 38),
-                bull:   rgb(20, 120, 60),
-                bear:   rgb(200, 55, 45),
-                warn:   rgb(204, 120, 0),
+                accent: rgb(232,  93,  38),
+                bull:   rgb( 20, 120,  60),
+                bear:   rgb(200,  55,  45),
+                warn:   rgb(204, 120,   0),
                 shadow: c(40, 40, 40, 120),
                 accent_alts: vec![],
+                notification_red: rgb(200,  55,  45),
+                gold:             rgb(204, 153,   0),
+                overlay_text:     rgb( 20,  20,  22),
+                rrg_leading:      rgb( 20, 120,  60),
+                rrg_improving:    rgb( 30, 100, 180),
+                rrg_weakening:    rgb(180, 140,   0),
+                rrg_lagging:      rgb(200,  55,  45),
+                pinned_row_tint:  pre_rgba(1, 5, 9, 14),
+                text_muted:       rgb(100, 102, 110),
+                hud_bg:           pre_rgba(20, 20, 20, 220),
+                hud_border:       rgb( 80,  82,  88),
             }
         },
+        // ── [13] Peach (light) ────────────────────────────────────────────────
         {
             let bg = rgb(243, 241, 238);
             let surf = rgb(250, 248, 246);
@@ -368,17 +541,29 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 meta: Meta { id: to_id("Peach"), name: "Peach".into(), is_dark: false },
                 bg, surface: surf,
                 paper: paper_from_surface(surf, false),
-                text:   rgb(20, 20, 22),
+                text:   rgb( 20,  20,  22),
                 dim:    rgb(115, 120, 125),
                 border,
-                accent: rgb(210, 95, 70),
-                bull:   rgb(22, 130, 70),
-                bear:   rgb(195, 50, 55),
-                warn:   rgb(200, 130, 0),
+                accent: rgb(210,  95,  70),
+                bull:   rgb( 22, 130,  70),
+                bear:   rgb(195,  50,  55),
+                warn:   rgb(200, 130,   0),
                 shadow: c(40, 40, 40, 120),
                 accent_alts: vec![],
+                notification_red: rgb(195,  50,  55),
+                gold:             rgb(200, 150,   0),
+                overlay_text:     rgb( 20,  20,  22),
+                rrg_leading:      rgb( 22, 130,  70),
+                rrg_improving:    rgb( 30, 100, 180),
+                rrg_weakening:    rgb(180, 140,   0),
+                rrg_lagging:      rgb(195,  50,  55),
+                pinned_row_tint:  pre_rgba(1, 5, 9, 14),
+                text_muted:       rgb( 98, 100, 108),
+                hud_bg:           pre_rgba(20, 20, 20, 220),
+                hud_border:       rgb( 82,  80,  78),
             }
         },
+        // ── [14] Ivory (light) ────────────────────────────────────────────────
         {
             let bg = rgb(240, 242, 238);
             let surf = rgb(248, 250, 246);
@@ -387,17 +572,29 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 meta: Meta { id: to_id("Ivory"), name: "Ivory".into(), is_dark: false },
                 bg, surface: surf,
                 paper: paper_from_surface(surf, false),
-                text:   rgb(18, 20, 22),
+                text:   rgb( 18,  20,  22),
                 dim:    rgb(118, 122, 128),
                 border,
-                accent: rgb(160, 190, 40),
-                bull:   rgb(80, 160, 50),
-                bear:   rgb(210, 60, 50),
-                warn:   rgb(190, 140, 0),
+                accent: rgb(160, 190,  40),
+                bull:   rgb( 80, 160,  50),
+                bear:   rgb(210,  60,  50),
+                warn:   rgb(190, 140,   0),
                 shadow: c(40, 40, 40, 120),
                 accent_alts: vec![],
+                notification_red: rgb(210,  60,  50),
+                gold:             rgb(190, 150,   0),
+                overlay_text:     rgb( 18,  20,  22),
+                rrg_leading:      rgb( 80, 160,  50),
+                rrg_improving:    rgb( 30, 100, 180),
+                rrg_weakening:    rgb(180, 140,   0),
+                rrg_lagging:      rgb(210,  60,  50),
+                pinned_row_tint:  pre_rgba(1, 5, 9, 14),
+                text_muted:       rgb(100, 102, 108),
+                hud_bg:           pre_rgba(18, 20, 18, 220),
+                hud_border:       rgb( 80,  82,  80),
             }
         },
+        // ── [15] Newsprint (light) ────────────────────────────────────────────
         {
             let bg = rgb(238, 232, 220);
             let surf = rgb(238, 232, 220); // toolbar_bg same as bg for Newsprint
@@ -406,15 +603,26 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 meta: Meta { id: to_id("Newsprint"), name: "Newsprint".into(), is_dark: false },
                 bg, surface: surf,
                 paper: paper_from_surface(surf, false),
-                text:   rgb(28, 28, 28),
+                text:   rgb( 28,  28,  28),
                 dim:    rgb(120, 116, 104),
                 border,
-                accent: rgb(34, 94, 56),
-                bull:   rgb(34, 94, 56),
-                bear:   rgb(168, 52, 52),
-                warn:   rgb(168, 120, 0),
+                accent: rgb( 34,  94,  56),
+                bull:   rgb( 34,  94,  56),
+                bear:   rgb(168,  52,  52),
+                warn:   rgb(168, 120,   0),
                 shadow: c(60, 50, 40, 120),
                 accent_alts: vec![],
+                notification_red: rgb(168,  52,  52),
+                gold:             rgb(168, 130,   0),
+                overlay_text:     rgb( 28,  28,  28),
+                rrg_leading:      rgb( 34,  94,  56),
+                rrg_improving:    rgb( 30,  90, 160),
+                rrg_weakening:    rgb(160, 120,   0),
+                rrg_lagging:      rgb(168,  52,  52),
+                pinned_row_tint:  pre_rgba(1, 4, 8, 13),
+                text_muted:       rgb(105, 100,  90),
+                hud_bg:           pre_rgba(28, 24, 18, 220),
+                hud_border:       rgb( 90,  82,  68),
             }
         },
     ]
