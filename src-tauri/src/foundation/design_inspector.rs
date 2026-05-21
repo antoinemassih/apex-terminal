@@ -13,6 +13,10 @@ use crate::design_tokens::*;
 use crate::chart_renderer::ui::style::{font_2xs, font_xs, font_xs_plus, radius_sm};
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
+use crate::design_system::{
+    color_scheme::{ColorScheme, Rgba},
+    style_system::{FocusRingStyle, StyleSystem},
+};
 use std::path::PathBuf;
 
 /// Inspector state — persists across frames.
@@ -47,6 +51,19 @@ pub struct Inspector {
     pub current_design_subtab: u8,
     /// Whether the Field Reference help window is open.
     pub show_help: bool,
+
+    // ── Two-axis editor state ────────────────────────────────────────────────
+    /// Root themes directory — contains `styles/` and `colorschemes/` subdirs
+    /// watched by hot_reload.rs.  If `None`, TwoAxis edits are disabled.
+    pub themes_dir: Option<PathBuf>,
+    /// Working copy of the StyleSystem being edited in the TwoAxis editor.
+    two_axis_style: StyleSystem,
+    /// Working copy of the ColorScheme being edited in the TwoAxis editor.
+    two_axis_colors: ColorScheme,
+    /// Sub-tab within the TwoAxis editor: 0 = Style, 1 = Colour.
+    two_axis_subtab: u8,
+    /// Status line for the TwoAxis write-to-disk result.
+    two_axis_status: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -80,12 +97,19 @@ pub enum Category {
     Theme,
     Preview,
     Design,
+    /// Two-axis design system editor (StyleSystem + ColorScheme → hot-reload).
+    TwoAxis,
 }
 
 impl Category {
     const ALL: &[Category] = &[
         Category::Design,
-        Category::Font, Category::Spacing, Category::Radius, Category::Stroke,
+        Category::TwoAxis,
+        Category::Font, Category::Spacing,
+        // NOTE: Category::Radius and Category::Stroke are intentionally excluded.
+        // They edited DesignTokens.radius / .stroke, which begin_frame no longer
+        // reads (radii and strokes are now sourced from the active StyleSystem via
+        // the hot-reload path). Use Category::TwoAxis to edit these instead.
         Category::Alpha, Category::Colors,
     ];
 
@@ -98,6 +122,7 @@ impl Category {
             Category::Alpha => "Alpha / Opacity",
             Category::Shadow => "Shadows",
             Category::Colors => "Semantic Colors",
+            Category::TwoAxis => "Two-Axis Editor",
             Category::Toolbar => "Toolbar",
             Category::Panel => "Panels",
             Category::Dialog => "Dialogs",
@@ -132,6 +157,7 @@ impl Category {
             Category::Alpha => "%%",
             Category::Shadow => "//",
             Category::Colors => "",
+            Category::TwoAxis => "⊕",
             _ => "",
         }
     }
@@ -156,6 +182,11 @@ impl Inspector {
             is_preview_left_open: false,
             current_design_subtab: 0,
             show_help: false,
+            themes_dir: None,
+            two_axis_style: StyleSystem::builtin_default(),
+            two_axis_colors: crate::design_system::color_scheme::builtin_dark(),
+            two_axis_subtab: 0,
+            two_axis_status: String::new(),
         }
     }
 
@@ -793,7 +824,7 @@ impl Inspector {
     }
 
     /// Render controls for a specific category. Returns true if any value changed.
-    fn render_category(&self, ui: &mut Ui, cat: Category, tokens: &mut DesignTokens) -> bool {
+    fn render_category(&mut self, ui: &mut Ui, cat: Category, tokens: &mut DesignTokens) -> bool {
         let mut changed = false;
         match cat {
             Category::Font => {
@@ -845,6 +876,7 @@ impl Inspector {
                 changed |= drag_u8(ui, "strong (80)", &mut tokens.alpha.strong);
                 changed |= drag_u8(ui, "active (100)", &mut tokens.alpha.active);
                 changed |= drag_u8(ui, "heavy (120)", &mut tokens.alpha.heavy);
+                changed |= drag_u8(ui, "solid (200)", &mut tokens.alpha.solid);
             }
             Category::Shadow => {
                 changed |= drag_f32(ui, "offset", &mut tokens.shadow.offset, 0.0..=20.0);
@@ -1005,9 +1037,433 @@ impl Inspector {
             Category::Design => {
                 changed |= render_design_category(ui);
             }
+            Category::TwoAxis => {
+                changed |= self.render_two_axis_editor(ui);
+            }
         }
         changed
     }
+
+    // ── Two-axis editor ───────────────────────────────────────────────────────
+
+    /// Render the two-axis design system editor.
+    ///
+    /// Edits `self.two_axis_style` (StyleSystem) and `self.two_axis_colors`
+    /// (ColorScheme) in place.  On any change the edited struct is serialised to
+    /// DTCG JSON and written into `themes_dir/styles/` or
+    /// `themes_dir/colorschemes/` so the background watcher picks it up within
+    /// ~1.5 s and calls `install_override`.
+    ///
+    /// Returns `true` when the function wrote to disk (considered a "change" so
+    /// the dirty flag gets set).
+    fn render_two_axis_editor(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut changed = false;
+        let accent  = Color32::from_rgb(203, 166, 247);
+        let dim_col = Color32::from_rgb(120, 120, 130);
+        let green   = Color32::from_rgb(166, 227, 161);
+        let orange  = Color32::from_rgb(250, 179, 135);
+
+        // ── No themes dir — show setup hint ──────────────────────────────────
+        if self.themes_dir.is_none() {
+            ui.label(RichText::new("themes_dir not set.")
+                .monospace().size(font_xs()).color(orange));
+            ui.label(RichText::new("Call inspector.themes_dir = Some(path) at startup.")
+                .monospace().size(font_xs()).color(dim_col));
+            return false;
+        }
+
+        // ── Sub-tab switcher ─────────────────────────────────────────────────
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            for (idx, label) in ["STYLE", "COLOUR"].iter().enumerate() {
+                let idx = idx as u8;
+                let active = self.two_axis_subtab == idx;
+                let (fg, bg, border) = if active {
+                    (accent,
+                     Color32::from_rgba_unmultiplied(203, 166, 247, 20),
+                     Color32::from_rgba_unmultiplied(203, 166, 247, 80))
+                } else {
+                    (dim_col, Color32::TRANSPARENT, Color32::from_rgb(50, 50, 60))
+                };
+                if ui.add(egui::Button::new(
+                    RichText::new(*label).monospace().size(10.0).strong().color(fg))
+                    .fill(bg).stroke(Stroke::new(0.8, border))
+                    .corner_radius(radius_sm())
+                    .min_size(egui::vec2(60.0, 22.0))
+                ).clicked() {
+                    self.two_axis_subtab = idx;
+                }
+            }
+        });
+
+        ui.add_space(4.0);
+        ui.separator();
+        ui.add_space(4.0);
+
+        // Status line
+        if !self.two_axis_status.is_empty() {
+            ui.label(RichText::new(&self.two_axis_status)
+                .monospace().size(font_xs()).color(dim_col));
+            ui.add_space(2.0);
+        }
+
+        // ── Apply button — write to themes dir → hot-reload picks it up ──────
+        let themes_dir = self.themes_dir.clone().unwrap();
+        if ui.add(egui::Button::new(
+            RichText::new("Apply via hot-reload").monospace().size(font_xs()).strong().color(green))
+            .fill(Color32::from_rgba_unmultiplied(166, 227, 161, 18))
+            .stroke(Stroke::new(0.8, Color32::from_rgba_unmultiplied(166, 227, 161, 90)))
+            .corner_radius(radius_sm())
+        ).on_hover_text("Write DTCG JSON to themes dir. Hot-reload watcher applies it within ~1.5 s.")
+        .clicked() {
+            match two_axis_write_to_disk(&self.two_axis_style, &self.two_axis_colors, &themes_dir) {
+                Ok(()) => {
+                    self.two_axis_status = "Written — watcher will apply within 1.5 s".to_string();
+                    changed = true;
+                }
+                Err(e) => {
+                    self.two_axis_status = format!("Write failed: {e}");
+                }
+            }
+        }
+
+        ui.add_space(6.0);
+
+        egui::ScrollArea::vertical().id_salt("two_axis_scroll").show(ui, |ui| {
+            match self.two_axis_subtab {
+                0 => two_axis_style_editor(ui, &mut self.two_axis_style),
+                _ => two_axis_color_editor(ui, &mut self.two_axis_colors),
+            }
+        });
+
+        changed
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Two-axis editor helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Write the edited `StyleSystem` and `ColorScheme` as DTCG JSON files into
+/// `<themes_dir>/styles/<id>.json` and `<themes_dir>/colorschemes/<id>.json`.
+///
+/// The background watcher polls `styles/` every ~1.5 s; writing here triggers
+/// a live reload without any second apply mechanism.
+fn two_axis_write_to_disk(
+    style:  &StyleSystem,
+    colors: &ColorScheme,
+    themes_dir: &std::path::Path,
+) -> Result<(), String> {
+    use std::fs;
+    use std::io::Write as _;
+
+    let styles_dir     = themes_dir.join("styles");
+    let colorschemes_dir = themes_dir.join("colorschemes");
+
+    fs::create_dir_all(&styles_dir)
+        .map_err(|e| format!("cannot create styles dir: {e}"))?;
+    fs::create_dir_all(&colorschemes_dir)
+        .map_err(|e| format!("cannot create colorschemes dir: {e}"))?;
+
+    // StyleSystem → styles/<id>.json
+    let style_path = styles_dir.join(format!("{}.json", style.meta.id));
+    let style_json = style.to_dtcg();
+    let mut sf = fs::File::create(&style_path)
+        .map_err(|e| format!("cannot create {:?}: {e}", style_path))?;
+    sf.write_all(style_json.as_bytes())
+        .map_err(|e| format!("write failed {:?}: {e}", style_path))?;
+
+    // ColorScheme → colorschemes/<id>.json
+    let colors_path = colorschemes_dir.join(format!("{}.json", colors.meta.id));
+    let colors_json = colors.to_dtcg();
+    let mut cf = fs::File::create(&colors_path)
+        .map_err(|e| format!("cannot create {:?}: {e}", colors_path))?;
+    cf.write_all(colors_json.as_bytes())
+        .map_err(|e| format!("write failed {:?}: {e}", colors_path))?;
+
+    Ok(())
+}
+
+/// Render sliders/inputs for all `StyleSystem` sub-structs.
+fn two_axis_style_editor(ui: &mut egui::Ui, s: &mut StyleSystem) {
+    let dim = Color32::from_rgb(120, 120, 130);
+    let hdr = Color32::from_rgb(180, 180, 200);
+
+    // ── Meta ─────────────────────────────────────────────────────────────────
+    two_axis_section(ui, "Identity", hdr, |ui| {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("id").monospace().size(font_xs()).color(dim));
+            ui.text_edit_singleline(&mut s.meta.id);
+        });
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("name").monospace().size(font_xs()).color(dim));
+            ui.text_edit_singleline(&mut s.meta.name);
+        });
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("is_dark").monospace().size(font_xs()).color(dim));
+            ui.checkbox(&mut s.meta.is_dark, "");
+        });
+    });
+
+    // ── Typography ────────────────────────────────────────────────────────────
+    two_axis_section(ui, "Typography", hdr, |ui| {
+        two_axis_f32(ui, "size_xs",  &mut s.typography.size_xs,  4.0..=32.0);
+        two_axis_f32(ui, "size_sm",  &mut s.typography.size_sm,  4.0..=32.0);
+        two_axis_f32(ui, "size_md",  &mut s.typography.size_md,  4.0..=32.0);
+        two_axis_f32(ui, "size_lg",  &mut s.typography.size_lg,  4.0..=40.0);
+        two_axis_f32(ui, "size_xl",  &mut s.typography.size_xl,  4.0..=60.0);
+        two_axis_f32(ui, "mono_sm",  &mut s.typography.mono_sm,  4.0..=32.0);
+        two_axis_f32(ui, "mono_md",  &mut s.typography.mono_md,  4.0..=32.0);
+        two_axis_f32(ui, "mono_lg",  &mut s.typography.mono_lg,  4.0..=40.0);
+    });
+
+    // ── Spacing ───────────────────────────────────────────────────────────────
+    two_axis_section(ui, "Spacing", hdr, |ui| {
+        two_axis_f32(ui, "xs",         &mut s.spacing.xs,         0.0..=20.0);
+        two_axis_f32(ui, "sm",         &mut s.spacing.sm,         0.0..=20.0);
+        two_axis_f32(ui, "md",         &mut s.spacing.md,         0.0..=30.0);
+        two_axis_f32(ui, "lg",         &mut s.spacing.lg,         0.0..=40.0);
+        two_axis_f32(ui, "xl",         &mut s.spacing.xl,         0.0..=60.0);
+        two_axis_f32(ui, "xxl",        &mut s.spacing.xxl,        0.0..=80.0);
+        two_axis_f32(ui, "gmd",        &mut s.spacing.gmd,        0.0..=30.0);
+        two_axis_f32(ui, "cta_height", &mut s.spacing.cta_height, 14.0..=80.0);
+    });
+
+    // ── Radii ─────────────────────────────────────────────────────────────────
+    // NOTE: this is the live path — these values go through hot-reload into
+    // begin_frame, unlike the vestigial DesignTokens.radius sliders.
+    two_axis_section(ui, "Radii (live via hot-reload)", hdr, |ui| {
+        two_axis_f32(ui, "none", &mut s.radii.none, 0.0..=4.0);
+        two_axis_f32(ui, "xs",   &mut s.radii.xs,   0.0..=20.0);
+        two_axis_f32(ui, "sm",   &mut s.radii.sm,   0.0..=20.0);
+        two_axis_f32(ui, "md",   &mut s.radii.md,   0.0..=30.0);
+        two_axis_f32(ui, "lg",   &mut s.radii.lg,   0.0..=40.0);
+        two_axis_f32(ui, "full", &mut s.radii.full, 0.0..=9999.0);
+    });
+
+    // ── Strokes ───────────────────────────────────────────────────────────────
+    // NOTE: same — these are the live stroke values, replacing the dead
+    // DesignTokens.stroke sliders.
+    two_axis_section(ui, "Strokes (live via hot-reload)", hdr, |ui| {
+        two_axis_f32(ui, "thin",  &mut s.strokes.thin,  0.0..=4.0);
+        two_axis_f32(ui, "std",   &mut s.strokes.std,   0.0..=4.0);
+        two_axis_f32(ui, "md",    &mut s.strokes.md,    0.0..=6.0);
+        two_axis_f32(ui, "heavy", &mut s.strokes.heavy, 0.0..=8.0);
+    });
+
+    // ── Alphas ────────────────────────────────────────────────────────────────
+    two_axis_section(ui, "Alphas", hdr, |ui| {
+        two_axis_f32(ui, "subtle",        &mut s.alphas.subtle,        0.0..=1.0);
+        two_axis_f32(ui, "soft",          &mut s.alphas.soft,          0.0..=1.0);
+        two_axis_f32(ui, "muted",         &mut s.alphas.muted,         0.0..=1.0);
+        two_axis_f32(ui, "mid",           &mut s.alphas.mid,           0.0..=1.0);
+        two_axis_f32(ui, "strong",        &mut s.alphas.strong,        0.0..=1.0);
+        two_axis_f32(ui, "opaque",        &mut s.alphas.opaque,        0.0..=1.0);
+        two_axis_f32(ui, "header_border", &mut s.alphas.header_border, 0.0..=1.0);
+    });
+
+    // ── Elevation ────────────────────────────────────────────────────────────
+    two_axis_section(ui, "Elevation", hdr, |ui| {
+        two_axis_f32(ui, "l1", &mut s.elevation.l1, 0.5..=2.0);
+        two_axis_f32(ui, "l2", &mut s.elevation.l2, 0.5..=2.0);
+        two_axis_f32(ui, "l3", &mut s.elevation.l3, 0.5..=2.0);
+    });
+
+    // ── Density ──────────────────────────────────────────────────────────────
+    two_axis_section(ui, "Density", hdr, |ui| {
+        two_axis_f32(ui, "factor",                 &mut s.density.factor,                 0.5..=2.0);
+        two_axis_f32(ui, "row_height_dense",        &mut s.density.row_height_dense,        10.0..=60.0);
+        two_axis_f32(ui, "row_height_comfortable",  &mut s.density.row_height_comfortable,  10.0..=80.0);
+    });
+
+    // ── Shadows ───────────────────────────────────────────────────────────────
+    two_axis_section(ui, "Shadows", hdr, |ui| {
+        ui.label(RichText::new("card").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
+        two_axis_f32(ui, "  blur",     &mut s.shadows.card.blur,     0.0..=64.0);
+        two_axis_f32(ui, "  spread",   &mut s.shadows.card.spread,   0.0..=20.0);
+        two_axis_f32(ui, "  offset_x", &mut s.shadows.card.offset_x, -20.0..=20.0);
+        two_axis_f32(ui, "  offset_y", &mut s.shadows.card.offset_y, -20.0..=20.0);
+        two_axis_f32(ui, "  alpha",    &mut s.shadows.card.alpha,    0.0..=1.0);
+        ui.label(RichText::new("modal").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
+        two_axis_f32(ui, "  blur",     &mut s.shadows.modal.blur,     0.0..=64.0);
+        two_axis_f32(ui, "  spread",   &mut s.shadows.modal.spread,   0.0..=20.0);
+        two_axis_f32(ui, "  offset_x", &mut s.shadows.modal.offset_x, -20.0..=20.0);
+        two_axis_f32(ui, "  offset_y", &mut s.shadows.modal.offset_y, -20.0..=20.0);
+        two_axis_f32(ui, "  alpha",    &mut s.shadows.modal.alpha,    0.0..=1.0);
+        ui.label(RichText::new("tooltip").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
+        two_axis_f32(ui, "  blur",     &mut s.shadows.tooltip.blur,     0.0..=32.0);
+        two_axis_f32(ui, "  alpha",    &mut s.shadows.tooltip.alpha,    0.0..=1.0);
+        ui.label(RichText::new("dropdown").monospace().size(font_xs()).color(Color32::from_rgb(130,130,140)));
+        two_axis_f32(ui, "  blur",     &mut s.shadows.dropdown.blur,     0.0..=32.0);
+        two_axis_f32(ui, "  alpha",    &mut s.shadows.dropdown.alpha,    0.0..=1.0);
+    });
+
+    // ── Treatments ────────────────────────────────────────────────────────────
+    two_axis_section(ui, "Treatments", hdr, |ui| {
+        two_axis_bool(ui, "solid_active_fills",       &mut s.treatments.solid_active_fills);
+        two_axis_bool(ui, "hairline_borders",         &mut s.treatments.hairline_borders);
+        two_axis_bool(ui, "uppercase_section_labels", &mut s.treatments.uppercase_section_labels);
+        two_axis_bool(ui, "segmented_filled_idle",    &mut s.treatments.segmented_filled_idle);
+        // focus_ring enum
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("focus_ring").monospace().size(font_xs()).color(Color32::from_rgb(170,170,180)));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                egui::ComboBox::from_id_salt("two_axis_focus_ring")
+                    .selected_text(RichText::new(match s.treatments.focus_ring {
+                        FocusRingStyle::None    => "none",
+                        FocusRingStyle::Outline => "outline",
+                        FocusRingStyle::Glow    => "glow",
+                    }).monospace().size(font_xs()))
+                    .show_ui(ui, |ui| {
+                        for (label, val) in [
+                            ("none",    FocusRingStyle::None),
+                            ("outline", FocusRingStyle::Outline),
+                            ("glow",    FocusRingStyle::Glow),
+                        ] {
+                            if ui.selectable_label(s.treatments.focus_ring == val, label).clicked() {
+                                s.treatments.focus_ring = val;
+                            }
+                        }
+                    });
+            });
+        });
+    });
+}
+
+/// Render colour pickers for all `ColorScheme` palette fields.
+fn two_axis_color_editor(ui: &mut egui::Ui, c: &mut ColorScheme) {
+    let hdr = Color32::from_rgb(180, 180, 200);
+
+    // ── Meta ─────────────────────────────────────────────────────────────────
+    two_axis_section(ui, "Identity", hdr, |ui| {
+        let dim = Color32::from_rgb(120, 120, 130);
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("id").monospace().size(font_xs()).color(dim));
+            ui.text_edit_singleline(&mut c.meta.id);
+        });
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("name").monospace().size(font_xs()).color(dim));
+            ui.text_edit_singleline(&mut c.meta.name);
+        });
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("is_dark").monospace().size(font_xs()).color(dim));
+            ui.checkbox(&mut c.meta.is_dark, "");
+        });
+    });
+
+    // ── Palette ───────────────────────────────────────────────────────────────
+    two_axis_section(ui, "Palette", hdr, |ui| {
+        two_axis_rgba(ui, "bg",      &mut c.bg);
+        two_axis_rgba(ui, "surface", &mut c.surface);
+        two_axis_rgba(ui, "paper",   &mut c.paper);
+        two_axis_rgba(ui, "text",    &mut c.text);
+        two_axis_rgba(ui, "dim",     &mut c.dim);
+        two_axis_rgba(ui, "border",  &mut c.border);
+        two_axis_rgba(ui, "accent",  &mut c.accent);
+        two_axis_rgba(ui, "bull",    &mut c.bull);
+        two_axis_rgba(ui, "bear",    &mut c.bear);
+        two_axis_rgba(ui, "warn",    &mut c.warn);
+        two_axis_rgba(ui, "shadow",  &mut c.shadow);
+    });
+
+    // ── Accent alts ───────────────────────────────────────────────────────────
+    two_axis_section(ui, "Accent Alts", hdr, |ui| {
+        let mut remove_idx: Option<usize> = None;
+        for (i, alt) in c.accent_alts.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                two_axis_rgba(ui, &format!("alt[{i}]"), alt);
+                if ui.small_button("−").clicked() {
+                    remove_idx = Some(i);
+                }
+            });
+        }
+        if let Some(i) = remove_idx {
+            c.accent_alts.remove(i);
+        }
+        if ui.small_button("+ Add alt").clicked() {
+            c.accent_alts.push([99, 102, 241, 255]);
+        }
+    });
+}
+
+// ── Two-axis editor sub-helpers ───────────────────────────────────────────────
+
+fn two_axis_section(
+    ui: &mut egui::Ui,
+    title: &str,
+    hdr_color: Color32,
+    body: impl FnOnce(&mut egui::Ui),
+) {
+    egui::CollapsingHeader::new(
+        RichText::new(title).monospace().size(10.5).strong().color(hdr_color)
+    )
+    .id_salt(egui::Id::new(("two_axis_section", title)))
+    .default_open(true)
+    .show(ui, |ui| { body(ui); });
+    ui.add_space(2.0);
+}
+
+fn two_axis_f32(
+    ui: &mut egui::Ui,
+    label: &str,
+    value: &mut f32,
+    range: std::ops::RangeInclusive<f32>,
+) {
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        ui.label(RichText::new(label).monospace().size(font_xs())
+            .color(Color32::from_rgb(170, 170, 180)));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.add(egui::DragValue::new(value).range(range).speed(0.05).max_decimals(2));
+        });
+    });
+}
+
+fn two_axis_bool(ui: &mut egui::Ui, label: &str, value: &mut bool) {
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        ui.label(RichText::new(label).monospace().size(font_xs())
+            .color(Color32::from_rgb(170, 170, 180)));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.checkbox(value, "");
+        });
+    });
+}
+
+/// Inline RGBA colour editor: swatch + four drag values (r, g, b, a).
+fn two_axis_rgba(ui: &mut egui::Ui, label: &str, rgba: &mut Rgba) {
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+
+        // Colour swatch
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
+        ui.painter().rect_filled(rect, 2.0,
+            Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3]));
+        ui.painter().rect_stroke(rect, 2.0,
+            Stroke::new(0.5, Color32::from_rgb(60, 60, 70)), egui::StrokeKind::Outside);
+
+        ui.label(RichText::new(label).monospace().size(font_xs())
+            .color(Color32::from_rgb(170, 170, 180)));
+
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let mut a = rgba[3] as f32;
+            if ui.add(egui::DragValue::new(&mut a).range(0.0..=255.0).speed(1.0).prefix("a:")).changed() {
+                rgba[3] = a as u8;
+            }
+            let mut b = rgba[2] as f32;
+            if ui.add(egui::DragValue::new(&mut b).range(0.0..=255.0).speed(1.0).prefix("b:")).changed() {
+                rgba[2] = b as u8;
+            }
+            let mut g = rgba[1] as f32;
+            if ui.add(egui::DragValue::new(&mut g).range(0.0..=255.0).speed(1.0).prefix("g:")).changed() {
+                rgba[1] = g as u8;
+            }
+            let mut r = rgba[0] as f32;
+            if ui.add(egui::DragValue::new(&mut r).range(0.0..=255.0).speed(1.0).prefix("r:")).changed() {
+                rgba[0] = r as u8;
+            }
+        });
+    });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
