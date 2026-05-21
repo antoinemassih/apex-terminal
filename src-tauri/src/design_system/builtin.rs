@@ -467,23 +467,27 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             gmd: 8.0,
             cta_height: 36.0, // cta_height_px
         },
+        // radii + strokes aligned to the LIVE default style (style_defaults(0)).
+        // The Phase B source-swap deliberately defined Meridien-the-default as
+        // the graduated dt_f32! scale to preserve the existing look — so the
+        // design_system Meridien matches it (equivalence test: field-exact).
         radii: Radii {
             none: 0.0,
-            xs: 0.0,      // r_xs = 0
-            sm: 0.0,      // r_sm = 0
-            md: 0.0,      // r_md = 0
-            lg: 0.0,      // r_lg = 0
-            full: 9999.0, // r_pill = 0 but pill means round — keep sentinel
+            xs: 2.0,
+            sm: 4.0,
+            md: 6.0,
+            lg: 12.0,
+            full: 9999.0, // pill = fully round
         },
         strokes: Strokes {
-            hair:   0.3,  // sub-pixel hairline
-            thin:   0.5,  // stroke_hair in Meridien
-            medium: 0.8,  // mid-weight default
-            std:    1.0,  // stroke_thin / stroke_std (Meridien collapses to 1)
-            bold:   1.0,  // stroke_bold = 1.0
-            thick:  1.0,  // stroke_thick = 1.0
-            md:     1.0,  // legacy alias
-            heavy:  1.0,  // legacy alias
+            hair:   0.3,
+            thin:   0.5,
+            medium: 0.8,
+            std:    1.0,
+            bold:   1.5,
+            thick:  2.0,
+            md:     1.5,  // legacy alias for bold
+            heavy:  2.0,  // legacy alias for thick
         },
         alphas: Alphas {
             // u8 tiers — defaults from DEFAULT_TOKEN_SNAPSHOT
