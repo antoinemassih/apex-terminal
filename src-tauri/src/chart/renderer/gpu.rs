@@ -5866,8 +5866,11 @@ impl GpuCtx {
         let full_output = self.egui_ctx.run(raw_input, |ctx| {
             draw_chart(ctx, panes, active_pane, layout, watchlist, toasts, conn_panel_open, rx);
             // Boss key: paint the TPS overlay on top of everything when active.
-            if watchlist.boss_key_active {
-                crate::chart_renderer::ui::tps_overlay::render_tps_overlay(ctx);
+            // render_tps_overlay returns true when the user dismisses it
+            // (Esc or the fake-Excel ✕ close button).
+            if watchlist.boss_key_active
+                && crate::chart_renderer::ui::tps_overlay::render_tps_overlay(ctx) {
+                watchlist.boss_key_active = false;
             }
         });
         self.egui_state.handle_platform_output(window, full_output.platform_output);

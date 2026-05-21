@@ -28,10 +28,14 @@ fn mono(size: f32) -> FontId { FontId::monospace(size) }
 ///
 /// Call this inside the egui frame closure after all normal UI has been drawn.
 /// The `egui::Area` uses `Order::Foreground` so it sits on top of everything.
-pub fn render_tps_overlay(ctx: &egui::Context) {
+/// Returns `true` if the user asked to dismiss the mask this frame
+/// (Esc key, or the fake-Excel ✕ close button).
+pub fn render_tps_overlay(ctx: &egui::Context) -> bool {
     let screen = ctx.screen_rect();
+    // Esc dismisses the mask (checked outside the Area closure).
+    let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
 
-    egui::Area::new(egui::Id::new("tps_overlay_area"))
+    let inner = egui::Area::new(egui::Id::new("tps_overlay_area"))
         .order(Order::Foreground)
         .fixed_pos(screen.min)
         .show(ctx, |ui| {
@@ -43,6 +47,13 @@ pub fn render_tps_overlay(ctx: &egui::Context) {
 
             // ── 1. White base fill ──
             painter.rect_filled(screen, 0.0, XL_WHITE);
+
+            // Pointer sink — allocated FIRST so the title-bar close button
+            // (interacted below) sits on top of it and stays clickable.
+            ui.allocate_rect(screen, egui::Sense::click_and_drag());
+
+            // Set true if the fake-Excel ✕ (close) button is clicked.
+            let mut close_clicked = false;
 
             let mut y = screen.top();
 
@@ -57,12 +68,26 @@ pub fn render_tps_overlay(ctx: &egui::Context) {
                 f(11.5),
                 XL_TEXT,
             );
-            // Close / min / max faux buttons (right-aligned)
+            // Window buttons (right-aligned). The ✕ (close) is a real button —
+            // clicking it drops the mask, a natural in-character way out.
             for (i, label) in ["─", "□", "✕"].iter().enumerate() {
                 let bx = screen.right() - 28.0 * (3 - i) as f32 - 4.0;
                 let brect = Rect::from_min_size(Pos2::new(bx, y + 4.0), Vec2::new(26.0, 20.0));
-                painter.rect_filled(brect, 2.0, XL_GRIDLINE);
-                painter.text(brect.center(), Align2::CENTER_CENTER, *label, f(10.0), XL_DIM);
+                let is_close = i == 2;
+                let hovered = if is_close {
+                    let r = ui.interact(brect, egui::Id::new("tps_close_btn"), egui::Sense::click());
+                    if r.clicked() { close_clicked = true; }
+                    if r.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    r.hovered()
+                } else { false };
+                // Windows-style: the close button turns red on hover.
+                let (bg, fg) = if is_close && hovered {
+                    (Color32::from_rgb(232, 17, 35), Color32::WHITE)
+                } else {
+                    (XL_GRIDLINE, XL_DIM)
+                };
+                painter.rect_filled(brect, 2.0, bg);
+                painter.text(brect.center(), Align2::CENTER_CENTER, *label, f(10.0), fg);
             }
             // Top accent stripe
             painter.line_segment(
@@ -348,8 +373,9 @@ pub fn render_tps_overlay(ctx: &egui::Context) {
                 );
             }
 
-            // ── Invisible interaction sink — swallow all pointer events ──
-            // Allocate a full-screen sense so clicks don't reach layers below.
-            ui.allocate_rect(screen, egui::Sense::click_and_drag());
-        });
+            close_clicked
+        })
+        .inner;
+
+    esc || inner
 }
