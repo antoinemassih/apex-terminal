@@ -1656,7 +1656,7 @@ fn render_chart_pane(
     let ns=[1.0,2.0,2.5,5.0,10.0]; let step=ns.iter().map(|&s|s*mg).find(|&s|s>=rs).unwrap_or(rs);
     let mut p=(min_p/step).ceil()*step;
     while p<=max_p { let y=py(p);
-        painter.line_segment([egui::pos2(rect.left(),y),egui::pos2(rect.left()+cw,y)], egui::Stroke::new(0.5,t.dim.gamma_multiply(0.3)));
+        painter.line_segment([egui::pos2(rect.left(),y),egui::pos2(rect.left()+cw,y)], egui::Stroke::new(style::stroke_thin(),t.dim.gamma_multiply(0.3)));
         if watchlist.show_y_axis {
             chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.2}", p);
             let f = mono_xs_plus();
@@ -1684,7 +1684,7 @@ fn render_chart_pane(
                 let end_x = (dx + 3.0).min(rect.left() + cw);
                 painter.line_segment(
                     [egui::pos2(dx, price_y), egui::pos2(end_x, price_y)],
-                    egui::Stroke::new(0.5, line_col));
+                    egui::Stroke::new(style::stroke_thin(), line_col));
                 dx += 10.0;
             }
 
@@ -1823,7 +1823,7 @@ fn render_chart_pane(
             let zero_y = vol_top + vol_h / 2.0;
             painter.line_segment(
                 [egui::pos2(rect.left(), zero_y), egui::pos2(rect.left()+cw, zero_y)],
-                egui::Stroke::new(0.5, color_alpha(t.text,25)));
+                egui::Stroke::new(style::stroke_thin(), color_alpha(t.text,25)));
             for i in start_d..end_d {
                 let x = bx(i as f32);
                 let delta = chart.delta_data[i];
@@ -5764,7 +5764,7 @@ fn render_chart_pane(
                 for &level in &[low_ref, 50.0, high_ref] {
                     let y = osc_y(level);
                     painter.line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.left() + cw, y)],
-                        egui::Stroke::new(0.3, t.dim.gamma_multiply(0.3)));
+                        egui::Stroke::new(style::stroke_hair(), t.dim.gamma_multiply(0.3)));
                 }
                 // Overbought/oversold zones
                 painter.rect_filled(egui::Rect::from_min_max(
@@ -5811,7 +5811,7 @@ fn render_chart_pane(
                 for &level in &[20.0_f32, 40.0] {
                     let y = osc_y(level);
                     painter.line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.left() + cw, y)],
-                        egui::Stroke::new(0.3, t.dim.gamma_multiply(0.3)));
+                        egui::Stroke::new(style::stroke_hair(), t.dim.gamma_multiply(0.3)));
                 }
             }
 
@@ -5820,7 +5820,7 @@ fn render_chart_pane(
                 for &level in &[-100.0_f32, 0.0, 100.0] {
                     let y = osc_y(level);
                     painter.line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.left() + cw, y)],
-                        egui::Stroke::new(0.3, t.dim.gamma_multiply(0.3)));
+                        egui::Stroke::new(style::stroke_hair(), t.dim.gamma_multiply(0.3)));
                 }
             }
 
@@ -5829,7 +5829,7 @@ fn render_chart_pane(
                 for &level in &[-80.0_f32, -50.0, -20.0] {
                     let y = osc_y(level);
                     painter.line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.left() + cw, y)],
-                        egui::Stroke::new(0.3, t.dim.gamma_multiply(0.3)));
+                        egui::Stroke::new(style::stroke_hair(), t.dim.gamma_multiply(0.3)));
                 }
             }
 
@@ -5837,7 +5837,7 @@ fn render_chart_pane(
             if ind.kind == IndicatorType::MACD {
                 let y = osc_y(0.0);
                 painter.line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.left() + cw, y)],
-                    egui::Stroke::new(0.5, t.dim.gamma_multiply(0.3)));
+                    egui::Stroke::new(style::stroke_thin(), t.dim.gamma_multiply(0.3)));
             }
 
             // MACD histogram bars — GPU mesh batched (colored by direction of change)
@@ -6051,7 +6051,7 @@ fn render_chart_pane(
             let zero_y = cvd_py(0.0_f32);
             if zero_y >= osc_top && zero_y <= osc_bottom {
                 painter.line_segment([egui::pos2(rect.left(), zero_y), egui::pos2(rect.left()+cw, zero_y)],
-                    egui::Stroke::new(0.5, color_alpha(t.text,30)));
+                    egui::Stroke::new(style::stroke_thin(), color_alpha(t.text,30)));
             }
             for i in start_c..end_c.saturating_sub(1) {
                 let y0 = cvd_py(chart.cvd_data[i]);
@@ -8008,7 +8008,7 @@ fn render_chart_pane(
                 let cbr = egui::Rect::from_min_size(
                     egui::pos2(rect.left() + cw + 1.0, pos.y - cbh / 2.0),
                     egui::vec2(cbw, cbh));
-                painter.rect_filled(cbr, ch_badge_cr, egui::Color32::from_rgba_unmultiplied(20, 20, 26, 240));
+                painter.rect_filled(cbr, ch_badge_cr, color_alpha(t.toolbar_bg, style::alpha_solid()));
                 painter.rect_stroke(cbr, ch_badge_cr, egui::Stroke::new(ch_badge_stroke_w, color_alpha(t.text, 80)), egui::StrokeKind::Inside);
                 // Bolder via 0.5px double-draw
                 painter.text(egui::pos2(cbr.left() + cpad_x + 0.5, pos.y), egui::Align2::LEFT_CENTER, &chart.fmt_buf, cf.clone(), egui::Color32::WHITE);
@@ -8044,7 +8044,7 @@ fn render_chart_pane(
                         let tbr = egui::Rect::from_min_size(
                             egui::pos2(time_x_left, time_y_top),
                             egui::vec2(tbw, tbh));
-                        painter.rect_filled(tbr, ch_badge_cr, egui::Color32::from_rgba_unmultiplied(20, 20, 26, 240));
+                        painter.rect_filled(tbr, ch_badge_cr, color_alpha(t.toolbar_bg, style::alpha_solid()));
                         painter.rect_stroke(tbr, ch_badge_cr, egui::Stroke::new(ch_badge_stroke_w, color_alpha(t.text, 80)), egui::StrokeKind::Inside);
                         // Bolder via 0.5px double-draw
                         painter.text(egui::pos2(tbr.center().x + 0.5, tbr.center().y), egui::Align2::CENTER_CENTER, &time_str, tf_font.clone(), egui::Color32::WHITE);
@@ -8524,7 +8524,7 @@ fn render_chart_pane(
         painter.rect_filled(pnl_rect, 0.0, egui::Color32::from_rgba_unmultiplied(t.bg.r(), t.bg.g(), t.bg.b(), 180));
         painter.line_segment(
             [egui::pos2(rect.left(), pnl_top), egui::pos2(rect.left() + cw, pnl_top)],
-            egui::Stroke::new(0.5, t.dim.gamma_multiply(0.3)));
+            egui::Stroke::new(style::stroke_thin(), t.dim.gamma_multiply(0.3)));
 
         // TODO: accumulate P&L snapshots over session for a real curve
         // For now show unrealized P&L as a single value label from account_data_cached
@@ -8558,7 +8558,7 @@ fn render_chart_pane(
             let zero_y = pnl_top + pnl_h / 2.0;
             painter.line_segment(
                 [egui::pos2(rect.left(), zero_y), egui::pos2(rect.left() + cw, zero_y)],
-                egui::Stroke::new(0.3, t.dim.gamma_multiply(0.2)));
+                egui::Stroke::new(style::stroke_hair(), t.dim.gamma_multiply(0.2)));
         } else {
             painter.text(
                 egui::pos2(pnl_rect.center().x, pnl_rect.center().y),
