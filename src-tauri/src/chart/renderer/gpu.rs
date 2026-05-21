@@ -97,7 +97,7 @@ std::thread_local! {
     pub(crate) static PENDING_WL_TOOLTIP: std::cell::RefCell<Option<WlTooltipData>> = const { std::cell::RefCell::new(None) };
     pub(crate) static ALERT_BADGE_HITS: std::cell::RefCell<Vec<AlertBadgeHit>> = const { std::cell::RefCell::new(Vec::new()) };
     #[cfg(feature = "design-mode")]
-    static DESIGN_INSPECTOR: std::cell::RefCell<Option<crate::design_inspector::Inspector>> = const { std::cell::RefCell::new(None) };
+    pub(crate) static DESIGN_INSPECTOR: std::cell::RefCell<Option<crate::design_inspector::Inspector>> = const { std::cell::RefCell::new(None) };
 }
 
 #[derive(Clone)]
