@@ -35,12 +35,10 @@ impl<'a> TradeCard<'a> {
         let bear = t.bear;
         let dim  = t.dim;
         let text = t.text;
-        let theme = self.theme;
         let entry = self.entry;
         let target = self.target;
         let stop = self.stop;
-        CardShell::new_themeless()
-            .theme(theme)
+        CardShell::new(t)
             .title(self.symbol)
             .title_style(TextStyle::Numeric)
             .padding(Margin::same(gap_lg() as i8))

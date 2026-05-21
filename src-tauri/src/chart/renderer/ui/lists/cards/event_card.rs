@@ -32,13 +32,11 @@ impl<'a> EventCard<'a> {
         let t = self.theme.expect("EventCard requires a theme — call `.theme(t)` before `.show()`");
         let dim  = t.dim;
         let text = t.text;
-        let theme = self.theme;
         let title = self.title;
         let when = self.when;
         let venue = self.venue;
         let note = self.note;
-        CardShell::new_themeless()
-            .theme(theme)
+        CardShell::new(t)
             .padding(Margin::same(gap_lg() as i8))
             .body(move |ui| {
                 ui.horizontal(|ui| {

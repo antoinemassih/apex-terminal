@@ -32,13 +32,11 @@ impl<'a> NewsCard<'a> {
         let t = self.theme.expect("NewsCard requires a theme — call `.theme(t)` before `.show()`");
         let dim = t.dim;
         let text = t.text;
-        let theme = self.theme;
         let headline = self.headline;
         let source = self.source;
         let ts = self.timestamp;
         let excerpt = self.excerpt;
-        CardShell::new_themeless()
-            .theme(theme)
+        CardShell::new(t)
             .padding(Margin::same(gap_lg() as i8))
             .body(move |ui| {
                 ui.label(RichText::new(headline)

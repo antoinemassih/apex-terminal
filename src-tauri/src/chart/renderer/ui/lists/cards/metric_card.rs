@@ -31,12 +31,10 @@ impl<'a> MetricCard<'a> {
         let bear = t.bear;
         let dim  = t.dim;
         let text = t.text;
-        let theme = self.theme;
         let label = self.label;
         let value = self.value;
         let delta = self.delta;
-        CardShell::new_themeless()
-            .theme(theme)
+        CardShell::new(t)
             .padding(Margin::same(gap_lg() as i8))
             .body(move |ui| {
                 ui.label(RichText::new(label).monospace().size(font_xs()).color(dim));

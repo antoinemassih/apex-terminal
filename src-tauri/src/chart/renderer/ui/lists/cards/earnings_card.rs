@@ -37,13 +37,11 @@ impl<'a> EarningsCard<'a> {
         let bear = t.bear;
         let dim  = t.dim;
         let text = t.text;
-        let theme = self.theme;
         let when = self.when;
         let est = self.est_eps;
         let act = self.act_eps;
         let sur = self.surprise;
-        CardShell::new_themeless()
-            .theme(theme)
+        CardShell::new(t)
             .title(self.symbol)
             .title_style(TextStyle::Numeric)
             .padding(Margin::same(gap_lg() as i8))

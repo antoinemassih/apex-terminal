@@ -27,23 +27,21 @@ impl<'a> SignalCard<'a> {
     pub fn theme(mut self, t: &'a Theme) -> Self { self.theme = Some(t); self }
 
     pub fn show(self, ui: &mut Ui) {
+        let t = self.theme.expect("SignalCard requires a theme — call `.theme(t)` before `.show()`");
         let score = self.score;
         let spark = self.spark;
-        let theme = self.theme;
-        CardShell::new_themeless()
-            .theme(theme)
+        CardShell::new(t)
             .title(self.name)
             .title_style(TextStyle::Numeric)
             .padding(Margin::same(gap_lg() as i8))
             .body(move |ui| {
                 ui.add_space(gap_xs());
-                let t_ref = theme.expect("SignalCard requires a theme — call `.theme(t)` before `.show()`");
-                let color = if score >= 0.0 { t_ref.bull } else { t_ref.bear };
+                let color = if score >= 0.0 { t.bull } else { t.bear };
                 ui.label(RichText::new(format!("{:+.2}", score))
                     .monospace().size(font_xl()).strong().color(color));
                 let h = font_md() + 2.0;
                 let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), h), Sense::hover());
-                let dim = t_ref.dim;
+                let dim = t.dim;
                 ui.painter().rect_stroke(
                     rect,
                     egui::CornerRadius::same(radius_sm() as u8),

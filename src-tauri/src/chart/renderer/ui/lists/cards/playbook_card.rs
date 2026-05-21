@@ -36,11 +36,10 @@ impl<'a> PlaybookCard<'a> {
     pub fn theme(mut self, t: &'a Theme) -> Self { self.theme = Some(t); self }
 
     pub fn show(self, ui: &mut Ui) {
+        let t = self.theme.expect("PlaybookCard requires a theme — call `.theme(t)` before `.show()`");
         let body_text = self.body;
         let tags = self.tags;
-        let theme = self.theme;
-        CardShell::new_themeless()
-            .theme(theme)
+        CardShell::new(t)
             .title(self.rule)
             .title_style(TextStyle::Numeric)
             .padding(Margin::same(gap_lg() as i8))
@@ -57,7 +56,6 @@ impl<'a> PlaybookCard<'a> {
                         for tag in &tags {
                             ui.add(Button::new(*tag).variant(Variant::Secondary).size(Size::Sm));
                         }
-                        let _ = theme;
                     });
                 }
             })
