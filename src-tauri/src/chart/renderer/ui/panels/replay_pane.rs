@@ -327,7 +327,7 @@ fn draw_form(ui: &mut egui::Ui, s: &mut ReplayPaneState, t: &Theme) {
             Input::new(&mut s.to_str).min_width(160.0).size(KitSize::Sm).show(ui, t);
         });
     });
-    ui.add(MonospaceCode::new("UTC, format: YYYY-MM-DD HH:MM[:SS]").color(t.dim.gamma_multiply(0.6)));
+    ui.add(MonospaceCode::new("UTC, format: YYYY-MM-DD HH:MM[:SS]").color(color_muted(t.dim)));
     ui.add_space(gap_sm());
 
     // Symbols (comma-separated multi-select; a real picker can replace this
@@ -338,7 +338,7 @@ fn draw_form(ui: &mut egui::Ui, s: &mut ReplayPaneState, t: &Theme) {
             Input::new(&mut s.symbols_str).min_width(320.0).size(KitSize::Sm).show(ui, t);
         });
     });
-    ui.add(MonospaceCode::new("comma-separated (e.g. SPY, AAPL, NVDA)").color(t.dim.gamma_multiply(0.6)));
+    ui.add(MonospaceCode::new("comma-separated (e.g. SPY, AAPL, NVDA)").color(color_muted(t.dim)));
     ui.add_space(gap_sm());
 
     // Asset class — radio pair
@@ -381,8 +381,8 @@ fn draw_form(ui: &mut egui::Ui, s: &mut ReplayPaneState, t: &Theme) {
             let label = if implemented { m.label().to_string() }
                         else { format!("{} (not yet implemented)", m.label()) };
             let col = if sel { t.accent }
-                      else if implemented { t.dim.gamma_multiply(0.7) }
-                      else { t.dim.gamma_multiply(0.4) };
+                      else if implemented { color_subtle(t.dim) }
+                      else { color_dim(t.dim) };
             let resp = Button::toggle(label.as_str(), sel).size(KitSize::Xs)
                 .min_size(egui::vec2(0.0, 20.0)).enabled(editable && implemented).show(ui, t);
             if resp.clicked() && editable && implemented { s.mode = m; }
@@ -462,7 +462,7 @@ fn draw_controls(ui: &mut egui::Ui, s: &mut ReplayPaneState, t: &Theme) {
         ui.add_space(gap_sm());
         for preset in SpeedPreset::ALL {
             let sel = s.speed == *preset;
-            let col = if sel { t.accent } else { t.dim.gamma_multiply(0.7) };
+            let col = if sel { t.accent } else { color_subtle(t.dim) };
             if Button::toggle(preset.label(), sel).size(KitSize::Xs)
                 .min_size(egui::vec2(40.0, 18.0)).show(ui, t).clicked()
             {
@@ -507,7 +507,7 @@ fn draw_status_row(ui: &mut egui::Ui, s: &ReplayPaneState, t: &Theme) {
 
         if let Some(id) = &s.replay_id {
             let id_str = format!("id={}", &id[..id.len().min(10)]);
-            ui.add(MonospaceCode::new(&id_str).color(t.dim.gamma_multiply(0.6)));
+            ui.add(MonospaceCode::new(&id_str).color(color_muted(t.dim)));
         }
     });
     if let Some(err) = &s.error {
@@ -520,7 +520,7 @@ fn draw_events_log(ui: &mut egui::Ui, s: &ReplayPaneState, t: &Theme) {
     ui.add(MonospaceCode::new("EVENTS").color(t.dim));
     ui.add_space(gap_xs());
     if s.events.is_empty() {
-        ui.add(MonospaceCode::new("  (no events yet)").color(t.dim.gamma_multiply(0.6)));
+        ui.add(MonospaceCode::new("  (no events yet)").color(color_muted(t.dim)));
         return;
     }
     egui::ScrollArea::vertical()

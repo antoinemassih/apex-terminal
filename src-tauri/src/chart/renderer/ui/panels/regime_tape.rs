@@ -244,7 +244,7 @@ fn draw_cell(
     painter.text(
         egui::pos2(rect.max.x - gap_sm(), rect.max.y - 4.0),
         egui::Align2::RIGHT_BOTTOM, age,
-        egui::FontId::monospace(FONT_3XS), t.dim.gamma_multiply(0.7));
+        egui::FontId::monospace(FONT_3XS), color_subtle(t.dim));
 
     // Tooltip — list upstream tells if present.
     if !regime.upstream_tells.is_empty() {

@@ -331,7 +331,7 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
             ui.label(egui::RichText::new("No signal selected")
                 .monospace().size(FONT_SM).color(t.dim));
             ui.label(egui::RichText::new("Click 🔍 next to any signal to trace its evidence.")
-                .monospace().size(FONT_XS).color(t.dim.gamma_multiply(0.7)));
+                .monospace().size(FONT_XS).color(color_subtle(t.dim)));
         });
         return;
     };
@@ -360,7 +360,7 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                     .monospace().size(FONT_XS).color(t.text));
             }
             ui.label(egui::RichText::new(format_age(now_ms(), node.t_ms))
-                .monospace().size(FONT_XS).color(t.dim.gamma_multiply(0.7)));
+                .monospace().size(FONT_XS).color(color_subtle(t.dim)));
         });
     }
 
@@ -561,7 +561,7 @@ fn draw_tree_node(
         }
         let marker = if node.children.is_empty() { "·" }
                      else if is_expanded { "▾" } else { "▸" };
-        let col_marker = if node.children.is_empty() { t.dim.gamma_multiply(0.5) } else { t.dim };
+        let col_marker = if node.children.is_empty() { color_half(t.dim) } else { t.dim };
         if KitButton::new(marker).variant(KitVariant::Ghost).size(KitSize::Xs)
             .fg(col_marker).min_size(egui::vec2(icon_sm(), icon_sm())).show(ui, t).clicked()
         {
