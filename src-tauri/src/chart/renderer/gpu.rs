@@ -3814,39 +3814,39 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
         };
 
         // Corner radii — reduced for dropdowns, moderate for buttons
-        let r = egui::CornerRadius::same(4);
-        let popup_r = egui::CornerRadius::same(6); // halved from 12
+        let r = egui::CornerRadius::same(style::radius_sm() as u8);
+        let popup_r = egui::CornerRadius::same(style::radius_md() as u8); // halved from 12
 
         // ── Widget styling ──
 
         // Inactive — subtle fill, visible border
         style.visuals.widgets.inactive.bg_fill       = color_alpha(t.toolbar_border, if is_light { 12 } else { 18 });
         style.visuals.widgets.inactive.weak_bg_fill  = egui::Color32::TRANSPARENT;
-        style.visuals.widgets.inactive.bg_stroke     = egui::Stroke::new(0.8, color_alpha(t.toolbar_border, if is_light { 50 } else { 35 }));
+        style.visuals.widgets.inactive.bg_stroke     = egui::Stroke::new(style::stroke_medium(), color_alpha(t.toolbar_border, if is_light { 50 } else { 35 }));
         style.visuals.widgets.inactive.corner_radius = r;
-        style.visuals.widgets.inactive.fg_stroke     = egui::Stroke::new(1.0, t.dim);
+        style.visuals.widgets.inactive.fg_stroke     = egui::Stroke::new(style::stroke_std(), t.dim);
 
         // Hovered — clear feedback, beveled feel
         style.visuals.widgets.hovered.bg_fill        = color_alpha(t.toolbar_border, if is_light { 35 } else { 45 });
-        style.visuals.widgets.hovered.bg_stroke      = egui::Stroke::new(1.0, color_alpha(t.accent, if is_light { 90 } else { 70 }));
+        style.visuals.widgets.hovered.bg_stroke      = egui::Stroke::new(style::stroke_std(), color_alpha(t.accent, if is_light { 90 } else { 70 }));
         style.visuals.widgets.hovered.corner_radius  = r;
-        style.visuals.widgets.hovered.fg_stroke      = egui::Stroke::new(1.0, t.text);
+        style.visuals.widgets.hovered.fg_stroke      = egui::Stroke::new(style::stroke_std(), t.text);
 
         // Active/pressed
         style.visuals.widgets.active.bg_fill         = color_alpha(t.accent, if is_light { 30 } else { 40 });
-        style.visuals.widgets.active.bg_stroke       = egui::Stroke::new(1.0, color_alpha(t.accent, ALPHA_STRONG));
+        style.visuals.widgets.active.bg_stroke       = egui::Stroke::new(style::stroke_std(), color_alpha(t.accent, ALPHA_STRONG));
         style.visuals.widgets.active.corner_radius   = r;
-        style.visuals.widgets.active.fg_stroke       = egui::Stroke::new(1.0, t.accent);
+        style.visuals.widgets.active.fg_stroke       = egui::Stroke::new(style::stroke_std(), t.accent);
 
         // Open (menu/combo open state)
         style.visuals.widgets.open.bg_fill           = color_alpha(t.accent, if is_light { 25 } else { 35 });
-        style.visuals.widgets.open.bg_stroke         = egui::Stroke::new(1.0, color_alpha(t.accent, ALPHA_ACTIVE));
+        style.visuals.widgets.open.bg_stroke         = egui::Stroke::new(style::stroke_std(), color_alpha(t.accent, ALPHA_ACTIVE));
         style.visuals.widgets.open.corner_radius     = r;
-        style.visuals.widgets.open.fg_stroke         = egui::Stroke::new(1.0, t.accent);
+        style.visuals.widgets.open.fg_stroke         = egui::Stroke::new(style::stroke_std(), t.accent);
 
         // Selection
         style.visuals.selection.bg_fill              = color_alpha(t.accent, if is_light { 25 } else { 35 });
-        style.visuals.selection.stroke               = egui::Stroke::new(1.0, t.accent);
+        style.visuals.selection.stroke               = egui::Stroke::new(style::stroke_std(), t.accent);
 
         // Popup/menu window — more visible border, reduced rounding
         style.visuals.window_fill                    = t.toolbar_bg;
@@ -4103,7 +4103,7 @@ pub(crate) fn paint_widget_preview(p: &egui::Painter, r: egui::Rect, kind: super
                     p.line_segment([
                         egui::pos2(cx + r_sz * a.cos(), cy + r_sz * a.sin()),
                         egui::pos2(cx + r_sz * a2.cos(), cy + r_sz * a2.sin())],
-                        egui::Stroke::new(2.0, col));
+                        egui::Stroke::new(style::stroke_thick(), col));
                 }
             }
         }
@@ -4139,23 +4139,23 @@ pub(crate) fn paint_widget_preview(p: &egui::Painter, r: egui::Rect, kind: super
         }
         // Compass
         W::FlowCompass => {
-            p.circle_stroke(egui::pos2(cx, cy), 10.0, egui::Stroke::new(1.0, accent));
-            p.line_segment([egui::pos2(cx, cy), egui::pos2(cx + 4.0, cy - 8.0)], egui::Stroke::new(1.5, bull));
+            p.circle_stroke(egui::pos2(cx, cy), 10.0, egui::Stroke::new(style::stroke_std(), accent));
+            p.line_segment([egui::pos2(cx, cy), egui::pos2(cx + 4.0, cy - 8.0)], egui::Stroke::new(style::stroke_bold(), bull));
             p.circle_filled(egui::pos2(cx, cy), 2.0, accent);
         }
         // 2x2 quadrant
         W::SectorRotation | W::EarningsMom => {
             p.line_segment([egui::pos2(cx, r.top() + 3.0), egui::pos2(cx, r.bottom() - 3.0)],
-                egui::Stroke::new(0.5, color_alpha(t.dim, ALPHA_MUTED)));
+                egui::Stroke::new(style::stroke_thin(), color_alpha(t.dim, ALPHA_MUTED)));
             p.line_segment([egui::pos2(r.left() + 3.0, cy), egui::pos2(r.right() - 3.0, cy)],
-                egui::Stroke::new(0.5, color_alpha(t.dim, ALPHA_MUTED)));
+                egui::Stroke::new(style::stroke_thin(), color_alpha(t.dim, ALPHA_MUTED)));
             for (dx, dy, col) in [(5.0, -5.0, bull), (-4.0, 3.0, bear), (3.0, 4.0, accent)] {
                 p.circle_filled(egui::pos2(cx + dx, cy + dy), 2.5, col);
             }
         }
         // Radar dots
         W::SignalRadar => {
-            p.circle_stroke(egui::pos2(cx, cy), 10.0, egui::Stroke::new(0.5, color_alpha(t.dim, ALPHA_MUTED)));
+            p.circle_stroke(egui::pos2(cx, cy), 10.0, egui::Stroke::new(style::stroke_thin(), color_alpha(t.dim, ALPHA_MUTED)));
             for i in 0..8 {
                 let a = (i as f32 / 8.0) * std::f32::consts::TAU;
                 let on = i % 3 != 0;
@@ -5775,9 +5775,9 @@ impl GpuCtx {
         let mut visuals = egui::Visuals::dark();
         // Subtle rounded corners on all widgets
         let r3 = egui::CornerRadius::same(style::radius_sm() as u8);
-        let r6 = egui::CornerRadius::same(6);
+        let r6 = egui::CornerRadius::same(style::radius_md() as u8);
         visuals.window_corner_radius = r6;
-        visuals.menu_corner_radius = egui::CornerRadius::same(4);
+        visuals.menu_corner_radius = egui::CornerRadius::same(style::radius_sm() as u8);
         visuals.widgets.noninteractive.corner_radius = r3;
         visuals.widgets.inactive.corner_radius = r3;
         visuals.widgets.hovered.corner_radius = r3;

@@ -9,6 +9,7 @@
 use crate::chart_renderer::gpu::*;
 use crate::chart_renderer::ui::style::{
     color_alpha, mono_2xs, mono_xs, mono_3xs,
+    stroke_thin, stroke_medium, stroke_std, stroke_bold,
     COLOR_PURPLE, COLOR_PROFIT_GREEN, COLOR_LOSS_RED,
 };
 
@@ -105,7 +106,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
                 while d < len {
                     let a = start + norm * d;
                     let b = start + norm * (d + dash_len).min(len);
-                    painter.line_segment([a, b], egui::Stroke::new(1.5, color_alpha(t.accent, 200)));
+                    painter.line_segment([a, b], egui::Stroke::new(stroke_bold(), color_alpha(t.accent, 200)));
                     d += step;
                 }
             }
@@ -114,15 +115,15 @@ pub(super) fn render_tool_previews<Py, Bx>(
         }
         // Accent crosshair
         let ch_len = 8.0;
-        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, t.accent));
-        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, t.accent));
+        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(stroke_std(), t.accent));
+        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), t.accent));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "hline" {
         // Blue horizontal line preview following mouse
         if pos.y >= rect.top()+pt && pos.y < rect.top()+pt+ch {
             painter.line_segment(
                 [egui::pos2(rect.left(), pos.y), egui::pos2(rect.left()+cw, pos.y)],
-                egui::Stroke::new(1.0, color_alpha(blue, 160)),
+                egui::Stroke::new(stroke_std(), color_alpha(blue, 160)),
             );
             // Price label on right edge
             let hp = min_p + (max_p - min_p) * (1.0 - (pos.y - rect.top() - pt) / ch);
@@ -131,8 +132,8 @@ pub(super) fn render_tool_previews<Py, Bx>(
         }
         // Blue crosshair
         let ch_len = 8.0;
-        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, blue));
-        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, blue));
+        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(stroke_std(), blue));
+        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), blue));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "hzone" {
         if let Some((_b0, p0)) = chart.pending_pt {
@@ -141,14 +142,14 @@ pub(super) fn render_tool_previews<Py, Bx>(
             painter.rect_filled(
                 egui::Rect::from_min_max(egui::pos2(rect.left(), y0.min(pos.y)), egui::pos2(rect.left()+cw, y0.max(pos.y))),
                 0.0, egui::Color32::from_rgba_unmultiplied(255, 255, 255, 15));
-            painter.line_segment([egui::pos2(rect.left(),y0),egui::pos2(rect.left()+cw,y0)], egui::Stroke::new(1.0, color_alpha(t.text,120)));
-            painter.line_segment([egui::pos2(rect.left(),pos.y),egui::pos2(rect.left()+cw,pos.y)], egui::Stroke::new(1.0, color_alpha(t.text,120)));
+            painter.line_segment([egui::pos2(rect.left(),y0),egui::pos2(rect.left()+cw,y0)], egui::Stroke::new(stroke_std(), color_alpha(t.text,120)));
+            painter.line_segment([egui::pos2(rect.left(),pos.y),egui::pos2(rect.left()+cw,pos.y)], egui::Stroke::new(stroke_std(), color_alpha(t.text,120)));
         }
         // White rectangle cursor
         let sz = 6.0;
         painter.rect_stroke(
             egui::Rect::from_center_size(pos, egui::vec2(sz * 2.0, sz * 2.0)),
-            1.0, egui::Stroke::new(1.0, egui::Color32::WHITE), egui::StrokeKind::Outside);
+            1.0, egui::Stroke::new(stroke_std(), egui::Color32::WHITE), egui::StrokeKind::Outside);
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "fibonacci" {
         // Fibonacci preview: retracement + extension levels
@@ -167,7 +168,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
                 let y = py(lp);
                 if y.is_finite() && y.abs() < 50000.0 {
                     painter.line_segment([egui::pos2(xl, y), egui::pos2(xr, y)],
-                        egui::Stroke::new(0.8, color_alpha(fib_color, 140)));
+                        egui::Stroke::new(stroke_medium(), color_alpha(fib_color, 140)));
                     painter.text(egui::pos2(xr + 4.0, y), egui::Align2::LEFT_CENTER,
                         &format!("{:.1}% {:.2}", lv * 100.0, lp), mono_2xs(), color_alpha(fib_color, 200));
                 }
@@ -185,7 +186,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
                         while dd < len {
                             let s = a + norm * dd;
                             let e = a + norm * (dd + dash_len).min(len);
-                            painter.line_segment([s, e], egui::Stroke::new(0.5, color_alpha(fib_color, 80)));
+                            painter.line_segment([s, e], egui::Stroke::new(stroke_thin(), color_alpha(fib_color, 80)));
                             dd += dash_len + gap_len;
                         }
                     }
@@ -204,8 +205,8 @@ pub(super) fn render_tool_previews<Py, Bx>(
         }
         // Gold crosshair
         let ch_len = 8.0;
-        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, fib_color));
-        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, fib_color));
+        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(stroke_std(), fib_color));
+        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), fib_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "channel" || chart.draw_tool == "fibchannel" {
         // Channel / Fib-channel preview
@@ -223,8 +224,8 @@ pub(super) fn render_tool_previews<Py, Bx>(
                 let pts = vec![egui::pos2(sx0, sy0), egui::pos2(sx1, sy1), egui::pos2(sx1, oy1), egui::pos2(sx0, oy0)];
                 painter.add(egui::Shape::convex_polygon(pts, color_alpha(chan_color, 15), egui::Stroke::NONE));
                 // Base + parallel
-                painter.line_segment([egui::pos2(sx0, sy0), egui::pos2(sx1, sy1)], egui::Stroke::new(1.5, color_alpha(chan_color, 200)));
-                painter.line_segment([egui::pos2(sx0, oy0), egui::pos2(sx1, oy1)], egui::Stroke::new(1.5, color_alpha(chan_color, 200)));
+                painter.line_segment([egui::pos2(sx0, sy0), egui::pos2(sx1, sy1)], egui::Stroke::new(stroke_bold(), color_alpha(chan_color, 200)));
+                painter.line_segment([egui::pos2(sx0, oy0), egui::pos2(sx1, oy1)], egui::Stroke::new(stroke_bold(), color_alpha(chan_color, 200)));
                 // Midline
                 let my0 = (sy0 + oy0) / 2.0; let my1 = (sy1 + oy1) / 2.0;
                 painter.line_segment([egui::pos2(sx0, my0), egui::pos2(sx1, my1)], egui::Stroke::new(0.7, color_alpha(chan_color, 80)));
@@ -234,19 +235,19 @@ pub(super) fn render_tool_previews<Py, Bx>(
                         let fy0 = sy0 + (oy0 - sy0) * ratio;
                         let fy1 = sy1 + (oy1 - sy1) * ratio;
                         painter.line_segment([egui::pos2(sx0, fy0), egui::pos2(sx1, fy1)],
-                            egui::Stroke::new(0.5, color_alpha(chan_color, 60)));
+                            egui::Stroke::new(stroke_thin(), color_alpha(chan_color, 60)));
                     }
                 }
             } else {
                 let start = egui::pos2(bx(b0), py(p0));
-                painter.line_segment([start, pos], egui::Stroke::new(1.5, color_alpha(chan_color, 180)));
+                painter.line_segment([start, pos], egui::Stroke::new(stroke_bold(), color_alpha(chan_color, 180)));
                 painter.circle_filled(start, 3.0, chan_color);
                 painter.circle_filled(pos, 3.0, chan_color);
             }
         }
         let ch_len = 8.0;
-        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, chan_color));
-        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, chan_color));
+        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(stroke_std(), chan_color));
+        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), chan_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "barmarker" {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
@@ -257,19 +258,19 @@ pub(super) fn render_tool_previews<Py, Bx>(
             // First click hint
         } else if n_pts == 1 {
             let p0 = egui::pos2(bx(chart.pending_pts[0].0), py(chart.pending_pts[0].1));
-            painter.line_segment([p0, pos], egui::Stroke::new(1.5, color_alpha(fork_color, 180)));
+            painter.line_segment([p0, pos], egui::Stroke::new(stroke_bold(), color_alpha(fork_color, 180)));
             painter.circle_filled(p0, 3.0, fork_color);
         } else if n_pts == 2 {
             let p0 = egui::pos2(bx(chart.pending_pts[0].0), py(chart.pending_pts[0].1));
             let p1 = egui::pos2(bx(chart.pending_pts[1].0), py(chart.pending_pts[1].1));
-            painter.line_segment([p0, pos], egui::Stroke::new(1.5, color_alpha(fork_color, 180)));
+            painter.line_segment([p0, pos], egui::Stroke::new(stroke_bold(), color_alpha(fork_color, 180)));
             painter.circle_filled(p0, 3.0, fork_color);
             painter.circle_filled(p1, 3.0, fork_color);
-            painter.line_segment([p1, pos], egui::Stroke::new(0.8, color_alpha(fork_color, 100)));
+            painter.line_segment([p1, pos], egui::Stroke::new(stroke_medium(), color_alpha(fork_color, 100)));
         }
         let ch_len = 8.0;
-        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, fork_color));
-        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, fork_color));
+        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(stroke_std(), fork_color));
+        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), fork_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "gannfan" {
         let fan_color = egui::Color32::from_rgb(232, 201, 107);
@@ -288,23 +289,23 @@ pub(super) fn render_tool_previews<Py, Bx>(
             painter.circle_filled(origin, 3.0, fan_color);
         }
         let ch_len = 8.0;
-        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, fan_color));
-        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, fan_color));
+        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(stroke_std(), fan_color));
+        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), fan_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "regression" {
         let reg_color = egui::Color32::from_rgb(180, 128, 232);
         if let Some((b0, _)) = chart.pending_pt {
             let x0 = bx(b0); let x1 = pos.x;
             painter.line_segment([egui::pos2(x0, rect.top()+pt), egui::pos2(x0, rect.top()+pt+ch)],
-                egui::Stroke::new(1.0, color_alpha(reg_color, 120)));
+                egui::Stroke::new(stroke_std(), color_alpha(reg_color, 120)));
             painter.line_segment([egui::pos2(x1, rect.top()+pt), egui::pos2(x1, rect.top()+pt+ch)],
-                egui::Stroke::new(1.0, color_alpha(reg_color, 120)));
+                egui::Stroke::new(stroke_std(), color_alpha(reg_color, 120)));
             painter.rect_filled(egui::Rect::from_x_y_ranges(x0.min(x1)..=x0.max(x1), (rect.top()+pt)..=(rect.top()+pt+ch)),
                 0.0, egui::Color32::from_rgba_unmultiplied(180, 128, 232, 15));
         }
         let ch_len = 8.0;
-        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, reg_color));
-        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, reg_color));
+        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(stroke_std(), reg_color));
+        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), reg_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "xabcd" {
         let xabcd_color = egui::Color32::from_rgb(255, 159, 67);
@@ -312,7 +313,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
         for i in 0..chart.pending_pts.len().saturating_sub(1) {
             let pa = egui::pos2(bx(chart.pending_pts[i].0), py(chart.pending_pts[i].1));
             let pb = egui::pos2(bx(chart.pending_pts[i+1].0), py(chart.pending_pts[i+1].1));
-            painter.line_segment([pa, pb], egui::Stroke::new(1.5, color_alpha(xabcd_color, 200)));
+            painter.line_segment([pa, pb], egui::Stroke::new(stroke_bold(), color_alpha(xabcd_color, 200)));
         }
         for (i, &(b, p)) in chart.pending_pts.iter().enumerate() {
             let pt = egui::pos2(bx(b), py(p));
@@ -323,43 +324,43 @@ pub(super) fn render_tool_previews<Py, Bx>(
         if !chart.pending_pts.is_empty() {
             let last = chart.pending_pts.last().unwrap();
             let lp = egui::pos2(bx(last.0), py(last.1));
-            painter.line_segment([lp, pos], egui::Stroke::new(1.5, color_alpha(xabcd_color, 160)));
+            painter.line_segment([lp, pos], egui::Stroke::new(stroke_bold(), color_alpha(xabcd_color, 160)));
             let next_label = labels.get(chart.pending_pts.len()).copied().unwrap_or("?");
             painter.text(pos + egui::vec2(0.0, -10.0), egui::Align2::CENTER_CENTER,
                 next_label, mono_xs(), xabcd_color);
         }
         let ch_len = 8.0;
-        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, xabcd_color));
-        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, xabcd_color));
+        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(stroke_std(), xabcd_color));
+        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), xabcd_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "vline" {
         let vl_color = egui::Color32::from_rgb(100, 160, 255);
         let x = pos.x;
         painter.line_segment([egui::pos2(x, rect.top()+pt), egui::pos2(x, rect.top()+pt+ch)],
-            egui::Stroke::new(1.0, color_alpha(vl_color, 160)));
+            egui::Stroke::new(stroke_std(), color_alpha(vl_color, 160)));
         let ch_len = 8.0;
-        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, vl_color));
-        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, vl_color));
+        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(stroke_std(), vl_color));
+        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), vl_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "ray" {
         let ray_color = egui::Color32::from_rgb(100, 200, 255);
         if let Some((b0, p0)) = chart.pending_pt {
             let start = egui::pos2(bx(b0), py(p0));
             let chart_right = rect.left() + cw;
-            painter.line_segment([start, pos], egui::Stroke::new(1.5, color_alpha(ray_color, 200)));
+            painter.line_segment([start, pos], egui::Stroke::new(stroke_bold(), color_alpha(ray_color, 200)));
             // Extended preview
             let dx = pos.x - start.x;
             if dx.abs() > 0.001 {
                 let slope = (pos.y - start.y) / dx;
                 let ext_y = pos.y + slope * (chart_right - pos.x);
-                painter.line_segment([pos, clamp_pt(egui::pos2(chart_right, ext_y))], egui::Stroke::new(1.0, color_alpha(ray_color, 120)));
+                painter.line_segment([pos, clamp_pt(egui::pos2(chart_right, ext_y))], egui::Stroke::new(stroke_std(), color_alpha(ray_color, 120)));
             }
             painter.circle_filled(start, 3.0, ray_color);
             painter.circle_filled(pos, 3.0, ray_color);
         }
         let ch_len = 8.0;
-        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, ray_color));
-        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, ray_color));
+        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(stroke_std(), ray_color));
+        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), ray_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "fibext" {
         let fibext_color = egui::Color32::from_rgb(255, 215, 0);
@@ -368,7 +369,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
         for i in 0..n_pts.saturating_sub(1) {
             let pa = egui::pos2(bx(chart.pending_pts[i].0), py(chart.pending_pts[i].1));
             let pb = egui::pos2(bx(chart.pending_pts[i+1].0), py(chart.pending_pts[i+1].1));
-            painter.line_segment([pa, pb], egui::Stroke::new(1.5, color_alpha(fibext_color, 180)));
+            painter.line_segment([pa, pb], egui::Stroke::new(stroke_bold(), color_alpha(fibext_color, 180)));
         }
         for (i, &(b, p)) in chart.pending_pts.iter().enumerate() {
             let pt = egui::pos2(bx(b), py(p));
@@ -387,7 +388,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
                 let lp = cursor_price + dir * ratio * ab_range.abs();
                 let y = py(lp);
                 if y.is_finite() && y.abs() < 50000.0 {
-                    painter.line_segment([egui::pos2(pos.x, y), egui::pos2(chart_right, y)], egui::Stroke::new(0.8, color_alpha(fibext_color, 140)));
+                    painter.line_segment([egui::pos2(pos.x, y), egui::pos2(chart_right, y)], egui::Stroke::new(stroke_medium(), color_alpha(fibext_color, 140)));
                     painter.text(egui::pos2(chart_right + 2.0, y), egui::Align2::LEFT_CENTER, &format!("{} {:.2}", label, lp), mono_3xs(), color_alpha(fibext_color, 180));
                 }
             }
@@ -396,11 +397,11 @@ pub(super) fn render_tool_previews<Py, Bx>(
         if !chart.pending_pts.is_empty() {
             let last = chart.pending_pts.last().unwrap();
             let lp = egui::pos2(bx(last.0), py(last.1));
-            painter.line_segment([lp, pos], egui::Stroke::new(1.5, color_alpha(fibext_color, 140)));
+            painter.line_segment([lp, pos], egui::Stroke::new(stroke_bold(), color_alpha(fibext_color, 140)));
         }
         let ch_len = 8.0;
-        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, fibext_color));
-        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, fibext_color));
+        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(stroke_std(), fibext_color));
+        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), fibext_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "fibtimezone" {
         let ftz_color = egui::Color32::from_rgb(255, 193, 37);
@@ -414,12 +415,12 @@ pub(super) fn render_tool_previews<Py, Bx>(
             if x < rect.left() || x > chart_right { continue; }
             let alpha = (180_u8).saturating_sub((idx as u8) * 16);
             painter.line_segment([egui::pos2(x, rect.top()+pt), egui::pos2(x, rect.top()+pt+ch)],
-                egui::Stroke::new(0.8, color_alpha(ftz_color, alpha)));
+                egui::Stroke::new(stroke_medium(), color_alpha(ftz_color, alpha)));
         }
-        painter.line_segment([pos, egui::pos2(pos.x, rect.top()+pt+ch)], egui::Stroke::new(1.5, color_alpha(ftz_color, 200)));
+        painter.line_segment([pos, egui::pos2(pos.x, rect.top()+pt+ch)], egui::Stroke::new(stroke_bold(), color_alpha(ftz_color, 200)));
         let ch_len = 8.0;
-        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, ftz_color));
-        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, ftz_color));
+        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(stroke_std(), ftz_color));
+        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), ftz_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "fibarc" {
         let farc_color = egui::Color32::from_rgb(255, 193, 37);
@@ -435,14 +436,14 @@ pub(super) fn render_tool_previews<Py, Bx>(
                     let angle = std::f32::consts::PI * (k as f32 / n_seg as f32) + std::f32::consts::FRAC_PI_2;
                     arc_pts.push(clamp_pt(egui::pos2(pos.x + r * angle.cos(), pos.y + r * angle.sin())));
                 }
-                if arc_pts.len() > 1 { painter.add(egui::Shape::line(arc_pts, egui::Stroke::new(0.8, color_alpha(farc_color, alpha)))); }
+                if arc_pts.len() > 1 { painter.add(egui::Shape::line(arc_pts, egui::Stroke::new(stroke_medium(), color_alpha(farc_color, alpha)))); }
             }
             painter.circle_filled(center, 3.0, farc_color);
             painter.line_segment([center, pos], egui::Stroke::new(0.7, color_alpha(farc_color, 100)));
         }
         let ch_len = 8.0;
-        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, farc_color));
-        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, farc_color));
+        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(stroke_std(), farc_color));
+        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), farc_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "gannbox" {
         let gb_color = egui::Color32::from_rgb(232, 201, 107);
@@ -451,17 +452,17 @@ pub(super) fn render_tool_previews<Py, Bx>(
             let xl = start.x.min(pos.x); let xr = start.x.max(pos.x);
             let yt = start.y.min(pos.y); let yb = start.y.max(pos.y);
             painter.rect_stroke(egui::Rect::from_min_max(egui::pos2(xl,yt), egui::pos2(xr,yb)),
-                0.0, egui::Stroke::new(1.5, color_alpha(gb_color, 200)), egui::StrokeKind::Outside);
+                0.0, egui::Stroke::new(stroke_bold(), color_alpha(gb_color, 200)), egui::StrokeKind::Outside);
             painter.rect_filled(egui::Rect::from_min_max(egui::pos2(xl,yt), egui::pos2(xr,yb)),
                 0.0, color_alpha(gb_color, 12));
             // Diagonals
-            painter.line_segment([egui::pos2(xl,yt), egui::pos2(xr,yb)], egui::Stroke::new(0.8, color_alpha(gb_color, 120)));
-            painter.line_segment([egui::pos2(xl,yb), egui::pos2(xr,yt)], egui::Stroke::new(0.8, color_alpha(gb_color, 120)));
+            painter.line_segment([egui::pos2(xl,yt), egui::pos2(xr,yb)], egui::Stroke::new(stroke_medium(), color_alpha(gb_color, 120)));
+            painter.line_segment([egui::pos2(xl,yb), egui::pos2(xr,yt)], egui::Stroke::new(stroke_medium(), color_alpha(gb_color, 120)));
             painter.circle_filled(start, 3.0, gb_color);
         }
         let ch_len = 8.0;
-        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, gb_color));
-        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, gb_color));
+        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(stroke_std(), gb_color));
+        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), gb_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "elliott_impulse" || chart.draw_tool == "elliott_corrective"
            || chart.draw_tool == "elliott_wxy" || chart.draw_tool == "elliott_wxyxz"
@@ -484,30 +485,30 @@ pub(super) fn render_tool_previews<Py, Bx>(
         for i in 0..chart.pending_pts.len().saturating_sub(1) {
             let pa = egui::pos2(bx(chart.pending_pts[i].0), py(chart.pending_pts[i].1));
             let pb = egui::pos2(bx(chart.pending_pts[i+1].0), py(chart.pending_pts[i+1].1));
-            painter.line_segment([pa, pb], egui::Stroke::new(1.5, color_alpha(wave_color, 200)));
+            painter.line_segment([pa, pb], egui::Stroke::new(stroke_bold(), color_alpha(wave_color, 200)));
         }
         for (i, &(b, p)) in chart.pending_pts.iter().enumerate() {
             let pt = egui::pos2(bx(b), py(p));
             painter.circle_filled(pt, 7.0, color_alpha(wave_color, 80));
-            painter.circle_stroke(pt, 7.0, egui::Stroke::new(1.0, wave_color));
+            painter.circle_stroke(pt, 7.0, egui::Stroke::new(stroke_std(), wave_color));
             painter.text(pt, egui::Align2::CENTER_CENTER, labels.get(i).copied().unwrap_or("?"), mono_3xs(), egui::Color32::WHITE);
         }
         if !chart.pending_pts.is_empty() {
             let last = chart.pending_pts.last().unwrap();
             let lp = egui::pos2(bx(last.0), py(last.1));
-            painter.line_segment([lp, pos], egui::Stroke::new(1.5, color_alpha(wave_color, 160)));
+            painter.line_segment([lp, pos], egui::Stroke::new(stroke_bold(), color_alpha(wave_color, 160)));
         }
         let ch_len = 8.0;
-        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, wave_color));
-        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, wave_color));
+        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(stroke_std(), wave_color));
+        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), wave_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "avwap" {
         let av_color = COLOR_PURPLE;
         painter.line_segment([egui::pos2(pos.x, rect.top()+pt), egui::pos2(pos.x, rect.top()+pt+ch)],
-            egui::Stroke::new(1.0, color_alpha(av_color, 120)));
+            egui::Stroke::new(stroke_std(), color_alpha(av_color, 120)));
         let ch_len = 8.0;
-        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, av_color));
-        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, av_color));
+        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(stroke_std(), av_color));
+        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), av_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "pricerange" {
         let pr_color = egui::Color32::from_rgb(116, 185, 255);
@@ -518,13 +519,13 @@ pub(super) fn render_tool_previews<Py, Bx>(
                                          egui::pos2(pos.x.max(chart.pending_pt.map(|_| pos.x).unwrap_or(pos.x)), y0.max(pos.y))),
                 0.0, egui::Color32::from_rgba_unmultiplied(116, 185, 255, 20));
             painter.line_segment([egui::pos2(rect.left(), y0), egui::pos2(rect.left()+cw, y0)],
-                egui::Stroke::new(1.0, color_alpha(pr_color, 160)));
+                egui::Stroke::new(stroke_std(), color_alpha(pr_color, 160)));
             painter.line_segment([egui::pos2(rect.left(), pos.y), egui::pos2(rect.left()+cw, pos.y)],
-                egui::Stroke::new(1.0, color_alpha(pr_color, 160)));
+                egui::Stroke::new(stroke_std(), color_alpha(pr_color, 160)));
         }
         let ch_len = 8.0;
-        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, pr_color));
-        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, pr_color));
+        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(stroke_std(), pr_color));
+        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), pr_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "riskreward" {
         let rr_color = COLOR_PROFIT_GREEN;
@@ -537,9 +538,9 @@ pub(super) fn render_tool_previews<Py, Bx>(
             let chart_right = rect.left() + cw;
             let ex = bx(chart.pending_pts[0].0);
             painter.line_segment([egui::pos2(ex, entry_y), egui::pos2(chart_right, entry_y)],
-                egui::Stroke::new(1.5, color_alpha(rr_color, 200)));
+                egui::Stroke::new(stroke_bold(), color_alpha(rr_color, 200)));
             painter.line_segment([egui::pos2(ex, pos.y), egui::pos2(chart_right, pos.y)],
-                egui::Stroke::new(1.0, color_alpha(COLOR_LOSS_RED, 160)));
+                egui::Stroke::new(stroke_std(), color_alpha(COLOR_LOSS_RED, 160)));
             let risk = (py(chart.pending_pts[0].1) - pos.y).abs();
             let stop_side = pos.y.min(entry_y);
             painter.rect_filled(egui::Rect::from_min_max(egui::pos2(ex, stop_side), egui::pos2(chart_right, stop_side + risk)),
@@ -555,9 +556,9 @@ pub(super) fn render_tool_previews<Py, Bx>(
                 0.0, egui::Color32::from_rgba_unmultiplied(231, 76, 60, 25));
             painter.rect_filled(egui::Rect::from_min_max(egui::pos2(ex, entry_y.min(pos.y)), egui::pos2(chart_right, entry_y.max(pos.y))),
                 0.0, egui::Color32::from_rgba_unmultiplied(46, 204, 113, 25));
-            painter.line_segment([egui::pos2(ex, entry_y), egui::pos2(chart_right, entry_y)], egui::Stroke::new(1.5, color_alpha(rr_color, 200)));
-            painter.line_segment([egui::pos2(ex, stop_y), egui::pos2(chart_right, stop_y)], egui::Stroke::new(1.0, color_alpha(COLOR_LOSS_RED, 160)));
-            painter.line_segment([egui::pos2(ex, pos.y), egui::pos2(chart_right, pos.y)], egui::Stroke::new(1.0, color_alpha(rr_color, 160)));
+            painter.line_segment([egui::pos2(ex, entry_y), egui::pos2(chart_right, entry_y)], egui::Stroke::new(stroke_bold(), color_alpha(rr_color, 200)));
+            painter.line_segment([egui::pos2(ex, stop_y), egui::pos2(chart_right, stop_y)], egui::Stroke::new(stroke_std(), color_alpha(COLOR_LOSS_RED, 160)));
+            painter.line_segment([egui::pos2(ex, pos.y), egui::pos2(chart_right, pos.y)], egui::Stroke::new(stroke_std(), color_alpha(rr_color, 160)));
             if risk_h > 0.0 {
                 let reward_h = (entry_y - pos.y).abs();
                 let rr = reward_h / risk_h;
@@ -566,8 +567,8 @@ pub(super) fn render_tool_previews<Py, Bx>(
             }
         }
         let ch_len = 8.0;
-        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(1.0, rr_color));
-        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(1.0, rr_color));
+        painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(stroke_std(), rr_color));
+        painter.line_segment([pos - egui::vec2(0.0, ch_len), pos + egui::vec2(0.0, ch_len)], egui::Stroke::new(stroke_std(), rr_color));
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     }
 }
