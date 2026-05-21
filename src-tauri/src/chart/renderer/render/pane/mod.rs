@@ -24,6 +24,11 @@
 //! the decision to defer it indefinitely.
 
 mod core;
+mod deferred;
+mod pane_context_menu;
+mod keyboard_shortcuts;
+mod tool_previews;
+mod signal_gauges;
 
 // Re-export the public entry points so existing call sites (`use
 // crate::chart::renderer::render::pane::{render_toolbar, draw_chart}`)
