@@ -1149,14 +1149,14 @@ pub fn dialog_window_themed(ctx: &egui::Context, id: &str, pos: egui::Pos2, widt
             offset: [0, 8],
             blur: 28,
             spread: 2,
-            color: shadow_color_alpha(t, 80),
+            color: shadow_color_alpha(&t, 80),
         }
     } else if st.card_floating_shadow {
         egui::epaint::Shadow {
             offset: [0, 3],
             blur: 8,
             spread: 0,
-            color: shadow_color_alpha(t, st.card_floating_shadow_alpha),
+            color: shadow_color_alpha(&t, st.card_floating_shadow_alpha),
         }
     } else {
         egui::epaint::Shadow::NONE
@@ -1196,7 +1196,7 @@ pub fn dialog_header_colored(ui: &mut egui::Ui, title: &str, dim: Color32, heade
                 ui.label(RichText::new(title).monospace().size(font_lg()).strong().color(text_col));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let t = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
-                    if crate::ui_kit::widgets::Button::close().show(ui, t).clicked() {
+                    if crate::ui_kit::widgets::Button::close().show(ui, &t).clicked() {
                         closed = true;
                     }
                 });
@@ -1413,7 +1413,7 @@ pub fn segmented_control(
 #[inline]
 pub fn close_button(ui: &mut egui::Ui, _dim: Color32) -> bool {
     let t = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
-    crate::ui_kit::widgets::Button::close().show(ui, t).clicked()
+    crate::ui_kit::widgets::Button::close().show(ui, &t).clicked()
 }
 
 // panel_header / panel_header_sub removed — use ui_kit::widgets::PanelHeader instead.
@@ -1473,7 +1473,7 @@ pub fn stat_row(ui: &mut egui::Ui, label: &str, value: &str, label_color: Color3
 pub fn paint_tooltip_shadow(painter: &egui::Painter, rect: egui::Rect, radius: f32) {
     let t = crate::ui_kit::widgets::theme::active_theme(painter.ctx());
     let shadow_rect = rect.translate(egui::vec2(shadow_offset(), shadow_offset()));
-    painter.rect_filled(shadow_rect, radius, shadow_color_alpha(t, shadow_alpha()));
+    painter.rect_filled(shadow_rect, radius, shadow_color_alpha(&t, shadow_alpha()));
 }
 
 /// Theme-aware drop shadow behind a painter-based tooltip rect.

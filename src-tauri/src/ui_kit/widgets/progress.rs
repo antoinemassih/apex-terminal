@@ -57,7 +57,7 @@ impl Progress {
 impl Widget for Progress {
     fn ui(self, ui: &mut Ui) -> Response {
         let theme = super::theme::active_theme(ui.ctx());
-        self.show(ui, theme)
+        self.show(ui, &theme)
     }
 }
 

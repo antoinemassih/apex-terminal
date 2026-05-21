@@ -101,9 +101,10 @@ impl<'a> FloatingPaneChrome<'a> {
 
     /// Render header → body → optional footer.
     pub fn show<B: FnOnce(&mut Ui)>(self, ui: &mut Ui, body: B) -> FloatingPaneChromeResponse {
+        let _theme_owned;
         let theme: &Theme = match self.theme {
             Some(t) => t,
-            None => crate::ui_kit::widgets::theme::active_theme(ui.ctx()),
+            None => { _theme_owned = crate::ui_kit::widgets::theme::active_theme(ui.ctx()); &_theme_owned },
         };
         let bg       = theme.toolbar_bg;
         let border_c = color_alpha(theme.toolbar_border, alpha_line());

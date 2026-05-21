@@ -167,7 +167,7 @@ impl<'a> PaneIndicatorChip<'a> {
     /// Render. Returns `(label_response, x_was_clicked)`.
     pub fn show(self, ui: &mut Ui) -> (Response, bool) {
         let theme = active_theme(ui.ctx());
-        let r = Tag::new(self.label).tone(TagTone::Accent).closable(true).show(ui, theme);
+        let r = Tag::new(self.label).tone(TagTone::Accent).closable(true).show(ui, &theme);
         (r.response, r.closed)
     }
 }
@@ -984,7 +984,8 @@ impl<'a> FloatingOrderPaneChrome<'a> {
 
             // Armed toggle
             let armed_icon  = if armed { Icon::SHIELD_WARNING } else { Icon::PLAY };
-            let armed_theme = theme_ref.unwrap_or_else(|| crate::ui_kit::widgets::theme::active_theme(ui.ctx()));
+            let _armed_theme_owned;
+            let armed_theme: &super::super::super::gpu::Theme = match theme_ref { Some(t) => t, None => { _armed_theme_owned = crate::ui_kit::widgets::theme::active_theme(ui.ctx()); &_armed_theme_owned } };
             let armed_resp = KitButton::icon(armed_icon)
                 .variant(Variant::Toggle)
                 .active(armed)
@@ -1019,8 +1020,8 @@ impl<'a> FloatingOrderPaneChrome<'a> {
                 ui.add_space(gap_sm());
 
                 // Close button
-                let theme_for_close: &super::super::super::gpu::Theme = self.theme_ref
-                    .unwrap_or_else(|| crate::ui_kit::widgets::theme::active_theme(ui.ctx()));
+                let _theme_for_close_owned;
+                let theme_for_close: &super::super::super::gpu::Theme = match self.theme_ref { Some(t) => t, None => { _theme_for_close_owned = crate::ui_kit::widgets::theme::active_theme(ui.ctx()); &_theme_for_close_owned } };
                 let close_resp = KitButton::icon(Icon::X)
                     .variant(Variant::Ghost)
                     .placement(IconPlacement::ChartChrome)

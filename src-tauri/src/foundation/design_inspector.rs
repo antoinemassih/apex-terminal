@@ -759,7 +759,7 @@ impl Inspector {
                                 ui.label(RichText::new(fam).monospace().size(11.0).strong()
                                     .color(Color32::from_rgb(166, 227, 161)));
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if KitButton::icon(Icon::X).variant(KitVariant::Ghost).show(ui, crate::ui_kit::widgets::theme::active_theme(ui.ctx())).clicked() {
+                                    if KitButton::icon(Icon::X).variant(KitVariant::Ghost).show(ui, &crate::ui_kit::widgets::theme::active_theme(ui.ctx())).clicked() {
                                         // Deselect — we can't mutate self here directly,
                                         // so we use a flag communicated via the status.
                                         // We'll handle deselect outside: set a sentinel.

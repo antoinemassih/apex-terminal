@@ -139,8 +139,11 @@ impl<'a> PanelHeaderWithClose<'a> {
         title_actions: impl FnOnce(&mut Ui),
         actions: impl FnOnce(&mut Ui),
     ) -> bool {
-        let theme = self.theme_ref
-            .unwrap_or_else(|| crate::ui_kit::widgets::theme::active_theme(ui.ctx()));
+        let _theme_fallback;
+        let theme: &super::super::super::gpu::Theme = match self.theme_ref {
+            Some(t) => t,
+            None => { _theme_fallback = crate::ui_kit::widgets::theme::active_theme(ui.ctx()); &_theme_fallback }
+        };
         let mut h = super::super::super::ui::panels::kit::PanelHeader::new(self.title);
         if let Some(w) = self.watchlist_ref {
             h = h.watchlist(w);
@@ -182,7 +185,7 @@ impl<'a> DialogHeaderWithClose<'a> {
         let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
         crate::ui_kit::widgets::Header::dialog(self.title)
             .closable(true)
-            .show(ui, theme)
+            .show(ui, &theme)
             .close_clicked
     }
 }

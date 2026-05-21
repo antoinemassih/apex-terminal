@@ -41,6 +41,6 @@ impl<'a> Link<'a> {
 impl<'a> Widget for Link<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let theme = super::theme::active_theme(ui.ctx());
-        self.show(ui, theme)
+        self.show(ui, &theme)
     }
 }

@@ -101,10 +101,13 @@ pub fn active_theme_idx(ctx: &egui::Context) -> usize {
        .unwrap_or(0)
 }
 
-/// Convenience: returns &Theme for the active idx via THEMES array.
-pub fn active_theme(ctx: &egui::Context) -> &'static crate::chart_renderer::gpu::Theme {
-    let idx = active_theme_idx(ctx).min(crate::chart_renderer::gpu::THEMES.len() - 1);
-    &crate::chart_renderer::gpu::THEMES[idx]
+/// Returns an owned `Theme` for the active idx via the live theme registry.
+/// Reads from `live_themes()` (the `OnceLock<RwLock<Vec<Theme>>>`) so
+/// design-mode edits are reflected immediately without a restart.
+pub fn active_theme(ctx: &egui::Context) -> crate::chart_renderer::gpu::Theme {
+    let n = crate::chart_renderer::gpu::live_theme_count();
+    let idx = active_theme_idx(ctx).min(n.saturating_sub(1));
+    crate::chart_renderer::gpu::get_theme(idx)
 }
 
 impl<T: ComponentTheme + ?Sized> ComponentTheme for &T {

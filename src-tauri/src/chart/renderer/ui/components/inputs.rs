@@ -8,7 +8,7 @@ use crate::ui_kit::widgets::Button as KitButton;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 #[inline(always)]
-fn ambient_theme(ctx: &egui::Context) -> &'static crate::chart_renderer::gpu::Theme {
+fn ambient_theme(ctx: &egui::Context) -> crate::chart_renderer::gpu::Theme {
     crate::ui_kit::widgets::theme::active_theme(ctx)
 }
 
@@ -48,7 +48,7 @@ pub fn search_input(
                 .text_color(accent)
                 .placeholder(placeholder)
                 .width(avail - 36.0)
-                .show(ui, ambient_theme(ui.ctx()));
+                .show(ui, &ambient_theme(ui.ctx()));
             resp_out = Some(r.response);
         });
     });
@@ -82,7 +82,7 @@ pub fn compact_stepper(
         let mut mk_btn = |ui: &mut Ui, sym: &str| -> Response {
             KitButton::new(sym).variant(KitVariant::Ghost).size(KitSize::Xs)
                 .fg(dim).stroke(stroke).min_size(Vec2::new(14.0, 14.0))
-                .show(ui, theme)
+                .show(ui, &theme)
         };
 
         if mk_btn(ui, "-").clicked() { delta = -1; }
@@ -124,7 +124,7 @@ pub fn numeric_stepper(
         let mut mk_btn = |ui: &mut Ui, sym: &str| -> Response {
             KitButton::new(sym).variant(KitVariant::Ghost).size(KitSize::Sm)
                 .fg(dim).stroke(stroke).min_size(Vec2::new(18.0, 18.0))
-                .show(ui, theme)
+                .show(ui, &theme)
         };
 
         if mk_btn(ui, "-").clicked() { delta = -1; }
@@ -223,7 +223,7 @@ pub fn text_input_field(
             .frameless(true)
             .placeholder(placeholder)
             .full_width()
-            .show(ui, ambient_theme(ui.ctx()));
+            .show(ui, &ambient_theme(ui.ctx()));
         resp_opt = Some(r.response);
     });
     resp_opt.unwrap_or_else(|| ui.label(""))
@@ -276,7 +276,7 @@ pub fn radio_button_row<T: PartialEq + Clone>(
             let active = *current_val == *value;
             let resp = KitButton::toggle(*label, active).size(KitSize::Sm)
                 .min_size(egui::vec2(0.0, row_height_compact()))
-                .show(ui, theme);
+                .show(ui, &theme);
             if resp.clicked() && !active {
                 *current_val = value.clone();
                 changed = true;

@@ -427,7 +427,7 @@ pub(crate) fn render(
     _visible_count: usize, pane_rects: &[egui::Rect], theme_idx: usize,
     _watchlist: &mut Watchlist,
 ) {
-    let t = &THEMES[theme_idx];
+    let t_owned = crate::chart_renderer::gpu::get_theme(theme_idx); let t = &t_owned;
     if pane_rects.is_empty() { return; }
     let rect = pane_rects[0];
 

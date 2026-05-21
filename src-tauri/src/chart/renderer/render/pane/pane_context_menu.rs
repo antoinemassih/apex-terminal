@@ -49,7 +49,8 @@ pub(super) fn pane_context_menu<F>(
         let click_price = raw_click_price.clamp(min_p, max_p);
         let click_pos = ui.input(|i| i.pointer.latest_pos());
 
-        let t = active_theme(ui.ctx());
+        let t_owned = active_theme(ui.ctx());
+        let t = &t_owned;
         // ── View controls (top) ──
         if KitButton::new(&*format!("{} Reset View", Icon::ARROW_COUNTER_CLOCKWISE)).variant(KitVariant::Ghost).show(ui, t).clicked() {
             chart.auto_scroll = true; chart.price_lock = None;

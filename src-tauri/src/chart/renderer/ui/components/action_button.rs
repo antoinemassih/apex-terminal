@@ -49,7 +49,7 @@ pub fn big_action_btn(
         .tint(if matches!(tier, ActionTier::Primary) { accent } else if matches!(tier, ActionTier::Destructive) { bear } else { accent })
         .disabled(disabled)
         .min_size(egui::vec2(0.0, height))
-        .show(ui, theme)
+        .show(ui, &theme)
 }
 
 // ─── SidePaneActionButton ────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ pub fn side_pane_action_btn(
     let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
     KitButton::new(display.as_str()).variant(KitVariant::Secondary).size(KitSize::Sm)
         .tint(accent).min_size(egui::vec2(0.0, row_height_default()))
-        .show(ui, theme)
+        .show(ui, &theme)
 }
 
 // ─── Brand CTA ────────────────────────────────────────────────────────────────
@@ -94,5 +94,5 @@ pub fn brand_cta_button(
         .fill(brand_color).fg(fg_color)
         .stroke(Stroke::new(stroke_thin(), color_alpha(brand_color, alpha_active())))
         .disabled(disabled).min_size(egui::vec2(0.0, height))
-        .show(ui, theme)
+        .show(ui, &theme)
 }

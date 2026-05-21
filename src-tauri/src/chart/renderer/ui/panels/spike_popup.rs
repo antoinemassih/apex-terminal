@@ -234,7 +234,7 @@ pub fn draw(ctx: &egui::Context, screen_rect: egui::Rect) {
                     .fill(color_alpha(t.toolbar_bg, alpha_solid()))
                     .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_muted())))
                     .corner_radius(radius_sm())
-                    .shadow(shadow_tooltip_themed(t))
+                    .shadow(shadow_tooltip_themed(&t))
                     .inner_margin(8.0)
                     .show(ui, |ui| {
                         ui.set_min_size(egui::vec2(TOAST_W - 16.0, TOAST_H - 16.0));
@@ -347,7 +347,7 @@ fn small_btn(ui: &mut egui::Ui, label: &str) -> egui::Response {
     let t = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
     KitButton::new(label).variant(KitVariant::Ghost).size(KitSize::Xs)
         .min_size(egui::vec2(0.0, 18.0))
-        .show(ui, t)
+        .show(ui, &t)
 }
 
 fn shorten_source(url: &str) -> String {

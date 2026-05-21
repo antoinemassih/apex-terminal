@@ -96,7 +96,7 @@ impl<'a> DatePicker<'a> {
 impl<'a> Widget for DatePicker<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let theme = super::theme::active_theme(ui.ctx());
-        self.show(ui, theme).response
+        self.show(ui, &theme).response
     }
 }
 

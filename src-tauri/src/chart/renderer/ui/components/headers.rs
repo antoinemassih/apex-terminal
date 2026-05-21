@@ -73,7 +73,7 @@ pub fn panel_header(
         ui.add(SectionLabel::new(title).color(title_color));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
-            if KitButton::close().placement(IconPlacement::PanelHeader).show(ui, theme).clicked() {
+            if KitButton::close().placement(IconPlacement::PanelHeader).show(ui, &theme).clicked() {
                 *open = false;
                 closed = true;
             }

@@ -10,7 +10,7 @@ use crate::ui_kit::widgets::Button as KitButton;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 #[inline(always)]
-fn ambient(ctx: &egui::Context) -> &'static super::super::super::gpu::Theme {
+fn ambient(ctx: &egui::Context) -> super::super::super::gpu::Theme {
     crate::ui_kit::widgets::theme::active_theme(ctx)
 }
 
@@ -53,7 +53,7 @@ impl<'a> Widget for MenuTrigger<'a> {
         // Button::toolbar (status=true, Ghost, Sm) with active state matches open/closed toggle.
         KitButton::toolbar(self.label).active(self.open).tint(accent)
             .min_size(egui::vec2(0.0, row_height_compact()))
-            .show(ui, amb)
+            .show(ui, &amb)
     }
 }
 
@@ -141,7 +141,7 @@ impl<'a> Widget for MenuItem<'a> {
             let min_w = ui.available_width().max(80.0);
             let r = KitButton::new(display.as_str()).variant(KitVariant::Ghost).size(KitSize::Sm)
                 .fg(dim).min_size(egui::vec2(min_w, row_height_compact()))
-                .full_width(true).show(ui, amb);
+                .full_width(true).show(ui, &amb);
             if let Some(sc) = self.shortcut {
                 let sc_color = color_alpha(dim, alpha_muted());
                 let max_x = r.rect.right() - gap_sm();
@@ -203,6 +203,6 @@ impl<'a> Widget for SidePaneAction<'a> {
         };
         KitButton::new(display.as_str()).variant(KitVariant::Secondary).size(KitSize::Sm)
             .tint(accent).min_size(egui::vec2(0.0, row_height_default()))
-            .show(ui, amb)
+            .show(ui, &amb)
     }
 }

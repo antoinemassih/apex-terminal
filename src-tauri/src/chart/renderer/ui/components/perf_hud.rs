@@ -8,7 +8,7 @@ use egui::{Color32, RichText};
 use super::super::style::{font_xs, font_sm, color_alpha, ALPHA_SOLID, radius_sm, stroke_std};
 
 #[inline(always)]
-fn ambient(ctx: &egui::Context) -> &'static crate::chart_renderer::gpu::Theme {
+fn ambient(ctx: &egui::Context) -> crate::chart_renderer::gpu::Theme {
     crate::ui_kit::widgets::theme::active_theme(ctx)
 }
 
@@ -33,7 +33,7 @@ fn sparkline(ui: &mut egui::Ui, values: &[f64], width: f32, height: f32) {
         .bars()
         .bar_color(&color_fn)
         .size(width, height)
-        .show(ui, theme);
+        .show(ui, &theme);
 }
 
 /// Toggle-able perf overlay. Call once per frame after all panels.

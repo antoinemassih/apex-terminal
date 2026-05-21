@@ -464,6 +464,10 @@ pub(crate) fn get_all_themes() -> Vec<Theme> {
     live_themes().read().unwrap().clone()
 }
 
+pub(crate) fn live_theme_count() -> usize {
+    live_themes().read().unwrap().len()
+}
+
 const PRESET_COLORS: &[&str] = &["#4a9eff","#e74c3c","#2ecc71","#f39c12","#9b59b6","#1abc9c","#e67e22","#3498db","#e91e63","#00bcd4","#8bc34a","#ff5722","#607d8b","#795548","#cddc39","#ff9800"];
 
 // ─── Simulation constants ────────────────────────────────────────────────────

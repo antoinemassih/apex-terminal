@@ -472,7 +472,7 @@ fn section_delete_button(ui: &mut Ui, color: Color32) -> bool {
     let glyph = Icon::X;
     let size = Vec2::new(16.0, 16.0);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
-    Tooltip::new("Delete section").show(ui, &resp, active_theme(ui.ctx()));
+    Tooltip::new("Delete section").show(ui, &resp, &active_theme(ui.ctx()));
     let draw_color = if resp.hovered() {
         ui.painter()
             .rect_filled(rect, 2.0, color_alpha(color, 24));
@@ -810,7 +810,7 @@ mod tests {
 
     /// Returns the active theme from a fresh egui context (falls back to index 0
     /// when no theme is stashed, which is correct for headless tests).
-    fn theme() -> &'static Theme {
+    fn theme() -> Theme {
         super::super::theme::active_theme(&egui::Context::default())
     }
 
@@ -826,7 +826,7 @@ mod tests {
             let resp = PanelSection::new("ACTIVE")
                 .count(0)
                 .collapsible(&mut *e)
-                .show(ui, theme, |_ui, _t| {
+                .show(ui, &theme, |_ui, _t| {
                     body_called.set(true);
                 });
             assert!(resp.body.is_none(), "body should be None when collapsed");
@@ -848,7 +848,7 @@ mod tests {
             let resp = PanelSection::new("ACTIVE")
                 .count(3)
                 .collapsible(&mut *e)
-                .show(ui, theme, |_ui, _t| {
+                .show(ui, &theme, |_ui, _t| {
                     body_called.set(true);
                 });
             assert!(resp.body.is_some(), "body should be Some when expanded");
@@ -866,7 +866,7 @@ mod tests {
             let resp = PanelSection::new("WATCHLIST")
                 .count(0)
                 .delete_when_empty()
-                .show(ui, theme, |_ui, _t| {});
+                .show(ui, &theme, |_ui, _t| {});
             // No click was issued — but the field must exist and be
             // observable as false (proves the field is wired through).
             assert!(!resp.delete_clicked);
@@ -879,7 +879,7 @@ mod tests {
                 .count(5)
                 .delete_when_empty()
                 .action("Clear", Tone::Danger)
-                .show(ui, theme, |_ui, _t| {});
+                .show(ui, &theme, |_ui, _t| {});
             assert!(!resp.delete_clicked, "delete must not fire when count > 0");
         });
     }
@@ -904,7 +904,7 @@ mod tests {
                 let resp = PanelSection::new("WATCHLIST")
                     .count(1)
                     .collapsible(&mut *e)
-                    .show(ui, theme, |_ui, _t| {});
+                    .show(ui, &theme, |_ui, _t| {});
                 header_rect_cell.set(Some(resp.header_response.rect));
             });
         });
@@ -934,7 +934,7 @@ mod tests {
                 let resp = PanelSection::new("WATCHLIST")
                     .count(1)
                     .collapsible(&mut *e)
-                    .show(ui, theme, |_ui, _t| {});
+                    .show(ui, &theme, |_ui, _t| {});
                 chevron_clicked_cell.set(resp.chevron_clicked);
             });
         });

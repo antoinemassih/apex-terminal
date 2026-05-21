@@ -35,7 +35,7 @@ pub fn show(ctx: &egui::Context) {
     let resp = SidePanelShell::new("design_mode_panel", "DESIGN MODE")
         .width(Width::Medium)
         .resizable(300.0..=450.0)
-        .show(ctx, t, |ui, t| {
+        .show(ctx, &t, |ui, t| {
             ui.label(
                 egui::RichText::new("Every change affects ALL widgets globally")
                     .monospace()

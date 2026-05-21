@@ -23,7 +23,7 @@ use crate::ui_kit::widgets::Button as KitButton;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 #[inline(always)]
-fn ambient(ctx: &egui::Context) -> &'static super::super::super::gpu::Theme {
+fn ambient(ctx: &egui::Context) -> super::super::super::gpu::Theme {
     crate::ui_kit::widgets::theme::active_theme(ctx)
 }
 
@@ -125,7 +125,7 @@ impl<'a> TimeframeSelector<'a> {
             let active = i == self.active_idx;
             let resp = KitButton::toggle(label, active).size(KitSize::Sm)
                 .min_size(egui::vec2(0.0, row_height_default()))
-                .show(ui, theme);
+                .show(ui, &theme);
             if resp.clicked() && i != self.active_idx {
                 clicked = Some(i);
             }

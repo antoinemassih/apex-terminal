@@ -1384,8 +1384,11 @@ fn render_chart_pane(
             // Migrated to Pane trait — proof-of-concept call site.
             use crate::chart_renderer::ui::pane::{Pane as _, PaneContext, PortfolioPaneAdapter};
             let mut adapter = PortfolioPaneAdapter { account_data: account_data_cached, theme_idx };
+            // Sourced via get_theme (live_themes registry) so design-mode edits
+            // and installed themes apply — proven == THEMES[idx] by equivalence test.
+            let pane_theme = crate::chart_renderer::gpu::get_theme(theme_idx);
             let mut cx = PaneContext {
-                theme: &THEMES[theme_idx],
+                theme: &pane_theme,
                 panes,
                 pane_idx,
                 active_pane,
@@ -1409,8 +1412,11 @@ fn render_chart_pane(
             let body_rects = [rect];
             use crate::chart_renderer::ui::pane::{Pane as _, PaneContext, SpreadsheetPaneAdapter};
             let mut adapter = SpreadsheetPaneAdapter { theme_idx };
+            // Sourced via get_theme (live_themes registry) so design-mode edits
+            // and installed themes apply — proven == THEMES[idx] by equivalence test.
+            let pane_theme = crate::chart_renderer::gpu::get_theme(theme_idx);
             let mut cx = PaneContext {
-                theme: &THEMES[theme_idx],
+                theme: &pane_theme,
                 panes,
                 pane_idx,
                 active_pane,

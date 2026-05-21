@@ -62,7 +62,7 @@ impl<'a> PanelLoading<'a> {
         };
         ui.with_layout(layout, |ui| {
             ui.spacing_mut().item_spacing.x = gap_sm();
-            Spinner::new().size(Size::Sm).show(ui, comp_theme);
+            Spinner::new().size(Size::Sm).show(ui, &comp_theme);
             if let Some(r) = self.reason {
                 ui.label(
                     RichText::new(r)

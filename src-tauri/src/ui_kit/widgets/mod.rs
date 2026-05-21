@@ -275,7 +275,7 @@ pub fn delete_button(ui: &mut Ui) -> bool {
         .variant(tokens::Variant::Danger)
         .placement(IconPlacement::ListRow)
         .tone_destructive()
-        .show(ui, theme::active_theme(ui.ctx()))
+        .show(ui, &theme::active_theme(ui.ctx()))
         .on_hover_text("Delete")
         .clicked()
 }

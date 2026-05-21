@@ -40,7 +40,7 @@ pub fn show_text_note_editor(c: TextNoteCtx<'_>) -> TextNoteOutput {
                 .proportional(true)
                 .text_color(egui::Color32::WHITE)
                 .width(200.0)
-                .show(ui, active_theme(c.ctx));
+                .show(ui, &active_theme(c.ctx));
             r.request_focus(c.ctx);
             if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 if c.text_buf.is_empty() {

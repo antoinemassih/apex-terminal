@@ -510,7 +510,7 @@ impl<'a> Widget for Button<'a> {
         // call sites compiling; prefer `.show(ui, theme)` when you have
         // an explicit theme handle.
         let theme = super::theme::active_theme(ui.ctx());
-        self.show(ui, theme)
+        self.show(ui, &theme)
     }
 }
 

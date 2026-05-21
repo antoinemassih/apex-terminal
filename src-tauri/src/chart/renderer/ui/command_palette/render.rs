@@ -138,7 +138,8 @@ pub(super) fn draw_preview(ui: &mut egui::Ui, t: &Theme, selected: Option<&(Stri
         preview_hint(ui, "LLM-driven layout reorganization.\nPlaceholder — see docs/dynamic-gemma-ui.md.", t);
     } else if id.starts_with("theme:") {
         let name = id.trim_start_matches("theme:");
-        if let Some(th) = THEMES.iter().find(|th| th.name.eq_ignore_ascii_case(name)) {
+        let live_themes = crate::chart_renderer::gpu::get_all_themes();
+        if let Some(th) = live_themes.iter().find(|th| th.name.eq_ignore_ascii_case(name)) {
             draw_theme_swatches(ui, th);
         }
     } else if id.starts_with("widget:") {

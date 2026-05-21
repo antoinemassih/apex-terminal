@@ -22,7 +22,7 @@ use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::SearchInput;
 
 #[inline(always)]
-fn ambient(ctx: &egui::Context) -> &'static super::super::super::gpu::Theme {
+fn ambient(ctx: &egui::Context) -> super::super::super::gpu::Theme {
     crate::ui_kit::widgets::theme::active_theme(ctx)
 }
 

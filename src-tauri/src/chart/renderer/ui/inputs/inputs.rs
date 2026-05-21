@@ -8,7 +8,7 @@ use super::super::style::*;
 use super::super::super::gpu::Theme;
 
 #[inline(always)]
-fn ambient(ctx: &egui::Context) -> &'static Theme {
+fn ambient(ctx: &egui::Context) -> Theme {
     crate::ui_kit::widgets::theme::active_theme(ctx)
 }
 

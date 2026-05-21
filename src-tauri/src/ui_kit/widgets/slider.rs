@@ -68,7 +68,7 @@ impl<'a, T: egui::emath::Numeric> Slider<'a, T> {
 impl<'a, T: egui::emath::Numeric> Widget for Slider<'a, T> {
     fn ui(self, ui: &mut Ui) -> Response {
         let theme = super::theme::active_theme(ui.ctx());
-        self.show(ui, theme)
+        self.show(ui, &theme)
     }
 }
 

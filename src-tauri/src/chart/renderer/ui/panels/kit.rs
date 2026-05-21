@@ -644,7 +644,7 @@ pub fn panel_action_btn(ui: &mut Ui, label: &str, color: Color32) -> bool {
     let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
     Button::new(label).variant(Variant::Ghost).size(KitSize::Xs)
         .fg(color).min_size(Vec2::new(0.0, 16.0))
-        .show(ui, theme).clicked()
+        .show(ui, &theme).clicked()
 }
 
 // ── PanelEmpty ───────────────────────────────────────────────────────────────

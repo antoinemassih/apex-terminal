@@ -25,7 +25,7 @@ use egui::{Color32, FontFamily, Response, RichText, Ui, Widget};
 use super::super::style::*;
 use crate::chart::renderer::ui::foundation::text_style::TextStyle;
 #[inline(always)]
-fn ambient(ctx: &egui::Context) -> &'static super::super::super::gpu::Theme {
+fn ambient(ctx: &egui::Context) -> super::super::super::gpu::Theme {
     crate::ui_kit::widgets::theme::active_theme(ctx)
 }
 

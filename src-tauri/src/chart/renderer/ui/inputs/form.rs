@@ -22,7 +22,7 @@ type Theme = crate::chart_renderer::gpu::Theme;
 /// Resolve the ambient theme stashed by the render loop. Used by `Widget`
 /// impls and `show()` methods that don't receive a `&Theme` argument, so we
 /// never have to fall back to `&THEMES[0]` (which would break light themes).
-fn ambient_theme(ctx: &egui::Context) -> &'static Theme {
+fn ambient_theme(ctx: &egui::Context) -> Theme {
     crate::ui_kit::widgets::theme::active_theme(ctx)
 }
 
@@ -700,7 +700,7 @@ impl<'a> MeridienOrderTicket<'a> {
                         .corner_radius(0.0)
                         .placement(crate::ui_kit::widgets::icon_placement::IconPlacement::ListRow));
                     Tooltip::new("More options")
-                        .show(ui, &caret, ambient_theme(ui.ctx()));
+                        .show(ui, &caret, &ambient_theme(ui.ctx()));
                     let popup_id = ui.make_persistent_id(("pill_more", id_salt));
                     if caret.clicked() {
                         ui.memory_mut(|m| m.toggle_popup(popup_id));
@@ -870,7 +870,7 @@ impl<'a> IndicatorParamRow<'a> {
         let border = self.border.unwrap_or(amb.toolbar_border);
         let value = self.value;
         let mut changed = false;
-        let theme = self.theme.unwrap_or(amb);
+        let theme: &Theme = self.theme.unwrap_or(&amb);
 
         ui.horizontal(|ui| {
             if self.indent > 0.0 { ui.add_space(self.indent); }
@@ -965,7 +965,7 @@ impl<'a> IndicatorParamRowF<'a> {
         // Treat 0.0 as "use default"
         if *value <= 0.0 { *value = self.default; }
         let mut changed = false;
-        let theme = self.theme.unwrap_or(amb);
+        let theme: &Theme = self.theme.unwrap_or(&amb);
 
         ui.horizontal(|ui| {
             if self.indent > 0.0 { ui.add_space(self.indent); }

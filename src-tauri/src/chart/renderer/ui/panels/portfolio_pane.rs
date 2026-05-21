@@ -17,7 +17,7 @@ pub(crate) fn render(
     visible_count: usize, pane_rects: &[egui::Rect], theme_idx: usize,
     watchlist: &mut Watchlist, account_data: &Option<(AccountSummary, Vec<Position>, Vec<crate::chart_renderer::trading::IbOrder>)>,
 ) {
-    let t = &THEMES[theme_idx];
+    let t_owned = crate::chart_renderer::gpu::get_theme(theme_idx); let t = &t_owned;
     let rect_idx = 0; // body rect passed as single-element slice
     if rect_idx >= pane_rects.len() { return; }
     let rect = pane_rects[rect_idx];
