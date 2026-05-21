@@ -116,27 +116,29 @@ thread_local! {
 /// This is wired inside `set_active_style` so callers in `core.rs` need no
 /// changes — they already call `set_active_style` at frame start.
 ///
-/// **Behaviour-preservation contract**: every snapshot field is populated by
-/// executing the exact same expression the token fn used before this refactor
-/// (`dt_f32!(...)` / `dt_u8!(...)`).  In non-design-mode builds those macros
-/// expand to compile-time constants, so the snapshot values are identical to
-/// the previous per-call constants.  In design-mode builds the macros call
-/// `crate::design_tokens::get()` exactly as before, so live edits are still
-/// picked up on the next frame.
+/// **Source-swap (Phase B)**: per-style dimension tokens (radii, stroke
+/// widths) are sourced LIVE from the active style's `StyleSettings` via
+/// `current()` — selecting a different style now changes them in shipping
+/// builds, not just design-mode.  The default style (Meridien) is defined to
+/// hold the pre-swap values, so the default look is preserved.  Global tokens
+/// (alpha tiers, `gap_xs_mid`, `stroke_medium`, shadow geometry) have no
+/// per-style backing and stay on the `dt_f32!`/`dt_u8!` path.
 #[inline]
 pub fn begin_frame() {
+    // Active style's StyleSettings — the live per-style dimension source.
+    let st = current();
     let snap = TokenSnapshot {
         gap_xs_mid:    crate::dt_f32!(spacing.xs_mid, 6.0),
-        radius_xs:     crate::dt_f32!(radius.xs,   2.0),
-        radius_sm:     crate::dt_f32!(radius.sm,   4.0),
-        radius_md:     crate::dt_f32!(radius.md,   6.0),
-        radius_lg:     crate::dt_f32!(radius.lg,  12.0),
-        stroke_hair:   crate::dt_f32!(stroke.hair,   0.3),
-        stroke_thin:   crate::dt_f32!(stroke.thin,   0.5),
+        radius_xs:     st.r_xs as f32,
+        radius_sm:     st.r_sm as f32,
+        radius_md:     st.r_md as f32,
+        radius_lg:     st.r_lg as f32,
+        stroke_hair:   st.stroke_hair,
+        stroke_thin:   st.stroke_thin,
         stroke_medium: crate::dt_f32!(stroke.medium, 0.8),
-        stroke_std:    crate::dt_f32!(stroke.std,    1.0),
-        stroke_bold:   crate::dt_f32!(stroke.bold,   1.5),
-        stroke_thick:  crate::dt_f32!(stroke.thick,  2.0),
+        stroke_std:    st.stroke_std,
+        stroke_bold:   st.stroke_bold,
+        stroke_thick:  st.stroke_thick,
         alpha_faint:   crate::dt_u8!(alpha.faint,   10),
         alpha_ghost:   crate::dt_u8!(alpha.ghost,   15),
         alpha_soft:    crate::dt_u8!(alpha.soft,    20),
@@ -2100,12 +2102,16 @@ fn style_defaults(id: u8) -> StyleSettings {
             animations_enabled: true,
         },
         _ => StyleSettings {
-            r_xs: 0, r_sm: 0, r_md: 0, r_lg: 0, r_pill: 0,
+            // Phase B source-swap: Meridien (the default style) is redefined
+            // to hold the values the app actually rendered before the swap —
+            // the graduated dt_f32! token scale that ~75% of call sites used.
+            // This makes the source-swap a no-op for the default look.
+            r_xs: 2, r_sm: 4, r_md: 6, r_lg: 12, r_pill: 0,
             serif_headlines: true,
             button_treatment: ButtonTreatment::UnderlineActive,
             hairline_borders: true,
-            stroke_hair: 0.5, stroke_thin: 1.0, stroke_std: 1.0,
-            stroke_bold: 1.0, stroke_thick: 1.0,
+            stroke_hair: 0.3, stroke_thin: 0.5, stroke_std: 1.0,
+            stroke_bold: 1.5, stroke_thick: 2.0,
             shadows_enabled: true, solid_active_fills: true, invert_active_fill: true,
             uppercase_section_labels: true, label_letter_spacing_px: 0.0,
             toolbar_height_scale: 1.40, header_height_scale: 1.10,
