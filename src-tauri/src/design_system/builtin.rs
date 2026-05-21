@@ -459,6 +459,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
         spacing: Spacing {
             xs: 2.0,
             sm: 4.0,
+            xs_mid: 6.0,      // gap_xs_mid default
             md: 8.0,          // card_padding_y / 1 (approx)
             lg: 10.0,         // card_padding_x
             xl: 16.0,
@@ -475,12 +476,21 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             full: 9999.0, // r_pill = 0 but pill means round — keep sentinel
         },
         strokes: Strokes {
-            thin: 0.5,  // stroke_hair
-            std: 1.0,   // stroke_thin / stroke_std (Meridien collapses to 1)
-            md: 1.0,    // stroke_bold = 1.0
-            heavy: 1.0, // stroke_thick = 1.0
+            hair:   0.3,  // sub-pixel hairline
+            thin:   0.5,  // stroke_hair in Meridien
+            medium: 0.8,  // mid-weight default
+            std:    1.0,  // stroke_thin / stroke_std (Meridien collapses to 1)
+            bold:   1.0,  // stroke_bold = 1.0
+            thick:  1.0,  // stroke_thick = 1.0
+            md:     1.0,  // legacy alias
+            heavy:  1.0,  // legacy alias
         },
         alphas: Alphas {
+            // u8 tiers — defaults from DEFAULT_TOKEN_SNAPSHOT
+            faint: 10, ghost: 15, soft_u8: 20, subtle_u8: 40,
+            tint: 48, muted_u8: 60, dim: 60, line: 80,
+            strong_u8: 80, active: 100, heavy_u8: 120, solid: 200,
+            // f32 multipliers
             subtle:        0.08,  // hover_bg_alpha = 20/255 ≈ 0.08
             soft:          0.14,  // active_bg_alpha = 35/255 ≈ 0.14
             muted:         0.24,
@@ -528,6 +538,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
         spacing: Spacing {
             xs: 2.0,
             sm: 4.0,
+            xs_mid: 6.0,      // gap_xs_mid default
             md: 12.0,         // card_padding_y = 12
             lg: 14.0,         // card_padding_x = 14
             xl: 16.0,
@@ -544,12 +555,21 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             full: 9999.0, // r_pill = 99
         },
         strokes: Strokes {
-            thin: 0.5,  // stroke_hair = 0.5
-            std: 1.0,   // stroke_thin = 1.0
-            md: 1.5,    // stroke_std / stroke_bold = 1.5
-            heavy: 2.0, // stroke_thick = 2.0
+            hair:   0.3,  // sub-pixel hairline
+            thin:   0.5,  // stroke_hair = 0.5
+            medium: 0.8,  // mid-weight default
+            std:    1.0,  // stroke_thin = 1.0
+            bold:   1.5,  // stroke_bold = 1.5
+            thick:  2.0,  // stroke_thick = 2.0
+            md:     1.5,  // legacy alias
+            heavy:  2.0,  // legacy alias
         },
         alphas: Alphas {
+            // u8 tiers — defaults from DEFAULT_TOKEN_SNAPSHOT
+            faint: 10, ghost: 15, soft_u8: 20, subtle_u8: 40,
+            tint: 48, muted_u8: 60, dim: 60, line: 80,
+            strong_u8: 80, active: 100, heavy_u8: 120, solid: 200,
+            // f32 multipliers
             subtle:        0.06,  // hover_bg_alpha = 15/255 ≈ 0.06
             soft:          0.10,  // active_bg_alpha = 25/255 ≈ 0.10
             muted:         0.24,
@@ -597,6 +617,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
         spacing: Spacing {
             xs: 2.0,
             sm: 4.0,
+            xs_mid: 6.0,      // gap_xs_mid default
             md: 6.0,          // card_padding_y = 6
             lg: 8.0,          // card_padding_x = 8
             xl: 16.0,
@@ -613,12 +634,21 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             full: 9999.0, // r_pill = 99
         },
         strokes: Strokes {
-            thin: 0.4,  // stroke_hair = 0.4
-            std: 0.6,   // stroke_thin = 0.6
-            md: 1.0,    // stroke_std / stroke_bold = 1.0
-            heavy: 1.4, // stroke_thick = 1.4
+            hair:   0.3,  // sub-pixel hairline
+            thin:   0.4,  // stroke_hair = 0.4
+            medium: 0.7,  // scaled mid-weight for compact style
+            std:    0.6,  // stroke_thin = 0.6
+            bold:   1.0,  // stroke_bold = 1.0
+            thick:  1.4,  // stroke_thick = 1.4
+            md:     1.0,  // legacy alias
+            heavy:  1.4,  // legacy alias
         },
         alphas: Alphas {
+            // u8 tiers — defaults from DEFAULT_TOKEN_SNAPSHOT
+            faint: 10, ghost: 15, soft_u8: 20, subtle_u8: 40,
+            tint: 48, muted_u8: 60, dim: 60, line: 80,
+            strong_u8: 80, active: 100, heavy_u8: 120, solid: 200,
+            // f32 multipliers
             subtle:        0.07,  // hover_bg_alpha = 18/255 ≈ 0.07
             soft:          0.12,  // active_bg_alpha = 30/255 ≈ 0.12
             muted:         0.24,

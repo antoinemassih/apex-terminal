@@ -31,6 +31,9 @@ use super::{color_scheme::ColorScheme, style_system::StyleSystem};
 ///
 /// Field naming mirrors the existing `style.rs` public function names so
 /// Phase B2 can do a mechanical rename of bodies without touching call sites.
+///
+/// This struct is a **superset** of `TokenSnapshot` in `style.rs` — it carries
+/// every token that `TokenSnapshot` does plus the design-system-only fields.
 #[derive(Clone, Copy, Debug)]
 pub struct DesignSnapshot {
     // ── Typography ──────────────────────────────────────────────────────────
@@ -44,13 +47,16 @@ pub struct DesignSnapshot {
     pub mono_lg: f32,
 
     // ── Spacing ─────────────────────────────────────────────────────────────
-    pub gap_xs:  f32,
-    pub gap_sm:  f32,
-    pub gap_md:  f32,
-    pub gap_lg:  f32,
-    pub gap_xl:  f32,
-    pub gap_xxl: f32,
-    pub gmd:     f32,
+    pub gap_xs:    f32,
+    /// 6.0 — micro-gap between `gap_xs` (4) and `gap_sm` (8). Mirrors
+    /// `TokenSnapshot::gap_xs_mid` / `spacing.xs_mid` (DS-IMPL-3).
+    pub gap_xs_mid: f32,
+    pub gap_sm:    f32,
+    pub gap_md:    f32,
+    pub gap_lg:    f32,
+    pub gap_xl:    f32,
+    pub gap_xxl:   f32,
+    pub gmd:       f32,
     pub cta_height: f32,
 
     // ── Radii ───────────────────────────────────────────────────────────────
@@ -61,18 +67,56 @@ pub struct DesignSnapshot {
     pub radius_lg:   f32,
 
     // ── Strokes ─────────────────────────────────────────────────────────────
-    pub stroke_thin:  f32,
-    pub stroke_std:   f32,
-    pub stroke_md:    f32,
-    pub stroke_heavy: f32,
+    /// Sub-pixel hairline. Mirrors `TokenSnapshot::stroke_hair`.
+    pub stroke_hair:   f32,
+    pub stroke_thin:   f32,
+    /// Mid-weight border tier. Mirrors `TokenSnapshot::stroke_medium` (DS-IMPL-3).
+    pub stroke_medium: f32,
+    pub stroke_std:    f32,
+    /// Bold emphasis stroke. Mirrors `TokenSnapshot::stroke_bold`.
+    pub stroke_bold:   f32,
+    /// Thick stroke. Mirrors `TokenSnapshot::stroke_thick`.
+    pub stroke_thick:  f32,
+    pub stroke_md:     f32,
+    pub stroke_heavy:  f32,
 
-    // ── Alphas ──────────────────────────────────────────────────────────────
+    // ── Alpha tiers (u8, 0-255) — mirror TokenSnapshot ────────────────────
+    /// Near-invisible overlay. Mirrors `TokenSnapshot::alpha_faint` = 10.
+    pub alpha_faint:  u8,
+    /// Ghost alpha. Mirrors `TokenSnapshot::alpha_ghost` = 15.
+    pub alpha_ghost:  u8,
+    pub alpha_soft_u8: u8,
+    pub alpha_subtle_u8: u8,
+    /// Tint alpha. Mirrors `TokenSnapshot::alpha_tint` = 48.
+    pub alpha_tint:   u8,
+    pub alpha_muted_u8: u8,
+    /// Dim alpha. Mirrors `TokenSnapshot::alpha_dim` = 60.
+    pub alpha_dim:    u8,
+    /// Line alpha. Mirrors `TokenSnapshot::alpha_line` = 80.
+    pub alpha_line:   u8,
+    pub alpha_strong_u8: u8,
+    /// Active alpha. Mirrors `TokenSnapshot::alpha_active` = 100.
+    pub alpha_active: u8,
+    /// Heavy alpha. Mirrors `TokenSnapshot::alpha_heavy` = 120.
+    pub alpha_heavy_u8: u8,
+    /// Solid alpha. Mirrors `TokenSnapshot::alpha_solid` = 200.
+    pub alpha_solid:  u8,
+
+    // ── Alpha multipliers (f32 0.0-1.0) — design-system composites ────────
     pub alpha_subtle:        f32,
     pub alpha_soft:          f32,
     pub alpha_muted:         f32,
     pub alpha_mid:           f32,
     pub alpha_strong:        f32,
     pub alpha_header_border: f32,
+
+    // ── Shadow primitives — mirror TokenSnapshot ────────────────────────────
+    /// Shadow offset. Mirrors `TokenSnapshot::shadow_offset` = 2.0.
+    pub shadow_offset: f32,
+    /// Shadow alpha (u8). Mirrors `TokenSnapshot::shadow_alpha` = 60.
+    pub shadow_alpha_u8: u8,
+    /// Shadow spread. Mirrors `TokenSnapshot::shadow_spread` = 4.0.
+    pub shadow_spread: f32,
 
     // ── Elevation factors ───────────────────────────────────────────────────
     pub elevation_l1: f32,
@@ -84,7 +128,7 @@ pub struct DesignSnapshot {
     pub row_height_dense:            f32,
     pub row_height_comfortable:      f32,
 
-    // ── Shadow geometry ─────────────────────────────────────────────────────
+    // ── Shadow geometry (preset slots) ──────────────────────────────────────
     pub shadow_card_blur:      f32,
     pub shadow_card_offset_y:  f32,
     pub shadow_card_alpha:     f32,
@@ -126,21 +170,30 @@ pub const DEFAULT_SNAPSHOT: DesignSnapshot = DesignSnapshot {
     // Typography
     size_xs: 10.0, size_sm: 11.0, size_md: 13.0, size_lg: 15.0, size_xl: 18.0,
     mono_sm: 11.0, mono_md: 13.0, mono_lg: 15.0,
-    // Spacing
-    gap_xs: 2.0, gap_sm: 4.0, gap_md: 8.0, gap_lg: 12.0, gap_xl: 16.0, gap_xxl: 24.0,
+    // Spacing — gap_xs_mid matches DEFAULT_TOKEN_SNAPSHOT in style.rs (6.0)
+    gap_xs: 2.0, gap_xs_mid: 6.0, gap_sm: 4.0, gap_md: 8.0,
+    gap_lg: 12.0, gap_xl: 16.0, gap_xxl: 24.0,
     gmd: 8.0, cta_height: 28.0,
-    // Radii
-    radius_none: 0.0, radius_xs: 2.0, radius_sm: 4.0, radius_md: 6.0, radius_lg: 8.0,
-    // Strokes
-    stroke_thin: 0.5, stroke_std: 1.0, stroke_md: 1.5, stroke_heavy: 2.0,
-    // Alphas
+    // Radii — match DEFAULT_TOKEN_SNAPSHOT in style.rs
+    radius_none: 0.0, radius_xs: 2.0, radius_sm: 4.0, radius_md: 6.0, radius_lg: 12.0,
+    // Strokes — match DEFAULT_TOKEN_SNAPSHOT in style.rs
+    stroke_hair: 0.3, stroke_thin: 0.5, stroke_medium: 0.8,
+    stroke_std: 1.0, stroke_bold: 1.5, stroke_thick: 2.0,
+    stroke_md: 1.5, stroke_heavy: 2.0,
+    // Alpha tiers (u8) — match DEFAULT_TOKEN_SNAPSHOT in style.rs
+    alpha_faint: 10, alpha_ghost: 15, alpha_soft_u8: 20, alpha_subtle_u8: 40,
+    alpha_tint: 48, alpha_muted_u8: 60, alpha_dim: 60, alpha_line: 80,
+    alpha_strong_u8: 80, alpha_active: 100, alpha_heavy_u8: 120, alpha_solid: 200,
+    // Alpha multipliers (f32)
     alpha_subtle: 0.04, alpha_soft: 0.12, alpha_muted: 0.24, alpha_mid: 0.48,
     alpha_strong: 0.72, alpha_header_border: 0.18,
+    // Shadow primitives — match DEFAULT_TOKEN_SNAPSHOT in style.rs
+    shadow_offset: 2.0, shadow_alpha_u8: 60, shadow_spread: 4.0,
     // Elevation
     elevation_l1: 1.05, elevation_l2: 0.95, elevation_l3: 0.88,
     // Density
     density_factor: 1.0, row_height_dense: 22.0, row_height_comfortable: 32.0,
-    // Shadow geometry
+    // Shadow geometry presets
     shadow_card_blur: 8.0, shadow_card_offset_y: 2.0, shadow_card_alpha: 0.3,
     shadow_modal_blur: 24.0, shadow_modal_offset_y: 8.0, shadow_modal_alpha: 0.5,
     shadow_tooltip_blur: 6.0, shadow_tooltip_alpha: 0.4,
@@ -185,23 +238,42 @@ pub fn snapshot(style: &StyleSystem, colors: &ColorScheme) -> DesignSnapshot {
         size_lg: t.size_lg, size_xl: t.size_xl,
         mono_sm: t.mono_sm, mono_md: t.mono_md, mono_lg: t.mono_lg,
         // Spacing
-        gap_xs: sp.xs, gap_sm: sp.sm, gap_md: sp.md,
+        gap_xs: sp.xs, gap_xs_mid: sp.xs_mid, gap_sm: sp.sm, gap_md: sp.md,
         gap_lg: sp.lg, gap_xl: sp.xl, gap_xxl: sp.xxl,
         gmd: sp.gmd, cta_height: sp.cta_height,
         // Radii
         radius_none: r.none, radius_xs: r.xs, radius_sm: r.sm,
         radius_md: r.md, radius_lg: r.lg,
-        // Strokes
-        stroke_thin: st.thin, stroke_std: st.std, stroke_md: st.md, stroke_heavy: st.heavy,
-        // Alphas
+        // Strokes — full set mirroring TokenSnapshot
+        stroke_hair: st.hair, stroke_thin: st.thin, stroke_medium: st.medium,
+        stroke_std: st.std, stroke_bold: st.bold, stroke_thick: st.thick,
+        stroke_md: st.md, stroke_heavy: st.heavy,
+        // Alpha tiers (u8) — mirror TokenSnapshot values
+        alpha_faint:     al.faint,
+        alpha_ghost:     al.ghost,
+        alpha_soft_u8:   al.soft_u8,
+        alpha_subtle_u8: al.subtle_u8,
+        alpha_tint:      al.tint,
+        alpha_muted_u8:  al.muted_u8,
+        alpha_dim:       al.dim,
+        alpha_line:      al.line,
+        alpha_strong_u8: al.strong_u8,
+        alpha_active:    al.active,
+        alpha_heavy_u8:  al.heavy_u8,
+        alpha_solid:     al.solid,
+        // Alpha multipliers (f32)
         alpha_subtle: al.subtle, alpha_soft: al.soft, alpha_muted: al.muted,
         alpha_mid: al.mid, alpha_strong: al.strong, alpha_header_border: al.header_border,
+        // Shadow primitives — mirror TokenSnapshot
+        shadow_offset:   sh.card.offset_y,  // primary offset from card shadow
+        shadow_alpha_u8: (sh.card.alpha * 255.0) as u8,
+        shadow_spread:   sh.card.spread,
         // Elevation
         elevation_l1: el.l1, elevation_l2: el.l2, elevation_l3: el.l3,
         // Density
         density_factor: d.factor, row_height_dense: d.row_height_dense,
         row_height_comfortable: d.row_height_comfortable,
-        // Shadow geometry
+        // Shadow geometry presets
         shadow_card_blur:      sh.card.blur,
         shadow_card_offset_y:  sh.card.offset_y,
         shadow_card_alpha:     sh.card.alpha,

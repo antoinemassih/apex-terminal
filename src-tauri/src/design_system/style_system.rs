@@ -61,6 +61,9 @@ impl Default for Typography {
 pub struct Spacing {
     pub xs:  f32,   //  2 px
     pub sm:  f32,   //  4 px
+    /// Micro-gap tier between `xs` (4 px) and `sm` (8 px).
+    /// Backs the `gap_xs_mid()` / `spacing.xs_mid` token (DS-IMPL-3).
+    pub xs_mid: f32, //  6 px
     pub md:  f32,   //  8 px   (was `gap_md`)
     pub lg:  f32,   // 12 px
     pub xl:  f32,   // 16 px
@@ -77,6 +80,7 @@ impl Default for Spacing {
         Self {
             xs: 2.0,
             sm: 4.0,
+            xs_mid: 6.0,
             md: 8.0,
             lg: 12.0,
             xl: 16.0,
@@ -113,30 +117,78 @@ impl Default for Radii {
 /// Stroke / border width scale (pixels as `f32`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Strokes {
-    /// Sub-pixel hairline (0.5 px — Meridien borders).
+    /// Sub-pixel hairline (e.g. 0.3–0.5 px — lightest separator).
+    /// Backs the `stroke_hair()` / `stroke.hair` token.
+    pub hair: f32,
+    /// Sub-pixel thin border (0.5 px).
     pub thin: f32,
+    /// Mid-weight border tier between `thin` (0.5 px) and `std` (1.0 px).
+    /// Backs the `stroke_medium()` / `stroke.medium` token (DS-IMPL-3).
+    pub medium: f32,
     /// Standard 1 px border.
     pub std: f32,
-    /// Medium 1.5 px emphasis stroke.
+    /// Bold 1.5 px emphasis stroke. Backs `stroke_bold()`.
+    pub bold: f32,
+    /// Thick 2 px stroke. Backs `stroke_thick()`.
+    pub thick: f32,
+    /// Medium 1.5 px emphasis stroke (legacy alias — prefer `bold`).
     pub md: f32,
-    /// Heavy 2 px stroke (focus rings, active indicators).
+    /// Heavy 2 px stroke (focus rings, active indicators; legacy alias — prefer `thick`).
     pub heavy: f32,
 }
 
 impl Default for Strokes {
     fn default() -> Self {
-        Self { thin: 0.5, std: 1.0, md: 1.5, heavy: 2.0 }
+        Self {
+            hair:   0.3,
+            thin:   0.5,
+            medium: 0.8,
+            std:    1.0,
+            bold:   1.5,
+            thick:  2.0,
+            md:     1.5,
+            heavy:  2.0,
+        }
     }
 }
 
 // ── Alphas ───────────────────────────────────────────────────────────────────
 
-/// Alpha / opacity scale (0.0–1.0) for the dimension axis.
+/// Alpha / opacity scale (u8, 0–255) for the dimension axis.
 ///
-/// These are *multipliers*, not colours. The palette provides the base colour;
-/// the resolver applies the alpha at render time.
+/// Fields whose names match `alpha_*()` token functions in `style.rs` are
+/// backed by the `dt_u8!` path and carried here so they can be style-overridden.
+/// The remaining fields are dimension-axis multipliers (0.0–1.0) used by the
+/// resolver for composite operations (fills, borders, etc.).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Alphas {
+    // ── u8 tiers (0-255) — mirror TokenSnapshot alpha fields ─────────────────
+    /// Near-invisible overlay (hover shimmer). Backs `alpha_faint()` = 10.
+    pub faint:   u8,   // 10
+    /// Ghost — barely-visible. Backs `alpha_ghost()` = 15.
+    pub ghost:   u8,   // 15
+    /// Soft muted overlay (disabled states). Backs `alpha_soft()` = 20.
+    pub soft_u8: u8,   // 20
+    /// Subtle — low-emphasis overlay. Backs `alpha_subtle()` = 40.
+    pub subtle_u8: u8, // 40
+    /// Tint — icon/chip accent tint. Backs `alpha_tint()` = 48.
+    pub tint:    u8,   // 48
+    /// Muted — primary dimming value. Backs `alpha_muted()` = 60.
+    pub muted_u8: u8,  // 60
+    /// Dim — border/line dimming. Backs `alpha_dim()` = 60.
+    pub dim:     u8,   // 60
+    /// Line — structural line alpha. Backs `alpha_line()` = 80.
+    pub line:    u8,   // 80
+    /// Strong — selected row fill. Backs `alpha_strong()` = 80.
+    pub strong_u8: u8, // 80
+    /// Active — interactive element alpha. Backs `alpha_active()` = 100.
+    pub active:  u8,   // 100
+    /// Heavy — near-opaque overlay. Backs `alpha_heavy()` = 120.
+    pub heavy_u8: u8,  // 120
+    /// Solid — high-opacity element. Backs `alpha_solid()` = 200.
+    pub solid:   u8,   // 200
+
+    // ── f32 multipliers (0.0–1.0) — resolver composites ──────────────────────
     /// Near-invisible overlay (hover shimmer, track backgrounds).
     pub subtle:   f32,  // 0.04
     /// Soft muted overlay (disabled states, secondary text tint).
@@ -156,6 +208,20 @@ pub struct Alphas {
 impl Default for Alphas {
     fn default() -> Self {
         Self {
+            // u8 tiers — match DEFAULT_TOKEN_SNAPSHOT in style.rs
+            faint:     10,
+            ghost:     15,
+            soft_u8:   20,
+            subtle_u8: 40,
+            tint:      48,
+            muted_u8:  60,
+            dim:       60,
+            line:      80,
+            strong_u8: 80,
+            active:   100,
+            heavy_u8: 120,
+            solid:    200,
+            // f32 multipliers
             subtle:        0.04,
             soft:          0.12,
             muted:         0.24,
@@ -369,7 +435,7 @@ impl StyleSystem {
         Self {
             meta: Meta::new("meridien", "Meridien", true),
             radii: Radii { none: 0.0, xs: 0.0, sm: 0.0, md: 0.0, lg: 0.0, full: 9999.0 },
-            strokes: Strokes { thin: 0.5, std: 0.5, md: 1.0, heavy: 1.5 },
+            strokes: Strokes { hair: 0.3, thin: 0.5, medium: 0.8, std: 0.5, bold: 1.0, thick: 1.5, md: 1.0, heavy: 1.5 },
             treatments: Treatments {
                 solid_active_fills:       true,
                 hairline_borders:         true,

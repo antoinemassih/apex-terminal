@@ -133,6 +133,8 @@ pub fn baseline_style_system() -> StyleSystem {
             xs: 2.0,
             // gap_xs() = 4.0 (style.rs line 265)
             sm: 4.0,
+            // gap_xs_mid() = 6.0 — DEFAULT_TOKEN_SNAPSHOT.gap_xs_mid (DS-IMPL-3)
+            xs_mid: 6.0,
             // gap_sm() = 8.0 (style.rs line 270); card_padding_y=8 in Meridien
             md: 8.0,
             // card_padding_x = 10.0 (style_defaults(0))
@@ -164,20 +166,40 @@ pub fn baseline_style_system() -> StyleSystem {
         },
 
         strokes: Strokes {
+            // stroke_hair (sub-pixel): DEFAULT_TOKEN_SNAPSHOT = 0.3 (style.rs line 88)
+            // style_defaults(0) sets stroke_hair=0.5 → stored in thin field.
+            // hair field carries the DEFAULT_TOKEN_SNAPSHOT value (0.3).
+            hair:   0.3,
             // stroke_hair = 0.5 (style_defaults(0))
-            // CONFLICT: style.rs DEFAULT_TOKEN_SNAPSHOT has stroke_hair=0.3 (the dt_f32 default).
-            // style_defaults(0) sets stroke_hair=0.5. Anchor surfaces read `st.stroke_hair`
-            // from current() which reads style_defaults(0) → 0.5. Resolved: 0.5.
-            thin:  0.5,
+            thin:   0.5,
+            // stroke_medium: DEFAULT_TOKEN_SNAPSHOT = 0.8 (DS-IMPL-3)
+            medium: 0.8,
             // stroke_thin=1.0, stroke_std=1.0 (Meridien collapses both to 1.0)
-            std:   1.0,
+            std:    1.0,
             // stroke_bold = 1.0 (style_defaults(0))
-            md:    1.0,
+            bold:   1.0,
             // stroke_thick = 1.0 (style_defaults(0))
-            heavy: 1.0,
+            thick:  1.0,
+            // legacy aliases
+            md:     1.0,
+            heavy:  1.0,
         },
 
         alphas: Alphas {
+            // u8 tiers — exact values from DEFAULT_TOKEN_SNAPSHOT (style.rs lines 92–103)
+            faint:     10,
+            ghost:     15,
+            soft_u8:   20,
+            subtle_u8: 40,
+            tint:      48,
+            muted_u8:  60,
+            dim:       60,
+            line:      80,
+            strong_u8: 80,
+            active:   100,
+            heavy_u8: 120,
+            solid:    200,
+            // f32 multipliers
             // hover_bg_alpha=20 → 20/255 ≈ 0.0784
             subtle:        20.0 / 255.0,
             // active_bg_alpha=35 → 35/255 ≈ 0.1373

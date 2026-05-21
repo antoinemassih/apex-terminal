@@ -94,6 +94,25 @@ fn read_f32_or(obj: &Value, key: &str, ctx: &str, default: f32) -> f32 {
         .unwrap_or(default)
 }
 
+/// Read a `u8` from a DTCG integer/number token.
+fn read_u8(node: &Value, path: &str) -> Result<u8, LoadError> {
+    let v = dtcg_value(node, path)?;
+    v.as_u64()
+        .map(|n| n.min(255) as u8)
+        .or_else(|| v.as_f64().map(|n| n.clamp(0.0, 255.0) as u8))
+        .ok_or_else(|| LoadError::InvalidToken {
+            path: path.to_string(),
+            reason: format!("expected integer 0-255, got {v}"),
+        })
+}
+
+fn read_u8_or(obj: &Value, key: &str, ctx: &str, default: u8) -> u8 {
+    let path = format!("{ctx}.{key}");
+    obj.get(key)
+        .and_then(|n| read_u8(n, &path).ok())
+        .unwrap_or(default)
+}
+
 /// Read a `bool` from a DTCG boolean token.
 fn read_bool(node: &Value, path: &str) -> Result<bool, LoadError> {
     let v = dtcg_value(node, path)?;
@@ -281,6 +300,7 @@ impl StyleSystem {
         let spacing = Spacing {
             xs:         read_f32_or(&sp_sec, "xs",         "spacing", d_sp.xs),
             sm:         read_f32_or(&sp_sec, "sm",         "spacing", d_sp.sm),
+            xs_mid:     read_f32_or(&sp_sec, "xs_mid",     "spacing", d_sp.xs_mid),
             md:         read_f32_or(&sp_sec, "md",         "spacing", d_sp.md),
             lg:         read_f32_or(&sp_sec, "lg",         "spacing", d_sp.lg),
             xl:         read_f32_or(&sp_sec, "xl",         "spacing", d_sp.xl),
@@ -303,15 +323,33 @@ impl StyleSystem {
         let d_st = Strokes::default();
         let st_sec = section("strokes");
         let strokes = Strokes {
-            thin:  read_f32_or(&st_sec, "thin",  "strokes", d_st.thin),
-            std:   read_f32_or(&st_sec, "std",   "strokes", d_st.std),
-            md:    read_f32_or(&st_sec, "md",    "strokes", d_st.md),
-            heavy: read_f32_or(&st_sec, "heavy", "strokes", d_st.heavy),
+            hair:   read_f32_or(&st_sec, "hair",   "strokes", d_st.hair),
+            thin:   read_f32_or(&st_sec, "thin",   "strokes", d_st.thin),
+            medium: read_f32_or(&st_sec, "medium", "strokes", d_st.medium),
+            std:    read_f32_or(&st_sec, "std",    "strokes", d_st.std),
+            bold:   read_f32_or(&st_sec, "bold",   "strokes", d_st.bold),
+            thick:  read_f32_or(&st_sec, "thick",  "strokes", d_st.thick),
+            md:     read_f32_or(&st_sec, "md",     "strokes", d_st.md),
+            heavy:  read_f32_or(&st_sec, "heavy",  "strokes", d_st.heavy),
         };
 
         let d_al = Alphas::default();
         let al_sec = section("alphas");
         let alphas = Alphas {
+            // u8 tiers
+            faint:     read_u8_or(&al_sec, "faint",     "alphas", d_al.faint),
+            ghost:     read_u8_or(&al_sec, "ghost",     "alphas", d_al.ghost),
+            soft_u8:   read_u8_or(&al_sec, "soft_u8",   "alphas", d_al.soft_u8),
+            subtle_u8: read_u8_or(&al_sec, "subtle_u8", "alphas", d_al.subtle_u8),
+            tint:      read_u8_or(&al_sec, "tint",      "alphas", d_al.tint),
+            muted_u8:  read_u8_or(&al_sec, "muted_u8",  "alphas", d_al.muted_u8),
+            dim:       read_u8_or(&al_sec, "dim",       "alphas", d_al.dim),
+            line:      read_u8_or(&al_sec, "line",      "alphas", d_al.line),
+            strong_u8: read_u8_or(&al_sec, "strong_u8", "alphas", d_al.strong_u8),
+            active:    read_u8_or(&al_sec, "active",    "alphas", d_al.active),
+            heavy_u8:  read_u8_or(&al_sec, "heavy_u8",  "alphas", d_al.heavy_u8),
+            solid:     read_u8_or(&al_sec, "solid",     "alphas", d_al.solid),
+            // f32 multipliers
             subtle:        read_f32_or(&al_sec, "subtle",        "alphas", d_al.subtle),
             soft:          read_f32_or(&al_sec, "soft",          "alphas", d_al.soft),
             muted:         read_f32_or(&al_sec, "muted",         "alphas", d_al.muted),
