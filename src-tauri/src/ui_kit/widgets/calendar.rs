@@ -323,16 +323,13 @@ fn paint_calendar<'a>(
                                         let y = cur_year + off;
                                         let is_cur = y == cur_year;
                                         let label = format!("{}", y);
-                                        let resp = ui.add(
-                                            egui::Button::new(
-                                                RichText::new(label)
-                                                    .monospace()
-                                                    .size(st::font_xs())
-                                                    .color(if is_cur { st::contrast_fg(theme.accent()) } else { theme.text() }),
-                                            )
-                                            .fill(if is_cur { theme.accent() } else { Color32::TRANSPARENT })
-                                            .min_size(Vec2::new(40.0, 20.0)),
-                                        );
+                                        let resp = Button::new(label.as_str())
+                                            .variant(super::tokens::Variant::Chip)
+                                            .active(is_cur)
+                                            .tint(theme.accent())
+                                            .size(super::tokens::Size::Xs)
+                                            .min_size(Vec2::new(40.0, 20.0))
+                                            .show(ui, theme);
                                         if resp.clicked() { picked_year = Some(y); }
                                         if (i + 1) % 5 == 0 { ui.end_row(); }
                                     }
@@ -348,16 +345,14 @@ fn paint_calendar<'a>(
                                 .show(ui, |ui| {
                                     for m in 1u32..=12 {
                                         let is_cur = m == view_month.month();
-                                        let resp = ui.add(
-                                            egui::Button::new(
-                                                RichText::new(&MONTH_NAMES[(m - 1) as usize][..3])
-                                                    .monospace()
-                                                    .size(st::font_xs())
-                                                    .color(if is_cur { st::contrast_fg(theme.accent()) } else { theme.text() }),
-                                            )
-                                            .fill(if is_cur { theme.accent() } else { Color32::TRANSPARENT })
-                                            .min_size(Vec2::new(40.0, 20.0)),
-                                        );
+                                        let month_label = &MONTH_NAMES[(m - 1) as usize][..3];
+                                        let resp = Button::new(month_label)
+                                            .variant(super::tokens::Variant::Chip)
+                                            .active(is_cur)
+                                            .tint(theme.accent())
+                                            .size(super::tokens::Size::Xs)
+                                            .min_size(Vec2::new(40.0, 20.0))
+                                            .show(ui, theme);
                                         if resp.clicked() { picked_month = Some(m); }
                                         if m % 4 == 0 { ui.end_row(); }
                                     }

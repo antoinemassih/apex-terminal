@@ -10,7 +10,10 @@
 
 use egui::{Color32, RichText, Ui, Stroke};
 use crate::design_tokens::*;
-use crate::chart_renderer::ui::style::{font_2xs, font_xs, font_xs_plus, radius_sm};
+use crate::chart_renderer::ui::style::{
+    font_2xs, font_xs, font_xs_plus, radius_sm,
+    stroke_thin, stroke_medium, stroke_std, stroke_bold, stroke_thick,
+};
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant as KitVariant};
 use crate::design_system::{
@@ -248,13 +251,13 @@ impl Inspector {
 
                 // Draw subtle outline on ALL inspectable elements
                 painter.rect_stroke(rect, 2.0,
-                    Stroke::new(0.5, Color32::from_rgba_unmultiplied(203, 166, 247, 40)),
+                    Stroke::new(stroke_thin(), Color32::from_rgba_unmultiplied(203, 166, 247, 40)),
                     egui::StrokeKind::Outside);
 
                 // Highlight selected elements; also update selected_rect for drag handles
                 if is_selected {
                     painter.rect_filled(rect, 2.0, Color32::from_rgba_unmultiplied(166, 227, 161, 30));
-                    painter.rect_stroke(rect, 2.0, Stroke::new(1.5, Color32::from_rgba_unmultiplied(166, 227, 161, 160)), egui::StrokeKind::Outside);
+                    painter.rect_stroke(rect, 2.0, Stroke::new(stroke_bold(), Color32::from_rgba_unmultiplied(166, 227, 161, 160)), egui::StrokeKind::Outside);
                     self.selected_rect = Some(rect);
                 }
 
@@ -276,7 +279,7 @@ impl Inspector {
                     egui::pos2(h.rect[0], h.rect[1]),
                     egui::vec2(h.rect[2], h.rect[3]));
                 painter.rect_filled(rect, 2.0, Color32::from_rgba_unmultiplied(203, 166, 247, 35));
-                painter.rect_stroke(rect, 2.0, Stroke::new(2.0, Color32::from_rgba_unmultiplied(203, 166, 247, 200)), egui::StrokeKind::Outside);
+                painter.rect_stroke(rect, 2.0, Stroke::new(stroke_thick(), Color32::from_rgba_unmultiplied(203, 166, 247, 200)), egui::StrokeKind::Outside);
 
                 // Family label above the element
                 let label_pos = egui::pos2(rect.left(), rect.top() - 2.0);
@@ -371,7 +374,7 @@ impl Inspector {
                             1.0, handle_col);
                         painter.rect_stroke(
                             egui::Rect::from_center_size(corner, egui::vec2(handle_size - 1.0, handle_size - 1.0)),
-                            1.0, Stroke::new(1.0, Color32::from_rgb(40, 40, 50)), egui::StrokeKind::Outside);
+                            1.0, Stroke::new(stroke_std(), Color32::from_rgb(40, 40, 50)), egui::StrokeKind::Outside);
 
                         if is_dragging || is_hovered {
                             ctx.set_cursor_icon(egui::CursorIcon::ResizeNwSe);
@@ -527,7 +530,7 @@ impl Inspector {
         let mut modified = false;
         let panel_frame = egui::Frame::NONE
             .fill(Color32::from_rgb(18, 18, 24))
-            .stroke(Stroke::new(1.0, Color32::from_rgb(40, 42, 54)))
+            .stroke(Stroke::new(stroke_std(), Color32::from_rgb(40, 42, 54)))
             .inner_margin(0.0);
 
         // ── Left preview panel (optional, simultaneous with right inspector) ──
@@ -581,7 +584,7 @@ impl Inspector {
                                 if ui.add(egui::Button::new(
                                     RichText::new(popout_label).monospace().size(10.0).strong().color(popout_col))
                                     .fill(Color32::from_rgba_unmultiplied(137, 180, 250, 18))
-                                    .stroke(Stroke::new(0.5, Color32::from_rgba_unmultiplied(137, 180, 250, 60)))
+                                    .stroke(Stroke::new(stroke_thin(), Color32::from_rgba_unmultiplied(137, 180, 250, 60)))
                                     .corner_radius(radius_sm())
                                 ).on_hover_text(if self.is_popout { "Dock back to side panel" } else { "Float as draggable window" })
                                 .clicked() {
@@ -597,7 +600,7 @@ impl Inspector {
                                 if ui.add(egui::Button::new(
                                     RichText::new("📖 Help").monospace().size(10.0).strong().color(help_col))
                                     .fill(if self.show_help { Color32::from_rgba_unmultiplied(250, 179, 135, 18) } else { Color32::TRANSPARENT })
-                                    .stroke(Stroke::new(0.5, Color32::from_rgba_unmultiplied(help_col.r(), help_col.g(), help_col.b(), 60)))
+                                    .stroke(Stroke::new(stroke_thin(), Color32::from_rgba_unmultiplied(help_col.r(), help_col.g(), help_col.b(), 60)))
                                     .corner_radius(radius_sm())
                                 ).on_hover_text("Open Field Reference — all StyleSettings fields and what they affect")
                                 .clicked() {
@@ -613,7 +616,7 @@ impl Inspector {
                                 if ui.add(egui::Button::new(
                                     RichText::new("👁 LEFT").monospace().size(10.0).strong().color(preview_col))
                                     .fill(if self.is_preview_left_open { Color32::from_rgba_unmultiplied(250, 179, 135, 20) } else { Color32::TRANSPARENT })
-                                    .stroke(Stroke::new(0.5, Color32::from_rgba_unmultiplied(preview_col.r(), preview_col.g(), preview_col.b(), 60)))
+                                    .stroke(Stroke::new(stroke_thin(), Color32::from_rgba_unmultiplied(preview_col.r(), preview_col.g(), preview_col.b(), 60)))
                                     .corner_radius(radius_sm())
                                 ).on_hover_text("Toggle Style Preview as a docked left panel")
                                 .clicked() {
@@ -625,7 +628,7 @@ impl Inspector {
                                         .monospace().size(10.0).strong()
                                         .color(if self.dirty { Color32::from_rgb(166, 227, 161) } else { Color32::from_rgb(100, 100, 110) }))
                                     .fill(if self.dirty { Color32::from_rgba_unmultiplied(166, 227, 161, 25) } else { Color32::TRANSPARENT })
-                                    .stroke(Stroke::new(0.5, if self.dirty { Color32::from_rgba_unmultiplied(166, 227, 161, 80) } else { Color32::from_rgb(50, 50, 60) }))
+                                    .stroke(Stroke::new(stroke_thin(), if self.dirty { Color32::from_rgba_unmultiplied(166, 227, 161, 80) } else { Color32::from_rgb(50, 50, 60) }))
                                     .corner_radius(radius_sm())
                                 ).clicked() && self.dirty {
                                     match tokens.save(&self.toml_path) {
@@ -644,7 +647,7 @@ impl Inspector {
                                     RichText::new("RESET").monospace().size(10.0)
                                         .color(Color32::from_rgb(243, 139, 168)))
                                     .fill(Color32::TRANSPARENT)
-                                    .stroke(Stroke::new(0.5, Color32::from_rgba_unmultiplied(243, 139, 168, 50)))
+                                    .stroke(Stroke::new(stroke_thin(), Color32::from_rgba_unmultiplied(243, 139, 168, 50)))
                                     .corner_radius(radius_sm())
                                 ).clicked() {
                                     *tokens = DesignTokens::default();
@@ -666,7 +669,7 @@ impl Inspector {
                                 RichText::new(if self.inspect_mode { "⊹ INSPECT ON" } else { "⊹ INSPECT" })
                                     .monospace().size(11.0).strong().color(inspect_color))
                                 .fill(if self.inspect_mode { Color32::from_rgba_unmultiplied(255, 191, 0, 20) } else { Color32::TRANSPARENT })
-                                .stroke(Stroke::new(0.5, Color32::from_rgba_unmultiplied(inspect_color.r(), inspect_color.g(), inspect_color.b(), 80)))
+                                .stroke(Stroke::new(stroke_thin(), Color32::from_rgba_unmultiplied(inspect_color.r(), inspect_color.g(), inspect_color.b(), 80)))
                                 .corner_radius(radius_sm())
                             ).clicked() {
                                 self.inspect_mode = !self.inspect_mode;
@@ -1087,7 +1090,7 @@ impl Inspector {
                 };
                 if ui.add(egui::Button::new(
                     RichText::new(*label).monospace().size(10.0).strong().color(fg))
-                    .fill(bg).stroke(Stroke::new(0.8, border))
+                    .fill(bg).stroke(Stroke::new(stroke_medium(), border))
                     .corner_radius(radius_sm())
                     .min_size(egui::vec2(60.0, 22.0))
                 ).clicked() {
@@ -1112,7 +1115,7 @@ impl Inspector {
         if ui.add(egui::Button::new(
             RichText::new("Apply via hot-reload").monospace().size(font_xs()).strong().color(green))
             .fill(Color32::from_rgba_unmultiplied(166, 227, 161, 18))
-            .stroke(Stroke::new(0.8, Color32::from_rgba_unmultiplied(166, 227, 161, 90)))
+            .stroke(Stroke::new(stroke_medium(), Color32::from_rgba_unmultiplied(166, 227, 161, 90)))
             .corner_radius(radius_sm())
         ).on_hover_text("Write DTCG JSON to themes dir. Hot-reload watcher applies it within ~1.5 s.")
         .clicked() {
@@ -1440,7 +1443,7 @@ fn two_axis_rgba(ui: &mut egui::Ui, label: &str, rgba: &mut Rgba) {
         ui.painter().rect_filled(rect, 2.0,
             Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3]));
         ui.painter().rect_stroke(rect, 2.0,
-            Stroke::new(0.5, Color32::from_rgb(60, 60, 70)), egui::StrokeKind::Outside);
+            Stroke::new(stroke_thin(), Color32::from_rgb(60, 60, 70)), egui::StrokeKind::Outside);
 
         ui.label(RichText::new(label).monospace().size(font_xs())
             .color(Color32::from_rgb(170, 170, 180)));
@@ -1517,7 +1520,7 @@ fn color_edit(ui: &mut Ui, label: &str, color: &mut Rgba) -> bool {
         ui.painter().rect_filled(rect, 2.0,
             Color32::from_rgba_unmultiplied(color[0], color[1], color[2], color[3]));
         ui.painter().rect_stroke(rect, 2.0,
-            Stroke::new(0.5, Color32::from_rgb(60, 60, 70)), egui::StrokeKind::Outside);
+            Stroke::new(stroke_thin(), Color32::from_rgb(60, 60, 70)), egui::StrokeKind::Outside);
 
         ui.label(RichText::new(label).monospace().size(font_xs()).color(Color32::from_rgb(170, 170, 180)));
 
@@ -1726,7 +1729,7 @@ fn render_design_category(ui: &mut Ui) -> bool {
                 (dim, Color32::TRANSPARENT, Color32::from_rgb(50, 50, 60))
             };
             if ui.add(egui::Button::new(RichText::new(*label).monospace().size(10.0).strong().color(fg))
-                .fill(bg).stroke(Stroke::new(0.8, border)).corner_radius(radius_sm())
+                .fill(bg).stroke(Stroke::new(stroke_medium(), border)).corner_radius(radius_sm())
                 .min_size(egui::vec2(60.0, 22.0))
             ).clicked() {
                 DESIGN_SUBTAB.with(|t| *t.borrow_mut() = idx);
@@ -1769,7 +1772,7 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                 (dim_col, Color32::TRANSPARENT, Color32::from_rgb(50, 50, 60))
             };
             if ui.add(egui::Button::new(RichText::new(&name).monospace().size(11.0).strong().color(fg))
-                .fill(bg).stroke(Stroke::new(0.8, border)).corner_radius(radius_sm())
+                .fill(bg).stroke(Stroke::new(stroke_medium(), border)).corner_radius(radius_sm())
                 .min_size(egui::vec2(60.0, 22.0))
             ).clicked() {
                 STYLE_EDITOR_ACTIVE.store(id, std::sync::atomic::Ordering::Relaxed);
@@ -1786,7 +1789,7 @@ fn render_style_editor(ui: &mut Ui) -> bool {
         // "+ New Preset" button
         if ui.add(egui::Button::new(RichText::new("+ New Preset").monospace().size(font_xs()).strong().color(green_col))
             .fill(Color32::from_rgba_unmultiplied(166, 227, 161, 15))
-            .stroke(Stroke::new(0.8, Color32::from_rgba_unmultiplied(166, 227, 161, 80)))
+            .stroke(Stroke::new(stroke_medium(), Color32::from_rgba_unmultiplied(166, 227, 161, 80)))
             .corner_radius(radius_sm())
         ).clicked() {
             STYLE_NEW_PRESET_OPEN.with(|o| *o.borrow_mut() = true);
@@ -1798,7 +1801,7 @@ fn render_style_editor(ui: &mut Ui) -> bool {
         if ui.add(egui::Button::new(
             RichText::new("Save to source").monospace().size(font_xs()).strong().color(green_col))
             .fill(Color32::from_rgba_unmultiplied(166, 227, 161, 20))
-            .stroke(Stroke::new(0.8, Color32::from_rgba_unmultiplied(166, 227, 161, 100)))
+            .stroke(Stroke::new(stroke_medium(), Color32::from_rgba_unmultiplied(166, 227, 161, 100)))
             .corner_radius(radius_sm())
         ).clicked() {
             match save_style_defaults_to_source() {
@@ -2079,7 +2082,7 @@ fn render_style_editor(ui: &mut Ui) -> bool {
                     if ui.add(egui::Button::new(
                         RichText::new("Delete preset").monospace().size(font_xs()).color(Color32::from_rgb(243, 139, 168)))
                         .fill(Color32::from_rgba_unmultiplied(243, 139, 168, 15))
-                        .stroke(Stroke::new(0.8, Color32::from_rgba_unmultiplied(243, 139, 168, 80)))
+                        .stroke(Stroke::new(stroke_medium(), Color32::from_rgba_unmultiplied(243, 139, 168, 80)))
                         .corner_radius(radius_sm())
                     ).clicked() {
                         to_delete = Some(id);
@@ -2614,7 +2617,7 @@ fn render_theme_editor(ui: &mut Ui) {
                 .monospace().size(10.0).strong()
                 .color(Color32::from_rgb(166, 227, 161)))
             .fill(Color32::from_rgba_unmultiplied(166, 227, 161, 20))
-            .stroke(egui::Stroke::new(0.8, Color32::from_rgba_unmultiplied(166, 227, 161, 100)))
+            .stroke(egui::Stroke::new(stroke_medium(), Color32::from_rgba_unmultiplied(166, 227, 161, 100)))
             .corner_radius(radius_sm())
         ).clicked() {
             match save_themes_to_source() {
@@ -2633,7 +2636,7 @@ fn render_theme_editor(ui: &mut Ui) {
     if ui.add(egui::Button::new(
         RichText::new("Reset all to defaults").monospace().size(font_xs()).color(Color32::from_rgb(200,150,150)))
         .fill(Color32::TRANSPARENT)
-        .stroke(egui::Stroke::new(0.5, Color32::from_rgb(80,60,60)))
+        .stroke(egui::Stroke::new(stroke_thin(), Color32::from_rgb(80,60,60)))
         .corner_radius(2.0)
     ).clicked() {
         for (i, t) in THEMES.iter().enumerate() {
@@ -2684,7 +2687,7 @@ fn render_style_preview(ui: &mut Ui) {
     // ── Limitation notice ──────────────────────────────────────────────────────
     egui::Frame::NONE
         .fill(Color32::from_rgba_unmultiplied(250, 179, 135, 18))
-        .stroke(Stroke::new(0.5, Color32::from_rgba_unmultiplied(250, 179, 135, 60)))
+        .stroke(Stroke::new(stroke_thin(), Color32::from_rgba_unmultiplied(250, 179, 135, 60)))
         .inner_margin(egui::Margin { left: 8, right: 8, top: 5, bottom: 5 })
         .corner_radius(radius_sm())
         .show(ui, |ui| {
@@ -2746,7 +2749,7 @@ fn render_style_preview(ui: &mut Ui) {
                     ui.painter().line_segment(
                         [egui::pos2(sep_x, sep_top),
                          egui::pos2(sep_x, sep_top + 700.0)],
-                        Stroke::new(1.0, Color32::from_rgb(40, 42, 54)));
+                        Stroke::new(stroke_std(), Color32::from_rgb(40, 42, 54)));
                     ui.add_space(1.0);
                 }
 
@@ -2767,7 +2770,7 @@ fn render_style_preview(ui: &mut Ui) {
                                         RichText::new("Set Active").monospace().size(font_xs()).strong()
                                             .color(Color32::from_rgb(166, 227, 161)))
                                         .fill(Color32::from_rgba_unmultiplied(166, 227, 161, 20))
-                                        .stroke(Stroke::new(0.8, Color32::from_rgba_unmultiplied(166, 227, 161, 100)))
+                                        .stroke(Stroke::new(stroke_medium(), Color32::from_rgba_unmultiplied(166, 227, 161, 100)))
                                         .corner_radius(radius_sm())
                                     ).clicked() {
                                         set_active_style(style_id);
@@ -2919,7 +2922,7 @@ fn preview_widgets(ui: &mut Ui, st: &crate::chart_renderer::ui::style::StyleSett
                 p.line_segment(
                     [egui::pos2(tab_rect.left() + 2.0, tab_rect.bottom()),
                      egui::pos2(tab_rect.right() - 2.0, tab_rect.bottom())],
-                    Stroke::new(2.0, accent));
+                    Stroke::new(stroke_thick(), accent));
             }
         }
     }

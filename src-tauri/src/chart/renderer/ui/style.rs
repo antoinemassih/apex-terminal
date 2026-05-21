@@ -253,6 +253,30 @@ pub fn font_lg() -> f32 { 16.0 }
 /// 22.0 — hero numbers, modal hero titles.
 pub fn font_xl() -> f32 { 22.0 }
 
+// ─── Display-font tier (proportional, large numerics only) ───────────────────
+// For infographic/hero KPI numbers rendered with `FontId::proportional(...)`.
+// These are NOT for UI chrome — use them only in chart widget body paint calls
+// where a large display number is the primary focal point of the widget.
+//
+//   font_display_sm()  = 28.0 — compact hero (single KPI in a narrow widget)
+//   font_display_md()  = 32.0 — standard hero number
+//   font_display_lg()  = 42.0 — prominent hero / dual-KPI banner
+//   font_display_xl()  = 56.0 — primary focal number (full-width banner widget)
+
+/// 28.0 — compact display hero (narrow widget KPI, countdown digits).
+#[inline] pub fn font_display_sm() -> f32 { 28.0 }
+/// 32.0 — standard display hero number (primary gauge focal point).
+#[inline] pub fn font_display_md() -> f32 { 32.0 }
+/// 42.0 — prominent display hero (dual-KPI or large widget focal number).
+#[inline] pub fn font_display_lg() -> f32 { 42.0 }
+/// 56.0 — maximum display focal number (full-width banner widget).
+#[inline] pub fn font_display_xl() -> f32 { 56.0 }
+
+pub const FONT_DISPLAY_SM: f32 = 28.0;
+pub const FONT_DISPLAY_MD: f32 = 32.0;
+pub const FONT_DISPLAY_LG: f32 = 42.0;
+pub const FONT_DISPLAY_XL: f32 = 56.0;
+
 // ─── Monospace helpers (JetBrains Mono, pinned) ───────────────────────────────
 // Use these for tabular financial data: prices, quantities, OCC tickers.
 // Returns FontId so the family is explicit at the call site.
@@ -2201,6 +2225,14 @@ fn style_defaults(id: u8) -> StyleSettings {
     }
 }
 // └─ STYLE_DEFAULTS_END ───────────────────────────────────────────────────────
+
+/// Public test accessor for `style_defaults`.
+/// Maps: 0 → Meridien (default `_` arm), 1 → Aperture, 2 → Octave.
+/// Available only in `#[cfg(test)]` so it does not bloat the release binary.
+#[cfg(test)]
+pub fn style_defaults_pub(id: u8) -> StyleSettings {
+    style_defaults(id)
+}
 
 // ─── Dynamic style preset store ──────────────────────────────────────────────
 // Vec of (name, settings) pairs. Ids 0/1/2 are the canonical three styles

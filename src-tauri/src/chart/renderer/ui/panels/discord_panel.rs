@@ -314,11 +314,8 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                     ui.add(widgets_text::CaptionLabel::new("Server admins can also\nadd the bot themselves").color(t.dim).gamma(0.4));
                     ui.add_space(gap_md());
                     if ui.add(Button::new("Retry")
-                        .variant(Variant::Chrome)
+                        .variant(Variant::Ghost)
                         .size(Size::Xs)
-                        .fg(t.dim)
-                        .fill(color_alpha(t.toolbar_border, alpha_tint()))
-                        .corner_radius(current().r_md as f32)
                     ).clicked() {
                         if let Some(ref gid) = watchlist.discord_selected_guild {
                             watchlist.discord_channels_loading = true;

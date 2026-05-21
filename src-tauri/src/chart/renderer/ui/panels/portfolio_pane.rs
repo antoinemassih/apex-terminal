@@ -175,7 +175,7 @@ pub(crate) fn render(
         if ri % 2 == 1 {
             painter.rect_filled(egui::Rect::from_min_size(
                 egui::pos2(inner.left() - 4.0, y), egui::vec2(inner.width() + 8.0, row_h)),
-                0.0, color_alpha(t.toolbar_border, 8));
+                0.0, color_alpha(t.toolbar_border, alpha_faint()));
         }
 
         let mut cx = inner.left();
@@ -220,6 +220,9 @@ pub(crate) fn render(
         }
 
         // ── Donut chart (hand-rolled: custom arc sweep geometry) ──────────────
+        // donut_ring_w: arc ring visual thickness — intentional 10 px geometry,
+        // not a chrome border; no design-system stroke token covers arc weight.
+        let donut_ring_w: f32 = 10.0;
         let donut_cx = sector_x + 60.0;
         let donut_cy = table_top + 80.0;
         let donut_r = 40.0;
@@ -236,7 +239,7 @@ pub(crate) fn render(
                 painter.line_segment([
                     egui::pos2(donut_cx + donut_r * a0.cos(), donut_cy + donut_r * a0.sin()),
                     egui::pos2(donut_cx + donut_r * a1.cos(), donut_cy + donut_r * a1.sin())],
-                    egui::Stroke::new(10.0, color));
+                    egui::Stroke::new(donut_ring_w, color));
             }
             let mid_a = angle + sweep * 0.5;
             let lx = donut_cx + (donut_r + 18.0) * mid_a.cos();
@@ -362,12 +365,12 @@ pub(crate) fn render(
                     // Colours route through theme (bear = positive correlation,
                     // accent = negative) — no raw RGB.
                     let cell_col = if corr > 0.0 {
-                        color_alpha(t.bear, (intensity * 150.0) as u8)
+                        color_alpha(t.bear, (intensity * alpha_intense() as f32) as u8)
                     } else {
-                        color_alpha(t.accent, (intensity * 150.0) as u8)
+                        color_alpha(t.accent, (intensity * alpha_intense() as f32) as u8)
                     };
                     let cell_rect = egui::Rect::from_min_size(egui::pos2(cx, cy_pos), egui::vec2(cell_sz - 1.0, cell_sz - 1.0));
-                    painter.rect_filled(cell_rect, 2.0, cell_col);
+                    painter.rect_filled(cell_rect, radius_xs(), cell_col);
                     if row != col && cell_sz > 14.0 {
                         painter.text(cell_rect.center(), egui::Align2::CENTER_CENTER,
                             &format!("{:.1}", corr), mono_sm(), t.text);

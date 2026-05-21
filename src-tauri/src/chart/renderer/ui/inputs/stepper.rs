@@ -110,7 +110,7 @@ impl<'a, V: NumericValue> NumericStepper<'a, V> {
             ui.spacing_mut().item_spacing.x = 0.0;
             // [−]
             let minus = ui.add(Button::new("\u{2212}")
-                .variant(Variant::Chrome)
+                .variant(Variant::Secondary)
                 .min_size(btn_size)
                 .corner_radius(0.0));
             if minus.clicked() {
@@ -161,7 +161,7 @@ impl<'a, V: NumericValue> NumericStepper<'a, V> {
 
             // [+]
             let plus = ui.add(Button::new("+")
-                .variant(Variant::Chrome)
+                .variant(Variant::Secondary)
                 .min_size(btn_size)
                 .corner_radius(0.0));
             if plus.clicked() {

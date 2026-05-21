@@ -246,17 +246,11 @@ fn paint_time_picker<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, tp: TimePicker
                         ui.add_space(st::gap_xs());
 
                         // ── "Now" button ──
-                        let now_resp = ui.add_sized(
-                            Vec2::new(popup_w - st::gap_sm() * 2.0, size.height() * 0.85),
-                            egui::Button::new(
-                                egui::RichText::new("Now")
-                                    .monospace()
-                                    .size(font_size)
-                                    .color(theme.accent()),
-                            )
-                            .fill(st::color_alpha(theme.accent(), 24))
-                            .stroke(Stroke::new(st::stroke_std(), st::color_alpha(theme.accent(), 80))),
-                        );
+                        let now_resp = super::Button::new("Now")
+                            .variant(super::tokens::Variant::Secondary)
+                            .tint(theme.accent())
+                            .min_size(Vec2::new(popup_w - st::gap_sm() * 2.0, size.height() * 0.85))
+                            .show(ui, theme);
                         if now_resp.clicked() {
                             let now = Local::now().time();
                             sel_hour = now.hour();
@@ -269,17 +263,10 @@ fn paint_time_picker<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, tp: TimePicker
                         if !presets.is_empty() {
                             ui.add_space(st::gap_xs());
                             for (label, preset_time) in presets.iter() {
-                                let pr = ui.add_sized(
-                                    Vec2::new(popup_w - st::gap_sm() * 2.0, size.height() * 0.85),
-                                    egui::Button::new(
-                                        egui::RichText::new(*label)
-                                            .monospace()
-                                            .size(font_size)
-                                            .color(theme.text()),
-                                    )
-                                    .fill(egui::Color32::TRANSPARENT)
-                                    .stroke(Stroke::new(st::stroke_std(), theme.border())),
-                                );
+                                let pr = super::Button::new(*label)
+                                    .variant(super::tokens::Variant::Ghost)
+                                    .min_size(Vec2::new(popup_w - st::gap_sm() * 2.0, size.height() * 0.85))
+                                    .show(ui, theme);
                                 if pr.clicked() {
                                     sel_hour = preset_time.hour();
                                     sel_min = preset_time.minute();

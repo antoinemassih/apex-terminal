@@ -284,9 +284,9 @@ fn paint_row(
     let resp = ui
         .horizontal(|ui| {
             let r = ui.add(
-                egui::Button::new(RichText::new(&display).size(font_sm()).color(fg))
-                    .fill(Color32::TRANSPARENT)
-                    .stroke(Stroke::NONE)
+                super::Button::new(display.as_str())
+                    .variant(super::tokens::Variant::Ghost)
+                    .fg(fg)
                     .min_size(egui::vec2(ui.available_width().max(80.0), 20.0)),
             );
             if let Some(sc) = shortcut {

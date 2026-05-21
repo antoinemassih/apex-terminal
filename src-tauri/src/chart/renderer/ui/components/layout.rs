@@ -10,6 +10,8 @@
 
 use egui::{Color32, Response, RichText, Sense, Ui, Vec2};
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::widgets::{Button as UiButton};
+use crate::ui_kit::widgets::tokens::Variant as UiVariant;
 use super::super::style::{
     self, color_alpha, color_dim, color_muted, split_divider,
     gap_sm, gap_md, gap_lg, gap_xs, GAP_SM, GAP_MD, GAP_LG,
@@ -327,7 +329,7 @@ impl<'a> EmptyState<'a> {
             ui.add_space(gap_md());
             let mut clicked = false;
             ui.vertical_centered(|ui| {
-                if ui.button(label).clicked() { clicked = true; }
+                if ui.add(UiButton::new(label).variant(UiVariant::Ghost)).clicked() { clicked = true; }
             });
             clicked
         })

@@ -1488,8 +1488,8 @@ if watchlist.open {
                         PopupFrame::new().colors(t.toolbar_bg, t.toolbar_border).ctx(ctx).build().show(ui, |ui| {
                             for (sym, name) in watchlist.search_results.clone() {
                                 let chain_sugg_lbl = format!("{} {}", sym, name);
-                                if ui.add(Button::new(chain_sugg_lbl.as_str()).variant(Variant::Chrome).size(Size::Sm).fg(t.dim)
-                                    .frameless(true).min_size(egui::vec2(ui.available_width(), row_height_compact()))).clicked() {
+                                if ui.add(Button::new(chain_sugg_lbl.as_str()).variant(Variant::Ghost).size(Size::Sm)
+                                    .full_width(true).min_size(egui::vec2(ui.available_width(), row_height_compact()))).clicked() {
                                     watchlist.chain_symbol = sym;
                                     watchlist.chain_sym_input.clear();
                                     watchlist.search_results.clear();

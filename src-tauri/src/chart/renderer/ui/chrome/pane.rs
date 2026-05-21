@@ -963,6 +963,7 @@ impl<'a> FloatingOrderPaneChrome<'a> {
         let dim      = self.dim;
         let accent   = self.accent;
         let border   = self.toolbar_border;
+        let theme_ref = self.theme_ref;
 
         let mut close_clicked    = false;
         let mut armed_toggled    = false;
@@ -983,16 +984,15 @@ impl<'a> FloatingOrderPaneChrome<'a> {
 
             // Armed toggle
             let armed_icon  = if armed { Icon::SHIELD_WARNING } else { Icon::PLAY };
-            let armed_color = if armed { accent } else { color_dim(dim) };
-            let armed_resp  = ui.add(
-                egui::Button::new(egui::RichText::new(armed_icon).size(font_xs() + 3.0).color(armed_color))
-                    .fill(if armed { color_alpha(accent, alpha_soft()) } else { Color32::TRANSPARENT })
-                    .stroke(egui::Stroke::NONE)
-                    .min_size(egui::vec2(18.0, row_height_dense()))
-                    .corner_radius(radius_sm()),
-            );
+            let armed_theme = theme_ref.unwrap_or_else(|| crate::ui_kit::widgets::theme::active_theme(ui.ctx()));
+            let armed_resp = KitButton::icon(armed_icon)
+                .variant(Variant::Toggle)
+                .active(armed)
+                .tint(accent)
+                .min_size(egui::vec2(18.0, row_height_dense()))
+                .corner_radius(radius_sm())
+                .show(ui, armed_theme);
             if armed_resp.clicked()  { armed_toggled = true; }
-            if armed_resp.hovered()  { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
 
             // Title
             ui.label(
@@ -1033,17 +1033,13 @@ impl<'a> FloatingOrderPaneChrome<'a> {
                 // Expand/collapse toggle
                 let exp_icon = if advanced { Icon::MINUS } else { Icon::PLUS };
                 let exp_tip = if advanced { "Collapse" } else { "Expand" };
-                let exp_resp = ui.add(
-                    egui::Button::new(
-                        egui::RichText::new(exp_icon).size(font_xs_plus()).color(color_half(dim)),
-                    )
-                    .fill(Color32::TRANSPARENT)
+                let exp_resp = KitButton::icon(exp_icon)
+                    .variant(Variant::Ghost)
                     .min_size(egui::vec2(20.0, row_height_dense()))
-                    .corner_radius(radius_sm()),
-                );
+                    .corner_radius(radius_sm())
+                    .show(ui, theme_for_close);
                 Tooltip::new(exp_tip).show(ui, &exp_resp, theme_for_close);
                 if exp_resp.clicked() { advanced_toggled = true; }
-                if exp_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             });
         });
 

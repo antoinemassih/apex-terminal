@@ -229,16 +229,11 @@ impl<'a, T: PartialEq + Copy + Clone + 'a> SplitSectionPanel<'a, T> {
                     ui.set_min_height(TAB_BAR_H - 2.0);
                     for (tv, label) in available_tabs {
                         let sel = active == *tv;
-                        let fg = if sel { t.accent } else { color_dim(t.dim) };
-                        let resp = ui.add(
-                            egui::Button::new(
-                                egui::RichText::new(*label)
-                                    .monospace().size(font_xs()).color(fg),
-                            )
-                            .fill(Color32::TRANSPARENT)
-                            .stroke(Stroke::NONE)
-                            .min_size(Vec2::new(0.0, 22.0)),
-                        );
+                        let resp = crate::ui_kit::widgets::Button::new(*label)
+                            .variant(crate::ui_kit::widgets::tokens::Variant::Tab)
+                            .active(sel)
+                            .min_size(Vec2::new(0.0, 22.0))
+                            .show(ui, t);
                         if resp.clicked() { new_tab = Some(*tv); }
                     }
                     if can_close {

@@ -1259,13 +1259,13 @@ fn widget_sentiment(kind: ChartWidgetKind, wd: &WidgetData) -> f32 {
 /// Hero number — large proportional display font, the focal point of every widget.
 fn hero_number(p: &egui::Painter, pos: egui::Pos2, text: &str, color: Color32) {
     p.text(pos, egui::Align2::CENTER_CENTER,
-        text, egui::FontId::proportional(32.0), color);
+        text, egui::FontId::proportional(font_display_md()), color);
 }
 
 /// Even larger hero for primary KPIs.
 fn hero_number_lg(p: &egui::Painter, pos: egui::Pos2, text: &str, color: Color32) {
     p.text(pos, egui::Align2::CENTER_CENTER,
-        text, egui::FontId::proportional(42.0), color);
+        text, egui::FontId::proportional(font_display_lg()), color);
 }
 
 /// Small uppercase label — editorial style.
@@ -2252,7 +2252,7 @@ fn draw_risk_dash(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
 
     // Hero: suggested shares
     p.text(egui::pos2(body.center().x, y + 16.0), egui::Align2::CENTER_CENTER,
-        &format!("{:.0}", shares), egui::FontId::proportional(28.0), t.accent);
+        &format!("{:.0}", shares), egui::FontId::proportional(font_display_sm()), t.accent);
     p.text(egui::pos2(body.center().x, y + 34.0), egui::Align2::CENTER_CENTER,
         "SHARES", egui::FontId::monospace(FONT_2XS), color_half(t.dim));
     y += 48.0;
@@ -2541,7 +2541,7 @@ fn draw_econ_calendar(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
         p.text(egui::pos2(body.left() + 8.0, body.top() + 6.0), egui::Align2::LEFT_CENTER,
             "NEXT EVENT", egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
         p.text(egui::pos2(body.left() + 8.0, body.top() + 26.0), egui::Align2::LEFT_CENTER,
-            &format!("{}d", wd.econ_next_days), egui::FontId::proportional(28.0), t.accent);
+            &format!("{}d", wd.econ_next_days), egui::FontId::proportional(font_display_sm()), t.accent);
         p.text(egui::pos2(body.left() + 55.0, body.top() + 20.0), egui::Align2::LEFT_CENTER,
             &wd.econ_next_name, egui::FontId::monospace(FONT_SM), t.text);
     }
@@ -2837,7 +2837,7 @@ fn draw_daily_pnl(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
     let text_y = body.center().y;
     let text_x = body.left() + 10.0;
     p.text(egui::pos2(text_x, text_y), egui::Align2::LEFT_CENTER,
-        &label, egui::FontId::proportional(56.0), col);
+        &label, egui::FontId::proportional(font_display_xl()), col);
 
     // "Close All" button — right side, vertically centered, interactive
     let btn_w = 60.0;

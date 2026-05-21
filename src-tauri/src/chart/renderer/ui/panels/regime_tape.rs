@@ -184,7 +184,7 @@ fn draw_inner(
                     let txt = format!(" {}: {}→{} ({}) ",
                         tr.axis, tr.from, tr.to, format_age(now, tr.t_ms));
                     ui.label(egui::RichText::new(txt)
-                        .monospace().size(FONT_3XS).color(t.dim.gamma_multiply(0.8)));
+                        .monospace().size(FONT_3XS).color(color_subtle(t.dim)));
                 }
             },
         );

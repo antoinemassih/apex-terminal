@@ -391,7 +391,7 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
             ui.add_space(gap_md());
             ui.label(egui::RichText::new(format!("Error: {msg}"))
                 .monospace().size(FONT_XS).color(t.bear));
-            if ui.button("Retry").clicked() {
+            if KitButton::new("Retry").variant(KitVariant::Ghost).size(KitSize::Sm).show(ui, t).clicked() {
                 if let Ok(s) = runtime().state.lock() {
                     let depth = s.depth; let mode = s.mode;
                     drop(s);

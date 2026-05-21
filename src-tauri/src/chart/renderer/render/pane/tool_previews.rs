@@ -228,7 +228,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
                 painter.line_segment([egui::pos2(sx0, oy0), egui::pos2(sx1, oy1)], egui::Stroke::new(stroke_bold(), color_alpha(chan_color, 200)));
                 // Midline
                 let my0 = (sy0 + oy0) / 2.0; let my1 = (sy1 + oy1) / 2.0;
-                painter.line_segment([egui::pos2(sx0, my0), egui::pos2(sx1, my1)], egui::Stroke::new(0.7, color_alpha(chan_color, 80)));
+                painter.line_segment([egui::pos2(sx0, my0), egui::pos2(sx1, my1)], egui::Stroke::new(stroke_medium(), color_alpha(chan_color, 80)));
                 // Fib internal lines preview
                 if is_fib {
                     for &ratio in &[0.236_f32, 0.382, 0.618, 0.786] {
@@ -283,7 +283,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
                 for &(ratio, alpha) in fans {
                     let slope = ref_dy / ref_dx * ratio;
                     let end = egui::pos2(chart_right, origin.y + slope * (chart_right - origin.x));
-                    painter.line_segment([origin, clamp_pt(end)], egui::Stroke::new(if (ratio-1.0).abs()<0.01 {1.5} else {0.8}, color_alpha(fan_color, alpha)));
+                    painter.line_segment([origin, clamp_pt(end)], egui::Stroke::new(if (ratio-1.0).abs()<0.01 {stroke_bold()} else {stroke_medium()}, color_alpha(fan_color, alpha)));
                 }
             }
             painter.circle_filled(origin, 3.0, fan_color);
@@ -439,7 +439,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
                 if arc_pts.len() > 1 { painter.add(egui::Shape::line(arc_pts, egui::Stroke::new(stroke_medium(), color_alpha(farc_color, alpha)))); }
             }
             painter.circle_filled(center, 3.0, farc_color);
-            painter.line_segment([center, pos], egui::Stroke::new(0.7, color_alpha(farc_color, 100)));
+            painter.line_segment([center, pos], egui::Stroke::new(stroke_medium(), color_alpha(farc_color, 100)));
         }
         let ch_len = 8.0;
         painter.line_segment([pos - egui::vec2(ch_len, 0.0), pos + egui::vec2(ch_len, 0.0)], egui::Stroke::new(stroke_std(), farc_color));

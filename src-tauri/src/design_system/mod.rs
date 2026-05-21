@@ -39,6 +39,7 @@
 pub mod baseline;
 pub mod builtin;
 pub mod color_scheme;
+pub mod equivalence_tests;
 pub mod export;
 pub mod hot_reload;
 pub mod loader;

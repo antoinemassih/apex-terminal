@@ -248,12 +248,7 @@ fn draw_play_editor(
                     (PlayDirection::Short, "SHORT", t.bear),
                 ] {
                     let sel = watchlist.play_editor_direction == dir;
-                    let fg = if sel { color } else { color_half(t.dim) };
-                    let bg = if sel { color_alpha(color, alpha_tint()) } else { egui::Color32::TRANSPARENT };
-                    // legacy: monospace+strong; Button uses plain text
-                    if ui.add(Button::new(label).variant(Variant::Chrome).size(Size::Sm).fg(fg)
-                        .fill(bg).corner_radius(current().r_sm as f32)
-                        .stroke(egui::Stroke::new(stroke_thin(), if sel { color_alpha(color, alpha_line()) } else { egui::Stroke::NONE.color }))
+                    if ui.add(Button::toggle(label, sel).tint(color).size(Size::Sm)
                         .min_size(egui::vec2(56.0, row_height_default()))).clicked() {
                         watchlist.play_editor_direction = dir;
                         if let Some(ref mut c) = chart { spawn_play_lines(watchlist, c); }

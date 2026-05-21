@@ -403,7 +403,7 @@ fn draw_form(ui: &mut egui::Ui, s: &mut ReplayPaneState, t: &Theme) {
             .color(if s.overlay_on_chart { t.text } else { t.dim }));
     });
     ui.add(MonospaceCode::new("  (UI wiring stub — chart pane integration is a follow-up)")
-        .color(t.dim.gamma_multiply(0.55)));
+        .color(color_half(t.dim)));
 }
 
 fn draw_progress(ui: &mut egui::Ui, s: &ReplayPaneState, t: &Theme) {
@@ -535,7 +535,7 @@ fn draw_events_log(ui: &mut egui::Ui, s: &ReplayPaneState, t: &Theme) {
                     "trade"    => t.accent,
                     "snapshot" => t.dim,
                     "error"    => t.bear,
-                    _          => t.dim.gamma_multiply(0.8),
+                    _          => color_subtle(t.dim),
                 };
                 let price = e.price.map(|p| format!("{:>8.2}", p)).unwrap_or_else(|| "       —".into());
                 let line = format!("{:>6}  {:<8}  {}  {}", e.kind, e.symbol, fmt_ms(e.t_ms), price);
