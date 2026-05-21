@@ -152,9 +152,8 @@ if watchlist.open {
                         // so the chart-pane-aligned header stays uncluttered.
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let opt_icon = if watchlist.options_visible { Icon::RADIO_BUTTON } else { Icon::DOT };
-                            let opt_color = if watchlist.options_visible { t.accent } else { t.dim };
-                            let opt_resp = ui.add(Button::icon(opt_icon).variant(Variant::Chrome).glyph_color(opt_color).size(Size::Sm)
-                                .fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(18.0, row_height_dense())).placement(IconPlacement::PanelHeader));
+                            let opt_resp = ui.add(Button::icon(opt_icon).variant(Variant::MutedIcon).active(watchlist.options_visible).size(Size::Sm)
+                                .placement(IconPlacement::PanelHeader));
                             Tooltip::new("Show / hide options").show(ui, &opt_resp, t);
                             if opt_resp.clicked() { watchlist.options_visible = !watchlist.options_visible; }
                             if opt_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -335,9 +334,8 @@ if watchlist.open {
                                     let visible = watchlist.wl_columns.contains(&s.id);
                                     ui.horizontal(|ui| {
                                         let icon = if visible { Icon::EYE } else { Icon::EYE_SLASH };
-                                        let col = if visible { t.accent } else { color_very_dim(t.dim) };
-                                        let r = ui.add(Button::icon(icon).variant(Variant::Chrome).glyph_color(col).size(Size::Sm)
-                                            .frameless(true).min_size(egui::vec2(18.0, 16.0)).placement(IconPlacement::PanelHeader));
+                                        let r = ui.add(Button::icon(icon).variant(Variant::MutedIcon).active(visible).size(Size::Sm)
+                                            .placement(IconPlacement::PanelHeader));
                                         Tooltip::new("Show / hide column").show(ui, &r, t);
                                         if r.clicked() {
                                             if visible {
@@ -1432,11 +1430,8 @@ if watchlist.open {
                         // Select mode toggle
                         let sel_active = watchlist.chain_select_mode;
                         let sel_lbl: String = if sel_active { format!("{} sel", Icon::CHECK) } else { "sel".into() };
-                        if ui.add(Button::new(sel_lbl.as_str()).variant(Variant::Chrome).size(Size::Sm)
-                            .fg(if sel_active { t.accent } else { t.dim })
-                            .fill(if sel_active { color_alpha(t.accent, 51) } else { t.toolbar_bg })
-                            .stroke(egui::Stroke::new(stroke_std(), if sel_active { t.accent } else { t.toolbar_border }))
-                            .corner_radius(current().r_sm as f32)).clicked() {
+                        if ui.add(Button::new(sel_lbl.as_str()).variant(Variant::Chip).size(Size::Sm)
+                            .active(sel_active)).clicked() {
                             watchlist.chain_select_mode = !watchlist.chain_select_mode;
                         }
                         // Spread Builder shortcut
@@ -1841,25 +1836,24 @@ if watchlist.open {
                                     .show(ui, &mut watchlist.chain_0_strike_mode);
                             }
                             // Count ± (always visible)
-                            if ui.add(Button::new("-").variant(Variant::Chrome).size(Size::Sm).min_size(egui::vec2(icon_xs(), icon_xs()))).clicked() { watchlist.chain_0_num_strikes = watchlist.chain_0_num_strikes.saturating_sub(1).max(1); }
+                            if ui.add(Button::new("-").variant(Variant::Ghost).size(Size::Sm)).clicked() { watchlist.chain_0_num_strikes = watchlist.chain_0_num_strikes.saturating_sub(1).max(1); }
                             ui.add(MonospaceCode::new(&format!("{}", watchlist.chain_0_num_strikes)).size_px(font_xs()).color(t.dim));
-                            if ui.add(Button::new("+").variant(Variant::Chrome).size(Size::Sm).min_size(egui::vec2(icon_xs(), icon_xs()))).clicked() { watchlist.chain_0_num_strikes += 1; }
+                            if ui.add(Button::new("+").variant(Variant::Ghost).size(Size::Sm)).clicked() { watchlist.chain_0_num_strikes += 1; }
                             // Near / Mid / Far toggles
                             NmfToggle::new(&mut watchlist.chain_0_nmf).theme(t).show(ui);
                             // Freeze + arrows
-                            let fr_col = if watchlist.chain_0_frozen { t.accent } else { color_dim(t.dim) };
                             let fr_icon_0 = if watchlist.chain_0_frozen { Icon::PAUSE } else { Icon::PLAY };
-                            let r = ui.add(Button::icon(fr_icon_0).variant(Variant::Chrome).glyph_color(fr_col).size(Size::Sm).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(icon_xs(), icon_xs())).placement(IconPlacement::PanelHeader));
+                            let r = ui.add(Button::icon(fr_icon_0).variant(Variant::MutedIcon).active(watchlist.chain_0_frozen).size(Size::Sm).placement(IconPlacement::PanelHeader));
                             Tooltip::new("Freeze strikes").show(ui, &r, t);
                             if r.clicked() {
                                 watchlist.chain_0_frozen = !watchlist.chain_0_frozen;
                                 if !watchlist.chain_0_frozen { watchlist.chain_0_offset = 0; }
                             }
                             if watchlist.chain_0_frozen {
-                                let r = ui.add(Button::icon(Icon::ARROW_FAT_UP).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(icon_xs(), icon_xs())).placement(IconPlacement::PanelHeader));
+                                let r = ui.add(Button::icon(Icon::ARROW_FAT_UP).variant(Variant::MutedIcon).size(Size::Sm).placement(IconPlacement::PanelHeader));
                                 Tooltip::new("Shift strikes up").show(ui, &r, t);
                                 if r.clicked() { watchlist.chain_0_offset += 1; }
-                                let r = ui.add(Button::icon(Icon::ARROW_FAT_DOWN).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(icon_xs(), icon_xs())).placement(IconPlacement::PanelHeader));
+                                let r = ui.add(Button::icon(Icon::ARROW_FAT_DOWN).variant(Variant::MutedIcon).size(Size::Sm).placement(IconPlacement::PanelHeader));
                                 Tooltip::new("Shift strikes down").show(ui, &r, t);
                                 if r.clicked() { watchlist.chain_0_offset -= 1; }
                             }
@@ -1901,23 +1895,22 @@ if watchlist.open {
                                     .theme(t)
                                     .show(ui, &mut watchlist.chain_far_strike_mode);
                             }
-                            if ui.add(Button::new("-").variant(Variant::Chrome).size(Size::Sm).min_size(egui::vec2(icon_xs(), icon_xs()))).clicked() { watchlist.chain_far_num_strikes = watchlist.chain_far_num_strikes.saturating_sub(1).max(1); }
+                            if ui.add(Button::new("-").variant(Variant::Ghost).size(Size::Sm)).clicked() { watchlist.chain_far_num_strikes = watchlist.chain_far_num_strikes.saturating_sub(1).max(1); }
                             ui.add(MonospaceCode::new(&format!("{}", watchlist.chain_far_num_strikes)).size_px(font_xs()).color(t.dim));
-                            if ui.add(Button::new("+").variant(Variant::Chrome).size(Size::Sm).min_size(egui::vec2(icon_xs(), icon_xs()))).clicked() { watchlist.chain_far_num_strikes += 1; }
+                            if ui.add(Button::new("+").variant(Variant::Ghost).size(Size::Sm)).clicked() { watchlist.chain_far_num_strikes += 1; }
                             NmfToggle::new(&mut watchlist.chain_far_nmf).theme(t).show(ui);
-                            let fr_col = if watchlist.chain_far_frozen { t.accent } else { color_dim(t.dim) };
                             let fr_icon_far = if watchlist.chain_far_frozen { Icon::PAUSE } else { Icon::PLAY };
-                            let r = ui.add(Button::icon(fr_icon_far).variant(Variant::Chrome).glyph_color(fr_col).size(Size::Sm).fill(egui::Color32::TRANSPARENT).min_size(egui::vec2(icon_xs(), icon_xs())).placement(IconPlacement::PanelHeader));
+                            let r = ui.add(Button::icon(fr_icon_far).variant(Variant::MutedIcon).active(watchlist.chain_far_frozen).size(Size::Sm).placement(IconPlacement::PanelHeader));
                             Tooltip::new("Freeze strikes").show(ui, &r, t);
                             if r.clicked() {
                                 watchlist.chain_far_frozen = !watchlist.chain_far_frozen;
                                 if !watchlist.chain_far_frozen { watchlist.chain_far_offset = 0; }
                             }
                             if watchlist.chain_far_frozen {
-                                let r = ui.add(Button::icon(Icon::ARROW_FAT_UP).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(icon_xs(), icon_xs())).placement(IconPlacement::PanelHeader));
+                                let r = ui.add(Button::icon(Icon::ARROW_FAT_UP).variant(Variant::MutedIcon).size(Size::Sm).placement(IconPlacement::PanelHeader));
                                 Tooltip::new("Shift strikes up").show(ui, &r, t);
                                 if r.clicked() { watchlist.chain_far_offset += 1; }
-                                let r = ui.add(Button::icon(Icon::ARROW_FAT_DOWN).variant(Variant::Chrome).glyph_color(t.dim).size(Size::Sm).fill(color_alpha(t.toolbar_border, alpha_ghost())).min_size(egui::vec2(icon_xs(), icon_xs())).placement(IconPlacement::PanelHeader));
+                                let r = ui.add(Button::icon(Icon::ARROW_FAT_DOWN).variant(Variant::MutedIcon).size(Size::Sm).placement(IconPlacement::PanelHeader));
                                 Tooltip::new("Shift strikes down").show(ui, &r, t);
                                 if r.clicked() { watchlist.chain_far_offset -= 1; }
                             }

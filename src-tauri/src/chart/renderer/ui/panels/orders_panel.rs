@@ -15,7 +15,7 @@ use crate::ui_kit::widgets::{
     Badge, Button, MetricRow, MetricTone, PanelCard, PanelEmpty, PanelSection,
     PanelTone, SidePanelShell, TagTone, Tooltip, Width,
 };
-use crate::ui_kit::widgets::tokens::Variant;
+use crate::ui_kit::widgets::tokens::{Variant, Size};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use super::super::components::text::{self as wtext, MonospaceCode};
 use crate::ui_kit::icons::Icon;
@@ -128,15 +128,11 @@ fn draw_book(
                                                 egui::Layout::right_to_left(
                                                     egui::Align::Center),
                                                 |ui| {
-                                                    let close_color = t.bear;
                                                     let r = ui.add(Button::icon(Icon::X)
-                                                        .variant(Variant::Chrome)
-                                                        .glyph_color(close_color)
-                                                        .fill(color_alpha(close_color, 12))
-                                                        .corner_radius(current().r_sm as f32)
-                                                        .min_size(egui::vec2(18.0, 16.0))
-                                                        .frameless(true)
-                                                        .placement(IconPlacement::ListRow).tone_destructive());
+                                                        .variant(Variant::InlineClose)
+                                                        .size(Size::Xs)
+                                                        .placement(IconPlacement::ListRow)
+                                                        .tone_destructive());
                                                     Tooltip::new("Close position").show(ui, &r, t);
                                                     if r.clicked() {
                                                         let qty = pos.qty;
@@ -156,12 +152,8 @@ fn draw_book(
                                                     }
                                                     if pos.qty.abs() > 1 {
                                                         if ui.add(Button::new("\u{00BD}")
-                                                            .variant(Variant::Chrome)
-                                                            .fg(t.dim)
-                                                            .fill(color_alpha(t.toolbar_border, alpha_ghost()))
-                                                            .corner_radius(current().r_sm as f32)
-                                                            .min_size(egui::vec2(18.0, 16.0))
-                                                            .frameless(true)).clicked() {
+                                                            .variant(Variant::Ghost)
+                                                            .size(Size::Xs)).clicked() {
                                                             let half = (pos.qty.abs() / 2).max(1);
                                                             let con_id = pos.con_id;
                                                             let qty = pos.qty;
@@ -342,12 +334,10 @@ fn draw_book(
                 if !active_orders.is_empty() {
                     ui.horizontal(|ui| {
                         let check_icon = if all_selected { Icon::CHECK_SQUARE } else { Icon::SQUARE_EMPTY };
-                        let check_color = if all_selected { t.accent } else { color_dim(t.dim) };
                         let r = ui.add(Button::icon(check_icon)
-                            .variant(Variant::Chrome)
-                            .glyph_color(check_color)
-                            .frameless(true)
-                            .min_size(egui::vec2(icon_xs(), icon_xs()))
+                            .variant(Variant::MutedIcon)
+                            .active(all_selected)
+                            .size(Size::Xs)
                             .placement(IconPlacement::ListRow));
                         Tooltip::new("Select all").show(ui, &r, t);
                         if r.clicked() {
@@ -544,10 +534,8 @@ fn draw_book(
                                     egui::Layout::right_to_left(egui::Align::Center),
                                     |ui| {
                                         let r = ui.add(Button::icon(Icon::X)
-                                            .variant(Variant::Chrome)
-                                            .glyph_color(color_half(t.dim))
-                                            .frameless(true)
-                                            .min_size(egui::vec2(icon_xs(), icon_xs()))
+                                            .variant(Variant::InlineClose)
+                                            .size(Size::Xs)
                                             .placement(IconPlacement::ListRow));
                                         Tooltip::new("Remove alert").show(ui, &r, t);
                                         if r.clicked() {
