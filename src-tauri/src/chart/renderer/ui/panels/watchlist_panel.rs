@@ -293,8 +293,8 @@ if watchlist.open {
                                 let fg = if is_sel { t.text } else { t.dim };
                                 let lbl = format!("{:6} {}", sym, name);
                                 // legacy: monospace RichText; Button uses plain text
-                                let resp = ui.add(Button::new(lbl.as_str()).variant(Variant::Chrome).size(Size::Sm).fg(fg)
-                                    .fill(bg).frameless(true).min_size(egui::vec2(ui.available_width(), row_height_compact())));
+                                let resp = ui.add(Button::new(lbl.as_str()).variant(Variant::Ghost).size(Size::Sm)
+                                    .min_size(egui::vec2(ui.available_width(), row_height_compact())));
                                 if resp.clicked() {
                                     watchlist.add_symbol(sym);
                                     fetch_watchlist_prices(vec![sym.clone()]);

@@ -69,11 +69,9 @@ pub(crate) fn render_heat_panel(
         }
         // Expand / Collapse / Columns / Sort — all with hover cursor
         let hbtn = |ui: &mut egui::Ui, label: &str, col: egui::Color32, tip: &str| -> bool {
-            let resp = ui.add(Button::new(label).variant(Variant::Chrome)
+            let resp = ui.add(Button::new(label).variant(Variant::Ghost)
                 .fg(col)
-                .min_size(egui::vec2(20.0, row_height_dense()))
-                .corner_radius(current().r_md as f32)
-                .frameless(true));
+                .min_size(egui::vec2(20.0, row_height_dense())));
             if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             resp.on_hover_text(tip).clicked()
         };

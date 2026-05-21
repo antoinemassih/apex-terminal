@@ -179,7 +179,11 @@ impl<'a> DialogHeaderWithClose<'a> {
 
     /// Render the header. Returns `true` if the close button was clicked.
     pub fn show(self, ui: &mut Ui) -> bool {
-        super::super::style::dialog_header(ui, self.title, self.dim)
+        let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+        crate::ui_kit::widgets::Header::dialog(self.title)
+            .closable(true)
+            .show(ui, theme)
+            .close_clicked
     }
 }
 

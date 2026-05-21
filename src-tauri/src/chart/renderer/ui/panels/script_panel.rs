@@ -145,9 +145,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme, show_save:
     PanelSection::new("EXAMPLES").show(ui, t, |ui, t| {
         ui.horizontal_wrapped(|ui| {
             for (name, source) in PRESETS {
-                let btn = Button::new(*name).variant(Variant::Chrome).size(Size::Xs).fg(color_subtle(t.accent))
-                    .fill(color_alpha(t.accent, 12))
-                    .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.accent, 35)))
+                let btn = Button::new(*name).variant(Variant::Chip).size(Size::Xs)
                     .show(ui, t);
                 if btn.clicked() { watchlist.script_source = source.to_string(); }
                 if btn.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }

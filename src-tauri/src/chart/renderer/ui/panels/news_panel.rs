@@ -109,17 +109,16 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
 
     let filter_active = watchlist.news_filter_symbol;
     let filter_label = if filter_active { active_symbol } else { "All" };
-    let filter_col = if filter_active { t.accent } else { t.dim };
     let mut toggle_filter = false;
     let mut cycle_sentiment = false;
 
     // Sentiment chip label.
     let sent_filter = watchlist.news_sentiment_filter;
-    let (sent_label, sent_col) = match sent_filter {
-        FILTER_BULL => ("Bull", t.bull),
-        FILTER_BEAR => ("Bear", t.bear),
-        FILTER_NEUT => ("Neut", t.dim),
-        _           => ("Any",  t.dim),
+    let sent_label = match sent_filter {
+        FILTER_BULL => "Bull",
+        FILTER_BEAR => "Bear",
+        FILTER_NEUT => "Neut",
+        _           => "Any",
     };
 
     let resp = Modal::new("NEWS")
@@ -134,25 +133,17 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
         .panel_title_actions(|ui| {
             ui.add_space(gap_sm());
             if ui.add(Button::new(filter_label)
-                .variant(Variant::Chrome)
-                .fg(filter_col)
-                .fill(color_alpha(filter_col, alpha_ghost()))
-                .corner_radius(current().r_md as f32)
-                .stroke(egui::Stroke::new(stroke_thin(), color_alpha(filter_col, alpha_muted())))
+                .variant(Variant::Chip)
+                .active(filter_active)
                 .min_size(egui::vec2(0.0, 16.0))
-                .frameless(true)
             ).clicked() {
                 toggle_filter = true;
             }
             ui.add_space(gap_xs_mid());
             if ui.add(Button::new(sent_label)
-                .variant(Variant::Chrome)
-                .fg(sent_col)
-                .fill(color_alpha(sent_col, alpha_ghost()))
-                .corner_radius(current().r_md as f32)
-                .stroke(egui::Stroke::new(stroke_thin(), color_alpha(sent_col, alpha_muted())))
+                .variant(Variant::Chip)
+                .active(sent_filter != FILTER_ALL)
                 .min_size(egui::vec2(0.0, 16.0))
-                .frameless(true)
             ).clicked() {
                 cycle_sentiment = true;
             }

@@ -107,11 +107,7 @@ impl<'a> ColorSwatchPicker<'a> {
             let is_auto = value.is_empty();
             use crate::ui_kit::widgets::Button;
             use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
-            let auto_fg = if is_auto { accent } else { color_half(dim) };
-            let auto_bg = if is_auto { color_alpha(accent, alpha_soft()) } else { Color32::TRANSPARENT };
-            if ui.add(Button::new("auto").variant(Variant::Chrome).size(KitSize::Xs).fg(auto_fg)
-                .fill(auto_bg)
-                .corner_radius(crate::chart_renderer::ui::style::current().r_xs as f32)
+            if ui.add(Button::new("auto").variant(Variant::Chip).active(is_auto).size(KitSize::Xs)
                 .min_size(egui::vec2(24.0, sz))).clicked() && !is_auto {
                 *value = String::new();
                 changed = true;

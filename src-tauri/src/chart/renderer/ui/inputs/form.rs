@@ -603,7 +603,7 @@ impl<'a> MeridienOrderTicket<'a> {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         for &(pct, lbl) in &[(1.0_f32, "100%"), (0.5, "50%"), (0.25, "25%")] {
                             if ui.add(Button::new(lbl)
-                                    .variant(Variant::Chrome)
+                                    .variant(Variant::Chip)
                                     .min_size(Vec2::new(30.0, 16.0))).clicked() {
                                 let bp = s.buying_power.max(0.0);
                                 if s.last > 0.0 {
@@ -682,13 +682,13 @@ impl<'a> MeridienOrderTicket<'a> {
                     ui.spacing_mut().item_spacing.x = 0.0;
                     ui.spacing_mut().button_padding = Vec2::new(2.0, 0.0);
                     let dflt = ui.add(Button::new(default_lbl)
-                        .variant(Variant::Chrome)
+                        .variant(Variant::Chip)
                         .active(is_default)
                         .corner_radius(0.0)
                         .min_size(Vec2::new(pill_w, pill_h)));
                     if dflt.clicked() { *state = 0; }
                     let othr = ui.add(Button::new(other_lbl)
-                        .variant(Variant::Chrome)
+                        .variant(Variant::Chip)
                         .active(!is_default)
                         .corner_radius(0.0)
                         .min_size(Vec2::new(pill_w, pill_h)));
@@ -891,11 +891,8 @@ impl<'a> IndicatorParamRow<'a> {
                 ui.spacing_mut().item_spacing.x = gap_xs();
                 for &pr in self.presets {
                     let sel = *value == pr;
-                    let fg = if sel { accent } else { color_half(dim) };
                     let pr_label = format!("{}", pr);
-                    if Button::new(pr_label.as_str()).variant(Variant::Chrome).size(Size::Xs).fg(fg)
-                        .fill(if sel { color_alpha(accent, alpha_soft()) } else { Color32::TRANSPARENT })
-                        .corner_radius(crate::chart_renderer::ui::style::current().r_xs as f32)
+                    if Button::new(pr_label.as_str()).variant(Variant::Chip).active(sel).size(Size::Xs)
                         .min_size(egui::vec2(22.0, row_height_dense())).show(ui, theme).clicked() && !sel
                     {
                         *value = pr;
@@ -987,11 +984,8 @@ impl<'a> IndicatorParamRowF<'a> {
                 ui.spacing_mut().item_spacing.x = gap_xs();
                 for &pr in self.presets {
                     let sel = (*value - pr).abs() < 0.01;
-                    let fg = if sel { accent } else { color_half(dim) };
                     let pr_label = format!("{:.prec$}", pr, prec = d);
-                    if Button::new(pr_label.as_str()).variant(Variant::Chrome).size(Size::Xs).fg(fg)
-                        .fill(if sel { color_alpha(accent, alpha_soft()) } else { Color32::TRANSPARENT })
-                        .corner_radius(crate::chart_renderer::ui::style::current().r_xs as f32)
+                    if Button::new(pr_label.as_str()).variant(Variant::Chip).active(sel).size(Size::Xs)
                         .min_size(egui::vec2(22.0, row_height_dense())).show(ui, theme).clicked() && !sel
                     {
                         *value = pr;

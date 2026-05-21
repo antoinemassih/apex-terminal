@@ -217,12 +217,8 @@ fn draw_play_editor(
             ui.horizontal_wrapped(|ui| {
                 for pty in PlayType::all() {
                     let sel = pt == *pty;
-                    let fg = if sel { t.accent } else { color_half(t.dim) };
-                    let bg = if sel { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
                     let label = format!("{} {}", pty.icon(), pty.label());
-                    if ui.add(Button::new(label.as_str()).variant(Variant::Chrome).size(Size::Xs).fg(fg)
-                        .fill(bg).corner_radius(current().r_sm as f32)
-                        .stroke(egui::Stroke::new(stroke_thin(), if sel { color_alpha(t.accent, alpha_line()) } else { egui::Stroke::NONE.color }))
+                    if ui.add(Button::new(label.as_str()).variant(Variant::Chip).active(sel).size(Size::Xs)
                         .min_size(egui::vec2(0.0, row_height_compact()))).clicked() {
                         let prev = watchlist.play_editor_type;
                         watchlist.play_editor_type = *pty;
@@ -336,8 +332,8 @@ fn draw_play_editor(
                         if let Some(ref mut c) = chart { c.play_click_to_set = Some(PlayLineKind::Target2); }
                     }
                     pct_stepper(ui, &mut watchlist.play_editor_t2_pct, t);
-                    let r = ui.add(Button::icon(Icon::X).variant(Variant::Chrome).glyph_color(color_muted(t.bear)).size(Size::Sm)
-                        .fill(egui::Color32::TRANSPARENT).min_size(BTN_ICON_SM).placement(IconPlacement::ListRow).tone_destructive());
+                    let r = ui.add(Button::icon(Icon::X).variant(Variant::InlineClose).size(Size::Sm)
+                        .min_size(BTN_ICON_SM).placement(IconPlacement::ListRow).tone_destructive());
                     Tooltip::new("Remove target").show(ui, &r, t);
                     if r.clicked() { remove_t2 = true; }
                 });
@@ -363,8 +359,8 @@ fn draw_play_editor(
                         if let Some(ref mut c) = chart { c.play_click_to_set = Some(PlayLineKind::Target3); }
                     }
                     pct_stepper(ui, &mut watchlist.play_editor_t3_pct, t);
-                    let r = ui.add(Button::icon(Icon::X).variant(Variant::Chrome).glyph_color(color_muted(t.bear)).size(Size::Sm)
-                        .fill(egui::Color32::TRANSPARENT).min_size(BTN_ICON_SM).placement(IconPlacement::ListRow).tone_destructive());
+                    let r = ui.add(Button::icon(Icon::X).variant(Variant::InlineClose).size(Size::Sm)
+                        .min_size(BTN_ICON_SM).placement(IconPlacement::ListRow).tone_destructive());
                     Tooltip::new("Remove target").show(ui, &r, t);
                     if r.clicked() { remove_t3 = true; }
                 });
@@ -445,8 +441,7 @@ fn draw_play_editor(
                     .cloned().collect();
                 for ct in &custom {
                     let custom_tag_lbl = format!("{} \u{00D7}", ct);
-                    if ui.add(Button::new(custom_tag_lbl.as_str()).variant(Variant::Chrome).size(Size::Xs).fg(t.accent)
-                        .fill(color_alpha(t.accent, alpha_tint())).corner_radius(current().r_md as f32)
+                    if ui.add(Button::new(custom_tag_lbl.as_str()).variant(Variant::Chip).active(true).size(Size::Xs)
                         .min_size(egui::vec2(0.0, 16.0))).clicked() {
                         watchlist.play_editor_tags.retain(|x| x != ct);
                     }
@@ -554,8 +549,8 @@ fn pct_stepper(ui: &mut egui::Ui, pct_str: &mut String, t: &Theme) {
     let step = 5u32;
     let mut val: u32 = pct_str.parse().unwrap_or(50);
 
-    if ui.add(Button::new("-").variant(Variant::Chrome).size(Size::Xs).fg(t.dim)
-        .min_size(BTN_ICON_SM).fill(color_alpha(t.toolbar_border, alpha_faint()))).clicked() {
+    if ui.add(Button::new("-").variant(Variant::Ghost).size(Size::Xs)
+        .min_size(BTN_ICON_SM)).clicked() {
         val = val.saturating_sub(step).max(5);
     }
     Input::new(pct_str)
@@ -563,8 +558,8 @@ fn pct_stepper(ui: &mut egui::Ui, pct_str: &mut String, t: &Theme) {
         .horizontal_align(egui::Align::Center)
         .show(ui, t);
     ui.add(super::super::components::text::MonospaceCode::new("%").xs().color(t.dim).gamma(0.4));
-    if ui.add(Button::new("+").variant(Variant::Chrome).size(Size::Xs).fg(t.dim)
-        .min_size(BTN_ICON_SM).fill(color_alpha(t.toolbar_border, alpha_faint()))).clicked() {
+    if ui.add(Button::new("+").variant(Variant::Ghost).size(Size::Xs)
+        .min_size(BTN_ICON_SM)).clicked() {
         val = (val + step).min(100);
     }
 
@@ -577,10 +572,7 @@ fn pct_stepper(ui: &mut egui::Ui, pct_str: &mut String, t: &Theme) {
 }
 
 fn click_to_set_btn(ui: &mut egui::Ui, icon: &str, t: &Theme, active: bool) -> bool {
-    let fg = if active { t.accent } else { color_dim(t.dim) };
-    let bg = if active { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
-    let resp = ui.add(Button::icon(icon).variant(Variant::Chrome).glyph_color(fg).size(Size::Sm)
-        .fill(bg).corner_radius(current().r_sm as f32)
+    let resp = ui.add(Button::icon(icon).variant(Variant::Ghost).active(active).size(Size::Sm)
         .min_size(egui::vec2(18.0, row_height_dense())).placement(IconPlacement::ListRow));
     Tooltip::new("Click chart to set price").show(ui, &resp, t);
     resp.clicked()
