@@ -400,3 +400,20 @@ resp.header_response.context_menu(|ui| {
 - [ ] Strokes use `stroke_*()` helpers
 - [ ] Theme colors come from a threaded `Theme` / `&dyn ComponentTheme`, not raw RGB
 - [ ] Walked the feature in a light theme (Bauhaus) at least once
+
+## 🧊 State: the god-objects are FROZEN
+
+Per `docs/adr/0001-canonical-state-model.md`, the `Watchlist` and `Chart`
+structs (`chart/renderer/gpu.rs`) are **frozen** — a state migration is in
+progress (`docs/STATE_ROADMAP.md`).
+
+- **Do NOT add new fields to `Watchlist` or `Chart`.** New per-chart state goes
+  on `chart/state/ChartState`; new app/UI state goes on a `state/` aggregate
+  (`state/aggregates.rs`) — and must be mirrored in its `push_to_*` /
+  `sync_from_*` methods or it will not persist.
+- New state mutation should go through `AppCommand` (`chart/renderer/commands.rs`),
+  not a direct `&mut` field write.
+- Keyboard / global input must NOT be read inside `render_chart_pane` (the
+  per-pane loop) — it fans out to every pane. Active-pane-gate it, or (target
+  architecture) handle it in the single per-frame input pass.
+- See `docs/STATE_SYSTEM.md` for the full map.

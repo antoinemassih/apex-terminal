@@ -6798,9 +6798,42 @@ impl ApplicationHandler for App {
                                                 let id = chart.next_indicator_id; chart.next_indicator_id += 1;
                                                 let mut ind = Indicator::new(id, kind, period, color);
                                                 ind.visible = visible; ind.thickness = thickness;
+                                                ind.param2 = ind_json.get("param2").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                                ind.param3 = ind_json.get("param3").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                                ind.param4 = ind_json.get("param4").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                                ind.source = ind_json.get("source").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
+                                                ind.offset = ind_json.get("offset").and_then(|v| v.as_i64()).unwrap_or(0) as i16;
+                                                ind.ob_level = ind_json.get("ob_level").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                                ind.os_level = ind_json.get("os_level").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                                ind.source_tf = ind_json.get("source_tf").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                                ind.line_style = match ind_json.get("line_style").and_then(|v| v.as_str()).unwrap_or("solid") {
+                                                    "dashed" => LineStyle::Dashed, "dotted" => LineStyle::Dotted, _ => LineStyle::Solid,
+                                                };
+                                                // Band styling (BB, Keltner, etc.) — v3 parity; absent in v2 files, defaults to empty/0
+                                                ind.upper_color = ind_json.get("upper_color").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                                ind.lower_color = ind_json.get("lower_color").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                                ind.fill_color_hex = ind_json.get("fill_color_hex").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                                ind.upper_thickness = ind_json.get("upper_thickness").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                                ind.lower_thickness = ind_json.get("lower_thickness").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
                                                 chart.indicators.push(ind);
                                             }
                                         }
+                                        // v3 parity: chart widgets — absent in v2 files, defaults to empty vec
+                                        if let Some(wv) = p.get("chart_widgets") {
+                                            if let Ok(widgets) = serde_json::from_value::<Vec<super::ChartWidget>>(wv.clone()) {
+                                                chart.chart_widgets = widgets;
+                                                for w in &mut chart.chart_widgets { w.anim_init = false; }
+                                            }
+                                        }
+                                        // v3 parity: option-pane state — absent in v2 files, defaults to false/empty
+                                        chart.is_option = p.get("is_option").and_then(|v| v.as_bool()).unwrap_or(false);
+                                        chart.option_contract = p.get("option_contract").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                        chart.option_strike   = p.get("option_strike").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                        chart.option_type     = p.get("option_type").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                        chart.option_expiry   = p.get("option_expiry").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                        chart.underlying      = p.get("underlying").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                        // v3 parity: bar source — absent in v2 files, defaults to "last"
+                                        chart.bar_source_mark = p.get("bar_source").and_then(|v| v.as_str()).unwrap_or("last") == "mark";
                                         panes.push(chart);
                                     }
                                 }
@@ -7137,6 +7170,10 @@ fn workspace_to_json(panes: &[Chart], layout: Layout) -> String {
             "ob_level": ind.ob_level, "os_level": ind.os_level,
             "source_tf": ind.source_tf,
             "line_style": match ind.line_style { LineStyle::Solid => "solid", LineStyle::Dashed => "dashed", LineStyle::Dotted => "dotted" },
+            // Band styling (BB, Keltner, etc.) — v3 parity
+            "upper_color": ind.upper_color, "lower_color": ind.lower_color,
+            "fill_color_hex": ind.fill_color_hex,
+            "upper_thickness": ind.upper_thickness, "lower_thickness": ind.lower_thickness,
         })).collect();
         serde_json::json!({
             "symbol": p.symbol, "timeframe": p.timeframe,
@@ -7172,10 +7209,21 @@ fn workspace_to_json(panes: &[Chart], layout: Layout) -> String {
                 VolumeProfileMode::Clean => "clean",
             },
             "indicators": indicators,
+            // v3 parity: chart widgets
+            "chart_widgets": serde_json::to_value(&p.chart_widgets).unwrap_or_default(),
+            // v3 parity: option-pane state
+            "is_option": p.is_option,
+            "option_contract": p.option_contract,
+            "option_strike": p.option_strike,
+            "option_type": p.option_type,
+            "option_expiry": p.option_expiry,
+            "underlying": p.underlying,
+            // v3 parity: bar source (Last vs Mark)
+            "bar_source": if p.bar_source_mark { "mark" } else { "last" },
         })
     }).collect();
     let state = serde_json::json!({
-        "version": 2,
+        "version": 3,
         "layout": layout.label(),
         "theme_idx": panes.first().map(|p| p.theme_idx).unwrap_or(5),
         "panes": pane_data,

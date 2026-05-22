@@ -566,7 +566,7 @@ impl Play {
 pub(crate) enum BookTab { Book, Journal }
 
 /// Pane header density mode — controls header height + title font size.
-#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum PaneHeaderSize { Compact, Normal, Expanded }
 
 impl PaneHeaderSize {

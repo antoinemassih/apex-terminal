@@ -36,7 +36,18 @@ use super::persistence::Persistable;
 ///   runtime, must not be persisted.
 /// - `toolbar_hover_time: Option<Instant>` — runtime-only animation
 ///   state; `Instant` is not serializable.
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+///
+/// # Mirror invariant
+/// Every field listed below **must** be present in both
+/// `Watchlist::push_to_ui_settings` (Watchlist → aggregate) and
+/// `Watchlist::pull_from_ui_settings` (aggregate → Watchlist).
+///
+/// Known gap: `has_seen_welcome` and `welcome_step_resume` are NOT
+/// mirrored by `push_to_ui_settings` — they are written directly into
+/// `self.ui_settings` by the welcome wizard and persisted from there.
+/// `pull_from_ui_settings` does not copy them back to flat fields because
+/// no legacy flat fields exist for them.  This is intentional.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UiSettings {
     #[serde(default = "default_font_scale")]
     pub(crate) font_scale: f32,
@@ -165,7 +176,16 @@ impl Default for DefaultTimeInForce {
 ///   `Serialize/Deserialize`; hotkeys need their own serialization shim.
 /// - `hotkey_editor_open`, `hotkey_editing_id` — UI-only scratch state;
 ///   belongs in `SidebarState`.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+///
+/// # Mirror invariant
+/// Every field below **must** appear in both
+/// `Watchlist::push_to_trading_defaults_store` (Watchlist → aggregate) and
+/// `Watchlist::sync_trading_defaults_from_store` (aggregate → Watchlist).
+///
+/// Known gap: `daily_loss_cap` and `max_position_pct` have no legacy
+/// counterpart on `Watchlist` — they are intentionally store-only fields
+/// written by the welcome wizard.  Neither push nor sync touches them.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TradingDefaults {
     /// Default quantity for equity/ETF orders (shares).
     /// Source: `Watchlist::default_stock_qty` (u32, default 100).
@@ -246,7 +266,7 @@ impl Persistable for TradingDefaults {
 /// wave makes the trading module re-export a serializable version directly.
 ///
 /// Source: `src-tauri/src/chart/renderer/trading/mod.rs`, line 440.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PersistedAlert {
     /// Stable alert identifier (`Watchlist::next_alert_id` counter).
     pub id: u32,
@@ -281,7 +301,13 @@ pub struct PersistedAlert {
 /// - No additional `alerts_*` fields were found in gpu.rs beyond the four
 ///   listed above.  `alert_query` has `#[allow(dead_code)]` in gpu.rs,
 ///   suggesting it is stub / future use — included here for completeness.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+///
+/// # Mirror invariant
+/// Every field below **must** appear in both
+/// `Watchlist::push_to_alerts_store` (Watchlist → aggregate) and
+/// `Watchlist::sync_from_alerts_store` (aggregate → Watchlist).
+/// All four fields are currently covered by both methods.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AlertsState {
     /// The live alert list.
     /// Source: `Watchlist::alerts: Vec<Alert>`.
@@ -355,7 +381,13 @@ impl Persistable for AlertsState {
 ///   `false` on launch.
 /// - `discord_channels_loading: bool`, `discord_messages_loading: bool`
 ///   — in-flight flags; migrate to `InFlightRegistry` in a follow-up wave.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+///
+/// # Mirror invariant
+/// Every field below **must** appear in both
+/// `Watchlist::push_to_chat_store` (Watchlist → aggregate) and
+/// `Watchlist::sync_from_chat_store` (aggregate → Watchlist).
+/// All nine fields are currently covered by both methods.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ChatState {
     /// Whether the Discord chat side-panel is open.
     /// Source: `Watchlist::discord_open: bool`.
@@ -432,6 +464,12 @@ impl Persistable for ChatState {
 ///
 /// **P2 Round 2** populates this aggregate.
 ///
+/// # Mirror invariant
+/// Every field below **must** appear in both
+/// `Watchlist::push_to_sidebar_store` (Watchlist → aggregate) and
+/// `Watchlist::sync_from_sidebar_store` (aggregate → Watchlist).
+/// All 33 fields are currently covered by both methods.
+///
 /// Field sources (Watchlist field → this aggregate field):
 /// - `Watchlist::open: bool`                    → `watchlist_open`
 /// - `Watchlist::settings_open: bool`           → `settings_open`
@@ -484,7 +522,7 @@ impl Persistable for ChatState {
 ///   `analysis_splits`, `feed_splits` — typed enums that reference
 ///   crate-internal types not currently `Serialize`; deferred to follow-up.
 /// - `order_ledger_search: String` — transient search buffer, resets on open.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SidebarState {
     /// Whether the main watchlist side-panel is open.
     /// Source: `Watchlist::open`.
@@ -734,7 +772,7 @@ impl Persistable for SidebarState {
 /// dependency.
 ///
 /// Source: `src-tauri/src/chart/renderer/gpu.rs`, `LinkGroup`, line 4347.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PersistedLinkGroup {
     /// Human-readable label ("Group 1", etc.).
     pub name: String,
@@ -787,7 +825,13 @@ impl Default for PersistedLinkGroup {
 /// - Full `pane_templates` payloads — the `serde_json::Value` inner type
 ///   is intentionally opaque and large; names are persisted here so the
 ///   UI can enumerate them; the payloads remain in the chart save/load flow.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+///
+/// # Mirror invariant
+/// Every field below **must** appear in both
+/// `Watchlist::push_to_layout_store` (Watchlist → aggregate) and
+/// `Watchlist::sync_from_layout_store` (aggregate → Watchlist).
+/// All 20 fields are currently covered by both methods.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LayoutState {
     /// Named, colored link groups shared across all panes.
     /// Source: `Watchlist::link_groups: Vec<LinkGroup>`.
@@ -983,7 +1027,14 @@ impl Persistable for LayoutState {
 /// - `cmd_palette_open`, `cmd_palette_query`, `cmd_palette_results`,
 ///   `cmd_palette_sel`, `cmd_palette_ai_mode`, `cmd_palette_ai_input`
 ///   — ephemeral UI state; always reset on open.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+///
+/// # Mirror invariant
+/// Every field below **must** appear in any future
+/// `Watchlist::push_to_cmd_palette_store` and
+/// `Watchlist::sync_from_cmd_palette_store` methods (not yet landed).
+/// Until those methods exist, writes go directly through
+/// `Watchlist::cmd_palette_state_store.update(...)`.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CmdPaletteState {
     /// Most-recently-used command/symbol IDs, newest first (max 50).
     /// Source: `Watchlist::cmd_palette_recent`.
@@ -1521,5 +1572,358 @@ mod tests {
         let back: PersistedLinkGroup = serde_json::from_str(&json).unwrap();
         assert_eq!(back.name, "Alpha");
         assert_eq!(back.color_rgba, [255, 80, 30, 200]);
+    }
+
+    // ── PartialEq round-trip equality assertions (whole-struct ==) ───────────
+
+    #[test]
+    fn ui_settings_partial_eq_round_trip() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_ui_settings_eq_rt");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("ui_settings.json");
+        let v = UiSettings {
+            font_scale: 2.5,
+            font_idx: 1,
+            compact_mode: true,
+            pane_header_size: crate::chart_renderer::PaneHeaderSize::Normal,
+            toolbar_auto_hide: true,
+            show_x_axis: false,
+            show_y_axis: false,
+            shared_x_axis: true,
+            shared_y_axis: true,
+            style_idx: 7,
+            has_seen_welcome: true,
+            welcome_step_resume: 4,
+        };
+        save(&path, &v).unwrap();
+        let loaded: UiSettings = load(&path).unwrap();
+        assert_eq!(loaded, v, "UiSettings must round-trip with full field equality");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ui_settings_default_stability() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_ui_settings_default_stability");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("ui_settings.json");
+        let v = UiSettings::default();
+        save(&path, &v).unwrap();
+        let loaded: UiSettings = load(&path).unwrap();
+        assert_eq!(loaded, v, "UiSettings::default() must be stable under round-trip");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn trading_defaults_partial_eq_round_trip() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_trading_defaults_eq_rt");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("trading_defaults.json");
+        let v = TradingDefaults {
+            default_stock_qty: 500,
+            default_options_qty: 10,
+            default_order_type: DefaultOrderType::StopLimit,
+            default_tif: DefaultTimeInForce::Fok,
+            default_outside_rth: true,
+            daily_loss_cap: 1500.0,
+            max_position_pct: 25.0,
+        };
+        save(&path, &v).unwrap();
+        let loaded: TradingDefaults = load(&path).unwrap();
+        assert_eq!(loaded, v, "TradingDefaults must round-trip with full field equality");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn trading_defaults_default_stability() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_trading_defaults_default_stability");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("trading_defaults.json");
+        let v = TradingDefaults::default();
+        save(&path, &v).unwrap();
+        let loaded: TradingDefaults = load(&path).unwrap();
+        assert_eq!(loaded, v, "TradingDefaults::default() must be stable under round-trip");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn alerts_state_partial_eq_round_trip() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_alerts_state_eq_rt");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("alerts_state.json");
+        let v = AlertsState {
+            alerts: vec![
+                PersistedAlert {
+                    id: 42,
+                    symbol: "TSLA".into(),
+                    price: 300.50,
+                    above: false,
+                    triggered: true,
+                    message: "TSLA below 300.50".into(),
+                },
+                PersistedAlert {
+                    id: 43,
+                    symbol: "NVDA".into(),
+                    price: 900.0,
+                    above: true,
+                    triggered: false,
+                    message: "NVDA breakout".into(),
+                },
+            ],
+            next_alert_id: 44,
+            alert_query: "breakout".into(),
+            alerts_panel_open: true,
+        };
+        save(&path, &v).unwrap();
+        let loaded: AlertsState = load(&path).unwrap();
+        assert_eq!(loaded, v, "AlertsState must round-trip with full field equality");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn alerts_state_default_stability() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_alerts_state_default_stability");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("alerts_state.json");
+        let v = AlertsState::default();
+        save(&path, &v).unwrap();
+        let loaded: AlertsState = load(&path).unwrap();
+        assert_eq!(loaded, v, "AlertsState::default() must be stable under round-trip");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn chat_state_partial_eq_round_trip() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_chat_state_eq_rt");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("chat_state.json");
+        let v = ChatState {
+            discord_open: true,
+            discord_input: "gm everyone!".into(),
+            discord_channel: "signals".into(),
+            discord_authenticated: true,
+            discord_username: "apex_user".into(),
+            discord_user_id: "987654321".into(),
+            discord_selected_guild: Some("guild_apex".into()),
+            discord_selected_channel: Some("ch_signals".into()),
+            discord_last_msg_id: Some("msg_12345".into()),
+        };
+        save(&path, &v).unwrap();
+        let loaded: ChatState = load(&path).unwrap();
+        assert_eq!(loaded, v, "ChatState must round-trip with full field equality");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn chat_state_default_stability() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_chat_state_default_stability");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("chat_state.json");
+        let v = ChatState::default();
+        save(&path, &v).unwrap();
+        let loaded: ChatState = load(&path).unwrap();
+        assert_eq!(loaded, v, "ChatState::default() must be stable under round-trip");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sidebar_state_partial_eq_round_trip() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_sidebar_state_eq_rt");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("sidebar_state.json");
+        // Set every bool field to a non-default value so any serde omission fails.
+        let v = SidebarState {
+            watchlist_open: true,
+            settings_open: true,
+            orders_panel_open: true,
+            order_entry_open: true,
+            order_ledger_open: true,
+            order_ledger_view: 2,
+            order_ledger_filter: 3,
+            order_health_open: true,
+            account_strip_open: true,
+            object_tree_open: true,
+            trendline_filter_open: true,
+            apex_diag_open: true,
+            widget_gallery_open: true,
+            filter_open: true,
+            wl_columns_open: true,
+            tape_open: true,
+            news_open: true,
+            journal_open: true,
+            scanner_open: true,
+            scanner_builder_open: true,
+            spread_open: true,
+            script_open: true,
+            screenshot_open: true,
+            rrg_open: true,
+            analysis_open: true,
+            signals_panel_open: true,
+            indicators_panel_open: true,
+            indicators_section_fracs: [0.30, 0.40, 0.30],
+            feed_panel_open: true,
+            playbook_panel_open: true,
+            journal_panel_open: true,
+            provenance_open: true,
+            replay_pane_open: true,
+            hotkey_editor_open: true,
+        };
+        save(&path, &v).unwrap();
+        let loaded: SidebarState = load(&path).unwrap();
+        assert_eq!(loaded, v, "SidebarState must round-trip with full field equality");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sidebar_state_default_stability() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_sidebar_state_default_stability");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("sidebar_state.json");
+        let v = SidebarState::default();
+        save(&path, &v).unwrap();
+        let loaded: SidebarState = load(&path).unwrap();
+        assert_eq!(loaded, v, "SidebarState::default() must be stable under round-trip");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn layout_state_partial_eq_round_trip() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_layout_state_eq_rt");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("layout_state.json");
+        let v = LayoutState {
+            link_groups: vec![
+                PersistedLinkGroup { name: "Cyan".into(), color_rgba: [0, 255, 255, 200] },
+                PersistedLinkGroup { name: "Magenta".into(), color_rgba: [255, 0, 255, 128] },
+            ],
+            broadcast_mode: true,
+            pane_split_h: 0.33,
+            pane_split_v: 0.67,
+            pane_split_h2: 0.25,
+            pane_split_v2: 0.75,
+            pane_split_v3: 0.40,
+            pane_split_v4: 0.60,
+            pane_split_v5: 0.45,
+            pane_split_v6: 0.55,
+            layout_favorites: vec!["2H".into(), "4".into()],
+            timeframe_favorites: vec!["5m".into(), "1h".into()],
+            maximized_pane: Some(1),
+            pane_template_names: vec!["My Template".into()],
+            portfolio_templates: vec!["Custom".into()],
+            dashboard_templates: vec!["Trading".into()],
+            heatmap_templates: vec!["Sector".into()],
+            spreadsheet_templates: vec!["PnL".into()],
+            active_workspace: "Scalping".into(),
+            workspace_save_name: "Scalp Draft".into(),
+        };
+        save(&path, &v).unwrap();
+        let loaded: LayoutState = load(&path).unwrap();
+        assert_eq!(loaded, v, "LayoutState must round-trip with full field equality");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn layout_state_default_stability() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_layout_state_default_stability");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("layout_state.json");
+        let v = LayoutState::default();
+        save(&path, &v).unwrap();
+        let loaded: LayoutState = load(&path).unwrap();
+        assert_eq!(loaded, v, "LayoutState::default() must be stable under round-trip");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── CmdPaletteState tests ────────────────────────────────────────────────
+
+    #[test]
+    fn cmd_palette_state_default_values_are_sane() {
+        let s = CmdPaletteState::default();
+        assert!(s.recent.is_empty(), "no recent entries by default");
+        assert!(s.freq.is_empty(), "no freq entries by default");
+    }
+
+    #[test]
+    fn cmd_palette_state_round_trips_through_persistable() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_cmd_palette_roundtrip");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("cmd_palette_state.json");
+        let mut freq = std::collections::HashMap::new();
+        freq.insert("SPY".to_string(), 42u32);
+        freq.insert("AAPL".to_string(), 17u32);
+        freq.insert("theme:dark".to_string(), 5u32);
+        let v = CmdPaletteState {
+            recent: vec!["SPY".into(), "AAPL".into(), "theme:dark".into()],
+            freq,
+        };
+        save(&path, &v).unwrap();
+        let loaded: CmdPaletteState = load(&path).unwrap();
+        assert_eq!(loaded, v, "CmdPaletteState must round-trip with full field equality");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cmd_palette_state_default_stability() {
+        use super::super::persistence::{load, save};
+        let dir = std::env::temp_dir().join("apex_state_cmd_palette_default_stability");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("cmd_palette_state.json");
+        let v = CmdPaletteState::default();
+        save(&path, &v).unwrap();
+        let loaded: CmdPaletteState = load(&path).unwrap();
+        assert_eq!(loaded, v, "CmdPaletteState::default() must be stable under round-trip");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cmd_palette_state_missing_fields_fall_back_to_defaults() {
+        use super::super::persistence::load;
+        let dir = std::env::temp_dir().join("apex_state_cmd_palette_partial");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("cmd_palette_state.json");
+        // Minimal payload: only `recent` is present; `freq` must default to empty map.
+        let envelope = serde_json::json!({
+            "key": "cmd_palette_state",
+            "version": 1,
+            "payload": {
+                "recent": ["QQQ", "IWM"],
+            }
+        });
+        std::fs::write(&path, serde_json::to_vec_pretty(&envelope).unwrap()).unwrap();
+        let loaded: CmdPaletteState = load(&path).expect("partial payload should load");
+        assert_eq!(loaded.recent, &["QQQ", "IWM"]);
+        assert!(loaded.freq.is_empty(), "absent freq field must default to empty map");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cmd_palette_state_empty_payload_uses_all_defaults() {
+        use super::super::persistence::load;
+        let dir = std::env::temp_dir().join("apex_state_cmd_palette_empty");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("cmd_palette_state.json");
+        let envelope = serde_json::json!({
+            "key": "cmd_palette_state",
+            "version": 1,
+            "payload": {}
+        });
+        std::fs::write(&path, serde_json::to_vec_pretty(&envelope).unwrap()).unwrap();
+        let loaded: CmdPaletteState = load(&path).expect("empty payload should load");
+        assert_eq!(loaded, CmdPaletteState::default());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

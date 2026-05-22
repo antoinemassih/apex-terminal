@@ -74,8 +74,9 @@ pub(super) fn handle_deferred(
     if let Some((source_pi, side, underlying, opt_type, strike, expiry, qty)) = und_action {
         let opt_sym = panes[source_pi].symbol.clone();
         let source_sym = panes[source_pi].symbol.clone();
-        let tf = panes[0].timeframe.clone();
-        let theme = panes[0].theme_idx;
+        // Inherit from the option pane that triggered the order, not panes[0].
+        let tf = panes[source_pi].timeframe.clone();
+        let theme = panes[source_pi].theme_idx;
 
         // Find or create the underlying pane
         let und_pane = panes.iter().position(|p| p.symbol == underlying && !p.is_option);

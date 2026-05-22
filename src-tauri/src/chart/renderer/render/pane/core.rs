@@ -1377,16 +1377,19 @@ fn render_chart_pane(
 
     // ── Non-chart pane types: render their content in the body area, then return ──
     // The header/tabs above have already rendered, so these panes get the full header UX
-    // We pass `rect` (body below header, minus DOM) as a single-element slice
+    // We pass `rect` (body below header, minus DOM) as a single-element slice.
+    // Non-chart panes render with their OWN theme_idx, not the active pane's —
+    // the `theme_idx` parameter is the active pane's (audit fix).
+    let pane_theme_idx = chart.theme_idx;
     match chart.pane_type {
         PaneType::Portfolio => {
             let body_rects = [rect];
             // Migrated to Pane trait — proof-of-concept call site.
             use crate::chart_renderer::ui::pane::{Pane as _, PaneContext, PortfolioPaneAdapter};
-            let mut adapter = PortfolioPaneAdapter { account_data: account_data_cached, theme_idx };
+            let mut adapter = PortfolioPaneAdapter { account_data: account_data_cached, theme_idx: pane_theme_idx };
             // Sourced via get_theme (live_themes registry) so design-mode edits
             // and installed themes apply — proven == THEMES[idx] by equivalence test.
-            let pane_theme = crate::chart_renderer::gpu::get_theme(theme_idx);
+            let pane_theme = crate::chart_renderer::gpu::get_theme(pane_theme_idx);
             let mut cx = PaneContext {
                 theme: &pane_theme,
                 panes,
@@ -1400,21 +1403,21 @@ fn render_chart_pane(
         }
         PaneType::Dashboard => {
             let body_rects = [rect];
-            crate::chart_renderer::ui::panels::dashboard_pane::render(ui, ctx, panes, pane_idx, active_pane, 1, &body_rects, theme_idx, watchlist);
+            crate::chart_renderer::ui::panels::dashboard_pane::render(ui, ctx, panes, pane_idx, active_pane, 1, &body_rects, pane_theme_idx, watchlist);
             return;
         }
         PaneType::Heatmap => {
             let body_rects = [rect];
-            crate::chart_renderer::ui::panels::heatmap_pane::render(ui, ctx, panes, pane_idx, active_pane, 1, &body_rects, theme_idx, watchlist);
+            crate::chart_renderer::ui::panels::heatmap_pane::render(ui, ctx, panes, pane_idx, active_pane, 1, &body_rects, pane_theme_idx, watchlist);
             return;
         }
         PaneType::Spreadsheet => {
             let body_rects = [rect];
             use crate::chart_renderer::ui::pane::{Pane as _, PaneContext, SpreadsheetPaneAdapter};
-            let mut adapter = SpreadsheetPaneAdapter { theme_idx };
+            let mut adapter = SpreadsheetPaneAdapter { theme_idx: pane_theme_idx };
             // Sourced via get_theme (live_themes registry) so design-mode edits
             // and installed themes apply — proven == THEMES[idx] by equivalence test.
-            let pane_theme = crate::chart_renderer::gpu::get_theme(theme_idx);
+            let pane_theme = crate::chart_renderer::gpu::get_theme(pane_theme_idx);
             let mut cx = PaneContext {
                 theme: &pane_theme,
                 panes,
