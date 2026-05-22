@@ -3565,8 +3565,8 @@ mod tests {
             reconcile_with_ib_inner(&mut m, &[feed]);
 
             // A should be Working (Rule 2 ACK), B untouched.
-            let oa = m.orders.iter().find(|o| o.id == 10).unwrap();
-            let ob = m.orders.iter().find(|o| o.id == 11).unwrap();
+            let oa = m.orders.iter().find(|o| o.id == 10).expect("order id=10 should exist");
+            let ob = m.orders.iter().find(|o| o.id == 11).expect("order id=11 should exist");
             assert_eq!(oa.state, OrderState::Working, "A bound by id should be ACKed Working");
             assert_eq!(ob.state, OrderState::PendingSubmit, "B not bound — must not transition");
         }
@@ -3594,7 +3594,7 @@ mod tests {
 
             reconcile_with_ib_inner(&mut m, &[ib("AAPL", "buy", 10, "submitted")]);
 
-            let o = m.orders.iter().find(|o| o.id == 1).unwrap();
+            let o = m.orders.iter().find(|o| o.id == 1).expect("order id=1 should exist");
             assert_eq!(o.state, OrderState::Working);
         }
 
@@ -3642,7 +3642,7 @@ mod tests {
             feed.backend_id = "abc".into();
             reconcile_with_ib_inner(&mut m, &[feed]);
 
-            let o = m.orders.iter().find(|o| o.id == 1).unwrap();
+            let o = m.orders.iter().find(|o| o.id == 1).expect("order id=1 should exist");
             // Rule 4 should NOT flip the local state — it stays Cancelled.
             assert_eq!(o.state, OrderState::Cancelled,
                        "Rule 4 must leave local state Cancelled (broker recancel only)");
@@ -3696,7 +3696,7 @@ mod tests {
             feed.avg_fill_price = 100.5;
             reconcile_with_ib_inner(&mut m, &[feed]);
 
-            let o = m.orders.iter().find(|o| o.id == 1).unwrap();
+            let o = m.orders.iter().find(|o| o.id == 1).expect("order id=1 should exist");
             assert_eq!(o.filled_qty, 80, "local should catch up to broker filled_qty");
             assert!((o.avg_fill_price.to_f32() - 100.5).abs() < 0.001,
                     "avg_fill_price should be updated alongside filled_qty");

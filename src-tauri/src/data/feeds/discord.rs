@@ -522,7 +522,6 @@ pub fn fetch_guild_icon_sync(guild_id: &str, icon_hash: &str) -> Option<GuildIco
 
 /// Fetch guilds + their icons in background
 pub fn fetch_guilds_bg() {
-    PENDING_GUILDS.get_or_init(|| Mutex::new(None));
     std::thread::spawn(|| {
         let guilds = fetch_guilds();
         report(ErrorLevel::Info, "discord", "guilds_fetched", format!("{} guilds", guilds.len()));
@@ -535,32 +534,32 @@ pub fn fetch_guilds_bg() {
                 }
             }
         }
-        let pending = PENDING_GUILDS.get().unwrap();
+        // Initialise inside the thread so get() is always guaranteed to
+        // succeed — avoids a panic if the outer init was interrupted.
+        let pending = PENDING_GUILDS.get_or_init(|| Mutex::new(None));
         *pending.lock().unwrap() = Some(guilds);
     });
 }
 
 /// Fetch channels for a guild in background
 pub fn fetch_channels_bg(guild_id: String) {
-    PENDING_CHANNELS.get_or_init(|| Mutex::new(None));
     std::thread::spawn(move || {
         let channels = fetch_channels_sync(&guild_id);
         report(ErrorLevel::Info, "discord", "channels_fetched", format!("{} channels for {}", channels.len(), guild_id));
-        let pending = PENDING_CHANNELS.get().unwrap();
+        let pending = PENDING_CHANNELS.get_or_init(|| Mutex::new(None));
         *pending.lock().unwrap() = Some(channels);
     });
 }
 
 /// Fetch messages for a channel in background
 pub fn fetch_messages_bg(channel_id: String, after: Option<String>) {
-    PENDING_MESSAGES.get_or_init(|| Mutex::new(None));
     let is_append = after.is_some();
     std::thread::spawn(move || {
         let limit = if is_append { 20 } else { 30 };
         let msgs = fetch_messages_sync(&channel_id, limit, after.as_deref());
         // Always store result (even empty) so loading flag clears
         if !is_append || !msgs.is_empty() {
-            let pending = PENDING_MESSAGES.get().unwrap();
+            let pending = PENDING_MESSAGES.get_or_init(|| Mutex::new(None));
             *pending.lock().unwrap() = Some((msgs, is_append));
         }
     });
@@ -568,10 +567,9 @@ pub fn fetch_messages_bg(channel_id: String, after: Option<String>) {
 
 /// Send a message in background
 pub fn send_message_bg(channel_id: String, content: String) {
-    PENDING_SEND.get_or_init(|| Mutex::new(None));
     std::thread::spawn(move || {
         let result = send_message_sync(&channel_id, &content);
-        let pending = PENDING_SEND.get().unwrap();
+        let pending = PENDING_SEND.get_or_init(|| Mutex::new(None));
         *pending.lock().unwrap() = Some(result);
     });
 }

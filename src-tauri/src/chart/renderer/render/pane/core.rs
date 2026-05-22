@@ -1036,7 +1036,7 @@ fn render_chart_pane(
                                     if prev_btn.clicked() {
                                         let rows = if cur_is_call { calls } else { puts };
                                         let mut sorted: Vec<f32> = rows.iter().map(|r| r.strike).collect();
-                                        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                                        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                                         if let Some(&lower) = sorted.iter().rev().find(|&&s| s < cur_strike) {
                                             pending_load = Some((lower, cur_is_call));
                                         }
@@ -1053,7 +1053,7 @@ fn render_chart_pane(
                                     if next_btn.clicked() {
                                         let rows = if cur_is_call { calls } else { puts };
                                         let mut sorted: Vec<f32> = rows.iter().map(|r| r.strike).collect();
-                                        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                                        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                                         if let Some(&higher) = sorted.iter().find(|&&s| s > cur_strike) {
                                             pending_load = Some((higher, cur_is_call));
                                         }
@@ -1083,7 +1083,7 @@ fn render_chart_pane(
                                 let mut strikes: Vec<f32> = calls.iter().map(|r| r.strike)
                                     .chain(puts.iter().map(|r| r.strike))
                                     .collect();
-                                strikes.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                                strikes.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                                 strikes.dedup_by(|a, b| (*a - *b).abs() < 0.01);
 
                                 egui::ScrollArea::vertical()
@@ -6395,9 +6395,7 @@ fn render_chart_pane(
             chart.precursor_description = "5.2x baseline, 82% calls, 3 TF cascade".into();
             // Demo zones
             if chart.signal_zones.is_empty() {
-                let price = if !chart.bars.is_empty() {
-                    chart.bars.last().unwrap().close
-                } else { 100.0 };
+                let price = chart.bars.last().map(|b| b.close).unwrap_or(100.0);
                 chart.signal_zones = vec![
                     crate::chart_renderer::SignalZone { zone_type: "demand".into(), price_high: price * 0.985, price_low: price * 0.978, start_time: 0, strength: 8.2, touches: 3, fresh: true },
                     crate::chart_renderer::SignalZone { zone_type: "supply".into(), price_high: price * 1.025, price_low: price * 1.018, start_time: 0, strength: 7.5, touches: 2, fresh: false },
@@ -7698,7 +7696,10 @@ fn render_chart_pane(
             .filter(|a| !a.triggered && a.symbol == chart.symbol)
             .map(|a| a.id).collect();
         for &aid in &alert_ids {
-            let alert = chart.price_alerts.iter().find(|a| a.id == aid).unwrap();
+            let alert = match chart.price_alerts.iter().find(|a| a.id == aid) {
+                Some(a) => a,
+                None => continue,
+            };
             let is_draft = alert.draft;
             let alert_color = if is_draft { draft_color } else { placed_color };
             let y = py(alert.price);

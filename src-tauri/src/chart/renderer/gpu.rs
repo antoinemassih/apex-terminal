@@ -454,7 +454,15 @@ fn live_themes() -> &'static RwLock<Vec<Theme>> {
 }
 
 pub(crate) fn get_theme(idx: usize) -> Theme {
-    live_themes().read().unwrap()[idx].clone()
+    let themes = live_themes().read().unwrap();
+    // Fall back to index 0 when idx is stale/out-of-range (e.g. after
+    // a user-theme was uninstalled or a workspace was created on a
+    // machine with more themes).
+    themes
+        .get(idx)
+        .or_else(|| themes.get(0))
+        .expect("live_themes is never empty")
+        .clone()
 }
 
 pub(crate) fn set_theme(idx: usize, theme: Theme) {
@@ -3838,6 +3846,14 @@ pub(crate) fn apply_pane_events(
 
 /// Phase 4: Apply theme, font scale, cache account data, get window ref.
 pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usize, watchlist: &Watchlist) -> (usize, Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>, Option<Arc<Window>>) {
+    if panes.is_empty() {
+        // No panes yet (early launch frame) — skip theme application and
+        // return a sensible zero-state so the caller can continue safely.
+        return (0, None, None);
+    }
+    // Clamp active_pane in case the index is stale relative to the current
+    // pane list length (e.g. a pane was just removed).
+    let active_pane = active_pane.min(panes.len() - 1);
     let theme_idx = panes[active_pane].theme_idx;
     let _t_owned = get_theme(theme_idx);
     let t = &_t_owned;
