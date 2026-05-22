@@ -36,7 +36,7 @@ use crate::ui_kit::widgets::{
 };
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
-use crate::ui_kit::widgets::context_menu::{MenuItem, DangerMenuItem, Submenu, MenuItemWithIcon, MenuRow as _MenuRow};
+use crate::ui_kit::widgets::MenuItem;
 use crate::ui_kit::icons::Icon;
 
 /// Short type key for type-level opacity mapping.
@@ -474,34 +474,33 @@ fn draw_drawings_section(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &s
                                 }
                             });
                             ui.add(egui::Separator::default().spacing(2.0));
-                            let mt = crate::ui_kit::widgets::context_menu::MenuTheme::from_theme(t);
                             // UX-3 Fix 4: inline rename via context menu.
-                            if MenuItemWithIcon::new("Rename", Icon::PENCIL_LINE).show(ui, &mt).clicked() {
+                            if MenuItem::new("Rename").icon(Icon::PENCIL_LINE).show(ui, t).clicked() {
                                 rename_id = Some(ds_id_rename_menu);
                                 ui.close_menu();
                             }
-                            if MenuItemWithIcon::new("Lock/Unlock", Icon::LOCK).show(ui, &mt).clicked() {
+                            if MenuItem::new("Lock/Unlock").icon(Icon::LOCK).show(ui, t).clicked() {
                                 toggle_lock_id = Some(ds_id_lock_menu);
                                 ui.close_menu();
                             }
-                            if DangerMenuItem::new("Delete").icon(Icon::TRASH).show(ui, &mt).clicked() {
+                            if MenuItem::new("Delete").icon(Icon::TRASH).tint(t.bear).show(ui, t).clicked() {
                                 delete_id = Some(ds_id_del_menu);
                                 ui.close_menu();
                             }
-                            // Move to group — cascading submenu via Submenu widget
+                            // Move to group — cascading submenu via MenuItem::show_menu
                             let gs: Vec<(String, String)> = {
                                 let mut v = vec![("default".to_string(), "default".to_string())];
                                 for g in &chart.groups { if g.id != "default" { v.push((g.id.clone(), g.name.clone())); } }
                                 v
                             };
                             let mut chosen_group: Option<String> = None;
-                            Submenu::new(&format!("{} Move to Group", Icon::FOLDER), |menu| {
+                            MenuItem::new("Move to Group").icon(Icon::FOLDER).show_menu(ui, t, |ui| {
                                 for (gid, gname) in &gs {
-                                    if menu.add(MenuItem::new(gname.as_str())).clicked() {
+                                    if MenuItem::new(gname.as_str()).show(ui, t).clicked() {
                                         chosen_group = Some(gid.clone());
                                     }
                                 }
-                            }).show(ui, &mt);
+                            });
                             if let Some(gid) = chosen_group {
                                 move_drawing_to_group = Some((group_id_for_menu.clone(), gid));
                                 let _ = group_id_for_menu; // ensure capture

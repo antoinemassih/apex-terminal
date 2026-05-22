@@ -6,9 +6,8 @@
 use crate::chart_renderer::gpu::Chart;
 use crate::chart_renderer::gpu::Watchlist;
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::Button as KitButton;
+use crate::ui_kit::widgets::MenuItem;
 use crate::ui_kit::widgets::theme::active_theme;
-use crate::chart_renderer::ui::style::font_sm;
 
 /// Output from the drawing-tool submenu.
 pub struct DrawingToolMenuOutput {
@@ -40,24 +39,29 @@ pub fn show_drawing_tool_menu(
     macro_rules! ctx_tool_btn {
         ($ui:expr, $label:expr, $tool:expr) => {{
             let sc = ctx_shortcut($tool);
-            let text = if sc.is_empty() { $label.to_string() } else { format!("{}  [{}]", $label, sc) };
-            if KitButton::new(text.as_str()).variant(crate::ui_kit::widgets::tokens::Variant::Ghost).show($ui, &t).clicked() {
+            let item = if sc.is_empty() {
+                MenuItem::new($label)
+            } else {
+                MenuItem::new($label).shortcut(sc)
+            };
+            if item.show($ui, &t).clicked() {
                 new_tool = Some($tool); $ui.close_menu();
             }
         }};
     }
-    KitButton::menu("Lines").trailing_icon(Icon::CARET_RIGHT).show_menu(ui, &t, |ui| {
+
+    MenuItem::new("Lines").show_menu(ui, &t, |ui| {
         ctx_tool_btn!(ui, "Trendline", "trendline");
         ctx_tool_btn!(ui, "H-Line", "hline");
         ctx_tool_btn!(ui, "Vertical Line", "vline");
         ctx_tool_btn!(ui, "Ray", "ray");
     });
-    KitButton::menu("Channels").trailing_icon(Icon::CARET_RIGHT).show_menu(ui, &t, |ui| {
+    MenuItem::new("Channels").show_menu(ui, &t, |ui| {
         ctx_tool_btn!(ui, "Channel", "channel");
         ctx_tool_btn!(ui, "Fib Channel", "fibchannel");
         ctx_tool_btn!(ui, "Pitchfork", "pitchfork");
     });
-    KitButton::menu("Fibonacci").trailing_icon(Icon::CARET_RIGHT).show_menu(ui, &t, |ui| {
+    MenuItem::new("Fibonacci").show_menu(ui, &t, |ui| {
         ctx_tool_btn!(ui, "Fib Retracement", "fibonacci");
         ctx_tool_btn!(ui, "Fib Extension", "fibext");
         ctx_tool_btn!(ui, "Fib Time Zones", "fibtimezone");
@@ -65,28 +69,28 @@ pub fn show_drawing_tool_menu(
         ctx_tool_btn!(ui, "Gann Fan", "gannfan");
         ctx_tool_btn!(ui, "Gann Box", "gannbox");
     });
-    KitButton::menu("Ranges").trailing_icon(Icon::CARET_RIGHT).show_menu(ui, &t, |ui| {
+    MenuItem::new("Ranges").show_menu(ui, &t, |ui| {
         ctx_tool_btn!(ui, "H-Zone", "hzone");
-        if KitButton::new("Price Range").variant(crate::ui_kit::widgets::tokens::Variant::Ghost).show(ui, &t).clicked() { new_tool = Some("pricerange"); ui.close_menu(); }
-        if KitButton::new("Risk/Reward").variant(crate::ui_kit::widgets::tokens::Variant::Ghost).show(ui, &t).clicked() { new_tool = Some("riskreward"); ui.close_menu(); }
+        if MenuItem::new("Price Range").show(ui, &t).clicked() { new_tool = Some("pricerange"); ui.close_menu(); }
+        if MenuItem::new("Risk/Reward").show(ui, &t).clicked() { new_tool = Some("riskreward"); ui.close_menu(); }
     });
-    KitButton::menu("Computed").trailing_icon(Icon::CARET_RIGHT).show_menu(ui, &t, |ui| {
-        if KitButton::new("Regression Channel").variant(crate::ui_kit::widgets::tokens::Variant::Ghost).show(ui, &t).clicked() { new_tool = Some("regression"); ui.close_menu(); }
-        if KitButton::new("Anchored VWAP").variant(crate::ui_kit::widgets::tokens::Variant::Ghost).show(ui, &t).clicked()      { new_tool = Some("avwap");      ui.close_menu(); }
+    MenuItem::new("Computed").show_menu(ui, &t, |ui| {
+        if MenuItem::new("Regression Channel").show(ui, &t).clicked() { new_tool = Some("regression"); ui.close_menu(); }
+        if MenuItem::new("Anchored VWAP").show(ui, &t).clicked()      { new_tool = Some("avwap");      ui.close_menu(); }
     });
-    KitButton::menu("Patterns").trailing_icon(Icon::CARET_RIGHT).show_menu(ui, &t, |ui| {
-        if KitButton::new("XABCD Harmonic").variant(crate::ui_kit::widgets::tokens::Variant::Ghost).show(ui, &t).clicked()         { new_tool = Some("xabcd");                 ui.close_menu(); }
-        if KitButton::new("Elliott Impulse").variant(crate::ui_kit::widgets::tokens::Variant::Ghost).show(ui, &t).clicked()        { new_tool = Some("elliott_impulse");       ui.close_menu(); }
-        if KitButton::new("Elliott ABC").variant(crate::ui_kit::widgets::tokens::Variant::Ghost).show(ui, &t).clicked()            { new_tool = Some("elliott_corrective");    ui.close_menu(); }
-        if KitButton::new("Elliott WXY").variant(crate::ui_kit::widgets::tokens::Variant::Ghost).show(ui, &t).clicked()            { new_tool = Some("elliott_wxy");           ui.close_menu(); }
-        if KitButton::new("Elliott WXYXZ").variant(crate::ui_kit::widgets::tokens::Variant::Ghost).show(ui, &t).clicked()          { new_tool = Some("elliott_wxyxz");         ui.close_menu(); }
-        if KitButton::new("Elliott Sub-Impulse").variant(crate::ui_kit::widgets::tokens::Variant::Ghost).show(ui, &t).clicked()    { new_tool = Some("elliott_sub_impulse");   ui.close_menu(); }
-        if KitButton::new("Elliott Sub-Corrective").variant(crate::ui_kit::widgets::tokens::Variant::Ghost).show(ui, &t).clicked() { new_tool = Some("elliott_sub_corrective"); ui.close_menu(); }
+    MenuItem::new("Patterns").show_menu(ui, &t, |ui| {
+        if MenuItem::new("XABCD Harmonic").show(ui, &t).clicked()         { new_tool = Some("xabcd");                 ui.close_menu(); }
+        if MenuItem::new("Elliott Impulse").show(ui, &t).clicked()        { new_tool = Some("elliott_impulse");       ui.close_menu(); }
+        if MenuItem::new("Elliott ABC").show(ui, &t).clicked()            { new_tool = Some("elliott_corrective");    ui.close_menu(); }
+        if MenuItem::new("Elliott WXY").show(ui, &t).clicked()            { new_tool = Some("elliott_wxy");           ui.close_menu(); }
+        if MenuItem::new("Elliott WXYXZ").show(ui, &t).clicked()          { new_tool = Some("elliott_wxyxz");         ui.close_menu(); }
+        if MenuItem::new("Elliott Sub-Impulse").show(ui, &t).clicked()    { new_tool = Some("elliott_sub_impulse");   ui.close_menu(); }
+        if MenuItem::new("Elliott Sub-Corrective").show(ui, &t).clicked() { new_tool = Some("elliott_sub_corrective"); ui.close_menu(); }
     });
-    KitButton::menu("Markers").trailing_icon(Icon::CARET_RIGHT).show_menu(ui, &t, |ui| {
-        if KitButton::new("Bar Marker").variant(crate::ui_kit::widgets::tokens::Variant::Ghost).show(ui, &t).clicked() { new_tool = Some("barmarker"); ui.close_menu(); }
+    MenuItem::new("Markers").show_menu(ui, &t, |ui| {
+        if MenuItem::new("Bar Marker").show(ui, &t).clicked() { new_tool = Some("barmarker"); ui.close_menu(); }
     });
-    KitButton::menu("Annotations").trailing_icon(Icon::CARET_RIGHT).show_menu(ui, &t, |ui| {
+    MenuItem::new("Annotations").show_menu(ui, &t, |ui| {
         ctx_tool_btn!(ui, "Text Note", "textnote");
     });
 
@@ -117,12 +121,11 @@ pub fn show_template_menu(
     let t = active_theme(ui.ctx());
 
     if !watchlist.pane_templates.is_empty() {
-        KitButton::menu("Apply Template")
-            .leading_icon(Icon::STAR)
-            .trailing_icon(Icon::CARET_RIGHT)
+        MenuItem::new("Apply Template")
+            .icon(Icon::STAR)
             .show_menu(ui, &t, |ui| {
                 for (i, (name, _)) in watchlist.pane_templates.iter().enumerate() {
-                    if KitButton::new(name.as_str()).variant(crate::ui_kit::widgets::tokens::Variant::Ghost).show(ui, &t).clicked() {
+                    if MenuItem::new(name.as_str()).show(ui, &t).clicked() {
                         apply_tmpl = Some(i);
                         ui.close_menu();
                     }
@@ -130,7 +133,10 @@ pub fn show_template_menu(
             });
     }
 
-    let save_as_template = KitButton::new(&*format!("{} Save as Template", Icon::STAR)).variant(crate::ui_kit::widgets::tokens::Variant::Ghost).show(ui, &t).clicked();
+    let save_as_template = MenuItem::new("Save as Template")
+        .icon(Icon::STAR)
+        .show(ui, &t)
+        .clicked();
     if save_as_template { ui.close_menu(); }
 
     TemplateMenuOutput { apply_tmpl, save_as_template }

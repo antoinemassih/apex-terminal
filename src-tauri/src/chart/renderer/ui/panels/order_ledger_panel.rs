@@ -19,7 +19,8 @@ use super::super::components::text::{SectionLabel, MonospaceCode};
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::tokens::{Size as KitSize, Variant};
 use crate::ui_kit::widgets::side_panel_shell::{SidePanelShell, Width};
-use crate::ui_kit::widgets::{Button, PanelSubSection, PanelListRow, PanelColumn};
+use crate::ui_kit::widgets::{Button, MenuItem, PanelSubSection, PanelListRow, PanelColumn};
+use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::trading::OrderSide;
 use crate::chart_renderer::trading::order_manager::{self, OrderState};
 use crate::chart_renderer::trading::journal::{self, JournalEvent, AttemptKind};
@@ -269,7 +270,7 @@ pub(crate) fn draw(
                                                 ])
                                                 .show(ui, t);
                                             resp.context_menu(|ui| {
-                                                if ui.button("Cancel").clicked() {
+                                                if MenuItem::new("Cancel").icon(Icon::TRASH).tint(t.bear).show(ui, t).clicked() {
                                                     crate::chart_renderer::trading::order_manager::cancel_order(order_id);
                                                     ui.close_menu();
                                                 }
