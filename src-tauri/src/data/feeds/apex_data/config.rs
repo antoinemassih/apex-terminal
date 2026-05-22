@@ -124,13 +124,11 @@ pub fn apex_redis_url() -> String {
     match std::env::var("APEX_REDIS_URL").ok().filter(|s| !s.is_empty()) {
         Some(url) => url,
         None => {
-            crate::data::connectivity::errors_sink::report(
-                crate::data::connectivity::errors_sink::ErrorLevel::Critical,
-                "config",
-                "missing_credentials",
-                "APEX_REDIS_URL not set; bar cache unavailable — set the env var with the Redis URL including credentials",
+            // S4/Security-High: no hardcoded fallback — fail with a clear message.
+            panic!(
+                "APEX_REDIS_URL is not set. Set this environment variable to a valid Redis URL \
+                 (e.g. redis://:password@host:6379/) before starting Apex Terminal."
             );
-            "redis://192.168.1.89:6379/".into()
         }
     }
 }
@@ -147,13 +145,11 @@ pub fn apex_pg_url() -> String {
     match std::env::var("APEX_PG_URL").ok().filter(|s| !s.is_empty()) {
         Some(url) => url,
         None => {
-            crate::data::connectivity::errors_sink::report(
-                crate::data::connectivity::errors_sink::ErrorLevel::Critical,
-                "config",
-                "missing_credentials",
-                "APEX_PG_URL not set; drawings/watchlist DB unavailable — set the env var with the PostgreSQL URL including credentials",
+            // S4/Security-High: no hardcoded fallback — fail with a clear message.
+            panic!(
+                "APEX_PG_URL is not set. Set this environment variable to a valid PostgreSQL URL \
+                 (e.g. postgresql://user:password@host:5432/dbname) before starting Apex Terminal."
             );
-            "postgresql://postgres@192.168.1.143:5432/ococo".into()
         }
     }
 }

@@ -26,6 +26,12 @@ struct DiscordConfig {
 static DISCORD_CONFIG: OnceLock<DiscordConfig> = OnceLock::new();
 static DISCORD_TOKEN: OnceLock<Mutex<Option<DiscordAuth>>> = OnceLock::new();
 static HTTP_CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
+/// CSRF state nonce stored between `start_oauth2` and the callback validation.
+static OAUTH_STATE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
+fn oauth_state_store() -> &'static Mutex<Option<String>> {
+    OAUTH_STATE.get_or_init(|| Mutex::new(None))
+}
 
 fn http() -> &'static reqwest::blocking::Client {
     HTTP_CLIENT.get_or_init(|| {
@@ -312,11 +318,20 @@ pub fn start_oauth2() {
         None => { report(ErrorLevel::Warn, "discord", "oauth_no_config", "Not configured"); return; }
     };
 
+    // Generate a cryptographically-random CSRF state nonce (32 random bytes → hex).
+    let state_nonce: String = {
+        let bytes: [u8; 32] = rand::random();
+        bytes.iter().map(|b| format!("{:02x}", b)).collect()
+    };
+    // Store before opening the browser so the callback can validate.
+    *oauth_state_store().lock().unwrap() = Some(state_nonce.clone());
+
     let auth_url = format!(
-        "https://discord.com/oauth2/authorize?client_id={}&redirect_uri={}&response_type=code&scope={}",
+        "https://discord.com/oauth2/authorize?client_id={}&redirect_uri={}&response_type=code&scope={}&state={}",
         config.client_id,
         urlencoding::encode(REDIRECT_URI),
         urlencoding::encode(SCOPES),
+        urlencoding::encode(&state_nonce),
     );
 
     report(ErrorLevel::Info, "discord", "oauth_start", "Opening browser for OAuth2");
@@ -341,6 +356,21 @@ fn start_callback_server() {
         let n = stream.read(&mut buf).unwrap_or(0);
         let request = String::from_utf8_lossy(&buf[..n]);
 
+        // Validate CSRF state before doing anything with the code.
+        let state_ok = extract_state(&request).map_or(false, |returned| {
+            oauth_state_store()
+                .lock()
+                .ok()
+                .and_then(|mut guard| guard.take())
+                .map_or(false, |expected| expected == returned)
+        });
+        if !state_ok {
+            report(ErrorLevel::Error, "discord", "oauth_state_mismatch", "CSRF state mismatch — request rejected");
+            let response = "HTTP/1.1 400 Bad Request\r\n\r\nOAuth2 state mismatch";
+            let _ = stream.write_all(response.as_bytes());
+            return;
+        }
+
         if let Some(code) = extract_code(&request) {
             report(ErrorLevel::Info, "discord", "oauth_code_received", format!("{}...", &code[..code.len().min(10)]));
             match exchange_code(&code) {
@@ -356,7 +386,9 @@ fn start_callback_server() {
                 }
                 Err(e) => {
                     report(ErrorLevel::Error, "discord", "token_exchange_failed", e.to_string());
-                    let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<html><body style='background:#1a1a2e;color:#eee;font-family:monospace;text-align:center;padding:60px'><h1>Connection Failed</h1><p>{}</p></body></html>", e);
+                    // HTML-escape the error string so it cannot inject markup.
+                    let safe_error = html_escape(&e);
+                    let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<html><body style='background:#1a1a2e;color:#eee;font-family:monospace;text-align:center;padding:60px'><h1>Connection Failed</h1><p>{}</p></body></html>", safe_error);
                     let _ = stream.write_all(response.as_bytes());
                 }
             }
@@ -377,6 +409,33 @@ fn extract_code(request: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn extract_state(request: &str) -> Option<String> {
+    let first_line = request.lines().next()?;
+    let url_part = first_line.split_whitespace().nth(1)?;
+    let query = url_part.split('?').nth(1)?;
+    for param in query.split('&') {
+        if let Some(state) = param.strip_prefix("state=") {
+            return Some(state.to_string());
+        }
+    }
+    None
+}
+
+/// Escape a string for safe inclusion in an HTML body.
+fn html_escape(s: &str) -> String {
+    s.chars().fold(String::with_capacity(s.len()), |mut out, c| {
+        match c {
+            '&'  => out.push_str("&amp;"),
+            '<'  => out.push_str("&lt;"),
+            '>'  => out.push_str("&gt;"),
+            '"'  => out.push_str("&quot;"),
+            '\'' => out.push_str("&#x27;"),
+            _    => out.push(c),
+        }
+        out
+    })
 }
 
 fn exchange_code(code: &str) -> Result<DiscordAuth, String> {

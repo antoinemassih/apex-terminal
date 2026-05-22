@@ -765,19 +765,10 @@ pub fn paint_polished_label_at(
     pos: egui::Pos2,
     text: &str,
     size_px: f32,
-    family: Family<'_>,
+    family: Family<'static>,
     weight: Weight,
     color: Color32,
 ) -> egui::Rect {
-    // 'static-ify the family: cosmic-text's Family carries a borrowed
-    // name; our engine call site requires Family<'static>. The names we
-    // accept here are all 'static (the SansSerif sentinel + the
-    // baked-in font names used by family_for_idx), so transmuting the
-    // lifetime is safe in practice. Concretely we only ever receive
-    // Family::SansSerif / Monospace / Serif / Name(&'static str) from
-    // call sites in this crate.
-    let family_static: Family<'static> = unsafe { std::mem::transmute(family) };
-
     let result = {
         let engine_lock = engine();
         match engine_lock.lock() {
@@ -786,7 +777,7 @@ pub fn paint_polished_label_at(
                 pos,
                 text,
                 size_px,
-                family_static,
+                family,
                 weight,
                 color,
             ),
@@ -825,7 +816,7 @@ pub fn paint_polished_label_at_subpixel(
     pos: egui::Pos2,
     text: &str,
     size_px: f32,
-    family: Family<'_>,
+    family: Family<'static>,
     weight: Weight,
     color: Color32,
 ) -> egui::Rect {
@@ -836,16 +827,12 @@ pub fn paint_polished_label_at_subpixel(
         return paint_polished_label_at(painter, pos, text, size_px, family, weight, color);
     }
 
-    // Same lifetime laundering as paint_polished_label_at: the only
-    // Family variants we accept here carry 'static names.
-    let family_static: Family<'static> = unsafe { std::mem::transmute(family) };
-
     let result = shape_and_render_subpixel(
         &painter.ctx().clone(),
         pos,
         text,
         size_px,
-        family_static,
+        family,
         weight,
         color,
     );

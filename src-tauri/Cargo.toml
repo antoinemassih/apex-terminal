@@ -55,7 +55,7 @@ dirs = "6"
 # Discord OAuth2
 urlencoding = "2"
 open = "5"
-image = { version = "0.24", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
 keyring = "3"
 
 # Canonical chart state (Phase 1 of CHART_STORAGE_ARCHITECTURE.md)

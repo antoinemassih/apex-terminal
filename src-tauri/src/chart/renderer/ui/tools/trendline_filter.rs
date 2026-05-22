@@ -144,8 +144,8 @@ if chart.picker_open {
                     .build().unwrap_or_else(|_| reqwest::blocking::Client::new());
                 let mut results: Vec<(String, String, String)> = Vec::new();
 
-                // Try ApexIB search first
-                let apexib_url = format!("{}/search/{}", APEXIB_URL, query);
+                // Try ApexIB search first — URL-encode the user query to prevent injection.
+                let apexib_url = format!("{}/search/{}", APEXIB_URL, urlencoding::encode(&query));
                 if let Ok(resp) = client.get(&apexib_url).send() {
                     if resp.status().is_success() {
                         if let Ok(json) = resp.json::<serde_json::Value>() {

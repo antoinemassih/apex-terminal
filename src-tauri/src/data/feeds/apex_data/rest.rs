@@ -144,7 +144,8 @@ fn get<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, ApiError> {
         return Err(ApiError::CircuitOpen);
     }
     let url = format!("{}{path}", apex_url());
-    crate::apex_log!("rest.req", "GET {url}");
+    // Security: log only the path, not the full URL (which may contain host + query secrets).
+    crate::apex_log!("rest.req", "GET {path}");
     let t0 = Instant::now();
     let mut req = client().get(&url);
     if let Some(tok) = apex_token() { req = req.bearer_auth(tok); }
@@ -206,7 +207,8 @@ fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(path: &str, bo
         return None;
     }
     let url = format!("{}{path}", apex_url());
-    crate::apex_log!("rest.req", "POST {url}");
+    // Security: log only the path, not the full URL (which may contain host + query secrets).
+    crate::apex_log!("rest.req", "POST {path}");
     let t0 = Instant::now();
     let mut req = client().post(&url).json(body);
     if let Some(tok) = apex_token() { req = req.bearer_auth(tok); }
@@ -496,7 +498,9 @@ pub fn snap_bulk(tickers: &[String]) -> Option<Vec<StockSnapshot>> {
         .filter(|s| seen.insert(s.clone()))
         .collect::<Vec<_>>()
         .join(",");
-    get(&format!("/api/stocks/snap/bulk?tickers={joined}")).ok()
+    // URL-encode the joined ticker list so commas/special chars are safe.
+    let encoded = urlencoding::encode(&joined);
+    get(&format!("/api/stocks/snap/bulk?tickers={encoded}")).ok()
 }
 
 /// `GET /api/stocks/movers?direction=gainers|losers` — Polygon top-20 movers.

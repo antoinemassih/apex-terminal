@@ -570,7 +570,8 @@ pub(crate) fn fetch_search_background(query: String, source: String) {
     std::thread::spawn(move || {
         let client = apexib_client();
 
-        let url = format!("{}/search/{}", APEXIB_URL, query);
+        // URL-encode the user-supplied query to prevent injection.
+        let url = format!("{}/search/{}", APEXIB_URL, urlencoding::encode(&query));
         let mut results: Vec<(String, String)> = Vec::new();
 
         if let Ok(resp) = client.get(&url).send() {
