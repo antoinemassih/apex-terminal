@@ -83,6 +83,13 @@ pub(crate) fn render_toolbar(
 
 
 
+thread_local! {
+    /// Per-pane cache of computed auto-S/R levels, keyed on bar count.
+    /// (Audit PF2: the pivot scan + O(n^2) cluster were recomputed every frame.)
+    static AUTO_SR_CACHE: std::cell::RefCell<std::collections::HashMap<usize, (usize, Vec<(f32, usize, bool)>)>>
+        = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
 /// US Eastern UTC offset in minutes — 240 (EDT) in summer, 300 (EST) in winter.
 /// US DST runs from the 2nd Sunday of March to the 1st Sunday of November.
 fn us_eastern_offset_min() -> u16 {
@@ -3198,8 +3205,11 @@ fn render_chart_pane(
             }
         }
 
+        // Repaint only while a flash is animating; otherwise let the pane
+        // idle — the next price tick wakes the UI via wake_native_ui() and
+        // re-runs hit detection. (Audit PF1: the unconditional repaint that
+        // was here pinned the app at 100% CPU whenever hit_highlight was on.)
         if !chart.hit_highlights.is_empty() { ctx.request_repaint(); }
-        ctx.request_repaint();
     }
 
     // (hit flash rendered as white overlay on top of the indicator line)
@@ -3535,25 +3545,36 @@ fn render_chart_pane(
     }
 
     if chart.show_auto_sr && n > 20 {
-        let lookback = 10;
-        let mut levels: Vec<(f32, bool)> = vec![];
-        for i in lookback..n.saturating_sub(lookback) {
-            let is_pivot_high = (1..=lookback).all(|j| chart.bars[i].high >= chart.bars[i-j].high && chart.bars[i].high >= chart.bars[i+j].high);
-            let is_pivot_low = (1..=lookback).all(|j| chart.bars[i].low <= chart.bars[i-j].low && chart.bars[i].low <= chart.bars[i+j].low);
-            if is_pivot_high { levels.push((chart.bars[i].high, true)); }
-            if is_pivot_low { levels.push((chart.bars[i].low, false)); }
-        }
-        levels.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-        let mut clustered: Vec<(f32, usize, bool)> = vec![];
-        for (price, is_res) in &levels {
-            let merged = clustered.iter_mut().find(|(p, _, _)| (*price - *p).abs() / p.max(0.001) < 0.003);
-            if let Some(existing) = merged {
-                existing.0 = (existing.0 * existing.1 as f32 + *price) / (existing.1 + 1) as f32;
-                existing.1 += 1;
-            } else {
-                clustered.push((*price, 1, *is_res));
+        // Cached: the pivot scan (O(n*lookback)) + cluster (O(n^2)) recomputed
+        // every frame is expensive. The scan excludes the last `lookback` bars,
+        // so bar count alone is a sound cache key. (Audit PF2.)
+        let clustered: Vec<(f32, usize, bool)> = AUTO_SR_CACHE.with(|c| {
+            let mut cache = c.borrow_mut();
+            let entry = cache.entry(pane_idx).or_insert((usize::MAX, Vec::new()));
+            if entry.0 != n {
+                let lookback = 10;
+                let mut levels: Vec<(f32, bool)> = vec![];
+                for i in lookback..n.saturating_sub(lookback) {
+                    let is_pivot_high = (1..=lookback).all(|j| chart.bars[i].high >= chart.bars[i-j].high && chart.bars[i].high >= chart.bars[i+j].high);
+                    let is_pivot_low = (1..=lookback).all(|j| chart.bars[i].low <= chart.bars[i-j].low && chart.bars[i].low <= chart.bars[i+j].low);
+                    if is_pivot_high { levels.push((chart.bars[i].high, true)); }
+                    if is_pivot_low { levels.push((chart.bars[i].low, false)); }
+                }
+                levels.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+                let mut clustered: Vec<(f32, usize, bool)> = vec![];
+                for (price, is_res) in &levels {
+                    let merged = clustered.iter_mut().find(|(p, _, _)| (*price - *p).abs() / p.max(0.001) < 0.003);
+                    if let Some(existing) = merged {
+                        existing.0 = (existing.0 * existing.1 as f32 + *price) / (existing.1 + 1) as f32;
+                        existing.1 += 1;
+                    } else {
+                        clustered.push((*price, 1, *is_res));
+                    }
+                }
+                *entry = (n, clustered);
             }
-        }
+            entry.1.clone()
+        });
         for (price, touches, is_res) in &clustered {
             if *touches < 2 { continue; }
             let y = py(*price);
