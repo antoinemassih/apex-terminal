@@ -1945,6 +1945,18 @@ pub(crate) struct Chart {
     /// consumed by ChartPipeline::upload before the chart render pass.
     #[cfg(feature = "gpu_chart_v2")]
     pub(crate) gpu_render_params: crate::chart::renderer_gpu::ChartRenderParams,
+
+    // ── Phase 5 migration shim ────────────────────────────────────────────────
+    // Canonical per-chart state. Populated after symbol/timeframe are committed;
+    // `None` only during the very first `Chart::new()` before the first load.
+    //
+    // Migration contract (see docs/STATE_MIGRATION_PHASE5.md):
+    //   - Persistence (XOL/DB codec) reads/writes from this field.
+    //   - Renderer fields (vs, vc, drawings, indicators, …) remain the live
+    //     source of truth until their migration tier is executed.
+    //   - Never read `chart_state` inside `render/pane/core.rs` until
+    //     Tier 3.2 is benchmarked and reviewed.
+    pub(crate) chart_state: Option<crate::chart::state::ChartState>,
 }
 
 /// Hard cap on Chart::tab_cache entries.
@@ -2102,6 +2114,7 @@ impl Chart {
             pane_picker_option_mode: false,
             #[cfg(feature = "gpu_chart_v2")]
             gpu_render_params: crate::chart::renderer_gpu::ChartRenderParams::default(),
+            chart_state: None,
         }
     }
 

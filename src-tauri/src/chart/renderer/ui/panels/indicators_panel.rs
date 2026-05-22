@@ -28,6 +28,7 @@ use super::super::super::gpu::{
     indicator_default_color,
 };
 use crate::ui_kit::icons::Icon;
+use crate::chart_renderer::commands::{self, AppCommand, ChartFlag};
 
 // ─── Toggle / picker IDs ────────────────────────────────────────────────────
 //
@@ -196,6 +197,25 @@ fn bool_label(t: Tg) -> &'static str {
         Tg::Darkpool => "Dark pool prints",
 
         Tg::AutoFib => "Auto fibonacci",
+    }
+}
+
+// ─── Tg → ChartFlag mapping ──────────────────────────────────────────────────
+// Maps the panel-local `Tg` discriminant to the command-system `ChartFlag`
+// variant where one exists. Returns `None` for toggles not yet migrated into
+// `ChartFlag` (Replay, PnlCurve, etc.) — those still go through `bool_set`.
+fn tg_to_chart_flag(tg: Tg) -> Option<ChartFlag> {
+    match tg {
+        Tg::Magnet        => Some(ChartFlag::Magnet),
+        Tg::OhlcTip       => Some(ChartFlag::OhlcTooltip),
+        Tg::MeasureTip    => Some(ChartFlag::MeasureTooltip),
+        Tg::Footprint     => Some(ChartFlag::ShowFootprint),
+        Tg::PrevClose     => Some(ChartFlag::ShowPrevClose),
+        Tg::PatternLabels => Some(ChartFlag::ShowPatternLabels),
+        Tg::HideAllInd    => Some(ChartFlag::HideAllIndicators),
+        Tg::VolumeBars    => Some(ChartFlag::ShowVolume),
+        // Not yet in ChartFlag — still handled via bool_set.
+        _ => None,
     }
 }
 
@@ -388,7 +408,7 @@ pub(crate) fn draw(
                         PanelSection::new("TOOLS")
                             .count(tools_count)
                             .show(ui, t, |ui, t| {
-                                draw_tools_section(ui, chart, t);
+                                draw_tools_section(ui, chart, t, ap);
                             });
                     });
                     // ── ACTIVE ──
@@ -412,7 +432,7 @@ pub(crate) fn draw(
                                     .id_salt("indicators_library_scroll")
                                     .auto_shrink([false, false])
                                     .show(ui, |ui| {
-                                        draw_library_section(ui, watchlist, chart, t);
+                                        draw_library_section(ui, watchlist, chart, t, ap);
                                     });
                             });
                     });
@@ -444,7 +464,7 @@ fn active_tools_count(c: &Chart) -> usize {
 
 // ─── Tools section ───────────────────────────────────────────────────────────
 
-fn draw_tools_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
+fn draw_tools_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme, ap: usize) {
     // Single icon-toggle toolbar. Groups separated by hairline vertical dividers.
     let groups: &[(&[Tg], &[&str])] = &[
         // Cursor group
@@ -468,7 +488,7 @@ fn draw_tools_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
         ui.spacing_mut().item_spacing.x = 2.0;
         for (gi, (tgs, tips)) in groups.iter().enumerate() {
             for (i, &tg) in tgs.iter().enumerate() {
-                tool_btn(ui, t, chart, tg, tips[i]);
+                tool_btn(ui, t, chart, tg, tips[i], ap);
             }
             if gi + 1 < groups.len() {
                 tool_group_divider(ui, t);
@@ -479,7 +499,7 @@ fn draw_tools_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
 
 /// Compact icon-only toggle button — uses the canonical `Button::toggle`
 /// preset so the active accent tint matches every other toggle chip in the app.
-fn tool_btn(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart, tg: Tg, tooltip: &str) {
+fn tool_btn(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart, tg: Tg, tooltip: &str, ap: usize) {
     let active = bool_get(chart, tg);
     // Icon-only toggle: use Button::icon() so leading_icon is populated
     // (the icon_only paint path only renders leading_icon, not label).
@@ -492,7 +512,15 @@ fn tool_btn(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart, tg: Tg, tooltip: &s
         .min_size(egui::vec2(26.0, row_height_spacious()))
         .show(ui, t);
     Tooltip::new(format!("{}\n{}", bool_label(tg), tooltip)).show(ui, &resp, t);
-    if resp.clicked() { bool_set(chart, tg, !active); }
+    if resp.clicked() {
+        // Phase 4: route through AppCommand when a ChartFlag mapping exists;
+        // fall back to direct bool_set for unmapped toggles (Replay, PnlCurve).
+        if let Some(flag) = tg_to_chart_flag(tg) {
+            commands::push(AppCommand::SetChartFlag { pane: ap, flag, value: !active });
+        } else {
+            bool_set(chart, tg, !active);
+        }
+    }
 }
 
 /// Vertical hairline separating tool groups.
@@ -802,6 +830,7 @@ fn draw_library_section(
     watchlist: &mut Watchlist,
     chart: &mut Chart,
     t: &Theme,
+    ap: usize,
 ) {
     ui.horizontal(|ui| {
         Input::new(&mut watchlist.indicators_panel_search)
@@ -886,7 +915,7 @@ fn draw_library_section(
         // ── Body — rows via PanelListRow (selected state encodes "on") ──
         if !collapsed {
             for item in sec.items.iter().filter(|item| matches_query(**item, &query)) {
-                lib_row(ui, t, *item, chart, sec_idx);
+                lib_row(ui, t, *item, chart, sec_idx, ap);
             }
         }
 
@@ -918,10 +947,10 @@ fn matches_query(item: LibItem, q: &str) -> bool {
     short.to_lowercase().contains(q) || long.to_lowercase().contains(q)
 }
 
-fn lib_row(ui: &mut egui::Ui, t: &Theme, item: LibItem, chart: &mut Chart, sec_idx: usize) {
+fn lib_row(ui: &mut egui::Ui, t: &Theme, item: LibItem, chart: &mut Chart, sec_idx: usize, ap: usize) {
     match item {
         LibItem::Ind(k) => lib_ind_row(ui, t, k, chart, sec_idx),
-        LibItem::Bool(tg) => lib_bool_row(ui, t, tg, chart, sec_idx),
+        LibItem::Bool(tg) => lib_bool_row(ui, t, tg, chart, sec_idx, ap),
         LibItem::VpMode => lib_vp_row(ui, t, chart, sec_idx),
         LibItem::SwingRange => lib_swing_row(ui, t, chart, sec_idx),
     }
@@ -987,7 +1016,7 @@ fn lib_ind_row(ui: &mut egui::Ui, t: &Theme, kind: IndicatorType, chart: &mut Ch
     }
 }
 
-fn lib_bool_row(ui: &mut egui::Ui, t: &Theme, tg: Tg, chart: &mut Chart, sec_idx: usize) {
+fn lib_bool_row(ui: &mut egui::Ui, t: &Theme, tg: Tg, chart: &mut Chart, sec_idx: usize, ap: usize) {
     let active = bool_get(chart, tg);
     let mut id_buf = [0u8; 48];
     let id_len = lib_id_buf(&mut id_buf, sec_idx, bool_label(tg));
@@ -1008,7 +1037,15 @@ fn lib_bool_row(ui: &mut egui::Ui, t: &Theme, tg: Tg, chart: &mut Chart, sec_idx
             );
         })
         .show(ui, t);
-    if resp.clicked() { bool_set(chart, tg, !active); }
+    if resp.clicked() {
+        // Phase 4: route through AppCommand when a ChartFlag mapping exists;
+        // fall back to direct bool_set for unmapped library toggles.
+        if let Some(flag) = tg_to_chart_flag(tg) {
+            commands::push(AppCommand::SetChartFlag { pane: ap, flag, value: !active });
+        } else {
+            bool_set(chart, tg, !active);
+        }
+    }
 }
 
 fn lib_vp_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart, sec_idx: usize) {

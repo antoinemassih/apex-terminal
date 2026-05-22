@@ -126,6 +126,7 @@ use crate::chart_renderer::ui::foundation::text_style::TextStyle;
 use crate::chart_renderer::trading::{AccountSummary, Position, IbOrder, OrderStatus};
 use crate::chart_renderer::{ChartCommand, ChartWidgetKind, ChartWidget, DrawingGroup};
 use crate::state::{BROADCAST_GROUP, PaneEvent, PaneToggle};
+use crate::chart_renderer::commands::{self, AppCommand, ChartFlag};
 use super::toolbar_btn;
 
 /// Wave 13a helper: publish a `PaneEvent::ToggleChanged` for the
@@ -700,7 +701,11 @@ pub(crate) fn render(
                 let r = toolbar_btn(ui, Icon::MAGNET, panes[ap].magnet, t);
                 Tooltip::new("Magnet Snap").show(ui, &r, t);
                 if r.clicked() {
-                    panes[ap].magnet = !panes[ap].magnet;
+                    commands::push(AppCommand::SetChartFlag {
+                        pane: ap,
+                        flag: ChartFlag::Magnet,
+                        value: !panes[ap].magnet,
+                    });
                 }
 
                 // Object tree — icon button with a count badge painted in the top-right corner
@@ -783,7 +788,11 @@ pub(crate) fn render(
                 if ui.add(SelectableRow::new("Log Scale", log)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !log;
                     let fan = shift || watchlist.broadcast_mode;
-                    panes[ap].log_scale = nv;
+                    commands::push(AppCommand::SetChartFlag {
+                        pane: ap,
+                        flag: ChartFlag::LogScale,
+                        value: nv,
+                    });
                     publish_toggle(watchlist, fan, PaneToggle::LogScale, nv, ap);
                 }
             });
@@ -1045,7 +1054,11 @@ pub(crate) fn render(
                 if ui.add(SelectableRow::new("Volume Bars", vol)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !vol;
                     let fan = shift || watchlist.broadcast_mode;
-                    panes[ap].show_volume = nv;
+                    commands::push(AppCommand::SetChartFlag {
+                        pane: ap,
+                        flag: ChartFlag::ShowVolume,
+                        value: nv,
+                    });
                     publish_toggle(watchlist, fan, PaneToggle::ShowVolume, nv, ap);
                 }
                 let dvol = panes[ap].show_delta_volume;
@@ -1266,7 +1279,11 @@ pub(crate) fn render(
                 if ui.add(SelectableRow::new("OHLC Tooltip", ohlc)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !ohlc;
                     let fan = shift || watchlist.broadcast_mode;
-                    panes[ap].ohlc_tooltip = nv;
+                    commands::push(AppCommand::SetChartFlag {
+                        pane: ap,
+                        flag: ChartFlag::OhlcTooltip,
+                        value: nv,
+                    });
                     publish_toggle(watchlist, fan, PaneToggle::OhlcTooltip, nv, ap);
                 }
                 let mt = panes[ap].measure_tooltip;
@@ -1287,7 +1304,11 @@ pub(crate) fn render(
                 if ui.add(SelectableRow::new("Pattern Labels", pl)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !pl;
                     let fan = shift || watchlist.broadcast_mode;
-                    panes[ap].show_pattern_labels = nv;
+                    commands::push(AppCommand::SetChartFlag {
+                        pane: ap,
+                        flag: ChartFlag::ShowPatternLabels,
+                        value: nv,
+                    });
                     publish_toggle(watchlist, fan, PaneToggle::ShowPatternLabels, nv, ap);
                 }
                 let pnl = panes[ap].show_pnl_curve;
@@ -1299,7 +1320,11 @@ pub(crate) fn render(
                 if ui.add(SelectableRow::new("Footprint (hover)", fp)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !fp;
                     let fan = shift || watchlist.broadcast_mode;
-                    panes[ap].show_footprint = nv;
+                    commands::push(AppCommand::SetChartFlag {
+                        pane: ap,
+                        flag: ChartFlag::ShowFootprint,
+                        value: nv,
+                    });
                     publish_toggle(watchlist, fan, PaneToggle::ShowFootprint, nv, ap);
                 }
 

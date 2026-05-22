@@ -28,6 +28,46 @@
 use crate::chart_renderer::gpu::{Chart, Theme, Watchlist, IndicatorType, Indicator, PaneType, get_theme, indicator_default_color};
 use crate::chart_renderer::trading::{Alert, OrderStatus, PriceAlert, cancel_order_with_pair};
 
+// ─── ChartFlag ────────────────────────────────────────────────────────────────
+// Enum covering every user-facing per-pane display boolean. Only the ~10 most
+// clearly user-visible toggles are enumerated here in Phase 4; the remaining
+// ~40+ booleans on Chart still live as direct field writes. This list grows
+// incrementally — see STATE_ROADMAP.md § Phase 4.
+//
+// NOT included (intentionally): internal/transient flags (drag_zoom_active,
+// picker_searching, history_loading, drawings_requested, etc.), order-UI flags
+// (order_is_buy, order_market, order_bracket, etc.), and any field that is
+// written inside core.rs's paint path. Those stay as direct writes for now.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChartFlag {
+    // ── Core display ─────────────────────────────────────────────────────
+    /// Show/hide the volume-bars sub-row at the bottom of the chart.
+    ShowVolume,
+    /// Logarithmic price axis.
+    LogScale,
+    /// Snap drawings and crosshair to nearest OHLC level.
+    Magnet,
+    /// Show OHLC values at crosshair position.
+    OhlcTooltip,
+    /// Show distance-only measurement tooltip.
+    MeasureTooltip,
+    // ── Overlay / sub-panel toggles ───────────────────────────────────────
+    /// Toggle the oscillator sub-panel (RSI / MACD / etc.).
+    ShowOscillators,
+    /// Show previous session close + open lines.
+    ShowPrevClose,
+    /// Annotate detected chart patterns with labels.
+    ShowPatternLabels,
+    /// Show volume footprint on bar hover.
+    ShowFootprint,
+    // ── Bulk visibility ───────────────────────────────────────────────────
+    /// Hide every indicator on this pane (global mute).
+    HideAllIndicators,
+    /// Hide all user drawings.
+    HideAllDrawings,
+}
+
 // ─── UiCtx ─────────────────────────────────────────────────────────────────
 // A single bundle of UI context that flows through every component instead of
 // passing `t: &Theme` (and eventually `&UiState`, `&dispatch_fn`, etc.) as
@@ -138,6 +178,19 @@ pub enum AppCommand {
     /// Change a pane's timeframe.
     ChangeTimeframe { pane: usize, tf: String },
 
+    // ── Per-pane display flag toggles ────────────────────────────────────
+    /// Set a named per-pane boolean display flag to `value`.
+    ///
+    /// Phase-4 command: replaces scattered `panes[ap].<field> = !panes[ap].<field>`
+    /// inline writes in UI code. Reducer bounds-checks `pane` and applies the
+    /// field write. Behaviour-equivalent to the old inline write — the command
+    /// queue drains in the same frame.
+    SetChartFlag {
+        pane: usize,
+        flag: ChartFlag,
+        value: bool,
+    },
+
     // ── Settings (domain preference toggles) ─────────────────────────────
     /// Switch the active theme by index into `THEMES`. Applies to every pane
     /// (theme is conceptually app-wide; per-pane storage is an implementation
@@ -207,11 +260,27 @@ pub fn drain_and_dispatch(panes: &mut [Chart], watchlist: &mut Watchlist) {
     }
 }
 
+// ─── Transition-log helper ────────────────────────────────────────────────────
+// Behind debug_assertions only — zero overhead in release.  One line per
+// dispatched command to the stderr audit trail. This is the foundation for
+// replay / time-travel debugging in later phases.
+#[cfg(debug_assertions)]
+#[inline(always)]
+fn log_cmd(cmd: &AppCommand) {
+    eprintln!("[cmd] {:?}", cmd);
+}
+
 /// Reducer — every state change lives here. Purely a state mutation; no
 /// side effects (no logging, no IO, no spawning) unless commented otherwise.
 fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
+    // ── Transition log (debug builds only) ──────────────────────────────
+    #[cfg(debug_assertions)]
+    log_cmd(&cmd);
+
     match cmd {
         AppCommand::AddPriceAlert { pane, price, above } => {
+            debug_assert!(pane < panes.len().max(1),
+                "AddPriceAlert: pane index {} out of bounds (len={})", pane, panes.len());
             let Some(p) = panes.get_mut(pane) else { return; };
             let sym = p.symbol.clone();
             watchlist.update_alerts_state(|s| {
@@ -240,6 +309,8 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         }
 
         AppCommand::PlaceDraftAlert { pane, id } => {
+            debug_assert!(pane < panes.len().max(1),
+                "PlaceDraftAlert: pane index {} out of bounds (len={})", pane, panes.len());
             if let Some(p) = panes.get_mut(pane) {
                 if let Some(a) = p.price_alerts.iter_mut().find(|a| a.id == id) {
                     a.draft = false;
@@ -256,6 +327,8 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         }
 
         AppCommand::CancelPaneAlert { pane, id } => {
+            debug_assert!(pane < panes.len().max(1),
+                "CancelPaneAlert: pane index {} out of bounds (len={})", pane, panes.len());
             if let Some(p) = panes.get_mut(pane) {
                 p.price_alerts.retain(|a| a.id != id);
             }
@@ -274,6 +347,8 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         }
 
         AppCommand::CancelOrder { pane, id } => {
+            debug_assert!(pane < panes.len().max(1),
+                "CancelOrder: pane index {} out of bounds (len={})", pane, panes.len());
             if let Some(p) = panes.get_mut(pane) {
                 cancel_order_with_pair(&mut p.orders, id);
             }
@@ -493,8 +568,30 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
             }
         }
 
+        // ── Per-pane display flag ───────────────────────────────────────
+        AppCommand::SetChartFlag { pane, flag, value } => {
+            debug_assert!(pane < panes.len().max(1),
+                "SetChartFlag: pane index {} out of bounds (len={})", pane, panes.len());
+            let Some(p) = panes.get_mut(pane) else { return; };
+            match flag {
+                ChartFlag::ShowVolume        => p.show_volume = value,
+                ChartFlag::LogScale          => p.log_scale = value,
+                ChartFlag::Magnet            => p.magnet = value,
+                ChartFlag::OhlcTooltip       => p.ohlc_tooltip = value,
+                ChartFlag::MeasureTooltip    => p.measure_tooltip = value,
+                ChartFlag::ShowOscillators   => p.show_oscillators = value,
+                ChartFlag::ShowPrevClose     => p.show_prev_close = value,
+                ChartFlag::ShowPatternLabels => p.show_pattern_labels = value,
+                ChartFlag::ShowFootprint     => p.show_footprint = value,
+                ChartFlag::HideAllIndicators => p.hide_all_indicators = value,
+                ChartFlag::HideAllDrawings   => p.hide_all_drawings = value,
+            }
+        }
+
         // ── Pane / layout ───────────────────────────────────────────────
         AppCommand::ChangePaneType { pane, kind } => {
+            debug_assert!(pane < panes.len().max(1),
+                "ChangePaneType: pane index {} out of bounds (len={})", pane, panes.len());
             if let Some(p) = panes.get_mut(pane) {
                 p.pane_type = kind;
             }
