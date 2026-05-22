@@ -4815,6 +4815,27 @@ pub(crate) struct Watchlist {
     /// sacred `core.rs` paint pipeline; they are kept in sync via
     /// `update_sidebar_state()` / `sync_from_sidebar_store()`.
     pub(crate) sidebar_state_store: std::sync::Arc<crate::state::Store<crate::state::SidebarState>>,
+    /// Wave 3 (state): `Store<LayoutState>` wraps the layout aggregate so
+    /// mutations are debounce-persisted by the background supervisor.
+    ///
+    /// The flat fields (`link_groups`, `broadcast_mode`, `pane_split_*`,
+    /// `layout_favorites`, `timeframe_favorites`, `maximized_pane`,
+    /// `pane_templates`, `portfolio_templates`, `dashboard_templates`,
+    /// `heatmap_templates`, `spreadsheet_templates`, `active_workspace`,
+    /// `workspace_save_name`) stay in place as the read source of truth for
+    /// existing callers; they are kept in sync via
+    /// `push_to_layout_store()` / `sync_from_layout_store()`.
+    pub(crate) layout_state_store: std::sync::Arc<crate::state::Store<crate::state::LayoutState>>,
+    /// Wave 3 (state): `Store<ChatState>` wraps the Discord chat aggregate so
+    /// mutations are debounce-persisted by the background supervisor.
+    ///
+    /// The flat fields (`discord_open`, `discord_input`, `discord_channel`,
+    /// `discord_authenticated`, `discord_username`, `discord_user_id`,
+    /// `discord_selected_guild`, `discord_selected_channel`,
+    /// `discord_last_msg_id`) stay in place as the read source of truth for
+    /// existing callers; they are kept in sync via
+    /// `push_to_chat_store()` / `sync_from_chat_store()`.
+    pub(crate) chat_state_store: std::sync::Arc<crate::state::Store<crate::state::ChatState>>,
     // ── Top-nav symbol input (UX-1 Fix 1) ──────────────────────────────────
     /// Buffer for the editable symbol input in the top toolbar.
     pub(crate) top_nav_sym_input: String,
@@ -5009,6 +5030,16 @@ impl Watchlist {
                    "sidebar_state",
                    crate::state::SidebarState::default(),
                    Some(sidebar_state_path()),
+               ),
+               layout_state_store: crate::state::Store::new(
+                   "layout_state",
+                   crate::state::LayoutState::default(),
+                   Some(layout_state_path()),
+               ),
+               chat_state_store: crate::state::Store::new(
+                   "chat_state",
+                   crate::state::ChatState::default(),
+                   Some(chat_state_path()),
                ),
                top_nav_sym_input: String::new(),
                top_nav_sym_focused: false,
@@ -5389,6 +5420,140 @@ impl Watchlist {
         self.provenance_open = snap.provenance_open;
         self.replay_pane_open = snap.replay_pane_open;
         self.hotkey_editor_open = snap.hotkey_editor_open;
+    }
+
+    // ── Wave 3 (state): Store<LayoutState> accessor / mutator ───────────────
+
+    /// Push flat legacy fields → `layout_state_store`.
+    ///
+    /// Call this after any batch mutation to the flat layout fields so
+    /// the store stays in sync and the persist supervisor can write to disk.
+    pub(crate) fn push_to_layout_store(&mut self) {
+        let link_groups: Vec<crate::state::PersistedLinkGroup> = self.link_groups.iter().map(|g| {
+            let [r, g2, b, a] = g.color.to_array();
+            crate::state::PersistedLinkGroup { name: g.name.clone(), color_rgba: [r, g2, b, a] }
+        }).collect();
+        let broadcast_mode = self.broadcast_mode;
+        let pane_split_h = self.pane_split_h;
+        let pane_split_v = self.pane_split_v;
+        let pane_split_h2 = self.pane_split_h2;
+        let pane_split_v2 = self.pane_split_v2;
+        let pane_split_v3 = self.pane_split_v3;
+        let pane_split_v4 = self.pane_split_v4;
+        let pane_split_v5 = self.pane_split_v5;
+        let pane_split_v6 = self.pane_split_v6;
+        let layout_favorites = self.layout_favorites.clone();
+        let timeframe_favorites = self.timeframe_favorites.clone();
+        let maximized_pane = self.maximized_pane;
+        let pane_template_names: Vec<String> = self.pane_templates.iter().map(|(n, _)| n.clone()).collect();
+        let portfolio_templates = self.portfolio_templates.clone();
+        let dashboard_templates = self.dashboard_templates.clone();
+        let heatmap_templates = self.heatmap_templates.clone();
+        let spreadsheet_templates = self.spreadsheet_templates.clone();
+        let active_workspace = self.active_workspace.clone();
+        let workspace_save_name = self.workspace_save_name.clone();
+        self.layout_state_store.update(|s| {
+            s.link_groups = link_groups;
+            s.broadcast_mode = broadcast_mode;
+            s.pane_split_h = pane_split_h;
+            s.pane_split_v = pane_split_v;
+            s.pane_split_h2 = pane_split_h2;
+            s.pane_split_v2 = pane_split_v2;
+            s.pane_split_v3 = pane_split_v3;
+            s.pane_split_v4 = pane_split_v4;
+            s.pane_split_v5 = pane_split_v5;
+            s.pane_split_v6 = pane_split_v6;
+            s.layout_favorites = layout_favorites;
+            s.timeframe_favorites = timeframe_favorites;
+            s.maximized_pane = maximized_pane;
+            s.pane_template_names = pane_template_names;
+            s.portfolio_templates = portfolio_templates;
+            s.dashboard_templates = dashboard_templates;
+            s.heatmap_templates = heatmap_templates;
+            s.spreadsheet_templates = spreadsheet_templates;
+            s.active_workspace = active_workspace;
+            s.workspace_save_name = workspace_save_name;
+        });
+    }
+
+    /// Copy the store's current `LayoutState` into the flat legacy fields.
+    /// Called at load time after `layout_state_store` is seeded from disk.
+    pub(crate) fn sync_from_layout_store(&mut self) {
+        let snap = self.layout_state_store.read().clone();
+        self.link_groups = snap.link_groups.iter().map(|g| LinkGroup {
+            name: g.name.clone(),
+            color: egui::Color32::from_rgba_unmultiplied(
+                g.color_rgba[0], g.color_rgba[1], g.color_rgba[2], g.color_rgba[3],
+            ),
+        }).collect();
+        self.broadcast_mode = snap.broadcast_mode;
+        self.pane_split_h = snap.pane_split_h;
+        self.pane_split_v = snap.pane_split_v;
+        self.pane_split_h2 = snap.pane_split_h2;
+        self.pane_split_v2 = snap.pane_split_v2;
+        self.pane_split_v3 = snap.pane_split_v3;
+        self.pane_split_v4 = snap.pane_split_v4;
+        self.pane_split_v5 = snap.pane_split_v5;
+        self.pane_split_v6 = snap.pane_split_v6;
+        self.layout_favorites = snap.layout_favorites;
+        self.timeframe_favorites = snap.timeframe_favorites;
+        self.maximized_pane = snap.maximized_pane;
+        // pane_template_names → pane_templates: names are restored; payloads
+        // are loaded separately by load_templates(). We only restore names that
+        // already exist in the loaded templates; orphaned names are dropped.
+        // (pane_templates is already populated by load_templates() before this
+        // call, so we do not overwrite it — template names are authoritative
+        // from load_templates().)
+        self.portfolio_templates = snap.portfolio_templates;
+        self.dashboard_templates = snap.dashboard_templates;
+        self.heatmap_templates = snap.heatmap_templates;
+        self.spreadsheet_templates = snap.spreadsheet_templates;
+        self.active_workspace = snap.active_workspace;
+        self.workspace_save_name = snap.workspace_save_name;
+    }
+
+    // ── Wave 3 (state): Store<ChatState> accessor / mutator ─────────────────
+
+    /// Push flat legacy fields → `chat_state_store`.
+    ///
+    /// Call this after any batch mutation to the flat discord/chat fields so
+    /// the store stays in sync and the persist supervisor can write to disk.
+    pub(crate) fn push_to_chat_store(&mut self) {
+        let discord_open = self.discord_open;
+        let discord_input = self.discord_input.clone();
+        let discord_channel = self.discord_channel.clone();
+        let discord_authenticated = self.discord_authenticated;
+        let discord_username = self.discord_username.clone();
+        let discord_user_id = self.discord_user_id.clone();
+        let discord_selected_guild = self.discord_selected_guild.clone();
+        let discord_selected_channel = self.discord_selected_channel.clone();
+        let discord_last_msg_id = self.discord_last_msg_id.clone();
+        self.chat_state_store.update(|s| {
+            s.discord_open = discord_open;
+            s.discord_input = discord_input;
+            s.discord_channel = discord_channel;
+            s.discord_authenticated = discord_authenticated;
+            s.discord_username = discord_username;
+            s.discord_user_id = discord_user_id;
+            s.discord_selected_guild = discord_selected_guild;
+            s.discord_selected_channel = discord_selected_channel;
+            s.discord_last_msg_id = discord_last_msg_id;
+        });
+    }
+
+    /// Copy the store's current `ChatState` into the flat legacy fields.
+    /// Called at load time after `chat_state_store` is seeded from disk.
+    pub(crate) fn sync_from_chat_store(&mut self) {
+        let snap = self.chat_state_store.read().clone();
+        self.discord_open = snap.discord_open;
+        self.discord_input = snap.discord_input;
+        self.discord_channel = snap.discord_channel;
+        self.discord_authenticated = snap.discord_authenticated;
+        self.discord_username = snap.discord_username;
+        self.discord_user_id = snap.discord_user_id;
+        self.discord_selected_guild = snap.discord_selected_guild;
+        self.discord_selected_channel = snap.discord_selected_channel;
+        self.discord_last_msg_id = snap.discord_last_msg_id;
     }
 
     /// Add symbol to the last section (creates one if none exist).
@@ -6286,6 +6451,31 @@ impl App {
             // Seed the store from the current defaults so it's ready to persist.
             wl.push_to_sidebar_store();
         }
+        // Wave 3 (state): load LayoutState from disk if present.
+        // Cold-start (no file yet) keeps the Watchlist::new() defaults.
+        // Note: pane_templates payloads are loaded by load_templates() above;
+        // sync_from_layout_store() does not overwrite them — only the names
+        // list and all other flat fields are restored.
+        if let Some(loaded_ls) =
+            crate::state::load::<crate::state::LayoutState>(&layout_state_path())
+        {
+            wl.layout_state_store.update(|s| *s = loaded_ls);
+            wl.sync_from_layout_store();
+        } else {
+            // Seed the store from the current defaults so it's ready to persist.
+            wl.push_to_layout_store();
+        }
+        // Wave 3 (state): load ChatState from disk if present.
+        // Cold-start (no file yet) keeps the Watchlist::new() defaults.
+        if let Some(loaded_cs) =
+            crate::state::load::<crate::state::ChatState>(&chat_state_path())
+        {
+            wl.chat_state_store.update(|s| *s = loaded_cs);
+            wl.sync_from_chat_store();
+        } else {
+            // Seed the store from the current defaults so it's ready to persist.
+            wl.push_to_chat_store();
+        }
         let wl_syms: Vec<String> = wl.all_symbols();
         let mut cw = ChartWindow { id, win: Arc::clone(&w), gpu, rx, panes, active_pane: 0, layout, maximized_pane: None, close_requested: false, watchlist: wl, toasts: vec![], conn_panel_open: false, last_save: None };
         cw.watchlist.native_dpi_scale = w.scale_factor() as f32;
@@ -6319,6 +6509,14 @@ impl App {
         // Wave 3 (state): register the sidebar_state store.
         self.store_registry.register(
             cw.watchlist.sidebar_state_store.clone() as std::sync::Arc<dyn crate::state::PersistableStore>
+        );
+        // Wave 3 (state): register the layout_state store.
+        self.store_registry.register(
+            cw.watchlist.layout_state_store.clone() as std::sync::Arc<dyn crate::state::PersistableStore>
+        );
+        // Wave 3 (state): register the chat_state store.
+        self.store_registry.register(
+            cw.watchlist.chat_state_store.clone() as std::sync::Arc<dyn crate::state::PersistableStore>
         );
         self.windows.push(cw);
     }
@@ -6907,6 +7105,24 @@ fn sidebar_state_path() -> std::path::PathBuf {
     p
 }
 
+/// Wave 3 (state): persist path for the `LayoutState` aggregate.
+/// Lives alongside `native-chart-state.json` in the same directory.
+fn layout_state_path() -> std::path::PathBuf {
+    let mut p = state_path();
+    p.pop();
+    p.push("layout_state.json");
+    p
+}
+
+/// Wave 3 (state): persist path for the `ChatState` aggregate.
+/// Lives alongside `native-chart-state.json` in the same directory.
+fn chat_state_path() -> std::path::PathBuf {
+    let mut p = state_path();
+    p.pop();
+    p.push("chat_state.json");
+    p
+}
+
 fn workspace_dir() -> std::path::PathBuf {
     let mut p = state_path(); p.pop(); p.push("workspaces"); let _ = std::fs::create_dir_all(&p); p
 }
@@ -6992,6 +7208,10 @@ pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &mut Watchl
     // before either of them goes to disk. Legacy `settings` blob stays
     // authoritative for now; aggregate file is additive.
     watchlist.push_to_ui_settings();
+    // Wave 3 (state): mirror layout and chat fields into their stores so the
+    // persist supervisor picks up any changes that happened since last flush.
+    watchlist.push_to_layout_store();
+    watchlist.push_to_chat_store();
     if let Err(e) = crate::state::save(&ui_settings_path(), &watchlist.ui_settings) {
         eprintln!("[state] ui_settings save failed: {e}");
     }
