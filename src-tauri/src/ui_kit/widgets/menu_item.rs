@@ -17,8 +17,13 @@
 //! - `.submenu(bool)` — trailing ▸ glyph; does NOT open a submenu (use `ui.menu_button`)
 //! - `.selected(bool)` — leading ✓ check-mark
 //!
+//! ## Leaf vs. submenu rows
+//! - `.show(ui, theme)` — a leaf row (a clickable action).
+//! - `.show_menu(ui, theme, |ui| { ... })` — an expandable row that opens a
+//!   nested flyout. Both are `MenuItem`, so a whole menu is written in one
+//!   vocabulary.
+//!
 //! ## When to use a different widget
-//! - `ui.menu_button(...)` for items that open a nested submenu.
 //! - `ui_kit::Button` everywhere outside a menu context.
 //! - `ui.label(...)` + `ui.separator()` for section headers / dividers inside menus.
 
@@ -141,5 +146,34 @@ impl<'a> MenuItem<'a> {
             ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
         }
         resp
+    }
+
+    /// Render this row as a **submenu trigger** that opens a nested flyout.
+    ///
+    /// egui owns the popup, the hover-to-open behaviour, and the trailing `⏵`
+    /// caret; this styles the trigger label to match a leaf [`MenuItem::show`]
+    /// row (icon glued in, `font_sm()`, optional tint). Use it for every
+    /// expandable row so a menu is written entirely in `MenuItem` terms —
+    /// `.show()` for leaves, `.show_menu()` for submenus.
+    ///
+    /// `body` fills the nested submenu; its return value is surfaced via the
+    /// `InnerResponse`, exactly like `ui.menu_button`.
+    pub fn show_menu<R>(
+        self,
+        ui: &mut Ui,
+        _theme: &dyn ComponentTheme,
+        body: impl FnOnce(&mut Ui) -> R,
+    ) -> egui::InnerResponse<Option<R>> {
+        let mut text = String::new();
+        if let Some(glyph) = self.icon {
+            text.push_str(glyph);
+            text.push(' ');
+        }
+        text.push_str(&self.label);
+        let mut rt = RichText::new(text).size(st::font_sm());
+        if let Some(tint) = self.tint {
+            rt = rt.color(tint);
+        }
+        ui.menu_button(rt, body)
     }
 }
