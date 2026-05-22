@@ -13,6 +13,94 @@ use crate::chart_renderer::ui::style::{
     COLOR_PURPLE, COLOR_PROFIT_GREEN, COLOR_LOSS_RED,
 };
 
+/// Paint the drawing-tool status notice — a themed card centred at the top of
+/// the chart body: pencil icon + tool name (accent) + instruction (dim text),
+/// then `Esc` / `M` keyboard-key chips. Drawn only while a draw tool is armed.
+fn render_tool_notice(
+    painter: &egui::Painter,
+    t: &Theme,
+    rect: egui::Rect,
+    cw: f32,
+    pt: f32,
+    tool_name: &str,
+    instruction: &str,
+    magnet: bool,
+) {
+    use egui::{Align2, CornerRadius, Pos2, Rect, Stroke, StrokeKind, Vec2};
+
+    const PAD_X: f32 = 10.0;
+    const PAD_Y: f32 = 5.0;
+    const GAP: f32 = 7.0;
+    const CHIP_PAD: f32 = 4.0;
+
+    let icon = crate::ui_kit::icons::Icon::PENCIL_LINE;
+    let magnet_lbl = if magnet { "magnet on" } else { "magnet off" };
+
+    // Measure each piece (colour is irrelevant for measurement).
+    let mw = |s: &str, f: egui::FontId| {
+        painter.layout_no_wrap(s.to_string(), f, egui::Color32::WHITE).size()
+    };
+    let icon_sz   = mw(icon, mono_xs());
+    let name_sz   = mw(tool_name, mono_xs());
+    let instr_sz  = mw(instruction, mono_2xs());
+    let esc_sz    = mw("Esc", mono_2xs());
+    let cancel_sz = mw("cancel", mono_2xs());
+    let mkey_sz   = mw("M", mono_2xs());
+    let magnet_sz = mw(magnet_lbl, mono_2xs());
+
+    let esc_chip_w = esc_sz.x + CHIP_PAD * 2.0;
+    let m_chip_w   = mkey_sz.x + CHIP_PAD * 2.0;
+
+    let content_w = icon_sz.x + GAP + name_sz.x + GAP + instr_sz.x
+        + GAP * 2.5
+        + esc_chip_w + CHIP_PAD + cancel_sz.x
+        + GAP
+        + m_chip_w + CHIP_PAD + magnet_sz.x;
+    let row_h = name_sz.y.max(15.0);
+
+    let card_w = content_w + PAD_X * 2.0;
+    let card_h = row_h + PAD_Y * 2.0;
+    let card = Rect::from_min_size(
+        Pos2::new(rect.left() + (cw - card_w) * 0.5, rect.top() + pt + 6.0),
+        Vec2::new(card_w, card_h),
+    );
+
+    // Soft drop shadow, themed surface, hairline border.
+    painter.rect_filled(card.translate(Vec2::new(0.0, 1.5)), CornerRadius::same(6),
+        color_alpha(t.shadow_color, 44));
+    painter.rect(card, CornerRadius::same(6), t.toolbar_bg,
+        Stroke::new(stroke_std(), color_alpha(t.toolbar_border, 210)), StrokeKind::Inside);
+
+    let cy = card.center().y;
+    let mut x = card.left() + PAD_X;
+
+    // Pencil icon + tool name — both accent-coloured.
+    painter.text(Pos2::new(x, cy), Align2::LEFT_CENTER, icon, mono_xs(), t.accent);
+    x += icon_sz.x + GAP;
+    painter.text(Pos2::new(x, cy), Align2::LEFT_CENTER, tool_name, mono_xs(), t.accent);
+    x += name_sz.x + GAP;
+    // Instruction — dim text.
+    painter.text(Pos2::new(x, cy), Align2::LEFT_CENTER, instruction, mono_2xs(), color_alpha(t.text, 165));
+    x += instr_sz.x + GAP * 2.5;
+
+    // Small rounded key chip.
+    let chip = |x: f32, key: &str, key_w: f32| {
+        let w = key_w + CHIP_PAD * 2.0;
+        let r = Rect::from_min_size(Pos2::new(x, cy - row_h * 0.5), Vec2::new(w, row_h));
+        painter.rect(r, CornerRadius::same(3), color_alpha(t.toolbar_border, 80),
+            Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, 230)), StrokeKind::Inside);
+        painter.text(r.center(), Align2::CENTER_CENTER, key, mono_2xs(), color_alpha(t.text, 225));
+    };
+
+    chip(x, "Esc", esc_sz.x);
+    x += esc_chip_w + CHIP_PAD;
+    painter.text(Pos2::new(x, cy), Align2::LEFT_CENTER, "cancel", mono_2xs(), color_alpha(t.dim, 210));
+    x += cancel_sz.x + GAP;
+    chip(x, "M", mkey_sz.x);
+    x += m_chip_w + CHIP_PAD;
+    painter.text(Pos2::new(x, cy), Align2::LEFT_CENTER, magnet_lbl, mono_2xs(), color_alpha(t.dim, 210));
+}
+
 /// Render drawing tool preview overlays and set custom cursors.
 ///
 /// Called only when `pointer_in_pane` is true and a hover position exists.
@@ -59,38 +147,33 @@ pub(super) fn render_tool_previews<Py, Bx>(
         egui::pos2(p.x.clamp(-margin, margin), p.y.clamp(-margin, margin))
     };
 
-    // Tool status indicator — floating label at top of chart
+    // Tool status notice — themed card centred at the top of the chart body.
     if !chart.draw_tool.is_empty() {
-        let tool_name = match chart.draw_tool.as_str() {
-            "trendline" => "Trendline — click 2 points",
-            "hline" => "H-Line — click to place",
-            "hzone" => "Zone — click 2 prices",
-            "fibonacci" => "Fibonacci — click start then end",
-            "channel" => "Channel — click 2 points then offset",
-            "fibchannel" => "Fib Channel — click 2 points then offset",
-            "pitchfork" => "Pitchfork — click pivot then 2 reactions",
-            "gannfan" => "Gann Fan — click origin then scale point",
-            "regression" => "Regression — click start then end",
-            "xabcd" => "XABCD — click 5 points (X,A,B,C,D)",
-            "vline" => "Vertical Line — click to place",
-            "ray" => "Ray — click 2 points",
-            "fibext" => "Fib Extension — click A, B, then C",
-            "fibtimezone" => "Fib Time Zones — click anchor",
-            "fibarc" => "Fib Arcs — click 2 points",
-            "gannbox" => "Gann Box — click 2 corners",
-            "pricerange" => "Price Range — click 2 corners",
-            "riskreward" => "Risk/Reward — click entry, stop, target",
-            "textnote" => "Text Note — click to place",
-            s if s.starts_with("elliott") => "Elliott Wave — click wave points",
-            _ => "",
+        let (tool_name, instruction): (&str, &str) = match chart.draw_tool.as_str() {
+            "trendline"   => ("Trendline",       "click 2 points"),
+            "hline"       => ("Horizontal Line", "click to place"),
+            "hzone"       => ("Zone",            "click 2 prices"),
+            "fibonacci"   => ("Fibonacci",       "click start, then end"),
+            "channel"     => ("Channel",         "click 2 points, then offset"),
+            "fibchannel"  => ("Fib Channel",     "click 2 points, then offset"),
+            "pitchfork"   => ("Pitchfork",       "click pivot, then 2 reactions"),
+            "gannfan"     => ("Gann Fan",        "click origin, then scale point"),
+            "regression"  => ("Regression",      "click start, then end"),
+            "xabcd"       => ("XABCD",           "click 5 points: X, A, B, C, D"),
+            "vline"       => ("Vertical Line",   "click to place"),
+            "ray"         => ("Ray",             "click 2 points"),
+            "fibext"      => ("Fib Extension",   "click A, B, then C"),
+            "fibtimezone" => ("Fib Time Zones",  "click anchor"),
+            "fibarc"      => ("Fib Arcs",        "click 2 points"),
+            "gannbox"     => ("Gann Box",        "click 2 corners"),
+            "pricerange"  => ("Price Range",     "click 2 corners"),
+            "riskreward"  => ("Risk / Reward",   "click entry, stop, target"),
+            "textnote"    => ("Text Note",       "click to place"),
+            s if s.starts_with("elliott") => ("Elliott Wave", "click wave points"),
+            _ => ("", ""),
         };
         if !tool_name.is_empty() {
-            let status_text = format!("{}  [ESC cancel] [M magnet {}]", tool_name, if chart.magnet { "ON" } else { "OFF" });
-            let galley = painter.layout_no_wrap(status_text.clone(), mono_xs(), color_alpha(t.text,180));
-            let status_pos = egui::pos2(rect.left() + (cw - galley.size().x) / 2.0, rect.top() + pt + 6.0);
-            let bg_rect = egui::Rect::from_min_size(status_pos - egui::vec2(6.0, 3.0), galley.size() + egui::vec2(12.0, 6.0));
-            painter.rect_filled(bg_rect, 4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 200));
-            painter.text(status_pos + egui::vec2(galley.size().x / 2.0, galley.size().y / 2.0), egui::Align2::CENTER_CENTER, &status_text, mono_xs(), color_alpha(t.text,180));
+            render_tool_notice(painter, t, rect, cw, pt, tool_name, instruction, chart.magnet);
         }
     }
     if chart.draw_tool == "trendline" {

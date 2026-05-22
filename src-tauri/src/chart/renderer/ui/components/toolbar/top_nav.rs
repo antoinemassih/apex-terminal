@@ -618,17 +618,10 @@ pub(crate) fn render(
 
             // ── Draw dropdown + magnet + count ──
             {
-                let draw_label = match panes[ap].draw_tool.as_str() {
-                    "trendline" => "Trend", "hline" => "HLine", "hzone" => "Zone",
-                    "fibonacci" => "Fib", "channel" => "Chan", "ray" => "Ray",
-                    "vline" => "VLine", "pitchfork" => "Fork", "fibext" => "FibX",
-                    "fibchannel" => "FibCh", "gannfan" => "Gann", "gannbox" => "GBox",
-                    "textnote" => "Text", "pricerange" => "Range", "riskreward" => "R/R",
-                    "fibtimezone" => "FibT", "fibarc" => "FibA", "regression" => "Reg",
-                    "xabcd" => "XABCD", "barmarker" => "Mark",
-                    s if s.starts_with("elliott") => "Wave",
-                    _ => Icon::PENCIL_LINE,
-                };
+                // Static label — the active tool is shown by the on-chart
+                // notice, not by morphing this button. The icon still tints to
+                // t.accent (below) when a tool is armed.
+                let draw_label = Icon::PENCIL_LINE;
                 let has_tool = !panes[ap].draw_tool.is_empty();
                 let cur_tool = panes[ap].draw_tool.clone();
                 let mut new_tool: Option<String> = None;
