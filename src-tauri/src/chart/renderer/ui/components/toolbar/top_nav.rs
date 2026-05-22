@@ -468,7 +468,12 @@ pub(crate) fn render(
                     .show(ui, t);
                 Tooltip::new(tip).show(ui, &resp, t);
                 if resp.clicked() {
-                    crate::chart_renderer::trading::order_manager::set_paper_mode(!paper);
+                    if let Err(reason) = crate::chart_renderer::trading::order_manager::set_paper_mode(!paper) {
+                        crate::data::connectivity::errors_sink::report(
+                            crate::data::connectivity::errors_sink::ErrorLevel::Warn,
+                            "trading", "paper_mode_toggle_blocked", reason,
+                        );
+                    }
                 }
             }
 

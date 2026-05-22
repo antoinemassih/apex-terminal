@@ -82,20 +82,34 @@ pub(crate) fn append(event: &JournalEvent) {
     }
 }
 
-/// Read all events from the active WAL (oldest first). Used at startup for
-/// orphan-attempt detection. Best effort — bad lines are skipped.
+/// Read all events from the active WAL and the rotated WAL (`orders.wal.1`),
+/// returning them merged in chronological order (rotated first, active second).
+/// Used at startup for orphan-attempt detection. Best effort — bad lines are
+/// skipped.
+///
+/// Rationale: when the WAL rolls over to `orders.wal.1`, the Attempt that
+/// created an orphan may be in the old file while the matching Ack/Fail is
+/// still in the new file (or vice versa).  Reading both files prevents false
+/// positives where an acknowledged order looks orphaned just because the Ack
+/// was written to the current file after rotation.
 pub(crate) fn read_all() -> Vec<JournalEvent> {
-    let path = wal_path();
-    let bytes = match std::fs::read(&path) {
-        Ok(b) => b,
-        Err(_) => return Vec::new(),
-    };
-    let text = match std::str::from_utf8(&bytes) {
-        Ok(t) => t,
-        Err(_) => return Vec::new(),
-    };
-    text.lines()
-        .filter(|l| !l.trim().is_empty())
-        .filter_map(|l| serde_json::from_str::<JournalEvent>(l).ok())
-        .collect()
+    fn parse_file(path: &std::path::Path) -> Vec<JournalEvent> {
+        let bytes = match std::fs::read(path) {
+            Ok(b) => b,
+            Err(_) => return Vec::new(),
+        };
+        let text = match std::str::from_utf8(&bytes) {
+            Ok(t) => t,
+            Err(_) => return Vec::new(),
+        };
+        text.lines()
+            .filter(|l| !l.trim().is_empty())
+            .filter_map(|l| serde_json::from_str::<JournalEvent>(l).ok())
+            .collect()
+    }
+
+    // Rotated file is older — prepend it so events are in chronological order.
+    let mut events = parse_file(&rotated_path());
+    events.extend(parse_file(&wal_path()));
+    events
 }

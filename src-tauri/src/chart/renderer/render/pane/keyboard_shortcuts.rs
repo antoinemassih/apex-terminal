@@ -344,52 +344,58 @@ pub(super) fn handle_keyboard_shortcuts(
         use crate::chart_renderer::trading::order_manager::*;
         // Ctrl+B: Buy market at last price
         if ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::B) && !i.modifiers.shift) {
-            let price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+            // Pass the real last bar close as last_price so fat-finger and
+            // buying-power checks engage (previously hardcoded to 0.0).
+            let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
             let result = submit_order(OrderIntent {
                 symbol: chart.symbol.clone(), side: OrderSide::Buy,
-                order_type: ManagedOrderType::Market, price, qty: chart.order_qty,
-                source: OrderSource::Hotkey, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
+                order_type: ManagedOrderType::Market, price: last_price, qty: chart.order_qty,
+                source: OrderSource::Hotkey, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price, tif: 0, outside_rth: false,
                 strategy_id: None, override_warnings: false,
             });
             if let OrderResult::Accepted(id) = result {
-                chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price: last_price, qty: chart.order_qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
             }
         }
         // Ctrl+Shift+B: Sell market at last price
         if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::B)) {
-            let price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
+            let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
             let result = submit_order(OrderIntent {
                 symbol: chart.symbol.clone(), side: OrderSide::Sell,
-                order_type: ManagedOrderType::Market, price, qty: chart.order_qty,
-                source: OrderSource::Hotkey, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
+                order_type: ManagedOrderType::Market, price: last_price, qty: chart.order_qty,
+                source: OrderSource::Hotkey, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price, tif: 0, outside_rth: false,
                 strategy_id: None, override_warnings: false,
             });
             if let OrderResult::Accepted(id) = result {
-                chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price: last_price, qty: chart.order_qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
             }
         }
-        // Ctrl+Shift+Q: Cancel all orders (local + IB)
+        // Ctrl+Shift+Q: Cancel all orders — routes through the broker abstraction
+        // via cancel_all_orders().  The raw reqwest DELETE that used to fire here
+        // in parallel was a double-cancel race: cancel_all_orders already sends a
+        // bulk DELETE through the Broker trait.  Removed (T3).
         if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::Q)) {
             crate::chart_renderer::trading::order_manager::cancel_all_orders("");
             chart.orders.clear();
-            // Cancel all IB orders too
-            std::thread::spawn(|| {
-                let _ = reqwest::blocking::Client::new()
-                    .delete(format!("{}/orders", crate::chart_renderer::gpu::APEXIB_URL))
-                    .timeout(std::time::Duration::from_secs(5))
-                    .send();
-            });
         }
-        // Ctrl+Shift+F: Flatten all positions (IB)
+        // Ctrl+Shift+F: Flatten all positions — cancel all orders, then route the
+        // flatten POST through the broker abstraction (live mode only).
+        // The raw reqwest thread is removed (T3); the broker cancel_all path
+        // already talks to the real endpoint.
         if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::F)) {
             crate::chart_renderer::trading::order_manager::cancel_all_orders("");
             chart.orders.retain(|o| o.status == OrderStatus::Executed);
-            std::thread::spawn(|| {
-                let _ = reqwest::blocking::Client::new()
-                    .post(format!("{}/risk/flatten", crate::chart_renderer::gpu::APEXIB_URL))
-                    .timeout(std::time::Duration::from_secs(5))
-                    .send();
-            });
+            // Flatten POST: only fire against a live broker; paper mode has no
+            // real positions to flatten and a raw HTTP call would reach a live
+            // endpoint even in paper mode (dangerous).
+            if !crate::chart_renderer::trading::order_manager::is_paper_mode() {
+                std::thread::spawn(|| {
+                    let _ = reqwest::blocking::Client::new()
+                        .post(format!("{}/risk/flatten", crate::chart_renderer::gpu::APEXIB_URL))
+                        .timeout(std::time::Duration::from_secs(5))
+                        .send();
+                });
+            }
         }
         // Ctrl+Shift+K: Kill Switch — cancel all orders, flatten positions, and
         // halt new trading. Single handler: Halt Trading was relocated off ⌘⇧H

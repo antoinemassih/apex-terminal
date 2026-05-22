@@ -1315,10 +1315,12 @@ fn render_chart_pane(
             } else {
                 ManagedOrderType::Limit
             };
+            // Real last price so fat-finger / buying-power risk checks engage.
+            let dom_last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
             let intent = OrderIntent {
                 symbol: chart.symbol.clone(), side, order_type: ot, price, qty,
                 source: OrderSource::DomLadder, pair_with: None,
-                option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: chart.order_tif_idx as u8, outside_rth: chart.order_outside_rth,
+                option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: dom_last_price, tif: chart.order_tif_idx as u8, outside_rth: chart.order_outside_rth,
                 strategy_id: None, override_warnings: false,
             };
             let result = submit_order(intent.clone());

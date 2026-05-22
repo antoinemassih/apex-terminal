@@ -3988,13 +3988,21 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
             });
         }
     }
-    // Detect paper mode from APEXIB URL (dev/paper endpoints indicate paper trading)
-    if let Some((ref _summary, _, _)) = account_data_cached {
-        // Detect paper mode once on first frame (don't override user toggle)
+    // T4: Detect trading mode from APEX_TRADING_MODE env var, read once at
+    // startup. Accepted values: "live" (real money) or "paper" (simulated).
+    // Defaults to "paper" if the variable is absent or has any other value
+    // (fail-safe: unknown config must never accidentally enable live trading).
+    {
         static PAPER_DETECTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
         if !PAPER_DETECTED.load(std::sync::atomic::Ordering::Relaxed) {
             PAPER_DETECTED.store(true, std::sync::atomic::Ordering::Relaxed);
-            super::trading::order_manager::set_paper_mode(APEXIB_URL.contains("dev") || APEXIB_URL.contains("paper"));
+            let is_paper = match std::env::var("APEX_TRADING_MODE").as_deref() {
+                Ok("live") => false,
+                Ok("paper") | _ => true, // unset, invalid, or "paper" → paper (fail-safe)
+            };
+            // The guard in set_paper_mode only blocks switching TO paper when live
+            // orders exist.  At startup there are none, so this is always Ok.
+            let _ = super::trading::order_manager::set_paper_mode(is_paper);
         }
     }
     super::trading::order_manager::gc_orders(); // periodic cleanup

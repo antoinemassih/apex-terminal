@@ -419,7 +419,15 @@ fn draw_trading(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
             Some("Route orders to the simulated account instead of the live broker."),
             t, &mut paper);
         if paper != was_paper {
-            crate::chart_renderer::trading::order_manager::set_paper_mode(paper);
+            if let Err(reason) = crate::chart_renderer::trading::order_manager::set_paper_mode(paper) {
+                // Blocked (live orders active) — revert the toggle so the UI
+                // stays consistent with the manager's actual state.
+                let _ = paper; // suppress unused; the toggle will re-read is_paper_mode() below.
+                crate::data::connectivity::errors_sink::report(
+                    crate::data::connectivity::errors_sink::ErrorLevel::Warn,
+                    "trading", "paper_mode_toggle_blocked", reason,
+                );
+            }
         }
         let paper = crate::chart_renderer::trading::order_manager::is_paper_mode();
         let (label, color) = if paper {
