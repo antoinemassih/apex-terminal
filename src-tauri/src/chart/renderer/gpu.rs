@@ -90,7 +90,7 @@ std::thread_local! {
     pub(crate) static CURRENT_WINDOW: std::cell::RefCell<Option<Arc<Window>>> = const { std::cell::RefCell::new(None) };
     pub(crate) static CLOSE_REQUESTED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static PENDING_ALERT: std::cell::RefCell<Option<(String, f32, bool)>> = const { std::cell::RefCell::new(None) };
-    pub(crate) static PENDING_TOASTS: std::cell::RefCell<Vec<(String, f32, bool)>> = const { std::cell::RefCell::new(Vec::new()) };
+    pub(crate) static PENDING_TOASTS: std::cell::RefCell<Vec<crate::chart_renderer::ui::tools::notification::Notification>> = const { std::cell::RefCell::new(Vec::new()) };
     pub(crate) static TB_BTN_CLICKED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static CONN_PANEL_OPEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     pub(crate) static CROSSHAIR_SYNC_TIME: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
@@ -2316,7 +2316,9 @@ impl Chart {
             }
             ChartCommand::AlertTriggered { symbol: _, alert_id: _, price, message } => {
                 // Push a toast notification regardless of active symbol — alerts are always relevant
-                PENDING_TOASTS.with(|ts| ts.borrow_mut().push((message, price, true)));
+                PENDING_TOASTS.with(|ts| ts.borrow_mut().push(
+                    crate::chart_renderer::ui::tools::notification::Notification::new(message, crate::chart_renderer::ui::tools::notification::NotificationSeverity::Warning).with_value(price).with_source("alerts")
+                ));
             }
             ChartCommand::AutoTrendlines { symbol, drawings_json } => {
                 // Same parsing as SignalDrawings — replaces signal_drawings for this symbol
@@ -2386,11 +2388,9 @@ impl Chart {
                     self.precursor_direction = direction;
                     self.precursor_description = description;
                     // Auto-toast
-                    PENDING_TOASTS.with(|ts| ts.borrow_mut().push((
-                        format!("PRECURSOR: {}", self.precursor_description),
-                        lead_minutes,
-                        true,
-                    )));
+                    PENDING_TOASTS.with(|ts| ts.borrow_mut().push(
+                        crate::chart_renderer::ui::tools::notification::Notification::new(format!("PRECURSOR: {}", self.precursor_description), crate::chart_renderer::ui::tools::notification::NotificationSeverity::Warning).with_value(lead_minutes).with_source("precursor")
+                    ));
                 }
             }
             ChartCommand::ChangePointMarker { symbol, time, change_type, confidence } => {
@@ -2405,7 +2405,9 @@ impl Chart {
             ChartCommand::TradePlanUpdate { symbol, direction, entry_price, target_price, stop_price, contract_name, contract_entry: _, contract_target: _, risk_reward, conviction, summary } => {
                 if symbol == self.symbol {
                     self.trade_plan = Some((direction, entry_price, target_price, stop_price, contract_name, risk_reward, conviction));
-                    PENDING_TOASTS.with(|ts| ts.borrow_mut().push((summary, conviction, true)));
+                    PENDING_TOASTS.with(|ts| ts.borrow_mut().push(
+                        crate::chart_renderer::ui::tools::notification::Notification::new(summary, crate::chart_renderer::ui::tools::notification::NotificationSeverity::Info).with_value(conviction).with_source("trade_plan")
+                    ));
                 }
             }
             ChartCommand::DivergenceOverlay { symbol, timeframe, divergences } => {
@@ -3251,7 +3253,9 @@ fn tick_simulation(chart: &mut Chart) {
                 let dir = if alert.above { "above" } else { "below" };
                 let msg = format!("{} alert: price {} {:.2}", chart.symbol, dir, alert.price);
                 eprintln!("[ALERT TRIGGERED] {} -- sound notification placeholder", msg);
-                PENDING_TOASTS.with(|ts| ts.borrow_mut().push((msg, alert.price, alert.above)));
+                PENDING_TOASTS.with(|ts| ts.borrow_mut().push(
+                    crate::chart_renderer::ui::tools::notification::Notification::new(msg, crate::chart_renderer::ui::tools::notification::NotificationSeverity::Warning).with_value(alert.price).with_source("price_alert")
+                ));
             }
         }
     }
@@ -3927,28 +3931,30 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
     // the toast. The poller is the single canonical caller now.
     // Drain order manager toasts (fills, rejections, cancellations) into PENDING_TOASTS
     {
+        use crate::chart_renderer::ui::tools::notification::{Notification, NotificationSeverity, severity_for_order_msg};
         let order_toasts = super::trading::order_manager::drain_order_toasts();
         if !order_toasts.is_empty() {
             PENDING_TOASTS.with(|ts| {
                 let mut v = ts.borrow_mut();
                 for msg in order_toasts {
-                    let is_fill = msg.starts_with("FILLED");
-                    v.push((msg, 0.0, is_fill));
+                    let sev = severity_for_order_msg(&msg);
+                    v.push(Notification::new(msg, sev).with_source("orders"));
                 }
             });
         }
     }
     // Drain ApexData toasts (sub_rejected, feed errors) into PENDING_TOASTS.
-    // Messages may carry a leading control-byte severity prefix (\x01=warn, \x02=danger)
-    // which top_nav strips and maps to accent color. is_buy=false keeps the bear path
-    // as the fallback for messages without a prefix.
+    // Messages may carry a leading control-byte severity prefix — decoded into
+    // NotificationSeverity by decode_apex_message.
     {
+        use crate::chart_renderer::ui::tools::notification::{Notification, decode_apex_message};
         let apex_toasts = crate::apex_data::live_state::drain_toasts();
         if !apex_toasts.is_empty() {
             PENDING_TOASTS.with(|ts| {
                 let mut v = ts.borrow_mut();
                 for msg in apex_toasts {
-                    v.push((msg, 0.0, false));
+                    let (text, sev) = decode_apex_message(&msg);
+                    v.push(Notification::new(text, sev).with_source("feed"));
                 }
             });
         }
@@ -5877,7 +5883,7 @@ struct ChartWindow {
     close_requested: bool,
     watchlist: Watchlist,
     // Order execution toasts
-    toasts: Vec<(String, f32, std::time::Instant, bool)>, // (message, price, created, is_buy)
+    toasts: Vec<crate::chart_renderer::ui::tools::notification::Notification>,
     // Connection panel
     conn_panel_open: bool,
     // Auto-save timer
@@ -6042,7 +6048,7 @@ impl GpuCtx {
         })
     }
 
-    fn render(&mut self, window: &Window, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, watchlist: &mut Watchlist, toasts: &[(String, f32, std::time::Instant, bool)], conn_panel_open: &mut bool, rx: &mpsc::Receiver<ChartCommand>) {
+    fn render(&mut self, window: &Window, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, watchlist: &mut Watchlist, toasts: &[crate::chart_renderer::ui::tools::notification::Notification], conn_panel_open: &mut bool, rx: &mpsc::Receiver<ChartCommand>) {
         crate::monitoring::frame_begin();
         crate::foundation::frame_profiler::frame_begin();
         // Bump shadow pipeline frame counter for texture pool recycling.
@@ -6878,17 +6884,23 @@ impl ApplicationHandler for App {
                         s.alerts.push(crate::state::PersistedAlert { id, symbol: sym, price, above, triggered: false, message: String::new() });
                     });
                 }
-                // Collect order execution toasts
-                let new_toasts = PENDING_TOASTS.with(|ts| {
-                    let mut v = ts.borrow_mut();
-                    let r = v.drain(..).collect::<Vec<_>>();
-                    r
-                });
-                for (msg, price, is_buy) in new_toasts {
-                    cw.toasts.push((msg, price, std::time::Instant::now(), is_buy));
+                // Drain and dedup pending notifications (collapse identical messages in the same frame).
+                {
+                    use crate::chart_renderer::ui::tools::notification::Notification;
+                    let new_toasts: Vec<Notification> = PENDING_TOASTS.with(|ts| ts.borrow_mut().drain(..).collect());
+                    if !new_toasts.is_empty() {
+                        // Collect existing messages as owned Strings to release the borrow before pushing.
+                        let existing: std::collections::HashSet<String> = cw.toasts.iter().map(|n: &Notification| n.message.clone()).collect();
+                        let mut seen = std::collections::HashSet::<String>::new();
+                        for n in new_toasts {
+                            if !existing.contains(&n.message) && seen.insert(n.message.clone()) {
+                                cw.toasts.push(n);
+                            }
+                        }
+                    }
                 }
                 // Remove expired toasts (>5 seconds)
-                cw.toasts.retain(|(_, _, created, _)| created.elapsed().as_secs() < 5);
+                cw.toasts.retain(|n: &crate::chart_renderer::ui::tools::notification::Notification| n.created.elapsed().as_secs() < 5);
             }
             WindowEvent::Focused(false) => {
                 // When focus is lost the OS may swallow the pending mouseUp, leaving egui

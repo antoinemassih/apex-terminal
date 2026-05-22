@@ -60,7 +60,7 @@ pub(crate) fn render_toolbar(
     account_data_cached: &Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>,
     win_ref: Option<Arc<Window>>,
     conn_panel_open: &mut bool,
-    toasts: &[(String, f32, std::time::Instant, bool)],
+    toasts: &[crate::chart_renderer::ui::tools::notification::Notification],
 ) {
     let _z_toolbar = crate::foundation::frame_profiler::profile_zone("toolbar");
     crate::chart_renderer::ui::widgets::toolbar::top_nav::TopNav::new()
@@ -10761,7 +10761,7 @@ const DRAW_CATEGORIES: &[(&str, &[(&str, &str)])] = &[
 
 // handle_deferred extracted to pane/deferred.rs
 
-pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, watchlist: &mut Watchlist, toasts: &[(String, f32, std::time::Instant, bool)], conn_panel_open: &mut bool, rx: &mpsc::Receiver<ChartCommand>) {
+pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pane: &mut usize, layout: &mut Layout, watchlist: &mut Watchlist, toasts: &[crate::chart_renderer::ui::tools::notification::Notification], conn_panel_open: &mut bool, rx: &mpsc::Receiver<ChartCommand>) {
     use crate::monitoring::{span_begin, span_end};
     let _z_draw_chart = crate::foundation::frame_profiler::profile_zone("draw_chart");
     // Captures everything from draw_chart entry up to the first nested span_begin

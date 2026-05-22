@@ -597,9 +597,15 @@ pub fn get_combined(symbol: &str) -> Option<CombinedSignalV2> {
 
 /// All cached combined signals, cloned. Sorted by score descending so the
 /// SignalsPanel can render the top N directly.
+///
+/// The lock is held only long enough to clone out the values; sorting happens
+/// after the guard is dropped so the hot WS writer is not blocked during sort.
 pub fn all_combined_sorted() -> Vec<CombinedSignalV2> {
-    let g = match state().latest_combined.lock() { Ok(g) => g, Err(_) => return vec![] };
-    let mut v: Vec<CombinedSignalV2> = g.values().cloned().collect();
+    let mut v: Vec<CombinedSignalV2> = {
+        let g = match state().latest_combined.lock() { Ok(g) => g, Err(_) => return vec![] };
+        g.values().cloned().collect()
+        // guard dropped here
+    };
     v.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
     v
 }

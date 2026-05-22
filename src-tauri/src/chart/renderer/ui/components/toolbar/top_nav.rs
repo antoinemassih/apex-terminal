@@ -37,7 +37,7 @@ pub struct TopNav<'a> {
     account_data_cached: Option<&'a Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>>,
     window: Option<Arc<Window>>,
     conn_panel_open: Option<&'a mut bool>,
-    toasts: &'a [(String, f32, std::time::Instant, bool)],
+    toasts: &'a [crate::chart_renderer::ui::tools::notification::Notification],
 }
 
 impl<'a> TopNav<'a> {
@@ -64,7 +64,7 @@ impl<'a> TopNav<'a> {
     pub fn account(mut self, a: Option<&'a Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>>) -> Self { self.account_data_cached = a; self }
     pub fn window(mut self, w: Option<Arc<Window>>) -> Self { self.window = w; self }
     pub fn conn_panel_open(mut self, b: &'a mut bool) -> Self { self.conn_panel_open = Some(b); self }
-    pub fn toasts(mut self, t: &'a [(String, f32, std::time::Instant, bool)]) -> Self { self.toasts = t; self }
+    pub fn toasts(mut self, t: &'a [crate::chart_renderer::ui::tools::notification::Notification]) -> Self { self.toasts = t; self }
 
     pub fn show(self, ctx: &egui::Context) {
         render(
@@ -263,7 +263,7 @@ pub(crate) fn render(
     account_data_cached: &Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>,
     win_ref: Option<Arc<Window>>,
     conn_panel_open: &mut bool,
-    toasts: &[(String, f32, std::time::Instant, bool)],
+    toasts: &[crate::chart_renderer::ui::tools::notification::Notification],
 ) {
     {
         use std::sync::Once;
@@ -2456,32 +2456,22 @@ pub(crate) fn render(
         const LEFT_BAR_W: f32 = 3.0;
         const DISMISS_SECS: f32 = 5.0;
 
-        // ── Severity decode helpers ─────────────────────────────────────────
-        // Returns (display_msg, accent_color, icon, is_critical)
-        fn decode_severity<'m>(msg: &'m str, is_buy: bool, t: &crate::chart_renderer::gpu::Theme)
-            -> (&'m str, egui::Color32, &'static str, bool)
+        // ── Severity → icon + is_critical ──────────────────────────────────
+        fn severity_visuals(sev: crate::chart_renderer::ui::tools::notification::NotificationSeverity, t: &crate::chart_renderer::gpu::Theme)
+            -> (egui::Color32, &'static str, bool)
         {
-            if let Some(rest) = msg.strip_prefix('\x01') {
-                (rest, t.warn, Icon::WARNING, false)
-            } else if let Some(rest) = msg.strip_prefix('\x02') {
-                (rest, t.bear, Icon::SHIELD_WARNING, false)
-            } else if let Some(rest) = msg.strip_prefix('\x03') {
-                (rest, t.bear, Icon::SHIELD_WARNING_FILL, true)
-            } else if let Some(rest) = msg.strip_prefix('\x04') {
-                (rest, t.bull, Icon::CHECK_CIRCLE, false)
-            } else {
-                // no prefix — Info or legacy is_buy path
-                let color = if is_buy { t.bull } else { t.accent };
-                (msg, color, Icon::INFO, false)
+            use crate::chart_renderer::ui::tools::notification::NotificationSeverity;
+            match sev {
+                NotificationSeverity::Info    => (t.accent, Icon::INFO,                false),
+                NotificationSeverity::Success => (t.bull,   Icon::CHECK_CIRCLE,        false),
+                NotificationSeverity::Warning => (t.warn,   Icon::WARNING,             false),
+                NotificationSeverity::Error   => (t.bear,   Icon::SHIELD_WARNING_FILL, true),
             }
         }
 
-        // ── Toast id — stable hash of (msg, created nanos) ─────────────────
-        fn toast_id(msg: &str, created: &std::time::Instant) -> u64 {
-            let mut h = DefaultHasher::new();
-            msg.hash(&mut h);
-            created.elapsed().as_nanos().hash(&mut h);
-            h.finish()
+        // ── Toast id — stable identifier from notification id ───────────────
+        fn toast_id(n: &crate::chart_renderer::ui::tools::notification::Notification) -> u64 {
+            n.id
         }
 
         // ── Expand state (show all beyond MAX_VISIBLE) ──────────────────────
@@ -2492,8 +2482,8 @@ pub(crate) fn render(
         // ── Separate pinned vs normal toasts ────────────────────────────────
         let mut pinned_indices: Vec<usize> = Vec::new();
         let mut normal_indices: Vec<usize> = Vec::new();
-        for (i, (msg, _price, created, _is_buy)) in toasts.iter().enumerate() {
-            let tid = toast_id(msg, created);
+        for (i, n) in toasts.iter().enumerate() {
+            let tid = toast_id(n);
             let pin_id = Id::new(("toast_pin", tid));
             let is_pinned: bool = ctx.data(|d| d.get_temp(pin_id).unwrap_or(false));
             if is_pinned { pinned_indices.push(i); } else { normal_indices.push(i); }
@@ -2535,14 +2525,14 @@ pub(crate) fn render(
         let mut pin_toggle_idx: Option<(usize, bool)> = None; // (toast_idx, new_pin_state)
 
         for (slot, &toast_i) in visible_indices.iter().enumerate() {
-            let (msg, _price, created, is_buy) = &toasts[toast_i];
-            let age = created.elapsed().as_secs_f32();
+            let n = &toasts[toast_i];
+            let age = n.created.elapsed().as_secs_f32();
             // Stagger: toast at slot only starts appearing after slot*80ms (preserve existing stagger).
             let stagger_delay = toast_i as f32 * 0.08;
             let visible_age = (age - stagger_delay).max(0.0);
             if visible_age <= 0.0 { continue; }
 
-            let tid = toast_id(msg, created);
+            let tid = toast_id(n);
             let pin_id = Id::new(("toast_pin", tid));
             let is_pinned: bool = ctx.data(|d| d.get_temp(pin_id).unwrap_or(false));
 
@@ -2553,7 +2543,8 @@ pub(crate) fn render(
             let alpha = (fade_in * fade_out).min(1.0).max(0.0);
             if alpha <= 0.0 { continue; }
 
-            let (display_msg, sev_color, icon, is_critical) = decode_severity(msg, *is_buy, t);
+            let (sev_color, icon, is_critical) = severity_visuals(n.severity, t);
+            let display_msg = n.message.as_str();
 
             // Slide-up: offset 8px at start, resolves to 0 over 120ms.
             let slide_offset = 8.0 * (1.0 - fade_in);
@@ -2715,15 +2706,13 @@ pub(crate) fn render(
 
         // ── Apply pin toggles ───────────────────────────────────────────────
         if let Some((toast_i, new_pin)) = pin_toggle_idx {
-            let (msg, _, created, _) = &toasts[toast_i];
-            let tid = toast_id(msg, created);
+            let tid = toast_id(&toasts[toast_i]);
             let pin_id = Id::new(("toast_pin", tid));
             if new_pin {
                 // Enforce max 5 pinned: unpin oldest if at cap.
                 if pinned_indices.len() >= MAX_PINNED {
                     if let Some(&oldest_i) = pinned_indices.first() {
-                        let (om, _, oc, _) = &toasts[oldest_i];
-                        let old_tid = toast_id(om, oc);
+                        let old_tid = toast_id(&toasts[oldest_i]);
                         let old_pin_id = Id::new(("toast_pin", old_tid));
                         ctx.data_mut(|d| d.insert_temp::<bool>(old_pin_id, false));
                     }
@@ -2733,14 +2722,9 @@ pub(crate) fn render(
         }
 
         // Note: close_toast_idx is informational — the actual expiry is handled
-        // by gpu.rs (retain toasts where age < 5s). For pinned toasts that the
-        // user explicitly closes, we force-expire them by clearing the pin flag
-        // so the normal 5s window covers them. Since the toast tuple has no
-        // mutable "dismissed" flag, we rely on the window being gone next frame
-        // after the 5s window passes. For pinned closes, we unpin immediately.
+        // by gpu.rs (retain toasts where age < 5s). For pinned closes, we unpin immediately.
         if let Some(toast_i) = close_toast_idx {
-            let (msg, _, created, _) = &toasts[toast_i];
-            let tid = toast_id(msg, created);
+            let tid = toast_id(&toasts[toast_i]);
             let pin_id = Id::new(("toast_pin", tid));
             ctx.data_mut(|d| d.insert_temp::<bool>(pin_id, false));
         }
@@ -2874,7 +2858,9 @@ pub(crate) fn render(
                 let dir = if above { "above" } else { "below" };
                 let msg = format!("ALERT: {} {} {:.2}", symbol, dir, price);
                 eprintln!("[ALERT TRIGGERED] {} -- sound notification placeholder", msg);
-                PENDING_TOASTS.with(|ts| ts.borrow_mut().push((msg, price, above)));
+                PENDING_TOASTS.with(|ts| ts.borrow_mut().push(
+                    crate::chart_renderer::ui::tools::notification::Notification::new(msg, crate::chart_renderer::ui::tools::notification::NotificationSeverity::Warning).with_value(price).with_source("alerts")
+                ));
             }
         }
     }

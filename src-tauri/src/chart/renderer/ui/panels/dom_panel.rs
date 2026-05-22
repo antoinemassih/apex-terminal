@@ -39,6 +39,13 @@ pub(crate) struct DomLevel {
     pub(crate) delta: i64,
 }
 
+// TODO(real-dom): replace with a live L2/depth-of-market feed.
+// Requirements: a streaming order-book source (e.g. an ApexData WS `l2_snapshot` +
+// `l2_delta` frame pair, or a broker L2 subscription) that pushes `DomLevel`
+// values per price tick. The feeder should write into `Chart::dom_levels` (or a
+// per-symbol live_state cache), and `core.rs` should read from that instead of
+// calling this function. Until that feed exists, this deterministic-hash mock is
+// kept so the DOM widget layout is exercisable.
 pub(crate) fn generate_mock_levels(center_price: f32, tick_size: f32, count: i32) -> Vec<DomLevel> {
     let mut levels = Vec::with_capacity((count * 2 + 1) as usize);
     for row in (-count..=count).rev() {

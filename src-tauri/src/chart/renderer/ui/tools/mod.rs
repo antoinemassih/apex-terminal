@@ -12,6 +12,7 @@ pub mod order_edit_dialog;
 pub mod chart_interaction_menu;
 pub mod order_entry_panel;
 pub mod pending_order_toasts;
+pub mod notification;
 
 pub use drawings::*;
 pub use oscillators::*;
