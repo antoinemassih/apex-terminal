@@ -269,17 +269,19 @@ mod tests {
         assert_eq!(active, t().accent());
     }
 
-    /// Disabled state for all tones must be less visible than idle.
+    /// Disabled state uses the muted alpha tier for every tone.
+    ///
+    /// (It is NOT universally fainter than idle — idle Destructive / Affirmative
+    /// deliberately use the even-fainter `alpha_soft` tier, so the old
+    /// "disabled < idle for all tones" assertion was a false premise.)
     #[test]
-    fn disabled_less_visible_than_idle_for_all_tones() {
+    fn disabled_uses_muted_alpha_for_all_tones() {
         let tones = [IconTone::Neutral, IconTone::Destructive, IconTone::Affirmative];
         for tone in tones {
-            let idle     = icon_glyph_color(&t(), tone, IconState::Idle);
             let disabled = icon_glyph_color(&t(), tone, IconState::Disabled);
-            assert!(
-                disabled.a() <= idle.a(),
-                "{tone:?} disabled.a()={} should be <= idle.a()={}",
-                disabled.a(), idle.a(),
+            assert_eq!(
+                disabled.a(), alpha_muted(),
+                "{tone:?} disabled alpha should be the muted tier",
             );
         }
     }

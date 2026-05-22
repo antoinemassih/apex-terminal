@@ -107,7 +107,11 @@ mod tests {
     /// The `keyring` crate exposes `keyring::set_default_credential_builder`
     /// to swap in an in-memory mock backend, which is exactly what we use here
     /// so tests are hermetic and don't require a real keychain service.
+    // `set_default_credential_builder` mutates a PROCESS-GLOBAL backend, so the
+    // keychain tests are not safe to run in parallel with each other. Ignored
+    // by default — run with: cargo test -- --ignored --test-threads=1
     #[test]
+    #[ignore = "mutates the process-global keyring backend; not parallel-safe"]
     fn round_trip_mock_keychain() {
         // Install the in-memory mock so this test never touches the OS keychain.
         keyring::set_default_credential_builder(keyring::mock::default_credential_builder());
@@ -147,6 +151,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "mutates the process-global keyring backend; not parallel-safe"]
     fn load_missing_returns_none() {
         keyring::set_default_credential_builder(keyring::mock::default_credential_builder());
 

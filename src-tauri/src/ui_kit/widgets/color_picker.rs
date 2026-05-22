@@ -744,8 +744,11 @@ mod tests {
 
     #[test]
     fn parse_hex_8char() {
+        // Color32 stores premultiplied — c.r() != the input byte when a < 255,
+        // and premul/unpremul does not round-trip exactly. Compare against the
+        // same constructor parse_hex uses: exact, and tests the right thing.
         let c = parse_hex("#1A2B3C80").unwrap();
-        assert_eq!((c.r(), c.g(), c.b(), c.a()), (0x1A, 0x2B, 0x3C, 0x80));
+        assert_eq!(c, egui::Color32::from_rgba_unmultiplied(0x1A, 0x2B, 0x3C, 0x80));
     }
 
     #[test]
