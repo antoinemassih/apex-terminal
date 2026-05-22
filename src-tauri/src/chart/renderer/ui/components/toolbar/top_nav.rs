@@ -87,7 +87,7 @@ use std::sync::Arc;
 use winit::window::Window;
 
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::{Button as KitButton, NumberStepper, SelectableRow, Tooltip, tokens::{Variant as KitVariant, Size as KitSize}};
+use crate::ui_kit::widgets::{Button as KitButton, MenuItem, NumberStepper, SelectableRow, Tooltip, tokens::{Variant as KitVariant, Size as KitSize}};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::chart_renderer::gpu::{
     Chart, Layout, Watchlist, Theme,
@@ -659,24 +659,22 @@ pub(crate) fn render(
                         if si > 0 { ui.separator(); }
                         ui.label(egui::RichText::new(*section).monospace().size(font_sm()).color(t.dim));
                         for (tool, label) in *tools {
-                            let shortcut = tool_shortcut(tool);
-                            let resp = ui.horizontal(|ui| {
-                                let r = ui.add(SelectableRow::new(label, cur == *tool));
-                                if let Some(ref key) = shortcut {
-                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        crate::ui_kit::widgets::Kbd::new(key.clone()).show(ui, t);
-                                    });
-                                }
-                                r
-                            });
-                            if resp.inner.clicked() {
+                            // MenuItem right-aligns the shortcut WITHIN a content-sized
+                            // row. The old with_layout(right_to_left) block claimed all
+                            // available width to right-align the Kbd chip, which ran the
+                            // menu off-screen inside a content-sized popup.
+                            let mut item = MenuItem::new(*label).selected(cur == *tool);
+                            if let Some(key) = tool_shortcut(tool) {
+                                item = item.shortcut(key);
+                            }
+                            if item.show(ui, t).clicked() {
                                 new_tool = Some(tool.to_string());
                             }
                         }
                     }
                     if !cur.is_empty() {
                         ui.separator();
-                        if ui.add(SelectableRow::new("Cancel Tool", false)).clicked() {
+                        if MenuItem::new("Cancel Tool").show(ui, t).clicked() {
                             new_tool = Some(String::new());
                         }
                     }
