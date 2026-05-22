@@ -659,16 +659,17 @@ pub(crate) fn render(
                         if si > 0 { ui.separator(); }
                         ui.label(egui::RichText::new(*section).monospace().size(font_sm()).color(t.dim));
                         for (tool, label) in *tools {
-                            // MenuItem right-aligns the shortcut WITHIN a content-sized
-                            // row. The old with_layout(right_to_left) block claimed all
-                            // available width to right-align the Kbd chip, which ran the
-                            // menu off-screen inside a content-sized popup.
-                            let mut item = MenuItem::new(*label).selected(cur == *tool);
+                            // Plain action rows: click activates the tool and closes
+                            // the menu. Active-tool state is shown outside the menu,
+                            // not as an in-menu check. MenuItem right-aligns the
+                            // shortcut within a content-sized row.
+                            let mut item = MenuItem::new(*label);
                             if let Some(key) = tool_shortcut(tool) {
                                 item = item.shortcut(key);
                             }
                             if item.show(ui, t).clicked() {
                                 new_tool = Some(tool.to_string());
+                                ui.close_menu();
                             }
                         }
                     }
@@ -676,6 +677,7 @@ pub(crate) fn render(
                         ui.separator();
                         if MenuItem::new("Cancel Tool").show(ui, t).clicked() {
                             new_tool = Some(String::new());
+                            ui.close_menu();
                         }
                     }
                 });
