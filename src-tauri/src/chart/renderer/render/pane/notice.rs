@@ -17,7 +17,7 @@
 
 use crate::chart_renderer::gpu::{Chart, Theme};
 use crate::chart_renderer::ui::style::{
-    color_alpha, font_lg, font_sm, mono_2xs, stroke_std, stroke_thin,
+    color_alpha, font_md, font_sm, mono_2xs, stroke_std, stroke_thin,
 };
 use crate::ui_kit::icons::Icon;
 
@@ -30,8 +30,9 @@ pub(crate) enum NoticeTone {
     Warn,
 }
 
-/// A pane mode-notice: a stacked, centre-aligned card with a title line, an
-/// instruction line, and an optional row of keyboard-key hints.
+/// A pane mode-notice: a single-row, centre-aligned card — a title, an
+/// instruction, and optional keyboard-key hints, all on one line. The title is
+/// one size larger than the instruction.
 ///
 /// Build directly or via [`pane_notice_for`]; render with [`PaneNotice::render`].
 pub(crate) struct PaneNotice {
@@ -71,7 +72,7 @@ impl PaneNotice {
         self
     }
 
-    /// Paint the card, centred at the top of the chart body.
+    /// Paint the card — a single centred row at the top of the chart body.
     ///
     /// `rect` is the full pane rect, `cw` the chart-body width, `pt` the pane
     /// header height — the card is centred horizontally over `cw` and sits
@@ -79,13 +80,13 @@ impl PaneNotice {
     pub(crate) fn render(&self, painter: &egui::Painter, t: &Theme, rect: egui::Rect, cw: f32, pt: f32) {
         use egui::{Align2, CornerRadius, FontId, Pos2, Rect, Stroke, StrokeKind, Vec2};
 
-        const PAD_X: f32 = 18.0;
-        const PAD_Y: f32 = 11.0;
-        const TITLE_GAP: f32 = 4.0; // title -> instruction
-        const KEYS_GAP: f32 = 8.0; // instruction -> keys row
+        const PAD_X: f32 = 14.0;
+        const PAD_Y: f32 = 9.0;
+        const SEP_GAP: f32 = 6.0; // gap each side of the · separator
+        const KEYS_GAP: f32 = 14.0; // gap before the key-hint block
         const CHIP_PAD: f32 = 4.0; // key-chip inner x-padding
         const KEY_LABEL_GAP: f32 = 4.0; // chip -> its label
-        const KEY_ENTRY_GAP: f32 = 12.0; // gap between (chip+label) entries
+        const KEY_ENTRY_GAP: f32 = 10.0; // gap between (chip+label) entries
 
         let accent = match self.tone {
             NoticeTone::Accent => t.accent,
@@ -96,13 +97,15 @@ impl PaneNotice {
             painter.layout_no_wrap(s.to_string(), f, egui::Color32::WHITE).size()
         };
 
-        // ── Measure ─────────────────────────────────────────────────────────
-        let title_font = FontId::proportional(font_lg());
+        // Title is one step larger than the instruction.
+        let title_font = FontId::proportional(font_md());
         let instr_font = FontId::proportional(font_sm());
 
+        // ── Measure each piece ──────────────────────────────────────────────
         let title_str = format!("{}  {}", self.icon, self.title);
         let title_sz = measure(&title_str, title_font.clone());
         let instr_sz = measure(&self.instruction, instr_font.clone());
+        let sep_sz = measure("\u{00B7}", instr_font.clone());
 
         let key_h = if self.keys.is_empty() { 0.0 } else { measure("M", mono_2xs()).y.max(13.0) };
         let mut keys_w = 0.0_f32;
@@ -117,14 +120,14 @@ impl PaneNotice {
             keys_w -= KEY_ENTRY_GAP; // no trailing gap
         }
 
-        // ── Card geometry ───────────────────────────────────────────────────
-        let content_w = title_sz.x.max(instr_sz.x).max(keys_w);
-        let mut content_h = title_sz.y + TITLE_GAP + instr_sz.y;
+        // ── Card geometry — single row ──────────────────────────────────────
+        let mut content_w = title_sz.x + SEP_GAP + sep_sz.x + SEP_GAP + instr_sz.x;
         if !self.keys.is_empty() {
-            content_h += KEYS_GAP + key_h;
+            content_w += KEYS_GAP + keys_w;
         }
+        let row_h = title_sz.y.max(instr_sz.y).max(key_h);
         let card_w = content_w + PAD_X * 2.0;
-        let card_h = content_h + PAD_Y * 2.0;
+        let card_h = row_h + PAD_Y * 2.0;
         let card = Rect::from_min_size(
             Pos2::new(rect.left() + (cw - card_w) * 0.5, rect.top() + pt + 8.0),
             Vec2::new(card_w, card_h),
@@ -148,37 +151,28 @@ impl PaneNotice {
             StrokeKind::Inside,
         );
 
-        let cx = card.center().x;
-        let mut y = card.top() + PAD_Y;
+        // ── Single centred row, every piece vertically centred ──────────────
+        let cy = card.center().y;
+        let mut x = card.left() + PAD_X;
 
-        // Title — bigger, accent-coloured, centred.
-        painter.text(
-            Pos2::new(cx, y + title_sz.y * 0.5),
-            Align2::CENTER_CENTER,
-            &title_str,
-            title_font,
-            accent,
-        );
-        y += title_sz.y + TITLE_GAP;
+        // Icon + title — larger, accent.
+        painter.text(Pos2::new(x, cy), Align2::LEFT_CENTER, &title_str, title_font, accent);
+        x += title_sz.x + SEP_GAP;
 
-        // Instruction — smaller, dim, centred, on its own line.
-        painter.text(
-            Pos2::new(cx, y + instr_sz.y * 0.5),
-            Align2::CENTER_CENTER,
-            &self.instruction,
-            instr_font,
-            color_alpha(t.text, 175),
-        );
-        y += instr_sz.y;
+        // Middle-dot separator.
+        painter.text(Pos2::new(x, cy), Align2::LEFT_CENTER, "\u{00B7}", instr_font.clone(), color_alpha(t.dim, 160));
+        x += sep_sz.x + SEP_GAP;
 
-        // Keyboard-key hints — centred row of chips + labels.
+        // Instruction — smaller, dim.
+        painter.text(Pos2::new(x, cy), Align2::LEFT_CENTER, &self.instruction, instr_font, color_alpha(t.text, 175));
+        x += instr_sz.x;
+
+        // Keyboard-key hints — chip + label per entry, inline.
         if !self.keys.is_empty() {
-            y += KEYS_GAP;
-            let row_cy = y + key_h * 0.5;
-            let mut x = cx - keys_w * 0.5;
+            x += KEYS_GAP;
             for ((glyph, label), (chip_w, label_w)) in self.keys.iter().zip(key_pieces.iter()) {
                 let chip = Rect::from_min_size(
-                    Pos2::new(x, row_cy - key_h * 0.5),
+                    Pos2::new(x, cy - key_h * 0.5),
                     Vec2::new(*chip_w, key_h),
                 );
                 painter.rect(
@@ -190,7 +184,7 @@ impl PaneNotice {
                 );
                 painter.text(chip.center(), Align2::CENTER_CENTER, *glyph, mono_2xs(), color_alpha(t.text, 225));
                 x += chip_w + KEY_LABEL_GAP;
-                painter.text(Pos2::new(x, row_cy), Align2::LEFT_CENTER, label, mono_2xs(), color_alpha(t.dim, 215));
+                painter.text(Pos2::new(x, cy), Align2::LEFT_CENTER, label, mono_2xs(), color_alpha(t.dim, 215));
                 x += label_w + KEY_ENTRY_GAP;
             }
         }
