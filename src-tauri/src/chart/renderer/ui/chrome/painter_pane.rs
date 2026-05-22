@@ -73,6 +73,7 @@ const ICON_BTN_W: f32 = 60.0;
 const ICON_BTN_W_DOM: f32 = 52.0;
 /// Width for the OPTIONS button (longer label — 7 chars).
 const ICON_BTN_W_OPTIONS: f32 = 68.0;
+const ICON_BTN_W_OV: f32 = 52.0;
 /// Maximum height for option side / DTE badges.
 const BADGE_HEIGHT_MAX: f32 = 16.0;
 /// Vertical inset reserved around badges (top + bottom combined).
@@ -322,6 +323,10 @@ pub struct PainterPaneHeader<'a> {
     show_dom_btn: bool,
     show_options_btn: bool,
     options_btn_active: bool,
+    /// Show symbol-overlay toggle button (left of ORDER in the right cluster).
+    show_overlay_btn: bool,
+    /// Whether overlay editing is active or overlays are present (button lit).
+    overlay_btn_active: bool,
     /// Whether the DOM sidebar is currently open (button lit).
     dom_btn_active: bool,
     /// Sense for tab strip interactions — use `Sense::click_and_drag()` for cross-pane drag.
@@ -369,6 +374,8 @@ impl<'a> PainterPaneHeader<'a> {
             dom_btn_active: false,
             show_options_btn: false,
             options_btn_active: false,
+            show_overlay_btn: false,
+            overlay_btn_active: false,
             tab_sense: None,
             pane_index: 0,
             show_expand_btn: false,
@@ -425,6 +432,11 @@ impl<'a> PainterPaneHeader<'a> {
     }
     pub fn show_options_btn(mut self, active: bool) -> Self {
         self.show_options_btn = true; self.options_btn_active = active; self
+    }
+    /// Show symbol-overlay toggle button (rendered LEFT of the ORDER button).
+    /// `active` = overlay editing is on or symbol overlays are present.
+    pub fn show_overlay_btn(mut self, active: bool) -> Self {
+        self.show_overlay_btn = true; self.overlay_btn_active = active; self
     }
     /// Override tab `Sense` — use `Sense::click_and_drag()` for cross-pane drag support.
     pub fn tab_sense(mut self, s: Sense) -> Self { self.tab_sense = Some(s); self }
@@ -496,6 +508,7 @@ impl<'a> PainterPaneHeader<'a> {
             clicked_order: false,
             clicked_dom: false,
             clicked_options: false,
+            clicked_overlay: false,
             tab_rects: Vec::new(),
             plus_tab_rect: None,
             clicked_expand: false,
@@ -811,13 +824,14 @@ impl<'a> PainterPaneHeader<'a> {
             cx += PLUS_TAB_W + gap_sm();
         }
 
-        // ── Right cluster: [Expand] [ORDER] [DOM] [OPTIONS] [Close] (right-anchored) ──
+        // ── Right cluster: [Expand] [OV] [ORDER] [DOM] [OPTIONS] [Close] (right-anchored) ──
         // Layout walks right-to-left for sizing, then left-to-right for painting.
         const EXPAND_BTN_W: f32 = 28.0;
         let expand_total = if self.show_expand_btn { EXPAND_BTN_W } else { 0.0 };
         let close_total = if self.show_close { gap_md() + CLOSE_BTN_SIZE + gap_md() } else { gap_sm() };
         let order_dom_total = {
             let mut w = 0.0f32;
+            if self.show_overlay_btn { w += ICON_BTN_W_OV; }
             if self.show_order_btn   { w += ICON_BTN_W; }
             if self.show_dom_btn     { w += ICON_BTN_W_DOM; }
             if self.show_options_btn { w += ICON_BTN_W_OPTIONS; }
@@ -868,12 +882,28 @@ impl<'a> PainterPaneHeader<'a> {
             }
         }
 
-        // ── Order + DOM icon buttons ──────────────────────────────────────────
+        // ── OV + Order + DOM + Options icon buttons ───────────────────────────
         {
             use crate::ui_kit::widgets::Button;
             let icon_h = h - ICON_BTN_INSET_V;
             let mut rx = rect.right() - close_total - order_dom_total;
 
+            if self.show_overlay_btn {
+                let r = Rect::from_min_size(
+                    pos2(rx, rect.center().y - icon_h / 2.0),
+                    Vec2::new(ICON_BTN_W_OV, icon_h),
+                );
+                let resp = Button::new("OV")
+                    .leading_icon(Icon::EYE)
+                    .status(true)
+                    .active(self.overlay_btn_active)
+                    .show_at(ui, &painter, r, t);
+                if resp.clicked() { out.clicked_overlay = true; }
+                rx += ICON_BTN_W_OV;
+                if self.show_order_btn || self.show_dom_btn || self.show_options_btn {
+                    header_divider_strong(&painter, rx, rect, t);
+                }
+            }
             if self.show_order_btn {
                 let r = Rect::from_min_size(
                     pos2(rx, rect.center().y - icon_h / 2.0),
@@ -975,6 +1005,8 @@ pub struct PainterPaneHeaderResponse {
     /// Order-entry toggle button was clicked.
     pub clicked_order: bool,
     pub clicked_options: bool,
+    /// Symbol-overlay toggle button was clicked.
+    pub clicked_overlay: bool,
     /// DOM sidebar toggle button was clicked.
     pub clicked_dom: bool,
     /// Per-tab screen rects (in tab-strip mode). Empty in simple-symbol mode.

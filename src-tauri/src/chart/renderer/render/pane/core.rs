@@ -441,6 +441,7 @@ fn render_chart_pane(
             .can_go_back(can_go_back)
             .can_go_fwd(can_go_fwd)
             .show_plus_tab(true)
+            .show_overlay_btn(chart.overlay_editing || !chart.symbol_overlays.is_empty())
             .show_order_btn(chart.floating_order_panes.iter().any(|p| p.strike == 0.0))
             .show_dom_btn(chart.dom_sidebar_open);
         if !chart.is_option {
@@ -813,6 +814,11 @@ fn render_chart_pane(
                     fetch_overlay_chain_background(sym, price);
                 }
             }
+        }
+        // Symbol-overlay editor toggle (moved out of the in-chart top-left strip).
+        if hdr.clicked_overlay {
+            chart.overlay_editing = !chart.overlay_editing;
+            if chart.overlay_editing { chart.overlay_editing_idx = None; }
         }
     }
 
@@ -8647,53 +8653,119 @@ fn render_chart_pane(
     }
 
     span_begin("pane_chrome");
-    // ── Chart-area top-left badge strip (TF + OV) ──────────────────────────
+    // ── Chart-area top-left strip: TF dropdown + drawing dropdown (+ MARK on option panes) ──
     {
         let pad = 6.0_f32;
         let bar_h = 18.0_f32;
         let y = rect.top() + pt + pad;
-        let mut x = rect.left() + pad;
+        // Real KitButton::menu dropdowns inside an egui::Area at the top-left.
+        // An Area gets its OWN layer (above the chart canvas), so its clicks
+        // don't compete with the chart's main interaction surface — the prior
+        // allocate_ui_at_rect version had the top/maximized pane's strip
+        // shadowed because the strip lived on the same layer as the chart.
+        let cur_tf = chart.timeframe.clone();
+        let cur_tool = chart.draw_tool.clone();
+        let mut pending_tf: Option<String> = None;
+        let mut new_tool: Option<String> = None;
+        let strip_pos = egui::pos2(rect.left() + pad, y);
+        let area_resp = egui::Area::new(egui::Id::new(("pane_top_strip", pane_idx)))
+            .fixed_pos(strip_pos)
+            .order(egui::Order::Middle)
+            .interactable(true)
+            .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                use crate::ui_kit::widgets::Button as KitButton;
+                use crate::ui_kit::widgets::MenuItem;
+                use crate::ui_kit::icons::Icon;
+                use crate::chart_renderer::ui::style::{font_md, font_sm};
+                // Timeframe dropdown
+                if !cur_tf.is_empty() {
+                    let tf_label = cur_tf.to_uppercase();
+                    KitButton::menu(tf_label.as_str())
+                        .glyph_size(font_md())
+                        .fg(t.text)
+                        .show_menu(ui, t, |ui| {
+                            ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                            ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                            ui.set_min_width(140.0);
+                            let mut last_section: &str = "";
+                            for (label, _secs, section) in
+                                crate::chart_renderer::ui::components::toolbar::top_nav::ALL_TIMEFRAMES
+                            {
+                                if *section != last_section {
+                                    if !last_section.is_empty() { ui.separator(); }
+                                    ui.label(egui::RichText::new(*section).monospace()
+                                        .size(font_sm()).color(t.dim));
+                                    last_section = section;
+                                }
+                                let item = MenuItem::new(*label).selected(*label == cur_tf.as_str());
+                                if item.show(ui, t).clicked() && *label != cur_tf.as_str() {
+                                    pending_tf = Some((*label).to_string());
+                                    ui.close_menu();
+                                }
+                            }
+                        });
+                }
+                // Drawing-tool dropdown — mirrors the top-nav drawing menu.
+                {
+                    let has_tool = !cur_tool.is_empty();
+                    KitButton::menu(Icon::PENCIL_LINE)
+                        .glyph_size(font_md())
+                        .fg(if has_tool { t.accent } else { t.text })
+                        .show_menu(ui, t, |ui| {
+                            ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                            ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                            ui.set_min_width(190.0);
+                            let sections: &[(&str, &[(&str, &str)])] = &[
+                                ("LINES", &[("trendline", "Trendline"), ("hline", "Horizontal Line"), ("vline", "Vertical Line"), ("ray", "Ray")]),
+                                ("CHANNELS", &[("channel", "Parallel Channel"), ("fibchannel", "Fib Channel"), ("pitchfork", "Pitchfork")]),
+                                ("FIBONACCI", &[("fibonacci", "Fib Retracement"), ("fibext", "Fib Extension"), ("fibtimezone", "Fib Time Zones"), ("fibarc", "Fib Arcs")]),
+                                ("GANN", &[("gannfan", "Gann Fan"), ("gannbox", "Gann Box")]),
+                                ("RANGES", &[("hzone", "Zone / Rectangle"), ("pricerange", "Price Range"), ("riskreward", "Risk / Reward")]),
+                                ("COMPUTED", &[("regression", "Regression Channel"), ("avwap", "Anchored VWAP")]),
+                                ("PATTERNS", &[("xabcd", "XABCD Harmonic"), ("elliott_impulse", "Elliott Impulse"), ("elliott_corrective", "Elliott ABC"),
+                                    ("elliott_wxy", "Elliott WXY"), ("elliott_sub_impulse", "Sub Impulse"), ("elliott_sub_corrective", "Sub Corrective")]),
+                                ("OTHER", &[("barmarker", "Bar Marker"), ("textnote", "Text Note")]),
+                            ];
+                            for (si, (section, tools)) in sections.iter().enumerate() {
+                                if si > 0 { ui.separator(); }
+                                ui.label(egui::RichText::new(*section).monospace()
+                                    .size(font_sm()).color(t.dim));
+                                for (tool, label) in *tools {
+                                    let item = MenuItem::new(*label).selected(cur_tool == *tool);
+                                    if item.show(ui, t).clicked() {
+                                        new_tool = Some(tool.to_string());
+                                        ui.close_menu();
+                                    }
+                                }
+                            }
+                            if !cur_tool.is_empty() {
+                                ui.separator();
+                                if MenuItem::new("Cancel Tool").show(ui, t).clicked() {
+                                    new_tool = Some(String::new());
+                                    ui.close_menu();
+                                }
+                            }
+                        });
+                }
+                // Return the horizontal layout's actually-used rect so we can
+                // position the MARK toggle right after it.
+                ui.min_rect()
+            }).inner
+        });
+        let dropdowns_rect = area_resp.inner;
+        if let Some(new_tf) = pending_tf {
+            chart.pending_timeframe_change = Some(new_tf);
+        }
+        if let Some(tool) = new_tool {
+            chart.draw_tool = tool;
+            chart.pending_pt = None;
+            chart.pending_pt2 = None;
+            chart.pending_pts.clear();
+        }
+        // `x` and `p` are kept for the MARK toggle below.
+        let mut x = dropdowns_rect.right() + 4.0;
         let p = ui.painter_at(rect);
-        // Timeframe pill
-        if !chart.timeframe.is_empty() {
-            let tf = chart.timeframe.to_uppercase();
-            let font = mono_xs_plus();
-            let g = p.layout_no_wrap(tf.clone(), font.clone(), t.text);
-            let w = g.size().x + 10.0;
-            let r = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(w, bar_h));
-            p.rect_filled(r, 3.0, t.bg.gamma_multiply(0.4));
-            p.text(r.center(), egui::Align2::CENTER_CENTER, &tf, font, t.text);
-            x += w + 4.0;
-        }
-        // OV button (overlay editor toggle)
-        {
-            let has_overlays = !chart.symbol_overlays.is_empty();
-            let ov_w = 32.0_f32;
-            let ov_rect = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(ov_w, bar_h));
-            let ov_resp = ui.allocate_rect(ov_rect, egui::Sense::click());
-            let active = chart.overlay_editing || has_overlays;
-            let (bg_col, fg_col) = if chart.overlay_editing {
-                (color_alpha(t.accent, 60), t.accent)
-            } else if ov_resp.hovered() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                (t.bg.gamma_multiply(0.55), if active { t.accent } else { t.text })
-            } else if has_overlays {
-                (t.bg.gamma_multiply(0.4), t.dim)
-            } else {
-                (t.bg.gamma_multiply(0.4), t.dim.gamma_multiply(0.85))
-            };
-            p.rect_filled(ov_rect, 3.0, bg_col);
-            p.rect_stroke(ov_rect, 3.0,
-                egui::Stroke::new(0.5, t.toolbar_border),
-                egui::StrokeKind::Inside);
-            p.text(ov_rect.center(), egui::Align2::CENTER_CENTER, "OV",
-                mono_xs_plus(), fg_col);
-            if ov_resp.clicked() {
-                chart.overlay_editing = !chart.overlay_editing;
-                if chart.overlay_editing { chart.overlay_editing_idx = None; }
-            }
-            x += ov_w + 4.0;
-        }
         // MARK_BARS_PROTOCOL — Last|Mark segmented toggle (option panes only).
         if chart.is_option {
             let seg_h = bar_h;
