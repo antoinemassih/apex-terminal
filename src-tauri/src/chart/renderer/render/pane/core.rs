@@ -10512,8 +10512,11 @@ fn render_chart_pane(
     }
 
     // ── Keyboard shortcuts for drawing tools ─────────────────────────────
-    // Single-key activates tools instantly (only when no tool active and no text input)
-    if !ctx.wants_keyboard_input() && chart.draw_tool.is_empty() {
+    // Single-key activates tools instantly (only when no tool active and no
+    // text input). ACTIVE PANE ONLY: render_chart_pane runs once per pane and
+    // key_pressed() is not consumed, so without this gate a single T press
+    // would arm the tool on every pane.
+    if pane_idx == *active_pane && !ctx.wants_keyboard_input() && chart.draw_tool.is_empty() {
         let new_tool: Option<&str> = ui.input(|i| {
             if i.key_pressed(egui::Key::T) { Some("trendline") }
             else if i.key_pressed(egui::Key::H) { Some("hline") }
