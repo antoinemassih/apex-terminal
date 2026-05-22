@@ -10376,14 +10376,19 @@ fn render_chart_pane(
     }
 
     // ── Keyboard shortcuts — extracted to pane/keyboard_shortcuts.rs ─────
-    super::keyboard_shortcuts::handle_keyboard_shortcuts(ui, chart, watchlist);
+    // ACTIVE PANE ONLY: render_chart_pane runs once per pane and egui's
+    // key_pressed() is not consumed — without this gate every global shortcut
+    // (undo/redo, delete, screenshot, boss key) fires once per visible pane.
+    if pane_idx == *active_pane {
+        super::keyboard_shortcuts::handle_keyboard_shortcuts(ui, chart, watchlist);
+    }
 
     // Context menu (right-click) — body extracted to pane/pane_context_menu.rs
     resp.context_menu(|ui| {
         super::pane_context_menu::pane_context_menu(ui, chart, t, min_p, max_p, n, watchlist, &pos_to_price);
     });
 
-    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+    if pane_idx == *active_pane && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
         chart.draw_tool.clear(); chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear();
         chart.selected_id = None; chart.editing_indicator = None; chart.editing_order = None;
         if let Some(ref edit_id) = chart.text_edit_id.clone() {
@@ -10397,7 +10402,7 @@ fn render_chart_pane(
     // Close the filter dialog when a drawing is selected to avoid two overlapping panels
     // (Old drawing list panel removed — consolidated into object_tree.rs)
 
-    if chart.selected_id.is_some() { watchlist.trendline_filter_open = false; }
+    if pane_idx == *active_pane && chart.selected_id.is_some() { watchlist.trendline_filter_open = false; }
     if chart.selected_id.is_some() {
         let bar_y = rect.top() + pt + 4.0;
         let est_w = 520.0;
@@ -10471,13 +10476,13 @@ fn render_chart_pane(
         }
     }
 
-    // M key toggles magnet mode
-    if ui.input(|i| i.key_pressed(egui::Key::M)) && !ctx.wants_keyboard_input() {
+    // M key toggles magnet mode (active pane only)
+    if pane_idx == *active_pane && ui.input(|i| i.key_pressed(egui::Key::M)) && !ctx.wants_keyboard_input() {
         chart.magnet = !chart.magnet;
     }
 
-    // Replay mode keyboard controls
-    if chart.replay_mode && !ctx.wants_keyboard_input() {
+    // Replay mode keyboard controls (active pane only)
+    if pane_idx == *active_pane && chart.replay_mode && !ctx.wants_keyboard_input() {
         // Space: toggle play/pause
         if ui.input(|i| i.key_pressed(egui::Key::Space)) {
             chart.replay_playing = !chart.replay_playing;
@@ -10537,8 +10542,10 @@ fn render_chart_pane(
         }
     }
 
-    // ── Trading hotkeys ───────────────────────────────────────────────────
-    if !ctx.wants_keyboard_input() {
+    // ── Trading hotkeys — ACTIVE PANE ONLY ────────────────────────────────
+    // render_chart_pane runs once per pane; without the pane gate, Ctrl+B etc.
+    // would submit one market order PER visible pane on a single keypress.
+    if pane_idx == *active_pane && !ctx.wants_keyboard_input() {
         // Ctrl+B: Buy market at last price
         if ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::B) && !i.modifiers.shift) {
             use crate::chart_renderer::trading::order_manager::*;
@@ -10590,17 +10597,15 @@ fn render_chart_pane(
                     .send();
             });
         }
-        // Ctrl+Shift+K: Kill Switch — cancel all orders + flatten all positions
+        // Ctrl+Shift+K: Kill Switch — cancel all orders, flatten positions, and
+        // halt new trading. Single handler: Halt Trading was relocated off ⌘⇧H
+        // (now the TPS boss key) onto ⌘⇧K, which already bound Kill Switch —
+        // the two are merged so the chord fires exactly one combined action.
         if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::K)) {
             crate::chart_renderer::trading::order_manager::kill_switch();
-            chart.orders.clear();
-            PENDING_TOASTS.with(|ts| ts.borrow_mut().push(("KILL SWITCH ACTIVATED".into(), 0.0, false)));
-        }
-        // Ctrl+Shift+K: Halt trading (moved off ⌘⇧H — that chord is now the
-        // TPS-report boss key; see default_hotkeys / keyboard_shortcuts.rs).
-        if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::K)) {
             let _ = crate::chart_renderer::trading::order_manager::halt_trading();
-            PENDING_TOASTS.with(|ts| ts.borrow_mut().push(("Trading HALTED".into(), 0.0, false)));
+            chart.orders.clear();
+            PENDING_TOASTS.with(|ts| ts.borrow_mut().push(("KILL SWITCH — orders cancelled, trading halted".into(), 0.0, false)));
         }
         // Ctrl+Shift+R: Resume trading
         if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::R)) {
