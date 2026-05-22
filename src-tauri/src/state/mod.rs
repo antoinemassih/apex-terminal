@@ -22,7 +22,7 @@ pub use aggregates::{
     PersistedAlert, PersistedLinkGroup, SidebarState, TradingDefaults, UiSettings,
 };
 pub use inflight::{InFlight, InFlightKind, InFlightRegistry, RequestId};
-pub use persistence::{load, save, Persistable};
+pub use persistence::{atomic_write, load, save, Persistable};
 pub use subscriptions::{PaneEvent, PaneToggle, SubscriptionBus, BROADCAST_GROUP};
 
 pub mod store;

@@ -44,6 +44,12 @@ struct Envelope {
 }
 
 /// Write `value` as a versioned JSON envelope to `path`.
+///
+/// The write is crash-safe: bytes are written to a sibling `.tmp` file,
+/// flushed, then atomically renamed over the real path. Because `rename`
+/// is atomic on a single filesystem, a crash mid-write leaves the previous
+/// file intact; the `.tmp` file is simply abandoned and ignored on the
+/// next load.
 pub fn save<T>(path: &Path, value: &T) -> std::io::Result<()>
 where
     T: Persistable + serde::Serialize,
@@ -57,7 +63,28 @@ where
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(path, bytes)
+    atomic_write(path, &bytes)
+}
+
+/// Write `bytes` to `path` atomically: write to `<path>.tmp`, flush, then
+/// rename over `path`. Rename is atomic on a single filesystem, so a crash
+/// mid-write leaves the previous file intact and only a stale `.tmp` behind.
+pub fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write as _;
+    // Build the sibling temp path by appending ".tmp".
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp_path = std::path::Path::new(&tmp);
+
+    {
+        let mut f = std::fs::File::create(tmp_path)?;
+        f.write_all(bytes)?;
+        f.flush()?;
+        // sync_all is a best-effort durability guarantee; ignore errors on
+        // platforms that don't support it (e.g. some network filesystems).
+        let _ = f.sync_all();
+    }
+    std::fs::rename(tmp_path, path)
 }
 
 /// Load a versioned JSON envelope from `path`, migrating if needed.

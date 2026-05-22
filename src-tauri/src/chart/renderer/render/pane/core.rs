@@ -10383,23 +10383,13 @@ fn render_chart_pane(
     // key_pressed() is not consumed — without this gate every global shortcut
     // (undo/redo, delete, screenshot, boss key) fires once per visible pane.
     if pane_idx == *active_pane {
-        super::keyboard_shortcuts::handle_keyboard_shortcuts(ui, chart, watchlist);
+        super::keyboard_shortcuts::handle_keyboard_shortcuts(ui, ctx, chart, watchlist);
     }
 
     // Context menu (right-click) — body extracted to pane/pane_context_menu.rs
     resp.context_menu(|ui| {
         super::pane_context_menu::pane_context_menu(ui, chart, t, min_p, max_p, n, watchlist, &pos_to_price);
     });
-
-    if pane_idx == *active_pane && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-        chart.draw_tool.clear(); chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear();
-        chart.selected_id = None; chart.editing_indicator = None; chart.editing_order = None;
-        if let Some(ref edit_id) = chart.text_edit_id.clone() {
-            chart.drawings.retain(|d| d.id != *edit_id);
-            crate::drawing_db::remove(edit_id);
-            chart.text_edit_id = None; chart.text_edit_buf.clear();
-        }
-    }
 
     // ── Drawing properties bar (horizontal, top-center of chart) ──────────
     // Close the filter dialog when a drawing is selected to avoid two overlapping panels
@@ -10476,144 +10466,6 @@ fn render_chart_pane(
                 }
                 chart.text_edit_id = None; chart.text_edit_buf.clear();
             }
-        }
-    }
-
-    // M key toggles magnet mode (active pane only)
-    if pane_idx == *active_pane && ui.input(|i| i.key_pressed(egui::Key::M)) && !ctx.wants_keyboard_input() {
-        chart.magnet = !chart.magnet;
-    }
-
-    // Replay mode keyboard controls (active pane only)
-    if pane_idx == *active_pane && chart.replay_mode && !ctx.wants_keyboard_input() {
-        // Space: toggle play/pause
-        if ui.input(|i| i.key_pressed(egui::Key::Space)) {
-            chart.replay_playing = !chart.replay_playing;
-            if chart.replay_playing { chart.replay_last_step = None; }
-        }
-        // Right arrow: step forward 1 bar (only when paused)
-        if !chart.replay_playing && ui.input(|i| i.key_pressed(egui::Key::ArrowRight)) {
-            chart.replay_bar_count = (chart.replay_bar_count + 1).min(chart.bars.len());
-            chart.indicator_bar_count = 0;
-            chart.vs = (chart.replay_bar_count as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
-        }
-        // Left arrow: step back 1 bar (only when paused)
-        if !chart.replay_playing && ui.input(|i| i.key_pressed(egui::Key::ArrowLeft)) {
-            chart.replay_bar_count = chart.replay_bar_count.saturating_sub(1).max(1);
-            chart.indicator_bar_count = 0;
-            chart.vs = (chart.replay_bar_count as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
-        }
-        // Home: jump to start
-        if ui.input(|i| i.key_pressed(egui::Key::Home)) {
-            chart.replay_bar_count = 1;
-            chart.replay_playing = false;
-            chart.indicator_bar_count = 0;
-            chart.vs = 0.0;
-        }
-        // End: jump to end (exit replay)
-        if ui.input(|i| i.key_pressed(egui::Key::End)) {
-            chart.replay_bar_count = chart.bars.len();
-            chart.replay_playing = false;
-            chart.indicator_bar_count = 0;
-            chart.vs = (chart.replay_bar_count as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
-        }
-    }
-
-    // ── Keyboard shortcuts for drawing tools ─────────────────────────────
-    // Single-key activates tools instantly (only when no tool active and no
-    // text input). ACTIVE PANE ONLY: render_chart_pane runs once per pane and
-    // key_pressed() is not consumed, so without this gate a single T press
-    // would arm the tool on every pane.
-    if pane_idx == *active_pane && !ctx.wants_keyboard_input() && chart.draw_tool.is_empty() {
-        let new_tool: Option<&str> = ui.input(|i| {
-            if i.key_pressed(egui::Key::T) { Some("trendline") }
-            else if i.key_pressed(egui::Key::H) { Some("hline") }
-            else if i.key_pressed(egui::Key::F) { Some("fibonacci") }
-            else if i.key_pressed(egui::Key::C) && !i.modifiers.command { Some("channel") }
-            else if i.key_pressed(egui::Key::V) && !i.modifiers.command { Some("vline") }
-            else if i.key_pressed(egui::Key::R) { Some("ray") }
-            // Z is now drag-zoom (handled separately), not hzone
-            else if i.key_pressed(egui::Key::P) { Some("pitchfork") }
-            else if i.key_pressed(egui::Key::G) { Some("gannfan") }
-            else if i.key_pressed(egui::Key::X) { Some("fibext") }
-            else if i.key_pressed(egui::Key::N) { Some("textnote") }
-            else { None }
-        });
-        if let Some(tool) = new_tool {
-            chart.draw_tool = tool.into();
-            chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear();
-        }
-    }
-
-    // ── Trading hotkeys — ACTIVE PANE ONLY ────────────────────────────────
-    // render_chart_pane runs once per pane; without the pane gate, Ctrl+B etc.
-    // would submit one market order PER visible pane on a single keypress.
-    if pane_idx == *active_pane && !ctx.wants_keyboard_input() {
-        // Ctrl+B: Buy market at last price
-        if ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::B) && !i.modifiers.shift) {
-            use crate::chart_renderer::trading::order_manager::*;
-            let price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
-            let result = submit_order(OrderIntent {
-                symbol: chart.symbol.clone(), side: OrderSide::Buy,
-                order_type: ManagedOrderType::Market, price, qty: chart.order_qty,
-                source: OrderSource::Hotkey, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
-                strategy_id: None, override_warnings: false,
-            });
-            if let OrderResult::Accepted(id) = result {
-                chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
-            }
-        }
-        // Ctrl+Shift+B: Sell market at last price
-        if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::B)) {
-            use crate::chart_renderer::trading::order_manager::*;
-            let price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
-            let result = submit_order(OrderIntent {
-                symbol: chart.symbol.clone(), side: OrderSide::Sell,
-                order_type: ManagedOrderType::Market, price, qty: chart.order_qty,
-                source: OrderSource::Hotkey, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
-                strategy_id: None, override_warnings: false,
-            });
-            if let OrderResult::Accepted(id) = result {
-                chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
-            }
-        }
-        // Ctrl+Shift+Q: Cancel all orders (local + IB)
-        if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::Q)) {
-            crate::chart_renderer::trading::order_manager::cancel_all_orders("");
-            chart.orders.clear();
-            // Cancel all IB orders too
-            std::thread::spawn(|| {
-                let _ = reqwest::blocking::Client::new()
-                    .delete(format!("{}/orders", APEXIB_URL))
-                    .timeout(std::time::Duration::from_secs(5))
-                    .send();
-            });
-        }
-        // Ctrl+Shift+F: Flatten all positions (IB)
-        if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::F)) {
-            crate::chart_renderer::trading::order_manager::cancel_all_orders("");
-            chart.orders.retain(|o| o.status == OrderStatus::Executed);
-            std::thread::spawn(|| {
-                let _ = reqwest::blocking::Client::new()
-                    .post(format!("{}/risk/flatten", APEXIB_URL))
-                    .timeout(std::time::Duration::from_secs(5))
-                    .send();
-            });
-        }
-        // Ctrl+Shift+K: Kill Switch — cancel all orders, flatten positions, and
-        // halt new trading. Single handler: Halt Trading was relocated off ⌘⇧H
-        // (now the TPS boss key) onto ⌘⇧K, which already bound Kill Switch —
-        // the two are merged so the chord fires exactly one combined action.
-        if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::K)) {
-            crate::chart_renderer::trading::order_manager::kill_switch();
-            let _ = crate::chart_renderer::trading::order_manager::halt_trading();
-            chart.orders.clear();
-            PENDING_TOASTS.with(|ts| ts.borrow_mut().push(("KILL SWITCH — orders cancelled, trading halted".into(), 0.0, false)));
-        }
-        // Ctrl+Shift+R: Resume trading
-        if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::R)) {
-            let _ = crate::chart_renderer::trading::order_manager::resume_trading();
-            PENDING_TOASTS.with(|ts| ts.borrow_mut().push(("Trading RESUMED".into(), 0.0, true)));
         }
     }
 

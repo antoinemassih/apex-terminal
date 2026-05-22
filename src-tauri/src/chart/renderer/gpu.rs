@@ -5556,6 +5556,23 @@ impl Watchlist {
         self.discord_last_msg_id = snap.discord_last_msg_id;
     }
 
+    // ── Phase 3 (state): single-chokepoint flush helper ──────────────────────
+
+    /// Push ALL live `Watchlist` legacy fields into their typed stores.
+    ///
+    /// Call this immediately before any persist point (manual save or
+    /// `flush_all`) so every store is guaranteed to hold the freshest
+    /// values.  Adding a new aggregate in the future means adding ONE
+    /// line here — no other persist site needs to change.
+    pub(crate) fn push_all_stores(&mut self) {
+        self.push_to_ui_settings();
+        self.push_to_trading_defaults_store();
+        self.push_to_alerts_store();
+        self.push_to_sidebar_store();
+        self.push_to_layout_store();
+        self.push_to_chat_store();
+    }
+
     /// Add symbol to the last section (creates one if none exist).
     pub(crate) fn add_symbol(&mut self, sym: &str) {
         let s = sym.to_uppercase();
@@ -6555,10 +6572,16 @@ impl ApplicationHandler for App {
         }
         match ev {
             WindowEvent::CloseRequested => {
+                // Phase 3 (state): push all legacy fields into their stores
+                // BEFORE save_state and flush_all so both paths see fresh data.
+                // save_state calls push_all_stores internally, but the explicit
+                // call here guards the flush_all path in case save_state is
+                // bypassed or reordered in a future refactor.
                 save_state(&cw.panes, cw.layout, &mut cw.watchlist);
                 cw.watchlist.persist();
-                // Wave 2 (state): synchronous final flush so stores are written
-                // to disk before the process exits (debounce may not have elapsed yet).
+                // Phase 3 (state): push_all_stores was already called inside
+                // save_state above, so stores are fresh; flush_all persists any
+                // that haven't been written by the debounce supervisor yet.
                 let flush_failures = self.store_registry.flush_all();
                 for (key, e) in &flush_failures {
                     eprintln!("[state] final flush failed for '{key}': {e}");
@@ -7236,7 +7259,7 @@ pub(crate) fn save_workspace(name: &str, panes: &[Chart], layout: Layout) {
     let json = workspace_to_json(panes, layout);
     let safe_name: String = name.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' }).collect();
     let path = workspace_dir().join(format!("{}.json", safe_name));
-    let _ = std::fs::write(path, json);
+    let _ = crate::state::persistence::atomic_write(&path, json.as_bytes());
 }
 
 pub(crate) fn list_workspaces() -> Vec<String> {
@@ -7252,14 +7275,10 @@ pub(crate) fn list_workspaces() -> Vec<String> {
 }
 
 pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &mut Watchlist) {
-    // Wave 14c: mirror the live legacy fields into the typed aggregate
-    // before either of them goes to disk. Legacy `settings` blob stays
-    // authoritative for now; aggregate file is additive.
-    watchlist.push_to_ui_settings();
-    // Wave 3 (state): mirror layout and chat fields into their stores so the
-    // persist supervisor picks up any changes that happened since last flush.
-    watchlist.push_to_layout_store();
-    watchlist.push_to_chat_store();
+    // Phase 3 (state): push ALL legacy fields into their stores via the
+    // single chokepoint so every aggregate is guaranteed fresh before any
+    // bytes hit disk. Replaces the previous ad-hoc subset of push calls.
+    watchlist.push_all_stores();
     if let Err(e) = crate::state::save(&ui_settings_path(), &watchlist.ui_settings) {
         eprintln!("[state] ui_settings save failed: {e}");
     }
@@ -7382,7 +7401,10 @@ pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &mut Watchl
             "pane_split_v6": watchlist.pane_split_v6,
         },
     });
-    let _ = std::fs::write(state_path(), serde_json::to_string_pretty(&state).unwrap_or_default());
+    let _ = crate::state::persistence::atomic_write(
+        &state_path(),
+        serde_json::to_string_pretty(&state).unwrap_or_default().as_bytes(),
+    );
 
     // ── Persist alerts ──
     save_alerts(watchlist, panes);
@@ -7635,7 +7657,10 @@ fn save_alerts(watchlist: &Watchlist, panes: &[Chart]) {
         pane_alerts.insert(p.symbol.clone(), serde_json::Value::Array(arr));
     }
     let json = serde_json::json!({ "watchlist_alerts": wl_alerts, "pane_alerts": pane_alerts });
-    let _ = std::fs::write(alerts_path(), serde_json::to_string_pretty(&json).unwrap_or_default());
+    let _ = crate::state::persistence::atomic_write(
+        &alerts_path(),
+        serde_json::to_string_pretty(&json).unwrap_or_default().as_bytes(),
+    );
 }
 
 fn load_alerts() -> (Vec<crate::chart_renderer::trading::Alert>, std::collections::HashMap<String, Vec<crate::chart_renderer::trading::PriceAlert>>) {
@@ -7689,7 +7714,10 @@ fn save_hotkeys(watchlist: &Watchlist) {
         "action": hk.action, "key_name": hk.key_name,
         "ctrl": hk.ctrl, "shift": hk.shift, "alt": hk.alt,
     })).collect();
-    let _ = std::fs::write(hotkeys_path(), serde_json::to_string_pretty(&serde_json::Value::Array(arr)).unwrap_or_default());
+    let _ = crate::state::persistence::atomic_write(
+        &hotkeys_path(),
+        serde_json::to_string_pretty(&serde_json::Value::Array(arr)).unwrap_or_default().as_bytes(),
+    );
 }
 
 fn load_hotkeys(defaults: &mut Vec<HotKey>) {
@@ -7748,7 +7776,10 @@ pub(crate) fn save_templates(templates: &[(String, serde_json::Value)]) {
     for (name, data) in templates {
         let safe: String = name.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' }).collect();
         let path = dir.join(format!("{}.json", safe));
-        let _ = std::fs::write(path, serde_json::to_string_pretty(data).unwrap_or_default());
+        let _ = crate::state::persistence::atomic_write(
+            &path,
+            serde_json::to_string_pretty(data).unwrap_or_default().as_bytes(),
+        );
     }
 }
 
@@ -7816,7 +7847,10 @@ fn save_watchlists(watchlist: &Watchlist) {
         "watchlists": wls,
         "active_idx": watchlist.active_watchlist_idx,
     });
-    let _ = std::fs::write(watchlists_path(), serde_json::to_string_pretty(&state).unwrap_or_default());
+    let _ = crate::state::persistence::atomic_write(
+        &watchlists_path(),
+        serde_json::to_string_pretty(&state).unwrap_or_default().as_bytes(),
+    );
 }
 
 fn load_watchlists() -> (Vec<SavedWatchlist>, usize) {
