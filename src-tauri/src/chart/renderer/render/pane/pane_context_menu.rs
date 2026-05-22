@@ -11,7 +11,7 @@ use crate::chart_renderer::trading::*;
 use crate::chart_renderer::{LineStyle, PlayLineKind};
 use crate::chart_renderer::ui::style::{
     color_alpha, mono_xs,
-    font_2xs, font_xs,
+    font_2xs, font_xs, font_sm,
     COLOR_AMBER,
     TEXT_PRIMARY,
 };
@@ -153,12 +153,12 @@ pub(super) fn pane_context_menu<F>(
         // Bracket presets submenu — keep menu_button so the native popup works;
         // only the trigger label changes (no submenu MenuItem replacement needed here
         // because menu_button manages the popup).
-        ui.menu_button(egui::RichText::new(format!("\u{21C5} Bracket Presets \u{25BA}")).color(t.accent), |ui| {
+        ui.menu_button(egui::RichText::new(format!("\u{21C5} Bracket Presets \u{25BA}")).size(font_sm()).color(t.accent), |ui| {
             let templates = chart.bracket_templates.clone();
             let mut delete_idx: Option<usize> = None;
             for (ti, tmpl) in templates.iter().enumerate() {
                 ui.horizontal(|ui| {
-                    if ui.button(format!("{} (+{}% / -{}%)", tmpl.name, tmpl.target_pct, tmpl.stop_pct)).clicked() {
+                    if ui.button(egui::RichText::new(format!("{} (+{}% / -{}%)", tmpl.name, tmpl.target_pct, tmpl.stop_pct)).size(font_sm())).clicked() {
                         use crate::chart_renderer::trading::order_manager::*;
                         let target_price = click_price * (1.0 + tmpl.target_pct / 100.0);
                         let stop_price   = click_price * (1.0 - tmpl.stop_pct  / 100.0);
@@ -427,7 +427,7 @@ pub(super) fn pane_context_menu<F>(
             chart.hide_signal_drawings = target;
             ui.close_menu();
         }
-        ui.menu_button(format!("{} Hide / Show \u{25BA}", Icon::EYE), |ui| {
+        ui.menu_button(egui::RichText::new(format!("{} Hide / Show \u{25BA}", Icon::EYE)).size(font_sm()), |ui| {
             // Drawings
             ui.label(egui::RichText::new("DRAWINGS").small().color(t.dim));
             {
@@ -539,7 +539,7 @@ pub(super) fn pane_context_menu<F>(
                 ui.close_menu();
             }
         }
-        ui.menu_button(format!("{} Delete \u{25BA}", Icon::TRASH), |ui| {
+        ui.menu_button(egui::RichText::new(format!("{} Delete \u{25BA}", Icon::TRASH)).size(font_sm()), |ui| {
             let red = t.bear;
 
             // Drawings
