@@ -114,42 +114,42 @@ impl crate::data::connectivity::Authenticated for ApexDataAuth {
 
 /// Redis URL for the bar cache. Reads `APEX_REDIS_URL` env var.
 ///
-/// If the env var is not set, logs a Critical error and returns a sentinel
-/// URL that will fail at connection time. The homelab host/port fallback is
-/// kept (without a password) so the failure message is actionable. Set
-/// `APEX_REDIS_URL` in your environment to configure the credential.
+/// The bar cache is OPTIONAL. If the env var is unset, this warns once and
+/// returns a localhost sentinel that fails gracefully at connection time —
+/// it must never brick startup, and no homelab address is baked into the
+/// binary. Set `APEX_REDIS_URL` to point at a real Redis.
 ///
 /// Never log the returned value — it may carry a password.
 pub fn apex_redis_url() -> String {
     match std::env::var("APEX_REDIS_URL").ok().filter(|s| !s.is_empty()) {
         Some(url) => url,
         None => {
-            // S4/Security-High: no hardcoded fallback — fail with a clear message.
-            panic!(
-                "APEX_REDIS_URL is not set. Set this environment variable to a valid Redis URL \
-                 (e.g. redis://:password@host:6379/) before starting Apex Terminal."
+            eprintln!(
+                "[config] APEX_REDIS_URL not set — bar cache disabled. \
+                 Set it (e.g. redis://:password@host:6379/) to enable."
             );
+            "redis://127.0.0.1:6379/".to_string()
         }
     }
 }
 
 /// PostgreSQL URL for the drawings / watchlist DB. Reads `APEX_PG_URL` env var.
 ///
-/// If the env var is not set, logs a Critical error and returns a sentinel
-/// URL that will fail at connection time. The homelab host/port fallback is
-/// kept (without a password) so the failure message is actionable. Set
-/// `APEX_PG_URL` in your environment to configure the credential.
+/// DB persistence is OPTIONAL — local JSON is the fallback. If the env var is
+/// unset, this warns once and returns a localhost sentinel that fails
+/// gracefully at connection time; it must never brick startup, and no homelab
+/// address is baked into the binary. Set `APEX_PG_URL` for a real database.
 ///
 /// Never log the returned value — it may carry a password.
 pub fn apex_pg_url() -> String {
     match std::env::var("APEX_PG_URL").ok().filter(|s| !s.is_empty()) {
         Some(url) => url,
         None => {
-            // S4/Security-High: no hardcoded fallback — fail with a clear message.
-            panic!(
-                "APEX_PG_URL is not set. Set this environment variable to a valid PostgreSQL URL \
-                 (e.g. postgresql://user:password@host:5432/dbname) before starting Apex Terminal."
+            eprintln!(
+                "[config] APEX_PG_URL not set — Postgres persistence disabled \
+                 (local JSON fallback). Set it (e.g. postgresql://user:pw@host:5432/db)."
             );
+            "postgresql://postgres@127.0.0.1:5432/apex".to_string()
         }
     }
 }
