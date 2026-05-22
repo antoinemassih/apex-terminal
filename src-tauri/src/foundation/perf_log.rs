@@ -37,9 +37,12 @@ fn jank_writer() -> Option<&'static Mutex<BufWriter<File>>> {
     let slot: &Option<Mutex<BufWriter<File>>> = JANK_WRITER.get_or_init(|| {
         let dir = log_dir()?;
         let path = dir.join("jank.jsonl");
-        // Simple single-rotation: rename to .1 when file exceeds ROTATE_BYTES.
+        // 3-generation rotation (L13 fix): jank.2 → jank.3, jank.1 → jank.2,
+        // jank → jank.1 — preserves up to ~30 MiB of history across restarts.
         if let Ok(meta) = std::fs::metadata(&path) {
             if meta.len() > ROTATE_BYTES {
+                let _ = std::fs::rename(dir.join("jank.2.jsonl"), dir.join("jank.3.jsonl"));
+                let _ = std::fs::rename(dir.join("jank.1.jsonl"), dir.join("jank.2.jsonl"));
                 let _ = std::fs::rename(&path, dir.join("jank.1.jsonl"));
             }
         }

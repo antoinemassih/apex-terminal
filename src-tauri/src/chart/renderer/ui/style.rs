@@ -2054,7 +2054,7 @@ static ACTIVE_STYLE: std::sync::atomic::AtomicU8 =
     std::sync::atomic::AtomicU8::new(0);
 
 pub fn set_active_style(id: u8) {
-    ACTIVE_STYLE.store(id, std::sync::atomic::Ordering::Relaxed);
+    ACTIVE_STYLE.store(id, std::sync::atomic::Ordering::Release);
     // Refresh the per-frame token snapshot (spec §5 Rule 2).  Called here so
     // the one existing `set_active_style` call-site in `draw_chart` (core.rs)
     // needs no modification — `core.rs` is sacred and must not be touched.
@@ -2428,7 +2428,7 @@ pub fn list_style_presets() -> Vec<(u8, String)> {
 }
 
 pub fn current() -> StyleSettings {
-    let id = ACTIVE_STYLE.load(std::sync::atomic::Ordering::Relaxed);
+    let id = ACTIVE_STYLE.load(std::sync::atomic::Ordering::Acquire);
     get_style_settings(id)
 }
 

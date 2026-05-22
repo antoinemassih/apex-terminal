@@ -54,11 +54,11 @@ pub fn set_surface_format(fmt: wgpu::TextureFormat) {
         wgpu::TextureFormat::Bgra8UnormSrgb => 4,
         _ => 0,
     };
-    SURFACE_FORMAT.store(code, Ordering::Relaxed);
+    SURFACE_FORMAT.store(code, Ordering::Release);
 }
 
 fn surface_format() -> Option<wgpu::TextureFormat> {
-    match SURFACE_FORMAT.load(Ordering::Relaxed) {
+    match SURFACE_FORMAT.load(Ordering::Acquire) {
         1 => Some(wgpu::TextureFormat::Rgba8Unorm),
         2 => Some(wgpu::TextureFormat::Rgba8UnormSrgb),
         3 => Some(wgpu::TextureFormat::Bgra8Unorm),

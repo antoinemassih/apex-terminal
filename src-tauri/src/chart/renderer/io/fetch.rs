@@ -42,6 +42,22 @@ fn build_chain(underlying: f32, num_strikes: usize, dte: i32) -> (Vec<OptionRow>
     (calls, puts)
 }
 
+/// Shared multi-thread tokio runtime for all background fetch calls.
+/// Created once (OnceLock), re-used for every `fetch_bars_background` call —
+/// avoids spawning a fresh single-thread runtime per call (H3 fix).
+fn fetch_runtime() -> &'static tokio::runtime::Runtime {
+    use std::sync::OnceLock;
+    static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    RT.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .thread_name("apex-fetch")
+            .build()
+            .expect("apex-fetch tokio runtime")
+    })
+}
+
 /// Fetch options chain from ApexIB in background. Sends ChainData command when done.
 /// Falls back to simulated build_chain if the API is unreachable.
 /// Shared HTTP client for ApexIB — avoids TLS handshake per request
@@ -1215,18 +1231,10 @@ pub(crate) fn fetch_bars_background(sym: String, tf: String) {
     // 6-tier `if-else` ladder this function used to inline.
     std::thread::spawn(move || {
         let chain = crate::data::providers::registry::bar_chain();
-        // Spin a private tokio runtime — fetch is called from background
-        // threads outside any existing async context.
-        let rt = match tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-        {
-            Ok(rt) => rt,
-            Err(e) => {
-                eprintln!("[native-chart] fetch runtime: {e}");
-                return;
-            }
-        };
+        // Re-use the process-wide fetch runtime rather than spinning a fresh
+        // single-thread runtime per call (H3 fix). Guard against the rare case
+        // where this thread is already inside a tokio context.
+        let rt = fetch_runtime();
         // Run BOTH the bars fetch AND the subscribe_bars call inside the
         // runtime context. subscribe_bars internally uses tokio::spawn to
         // pump the fanout — that requires Handle::current() which is only

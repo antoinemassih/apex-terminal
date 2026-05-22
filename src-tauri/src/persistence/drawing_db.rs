@@ -16,6 +16,7 @@ use sqlx::postgres::PgPool;
 use sqlx::Row;
 use std::sync::OnceLock;
 use uuid::Uuid;
+use tracing::{debug, warn, error};
 
 use crate::chart::state::codec::db::points_packing;
 use crate::chart::state::drawings::{DrawingFlags, DrawingKind, Point};
@@ -74,9 +75,10 @@ pub fn init(pool: PgPool) {
                             }
                         } else {
                             // Exhausted retries — park in dead-letter list.
-                            eprintln!(
-                                "[drawing-db] drawing {} dropped after {} attempts",
-                                drawing.id, attempts
+                            error!(
+                                drawing_id = %drawing.id,
+                                attempts,
+                                "[drawing-db] drawing dropped after max retry attempts"
                             );
                             if dead_letters.len() >= DEAD_LETTER_CAP {
                                 dead_letters.pop_front();
@@ -102,7 +104,7 @@ pub fn init(pool: PgPool) {
         });
     });
 
-    eprintln!("[drawing-db] Worker started against new chart_state schema");
+    debug!("[drawing-db] Worker started against new chart_state schema");
 }
 
 /// Get a reference to the pool (for direct queries from background threads).
@@ -434,7 +436,7 @@ async fn do_load_symbol(pool: &PgPool, symbol: &str) -> Vec<DbDrawing> {
 
     let rows = match result {
         Ok(r) => r,
-        Err(e) => { eprintln!("[drawing-db] load error: {e}"); return vec![]; }
+        Err(e) => { warn!("[drawing-db] load error: {e}"); return vec![]; }
     };
 
     let mut drawings = Vec::with_capacity(rows.len());
@@ -471,7 +473,7 @@ async fn do_load_symbol(pool: &PgPool, symbol: &str) -> Vec<DbDrawing> {
             group_id,
         });
     }
-    eprintln!("[drawing-db] loaded {} drawings for {}", drawings.len(), symbol);
+    debug!("[drawing-db] loaded {} drawings for {}", drawings.len(), symbol);
     drawings
 }
 
@@ -481,16 +483,16 @@ async fn do_load_symbol(pool: &PgPool, symbol: &str) -> Vec<DbDrawing> {
 async fn do_save(pool: &PgPool, d: DbDrawing) -> bool {
     let id = match Uuid::parse_str(&d.id) {
         Ok(u) => u,
-        Err(_) => { eprintln!("[drawing-db] invalid UUID (not retrying): {}", d.id); return false; }
+        Err(_) => { warn!("[drawing-db] invalid UUID (not retrying): {}", d.id); return false; }
     };
     let kind = match parse_kind(&d.drawing_type) {
         Some(k) => k,
-        None => { eprintln!("[drawing-db] unknown kind (not retrying): {}", d.drawing_type); return false; }
+        None => { warn!("[drawing-db] unknown kind (not retrying): {}", d.drawing_type); return false; }
     };
 
     let chart_id = match find_or_create_chart(pool, &d.symbol).await {
         Ok(c) => c,
-        Err(e) => { eprintln!("[drawing-db] chart upsert (will retry): {e}"); return false; }
+        Err(e) => { warn!("[drawing-db] chart upsert (will retry): {e}"); return false; }
     };
 
     let rgb = parse_rgb(&d.color);
@@ -501,7 +503,7 @@ async fn do_save(pool: &PgPool, d: DbDrawing) -> bool {
 
     let style_id = match intern_style(pool, chart_id, stroke, width_x100, dash, 0).await {
         Ok(s) => s,
-        Err(e) => { eprintln!("[drawing-db] style intern (will retry): {e}"); return false; }
+        Err(e) => { warn!("[drawing-db] style intern (will retry): {e}"); return false; }
     };
 
     let mut extras = serde_json::Map::new();
@@ -538,8 +540,8 @@ async fn do_save(pool: &PgPool, d: DbDrawing) -> bool {
     .await;
 
     match result {
-        Ok(_) => { eprintln!("[drawing-db] saved {} {} {}", d.drawing_type, d.symbol, d.id); true }
-        Err(e) => { eprintln!("[drawing-db] save error (will retry): {e}"); false }
+        Ok(_) => { debug!("[drawing-db] saved {} {} {}", d.drawing_type, d.symbol, d.id); true }
+        Err(e) => { warn!("[drawing-db] save error (will retry): {e}"); false }
     }
 }
 
