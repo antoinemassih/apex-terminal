@@ -29,6 +29,7 @@ mod pane_context_menu;
 mod keyboard_shortcuts;
 mod tool_previews;
 mod signal_gauges;
+pub(crate) mod notice;
 
 // Re-export the public entry points so existing call sites (`use
 // crate::chart::renderer::render::pane::{render_toolbar, draw_chart}`)

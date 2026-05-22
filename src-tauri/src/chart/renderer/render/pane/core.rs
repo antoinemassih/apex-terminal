@@ -7989,6 +7989,10 @@ fn render_chart_pane(
         } }
     }
 
+    // Active-mode notice card (drawing tool / measure / zoom) — pane/notice.rs.
+    // Ungated: shows whenever a mode is active, regardless of pointer position.
+    super::notice::render_pane_notice(&painter, t, chart, rect, cw, pt);
+
     // Drawing preview + custom cursors — extracted to pane/tool_previews.rs
     if pointer_in_pane { if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
         super::tool_previews::render_tool_previews(ui, &painter, t, chart, rect, cw, pt, ch, min_p, max_p, off, bs, vs, pos, &py, &bx);
