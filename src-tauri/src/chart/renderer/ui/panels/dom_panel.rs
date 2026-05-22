@@ -52,7 +52,8 @@ pub(crate) fn generate_mock_levels(center_price: f32, tick_size: f32, count: i32
         let price = center_price + row as f32 * tick_size;
         let dist = row.unsigned_abs();
         let base = 3000u32.saturating_sub(dist * 150).max(100);
-        let hash = (price * 1000.0) as u32;
+        // Saturating cast: avoids UB for negative or very large prices.
+        let hash = (price * 1000.0).max(0.0).min(u32::MAX as f32) as u32;
         let h1 = hash.wrapping_mul(2654435761);
         let h2 = hash.wrapping_mul(2246822519);
         let bid = base + (h1 % 2000); let ask = base + (h2 % 2000);
@@ -242,6 +243,33 @@ pub(crate) fn draw(
         [egui::pos2(inner.left(), sep_y), egui::pos2(inner.right(), sep_y)],
         egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_strong())),
     );
+
+    // ── SIMULATED data badge ──────────────────────────────────────────────────
+    // The DOM ladder is populated from `generate_mock_levels` (fabricated data).
+    // Paint a visible "SIMULATED" badge centred on the header strip so a trader
+    // is never misled that this depth-of-market reflects a real live feed.
+    {
+        let badge_font = egui::FontId::monospace(font_sm());
+        let badge_fg   = t.warn;
+        let badge_bg   = color_alpha(t.warn, 28);
+        let badge_pad_x = gap_xs();
+        let badge_pad_y = 2.0_f32;
+        let galley = painter.layout_no_wrap("SIMULATED".to_string(), badge_font, badge_fg);
+        let bw = galley.size().x + badge_pad_x * 2.0;
+        let bh = galley.size().y + badge_pad_y * 2.0;
+        // Centred horizontally in the header, vertically centred in the header strip.
+        let bx = inner.left() + (aw - bw) * 0.5;
+        let badge_rect = egui::Rect::from_min_size(
+            egui::pos2(bx, hy + (header_h - bh) * 0.5),
+            egui::vec2(bw, bh),
+        );
+        painter.rect_filled(badge_rect, egui::CornerRadius::same(radius_sm() as u8), badge_bg);
+        painter.galley(
+            egui::pos2(badge_rect.left() + badge_pad_x, badge_rect.top() + badge_pad_y),
+            galley,
+            badge_fg,
+        );
+    }
 
     // ── Bottom controls ──
     // Padding tokens: gap_2xs above the row 1 (combo) and again below the

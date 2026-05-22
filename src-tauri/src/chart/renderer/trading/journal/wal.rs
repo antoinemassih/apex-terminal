@@ -51,7 +51,41 @@ fn rotated_path() -> PathBuf {
 
 /// Append a single event line and fsync. Errors logged to stderr only — never
 /// block the calling order operation.
+///
+/// # Wave 8 Medium — WAL_LOCK critical section
+///
+/// `WAL_LOCK` is held across the full open → write_all → sync_data sequence.
+/// An fsync on a spinning disk or a busy NFS mount can take tens of milliseconds,
+/// during which no other thread can append to the WAL. This is the accepted
+/// trade-off for this pass: WAL writes are infrequent (one per order event) and
+/// the ORDER_MANAGER mutex is NOT held here (CC1 ensures all journal::append
+/// calls happen after the ORDER_MANAGER guard drops), so the only contention is
+/// between concurrent WAL writers.
+///
+/// **Remaining risk**: multiple background threads (reconciler, broker watchdog,
+/// spawned submit threads) can queue up on WAL_LOCK simultaneously during a busy
+/// reconcile sweep.  A dedicated WAL writer thread fed by a channel would
+/// eliminate this bottleneck, but is deferred to a future pass because it
+/// requires a graceful-shutdown drain to guarantee durability.
+///
+/// Mitigation applied here:
+///   - JSON serialization is done BEFORE acquiring WAL_LOCK so the lock is held
+///     only for the I/O operations (previously it was also held during
+///     serde_json::to_string).
+///   - The lock is released immediately on any error path (no unwinding under lock).
 pub(crate) fn append(event: &JournalEvent) {
+    // Serialize BEFORE acquiring the lock — reduces critical section by the
+    // serde work (Wave 8 Medium partial mitigation).
+    let mut line = match serde_json::to_string(event) {
+        Ok(s) => s,
+        Err(e) => { report(ErrorLevel::Error, "wal", "serialize_failed", e.to_string()); return; }
+    };
+    line.push('\n');
+
+    // KNOWN RISK (Wave 8 Medium): WAL_LOCK is held across open + write_all +
+    // sync_data. An fsync stall blocks concurrent WAL writers for its duration.
+    // ORDER_MANAGER is NOT held here (CC1 fix ensures that), so order operations
+    // are unaffected. See doc comment above for the full analysis.
     let _g = WAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let path = wal_path();
 
@@ -62,12 +96,6 @@ pub(crate) fn append(event: &JournalEvent) {
             let _ = std::fs::rename(&path, rotated_path());
         }
     }
-
-    let mut line = match serde_json::to_string(event) {
-        Ok(s) => s,
-        Err(e) => { report(ErrorLevel::Error, "wal", "serialize_failed", e.to_string()); return; }
-    };
-    line.push('\n');
 
     let mut f = match OpenOptions::new().append(true).create(true).open(&path) {
         Ok(f) => f,

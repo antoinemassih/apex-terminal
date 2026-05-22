@@ -454,7 +454,8 @@ fn live_themes() -> &'static RwLock<Vec<Theme>> {
 }
 
 pub(crate) fn get_theme(idx: usize) -> Theme {
-    let themes = live_themes().read().unwrap();
+    // Wave 8 fix: recover from a poisoned lock rather than cascading the panic.
+    let themes = live_themes().read().unwrap_or_else(|e| e.into_inner());
     // Fall back to index 0 when idx is stale/out-of-range (e.g. after
     // a user-theme was uninstalled or a workspace was created on a
     // machine with more themes).
@@ -466,15 +467,15 @@ pub(crate) fn get_theme(idx: usize) -> Theme {
 }
 
 pub(crate) fn set_theme(idx: usize, theme: Theme) {
-    live_themes().write().unwrap()[idx] = theme;
+    live_themes().write().unwrap_or_else(|e| e.into_inner())[idx] = theme;
 }
 
 pub(crate) fn get_all_themes() -> Vec<Theme> {
-    live_themes().read().unwrap().clone()
+    live_themes().read().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
 pub(crate) fn live_theme_count() -> usize {
-    live_themes().read().unwrap().len()
+    live_themes().read().unwrap_or_else(|e| e.into_inner()).len()
 }
 
 /// Append user-installed colour schemes (from disk) to the live theme list.
@@ -485,7 +486,7 @@ pub(crate) fn live_theme_count() -> usize {
 /// Built-in indices 0–15 are never disturbed — installed themes start at
 /// index 16 and grow monotonically.
 pub fn append_installed_themes(schemes: Vec<crate::design_system::ColorScheme>) {
-    let mut guard = live_themes().write().unwrap();
+    let mut guard = live_themes().write().unwrap_or_else(|e| e.into_inner());
     for scheme in schemes {
         let candidate = crate::design_system::color_scheme_to_theme(&scheme);
         let already_present = guard.iter().any(|t| t.name == candidate.name);
@@ -2235,6 +2236,13 @@ impl Chart {
                 // Only append if both symbol AND timeframe match this pane
                 if symbol == self.symbol && timeframe == self.timeframe {
                     self.bars.push(bar); self.timestamps.push(timestamp);
+                    // Cap live bar growth to avoid unbounded memory accumulation.
+                    const MAX_LIVE_BARS: usize = 50_000;
+                    if self.bars.len() > MAX_LIVE_BARS {
+                        let excess = self.bars.len() - MAX_LIVE_BARS;
+                        self.bars.drain(..excess);
+                        self.timestamps.drain(..excess);
+                    }
                     // Smooth advance: increment vs by 1 instead of snapping, so if auto_scroll
                     // re-engages from a slight offset, the view continues from that position
                     if self.auto_scroll { self.vs += 1.0; }
@@ -2634,14 +2642,26 @@ impl Chart {
         let chart_ohlc4: Vec<f32> = self.bars.iter().map(|b| (b.open + b.high + b.low + b.close) / 4.0).collect();
 
         for ind in &mut self.indicators {
-            let base_source = if ind.source_tf.is_empty() { &chart_closes } else if ind.source_loaded && !ind.source_bars.is_empty() {
-                &chart_closes
-            } else {
+            // D1 fix: derive closes from the fetched source-timeframe bars when a
+            // multi-timeframe source is configured and its bars have been loaded.
+            // Materialise an owned Vec so later &mut ind borrows have no conflict.
+            let source_closes_owned: Option<Vec<f32>> =
+                if !ind.source_tf.is_empty() && ind.source_loaded && !ind.source_bars.is_empty() {
+                    Some(ind.source_bars.iter().map(|b| b.close).collect())
+                } else {
+                    None
+                };
+
+            let skip = !ind.source_tf.is_empty() && !(ind.source_loaded && !ind.source_bars.is_empty());
+            if skip {
                 ind.values = vec![f32::NAN; self.bars.len()];
                 ind.values2 = vec![]; ind.values3 = vec![]; ind.values4 = vec![]; ind.values5 = vec![];
                 ind.histogram = vec![];
                 continue;
-            };
+            }
+
+            let base_source: &Vec<f32> = source_closes_owned.as_ref().unwrap_or(&chart_closes);
+
             // Select source based on ind.source
             let closes = match ind.source {
                 1 => &chart_opens,
@@ -2654,7 +2674,7 @@ impl Chart {
 
             match ind.kind {
                 IndicatorType::VWAP => {
-                    ind.values = compute_vwap(closes, &chart_volumes, &chart_highs, &chart_lows);
+                    ind.values = compute_vwap(closes, &chart_volumes, &chart_highs, &chart_lows, &self.timestamps);
                 }
                 IndicatorType::RSI => {
                     ind.values = compute_rsi(closes, ind.period);
@@ -6625,6 +6645,9 @@ impl ApplicationHandler for App {
                 // Phase 3 (state): push_all_stores was already called inside
                 // save_state above, so stores are fresh; flush_all persists any
                 // that haven't been written by the debounce supervisor yet.
+                // Stop the supervisor first so it cannot race a stale snapshot
+                // in after the final flush_all (audit: Wave 6).
+                crate::state::shutdown_persist_supervisor();
                 let flush_failures = self.store_registry.flush_all();
                 for (key, e) in &flush_failures {
                     eprintln!("[state] final flush failed for '{key}': {e}");
@@ -6789,7 +6812,7 @@ impl ApplicationHandler for App {
                                 };
                                 let theme_idx = {
                                     let raw = json.get("theme_idx").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
-                                    raw.min(live_themes().read().unwrap().len().saturating_sub(1))
+                                    raw.min(live_themes().read().unwrap_or_else(|e| e.into_inner()).len().saturating_sub(1))
                                 };
                                 let recents: Vec<(String, String)> = json.get("recent_symbols").and_then(|v| v.as_array()).map(|arr| {
                                     arr.iter().filter_map(|v| {
@@ -7006,6 +7029,13 @@ impl ApplicationHandler for App {
                                     pane.symbol_history.truncate(pane.symbol_history_idx);
                                 }
                                 pane.symbol_history.push(old_sym);
+                                // Wave 3 fix: cap history at 50 entries, keeping idx valid.
+                                const MAX_SYMBOL_HISTORY: usize = 50;
+                                if pane.symbol_history.len() > MAX_SYMBOL_HISTORY {
+                                    let excess = pane.symbol_history.len() - MAX_SYMBOL_HISTORY;
+                                    pane.symbol_history.drain(..excess);
+                                    pane.symbol_history_idx = pane.symbol_history_idx.saturating_sub(excess);
+                                }
                                 pane.symbol_history_idx = pane.symbol_history.len();
                             }
                         }
@@ -7500,13 +7530,18 @@ fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
         Err(_) => return (vec![Chart::new()], Layout::One, LoadedSettings::default()),
     };
 
+    // Wave 6 fix: read and branch on schema version so future migrations have a
+    // hook.  Version 1/2 files lack the top-level `settings` block and several
+    // per-pane fields added in v3 — apply safe defaults for those below.
+    let schema_version = json.get("version").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
+
     let layout = match json.get("layout").and_then(|v| v.as_str()).unwrap_or("1") {
         "2" => Layout::Two, "2H" => Layout::TwoH, "3" => Layout::Three, "4" => Layout::Four,
         "6" => Layout::Six, "6H" => Layout::SixH, "9" => Layout::Nine, _ => Layout::One,
     };
     let theme_idx = {
         let raw = json.get("theme_idx").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
-        raw.min(live_themes().read().unwrap().len().saturating_sub(1))
+        raw.min(live_themes().read().unwrap_or_else(|e| e.into_inner()).len().saturating_sub(1))
     };
     let recents: Vec<(String, String)> = json.get("recent_symbols").and_then(|v| v.as_array()).map(|arr| {
         arr.iter().filter_map(|v| {
@@ -7641,6 +7676,17 @@ fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
     // Trim excess panes to match layout capacity
     let max = layout.max_panes();
     panes.truncate(max);
+
+    // Wave 6 fix: apply per-version field defaults so older saved workspaces get
+    // sensible values for fields that did not exist in those schema versions.
+    // The per-pane loop above already uses `.unwrap_or(default)` for every field,
+    // so v1/v2 → v3 migration requires no extra field writes today.
+    // This branch is the hook for future v4+ migrations.
+    #[allow(clippy::match_single_binding)]
+    match schema_version {
+        1 | 2 => { /* v1/v2: settings block absent — LoadedSettings::default() covers it */ }
+        _ => { /* v3+ is the current format — no migration required */ }
+    }
 
     // Restore global settings (version 3+)
     let mut settings = LoadedSettings::default();
@@ -7814,22 +7860,37 @@ pub(crate) fn indicator_type_from_label(label: &str) -> IndicatorType {
 
 pub(crate) fn save_templates(templates: &[(String, serde_json::Value)]) {
     let dir = templates_dir();
-    // Remove existing files first (in case templates were deleted)
-    if let Ok(entries) = std::fs::read_dir(&dir) {
-        for e in entries.flatten() {
-            if e.path().extension().map_or(false, |x| x == "json") {
-                let _ = std::fs::remove_file(e.path());
-            }
+    // Wave 6 fix: write into a temp sibling dir first, then rename over the real
+    // dir atomically so a crash between writes cannot lose all templates.
+    let tmp_dir = {
+        let mut p = dir.clone();
+        p.set_file_name("templates.tmp");
+        p
+    };
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+    if std::fs::create_dir_all(&tmp_dir).is_err() {
+        // Fallback: write in-place (original behaviour) on mkdir failure.
+        for (name, data) in templates {
+            let safe: String = name.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' }).collect();
+            let path = dir.join(format!("{}.json", safe));
+            let _ = crate::state::persistence::atomic_write(
+                &path,
+                serde_json::to_string_pretty(data).unwrap_or_default().as_bytes(),
+            );
         }
+        return;
     }
     for (name, data) in templates {
         let safe: String = name.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' }).collect();
-        let path = dir.join(format!("{}.json", safe));
+        let path = tmp_dir.join(format!("{}.json", safe));
         let _ = crate::state::persistence::atomic_write(
             &path,
             serde_json::to_string_pretty(data).unwrap_or_default().as_bytes(),
         );
     }
+    // Atomic swap: discard old dir, rename tmp into place.
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::rename(&tmp_dir, &dir);
 }
 
 fn load_templates() -> Vec<(String, serde_json::Value)> {

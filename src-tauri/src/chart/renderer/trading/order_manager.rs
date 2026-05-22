@@ -79,15 +79,84 @@ impl Drop for OrderManager {
     }
 }
 
+// ─── CC2: re-entrant lock guard ─────────────────────────────────────────────
+//
+// `with_mgr` is NOT re-entrant. `std::sync::Mutex` will deadlock (or panic
+// with `std::sync::PoisonError`) if the same thread calls `with_mgr` again
+// while a previous `with_mgr` closure is still executing. The thread-local
+// flag below lets us detect this at runtime in debug builds.
+//
+// CALLERS: `submit` and `cancel` MUST NOT be called while the ORDER_MANAGER
+// lock is already held. They are methods on `&mut OrderManager` and are
+// designed to be called either:
+//   (a) directly on a `&mut OrderManager` borrow inside a `with_mgr` closure, or
+//   (b) via the public free-function wrappers (`submit_order`, `cancel_order`)
+//       which each call `with_mgr` independently.
+// Calling `with_mgr` from inside a `with_mgr` closure will deadlock.
+std::thread_local! {
+    static IN_WITH_MGR: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 /// Run a closure with mutable access to the global OrderManager.
+///
+/// # Locking contract
+/// This function acquires the `ORDER_MANAGER` mutex for the duration of the
+/// closure. **Do NOT call `with_mgr` from inside a `with_mgr` closure** —
+/// `std::sync::Mutex` is not re-entrant and will deadlock. A `debug_assert!`
+/// below fires in debug builds if re-entry is detected.
+///
+/// After the closure returns the lock is released, then any snapshot publish
+/// and WAL journal events deferred by `transition` are dispatched outside the
+/// lock (CC1 fix: breaks the ORDER_MANAGER → ORDERS_SNAPSHOT → WAL_LOCK
+/// nested tri-lock chain).
+///
 /// Recovers from poisoned mutexes by extracting the inner data — essential
 /// for a trading app where one panic must not lock everyone out forever.
 fn with_mgr<F, R>(f: F) -> R where F: FnOnce(&mut OrderManager) -> R {
-    let mut g = manager().lock().unwrap_or_else(|e| {
-        report(ErrorLevel::Critical, "order_manager", "mutex_poisoned", format!("recovering: {e}"));
-        e.into_inner()
-    });
-    f(&mut *g)
+    // CC2: detect re-entry in debug builds.
+    debug_assert!(
+        !IN_WITH_MGR.get(),
+        "with_mgr re-entered on the same thread — this would deadlock. \
+         Do not call submit/cancel/with_mgr from inside a with_mgr closure."
+    );
+
+    let result;
+    // Deferred work to execute after the ORDER_MANAGER guard drops (CC1).
+    let deferred_snapshot: Option<Vec<ManagedOrder>>;
+    let deferred_journal: Vec<JournalEvent>;
+
+    {
+        IN_WITH_MGR.set(true);
+        let mut g = manager().lock().unwrap_or_else(|e| {
+            report(ErrorLevel::Critical, "order_manager", "mutex_poisoned", format!("recovering: {e}"));
+            e.into_inner()
+        });
+        result = f(&mut *g);
+        // Drain deferred work before dropping the guard so we capture a
+        // consistent snapshot clone while still holding the lock.
+        deferred_snapshot = if g.needs_snapshot {
+            g.needs_snapshot = false;
+            Some(g.orders.clone())
+        } else {
+            None
+        };
+        deferred_journal = std::mem::take(&mut g.deferred_journal);
+        // Guard drops here — ORDER_MANAGER is released before any secondary locks.
+        IN_WITH_MGR.set(false);
+    }
+
+    // CC1: publish snapshot and append journal events AFTER the ORDER_MANAGER
+    // guard has been dropped. This breaks the nested tri-lock chain:
+    //   ORDER_MANAGER → ORDERS_SNAPSHOT (snapshot::publish)
+    //   ORDER_MANAGER → WAL_LOCK        (journal::append)
+    if let Some(orders) = deferred_snapshot {
+        snapshot::publish(&orders);
+    }
+    for ev in deferred_journal {
+        journal::append(ev);
+    }
+
+    result
 }
 
 /// Path for persisted open orders.
@@ -588,6 +657,24 @@ pub(crate) struct OrderManager {
     /// Calendar date (days since Unix epoch) for which `realized_pnl_today`
     /// was accumulated.  When the current day differs, the accumulator resets.
     pub(crate) daily_loss_date: u32,
+
+    // ── CC1: deferred post-lock work ──────────────────────────────────────────
+    // `transition` (and any other `&mut self` method called from inside a
+    // `with_mgr` closure) MUST NOT acquire ORDERS_SNAPSHOT or WAL_LOCK while
+    // ORDER_MANAGER is held — that creates a nested tri-lock chain that can
+    // deadlock. Instead they push work here; `with_mgr` drains both fields
+    // AFTER the ORDER_MANAGER guard drops and dispatches the work outside the
+    // lock (see the `with_mgr` implementation).
+    //
+    // `needs_snapshot`: set to `true` whenever `transition` (or any mutation
+    // method) would ordinarily call `snapshot::publish`. `with_mgr` checks
+    // this flag, captures `orders.clone()`, resets the flag, then publishes
+    // after the guard drops.
+    //
+    // `deferred_journal`: journal events queued by `transition`/`submit`/
+    // `cancel` that should be appended after the guard drops.
+    needs_snapshot: bool,
+    deferred_journal: Vec<JournalEvent>,
 }
 
 static ORDER_MANAGER: OnceLock<Mutex<OrderManager>> = OnceLock::new();
@@ -621,6 +708,8 @@ impl OrderManager {
             broker: Arc::new(LiveBroker),
             realized_pnl_today: 0.0,
             daily_loss_date: today_day_index(),
+            needs_snapshot: false,
+            deferred_journal: Vec::new(),
         }
     }
 
@@ -950,6 +1039,13 @@ impl OrderManager {
     // `SubmitArgs` and call `self.broker.submit(...)` from a spawned thread.
 
     /// Submit an order intent. Returns the result.
+    ///
+    /// # Lock contract (CC2)
+    /// This method MUST NOT be called while the `ORDER_MANAGER` mutex is already
+    /// held on the same thread. It is designed to be called as
+    /// `with_mgr(|mgr| mgr.submit(intent))` — the `with_mgr` wrapper holds the
+    /// lock for the duration of this call, defers snapshot/journal work, and
+    /// releases the lock before dispatching that work.
     #[tracing::instrument(skip(self, intent), level = "debug", fields(symbol = %intent.symbol, side = ?intent.side, qty = intent.qty, price = intent.price))]
     pub(crate) fn submit(&mut self, intent: OrderIntent) -> OrderResult {
         if self.kill_engaged { return OrderResult::Rejected("kill switch engaged".into()); }
@@ -959,7 +1055,8 @@ impl OrderManager {
         // hotkey that keeps re-firing the same intent gets caught at the bucket
         // rather than the dedup window (much tighter).
         if !self.try_consume_submit_token() {
-            journal::append(JournalEvent::Fail {
+            // CC1: defer journal append until ORDER_MANAGER guard drops.
+            self.deferred_journal.push(JournalEvent::Fail {
                 client_id: "rate-limit".into(),
                 reason: "submit rate limit".into(),
                 ts_ms: epoch_ms(),
@@ -1079,7 +1176,8 @@ impl OrderManager {
 
         self.orders.push(order);
         self.orders_submitted += 1;
-        snapshot::publish(&self.orders);
+        // CC1: defer snapshot publish until ORDER_MANAGER guard drops.
+        self.needs_snapshot = true;
 
         if initial_state == OrderState::PendingSubmit {
             // Submit to ApexIB backend
@@ -1113,8 +1211,8 @@ impl OrderManager {
                 .unwrap_or_else(|| id.to_string());
             let idem_key = cid.clone();
             let order_id_copy = id;
-            // Journal the attempt before dispatch so a crash is observable.
-            journal::append(JournalEvent::Attempt {
+            // CC1: defer journal append (Attempt) until ORDER_MANAGER guard drops.
+            self.deferred_journal.push(JournalEvent::Attempt {
                 client_id: cid.clone(),
                 kind: AttemptKind::Submit,
                 ts_ms: now_ms,
@@ -1129,7 +1227,8 @@ impl OrderManager {
                 if let Some(o) = self.orders.iter_mut().find(|o| o.id == id) {
                     o.backend_order_id = Some(ib_oid.clone());
                 }
-                journal::append(JournalEvent::Ack {
+                // CC1: defer Ack journal append.
+                self.deferred_journal.push(JournalEvent::Ack {
                     client_id: cid.clone(), backend_id: Some(ib_oid), ts_ms: epoch_ms(),
                 });
             } else {
@@ -1181,7 +1280,8 @@ impl OrderManager {
                                         o.state_history.push((OrderState::Rejected, ts_from_ms(now)));
                                     }
                                 }
-                                snapshot::publish(&mgr.orders);
+                                // CC1: defer snapshot publish until ORDER_MANAGER guard drops.
+                                mgr.needs_snapshot = true;
                             });
                         }
                     }
@@ -1289,13 +1389,14 @@ impl OrderManager {
                         if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == order_id_copy) {
                             o.backend_order_id = Some(ib_oid);
                         }
-                        snapshot::publish(&mgr.orders);
+                        // CC1: defer snapshot publish until ORDER_MANAGER guard drops.
+                        mgr.needs_snapshot = true;
                     });
                 }
             });
-            // Direct state mutation bypassed `transition` — publish so the
-            // render-thread snapshot sees the Draft -> Working transition.
-            snapshot::publish(&self.orders);
+            // CC1: defer snapshot publish — Draft -> Working transition will be
+            // visible after the ORDER_MANAGER guard drops and with_mgr publishes.
+            self.needs_snapshot = true;
             true
         } else {
             false
@@ -1314,7 +1415,8 @@ impl OrderManager {
         // Wave 8a Task B: bracket is 1 logical submit (3 legs go down atomically
         // server-side), so it costs 1 token, not 3.
         if !self.try_consume_submit_token() {
-            journal::append(JournalEvent::Fail {
+            // CC1: defer journal append until ORDER_MANAGER guard drops.
+            self.deferred_journal.push(JournalEvent::Fail {
                 client_id: "rate-limit".into(),
                 reason: "submit rate limit".into(),
                 ts_ms: epoch_ms(),
@@ -1465,7 +1567,8 @@ impl OrderManager {
         if self.halted { return vec![OrderResult::Rejected(self.halt_reason().into())]; }
         // Wave 8a Task B: OCO is one user gesture → one token.
         if !self.try_consume_submit_token() {
-            journal::append(JournalEvent::Fail {
+            // CC1: defer journal append until ORDER_MANAGER guard drops.
+            self.deferred_journal.push(JournalEvent::Fail {
                 client_id: "rate-limit".into(),
                 reason: "submit rate limit".into(),
                 ts_ms: epoch_ms(),
@@ -1531,9 +1634,10 @@ impl OrderManager {
                     o.pair_id = Some(pair);
                 }
             }
-            // Pair-id mutation bypasses `transition`; publish so the
-            // render-thread snapshot reflects the linked legs.
-            snapshot::publish(&self.orders);
+            // Pair-id mutation bypasses `transition`; defer snapshot publish so
+            // the render-thread snapshot reflects the linked legs once the
+            // ORDER_MANAGER guard drops (CC1).
+            self.needs_snapshot = true;
         }
 
         // Submit to backend
@@ -1593,7 +1697,8 @@ impl OrderManager {
         if self.halted { return OrderResult::Rejected(self.halt_reason().into()); }
         // Wave 8a Task B: rate-limit before any work.
         if !self.try_consume_submit_token() {
-            journal::append(JournalEvent::Fail {
+            // CC1: defer journal append until ORDER_MANAGER guard drops.
+            self.deferred_journal.push(JournalEvent::Fail {
                 client_id: "rate-limit".into(),
                 reason: "submit rate limit".into(),
                 ts_ms: epoch_ms(),
@@ -1707,7 +1812,8 @@ impl OrderManager {
         if self.halted { return OrderResult::Rejected(self.halt_reason().into()); }
         // Wave 8a Task B: rate-limit before any work.
         if !self.try_consume_submit_token() {
-            journal::append(JournalEvent::Fail {
+            // CC1: defer journal append until ORDER_MANAGER guard drops.
+            self.deferred_journal.push(JournalEvent::Fail {
                 client_id: "rate-limit".into(),
                 reason: "submit rate limit".into(),
                 ts_ms: epoch_ms(),
@@ -1816,7 +1922,8 @@ impl OrderManager {
         if self.halted { return OrderResult::Rejected(self.halt_reason().into()); }
         // Wave 8a Task B: rate-limit before any work.
         if !self.try_consume_submit_token() {
-            journal::append(JournalEvent::Fail {
+            // CC1: defer journal append until ORDER_MANAGER guard drops.
+            self.deferred_journal.push(JournalEvent::Fail {
                 client_id: "rate-limit".into(),
                 reason: "submit rate limit".into(),
                 ts_ms: epoch_ms(),
@@ -1924,7 +2031,14 @@ impl OrderManager {
         OrderResult::Accepted(id)
     }
 
-    /// Cancel an order
+    /// Cancel an order.
+    ///
+    /// # Lock contract (CC2)
+    /// This method MUST NOT be called while the `ORDER_MANAGER` mutex is already
+    /// held on the same thread. It is designed to be called as
+    /// `with_mgr(|mgr| mgr.cancel(id))` — the `with_mgr` wrapper holds the lock
+    /// for the duration of this call, defers snapshot/journal work, and releases
+    /// the lock before dispatching that work.
     #[tracing::instrument(skip(self), level = "debug", fields(order_id))]
     pub(crate) fn cancel(&mut self, order_id: u64) -> bool {
         // Find the order and its pair_id
@@ -1937,7 +2051,8 @@ impl OrderManager {
 
         let paper = self.paper_mode;
         let cid = order_id.to_string();
-        journal::append(JournalEvent::Attempt {
+        // CC1: defer journal append until ORDER_MANAGER guard drops.
+        self.deferred_journal.push(JournalEvent::Attempt {
             client_id: cid.clone(), kind: AttemptKind::Cancel,
             ts_ms: epoch_ms(), payload: serde_json::json!({"order_id": order_id}),
         });
@@ -1948,12 +2063,15 @@ impl OrderManager {
         if let Some(backend_id) = self.orders.iter().find(|o| o.id == order_id).and_then(|o| o.backend_order_id.clone()) {
             if paper {
                 paper::cancel_paper(&backend_id);
-                journal::append(JournalEvent::Ack { client_id: cid.clone(), backend_id: Some(backend_id), ts_ms: epoch_ms() });
+                // CC1: defer Ack journal append.
+                self.deferred_journal.push(JournalEvent::Ack { client_id: cid.clone(), backend_id: Some(backend_id), ts_ms: epoch_ms() });
             } else {
                 let cid_thread = cid.clone();
                 let bid = backend_id.clone();
                 let broker = Arc::clone(&self.broker);
                 std::thread::spawn(move || {
+                    // These journal::append calls are in a spawned thread (ORDER_MANAGER
+                    // not held here) — they call WAL_LOCK directly without nesting.
                     match broker.cancel(&bid, &cid_thread) {
                         Ok(()) => journal::append(JournalEvent::Ack { client_id: cid_thread, backend_id: Some(bid), ts_ms: epoch_ms() }),
                         Err(e) => journal::append(JournalEvent::Fail { client_id: cid_thread, reason: e, ts_ms: epoch_ms() }),
@@ -1961,7 +2079,8 @@ impl OrderManager {
                 });
             }
         } else {
-            journal::append(JournalEvent::Ack { client_id: cid.clone(), backend_id: None, ts_ms: epoch_ms() });
+            // CC1: defer Ack journal append.
+            self.deferred_journal.push(JournalEvent::Ack { client_id: cid.clone(), backend_id: None, ts_ms: epoch_ms() });
         }
 
         // Also cancel paired order
@@ -2010,7 +2129,8 @@ impl OrderManager {
     /// Also sends cancel to ApexIB backend
     pub(crate) fn cancel_all(&mut self, symbol: &str) {
         let cid = format!("cancel-all-{}", epoch_ms());
-        journal::append(JournalEvent::Attempt {
+        // CC1: defer journal append until ORDER_MANAGER guard drops.
+        self.deferred_journal.push(JournalEvent::Attempt {
             client_id: cid.clone(), kind: AttemptKind::CancelAll,
             ts_ms: epoch_ms(), payload: serde_json::json!({"symbol": symbol}),
         });
@@ -2023,13 +2143,15 @@ impl OrderManager {
             let symbol_thread = symbol.to_string();
             let broker = Arc::clone(&self.broker);
             std::thread::spawn(move || {
+                // Spawned thread — ORDER_MANAGER not held; journal::append is safe here.
                 match broker.cancel_all(&symbol_thread) {
                     Ok(_n) => journal::append(JournalEvent::Ack { client_id: cid_thread, backend_id: None, ts_ms: epoch_ms() }),
                     Err(e) => journal::append(JournalEvent::Fail { client_id: cid_thread, reason: format!("cancel_all: {e}"), ts_ms: epoch_ms() }),
                 }
             });
         } else {
-            journal::append(JournalEvent::Ack { client_id: cid, backend_id: None, ts_ms: epoch_ms() });
+            // CC1: defer paper-mode Ack journal append.
+            self.deferred_journal.push(JournalEvent::Ack { client_id: cid, backend_id: None, ts_ms: epoch_ms() });
         }
         let ids: Vec<u64> = self.orders.iter()
             .filter(|o| o.state.is_active() && (symbol.is_empty() || o.symbol == symbol))
@@ -2072,7 +2194,8 @@ impl OrderManager {
         // Wire-boundary conversion — the broker JSON shape is unchanged.
         let new_price_f = new_price.to_f32();
 
-        journal::append(JournalEvent::Attempt {
+        // CC1: defer journal append until ORDER_MANAGER guard drops.
+        self.deferred_journal.push(JournalEvent::Attempt {
             client_id: cid.clone(), kind: AttemptKind::Modify,
             ts_ms: now, payload: serde_json::json!({
                 "order_id": order_id, "new_price": new_price_f, "modify_version": version,
@@ -2083,7 +2206,8 @@ impl OrderManager {
             Some(bid) => {
                 if paper {
                     paper::modify_paper(&bid, new_price_f);
-                    journal::append(JournalEvent::Ack { client_id: cid, backend_id: Some(bid), ts_ms: epoch_ms() });
+                    // CC1: defer Ack journal append.
+                    self.deferred_journal.push(JournalEvent::Ack { client_id: cid, backend_id: Some(bid), ts_ms: epoch_ms() });
                     // Apply inline for paper — we already hold &mut self so we
                     // can't recurse through `with_mgr` (would deadlock the lock).
                     self.apply_modify_result_inner(order_id, version);
@@ -2128,7 +2252,8 @@ impl OrderManager {
                 }
             }
             None => {
-                journal::append(JournalEvent::Ack { client_id: cid, backend_id: None, ts_ms: epoch_ms() });
+                // CC1: defer Ack journal append.
+                self.deferred_journal.push(JournalEvent::Ack { client_id: cid, backend_id: None, ts_ms: epoch_ms() });
                 self.apply_modify_result_inner(order_id, version);
             }
         }
@@ -2270,11 +2395,16 @@ impl OrderManager {
         if count > 0 {
             self.pending_toasts.push(format!("Restored {} open orders — verify with broker", count));
         }
-        snapshot::publish(&self.orders);
+        // CC1: defer snapshot publish until ORDER_MANAGER guard drops.
+        self.needs_snapshot = true;
     }
 
     // ── Internal ──
 
+    /// Transition an order to `new_state`, update its history, and queue a
+    /// snapshot publish + StateChg journal entry for dispatch AFTER the
+    /// ORDER_MANAGER guard drops (CC1: deferred to break the nested tri-lock
+    /// chain ORDER_MANAGER → ORDERS_SNAPSHOT → WAL_LOCK).
     fn transition(&mut self, order_id: u64, new_state: OrderState) {
         let mut chg: Option<(String, OrderState, OrderState, u64)> = None;
         if let Some(o) = self.orders.iter_mut().find(|o| o.id == order_id) {
@@ -2285,9 +2415,11 @@ impl OrderManager {
             o.state_history.push((new_state, ts_from_ms(now)));
             chg = Some((o.id.to_string(), from, new_state, now));
         }
-        snapshot::publish(&self.orders);
+        // CC1: defer snapshot publish and journal append until ORDER_MANAGER
+        // guard drops. `with_mgr` drains these fields after the closure returns.
+        self.needs_snapshot = true;
         if let Some((cid, from, to, ts)) = chg {
-            journal::append(JournalEvent::StateChg { client_id: cid, from, to, ts_ms: ts });
+            self.deferred_journal.push(JournalEvent::StateChg { client_id: cid, from, to, ts_ms: ts });
         }
     }
 
@@ -2781,7 +2913,8 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
                         id, mgr.orders[new_idx].symbol,
                         if matches!(mgr.orders[new_idx].side, OrderSide::Buy) {"BUY"} else {"SELL"},
                         mgr.orders[new_idx].qty, state));
-                journal::append(JournalEvent::Reconcile {
+                // CC1: defer journal append until ORDER_MANAGER guard drops.
+                mgr.deferred_journal.push(JournalEvent::Reconcile {
                     client_id: id.to_string(),
                     local: state,
                     broker: ib.status.clone(),
@@ -2821,7 +2954,8 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
             && matches!(broker_state, OrderState::Working | OrderState::PartialFill)
         {
             report(ErrorLevel::Warn, "reconcile", "rule4_recancel", format!("local Cancelled but broker Working — re-firing cancel id={}", local_id));
-            journal::append(JournalEvent::Reconcile {
+            // CC1: defer journal append until ORDER_MANAGER guard drops.
+            mgr.deferred_journal.push(JournalEvent::Reconcile {
                 client_id: local_id.to_string(),
                 local: prev_state,
                 broker: ib.status.clone(),
@@ -2951,7 +3085,8 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
                 _ if filled_changed => "Rule 6: adopt broker filled_qty",
                 _ => "Rule 3: refresh from broker",
             };
-            journal::append(JournalEvent::Reconcile {
+            // CC1: defer journal append until ORDER_MANAGER guard drops.
+            mgr.deferred_journal.push(JournalEvent::Reconcile {
                 client_id: local_id.to_string(),
                 local: prev_state,
                 broker: format!("{:?}", new_state),
@@ -2990,7 +3125,8 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
                     o.state = OrderState::Unknown;
                     o.updated_at = ts_from_ms(now);
                     o.state_history.push((OrderState::Unknown, ts_from_ms(now)));
-                    journal::append(JournalEvent::Reconcile {
+                    // CC1: defer journal append until ORDER_MANAGER guard drops.
+                    mgr.deferred_journal.push(JournalEvent::Reconcile {
                         client_id: id.to_string(),
                         local: prev,
                         broker: "absent".into(),
@@ -3022,9 +3158,11 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
     }
     for cid in to_cancel_partners {
         report(ErrorLevel::Warn, "reconcile", "orphan_pair_cancel", format!("cancelling partner id={}", cid));
-        journal::append(JournalEvent::Reconcile {
+        // CC1: defer journal append until ORDER_MANAGER guard drops.
+        let local_state = mgr.orders.iter().find(|o| o.id == cid).map(|o| o.state).unwrap_or(OrderState::Unknown);
+        mgr.deferred_journal.push(JournalEvent::Reconcile {
             client_id: cid.to_string(),
-            local: mgr.orders.iter().find(|o| o.id == cid).map(|o| o.state).unwrap_or(OrderState::Unknown),
+            local: local_state,
             broker: "n/a".into(),
             resolution: "Wave 4c: orphan pair cancel".into(),
             ts_ms: now,
@@ -3046,7 +3184,8 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
         let cid_str = id.to_string();
         if paper {
             paper::cancel_paper(&bid);
-            journal::append(JournalEvent::Ack { client_id: cid_str, backend_id: Some(bid), ts_ms: now });
+            // CC1: defer Ack journal append until ORDER_MANAGER guard drops.
+            mgr.deferred_journal.push(JournalEvent::Ack { client_id: cid_str, backend_id: Some(bid), ts_ms: now });
         } else {
             let cid_thread = cid_str;
             let bid_thread = bid.clone();
@@ -3060,7 +3199,9 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
         }
     }
 
-    snapshot::publish(&mgr.orders);
+    // CC1: defer snapshot publish until ORDER_MANAGER guard drops. The deferred
+    // snapshot captures the final reconciled state including all rule applications.
+    mgr.needs_snapshot = true;
     // First sweep complete — from this point on, state transitions are
     // genuine new events the operator should see, not catch-up to yesterday.
     mgr.initial_reconcile_done = true;
@@ -3139,19 +3280,20 @@ pub(crate) fn replay_and_recover() {
                             o.state_history.push((OrderState::Working, ts_from_ms(now)));
                         }
                     }
-                    journal::append(JournalEvent::Reconcile {
+                    // CC1: defer journal append and snapshot until ORDER_MANAGER guard drops.
+                    mgr.deferred_journal.push(JournalEvent::Reconcile {
                         client_id: cid.clone(),
                         local: OrderState::PendingSubmit,
                         broker: status,
                         resolution: format!("Wave 6a: adopt working (backend_id={})", backend_id),
                         ts_ms: epoch_ms(),
                     });
-                    journal::append(JournalEvent::Ack {
+                    mgr.deferred_journal.push(JournalEvent::Ack {
                         client_id: cid.clone(),
                         backend_id: Some(backend_id),
                         ts_ms: epoch_ms(),
                     });
-                    snapshot::publish(&mgr.orders);
+                    mgr.needs_snapshot = true;
                 });
             }
             Ok(Some(BrokerOrderState::Filled { backend_id, fill_price, qty })) => {
@@ -3165,19 +3307,20 @@ pub(crate) fn replay_and_recover() {
                         o.updated_at = ts_from_ms(now);
                         o.state_history.push((OrderState::Filled, ts_from_ms(now)));
                     }
-                    journal::append(JournalEvent::Reconcile {
+                    // CC1: defer journal append and snapshot until ORDER_MANAGER guard drops.
+                    mgr.deferred_journal.push(JournalEvent::Reconcile {
                         client_id: cid.clone(),
                         local: OrderState::PendingSubmit,
                         broker: "filled".into(),
                         resolution: format!("Wave 6a: adopt filled (backend_id={})", backend_id),
                         ts_ms: epoch_ms(),
                     });
-                    journal::append(JournalEvent::Ack {
+                    mgr.deferred_journal.push(JournalEvent::Ack {
                         client_id: cid.clone(),
                         backend_id: Some(backend_id),
                         ts_ms: epoch_ms(),
                     });
-                    snapshot::publish(&mgr.orders);
+                    mgr.needs_snapshot = true;
                 });
             }
             Ok(Some(BrokerOrderState::Cancelled { backend_id })) => {
@@ -3189,19 +3332,20 @@ pub(crate) fn replay_and_recover() {
                         o.updated_at = ts_from_ms(now);
                         o.state_history.push((OrderState::Cancelled, ts_from_ms(now)));
                     }
-                    journal::append(JournalEvent::Reconcile {
+                    // CC1: defer journal append and snapshot until ORDER_MANAGER guard drops.
+                    mgr.deferred_journal.push(JournalEvent::Reconcile {
                         client_id: cid.clone(),
                         local: OrderState::PendingSubmit,
                         broker: "cancelled".into(),
                         resolution: format!("Wave 6a: adopt cancelled (backend_id={})", backend_id),
                         ts_ms: epoch_ms(),
                     });
-                    journal::append(JournalEvent::Ack {
+                    mgr.deferred_journal.push(JournalEvent::Ack {
                         client_id: cid.clone(),
                         backend_id: Some(backend_id),
                         ts_ms: epoch_ms(),
                     });
-                    snapshot::publish(&mgr.orders);
+                    mgr.needs_snapshot = true;
                 });
             }
             Ok(Some(BrokerOrderState::Rejected { reason })) => {
@@ -3213,12 +3357,13 @@ pub(crate) fn replay_and_recover() {
                         o.updated_at = ts_from_ms(now);
                         o.state_history.push((OrderState::Rejected, ts_from_ms(now)));
                     }
-                    journal::append(JournalEvent::Fail {
+                    // CC1: defer journal append and snapshot until ORDER_MANAGER guard drops.
+                    mgr.deferred_journal.push(JournalEvent::Fail {
                         client_id: cid.clone(),
                         reason: reason.clone(),
                         ts_ms: epoch_ms(),
                     });
-                    snapshot::publish(&mgr.orders);
+                    mgr.needs_snapshot = true;
                 });
             }
             Ok(None) => {
@@ -3230,19 +3375,20 @@ pub(crate) fn replay_and_recover() {
                         o.updated_at = ts_from_ms(now);
                         o.state_history.push((OrderState::Rejected, ts_from_ms(now)));
                     }
-                    journal::append(JournalEvent::Reconcile {
+                    // CC1: defer journal append and snapshot until ORDER_MANAGER guard drops.
+                    mgr.deferred_journal.push(JournalEvent::Reconcile {
                         client_id: cid.clone(),
                         local: OrderState::PendingSubmit,
                         broker: "not-found".into(),
                         resolution: "orphan: never reached broker".into(),
                         ts_ms: epoch_ms(),
                     });
-                    journal::append(JournalEvent::Fail {
+                    mgr.deferred_journal.push(JournalEvent::Fail {
                         client_id: cid.clone(),
                         reason: "orphan-not-at-broker".into(),
                         ts_ms: epoch_ms(),
                     });
-                    snapshot::publish(&mgr.orders);
+                    mgr.needs_snapshot = true;
                 });
             }
             Err(e) => {
@@ -3283,7 +3429,8 @@ pub(crate) fn reconcile_positions(positions: &[super::Position]) {
                 report(ErrorLevel::Warn, "reconcile_pos", "position_drift",
                     format!("{}: local={} broker={} drift={}",
                         pos.symbol, local_signed, broker_signed, broker_signed - local_signed));
-                journal::append(JournalEvent::Reconcile {
+                // CC1: defer journal append until ORDER_MANAGER guard drops.
+                mgr.deferred_journal.push(JournalEvent::Reconcile {
                     client_id: format!("position:{}", pos.symbol),
                     local: OrderState::Filled,
                     broker: format!("pos={}", broker_signed),
@@ -3404,7 +3551,8 @@ pub(crate) fn check_broker_health() {
             m.auto_halted_due_to_disconnect = true;
             m.pending_toasts.push("BROKER DISCONNECTED \u{2014} trading auto-halted".into());
             report(ErrorLevel::Critical, "broker_watchdog", "disconnect_halt", "disconnect >10s, halting");
-            journal::append(JournalEvent::Control { kind: ControlKind::Halt, ts_ms: now });
+            // CC1: defer journal append until ORDER_MANAGER guard drops.
+            m.deferred_journal.push(JournalEvent::Control { kind: ControlKind::Halt, ts_ms: now });
         }
         if !stale && m.auto_halted_due_to_disconnect {
             // Contact restored, lift our auto-halt only.
@@ -3412,7 +3560,8 @@ pub(crate) fn check_broker_health() {
             m.auto_halted_due_to_disconnect = false;
             m.pending_toasts.push("BROKER RECONNECTED \u{2014} trading resumed".into());
             report(ErrorLevel::Info, "broker_watchdog", "contact_restored", "contact restored, resuming");
-            journal::append(JournalEvent::Control { kind: ControlKind::Resume, ts_ms: now });
+            // CC1: defer journal append until ORDER_MANAGER guard drops.
+            m.deferred_journal.push(JournalEvent::Control { kind: ControlKind::Resume, ts_ms: now });
         }
     });
 }

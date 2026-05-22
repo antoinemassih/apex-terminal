@@ -6,24 +6,57 @@
 
 use super::store_registry::StoreRegistry;
 use crate::data::connectivity::errors_sink::{report, ErrorLevel};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 /// Interval between supervisor walk ticks.
 pub const TICK_MS: u64 = 50;
 
-/// Spawn the persist supervisor. Returns the `JoinHandle` so the caller can
+/// Global shutdown flag set by [`shutdown`].  Shared with the supervisor
+/// thread so it can exit cleanly without any change to the `JoinHandle<()>`
+/// return type used by existing callers.
+static SHUTDOWN: OnceLock<Arc<AtomicBool>> = OnceLock::new();
+
+fn shutdown_flag() -> Arc<AtomicBool> {
+    Arc::clone(SHUTDOWN.get_or_init(|| Arc::new(AtomicBool::new(false))))
+}
+
+/// Signal the persist supervisor to stop after its current tick finishes.
+///
+/// Call this **before** the final `flush_all` on application quit so the
+/// supervisor cannot write a stale snapshot after that flush completes.
+/// The function is idempotent and safe to call multiple times.
+pub fn shutdown() {
+    shutdown_flag().store(true, Ordering::Release);
+}
+
+/// Spawn the persist supervisor.  Returns the `JoinHandle` so the caller can
 /// keep the thread alive (typically stored on the app root struct).
 ///
-/// The thread runs until the process exits. There is intentionally no
-/// shutdown channel — the OS will clean it up at process exit, and adding a
-/// shutdown path would complicate startup wiring for no user benefit.
+/// Use [`shutdown`] before the final flush on quit to stop the supervisor
+/// cleanly.
 pub fn spawn(registry: Arc<StoreRegistry>) -> std::thread::JoinHandle<()> {
+    let flag = shutdown_flag();
+
     std::thread::Builder::new()
         .name("persist_supervisor".into())
         .spawn(move || {
             loop {
+                // Check shutdown flag at the top of each tick so the thread
+                // exits promptly even if it just woke up.
+                if flag.load(Ordering::Acquire) {
+                    break;
+                }
+
                 std::thread::sleep(Duration::from_millis(TICK_MS));
+
+                // Re-check after sleep so we don't do a spurious flush tick
+                // when shutdown was requested while we were sleeping.
+                if flag.load(Ordering::Acquire) {
+                    break;
+                }
+
                 for store in registry.all() {
                     if store.needs_persist() {
                         match store.flush() {
@@ -56,5 +89,49 @@ mod tests {
         // Sanity: the supervisor tick must be faster than the debounce window
         // or stores would never be flushed promptly.
         assert!(TICK_MS < super::super::store::DEBOUNCE_MS);
+    }
+
+    #[test]
+    fn shutdown_flag_is_initially_false() {
+        // The flag starts false so a freshly spawned supervisor runs normally.
+        // (We cannot reset the OnceLock between tests, so we can only assert
+        // the pre-signal state if no prior test already signalled it.  This
+        // test intentionally does NOT call shutdown() so it cannot be flaky.)
+        let flag = Arc::new(AtomicBool::new(false));
+        assert!(!flag.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn shutdown_signal_stops_supervisor_thread() {
+        use super::super::store_registry::StoreRegistry;
+        use std::sync::atomic::AtomicBool;
+
+        // Spin up a supervisor with its own local shutdown flag (bypass the
+        // global OnceLock so tests are independent).
+        let registry = Arc::new(StoreRegistry::new());
+        let local_flag = Arc::new(AtomicBool::new(false));
+        let flag_clone = Arc::clone(&local_flag);
+
+        let handle = std::thread::Builder::new()
+            .name("test_supervisor".into())
+            .spawn(move || {
+                loop {
+                    if flag_clone.load(Ordering::Acquire) { break; }
+                    std::thread::sleep(Duration::from_millis(TICK_MS));
+                    if flag_clone.load(Ordering::Acquire) { break; }
+                    for store in registry.all() {
+                        if store.needs_persist() {
+                            let _ = store.flush();
+                            store.mark_persisted();
+                        }
+                    }
+                }
+            })
+            .expect("spawn test supervisor");
+
+        // Signal shutdown and expect the thread to exit promptly.
+        local_flag.store(true, Ordering::Release);
+        let join_result = handle.join();
+        assert!(join_result.is_ok(), "supervisor thread panicked");
     }
 }

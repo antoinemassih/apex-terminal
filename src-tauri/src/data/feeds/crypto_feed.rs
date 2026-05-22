@@ -51,6 +51,19 @@ const APEX_CRYPTO_WS: &str = "ws://192.168.1.56:30840/ws";
 
 static FEED_RUNNING: OnceLock<Mutex<bool>> = OnceLock::new();
 static SHUTDOWN: OnceLock<Arc<AtomicBool>> = OnceLock::new();
+/// Audit fix Wave 8: shared single-thread runtime — created once, reused for
+/// every `start()` call (safe because `start()` is guarded by FEED_RUNNING).
+/// Mirrors the pattern used in `apex_data::ws` (see `ws::runtime()`).
+static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+
+fn feed_runtime() -> &'static tokio::runtime::Runtime {
+    RT.get_or_init(|| {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("crypto_feed tokio runtime")
+    })
+}
 
 pub fn start() {
     let running = FEED_RUNNING.get_or_init(|| Mutex::new(false));
@@ -63,11 +76,7 @@ pub fn start() {
     connectivity::register("crypto_feed", Arc::new(CryptoFeedShutdown { shutdown: shutdown.clone() }));
 
     std::thread::spawn(move || {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        rt.block_on(async {
+        feed_runtime().block_on(async {
             // Wave 7E: tick-age watchdog runs alongside the reconnect loop on
             // the same single-thread runtime.
             tokio::spawn(run_watchdog());

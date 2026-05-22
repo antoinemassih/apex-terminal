@@ -22,9 +22,14 @@ use crate::chart::state::drawings::{DrawingFlags, DrawingKind, Point};
 
 static DB_POOL: OnceLock<PgPool> = OnceLock::new();
 
+/// How many times a failed save is re-queued before it is moved to the
+/// bounded dead-letter list.
+const SAVE_MAX_ATTEMPTS: u32 = 3;
+
 /// Messages for the DB worker thread.
 enum DbOp {
-    Save(DbDrawing),
+    /// `attempts` starts at 1; the worker increments it on each retry.
+    Save { drawing: DbDrawing, attempts: u32 },
     Remove(String),
     LoadSymbol { symbol: String, reply: std::sync::mpsc::Sender<Vec<DbDrawing>> },
     LoadGroups { reply: std::sync::mpsc::Sender<Vec<(String, String, Option<String>)>> },
@@ -44,9 +49,41 @@ pub fn init(pool: PgPool) {
     std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         rt.block_on(async {
+            // Bounded dead-letter list: drawings that exhausted all retries.
+            // Kept in memory so the current session can observe them.
+            let mut dead_letters: std::collections::VecDeque<DbDrawing> =
+                std::collections::VecDeque::new();
+            const DEAD_LETTER_CAP: usize = 64;
+
             while let Ok(op) = rx.recv() {
                 match op {
-                    DbOp::Save(d) => { do_save(&pool, d).await; }
+                    DbOp::Save { drawing, attempts } => {
+                        if do_save(&pool, drawing.clone()).await {
+                            // success — nothing more to do
+                        } else if attempts < SAVE_MAX_ATTEMPTS {
+                            // Transient failure — re-queue after a brief backoff
+                            // proportional to the attempt number.
+                            let backoff =
+                                std::time::Duration::from_millis(200 * attempts as u64);
+                            tokio::time::sleep(backoff).await;
+                            if let Some(t) = DB_TX.get() {
+                                let _ = t.send(DbOp::Save {
+                                    drawing,
+                                    attempts: attempts + 1,
+                                });
+                            }
+                        } else {
+                            // Exhausted retries — park in dead-letter list.
+                            eprintln!(
+                                "[drawing-db] drawing {} dropped after {} attempts",
+                                drawing.id, attempts
+                            );
+                            if dead_letters.len() >= DEAD_LETTER_CAP {
+                                dead_letters.pop_front();
+                            }
+                            dead_letters.push_back(drawing);
+                        }
+                    }
                     DbOp::Remove(id) => { do_remove(&pool, &id).await; }
                     DbOp::LoadSymbol { symbol, reply } => {
                         let result = do_load_symbol(&pool, &symbol).await;
@@ -97,9 +134,13 @@ pub fn load_symbol(symbol: &str) -> Vec<DbDrawing> {
     reply_rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap_or_default()
 }
 
-/// Save a drawing (fire-and-forget).
+/// Save a drawing. Enqueues to the worker thread; failed saves are retried
+/// up to `SAVE_MAX_ATTEMPTS` times before landing on the bounded dead-letter
+/// list.
 pub fn save(drawing: &DbDrawing) {
-    if let Some(tx) = DB_TX.get() { let _ = tx.send(DbOp::Save(drawing.clone())); }
+    if let Some(tx) = DB_TX.get() {
+        let _ = tx.send(DbOp::Save { drawing: drawing.clone(), attempts: 1 });
+    }
 }
 
 /// Remove a drawing by ID (fire-and-forget).
@@ -258,33 +299,52 @@ fn decode_points(buf: &[u8]) -> Vec<(f64, f64)> {
 }
 
 /// Find or create a chart row for (user_id=0, symbol_canonical=`symbol`).
-/// Returns the chart's UUID. Caches via the worker's serial execution; safe
-/// without a transaction because only this thread writes.
+/// Returns the chart's UUID.
+///
+/// Uses INSERT … ON CONFLICT DO NOTHING to eliminate the TOCTOU race that
+/// existed in the old SELECT-then-INSERT pattern.  The UNIQUE constraint on
+/// (user_id, symbol_canonical) is added by migration 003 (see
+/// `migrations/003_charts_unique_user_symbol.sql`).
 async fn find_or_create_chart(pool: &PgPool, symbol: &str) -> Result<Uuid, sqlx::Error> {
-    if let Some(row) = sqlx::query("SELECT id FROM charts WHERE user_id = 0 AND symbol_canonical = $1 LIMIT 1")
-        .bind(symbol)
-        .fetch_optional(pool)
-        .await?
-    {
-        return row.try_get::<Uuid, _>("id");
-    }
-
     // Default viewport bytes (25 zeros) — replaced on first real save through
-    // the canonical path. Zero bytes decode to an all-zero Viewport.
+    // the canonical path.  Zero bytes decode to an all-zero Viewport.
     let viewport_bytes: Vec<u8> = vec![0u8; 25];
 
-    sqlx::query_scalar::<_, Uuid>(
-        "INSERT INTO charts (user_id, symbol_canonical, asset_class, timeframe, theme, viewport, schema_version) \
-         VALUES (0, $1, 0, 0, 0, $2, 1) RETURNING id",
+    // Attempt an idempotent insert.  ON CONFLICT DO NOTHING means if another
+    // writer (or a prior attempt) already inserted this row we simply get no
+    // rows back from RETURNING — handled by the follow-up SELECT below.
+    let inserted: Option<Uuid> = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO charts \
+             (user_id, symbol_canonical, asset_class, timeframe, theme, viewport, schema_version) \
+         VALUES (0, $1, 0, 0, 0, $2, 1) \
+         ON CONFLICT (user_id, symbol_canonical) DO NOTHING \
+         RETURNING id",
     )
     .bind(symbol)
-    .bind(viewport_bytes)
+    .bind(&viewport_bytes)
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some(id) = inserted {
+        return Ok(id);
+    }
+
+    // Row already existed — fetch it.
+    sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM charts WHERE user_id = 0 AND symbol_canonical = $1 LIMIT 1",
+    )
+    .bind(symbol)
     .fetch_one(pool)
     .await
 }
 
 /// Find or create a style row matching the given fields for this chart.
 /// Returns the per-chart `style_id` (i32).
+///
+/// The SELECT → MAX(style_id)+1 → INSERT sequence is wrapped in a transaction
+/// so that a retry after a transient PG failure cannot compute the same
+/// `next_id` and hit a PRIMARY KEY violation that previously caused `do_save`
+/// to return early and silently drop the drawing.
 async fn intern_style(
     pool: &PgPool,
     chart_id: Uuid,
@@ -293,6 +353,7 @@ async fn intern_style(
     dash: i16,
     fill: i32,
 ) -> Result<i32, sqlx::Error> {
+    // Fast path: style already exists — no transaction needed.
     if let Some(row) = sqlx::query(
         "SELECT style_id FROM chart_styles \
          WHERE chart_id = $1 AND stroke = $2 AND width_x100 = $3 AND dash = $4 AND fill = $5 LIMIT 1",
@@ -308,11 +369,33 @@ async fn intern_style(
         return row.try_get::<i32, _>("style_id");
     }
 
+    // Slow path: style is new.  Wrap the MAX→INSERT in a transaction so that
+    // a concurrent/retried call cannot allocate the same style_id and collide
+    // on the PRIMARY KEY (chart_id, style_id).
+    let mut tx = pool.begin().await?;
+
+    // Re-check inside the transaction in case another writer just inserted.
+    if let Some(row) = sqlx::query(
+        "SELECT style_id FROM chart_styles \
+         WHERE chart_id = $1 AND stroke = $2 AND width_x100 = $3 AND dash = $4 AND fill = $5 LIMIT 1",
+    )
+    .bind(chart_id)
+    .bind(stroke_rgba)
+    .bind(width_x100)
+    .bind(dash)
+    .bind(fill)
+    .fetch_optional(&mut *tx)
+    .await?
+    {
+        tx.rollback().await?;
+        return row.try_get::<i32, _>("style_id");
+    }
+
     let next_id: i32 = sqlx::query_scalar(
         "SELECT COALESCE(MAX(style_id) + 1, 0) FROM chart_styles WHERE chart_id = $1",
     )
     .bind(chart_id)
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await?;
 
     sqlx::query(
@@ -325,9 +408,10 @@ async fn intern_style(
     .bind(width_x100)
     .bind(dash)
     .bind(fill)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
+    tx.commit().await?;
     Ok(next_id)
 }
 
@@ -391,19 +475,22 @@ async fn do_load_symbol(pool: &PgPool, symbol: &str) -> Vec<DbDrawing> {
     drawings
 }
 
-async fn do_save(pool: &PgPool, d: DbDrawing) {
+/// Returns `true` on success, `false` on any transient DB error (so the
+/// caller can retry).  Non-retryable failures (bad UUID, unknown kind) also
+/// return `false` but log a different message so they are distinguishable.
+async fn do_save(pool: &PgPool, d: DbDrawing) -> bool {
     let id = match Uuid::parse_str(&d.id) {
         Ok(u) => u,
-        Err(_) => { eprintln!("[drawing-db] invalid UUID: {}", d.id); return; }
+        Err(_) => { eprintln!("[drawing-db] invalid UUID (not retrying): {}", d.id); return false; }
     };
     let kind = match parse_kind(&d.drawing_type) {
         Some(k) => k,
-        None => { eprintln!("[drawing-db] unknown kind: {}", d.drawing_type); return; }
+        None => { eprintln!("[drawing-db] unknown kind (not retrying): {}", d.drawing_type); return false; }
     };
 
     let chart_id = match find_or_create_chart(pool, &d.symbol).await {
         Ok(c) => c,
-        Err(e) => { eprintln!("[drawing-db] chart upsert: {e}"); return; }
+        Err(e) => { eprintln!("[drawing-db] chart upsert (will retry): {e}"); return false; }
     };
 
     let rgb = parse_rgb(&d.color);
@@ -414,7 +501,7 @@ async fn do_save(pool: &PgPool, d: DbDrawing) {
 
     let style_id = match intern_style(pool, chart_id, stroke, width_x100, dash, 0).await {
         Ok(s) => s,
-        Err(e) => { eprintln!("[drawing-db] style intern: {e}"); return; }
+        Err(e) => { eprintln!("[drawing-db] style intern (will retry): {e}"); return false; }
     };
 
     let mut extras = serde_json::Map::new();
@@ -451,8 +538,8 @@ async fn do_save(pool: &PgPool, d: DbDrawing) {
     .await;
 
     match result {
-        Ok(_) => eprintln!("[drawing-db] saved {} {} {}", d.drawing_type, d.symbol, d.id),
-        Err(e) => eprintln!("[drawing-db] save error: {e}"),
+        Ok(_) => { eprintln!("[drawing-db] saved {} {} {}", d.drawing_type, d.symbol, d.id); true }
+        Err(e) => { eprintln!("[drawing-db] save error (will retry): {e}"); false }
     }
 }
 

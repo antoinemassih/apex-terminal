@@ -446,6 +446,18 @@ async fn ws_loop(
                                                     };
                                                     bar_hub_fanout(&sym, tf, closed_bar);
                                                 }
+                                                // Audit fix Wave 5: use the actual subscribed
+                                                // timeframe instead of the hardcoded "5m" so
+                                                // live last-bar updates reach the correct chart
+                                                // pane for every non-5m subscription.
+                                                crate::send_to_native_chart(crate::chart_renderer::ChartCommand::UpdateLastBar {
+                                                    symbol: sym.clone(),
+                                                    timeframe: tf.clone(),
+                                                    bar: crate::chart_renderer::Bar {
+                                                        open: p, high: p, low: p, close: p, volume: v, _pad: 0.0,
+                                                    },
+                                                    mark: false,
+                                                });
                                             }
                                             let trade = Trade {
                                                 symbol: sym.clone(),
@@ -473,14 +485,6 @@ async fn ws_loop(
                                                 };
                                                 hub_fanout(quote_hub(), &sym, quote);
                                             }
-                                            crate::send_to_native_chart(crate::chart_renderer::ChartCommand::UpdateLastBar {
-                                                symbol: sym,
-                                                timeframe: "5m".to_string(),
-                                                bar: crate::chart_renderer::Bar {
-                                                    open: p, high: p, low: p, close: p, volume: v, _pad: 0.0,
-                                                },
-                                                mark: false,
-                                            });
                                         }
                                     }
                                     let _ = app.emit("ib-tick", val);

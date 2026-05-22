@@ -33,4 +33,8 @@ pub mod persist_supervisor;
 pub use store::{Store, DEBOUNCE_MS};
 pub use persistable_store::PersistableStore;
 pub use store_registry::StoreRegistry;
-pub use persist_supervisor::{spawn as spawn_persist_supervisor, TICK_MS as PERSIST_TICK_MS};
+pub use persist_supervisor::{
+    spawn as spawn_persist_supervisor,
+    shutdown as shutdown_persist_supervisor,
+    TICK_MS as PERSIST_TICK_MS,
+};

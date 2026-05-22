@@ -69,6 +69,9 @@ where
 /// Write `bytes` to `path` atomically: write to `<path>.tmp`, flush, then
 /// rename over `path`. Rename is atomic on a single filesystem, so a crash
 /// mid-write leaves the previous file intact and only a stale `.tmp` behind.
+///
+/// After the rename the parent directory entry is also synced so the new name
+/// is durable even if the OS crashes immediately after the rename syscall.
 pub fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write as _;
     // Build the sibling temp path by appending ".tmp".
@@ -80,11 +83,22 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         let mut f = std::fs::File::create(tmp_path)?;
         f.write_all(bytes)?;
         f.flush()?;
-        // sync_all is a best-effort durability guarantee; ignore errors on
-        // platforms that don't support it (e.g. some network filesystems).
-        let _ = f.sync_all();
+        // Propagate sync_all errors — a failure here means the data may not
+        // be durable and the caller should not treat the write as succeeded.
+        f.sync_all()?;
     }
-    std::fs::rename(tmp_path, path)
+    std::fs::rename(tmp_path, path)?;
+
+    // Sync the parent directory so the directory entry (new filename) is
+    // durable.  This is a no-op on Windows (opening a directory is unsupported
+    // there) — we ignore errors on platforms that don't support it.
+    if let Some(parent) = path.parent() {
+        if let Ok(dir) = std::fs::File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
+
+    Ok(())
 }
 
 /// Load a versioned JSON envelope from `path`, migrating if needed.

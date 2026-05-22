@@ -2375,7 +2375,8 @@ fn style_store() -> &'static std::sync::RwLock<Vec<(String, StyleSettings)>> {
 
 /// Get a clone of the settings for style `id`. Falls back to 0 (Meridien) if out of range.
 pub fn get_style_settings(id: u8) -> StyleSettings {
-    let store = style_store().read().unwrap();
+    // Wave 8 High: recover from lock poison instead of propagating a cascade-crash.
+    let store = style_store().read().unwrap_or_else(|e| e.into_inner());
     let idx = id as usize;
     if idx < store.len() { store[idx].1.clone() } else { store[0].1.clone() }
 }
@@ -2383,14 +2384,16 @@ pub fn get_style_settings(id: u8) -> StyleSettings {
 /// Overwrite the settings for style `id` — takes effect on the next frame.
 /// Silently ignored if `id` is out of range.
 pub fn set_style_settings(id: u8, settings: StyleSettings) {
-    let mut store = style_store().write().unwrap();
+    // Wave 8 High: recover from lock poison.
+    let mut store = style_store().write().unwrap_or_else(|e| e.into_inner());
     let idx = id as usize;
     if idx < store.len() { store[idx].1 = settings; }
 }
 
 /// Add a new named preset cloned from an existing style. Returns the new id.
 pub fn add_style_preset(name: &str, settings: StyleSettings) -> u8 {
-    let mut store = style_store().write().unwrap();
+    // Wave 8 High: recover from lock poison.
+    let mut store = style_store().write().unwrap_or_else(|e| e.into_inner());
     let id = store.len() as u8;
     store.push((name.to_string(), settings));
     id
@@ -2401,21 +2404,24 @@ pub fn add_style_preset(name: &str, settings: StyleSettings) -> u8 {
 /// and update any stored `style_idx` values accordingly.
 pub fn delete_style_preset(id: u8) {
     if id < 3 { return; }
-    let mut store = style_store().write().unwrap();
+    // Wave 8 High: recover from lock poison.
+    let mut store = style_store().write().unwrap_or_else(|e| e.into_inner());
     let idx = id as usize;
     if idx < store.len() { store.remove(idx); }
 }
 
 /// Rename a preset in-place. No-op if `id` is out of range.
 pub fn rename_style_preset(id: u8, new_name: String) {
-    let mut store = style_store().write().unwrap();
+    // Wave 8 High: recover from lock poison.
+    let mut store = style_store().write().unwrap_or_else(|e| e.into_inner());
     let idx = id as usize;
     if idx < store.len() { store[idx].0 = new_name; }
 }
 
 /// Returns `(id, name)` pairs for all registered presets — use for dropdowns.
 pub fn list_style_presets() -> Vec<(u8, String)> {
-    style_store().read().unwrap()
+    // Wave 8 High: recover from lock poison.
+    style_store().read().unwrap_or_else(|e| e.into_inner())
         .iter().enumerate()
         .map(|(i, (name, _))| (i as u8, name.clone()))
         .collect()

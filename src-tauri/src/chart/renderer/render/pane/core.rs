@@ -83,6 +83,32 @@ pub(crate) fn render_toolbar(
 
 
 
+/// US Eastern UTC offset in minutes — 240 (EDT) in summer, 300 (EST) in winter.
+/// US DST runs from the 2nd Sunday of March to the 1st Sunday of November.
+fn us_eastern_offset_min() -> u16 {
+    use chrono::Datelike;
+    let now = chrono::Utc::now();
+    let (y, m, d) = (now.year(), now.month(), now.day());
+    // Day-of-month of the Nth Sunday of `month` (n is 1-based).
+    let nth_sunday = |month: u32, n: u32| -> u32 {
+        match chrono::NaiveDate::from_ymd_opt(y, month, 1) {
+            Some(first) => {
+                let fw = first.weekday().num_days_from_sunday();
+                let first_sun = if fw == 0 { 1 } else { 8 - fw };
+                first_sun + 7 * (n - 1)
+            }
+            None => 99, // unreachable for a valid (year, month, 1)
+        }
+    };
+    let in_dst = match m {
+        4..=10 => true,
+        3 => d >= nth_sunday(3, 2),
+        11 => d < nth_sunday(11, 1),
+        _ => false,
+    };
+    if in_dst { 240 } else { 300 }
+}
+
 /// Phase 6+7: Render a single chart pane (candles, overlays, indicators, interactions).
 #[allow(unused_assignments)]
 fn render_chart_pane(
@@ -104,6 +130,18 @@ fn render_chart_pane(
         [pane_rect.min.x, pane_rect.min.y, pane_rect.width(), pane_rect.height()],
         "CHART_PANE", "Chart");
     let chart = &mut panes[pane_idx];
+
+    // Bound the per-pane drawing undo/redo history (audit: unbounded growth —
+    // a drag pushes a Modify entry every frame). Trim once per frame.
+    const MAX_UNDO: usize = 300;
+    if chart.undo_stack.len() > MAX_UNDO {
+        let excess = chart.undo_stack.len() - MAX_UNDO;
+        chart.undo_stack.drain(..excess);
+    }
+    if chart.redo_stack.len() > MAX_UNDO {
+        let excess = chart.redo_stack.len() - MAX_UNDO;
+        chart.redo_stack.drain(..excess);
+    }
 
     // Per-pane GPU: clear last frame's geometry up front, BEFORE the
     // pane-type dispatch returns early for non-Chart panes. Theme colours
@@ -1789,14 +1827,15 @@ fn render_chart_pane(
     // Extended hours helper — true when timestamp is outside regular trading hours
     // Uses chart session settings when session_shading is enabled, otherwise defaults to US equities (9:30-16:00 ET)
     let is_crypto = crate::data::is_crypto(&chart.symbol);
+    // ET->UTC offset, DST-aware (240 EDT / 300 EST) — audit fix: was hardcoded EDT,
+    // making session shading wrong by an hour for ~5 months a year.
+    let et_offset_min: u16 = us_eastern_offset_min();
     let (rth_start_utc_secs, rth_end_utc_secs) = if chart.session_shading && !is_crypto {
-        // Convert ET minutes to UTC seconds (UTC-4 offset for EDT)
-        let et_offset_min: u16 = 240; // 4 hours in minutes
         ((chart.rth_start_minutes + et_offset_min) as i64 * 60,
          (chart.rth_end_minutes + et_offset_min) as i64 * 60)
     } else {
-        // Default: 9:30-16:00 ET = 13:30-20:00 UTC
-        (13 * 3600 + 30 * 60, 20 * 3600)
+        // Default US equities RTH: 9:30 (570 min) - 16:00 (960 min) ET.
+        (((570 + et_offset_min) as i64) * 60, ((960 + et_offset_min) as i64) * 60)
     };
     let is_extended_hour = |ts: i64| -> bool {
         if is_crypto { return false; }

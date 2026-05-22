@@ -75,12 +75,15 @@ pub fn flush_jank() {
 ///
 /// Call on graceful exit (the `RunEvent::Exit` handler) or from a panic hook.
 /// Writes atomically to a temp file then renames to avoid partial JSON on crash.
+/// After writing, prunes the sessions directory to the most recent 30 files so
+/// old summaries do not accumulate unboundedly.
 pub fn write_session_summary(summary: &serde_json::Value) {
     let Some(dir) = log_dir() else { return };
     let ts = chrono::Utc::now().format("%Y%m%dT%H%M%S").to_string();
     let filename = format!("{}-{}.json", ts, GIT_SHA);
-    let final_path = dir.join("sessions").join(&filename);
-    let tmp_path = dir.join("sessions").join(format!("{}.tmp", filename));
+    let sessions_dir = dir.join("sessions");
+    let final_path = sessions_dir.join(&filename);
+    let tmp_path = sessions_dir.join(format!("{}.tmp", filename));
     if let Ok(s) = serde_json::to_string_pretty(summary) {
         // Write to .tmp then rename — avoids partial file if process dies mid-write.
         if std::fs::write(&tmp_path, &s).is_ok() {
@@ -89,6 +92,24 @@ pub fn write_session_summary(summary: &serde_json::Value) {
             // Rename failed / no tmp support — write direct.
             let _ = std::fs::write(&final_path, s);
         }
+    }
+    // Prune sessions directory to the 30 most recent files.
+    prune_old_sessions(&sessions_dir, 30);
+}
+
+/// Keep only the `keep` most-recent files in `dir`, removing the rest.
+/// Files are sorted by filename (timestamp prefix sorts lexicographically).
+fn prune_old_sessions(dir: &std::path::Path, keep: usize) {
+    let mut entries: Vec<_> = match std::fs::read_dir(dir) {
+        Ok(it) => it.flatten()
+            .filter(|e| e.path().extension().map_or(false, |ext| ext == "json"))
+            .collect(),
+        Err(_) => return,
+    };
+    // Newest first by filename — timestamp prefix sorts lexicographically.
+    entries.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
+    for old in entries.iter().skip(keep) {
+        let _ = std::fs::remove_file(old.path());
     }
 }
 

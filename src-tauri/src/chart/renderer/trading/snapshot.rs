@@ -21,7 +21,12 @@ fn slot() -> &'static Mutex<Arc<OrdersSnapshot>> {
     ORDERS_SNAPSHOT.get_or_init(|| Mutex::new(Arc::new(OrdersSnapshot::default())))
 }
 
-/// Publish a fresh snapshot. Called from inside the OrderManager mutex.
+/// Publish a fresh snapshot.
+///
+/// Called by `with_mgr` AFTER the `ORDER_MANAGER` mutex guard has been dropped
+/// (CC1 fix: prevents the nested ORDER_MANAGER → ORDERS_SNAPSHOT lock-chain).
+/// The `orders` slice is captured from the manager while the guard was still
+/// held, then published here without any manager lock.
 pub(crate) fn publish(orders: &[ManagedOrder]) {
     let snap = Arc::new(OrdersSnapshot { orders: orders.to_vec() });
     if let Ok(mut g) = slot().lock() {

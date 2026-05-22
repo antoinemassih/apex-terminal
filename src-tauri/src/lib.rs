@@ -134,7 +134,9 @@ async fn open_native_chart(app: tauri::AppHandle, symbol: String, timeframe: Str
     // Register sender for tick broadcasting
     {
         let global = NATIVE_CHART_TXS.get_or_init(|| Mutex::new(Vec::new()));
-        global.lock().unwrap().push(tx);
+        // Wave 8 High: recover from lock poison so one panicked render thread
+        // doesn't prevent new chart windows from registering their senders.
+        global.lock().unwrap_or_else(|e| e.into_inner()).push(tx);
     }
 
     // Opens a new window (starts render thread on first call)
@@ -543,7 +545,8 @@ mod broadcast_stress {
 
         let mut receivers = Vec::with_capacity(RECEIVERS);
         {
-            let mut guard = txs_lock.lock().unwrap();
+            // Wave 8 High: recover from lock poison.
+            let mut guard = txs_lock.lock().unwrap_or_else(|e| e.into_inner());
             for _ in 0..RECEIVERS {
                 let (tx, rx) = mpsc::channel::<chart_renderer::ChartCommand>();
                 guard.push(tx);

@@ -10,6 +10,7 @@
 //! A custom global allocator wrapper counts heap allocations and bytes to detect
 //! allocation-heavy frames and memory bloat.
 
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -244,7 +245,7 @@ pub struct JankEvent {
 
 #[derive(Clone, Default, Debug)]
 pub struct LeakDetector {
-    samples: Vec<u64>,
+    samples: VecDeque<u64>,
     pub leak_suspected: bool,
     pub consecutive_increases: u32,
     pub baseline_rss: u64,
@@ -337,7 +338,7 @@ struct FrameTracker {
     alloc_count_ring: Vec<u64>,
     alloc_bytes_ring: Vec<u64>,
     // Jank log
-    jank_events: Vec<JankEvent>,
+    jank_events: VecDeque<JankEvent>,
     // Subsystem profiling — last N profiles for rolling stats
     subsystem_ring: Vec<SubsystemProfile>,
     subsystem_ring_pos: usize,
@@ -365,7 +366,7 @@ impl FrameTracker {
             total_tex_frees: 0,
             alloc_count_ring: vec![0; RING_SIZE],
             alloc_bytes_ring: vec![0; RING_SIZE],
-            jank_events: Vec::new(),
+            jank_events: VecDeque::new(),
             subsystem_ring: (0..RING_SIZE).map(|_| SubsystemProfile::default()).collect(),
             subsystem_ring_pos: 0,
         }
@@ -455,9 +456,9 @@ impl FrameTracker {
                 }
             }
 
-            self.jank_events.push(event);
+            self.jank_events.push_back(event);
             if self.jank_events.len() > 50 {
-                self.jank_events.remove(0);
+                self.jank_events.pop_front();
             }
         }
     }
@@ -581,7 +582,7 @@ impl FrameTracker {
 
     fn jank_events(&self) -> Vec<JankEvent> {
         let start = if self.jank_events.len() > 20 { self.jank_events.len() - 20 } else { 0 };
-        self.jank_events[start..].to_vec()
+        self.jank_events.iter().skip(start).cloned().collect()
     }
 }
 
@@ -591,11 +592,11 @@ impl LeakDetector {
     fn update(&mut self, rss: u64) {
         if self.baseline_rss == 0 { self.baseline_rss = rss; }
         self.growth_from_baseline = rss as i64 - self.baseline_rss as i64;
-        if let Some(&last) = self.samples.last() {
+        if let Some(&last) = self.samples.back() {
             if rss > last { self.consecutive_increases += 1; } else { self.consecutive_increases = 0; }
         }
-        self.samples.push(rss);
-        if self.samples.len() > 300 { self.samples.remove(0); }
+        self.samples.push_back(rss);
+        if self.samples.len() > 300 { self.samples.pop_front(); }
         self.leak_suspected = self.consecutive_increases >= 60;
     }
 }

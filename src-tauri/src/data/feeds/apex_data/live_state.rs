@@ -71,6 +71,13 @@ struct State {
 
 /// Max spikes kept in the ring (per §4.5 — recent activity, not history).
 const SPIKE_HISTORY_CAP: usize = 10;
+/// Maximum size of the dismissed-spike dedup set before trimming. When
+/// exceeded, the set is pruned down to this cap by clearing entries whose
+/// IDs no longer appear in the live spike ring (those are the "true" stale
+/// ones). If the set is still over the cap after that pass (i.e. all live
+/// ring IDs were in the set), old entries are cleared entirely so the set
+/// cannot grow without bound across a long session.
+const DISMISSED_SPIKES_CAP: usize = 500;
 
 static STATE: OnceLock<State> = OnceLock::new();
 
@@ -139,24 +146,64 @@ pub fn start_pollers() {
         }).ok();
 
         // Snapshot poller: 1Hz per watched symbol.
+        // Audit fix Wave 3: also evicts symbols that left the watch set every
+        // 30s to prevent quotes/snapshots/fmv/tape_by_symbol/latest_combined/
+        // latest_trade_plan from growing with every symbol ever seen.
+        // tape_by_symbol is additionally hard-capped at 500 keys.
         std::thread::Builder::new().name("apex-snap".into()).spawn(|| {
             use crate::data::connectivity::errors_sink::{report, ErrorLevel};
             use crate::data::connectivity::error::ApiError;
+            const TAPE_BY_SYMBOL_KEY_CAP: usize = 500;
+            let mut evict_tick: u32 = 0;
             loop {
                 let watched: Vec<String> = state().snap_watch.lock().ok()
                     .map(|g| g.iter().cloned().collect()).unwrap_or_default();
-                for sym in watched {
-                    let class = super::types::AssetClass::from_symbol(&sym);
-                    match super::rest::get_snapshot(class, &sym) {
+                for sym in &watched {
+                    let class = super::types::AssetClass::from_symbol(sym);
+                    match super::rest::get_snapshot(class, sym) {
                         Ok(s) => {
                             if let Ok(mut g) = state().snapshots.lock() {
-                                g.insert(sym, (s, Instant::now()));
+                                g.insert(sym.clone(), (s, Instant::now()));
                             }
                         }
                         Err(ApiError::CircuitOpen) => {}
                         Err(e) => {
                             report(ErrorLevel::Warn, "apex_data.rest", "snapshot_poll",
                                 format!("{sym}: {e}"));
+                        }
+                    }
+                }
+                evict_tick = evict_tick.wrapping_add(1);
+                // Every 30 iterations (~30s): evict symbols no longer in watch set.
+                if evict_tick % 30 == 0 {
+                    let watch_set: HashSet<String> = watched.iter().cloned().collect();
+                    if let Ok(mut g) = state().snapshots.lock() {
+                        g.retain(|k, _| watch_set.contains(k));
+                    }
+                    if let Ok(mut g) = state().quotes.lock() {
+                        g.retain(|k, _| watch_set.contains(k));
+                    }
+                    if let Ok(mut g) = state().fmv.lock() {
+                        g.retain(|k, _| watch_set.contains(k));
+                    }
+                    if let Ok(mut g) = state().latest_combined.lock() {
+                        g.retain(|k, _| watch_set.contains(k));
+                    }
+                    if let Ok(mut g) = state().latest_trade_plan.lock() {
+                        g.retain(|k, _| watch_set.contains(k));
+                    }
+                    // tape_by_symbol: evict unwatched keys then hard-cap at
+                    // TAPE_BY_SYMBOL_KEY_CAP in case watched set is very large.
+                    if let Ok(mut g) = state().tape_by_symbol.lock() {
+                        g.retain(|k, _| watch_set.contains(k));
+                        if g.len() > TAPE_BY_SYMBOL_KEY_CAP {
+                            // Remove excess keys (arbitrary — HashMap has no order).
+                            let remove: Vec<String> = g.keys()
+                                .filter(|k| !watch_set.contains(*k))
+                                .take(g.len() - TAPE_BY_SYMBOL_KEY_CAP)
+                                .cloned()
+                                .collect();
+                            for k in remove { g.remove(&k); }
                         }
                     }
                 }
@@ -193,17 +240,19 @@ pub fn start_pollers() {
         }).ok();
 
         // Greeks poller: 1 fetch every 2s per watched contract.
+        // Audit fix Wave 3: evicts contracts that left greeks_watch every ~60s.
         std::thread::Builder::new().name("apex-greeks".into()).spawn(|| {
             use crate::data::connectivity::errors_sink::{report, ErrorLevel};
             use crate::data::connectivity::error::ApiError;
+            let mut evict_tick: u32 = 0;
             loop {
                 let watched: Vec<String> = state().greeks_watch.lock().ok()
                     .map(|g| g.iter().cloned().collect()).unwrap_or_default();
-                for contract in watched {
-                    match super::rest::get_greeks(&contract) {
+                for contract in &watched {
+                    match super::rest::get_greeks(contract) {
                         Ok(gr) => {
                             if let Ok(mut g) = state().greeks.lock() {
-                                g.insert(contract, (gr, Instant::now()));
+                                g.insert(contract.clone(), (gr, Instant::now()));
                             }
                         }
                         Err(ApiError::CircuitOpen) => {}
@@ -211,6 +260,14 @@ pub fn start_pollers() {
                             report(ErrorLevel::Warn, "apex_data.rest", "greeks_poll",
                                 format!("{contract}: {e}"));
                         }
+                    }
+                }
+                evict_tick = evict_tick.wrapping_add(1);
+                // Every 30 iterations (~60s at 2s sleep): remove stale contracts.
+                if evict_tick % 30 == 0 {
+                    let watch_set: HashSet<String> = watched.iter().cloned().collect();
+                    if let Ok(mut g) = state().greeks.lock() {
+                        g.retain(|k, _| watch_set.contains(k));
                     }
                 }
                 std::thread::sleep(Duration::from_secs(2));
@@ -380,9 +437,20 @@ pub fn chain_summary() -> Vec<(String, usize, u64)> {
 //
 // Each cache stores `(value, fetched_at)`. Callers ask `get_or_fetch_*` from
 // any thread; if the entry is missing or stale beyond the TTL, a single
-// detached thread fetches the projector reading and writes it back. Multiple
+// detached task fetches the projector reading and writes it back. Multiple
 // concurrent callers may briefly race, but the cost is one duplicate REST
 // hit — acceptable for our cardinality (≤ ~200 tickers).
+//
+// Audit fix Wave 3: each projector fetch now uses `tokio::task::spawn_blocking`
+// on the shared `ws::runtime()` instead of spawning a new OS thread per call.
+// The REST functions are still blocking (reqwest blocking client), so
+// spawn_blocking is the right primitive. The inflight guard remains in place
+// to prevent concurrent duplicate fetches for the same key.
+fn proj_spawn<F: FnOnce() + Send + 'static>(task: F) {
+    // Use the already-running apex-data-ws tokio runtime so we don't
+    // allocate a new OS thread per projector fetch.
+    super::ws::runtime().spawn(tokio::task::spawn_blocking(task));
+}
 
 use std::collections::HashMap as StdHashMap;
 
@@ -433,13 +501,13 @@ pub fn get_or_fetch_news(ticker: &str) {
     let claim_key = format!("news:{key}");
     if !try_claim_inflight(claim_key.clone()) { return; }
     let owned = key.clone();
-    std::thread::Builder::new().name("apex-news".into()).spawn(move || {
+    proj_spawn(move || {
         let resp = super::rest::get_news(&owned, None).unwrap_or_default();
         if let Ok(mut g) = proj().news.lock() {
             g.insert(owned.clone(), (resp, Instant::now()));
         }
         release_inflight(&claim_key);
-    }).ok();
+    });
 }
 
 // IV rank -----------------------------------------------------------------
@@ -456,13 +524,13 @@ pub fn get_or_fetch_iv_rank(underlying: &str, lookback: Option<u32>) {
     let claim_key = format!("ivrank:{key}");
     if !try_claim_inflight(claim_key.clone()) { return; }
     let owned = key.clone();
-    std::thread::Builder::new().name("apex-ivrank".into()).spawn(move || {
+    proj_spawn(move || {
         let resp = super::rest::get_iv_rank(&owned, lookback).unwrap_or_default();
         if let Ok(mut g) = proj().iv_rank.lock() {
             g.insert(owned.clone(), (resp, Instant::now()));
         }
         release_inflight(&claim_key);
-    }).ok();
+    });
 }
 
 // ETF IIV -----------------------------------------------------------------
@@ -479,13 +547,13 @@ pub fn get_or_fetch_etf_iiv(etf: &str) {
     let claim_key = format!("iiv:{key}");
     if !try_claim_inflight(claim_key.clone()) { return; }
     let owned = key.clone();
-    std::thread::Builder::new().name("apex-iiv".into()).spawn(move || {
+    proj_spawn(move || {
         let resp = super::rest::get_etf_iiv(&owned).unwrap_or_default();
         if let Ok(mut g) = proj().iiv.lock() {
             g.insert(owned.clone(), (resp, Instant::now()));
         }
         release_inflight(&claim_key);
-    }).ok();
+    });
 }
 
 // Corporate actions -------------------------------------------------------
@@ -502,13 +570,13 @@ pub fn get_or_fetch_corp_actions(ticker: &str) {
     let claim_key = format!("corp:{key}");
     if !try_claim_inflight(claim_key.clone()) { return; }
     let owned = key.clone();
-    std::thread::Builder::new().name("apex-corp".into()).spawn(move || {
+    proj_spawn(move || {
         let resp = super::rest::get_corp_actions(&owned).unwrap_or_default();
         if let Ok(mut g) = proj().corp.lock() {
             g.insert(owned.clone(), (resp, Instant::now()));
         }
         release_inflight(&claim_key);
-    }).ok();
+    });
 }
 
 /// Push a toast with explicit severity encoded as a leading control byte.
@@ -664,9 +732,27 @@ pub fn iter_spikes() -> Vec<SpikeExplanation> {
 
 /// Mark a spike id as dismissed. The popup component checks this set before
 /// re-rendering an old toast that the server republished.
+/// Bounded at DISMISSED_SPIKES_CAP: when the set exceeds the cap, IDs that
+/// no longer appear in the live spike ring are removed first; if still over
+/// cap the entire set is cleared (worst case: a previously-dismissed toast
+/// briefly reappears once on reconnect, far better than unbounded growth).
 pub fn dismiss_spike(id: &str) {
     if let Ok(mut g) = state().dismissed_spikes.lock() {
         g.insert(id.to_string());
+        if g.len() > DISMISSED_SPIKES_CAP {
+            // First pass: drop IDs not in the live ring (truly stale dismissals).
+            let live_ids: HashSet<String> = state().recent_spike_explanations
+                .lock()
+                .ok()
+                .map(|ring| ring.iter().map(|s| s.id.clone()).collect())
+                .unwrap_or_default();
+            g.retain(|k| live_ids.contains(k));
+            // Second pass: if still over cap (all live IDs were in the set),
+            // clear entirely so the set stays bounded at all times.
+            if g.len() > DISMISSED_SPIKES_CAP {
+                g.clear();
+            }
+        }
     }
 }
 

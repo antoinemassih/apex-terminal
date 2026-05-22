@@ -50,6 +50,20 @@ const APEX_SIGNALS_WS: &str = "ws://localhost:8200/ws";
 
 static FEED_RUNNING: OnceLock<Mutex<bool>> = OnceLock::new();
 static SHUTDOWN: OnceLock<Arc<AtomicBool>> = OnceLock::new();
+/// Audit fix Wave 8: shared single-thread runtime — created once, reused for
+/// every `start()` call (safe because `start()` is guarded by FEED_RUNNING).
+/// This avoids a new tokio Runtime being built on every reconnect-triggered
+/// re-entry and eliminates one OS thread per invocation.
+static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+
+fn feed_runtime() -> &'static tokio::runtime::Runtime {
+    RT.get_or_init(|| {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("signals_feed tokio runtime")
+    })
+}
 
 pub fn start() {
     let running = FEED_RUNNING.get_or_init(|| Mutex::new(false));
@@ -62,11 +76,7 @@ pub fn start() {
     connectivity::register("signals_feed", Arc::new(SignalsFeedShutdown { shutdown: shutdown.clone() }));
 
     std::thread::spawn(move || {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        rt.block_on(async {
+        feed_runtime().block_on(async {
             tokio::spawn(run_watchdog());
             let mut backoff = Backoff::new().with_max_attempts(None);
             let mut first = true;
