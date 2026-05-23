@@ -120,6 +120,134 @@ pub trait ComponentTheme {
 // `super::theme::active_theme`.
 pub use crate::chart_renderer::theme_impl::active_theme;
 
+// ── PortableTheme — the standalone Theme for non-trading apps ────────────────
+//
+// A plain struct with the semantic colour tokens `ComponentTheme` exposes.
+// No bull/bear (those default-impl to `accent()`). No trading-specific
+// fields. A doc app, settings dialog, or any embedder of `ui_kit` can:
+//
+//     let theme = PortableTheme::dark();           // or `::light()` / `::default()`
+//     // pass to widgets that take `&dyn ComponentTheme`:
+//     MyButton::new("Save").show(ui, &theme);
+//
+// The trading app keeps `chart_renderer::gpu::Theme` with bull/bear, etc.;
+// both types satisfy `ComponentTheme` so widgets work with either.
+//
+// Goal of this type: prove `ComponentTheme` is implementable without
+// reaching into `chart_renderer` for any field. (When `ui_kit` extracts to
+// a workspace crate, this is the only `Theme` it ships.)
+
+#[derive(Clone, Debug)]
+pub struct PortableTheme {
+    pub accent: Color32,
+    pub text: Color32,
+    pub dim: Color32,
+    pub border: Color32,
+    pub border_variant: Color32,
+    pub warn: Color32,
+    pub bg: Color32,
+    pub surface: Color32,
+
+    // Element-state alpha overlays.
+    pub element_hover: Color32,
+    pub element_active: Color32,
+    pub element_selected: Color32,
+    pub element_disabled: Color32,
+    pub ghost_hover: Color32,
+    pub ghost_active: Color32,
+
+    // Icon ramp.
+    pub icon: Color32,
+    pub icon_muted: Color32,
+    pub icon_disabled: Color32,
+    pub icon_accent: Color32,
+
+    pub shadow_color: Color32,
+}
+
+impl PortableTheme {
+    /// Reasonable dark-theme defaults — neutral grays, blue accent, soft
+    /// black shadow. Good enough to bring up a new app's UI and iterate.
+    pub fn dark() -> Self {
+        Self {
+            accent:           Color32::from_rgb( 70, 130, 220),
+            text:             Color32::from_rgb(220, 220, 222),
+            dim:              Color32::from_rgb(140, 140, 145),
+            border:           Color32::from_rgb( 56,  56,  60),
+            border_variant:   Color32::from_rgb( 76,  76,  80),
+            warn:             Color32::from_rgb(220, 160,  40),
+            bg:               Color32::from_rgb( 22,  22,  26),
+            surface:          Color32::from_rgb( 30,  30,  34),
+            element_hover:    Color32::from_rgba_unmultiplied(255, 255, 255, 14),
+            element_active:   Color32::from_rgba_unmultiplied(255, 255, 255, 28),
+            element_selected: Color32::from_rgba_unmultiplied( 70, 130, 220, 40),
+            element_disabled: Color32::from_rgba_unmultiplied(255, 255, 255,  8),
+            ghost_hover:      Color32::from_rgba_unmultiplied(255, 255, 255, 10),
+            ghost_active:     Color32::from_rgba_unmultiplied(255, 255, 255, 22),
+            icon:             Color32::from_rgb(200, 200, 204),
+            icon_muted:       Color32::from_rgb(140, 140, 145),
+            icon_disabled:    Color32::from_rgb( 88,  88,  92),
+            icon_accent:      Color32::from_rgb( 70, 130, 220),
+            shadow_color:     Color32::BLACK,
+        }
+    }
+
+    /// Light-theme defaults. Use as a starting point; tune for brand.
+    pub fn light() -> Self {
+        Self {
+            accent:           Color32::from_rgb( 30,  90, 180),
+            text:             Color32::from_rgb( 28,  28,  32),
+            dim:              Color32::from_rgb(110, 110, 116),
+            border:           Color32::from_rgb(216, 216, 220),
+            border_variant:   Color32::from_rgb(200, 200, 204),
+            warn:             Color32::from_rgb(192, 120,   0),
+            bg:               Color32::from_rgb(250, 250, 252),
+            surface:          Color32::from_rgb(240, 240, 244),
+            element_hover:    Color32::from_rgba_unmultiplied(  0,   0,   0, 14),
+            element_active:   Color32::from_rgba_unmultiplied(  0,   0,   0, 28),
+            element_selected: Color32::from_rgba_unmultiplied( 30,  90, 180, 40),
+            element_disabled: Color32::from_rgba_unmultiplied(  0,   0,   0,  8),
+            ghost_hover:      Color32::from_rgba_unmultiplied(  0,   0,   0, 10),
+            ghost_active:     Color32::from_rgba_unmultiplied(  0,   0,   0, 22),
+            icon:             Color32::from_rgb( 60,  60,  64),
+            icon_muted:       Color32::from_rgb(120, 120, 124),
+            icon_disabled:    Color32::from_rgb(180, 180, 184),
+            icon_accent:      Color32::from_rgb( 30,  90, 180),
+            shadow_color:     Color32::from_rgb(120, 120, 124),
+        }
+    }
+}
+
+impl Default for PortableTheme {
+    fn default() -> Self { Self::dark() }
+}
+
+impl ComponentTheme for PortableTheme {
+    fn accent(&self) -> Color32 { self.accent }
+    // bull/bear use the trait defaults (delegate to accent via success/danger
+    // path — actually default to accent directly for portable themes).
+    fn bull(&self) -> Color32 { self.accent }
+    fn bear(&self) -> Color32 { self.warn }
+    fn text(&self) -> Color32 { self.text }
+    fn dim(&self) -> Color32 { self.dim }
+    fn border(&self) -> Color32 { self.border }
+    fn border_variant(&self) -> Color32 { self.border_variant }
+    fn warn(&self) -> Color32 { self.warn }
+    fn bg(&self) -> Color32 { self.bg }
+    fn surface(&self) -> Color32 { self.surface }
+    fn element_hover(&self) -> Color32 { self.element_hover }
+    fn element_active(&self) -> Color32 { self.element_active }
+    fn element_selected(&self) -> Color32 { self.element_selected }
+    fn element_disabled(&self) -> Color32 { self.element_disabled }
+    fn ghost_hover(&self) -> Color32 { self.ghost_hover }
+    fn ghost_active(&self) -> Color32 { self.ghost_active }
+    fn icon(&self) -> Color32 { self.icon }
+    fn icon_muted(&self) -> Color32 { self.icon_muted }
+    fn icon_disabled(&self) -> Color32 { self.icon_disabled }
+    fn icon_accent(&self) -> Color32 { self.icon_accent }
+    fn shadow_color(&self) -> Color32 { self.shadow_color }
+}
+
 /// Read the active theme index stashed in egui memory by the render loop.
 /// Falls back to 0 (Midnight) if nothing was stashed. Portable — no
 /// chart-app dependency.
