@@ -307,11 +307,13 @@ impl Default for ChatAuthorPalette {
 impl Default for DesignTokens {
     fn default() -> Self {
         Self {
-            font: FontTokens { xxs: 7.0, xs: 8.0, sm_tight: 9.0, sm: 10.0, md: 11.0, input: 12.0, lg: 13.0, xl: 14.0, xxl: 15.0, display: 28.0, display_lg: 36.0 },
-            spacing: SpacingTokens { xs: 2.0, xs_mid: 6.0, sm: 4.0, md: 6.0, lg: 8.0, xl: 10.0, xxl: 12.0, xxxl: 20.0 },
-            radius: RadiusTokens { xs: 2.0, sm: 3.0, md: 4.0, lg: 8.0 },
+            // Aligned to the canonical `ui_kit::style` constant fallbacks so
+            // RESET restores the app's shipped look, not a different tier.
+            font: FontTokens { xxs: 8.0, xs: 9.0, sm_tight: 10.0, sm: 11.0, md: 13.0, input: 13.0, lg: 16.0, xl: 22.0, xxl: 28.0, display: 32.0, display_lg: 42.0 },
+            spacing: SpacingTokens { xs: 4.0, xs_mid: 6.0, sm: 8.0, md: 12.0, lg: 16.0, xl: 20.0, xxl: 24.0, xxxl: 32.0 },
+            radius: RadiusTokens { xs: 2.0, sm: 4.0, md: 6.0, lg: 12.0 },
             stroke: StrokeTokens { hair: 0.3, thin: 0.5, medium: 0.8, std: 1.0, bold: 1.5, thick: 2.0, heavy: 2.5, xheavy: 5.0 },
-            alpha: AlphaTokens { faint: 10, ghost: 15, soft: 20, subtle: 25, tint: 30, muted: 40, line: 50, dim: 60, strong: 80, active: 100, heavy: 120, solid: 200 },
+            alpha: AlphaTokens { faint: 10, ghost: 15, soft: 20, subtle: 40, tint: 48, muted: 60, line: 80, dim: 60, strong: 80, active: 100, heavy: 120, solid: 200 },
             shadow: ShadowTokens { offset: 2.0, alpha: 60, spread: 4.0, gradient: [20, 12, 4] },
             toolbar: ToolbarTokens { height: 36.0, height_compact: 28.0, btn_min_height: 24.0, btn_padding_x: 7.0, right_controls_width: 150.0 },
             panel: PanelTokens { margin_x: 10.0, margin_top: 10.0, margin_bottom: 8.0, compact_margin_x: 8.0, compact_margin_top: 8.0, compact_margin_bottom: 6.0, width_sm: 240.0, width_md: 260.0, width_default: 280.0, width_lg: 300.0, width_xl: 320.0, order_width_compact: 230.0, order_width_advanced: 300.0, tooltip_width_sm: 160.0, tooltip_width_md: 220.0, content_width_lg: 520.0, content_width_xl: 680.0 },
