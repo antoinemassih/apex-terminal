@@ -24,7 +24,7 @@ use egui::{Stroke, Ui};
 use super::button::Button;
 use super::theme::ComponentTheme;
 use super::tokens::{Size, Variant};
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 /// Which semantic role the primary action plays — controls the button variant.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]

@@ -14,7 +14,7 @@
 
 use egui::{Color32, Response, Ui};
 use super::theme::ComponentTheme;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 // ── Data ──────────────────────────────────────────────────────────────────────
 

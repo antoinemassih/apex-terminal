@@ -26,7 +26,7 @@ use super::popover::Popover;
 use super::theme::ComponentTheme;
 use super::tokens::Size;
 use super::{Input, Slider};
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 const SV_SIZE: f32 = 180.0;
 const HUE_H: f32 = 16.0;

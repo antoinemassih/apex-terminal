@@ -29,7 +29,7 @@
 use egui::{RichText, Sense, Stroke, Ui, Vec2};
 
 use super::theme::ComponentTheme;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 /// Collapsible form field group with optional heading and subtitle.
 ///

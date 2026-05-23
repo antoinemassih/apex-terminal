@@ -23,7 +23,7 @@ use super::theme::ComponentTheme;
 use super::tokens::{Size, Variant};
 use super::Tooltip;
 use super::icon_placement::{IconPlacement, IconTone, IconState, icon_glyph_color, icon_hover_bg};
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 /// Unified button builder. Use [`Button::new`] for a labelled button or
 /// [`Button::icon`] for an icon-only one. Compose via the chainable
@@ -927,7 +927,7 @@ fn paint_secondary_with_treatment(
     btn: &Button<'_>,
 ) -> Response {
     use crate::chart::renderer::ui::components::motion as cmotion;
-    use crate::chart::renderer::ui::style::{
+    use crate::ui_kit::tokens::{
         alpha_faint, alpha_ghost, alpha_muted, alpha_soft, alpha_strong,
         btn_small_height, color_alpha, current, font_sm, r_md_cr, r_sm_cr, r_xs,
         stroke_bold, stroke_std, stroke_thin, ButtonTreatment,

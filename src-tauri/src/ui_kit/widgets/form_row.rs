@@ -36,7 +36,7 @@
 use egui::{Color32, RichText, Ui, Vec2};
 
 use super::theme::ComponentTheme;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 /// Controls which side of the gutter area the body aligns to.
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]

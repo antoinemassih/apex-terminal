@@ -11,7 +11,7 @@ use egui::{Color32, FontId, Pos2, Response, Sense, Stroke, Ui, Vec2, Widget};
 use super::motion;
 use super::theme::ComponentTheme;
 use super::tokens::Size;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 #[must_use = "Radio does nothing until `.show(ui, theme)` or `ui.add(radio)` is called"]
 pub struct Radio<'a, T: PartialEq + Copy> {

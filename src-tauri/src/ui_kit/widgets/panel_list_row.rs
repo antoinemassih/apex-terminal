@@ -101,7 +101,7 @@
 
 use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Response, Sense, Ui, Vec2};
 
-use crate::chart::renderer::ui::style::{
+use crate::ui_kit::tokens::{
     self as st, alpha_ghost, color_alpha, color_muted, font_sm, font_xs, gap_lg, gap_md, gap_xs,
     radius_sm,
 };
@@ -681,7 +681,7 @@ impl<'a> PanelListRow<'a> {
                 if let Some(tip) = btn.tooltip {
                     Tooltip::new(tip).show(ui, &br, t);
                 }
-                crate::chart::renderer::ui::style::cursor::clickable(ui, &br);
+                crate::ui_kit::tokens::cursor::clickable(ui, &br);
 
                 let tone_col = btn.tone.resolve(t);
                 let painter = ui.painter_at(r);
@@ -693,7 +693,7 @@ impl<'a> PanelListRow<'a> {
                         CornerRadius::same(radius_sm() as u8),
                         color_alpha(
                             tone_col,
-                            crate::chart::renderer::ui::style::alpha_soft(),
+                            crate::ui_kit::tokens::alpha_soft(),
                         ),
                     );
                 }

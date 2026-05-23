@@ -10,7 +10,7 @@
 
 use egui::{Response, Ui};
 use super::theme::ComponentTheme;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 // ── Data — mirrors JournalEntry fields used by draw_card ─────────────────────
 

@@ -45,14 +45,14 @@ use egui::{Color32, Context, Pos2, Sense, Stroke, Ui, Vec2};
 
 use super::placement::Side;
 use super::side_panel_shell::{SidePanelShellResponse, Width};
-use crate::chart::renderer::ui::components::frames_widget::PanelFrame;
+use crate::ui_kit::widgets::frames::PanelFrame;
 use crate::chart::renderer::ui::panels::kit::PanelHeader;
 use super::Tooltip;
 use super::icon_placement::IconPlacement;
-use crate::chart::renderer::ui::style::{
+use crate::ui_kit::tokens::{
     alpha_faint, color_alpha, color_dim, font_xs, gap_xs, split_divider, stroke_thin,
 };
-use crate::ui_kit::widgets::theme::{SplitSection, Theme, Watchlist};
+use crate::ui_kit::widgets::theme::{SplitSection, Theme, Watchlist, ComponentTheme};
 
 const TAB_BAR_H: f32 = 28.0;
 const DIVIDER_H: f32 = 6.0;

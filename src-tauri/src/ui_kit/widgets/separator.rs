@@ -9,7 +9,7 @@
 use egui::{FontId, Pos2, Response, Sense, Stroke, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Orientation { Horizontal, Vertical }

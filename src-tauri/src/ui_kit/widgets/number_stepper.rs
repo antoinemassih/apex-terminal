@@ -23,7 +23,7 @@ use std::ops::RangeInclusive;
 
 use super::theme::ComponentTheme;
 use super::tokens::Size;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 #[must_use = "NumberStepper does nothing until `.show(ui, theme)` is called"]
 pub struct NumberStepper<'a, T: egui::emath::Numeric> {

@@ -16,7 +16,7 @@ use egui::{Color32, CornerRadius, FontId, Pos2, Response, Sense, Ui, Vec2, Widge
 use super::motion;
 use super::theme::ComponentTheme;
 use super::tokens::Size;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 #[must_use = "Switch does nothing until `.show(ui, theme)` or `ui.add(switch)` is called"]
 pub struct Switch<'a> {

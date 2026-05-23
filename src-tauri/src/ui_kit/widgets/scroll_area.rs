@@ -32,7 +32,7 @@ use egui::{Color32, Id, Response, Stroke, Ui};
 
 use super::motion;
 use super::theme::ComponentTheme;
-use crate::chart::renderer::ui::style::color_alpha;
+use crate::ui_kit::tokens::color_alpha;
 
 /// Direction passed to `egui::ScrollArea`'s constructor.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

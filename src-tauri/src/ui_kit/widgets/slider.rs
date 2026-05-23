@@ -19,7 +19,7 @@ use egui::{Color32, CornerRadius, Pos2, Response, Sense, Stroke, Ui, Vec2, Widge
 use super::motion;
 use super::theme::ComponentTheme;
 use super::tokens::{Size, Variant};
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 #[must_use = "Slider does nothing until `.show(ui, theme)` or `ui.add(slider)` is called"]
 pub struct Slider<'a, T: egui::emath::Numeric> {

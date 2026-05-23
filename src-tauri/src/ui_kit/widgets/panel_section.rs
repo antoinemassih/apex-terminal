@@ -67,10 +67,10 @@ use egui::{Color32, CursorIcon, FontId, Pos2, Rect, Response, RichText, Sense, S
 use super::super::icons::Icon;
 use super::tooltip::Tooltip;
 use super::theme::active_theme;
-use crate::chart::renderer::ui::style::{
-    color_alpha, font_sm, font_xs, gap_lg, gap_md, gap_sm, gap_xs, header_border, section_header_surface, shadow_color_alpha, stroke_thin,
+use crate::ui_kit::tokens::{
+    color_alpha, font_sm, font_xs, gap_lg, gap_md, gap_sm, gap_xs, shadow_color_alpha, stroke_thin,
 };
-use crate::ui_kit::widgets::theme::Theme;
+use crate::ui_kit::widgets::theme::{Theme, ComponentTheme};
 
 /// Shared semantic tone for the panel body primitives. Resolves to a theme
 /// color via [`Tone::color`]. Defined here so the seven panel-body widgets
@@ -279,7 +279,7 @@ impl<'a> PanelSection<'a> {
                 top: gap_xs() as i8,
                 bottom: gap_xs() as i8,
             })
-            .fill(section_header_surface(t))
+            .fill(t.section_header_surface())
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     // Leading caret (collapsible mode only). Matches the
@@ -383,7 +383,7 @@ impl<'a> PanelSection<'a> {
         // Edge-to-edge top + bottom rules bracketing the recessed strip.
         // Border color matches the chart pane header — t.text @ 38 alpha.
         let hr = header_resp.response.rect;
-        let rule_col = header_border(t);
+        let rule_col = t.header_border();
         ui.painter().line_segment(
             [Pos2::new(hr.left(), hr.top() + 0.5), Pos2::new(hr.right(), hr.top() + 0.5)],
             Stroke::new(stroke_thin(), rule_col),
@@ -459,7 +459,7 @@ fn paint_rule(ui: &mut Ui, t: &Theme) {
             Pos2::new(rect.left(), y),
             Pos2::new(rect.right(), y),
         ],
-        Stroke::new(stroke_thin(), header_border(t)),
+        Stroke::new(stroke_thin(), t.header_border()),
     );
     ui.add_space(1.0);
 }

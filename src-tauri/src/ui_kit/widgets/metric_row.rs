@@ -13,7 +13,7 @@
 use egui::{Response, RichText, Ui};
 
 use super::theme::ComponentTheme;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 /// Semantic tint for the value side of a `MetricRow`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

@@ -22,7 +22,7 @@ use egui::{CornerRadius, Response, RichText, Stroke, Ui};
 use super::theme::ComponentTheme;
 use super::Button;
 use super::tokens::{Size, Variant};
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 // ── FormSection ───────────────────────────────────────────────────────────────
 

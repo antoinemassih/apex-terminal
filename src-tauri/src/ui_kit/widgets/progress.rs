@@ -15,7 +15,7 @@ use egui::{Color32, CornerRadius, Pos2, Response, Sense, Stroke, Ui, Vec2, Widge
 
 use super::theme::ComponentTheme;
 use super::tokens::{Size, Variant};
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 #[derive(Clone, Copy)]
 enum Shape { Linear, Circular }

@@ -38,7 +38,7 @@ use egui::{
 use super::motion;
 use super::theme::ComponentTheme;
 use super::tokens::Size;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 /// Builder for a single-line text input. See module docs for usage.
 #[must_use = "Input does nothing until `.show(ui, theme)` is called"]

@@ -38,7 +38,7 @@
 use egui::{Color32, CornerRadius, Frame, Margin, Pos2, Rect, Stroke, Ui};
 
 use super::panel_section::Tone;
-use crate::chart::renderer::ui::style::{
+use crate::ui_kit::tokens::{
     color_layer_up, gap_md, radius_md, shadow_card_themed,
 };
 use crate::ui_kit::widgets::theme::Theme;

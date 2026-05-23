@@ -19,7 +19,7 @@ use egui::{Color32, Response, TextureHandle, Ui};
 use std::collections::HashMap;
 use super::theme::ComponentTheme;
 use super::Tooltip;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 // ── Widget ────────────────────────────────────────────────────────────────────
 

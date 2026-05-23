@@ -38,7 +38,7 @@
 
 use egui::{Color32, CornerRadius, FontId, Pos2, Sense, Stroke, StrokeKind, Ui, Vec2};
 
-use crate::chart::renderer::ui::style::{
+use crate::ui_kit::tokens::{
     alpha_hint, alpha_muted, color_alpha, font_xs, gap_2xs, gap_xs, radius_md, radius_sm,
     stroke_thin,
 };

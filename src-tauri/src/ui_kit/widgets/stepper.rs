@@ -13,7 +13,7 @@ use egui::{Color32, FontId, Pos2, Response, Sense, Stroke, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
 use super::tokens::Size;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 use crate::ui_kit::icons::Icon;
 
 #[must_use = "Stepper does nothing until `.show(ui, theme)` or `ui.add(stepper)` is called"]

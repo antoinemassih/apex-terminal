@@ -18,7 +18,7 @@ use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, Response, Sense, S
 
 use super::motion;
 use super::theme::ComponentTheme;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 use crate::ui_kit::icons::Icon;
 
 /// Trait implemented by caller's tree node type. The list passed to Tree

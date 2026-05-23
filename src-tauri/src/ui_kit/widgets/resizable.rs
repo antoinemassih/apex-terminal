@@ -16,7 +16,7 @@ use egui::{Color32, CornerRadius, CursorIcon, Rect, Response, Sense, Ui, Vec2};
 
 use super::motion;
 use super::theme::ComponentTheme;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Orient {

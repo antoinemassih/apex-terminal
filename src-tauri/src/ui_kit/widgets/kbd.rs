@@ -9,7 +9,7 @@ use egui::{CornerRadius, FontId, Pos2, Response, Sense, Stroke, StrokeKind, Ui, 
 
 use super::theme::ComponentTheme;
 use super::tokens::Size;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 #[must_use = "Kbd does nothing until `.show(ui, theme)` or `ui.add(kbd)` is called"]
 pub struct Kbd<'a> {

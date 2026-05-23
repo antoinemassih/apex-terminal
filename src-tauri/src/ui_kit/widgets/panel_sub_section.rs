@@ -49,7 +49,7 @@
 use egui::{CornerRadius, FontId, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 
 use super::super::icons::Icon;
-use crate::chart::renderer::ui::style::{
+use crate::ui_kit::tokens::{
     color_alpha, font_sm, gap_2xs, gap_md, gap_xs, header_border, header_surface, radius_sm, shadow_color_alpha, stroke_thin,
 };
 use crate::ui_kit::widgets::theme::Theme;

@@ -45,11 +45,11 @@ use egui::{Context, Ui};
 
 use super::placement::Side;
 use crate::chart::renderer::ui::panels::kit::{PanelHeader, PanelHeaderTabs};
-use crate::chart::renderer::ui::components::frames_widget::PanelFrame;
-use crate::chart::renderer::ui::style::{
-    gap_lg, gap_md, gap_sm, header_border, header_surface, panel_surface, shadow_color_alpha, stroke_thin,
+use crate::ui_kit::widgets::frames::PanelFrame;
+use crate::ui_kit::tokens::{
+    gap_lg, gap_md, gap_sm, shadow_color_alpha, stroke_thin,
 };
-use crate::ui_kit::widgets::theme::{Theme, Watchlist};
+use crate::ui_kit::widgets::theme::{Theme, Watchlist, ComponentTheme};
 
 /// Response from rendering a [`SidePanelShell`] / [`SidePanelShellTabs`] /
 /// [`SplitSectionPanel`]. Caller writes its own open-flag back when
@@ -192,18 +192,18 @@ impl<'a> SidePanelShell<'a> {
         body: impl FnOnce(&mut Ui, &Theme),
     ) -> SidePanelShellResponse {
         let panel = build_side_panel(self.id, self.side, self.width, self.width_bounds.as_ref());
-        let frame = PanelFrame::new(panel_surface(t), t.toolbar_border).theme(t).build();
+        let frame = PanelFrame::new(t.panel_surface(), t.toolbar_border).theme(t).build();
         let panel = panel.frame(frame);
 
         let SidePanelShell { id, title, icon, pane_metrics, header_actions, footer, .. } = self;
 
         let mut close_clicked = false;
         panel.show(ctx, |ui| {
-            // Wrap the header in a Frame filled with `header_surface(t)`
+            // Wrap the header in a Frame filled with `t.header_surface()`
             // so the side panel's header band matches the chart pane
             // header above it — same fill, same visual weight.
             let header_resp = egui::Frame::NONE
-                .fill(header_surface(t))
+                .fill(t.header_surface())
                 .show(ui, |ui| {
                     let closed = render_header(ui, t, title, icon, pane_metrics, header_actions);
                     if closed { close_clicked = true; }
@@ -290,7 +290,7 @@ impl<'a, T: PartialEq + Copy + 'a> SidePanelShellTabs<'a, T> {
         body: impl FnOnce(&mut Ui, &Theme, T),
     ) -> SidePanelShellResponse {
         let panel = build_side_panel(self.id, self.side, self.width, self.width_bounds.as_ref());
-        let frame = PanelFrame::new(panel_surface(t), t.toolbar_border).theme(t).build();
+        let frame = PanelFrame::new(t.panel_surface(), t.toolbar_border).theme(t).build();
         let panel = panel.frame(frame);
 
         let SidePanelShellTabs {
@@ -311,7 +311,7 @@ impl<'a, T: PartialEq + Copy + 'a> SidePanelShellTabs<'a, T> {
             // Same header_surface wrap as the static-title variant for
             // visual parity with the chart pane header.
             let header_resp = egui::Frame::NONE
-                .fill(header_surface(t))
+                .fill(t.header_surface())
                 .show(ui, |ui| {
                     let closed = header.show_with(ui, t, |ui| {
                         if let Some(a) = actions.take() { a(ui, t); }
@@ -339,7 +339,7 @@ fn paint_header_underline_and_shadow(ui: &mut Ui, t: &Theme, hr: egui::Rect, pan
             egui::Pos2::new(hr.left(), hr.bottom() - 0.5),
             egui::Pos2::new(hr.right(), hr.bottom() - 0.5),
         ],
-        egui::Stroke::new(stroke_thin(), header_border(t)),
+        egui::Stroke::new(stroke_thin(), t.header_border()),
     );
     // Inset drop shadow falling into the body. 6px gradient, fading
     // alpha 38 → 0 over the height. Foreground layer keeps it from

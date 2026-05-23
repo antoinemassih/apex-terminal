@@ -30,7 +30,7 @@
 use egui::{Button, Color32, CursorIcon, Response, RichText, Ui};
 
 use super::theme::ComponentTheme;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 use crate::ui_kit::icons::Icon;
 
 /// Builder for a single menu-item row.

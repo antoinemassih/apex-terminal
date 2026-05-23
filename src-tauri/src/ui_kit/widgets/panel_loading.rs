@@ -32,7 +32,7 @@ use egui::{Align, Layout, RichText, Ui};
 use super::spinner::Spinner;
 use super::theme::active_theme;
 use super::tokens::Size;
-use crate::chart::renderer::ui::style::{color_muted, font_xs, gap_sm};
+use crate::ui_kit::tokens::{color_muted, font_xs, gap_sm};
 use crate::ui_kit::widgets::theme::Theme;
 
 #[must_use = "PanelLoading must be rendered with `.show(...)`"]

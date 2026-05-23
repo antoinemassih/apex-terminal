@@ -29,7 +29,7 @@
 use egui::{Align, FontId, Layout, Pos2, Sense, Ui, Vec2};
 
 use super::panel_section::Tone;
-use crate::chart::renderer::ui::style::{
+use crate::ui_kit::tokens::{
     color_alpha, color_muted, font_sm, font_xs, gap_lg, gap_xs,
 };
 use crate::ui_kit::widgets::theme::Theme;

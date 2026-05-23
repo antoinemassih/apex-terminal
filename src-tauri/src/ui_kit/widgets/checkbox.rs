@@ -17,7 +17,7 @@ use egui::{Color32, CornerRadius, FontId, Pos2, Response, Sense, Stroke, StrokeK
 use super::motion;
 use super::theme::ComponentTheme;
 use super::tokens::Size;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CheckState {

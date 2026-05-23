@@ -18,7 +18,7 @@
 use egui::{Color32, Pos2, Rect, Response, Sense, Stroke, Vec2};
 
 use super::theme::ComponentTheme;
-use crate::chart::renderer::ui::style::stroke_std;
+use crate::ui_kit::tokens::stroke_std;
 
 /// Which visual encoding to use.
 pub enum SparkStyle {

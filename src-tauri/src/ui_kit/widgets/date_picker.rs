@@ -18,7 +18,7 @@ use super::placement::{Align, Placement, Side};
 use super::popover::Popover;
 use super::theme::ComponentTheme;
 use super::tokens::Size;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 enum DPValue<'a> {
     Single(&'a mut Option<NaiveDate>),

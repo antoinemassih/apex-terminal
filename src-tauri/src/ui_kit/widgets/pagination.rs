@@ -15,7 +15,7 @@ use super::button::Button;
 use super::label::Label;
 use super::theme::ComponentTheme;
 use super::tokens::{Size, Variant};
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 #[must_use = "Pagination does nothing until `.show(ui, theme)` is called"]
 pub struct Pagination<'a> {

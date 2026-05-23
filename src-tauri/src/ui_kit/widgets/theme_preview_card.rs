@@ -15,7 +15,7 @@ use egui::{Color32, CornerRadius, Pos2, Rect, Response, Sense, Stroke, StrokeKin
 use super::label::Label;
 use super::theme::ComponentTheme;
 use super::tokens::Size;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 const DEFAULT_SIZE: Vec2 = Vec2::new(132.0, 80.0);
 const BORDER_WIDTH: f32 = 2.0;

@@ -28,7 +28,7 @@ use egui::{CornerRadius, FontId, Pos2, Response, Sense, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
 use super::tokens::Size;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 #[must_use = "SelectableRow does nothing until `.show(ui, theme)` or `ui.add(row)` is called"]
 pub struct SelectableRow<'a> {

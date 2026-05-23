@@ -10,7 +10,7 @@
 
 use egui::{Response, Sense, Ui, Vec2};
 use super::theme::ComponentTheme;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 /// Horizontal 2-segment risk/reward bar.
 #[must_use = "RiskRewardBar does nothing until `.show(ui, theme)` is called"]

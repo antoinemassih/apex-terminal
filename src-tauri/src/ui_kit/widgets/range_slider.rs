@@ -19,7 +19,7 @@ use std::ops::RangeInclusive;
 use super::motion;
 use super::theme::ComponentTheme;
 use super::tokens::Size;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 /// Two-thumb range slider. Call [`RangeSlider::show`] to render it.
 #[must_use = "RangeSlider does nothing until `.show(ui, theme)` is called"]

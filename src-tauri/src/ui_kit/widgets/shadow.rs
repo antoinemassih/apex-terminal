@@ -36,7 +36,7 @@
 // sketch (texture pool, bind groups, shader source).
 
 use egui::{Color32, Painter, Rect, Vec2};
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 /// Specification for a soft drop shadow.
 #[derive(Clone, Copy, Debug)]

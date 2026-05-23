@@ -37,7 +37,7 @@ use super::{Button, Tooltip};
 use super::{PolishedLabel, PolishedFontWeight};
 use super::tokens::{Size as KitSize, Variant};
 use crate::ui_kit::icons::Icon;
-use crate::chart::renderer::ui::style::{gap_md, stroke_thin};
+use crate::ui_kit::tokens::{gap_md, stroke_thin};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum SheetSide {

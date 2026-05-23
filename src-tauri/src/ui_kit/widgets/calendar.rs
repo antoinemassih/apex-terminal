@@ -25,7 +25,7 @@ use super::tokens::Size;
 use super::button::Button;
 use super::tooltip::Tooltip;
 use super::icon_placement::IconPlacement;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CalendarMode {

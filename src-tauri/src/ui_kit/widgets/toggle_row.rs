@@ -24,7 +24,7 @@ use egui::{Color32, FontId, Pos2, Response, Sense, Ui, Vec2, Widget};
 use super::theme::ComponentTheme;
 use super::tokens::Size;
 use super::{Switch, Tooltip};
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 type InfoFn<'a> = Box<dyn FnOnce(&mut Ui, &dyn ComponentTheme) + 'a>;
 

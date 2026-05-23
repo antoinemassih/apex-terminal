@@ -13,7 +13,7 @@
 use egui::{Color32, CornerRadius, FontId, Pos2, Response, Sense, Stroke, StrokeKind, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 use crate::ui_kit::icons::Icon;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

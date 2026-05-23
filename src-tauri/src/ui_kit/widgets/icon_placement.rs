@@ -28,7 +28,7 @@
 //   pub use icon_placement::{IconPlacement, IconTone, IconState, icon_glyph_color, icon_hover_bg};
 
 use egui::Color32;
-use crate::chart::renderer::ui::style::{alpha_soft, alpha_muted, alpha_ghost, color_alpha};
+use crate::ui_kit::tokens::{alpha_soft, alpha_muted, alpha_ghost, color_alpha};
 use super::theme::ComponentTheme;
 
 /// Placement context for an icon button. Determines glyph size, hit-target,

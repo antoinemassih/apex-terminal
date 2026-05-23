@@ -18,7 +18,7 @@ use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Response, Sense, Stroke, S
 use super::theme::ComponentTheme;
 use super::tokens::Size;
 use super::motion;
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 /// Horizontal connected-pill selector for picking one of N fixed options.
 ///

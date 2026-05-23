@@ -17,7 +17,7 @@ use super::button::Button;
 use super::label::Label;
 use super::theme::ComponentTheme;
 use super::tokens::{Size, Variant};
-use crate::chart::renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum BreadcrumbSep {
