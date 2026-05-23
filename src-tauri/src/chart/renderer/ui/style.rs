@@ -47,81 +47,11 @@ fn hit(r: &egui::Rect, family: &'static str, category: &'static str) {
 // adding them would gain nothing while breaking the "leave unchanged if already
 // guaranteed identical" contract.
 
-/// Flat resolved values for the design tokens that were previously backed by
-/// `dt_f32!` / `dt_u8!` lookups.  All fields are `f32` or `u8` (Copy primitives).
-#[derive(Clone, Copy, Debug)]
-pub struct TokenSnapshot {
-    // ── Spacing ─────────────────────────────────────────────────────────────
-    pub gap_xs_mid: f32,
-
-    // ── Radii ───────────────────────────────────────────────────────────────
-    pub radius_xs: f32,
-    pub radius_sm: f32,
-    pub radius_md: f32,
-    pub radius_lg: f32,
-
-    // ── Stroke widths ────────────────────────────────────────────────────────
-    pub stroke_hair:   f32,
-    pub stroke_thin:   f32,
-    pub stroke_medium: f32,
-    pub stroke_std:    f32,
-    pub stroke_bold:   f32,
-    pub stroke_thick:  f32,
-
-    // ── Alpha tiers (u8, 0-255) ──────────────────────────────────────────────
-    pub alpha_faint:  u8,
-    pub alpha_ghost:  u8,
-    pub alpha_soft:   u8,
-    pub alpha_subtle: u8,
-    pub alpha_tint:   u8,
-    pub alpha_muted:  u8,
-    pub alpha_dim:    u8,
-    pub alpha_line:   u8,
-    pub alpha_strong: u8,
-    pub alpha_active: u8,
-    pub alpha_heavy:  u8,
-    pub alpha_solid:  u8,
-
-    // ── Shadow primitives ───────────────────────────────────────────────────
-    pub shadow_offset: f32,
-    pub shadow_alpha:  u8,
-    pub shadow_spread: f32,
-}
-
-/// Compile-time default — matches every token fn's non-design-mode constant
-/// so the first frame (before `begin_frame` fires) returns identical values.
-const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
-    gap_xs_mid:    6.0,
-    radius_xs:     2.0,
-    radius_sm:     4.0,
-    radius_md:     6.0,
-    radius_lg:    12.0,
-    stroke_hair:   0.3,
-    stroke_thin:   0.5,
-    stroke_medium: 0.8,
-    stroke_std:    1.0,
-    stroke_bold:   1.5,
-    stroke_thick:  2.0,
-    alpha_faint:   10,
-    alpha_ghost:   15,
-    alpha_soft:    20,
-    alpha_subtle:  40,
-    alpha_tint:    48,
-    alpha_muted:   60,
-    alpha_dim:     60,
-    alpha_line:    80,
-    alpha_strong:  80,
-    alpha_active: 100,
-    alpha_heavy:  120,
-    alpha_solid:  200,
-    shadow_offset: 2.0,
-    shadow_alpha:   60,
-    shadow_spread:  4.0,
-};
-
-thread_local! {
-    static FRAME_TOKENS: Cell<TokenSnapshot> = Cell::new(DEFAULT_TOKEN_SNAPSHOT);
-}
+// TokenSnapshot + DEFAULT_TOKEN_SNAPSHOT + the per-frame thread_local now
+// live in `crate::ui_kit::style` and are re-exported via the `pub use` at
+// the top of this file. `begin_frame()` below builds a snapshot from the
+// active StyleSettings + design-mode overrides and pushes it to the
+// canonical store via `crate::ui_kit::style::set_frame_tokens(snap)`.
 
 /// Refresh the per-frame token snapshot from the current active style /
 /// design-mode settings.  Call once per frame, after `set_active_style`.
@@ -213,7 +143,10 @@ pub fn begin_frame() {
         shadow_alpha:  crate::dt_u8!(shadow.alpha,   60),
         shadow_spread: crate::dt_f32!(shadow.spread,  4.0),
     };
-    FRAME_TOKENS.with(|c| c.set(snap));
+    // Push to the canonical ui_kit thread_local. ui_kit's
+    // `frame_tokens()` reads this back for `radius_*` / `stroke_*` /
+    // `alpha_*` helpers across the kit.
+    crate::ui_kit::style::set_frame_tokens(snap);
 }
 
 // ─── Typography scale ─────────────────────────────────────────────────────────
@@ -321,7 +254,7 @@ pub fn begin_frame() {
 /// 6.0 — micro-gap tier between `gap_xs` (4.0) and `gap_sm` (8.0).
 /// Use for icon-label pairs and compact chip rows. Backed by
 /// `spacing.xs_mid` design token (DS-IMPL-3).
-pub fn gap_xs_mid() -> f32 { FRAME_TOKENS.with(|c| c.get().gap_xs_mid) }
+pub fn gap_xs_mid() -> f32 { crate::ui_kit::style::frame_tokens().gap_xs_mid }
 /// Compile-time fallback for `gap_xs_mid()`. Prefer the function when
 /// a design-token override is needed at runtime.
 pub const GAP_XS_MID: f32 =  6.0;
@@ -359,10 +292,10 @@ pub const GAP_XS_MID: f32 =  6.0;
 
 // ─── Corner radius tokens ─────────────────────────────────────────────────────
 // 2026-05: function fallbacks reconciled with the const values (was 3/4/8).
-pub fn radius_xs() -> f32 { FRAME_TOKENS.with(|c| c.get().radius_xs) }
-pub fn radius_sm() -> f32 { FRAME_TOKENS.with(|c| c.get().radius_sm) }
-pub fn radius_md() -> f32 { FRAME_TOKENS.with(|c| c.get().radius_md) }
-pub fn radius_lg() -> f32 { FRAME_TOKENS.with(|c| c.get().radius_lg) }
+pub fn radius_xs() -> f32 { crate::ui_kit::style::frame_tokens().radius_xs }
+pub fn radius_sm() -> f32 { crate::ui_kit::style::frame_tokens().radius_sm }
+pub fn radius_md() -> f32 { crate::ui_kit::style::frame_tokens().radius_md }
+pub fn radius_lg() -> f32 { crate::ui_kit::style::frame_tokens().radius_lg }
 // `radius_pill` now lives in `crate::ui_kit::style`; re-exported here.
 
 pub const RADIUS_XS: f32 = 2.0;
@@ -536,14 +469,14 @@ pub mod cursor {
 //
 // Use `stroke_medium()` when `stroke_thin()` feels too ghost-like and
 // `stroke_std()` is heavier than desired for the context.
-pub fn stroke_hair()        -> f32 { FRAME_TOKENS.with(|c| c.get().stroke_hair) }
-pub fn stroke_thin()        -> f32 { FRAME_TOKENS.with(|c| c.get().stroke_thin) }
+pub fn stroke_hair()        -> f32 { crate::ui_kit::style::frame_tokens().stroke_hair }
+pub fn stroke_thin()        -> f32 { crate::ui_kit::style::frame_tokens().stroke_thin }
 /// 0.8 — mid-weight border tier between `stroke_thin` (0.5) and
 /// `stroke_std` (1.0). Backed by `stroke.medium` design token (DS-IMPL-3).
-pub fn stroke_medium()      -> f32 { FRAME_TOKENS.with(|c| c.get().stroke_medium) }
-pub fn stroke_std()         -> f32 { FRAME_TOKENS.with(|c| c.get().stroke_std) }
-pub fn stroke_bold()        -> f32 { FRAME_TOKENS.with(|c| c.get().stroke_bold) }
-pub fn stroke_thick()       -> f32 { FRAME_TOKENS.with(|c| c.get().stroke_thick) }
+pub fn stroke_medium()      -> f32 { crate::ui_kit::style::frame_tokens().stroke_medium }
+pub fn stroke_std()         -> f32 { crate::ui_kit::style::frame_tokens().stroke_std }
+pub fn stroke_bold()        -> f32 { crate::ui_kit::style::frame_tokens().stroke_bold }
+pub fn stroke_thick()       -> f32 { crate::ui_kit::style::frame_tokens().stroke_thick }
 // `stroke_extra_thick` / `stroke_heavy` now in `crate::ui_kit::style`.
 
 pub const STROKE_HAIR:        f32 = 0.3;
@@ -562,21 +495,21 @@ pub const STROKE_HEAVY:       f32 = 3.0;
 // don't shift. Note: `alpha_muted == alpha_dim` (both 60) and
 // `alpha_line == alpha_strong` (both 80) by design — same value, different
 // semantic intent (muted/strong = chrome; dim/line = borders).
-pub fn alpha_faint()       -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_faint) }
-pub fn alpha_ghost()       -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_ghost) }
-pub fn alpha_soft()        -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_soft) }
+pub fn alpha_faint()       -> u8 { crate::ui_kit::style::frame_tokens().alpha_faint }
+pub fn alpha_ghost()       -> u8 { crate::ui_kit::style::frame_tokens().alpha_ghost }
+pub fn alpha_soft()        -> u8 { crate::ui_kit::style::frame_tokens().alpha_soft }
 // `alpha_whisper` / `alpha_hint` now in `crate::ui_kit::style`.
-pub fn alpha_subtle()      -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_subtle) }
-pub fn alpha_tint()        -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_tint) }
-pub fn alpha_muted()       -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_muted) }
-pub fn alpha_dim()         -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_dim) }
-pub fn alpha_line()        -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_line) }
-pub fn alpha_strong()      -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_strong) }
-pub fn alpha_active()      -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_active) }
-pub fn alpha_heavy()       -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_heavy) }
+pub fn alpha_subtle()      -> u8 { crate::ui_kit::style::frame_tokens().alpha_subtle }
+pub fn alpha_tint()        -> u8 { crate::ui_kit::style::frame_tokens().alpha_tint }
+pub fn alpha_muted()       -> u8 { crate::ui_kit::style::frame_tokens().alpha_muted }
+pub fn alpha_dim()         -> u8 { crate::ui_kit::style::frame_tokens().alpha_dim }
+pub fn alpha_line()        -> u8 { crate::ui_kit::style::frame_tokens().alpha_line }
+pub fn alpha_strong()      -> u8 { crate::ui_kit::style::frame_tokens().alpha_strong }
+pub fn alpha_active()      -> u8 { crate::ui_kit::style::frame_tokens().alpha_active }
+pub fn alpha_heavy()       -> u8 { crate::ui_kit::style::frame_tokens().alpha_heavy }
 pub fn alpha_intense()     -> u8 { 140 }
 pub fn alpha_prominent()   -> u8 { 180 }
-pub fn alpha_solid()       -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_solid) }
+pub fn alpha_solid()       -> u8 { crate::ui_kit::style::frame_tokens().alpha_solid }
 pub fn alpha_near_opaque() -> u8 { 230 }
 
 /// Use with `color_alpha(color, ALPHA_*)` for consistent opacity tiers.
@@ -599,9 +532,9 @@ pub const ALPHA_SOLID:       u8 = 200;
 pub const ALPHA_NEAR_OPAQUE: u8 = 230;
 
 // ─── Drop shadow tokens ───────────────────────────────────────────────────────
-pub fn shadow_offset() -> f32 { FRAME_TOKENS.with(|c| c.get().shadow_offset) }
-pub fn shadow_alpha()  -> u8  { FRAME_TOKENS.with(|c| c.get().shadow_alpha) }
-pub fn shadow_spread() -> f32 { FRAME_TOKENS.with(|c| c.get().shadow_spread) }
+pub fn shadow_offset() -> f32 { crate::ui_kit::style::frame_tokens().shadow_offset }
+pub fn shadow_alpha()  -> u8  { crate::ui_kit::style::frame_tokens().shadow_alpha }
+pub fn shadow_spread() -> f32 { crate::ui_kit::style::frame_tokens().shadow_spread }
 
 pub const SHADOW_OFFSET: f32 = 2.0;
 pub const SHADOW_ALPHA:  u8  = 60;

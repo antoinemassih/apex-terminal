@@ -413,7 +413,7 @@ impl<'a> PanelSection<'a> {
                 let y = hr.bottom() + i as f32 + 0.5;
                 painter.line_segment(
                     [Pos2::new(hr.left(), y), Pos2::new(hr.right(), y)],
-                    Stroke::new(stroke_thin(), shadow_color_alpha(t, a)),
+                    Stroke::new(stroke_thin(), t.shadow_color_alpha(a)),
                 );
             }
         }

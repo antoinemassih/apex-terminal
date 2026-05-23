@@ -73,7 +73,7 @@ const CARET_FONT: f32 = 12.0;
 const HEADER_H: f32 = 30.0;
 
 #[must_use = "PanelSubSection must be rendered with `.show(...)`"]
-pub struct PanelSubSection<'a, T: ComponentTheme = Theme> {
+pub struct PanelSubSection<'a, T: ComponentTheme = crate::ui_kit::widgets::theme::PortableTheme> {
     id_salt: &'a str,
     title: &'a str,
     count: Option<usize>,

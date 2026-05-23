@@ -259,7 +259,7 @@ const HOVER_BG_ALPHA: u8 = 8;
 const SELECTED_BG_ALPHA: u8 = 24;
 
 #[must_use = "PanelListRow must be rendered with `.show(...)`"]
-pub struct PanelListRow<'a, T: ComponentTheme = Theme> {
+pub struct PanelListRow<'a, T: ComponentTheme = crate::ui_kit::widgets::theme::PortableTheme> {
     id_salt: &'a str,
     primary: Option<&'a str>,
     secondary: Option<&'a str>,

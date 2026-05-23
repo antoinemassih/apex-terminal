@@ -17,6 +17,83 @@
 //! import surface (`use crate::ui_kit::tokens::{font_sm, gap_xs, ...}`).
 
 use egui::Color32;
+use std::cell::Cell;
+
+// ─── Per-frame token snapshot (UI extraction, item F) ────────────────────────
+//
+// Lock-free thread_local holding a Copy struct of every design-token value.
+// Hosts (the chart app, or any embedder of ui_kit) refresh this once per frame
+// via `set_frame_tokens(snap)` before any UI is built. Token-reading helpers
+// (`gap_xs_mid`, `radius_xs..lg`, `stroke_hair..thick`, `alpha_faint..solid`)
+// resolve through `frame_tokens()` and get the per-frame value with zero
+// allocation. First frame (before any setter call) returns
+// `DEFAULT_TOKEN_SNAPSHOT` — the values match the function-body constants for
+// the unstyled defaults so visuals are identical until a host pushes its
+// snapshot.
+
+#[derive(Clone, Copy, Debug)]
+pub struct TokenSnapshot {
+    pub gap_xs_mid: f32,
+    pub radius_xs: f32,
+    pub radius_sm: f32,
+    pub radius_md: f32,
+    pub radius_lg: f32,
+    pub stroke_hair:   f32,
+    pub stroke_thin:   f32,
+    pub stroke_medium: f32,
+    pub stroke_std:    f32,
+    pub stroke_bold:   f32,
+    pub stroke_thick:  f32,
+    pub alpha_faint:  u8,
+    pub alpha_ghost:  u8,
+    pub alpha_soft:   u8,
+    pub alpha_subtle: u8,
+    pub alpha_tint:   u8,
+    pub alpha_muted:  u8,
+    pub alpha_dim:    u8,
+    pub alpha_line:   u8,
+    pub alpha_strong: u8,
+    pub alpha_active: u8,
+    pub alpha_heavy:  u8,
+    pub alpha_solid:  u8,
+    pub shadow_offset: f32,
+    pub shadow_alpha:  u8,
+    pub shadow_spread: f32,
+}
+
+/// Compile-time defaults — match every token fn's non-design-mode constant
+/// so the first frame (before any host calls `set_frame_tokens`) returns
+/// identical values.
+pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
+    gap_xs_mid: 6.0,
+    radius_xs: 2.0, radius_sm: 4.0, radius_md: 6.0, radius_lg: 12.0,
+    stroke_hair: 0.3, stroke_thin: 0.5, stroke_medium: 0.8,
+    stroke_std: 1.0, stroke_bold: 1.5, stroke_thick: 2.0,
+    alpha_faint: 10, alpha_ghost: 15, alpha_soft: 20, alpha_subtle: 40,
+    alpha_tint: 48, alpha_muted: 60, alpha_dim: 60, alpha_line: 80,
+    alpha_strong: 80, alpha_active: 100, alpha_heavy: 120, alpha_solid: 200,
+    shadow_offset: 2.0, shadow_alpha: 60, shadow_spread: 4.0,
+};
+
+thread_local! {
+    static FRAME_TOKENS_LOCAL: Cell<TokenSnapshot> = Cell::new(DEFAULT_TOKEN_SNAPSHOT);
+}
+
+/// Host-side: stash this frame's `TokenSnapshot`. Call once per frame from
+/// the render loop, before any UI is built. Cheap — one Cell write.
+#[inline]
+pub fn set_frame_tokens(snap: TokenSnapshot) {
+    FRAME_TOKENS_LOCAL.with(|c| c.set(snap));
+}
+
+/// Widget-side: read the current frame's `TokenSnapshot`. Returns
+/// `DEFAULT_TOKEN_SNAPSHOT` if no host has pushed one this frame.
+#[inline]
+pub fn frame_tokens() -> TokenSnapshot {
+    FRAME_TOKENS_LOCAL.with(|c| c.get())
+}
+
+
 
 // ─── Font sizes (px) ─────────────────────────────────────────────────────────
 
