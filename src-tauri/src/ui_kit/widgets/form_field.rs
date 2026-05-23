@@ -157,7 +157,7 @@ fn paint_label_and_control<'a, R>(
                         .monospace()
                         .size(st::font_sm())
                         .strong()
-                        .color(theme.bear()),
+                        .color(theme.danger()),
                 );
             }
         });
@@ -178,7 +178,7 @@ fn paint_label_and_control<'a, R>(
     match sub_text {
         Some(text) => {
             let col = if field.error.is_some() {
-                theme.bear()
+                theme.danger()
             } else {
                 st::color_alpha(theme.dim(), st::alpha_dim())
             };

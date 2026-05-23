@@ -76,6 +76,17 @@ pub trait ComponentTheme {
     /// on Bauhaus / Peach / Ivory / Newsprint. The default impl returns
     /// `Color32::BLACK` as a safe fallback; concrete themes override.
     fn shadow_color(&self) -> Color32 { Color32::BLACK }
+
+    /// Semantic "success" colour — green-ish. Default impl delegates to
+    /// `bull()` so trading themes keep their existing palette; non-trading
+    /// themes (e.g. a doc app) override to provide a non-bull semantic.
+    fn success(&self) -> Color32 { self.bull() }
+
+    /// Semantic "danger" colour — red-ish. Default impl delegates to
+    /// `bear()`. Used by form validation, error indicators, destructive
+    /// actions — anywhere the meaning is "warning/wrong/destroy" rather
+    /// than "the market went down".
+    fn danger(&self) -> Color32 { self.bear() }
 }
 
 impl ComponentTheme for crate::chart_renderer::gpu::Theme {

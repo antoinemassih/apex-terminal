@@ -186,7 +186,7 @@ impl<'a> FormRow<'a> {
                         .monospace()
                         .size(st::font_sm())
                         .strong()
-                        .color(theme.bear()),
+                        .color(theme.danger()),
                 );
             }
             ui.label(
@@ -262,7 +262,7 @@ fn render_sub_text(
             let offset = leading + label_w + st::gap_sm();
             if offset > 0.0 { ui.add_space(offset); }
             let col = if is_error {
-                theme.bear()
+                theme.danger()
             } else {
                 st::color_alpha(theme.dim(), st::alpha_dim())
             };

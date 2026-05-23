@@ -63,7 +63,7 @@ impl MenuTheme {
             dim: t.dim(),
             bg: t.bg(),
             fg: t.text(),
-            danger: t.bear(),
+            danger: t.danger(),
             shadow: t.shadow_color(),
         }
     }
