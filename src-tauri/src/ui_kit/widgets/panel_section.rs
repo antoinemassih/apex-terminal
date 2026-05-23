@@ -99,14 +99,14 @@ pub enum Tone {
 }
 
 impl Tone {
-    pub fn color(self, t: &Theme) -> Color32 {
+    pub fn color(self, t: &dyn ComponentTheme) -> Color32 {
         match self {
-            Tone::Default => t.dim,
-            Tone::Accent => t.accent,
-            Tone::Bull | Tone::Success => t.bull,
-            Tone::Bear | Tone::Danger => t.bear,
-            Tone::Warn => t.warn,
-            Tone::Text => t.text,
+            Tone::Default => t.dim(),
+            Tone::Accent => t.accent(),
+            Tone::Bull | Tone::Success => t.bull(),
+            Tone::Bear | Tone::Danger => t.bear(),
+            Tone::Warn => t.warn(),
+            Tone::Text => t.text(),
         }
     }
 }

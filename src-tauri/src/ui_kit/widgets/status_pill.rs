@@ -42,7 +42,7 @@ use crate::ui_kit::tokens::{
     alpha_hint, alpha_muted, color_alpha, font_xs, gap_2xs, gap_xs, radius_md, radius_sm,
     stroke_thin,
 };
-use crate::ui_kit::widgets::theme::Theme;
+use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::ui_kit::widgets::panel_section::Tone as PanelTone;
 use crate::ui_kit::widgets::tokens::Size;
 
@@ -86,7 +86,7 @@ impl<'a> StatusPill<'a> {
         self
     }
 
-    pub fn show(self, ui: &mut Ui, t: &Theme) {
+    pub fn show(self, ui: &mut Ui, t: &dyn ComponentTheme) {
         let tone_color = self.tone.color(t);
 
         let (h, pad_x, cr) = match self.size {

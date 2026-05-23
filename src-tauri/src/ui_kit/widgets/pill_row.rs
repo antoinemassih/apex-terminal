@@ -18,8 +18,8 @@
 //! - Each pill height is `Size::Sm` (22 px) with `gap_xs()` horizontal padding.
 //! - Selected pill: `color_alpha(tone_color, alpha_soft())` fill + full
 //!   tone color text.
-//! - Inactive pill: transparent fill, `color_alpha(t.dim, alpha_muted())` text.
-//! - Hover on inactive: `color_alpha(t.text, alpha_ghost())` fill.
+//! - Inactive pill: transparent fill, `color_alpha(t.dim(), alpha_muted())` text.
+//! - Hover on inactive: `color_alpha(t.text(), alpha_ghost())` fill.
 //! - Corner radius: `radius_sm()` (pill-like when `radius_pill()` is too round
 //!   for compact panels; use `.pill_radius(true)` for true pill shape).
 //!
@@ -41,7 +41,7 @@ use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Sense, Ui, Vec2};
 use crate::ui_kit::tokens::{
     alpha_ghost, alpha_muted, alpha_soft, color_alpha, font_xs, gap_xs, radius_sm,
 };
-use crate::ui_kit::widgets::theme::Theme;
+use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::ui_kit::widgets::panel_section::Tone as PanelTone;
 
 /// Response returned from [`PillRow::show`].
@@ -103,7 +103,7 @@ impl<'a> PillRow<'a> {
         self
     }
 
-    pub fn show(mut self, ui: &mut Ui, t: &Theme) -> PillRowResponse {
+    pub fn show(mut self, ui: &mut Ui, t: &dyn ComponentTheme) -> PillRowResponse {
         let mut resp = PillRowResponse::default();
         if self.options.is_empty() {
             return resp;
@@ -159,14 +159,14 @@ impl<'a> PillRow<'a> {
             if is_selected {
                 painter.rect_filled(pill_rect, cr, color_alpha(tone_color, alpha_soft()));
             } else if pr.hovered() {
-                painter.rect_filled(pill_rect, cr, color_alpha(t.text, alpha_ghost()));
+                painter.rect_filled(pill_rect, cr, color_alpha(t.text(), alpha_ghost()));
             }
 
             // Label
             let text_color = if is_selected {
                 tone_color
             } else {
-                color_alpha(t.dim, alpha_muted())
+                color_alpha(t.dim(), alpha_muted())
             };
             let galley = &galleys[i];
             let tw = galley.size().x;
