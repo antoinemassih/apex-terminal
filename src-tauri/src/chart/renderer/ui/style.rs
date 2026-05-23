@@ -116,17 +116,35 @@ pub fn begin_frame() {
         };
 
     let snap = TokenSnapshot {
+        // Fonts — pulled from DesignTokens so design-mode font sliders propagate.
+        font_2xs:      crate::dt_f32!(font.xxs,      8.0),
+        font_xs:       crate::dt_f32!(font.xs,       9.0),
+        font_sm:       crate::dt_f32!(font.sm,      11.0),
+        font_md:       crate::dt_f32!(font.md,      13.0),
+        font_lg:       crate::dt_f32!(font.lg,      16.0),
+        font_xl:       crate::dt_f32!(font.xl,      22.0),
+        // Spacing.
+        gap_xs:        crate::dt_f32!(spacing.xs,     4.0),
         gap_xs_mid:    crate::dt_f32!(spacing.xs_mid, 6.0),
+        gap_sm:        crate::dt_f32!(spacing.sm,     8.0),
+        gap_md:        crate::dt_f32!(spacing.md,    12.0),
+        gap_lg:        crate::dt_f32!(spacing.lg,    16.0),
+        gap_xl:        crate::dt_f32!(spacing.xl,    20.0),
+        gap_2xl:       crate::dt_f32!(spacing.xxl,   24.0),
+        gap_3xl:       crate::dt_f32!(spacing.xxxl,  32.0),
+        // Radii (already resolved with override + DesignTokens precedence above).
         radius_xs:     r_xs,
         radius_sm:     r_sm,
         radius_md:     r_md,
         radius_lg:     r_lg,
+        // Strokes (already resolved with override + DesignTokens precedence above).
         stroke_hair,
         stroke_thin,
         stroke_medium: crate::dt_f32!(stroke.medium, 0.8),
         stroke_std,
         stroke_bold,
         stroke_thick,
+        // Alphas.
         alpha_faint:   crate::dt_u8!(alpha.faint,   10),
         alpha_ghost:   crate::dt_u8!(alpha.ghost,   15),
         alpha_soft:    crate::dt_u8!(alpha.soft,    20),
@@ -139,6 +157,7 @@ pub fn begin_frame() {
         alpha_active:  crate::dt_u8!(alpha.active, 100),
         alpha_heavy:   crate::dt_u8!(alpha.heavy,  120),
         alpha_solid:   crate::dt_u8!(alpha.solid,  200),
+        // Shadows.
         shadow_offset: crate::dt_f32!(shadow.offset, 2.0),
         shadow_alpha:  crate::dt_u8!(shadow.alpha,   60),
         shadow_spread: crate::dt_f32!(shadow.spread,  4.0),

@@ -33,17 +33,35 @@ use std::cell::Cell;
 
 #[derive(Clone, Copy, Debug)]
 pub struct TokenSnapshot {
+    // Font sizes (proportional).
+    pub font_2xs:    f32,
+    pub font_xs:     f32,
+    pub font_sm:     f32,
+    pub font_md:     f32,
+    pub font_lg:     f32,
+    pub font_xl:     f32,
+    // Spacing.
+    pub gap_xs:     f32,
     pub gap_xs_mid: f32,
+    pub gap_sm:     f32,
+    pub gap_md:     f32,
+    pub gap_lg:     f32,
+    pub gap_xl:     f32,
+    pub gap_2xl:    f32,
+    pub gap_3xl:    f32,
+    // Radii.
     pub radius_xs: f32,
     pub radius_sm: f32,
     pub radius_md: f32,
     pub radius_lg: f32,
+    // Strokes.
     pub stroke_hair:   f32,
     pub stroke_thin:   f32,
     pub stroke_medium: f32,
     pub stroke_std:    f32,
     pub stroke_bold:   f32,
     pub stroke_thick:  f32,
+    // Alphas.
     pub alpha_faint:  u8,
     pub alpha_ghost:  u8,
     pub alpha_soft:   u8,
@@ -56,6 +74,7 @@ pub struct TokenSnapshot {
     pub alpha_active: u8,
     pub alpha_heavy:  u8,
     pub alpha_solid:  u8,
+    // Shadows.
     pub shadow_offset: f32,
     pub shadow_alpha:  u8,
     pub shadow_spread: f32,
@@ -65,13 +84,21 @@ pub struct TokenSnapshot {
 /// so the first frame (before any host calls `set_frame_tokens`) returns
 /// identical values.
 pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
-    gap_xs_mid: 6.0,
+    // Fonts.
+    font_2xs: 8.0, font_xs: 9.0, font_sm: 11.0, font_md: 13.0, font_lg: 16.0, font_xl: 22.0,
+    // Spacing.
+    gap_xs: 4.0, gap_xs_mid: 6.0, gap_sm: 8.0, gap_md: 12.0,
+    gap_lg: 16.0, gap_xl: 20.0, gap_2xl: 24.0, gap_3xl: 32.0,
+    // Radii.
     radius_xs: 2.0, radius_sm: 4.0, radius_md: 6.0, radius_lg: 12.0,
+    // Strokes.
     stroke_hair: 0.3, stroke_thin: 0.5, stroke_medium: 0.8,
     stroke_std: 1.0, stroke_bold: 1.5, stroke_thick: 2.0,
+    // Alphas.
     alpha_faint: 10, alpha_ghost: 15, alpha_soft: 20, alpha_subtle: 40,
     alpha_tint: 48, alpha_muted: 60, alpha_dim: 60, alpha_line: 80,
     alpha_strong: 80, alpha_active: 100, alpha_heavy: 120, alpha_solid: 200,
+    // Shadows.
     shadow_offset: 2.0, shadow_alpha: 60, shadow_spread: 4.0,
 };
 
@@ -229,17 +256,22 @@ pub fn shadow_color_alpha_of(shadow_color: Color32, alpha: u8) -> Color32 {
 
 
 // ─── Font sizes (px) ─────────────────────────────────────────────────────────
+// `font_2xs/xs/sm/md/lg/xl` read from the per-frame `TokenSnapshot` so
+// design-mode inspector edits to `font.*` propagate live (chart-app's
+// `begin_frame` syncs DesignTokens → snapshot once per frame). `font_4xs`
+// / `font_3xs` / `font_xs_plus` / `font_md_plus` stay as constants — the
+// DesignTokens font set doesn't expose those tiers (yet).
 
-pub fn font_4xs()    -> f32 { 6.0 }
-pub fn font_3xs()    -> f32 { 7.0 }
-pub fn font_2xs()    -> f32 { 8.0 }
-pub fn font_xs()     -> f32 { 9.0 }
-pub fn font_xs_plus() -> f32 { 10.0 }
-pub fn font_sm()     -> f32 { 11.0 }
-pub fn font_md()     -> f32 { 13.0 }
-pub fn font_md_plus() -> f32 { 14.0 }
-pub fn font_lg()     -> f32 { 16.0 }
-pub fn font_xl()     -> f32 { 22.0 }
+#[inline] pub fn font_4xs()    -> f32 { 6.0 }
+#[inline] pub fn font_3xs()    -> f32 { 7.0 }
+#[inline] pub fn font_2xs()    -> f32 { frame_tokens().font_2xs }
+#[inline] pub fn font_xs()     -> f32 { frame_tokens().font_xs }
+#[inline] pub fn font_xs_plus() -> f32 { 10.0 }
+#[inline] pub fn font_sm()     -> f32 { frame_tokens().font_sm }
+#[inline] pub fn font_md()     -> f32 { frame_tokens().font_md }
+#[inline] pub fn font_md_plus() -> f32 { 14.0 }
+#[inline] pub fn font_lg()     -> f32 { frame_tokens().font_lg }
+#[inline] pub fn font_xl()     -> f32 { frame_tokens().font_xl }
 
 pub const FONT_DISPLAY_SM: f32 = 28.0;
 pub const FONT_DISPLAY_MD: f32 = 32.0;
@@ -260,14 +292,16 @@ pub const FONT_2XL:     f32 = 22.0;
 
 // ─── Spacing (px) ────────────────────────────────────────────────────────────
 
-pub fn gap_2xs() -> f32 { 2.0 }
-pub fn gap_xs()  -> f32 { 4.0 }
-pub fn gap_sm()  -> f32 { 8.0 }
-pub fn gap_md()  -> f32 { 12.0 }
-pub fn gap_lg()  -> f32 { 16.0 }
-pub fn gap_xl()  -> f32 { 20.0 }
-pub fn gap_2xl() -> f32 { 24.0 }
-pub fn gap_3xl() -> f32 { 32.0 }
+// `gap_2xs` stays a constant (no DesignTokens equivalent — used only for
+// icon-internal padding, ~2px). The rest read from the per-frame snapshot.
+#[inline] pub fn gap_2xs() -> f32 { 2.0 }
+#[inline] pub fn gap_xs()  -> f32 { frame_tokens().gap_xs }
+#[inline] pub fn gap_sm()  -> f32 { frame_tokens().gap_sm }
+#[inline] pub fn gap_md()  -> f32 { frame_tokens().gap_md }
+#[inline] pub fn gap_lg()  -> f32 { frame_tokens().gap_lg }
+#[inline] pub fn gap_xl()  -> f32 { frame_tokens().gap_xl }
+#[inline] pub fn gap_2xl() -> f32 { frame_tokens().gap_2xl }
+#[inline] pub fn gap_3xl() -> f32 { frame_tokens().gap_3xl }
 
 pub const GAP_2XS:    f32 =  2.0;
 pub const GAP_XS:     f32 =  4.0;
