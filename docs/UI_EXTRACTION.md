@@ -219,3 +219,77 @@ In dependency order — each step ships green:
 
 Effort: realistically 3–5 days of focused work, mostly mechanical
 migration in steps 1–2 and a small design move in step 4.
+
+### Status (autonomous push 2 — same session)
+
+Additional commits landed:
+
+- **Phase 4a** (`85ec40d5`) — Migrated 3 widgets to `&dyn ComponentTheme`:
+  `shell_variants` (all 15 `*Variant::*_color` methods), `table_header`,
+  `panel_toolbar`. Pattern proven for the remaining files.
+- **Phase 4b** (`8ec8bd74`) — Bulk-renamed `crate::chart::renderer::ui::style`
+  (full path) → `crate::ui_kit::tokens` across ~60 widget files (the
+  earlier passes only caught the `crate::chart_renderer` alias). Also
+  migrated `panel_surface(t)` / `header_surface(t)` / `header_border(t)`
+  / `section_header_surface(t)` helper calls in `panel_section`,
+  `side_panel_shell`, `split_section_panel` to their `&dyn ComponentTheme`
+  method equivalents.
+
+**Final inverted-import count: 78 → 14** (where 78 is the true count
+with the `chart::renderer` full path included; the original 29 was an
+undercount). Of the 14 remaining:
+
+| Location | Reason |
+|---|---|
+| `ui_kit/tokens.rs` (×1) | Bridge re-export of style helpers |
+| `ui_kit/mod.rs` (×1) | Doc comment |
+| `ui_kit/widgets/theme.rs` (×3) | Bridge re-exports + comment |
+| `ui_kit/widgets/frames.rs` (×3) | Bridge re-exports |
+| `ui_kit/widgets/side_panel_shell.rs` (×1) | `kit::PanelHeader/Tabs` (chart-app composite) |
+| `ui_kit/widgets/split_section_panel.rs` (×2) | `kit::PanelHeader` + `kit::panel_action_btn` |
+| `ui_kit/widgets/button.rs` (×1) | Test helper `cmotion` |
+| `ui_kit/widgets/motion.rs` (×1) | Bridge re-export of motion |
+| `ui_kit/widgets/sidebar.rs` (×1) | (verify — may be removable) |
+
+The 4 widget refs to `ui::panels::kit::{PanelHeader, PanelHeaderTabs,
+panel_action_btn}` are chart-app composites, not portable. The cleanest
+end-state is to move `side_panel_shell` + `split_section_panel` OUT of
+`ui_kit` into `chart_renderer::ui::panels` — they're application
+composites, not primitives.
+
+**Builds clean** (default + design-mode); 575 lib tests pass.
+
+### What's NEXT (not done in this autonomous push)
+
+Ordered shortest-path:
+
+1. **Physical token move** — `font_*` / `gap_*` / `alpha_*` / `color_alpha`
+   / `stroke_thin`-style one-liners (~80 fns) from
+   `chart_renderer::ui::style` into `ui_kit::tokens` as owned code. Stop
+   the glob re-export. **~1 day, mechanical.**
+2. **Ambient-theme injection** — Replace 14+ `active_theme(ctx)` calls
+   inside `Widget` impls with `set_ambient_theme` / `get_ambient_theme`
+   that stash `Arc<dyn ComponentTheme>` in egui memory. **~half day,
+   design move.**
+3. **Move `frames_widget` types physically** — copy `PanelFrame`,
+   `CardFrame`, `PopupFrame`, `BorderAlpha`, `CompactPanelFrame` into
+   `ui_kit/widgets/frames.rs` as owned implementations. Strip `current()`
+   dependency via explicit params. **~half day.**
+4. **Move `side_panel_shell` / `split_section_panel` OUT** of `ui_kit`
+   into `chart_renderer::ui::panels` (they're chart-app composites). Or
+   excise `pane_aligned` and accept their loss of portability. **~quarter
+   day.**
+5. **Move `trade_card` + `risk_reward_bar` OUT** of `ui_kit` into a
+   `chart_renderer::ui_kit_extensions` (trading-domain widgets, not
+   primitives). **~quarter day.**
+6. **Workspace crate scaffold** — Create `crates/apex-ui/`, move
+   `src/ui_kit/` + `src/design_system/` into it, update Cargo.toml,
+   rewire imports. **~1 day.**
+
+Total remaining: **3–4 days** of bounded mechanical work.
+
+The session moved the needle decisively. The trait surface
+(`ComponentTheme` with success/danger/semantic-surface methods) is now
+genuinely portable. ~6 widgets are fully migrated to `&dyn
+ComponentTheme`. The bridge files are the *single* point of code-level
+coupling. A future agent picks up at Step 1 above.
