@@ -78,24 +78,24 @@ pub fn begin_frame() {
     // Active style's StyleSettings — the live per-style dimension source.
     let st = current();
 
-    // Resolve radii from override when present, otherwise from StyleSettings.
+    // Resolve radii — precedence order:
+    //   1. Hot-reload override (workspace JSON → watcher).
+    //   2. DesignTokens (design-mode inspector slider — live).
+    //   3. StyleSettings (active style preset).
+    // (2) was previously skipped, which is why inspector slider edits to
+    // `radii.*` had no visible effect. Now plumbed through.
     let (r_xs, r_sm, r_md, r_lg) = if let Some(ref ov) = override_style {
-        (
-            ov.radii.xs,
-            ov.radii.sm,
-            ov.radii.md,
-            ov.radii.lg,
-        )
+        (ov.radii.xs, ov.radii.sm, ov.radii.md, ov.radii.lg)
     } else {
         (
-            st.r_xs as f32,
-            st.r_sm as f32,
-            st.r_md as f32,
-            st.r_lg as f32,
+            crate::dt_f32!(radius.xs, st.r_xs as f32),
+            crate::dt_f32!(radius.sm, st.r_sm as f32),
+            crate::dt_f32!(radius.md, st.r_md as f32),
+            crate::dt_f32!(radius.lg, st.r_lg as f32),
         )
     };
 
-    // Resolve strokes from override when present, otherwise from StyleSettings.
+    // Resolve strokes — same precedence (override → DesignTokens → StyleSettings).
     let (stroke_hair, stroke_thin, stroke_std, stroke_bold, stroke_thick) =
         if let Some(ref ov) = override_style {
             (
@@ -107,11 +107,11 @@ pub fn begin_frame() {
             )
         } else {
             (
-                st.stroke_hair,
-                st.stroke_thin,
-                st.stroke_std,
-                st.stroke_bold,
-                st.stroke_thick,
+                crate::dt_f32!(stroke.hair, st.stroke_hair),
+                crate::dt_f32!(stroke.thin, st.stroke_thin),
+                crate::dt_f32!(stroke.std, st.stroke_std),
+                crate::dt_f32!(stroke.bold, st.stroke_bold),
+                crate::dt_f32!(stroke.thick, st.stroke_thick),
             )
         };
 
