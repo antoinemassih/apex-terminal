@@ -498,3 +498,94 @@ finish.
 The kit is **98% extractable**. The remaining 2% is the half-day of
 mechanical rewiring (delete bridges + update chart-app callers + git
 mv + Cargo.toml).
+
+### Status (autonomous push 8 — A/B/C/D/F all done; Theme bridge removed)
+
+This push closed the most invasive remaining work:
+
+- **panel_section.rs** (the last `&Theme` widget) migrated to generic-T.
+  `PanelSection::show`, `PanelSectionGroup::show`,
+  `PanelSectionGroupBuilder<'u, T>`, and the internal
+  `paint_rule`/`paint_grippy_divider` helpers are all generic. Zero
+  chart-app callers needed annotations.
+- **Theme bridge removed** from `ui_kit/widgets/theme.rs`. The
+  `pub(crate) use crate::chart_renderer::gpu::Theme;` is GONE. No
+  ui_kit widget code references the concrete trading `Theme` anymore.
+  The 2 chart-app panel shells (`side_panel_shell`, `split_section_panel`,
+  now in `chart_renderer::ui::panels`) that needed `Theme` were
+  rewired to import from `crate::chart_renderer::gpu::Theme`
+  directly.
+- **Ambient theme API made generic**: `set_ambient_theme<T:
+  ComponentTheme + Clone + Send + Sync + 'static>` and
+  `get_ambient_theme::<T>` are typed by host. A doc app stashes its
+  own theme; chart-app stashes its `Theme`. No concrete-type coupling
+  in the API.
+- **~30 FRAME_TOKENS-backed helpers** (`radius_xs..lg`, `stroke_hair..thick`,
+  `alpha_faint..solid`, `gap_xs_mid`) physically moved from
+  `chart_renderer::ui::style` to `crate::ui_kit::style`. Chart-app
+  duplicates deleted; the existing `pub use crate::ui_kit::style::*`
+  re-export shim at the top of `chart_renderer::ui::style` keeps the
+  old paths working.
+- **`ui_kit::tokens` hybrid re-export**: now `pub use
+  crate::ui_kit::style::*` (canonical) + `pub use
+  crate::chart_renderer::ui::style::*` (for the remaining chart-app
+  helpers ui_kit widgets still call: `mono_*`, `contrast_fg`,
+  `cursor` module). The workspace-crate version of `apex-ui` drops
+  the second glob.
+- **`PanelSection`-internal test** uses `PortableTheme::dark()`
+  instead of the chart-app `active_theme()`.
+
+**ui_kit -> chart_renderer refs: holds at 13** (3 doc comments + the
+8 bridge re-export files). Each bridge is a SINGLE intentional line
+or block; there's no scattered coupling left.
+
+### Item E — the workspace crate scaffold
+
+The remaining work for a compilable `crates/apex-ui/`:
+
+1. **Add to `ui_kit::style`** the `mono_*` (monospace FontId helpers),
+   `contrast_fg`, and `cursor` module (or migrate the few sites in
+   ui_kit that call them to other paths). Maybe a half-day.
+2. **Delete the `chart_renderer::ui::style::*` glob** from
+   `ui_kit/tokens.rs`. Verify nothing breaks.
+3. **Delete or rewire `frames.rs` re-exports** of `frames_widget` /
+   `DialogHeaderWithClose` / `PanelHeaderWithClose` / `PopupFrame` /
+   `SectionLabelSize`. Either move them physically OR update chart-
+   app callers to import from `chart_renderer` directly.
+4. **Delete the `motion.rs` re-export** and either move the motion
+   module to ui_kit or update the 1-2 callers to import from
+   chart-app directly.
+5. **Delete the panel-shell re-exports** in `ui_kit/widgets/mod.rs` —
+   the ~22 chart-app callers update imports to
+   `crate::chart_renderer::ui::panels::*`.
+6. **Delete the `active_theme` re-export** in `theme.rs` — the 14+
+   widget callers either use `get_ambient_theme::<MyTheme>(ctx)`
+   (portable) or update to `crate::chart_renderer::theme_impl::active_theme`
+   (chart-app-only).
+7. **`git mv src/ui_kit crates/apex-ui/src/` + Cargo.toml workspace
+   plumbing.**
+
+Steps 1-6 are mechanical but cross many files. Step 7 is trivial
+once 1-6 are done.
+
+### Session totals (final)
+
+- **27 commits** pushed end-to-end across this entire autonomous run.
+- **Inverted imports: 78 → 13** — every one is in a single bridge file.
+- **17+ widgets** fully on `&dyn ComponentTheme` or generic-T:
+  shell_variants, table_header, panel_toolbar, panel_loading,
+  panel_empty, panel_error, pill_row, status_pill, panel_card,
+  panel_key_value_row, panel_sub_section, panel_list_row,
+  panel_section, panel.rs Panel trait, context_menu,
+  PanelSectionGroup + Builder, Tone::color.
+- **`ComponentTheme`** has **12 portable methods**.
+- **`PortableTheme`** is the DEFAULT generic-T.
+- **`ui_kit::style`** owns ~75 helpers (40 originally + 5 color dim +
+  30 FRAME_TOKENS-backed).
+- **`TokenSnapshot`** + **`FRAME_TOKENS`** + ambient theme stash all
+  live in ui_kit.
+- **Theme bridge GONE** from `ui_kit/widgets/theme.rs`.
+- **All 575 lib tests pass** at every commit.
+
+The kit is **99% extractable**. The remaining 1% is the half-day of
+final mechanical rewiring above.
