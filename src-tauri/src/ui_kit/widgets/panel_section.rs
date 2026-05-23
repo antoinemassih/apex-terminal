@@ -42,13 +42,13 @@
 //! any behavior.
 //!
 //! Visual spec (locked by design):
-//! - Title: `mono_xs` UPPERCASE strong, in `t.dim` by default; pass
-//!   `.title_color(t.accent)` when this section is the "current" one.
+//! - Title: `mono_xs` UPPERCASE strong, in `t.dim()` by default; pass
+//!   `.title_color(t.accent())` when this section is the "current" one.
 //! - Count: numeric badge after title, mono_xs strong, tinted with title color.
 //! - Meta: muted right-aligned mono_xs (e.g. "12 total").
 //! - Action: trailing ghost button (`panel_action_btn` style), right-aligned
 //!   before meta. The click is surfaced via `SectionResponse.action_clicked`.
-//! - Bottom rule: hairline at `color_alpha(t.toolbar_border, 36)`, **on by
+//! - Bottom rule: hairline at `color_alpha(t.surface_border(), 36)`, **on by
 //!   default** per user spec (matches chart-pane header rule).
 //!
 //! Sister widgets:
@@ -207,7 +207,7 @@ impl<'a> PanelSection<'a> {
         self
     }
 
-    /// Override the title color (default: `t.dim`). Use `t.accent` to mark
+    /// Override the title color (default: `t.dim()`). Use `t.accent()` to mark
     /// this as the "current" section. Per spec, this is the ONLY place
     /// accent should appear on a section title.
     pub fn title_color(mut self, c: Color32) -> Self {
@@ -228,13 +228,13 @@ impl<'a> PanelSection<'a> {
         self
     }
 
-    pub fn show<R>(
+    pub fn show<T: ComponentTheme, R>(
         self,
         ui: &mut Ui,
-        t: &Theme,
-        body: impl FnOnce(&mut Ui, &Theme) -> R,
+        t: &T,
+        body: impl FnOnce(&mut Ui, &T) -> R,
     ) -> SectionResponse<R> {
-        let title_color = self.title_color.unwrap_or(t.dim);
+        let title_color = self.title_color.unwrap_or(t.dim());
         let mut action_clicked = false;
         let mut delete_clicked = false;
         let mut chevron_clicked = false;
@@ -330,7 +330,7 @@ impl<'a> PanelSection<'a> {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if show_delete {
-                            if section_delete_button(ui, color_alpha(t.dim, 200)) {
+                            if section_delete_button(ui, color_alpha(t.dim(), 200)) {
                                 delete_clicked = true;
                             }
                         } else if let Some((label, tone)) = &action {
@@ -346,7 +346,7 @@ impl<'a> PanelSection<'a> {
                                 RichText::new(m)
                                     .monospace()
                                     .size(font_xs())
-                                    .color(color_alpha(t.dim, 160)),
+                                    .color(color_alpha(t.dim(), 160)),
                             );
                         }
                     });
@@ -381,7 +381,7 @@ impl<'a> PanelSection<'a> {
         // below uses the up-to-date value.
         let is_expanded = expanded.as_deref().copied().unwrap_or(true);
         // Edge-to-edge top + bottom rules bracketing the recessed strip.
-        // Border color matches the chart pane header — t.text @ 38 alpha.
+        // Border color matches the chart pane header — t.text() @ 38 alpha.
         let hr = header_resp.response.rect;
         let rule_col = t.header_border();
         ui.painter().line_segment(
@@ -451,7 +451,7 @@ impl<'a> PanelSection<'a> {
     }
 }
 
-fn paint_rule(ui: &mut Ui, t: &Theme) {
+fn paint_rule<T: ComponentTheme>(ui: &mut Ui, t: &T) {
     let rect = ui.available_rect_before_wrap();
     let y = ui.cursor().min.y;
     ui.painter().line_segment(
@@ -539,8 +539,8 @@ fn section_action_button(ui: &mut Ui, label: &str, color: Color32) -> bool {
 // Divider visual (matches PanelDivider hairline aesthetic):
 //   - 5px tall hit/paint band, hairline rule centered
 //   - Center dot triplet (3 dots, 2px diameter, gap 3px) as grab affordance
-//   - Idle  : `color_alpha(t.toolbar_border, 36)`
-//   - Hover : `color_alpha(t.toolbar_border, 96)` (and dots brightened)
+//   - Idle  : `color_alpha(t.surface_border(), 36)`
+//   - Hover : `color_alpha(t.surface_border(), 96)` (and dots brightened)
 //   - Cursor: `CursorIcon::ResizeVertical` on hover/drag
 
 /// Divider hit-band height (px). Drawn between adjacent sections.
@@ -600,9 +600,9 @@ impl<'a> PanelSectionGroup<'a> {
         self
     }
 
-    pub fn show<F>(self, ui: &mut Ui, t: &Theme, mut body: F)
+    pub fn show<T: ComponentTheme, F>(self, ui: &mut Ui, t: &T, mut body: F)
     where
-        F: FnMut(&mut PanelSectionGroupBuilder<'_>),
+        F: FnMut(&mut PanelSectionGroupBuilder<'_, T>),
     {
         let n = self.fracs.len();
         if n == 0 {
@@ -738,9 +738,9 @@ impl<'a> PanelSectionGroup<'a> {
 
 /// Builder handed to the closure passed to [`PanelSectionGroup::show`].
 /// Each call to [`Self::section`] consumes one fraction slot.
-pub struct PanelSectionGroupBuilder<'u> {
+pub struct PanelSectionGroupBuilder<'u, T: ComponentTheme = crate::ui_kit::widgets::theme::PortableTheme> {
     ui: &'u mut Ui,
-    t: &'u Theme,
+    t: &'u T,
     outer_rect: Rect,
     heights: &'u [f32],
     divider_h: f32,
@@ -749,14 +749,14 @@ pub struct PanelSectionGroupBuilder<'u> {
     hovered_divider: Option<usize>,
 }
 
-impl<'u> PanelSectionGroupBuilder<'u> {
+impl<'u, T: ComponentTheme> PanelSectionGroupBuilder<'u, T> {
     /// Render one section into the next slot. The closure runs inside a
     /// child UI clipped to the section's allocated rect — typical use is
     /// to call `PanelSection::new(...).show(ui, t, |ui, t| { ... })`
     /// inside it.
     pub fn section<F>(&mut self, add_contents: F)
     where
-        F: FnOnce(&mut Ui, &Theme),
+        F: FnOnce(&mut Ui, &T),
     {
         let i = self.index;
         if i >= self.heights.len() {
@@ -946,9 +946,9 @@ mod tests {
 
 /// Paint a hairline + 3-dot grippy in the middle of `rect`. The divider
 /// runs left→right; dots are centered horizontally.
-fn paint_grippy_divider(ui: &mut Ui, t: &Theme, rect: Rect, hovered: bool) {
+fn paint_grippy_divider<T: ComponentTheme>(ui: &mut Ui, t: &T, rect: Rect, hovered: bool) {
     let alpha = if hovered { DIVIDER_HOVER_ALPHA } else { DIVIDER_IDLE_ALPHA };
-    let line_color = color_alpha(t.toolbar_border, alpha);
+    let line_color = color_alpha(t.surface_border(), alpha);
     let cy = rect.center().y;
     let painter = ui.painter();
     // Hairline rule across full width.
@@ -958,7 +958,7 @@ fn paint_grippy_divider(ui: &mut Ui, t: &Theme, rect: Rect, hovered: bool) {
     );
     // Center dot triplet — three filled circles, ~1.4px radius, gap 3px,
     // tinted with the same border color but a touch brighter.
-    let dot_color = color_alpha(t.toolbar_border, alpha.saturating_add(48));
+    let dot_color = color_alpha(t.surface_border(), alpha.saturating_add(48));
     let dot_r = 1.4;
     let gap = 3.0;
     let cx = rect.center().x;
