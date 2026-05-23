@@ -102,18 +102,30 @@ pub enum Category {
     Design,
     /// Two-axis design system editor (StyleSystem + ColorScheme → hot-reload).
     TwoAxis,
+    /// Consolidated component-token editor — accordion of every component
+    /// whose DesignTokens fields are actually read by a renderer. Replaces
+    /// the dozen single-purpose categories that each held one or two LIVE
+    /// sliders mixed with dead-wire ones.
+    Components,
 }
 
 impl Category {
+    // Sidebar IA — 6 entries, post-audit (see docs/UI_EXTRACTION.md).
+    //
+    // Excluded variants (Radius, Stroke, Toolbar, Panel, Button, Watchlist,
+    // OrderEntry, PaneHeader, IconButton) are either fully dead-wire (no
+    // consumer reads them) or are superseded by the TwoAxis editor's
+    // live-radii / live-strokes sections. Single-LIVE-field categories
+    // (Dialog, Tab, Table, Form, etc.) are consolidated into Components.
     const ALL: &[Category] = &[
-        Category::Design,
-        Category::TwoAxis,
-        Category::Font, Category::Spacing,
-        // NOTE: Category::Radius and Category::Stroke are intentionally excluded.
-        // They edited DesignTokens.radius / .stroke, which begin_frame no longer
-        // reads (radii and strokes are now sourced from the active StyleSystem via
-        // the hot-reload path). Use Category::TwoAxis to edit these instead.
-        Category::Alpha, Category::Colors,
+        Category::Design,        // Style + Theme + Preview sub-tabs (best panel).
+        Category::TwoAxis,       // StyleSystem × ColorScheme hot-reload editor.
+        Category::Font,          // font.xxs..font.xl — 6 LIVE sliders (dead ones removed).
+        Category::Spacing,       // spacing.xs..xxxl + xs_mid — all LIVE.
+        Category::Alpha,         // 12 alpha tiers — all LIVE.
+        Category::Shadow,        // shadow.offset/alpha/spread — all LIVE.
+        Category::Components,    // Badge/Card/Dialog/Tab/Table/Form/Segmented/SplitDivider/Tooltip/Separator/Chart — only LIVE fields.
+        Category::Colors,        // 14 color pickers — currently dead-wire; labelled "Legacy".
     ];
 
     fn label(self) -> &'static str {
@@ -124,7 +136,8 @@ impl Category {
             Category::Stroke => "Stroke Widths",
             Category::Alpha => "Alpha / Opacity",
             Category::Shadow => "Shadows",
-            Category::Colors => "Semantic Colors",
+            Category::Colors => "Legacy Colors",
+            Category::Components => "Components",
             Category::TwoAxis => "Two-Axis Editor",
             Category::Toolbar => "Toolbar",
             Category::Panel => "Panels",
@@ -159,7 +172,8 @@ impl Category {
             Category::Stroke => "---",
             Category::Alpha => "%%",
             Category::Shadow => "//",
-            Category::Colors => "",
+            Category::Colors => "⚠",
+            Category::Components => "⊞",
             Category::TwoAxis => "⊕",
             _ => "",
         }
@@ -835,26 +849,30 @@ let _ = ctx;
         let mut changed = false;
         match cat {
             Category::Font => {
-                changed |= drag_f32(ui, "xxs (7.0)", &mut tokens.font.xxs, 1.0..=20.0);
-                changed |= drag_f32(ui, "xs (8.0)", &mut tokens.font.xs, 1.0..=20.0);
-                changed |= drag_f32(ui, "sm_tight (9.0)", &mut tokens.font.sm_tight, 1.0..=20.0);
-                changed |= drag_f32(ui, "sm (10.0)", &mut tokens.font.sm, 1.0..=20.0);
-                changed |= drag_f32(ui, "md (11.0)", &mut tokens.font.md, 1.0..=20.0);
-                changed |= drag_f32(ui, "input (12.0)", &mut tokens.font.input, 1.0..=20.0);
-                changed |= drag_f32(ui, "lg (13.0)", &mut tokens.font.lg, 1.0..=24.0);
-                changed |= drag_f32(ui, "xl (14.0)", &mut tokens.font.xl, 1.0..=24.0);
-                changed |= drag_f32(ui, "xxl (15.0)", &mut tokens.font.xxl, 1.0..=30.0);
-                changed |= drag_f32(ui, "display (28.0)", &mut tokens.font.display, 10.0..=60.0);
-                changed |= drag_f32(ui, "display_lg (36.0)", &mut tokens.font.display_lg, 10.0..=80.0);
+                // Only the LIVE fields. begin_frame reads xxs/xs/sm/md/lg/xl
+                // into the TokenSnapshot (style.rs:120-125); ui_kit::style
+                // font_2xs/xs/sm/md/lg/xl helpers route through them.
+                // Removed dead-wire sliders: sm_tight, input, xxl, display,
+                // display_lg — no consumer reads those fields.
+                changed |= drag_f32(ui, "xxs (8.0)", &mut tokens.font.xxs, 1.0..=20.0);
+                changed |= drag_f32(ui, "xs (9.0)", &mut tokens.font.xs, 1.0..=20.0);
+                changed |= drag_f32(ui, "sm (11.0) — body", &mut tokens.font.sm, 1.0..=20.0);
+                changed |= drag_f32(ui, "md (13.0) — emphasized body", &mut tokens.font.md, 1.0..=24.0);
+                changed |= drag_f32(ui, "lg (16.0) — section header", &mut tokens.font.lg, 1.0..=24.0);
+                changed |= drag_f32(ui, "xl (22.0) — hero", &mut tokens.font.xl, 1.0..=40.0);
             }
             Category::Spacing => {
-                changed |= drag_f32(ui, "xs (2.0)", &mut tokens.spacing.xs, 0.0..=20.0);
-                changed |= drag_f32(ui, "sm (4.0)", &mut tokens.spacing.sm, 0.0..=20.0);
-                changed |= drag_f32(ui, "md (6.0)", &mut tokens.spacing.md, 0.0..=20.0);
-                changed |= drag_f32(ui, "lg (8.0)", &mut tokens.spacing.lg, 0.0..=30.0);
-                changed |= drag_f32(ui, "xl (10.0)", &mut tokens.spacing.xl, 0.0..=30.0);
-                changed |= drag_f32(ui, "xxl (12.0)", &mut tokens.spacing.xxl, 0.0..=30.0);
-                changed |= drag_f32(ui, "xxxl (20.0)", &mut tokens.spacing.xxxl, 0.0..=50.0);
+                // All LIVE — begin_frame reads spacing.xs/xs_mid/sm/md/lg/xl/xxl/xxxl
+                // into the TokenSnapshot (style.rs:127-134). xs_mid added — was
+                // wired but had no slider.
+                changed |= drag_f32(ui, "xs (4.0)", &mut tokens.spacing.xs, 0.0..=20.0);
+                changed |= drag_f32(ui, "xs_mid (6.0) — icon-label gap", &mut tokens.spacing.xs_mid, 0.0..=20.0);
+                changed |= drag_f32(ui, "sm (8.0)", &mut tokens.spacing.sm, 0.0..=24.0);
+                changed |= drag_f32(ui, "md (12.0)", &mut tokens.spacing.md, 0.0..=24.0);
+                changed |= drag_f32(ui, "lg (16.0)", &mut tokens.spacing.lg, 0.0..=32.0);
+                changed |= drag_f32(ui, "xl (20.0)", &mut tokens.spacing.xl, 0.0..=40.0);
+                changed |= drag_f32(ui, "xxl (24.0)", &mut tokens.spacing.xxl, 0.0..=48.0);
+                changed |= drag_f32(ui, "xxxl (32.0)", &mut tokens.spacing.xxxl, 0.0..=64.0);
             }
             Category::Radius => {
                 changed |= drag_f32(ui, "xs (2.0)", &mut tokens.radius.xs, 0.0..=20.0);
@@ -891,6 +909,22 @@ let _ = ctx;
                 changed |= drag_f32(ui, "spread", &mut tokens.shadow.spread, 0.0..=20.0);
             }
             Category::Colors => {
+                // ⚠ Legacy category. None of these 14 color pickers are
+                // currently read by a renderer — the `tokens.color.*`
+                // namespace is shadowed by `tokens.semantic.*` and
+                // `tokens.status.*` (which ARE wired via dt_rgba!).
+                //
+                // The Design → THEME sub-tab (or the TwoAxis ColourScheme
+                // column) is the right place to edit palette colours today.
+                // These sliders are kept for parity with old DTCG exports;
+                // expect to delete the entire category once `tokens.color.*`
+                // is fully migrated to `semantic.*`.
+                ui.label(RichText::new("⚠  LEGACY — these sliders edit fields that no renderer reads.")
+                    .monospace().size(font_xs()).color(Color32::from_rgb(232, 168, 64)));
+                ui.label(RichText::new("Use Design → THEME or TwoAxis → COLOUR for live palette edits.")
+                    .monospace().size(font_xs()).color(Color32::from_rgb(150, 150, 165)));
+                ui.add_space(6.0);
+
                 changed |= color_edit(ui, "text_primary", &mut tokens.color.text_primary);
                 changed |= color_edit(ui, "text_secondary", &mut tokens.color.text_secondary);
                 changed |= color_edit(ui, "text_dim", &mut tokens.color.text_dim);
@@ -1031,6 +1065,92 @@ let _ = ctx;
             Category::Separator => {
                 changed |= drag_f32(ui, "after_space (1)", &mut tokens.separator.after_space, 0.0..=10.0);
                 changed |= drag_f32(ui, "shadow_space (4)", &mut tokens.separator.shadow_space, 0.0..=20.0);
+            }
+            Category::Components => {
+                // Consolidated component-token editor. ONLY LIVE fields shown
+                // — dead-wire ones (e.g. tab.close_width, table.row_height,
+                // card.width_*/height_*, button.*, panel.*, toolbar.*) are
+                // omitted. Confirmed against begin_frame + grep for
+                // dt_f32!/dt_u8! call sites. Each accordion = one component
+                // that has at least one wired token.
+
+                ui.label(RichText::new(
+                    "Component tokens — only fields that are currently read by a renderer. \
+                     Each section collapses; only sliders with effect are shown."
+                ).monospace().size(font_xs()).color(Color32::from_rgb(150, 150, 165)));
+                ui.add_space(4.0);
+
+                egui::CollapsingHeader::new(RichText::new("BADGE").monospace().size(11.0).strong())
+                    .id_salt("comp_badge").default_open(false).show(ui, |ui| {
+                    changed |= drag_f32(ui, "font_size (8)", &mut tokens.badge.font_size, 4.0..=16.0);
+                    changed |= drag_f32(ui, "height (16)", &mut tokens.badge.height, 8.0..=30.0);
+                });
+
+                egui::CollapsingHeader::new(RichText::new("CARD").monospace().size(11.0).strong())
+                    .id_salt("comp_card").default_open(false).show(ui, |ui| {
+                    changed |= drag_i8(ui, "margin_left", &mut tokens.card.margin_left);
+                    changed |= drag_i8(ui, "margin_right", &mut tokens.card.margin_right);
+                    changed |= drag_i8(ui, "margin_y", &mut tokens.card.margin_y);
+                    changed |= drag_f32(ui, "radius", &mut tokens.card.radius, 0.0..=20.0);
+                    changed |= drag_f32(ui, "stripe_width", &mut tokens.card.stripe_width, 0.0..=10.0);
+                });
+
+                egui::CollapsingHeader::new(RichText::new("CHART PADDING").monospace().size(11.0).strong())
+                    .id_salt("comp_chart").default_open(false).show(ui, |ui| {
+                    changed |= drag_f32(ui, "padding_top (4)", &mut tokens.chart.padding_top, 0.0..=30.0);
+                    changed |= drag_f32(ui, "padding_bottom (30)", &mut tokens.chart.padding_bottom, 0.0..=60.0);
+                    changed |= drag_f32(ui, "padding_right (80)", &mut tokens.chart.padding_right, 20.0..=200.0);
+                });
+
+                egui::CollapsingHeader::new(RichText::new("DIALOG").monospace().size(11.0).strong())
+                    .id_salt("comp_dialog").default_open(false).show(ui, |ui| {
+                    changed |= drag_u8_range(ui, "header_darken", &mut tokens.dialog.header_darken, 0..=30);
+                });
+
+                egui::CollapsingHeader::new(RichText::new("FORM").monospace().size(11.0).strong())
+                    .id_salt("comp_form").default_open(false).show(ui, |ui| {
+                    changed |= drag_f32(ui, "row_height (18)", &mut tokens.form.row_height, 10.0..=40.0);
+                });
+
+                egui::CollapsingHeader::new(RichText::new("SEGMENTED CONTROL").monospace().size(11.0).strong())
+                    .id_salt("comp_segmented").default_open(false).show(ui, |ui| {
+                    changed |= drag_u8_range(ui, "trough_darken (12)", &mut tokens.segmented.trough_darken, 0..=30);
+                    changed |= drag_f32(ui, "trough_expand_x (4)", &mut tokens.segmented.trough_expand_x, 0.0..=20.0);
+                });
+
+                egui::CollapsingHeader::new(RichText::new("SPLIT DIVIDER").monospace().size(11.0).strong())
+                    .id_salt("comp_split_divider").default_open(false).show(ui, |ui| {
+                    changed |= drag_f32(ui, "height (6)", &mut tokens.split_divider.height, 2.0..=20.0);
+                    changed |= drag_f32(ui, "dot_spacing (8)", &mut tokens.split_divider.dot_spacing, 2.0..=20.0);
+                    changed |= drag_f32(ui, "dot_radius (1.5)", &mut tokens.split_divider.dot_radius, 0.5..=5.0);
+                    changed |= drag_f32(ui, "active_stroke (2)", &mut tokens.split_divider.active_stroke, 0.5..=5.0);
+                    changed |= drag_f32(ui, "inactive_stroke (1)", &mut tokens.split_divider.inactive_stroke, 0.1..=3.0);
+                    changed |= drag_f32(ui, "inset (8)", &mut tokens.split_divider.inset, 0.0..=30.0);
+                });
+
+                egui::CollapsingHeader::new(RichText::new("TOOLTIP").monospace().size(11.0).strong())
+                    .id_salt("comp_tooltip").default_open(false).show(ui, |ui| {
+                    changed |= drag_f32(ui, "corner_radius (8)", &mut tokens.tooltip.corner_radius, 0.0..=20.0);
+                    changed |= drag_f32(ui, "padding (8)", &mut tokens.tooltip.padding, 0.0..=20.0);
+                    changed |= drag_f32(ui, "stat_label (8)", &mut tokens.tooltip.stat_label_size, 4.0..=16.0);
+                    changed |= drag_f32(ui, "stat_value (10)", &mut tokens.tooltip.stat_value_size, 4.0..=16.0);
+                });
+
+                egui::CollapsingHeader::new(RichText::new("TAB").monospace().size(11.0).strong())
+                    .id_salt("comp_tab").default_open(false).show(ui, |ui| {
+                    changed |= drag_f32(ui, "underline (2.0)", &mut tokens.tab.underline_thickness, 0.0..=6.0);
+                });
+
+                egui::CollapsingHeader::new(RichText::new("TABLE").monospace().size(11.0).strong())
+                    .id_salt("comp_table").default_open(false).show(ui, |ui| {
+                    changed |= drag_f32(ui, "header_height (12)", &mut tokens.table.header_height, 8.0..=30.0);
+                });
+
+                egui::CollapsingHeader::new(RichText::new("SEPARATOR").monospace().size(11.0).strong())
+                    .id_salt("comp_separator").default_open(false).show(ui, |ui| {
+                    changed |= drag_f32(ui, "after_space (1)", &mut tokens.separator.after_space, 0.0..=10.0);
+                    changed |= drag_f32(ui, "shadow_space (4)", &mut tokens.separator.shadow_space, 0.0..=20.0);
+                });
             }
             Category::Style => {
                 changed |= render_style_editor(ui);
