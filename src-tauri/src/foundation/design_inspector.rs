@@ -205,7 +205,10 @@ impl Inspector {
         // Sync inspect mode to global flag
         crate::design_tokens::set_inspect_mode(self.inspect_mode);
         if !self.inspect_mode {
-            ctx.set_debug_on_hover(false);
+            // egui 0.31: `set_debug_on_hover` removed; debug overlay is now opt-in
+// per widget. The inspector paints its own hit overlay below, so this
+// no-op is fine.
+let _ = ctx;
         }
 
         // ── Inspect mode overlay — draw BEFORE the panel so it appears on the chart ──
@@ -230,7 +233,8 @@ impl Inspector {
             ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
 
             // Also enable egui's built-in debug overlay for ALL widgets
-            ctx.set_debug_on_hover(true);
+            // egui 0.31: see note above — inspector paints its own overlay.
+let _ = ctx;
 
             let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("inspect_overlay")));
 
