@@ -46,7 +46,7 @@ use egui::{Color32, Context, Pos2, Sense, Stroke, Ui, Vec2};
 use super::placement::Side;
 use super::side_panel_shell::{SidePanelShellResponse, Width};
 use crate::ui_kit::widgets::frames::PanelFrame;
-use crate::chart::renderer::ui::panels::kit::PanelHeader;
+use crate::ui_kit::widgets::frames::PanelHeader;
 use super::Tooltip;
 use super::icon_placement::IconPlacement;
 use crate::ui_kit::tokens::{
@@ -173,7 +173,7 @@ impl<'a, T: PartialEq + Copy + Clone + 'a> SplitSectionPanel<'a, T> {
             let closed = header.show_with(ui, t, |ui| {
                 if allow_add {
                     // Reuse the kit's panel_action_btn for a consistent ghost-+.
-                    if crate::chart::renderer::ui::panels::kit::panel_action_btn(
+                    if crate::ui_kit::widgets::frames::panel_action_btn(
                         ui, "+", t.dim,
                     ) {
                         add_clicked = true;

@@ -44,7 +44,7 @@ use std::ops::RangeInclusive;
 use egui::{Context, Ui};
 
 use super::placement::Side;
-use crate::chart::renderer::ui::panels::kit::{PanelHeader, PanelHeaderTabs};
+use crate::ui_kit::widgets::frames::{PanelHeader, PanelHeaderTabs};
 use crate::ui_kit::widgets::frames::PanelFrame;
 use crate::ui_kit::tokens::{
     gap_lg, gap_md, gap_sm, shadow_color_alpha, stroke_thin,
