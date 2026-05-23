@@ -79,9 +79,10 @@ pub mod input_group;
 pub mod fieldset;
 pub mod panel;
 pub mod header;
-// Outer side-panel chrome (Agent J)
-pub mod side_panel_shell;
-pub mod split_section_panel;
+// Outer side-panel chrome (Agent J) — physically moved to
+// `chart_renderer::ui::panels` because these shells pull chart-app
+// composites (Watchlist, pane_tabs_header_h, kit::PanelHeader*) that
+// aren't portable primitives. Re-exported below for back-compat.
 // Body content primitives (Agent K)
 pub mod panel_section;
 pub mod panel_empty;
@@ -148,8 +149,10 @@ pub use segmented_control::SegmentedControl;
 // ─── Panel Ecosystem ─────────────────────────────────────────────────
 pub use panel::{Panel, PanelCtx, PanelResponse};
 pub use header::{Header, HeaderVariant, HeaderResponse};
-pub use side_panel_shell::{SidePanelShell, SidePanelShellResponse, SidePanelShellTabs, Width};
-pub use split_section_panel::SplitSectionPanel;
+pub use crate::chart_renderer::ui::panels::side_panel_shell::{
+    self, SidePanelShell, SidePanelShellResponse, SidePanelShellTabs, Width,
+};
+pub use crate::chart_renderer::ui::panels::split_section_panel::{self, SplitSectionPanel};
 pub use panel_section::{
     PanelSection, PanelSectionGroup, PanelSectionGroupBuilder, SectionResponse, Tone as PanelTone,
 };

@@ -43,13 +43,16 @@ use std::ops::RangeInclusive;
 
 use egui::{Context, Ui};
 
-use super::placement::Side;
-use crate::ui_kit::widgets::frames::{PanelHeader, PanelHeaderTabs};
+use crate::ui_kit::widgets::placement::Side;
+use super::kit::{PanelHeader, PanelHeaderTabs};
 use crate::ui_kit::widgets::frames::PanelFrame;
 use crate::ui_kit::tokens::{
     gap_lg, gap_md, gap_sm, shadow_color_alpha, stroke_thin,
 };
-use crate::ui_kit::widgets::theme::{Theme, Watchlist, ComponentTheme};
+use crate::ui_kit::widgets::theme::{Theme, ComponentTheme};
+// Watchlist + pane_tabs_header_h come from the chart-app gpu state — this
+// file lives in chart_renderer now, so import them directly.
+use crate::chart_renderer::gpu::{Watchlist, pane_tabs_header_h};
 
 /// Response from rendering a [`SidePanelShell`] / [`SidePanelShellTabs`] /
 /// [`SplitSectionPanel`]. Caller writes its own open-flag back when
@@ -152,7 +155,7 @@ impl<'a> SidePanelShell<'a> {
     /// conflict; internally just resolves the two values.
     pub fn pane_aligned(mut self, wl: &Watchlist) -> Self {
         self.pane_metrics = Some((
-            crate::ui_kit::widgets::theme::pane_tabs_header_h(wl),
+            pane_tabs_header_h(wl),
             wl.pane_header_size.title_font(),
         ));
         self
@@ -263,7 +266,7 @@ impl<'a, T: PartialEq + Copy + 'a> SidePanelShellTabs<'a, T> {
     /// See [`SidePanelShell::pane_aligned`].
     pub fn pane_aligned(mut self, wl: &Watchlist) -> Self {
         self.pane_metrics = Some((
-            crate::ui_kit::widgets::theme::pane_tabs_header_h(wl),
+            pane_tabs_header_h(wl),
             wl.pane_header_size.title_font(),
         ));
         self

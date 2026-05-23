@@ -1,4 +1,10 @@
 pub mod kit;
+// Side-panel shells (moved out of ui_kit::widgets because they pull
+// chart-app composites: Watchlist, pane_tabs_header_h, kit::PanelHeader*).
+// ui_kit::widgets keeps a thin re-export of the public types for the
+// 20+ existing callers; new code should import these directly.
+pub mod side_panel_shell;
+pub mod split_section_panel;
 pub mod alerts_panel;
 pub mod analysis_panel;
 pub mod apex_diagnostics;

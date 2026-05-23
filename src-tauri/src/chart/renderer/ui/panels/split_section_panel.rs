@@ -43,16 +43,20 @@ use std::ops::RangeInclusive;
 
 use egui::{Color32, Context, Pos2, Sense, Stroke, Ui, Vec2};
 
-use super::placement::Side;
+use crate::ui_kit::widgets::placement::Side;
 use super::side_panel_shell::{SidePanelShellResponse, Width};
 use crate::ui_kit::widgets::frames::PanelFrame;
-use crate::ui_kit::widgets::frames::PanelHeader;
-use super::Tooltip;
-use super::icon_placement::IconPlacement;
+use super::kit::PanelHeader;
+use crate::ui_kit::widgets::Tooltip;
+use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::tokens::{
     alpha_faint, color_alpha, color_dim, font_xs, gap_xs, split_divider, stroke_thin,
 };
-use crate::ui_kit::widgets::theme::{SplitSection, Theme, Watchlist, ComponentTheme};
+use crate::ui_kit::widgets::theme::{Theme, ComponentTheme};
+// SplitSection / Watchlist / pane_tabs_header_h / panel_action_btn come from
+// chart-app code — this file lives in chart_renderer now, so import directly.
+use crate::chart_renderer::gpu::{SplitSection, Watchlist, pane_tabs_header_h};
+use super::kit::panel_action_btn;
 
 const TAB_BAR_H: f32 = 28.0;
 const DIVIDER_H: f32 = 6.0;
@@ -116,7 +120,7 @@ impl<'a, T: PartialEq + Copy + Clone + 'a> SplitSectionPanel<'a, T> {
     /// See [`super::side_panel_shell::SidePanelShell::pane_aligned`].
     pub fn pane_aligned(mut self, wl: &Watchlist) -> Self {
         self.pane_metrics = Some((
-            crate::ui_kit::widgets::theme::pane_tabs_header_h(wl),
+            pane_tabs_header_h(wl),
             wl.pane_header_size.title_font(),
         ));
         self
@@ -173,7 +177,7 @@ impl<'a, T: PartialEq + Copy + Clone + 'a> SplitSectionPanel<'a, T> {
             let closed = header.show_with(ui, t, |ui| {
                 if allow_add {
                     // Reuse the kit's panel_action_btn for a consistent ghost-+.
-                    if crate::ui_kit::widgets::frames::panel_action_btn(
+                    if panel_action_btn(
                         ui, "+", t.dim,
                     ) {
                         add_clicked = true;

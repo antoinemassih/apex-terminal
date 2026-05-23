@@ -8,16 +8,17 @@
 
 use egui::Color32;
 
-// Re-export the trading-app's concrete Theme + a few god-object types and
-// chart-app accessors so other ui_kit widgets don't have to reach into
-// `chart_renderer::gpu`. Part of the UI extraction (see
-// docs/UI_EXTRACTION.md): when ui_kit moves to its own crate, this is the
-// single bridge point that gets rewritten.
+// Re-export the trading-app's concrete `Theme` so ui_kit widgets that take
+// `&Theme` (legacy signatures, mostly panel-body primitives) keep compiling.
+// `Watchlist` / `SplitSection` / `pane_tabs_header_h` / `live_theme_count` /
+// `get_theme` were removed from this bridge after the side_panel_shell and
+// split_section_panel widgets moved out of ui_kit (into chart_renderer::ui::panels).
+//
+// When `ui_kit` extracts to a workspace crate, this single `pub(crate) use`
+// is what disappears — widgets switch to `&dyn ComponentTheme` or take
+// `PortableTheme` directly.
 #[allow(unused_imports)]
-pub(crate) use crate::chart_renderer::gpu::{
-    Theme, Watchlist, SplitSection,
-    pane_tabs_header_h, live_theme_count, get_theme,
-};
+pub(crate) use crate::chart_renderer::gpu::Theme;
 
 pub trait ComponentTheme {
     // Core 6-color palette (matches the discipline established in item 4).
