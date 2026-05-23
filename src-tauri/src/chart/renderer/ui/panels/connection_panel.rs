@@ -168,7 +168,7 @@ fn service_row(ui: &mut egui::Ui, t: &Theme, id: &str, name: &str, status: &str,
     let pulsing = status == "AMBER";
     PanelListRow::new(id)
         .dense(false)
-        .leading(move |ui, t| {
+        .leading(move |ui, t: &crate::chart_renderer::gpu::Theme| {
             let indicator = if pulsing {
                 Indicator::pulsing().tone(IndicatorTone::Warn)
             } else if ok {
@@ -202,7 +202,7 @@ fn service_row_tone(
     let status_owned = status.to_string();
     PanelListRow::new(id)
         .dense(false)
-        .leading(move |ui, t| {
+        .leading(move |ui, t: &crate::chart_renderer::gpu::Theme| {
             let indicator = match tone {
                 StatusColor::Warn => Indicator::pulsing().tone(IndicatorTone::Warn),
                 StatusColor::Ok => Indicator::dot().tone(IndicatorTone::Bull),

@@ -245,7 +245,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
                             .dense(false)
                             .primary(&primary)
                             .secondary(&secondary)
-                            .leading(move |ui, t| {
+                            .leading(move |ui, t: &crate::chart_renderer::gpu::Theme| {
                                 let color = match sentiment {
                                     s if s > 0 => t.bull,
                                     s if s < 0 => t.bear,

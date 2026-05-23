@@ -29,7 +29,8 @@ use super::motion;
 use crate::ui_kit::widgets::frames::{BorderAlpha, PopupFrame};
 use crate::ui_kit::tokens::*;
 
-type Theme = crate::ui_kit::widgets::theme::Theme;
+// `Theme` alias removed — the legacy `MenuTheme::from_theme(&Theme)` shortcut
+// is deleted below; `from_component<T: ComponentTheme>` is the portable API.
 
 // ─── Shared theme snapshot ───────────────────────────────────────────────────
 
@@ -47,16 +48,6 @@ pub struct MenuTheme {
 }
 
 impl MenuTheme {
-    pub fn from_theme(t: &Theme) -> Self {
-        Self {
-            accent: t.accent,
-            dim: t.dim,
-            bg: t.bg,
-            fg: t.text,
-            danger: t.bear,
-            shadow: <Theme as ComponentTheme>::shadow_color(t),
-        }
-    }
     pub fn from_component<T: ComponentTheme + ?Sized>(t: &T) -> Self {
         Self {
             accent: t.accent(),

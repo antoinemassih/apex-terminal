@@ -17,12 +17,12 @@
 //! ```
 //!
 //! Visual spec (LOCKED per user decision):
-//! - Hover: `color_alpha(t.text, 8)` background, `radius_sm()` corners.
-//! - Selected: BOTH `color_alpha(t.accent, 24)` background fill AND a 2px
+//! - Hover: `color_alpha(t.text(), 8)` background, `radius_sm()` corners.
+//! - Selected: BOTH `color_alpha(t.accent(), 24)` background fill AND a 2px
 //!   accent stripe on the LEFT edge. User explicitly chose "both" — loud is OK.
 //! - No stroke. No border. Just background and the stripe.
-//! - Primary text: `mono_sm` in `t.text`.
-//! - Secondary text: `mono_xs` in `color_muted(t.dim)`, on a second line.
+//! - Primary text: `mono_sm` in `t.text()`.
+//! - Secondary text: `mono_xs` in `color_muted(t.dim())`, on a second line.
 //! - Row height: 22px default; 32px when `.dense(false)`.
 //! - LR padding: `gap_md`.
 //!
@@ -38,9 +38,9 @@
 //! ```ignore
 //! PanelListRow::new("print_123")
 //!     .columns(&[
-//!         Column::left("09:31:42.123").color(t.dim),
-//!         Column::right("$145.32").color(t.bull),
-//!         Column::right("250").color(t.text),
+//!         Column::left("09:31:42.123").color(t.dim()),
+//!         Column::right("$145.32").color(t.bull()),
+//!         Column::right("250").color(t.text()),
 //!     ])
 //!     .show(ui, t);
 //! ```
@@ -105,7 +105,7 @@ use crate::ui_kit::tokens::{
     self as st, alpha_ghost, color_alpha, color_muted, font_sm, font_xs, gap_lg, gap_md, gap_xs,
     radius_sm,
 };
-use crate::ui_kit::widgets::theme::Theme;
+use crate::ui_kit::widgets::theme::{ComponentTheme, Theme};
 use crate::ui_kit::widgets::{motion, Tooltip};
 
 /// Horizontal alignment for a `Column` cell in `PanelListRow::columns` mode.
@@ -193,14 +193,14 @@ pub enum TrailingTone {
 impl TrailingTone {
     /// Resolve the tone to a concrete theme color.
     #[inline]
-    fn resolve(self, t: &Theme) -> Color32 {
+    fn resolve<T: ComponentTheme>(self, t: &T) -> Color32 {
         match self {
-            TrailingTone::Default => t.text,
-            TrailingTone::Accent => t.accent,
-            TrailingTone::Bull => t.bull,
-            TrailingTone::Bear => t.bear,
-            TrailingTone::Warn => t.warn,
-            TrailingTone::Muted => t.dim,
+            TrailingTone::Default => t.text(),
+            TrailingTone::Accent => t.accent(),
+            TrailingTone::Bull => t.bull(),
+            TrailingTone::Bear => t.bear(),
+            TrailingTone::Warn => t.warn(),
+            TrailingTone::Muted => t.dim(),
         }
     }
 }
@@ -252,19 +252,19 @@ pub struct PanelListRowResponse {
 /// Width (in px) of the left accent stripe for the selected state.
 const SELECTED_STRIPE_W: f32 = 2.0;
 
-/// Hover background alpha (out of 255), applied to `t.text`.
+/// Hover background alpha (out of 255), applied to `t.text()`.
 const HOVER_BG_ALPHA: u8 = 8;
 
-/// Selected background alpha (out of 255), applied to `t.accent`.
+/// Selected background alpha (out of 255), applied to `t.accent()`.
 const SELECTED_BG_ALPHA: u8 = 24;
 
 #[must_use = "PanelListRow must be rendered with `.show(...)`"]
-pub struct PanelListRow<'a> {
+pub struct PanelListRow<'a, T: ComponentTheme = Theme> {
     id_salt: &'a str,
     primary: Option<&'a str>,
     secondary: Option<&'a str>,
-    leading: Option<Box<dyn FnOnce(&mut Ui, &Theme) + 'a>>,
-    trailing: Option<Box<dyn FnOnce(&mut Ui, &Theme) + 'a>>,
+    leading: Option<Box<dyn FnOnce(&mut Ui, &T) + 'a>>,
+    trailing: Option<Box<dyn FnOnce(&mut Ui, &T) + 'a>>,
     /// Typed slice slot — mutually exclusive with `trailing`. Last setter
     /// wins. When set, the row paints N inline icon buttons in an RTL
     /// strip on the right edge and reports clicks via
@@ -298,7 +298,7 @@ pub struct PanelListRow<'a> {
     row_tint: Option<(Color32, u8)>,
 }
 
-impl<'a> PanelListRow<'a> {
+impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
     pub fn new(id_salt: &'a str) -> Self {
         Self {
             id_salt,
@@ -377,12 +377,12 @@ impl<'a> PanelListRow<'a> {
         self
     }
 
-    pub fn leading(mut self, f: impl FnOnce(&mut Ui, &Theme) + 'a) -> Self {
+    pub fn leading(mut self, f: impl FnOnce(&mut Ui, &T) + 'a) -> Self {
         self.leading = Some(Box::new(f));
         self
     }
 
-    pub fn trailing(mut self, f: impl FnOnce(&mut Ui, &Theme) + 'a) -> Self {
+    pub fn trailing(mut self, f: impl FnOnce(&mut Ui, &T) + 'a) -> Self {
         self.trailing = Some(Box::new(f));
         // Last setter wins — clear the slice form so the two modes don't
         // both paint and double-stack the right edge.
@@ -417,7 +417,7 @@ impl<'a> PanelListRow<'a> {
     /// Back-compat entry point — returns the plain `Response` so existing
     /// call sites compile unchanged. Use [`Self::show_full`] when you set
     /// `.trailing_buttons(&[...])` and need the clicked index.
-    pub fn show(self, ui: &mut Ui, t: &Theme) -> Response {
+    pub fn show(self, ui: &mut Ui, t: &T) -> Response {
         // Drive the same internal painter; discard the rich response.
         self.show_full(ui, t).response.unwrap_or_else(|| {
             // Defensive fallback — paint() always sets `response`. Allocate
@@ -431,7 +431,7 @@ impl<'a> PanelListRow<'a> {
     /// Rich entry point. Returns a [`PanelListRowResponse`] that carries
     /// the body click signal **and** (when `.trailing_buttons(&[...])` was
     /// set) the index of the trailing button that fired this frame.
-    pub fn show_full(self, ui: &mut Ui, t: &Theme) -> PanelListRowResponse {
+    pub fn show_full(self, ui: &mut Ui, t: &T) -> PanelListRowResponse {
         let Self {
             id_salt,
             primary,
@@ -543,7 +543,7 @@ impl<'a> PanelListRow<'a> {
                 motion::FAST,
             );
             if hover_t > 0.0 {
-                let bg = color_alpha(t.text, (alpha_ghost() as f32 * hover_t).round() as u8);
+                let bg = color_alpha(t.text(), (alpha_ghost() as f32 * hover_t).round() as u8);
                 painter.rect_filled(rect, cr, bg);
             }
         }
@@ -557,7 +557,7 @@ impl<'a> PanelListRow<'a> {
         );
         if selected_t > 0.0 {
             let sel_bg = color_alpha(
-                t.accent,
+                t.accent(),
                 (SELECTED_BG_ALPHA as f32 * selected_t).round() as u8,
             );
             painter.rect_filled(rect, cr, sel_bg);
@@ -566,7 +566,7 @@ impl<'a> PanelListRow<'a> {
         // Left accent stripe — eases with selected_t so it fades alongside the bg.
         if selected_t > 0.0 {
             let stripe_alpha = (255.0_f32 * selected_t).round() as u8;
-            let stripe_color = color_alpha(t.accent, stripe_alpha);
+            let stripe_color = color_alpha(t.accent(), stripe_alpha);
             let stripe = Rect::from_min_max(
                 Pos2::new(rect.left(), rect.top()),
                 Pos2::new(rect.left() + SELECTED_STRIPE_W, rect.bottom()),
@@ -583,7 +583,7 @@ impl<'a> PanelListRow<'a> {
             let y = rect.bottom() - 0.5;
             painter.line_segment(
                 [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
-                egui::Stroke::new(crate::ui_kit::tokens::stroke_thin(), color_alpha(t.toolbar_border, 60)),
+                egui::Stroke::new(crate::ui_kit::tokens::stroke_thin(), color_alpha(t.surface_border(), 60)),
             );
         }
 
@@ -637,14 +637,14 @@ impl<'a> PanelListRow<'a> {
                     if let Some(p) = primary {
                         let font = FontId::monospace(font_sm());
                         let galley = ui.fonts(|f| {
-                            f.layout_no_wrap(p.to_string(), font.clone(), t.text)
+                            f.layout_no_wrap(p.to_string(), font.clone(), t.text())
                         });
                         let (r, _) = ui.allocate_exact_size(galley.size(), Sense::hover());
-                        ui.painter().galley(r.min, galley, t.text);
+                        ui.painter().galley(r.min, galley, t.text());
                     }
                     if let Some(s) = secondary {
                         let font = FontId::monospace(font_xs());
-                        let col = color_muted(t.dim);
+                        let col = color_muted(t.dim());
                         let galley = ui.fonts(|f| {
                             f.layout_no_wrap(s.to_string(), font.clone(), col)
                         });
@@ -699,12 +699,12 @@ impl<'a> PanelListRow<'a> {
                 }
 
                 // Icon glyph. Hover snaps to full tone color; idle is
-                // tone-at-`t.dim`-opacity so the icons sit visually quiet
+                // tone-at-`t.dim()`-opacity so the icons sit visually quiet
                 // when the row is idle. Active state implies full color.
                 let glyph_color = if br.hovered() || btn.active {
                     tone_col
                 } else {
-                    color_alpha(tone_col, t.dim.a())
+                    color_alpha(tone_col, t.dim().a())
                 };
                 painter.text(
                     r.center(),
@@ -726,7 +726,7 @@ impl<'a> PanelListRow<'a> {
         // `Sense::click()` already handles Enter/Space → clicked() natively,
         // so the ring is the only missing piece for full keyboard support.
         if hoverable {
-            st::cursor::focus_ring(ui, &resp, t.accent);
+            st::cursor::focus_ring(ui, &resp, t.accent());
         }
 
         PanelListRowResponse {
@@ -744,7 +744,7 @@ impl<'a> PanelListRow<'a> {
 ///
 /// Layout: each column gets `min_width` reserved up front; remaining width is
 /// divided among columns by `weight`. Text is clipped to its cell rect.
-fn paint_columns(ui: &mut Ui, rect: Rect, cols: &[Column<'_>], t: &Theme) {
+fn paint_columns<T: ComponentTheme>(ui: &mut Ui, rect: Rect, cols: &[Column<'_>], t: &T) {
     if cols.is_empty() {
         return;
     }
@@ -787,7 +787,7 @@ fn paint_columns(ui: &mut Ui, rect: Rect, cols: &[Column<'_>], t: &Theme) {
         } else {
             FontId::proportional(font_sm())
         };
-        let color = if c.color == Color32::PLACEHOLDER { t.text } else { c.color };
+        let color = if c.color == Color32::PLACEHOLDER { t.text() } else { c.color };
         let galley = ui.fonts(|f| f.layout_no_wrap(c.text.to_string(), font, color));
         let tw = galley.size().x;
         let th = galley.size().y;

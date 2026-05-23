@@ -208,7 +208,7 @@ pub(crate) fn draw_signal_row_calibrated(
 
     PanelListRow::new(id_salt.as_str())
         .hoverable(false) // display-only streaming row — no pointer cursor
-        .leading(move |ui, _t| {
+        .leading(move |ui, _t: &crate::chart_renderer::gpu::Theme| {
             ui.add_space(gap_sm());
             // Score — coloured by direction.
             ui.label(egui::RichText::new(&score_text)

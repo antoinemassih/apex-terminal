@@ -697,7 +697,7 @@ fn draw_indicators_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
         let color = *color;
 
         let resp = PanelListRow::new(&id_salt)
-            .leading(move |ui, _t| { paint_swatch(ui, color); })
+            .leading(move |ui, _t: &crate::chart_renderer::gpu::Theme| { paint_swatch(ui, color); })
             .primary(label.as_str())
             .trailing(move |ui, t| {
                 let eye = if visible { Icon::EYE } else { Icon::EYE_SLASH };
@@ -809,7 +809,7 @@ fn draw_widgets_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
         let id_salt = format!("w_{}", wi);
 
         PanelListRow::new(&id_salt)
-            .leading(move |ui, _t| { paint_swatch(ui, dot_col); })
+            .leading(move |ui, _t: &crate::chart_renderer::gpu::Theme| { paint_swatch(ui, dot_col); })
             .primary(label)
             .trailing(move |ui, t| {
                 let r = Button::icon(Icon::TRASH)
