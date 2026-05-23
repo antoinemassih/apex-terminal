@@ -193,28 +193,15 @@ pub fn begin_frame() {
 //   font_display_xl()  = 56.0 — primary focal number (full-width banner widget)
 
 /// 28.0 — compact display hero (narrow widget KPI, countdown digits).
-#[inline] pub fn font_display_sm() -> f32 { 28.0 }
 /// 32.0 — standard display hero number (primary gauge focal point).
-#[inline] pub fn font_display_md() -> f32 { 32.0 }
 /// 42.0 — prominent display hero (dual-KPI or large widget focal number).
-#[inline] pub fn font_display_lg() -> f32 { 42.0 }
 /// 56.0 — maximum display focal number (full-width banner widget).
-#[inline] pub fn font_display_xl() -> f32 { 56.0 }
 
 // FONT_DISPLAY_* constants now in `crate::ui_kit::style`; re-exported here.
 
 // ─── Monospace helpers (JetBrains Mono, pinned) ───────────────────────────────
 // Use these for tabular financial data: prices, quantities, OCC tickers.
 // Returns FontId so the family is explicit at the call site.
-#[inline] pub fn mono_4xs() -> egui::FontId { egui::FontId::new(font_4xs(), egui::FontFamily::Monospace) }
-#[inline] pub fn mono_3xs() -> egui::FontId { egui::FontId::new(font_3xs(), egui::FontFamily::Monospace) }
-#[inline] pub fn mono_2xs() -> egui::FontId { egui::FontId::new(font_2xs(), egui::FontFamily::Monospace) }
-#[inline] pub fn mono_xs()  -> egui::FontId { egui::FontId::new(font_xs(),  egui::FontFamily::Monospace) }
-#[inline] pub fn mono_xs_plus() -> egui::FontId { egui::FontId::new(font_xs_plus(), egui::FontFamily::Monospace) }
-#[inline] pub fn mono_sm()  -> egui::FontId { egui::FontId::new(font_sm(),  egui::FontFamily::Monospace) }
-#[inline] pub fn mono_md()  -> egui::FontId { egui::FontId::new(font_md(),  egui::FontFamily::Monospace) }
-#[inline] pub fn mono_md_plus() -> egui::FontId { egui::FontId::new(font_md_plus(), egui::FontFamily::Monospace) }
-#[inline] pub fn mono_lg()  -> egui::FontId { egui::FontId::new(font_lg(),  egui::FontFamily::Monospace) }
 
 // ─── Legacy aliases (DEPRECATED) ──────────────────────────────────────────────
 // Kept compiling existing call sites; new code must use the named tier above.
@@ -257,33 +244,17 @@ pub const GAP_XS_MID: f32 =  6.0;
 // ─── Icon control sizes ──────────────────────────────────────────────────────
 // Standard square sizes for icon-only controls (toggle pills, trailing buttons,
 // inline icon-only buttons). Replaces hand-rolled vec2(14, 14) / vec2(16, 16) etc.
-#[inline] pub fn icon_xs() -> f32 { 14.0 }
-#[inline] pub fn icon_sm() -> f32 { 16.0 }
-#[inline] pub fn icon_md() -> f32 { 18.0 }
-#[inline] pub fn icon_lg() -> f32 { 20.0 }
 
 // ─── Row heights ─────────────────────────────────────────────────────────────
 // Canonical list/table row heights. PanelListRow defaults to row_height_default
 // (22) for dense lists and row_height_spacious (24) for breathable ones.
-#[inline] pub fn row_height_dense()     -> f32 { 18.0 }
-#[inline] pub fn row_height_compact()   -> f32 { 20.0 }
-#[inline] pub fn row_height_default()   -> f32 { 22.0 }
-#[inline] pub fn row_height_spacious()  -> f32 { 24.0 }
-#[inline] pub fn row_height_tall()      -> f32 { 30.0 }
 
 // ─── Card padding ────────────────────────────────────────────────────────────
 // Symmetric inner_margin presets for PanelCard / hand-rolled card bodies.
-#[inline] pub fn card_padding_compact()  -> f32 { 8.0 }
-#[inline] pub fn card_padding_default()  -> f32 { 12.0 }
-#[inline] pub fn card_padding_spacious() -> f32 { 16.0 }
 
 // ─── Divider insets ──────────────────────────────────────────────────────────
 // Vertical inset for hairline dividers (typically applied to top + bottom
 // of the dividing line so the rule doesn't kiss adjacent content).
-#[inline] pub fn divider_inset_xs() -> f32 { 1.0 }
-#[inline] pub fn divider_inset_sm() -> f32 { 2.0 }
-#[inline] pub fn divider_inset_md() -> f32 { 3.0 }
-#[inline] pub fn divider_inset_lg() -> f32 { 5.0 }
 
 // ─── Corner radius tokens ─────────────────────────────────────────────────────
 // 2026-05: function fallbacks reconciled with the const values (was 3/4/8).
@@ -2330,10 +2301,7 @@ pub fn accent_emphasised(color: egui::Color32) -> egui::Color32 {
     color.gamma_multiply(current().accent_emphasis)
 }
 
-pub fn contrast_fg(bg: egui::Color32) -> egui::Color32 {
-    let lum = 0.299 * bg.r() as f32 + 0.587 * bg.g() as f32 + 0.114 * bg.b() as f32;
-    if lum > 140.0 { egui::Color32::BLACK } else { egui::Color32::WHITE }
-}
+// `contrast_fg` now in `crate::ui_kit::style`; re-exported here.
 
 pub fn rule_stroke_for(_bg: egui::Color32, border: egui::Color32) -> egui::Stroke {
     // Use pane_border_width so Meridien hairlines honour the style knob.

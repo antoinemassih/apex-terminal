@@ -124,6 +124,61 @@ pub fn frame_tokens() -> TokenSnapshot {
 #[inline] pub fn alpha_heavy()   -> u8 { frame_tokens().alpha_heavy }
 #[inline] pub fn alpha_solid()   -> u8 { frame_tokens().alpha_solid }
 
+// ─── Monospace font helpers ──────────────────────────────────────────────────
+// Tabular financial data (prices, qty, OCC tickers, kbd labels). Returns
+// FontId so the family is explicit at the call site.
+#[inline] pub fn mono_4xs() -> egui::FontId { egui::FontId::new(font_4xs(), egui::FontFamily::Monospace) }
+#[inline] pub fn mono_3xs() -> egui::FontId { egui::FontId::new(font_3xs(), egui::FontFamily::Monospace) }
+#[inline] pub fn mono_2xs() -> egui::FontId { egui::FontId::new(font_2xs(), egui::FontFamily::Monospace) }
+#[inline] pub fn mono_xs()  -> egui::FontId { egui::FontId::new(font_xs(),  egui::FontFamily::Monospace) }
+#[inline] pub fn mono_xs_plus() -> egui::FontId { egui::FontId::new(font_xs_plus(), egui::FontFamily::Monospace) }
+#[inline] pub fn mono_sm()  -> egui::FontId { egui::FontId::new(font_sm(),  egui::FontFamily::Monospace) }
+#[inline] pub fn mono_md()  -> egui::FontId { egui::FontId::new(font_md(),  egui::FontFamily::Monospace) }
+#[inline] pub fn mono_md_plus() -> egui::FontId { egui::FontId::new(font_md_plus(), egui::FontFamily::Monospace) }
+#[inline] pub fn mono_lg()  -> egui::FontId { egui::FontId::new(font_lg(),  egui::FontFamily::Monospace) }
+
+// ─── Contrast / readability helpers ──────────────────────────────────────────
+
+/// Pick BLACK or WHITE foreground for the given background based on perceived
+/// luminance. Used by chips, badges, status pills — anywhere a swatch needs a
+/// readable label without the caller hand-picking the fg.
+#[inline]
+pub fn contrast_fg(bg: Color32) -> Color32 {
+    let lum = 0.299 * bg.r() as f32 + 0.587 * bg.g() as f32 + 0.114 * bg.b() as f32;
+    if lum > 140.0 { Color32::BLACK } else { Color32::WHITE }
+}
+
+// ─── Display-tier proportional fonts ─────────────────────────────────────────
+// Large hero numbers in chart-widget bodies (KPIs, countdown digits).
+#[inline] pub fn font_display_sm() -> f32 { 28.0 }
+#[inline] pub fn font_display_md() -> f32 { 32.0 }
+#[inline] pub fn font_display_lg() -> f32 { 42.0 }
+#[inline] pub fn font_display_xl() -> f32 { 56.0 }
+
+// ─── Icon control sizes ──────────────────────────────────────────────────────
+#[inline] pub fn icon_xs() -> f32 { 14.0 }
+#[inline] pub fn icon_sm() -> f32 { 16.0 }
+#[inline] pub fn icon_md() -> f32 { 18.0 }
+#[inline] pub fn icon_lg() -> f32 { 20.0 }
+
+// ─── Row heights ─────────────────────────────────────────────────────────────
+#[inline] pub fn row_height_dense()     -> f32 { 18.0 }
+#[inline] pub fn row_height_compact()   -> f32 { 20.0 }
+#[inline] pub fn row_height_default()   -> f32 { 22.0 }
+#[inline] pub fn row_height_spacious()  -> f32 { 24.0 }
+#[inline] pub fn row_height_tall()      -> f32 { 30.0 }
+
+// ─── Card padding ────────────────────────────────────────────────────────────
+#[inline] pub fn card_padding_compact()  -> f32 { 8.0 }
+#[inline] pub fn card_padding_default()  -> f32 { 12.0 }
+#[inline] pub fn card_padding_spacious() -> f32 { 16.0 }
+
+// ─── Divider insets ──────────────────────────────────────────────────────────
+#[inline] pub fn divider_inset_xs() -> f32 { 1.0 }
+#[inline] pub fn divider_inset_sm() -> f32 { 2.0 }
+#[inline] pub fn divider_inset_md() -> f32 { 3.0 }
+#[inline] pub fn divider_inset_lg() -> f32 { 5.0 }
+
 
 
 // ─── Font sizes (px) ─────────────────────────────────────────────────────────
