@@ -357,3 +357,72 @@ deserves human attention:
 The bones of the kit are extractable. Items 1–5 above are the bounded
 finish-it-off work; budget 3 days for them then half a day for the
 workspace crate scaffold.
+
+### Status (autonomous push 5 — same session continued)
+
+Items 1, 2, 4 all fully landed in this push, plus Phase 3 partial
+(`PortableTheme`) and 8 more widgets migrated to `&dyn ComponentTheme`:
+
+- **Phase 3 partial** (`605d9b9a`) — `PortableTheme` struct in
+  `ui_kit::widgets::theme`. Owned ENTIRELY by ui_kit (no
+  chart_renderer reference). `::dark()` / `::light()` constructors with
+  sensible defaults. `impl ComponentTheme for PortableTheme` —
+  bull→accent, bear→warn, everything else direct field access. A doc
+  app can `let t = PortableTheme::dark()` and use every widget that
+  takes `&dyn ComponentTheme`.
+
+- **Item 4 complete** (`907dfec3`) — `side_panel_shell.rs` and
+  `split_section_panel.rs` physically moved from `ui_kit/widgets/`
+  into `chart/renderer/ui/panels/`. These are chart-app composites
+  (pull Watchlist, pane_tabs_header_h, kit::PanelHeader*) — they
+  don't belong in a portable kit. ui_kit re-exports the public types
+  for back-compat. Bridges slimmed accordingly:
+  - `theme.rs` no longer re-exports Watchlist / SplitSection /
+    pane_tabs_header_h / live_theme_count / get_theme. Only `Theme`
+    remains.
+  - `frames.rs` no longer re-exports kit::PanelHeader/Tabs/
+    panel_action_btn.
+
+- **Phase 4d** (`ede3f9ca`) — 3 more widgets migrated to
+  `&dyn ComponentTheme`: panel_loading, panel_empty, panel_error.
+
+- **Phase 4e** (`2db63e59`) — `Tone::color` (panel_section helper)
+  migrated to `&dyn ComponentTheme`, unblocking pill_row + status_pill
+  which both call `self.tone.color(t)`.
+
+**Inverted-import count: 13** (was 14 before this push). 11 widgets
+fully on `&dyn ComponentTheme`. 6 widgets remain on `&Theme`
+(panel_card, panel_key_value_row, panel_sub_section, panel,
+panel_list_row, context_menu) — each migration cascades into chart-app
+callers (settings_panel and friends pass closures expecting `&Theme`).
+
+### Truly final remaining
+
+| # | Work | Why not autonomous |
+|---|---|---|
+| A | Migrate the last 6 widgets to `&dyn ComponentTheme`. | Each touches 5-50 chart-app callers (closure signatures). Cascade verification needs eyes. |
+| B | **Frames_widget body physical move** (item 3 from earlier). Requires either moving FRAME_TOKENS + TokenSnapshot infrastructure into ui_kit, or refactoring frames to take explicit style params. | API design call (FRAME_TOKENS strategy). |
+| C | **Eliminate Theme bridge** in `ui_kit/widgets/theme.rs`. Possible once A is done — no widget uses concrete Theme. | Blocked by A. |
+| D | **Workspace crate scaffold** (`crates/apex-ui/`). | Blocked by B and C (bridges still pull chart_renderer). |
+
+Each of A/B/C/D is ~half day of focused work. Total ~2 days to the
+fully-extracted `apex-ui` workspace crate.
+
+### Session totals (true final)
+
+- **14 commits** across this single session.
+- **Inverted imports**: 78 → 13.
+- **11 widgets** fully on `&dyn ComponentTheme`.
+- **`PortableTheme`** struct ships — proves the trait is implementable
+  outside chart_renderer.
+- **Ambient theme** infrastructure live.
+- **`ui_kit::style`** is sole owner of stateless token primitives
+  (~40 fns/consts deduped from chart-app duplicates).
+- **Side panel shells** physically moved out of ui_kit into
+  `chart_renderer::ui::panels` where they semantically belong.
+- **All 575 lib tests pass** at every commit. **Both default and
+  design-mode builds clean** at every commit.
+
+The kit is now 90% portable. The remaining 10% is the bounded ~2 days
+of mechanical cascade-migration + a single design call on
+FRAME_TOKENS.
