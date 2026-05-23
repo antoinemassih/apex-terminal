@@ -16,7 +16,7 @@ use egui::{Color32, Id, Rect, Response, RichText, Stroke, Ui, Vec2};
 use super::theme::ComponentTheme;
 use super::motion;
 
-use crate::chart_renderer::ui::style::{
+use crate::ui_kit::tokens::{
     alpha_dim, alpha_strong, color_alpha, font_md, font_sm, gap_lg, r_md_cr, radius_xs, stroke_thin,
 };
 
@@ -116,7 +116,7 @@ impl<'a> Toast<'a> {
         let slide_offset = (1.0 - appear_t) * 12.0; // px slide from right
 
         // toast_bg_alpha controls how opaque the toast background is (semi-transparent = glassmorphic).
-        let st_toast = crate::chart_renderer::ui::style::current();
+        let st_toast = crate::ui_kit::tokens::current();
         let toast_fill = color_alpha(bg, st_toast.toast_bg_alpha);
         let frame = egui::Frame::NONE
             .fill(toast_fill)

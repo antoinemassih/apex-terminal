@@ -52,7 +52,7 @@ use super::motion;
 use super::theme::ComponentTheme;
 use super::tooltip::Tooltip;
 
-use crate::chart_renderer::ui::style::{
+use crate::ui_kit::tokens::{
     alpha_muted, alpha_tint, color_alpha, font_sm, font_xs, gap_2xs, gap_xs, stroke_thin,
     ALPHA_GHOST,
 };

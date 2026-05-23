@@ -116,7 +116,7 @@ impl<'a> Badge<'a> {
                 egui::Align2::CENTER_CENTER,
                 &display,
                 FontId::monospace(font_size),
-                crate::chart_renderer::ui::style::contrast_fg(tone_col),
+                crate::ui_kit::tokens::contrast_fg(tone_col),
             );
         }
 

@@ -31,7 +31,7 @@ use crate::chart_renderer::ui::components::{
     DialogHeaderWithClose, PaneHeaderWithClose, PanelHeaderWithClose, PopupFrame,
 };
 use crate::chart_renderer::ui::components::text::SectionLabelSize;
-use crate::chart_renderer::ui::style::{self, alpha_line, color_alpha, gap_sm, r_lg_cr};
+use crate::ui_kit::tokens::{self, alpha_line, color_alpha, gap_sm, r_lg_cr};
 
 /// How the modal is anchored on screen.
 #[derive(Clone, Copy)]
@@ -363,7 +363,7 @@ impl<'a> Modal<'a> {
             // they own the full visual fidelity.
             if separator && has_header && !had_painter {
                 ui.add_space(gap_sm());
-                style::dialog_separator(ui, 0.0, color_alpha(toolbar_border, alpha_line()));
+                tokens::dialog_separator(ui, 0.0, color_alpha(toolbar_border, alpha_line()));
                 ui.add_space(gap_sm());
             }
             let r = body(ui);
@@ -553,7 +553,7 @@ fn dialog_window_frame(
     egui::Frame::popup(&ctx.style())
         .fill(toolbar_bg)
         .inner_margin(0.0)
-        .stroke(Stroke::new(style::stroke_std(), border))
+        .stroke(Stroke::new(tokens::stroke_std(), border))
         .corner_radius(r_lg_cr())
         .shadow(egui::epaint::Shadow {
             offset: [0, 8],

@@ -27,7 +27,7 @@ use super::theme::ComponentTheme;
 use super::motion;
 
 use crate::chart_renderer::ui::components::frames_widget::{BorderAlpha, PopupFrame};
-use crate::chart_renderer::ui::style::*;
+use crate::ui_kit::tokens::*;
 
 type Theme = crate::chart_renderer::gpu::Theme;
 

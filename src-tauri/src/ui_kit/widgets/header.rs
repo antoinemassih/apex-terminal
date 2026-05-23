@@ -49,7 +49,7 @@
 
 use egui::{Align, CornerRadius, FontId, Layout, Response, RichText, Sense, Stroke, StrokeKind, Ui, Vec2};
 
-use crate::chart_renderer::ui::style as st;
+use crate::ui_kit::tokens as st;
 use super::theme::ComponentTheme;
 use super::Tooltip;
 use super::icon_placement::IconPlacement;

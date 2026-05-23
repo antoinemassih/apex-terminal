@@ -1015,7 +1015,7 @@ fn paint_one_tab_painter(
         let br = Rect::from_min_size(Pos2::new(cx, cy - bh * 0.5), Vec2::new(bw, bh));
         painter.rect_filled(br, CornerRadius::same(7), alpha(theme.bear())); // TODO: off-token
         painter.text(br.center(), Align2::CENTER_CENTER, &s,
-            FontId::monospace(st::font_xs_plus()), crate::chart_renderer::ui::style::contrast_fg(theme.bear()));
+            FontId::monospace(st::font_xs_plus()), crate::ui_kit::tokens::contrast_fg(theme.bear()));
         cx += bw + inner_gap;
     }
 

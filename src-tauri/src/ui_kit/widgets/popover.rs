@@ -15,7 +15,7 @@ use super::motion;
 use super::placement::{compute as compute_placement, Placement, Side};
 use super::theme::ComponentTheme;
 
-use crate::chart_renderer::ui::style::{
+use crate::ui_kit::tokens::{
     alpha_line, color_alpha, gap_sm, radius_sm, stroke_thin,
 };
 

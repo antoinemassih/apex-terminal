@@ -583,7 +583,7 @@ impl<'a> PanelListRow<'a> {
             let y = rect.bottom() - 0.5;
             painter.line_segment(
                 [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
-                egui::Stroke::new(crate::chart_renderer::ui::style::stroke_thin(), color_alpha(t.toolbar_border, 60)),
+                egui::Stroke::new(crate::ui_kit::tokens::stroke_thin(), color_alpha(t.toolbar_border, 60)),
             );
         }
 

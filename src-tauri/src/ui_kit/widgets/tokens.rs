@@ -55,21 +55,21 @@ impl Size {
     /// Maps to the typography scale (font_xs/sm/md/lg from style.rs).
     pub fn font_size(&self) -> f32 {
         match self {
-            Size::Xs => crate::chart_renderer::ui::style::font_xs(),
-            Size::Sm => crate::chart_renderer::ui::style::font_sm(),
+            Size::Xs => crate::ui_kit::tokens::font_xs(),
+            Size::Sm => crate::ui_kit::tokens::font_sm(),
             // Md uses sm typography by default — buttons aren't titles.
-            Size::Md => crate::chart_renderer::ui::style::font_sm(),
-            Size::Lg => crate::chart_renderer::ui::style::font_md(),
+            Size::Md => crate::ui_kit::tokens::font_sm(),
+            Size::Lg => crate::ui_kit::tokens::font_md(),
         }
     }
 
     /// Maps to the spacing grid (gap_2xs/xs/sm/md from style.rs).
     pub fn padding_x(&self) -> f32 {
         match self {
-            Size::Xs => crate::chart_renderer::ui::style::gap_2xs(),
-            Size::Sm => crate::chart_renderer::ui::style::gap_xs(),
-            Size::Md => crate::chart_renderer::ui::style::gap_sm(),
-            Size::Lg => crate::chart_renderer::ui::style::gap_md(),
+            Size::Xs => crate::ui_kit::tokens::gap_2xs(),
+            Size::Sm => crate::ui_kit::tokens::gap_xs(),
+            Size::Md => crate::ui_kit::tokens::gap_sm(),
+            Size::Lg => crate::ui_kit::tokens::gap_md(),
         }
     }
 

@@ -73,8 +73,8 @@ impl<'a> ThemePreviewCard<'a> {
 
         // Allocate full vertical space (card + gap + label) so the layout
         // is stable whether or not the label wraps.
-        let label_h = crate::chart_renderer::ui::style::font_xs() + 2.0;
-        let gap = crate::chart_renderer::ui::style::gap_2xs();
+        let label_h = crate::ui_kit::tokens::font_xs() + 2.0;
+        let gap = crate::ui_kit::tokens::gap_2xs();
         let total = Vec2::new(size.x, size.y + gap + label_h);
 
         let (rect, response) = ui.allocate_exact_size(total, Sense::click());

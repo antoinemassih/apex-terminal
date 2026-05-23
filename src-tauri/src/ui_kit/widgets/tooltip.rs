@@ -25,7 +25,7 @@ use super::theme::ComponentTheme;
 use super::PolishedLabel;
 use super::tokens::Size as KitSize;
 
-use crate::chart_renderer::ui::style::{
+use crate::ui_kit::tokens::{
     alpha_line, alpha_strong, color_alpha, gap_sm, gap_xs, radius_sm, stroke_thin,
 };
 
@@ -230,7 +230,7 @@ pub fn paint_tooltip_card(
     rect: egui::Rect,
     theme: &dyn ComponentTheme,
 ) {
-    use crate::chart_renderer::ui::style::{
+    use crate::ui_kit::tokens::{
         alpha_line, contrast_fg, current, shadow_alpha, shadow_offset, stroke_thin,
     };
     let st = current();
@@ -274,7 +274,7 @@ pub fn paint_tooltip_card(
 
     // Outer border — single source for stroke width and alpha.
     let stroke_w = if st.hairline_borders { st.stroke_std } else { stroke_thin() };
-    let border_col = crate::chart_renderer::ui::style::color_alpha(theme.border(), alpha_line());
+    let border_col = crate::ui_kit::tokens::color_alpha(theme.border(), alpha_line());
     painter.rect_stroke(
         rect,
         cr,
@@ -320,12 +320,12 @@ impl<'a> PainterTooltip<'a> {
 
     /// Per-line height — `gap_md` token.
     fn line_h() -> f32 {
-        crate::chart_renderer::ui::style::gap_md()
+        crate::ui_kit::tokens::gap_md()
     }
 
     /// Vertical padding inside the card — `gap_xs` token.
     fn pad_v() -> f32 {
-        crate::chart_renderer::ui::style::gap_xs()
+        crate::ui_kit::tokens::gap_xs()
     }
 
     /// Left text inset (reads tighter than `gap_sm`).
@@ -349,7 +349,7 @@ impl<'a> PainterTooltip<'a> {
         top_left: Pos2,
         theme: &dyn ComponentTheme,
     ) -> Rect {
-        use crate::chart_renderer::ui::style::{
+        use crate::ui_kit::tokens::{
             alpha_tint, color_alpha, font_sm, stroke_thin,
         };
         let rect = Rect::from_min_size(top_left, self.measure());
