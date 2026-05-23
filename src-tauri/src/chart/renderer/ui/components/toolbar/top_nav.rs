@@ -136,7 +136,7 @@ use super::toolbar_btn;
 /// Shift or broadcast mode is on. The originator is skipped by
 /// `apply_pane_events` via the `Some(ap)` origin tag, so the caller
 /// never double-writes.
-fn publish_toggle(
+pub(crate) fn publish_toggle(
     watchlist: &mut Watchlist,
     fan_out: bool,
     kind: PaneToggle,
@@ -571,54 +571,7 @@ pub(crate) fn render(
                     watchlist.timeframe_dropdown_pos = egui::pos2(tf_dd_btn.rect.left(), tf_dd_btn.rect.bottom() + 2.0);
                 }
             }
-            ui.add_space(gap_xs());
-            // ── Range dropdown (sets interval + visible bars) ──
-            {
-                let range_label: String = {
-                    let presets: &[(&str, &str, u32)] = &[
-                        ("1D", "5m", 78), ("2D", "5m", 156), ("3D", "5m", 234),
-                        ("5D", "15m", 130), ("2W", "30m", 130), ("1M", "1h", 130),
-                        ("3M", "1d", 63), ("1Y", "1d", 252),
-                    ];
-                    presets.iter()
-                        .find(|&&(_, tf, vc)| tf == panes[ap].timeframe && vc == panes[ap].vc)
-                        .map(|&(label, _, _)| label.to_string())
-                        .unwrap_or_else(|| panes[ap].timeframe.clone())
-                };
-                let range_resp = KitButton::menu(range_label.as_str()).show_menu(ui, t, |ui| {
-                    ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                    ui.style_mut().visuals.window_fill = t.toolbar_bg;
-                    ui.label(egui::RichText::new("RANGE").monospace().size(font_sm()).color(color_dim(t.dim)));
-                    let presets: &[(&str, &str, u32)] = &[
-                        ("1 Day",    "5m",  78),
-                        ("2 Days",   "5m",  156),
-                        ("3 Days",   "5m",  234),
-                        ("5 Days",   "15m", 130),
-                        ("2 Weeks",  "30m", 130),
-                        ("1 Month",  "1h",  130),
-                        ("3 Months", "1d",  63),
-                        ("1 Year",   "1d",  252),
-                    ];
-                    for &(label, tf, preset_vc) in presets {
-                        if ui.add(SelectableRow::new(label, false)).clicked() {
-                            panes[ap].pending_timeframe_change = Some(tf.to_string());
-                            panes[ap].vc = preset_vc;
-                            panes[ap].vc_target = preset_vc;
-                            ui.close_menu();
-                        }
-                    }
-                });
-                paint_nav_col_tint(ui, tb_rect, range_resp.response.rect, t,
-                    range_resp.response.hovered(), false, "range");
-                {
-                    use crate::ui_kit::widgets::Tooltip;
-                    Tooltip::rich(|ui, theme| {
-                        ui.label(egui::RichText::new("Range").size(font_sm()).strong().color(theme.text()));
-                        ui.label(egui::RichText::new("Quick presets (1D, 2D, 1M, …)").size(font_xs()).color(theme.dim()));
-                    }).show(ui, &range_resp.response, t);
-                }
-                if range_resp.response.clicked() { TB_BTN_CLICKED.with(|f| f.set(true)); }
-            }
+            // (Range dropdown moved to the per-pane top-left strip.)
 
             ui.add(egui::Separator::default().spacing(4.0));
 
@@ -702,16 +655,7 @@ pub(crate) fn render(
                 ui.spacing_mut().item_spacing.x = gap_xs();
                 ui.spacing_mut().button_padding = egui::vec2(gap_sm(), gap_sm());
 
-                // Magnet snap
-                let r = toolbar_btn(ui, Icon::MAGNET, panes[ap].magnet, t);
-                Tooltip::new("Magnet Snap").show(ui, &r, t);
-                if r.clicked() {
-                    commands::push(AppCommand::SetChartFlag {
-                        pane: ap,
-                        flag: ChartFlag::Magnet,
-                        value: !panes[ap].magnet,
-                    });
-                }
+                // (Magnet snap moved to the per-pane top-left strip.)
 
                 // Object tree — icon button with a count badge painted in the top-right corner
                 {
@@ -748,12 +692,7 @@ pub(crate) fn render(
                     }
                 }
 
-                // Trendline filter
-                let r = toolbar_btn(ui, Icon::FUNNEL, watchlist.trendline_filter_open, t);
-                Tooltip::new("Trendline Filter").show(ui, &r, t);
-                if r.clicked() {
-                    watchlist.update_sidebar_state(|s| s.trendline_filter_open = !s.trendline_filter_open);
-                }
+                // (Trendline filter moved to the per-pane top-left strip.)
 
                 ui.spacing_mut().item_spacing.x = prev_sp;
                 ui.spacing_mut().button_padding = prev_pad;
@@ -764,57 +703,10 @@ pub(crate) fn render(
             // ── Organized dropdown menus ──
             let _menu_font = mono_sm();
 
-            // Chart Type dropdown (single-select)
-            let cm_label = match panes[ap].candle_mode {
-                CandleMode::Standard => "STD", CandleMode::Violin => "VLN",
-                CandleMode::Gradient => "GRD", CandleMode::ViolinGradient => "V+G",
-                CandleMode::HeikinAshi => "HA", CandleMode::Line => "LN", CandleMode::Area => "AR",
-                CandleMode::Renko => "RNK", CandleMode::RangeBar => "RNG", CandleMode::TickBar => "TCK",
-            };
-            let prev_candle_mode = panes[ap].candle_mode;
-            let mode_menu = KitButton::menu(cm_label).show_menu(ui, t, |ui| {
-                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                ui.style_mut().visuals.window_fill = t.toolbar_bg;
-                for (mode, label) in [
-                    (CandleMode::Standard, "Candlestick"), (CandleMode::HeikinAshi, "Heikin Ashi"),
-                    (CandleMode::Line, "Line"), (CandleMode::Area, "Area"),
-                    (CandleMode::Violin, "Violin"), (CandleMode::Gradient, "Gradient"),
-                    (CandleMode::ViolinGradient, "Violin + Gradient"),
-                    (CandleMode::Renko, "Renko"), (CandleMode::RangeBar, "Range Bars"),
-                    (CandleMode::TickBar, "Tick Bars"),
-                ] {
-                    let active = panes[ap].candle_mode == mode;
-                    if ui.add(SelectableRow::new(label, active)).clicked() {
-                        panes[ap].candle_mode = mode;
-                    }
-                }
-                ui.separator();
-                let log = panes[ap].log_scale;
-                if ui.add(SelectableRow::new("Log Scale", log)).clicked() {
-                    let shift = ui.input(|i| i.modifiers.shift); let nv = !log;
-                    let fan = shift || watchlist.broadcast_mode;
-                    commands::push(AppCommand::SetChartFlag {
-                        pane: ap,
-                        flag: ChartFlag::LogScale,
-                        value: nv,
-                    });
-                    publish_toggle(watchlist, fan, PaneToggle::LogScale, nv, ap);
-                }
-            });
-            paint_nav_col_tint(ui, tb_rect, mode_menu.response.rect, t,
-                mode_menu.response.hovered(), false, "candle_mode");
-            {
-                use crate::ui_kit::widgets::Tooltip;
-                Tooltip::rich(|ui, theme| {
-                    ui.label(egui::RichText::new("Candle Mode").size(font_sm()).strong().color(theme.text()));
-                    ui.label(egui::RichText::new("Standard, Heikin Ashi, Renko, … + log scale").size(font_xs()).color(theme.dim()));
-                }).show(ui, &mode_menu.response, t);
-            }
-            // Mark alt bars dirty when candle mode changes
-            if panes[ap].candle_mode != prev_candle_mode {
-                panes[ap].alt_bars_dirty = true;
-                panes[ap].indicator_bar_count = 0; // force indicator recompute
-            }
+            // (Candle-mode dropdown moved to the per-pane top-left strip.
+            //  Mode-change dirty flags now set there; the alt-settings row
+            //  below still appears when candle_mode is Renko/RangeBar/TickBar.)
+
             // Alt chart type settings row
             match panes[ap].candle_mode {
                 CandleMode::Renko => {
@@ -1506,18 +1398,7 @@ pub(crate) fn render(
                 }).show(ui, &widgets_menu.response, t);
             }
 
-            // Hit-highlight toggle — trendline/swing hit detection flash
-            {
-                let hh_resp = toolbar_btn(ui, Icon::LINE_SEGMENT, panes[ap].hit_highlight, t);
-                Tooltip::new("Trendline Hit Detection").show(ui, &hh_resp, t);
-                if hh_resp.clicked() {
-                    let shift = ui.input(|i| i.modifiers.shift);
-                    let nv = !panes[ap].hit_highlight;
-                    let fan = shift || watchlist.broadcast_mode;
-                    panes[ap].hit_highlight = nv;
-                    publish_toggle(watchlist, fan, PaneToggle::HitHighlight, nv, ap);
-                }
-            }
+            // (Hit-highlight toggle moved to the per-pane top-left strip.)
 
             ui.add(egui::Separator::default().spacing(4.0));
 

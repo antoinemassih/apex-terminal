@@ -89,47 +89,19 @@ pub trait ComponentTheme {
     fn danger(&self) -> Color32 { self.bear() }
 }
 
-impl ComponentTheme for crate::chart_renderer::gpu::Theme {
-    fn accent(&self) -> Color32 { self.accent }
-    fn bull(&self) -> Color32 { self.bull }
-    fn bear(&self) -> Color32 { self.bear }
-    fn text(&self) -> Color32 { self.text }
-    fn dim(&self) -> Color32 { self.dim }
-    fn border(&self) -> Color32 { self.toolbar_border }
-    fn border_variant(&self) -> Color32 { self.border_variant }
-    fn warn(&self) -> Color32 { self.warn }
-    fn bg(&self) -> Color32 { self.bg }
-    fn surface(&self) -> Color32 { self.toolbar_bg }
-    fn element_hover(&self) -> Color32 { self.element_hover }
-    fn element_active(&self) -> Color32 { self.element_active }
-    fn element_selected(&self) -> Color32 { self.element_selected }
-    fn element_disabled(&self) -> Color32 { self.element_disabled }
-    fn ghost_hover(&self) -> Color32 { self.ghost_hover }
-    fn ghost_active(&self) -> Color32 { self.ghost_active }
-    fn icon(&self) -> Color32 { self.icon }
-    fn icon_muted(&self) -> Color32 { self.icon_muted }
-    fn icon_disabled(&self) -> Color32 { self.icon_disabled }
-    fn icon_accent(&self) -> Color32 { self.icon_accent }
-    fn shadow_color(&self) -> Color32 { self.shadow_color }
-}
+// `impl ComponentTheme for crate::chart_renderer::gpu::Theme` is the
+// chart-app's bridge to this trait and lives in `chart_renderer::theme_impl`
+// (correct dependency direction: chart_renderer -> ui_kit, not the reverse).
+// Re-exported here for back-compat with widgets that import
+// `super::theme::active_theme`.
+pub use crate::chart_renderer::theme_impl::active_theme;
 
-// Blanket impl so callers can pass `&T` where T: ComponentTheme through
-// `&dyn ComponentTheme` interchangeably without explicit coercion in
-// generic contexts.
 /// Read the active theme index stashed in egui memory by the render loop.
-/// Falls back to 0 (Midnight) if nothing was stashed.
+/// Falls back to 0 (Midnight) if nothing was stashed. Portable — no
+/// chart-app dependency.
 pub fn active_theme_idx(ctx: &egui::Context) -> usize {
     ctx.data(|d| d.get_temp::<usize>(egui::Id::new("apex_active_theme_idx")))
        .unwrap_or(0)
-}
-
-/// Returns an owned `Theme` for the active idx via the live theme registry.
-/// Reads from `live_themes()` (the `OnceLock<RwLock<Vec<Theme>>>`) so
-/// design-mode edits are reflected immediately without a restart.
-pub fn active_theme(ctx: &egui::Context) -> crate::chart_renderer::gpu::Theme {
-    let n = crate::chart_renderer::gpu::live_theme_count();
-    let idx = active_theme_idx(ctx).min(n.saturating_sub(1));
-    crate::chart_renderer::gpu::get_theme(idx)
 }
 
 impl<T: ComponentTheme + ?Sized> ComponentTheme for &T {

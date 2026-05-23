@@ -138,6 +138,12 @@ fn render_chart_pane(
         "CHART_PANE", "Chart");
     let chart = &mut panes[pane_idx];
 
+    // Drawing-palette visibility toggle (header DRAW button). Declared at
+    // function-body scope so both the header builder and the in-chart strip
+    // (further down, inside nested blocks) can see it.
+    let show_drawing_palette_id = egui::Id::new(("show_drawing_palette", pane_idx));
+    let show_drawing_palette = ctx.data(|d| d.get_temp::<bool>(show_drawing_palette_id)).unwrap_or(true);
+
     // Bound the per-pane drawing undo/redo history (audit: unbounded growth —
     // a drag pushes a Modify entry every frame). Trim once per frame.
     const MAX_UNDO: usize = 300;
@@ -442,6 +448,7 @@ fn render_chart_pane(
             .can_go_fwd(can_go_fwd)
             .show_plus_tab(true)
             .show_overlay_btn(chart.overlay_editing || !chart.symbol_overlays.is_empty())
+            .show_drawing_btn(show_drawing_palette)
             .show_order_btn(chart.floating_order_panes.iter().any(|p| p.strike == 0.0))
             .show_dom_btn(chart.dom_sidebar_open);
         if !chart.is_option {
@@ -819,6 +826,10 @@ fn render_chart_pane(
         if hdr.clicked_overlay {
             chart.overlay_editing = !chart.overlay_editing;
             if chart.overlay_editing { chart.overlay_editing_idx = None; }
+        }
+        // Drawing-palette show/hide toggle.
+        if hdr.clicked_drawing {
+            ctx.data_mut(|d| d.insert_temp(show_drawing_palette_id, !show_drawing_palette));
         }
     }
 
@@ -8664,25 +8675,94 @@ fn render_chart_pane(
         // allocate_ui_at_rect version had the top/maximized pane's strip
         // shadowed because the strip lived on the same layer as the chart.
         let cur_tf = chart.timeframe.clone();
+        let cur_vc = chart.vc;
         let cur_tool = chart.draw_tool.clone();
+        let cur_candle = chart.candle_mode;
+        let cur_log = chart.log_scale;
+        let cur_magnet = chart.magnet;
+        let cur_hit = chart.hit_highlight;
+        let cur_filter = watchlist.trendline_filter_open;
+        let cur_broadcast = watchlist.broadcast_mode;
+        // Range preset table — pairs (timeframe, visible-bar-count). Quick-history
+        // selector; clicking sets both the TF and the visible bar window.
+        const RANGE_PRESETS: &[(&str, &str, u32)] = &[
+            ("1D", "5m", 78), ("2D", "5m", 156), ("3D", "5m", 234),
+            ("5D", "15m", 130), ("2W", "30m", 130), ("1M", "1h", 130),
+            ("3M", "1d", 63), ("1Y", "1d", 252),
+        ];
+        let range_label: String = RANGE_PRESETS.iter()
+            .find(|&&(_, tf, vc)| tf == cur_tf.as_str() && vc == cur_vc)
+            .map(|&(l, _, _)| l.to_string())
+            .unwrap_or_else(|| {
+                // No preset match — show the visible duration as
+                // <N>D / <N>H / <N>m so the label is always informative.
+                let secs = crate::chart_renderer::ui::components::toolbar::top_nav::tf_to_secs(cur_tf.as_str()) * cur_vc;
+                if secs >= 86400 { format!("{}D", secs / 86400) }
+                else if secs >= 3600 { format!("{}H", secs / 3600) }
+                else if secs >= 60 { format!("{}m", secs / 60) }
+                else { format!("{}s", secs) }
+            });
         let mut pending_tf: Option<String> = None;
         let mut new_tool: Option<String> = None;
+        let mut new_candle: Option<CandleMode> = None;
+        let mut new_log: Option<(bool, bool)> = None;     // (value, fan-out)
+        let mut new_magnet: Option<bool> = None;
+        let mut new_hit: Option<(bool, bool)> = None;     // (value, fan-out)
+        let mut new_filter: Option<bool> = None;
+        let mut new_range: Option<(String, u32)> = None;  // (timeframe, vc)
+        // Per-pane collapse + drag state, stored in egui memory (Chart is
+        // frozen per ADR 0001 — no new fields on the god-object).
+        let identity_collapsed_id = egui::Id::new(("identity_collapsed", pane_idx));
+        let palette_collapsed_id  = egui::Id::new(("palette_collapsed", pane_idx));
+        let palette_pos_id        = egui::Id::new(("palette_pos", pane_idx));
+        let identity_collapsed = ctx.data(|d| d.get_temp::<bool>(identity_collapsed_id))
+            .unwrap_or(false);
+        let palette_collapsed  = ctx.data(|d| d.get_temp::<bool>(palette_collapsed_id))
+            .unwrap_or(false);
         let strip_pos = egui::pos2(rect.left() + pad, y);
-        let area_resp = egui::Area::new(egui::Id::new(("pane_top_strip", pane_idx)))
+        let identity_resp = egui::Area::new(egui::Id::new(("pane_identity", pane_idx)))
             .fixed_pos(strip_pos)
             .order(egui::Order::Middle)
             .interactable(true)
             .show(ctx, |ui| {
+            let frame_resp = egui::Frame::NONE
+                .fill(t.toolbar_bg.gamma_multiply(0.92))
+                .stroke(egui::Stroke::new(1.0, t.toolbar_border))
+                .corner_radius(4.0)
+                .inner_margin(egui::Margin::symmetric(4, 2))
+                .shadow(egui::epaint::Shadow {
+                    offset: [0, 2],
+                    blur: 6,
+                    spread: 0,
+                    color: egui::Color32::from_black_alpha(50),
+                })
+                .show(ui, |ui| {
             ui.horizontal(|ui| {
                 use crate::ui_kit::widgets::Button as KitButton;
-                use crate::ui_kit::widgets::MenuItem;
-                use crate::ui_kit::icons::Icon;
-                use crate::chart_renderer::ui::style::{font_md, font_sm};
+                use crate::ui_kit::widgets::{MenuItem, ToolBarButton};
+                use crate::chart_renderer::ui::style::font_sm;
+                use crate::ui_kit::widgets::tokens::Size as KitSize;
+                // Tight padding + spacing — strip buttons stay compact.
+                ui.spacing_mut().item_spacing.x = 2.0;
+                ui.spacing_mut().button_padding = egui::vec2(4.0, 2.0);
+                // Toggle on the LEFT — gear icon when collapsed, ‹ chevron when
+                // expanded. Single click toggles the strip.
+                let toggle_resp = if identity_collapsed {
+                    use crate::ui_kit::icons::Icon;
+                    ToolBarButton::icon(Icon::GEAR).show(ui, t)
+                } else {
+                    ToolBarButton::new("‹").show(ui, t)
+                };
+                if toggle_resp.clicked() {
+                    ctx.data_mut(|d| d.insert_temp(identity_collapsed_id, !identity_collapsed));
+                }
+                if !identity_collapsed {
                 // Timeframe dropdown
                 if !cur_tf.is_empty() {
                     let tf_label = cur_tf.to_uppercase();
                     KitButton::menu(tf_label.as_str())
-                        .glyph_size(font_md())
+                        .size(KitSize::Sm)
+                        .glyph_size(font_sm())
                         .fg(t.text)
                         .show_menu(ui, t, |ui| {
                             ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
@@ -8706,11 +8786,165 @@ fn render_chart_pane(
                             }
                         });
                 }
+                // Candle-mode dropdown — moved from the top toolbar.
+                {
+                    let cm_label = match cur_candle {
+                        CandleMode::Standard => "STD", CandleMode::Violin => "VLN",
+                        CandleMode::Gradient => "GRD", CandleMode::ViolinGradient => "V+G",
+                        CandleMode::HeikinAshi => "HA", CandleMode::Line => "LN",
+                        CandleMode::Area => "AR",
+                        CandleMode::Renko => "RNK", CandleMode::RangeBar => "RNG",
+                        CandleMode::TickBar => "TCK",
+                    };
+                    KitButton::menu(cm_label)
+                        .size(KitSize::Sm)
+                        .glyph_size(font_sm())
+                        .fg(t.text)
+                        .show_menu(ui, t, |ui| {
+                            ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                            ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                            ui.set_min_width(170.0);
+                            for (mode, label) in [
+                                (CandleMode::Standard, "Candlestick"),
+                                (CandleMode::HeikinAshi, "Heikin Ashi"),
+                                (CandleMode::Line, "Line"),
+                                (CandleMode::Area, "Area"),
+                                (CandleMode::Violin, "Violin"),
+                                (CandleMode::Gradient, "Gradient"),
+                                (CandleMode::ViolinGradient, "Violin + Gradient"),
+                                (CandleMode::Renko, "Renko"),
+                                (CandleMode::RangeBar, "Range Bars"),
+                                (CandleMode::TickBar, "Tick Bars"),
+                            ] {
+                                let active = cur_candle == mode;
+                                if MenuItem::new(label).selected(active).show(ui, t).clicked() {
+                                    new_candle = Some(mode);
+                                    ui.close_menu();
+                                }
+                            }
+                            ui.separator();
+                            if MenuItem::new("Log Scale").selected(cur_log).show(ui, t).clicked() {
+                                let shift = ui.input(|i| i.modifiers.shift);
+                                new_log = Some((!cur_log, shift || cur_broadcast));
+                                ui.close_menu();
+                            }
+                        });
+                }
+                // Range dropdown — quick presets (1D, 5D, 1M, …); sets TF + visible bars.
+                {
+                    KitButton::menu(range_label.as_str())
+                        .size(KitSize::Sm)
+                        .glyph_size(font_sm())
+                        .fg(t.text)
+                        .show_menu(ui, t, |ui| {
+                            ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+                            ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                            ui.set_min_width(150.0);
+                            ui.label(egui::RichText::new("RANGE").monospace()
+                                .size(font_sm()).color(t.dim));
+                            let presets: &[(&str, &str, u32)] = &[
+                                ("1 Day",    "5m",  78),
+                                ("2 Days",   "5m",  156),
+                                ("3 Days",   "5m",  234),
+                                ("5 Days",   "15m", 130),
+                                ("2 Weeks",  "30m", 130),
+                                ("1 Month",  "1h",  130),
+                                ("3 Months", "1d",  63),
+                                ("1 Year",   "1d",  252),
+                            ];
+                            for &(label, tf, preset_vc) in presets {
+                                let active = tf == cur_tf.as_str() && preset_vc == cur_vc;
+                                if MenuItem::new(label).selected(active).show(ui, t).clicked() {
+                                    new_range = Some((tf.to_string(), preset_vc));
+                                    ui.close_menu();
+                                }
+                            }
+                        });
+                }
+                } // end if !identity_collapsed
+                // Return the identity area's actually-used rect.
+                ui.min_rect()
+            }).inner
+            });
+            frame_resp.response.rect
+        });
+        let identity_rect = identity_resp.inner;
+
+        // ── Palette area — drawing dropdown + magnet + hit + filter ─────────
+        // Draggable (via the left-edge grip) and collapsible. Position/collapse
+        // state stored in egui memory per pane. Default position docks just to
+        // the right of the identity strip.
+        let palette_rect = if show_drawing_palette {
+        let default_palette_pos = egui::pos2(identity_rect.right() + 4.0, strip_pos.y);
+        let palette_pos = ctx.data(|d| d.get_temp::<egui::Pos2>(palette_pos_id))
+            .unwrap_or(default_palette_pos);
+        let palette_resp = egui::Area::new(egui::Id::new(("pane_palette", pane_idx)))
+            .fixed_pos(palette_pos)
+            .order(egui::Order::Middle)
+            .interactable(true)
+            .show(ctx, |ui| {
+            let frame_resp = egui::Frame::NONE
+                .fill(t.toolbar_bg.gamma_multiply(0.92))
+                .stroke(egui::Stroke::new(1.0, t.toolbar_border))
+                .corner_radius(4.0)
+                .inner_margin(egui::Margin::symmetric(4, 2))
+                .shadow(egui::epaint::Shadow {
+                    offset: [0, 2],
+                    blur: 6,
+                    spread: 0,
+                    color: egui::Color32::from_black_alpha(50),
+                })
+                .show(ui, |ui| {
+            ui.vertical(|ui| {
+                use crate::ui_kit::widgets::Button as KitButton;
+                use crate::ui_kit::widgets::{MenuItem, ToolBarButton};
+                use crate::ui_kit::icons::Icon;
+                use crate::chart_renderer::ui::style::font_sm;
+                use crate::ui_kit::widgets::tokens::Size as KitSize;
+                ui.spacing_mut().item_spacing.y = 2.0;
+                ui.spacing_mut().button_padding = egui::vec2(4.0, 2.0);
+                // ── Pencil: click toggles collapse, drag moves the palette ──
+                // One control replaces the previous grip + chevron pair.
+                {
+                    let (pencil_rect, pencil_resp) = ui.allocate_exact_size(
+                        egui::vec2(28.0, 24.0),
+                        egui::Sense::click_and_drag(),
+                    );
+                    let hovered = pencil_resp.hovered() || pencil_resp.dragged();
+                    if hovered {
+                        ui.ctx().set_cursor_icon(if pencil_resp.dragged() {
+                            egui::CursorIcon::Grabbing
+                        } else {
+                            egui::CursorIcon::Grab
+                        });
+                    }
+                    let fg = if !palette_collapsed { t.accent }
+                        else if hovered { t.text }
+                        else { t.dim };
+                    ui.painter().text(
+                        pencil_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        Icon::PENCIL_LINE,
+                        egui::FontId::proportional(16.0),
+                        fg,
+                    );
+                    if pencil_resp.clicked() {
+                        ctx.data_mut(|d| d.insert_temp(palette_collapsed_id, !palette_collapsed));
+                    }
+                    if pencil_resp.dragged() {
+                        let new_pos = palette_pos + pencil_resp.drag_delta();
+                        ctx.data_mut(|d| d.insert_temp(palette_pos_id, new_pos));
+                    }
+                }
+                // ── Palette content (when expanded) ──
+                if !palette_collapsed {
+                    ui.separator();
                 // Drawing-tool dropdown — mirrors the top-nav drawing menu.
                 {
                     let has_tool = !cur_tool.is_empty();
                     KitButton::menu(Icon::PENCIL_LINE)
-                        .glyph_size(font_md())
+                        .size(KitSize::Sm)
+                        .glyph_size(font_sm())
                         .fg(if has_tool { t.accent } else { t.text })
                         .show_menu(ui, t, |ui| {
                             ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
@@ -8748,12 +8982,48 @@ fn render_chart_pane(
                             }
                         });
                 }
-                // Return the horizontal layout's actually-used rect so we can
-                // position the MARK toggle right after it.
+                // Magnet snap — moved from the top toolbar.
+                {
+                    let r = ToolBarButton::icon(Icon::MAGNET)
+                        .active(cur_magnet)
+                        .show(ui, t);
+                    if r.clicked() {
+                        new_magnet = Some(!cur_magnet);
+                    }
+                }
+                // Hit-alert toggle (trendline/swing hit detection flash) —
+                // moved from the top toolbar; Shift fans out via publish_toggle.
+                {
+                    let r = ToolBarButton::icon(Icon::LINE_SEGMENT)
+                        .active(cur_hit)
+                        .show(ui, t);
+                    if r.clicked() {
+                        let shift = ui.input(|i| i.modifiers.shift);
+                        new_hit = Some((!cur_hit, shift || cur_broadcast));
+                    }
+                }
+                // Trendline filter — moved from the top toolbar.
+                {
+                    let r = ToolBarButton::icon(Icon::FUNNEL)
+                        .active(cur_filter)
+                        .show(ui, t);
+                    if r.clicked() {
+                        new_filter = Some(!cur_filter);
+                    }
+                }
+                } // end if !palette_collapsed
+                // Return the palette's actually-used rect so the MARK toggle
+                // can position itself right after.
                 ui.min_rect()
             }).inner
+            });
+            frame_resp.response.rect
         });
-        let dropdowns_rect = area_resp.inner;
+        palette_resp.inner
+        } else {
+            // Palette hidden via the header DRAW toggle — anchor MARK to identity.
+            identity_rect
+        };
         if let Some(new_tf) = pending_tf {
             chart.pending_timeframe_change = Some(new_tf);
         }
@@ -8763,8 +9033,52 @@ fn render_chart_pane(
             chart.pending_pt2 = None;
             chart.pending_pts.clear();
         }
+        if let Some(mode) = new_candle {
+            if mode != chart.candle_mode {
+                chart.candle_mode = mode;
+                chart.alt_bars_dirty = true;
+                chart.indicator_bar_count = 0;
+            }
+        }
+        if let Some((v, fan)) = new_log {
+            crate::chart_renderer::commands::push(
+                crate::chart_renderer::commands::AppCommand::SetChartFlag {
+                    pane: pane_idx,
+                    flag: crate::chart_renderer::commands::ChartFlag::LogScale,
+                    value: v,
+                },
+            );
+            crate::chart_renderer::ui::components::toolbar::top_nav::publish_toggle(
+                watchlist, fan,
+                crate::state::subscriptions::PaneToggle::LogScale, v, pane_idx,
+            );
+        }
+        if let Some(v) = new_magnet {
+            crate::chart_renderer::commands::push(
+                crate::chart_renderer::commands::AppCommand::SetChartFlag {
+                    pane: pane_idx,
+                    flag: crate::chart_renderer::commands::ChartFlag::Magnet,
+                    value: v,
+                },
+            );
+        }
+        if let Some((v, fan)) = new_hit {
+            chart.hit_highlight = v;
+            crate::chart_renderer::ui::components::toolbar::top_nav::publish_toggle(
+                watchlist, fan,
+                crate::state::subscriptions::PaneToggle::HitHighlight, v, pane_idx,
+            );
+        }
+        if let Some(v) = new_filter {
+            watchlist.update_sidebar_state(|s| s.trendline_filter_open = v);
+        }
+        if let Some((tf, vc)) = new_range {
+            chart.pending_timeframe_change = Some(tf);
+            chart.vc = vc;
+            chart.vc_target = vc;
+        }
         // `x` and `p` are kept for the MARK toggle below.
-        let mut x = dropdowns_rect.right() + 4.0;
+        let mut x = palette_rect.right() + 4.0;
         let p = ui.painter_at(rect);
         // MARK_BARS_PROTOCOL — Last|Mark segmented toggle (option panes only).
         if chart.is_option {

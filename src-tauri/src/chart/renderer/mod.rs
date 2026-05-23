@@ -11,6 +11,7 @@
 //! - Render thread processes commands between frames (non-blocking)
 
 pub mod gpu;
+pub mod theme_impl;
 mod types;
 pub mod ui;
 pub mod compute;
