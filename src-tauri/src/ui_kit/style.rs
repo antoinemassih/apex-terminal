@@ -179,6 +179,53 @@ pub fn contrast_fg(bg: Color32) -> Color32 {
 #[inline] pub fn divider_inset_md() -> f32 { 3.0 }
 #[inline] pub fn divider_inset_lg() -> f32 { 5.0 }
 
+// ─── Uppercase alpha constants (compile-time fallbacks) ──────────────────────
+pub const ALPHA_FAINT:   u8 =  10;
+pub const ALPHA_GHOST:   u8 =  15;
+pub const ALPHA_SOFT:    u8 =  20;
+pub const ALPHA_WHISPER: u8 =  25;
+pub const ALPHA_HINT:    u8 =  30;
+pub const ALPHA_SUBTLE:  u8 =  40;
+pub const ALPHA_TINT:    u8 =  48;
+pub const ALPHA_MUTED:   u8 =  60;
+pub const ALPHA_DIM:     u8 =  60;
+pub const ALPHA_LINE:    u8 =  80;
+pub const ALPHA_STRONG:  u8 =  80;
+pub const ALPHA_ACTIVE:  u8 = 100;
+pub const ALPHA_HEAVY:   u8 = 120;
+pub const ALPHA_SOLID:   u8 = 200;
+
+// ─── Uppercase stroke constants ──────────────────────────────────────────────
+pub const STROKE_HAIR:        f32 = 0.3;
+pub const STROKE_THIN:        f32 = 0.5;
+pub const STROKE_MEDIUM:      f32 = 0.8;
+pub const STROKE_STD:         f32 = 1.0;
+pub const STROKE_BOLD:        f32 = 1.5;
+pub const STROKE_THICK:       f32 = 2.0;
+pub const STROKE_EXTRA_THICK: f32 = 2.5;
+pub const STROKE_HEAVY:       f32 = 3.0;
+
+// ─── CornerRadius helpers — `r_xs/sm/md/lg_cr()` returning egui::CornerRadius
+//     from the per-frame radius tokens. Saves callers a cast at every site.
+#[inline] pub fn r_xs_cr() -> egui::CornerRadius { egui::CornerRadius::same(radius_xs() as u8) }
+#[inline] pub fn r_sm_cr() -> egui::CornerRadius { egui::CornerRadius::same(radius_sm() as u8) }
+#[inline] pub fn r_md_cr() -> egui::CornerRadius { egui::CornerRadius::same(radius_md() as u8) }
+#[inline] pub fn r_lg_cr() -> egui::CornerRadius { egui::CornerRadius::same(radius_lg() as u8) }
+
+// ─── Shadow geometry helpers ─────────────────────────────────────────────────
+#[inline] pub fn shadow_offset() -> f32 { frame_tokens().shadow_offset }
+#[inline] pub fn shadow_alpha()  -> u8  { frame_tokens().shadow_alpha }
+#[inline] pub fn shadow_spread() -> f32 { frame_tokens().shadow_spread }
+
+/// `color_alpha` over an explicit color — convenience for shadow paints that
+/// already have the shadow color resolved (e.g. from `theme.shadow_color()`).
+/// Mirrors the chart-app's free `shadow_color_alpha(t, a)`; this version takes
+/// the resolved color directly so the body is portable.
+#[inline]
+pub fn shadow_color_alpha_of(shadow_color: Color32, alpha: u8) -> Color32 {
+    Color32::from_rgba_unmultiplied(shadow_color.r(), shadow_color.g(), shadow_color.b(), alpha)
+}
+
 
 
 // ─── Font sizes (px) ─────────────────────────────────────────────────────────

@@ -435,14 +435,6 @@ pub mod cursor {
 // stroke_hair/thin/medium/std/bold/thick moved to `crate::ui_kit::style`.
 // `stroke_extra_thick` / `stroke_heavy` now in `crate::ui_kit::style`.
 
-pub const STROKE_HAIR:        f32 = 0.3;
-pub const STROKE_THIN:        f32 = 0.5;
-pub const STROKE_MEDIUM:      f32 = 0.8;
-pub const STROKE_STD:         f32 = 1.0;
-pub const STROKE_BOLD:        f32 = 1.5;
-pub const STROKE_THICK:       f32 = 2.0;
-pub const STROKE_EXTRA_THICK: f32 = 2.5;
-pub const STROKE_HEAVY:       f32 = 3.0;
 
 // ─── Semantic alpha tokens ────────────────────────────────────────────────────
 // 2026-05: tier expanded with intermediate values to absorb hardcoded literals
@@ -458,28 +450,12 @@ pub fn alpha_prominent()   -> u8 { 180 }
 pub fn alpha_near_opaque() -> u8 { 230 }
 
 /// Use with `color_alpha(color, ALPHA_*)` for consistent opacity tiers.
-pub const ALPHA_FAINT:       u8 = 10;
-pub const ALPHA_GHOST:       u8 = 15;
-pub const ALPHA_SOFT:        u8 = 20;
-pub const ALPHA_WHISPER:     u8 = 25;
-pub const ALPHA_HINT:        u8 = 30;
-pub const ALPHA_SUBTLE:      u8 = 40;
-pub const ALPHA_TINT:        u8 = 48;
-pub const ALPHA_MUTED:       u8 = 60;
-pub const ALPHA_DIM:         u8 = 60;
-pub const ALPHA_LINE:        u8 = 80;
-pub const ALPHA_STRONG:      u8 = 80;
-pub const ALPHA_ACTIVE:      u8 = 100;
-pub const ALPHA_HEAVY:       u8 = 120;
 pub const ALPHA_INTENSE:     u8 = 140;
 pub const ALPHA_PROMINENT:   u8 = 180;
-pub const ALPHA_SOLID:       u8 = 200;
 pub const ALPHA_NEAR_OPAQUE: u8 = 230;
 
 // ─── Drop shadow tokens ───────────────────────────────────────────────────────
-pub fn shadow_offset() -> f32 { crate::ui_kit::style::frame_tokens().shadow_offset }
-pub fn shadow_alpha()  -> u8  { crate::ui_kit::style::frame_tokens().shadow_alpha }
-pub fn shadow_spread() -> f32 { crate::ui_kit::style::frame_tokens().shadow_spread }
+// shadow_offset / shadow_alpha / shadow_spread now in `crate::ui_kit::style`.
 
 pub const SHADOW_OFFSET: f32 = 2.0;
 pub const SHADOW_ALPHA:  u8  = 60;
@@ -2267,9 +2243,7 @@ pub fn current() -> StyleSettings {
 // Octave 1/2/3/4/99). Previously these used static tokens which broke the
 // style cascade — a popup using r_lg_cr() always got 8px regardless of style.
 pub fn r_xs() -> egui::CornerRadius { egui::CornerRadius::same(current().r_xs) }
-pub fn r_sm_cr() -> egui::CornerRadius { egui::CornerRadius::same(current().r_sm) }
-pub fn r_md_cr() -> egui::CornerRadius { egui::CornerRadius::same(current().r_md) }
-pub fn r_lg_cr() -> egui::CornerRadius { egui::CornerRadius::same(current().r_lg) }
+// r_sm_cr / r_md_cr / r_lg_cr now in `crate::ui_kit::style`.
 pub fn r_pill() -> egui::CornerRadius { egui::CornerRadius::same(current().r_pill) }
 
 pub fn btn_compact_height() -> f32 { 22.0 }

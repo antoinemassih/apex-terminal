@@ -11,5 +11,11 @@
 
 #[allow(unused_imports)]
 pub use crate::ui_kit::style::*;
+// Bridge to chart-app style helpers that are genuinely state-bearing
+// (`current()` reads StyleSettings) or chart-app-specific (Theme-taking
+// `panel_surface(t)` etc., button treatment enums). These prevent the
+// literal workspace crate move; each one needs to either migrate into
+// ui_kit (via a trait method or owned definition) or have its ui_kit
+// callers rewired. Tracked in docs/UI_EXTRACTION.md.
 #[allow(unused_imports)]
 pub use crate::chart_renderer::ui::style::*;
