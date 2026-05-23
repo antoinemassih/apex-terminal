@@ -27,9 +27,9 @@
 //!
 //! Visual spec:
 //! - Height: 22 px (same as a dense `PanelListRow`).
-//! - Background: `color_alpha(t.toolbar_border, alpha_ghost())` — the same
+//! - Background: `color_alpha(t.surface_border(), alpha_ghost())` — the same
 //!   recessed tint used by `PanelSubSection` and `TableHeader`.
-//! - Bottom hairline: `stroke_thin()` at `color_alpha(t.toolbar_border, 60)`.
+//! - Bottom hairline: `stroke_thin()` at `color_alpha(t.surface_border(), 60)`.
 //! - Left label: `mono_xs`, `t.dim` color, left-padded `gap_md()`.
 //! - Center slot: centered in the remaining space after left label.
 //! - Right slot: `Layout::right_to_left(Center)`, right-padded `gap_xs()`.
@@ -49,10 +49,10 @@
 
 use egui::{Align, FontId, Layout, Pos2, Sense, Ui, Vec2};
 
-use crate::chart::renderer::ui::style::{
+use crate::ui_kit::tokens::{
     alpha_ghost, color_alpha, font_xs, gap_md, gap_xs, stroke_thin,
 };
-use crate::ui_kit::widgets::theme::Theme;
+use crate::ui_kit::widgets::theme::ComponentTheme;
 
 /// Height of the toolbar strip in pixels.
 const TOOLBAR_H: f32 = 22.0;
@@ -60,8 +60,8 @@ const TOOLBAR_H: f32 = 22.0;
 #[must_use = "PanelToolbar must be rendered with `.show(...)`"]
 pub struct PanelToolbar<'a> {
     left_label: Option<&'a str>,
-    center: Option<Box<dyn FnOnce(&mut Ui, &Theme) + 'a>>,
-    right_actions: Option<Box<dyn FnOnce(&mut Ui, &Theme) + 'a>>,
+    center: Option<Box<dyn FnOnce(&mut Ui, &dyn ComponentTheme) + 'a>>,
+    right_actions: Option<Box<dyn FnOnce(&mut Ui, &dyn ComponentTheme) + 'a>>,
     height: f32,
 }
 
@@ -83,16 +83,16 @@ impl<'a> PanelToolbar<'a> {
     }
 
     /// Center slot — arbitrary content (filter chips, segmented control).
-    /// Receives `(&mut Ui, &Theme)`. The center slot is omitted when not set.
-    pub fn center(mut self, f: impl FnOnce(&mut Ui, &Theme) + 'a) -> Self {
+    /// Receives `(&mut Ui, &dyn ComponentTheme)`. The center slot is omitted when not set.
+    pub fn center(mut self, f: impl FnOnce(&mut Ui, &dyn ComponentTheme) + 'a) -> Self {
         self.center = Some(Box::new(f));
         self
     }
 
     /// Right slot — icon buttons or other compact actions. Painted
     /// **right-to-left** so the first closure call paints the rightmost item.
-    /// Receives `(&mut Ui, &Theme)`.
-    pub fn right_actions(mut self, f: impl FnOnce(&mut Ui, &Theme) + 'a) -> Self {
+    /// Receives `(&mut Ui, &dyn ComponentTheme)`.
+    pub fn right_actions(mut self, f: impl FnOnce(&mut Ui, &dyn ComponentTheme) + 'a) -> Self {
         self.right_actions = Some(Box::new(f));
         self
     }
@@ -104,7 +104,7 @@ impl<'a> PanelToolbar<'a> {
         self
     }
 
-    pub fn show(self, ui: &mut Ui, t: &Theme) {
+    pub fn show(self, ui: &mut Ui, t: &dyn ComponentTheme) {
         let avail_w = ui.available_width();
         let (rect, _) = ui.allocate_exact_size(
             Vec2::new(avail_w, self.height),
@@ -118,13 +118,13 @@ impl<'a> PanelToolbar<'a> {
         let painter = ui.painter_at(rect);
 
         // Strip background.
-        painter.rect_filled(rect, 0.0, color_alpha(t.toolbar_border, alpha_ghost()));
+        painter.rect_filled(rect, 0.0, color_alpha(t.surface_border(), alpha_ghost()));
 
         // Bottom hairline.
         let y = rect.bottom() - 0.5;
         painter.line_segment(
             [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
-            egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, 60)),
+            egui::Stroke::new(stroke_thin(), color_alpha(t.surface_border(), 60)),
         );
 
         // Use a new child UI covering the full rect for the layout.
@@ -142,7 +142,7 @@ impl<'a> PanelToolbar<'a> {
                 egui::RichText::new(label)
                     .monospace()
                     .size(font_xs())
-                    .color(t.dim),
+                    .color(t.dim()),
             );
         }
 

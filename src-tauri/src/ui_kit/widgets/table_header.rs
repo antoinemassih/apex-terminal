@@ -24,9 +24,9 @@
 //! - Height: 18 px (denser than a data row to read as a heading, not a peer).
 //! - Typography: `font_xs` proportional in `t.dim` (muted to recede behind
 //!   data rows).
-//! - Background: `color_alpha(t.toolbar_border, alpha_ghost())` — the same
+//! - Background: `color_alpha(t.surface_border(), alpha_ghost())` — the same
 //!   hairline-dark strip used by section sub-headers.
-//! - Bottom hairline: `stroke_thin()` at `color_alpha(t.toolbar_border, 60)`.
+//! - Bottom hairline: `stroke_thin()` at `color_alpha(t.surface_border(), 60)`.
 //! - Columns are laid out with the same gap/padding math as
 //!   `PanelListRow::paint_columns` so alignment is pixel-exact.
 //!
@@ -43,10 +43,10 @@
 
 use egui::{Color32, FontId, Pos2, Rect, Sense, Ui, Vec2};
 
-use crate::chart::renderer::ui::style::{
+use crate::ui_kit::tokens::{
     alpha_ghost, color_alpha, font_xs, gap_md, gap_xs, stroke_thin,
 };
-use crate::ui_kit::widgets::theme::Theme;
+use crate::ui_kit::widgets::theme::ComponentTheme;
 
 /// One column definition. Mirrors the sizing fields of
 /// `panel_list_row::Column` so callers can declare both header and data rows
@@ -82,7 +82,7 @@ impl TableHeader {
         self
     }
 
-    pub fn show(self, ui: &mut Ui, t: &Theme) {
+    pub fn show(self, ui: &mut Ui, t: &dyn ComponentTheme) {
         if self.cols.is_empty() {
             return;
         }
@@ -96,13 +96,13 @@ impl TableHeader {
         let painter = ui.painter_at(rect);
 
         // Strip background — same tint as PanelSubSection / section sub-headers.
-        painter.rect_filled(rect, 0.0, color_alpha(t.toolbar_border, alpha_ghost()));
+        painter.rect_filled(rect, 0.0, color_alpha(t.surface_border(), alpha_ghost()));
 
         // Bottom hairline rule.
         let y = rect.bottom() - 0.5;
         painter.line_segment(
             [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
-            egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, 60)),
+            egui::Stroke::new(stroke_thin(), color_alpha(t.surface_border(), 60)),
         );
 
         // Column layout: same padding math as PanelListRow::paint_columns.
@@ -123,7 +123,7 @@ impl TableHeader {
 
         let cy = rect.center().y;
         let mut x = inner_left;
-        let col_color = color_alpha(t.dim, 180); // muted but readable
+        let col_color = color_alpha(t.dim(), 180); // muted but readable
 
         for (i, c) in self.cols.iter().enumerate() {
             let cell_w = c.width + per_col_flex;
