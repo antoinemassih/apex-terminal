@@ -293,3 +293,67 @@ The session moved the needle decisively. The trait surface
 genuinely portable. ~6 widgets are fully migrated to `&dyn
 ComponentTheme`. The bridge files are the *single* point of code-level
 coupling. A future agent picks up at Step 1 above.
+
+### Status (autonomous push 3)
+
+Two more commits landed:
+
+- **Phase 4c** (`9da16d2d`) — Routed `kit::PanelHeader` /
+  `PanelHeaderTabs` / `panel_action_btn` (chart-app composites used by
+  side_panel_shell + split_section_panel) through the
+  `ui_kit::widgets::frames` bridge. Soft-extracted; bodies stay in
+  chart_renderer.
+- **Phase 5a** (`745bb2c1`) — Created `src/ui_kit/style.rs` as the
+  canonical home for stateless token primitives. Pure constants and
+  utilities (font sizes, spacing, stroke widths, radii, alphas,
+  elevation factors, `color_alpha`/`color_alpha_mul`). No
+  `FRAME_TOKENS`, no `chart_renderer` reference. Lives alongside the
+  chart-app's duplicates for now; cleanup is the next pass.
+
+### TRULY remaining for a workspace crate
+
+The autonomous push completed every step that could land safely in a
+single context. The remaining work is genuinely cross-file design that
+deserves human attention:
+
+1. **Duplicate cleanup**: rewire `chart::renderer::ui::style` to
+   `pub use crate::ui_kit::style::*` for the pure helpers; delete the
+   duplicates. Risk: subtle ordering / shadowing if the chart-app code
+   relies on the exact body of any helper. Bounded but careful.
+2. **Ambient theme pattern**: 14+ `Widget::ui` impls call
+   `super::theme::active_theme(ctx)`. Replace with `set_ambient_theme` /
+   `get_ambient_theme` egui-memory stash holding `Arc<dyn ComponentTheme +
+   Send + Sync>`. Chart app sets once per frame. Half-day design move.
+3. **Physical move of `frames_widget` bodies**: 5 types currently call
+   `current()` (chart-app state). Strip via explicit `corner_radius` /
+   `shadow_alpha` builder params. Move to `ui_kit/widgets/frames.rs` as
+   owned code. Half day.
+4. **`FRAME_TOKENS` move** (or accept the bridge): the thread-local +
+   `begin_frame()` integration with the chart-app's style preset system.
+   Either move it to `ui_kit` with its loader trait, or keep it in
+   chart_renderer and have `ui_kit::tokens` continue to bridge the
+   stateful helpers. Design decision.
+5. **Workspace crate scaffold**: `crates/apex-ui/`, move `src/ui_kit/` +
+   `src/design_system/` into it. Cargo.toml wiring, import path
+   rewriting across the chart app. Mechanical but ~1 day.
+
+### Summary of this session
+
+- **Inverted imports**: 78 → 14 (all in 4 bridge files; one of those is
+  a doc comment).
+- **6 widgets** fully migrated to `&dyn ComponentTheme`: shell_variants,
+  table_header, panel_toolbar, panel_section/side_panel_shell/
+  split_section_panel (helper-call migrations).
+- **`ComponentTheme` trait** now portable: bull/bear have default
+  impls; success/danger/surface_border/header_surface/
+  section_header_surface/panel_surface/header_border added.
+- **`impl ComponentTheme for Theme`** moved out of ui_kit into
+  `chart_renderer::theme_impl` (correct dep direction).
+- **`ui_kit::style`** created as the canonical home for stateless token
+  primitives.
+- **All 575 lib tests pass** at every commit. **Both default and
+  design-mode builds clean** at every commit.
+
+The bones of the kit are extractable. Items 1–5 above are the bounded
+finish-it-off work; budget 3 days for them then half a day for the
+workspace crate scaffold.
