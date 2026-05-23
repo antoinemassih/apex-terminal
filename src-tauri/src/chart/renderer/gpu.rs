@@ -496,6 +496,23 @@ pub fn append_installed_themes(schemes: Vec<crate::design_system::ColorScheme>) 
     }
 }
 
+/// Hot-reload friendly variant: upsert installed themes into LIVE_THEMES.
+/// If a theme with the same name already exists, it's REPLACED in place
+/// (preserving its index so the active-theme picker doesn't jump). New
+/// names are appended. Used by `design_system::hot_reload` when a
+/// colorscheme JSON file changes on disk.
+pub fn upsert_installed_themes(schemes: Vec<crate::design_system::ColorScheme>) {
+    let mut guard = live_themes().write().unwrap_or_else(|e| e.into_inner());
+    for scheme in schemes {
+        let candidate = crate::design_system::color_scheme_to_theme(&scheme);
+        if let Some(slot) = guard.iter_mut().find(|t| t.name == candidate.name) {
+            *slot = candidate;
+        } else {
+            guard.push(candidate);
+        }
+    }
+}
+
 const PRESET_COLORS: &[&str] = &["#4a9eff","#e74c3c","#2ecc71","#f39c12","#9b59b6","#1abc9c","#e67e22","#3498db","#e91e63","#00bcd4","#8bc34a","#ff5722","#607d8b","#795548","#cddc39","#ff9800"];
 
 // ─── Simulation constants ────────────────────────────────────────────────────

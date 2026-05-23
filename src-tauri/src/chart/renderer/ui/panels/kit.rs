@@ -102,7 +102,7 @@ fn paint_chrome_perimeter(painter: &egui::Painter, rect: Rect, t: &Theme) {
 /// Paint the 10px linear-alpha gradient shadow that sits BELOW the header bar,
 /// fading from `from_black_alpha(42)` → transparent. Mirrors `render::pane.rs:425-448`
 /// exactly so chart panes and side panels share the identical drop.
-fn paint_header_shadow(ui: &Ui, header_rect: Rect) {
+fn paint_header_shadow(ui: &Ui, header_rect: Rect, t: &Theme) {
     let shadow_h = 10.0_f32;
     let shadow_top = header_rect.bottom() + 1.0;
     let shadow_rect = Rect::from_min_max(
@@ -110,7 +110,11 @@ fn paint_header_shadow(ui: &Ui, header_rect: Rect) {
         Pos2::new(header_rect.right(), shadow_top + shadow_h),
     );
     let painter = ui.painter_at(shadow_rect);
-    let top_col = Color32::from_black_alpha(42);
+    // Themed: pull shadow tint from the active palette so light themes
+    // (Bauhaus/Peach/Ivory/Newsprint) get a soft gray gradient instead of
+    // a brown-black smudge.
+    let s = t.shadow_color;
+    let top_col = Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), 42);
     let bot_col = Color32::TRANSPARENT;
     let mut mesh = egui::Mesh::default();
     let tl = shadow_rect.left_top();
@@ -227,7 +231,7 @@ impl<'a> PanelHeader<'a> {
 
         // Chrome: perimeter hairline + 10px gradient shadow below.
         paint_chrome_perimeter(&painter, rect, t);
-        paint_header_shadow(ui, rect);
+        paint_header_shadow(ui, rect, t);
 
         let title_font = FontId::monospace(font_size);
 
@@ -360,7 +364,7 @@ impl<'a, T: PartialEq + Copy> PanelHeaderTabs<'a, T> {
         let painter = ui.painter_at(rect);
 
         paint_chrome_perimeter(&painter, rect, t);
-        paint_header_shadow(ui, rect);
+        paint_header_shadow(ui, rect, t);
 
         let title_font = FontId::monospace(font_size);
         let h = rect.height();

@@ -8734,7 +8734,13 @@ fn render_chart_pane(
                     offset: [0, 2],
                     blur: 6,
                     spread: 0,
-                    color: egui::Color32::from_black_alpha(50),
+                    // Themed: pull shadow tint from the active palette so
+                    // light themes get a soft gray drop instead of a black
+                    // smudge on Bauhaus/Peach/Ivory/Newsprint.
+                    color: {
+                        let s = t.shadow_color;
+                        egui::Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), 50)
+                    },
                 })
                 .show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -8892,7 +8898,13 @@ fn render_chart_pane(
                     offset: [0, 2],
                     blur: 6,
                     spread: 0,
-                    color: egui::Color32::from_black_alpha(50),
+                    // Themed: pull shadow tint from the active palette so
+                    // light themes get a soft gray drop instead of a black
+                    // smudge on Bauhaus/Peach/Ivory/Newsprint.
+                    color: {
+                        let s = t.shadow_color;
+                        egui::Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), 50)
+                    },
                 })
                 .show(ui, |ui| {
             ui.vertical(|ui| {
@@ -11991,9 +12003,14 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
         DESIGN_INSPECTOR.with(|cell| {
             let mut cell = cell.borrow_mut();
             if cell.is_none() {
-                *cell = Some(crate::design_inspector::Inspector::new(
+                let mut inspector = crate::design_inspector::Inspector::new(
                     std::path::PathBuf::from("design.toml"),
-                ));
+                );
+                // Wire the live themes directory so the TwoAxis editor's
+                // "Apply via hot-reload" button can write DTCG JSON that
+                // the watcher picks up within ~1.5s.
+                inspector.themes_dir = crate::design_system::themes_dir();
+                *cell = Some(inspector);
             }
             if let Some(inspector) = cell.as_mut() {
                 if f12 { inspector.toggle(); }

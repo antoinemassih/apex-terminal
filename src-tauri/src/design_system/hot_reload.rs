@@ -60,6 +60,21 @@ fn install_override(style: StyleSystem) {
     }
 }
 
+// ── Themes dir (cross-module access for the in-app TwoAxis editor) ───────────
+//
+// `start_theme_watcher` stashes the live themes directory here so the design-
+// mode inspector (which lives in chart_renderer::render::pane::core) can wire
+// `Inspector::themes_dir = Some(themes_dir())` without threading it through
+// every call site.
+
+static THEMES_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// The live themes directory, if a watcher has been started. Used by the
+/// in-app TwoAxis editor to know where to write user-edited DTCG JSON.
+pub fn themes_dir() -> Option<PathBuf> {
+    THEMES_DIR.get().cloned()
+}
+
 // ── Background watcher ────────────────────────────────────────────────────────
 
 /// Spawn the hot-reload watcher thread.
@@ -75,6 +90,11 @@ pub fn start_theme_watcher(themes_dir: PathBuf) {
     // `active_override()` is always callable from the render thread.
     let _ = override_slot();
 
+    // Stash the themes_dir so the in-app TwoAxis editor (design-mode) can
+    // find where to write user edits without threading the path through
+    // every call site.
+    let _ = THEMES_DIR.set(themes_dir.clone());
+
     thread::Builder::new()
         .name("apex-theme-watcher".into())
         .spawn(move || run_watcher(themes_dir))
@@ -82,18 +102,27 @@ pub fn start_theme_watcher(themes_dir: PathBuf) {
 }
 
 /// The watcher loop — runs forever on a background thread.
+///
+/// Watches TWO subdirectories at ~1.5s polling cadence:
+/// - `<themes_dir>/styles/*.json` — `StyleSystem` overrides (radii, strokes,
+///   typography, density, treatments). Hot-reload installs into the live
+///   override slot; ui_kit token helpers pick it up on the next frame.
+/// - `<themes_dir>/colorschemes/*.json` — `ColorScheme` palettes. Hot-reload
+///   upserts into the `LIVE_THEMES` registry; the theme picker shows the
+///   updated palette immediately. Changes to a theme that's currently
+///   active take effect on the next frame.
 fn run_watcher(themes_dir: PathBuf) {
     let styles_dir = themes_dir.join("styles");
-    let mut last_mtimes: Vec<(PathBuf, SystemTime)> = Vec::new();
+    let colorschemes_dir = themes_dir.join("colorschemes");
+    let mut last_style_mtimes: Vec<(PathBuf, SystemTime)> = Vec::new();
+    let mut last_scheme_mtimes: Vec<(PathBuf, SystemTime)> = Vec::new();
 
     loop {
         thread::sleep(Duration::from_millis(1_500));
 
-        // Collect current mtimes for all *.json files in styles_dir.
-        let current = collect_mtimes(&styles_dir);
-
-        if mtimes_changed(&last_mtimes, &current) {
-            // At least one file changed — re-parse all and take the first success.
+        // ── Styles axis ──────────────────────────────────────────────────
+        let cur_styles = collect_mtimes(&styles_dir);
+        if mtimes_changed(&last_style_mtimes, &cur_styles) {
             if let Some(style) = load_first_style(&styles_dir) {
                 eprintln!(
                     "[theme-watcher] reloaded StyleSystem '{}' from {:?}",
@@ -101,7 +130,31 @@ fn run_watcher(themes_dir: PathBuf) {
                 );
                 install_override(style);
             }
-            last_mtimes = current;
+            last_style_mtimes = cur_styles;
+        }
+
+        // ── ColorScheme axis ─────────────────────────────────────────────
+        let cur_schemes = collect_mtimes(&colorschemes_dir);
+        if mtimes_changed(&last_scheme_mtimes, &cur_schemes) {
+            let mut schemes = Vec::new();
+            for (path, _) in &cur_schemes {
+                if let Ok(json) = fs::read_to_string(path) {
+                    match super::color_scheme::ColorScheme::from_dtcg(&json) {
+                        Ok(cs) => schemes.push(cs),
+                        Err(e) => eprintln!("[theme-watcher] skipping {:?}: {e}", path),
+                    }
+                }
+            }
+            if !schemes.is_empty() {
+                let n = schemes.len();
+                // Upsert into LIVE_THEMES — replaces existing by name, appends new.
+                crate::chart_renderer::gpu::upsert_installed_themes(schemes);
+                eprintln!(
+                    "[theme-watcher] reloaded {n} ColorScheme(s) from {:?}",
+                    colorschemes_dir
+                );
+            }
+            last_scheme_mtimes = cur_schemes;
         }
     }
 }

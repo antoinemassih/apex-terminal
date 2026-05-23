@@ -825,14 +825,14 @@ mod tests {
     #[test]
     fn hoverable_false_path_does_not_call_ease_bool() {
         // Builder-state assertion: hoverable(false) stores the flag.
-        let row = PanelListRow::new("tape_row").hoverable(false);
+        let row: PanelListRow<crate::ui_kit::widgets::theme::PortableTheme> = PanelListRow::new("tape_row").hoverable(false);
         assert!(!row.hoverable, "hoverable(false) must set hoverable=false");
     }
 
     /// The default row is hoverable.
     #[test]
     fn hoverable_true_by_default() {
-        let row = PanelListRow::new("default_row");
+        let row: PanelListRow<crate::ui_kit::widgets::theme::PortableTheme> = PanelListRow::new("default_row");
         assert!(row.hoverable, "PanelListRow::new must default hoverable=true");
     }
 
