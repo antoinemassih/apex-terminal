@@ -128,6 +128,33 @@ pub fn active_theme_idx(ctx: &egui::Context) -> usize {
        .unwrap_or(0)
 }
 
+// ── Ambient theme (UI extraction, item 2) ────────────────────────────────────
+//
+// Hosts (the chart app, or any other app embedding ui_kit) stash the active
+// `Theme` in egui memory once per frame. ui_kit widgets that have no
+// theme arg (e.g. `Widget` impls returning `Response`) read it back via
+// `get_ambient_theme(ctx)` instead of reaching into the chart-app's live
+// theme registry. This severs `active_theme()`'s hard dependency on
+// `chart_renderer::gpu::get_theme(idx)` — the registry is now a fallback.
+
+const AMBIENT_KEY: &str = "apex_ambient_theme";
+
+/// Stash the current `Theme` in egui memory so ui_kit's parameter-less
+/// widgets can find it. Call this once per frame from the host app's
+/// render loop, before any UI is built. Cheap — one cloned `Theme`
+/// insertion per frame.
+pub fn set_ambient_theme(ctx: &egui::Context, theme: Theme) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new(AMBIENT_KEY), theme));
+}
+
+/// Read the ambient `Theme` set by [`set_ambient_theme`]. Returns `None`
+/// if the host hasn't set one this frame — callers should fall back to
+/// whatever's appropriate (the chart-app version of `active_theme()`
+/// falls back to the live theme registry by index).
+pub fn get_ambient_theme(ctx: &egui::Context) -> Option<Theme> {
+    ctx.data(|d| d.get_temp::<Theme>(egui::Id::new(AMBIENT_KEY)))
+}
+
 impl<T: ComponentTheme + ?Sized> ComponentTheme for &T {
     fn accent(&self) -> Color32 { (**self).accent() }
     fn bull(&self) -> Color32 { (**self).bull() }

@@ -12,7 +12,7 @@
 //! `active_theme_idx()` accessor stays in `ui_kit::widgets::theme`.
 
 use egui::Color32;
-use crate::ui_kit::widgets::theme::{ComponentTheme, active_theme_idx};
+use crate::ui_kit::widgets::theme::{ComponentTheme, active_theme_idx, get_ambient_theme};
 use super::gpu::{Theme, live_theme_count, get_theme};
 
 impl ComponentTheme for Theme {
@@ -39,9 +39,16 @@ impl ComponentTheme for Theme {
     fn shadow_color(&self) -> Color32 { self.shadow_color }
 }
 
-/// Returns an owned `Theme` for the active idx via the live theme registry.
-/// Reads from `live_themes()` so design-mode edits show up immediately.
+/// Returns an owned `Theme` for the current frame. Resolution order:
+///  1. The ambient theme stashed by `set_ambient_theme(ctx, theme)`
+///     — the portable path used by ui_kit widgets.
+///  2. Fallback: read the active idx from egui memory and pull from the
+///     chart-app's live theme registry. This is the legacy path for
+///     callers that don't go through `set_ambient_theme`.
 pub fn active_theme(ctx: &egui::Context) -> Theme {
+    if let Some(t) = get_ambient_theme(ctx) {
+        return t;
+    }
     let n = live_theme_count();
     let idx = active_theme_idx(ctx).min(n.saturating_sub(1));
     get_theme(idx)

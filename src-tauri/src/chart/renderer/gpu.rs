@@ -4026,8 +4026,15 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
         }
     }
     super::trading::order_manager::gc_orders(); // periodic cleanup
-    // Stash the active theme index in egui memory so ui_kit widgets can read it.
-    ctx.data_mut(|d| d.insert_temp(egui::Id::new("apex_active_theme_idx"), theme_idx));
+    // Stash the active theme index AND the resolved Theme in egui memory so
+    // ui_kit widgets can read either form. The ambient Theme stash is the
+    // portable path; the idx is kept for legacy code that does its own
+    // registry lookup.
+    let resolved = get_theme(theme_idx);
+    ctx.data_mut(|d| {
+        d.insert_temp(egui::Id::new("apex_active_theme_idx"), theme_idx);
+        d.insert_temp(egui::Id::new("apex_ambient_theme"), resolved);
+    });
     let win_ref: Option<Arc<Window>> = {
         CURRENT_WINDOW.with(|w| w.borrow().clone())
     };
