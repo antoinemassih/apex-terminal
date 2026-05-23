@@ -585,9 +585,10 @@ impl PaneHeaderSize {
     }
 }
 
-/// Line style
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum LineStyle { Solid, Dashed, Dotted }
+/// Line style — moved to `ui_kit::LineStyle` as part of the UI extraction
+/// (see `docs/UI_EXTRACTION.md`). Re-exported here so the rest of the chart
+/// app keeps working without an import change.
+pub use crate::ui_kit::LineStyle;
 
 /// Drawing on the chart
 /// Significance data for a drawing (populated by backend/ApexSignals)

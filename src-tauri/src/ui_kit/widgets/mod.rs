@@ -102,6 +102,7 @@ pub mod icon_placement;
 pub mod sparkline;
 pub mod shell_variants;
 pub mod menu_item;
+pub mod toolbar_button;
 
 // ─── Foundation ──────────────────────────────────────────────────────
 pub use tokens::{Size, Variant};
@@ -113,6 +114,7 @@ pub use placement::{Align, Placement, Side};
 pub use button::{Button, show_button_gallery};
 pub use link::Link;
 pub use menu_item::MenuItem;
+pub use toolbar_button::ToolBarButton;
 
 // ─── Inputs & Forms ──────────────────────────────────────────────────
 pub use input::{Input, InputResponse};
@@ -211,7 +213,7 @@ pub use selectable_row::SelectableRow;
 use egui::{Color32, Ui, Sense, RichText};
 use super::theme::{ChartTheme, DRAW_COLORS};
 use super::icons::Icon;
-use crate::chart_renderer::LineStyle;
+use crate::ui_kit::LineStyle;
 
 /// Color picker (legacy) — row of colored circles, returns selected hex color if clicked.
 /// Use [`ColorPicker`] widget instead for new code.
