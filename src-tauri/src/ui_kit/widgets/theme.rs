@@ -87,6 +87,30 @@ pub trait ComponentTheme {
     /// actions — anywhere the meaning is "warning/wrong/destroy" rather
     /// than "the market went down".
     fn danger(&self) -> Color32 { self.bear() }
+
+    // ── Semantic surface tokens (Phase 2c — portability) ─────────────────────
+    // These previously lived in chart_renderer::ui::style as free functions
+    // taking `&Theme` (concrete). Moved onto the trait as defaults so widgets
+    // can compute them from `&dyn ComponentTheme` without a chart-app dep.
+
+    /// Border colour for a framed surface. Defaults to `border()`. Override
+    /// only if a theme wants a separate "raised-surface" border tone.
+    fn surface_border(&self) -> Color32 { self.border() }
+
+    /// Header band background — one elevation step over `bg()`.
+    fn header_surface(&self) -> Color32 { self.bg().gamma_multiply(0.95) }
+
+    /// Section-header band background — two elevation steps over `bg()`.
+    fn section_header_surface(&self) -> Color32 { self.bg().gamma_multiply(0.88) }
+
+    /// Panel body background — three elevation steps over `bg()`.
+    fn panel_surface(&self) -> Color32 { self.bg().gamma_multiply(0.85) }
+
+    /// Header divider/border colour. 38α over `text()`.
+    fn header_border(&self) -> Color32 {
+        let t = self.text();
+        Color32::from_rgba_unmultiplied(t.r(), t.g(), t.b(), 38)
+    }
 }
 
 // `impl ComponentTheme for crate::chart_renderer::gpu::Theme` is the
