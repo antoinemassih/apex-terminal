@@ -46,18 +46,19 @@
 
 use egui::Context;
 
-use crate::ui_kit::widgets::theme::Theme;
+use crate::ui_kit::widgets::theme::ComponentTheme;
 
 /// Context handed to a panel each render. Held by value because every
-/// field is cheap to copy — `Context` is `Arc`-backed inside, `Theme`
-/// is a small struct.
+/// field is cheap to copy — `Context` is `Arc`-backed inside; the
+/// theme is held as `&dyn ComponentTheme` so panels work with any
+/// `ComponentTheme` implementor (chart-app `Theme` or `PortableTheme`).
 pub struct PanelCtx<'a> {
     pub egui: &'a Context,
-    pub theme: &'a Theme,
+    pub theme: &'a dyn ComponentTheme,
 }
 
 impl<'a> PanelCtx<'a> {
-    pub fn new(egui: &'a Context, theme: &'a Theme) -> Self {
+    pub fn new(egui: &'a Context, theme: &'a dyn ComponentTheme) -> Self {
         Self { egui, theme }
     }
 }

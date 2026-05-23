@@ -206,7 +206,7 @@ pub(crate) fn draw(
                                 PanelSubSection::new(sym, sym)
                                     .count(working_count)
                                     .expanded(expanded)
-                                    .header_trailing(|ui, t| {
+                                    .header_trailing(|ui, t: &crate::chart_renderer::gpu::Theme| {
                                         // Show "Cancel all" only when ≥2 working orders —
                                         // the per-row × already covers the single-order case.
                                         if working_count >= 2 {

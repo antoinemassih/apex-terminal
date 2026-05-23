@@ -113,6 +113,14 @@ pub trait ComponentTheme {
         Color32::from_rgba_unmultiplied(t.r(), t.g(), t.b(), 38)
     }
 
+    /// Compose `shadow_color()` with an explicit alpha. Mirrors
+    /// `style::shadow_color_alpha(t, alpha)` so widgets get a portable
+    /// path.
+    fn shadow_color_alpha(&self, alpha: u8) -> Color32 {
+        let s = self.shadow_color();
+        Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), alpha)
+    }
+
     /// Theme-aware card shadow. Default: `[0, 2]` offset, blur 4, spread 0,
     /// alpha 60 over `shadow_color()`. Mirrors `style::shadow_card_themed`.
     /// Themes / apps that need a different shadow override this method.
