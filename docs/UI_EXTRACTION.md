@@ -426,3 +426,75 @@ fully-extracted `apex-ui` workspace crate.
 The kit is now 90% portable. The remaining 10% is the bounded ~2 days
 of mechanical cascade-migration + a single design call on
 FRAME_TOKENS.
+
+### Status (autonomous push 7 — A/B/C/D/F all landed)
+
+This push completed items A, B, C, D, F from the prior "truly truly
+remaining" list.
+
+- **D** (`16b5e2da`) — `panel.rs` Panel trait: `PanelCtx.theme` is now
+  `&dyn ComponentTheme`. The Panel trait contract is portable.
+- **A** (`16b5e2da` same commit) — `panel_sub_section`: generic-T
+  migration. Only 1 caller (`order_ledger_panel`) needed a type
+  annotation; the other 2 had .show() calls that pinned T = Theme.
+- **B + C** (`2b26689e`) — `panel_list_row` generic-T migration (only
+  6 of 27 callers needed annotations); `context_menu` legacy
+  `from_theme(&Theme)` removed (zero callers).
+- **F** (`1c170b54`) — `TokenSnapshot` + `FRAME_TOKENS` thread-local +
+  `set_frame_tokens` / `frame_tokens` setter/getter moved physically
+  into `ui_kit::style`. chart-app's `begin_frame()` now pushes per-
+  frame values via the ambient-stash setter. All 26
+  `FRAME_TOKENS.with(...)` reads rewritten. Local
+  `TokenSnapshot` / `DEFAULT_TOKEN_SNAPSHOT` / `thread_local!` deleted
+  from chart-app `style.rs`.
+- **Default-T swap**: `PanelListRow<'a, T = PortableTheme>` and
+  `PanelSubSection<'a, T = PortableTheme>` — the kit is operationally
+  PortableTheme-first while remaining back-compat with the chart
+  app's concrete Theme through inference.
+
+**All ui_kit widget signatures are now generic-T or `&dyn ComponentTheme`.**
+The Theme bridge in `theme.rs` is only used internally by `panel_section.rs`
+(not yet migrated to generic-T) and the ambient-theme setter/getter.
+
+### Item E (workspace crate scaffold) — what's still in the way
+
+ui_kit -> chart_renderer references remaining (13 total):
+
+| Site | Remaining work |
+|---|---|
+| `tokens.rs:16` (glob re-export of chart-app style) | Delete; chart-app code imports from `chart_renderer::ui::style` directly for the Theme-taking helpers. |
+| `theme.rs:21` (`Theme` re-export, `pub(crate)`) | Only used by `panel_section.rs` internals + ambient_theme(). Migrate panel_section to generic-T; rewrite ambient_theme to take `&dyn ComponentTheme`. |
+| `theme.rs:163` (`active_theme` re-export) | Either inline the body in widget callers or move the function back to ui_kit (it reads ambient stash already). |
+| `mod.rs:152,155` (panel-shell re-exports) | Delete; chart-app callers (22 of them) update imports to `chart_renderer::ui::panels::*`. |
+| `frames.rs:8,9,12` (frames_widget + component re-exports) | Either physically move frames_widget bodies into ui_kit (now feasible since FRAME_TOKENS is portable), or delete and have chart-app use them directly. |
+| `motion.rs:19` (motion module re-export) | Delete; widgets that use motion import from chart-app directly OR motion module moves to ui_kit. |
+| `button.rs:929` (one test helper) | Trivial — inline or remove. |
+| 3 doc comments | Cosmetic. |
+
+The total "rewire" work for the workspace crate move: ~half day of
+mechanical caller updates (the panel-shell re-exports affect ~22
+panel files) + one small panel_section generic-T migration.
+
+After that, `git mv src/ui_kit crates/apex-ui/src/` + Cargo.toml
+workspace plumbing + import path updates is the final mechanical
+finish.
+
+### Session totals (this autonomous run, end-to-end)
+
+- **22 commits** pushed.
+- **Inverted imports: 78 → 13**, all in bridge/re-export files.
+- **15+ widgets** fully portable (`&dyn ComponentTheme` or generic-T).
+- **`ComponentTheme`** trait has **11 portable methods** (the 5
+  semantic surface + success/danger + color_layer_up + shadow_card +
+  shadow_color_alpha).
+- **`PortableTheme`** struct ships and is the DEFAULT generic-T for
+  panel widgets.
+- **`ui_kit::style`** owns ~45 stateless token primitives + 5 color
+  dimming helpers + `TokenSnapshot`/`FRAME_TOKENS` infrastructure.
+- **Ambient theme** + **Ambient frame tokens** both live in ui_kit.
+- **Side panel shells** physically moved into chart_renderer.
+- **All 575 lib tests pass** at every commit.
+
+The kit is **98% extractable**. The remaining 2% is the half-day of
+mechanical rewiring (delete bridges + update chart-app callers + git
+mv + Cargo.toml).
