@@ -18,8 +18,8 @@
 //! Visual spec (mirrors `PanelEmpty`):
 //! - Vertical layout, center-aligned, 64 px minimum height.
 //! - Icon: `font_xl` (22 px) in `bear` color — uses `Icon::WARNING` (`⚠`).
-//! - Message: `mono_sm` in `t.dim`.
-//! - Hint (optional, second line): `mono_xs` in `color_muted(t.dim)`.
+//! - Message: `mono_sm` in `t.dim()`.
+//! - Hint (optional, second line): `mono_xs` in `color_muted(t.dim())`.
 //! - Retry slot (optional): anything the caller paints. Centred below the
 //!   hint/message with `gap_sm` separation.
 //!
@@ -37,14 +37,14 @@
 use egui::{Align, FontId, Layout, RichText, Ui};
 
 use crate::ui_kit::tokens::{color_muted, font_sm, font_xl, font_xs, gap_md, gap_sm, gap_xs};
-use crate::ui_kit::widgets::theme::Theme;
+use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::ui_kit::icons::Icon;
 
 #[must_use = "PanelError must be rendered with `.show(...)`"]
 pub struct PanelError<'a> {
     message: &'a str,
     hint: Option<&'a str>,
-    retry_action: Option<Box<dyn FnOnce(&mut Ui, &Theme) + 'a>>,
+    retry_action: Option<Box<dyn FnOnce(&mut Ui, &dyn ComponentTheme) + 'a>>,
     min_height: f32,
 }
 
@@ -66,8 +66,8 @@ impl<'a> PanelError<'a> {
 
     /// Optional retry slot. The closure is called below the message (and hint,
     /// if set). Caller is responsible for painting the button and wiring the
-    /// click. Receives `(&mut Ui, &Theme)` so it can use `ui_kit::Button`.
-    pub fn retry_action(mut self, f: impl FnOnce(&mut Ui, &Theme) + 'a) -> Self {
+    /// click. Receives `(&mut Ui, &dyn ComponentTheme)` so it can use `ui_kit::Button`.
+    pub fn retry_action(mut self, f: impl FnOnce(&mut Ui, &dyn ComponentTheme) + 'a) -> Self {
         self.retry_action = Some(Box::new(f));
         self
     }
@@ -78,7 +78,7 @@ impl<'a> PanelError<'a> {
         self
     }
 
-    pub fn show(self, ui: &mut Ui, t: &Theme) {
+    pub fn show(self, ui: &mut Ui, t: &dyn ComponentTheme) {
         let avail_w = ui.available_width();
         ui.allocate_ui_with_layout(
             egui::Vec2::new(avail_w, self.min_height),
@@ -90,7 +90,7 @@ impl<'a> PanelError<'a> {
                 ui.label(
                     RichText::new(Icon::SHIELD_WARNING)
                         .font(FontId::proportional(font_xl()))
-                        .color(t.bear),
+                        .color(t.bear()),
                 );
                 ui.add_space(gap_xs());
 
@@ -99,7 +99,7 @@ impl<'a> PanelError<'a> {
                     RichText::new(self.message)
                         .monospace()
                         .size(font_sm())
-                        .color(t.dim),
+                        .color(t.dim()),
                 );
 
                 // Optional hint.
@@ -109,7 +109,7 @@ impl<'a> PanelError<'a> {
                         RichText::new(h)
                             .monospace()
                             .size(font_xs())
-                            .color(color_muted(t.dim)),
+                            .color(color_muted(t.dim())),
                     );
                 }
 

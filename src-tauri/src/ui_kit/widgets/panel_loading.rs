@@ -33,7 +33,7 @@ use super::spinner::Spinner;
 use super::theme::active_theme;
 use super::tokens::Size;
 use crate::ui_kit::tokens::{color_muted, font_xs, gap_sm};
-use crate::ui_kit::widgets::theme::Theme;
+use crate::ui_kit::widgets::theme::ComponentTheme;
 
 #[must_use = "PanelLoading must be rendered with `.show(...)`"]
 #[derive(Default)]
@@ -51,7 +51,7 @@ impl<'a> PanelLoading<'a> {
         self
     }
 
-    pub fn show(self, ui: &mut Ui, t: &Theme) {
+    pub fn show(self, ui: &mut Ui, t: &dyn ComponentTheme) {
         // Use the active component theme for Spinner — Spinner is a
         // ui_kit-native widget that wants `&dyn ComponentTheme`.
         let comp_theme = active_theme(ui.ctx());
@@ -68,7 +68,7 @@ impl<'a> PanelLoading<'a> {
                     RichText::new(r)
                         .monospace()
                         .size(font_xs())
-                        .color(color_muted(t.dim)),
+                        .color(color_muted(t.dim())),
                 );
             }
         });

@@ -13,9 +13,9 @@
 //!
 //! Visual spec (locked):
 //! - Vertical layout, center-aligned, ~60–80px minimum vertical space.
-//! - Optional glyph: `font_xl` (22px) in `color_muted(t.dim)`, painted above.
-//! - Title: `mono_sm` in `t.dim`, italic-free.
-//! - Hint (optional, second line): `mono_xs` in `color_muted(t.dim)`.
+//! - Optional glyph: `font_xl` (22px) in `color_muted(t.dim())`, painted above.
+//! - Title: `mono_sm` in `t.dim()`, italic-free.
+//! - Hint (optional, second line): `mono_xs` in `color_muted(t.dim())`.
 //!
 //! When to use:
 //! - Inside a `PanelSection` body when the underlying collection is empty.
@@ -34,7 +34,7 @@ use egui::{Align, FontId, Layout, RichText, Ui};
 use crate::ui_kit::tokens::{
     color_muted, font_sm, font_xl, font_xs, gap_md, gap_xs,
 };
-use crate::ui_kit::widgets::theme::Theme;
+use crate::ui_kit::widgets::theme::ComponentTheme;
 
 #[must_use = "PanelEmpty must be rendered with `.show(...)`"]
 pub struct PanelEmpty<'a> {
@@ -69,7 +69,7 @@ impl<'a> PanelEmpty<'a> {
         self
     }
 
-    pub fn show(self, ui: &mut Ui, t: &Theme) {
+    pub fn show(self, ui: &mut Ui, t: &dyn ComponentTheme) {
         let avail_w = ui.available_width();
         let prev = ui.spacing().item_spacing;
         ui.allocate_ui_with_layout(
@@ -78,7 +78,7 @@ impl<'a> PanelEmpty<'a> {
             |ui| {
                 ui.add_space(gap_md());
                 if let Some(g) = self.glyph {
-                    let col = color_muted(t.dim);
+                    let col = color_muted(t.dim());
                     ui.label(
                         RichText::new(g)
                             .font(FontId::proportional(font_xl()))
@@ -90,7 +90,7 @@ impl<'a> PanelEmpty<'a> {
                     RichText::new(self.title)
                         .monospace()
                         .size(font_sm())
-                        .color(t.dim),
+                        .color(t.dim()),
                 );
                 if let Some(h) = self.hint {
                     ui.add_space(gap_xs());
@@ -98,7 +98,7 @@ impl<'a> PanelEmpty<'a> {
                         RichText::new(h)
                             .monospace()
                             .size(font_xs())
-                            .color(color_muted(t.dim)),
+                            .color(color_muted(t.dim())),
                     );
                 }
                 ui.add_space(gap_md());
