@@ -12014,9 +12014,15 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
             }
             if let Some(inspector) = cell.as_mut() {
                 if f12 { inspector.toggle(); }
-                if let Some(tokens_lock) = crate::design_tokens::get_lock() {
-                    if let Ok(mut tokens) = tokens_lock.write() {
-                        let _changed = inspector.show(ctx, &mut *tokens);
+                // Reentrancy-safe: clone tokens out, let the inspector mutate
+                // a local copy, write back if it changed. Holding the
+                // write lock across inspector.show would deadlock the moment
+                // anything inside (e.g. `set_active_style` -> `begin_frame`
+                // -> `dt_f32!`) tries to acquire a read on the same lock.
+                if let Some(mut tokens_local) = crate::design_tokens::get() {
+                    let changed = inspector.show(ctx, &mut tokens_local);
+                    if changed {
+                        crate::design_tokens::update(tokens_local);
                     }
                 }
             }
