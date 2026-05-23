@@ -756,6 +756,15 @@ let _ = ctx;
                                 .fill(Color32::from_rgb(22, 22, 30))
                                 .inner_margin(egui::Margin { left: 16, right: 12, top: 8, bottom: 8 })
                                 .show(ui, |ui| {
+                                    // ── Live preview strip ────────────────
+                                    // Renders a sample of widgets styled with
+                                    // the CURRENT token values. Drag any
+                                    // slider below → see the effect here
+                                    // within ~16ms. Removes the "I have to
+                                    // hunt the app to verify a change" pain.
+                                    render_live_preview(ui, cat);
+                                    ui.add_space(8.0);
+
                                     if self.render_category(ui, cat, tokens) {
                                         *modified = true;
                                         self.dirty = true;
@@ -1834,6 +1843,167 @@ thread_local! {
 }
 
 /// Unified "Design" category: Style / Theme / Preview in sub-tabs.
+// ─── Live preview strip ──────────────────────────────────────────────────────
+//
+// Painted at the top of every category. Renders representative widgets using
+// the SAME token helpers as the rest of the app — so when the user moves a
+// slider below, the preview here updates the same frame. Eliminates the
+// "where in the app do I look?" hunt.
+//
+// Each preview cell is intentionally tiny — pixel-level for fonts, small
+// boxes for spacing, mini panels for shadow. The goal is "is the change in
+// the direction I expected?", not a full visual showcase.
+fn render_live_preview(ui: &mut Ui, cat: Category) {
+    use crate::ui_kit::style::{
+        font_2xs, font_xs, font_sm, font_md, font_lg, font_xl,
+        gap_xs, gap_sm, gap_md, gap_lg,
+        radius_sm, radius_md,
+        stroke_thin, stroke_std,
+        alpha_faint, alpha_ghost, alpha_soft, alpha_subtle, alpha_tint,
+        alpha_muted, alpha_dim, alpha_line, alpha_strong, alpha_active,
+        alpha_heavy, alpha_solid,
+        shadow_alpha, color_alpha,
+    };
+
+    let label_col = Color32::from_rgb(120, 120, 135);
+    let text_col  = Color32::from_rgb(220, 220, 230);
+    let dim_col   = Color32::from_rgb(150, 150, 165);
+
+    egui::Frame::NONE
+        .fill(Color32::from_rgb(28, 28, 38))
+        .stroke(Stroke::new(stroke_thin(), Color32::from_rgba_unmultiplied(140, 140, 180, 60)))
+        .corner_radius(radius_sm())
+        .inner_margin(egui::Margin::symmetric(10, 8))
+        .show(ui, |ui| {
+            ui.label(RichText::new("LIVE PREVIEW").monospace().size(9.0).strong().color(label_col));
+            ui.add_space(4.0);
+
+            match cat {
+                // ── Fonts ──────────────────────────────────────────────────
+                Category::Font => {
+                    ui.label(RichText::new("xxs  The quick brown fox").size(font_2xs()).color(text_col));
+                    ui.label(RichText::new("xs   The quick brown fox").size(font_xs()).color(text_col));
+                    ui.label(RichText::new("sm   The quick brown fox  ← body").size(font_sm()).color(text_col));
+                    ui.label(RichText::new("md   The quick brown fox").size(font_md()).color(text_col));
+                    ui.label(RichText::new("lg   The quick brown fox").size(font_lg()).color(text_col));
+                    ui.label(RichText::new("xl   1,234.56").size(font_xl()).strong().color(text_col));
+                }
+
+                // ── Spacing ────────────────────────────────────────────────
+                Category::Spacing => {
+                    // 4 blocks separated by xs/sm/md/lg gaps in turn.
+                    let avail_w = ui.available_width();
+                    let h = 16.0_f32;
+                    let (rect, _) = ui.allocate_exact_size(egui::vec2(avail_w, h), egui::Sense::hover());
+                    let gaps: [(&str, f32); 4] = [
+                        ("xs",   gap_xs()),
+                        ("sm",   gap_sm()),
+                        ("md",   gap_md()),
+                        ("lg",   gap_lg()),
+                    ];
+                    let block_w = 18.0_f32;
+                    let mut x = rect.left();
+                    let accent = Color32::from_rgb(203, 166, 247);
+                    {
+                        let p = ui.painter().clone();
+                        for (label, g) in gaps {
+                            let r = egui::Rect::from_min_size(egui::pos2(x, rect.top()), egui::vec2(block_w, h));
+                            p.rect_filled(r, radius_sm(), color_alpha(accent, 100));
+                            p.text(
+                                r.center(),
+                                egui::Align2::CENTER_CENTER,
+                                label,
+                                egui::FontId::monospace(font_2xs()),
+                                text_col,
+                            );
+                            x += block_w + g;
+                        }
+                    }
+                }
+
+                // ── Alpha ──────────────────────────────────────────────────
+                Category::Alpha => {
+                    // 12 swatches at every alpha tier, applied to a fixed
+                    // accent colour so the slider effect is unmistakable.
+                    let accent = Color32::from_rgb(203, 166, 247);
+                    ui.horizontal(|ui| {
+                        let tiers: &[(&str, u8)] = &[
+                            ("ft",  alpha_faint()),
+                            ("gh",  alpha_ghost()),
+                            ("sf",  alpha_soft()),
+                            ("sb",  alpha_subtle()),
+                            ("tn",  alpha_tint()),
+                            ("mu",  alpha_muted()),
+                            ("dm",  alpha_dim()),
+                            ("ln",  alpha_line()),
+                            ("st",  alpha_strong()),
+                            ("ac",  alpha_active()),
+                            ("hv",  alpha_heavy()),
+                            ("so",  alpha_solid()),
+                        ];
+                        for (label, a) in tiers {
+                            let (rect, _) = ui.allocate_exact_size(egui::vec2(22.0, 28.0), egui::Sense::hover());
+                            ui.painter().rect_filled(rect, radius_sm(), color_alpha(accent, *a));
+                            ui.painter().text(
+                                egui::pos2(rect.center().x, rect.bottom() + 5.0),
+                                egui::Align2::CENTER_TOP,
+                                label,
+                                egui::FontId::monospace(font_2xs()),
+                                dim_col,
+                            );
+                        }
+                    });
+                    ui.add_space(10.0);
+                }
+
+                // ── Shadow ─────────────────────────────────────────────────
+                Category::Shadow => {
+                    // A floating card with the active shadow values.
+                    let (rect, _) = ui.allocate_exact_size(egui::vec2(120.0, 48.0), egui::Sense::hover());
+                    let s = Color32::BLACK;
+                    let shadow_col = Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), shadow_alpha());
+                    // Offset shadow.
+                    let shadow_rect = rect.translate(egui::vec2(2.0, 2.0));
+                    ui.painter().rect_filled(shadow_rect, radius_md(), shadow_col);
+                    // Card on top.
+                    ui.painter().rect_filled(rect, radius_md(),
+                        Color32::from_rgb(48, 48, 60));
+                    ui.painter().rect_stroke(rect, radius_md(),
+                        Stroke::new(stroke_std(), Color32::from_rgba_unmultiplied(180, 180, 200, 80)),
+                        egui::epaint::StrokeKind::Inside);
+                    ui.painter().text(
+                        rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "shadow demo",
+                        egui::FontId::monospace(font_xs()),
+                        text_col,
+                    );
+                }
+
+                // ── Components / TwoAxis / Design / Colors ─────────────────
+                // For these, the inline accordion / sub-tabs already show
+                // their own widgets; we just label the preview area.
+                Category::Components => {
+                    ui.label(RichText::new("Open any section below — each accordion shows widgets that react to its sliders.")
+                        .monospace().size(font_xs()).color(dim_col));
+                }
+                Category::TwoAxis => {
+                    ui.label(RichText::new("StyleSystem and ColorScheme edits write DTCG JSON; the watcher hot-reloads within ~1.5s.")
+                        .monospace().size(font_xs()).color(dim_col));
+                }
+                Category::Colors => {
+                    ui.label(RichText::new("⚠ Legacy: these pickers don't drive any renderer today. See note below.")
+                        .monospace().size(font_xs()).color(Color32::from_rgb(232, 168, 64)));
+                }
+                _ => {
+                    // Design (Style/Theme/Preview sub-tabs), Radius, Stroke,
+                    // and all hidden categories — no preview needed; the
+                    // existing UI in the body shows enough.
+                }
+            }
+        });
+}
+
 fn render_design_category(ui: &mut Ui) -> bool {
     let mut changed = false;
     let accent = Color32::from_rgb(203, 166, 247);
