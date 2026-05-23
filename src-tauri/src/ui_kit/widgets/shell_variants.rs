@@ -14,7 +14,7 @@
 use egui::Color32;
 use crate::chart::renderer::ui::style::*;
 
-type Theme = crate::chart_renderer::gpu::Theme;
+type Theme = crate::ui_kit::widgets::theme::Theme;
 
 // ─── ButtonVariant ───────────────────────────────────────────────────────────
 

@@ -49,7 +49,7 @@ use crate::chart::renderer::ui::components::frames_widget::PanelFrame;
 use crate::chart::renderer::ui::style::{
     gap_lg, gap_md, gap_sm, header_border, header_surface, panel_surface, shadow_color_alpha, stroke_thin,
 };
-use crate::chart_renderer::gpu::{Theme, Watchlist};
+use crate::ui_kit::widgets::theme::{Theme, Watchlist};
 
 /// Response from rendering a [`SidePanelShell`] / [`SidePanelShellTabs`] /
 /// [`SplitSectionPanel`]. Caller writes its own open-flag back when
@@ -152,7 +152,7 @@ impl<'a> SidePanelShell<'a> {
     /// conflict; internally just resolves the two values.
     pub fn pane_aligned(mut self, wl: &Watchlist) -> Self {
         self.pane_metrics = Some((
-            crate::chart_renderer::gpu::pane_tabs_header_h(wl),
+            crate::ui_kit::widgets::theme::pane_tabs_header_h(wl),
             wl.pane_header_size.title_font(),
         ));
         self
@@ -263,7 +263,7 @@ impl<'a, T: PartialEq + Copy + 'a> SidePanelShellTabs<'a, T> {
     /// See [`SidePanelShell::pane_aligned`].
     pub fn pane_aligned(mut self, wl: &Watchlist) -> Self {
         self.pane_metrics = Some((
-            crate::chart_renderer::gpu::pane_tabs_header_h(wl),
+            crate::ui_kit::widgets::theme::pane_tabs_header_h(wl),
             wl.pane_header_size.title_font(),
         ));
         self

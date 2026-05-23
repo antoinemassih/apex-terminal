@@ -46,7 +46,7 @@
 
 use egui::Context;
 
-use crate::chart_renderer::gpu::Theme;
+use crate::ui_kit::widgets::theme::Theme;
 
 /// Context handed to a panel each render. Held by value because every
 /// field is cheap to copy — `Context` is `Arc`-backed inside, `Theme`

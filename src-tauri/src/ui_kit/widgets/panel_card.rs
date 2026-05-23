@@ -41,7 +41,7 @@ use super::panel_section::Tone;
 use crate::chart::renderer::ui::style::{
     color_layer_up, gap_md, radius_md, shadow_card_themed,
 };
-use crate::chart_renderer::gpu::Theme;
+use crate::ui_kit::widgets::theme::Theme;
 
 #[must_use = "PanelCard must be rendered with `.show(...)`"]
 pub struct PanelCard {

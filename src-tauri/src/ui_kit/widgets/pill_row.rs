@@ -41,7 +41,7 @@ use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Sense, Ui, Vec2};
 use crate::chart::renderer::ui::style::{
     alpha_ghost, alpha_muted, alpha_soft, color_alpha, font_xs, gap_xs, radius_sm,
 };
-use crate::chart_renderer::gpu::Theme;
+use crate::ui_kit::widgets::theme::Theme;
 use crate::ui_kit::widgets::panel_section::Tone as PanelTone;
 
 /// Response returned from [`PillRow::show`].

@@ -34,7 +34,7 @@ use egui::{Align, FontId, Layout, RichText, Ui};
 use crate::chart::renderer::ui::style::{
     color_muted, font_sm, font_xl, font_xs, gap_md, gap_xs,
 };
-use crate::chart_renderer::gpu::Theme;
+use crate::ui_kit::widgets::theme::Theme;
 
 #[must_use = "PanelEmpty must be rendered with `.show(...)`"]
 pub struct PanelEmpty<'a> {

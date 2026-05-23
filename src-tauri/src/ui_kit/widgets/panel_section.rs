@@ -70,7 +70,7 @@ use super::theme::active_theme;
 use crate::chart::renderer::ui::style::{
     color_alpha, font_sm, font_xs, gap_lg, gap_md, gap_sm, gap_xs, header_border, section_header_surface, shadow_color_alpha, stroke_thin,
 };
-use crate::chart_renderer::gpu::Theme;
+use crate::ui_kit::widgets::theme::Theme;
 
 /// Shared semantic tone for the panel body primitives. Resolves to a theme
 /// color via [`Tone::color`]. Defined here so the seven panel-body widgets

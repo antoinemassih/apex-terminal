@@ -52,7 +52,7 @@ use egui::{Align, FontId, Layout, Pos2, Sense, Ui, Vec2};
 use crate::chart::renderer::ui::style::{
     alpha_ghost, color_alpha, font_xs, gap_md, gap_xs, stroke_thin,
 };
-use crate::chart_renderer::gpu::Theme;
+use crate::ui_kit::widgets::theme::Theme;
 
 /// Height of the toolbar strip in pixels.
 const TOOLBAR_H: f32 = 22.0;

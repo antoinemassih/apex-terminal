@@ -46,7 +46,7 @@ use egui::{Color32, FontId, Pos2, Rect, Sense, Ui, Vec2};
 use crate::chart::renderer::ui::style::{
     alpha_ghost, color_alpha, font_xs, gap_md, gap_xs, stroke_thin,
 };
-use crate::chart_renderer::gpu::Theme;
+use crate::ui_kit::widgets::theme::Theme;
 
 /// One column definition. Mirrors the sizing fields of
 /// `panel_list_row::Column` so callers can declare both header and data rows

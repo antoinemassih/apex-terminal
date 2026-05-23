@@ -27,10 +27,10 @@ use egui::{Color32, Context, Id, Pos2, Rect, Stroke, Ui, Vec2};
 use super::theme::ComponentTheme;
 use super::motion;
 
-use crate::chart_renderer::ui::components::{
+use crate::ui_kit::widgets::frames::{
     DialogHeaderWithClose, PaneHeaderWithClose, PanelHeaderWithClose, PopupFrame,
 };
-use crate::chart_renderer::ui::components::text::SectionLabelSize;
+use crate::ui_kit::widgets::frames::SectionLabelSize;
 use crate::ui_kit::tokens::{self, alpha_line, color_alpha, gap_sm, r_lg_cr};
 
 /// How the modal is anchored on screen.

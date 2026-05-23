@@ -105,7 +105,7 @@ use crate::chart::renderer::ui::style::{
     self as st, alpha_ghost, color_alpha, color_muted, font_sm, font_xs, gap_lg, gap_md, gap_xs,
     radius_sm,
 };
-use crate::chart_renderer::gpu::Theme;
+use crate::ui_kit::widgets::theme::Theme;
 use crate::ui_kit::widgets::{motion, Tooltip};
 
 /// Horizontal alignment for a `Column` cell in `PanelListRow::columns` mode.

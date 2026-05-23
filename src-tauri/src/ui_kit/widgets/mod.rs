@@ -103,6 +103,7 @@ pub mod sparkline;
 pub mod shell_variants;
 pub mod menu_item;
 pub mod toolbar_button;
+pub mod frames;
 
 // ─── Foundation ──────────────────────────────────────────────────────
 pub use tokens::{Size, Variant};

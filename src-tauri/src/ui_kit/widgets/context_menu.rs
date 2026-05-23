@@ -26,10 +26,10 @@ use egui::{Align2, Color32, FontId, Id, Pos2, Response, RichText, Sense, Stroke,
 use super::theme::ComponentTheme;
 use super::motion;
 
-use crate::chart_renderer::ui::components::frames_widget::{BorderAlpha, PopupFrame};
+use crate::ui_kit::widgets::frames::{BorderAlpha, PopupFrame};
 use crate::ui_kit::tokens::*;
 
-type Theme = crate::chart_renderer::gpu::Theme;
+type Theme = crate::ui_kit::widgets::theme::Theme;
 
 // ─── Shared theme snapshot ───────────────────────────────────────────────────
 

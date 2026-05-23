@@ -42,7 +42,7 @@ use crate::chart::renderer::ui::style::{
     alpha_hint, alpha_muted, color_alpha, font_xs, gap_2xs, gap_xs, radius_md, radius_sm,
     stroke_thin,
 };
-use crate::chart_renderer::gpu::Theme;
+use crate::ui_kit::widgets::theme::Theme;
 use crate::ui_kit::widgets::panel_section::Tone as PanelTone;
 use crate::ui_kit::widgets::tokens::Size;
 

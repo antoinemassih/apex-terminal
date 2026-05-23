@@ -32,7 +32,7 @@ use super::panel_section::Tone;
 use crate::chart::renderer::ui::style::{
     color_alpha, color_muted, font_sm, font_xs, gap_lg, gap_xs,
 };
-use crate::chart_renderer::gpu::Theme;
+use crate::ui_kit::widgets::theme::Theme;
 
 #[must_use = "PanelKeyValueRow must be rendered with `.show(...)`"]
 pub struct PanelKeyValueRow<'a> {

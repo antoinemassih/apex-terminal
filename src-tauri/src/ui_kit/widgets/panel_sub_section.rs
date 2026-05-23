@@ -52,7 +52,7 @@ use super::super::icons::Icon;
 use crate::chart::renderer::ui::style::{
     color_alpha, font_sm, gap_2xs, gap_md, gap_xs, header_border, header_surface, radius_sm, shadow_color_alpha, stroke_thin,
 };
-use crate::chart_renderer::gpu::Theme;
+use crate::ui_kit::widgets::theme::Theme;
 
 /// Alpha (out of 255) of the bottom hairline rule. Higher than the L2
 /// surface contrast so the separator actually reads against the lifted
