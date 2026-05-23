@@ -112,6 +112,39 @@ pub trait ComponentTheme {
         let t = self.text();
         Color32::from_rgba_unmultiplied(t.r(), t.g(), t.b(), 38)
     }
+
+    /// Theme-aware card shadow. Default: `[0, 2]` offset, blur 4, spread 0,
+    /// alpha 60 over `shadow_color()`. Mirrors `style::shadow_card_themed`.
+    /// Themes / apps that need a different shadow override this method.
+    fn shadow_card(&self) -> egui::epaint::Shadow {
+        let s = self.shadow_color();
+        egui::epaint::Shadow {
+            offset: [0, 2],
+            blur: 4,
+            spread: 0,
+            color: Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), 60),
+        }
+    }
+
+    /// Layered surface lift over `surface()`. Used for cards / sub-sections /
+    /// active-tab bodies that nest visibly above the panel base. `n` is the
+    /// lift step (0..=5); 7% per step (≈18/255). Direction-aware: lighter on
+    /// dark themes, darker on light themes. Mirrors the chart-app's
+    /// `style::color_layer_up(t, n)` helper so widgets get a portable path
+    /// to the same effect.
+    fn color_layer_up(&self, n: u8) -> Color32 {
+        let base = self.surface();
+        let bg = self.bg();
+        let is_dark = (bg.r() as i16 + bg.g() as i16 + bg.b() as i16) < 384;
+        let steps = n.min(5) as i16;
+        let shift: i16 = if is_dark { 18 * steps } else { -18 * steps };
+        let clamp = |c: i16| -> u8 { c.clamp(0, 255) as u8 };
+        Color32::from_rgb(
+            clamp(base.r() as i16 + shift),
+            clamp(base.g() as i16 + shift),
+            clamp(base.b() as i16 + shift),
+        )
+    }
 }
 
 // `impl ComponentTheme for crate::chart_renderer::gpu::Theme` is the

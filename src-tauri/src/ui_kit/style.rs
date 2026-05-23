@@ -107,3 +107,19 @@ pub fn color_alpha_mul(c: Color32, factor: f32) -> Color32 {
     let new_a = ((c.a() as f32) * factor.clamp(0.0, 1.0)).round() as u8;
     Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), new_a)
 }
+
+// ─── Color dimming helpers ───────────────────────────────────────────────────
+// Mirror the chart-app's named multipliers (subtle / muted / half / etc.) so
+// widgets get a portable path to the same dim effect without reaching into
+// `chart_renderer::ui::style`.
+
+/// 0.7× — secondary text/icons that still read clearly.
+#[inline] pub fn color_subtle(c: Color32) -> Color32 { c.gamma_multiply(0.7) }
+/// 0.6× — muted UI element (visible but not interactive-feeling).
+#[inline] pub fn color_muted(c: Color32) -> Color32 { c.gamma_multiply(0.6) }
+/// 0.5× — half-strength.
+#[inline] pub fn color_half(c: Color32) -> Color32 { c.gamma_multiply(0.5) }
+/// 0.4× — clearly de-emphasised (placeholder text, inactive states).
+#[inline] pub fn color_dim(c: Color32) -> Color32 { c.gamma_multiply(0.4) }
+/// 0.3× — barely visible (decorative chart rules, watermarks).
+#[inline] pub fn color_very_dim(c: Color32) -> Color32 { c.gamma_multiply(0.3) }

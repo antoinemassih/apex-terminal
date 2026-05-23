@@ -1474,16 +1474,8 @@ pub fn hex_to_color(hex: &str, opacity: f32) -> Color32 {
 // `dim`        — clearly de-emphasised (placeholder text, etc.)
 // `very_dim`   — barely visible (decorative chart rules, watermarks)
 
-/// 0.7× — secondary text/icons that still read clearly.
-#[inline] pub fn color_subtle(c: Color32) -> Color32 { c.gamma_multiply(0.7) }
-/// 0.6× — muted UI element (visible but not interactive-feeling).
-#[inline] pub fn color_muted(c: Color32) -> Color32 { c.gamma_multiply(0.6) }
-/// 0.5× — half-strength.
-#[inline] pub fn color_half(c: Color32) -> Color32 { c.gamma_multiply(0.5) }
-/// 0.4× — clearly de-emphasised (placeholder text, inactive states).
-#[inline] pub fn color_dim(c: Color32) -> Color32 { c.gamma_multiply(0.4) }
-/// 0.3× — barely visible (decorative chart rules, watermarks).
-#[inline] pub fn color_very_dim(c: Color32) -> Color32 { c.gamma_multiply(0.3) }
+// color_subtle/muted/half/dim/very_dim moved to `crate::ui_kit::style`
+// and re-exported via the `pub use` at the top of this file.
 
 // ─── Lighten / darken primitives ─────────────────────────────────────────────
 // Linear RGB lerp toward white / black. Used to derive hover/pressed states

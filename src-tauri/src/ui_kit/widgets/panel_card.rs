@@ -41,7 +41,7 @@ use super::panel_section::Tone;
 use crate::ui_kit::tokens::{
     color_layer_up, gap_md, radius_md, shadow_card_themed,
 };
-use crate::ui_kit::widgets::theme::Theme;
+use crate::ui_kit::widgets::theme::ComponentTheme;
 
 #[must_use = "PanelCard must be rendered with `.show(...)`"]
 pub struct PanelCard {
@@ -80,13 +80,13 @@ impl PanelCard {
         self
     }
 
-    pub fn show<R>(
+    pub fn show<T: ComponentTheme, R>(
         self,
         ui: &mut Ui,
-        t: &Theme,
-        body: impl FnOnce(&mut Ui, &Theme) -> R,
+        t: &T,
+        body: impl FnOnce(&mut Ui, &T) -> R,
     ) -> R {
-        let bg = card_surface(t);
+        let bg = t.color_layer_up(1);
         let radius = CornerRadius::same(radius_md() as u8);
         let pad = self.padding as i8;
         let mut frame = Frame::NONE
@@ -99,7 +99,7 @@ impl PanelCard {
                 bottom: pad,
             });
         if self.tone != Tone::Default {
-            frame = frame.shadow(shadow_card_themed(t));
+            frame = frame.shadow(t.shadow_card());
         }
 
         let resp = frame.show(ui, |ui| body(ui, t));
@@ -130,10 +130,6 @@ impl PanelCard {
     }
 }
 
-/// L2 card surface — routes through the canonical `color_layer_up` helper
-/// in `style.rs` so every L2 surface in the app (cards, sub-sections,
-/// active-tab bodies) lands at the same lift from L1 / `t.toolbar_bg`.
-fn card_surface(t: &Theme) -> Color32 {
-    color_layer_up(t, 1)
-}
+// `card_surface` removed — callers now use `t.color_layer_up(1)` directly
+// via the trait method (portable).
 
