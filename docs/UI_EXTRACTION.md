@@ -121,3 +121,101 @@ widget that takes `&dyn ComponentTheme`.
 Low–medium. This is a structural refactor of code we already understand —
 no new behaviour, no money path, no hot-path math. Worst case: a missed
 import gets caught by `cargo check`.
+
+---
+
+## Status (autonomous push 2026-05-23)
+
+### Done
+- **Phase 1a** — `LineStyle` moved to `ui_kit::LineStyle`. Re-exported
+  from `chart_renderer` for back-compat. (commit `0c1633f1`)
+- **Phase 1b** — `ui_kit::tokens` module re-exports the chart-app style
+  helpers; 15 widget files swapped from `chart_renderer::ui::style::*`
+  to `crate::ui_kit::tokens::*`. (commit `da04b7c5`)
+- **Phase 1c** — `ui_kit::widgets::theme` + `ui_kit::widgets::frames`
+  centralise every chart_renderer re-export in two bridge files. 12+
+  widget files swapped to those bridges. (commit `5a4e8432`)
+- **Phase 2** — `ComponentTheme` gains semantic `success()` /
+  `danger()` methods (default impls delegate to `bull()` / `bear()`).
+  Form-error widgets migrated to `.danger()`. (commit `b81c0374`)
+- **Phase 2b** — `impl ComponentTheme for Theme` moved out of
+  `ui_kit` into `chart_renderer::theme_impl` (correct dep direction).
+  `active_theme()` follows it; `active_theme_idx()` stays portable.
+  (commit `23fe3bdd`)
+- **Phase 2c** — `ComponentTheme` gains 5 semantic surface methods
+  (`surface_border`, `header_surface`, `section_header_surface`,
+  `panel_surface`, `header_border`) with default impls so widgets can
+  compute these without reaching for the concrete Theme. (commit
+  `fb3c7310`)
+
+**Inverted-import count: 29 → 8** (all 8 are now centralised in 4
+bridge files: `ui_kit/mod.rs` (doc), `ui_kit/tokens.rs`,
+`ui_kit/widgets/theme.rs`, `ui_kit/widgets/frames.rs`).
+
+Builds clean (default + design-mode); 575 lib tests pass.
+
+### Re-audit findings — what still blocks a true `apex-ui` crate
+
+A read-only Sonnet audit ran against the post-Phase-2c state. Critical
+blockers (citations in `docs/AUDIT.md` style):
+
+1. **Direct field access on `&Theme`** — 8+ widget files (`shell_variants`,
+   `side_panel_shell`, `split_section_panel`, `table_header`,
+   `panel_toolbar`, `panel_list_row`, `panel_section`) hit
+   `t.toolbar_border`, `t.toolbar_bg`, `t.dim` as struct fields rather
+   than trait methods. They take `t: &Theme` (concrete) — extraction
+   blocked because a doc app has no `Theme`.
+2. **`pub(crate)` style helpers take `&Theme`** — `panel_surface`,
+   `header_surface`, `header_border`, `section_header_surface` in
+   `chart_renderer::ui::style`. Equivalents now exist as trait methods
+   (Phase 2c) but widgets still call the chart-app versions.
+3. **`active_theme()` ambient access** — 14+ widgets call
+   `super::theme::active_theme(ctx)` to grab the trading Theme inside
+   `Widget` impls that take no theme arg. A standalone crate needs an
+   ambient-theme mechanism (e.g., `set_ambient_theme` stash in egui
+   memory holding `Arc<dyn ComponentTheme>`).
+4. **`Watchlist` coupling in `pane_aligned`** — `SidePanelShell` and
+   `SplitSectionPanel` reach for `wl.pane_header_size.title_font()`
+   and `pane_tabs_header_h(wl)`. Trading god-object — either delete
+   `pane_aligned` from a portable build or feature-gate it.
+5. **`tokens.rs` is a glob re-export** of `chart_renderer::ui::style`.
+   The pure math helpers (~80 fns) need to physically move into
+   `ui_kit/tokens.rs`. The `FRAME_TOKENS` / `ACTIVE_STYLE` /
+   `STYLE_STORE` machinery stays in `chart_renderer`.
+6. **`frames_widget` bodies call** `current()` and `active_theme()` —
+   if extracted, those calls need to be replaced with explicit
+   parameters.
+7. Trading-domain widgets (`trade_card`, `risk_reward_bar`) should
+   move OUT of `ui_kit` into a `chart_renderer::ui_kit_extensions`.
+
+### Shortest path to a compilable `apex-ui` crate
+
+In dependency order — each step ships green:
+
+1. **Move pure token helpers physically.** ~80 `font_*`/`gap_*`/
+   `color_alpha` / `alpha_*` / `stroke_thin`-style one-liners from
+   `chart_renderer::ui::style` into `ui_kit::tokens` as owned code.
+   Stop the glob re-export.
+2. **Migrate widgets to semantic methods.** Replace `t.toolbar_border` →
+   `t.surface_border()`, `panel_surface(t)` → `t.panel_surface()`, etc.
+   Change widget signatures from `t: &Theme` to
+   `t: &impl ComponentTheme`.
+3. **Move frame types physically.** Copy `PanelFrame`, `CardFrame`,
+   `PopupFrame`, `BorderAlpha`, `CompactPanelFrame` into
+   `ui_kit/widgets/frames.rs` as owned code. Strip the `current()`
+   dependency by taking explicit `corner_radius`/`shadow_alpha`.
+4. **Solve the ambient-theme problem.** Introduce
+   `set_ambient_theme(ctx, &dyn ComponentTheme)` /
+   `get_ambient_theme(ctx)` using egui memory. Replace the 14+
+   `active_theme(ctx)` calls inside `Widget` impls.
+5. **Excise `pane_aligned`** (or feature-gate) on the panel shells.
+6. **Move chart-app-coupled widgets out of `ui_kit`**: `trade_card`,
+   `risk_reward_bar`, the panel-shell `pane_aligned` paths.
+7. **Create the workspace crate.** `crates/apex-ui/`. Move
+   `src/ui_kit/` and `src/design_system/` into it. Trading app
+   depends on it. Bridge files in `chart_renderer::theme_impl` and a
+   new `chart_renderer::icons` (trading icons) cover the remaining
+   adapter surface.
+
+Effort: realistically 3–5 days of focused work, mostly mechanical
+migration in steps 1–2 and a small design move in step 4.
