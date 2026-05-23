@@ -65,6 +65,8 @@ pub const GAP_SM:     f32 =  8.0;
 pub const GAP_MD:     f32 = 12.0;
 pub const GAP_LG:     f32 = 16.0;
 pub const GAP_XL:     f32 = 20.0;
+pub const GAP_2XL:    f32 = 24.0;
+pub const GAP_3XL:    f32 = 32.0;
 
 // ─── Stroke widths (px) — pure constants ─────────────────────────────────────
 

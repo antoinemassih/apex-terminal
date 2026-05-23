@@ -14,6 +14,19 @@
 use egui::{self, Color32, RichText, Stroke};
 use std::cell::Cell;
 
+// ─── Owned-by-ui_kit re-exports (UI extraction, item 1) ──────────────────────
+// The stateless token primitives (font/gap/alpha/stroke/radius constants,
+// `color_alpha` / `color_alpha_mul`, elevation factors) now live in
+// `crate::ui_kit::style` as the canonical home. Re-exported here so every
+// existing `crate::chart_renderer::ui::style::font_sm()` / `gap_xs()` /
+// `color_alpha(...)` call site keeps resolving with no source change.
+//
+// The stateful style machinery (`FRAME_TOKENS`, `STYLE_STORE`, `ACTIVE_STYLE`,
+// the `Theme`-taking helpers like `header_surface(t)`) STAYS in this file —
+// those depend on the chart-app's style preset system.
+#[allow(unused_imports)]
+pub use crate::ui_kit::style::*;
+
 /// Register an element hit for inspect mode. No-op when design-mode is off.
 #[inline(always)]
 fn hit(r: &egui::Rect, family: &'static str, category: &'static str) {
@@ -232,26 +245,9 @@ pub fn begin_frame() {
 // glyphs. They exist because chart_widgets / pane.rs need labels at 6–8px to
 // fit dense overlays without overlapping ticks. New UI code should NOT use
 // these; they are the floor for chart rendering only.
-/// 6.0 — chart micro-overlay text only (RSI zones, market phase). Avoid in UI chrome.
-pub fn font_4xs() -> f32 { 6.0 }
-/// 7.0 — chart annotations (volume ratios, trade entries). Avoid in UI chrome.
-pub fn font_3xs() -> f32 { 7.0 }
-/// 8.0 — small badges and overlay tags (price-axis order labels).
-pub fn font_2xs() -> f32 { 8.0 }
-/// 9.0 — micro-labels, dropdown items, badge text.
-pub fn font_xs() -> f32 { 9.0 }
-/// 10.0 — between xs and sm (compact column headers, condensed body).
-pub fn font_xs_plus() -> f32 { 10.0 }
-/// 11.0 — default body, list rows, tab labels, nav buttons.
-pub fn font_sm() -> f32 { 11.0 }
-/// 13.0 — emphasized body, panel titles.
-pub fn font_md() -> f32 { 13.0 }
-/// 14.0 — between md and lg (large chart annotations, hero stats).
-pub fn font_md_plus() -> f32 { 14.0 }
-/// 16.0 — section headers, modal titles.
-pub fn font_lg() -> f32 { 16.0 }
-/// 22.0 — hero numbers, modal hero titles.
-pub fn font_xl() -> f32 { 22.0 }
+// Font-size helpers (font_4xs..font_xl) now live in `crate::ui_kit::style`
+// and are re-exported from here via the `pub use` at the top of the file.
+// See `docs/UI_EXTRACTION.md` item 1.
 
 // ─── Display-font tier (proportional, large numerics only) ───────────────────
 // For infographic/hero KPI numbers rendered with `FontId::proportional(...)`.
@@ -272,10 +268,7 @@ pub fn font_xl() -> f32 { 22.0 }
 /// 56.0 — maximum display focal number (full-width banner widget).
 #[inline] pub fn font_display_xl() -> f32 { 56.0 }
 
-pub const FONT_DISPLAY_SM: f32 = 28.0;
-pub const FONT_DISPLAY_MD: f32 = 32.0;
-pub const FONT_DISPLAY_LG: f32 = 42.0;
-pub const FONT_DISPLAY_XL: f32 = 56.0;
+// FONT_DISPLAY_* constants now in `crate::ui_kit::style`; re-exported here.
 
 // ─── Monospace helpers (JetBrains Mono, pinned) ───────────────────────────────
 // Use these for tabular financial data: prices, quantities, OCC tickers.
@@ -297,17 +290,7 @@ pub const FONT_DISPLAY_XL: f32 = 56.0;
 
 // Const aliases — kept so any const-context call sites compile. Values match
 // the active scale (4xs=6, 3xs=7, 2xs=8, xs=9, xs+=10, sm=11, md=13, md+=14, lg=16, xl=22).
-pub const FONT_4XS:     f32 = 6.0;
-pub const FONT_3XS:     f32 = 7.0;
-pub const FONT_2XS:     f32 = 8.0;
-pub const FONT_XS:      f32 = 9.0;
-pub const FONT_XS_PLUS: f32 = 10.0;
-pub const FONT_SM:      f32 = 11.0;
-pub const FONT_MD:      f32 = 13.0;
-pub const FONT_MD_PLUS: f32 = 14.0;
-pub const FONT_LG:      f32 = 16.0;
-pub const FONT_XL:      f32 = 22.0;
-pub const FONT_2XL:     f32 = 22.0;
+// FONT_* const aliases now in `crate::ui_kit::style`; re-exported here.
 
 // ─── Spacing tokens ───────────────────────────────────────────────────────────
 // Spacing scale — density-first chrome, anchored on a ~4px grid.
@@ -332,30 +315,16 @@ pub const FONT_2XL:     f32 = 22.0;
 // real 2.0 token for icon-internal padding and tightly-packed compositions
 // (the gap inside `[icon][badge]` overlays, etc.).
 // 2026-05 DS-IMPL-3: gap_xs_mid (6.0) added as a micro-gap tier.
-pub fn gap_2xs() -> f32 { 2.0 }
-pub fn gap_xs()  -> f32 { 4.0 }
+// Spacing helpers (gap_2xs..gap_3xl except gap_xs_mid) and GAP_* constants
+// now live in `crate::ui_kit::style` and are re-exported from this file.
+// `gap_xs_mid` stays here — it reads the FRAME_TOKENS thread-local.
 /// 6.0 — micro-gap tier between `gap_xs` (4.0) and `gap_sm` (8.0).
 /// Use for icon-label pairs and compact chip rows. Backed by
 /// `spacing.xs_mid` design token (DS-IMPL-3).
 pub fn gap_xs_mid() -> f32 { FRAME_TOKENS.with(|c| c.get().gap_xs_mid) }
-pub fn gap_sm()  -> f32 { 8.0 }
-pub fn gap_md()  -> f32 { 12.0 }
-pub fn gap_lg()  -> f32 { 16.0 }
-pub fn gap_xl()  -> f32 { 20.0 }
-pub fn gap_2xl() -> f32 { 24.0 }
-pub fn gap_3xl() -> f32 { 32.0 }
-
-pub const GAP_2XS:    f32 =  2.0;
-pub const GAP_XS:     f32 =  4.0;
 /// Compile-time fallback for `gap_xs_mid()`. Prefer the function when
 /// a design-token override is needed at runtime.
 pub const GAP_XS_MID: f32 =  6.0;
-pub const GAP_SM:     f32 =  8.0;
-pub const GAP_MD:  f32 = 12.0;
-pub const GAP_LG:  f32 = 16.0;
-pub const GAP_XL:  f32 = 20.0;
-pub const GAP_2XL: f32 = 24.0;
-pub const GAP_3XL: f32 = 32.0;
 
 // ─── Icon control sizes ──────────────────────────────────────────────────────
 // Standard square sizes for icon-only controls (toggle pills, trailing buttons,
@@ -394,8 +363,7 @@ pub fn radius_xs() -> f32 { FRAME_TOKENS.with(|c| c.get().radius_xs) }
 pub fn radius_sm() -> f32 { FRAME_TOKENS.with(|c| c.get().radius_sm) }
 pub fn radius_md() -> f32 { FRAME_TOKENS.with(|c| c.get().radius_md) }
 pub fn radius_lg() -> f32 { FRAME_TOKENS.with(|c| c.get().radius_lg) }
-/// Pill (full-rounded). For toggle pills, status badges, etc.
-pub fn radius_pill() -> f32 { 999.0 }
+// `radius_pill` now lives in `crate::ui_kit::style`; re-exported here.
 
 pub const RADIUS_XS: f32 = 2.0;
 pub const RADIUS_SM: f32 = 4.0;
@@ -576,8 +544,7 @@ pub fn stroke_medium()      -> f32 { FRAME_TOKENS.with(|c| c.get().stroke_medium
 pub fn stroke_std()         -> f32 { FRAME_TOKENS.with(|c| c.get().stroke_std) }
 pub fn stroke_bold()        -> f32 { FRAME_TOKENS.with(|c| c.get().stroke_bold) }
 pub fn stroke_thick()       -> f32 { FRAME_TOKENS.with(|c| c.get().stroke_thick) }
-pub fn stroke_extra_thick() -> f32 { 2.5 }
-pub fn stroke_heavy()       -> f32 { 3.0 }
+// `stroke_extra_thick` / `stroke_heavy` now in `crate::ui_kit::style`.
 
 pub const STROKE_HAIR:        f32 = 0.3;
 pub const STROKE_THIN:        f32 = 0.5;
@@ -598,8 +565,7 @@ pub const STROKE_HEAVY:       f32 = 3.0;
 pub fn alpha_faint()       -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_faint) }
 pub fn alpha_ghost()       -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_ghost) }
 pub fn alpha_soft()        -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_soft) }
-pub fn alpha_whisper()     -> u8 { 25 }
-pub fn alpha_hint()        -> u8 { 30 }
+// `alpha_whisper` / `alpha_hint` now in `crate::ui_kit::style`.
 pub fn alpha_subtle()      -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_subtle) }
 pub fn alpha_tint()        -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_tint) }
 pub fn alpha_muted()       -> u8 { FRAME_TOKENS.with(|c| c.get().alpha_muted) }
@@ -780,9 +746,7 @@ pub fn shadow_dropdown_themed(t: &super::super::gpu::Theme) -> egui::epaint::Sha
 // TODO above). Phase B3 promotes these to `StyleSystem.elevation` so a style
 // system can override the ramp; until then a `const` is the correct home for
 // a perceptual constant (vs the magic literal repeated across call sites).
-pub const ELEVATION_1_FACTOR: f32 = 0.95;
-pub const ELEVATION_2_FACTOR: f32 = 0.88;
-pub const ELEVATION_3_FACTOR: f32 = 0.85;
+// ELEVATION_*_FACTOR now in `crate::ui_kit::style`; re-exported here.
 
 /// Elevation 1 — resting card / panel surface. Subtle lift above the base bg.
 /// `theme.bg` darkened/lightened by gamma × 0.95 for dark themes.
@@ -1498,11 +1462,7 @@ pub fn hex_to_color(hex: &str, opacity: f32) -> Color32 {
     Color32::from_rgba_unmultiplied(r, g, b, (opacity * 255.0) as u8)
 }
 
-/// Color with alpha — shorthand for `Color32::from_rgba_unmultiplied(r, g, b, alpha)`.
-#[inline]
-pub fn color_alpha(c: Color32, alpha: u8) -> Color32 {
-    Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha)
-}
+// `color_alpha` now lives in `crate::ui_kit::style`; re-exported here.
 
 // ─── Color dimming helpers ───────────────────────────────────────────────────
 // Replace ad-hoc `color.gamma_multiply(0.X)` chains with these named helpers.
