@@ -250,13 +250,8 @@ pub fn begin_frame() {
 // 2026-05 DS-IMPL-3: gap_xs_mid (6.0) added as a micro-gap tier.
 // Spacing helpers (gap_2xs..gap_3xl except gap_xs_mid) and GAP_* constants
 // now live in `crate::ui_kit::style` and are re-exported from this file.
-// `gap_xs_mid` stays here — it reads the FRAME_TOKENS thread-local.
-/// 6.0 — micro-gap tier between `gap_xs` (4.0) and `gap_sm` (8.0).
-/// Use for icon-label pairs and compact chip rows. Backed by
-/// `spacing.xs_mid` design token (DS-IMPL-3).
-pub fn gap_xs_mid() -> f32 { crate::ui_kit::style::frame_tokens().gap_xs_mid }
-/// Compile-time fallback for `gap_xs_mid()`. Prefer the function when
-/// a design-token override is needed at runtime.
+// `gap_xs_mid` + `GAP_XS_MID` re-exported from `crate::ui_kit::style` via
+// the `pub use` at the top of this file.
 pub const GAP_XS_MID: f32 =  6.0;
 
 // ─── Icon control sizes ──────────────────────────────────────────────────────
@@ -292,10 +287,7 @@ pub const GAP_XS_MID: f32 =  6.0;
 
 // ─── Corner radius tokens ─────────────────────────────────────────────────────
 // 2026-05: function fallbacks reconciled with the const values (was 3/4/8).
-pub fn radius_xs() -> f32 { crate::ui_kit::style::frame_tokens().radius_xs }
-pub fn radius_sm() -> f32 { crate::ui_kit::style::frame_tokens().radius_sm }
-pub fn radius_md() -> f32 { crate::ui_kit::style::frame_tokens().radius_md }
-pub fn radius_lg() -> f32 { crate::ui_kit::style::frame_tokens().radius_lg }
+// radius_xs/sm/md/lg moved to `crate::ui_kit::style`; re-exported here.
 // `radius_pill` now lives in `crate::ui_kit::style`; re-exported here.
 
 pub const RADIUS_XS: f32 = 2.0;
@@ -469,14 +461,7 @@ pub mod cursor {
 //
 // Use `stroke_medium()` when `stroke_thin()` feels too ghost-like and
 // `stroke_std()` is heavier than desired for the context.
-pub fn stroke_hair()        -> f32 { crate::ui_kit::style::frame_tokens().stroke_hair }
-pub fn stroke_thin()        -> f32 { crate::ui_kit::style::frame_tokens().stroke_thin }
-/// 0.8 — mid-weight border tier between `stroke_thin` (0.5) and
-/// `stroke_std` (1.0). Backed by `stroke.medium` design token (DS-IMPL-3).
-pub fn stroke_medium()      -> f32 { crate::ui_kit::style::frame_tokens().stroke_medium }
-pub fn stroke_std()         -> f32 { crate::ui_kit::style::frame_tokens().stroke_std }
-pub fn stroke_bold()        -> f32 { crate::ui_kit::style::frame_tokens().stroke_bold }
-pub fn stroke_thick()       -> f32 { crate::ui_kit::style::frame_tokens().stroke_thick }
+// stroke_hair/thin/medium/std/bold/thick moved to `crate::ui_kit::style`.
 // `stroke_extra_thick` / `stroke_heavy` now in `crate::ui_kit::style`.
 
 pub const STROKE_HAIR:        f32 = 0.3;
@@ -495,21 +480,10 @@ pub const STROKE_HEAVY:       f32 = 3.0;
 // don't shift. Note: `alpha_muted == alpha_dim` (both 60) and
 // `alpha_line == alpha_strong` (both 80) by design — same value, different
 // semantic intent (muted/strong = chrome; dim/line = borders).
-pub fn alpha_faint()       -> u8 { crate::ui_kit::style::frame_tokens().alpha_faint }
-pub fn alpha_ghost()       -> u8 { crate::ui_kit::style::frame_tokens().alpha_ghost }
-pub fn alpha_soft()        -> u8 { crate::ui_kit::style::frame_tokens().alpha_soft }
-// `alpha_whisper` / `alpha_hint` now in `crate::ui_kit::style`.
-pub fn alpha_subtle()      -> u8 { crate::ui_kit::style::frame_tokens().alpha_subtle }
-pub fn alpha_tint()        -> u8 { crate::ui_kit::style::frame_tokens().alpha_tint }
-pub fn alpha_muted()       -> u8 { crate::ui_kit::style::frame_tokens().alpha_muted }
-pub fn alpha_dim()         -> u8 { crate::ui_kit::style::frame_tokens().alpha_dim }
-pub fn alpha_line()        -> u8 { crate::ui_kit::style::frame_tokens().alpha_line }
-pub fn alpha_strong()      -> u8 { crate::ui_kit::style::frame_tokens().alpha_strong }
-pub fn alpha_active()      -> u8 { crate::ui_kit::style::frame_tokens().alpha_active }
-pub fn alpha_heavy()       -> u8 { crate::ui_kit::style::frame_tokens().alpha_heavy }
+// alpha_faint/ghost/soft/subtle/tint/muted/dim/line/strong/active/heavy/solid
+// moved to `crate::ui_kit::style`. `alpha_whisper` / `alpha_hint` also there.
 pub fn alpha_intense()     -> u8 { 140 }
 pub fn alpha_prominent()   -> u8 { 180 }
-pub fn alpha_solid()       -> u8 { crate::ui_kit::style::frame_tokens().alpha_solid }
 pub fn alpha_near_opaque() -> u8 { 230 }
 
 /// Use with `color_alpha(color, ALPHA_*)` for consistent opacity tiers.

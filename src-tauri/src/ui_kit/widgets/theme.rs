@@ -8,17 +8,11 @@
 
 use egui::Color32;
 
-// Re-export the trading-app's concrete `Theme` so ui_kit widgets that take
-// `&Theme` (legacy signatures, mostly panel-body primitives) keep compiling.
-// `Watchlist` / `SplitSection` / `pane_tabs_header_h` / `live_theme_count` /
-// `get_theme` were removed from this bridge after the side_panel_shell and
-// split_section_panel widgets moved out of ui_kit (into chart_renderer::ui::panels).
-//
-// When `ui_kit` extracts to a workspace crate, this single `pub(crate) use`
-// is what disappears — widgets switch to `&dyn ComponentTheme` or take
-// `PortableTheme` directly.
-#[allow(unused_imports)]
-pub(crate) use crate::chart_renderer::gpu::Theme;
+// The Theme bridge has been removed — all ui_kit widgets are now generic-T
+// (`T: ComponentTheme = PortableTheme`) or take `&dyn ComponentTheme`.
+// The trading-app `Theme` flows through inference at call sites; no ui_kit
+// code references the concrete type directly. This file is now free of
+// `crate::chart_renderer::gpu::Theme`.
 
 pub trait ComponentTheme {
     // Core 6-color palette (matches the discipline established in item 4).
@@ -309,20 +303,25 @@ pub fn active_theme_idx(ctx: &egui::Context) -> usize {
 
 const AMBIENT_KEY: &str = "apex_ambient_theme";
 
-/// Stash the current `Theme` in egui memory so ui_kit's parameter-less
-/// widgets can find it. Call this once per frame from the host app's
-/// render loop, before any UI is built. Cheap — one cloned `Theme`
-/// insertion per frame.
-pub fn set_ambient_theme(ctx: &egui::Context, theme: Theme) {
+/// Stash the current theme in egui memory so ui_kit's parameter-less
+/// widgets can find it. Generic over any `ComponentTheme` implementor —
+/// the host pushes its concrete theme type once per frame. Cheap (one
+/// cloned theme insertion per frame).
+pub fn set_ambient_theme<T: ComponentTheme + Clone + Send + Sync + 'static>(
+    ctx: &egui::Context,
+    theme: T,
+) {
     ctx.data_mut(|d| d.insert_temp(egui::Id::new(AMBIENT_KEY), theme));
 }
 
-/// Read the ambient `Theme` set by [`set_ambient_theme`]. Returns `None`
-/// if the host hasn't set one this frame — callers should fall back to
-/// whatever's appropriate (the chart-app version of `active_theme()`
-/// falls back to the live theme registry by index).
-pub fn get_ambient_theme(ctx: &egui::Context) -> Option<Theme> {
-    ctx.data(|d| d.get_temp::<Theme>(egui::Id::new(AMBIENT_KEY)))
+/// Read the ambient theme set by [`set_ambient_theme`]. Caller specifies
+/// the expected concrete type via turbofish: `get_ambient_theme::<MyTheme>(ctx)`.
+/// Returns `None` if the host hasn't set one this frame OR if the stashed
+/// type doesn't match `T`.
+pub fn get_ambient_theme<T: ComponentTheme + Clone + Send + Sync + 'static>(
+    ctx: &egui::Context,
+) -> Option<T> {
+    ctx.data(|d| d.get_temp::<T>(egui::Id::new(AMBIENT_KEY)))
 }
 
 impl<T: ComponentTheme + ?Sized> ComponentTheme for &T {

@@ -105,7 +105,7 @@ use crate::ui_kit::tokens::{
     self as st, alpha_ghost, color_alpha, color_muted, font_sm, font_xs, gap_lg, gap_md, gap_xs,
     radius_sm,
 };
-use crate::ui_kit::widgets::theme::{ComponentTheme, Theme};
+use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::ui_kit::widgets::{motion, Tooltip};
 
 /// Horizontal alignment for a `Column` cell in `PanelListRow::columns` mode.

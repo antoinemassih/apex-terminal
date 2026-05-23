@@ -93,6 +93,37 @@ pub fn frame_tokens() -> TokenSnapshot {
     FRAME_TOKENS_LOCAL.with(|c| c.get())
 }
 
+// ─── FRAME_TOKENS-backed token helpers ───────────────────────────────────────
+// Thin accessors over `frame_tokens().field`. Hosts that don't push a
+// snapshot get the `DEFAULT_TOKEN_SNAPSHOT` values, which match the
+// stand-alone constants below.
+
+#[inline] pub fn gap_xs_mid() -> f32 { frame_tokens().gap_xs_mid }
+#[inline] pub fn radius_xs()  -> f32 { frame_tokens().radius_xs }
+#[inline] pub fn radius_sm()  -> f32 { frame_tokens().radius_sm }
+#[inline] pub fn radius_md()  -> f32 { frame_tokens().radius_md }
+#[inline] pub fn radius_lg()  -> f32 { frame_tokens().radius_lg }
+
+#[inline] pub fn stroke_hair()   -> f32 { frame_tokens().stroke_hair }
+#[inline] pub fn stroke_thin()   -> f32 { frame_tokens().stroke_thin }
+#[inline] pub fn stroke_medium() -> f32 { frame_tokens().stroke_medium }
+#[inline] pub fn stroke_std()    -> f32 { frame_tokens().stroke_std }
+#[inline] pub fn stroke_bold()   -> f32 { frame_tokens().stroke_bold }
+#[inline] pub fn stroke_thick()  -> f32 { frame_tokens().stroke_thick }
+
+#[inline] pub fn alpha_faint()   -> u8 { frame_tokens().alpha_faint }
+#[inline] pub fn alpha_ghost()   -> u8 { frame_tokens().alpha_ghost }
+#[inline] pub fn alpha_soft()    -> u8 { frame_tokens().alpha_soft }
+#[inline] pub fn alpha_subtle()  -> u8 { frame_tokens().alpha_subtle }
+#[inline] pub fn alpha_tint()    -> u8 { frame_tokens().alpha_tint }
+#[inline] pub fn alpha_muted()   -> u8 { frame_tokens().alpha_muted }
+#[inline] pub fn alpha_dim()     -> u8 { frame_tokens().alpha_dim }
+#[inline] pub fn alpha_line()    -> u8 { frame_tokens().alpha_line }
+#[inline] pub fn alpha_strong()  -> u8 { frame_tokens().alpha_strong }
+#[inline] pub fn alpha_active()  -> u8 { frame_tokens().alpha_active }
+#[inline] pub fn alpha_heavy()   -> u8 { frame_tokens().alpha_heavy }
+#[inline] pub fn alpha_solid()   -> u8 { frame_tokens().alpha_solid }
+
 
 
 // ─── Font sizes (px) ─────────────────────────────────────────────────────────

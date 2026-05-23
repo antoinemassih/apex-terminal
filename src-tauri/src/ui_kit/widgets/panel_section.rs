@@ -68,9 +68,9 @@ use super::super::icons::Icon;
 use super::tooltip::Tooltip;
 use super::theme::active_theme;
 use crate::ui_kit::tokens::{
-    color_alpha, font_sm, font_xs, gap_lg, gap_md, gap_sm, gap_xs, shadow_color_alpha, stroke_thin,
+    color_alpha, font_sm, font_xs, gap_lg, gap_md, gap_sm, gap_xs, stroke_thin,
 };
-use crate::ui_kit::widgets::theme::{Theme, ComponentTheme};
+use crate::ui_kit::widgets::theme::ComponentTheme;
 
 /// Shared semantic tone for the panel body primitives. Resolves to a theme
 /// color via [`Tone::color`]. Defined here so the seven panel-body widgets
@@ -808,10 +808,9 @@ mod tests {
     use super::*;
     use std::cell::Cell;
 
-    /// Returns the active theme from a fresh egui context (falls back to index 0
-    /// when no theme is stashed, which is correct for headless tests).
-    fn theme() -> Theme {
-        super::super::theme::active_theme(&egui::Context::default())
+    /// Returns a portable theme for headless tests — no chart-app needed.
+    fn theme() -> super::super::theme::PortableTheme {
+        super::super::theme::PortableTheme::dark()
     }
 
     #[test]

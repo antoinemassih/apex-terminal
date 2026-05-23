@@ -50,9 +50,9 @@ use egui::{CornerRadius, FontId, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 
 use super::super::icons::Icon;
 use crate::ui_kit::tokens::{
-    color_alpha, font_sm, gap_2xs, gap_md, gap_xs, header_border, header_surface, radius_sm, shadow_color_alpha, stroke_thin,
+    color_alpha, font_sm, gap_2xs, gap_md, gap_xs, radius_sm, stroke_thin,
 };
-use crate::ui_kit::widgets::theme::{ComponentTheme, Theme};
+use crate::ui_kit::widgets::theme::ComponentTheme;
 
 /// Alpha (out of 255) of the bottom hairline rule. Higher than the L2
 /// surface contrast so the separator actually reads against the lifted

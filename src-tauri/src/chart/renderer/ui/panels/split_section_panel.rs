@@ -52,7 +52,8 @@ use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::tokens::{
     alpha_faint, color_alpha, color_dim, font_xs, gap_xs, split_divider, stroke_thin,
 };
-use crate::ui_kit::widgets::theme::{Theme, ComponentTheme};
+use crate::ui_kit::widgets::theme::ComponentTheme;
+use crate::chart_renderer::gpu::Theme;
 // SplitSection / Watchlist / pane_tabs_header_h / panel_action_btn come from
 // chart-app code — this file lives in chart_renderer now, so import directly.
 use crate::chart_renderer::gpu::{SplitSection, Watchlist, pane_tabs_header_h};

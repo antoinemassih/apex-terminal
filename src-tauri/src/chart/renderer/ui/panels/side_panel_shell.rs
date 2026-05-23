@@ -49,7 +49,8 @@ use crate::ui_kit::widgets::frames::PanelFrame;
 use crate::ui_kit::tokens::{
     gap_lg, gap_md, gap_sm, shadow_color_alpha, stroke_thin,
 };
-use crate::ui_kit::widgets::theme::{Theme, ComponentTheme};
+use crate::ui_kit::widgets::theme::ComponentTheme;
+use crate::chart_renderer::gpu::Theme;
 // Watchlist + pane_tabs_header_h come from the chart-app gpu state — this
 // file lives in chart_renderer now, so import them directly.
 use crate::chart_renderer::gpu::{Watchlist, pane_tabs_header_h};
