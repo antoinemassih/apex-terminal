@@ -11,10 +11,8 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use super::super::widgets::rows::order_row::{OrderRow, OrderSideTag};
-use crate::ui_kit::widgets::{
-    Badge, Button, MetricRow, MetricTone, PanelCard, PanelEmpty, PanelSection,
-    PanelTone, SidePanelShell, TagTone, Tooltip, Width,
-};
+use crate::ui_kit::widgets::{Badge, Button, MetricRow, MetricTone, PanelCard, PanelEmpty, PanelSection, PanelTone, TagTone, Tooltip};
+use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 use crate::ui_kit::widgets::tokens::{Variant, Size};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use super::super::components::text::{self as wtext, MonospaceCode};

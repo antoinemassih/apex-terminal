@@ -6,10 +6,34 @@
 //! of these helpers set a cursor so the design tool retains control.
 
 use egui::{CursorIcon, Response, Ui};
+use std::cell::Cell;
+
+// ─── Inspect-mode flag (P4 extraction prep) ──────────────────────────────────
+//
+// The chart-app's design-mode inspector sets this each frame via
+// `set_inspect_mode()` so cursor helpers can defer cursor changes (the
+// inspector wants to own the cursor when active). A thread_local Cell keeps
+// the hot path branch-prediction-friendly and removes the cross-module call
+// to `crate::design_tokens::is_inspect_mode()` — that direct call coupled
+// ui_kit to the chart-app's foundation module and blocked workspace-crate
+// extraction. The chart-app now calls `set_inspect_mode()` from the same
+// site that previously wrote to `design_tokens`.
+
+thread_local! {
+    static INSPECT_MODE: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Host-side: set the inspect-mode flag for this thread. Call once per
+/// frame from the chart-app's design-mode tick. When `true`, every cursor
+/// helper becomes a no-op so the inspector retains pointer-icon control.
+#[inline]
+pub fn set_inspect_mode(active: bool) {
+    INSPECT_MODE.with(|c| c.set(active));
+}
 
 #[inline]
 fn inspect_mode() -> bool {
-    crate::design_tokens::is_inspect_mode()
+    INSPECT_MODE.with(|c| c.get())
 }
 
 /// PointingHand on hover — for any clickable surface.

@@ -16,10 +16,8 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, TapeRow, Theme};
 use super::super::components::text::MonospaceCode;
-use crate::ui_kit::widgets::{
-    PanelColAlign, PanelColumn, PanelEmpty, PanelListRow, PanelSection,
-    SidePanelShell, Skeleton, Width,
-};
+use crate::ui_kit::widgets::{PanelColAlign, PanelColumn, PanelEmpty, PanelListRow, PanelSection, Skeleton};
+use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 
 
 /// Draw the T&S content into `ui` (used by analysis_panel as a tab).

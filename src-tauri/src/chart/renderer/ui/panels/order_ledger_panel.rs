@@ -18,7 +18,7 @@ use super::super::super::gpu::{Watchlist, Chart, Theme};
 use super::super::components::text::{SectionLabel, MonospaceCode};
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::tokens::{Size as KitSize, Variant};
-use crate::ui_kit::widgets::side_panel_shell::{SidePanelShell, Width};
+use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 use crate::ui_kit::widgets::{Button, MenuItem, PanelSubSection, PanelListRow, PanelColumn};
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::trading::OrderSide;

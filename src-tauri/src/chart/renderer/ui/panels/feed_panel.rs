@@ -2,15 +2,15 @@
 //!
 //! Chrome (outer side panel, header, "+", per-section tab strips, dividers,
 //! close-X) is delegated to
-//! [`SplitSectionPanel`](crate::ui_kit::widgets::SplitSectionPanel). This
+//! [`SplitSectionPanel`](crate::chart_renderer::ui::panels::split_section_panel::SplitSectionPanel). This
 //! module is now responsible only for tab definitions and per-tab body
 //! dispatch (News / Discord / Screenshots).
 
 use egui;
 use super::super::super::gpu::{Watchlist, Chart, Theme};
 use crate::chart_renderer::FeedTab;
-use crate::ui_kit::widgets::SplitSectionPanel;
-use crate::ui_kit::widgets::side_panel_shell::Width;
+use crate::chart_renderer::ui::panels::split_section_panel::SplitSectionPanel;
+use crate::chart_renderer::ui::panels::side_panel_shell::Width;
 
 const ALL_TABS: &[(FeedTab, &str)] = &[
     (FeedTab::News, "News"),

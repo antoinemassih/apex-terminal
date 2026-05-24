@@ -152,10 +152,11 @@ pub use segmented_control::SegmentedControl;
 // ─── Panel Ecosystem ─────────────────────────────────────────────────
 pub use panel::{Panel, PanelCtx, PanelResponse};
 pub use header::{Header, HeaderVariant, HeaderResponse};
-pub use crate::chart_renderer::ui::panels::side_panel_shell::{
-    self, SidePanelShell, SidePanelShellResponse, SidePanelShellTabs, Width,
-};
-pub use crate::chart_renderer::ui::panels::split_section_panel::{self, SplitSectionPanel};
+// Chart-app panel composites (SidePanelShell, SplitSectionPanel) live in
+// chart_renderer::ui::panels — the ui_kit re-export was removed in P4 to
+// progress the workspace-crate extraction. Import from the canonical path:
+//   use crate::chart_renderer::ui::panels::side_panel_shell::SidePanelShell;
+//   use crate::chart_renderer::ui::panels::split_section_panel::SplitSectionPanel;
 pub use panel_section::{
     PanelSection, PanelSectionGroup, PanelSectionGroupBuilder, SectionResponse, Tone as PanelTone,
 };

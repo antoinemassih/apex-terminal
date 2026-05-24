@@ -216,8 +216,12 @@ impl Inspector {
     pub fn show(&mut self, ctx: &egui::Context, tokens: &mut DesignTokens) -> bool {
         if !self.open { return false; }
 
-        // Sync inspect mode to global flag
+        // Sync inspect mode to BOTH the chart-app's design_tokens flag (read
+        // by legacy chart-renderer call sites: context_menu, foundation/rows)
+        // AND the ui_kit cursor module's thread-local (read by the portable
+        // cursor helpers — decoupled in P4 from the chart-app's foundation).
         crate::design_tokens::set_inspect_mode(self.inspect_mode);
+        crate::ui_kit::cursor::set_inspect_mode(self.inspect_mode);
         if !self.inspect_mode {
             // egui 0.31: `set_debug_on_hover` removed; debug overlay is now opt-in
 // per widget. The inspector paints its own hit overlay below, so this

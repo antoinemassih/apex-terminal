@@ -14,9 +14,8 @@ use egui;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme, JournalEntry};
 use super::super::components::text::MonospaceCode;
-use crate::ui_kit::widgets::{
-    PanelEmpty, PanelSection, Pagination, SidePanelShell, TradeCard, TradeCardData, Width,
-};
+use crate::ui_kit::widgets::{PanelEmpty, PanelSection, Pagination, TradeCard, TradeCardData};
+use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 use crate::ui_kit::icons::Icon;
 
 const TRADE_LOG_PAGE_SIZE: usize = 10;

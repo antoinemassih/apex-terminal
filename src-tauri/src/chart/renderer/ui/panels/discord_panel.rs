@@ -18,9 +18,8 @@ use egui;
 use super::super::style::*;
 use super::super::components::text as widgets_text;
 use crate::ui_kit::widgets::Input;
-use crate::ui_kit::widgets::{
-    Button, PanelEmpty, PanelListRow, PanelSection, SidePanelShell, Tooltip, Width,
-};
+use crate::ui_kit::widgets::{Button, PanelEmpty, PanelListRow, PanelSection, Tooltip};
+use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 use crate::ui_kit::widgets::tokens::{Variant, Size};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::widgets::{GuildAvatarGrid, GuildEntry};

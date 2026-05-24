@@ -18,9 +18,8 @@ use crate::ui_kit::icons::Icon;
 use super::super::components::text::{SectionLabel, MonospaceCode};
 use crate::ui_kit::widgets::FormRow;
 use super::super::widgets::rows::WatchlistRow;
-use crate::ui_kit::widgets::{
-    Button, Input, NumberStepper, Skeleton, Spinner, PanelCard, PanelEmpty, SidePanelShell, Tooltip, Width,
-};
+use crate::ui_kit::widgets::{Button, Input, NumberStepper, Skeleton, Spinner, PanelCard, PanelEmpty, Tooltip};
+use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 

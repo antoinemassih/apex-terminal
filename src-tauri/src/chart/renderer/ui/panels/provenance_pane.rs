@@ -31,7 +31,7 @@ use super::super::style::*;
 use crate::ui_kit::widgets::Button as KitButton;
 use crate::ui_kit::widgets::Tooltip;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
-use crate::ui_kit::widgets::{SidePanelShell, Width};
+use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 
 // ── Constants ───────────────────────────────────────────────────────────────
 

@@ -10,7 +10,8 @@ use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
 use super::super::components::text::MonospaceCode;
 use crate::ui_kit::widgets::Slider;
-use crate::ui_kit::widgets::{Indicator, PanelSection, SidePanelShell, Width};
+use crate::ui_kit::widgets::{Indicator, PanelSection};
+use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 use crate::ui_kit::icons::Icon;
 
 /// Fixed sector colors for the 11 SPDR sector ETFs.

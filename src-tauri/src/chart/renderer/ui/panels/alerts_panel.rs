@@ -15,9 +15,8 @@ use super::super::style::*;
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
-use crate::ui_kit::widgets::{
-    Button, PanelEmpty, PanelListRow, PanelSection, PanelTone, SidePanelShell, Tooltip, Width,
-};
+use crate::ui_kit::widgets::{Button, PanelEmpty, PanelListRow, PanelSection, PanelTone, Tooltip};
+use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 use super::super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::trading::PriceAlert;

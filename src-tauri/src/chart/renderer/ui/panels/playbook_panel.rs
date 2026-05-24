@@ -2,7 +2,7 @@
 
 use egui;
 use super::super::super::gpu::{Watchlist, Chart, Theme};
-use crate::ui_kit::widgets::side_panel_shell::{SidePanelShell, Width};
+use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 
 pub(crate) fn draw(
     ctx: &egui::Context,

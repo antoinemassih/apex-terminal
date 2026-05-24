@@ -17,9 +17,8 @@
 
 use egui;
 use super::super::style::*;
-use crate::ui_kit::widgets::{
-    Button, PanelEmpty, PanelListRow, PanelSection, PanelSectionGroup, SidePanelShell, Tooltip, Width,
-};
+use crate::ui_kit::widgets::{Button, PanelEmpty, PanelListRow, PanelSection, PanelSectionGroup, Tooltip};
+use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::widgets::Input;

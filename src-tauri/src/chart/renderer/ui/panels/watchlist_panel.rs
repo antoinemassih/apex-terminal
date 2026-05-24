@@ -16,9 +16,8 @@ use crate::ui_kit::widgets::tokens::{Variant, Size};
 use crate::ui_kit::widgets::SearchInput;
 use super::super::components::frames_widget::PopupFrame;
 use super::super::widgets::watchlist::NmfToggle;
-use crate::ui_kit::widgets::{
-    Input, MenuItem, PanelEmpty, PanelLoading, PanelSection, SidePanelShell, Tag, TagTone, Tooltip, Width,
-};
+use crate::ui_kit::widgets::{Input, MenuItem, PanelEmpty, PanelLoading, PanelSection, Tag, TagTone, Tooltip};
+use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 

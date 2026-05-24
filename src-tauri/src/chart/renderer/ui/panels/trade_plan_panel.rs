@@ -35,7 +35,8 @@ use crate::ui_kit::widgets::Tooltip;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 use crate::ui_kit::widgets::PanelKeyValueRow;
 use crate::ui_kit::widgets::PanelTone;
-use crate::ui_kit::widgets::{MetricRow, MetricTone, SidePanelShell, Width};
+use crate::ui_kit::widgets::{MetricRow, MetricTone};
+use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 
 /// Min historical samples for the hit-rate to be considered trustworthy. Below
 /// this the panel greys out the percentage and adds a "low confidence" tag.

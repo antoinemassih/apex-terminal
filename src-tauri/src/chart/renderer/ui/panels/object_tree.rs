@@ -30,10 +30,8 @@ use std::hash::{Hash, Hasher};
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Chart, Theme, DrawingAction, drawing_to_db, pane_tabs_header_h};
 use super::super::super::DrawingKind;
-use crate::ui_kit::widgets::{
-    Button, PanelEmpty, PanelListRow, PanelSection, PanelSubSection, SidePanelShell, Side,
-    Tooltip, TrailingBtn, TrailingTone, Width,
-};
+use crate::ui_kit::widgets::{Button, PanelEmpty, PanelListRow, PanelSection, PanelSubSection, Side, Tooltip, TrailingBtn, TrailingTone};
+use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::widgets::MenuItem;

@@ -1,7 +1,7 @@
 //! Signals panel — sidebar with subdivided sections, each with its own tab bar.
 //!
 //! Chrome (outer side panel, header, "+", tab strips, dividers, close-X)
-//! is delegated to [`SplitSectionPanel`](crate::ui_kit::widgets::SplitSectionPanel).
+//! is delegated to [`SplitSectionPanel`](crate::chart_renderer::ui::panels::split_section_panel::SplitSectionPanel).
 //! This module is now responsible only for tab definitions and per-tab
 //! body dispatch.
 
@@ -13,8 +13,9 @@ use crate::apex_data::live_state;
 use crate::apex_data::types::{Calibrated, CombinedSignalV2};
 use crate::chart_renderer::SignalsTab;
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::side_panel_shell::Width;
-use crate::ui_kit::widgets::{Button, PanelListRow, SplitSectionPanel};
+use crate::chart_renderer::ui::panels::side_panel_shell::Width;
+use crate::ui_kit::widgets::{Button, PanelListRow};
+use crate::chart_renderer::ui::panels::split_section_panel::SplitSectionPanel;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 const ALL_TABS: &[(SignalsTab, &str)] = &[
