@@ -4621,6 +4621,16 @@ pub(crate) struct Watchlist {
     /// UI style preset index (0..STYLE_NAMES.len()). Combines with `theme_idx`
     /// to form the full visual identity (e.g. "GruvBox/Meridien").
     pub(crate) style_idx: usize,
+    /// User density override. When `Some`, this replaces the per-preset
+    /// `StyleSettings.density` value at runtime so users can pick Compact /
+    /// Standard / Spacious independently of palette and style preset.
+    /// `None` (default) means inherit the preset's density.
+    /// Wired in P4.3 — read by `style_row_height` / `style_button_height`
+    /// / `style_tab_height` via `set_density_override()`.
+    /// Watchlist doesn't use derive-based serde — persistence wiring (save
+    /// to workspace JSON) is a separate task; today the value resets to
+    /// None on each app start.
+    pub(crate) density_override: Option<crate::ui_kit::style::DensityMode>,
     pub(crate) pending_opt_chart: Option<(String, f32, bool, String)>, // deferred option chart open
     /// Optional OCC contract ticker for the pending open. When present, used as the
     /// fetch key so real bars come from ApexData; pane.symbol stays the display label.
@@ -4989,6 +4999,7 @@ impl Watchlist {
                draw_favorites: vec!["trendline".into(), "magnifier".into(), "measure".into(), "hline".into(), "channel".into(), "fibonacci".into()],
                boss_key_active: false,
                style_idx: 0,
+               density_override: None,
                pending_opt_chart: None, pending_opt_chart_contract: None, apex_diag_open: false, replay_pane_open: false, widget_gallery_open: false,
                wl_columns: crate::chart::renderer::ui::lists::rows::watchlist_columns::default_columns(),
                wl_columns_open: false,

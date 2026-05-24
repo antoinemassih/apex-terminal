@@ -298,8 +298,8 @@ fn paint_row(
 
     ui.spacing_mut().button_padding = prev_pad;
 
-    if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    crate::ui_kit::cursor::clickable(ui, &resp);
+    if resp.hovered() {
         ui.painter()
             .rect_filled(resp.rect, radius_sm(), color_alpha(theme.accent, alpha_ghost()));
     }

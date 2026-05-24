@@ -373,6 +373,81 @@ pub const ELEVATION_3_FACTOR: f32 = 0.85;
 /// 400 ms — emphasis / decorative animations (rarely used).
 #[inline] pub fn motion_xslow()   -> u32 { 400 }
 
+// ─── Density (P4.3) ──────────────────────────────────────────────────────────
+//
+// Typed enum replacing the legacy `StyleSettings.density: u8` (0/1/2). Carries
+// the multiplicative scale applied to row heights, button heights, and tab
+// heights, exposed as a single source of truth so the chart-app's three
+// density-aware helpers (`style_row_height`, `style_button_height`,
+// `style_tab_height`) and any future ui_kit consumers compute the same value.
+//
+// **Future per-user override**: a `Watchlist.density_override: Option<DensityMode>`
+// field can let users pick Compact/Standard/Spacious independently of the
+// active style preset; today the density value is preset-baked
+// (`StyleSettings.density` set per Aperture/Octave/Meridien). The scaffolding
+// to add that override is straightforward: extend `DensityMode::from_u8`
+// callers to consult the override first, then fall back to the preset value.
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum DensityMode {
+    /// 0.85× — compact rows for power users / dense data displays.
+    Compact,
+    #[default]
+    /// 1.0× — standard density (the default for most styles).
+    Standard,
+    /// 1.15× — spacious / touch-friendly / accessibility-leaning.
+    Spacious,
+}
+
+impl DensityMode {
+    /// Multiplier applied to height tokens (rows, buttons, tabs).
+    #[inline]
+    pub fn scale(self) -> f32 {
+        match self {
+            DensityMode::Compact  => 0.85,
+            DensityMode::Standard => 1.0,
+            DensityMode::Spacious => 1.15,
+        }
+    }
+
+    /// Decode from the legacy `StyleSettings.density: u8` field (0/1/2).
+    /// Any out-of-range value falls back to Standard.
+    #[inline]
+    pub fn from_u8(v: u8) -> Self {
+        match v {
+            0 => DensityMode::Compact,
+            2 => DensityMode::Spacious,
+            _ => DensityMode::Standard,
+        }
+    }
+
+    /// Encode to the legacy `StyleSettings.density: u8` field (0/1/2).
+    #[inline]
+    pub fn as_u8(self) -> u8 {
+        match self {
+            DensityMode::Compact  => 0,
+            DensityMode::Standard => 1,
+            DensityMode::Spacious => 2,
+        }
+    }
+
+    /// Display label for UI pickers.
+    #[inline]
+    pub fn label(self) -> &'static str {
+        match self {
+            DensityMode::Compact  => "Compact",
+            DensityMode::Standard => "Standard",
+            DensityMode::Spacious => "Spacious",
+        }
+    }
+
+    /// All variants, ordered for picker rendering.
+    #[inline]
+    pub fn all() -> &'static [DensityMode] {
+        &[DensityMode::Compact, DensityMode::Standard, DensityMode::Spacious]
+    }
+}
+
 // ─── Color utilities — pure egui math, no theme/state ────────────────────────
 
 /// Return `c` with its alpha replaced by `a`. Convenience wrapper around

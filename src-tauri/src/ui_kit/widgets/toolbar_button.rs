@@ -62,9 +62,7 @@ impl<'a> ToolBarButton<'a> {
             btn = btn.fg(theme.accent());
         }
         let resp = btn.show(ui, theme);
-        if resp.hovered() && !crate::design_tokens::is_inspect_mode() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        }
+        crate::ui_kit::cursor::clickable(ui, &resp);
         resp
     }
 }

@@ -2099,23 +2099,44 @@ pub fn btn_small_height() -> f32 { 22.0 }
 pub fn btn_trade_height() -> f32 { 28.0 }
 
 // ── New style-setting helpers ────────────────────────────────────────────────
-/// Density-aware row height. Reads `row_height_px` then scales by density vscale.
+
+/// User-set density override. Negative = no override (inherit from preset);
+/// 0/1/2 = the user's explicit DensityMode choice. Set via the density picker
+/// in settings_panel (P4.3); preserved across app restarts via the workspace
+/// `density_override` field on Watchlist.
+static DENSITY_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
+
+/// Set the global density override. Pass `None` to clear it (inherit from
+/// the active style preset's `StyleSettings.density`).
+pub fn set_density_override(mode: Option<crate::ui_kit::style::DensityMode>) {
+    let v = mode.map(|m| m.as_u8() as i8).unwrap_or(-1);
+    DENSITY_OVERRIDE.store(v, std::sync::atomic::Ordering::Release);
+}
+
+/// Read the current density override. `None` = inherit from style preset.
+#[inline]
+pub fn density_override() -> Option<crate::ui_kit::style::DensityMode> {
+    let v = DENSITY_OVERRIDE.load(std::sync::atomic::Ordering::Acquire);
+    if v < 0 { None } else { Some(crate::ui_kit::style::DensityMode::from_u8(v as u8)) }
+}
+
+/// Effective density: override if set, otherwise the active style preset's value.
+#[inline]
+fn effective_density() -> crate::ui_kit::style::DensityMode {
+    density_override().unwrap_or_else(|| crate::ui_kit::style::DensityMode::from_u8(current().density))
+}
+
+/// Density-aware row height. Reads `row_height_px` then scales by effective density.
 pub fn style_row_height() -> f32 {
-    let st = current();
-    let scale = match st.density { 0 => 0.85, 2 => 1.15, _ => 1.0 };
-    st.row_height_px * scale
+    current().row_height_px * effective_density().scale()
 }
-/// Density-aware button height. Reads `button_height_px` then scales by density vscale.
+/// Density-aware button height. Reads `button_height_px` then scales by effective density.
 pub fn style_button_height() -> f32 {
-    let st = current();
-    let scale = match st.density { 0 => 0.85, 2 => 1.15, _ => 1.0 };
-    st.button_height_px * scale
+    current().button_height_px * effective_density().scale()
 }
-/// Density-aware tab height. Reads `tab_height` then scales by density vscale.
+/// Density-aware tab height. Reads `tab_height` then scales by effective density.
 pub fn style_tab_height() -> f32 {
-    let st = current();
-    let scale = match st.density { 0 => 0.85, 2 => 1.15, _ => 1.0 };
-    st.tab_height * scale
+    current().tab_height * effective_density().scale()
 }
 /// Accent color with emphasis multiplier applied (brightness boost for active elements).
 pub fn accent_emphasised(color: egui::Color32) -> egui::Color32 {

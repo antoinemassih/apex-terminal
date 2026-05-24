@@ -170,6 +170,38 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
         }
     });
 
+    // ── DENSITY override (Compact / Standard / Spacious) — P4.3 ──
+    // Independent of palette and style preset; overrides StyleSettings.density.
+    // None = inherit from active style preset.
+    PanelSection::new("DENSITY").show(ui, t, |ui, t| {
+        use crate::ui_kit::style::DensityMode;
+        let cur_override = watchlist.density_override;
+        let btn_w: f32 = 80.0;
+        let btn_h: f32 = 26.0;
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = gap_xs();
+            // Inherit button — clears the override.
+            let inherit_active = cur_override.is_none();
+            if Button::toggle("Inherit", inherit_active)
+                .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
+                .min_size(egui::vec2(btn_w, btn_h))
+                .show(ui, t).clicked() {
+                watchlist.density_override = None;
+                crate::chart_renderer::ui::style::set_density_override(None);
+            }
+            for &mode in DensityMode::all() {
+                let active = cur_override == Some(mode);
+                if Button::toggle(mode.label(), active)
+                    .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
+                    .min_size(egui::vec2(btn_w, btn_h))
+                    .show(ui, t).clicked() {
+                    watchlist.density_override = Some(mode);
+                    crate::chart_renderer::ui::style::set_density_override(Some(mode));
+                }
+            }
+        });
+    });
+
     // ── TYPOGRAPHY — collapsible sub-categories ──
     PanelSection::new("TYPOGRAPHY").show(ui, t, |ui, t| {
         // SIZE SCALE
