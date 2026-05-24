@@ -6526,6 +6526,11 @@ impl App {
         wl.shared_y_axis = loaded_settings.shared_y_axis;
         if let Some(favs) = loaded_settings.draw_favorites.clone() { wl.draw_favorites = favs; }
         wl.style_idx = loaded_settings.style_idx;
+        // P4.3 — restore density override and immediately push to the global
+        // atomic so the first frame uses the user's saved choice instead of
+        // the style preset's default.
+        wl.density_override = loaded_settings.density_override;
+        crate::chart_renderer::ui::style::set_density_override(wl.density_override);
         wl.pane_split_h = loaded_settings.pane_split_h;
         wl.pane_split_v = loaded_settings.pane_split_v;
         wl.pane_split_h2 = loaded_settings.pane_split_h2;
@@ -7608,6 +7613,8 @@ pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &mut Watchl
         "recent_symbols": panes.first().map(|p| &p.recent_symbols).cloned().unwrap_or_default(),
         "draw_favorites": watchlist.draw_favorites,
         "style_idx": watchlist.style_idx,
+        // P4.3 — DensityMode user override (Compact/Standard/Spacious or null=inherit)
+        "density_override": watchlist.density_override.map(|m| m.as_u8()),
         "settings": {
             "font_scale": watchlist.font_scale,
             "font_idx": watchlist.font_idx,
@@ -7654,6 +7661,8 @@ struct LoadedSettings {
     pane_split_v3: f32, pane_split_v4: f32, pane_split_v5: f32, pane_split_v6: f32,
     draw_favorites: Option<Vec<String>>,
     style_idx: usize,
+    // P4.3 — DensityMode override (None = inherit from style preset).
+    density_override: Option<crate::ui_kit::style::DensityMode>,
 }
 impl Default for LoadedSettings { fn default() -> Self { Self {
     font_scale: 1.6, font_idx: 0, compact_mode: false,
@@ -7665,6 +7674,7 @@ impl Default for LoadedSettings { fn default() -> Self { Self {
     pane_split_v3: 0.5, pane_split_v4: 0.5, pane_split_v5: 0.5, pane_split_v6: 0.5,
     draw_favorites: None,
     style_idx: 0,
+    density_override: None,
 }}}
 
 fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
@@ -7870,6 +7880,14 @@ fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
     if let Some(s) = json.get("style_idx").and_then(|v| v.as_u64()) {
         settings.style_idx = (s as usize).min(STYLE_NAMES.len().saturating_sub(1));
     }
+    // P4.3 — DensityMode override. Top-level key. Missing or null → inherit
+    // from active style preset (the field default of `None`). Any value
+    // outside 0..=2 silently becomes `None`.
+    settings.density_override = json.get("density_override")
+        .and_then(|v| v.as_u64())
+        .and_then(|n| if n <= 2 {
+            Some(crate::ui_kit::style::DensityMode::from_u8(n as u8))
+        } else { None });
 
     (panes, layout, settings)
 }
