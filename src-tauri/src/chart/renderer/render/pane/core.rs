@@ -12000,6 +12000,7 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
     if crate::design_tokens::is_active() {
         // F12 toggles the new inspector. Defaults open on first activation.
         let f12 = ctx.input(|i| i.key_pressed(egui::Key::F12));
+        // Initialise the inspector on first use and handle F12 toggle.
         DESIGN_INSPECTOR.with(|cell| {
             let mut cell = cell.borrow_mut();
             if cell.is_none() {
@@ -12014,19 +12015,73 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
             }
             if let Some(inspector) = cell.as_mut() {
                 if f12 { inspector.toggle(); }
-                // Reentrancy-safe: clone tokens out, let the inspector mutate
-                // a local copy, write back if it changed. Holding the
-                // write lock across inspector.show would deadlock the moment
-                // anything inside (e.g. `set_active_style` -> `begin_frame`
-                // -> `dt_f32!`) tries to acquire a read on the same lock.
-                if let Some(mut tokens_local) = crate::design_tokens::get() {
-                    let changed = inspector.show(ctx, &mut tokens_local);
-                    if changed {
-                        crate::design_tokens::update(tokens_local);
-                    }
-                }
             }
         });
+
+        // Read is_popout and open flags without holding the borrow across the
+        // viewport call (show_viewport_immediate invokes its closure
+        // synchronously, so a live borrow_mut here would panic on re-entry).
+        let (inspector_open, inspector_popout) = DESIGN_INSPECTOR.with(|cell| {
+            let cell = cell.borrow();
+            cell.as_ref().map_or((false, false), |insp| (insp.open, insp.is_popout))
+        });
+
+        if !inspector_open { /* nothing to render */ }
+        else if inspector_popout {
+            // ── Popout path: real OS window via show_viewport_immediate ──────────
+            // show_viewport_immediate runs synchronously on the calling thread,
+            // so thread_local (DESIGN_INSPECTOR) and the global DesignTokens
+            // RwLock are both accessible from the closure. The outer borrow is
+            // fully released before the closure is entered (see above).
+            // The deferred variant requires Send + Sync + 'static, which is
+            // incompatible with thread_local RefCell access — so we use immediate.
+            ctx.show_viewport_immediate(
+                egui::ViewportId::from_hash_of("design_inspector_popout"),
+                egui::ViewportBuilder::default()
+                    .with_title("Apex Design Inspector")
+                    .with_inner_size([500.0, 800.0]),
+                |vp_ctx, _class| {
+                    // Detect OS window close button — flip is_popout to dock.
+                    let closed = vp_ctx.input(|i| i.viewport().close_requested());
+
+                    egui::CentralPanel::default().show(vp_ctx, |ui| {
+                        DESIGN_INSPECTOR.with(|cell| {
+                            let mut cell = cell.borrow_mut();
+                            if let Some(insp) = cell.as_mut() {
+                                if let Some(mut tokens_local) = crate::design_tokens::get() {
+                                    let mut modified = false;
+                                    insp.show_inspector_body(ui, &mut tokens_local, &mut modified);
+                                    if modified {
+                                        crate::design_tokens::update(tokens_local);
+                                    }
+                                }
+                                if closed {
+                                    insp.is_popout = false;
+                                }
+                            }
+                        });
+                    });
+                },
+            );
+        } else {
+            // ── Docked path: SidePanel rendered inline (existing behaviour) ──────
+            // Reentrancy-safe: clone tokens out, let the inspector mutate
+            // a local copy, write back if it changed. Holding the write lock
+            // across inspector.show would deadlock the moment anything inside
+            // (e.g. `set_active_style` -> `begin_frame` -> `dt_f32!`) tries
+            // to acquire a read on the same lock.
+            DESIGN_INSPECTOR.with(|cell| {
+                let mut cell = cell.borrow_mut();
+                if let Some(inspector) = cell.as_mut() {
+                    if let Some(mut tokens_local) = crate::design_tokens::get() {
+                        let changed = inspector.show(ctx, &mut tokens_local);
+                        if changed {
+                            crate::design_tokens::update(tokens_local);
+                        }
+                    }
+                }
+            });
+        }
 
         // Design-mode style-editor panel (Ctrl+Shift+D) — extracted to widget.
         crate::chart_renderer::ui::widgets::design_mode_panel::show(ctx);

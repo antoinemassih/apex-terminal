@@ -584,8 +584,8 @@ let _ = ctx;
         modified
     }
 
-    /// Inner body rendered by both SidePanel and Window modes.
-    fn show_inspector_body(&mut self, ui: &mut egui::Ui, tokens: &mut DesignTokens, modified: &mut bool) {
+    /// Inner body rendered by SidePanel, Window, and real-OS-window (viewport) modes.
+    pub(crate) fn show_inspector_body(&mut self, ui: &mut egui::Ui, tokens: &mut DesignTokens, modified: &mut bool) {
                 // Header
                 egui::Frame::NONE
                     .fill(Color32::from_rgb(14, 14, 20))
@@ -604,7 +604,7 @@ let _ = ctx;
                                     .fill(Color32::from_rgba_unmultiplied(137, 180, 250, 18))
                                     .stroke(Stroke::new(stroke_thin(), Color32::from_rgba_unmultiplied(137, 180, 250, 60)))
                                     .corner_radius(radius_sm())
-                                ).on_hover_text(if self.is_popout { "Dock back to side panel" } else { "Float as draggable window" })
+                                ).on_hover_text(if self.is_popout { "Dock back to side panel" } else { "Open in a real OS window (multi-monitor)" })
                                 .clicked() {
                                     self.is_popout = !self.is_popout;
                                 }
