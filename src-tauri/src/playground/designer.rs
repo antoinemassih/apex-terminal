@@ -258,16 +258,30 @@ pub fn render_designer_panel(
         .color(dim)
         .size(10.0),
     );
-    ui.add_space(8.0);
+    ui.add_space(10.0);
 
-    // ── Tab strip ─────────────────────────────────────────────────────────
-    ui.horizontal(|ui| {
+    // ── Tab strip — explicit "what am I editing?" indicator ──────────────
+    ui.label(
+        egui::RichText::new("EDITING:")
+            .color(dim)
+            .size(9.5)
+            .strong(),
+    );
+    ui.add_space(4.0);
+    ui.horizontal_wrapped(|ui| {
         for tab in DesignerTab::all() {
             let active = state.tab == *tab;
-            if Button::new(tab.label())
-                .variant(Variant::Tab)
+            // Primary when active, Ghost when inactive — high contrast so
+            // the tabs are impossible to miss.
+            let variant = if active { Variant::Primary } else { Variant::Ghost };
+            let label = match tab {
+                DesignerTab::Palette => "🎨  Palette (colours)",
+                #[cfg(feature = "design-mode")]
+                DesignerTab::Tokens => "📐  Tokens (sizes/spacing/etc.)",
+            };
+            if Button::new(label)
+                .variant(variant)
                 .size(Size::Sm)
-                .active(active)
                 .show(ui, theme)
                 .clicked()
             {
@@ -275,9 +289,20 @@ pub fn render_designer_panel(
             }
         }
     });
-    ui.add_space(8.0);
+    #[cfg(not(feature = "design-mode"))]
+    {
+        ui.add_space(4.0);
+        ui.label(
+            egui::RichText::new(
+                "Tokens tab is unavailable — rebuild with --features design-mode to edit sizes / spacing / radii / strokes / alphas / etc.",
+            )
+            .color(dim)
+            .size(9.5),
+        );
+    }
+    ui.add_space(10.0);
     ui.separator();
-    ui.add_space(8.0);
+    ui.add_space(10.0);
 
     // ── Tab-specific body ─────────────────────────────────────────────────
     match state.tab {
