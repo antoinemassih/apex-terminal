@@ -288,7 +288,6 @@ pub const FONT_MD:      f32 = 13.0;
 pub const FONT_MD_PLUS: f32 = 14.0;
 pub const FONT_LG:      f32 = 16.0;
 pub const FONT_XL:      f32 = 22.0;
-pub const FONT_2XL:     f32 = 22.0;
 
 // ─── Spacing (px) ────────────────────────────────────────────────────────────
 
@@ -335,6 +334,41 @@ pub fn alpha_hint()    -> u8 { 30 }
 pub const ELEVATION_1_FACTOR: f32 = 0.95;
 pub const ELEVATION_2_FACTOR: f32 = 0.88;
 pub const ELEVATION_3_FACTOR: f32 = 0.85;
+
+// ─── Line-height multipliers (P2.5) ─────────────────────────────────────────
+//
+// Multipliers applied to font size to derive line height. Replace the bare
+// floats scattered through TextSpec in chart/renderer/ui/foundation/text_style.rs
+// and any per-call `RichText::new(..).size(s).line_height(s * 1.3)` patterns.
+
+/// 1.2 — display / hero text, tight stack.
+#[inline] pub fn line_tight()   -> f32 { 1.2  }
+/// 1.25 — large heading.
+#[inline] pub fn line_heading() -> f32 { 1.25 }
+/// 1.3 — caption / label / mono.
+#[inline] pub fn line_dense()   -> f32 { 1.3  }
+/// 1.35 — small body / small mono.
+#[inline] pub fn line_compact() -> f32 { 1.35 }
+/// 1.4 — body / readable copy. Default for paragraph text.
+#[inline] pub fn line_normal()  -> f32 { 1.4  }
+/// 1.5 — loose / generously-spaced paragraph.
+#[inline] pub fn line_loose()   -> f32 { 1.5  }
+
+// ─── Motion timing (P2.5) ────────────────────────────────────────────────────
+//
+// Standardised animation durations in milliseconds. Use these instead of
+// inline magic numbers when adding animations.
+
+/// 0 ms — no animation; snap instantly.
+#[inline] pub fn motion_instant() -> u32 {   0 }
+/// 80 ms — micro-interactions (hover state transitions).
+#[inline] pub fn motion_fast()    -> u32 {  80 }
+/// 160 ms — standard UI transitions (open/close, slide, fade).
+#[inline] pub fn motion_std()     -> u32 { 160 }
+/// 240 ms — comfortable / non-urgent transitions.
+#[inline] pub fn motion_slow()    -> u32 { 240 }
+/// 400 ms — emphasis / decorative animations (rarely used).
+#[inline] pub fn motion_xslow()   -> u32 { 400 }
 
 // ─── Color utilities — pure egui math, no theme/state ────────────────────────
 
