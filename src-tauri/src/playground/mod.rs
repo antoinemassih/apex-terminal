@@ -6,6 +6,7 @@
 //!   3. Renders a tab strip for the story categories.
 //!   4. Dispatches to the active story module inside a scroll area.
 
+pub mod designer;
 pub mod stories;
 
 use _scaffold_lib::ui_kit::widgets::{
@@ -164,6 +165,10 @@ pub struct Playground {
     active_story: Story,
     /// Per-story mutable state stored here so stories are pure render fns.
     state: stories::PlaygroundState,
+    /// Designer mode — when `designer.open == true`, the playground sources
+    /// its PortableTheme from `designer.scheme` instead of the fixed
+    /// ThemeChoice presets, and renders the editor in a right SidePanel.
+    designer: designer::DesignerState,
 }
 
 impl Playground {
@@ -172,6 +177,7 @@ impl Playground {
             theme_choice: ThemeChoice::Dark,
             active_story: Story::Buttons,
             state: stories::PlaygroundState::default(),
+            designer: designer::DesignerState::default(),
         }
     }
 
@@ -199,7 +205,15 @@ impl Default for Playground {
 
 impl eframe::App for Playground {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let theme = self.theme_choice.portable_theme();
+        // ── Theme source ──────────────────────────────────────────────────
+        // When the Designer panel is open, the playground renders with the
+        // editable ColorScheme. Otherwise it uses the fixed ThemeChoice
+        // presets (Dark/Light/Midnight/Bauhaus).
+        let theme: PortableTheme = if self.designer.open {
+            designer::color_scheme_to_portable(&self.designer.scheme)
+        } else {
+            self.theme_choice.portable_theme()
+        };
 
         // Push theme into egui visuals + ambient stash so widgets using
         // active_theme() / Widget impls find it.
@@ -219,17 +233,34 @@ impl eframe::App for Playground {
                     ui.add_space(16.0);
 
                     // Theme switcher — ui_kit Buttons, dogfooding the kit.
-                    for choice in ThemeChoice::ALL {
-                        let active = *choice == self.theme_choice;
-                        let resp = Button::new(choice.label())
-                            .variant(Variant::Chip)
-                            .size(Size::Xs)
-                            .active(active)
-                            .show(ui, &theme);
-                        if resp.clicked() {
-                            self.theme_choice = *choice;
+                    // Disabled while Designer mode is on so the user sees
+                    // their custom palette, not the fixed presets.
+                    if !self.designer.open {
+                        for choice in ThemeChoice::ALL {
+                            let active = *choice == self.theme_choice;
+                            let resp = Button::new(choice.label())
+                                .variant(Variant::Chip)
+                                .size(Size::Xs)
+                                .active(active)
+                                .show(ui, &theme);
+                            if resp.clicked() {
+                                self.theme_choice = *choice;
+                            }
                         }
                     }
+
+                    // Right-aligned: Designer toggle.
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let label = if self.designer.open { "✕ Close Designer" } else { "✎ Theme Designer" };
+                        if Button::new(label)
+                            .variant(if self.designer.open { Variant::Danger } else { Variant::Primary })
+                            .size(Size::Xs)
+                            .show(ui, &theme)
+                            .clicked()
+                        {
+                            self.designer.open = !self.designer.open;
+                        }
+                    });
                 });
             });
 
@@ -251,6 +282,25 @@ impl eframe::App for Playground {
                     }
                 });
             });
+
+        // ── Right-side Designer panel (only when open) ────────────────────
+        if self.designer.open {
+            egui::SidePanel::right("pg_designer")
+                .min_width(280.0)
+                .max_width(420.0)
+                .default_width(320.0)
+                .frame(
+                    egui::Frame::NONE
+                        .fill(theme.surface())
+                        .stroke(egui::Stroke::new(1.0, theme.border()))
+                        .inner_margin(egui::Margin::symmetric(12, 10)),
+                )
+                .show(ctx, |ui| {
+                    ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
+                        designer::render_designer_panel(ui, &mut self.designer, &theme);
+                    });
+                });
+        }
 
         // ── Central scrollable body ───────────────────────────────────────────
         egui::CentralPanel::default()
