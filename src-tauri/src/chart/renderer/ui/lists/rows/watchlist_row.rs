@@ -385,9 +385,9 @@ impl<'a> WatchlistRow<'a> {
                 if let Some(chg) = extreme_move {
                     if avg_daily_range > 0.0 && chg.abs() > avg_daily_range * 1.5 {
                         let tint = if chg >= 0.0 {
-                            color_alpha(bull, ALPHA_GHOST)
+                            color_alpha(bull, alpha_ghost())
                         } else {
-                            color_alpha(bear, ALPHA_GHOST)
+                            color_alpha(bear, alpha_ghost())
                         };
                         painter.rect_filled(rect, 0.0, tint);
                     }
@@ -407,9 +407,9 @@ impl<'a> WatchlistRow<'a> {
                     } else if rv > 2.0 {
                         (color_alpha(theme_ref.accent, 160), 3.0)
                     } else if rv > 0.8 {
-                        (color_alpha(bull, ALPHA_ACTIVE), 2.0)
+                        (color_alpha(bull, alpha_active()), 2.0)
                     } else {
-                        (color_alpha(accent, ALPHA_STRONG), 2.0)
+                        (color_alpha(accent, alpha_strong()), 2.0)
                     };
                     painter.rect_filled(
                         egui::Rect::from_min_size(rect.min, egui::vec2(rw, rect.height())),
@@ -433,7 +433,7 @@ impl<'a> WatchlistRow<'a> {
                 let star_visible_here = show_star;
                 if star_visible_here {
                     let star_col = match pin_state {
-                        PinState::Pinned => color_alpha(theme_ref.accent, ALPHA_HEAVY),
+                        PinState::Pinned => color_alpha(theme_ref.accent, alpha_heavy()),
                         PinState::NotPinned => color_very_dim(dim),
                     };
                     let star_x = left + 16.0 + star_x_offset;
@@ -468,7 +468,7 @@ impl<'a> WatchlistRow<'a> {
                         let pw = e_galley.size().x + 6.0;
                         let pill_rect = egui::Rect::from_min_size(
                             egui::pos2(ind_x, cy - 6.0), egui::vec2(pw, 12.0));
-                        painter.rect_filled(pill_rect, 6.0, color_alpha(theme_ref.accent, ALPHA_HEAVY));
+                        painter.rect_filled(pill_rect, 6.0, color_alpha(theme_ref.accent, alpha_heavy()));
                         painter.text(egui::pos2(ind_x + pw / 2.0, cy), egui::Align2::CENTER_CENTER,
                             &e_text, mono_sm(), Color32::BLACK);
                         zones_body.borrow_mut().earnings = Some(pill_rect);
@@ -585,7 +585,7 @@ impl<'a> WatchlistRow<'a> {
                             egui::pos2(rect.left() + 16.0, rect.bottom() - 0.5),
                             egui::pos2(rect.right() - 4.0, rect.bottom() - 0.5),
                         ],
-                        Stroke::new(stroke_thin(), color_alpha(border, ALPHA_MUTED)),
+                        Stroke::new(stroke_thin(), color_alpha(border, alpha_muted())),
                     );
                 }
 

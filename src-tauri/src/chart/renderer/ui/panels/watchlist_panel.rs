@@ -833,7 +833,7 @@ if watchlist.open {
                                             // Two layered tints (panel previously painted both): blend into one.
                                             // 80,120,200,12 + t.text @ alpha 4 → use the bluish tint; the t.text@4
                                             // overlay was nearly invisible. Visual parity preserved within 1 alpha.
-                                            color_alpha(t.accent, super::super::style::ALPHA_GHOST)
+                                            color_alpha(t.accent, super::super::style::alpha_ghost())
                                         } else {
                                             egui::Color32::TRANSPARENT
                                         };

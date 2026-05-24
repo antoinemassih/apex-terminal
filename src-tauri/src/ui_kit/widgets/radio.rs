@@ -114,7 +114,7 @@ fn paint_radio<T: PartialEq + Copy>(
     let mut bg = motion::lerp_color(off_bg, on_bg, on_t);
 
     if !selected && hover_t > 0.001 {
-        let hover_bg = st::color_alpha(accent, st::ALPHA_GHOST);
+        let hover_bg = st::color_alpha(accent, st::alpha_ghost());
         bg = motion::lerp_color(bg, hover_bg, hover_t);
     } else if selected && hover_t > 0.001 {
         bg = motion::lerp_color(bg, lighten(accent, 0.10), hover_t);

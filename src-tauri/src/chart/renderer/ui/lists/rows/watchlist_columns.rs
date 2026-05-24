@@ -116,7 +116,7 @@ fn render_sparkline(c: &mut ColumnCtx) {
 fn render_rvol_badge(c: &mut ColumnCtx) {
     let rv = match c.item.rvol { Some(rv) if rv > 0.0 => rv, _ => return };
     let cy = c.rect.center().y;
-    let rcol = if rv > 2.0 { color_alpha(c.theme.accent, ALPHA_HEAVY) }
+    let rcol = if rv > 2.0 { color_alpha(c.theme.accent, alpha_heavy()) }
         else if rv > 1.2 { c.bull }
         else { color_dim(c.dim) };
     c.painter.text(
@@ -137,7 +137,7 @@ fn render_day_range(c: &mut ColumnCtx) {
     let x0 = c.rect.left();
     c.painter.line_segment(
         [egui::pos2(x0, cy), egui::pos2(x0 + rw, cy)],
-        Stroke::new(stroke_thick(), color_alpha(c.border, ALPHA_MUTED)),
+        Stroke::new(stroke_thick(), color_alpha(c.border, alpha_muted())),
     );
     c.painter.circle_filled(egui::pos2(x0 + rw * pos, cy), 2.5, chg_col);
 }
@@ -150,7 +150,7 @@ fn render_week52(c: &mut ColumnCtx) {
     let x0 = c.rect.left();
     c.painter.line_segment(
         [egui::pos2(x0, cy), egui::pos2(x0 + rw, cy)],
-        Stroke::new(stroke_thick(), color_alpha(c.border, ALPHA_MUTED)),
+        Stroke::new(stroke_thick(), color_alpha(c.border, alpha_muted())),
     );
     c.painter.circle_filled(egui::pos2(x0 + rw * pos, cy), 2.5, c.fg);
 }

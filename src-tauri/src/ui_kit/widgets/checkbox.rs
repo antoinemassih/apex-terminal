@@ -154,7 +154,7 @@ fn paint_checkbox(ui: &mut Ui, theme: &dyn ComponentTheme, mut cb: Checkbox<'_>)
 
     // Hover tint when off (additive ghost), brighter accent when on.
     if !is_marked && hover_t > 0.001 {
-        let hover_bg = st::color_alpha(accent, st::ALPHA_GHOST);
+        let hover_bg = st::color_alpha(accent, st::alpha_ghost());
         bg = motion::lerp_color(bg, hover_bg, hover_t);
     } else if is_marked && hover_t > 0.001 {
         bg = motion::lerp_color(bg, lighten(accent, 0.10), hover_t);

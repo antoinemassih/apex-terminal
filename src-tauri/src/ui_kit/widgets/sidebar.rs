@@ -211,7 +211,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
         ui.painter_at(rect).line_segment(
             [Pos2::new(rect.left() + pad_x, content_top),
              Pos2::new(rect.right() - pad_x, content_top)],
-            Stroke::new(st::stroke_std(), st::color_alpha(theme.border(), st::ALPHA_STRONG)),
+            Stroke::new(st::stroke_std(), st::color_alpha(theme.border(), st::alpha_strong())),
         );
         content_top += st::gap_xs();
     }
@@ -227,7 +227,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
             btn_resp.hovered(), motion::FAST);
         let bg = motion::lerp_color(
             Color32::TRANSPARENT,
-            st::color_alpha(theme.text(), st::ALPHA_GHOST),
+            st::color_alpha(theme.text(), st::alpha_ghost()),
             hov,
         );
         ui.painter().rect_filled(btn_rect, CornerRadius::same(st::radius_sm() as u8), bg);
@@ -260,7 +260,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
         ui.painter_at(rect).line_segment(
             [Pos2::new(rect.left() + pad_x, ftr_rect.top() - st::gap_xs()),
              Pos2::new(rect.right() - pad_x, ftr_rect.top() - st::gap_xs())],
-            Stroke::new(st::stroke_std(), st::color_alpha(theme.border(), st::ALPHA_STRONG)),
+            Stroke::new(st::stroke_std(), st::color_alpha(theme.border(), st::alpha_strong())),
         );
         let mut child = ui.new_child(
             egui::UiBuilder::new()
@@ -326,7 +326,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
         // Background.
         if is_active {
             let bg = motion::fade_in(
-                st::color_alpha(theme.accent(), st::ALPHA_GHOST),
+                st::color_alpha(theme.accent(), st::alpha_ghost()),
                 active_t,
             );
             p.rect_filled(row_rect, CornerRadius::same(st::radius_sm() as u8), bg);

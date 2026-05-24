@@ -54,7 +54,7 @@ use super::tooltip::Tooltip;
 
 use crate::ui_kit::tokens::{
     alpha_muted, alpha_tint, color_alpha, font_sm, font_xs, gap_2xs, gap_xs, stroke_thin,
-    ALPHA_GHOST,
+    alpha_ghost,
 };
 
 // ── Public types ────────────────────────────────────────────────────────
@@ -574,7 +574,7 @@ impl<'a, T: Clone> Table<'a, T> {
                         ui.painter().rect_filled(
                             row_rect,
                             0.0,
-                            color_alpha(theme.accent(), ALPHA_GHOST),
+                            color_alpha(theme.accent(), alpha_ghost()),
                         );
                     }
 

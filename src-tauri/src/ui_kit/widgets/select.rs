@@ -695,7 +695,7 @@ fn chip_paint(
     painter.rect_filled(
         chip_rect,
         CornerRadius::same(st::radius_sm() as u8),
-        st::color_alpha(theme.accent(), st::ALPHA_GHOST + 10),
+        st::color_alpha(theme.accent(), st::alpha_ghost() + 10),
     );
     painter.text(
         Pos2::new(chip_rect.left() + pad, cy),
@@ -995,7 +995,7 @@ fn render_row<'a, T>(
 
     let painter = ui.painter_at(rect);
     let bg_hover = st::color_alpha(theme.text(), 18);
-    let bg_sel = st::color_alpha(theme.accent(), st::ALPHA_GHOST);
+    let bg_sel = st::color_alpha(theme.accent(), st::alpha_ghost());
     let mut bg = motion::lerp_color(Color32::TRANSPARENT, bg_hover, hover_t);
     bg = motion::lerp_color(bg, bg_sel, sel_t);
     painter.rect_filled(rect, CornerRadius::same(st::radius_sm() as u8), bg);

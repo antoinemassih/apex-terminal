@@ -223,7 +223,7 @@ fn render_row<T: TreeNode>(
     let cr = CornerRadius::same(st::radius_sm() as u8);
 
     if selected {
-        painter.rect_filled(rect, cr, st::color_alpha(theme.accent(), st::ALPHA_GHOST));
+        painter.rect_filled(rect, cr, st::color_alpha(theme.accent(), st::alpha_ghost()));
     } else if hover_t > 0.001 {
         let bg = st::color_alpha(theme.text(), 18);
         painter.rect_filled(rect, cr, motion::lerp_color(Color32::TRANSPARENT, bg, hover_t));

@@ -109,13 +109,11 @@ use crate::chart_renderer::ui::style::{
     color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, hex_to_color, segmented_control,
     contrast_fg,
     dialog_window_themed,
-    STROKE_STD, STROKE_THIN,
-    ALPHA_FAINT, ALPHA_GHOST, ALPHA_DIM, ALPHA_HEAVY,
+    alpha_faint, alpha_ghost, alpha_soft, alpha_muted, alpha_dim, alpha_strong, alpha_heavy,
     BTN_ICON_SM, BTN_ICON_LG,
     icon_sm,
     set_toolbar_rect, tb_group_break, current as style_current,
     font_4xs, font_xs, font_2xs, font_sm, font_md, font_lg, font_xl,
-    alpha_soft, alpha_muted, alpha_ghost, alpha_strong, alpha_dim,
     mono_xs, mono_sm, mono_md, mono_lg,
     gap_2xs, gap_xs, gap_sm, gap_md, gap_lg, gap_xl,
     row_height_default,
@@ -393,7 +391,7 @@ pub(crate) fn render(
         // Bottom border line
         ui.painter().line_segment(
             [egui::pos2(tb_rect.left(), tb_rect.bottom()), egui::pos2(tb_rect.right(), tb_rect.bottom())],
-            egui::Stroke::new(STROKE_STD, t.toolbar_border),
+            egui::Stroke::new(stroke_std(), t.toolbar_border),
         );
 
         // Paper-mode bottom line removed — the $ badge in the toolbar (below)
@@ -411,8 +409,8 @@ pub(crate) fn render(
             lp.add(egui::Shape::line(vec![
                 egui::pos2(lc.x, lc.y - 6.0), egui::pos2(lc.x + 6.0, lc.y + 5.0),
                 egui::pos2(lc.x - 6.0, lc.y + 5.0), egui::pos2(lc.x, lc.y - 6.0),
-            ], egui::Stroke::new(STROKE_STD, t.accent)));
-            lp.line_segment([egui::pos2(lc.x - 3.5, lc.y + 1.0), egui::pos2(lc.x + 3.5, lc.y + 1.0)], egui::Stroke::new(STROKE_STD, t.accent));
+            ], egui::Stroke::new(stroke_std(), t.accent)));
+            lp.line_segment([egui::pos2(lc.x - 3.5, lc.y + 1.0), egui::pos2(lc.x + 3.5, lc.y + 1.0)], egui::Stroke::new(stroke_std(), t.accent));
 
             ui.add_space(gap_sm());
             ui.spacing_mut().item_spacing.x = gap_xs();
@@ -1336,13 +1334,13 @@ pub(crate) fn render(
                             crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
                             crate::chart_renderer::ui::style::cursor::focus_ring(ui, &resp, t.accent);
                             if resp.hovered() {
-                                p.rect_filled(r, 4.0, color_alpha(t.accent, ALPHA_GHOST));
+                                p.rect_filled(r, 4.0, color_alpha(t.accent, alpha_ghost()));
                             }
 
                             // Mini preview thumbnail (28x28 painted icon)
                             let preview_rect = egui::Rect::from_min_size(
                                 egui::pos2(r.left() + 4.0, r.top() + 4.0), egui::vec2(28.0, 28.0));
-                            let preview_bg = color_alpha(t.toolbar_border, ALPHA_FAINT);
+                            let preview_bg = color_alpha(t.toolbar_border, alpha_faint());
                             p.rect_filled(preview_rect, 4.0, preview_bg);
                             paint_widget_preview(p, preview_rect, kind, t, is_active);
 
@@ -1560,8 +1558,8 @@ pub(crate) fn render(
                     let c = r.center();
                     let s = 4.5;
                     let col = if resp.hovered() { contrast_fg(t.bear) } else { color_subtle(t.dim) };
-                    ui.painter().line_segment([egui::pos2(c.x - s, c.y - s), egui::pos2(c.x + s, c.y + s)], egui::Stroke::new(STROKE_STD, col));
-                    ui.painter().line_segment([egui::pos2(c.x + s, c.y - s), egui::pos2(c.x - s, c.y + s)], egui::Stroke::new(STROKE_STD, col));
+                    ui.painter().line_segment([egui::pos2(c.x - s, c.y - s), egui::pos2(c.x + s, c.y + s)], egui::Stroke::new(stroke_std(), col));
+                    ui.painter().line_segment([egui::pos2(c.x + s, c.y - s), egui::pos2(c.x - s, c.y + s)], egui::Stroke::new(stroke_std(), col));
                     if resp.clicked() {
                         save_state(panes, *layout, watchlist);
                         watchlist.persist();
@@ -1578,10 +1576,10 @@ pub(crate) fn render(
                     if is_max {
                         // Restore icon: two overlapping squares
                         let o = 1.5;
-                        ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s + o, c.y - s), egui::vec2(s * 2.0 - o, s * 2.0 - o)), 0.5, egui::Stroke::new(STROKE_STD, col), egui::StrokeKind::Outside);
-                        ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s, c.y - s + o), egui::vec2(s * 2.0 - o, s * 2.0 - o)), 0.5, egui::Stroke::new(STROKE_STD, col), egui::StrokeKind::Outside);
+                        ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s + o, c.y - s), egui::vec2(s * 2.0 - o, s * 2.0 - o)), 0.5, egui::Stroke::new(stroke_std(), col), egui::StrokeKind::Outside);
+                        ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s, c.y - s + o), egui::vec2(s * 2.0 - o, s * 2.0 - o)), 0.5, egui::Stroke::new(stroke_std(), col), egui::StrokeKind::Outside);
                     } else {
-                        ui.painter().rect_stroke(egui::Rect::from_center_size(c, egui::vec2(s * 2.0, s * 2.0)), 0.5, egui::Stroke::new(STROKE_STD, col), egui::StrokeKind::Outside);
+                        ui.painter().rect_stroke(egui::Rect::from_center_size(c, egui::vec2(s * 2.0, s * 2.0)), 0.5, egui::Stroke::new(stroke_std(), col), egui::StrokeKind::Outside);
                     }
                     if resp.clicked() {
                         if let Some(w) = &win_ref { let m = w.is_maximized(); w.set_maximized(!m); }
@@ -1593,7 +1591,7 @@ pub(crate) fn render(
                     let c = r.center();
                     let s = 5.0;
                     let col = if resp.hovered() { t.dim } else { color_subtle(t.dim) };
-                    ui.painter().line_segment([egui::pos2(c.x - s, c.y), egui::pos2(c.x + s, c.y)], egui::Stroke::new(STROKE_STD, col));
+                    ui.painter().line_segment([egui::pos2(c.x - s, c.y), egui::pos2(c.x + s, c.y)], egui::Stroke::new(stroke_std(), col));
                     if resp.clicked() {
                         if let Some(w) = &win_ref { w.set_minimized(true); }
                     }
@@ -1883,7 +1881,7 @@ pub(crate) fn render(
             .exact_height(style_current().account_strip_height)
             .frame(egui::Frame::NONE.fill(t.toolbar_bg)
                 .inner_margin(egui::Margin { left: 0, right: 0, top: 2, bottom: 2 })
-                .stroke(egui::Stroke::new(STROKE_THIN, color_alpha(t.toolbar_border, ALPHA_DIM))))
+                .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_dim()))))
             .show(ctx, |ui| {
                 crate::chart::renderer::ui::chrome::pane::AccountStrip::new()
                     .account_data(account_data_cached.as_ref().map(|(a, _, _)| a))
@@ -1982,7 +1980,7 @@ pub(crate) fn render(
                     // Star — toggles favorite without closing the dropdown
                     let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(icon_sm(), icon_sm()));
                     let sh = hover_pos.map_or(false, |p| sr.contains(p));
-                    let sc = if is_fav { color_alpha(t.accent, ALPHA_HEAVY) } else if sh { color_half(t.dim) } else if hovered { color_very_dim(t.dim) } else { color_very_dim(t.dim) };
+                    let sc = if is_fav { color_alpha(t.accent, alpha_heavy()) } else if sh { color_half(t.dim) } else if hovered { color_very_dim(t.dim) } else { color_very_dim(t.dim) };
                     ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, egui::FontId::proportional(font_sm()), sc);
                     if sh { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     if sh && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
@@ -2090,13 +2088,13 @@ pub(crate) fn render(
                     // Label + description
                     let lc = if is_cur { t.accent } else if hovered { t.text } else { t.dim };
                     ui.painter().text(egui::pos2(row_rect.left() + 42.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.label(), mono_sm(), lc);
-                    let dc = if hovered { color_alpha(t.dim, ALPHA_HEAVY) } else { color_muted(t.dim) };
+                    let dc = if hovered { color_alpha(t.dim, alpha_heavy()) } else { color_muted(t.dim) };
                     ui.painter().text(egui::pos2(row_rect.left() + 74.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.description(), mono_sm(), dc);
 
                     // Star — filled, raw pointer click
                     let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(icon_sm(), icon_sm()));
                     let sh = hover_pos.map_or(false, |p| sr.contains(p));
-                    let sc = if is_fav { color_alpha(t.accent, ALPHA_HEAVY) } else if sh { color_half(t.dim) } else if hovered { color_very_dim(t.dim) } else { color_very_dim(t.dim) };
+                    let sc = if is_fav { color_alpha(t.accent, alpha_heavy()) } else if sh { color_half(t.dim) } else if hovered { color_very_dim(t.dim) } else { color_very_dim(t.dim) };
                     ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, egui::FontId::proportional(font_sm()), sc);
                     if sh { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     if sh && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
@@ -2843,7 +2841,7 @@ pub(crate) fn render(
                     }
                     if tip.earnings_days >= 0 && tip.earnings_days <= 14 {
                         ui.add_space(gap_xs());
-                        ui.label(TextStyle::MonoSm.as_rich(&format!("{} Earnings in {} days", Icon::LIGHTNING, tip.earnings_days), color_alpha(t.accent, ALPHA_HEAVY)));
+                        ui.label(TextStyle::MonoSm.as_rich(&format!("{} Earnings in {} days", Icon::LIGHTNING, tip.earnings_days), color_alpha(t.accent, alpha_heavy())));
                     }
                     if !tip.tags.is_empty() {
                         ui.add_space(gap_xs());

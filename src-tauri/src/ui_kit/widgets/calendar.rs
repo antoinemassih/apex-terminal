@@ -270,12 +270,12 @@ fn paint_calendar<'a>(
                     ui.allocate_exact_size(Vec2::new(title_w.max(80.0), size.height()), Sense::click());
                 let hovered = title_resp.hovered();
                 let hover_t = motion::ease_bool(ui.ctx(), id.with("title_hover"), hovered, motion::FAST);
-                let bg_hover = st::color_alpha(theme.text(), st::ALPHA_GHOST);
+                let bg_hover = st::color_alpha(theme.text(), st::alpha_ghost());
                 if hover_t > 0.001 {
                     ui.painter().rect_filled(
                         title_rect,
                         CornerRadius::same(st::radius_sm() as u8),
-                        st::color_alpha(bg_hover, (st::ALPHA_GHOST as f32 * hover_t) as u8),
+                        st::color_alpha(bg_hover, (st::alpha_ghost() as f32 * hover_t) as u8),
                     );
                 }
                 ui.painter().text(
@@ -554,8 +554,8 @@ fn paint_one_month(
             // Paint cell background.
             let radius = CornerRadius::same(st::radius_sm() as u8);
             let accent = theme.accent();
-            let mid_bg = st::color_alpha(accent, st::ALPHA_GHOST);
-            let preview_bg = st::color_alpha(accent, st::ALPHA_FAINT);
+            let mid_bg = st::color_alpha(accent, st::alpha_ghost());
+            let preview_bg = st::color_alpha(accent, st::alpha_faint());
 
             match sel_state {
                 CellSel::Selected | CellSel::RangeStart | CellSel::RangeEnd => {
