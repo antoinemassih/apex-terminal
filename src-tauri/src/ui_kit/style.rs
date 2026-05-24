@@ -176,10 +176,13 @@ pub fn contrast_fg(bg: Color32) -> Color32 {
 }
 
 // ─── Display-tier proportional fonts ─────────────────────────────────────────
-// Large hero numbers in chart-widget bodies (KPIs, countdown digits).
-#[inline] pub fn font_display_sm() -> f32 { 28.0 }
-#[inline] pub fn font_display_md() -> f32 { 32.0 }
-#[inline] pub fn font_display_lg() -> f32 { 42.0 }
+// Large hero numbers in chart-widget bodies (KPIs, countdown digits). Wired
+// through the design_tokens macro so the display tier is themable (P3.1).
+// FontTokens.xxl / .display / .display_lg are the corresponding TOML fields
+// (with naming inherited from an earlier scheme — kept for back-compat).
+#[inline] pub fn font_display_sm() -> f32 { crate::dt_f32!(font.xxl,        28.0) }
+#[inline] pub fn font_display_md() -> f32 { crate::dt_f32!(font.display,    32.0) }
+#[inline] pub fn font_display_lg() -> f32 { crate::dt_f32!(font.display_lg, 42.0) }
 #[inline] pub fn font_display_xl() -> f32 { 56.0 }
 
 // ─── Icon control sizes ──────────────────────────────────────────────────────

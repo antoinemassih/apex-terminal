@@ -112,11 +112,13 @@ pub(super) fn render_tool_previews<Py, Bx>(
             painter.line_segment([egui::pos2(rect.left(),y0),egui::pos2(rect.left()+cw,y0)], egui::Stroke::new(stroke_std(), color_alpha(t.text,120)));
             painter.line_segment([egui::pos2(rect.left(),pos.y),egui::pos2(rect.left()+cw,pos.y)], egui::Stroke::new(stroke_std(), color_alpha(t.text,120)));
         }
-        // White rectangle cursor
+        // Rectangle cursor — uses contrast_fg so it stays visible on both
+        // dark (white) and light (black) chart backgrounds.
         let sz = 6.0;
+        let cursor_col = crate::ui_kit::style::contrast_fg(t.bg);
         painter.rect_stroke(
             egui::Rect::from_center_size(pos, egui::vec2(sz * 2.0, sz * 2.0)),
-            1.0, egui::Stroke::new(stroke_std(), egui::Color32::WHITE), egui::StrokeKind::Outside);
+            1.0, egui::Stroke::new(stroke_std(), cursor_col), egui::StrokeKind::Outside);
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
     } else if chart.draw_tool == "fibonacci" {
         // Fibonacci preview: retracement + extension levels
@@ -458,7 +460,8 @@ pub(super) fn render_tool_previews<Py, Bx>(
             let pt = egui::pos2(bx(b), py(p));
             painter.circle_filled(pt, 7.0, color_alpha(wave_color, 80));
             painter.circle_stroke(pt, 7.0, egui::Stroke::new(stroke_std(), wave_color));
-            painter.text(pt, egui::Align2::CENTER_CENTER, labels.get(i).copied().unwrap_or("?"), mono_3xs(), egui::Color32::WHITE);
+            // contrast_fg picks BLACK on the light teal/wave circle fill, WHITE on dark.
+            painter.text(pt, egui::Align2::CENTER_CENTER, labels.get(i).copied().unwrap_or("?"), mono_3xs(), crate::ui_kit::style::contrast_fg(wave_color));
         }
         if !chart.pending_pts.is_empty() {
             let last = chart.pending_pts.last().unwrap();

@@ -35,12 +35,14 @@ pub fn show_text_note_editor(c: TextNoteCtx<'_>) -> TextNoteOutput {
         .fixed_pos(egui::pos2(c.x, c.y))
         .order(egui::Order::Foreground)
         .show(c.ctx, |ui| {
+            let theme = active_theme(c.ctx);
             let r = Input::new(c.text_buf)
                 .font_size(c.font_size)
                 .proportional(true)
-                .text_color(egui::Color32::WHITE)
+                // Use theme text color so light themes get dark text on light bg.
+                .text_color(theme.text)
                 .width(200.0)
-                .show(ui, &active_theme(c.ctx));
+                .show(ui, &theme);
             r.request_focus(c.ctx);
             if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 if c.text_buf.is_empty() {

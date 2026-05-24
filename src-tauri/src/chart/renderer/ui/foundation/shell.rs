@@ -11,8 +11,32 @@ use egui::{Color32, Margin, Rect, Response, RichText, Sense, Stroke, StrokeKind,
 use super::super::style::*;
 use super::interaction::{apply_interaction, InteractionState, InteractionTokens};
 use super::text_style::TextStyle;
-use super::tokens::Radius;
 use crate::ui_kit::widgets::tokens::Size;
+
+// ─── Radius (inlined from former tokens.rs P3.1) ─────────────────────────────
+//
+// Pill reads `StyleSettings.r_pill` which varies per style preset (e.g.
+// Meridien r_pill = 0); the ui_kit equivalent `radius_pill()` is a fixed
+// 999.0 constant with no preset awareness. Unifying requires the style-axis
+// decision deferred to Phase 5.
+
+/// Radius scale for foundation shells. `Pill` reads the per-preset `r_pill` knob.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Radius { None, Xs, Sm, Md, Lg, Pill }
+
+impl Radius {
+    pub fn corner(self) -> egui::CornerRadius {
+        let st = current();
+        match self {
+            Radius::None => egui::CornerRadius::ZERO,
+            Radius::Xs   => egui::CornerRadius::same(st.r_xs),
+            Radius::Sm   => egui::CornerRadius::same(st.r_sm),
+            Radius::Md   => egui::CornerRadius::same(st.r_md),
+            Radius::Lg   => egui::CornerRadius::same(st.r_lg),
+            Radius::Pill => egui::CornerRadius::same(st.r_pill),
+        }
+    }
+}
 use crate::ui_kit::widgets::{CardVariant, RowVariant};
 
 type Theme = super::super::super::gpu::Theme;

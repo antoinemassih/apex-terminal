@@ -22,9 +22,6 @@ pub mod foundation {
     pub mod shell {
         pub use crate::chart::renderer::ui::foundation::shell::*;
     }
-    pub mod tokens {
-        pub use crate::chart::renderer::ui::foundation::tokens::*;
-    }
     pub mod variants {
         pub use crate::ui_kit::widgets::shell_variants::*;
     }
