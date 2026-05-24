@@ -12018,70 +12018,38 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
             }
         });
 
-        // Read is_popout and open flags without holding the borrow across the
-        // viewport call (show_viewport_immediate invokes its closure
-        // synchronously, so a live borrow_mut here would panic on re-entry).
-        let (inspector_open, inspector_popout) = DESIGN_INSPECTOR.with(|cell| {
-            let cell = cell.borrow();
-            cell.as_ref().map_or((false, false), |insp| (insp.open, insp.is_popout))
-        });
-
-        if !inspector_open { /* nothing to render */ }
-        else if inspector_popout {
-            // ── Popout path: real OS window via show_viewport_immediate ──────────
-            // show_viewport_immediate runs synchronously on the calling thread,
-            // so thread_local (DESIGN_INSPECTOR) and the global DesignTokens
-            // RwLock are both accessible from the closure. The outer borrow is
-            // fully released before the closure is entered (see above).
-            // The deferred variant requires Send + Sync + 'static, which is
-            // incompatible with thread_local RefCell access — so we use immediate.
-            ctx.show_viewport_immediate(
-                egui::ViewportId::from_hash_of("design_inspector_popout"),
-                egui::ViewportBuilder::default()
-                    .with_title("Apex Design Inspector")
-                    .with_inner_size([500.0, 800.0]),
-                |vp_ctx, _class| {
-                    // Detect OS window close button — flip is_popout to dock.
-                    let closed = vp_ctx.input(|i| i.viewport().close_requested());
-
-                    egui::CentralPanel::default().show(vp_ctx, |ui| {
-                        DESIGN_INSPECTOR.with(|cell| {
-                            let mut cell = cell.borrow_mut();
-                            if let Some(insp) = cell.as_mut() {
-                                if let Some(mut tokens_local) = crate::design_tokens::get() {
-                                    let mut modified = false;
-                                    insp.show_inspector_body(ui, &mut tokens_local, &mut modified);
-                                    if modified {
-                                        crate::design_tokens::update(tokens_local);
-                                    }
-                                }
-                                if closed {
-                                    insp.is_popout = false;
-                                }
-                            }
-                        });
-                    });
-                },
-            );
-        } else {
-            // ── Docked path: SidePanel rendered inline (existing behaviour) ──────
-            // Reentrancy-safe: clone tokens out, let the inspector mutate
-            // a local copy, write back if it changed. Holding the write lock
-            // across inspector.show would deadlock the moment anything inside
-            // (e.g. `set_active_style` -> `begin_frame` -> `dt_f32!`) tries
-            // to acquire a read on the same lock.
-            DESIGN_INSPECTOR.with(|cell| {
-                let mut cell = cell.borrow_mut();
-                if let Some(inspector) = cell.as_mut() {
-                    if let Some(mut tokens_local) = crate::design_tokens::get() {
-                        let changed = inspector.show(ctx, &mut tokens_local);
-                        if changed {
-                            crate::design_tokens::update(tokens_local);
-                        }
+        // ── Single dispatch path ──────────────────────────────────────────────
+        // The inspector internally branches on `is_popout`: false → SidePanel
+        // (docked right), true → egui::Window (draggable floating panel inside
+        // the main app window).
+        //
+        // NOTE: A previous attempt used `ctx.show_viewport_immediate` to spawn
+        // the popout as a real OS window. That API requires the host to
+        // implement egui's viewport-creation plumbing (egui calls back to
+        // create winit windows per viewport). Apex-terminal is a custom
+        // winit + egui-wgpu integration (see `App::window_event` in gpu.rs)
+        // that does NOT implement this — so `show_viewport_immediate` silently
+        // falls back to embedded rendering (paints into the current window
+        // with no visible effect). Multi-monitor real-OS-window popout
+        // requires implementing host viewport handling — tracked as a
+        // dedicated follow-up. Until then, POP = floating egui::Window.
+        //
+        // Reentrancy-safe: clone tokens out, let the inspector mutate a local
+        // copy, write back if it changed. Holding the write lock across
+        // `inspector.show` would deadlock the moment anything inside (e.g.
+        // `set_active_style` -> `begin_frame` -> `dt_f32!`) tried to acquire
+        // a read on the same lock.
+        DESIGN_INSPECTOR.with(|cell| {
+            let mut cell = cell.borrow_mut();
+            if let Some(inspector) = cell.as_mut() {
+                if let Some(mut tokens_local) = crate::design_tokens::get() {
+                    let changed = inspector.show(ctx, &mut tokens_local);
+                    if changed {
+                        crate::design_tokens::update(tokens_local);
                     }
                 }
-            });
-        }
+            }
+        });
 
         // Design-mode style-editor panel (Ctrl+Shift+D) — extracted to widget.
         crate::chart_renderer::ui::widgets::design_mode_panel::show(ctx);
