@@ -23,12 +23,50 @@ use std::path::PathBuf;
 
 // ── State ────────────────────────────────────────────────────────────────────
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DesignerTab {
+    /// Edit the ColorScheme palette (the 11 required + accent etc.).
+    /// Saves to themes_dir/colorschemes/<name>.json (picked up by the
+    /// trading app's hot-reload watcher).
+    Palette,
+    /// Embed the full F12 design inspector — every DesignTokens field
+    /// (fonts, spacing, radii, strokes, alphas, shadows, component
+    /// tokens). Mutates the global DesignTokens RwLock so changes
+    /// propagate to all playground widgets via TokenSnapshot next frame.
+    /// Only available when built with `--features design-mode`.
+    #[cfg(feature = "design-mode")]
+    Tokens,
+}
+
+impl DesignerTab {
+    pub fn label(self) -> &'static str {
+        match self {
+            DesignerTab::Palette => "Palette",
+            #[cfg(feature = "design-mode")]
+            DesignerTab::Tokens => "Tokens",
+        }
+    }
+
+    pub fn all() -> &'static [Self] {
+        #[cfg(feature = "design-mode")]
+        {
+            &[DesignerTab::Palette, DesignerTab::Tokens]
+        }
+        #[cfg(not(feature = "design-mode"))]
+        {
+            &[DesignerTab::Palette]
+        }
+    }
+}
+
 pub struct DesignerState {
     /// The palette being edited. Source of truth for the playground's
     /// rendered theme. Converted to PortableTheme each frame.
     pub scheme: ColorScheme,
     /// True if the right-side designer panel is open.
     pub open: bool,
+    /// Which sub-editor is showing (Palette vs Tokens).
+    pub tab: DesignerTab,
     /// True if the Save As dialog is open.
     pub save_dialog_open: bool,
     /// Working name in the Save As dialog.
@@ -40,6 +78,10 @@ pub struct DesignerState {
     pub status: String,
     /// Cached list of saved theme file stems, refreshed on directory open.
     pub saved_list: Vec<String>,
+    /// The embedded F12 inspector. Lazily constructed on first Tokens-tab
+    /// open. Mutates the global DesignTokens RwLock.
+    #[cfg(feature = "design-mode")]
+    pub inspector: Option<_scaffold_lib::design_inspector::Inspector>,
 }
 
 impl Default for DesignerState {
@@ -48,11 +90,14 @@ impl Default for DesignerState {
         Self {
             scheme,
             open: false,
+            tab: DesignerTab::Palette,
             save_dialog_open: false,
             save_name: String::new(),
             load_dialog_open: false,
             status: String::new(),
             saved_list: Vec::new(),
+            #[cfg(feature = "design-mode")]
+            inspector: None,
         }
     }
 }
@@ -208,12 +253,90 @@ pub fn render_designer_panel(
     );
     ui.label(
         egui::RichText::new(
-            "Edits the active palette in real time. Saves land in the trading app's themes_dir — appear in the app picker within ~1.5s.",
+            "Edits the active palette + design tokens in real time. Palette saves land in the trading app's themes_dir.",
         )
         .color(dim)
         .size(10.0),
     );
     ui.add_space(8.0);
+
+    // ── Tab strip ─────────────────────────────────────────────────────────
+    ui.horizontal(|ui| {
+        for tab in DesignerTab::all() {
+            let active = state.tab == *tab;
+            if Button::new(tab.label())
+                .variant(Variant::Tab)
+                .size(Size::Sm)
+                .active(active)
+                .show(ui, theme)
+                .clicked()
+            {
+                state.tab = *tab;
+            }
+        }
+    });
+    ui.add_space(8.0);
+    ui.separator();
+    ui.add_space(8.0);
+
+    // ── Tab-specific body ─────────────────────────────────────────────────
+    match state.tab {
+        DesignerTab::Palette => render_palette_tab(ui, state, theme),
+        #[cfg(feature = "design-mode")]
+        DesignerTab::Tokens => render_tokens_tab(ui, state, theme),
+    }
+}
+
+#[cfg(feature = "design-mode")]
+fn render_tokens_tab(
+    ui: &mut egui::Ui,
+    state: &mut DesignerState,
+    _theme: &PortableTheme,
+) {
+    // Lazy init — the Inspector lives across frames so its category
+    // selection / scroll state / open-help-panel flag persists.
+    if state.inspector.is_none() {
+        let mut insp = _scaffold_lib::design_inspector::Inspector::new(
+            std::path::PathBuf::from("design.toml"),
+        );
+        insp.themes_dir = _scaffold_lib::design_system::themes_dir();
+        // Open by default — the user clicked the Tokens tab so they
+        // want to see the editor.
+        insp.open = true;
+        state.inspector = Some(insp);
+    }
+
+    // The inspector mutates DesignTokens. Reentrancy-safe pattern: clone
+    // the global into a local, let the inspector mutate, write back if
+    // it changed. (Holding the RwLock write across the inspector body
+    // would deadlock if any widget inside reads via dt_f32!.)
+    if let Some(insp) = state.inspector.as_mut() {
+        if let Some(mut tokens_local) = _scaffold_lib::design_tokens::get() {
+            let mut modified = false;
+            insp.show_inspector_body(ui, &mut tokens_local, &mut modified);
+            if modified {
+                _scaffold_lib::design_tokens::update(tokens_local);
+            }
+        } else {
+            // DesignTokens hasn't been initialized yet — initialize with
+            // defaults so the playground can edit it.
+            _scaffold_lib::design_tokens::init(
+                _scaffold_lib::design_tokens::DesignTokens::default(),
+            );
+            ui.label("Initializing design tokens — refreshing next frame...");
+            ui.ctx().request_repaint();
+        }
+    }
+}
+
+fn render_palette_tab(
+    ui: &mut egui::Ui,
+    state: &mut DesignerState,
+    theme: &PortableTheme,
+) {
+    use _scaffold_lib::ui_kit::widgets::{Button, Variant, Size};
+    let dim = theme.dim();
+    let text = theme.text();
 
     // ── Action buttons row ─────────────────────────────────────────────────
     ui.horizontal(|ui| {

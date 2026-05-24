@@ -582,7 +582,7 @@ let _ = ctx;
     }
 
     /// Inner body rendered by SidePanel, Window, and real-OS-window (viewport) modes.
-    pub(crate) fn show_inspector_body(&mut self, ui: &mut egui::Ui, tokens: &mut DesignTokens, modified: &mut bool) {
+    pub fn show_inspector_body(&mut self, ui: &mut egui::Ui, tokens: &mut DesignTokens, modified: &mut bool) {
                 // Header
                 egui::Frame::NONE
                     .fill(Color32::from_rgb(14, 14, 20))
