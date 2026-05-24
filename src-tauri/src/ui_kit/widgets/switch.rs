@@ -113,13 +113,17 @@ fn paint_switch(ui: &mut Ui, theme: &dyn ComponentTheme, sw: Switch<'_>) -> Resp
     let on_color = theme.accent();
     let mut track_color = motion::lerp_color(off_color, on_color, on_t);
 
-    // Thumb position — Zed-exact: instant snap between left and right.
-    // No ease_value; flexbox-style flip. The track color animation supplies smoothness.
+    // Thumb position — animated with ease_out_back for a satisfying
+    // "snap past and settle" feel (slight overshoot then return).
     // 4px inset from each edge: thumb left edge at 4 (off) or tw - 4 - thumb_d (on).
     let pad = 4.0;
     let x_off = track_rect.left() + pad + thumb_d * 0.5;
     let x_on = track_rect.right() - pad - thumb_d * 0.5;
-    let thumb_x = if on { x_on } else { x_off };
+    // Raw linear progress 0.0 (off) → 1.0 (on), driven by egui's animator.
+    // Curve: ease_out_back — overshoots ~5% then settles, matches iOS toggle feel.
+    let raw_t = motion::ease_value(ui.ctx(), id.with("sw_thumb"), if on { 1.0 } else { 0.0 }, motion::FAST);
+    let eased_t = motion::ease_out_back(raw_t);
+    let thumb_x = x_off + (x_on - x_off) * eased_t;
     let thumb_center = Pos2::new(thumb_x, track_rect.center().y);
 
     let mut thumb_color = st::contrast_fg(on_color);
