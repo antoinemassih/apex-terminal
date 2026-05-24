@@ -1311,9 +1311,9 @@ fn draw_trend_gauge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
     let score = if wd.trend_score > 0.0 { wd.trend_score } else { 72.0 };
 
     let color = if score > 66.0 {
-        lerp_color(Color32::from_rgb(255, 191, 0), t.bull, (score - 66.0) / 34.0)
+        lerp_color(t.warn, t.bull, (score - 66.0) / 34.0)
     } else if score > 33.0 {
-        lerp_color(t.bear, Color32::from_rgb(255, 191, 0), (score - 33.0) / 33.0)
+        lerp_color(t.bear, t.warn, (score - 33.0) / 33.0)
     } else { t.bear };
 
     // Donut ring centered in body
@@ -1345,7 +1345,7 @@ fn draw_momentum_gauge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
 
     let rsi_color = if rsi > 70.0 { t.bull }
         else if rsi < 30.0 { t.bear }
-        else { Color32::from_rgb(255, 191, 0) };
+        else { t.warn };
 
     let r = (body.width().min(body.height()) * 0.30).min(30.0);
     let track = color_alpha(t.toolbar_border, alpha_muted());
@@ -1380,7 +1380,7 @@ fn draw_volatility_widget(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, 
         3.0, color_alpha(t.toolbar_border, alpha_muted()));
     let pct = (wd.atr_pct / 5.0).clamp(0.0, 1.0);
     let vol_color = if wd.atr_pct > 3.0 { t.bear }
-        else if wd.atr_pct > 1.5 { Color32::from_rgb(255, 191, 0) }
+        else if wd.atr_pct > 1.5 { t.warn }
         else { t.bull };
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y), egui::vec2(bar_w * pct, bar_h)),
         3.0, vol_color);
@@ -1457,7 +1457,7 @@ fn draw_session_timer(p: &egui::Painter, body: egui::Rect, t: &Theme) {
         Stroke::new(stroke_thick(), color_alpha(t.toolbar_border, alpha_muted())), 60);
 
     let progress_color = if elapsed_frac > 0.9 { t.bear }
-        else if elapsed_frac > 0.7 { Color32::from_rgb(255, 191, 0) }
+        else if elapsed_frac > 0.7 { t.warn }
         else { t.accent };
     let sweep = elapsed_frac * 2.0 * PI;
     draw_arc(p, egui::pos2(cx, ring_cy), ring_r, PI / 2.0, PI / 2.0 - sweep,
@@ -1479,8 +1479,8 @@ fn draw_key_levels(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
         let is_r = label.starts_with('R');
 
         let level_color = if is_pp { t.accent }
-            else if is_r { Color32::from_rgb(220, 80, 80) }
-            else { Color32::from_rgb(80, 180, 120) };
+            else if is_r { t.bear }
+            else { t.bull };
 
         let badge_w = 24.0;
         let badge_rect = egui::Rect::from_min_size(
@@ -1567,7 +1567,7 @@ fn draw_risk_reward(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &T
     p.circle_filled(egui::pos2(bar_x + risk_w, bar_y + bar_h / 2.0), 4.0, t.text);
 
     let rr_str = format!("{:.1} : 1", reward);
-    let rr_col = if reward >= 2.0 { t.bull } else if reward >= 1.0 { Color32::from_rgb(255, 191, 0) } else { t.bear };
+    let rr_col = if reward >= 2.0 { t.bull } else if reward >= 1.0 { t.warn } else { t.bear };
     hero_number(p, egui::pos2(cx, body.top() + 40.0), &rr_str, rr_col);
 
     p.text(egui::pos2(bar_x, bar_y + bar_h + 6.0), egui::Align2::LEFT_TOP,
@@ -1582,7 +1582,7 @@ fn draw_market_breadth(p: &egui::Painter, body: egui::Rect, t: &Theme) {
         ("ADV / DEC", "1,842 / 1,156", t.bull, 0.614),
         ("NEW HI", "48", Color32::from_rgb(100, 200, 255), 0.4),
         ("NEW LO", "12", Color32::from_rgb(255, 140, 100), 0.1),
-        ("VIX", "18.5", Color32::from_rgb(255, 191, 0), 0.37),
+        ("VIX", "18.5", t.warn, 0.37),
     ];
 
     let row_h = (body.height() - 8.0) / 4.0;
@@ -1630,11 +1630,11 @@ fn draw_rsi_multi(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
         let color = if rsi > 70.0 {
             t.bull
         } else if rsi > 55.0 {
-            lerp_color(egui::Color32::from_rgb(255, 191, 0), t.bull, (rsi - 55.0) / 15.0)
+            lerp_color(t.warn, t.bull, (rsi - 55.0) / 15.0)
         } else if rsi > 45.0 {
-            egui::Color32::from_rgb(255, 191, 0) // amber neutral
+            t.warn // amber neutral
         } else if rsi > 30.0 {
-            lerp_color(t.bear, egui::Color32::from_rgb(255, 191, 0), (rsi - 30.0) / 15.0)
+            lerp_color(t.bear, t.warn, (rsi - 30.0) / 15.0)
         } else {
             t.bear
         };
@@ -1681,7 +1681,7 @@ fn draw_rsi_multi(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
 
     // Center: average RSI as hero number
     let avg: f32 = wd.rsi_multi.iter().sum::<f32>() / 7.0;
-    let avg_col = if avg > 60.0 { t.bull } else if avg < 40.0 { t.bear } else { egui::Color32::from_rgb(255, 191, 0) };
+    let avg_col = if avg > 60.0 { t.bull } else if avg < 40.0 { t.bear } else { t.warn };
     p.text(egui::pos2(cx, cy - 4.0), egui::Align2::CENTER_CENTER,
         &format!("{:.0}", avg), egui::FontId::proportional(font_xl()), avg_col);
     p.text(egui::pos2(cx, cy + 12.0), egui::Align2::CENTER_CENTER,
@@ -1693,7 +1693,7 @@ fn draw_rsi_multi(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
     p.circle_filled(egui::pos2(legend_lx, legend_y), 3.0, t.bear);
     p.text(egui::pos2(legend_lx + 8.0, legend_y), egui::Align2::LEFT_CENTER,
         "<30", mono_4xs(), color_subtle(t.bear));
-    p.circle_filled(egui::pos2(legend_lx + 35.0, legend_y), 3.0, egui::Color32::from_rgb(255, 191, 0));
+    p.circle_filled(egui::pos2(legend_lx + 35.0, legend_y), 3.0, t.warn);
     p.text(egui::pos2(legend_lx + 43.0, legend_y), egui::Align2::LEFT_CENTER,
         "30-70", mono_4xs(), color_half(t.dim));
     p.circle_filled(egui::pos2(legend_lx + 80.0, legend_y), 3.0, t.bull);
@@ -1919,7 +1919,7 @@ fn draw_trend_align(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
 
     // Alignment score bottom-right
     let pct = bull_count as f32 / total as f32 * 100.0;
-    let sc = if pct > 70.0 { t.bull } else if pct > 40.0 { egui::Color32::from_rgb(255, 191, 0) } else { t.bear };
+    let sc = if pct > 70.0 { t.bull } else if pct > 40.0 { t.warn } else { t.bear };
     p.text(egui::pos2(body.right() - 6.0, body.bottom() - 8.0), egui::Align2::RIGHT_CENTER,
         &format!("{:.0}%", pct), egui::FontId::proportional(font_lg()), sc);
 }
@@ -2062,7 +2062,7 @@ fn draw_vol_regime(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
     for (i, (label, val, max)) in metrics.iter().enumerate() {
         let r = max_r - i as f32 * 14.0;
         let frac = (val / max).clamp(0.0, 1.0);
-        let color = if frac > 0.7 { t.bear } else if frac > 0.4 { egui::Color32::from_rgb(255, 191, 0) } else { t.bull };
+        let color = if frac > 0.7 { t.bear } else if frac > 0.4 { t.warn } else { t.bull };
 
         draw_arc_ring(p, egui::pos2(cx, cy), r, 5.0, 0.0, std::f32::consts::TAU,
             color_alpha(t.toolbar_border, alpha_faint()), 48);
@@ -2141,7 +2141,7 @@ fn draw_breadth_thermo(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
     }
 
     // Score on the right
-    let sc = if score > 60.0 { t.bull } else if score < 40.0 { t.bear } else { egui::Color32::from_rgb(255, 191, 0) };
+    let sc = if score > 60.0 { t.bull } else if score < 40.0 { t.bear } else { t.warn };
     p.text(egui::pos2(body.right() - 8.0, body.center().y - 8.0), egui::Align2::RIGHT_CENTER,
         &format!("{:.0}", score), egui::FontId::proportional(font_xl()), sc);
     p.text(egui::pos2(body.right() - 8.0, body.center().y + 12.0), egui::Align2::RIGHT_CENTER,
@@ -2192,7 +2192,7 @@ fn draw_options_sentiment(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData,
 
     // Placeholder sentiment: 62% bullish
     let sentiment = 62.0f32;
-    let color = if sentiment > 60.0 { t.bull } else if sentiment < 40.0 { t.bear } else { egui::Color32::from_rgb(255, 191, 0) };
+    let color = if sentiment > 60.0 { t.bull } else if sentiment < 40.0 { t.bear } else { t.warn };
 
     donut_ring(p, egui::pos2(cx, cy), r, 8.0, sentiment, 100.0, color,
         color_alpha(t.toolbar_border, alpha_muted()));
@@ -2225,7 +2225,7 @@ fn draw_rel_strength(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
 
     for (i, (label, val)) in metrics.iter().enumerate() {
         let r = max_r - i as f32 * 18.0;
-        let color = if *val > 70.0 { t.bull } else if *val < 30.0 { t.bear } else { egui::Color32::from_rgb(255, 191, 0) };
+        let color = if *val > 70.0 { t.bull } else if *val < 30.0 { t.bear } else { t.warn };
         donut_ring(p, egui::pos2(cx, cy), r, 6.0, *val, 100.0, color,
             color_alpha(t.toolbar_border, alpha_faint()));
         p.text(egui::pos2(body.right() - 6.0, cy - r), egui::Align2::RIGHT_CENTER,
@@ -2279,7 +2279,7 @@ fn draw_earnings_mom(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &
     let cells = [
         ("EPS", "+12%", t.bull),
         ("REV", "+8%", t.bull),
-        ("REVISIONS", "\u{2191}3", egui::Color32::from_rgb(255, 191, 0)),
+        ("REVISIONS", "\u{2191}3", t.warn),
         ("FWD P/E", "22.4x", t.dim),
     ];
 
@@ -2304,7 +2304,7 @@ fn draw_liquidity_score(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
     let cy = body.center().y - 4.0;
     let r = (body.width().min(body.height()) * 0.34).min(50.0);
     let score = wd.liquidity_score;
-    let color = if score > 70.0 { t.bull } else if score < 30.0 { t.bear } else { egui::Color32::from_rgb(255, 191, 0) };
+    let color = if score > 70.0 { t.bull } else if score < 30.0 { t.bear } else { t.warn };
     let label = if score > 70.0 { "LIQUID" } else if score < 30.0 { "ILLIQUID" } else { "MODERATE" };
 
     donut_ring(p, egui::pos2(cx, cy), r, 8.0, score, 100.0, color,
@@ -2448,7 +2448,7 @@ fn draw_tape_speed(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
         // Color gradient: blue → green → yellow → red
         let col = if t0 < 0.3 { t.accent }
             else if t0 < 0.6 { t.bull }
-            else if t0 < 0.8 { egui::Color32::from_rgb(255, 191, 0) }
+            else if t0 < 0.8 { t.warn }
             else { t.bear };
         p.line_segment([
             egui::pos2(cx + r * a0.cos(), cy + r * a0.sin()),
@@ -2460,7 +2460,7 @@ fn draw_tape_speed(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
     let needle_frac = (speed / 4.0).clamp(0.0, 1.0); // 4x = max
     let needle_a = pi + needle_frac * pi;
     let needle_end = egui::pos2(cx + (r - 10.0) * needle_a.cos(), cy + (r - 10.0) * needle_a.sin());
-    let needle_col = if speed > 2.5 { t.bear } else if speed > 1.5 { egui::Color32::from_rgb(255, 191, 0) } else { t.bull };
+    let needle_col = if speed > 2.5 { t.bear } else if speed > 1.5 { t.warn } else { t.bull };
     p.line_segment([egui::pos2(cx, cy), needle_end], egui::Stroke::new(stroke_thick(), needle_col));
     p.circle_filled(egui::pos2(cx, cy), 4.0, needle_col);
 
@@ -2518,7 +2518,7 @@ fn draw_fundamentals(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
         p.rect_filled(egui::Rect::from_min_size(egui::pos2(body.left() + 6.0, bar_y), egui::vec2(buy_w, 6.0)),
             2.0, t.bull);
         p.rect_filled(egui::Rect::from_min_size(egui::pos2(body.left() + 6.0 + buy_w, bar_y), egui::vec2(hold_w, 6.0)),
-            0.0, egui::Color32::from_rgb(255, 191, 0));
+            0.0, t.warn);
         let sell_w = bar_w - buy_w - hold_w;
         p.rect_filled(egui::Rect::from_min_size(egui::pos2(body.left() + 6.0 + buy_w + hold_w, bar_y), egui::vec2(sell_w, 6.0)),
             2.0, t.bear);
@@ -2558,7 +2558,7 @@ fn draw_econ_calendar(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
         if y + row_h > body.bottom() { break; }
 
         let imp_color = match importance {
-            3 => t.bear, 2 => egui::Color32::from_rgb(255, 191, 0), _ => t.dim
+            3 => t.bear, 2 => t.warn, _ => t.dim
         };
         // Importance dot
         p.circle_filled(egui::pos2(body.left() + 10.0, y + row_h * 0.5), 2.5, imp_color);
@@ -2577,7 +2577,7 @@ fn draw_latency(p: &egui::Painter, body: egui::Rect, t: &Theme) {
 
     // Frame time (approximate from 60fps target)
     let frame_ms = 16.7f32; // placeholder — 60fps
-    let frame_col = if frame_ms < 8.0 { t.bull } else if frame_ms < 20.0 { egui::Color32::from_rgb(255, 191, 0) } else { t.bear };
+    let frame_col = if frame_ms < 8.0 { t.bull } else if frame_ms < 20.0 { t.warn } else { t.bear };
 
     p.text(egui::pos2(body.left() + 8.0, body.top() + 6.0), egui::Align2::LEFT_CENTER,
         "RENDER", egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
@@ -2588,7 +2588,7 @@ fn draw_latency(p: &egui::Painter, body: egui::Rect, t: &Theme) {
 
     // Data feed latency
     let data_ms = 45.0f32; // placeholder
-    let data_col = if data_ms < 50.0 { t.bull } else if data_ms < 200.0 { egui::Color32::from_rgb(255, 191, 0) } else { t.bear };
+    let data_col = if data_ms < 50.0 { t.bull } else if data_ms < 200.0 { t.warn } else { t.bear };
 
     p.text(egui::pos2(body.left() + 8.0, body.top() + 40.0), egui::Align2::LEFT_CENTER,
         "DATA FEED", egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
@@ -2879,8 +2879,8 @@ fn draw_correlation(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
 
     // Color: green for positive, red for negative, amber near zero
     let color = if corr > 0.5 { t.bull }
-        else if corr > 0.0 { lerp_color(Color32::from_rgb(255, 191, 0), t.bull, corr * 2.0) }
-        else if corr > -0.5 { lerp_color(t.bear, Color32::from_rgb(255, 191, 0), (corr + 0.5) * 2.0) }
+        else if corr > 0.0 { lerp_color(t.warn, t.bull, corr * 2.0) }
+        else if corr > -0.5 { lerp_color(t.bear, t.warn, (corr + 0.5) * 2.0) }
         else { t.bear };
 
     // Arc gauge from -1 to +1 (180° sweep)
@@ -3015,7 +3015,7 @@ fn draw_earnings_badge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
 
     // Urgency color
     let urgency_col = if wd.earnings_days <= 1 { t.bear }
-        else if wd.earnings_days <= 5 { Color32::from_rgb(255, 191, 0) }
+        else if wd.earnings_days <= 5 { t.warn }
         else if wd.earnings_days <= 14 { t.accent }
         else { t.dim };
 
@@ -3056,7 +3056,7 @@ fn draw_news_ticker(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
 
     // Demo headlines — in production these would come from the news feed
     let headlines: [(&str, Color32); 3] = [
-        ("Fed holds rates steady, signals patience", Color32::from_rgb(255, 191, 0)),
+        ("Fed holds rates steady, signals patience", t.warn),
         (&format!("{} beats Q3 estimates, guides higher", wd.symbol), t.bull),
         ("10Y yield rises to 4.5%, markets cautious", t.bear),
     ];
@@ -3173,9 +3173,9 @@ fn draw_exit_gauge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
 
     let color = match wd.exit_gauge_urgency.as_str() {
         "exit_now" => t.bear,
-        "close"    => Color32::from_rgb(220, 80, 80),
-        "partial"  => Color32::from_rgb(255, 160, 60),
-        "tighten"  => Color32::from_rgb(255, 191, 0),
+        "close"    => t.bear,
+        "partial"  => t.warn,
+        "tighten"  => t.warn,
         _          => t.bull, // "hold"
     };
 
@@ -3272,7 +3272,7 @@ fn draw_trade_plan(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
     }
 
     // R:R and conviction
-    let rr_col = if rr >= 2.0 { t.bull } else if rr >= 1.0 { Color32::from_rgb(255, 191, 0) } else { t.bear };
+    let rr_col = if rr >= 2.0 { t.bull } else if rr >= 1.0 { t.warn } else { t.bear };
     p.text(egui::pos2(left, y + 4.0), egui::Align2::LEFT_CENTER,
         &format!("{:.1}R", rr), egui::FontId::monospace(FONT_LG), rr_col);
 
@@ -3322,7 +3322,7 @@ fn draw_zone_strength(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
     let rows = [
         ("TOTAL", format!("{}", wd.zone_count), t.accent),
         ("FRESH", format!("{}", wd.zone_fresh), t.bull),
-        ("TESTED", format!("{}", wd.zone_count.saturating_sub(wd.zone_fresh)), Color32::from_rgb(255, 191, 0)),
+        ("TESTED", format!("{}", wd.zone_count.saturating_sub(wd.zone_fresh)), t.warn),
     ];
 
     let mut y = body.top() + 8.0;
@@ -3343,7 +3343,7 @@ fn draw_zone_strength(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, y - 2.0), egui::vec2(bar_w, 6.0)),
         2.0, color_alpha(t.toolbar_border, alpha_muted()));
     let fill = (wd.zone_avg_strength / 10.0).clamp(0.0, 1.0);
-    let str_col = if fill > 0.7 { t.bull } else if fill > 0.4 { Color32::from_rgb(255, 191, 0) } else { t.bear };
+    let str_col = if fill > 0.7 { t.bull } else if fill > 0.4 { t.warn } else { t.bear };
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, y - 2.0), egui::vec2(bar_w * fill, 6.0)),
         2.0, str_col);
 }
@@ -3387,7 +3387,7 @@ fn draw_vix_monitor(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
     let cx = body.center().x;
 
     let vix_col = if wd.vix_spot > 30.0 { t.bear }
-        else if wd.vix_spot > 20.0 { Color32::from_rgb(255, 191, 0) }
+        else if wd.vix_spot > 20.0 { t.warn }
         else { t.bull };
 
     // VIX spot hero
@@ -3405,7 +3405,7 @@ fn draw_vix_monitor(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
     p.text(egui::pos2(right, y), egui::Align2::RIGHT_CENTER,
         &format!("{:+.1}%", wd.vix_gap_pct), egui::FontId::monospace(FONT_SM), gap_col);
 
-    let conv_col = if wd.vix_convergence > 0.7 { t.bull } else if wd.vix_convergence > 0.3 { Color32::from_rgb(255, 191, 0) } else { t.bear };
+    let conv_col = if wd.vix_convergence > 0.7 { t.bull } else if wd.vix_convergence > 0.3 { t.warn } else { t.bear };
     p.text(egui::pos2(left, y + 16.0), egui::Align2::LEFT_CENTER,
         "CONV", egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
     p.text(egui::pos2(right, y + 16.0), egui::Align2::RIGHT_CENTER,
@@ -3422,7 +3422,7 @@ fn draw_signal_dashboard(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t
     let rows = [
         Row { name: "Trend", active: wd.trend_score > 0.0,
             value: format!("{:.0}", wd.trend_score),
-            color: if wd.trend_score > 66.0 { t.bull } else if wd.trend_score > 33.0 { Color32::from_rgb(255, 191, 0) } else { t.bear } },
+            color: if wd.trend_score > 66.0 { t.bull } else if wd.trend_score > 33.0 { t.warn } else { t.bear } },
         Row { name: "Exit", active: wd.exit_gauge_score > 0.0,
             value: wd.exit_gauge_urgency.chars().take(6).collect::<String>().to_uppercase(),
             color: if wd.exit_gauge_score > 60.0 { t.bear } else { t.bull } },
@@ -3468,7 +3468,7 @@ fn draw_divergence_monitor(p: &egui::Painter, body: egui::Rect, wd: &WidgetData,
     }
 
     hero_number(p, egui::pos2(cx, body.top() + 18.0),
-        &format!("{}", wd.divergence_count), Color32::from_rgb(255, 160, 60));
+        &format!("{}", wd.divergence_count), t.warn);
     sub_label(p, egui::pos2(cx, body.top() + 36.0), "ACTIVE DIVERGENCES", t.dim);
 }
 
@@ -3478,8 +3478,8 @@ fn draw_conviction_meter(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t
     let score = compute_conviction(wd);
 
     let color = if score > 70.0 { t.bull }
-        else if score > 50.0 { lerp_color(Color32::from_rgb(255, 191, 0), t.bull, (score - 50.0) / 20.0) }
-        else if score > 30.0 { lerp_color(t.bear, Color32::from_rgb(255, 191, 0), (score - 30.0) / 20.0) }
+        else if score > 50.0 { lerp_color(t.warn, t.bull, (score - 50.0) / 20.0) }
+        else if score > 30.0 { lerp_color(t.bear, t.warn, (score - 30.0) / 20.0) }
         else { t.bear };
 
     // Arc gauge
