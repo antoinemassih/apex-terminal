@@ -328,6 +328,7 @@ pub fn baseline_color_scheme() -> ColorScheme {
         // hud_bg = rgba_pre(28,28,28,230) — premultiplied bytes stored as-is
         hud_bg:           [28, 28, 28, 230],
         hud_border:       rgb( 60,  56,  50),
+        cmd_palette:      crate::design_system::color_scheme::CMD_PALETTE_DEFAULT,
     }
 }
 

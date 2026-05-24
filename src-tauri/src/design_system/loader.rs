@@ -234,6 +234,10 @@ impl ColorScheme {
             notification_red, gold, overlay_text,
             rrg_leading, rrg_improving, rrg_weakening, rrg_lagging,
             pinned_row_tint, text_muted, hud_bg, hud_border,
+            // cmd_palette: DTCG round-trip carries the default for now.
+            // When per-theme overrides are added, read the optional
+            // `palette.cmd_palette` array here (see CMD_PALETTE_DEFAULT).
+            cmd_palette: crate::design_system::color_scheme::CMD_PALETTE_DEFAULT,
         })
     }
 

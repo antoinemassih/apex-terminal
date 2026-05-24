@@ -82,6 +82,30 @@ impl Meta {
     }
 }
 
+// ── Command-palette default ─────────────────────────────────────────────────
+
+/// Default 11-colour command-palette category badge palette.
+///
+/// Slot order: `[symbol, widget, overlay, theme, timeframe, layout, play,
+/// alert, ai, dynamic, calc]`. All slots opaque (alpha 255).
+///
+/// This is the seed used by every built-in `ColorScheme`. Per-theme overrides
+/// are supported by setting a different array on the `cmd_palette` field; the
+/// adapter reads from the scheme, never from this const.
+pub const CMD_PALETTE_DEFAULT: [Rgba; 11] = [
+    rgba::rgb(120, 180, 255), // symbol
+    rgba::rgb(180, 140, 240), // widget
+    rgba::rgb(160, 200, 140), // overlay
+    rgba::rgb(240, 180, 140), // theme
+    rgba::rgb(140, 220, 200), // timeframe
+    rgba::rgb(220, 200, 120), // layout
+    rgba::rgb(240, 140, 180), // play
+    rgba::rgb(240, 120, 120), // alert
+    rgba::rgb(255, 120, 200), // ai
+    rgba::rgb(255, 180,  80), // dynamic
+    rgba::rgb(140, 240, 200), // calc
+];
+
 // ── ColorScheme ─────────────────────────────────────────────────────────────
 
 /// Axis 2 — the palette. Pure colour. No dimension values.
@@ -160,7 +184,16 @@ pub struct ColorScheme {
     pub hud_bg: Rgba,
     /// HUD / floating overlay border colour.
     pub hud_border: Rgba,
+
+    /// 11-colour command-palette category badges. Defaults to
+    /// [`CMD_PALETTE_DEFAULT`] for all built-in schemes; per-theme overrides
+    /// supported by setting a different array here.
+    #[serde(default = "default_cmd_palette")]
+    pub cmd_palette: [Rgba; 11],
 }
+
+#[inline]
+fn default_cmd_palette() -> [Rgba; 11] { CMD_PALETTE_DEFAULT }
 
 impl ColorScheme {
     /// The built-in dark default — a neutral dark theme suitable as a
@@ -192,6 +225,7 @@ impl ColorScheme {
             text_muted:       rgba::rgb(170, 170, 180),
             hud_bg:           rgba::rgba(  0,   0,   0, 230),
             hud_border:       rgba::rgb( 50,  50,  60),
+            cmd_palette:      CMD_PALETTE_DEFAULT,
         }
     }
 }
@@ -225,6 +259,7 @@ pub fn builtin_dark() -> ColorScheme {
         text_muted:       rgba::rgb(170, 170, 180),
         hud_bg:           rgba::rgba(  0,   0,   0, 230),
         hud_border:       rgba::rgb( 50,  50,  60),
+        cmd_palette:      CMD_PALETTE_DEFAULT,
     }
 }
 
@@ -255,5 +290,6 @@ pub fn builtin_light() -> ColorScheme {
         text_muted:       rgba::rgb(100, 100, 110),
         hud_bg:           rgba::rgba( 20,  20,  20, 220),
         hud_border:       rgba::rgb( 80,  80,  88),
+        cmd_palette:      CMD_PALETTE_DEFAULT,
     }
 }

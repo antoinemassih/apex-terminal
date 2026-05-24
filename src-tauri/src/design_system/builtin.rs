@@ -32,7 +32,7 @@
 //! | `hud_border`         | `hud_border` (hand-authored)                       |
 
 use super::{
-    color_scheme::{ColorScheme, Meta, Rgba},
+    color_scheme::{ColorScheme, Meta, Rgba, CMD_PALETTE_DEFAULT},
     registry::ThemeRegistry,
     style_system::{
         Alphas, Density, Elevation, FocusRingStyle, Radii, Shadows, ShadowSpec,
@@ -157,6 +157,7 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(180, 180, 195),
                 hud_bg:           pre_rgba(12, 12, 18, 230),
                 hud_border:       rgb( 50,  52,  64),
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
         // ── [1] Nord ─────────────────────────────────────────────────────────
@@ -188,6 +189,7 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(175, 180, 190),
                 hud_bg:           pre_rgba(30, 34, 46, 230),
                 hud_border:       rgb( 60,  66,  80),
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
         // ── [2] Monokai ───────────────────────────────────────────────────────
@@ -219,6 +221,7 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(180, 178, 160),
                 hud_bg:           pre_rgba(30, 30, 24, 230),
                 hud_border:       rgb( 55,  54,  44),
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
         // ── [3] Solarized ─────────────────────────────────────────────────────
@@ -250,6 +253,7 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(156, 172, 175),
                 hud_bg:           pre_rgba(0, 28, 36, 230),
                 hud_border:       rgb(  7,  54,  66),
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
         // ── [4] Dracula ───────────────────────────────────────────────────────
@@ -281,6 +285,7 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(190, 185, 215),
                 hud_bg:           pre_rgba(30, 32, 44, 230),
                 hud_border:       rgb( 55,  58,  75),
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
         // ── [5] Gruvbox ───────────────────────────────────────────────────────
@@ -312,6 +317,7 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(185, 178, 160),
                 hud_bg:           pre_rgba(28, 28, 28, 230),
                 hud_border:       rgb( 60,  56,  50),
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
         // ── [6] Catppuccin ────────────────────────────────────────────────────
@@ -343,6 +349,7 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(182, 186, 220),
                 hud_bg:           pre_rgba(20, 20, 36, 230),
                 hud_border:       rgb( 49,  50,  68),
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
         // ── [7] Tokyo Night ───────────────────────────────────────────────────
@@ -374,6 +381,7 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(172, 178, 220),
                 hud_bg:           pre_rgba(18, 18, 28, 230),
                 hud_border:       rgb( 40,  44,  62),
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
         // ── [8] Kanagawa ─────────────────────────────────────────────────────
@@ -405,6 +413,7 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(155, 158, 175),
                 hud_bg:           pre_rgba(14, 14, 20, 230),
                 hud_border:       rgb( 36,  36,  50),
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
         // ── [9] Everforest ────────────────────────────────────────────────────
@@ -436,6 +445,7 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(175, 178, 162),
                 hud_bg:           pre_rgba(28, 34, 28, 230),
                 hud_border:       rgb( 52,  60,  50),
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
         // ── [10] Vesper ───────────────────────────────────────────────────────
@@ -467,6 +477,7 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(170, 170, 180),
                 hud_bg:           pre_rgba(10, 10, 10, 230),
                 hud_border:       rgb( 42,  42,  42),
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
         // ── [11] Rosé Pine ────────────────────────────────────────────────────
@@ -499,6 +510,7 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(167, 162, 187),
                 hud_bg:           pre_rgba(18, 16, 28, 230),
                 hud_border:       rgb( 44,  40,  58),
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
         // ── [12] Bauhaus (light) ──────────────────────────────────────────────
@@ -530,6 +542,7 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(100, 102, 110),
                 hud_bg:           pre_rgba(20, 20, 20, 220),
                 hud_border:       rgb( 80,  82,  88),
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
         // ── [13] Peach (light) ────────────────────────────────────────────────
@@ -561,6 +574,7 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb( 98, 100, 108),
                 hud_bg:           pre_rgba(20, 20, 20, 220),
                 hud_border:       rgb( 82,  80,  78),
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
         // ── [14] Ivory (light) ────────────────────────────────────────────────
@@ -592,6 +606,7 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(100, 102, 108),
                 hud_bg:           pre_rgba(18, 20, 18, 220),
                 hud_border:       rgb( 80,  82,  80),
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
         // ── [15] Newsprint (light) ────────────────────────────────────────────
@@ -623,6 +638,7 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(105, 100,  90),
                 hud_bg:           pre_rgba(28, 24, 18, 220),
                 hud_border:       rgb( 90,  82,  68),
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
     ]

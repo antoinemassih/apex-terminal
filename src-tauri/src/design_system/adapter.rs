@@ -8,7 +8,8 @@
 //! | Category | Fields | Strategy |
 //! |---|---|---|
 //! | **Base** | `bg`, `toolbar_bg`, `text`, `dim`, `accent`, `bull`, `bear`, `warn`, `shadow_color` | Direct copy from `ColorScheme` |
-//! | **Derived** | `toolbar_border`, `border_variant`, `element_hover/active`, `ghost_hover/active`, `element_selected`, `element_disabled`, `icon`, `icon_muted`, `icon_disabled`, `icon_accent`, `cmd_palette` | Recomputed using the same `gpu` helpers |
+//! | **Derived** | `toolbar_border`, `border_variant`, `element_hover/active`, `ghost_hover/active`, `element_selected`, `element_disabled`, `icon`, `icon_muted`, `icon_disabled`, `icon_accent` | Recomputed using the same `gpu` helpers |
+//! | **Palette extension** | `cmd_palette` | Copied from the `ColorScheme` (themable since P1.4) |
 //! | **Hand-authored extras** | `notification_red`, `gold`, `overlay_text`, `rrg_*`, `pinned_row_tint`, `text_muted`, `hud_bg`, `hud_border` | Direct copy from new `ColorScheme` extra fields |
 //!
 //! ## Derived-field formulas (identical to `gpu.rs`)
@@ -26,7 +27,7 @@
 //! icon_muted       = alpha(text, 178)
 //! icon_disabled    = alpha(text, 102)
 //! icon_accent      = accent
-//! cmd_palette      = CMD_PALETTE_DEFAULT
+//! cmd_palette      = cs.cmd_palette  (per-scheme; defaults to CMD_PALETTE_DEFAULT)
 //! ```
 //!
 //! The adapter is the prerequisite for making `design_system` the runtime
@@ -35,8 +36,7 @@
 
 use super::color_scheme::ColorScheme;
 use crate::chart_renderer::gpu::{
-    CMD_PALETTE_DEFAULT, alpha, element_overlay, hairline_border, hairline_border_variant,
-    Theme,
+    alpha, element_overlay, hairline_border, hairline_border_variant, Theme,
 };
 
 /// Convert a `ColorScheme` into a `gpu::Theme`.
@@ -75,7 +75,14 @@ pub fn color_scheme_to_theme(cs: &ColorScheme) -> Theme {
     let icon_muted       = alpha(text, 178);
     let icon_disabled    = alpha(text, 102);
     let icon_accent      = accent;
-    let cmd_palette      = CMD_PALETTE_DEFAULT;
+    // cmd_palette: read from the ColorScheme (palette axis owns it now).
+    // Convert the 11 Rgba slots to fully-opaque Color32.
+    let cmd_palette: [egui::Color32; 11] = [
+        c32(cs.cmd_palette[0]),  c32(cs.cmd_palette[1]),  c32(cs.cmd_palette[2]),
+        c32(cs.cmd_palette[3]),  c32(cs.cmd_palette[4]),  c32(cs.cmd_palette[5]),
+        c32(cs.cmd_palette[6]),  c32(cs.cmd_palette[7]),  c32(cs.cmd_palette[8]),
+        c32(cs.cmd_palette[9]),  c32(cs.cmd_palette[10]),
+    ];
 
     // ── Hand-authored extras ──────────────────────────────────────────────────
     let notification_red = c32(cs.notification_red);
