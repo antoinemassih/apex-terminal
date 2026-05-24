@@ -3,8 +3,6 @@
 //! Some items are reserved for future use.
 
 #[allow(dead_code)]
-pub mod theme;
-#[allow(dead_code)]
 pub mod icons;
 #[allow(dead_code)]
 pub mod widgets;

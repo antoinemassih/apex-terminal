@@ -218,28 +218,9 @@ pub use theme_preview_card::ThemePreviewCard;
 pub use selectable_row::SelectableRow;
 pub use pane_grid::{PaneGrid, PaneState, PaneId, SplitId, Axis as PaneAxis};
 
-use egui::{Color32, Ui, Sense, RichText};
-use super::theme::{ChartTheme, DRAW_COLORS};
+use egui::{Ui, RichText};
 use super::icons::Icon;
 use crate::ui_kit::LineStyle;
-
-/// Color picker (legacy) — row of colored circles, returns selected hex color if clicked.
-/// Use [`ColorPicker`] widget instead for new code.
-pub fn color_picker_row(ui: &mut Ui, current: &str) -> Option<String> {
-    let mut result = None;
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 3.0;
-        for &(hex, color) in DRAW_COLORS {
-            let is_cur = current == hex;
-            let (r, resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), Sense::click());
-            crate::ui_kit::tokens::cursor::clickable(ui, &resp);
-            ui.painter().circle_filled(r.center(), if is_cur { 7.0 } else { 5.5 }, color);
-            if is_cur { ui.painter().circle_stroke(r.center(), 8.0, egui::Stroke::new(crate::ui_kit::tokens::stroke_bold(), crate::ui_kit::tokens::contrast_fg(color))); }
-            if resp.clicked() { result = Some(hex.to_string()); }
-        }
-    });
-    result
-}
 
 /// Line style dropdown — shows visual preview, returns new style if changed.
 pub fn line_style_dropdown(ui: &mut Ui, id: &str, current: LineStyle) -> Option<LineStyle> {
@@ -292,9 +273,3 @@ pub fn delete_button(ui: &mut Ui) -> bool {
         .clicked()
 }
 
-/// OHLC label — colored price display for top-left of chart.
-pub fn ohlc_label(ui: &mut Ui, o: f32, h: f32, l: f32, c: f32, v: f32, theme: &ChartTheme) {
-    let color = if c >= o { theme.bull } else { theme.bear };
-    ui.label(RichText::new(format!("O{:.2} H{:.2} L{:.2} C{:.2} V{:.0}", o, h, l, c, v))
-        .monospace().size(11.0).color(color));
-}
