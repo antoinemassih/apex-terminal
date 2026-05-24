@@ -16,6 +16,7 @@ pub mod sliders;
 pub mod forms;
 pub mod data;
 pub mod specialty;
+pub mod panegrid;
 
 // ── Per-story mutable state ────────────────────────────────────────────────────
 
@@ -189,12 +190,13 @@ impl Default for SpecialtyState {
 /// Top-level container for all story state.
 #[derive(Default)]
 pub struct PlaygroundState {
-    pub selection: SelectionState,
-    pub inputs:    InputsState,
+    pub selection:  SelectionState,
+    pub inputs:     InputsState,
     pub disclosure: DisclosureState,
     pub overlays:   OverlaysState,
     pub sliders:    SlidersState,
     pub forms:      FormsState,
     pub data:       DataState,
     pub specialty:  SpecialtyState,
+    pub panegrid:   panegrid::PaneGridState,
 }

@@ -106,6 +106,7 @@ pub mod shell_variants;
 pub mod menu_item;
 pub mod toolbar_button;
 pub mod frames;
+pub mod pane_grid;
 
 // ─── Foundation ──────────────────────────────────────────────────────
 pub use tokens::{Size, Variant};
@@ -215,6 +216,7 @@ pub use resizable::Resizable;
 pub use scroll_area::{ScrollDirection, ThemedScrollArea};
 pub use theme_preview_card::ThemePreviewCard;
 pub use selectable_row::SelectableRow;
+pub use pane_grid::{PaneGrid, PaneState, PaneId, SplitId, Axis as PaneAxis};
 
 use egui::{Color32, Ui, Sense, RichText};
 use super::theme::{ChartTheme, DRAW_COLORS};
