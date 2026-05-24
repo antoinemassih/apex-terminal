@@ -397,6 +397,17 @@ pub(crate) const fn element_overlay(bg: egui::Color32, a: u8) -> egui::Color32 {
     }
 }
 
+/// Legacy compile-time theme catalogue. **Test-only as of P1.3.**
+///
+/// The runtime no longer reads from this array — `LIVE_THEMES` is populated
+/// from `design_system::builtin_color_schemes()` via the adapter at startup
+/// (see `live_themes()`). This const is retained exclusively as the reference
+/// ground truth for `design_system::equivalence_tests`, which verifies that
+/// the adapter's output is byte-identical to these entries for all 16 schemes.
+///
+/// Do NOT add new runtime call sites against this. Use `get_theme(idx)` or
+/// `get_all_themes()` instead, which read the live store.
+#[cfg(test)]
 pub(crate) const THEMES: &[Theme] = &[
     Theme { name: "Midnight",    bg: rgb(14,16,21),   bull: rgb(62,120,180),  bear: rgb(180,65,58),   dim: rgb(100,105,115), toolbar_bg: rgb(10,12,17),  toolbar_border: hairline_border(rgb(14,16,21)), border_variant: hairline_border_variant(rgb(14,16,21)),  accent: rgb(62,120,180),  text: rgb(220,220,230),  warn: rgb(255,191,  0), notification_red: rgb(231, 76, 60), gold: rgb(255,193, 37), shadow_color: rgb(0,0,0),       overlay_text: rgb(240,240,250), rrg_leading: rgb(56,203,137), rrg_improving: rgb(74,158,255), rrg_weakening: rgb(230,200,50), rrg_lagging: rgb(224,82,82), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(3,5,9,12), text_muted: rgb(180,180,195), hud_bg: rgba_pre(12,12,18,230), hud_border: rgb(50,52,64), element_hover: element_overlay(rgb(14,16,21),12), element_active: element_overlay(rgb(14,16,21),24), element_selected: alpha(rgb(62,120,180),24), element_disabled: alpha(rgb(100,105,115),80), ghost_hover: element_overlay(rgb(14,16,21),6), ghost_active: element_overlay(rgb(14,16,21),12), icon: rgb(220,220,230), icon_muted: alpha(rgb(220,220,230),178), icon_disabled: alpha(rgb(220,220,230),102), icon_accent: rgb(62,120,180) },
     Theme { name: "Nord",        bg: rgb(38,44,56),   bull: rgb(163,190,140), bear: rgb(191,97,106),  dim: rgb(129,161,193), toolbar_bg: rgb(32,38,50),  toolbar_border: hairline_border(rgb(38,44,56)), border_variant: hairline_border_variant(rgb(38,44,56)),  accent: rgb(136,192,208), text: rgb(220,220,230),  warn: rgb(235,203,139), notification_red: rgb(191, 97,106), gold: rgb(235,203,139), shadow_color: rgb(0,0,0),       overlay_text: rgb(236,239,244), rrg_leading: rgb(163,190,140), rrg_improving: rgb(136,192,208), rrg_weakening: rgb(235,203,139), rrg_lagging: rgb(191,97,106), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(5,7,9,14), text_muted: rgb(175,180,190), hud_bg: rgba_pre(30,34,46,230), hud_border: rgb(60,66,80), element_hover: element_overlay(rgb(38,44,56),12), element_active: element_overlay(rgb(38,44,56),24), element_selected: alpha(rgb(136,192,208),24), element_disabled: alpha(rgb(129,161,193),80), ghost_hover: element_overlay(rgb(38,44,56),6), ghost_active: element_overlay(rgb(38,44,56),12), icon: rgb(220,220,230), icon_muted: alpha(rgb(220,220,230),178), icon_disabled: alpha(rgb(220,220,230),102), icon_accent: rgb(136,192,208) },
@@ -445,8 +456,8 @@ fn live_themes() -> &'static RwLock<Vec<Theme>> {
             .map(crate::design_system::color_scheme_to_theme)
             .collect();
         debug_assert!(
-            themes.len() >= THEMES.len(),
-            "design_system colour-scheme count must be >= THEMES (got {})",
+            themes.len() >= 16,
+            "design_system must provide at least 16 built-in colour schemes (got {})",
             themes.len(),
         );
         RwLock::new(themes)
@@ -2063,7 +2074,7 @@ impl Chart {
             vix_spot: 0.0, vix_expiring_future: 0.0, vix_realized_vol: 0.0,
             vix_gap_pct: 0.0, vix_convergence_score: 0.0,
             last_signal_fetch: std::time::Instant::now(), drawings_requested: false,
-            draw_color: indicator_default_color(0, &THEMES[5]), group_manager_open: false, new_group_name: String::new(),
+            draw_color: indicator_default_color(0, &get_theme(5)), group_manager_open: false, new_group_name: String::new(),
             zoom_selecting: false, zoom_start: egui::Pos2::ZERO, axis_drag_mode: 0,
             picker_open: false, picker_query: String::new(), picker_results: vec![],
             picker_last_query: String::new(), picker_searching: false, picker_rx: None, picker_pos: egui::Pos2::ZERO,

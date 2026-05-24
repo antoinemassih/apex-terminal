@@ -95,7 +95,6 @@ use crate::chart_renderer::gpu::{
     WlTooltipData,
     ALL_LAYOUTS,
     APEXIB_URL,
-    THEMES,
     CandleMode, VolumeProfileMode,
     IndicatorType, IndicatorCategory, Indicator, INDICATOR_COLORS,
     EventMarker, DarkPoolPrint,
