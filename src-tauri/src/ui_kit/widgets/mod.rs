@@ -11,6 +11,7 @@ pub mod theme;
 pub mod tokens;
 pub mod motion;
 pub mod button;
+pub mod button_style;
 pub mod modal;
 pub mod toast;
 pub mod context_menu;
@@ -114,6 +115,7 @@ pub use placement::{Align, Placement, Side};
 
 // ─── Buttons & Links ─────────────────────────────────────────────────
 pub use button::{Button, show_button_gallery};
+pub use button_style::{ButtonStyle, ButtonState, DefaultButtonStyle};
 pub use link::Link;
 pub use menu_item::MenuItem;
 pub use toolbar_button::ToolBarButton;

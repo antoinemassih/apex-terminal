@@ -23,6 +23,7 @@ use super::theme::ComponentTheme;
 use super::tokens::{Size, Variant};
 use super::Tooltip;
 use super::icon_placement::{IconPlacement, IconTone, IconState, icon_glyph_color, icon_hover_bg};
+use super::button_style::{ButtonStyle, ButtonState, DefaultButtonStyle};
 use crate::ui_kit::tokens as st;
 
 /// Unified button builder. Use [`Button::new`] for a labelled button or
@@ -430,8 +431,35 @@ impl<'a> Button<'a> {
         self
     }
 
+    /// Render with an explicit [`ComponentTheme`]. This is the original,
+    /// idiomatic entry point — unchanged for all existing callers.
+    ///
+    /// Internally constructs a [`DefaultButtonStyle`] adapter and delegates
+    /// to [`Button::show_styled`], so both paths share the same paint logic.
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
-        paint_button(ui, theme, self, None)
+        let style = DefaultButtonStyle::new(theme);
+        show_styled_impl(ui, theme, self, &style, None)
+    }
+
+    /// Opt-in entry point: render with a custom [`ButtonStyle`] implementor.
+    ///
+    /// Use this when you want per-call-site color overrides without touching
+    /// `ComponentTheme`. The button still receives a `theme` reference for
+    /// non-color decisions (motion, focus ring, shadow) that have no
+    /// `ButtonStyle` equivalent yet.
+    ///
+    /// ```ignore
+    /// struct MyStyle;
+    /// impl ButtonStyle for MyStyle {
+    ///     fn fg(&self, _v: Variant, _s: ButtonState) -> Color32 { Color32::RED }
+    ///     fn bg(&self, _v: Variant, _s: ButtonState) -> Color32 { Color32::TRANSPARENT }
+    ///     fn border(&self, _v: Variant, _s: ButtonState) -> Color32 { Color32::TRANSPARENT }
+    /// }
+    ///
+    /// Button::new("Alert").show_styled(ui, theme, &MyStyle);
+    /// ```
+    pub fn show_styled<S: ButtonStyle>(self, ui: &mut Ui, theme: &dyn ComponentTheme, style: &S) -> Response {
+        show_styled_impl(ui, theme, self, style, None)
     }
 
     /// Render as a menu trigger. The button paints via the design system,
@@ -490,7 +518,8 @@ impl<'a> Button<'a> {
         rect: egui::Rect,
         theme: &dyn ComponentTheme,
     ) -> Response {
-        paint_button(ui, theme, self, Some((rect, painter)))
+        let style = DefaultButtonStyle::new(theme);
+        show_styled_impl(ui, theme, self, &style, Some((rect, painter)))
     }
 }
 
@@ -516,10 +545,17 @@ impl<'a> Widget for Button<'a> {
 
 // ── Internal painting ──────────────────────────────────────────────────
 
-fn paint_button<'a>(
+/// Core paint implementation, shared by `show`, `show_styled`, and `show_at`.
+///
+/// `style` drives the *initial* idle/hover/active color resolution. The rest of
+/// the function (status overrides, placement overrides, fill_override, motion
+/// animation) runs unchanged on top of those seed colors — so all existing
+/// escape hatches keep working regardless of which `ButtonStyle` is in play.
+fn show_styled_impl<'a, S: ButtonStyle>(
     ui: &mut Ui,
     theme: &dyn ComponentTheme,
     btn: Button<'a>,
+    style: &S,
     placed: Option<(Rect, &egui::Painter)>,
 ) -> Response {
     // Legacy SimpleBtn parity: when caller opts into `simple_treatment(true)`
@@ -674,8 +710,28 @@ fn paint_button<'a>(
         let active_t = motion::ease_bool(ui.ctx(), id.with("btn_active"), active, motion::MED);
 
         // Resolve colors per variant.
+        //
+        // When a tint is present (`.tint(c)`, `.buy()`, `.sell()`), `resolve_palette`
+        // is authoritative because it inlines the tint into the returned colors.
+        // Otherwise, colors come from the `ButtonStyle` — which for the default path
+        // is `DefaultButtonStyle` (identical output), and for custom call sites is the
+        // caller's impl.
         let (mut idle_bg, mut hover_bg, active_bg, mut fg_idle, mut fg_hover, border_idle, border_active) =
-            resolve_palette(theme, variant, tint);
+            if tint.is_some() {
+                // Tint path: palette already has the tinted color baked in.
+                resolve_palette(theme, variant, tint)
+            } else {
+                // Style path: ask the ButtonStyle for each state.
+                (
+                    style.bg(variant, ButtonState::Idle),
+                    style.bg(variant, ButtonState::Hover),
+                    style.bg(variant, ButtonState::Active),
+                    style.fg(variant, ButtonState::Idle),
+                    style.fg(variant, ButtonState::Hover),
+                    style.border(variant, ButtonState::Idle),
+                    style.border(variant, ButtonState::Active),
+                )
+            };
 
         // Status overrides: no bg on idle OR hover; muted icon -> full strength on hover.
         if is_status {
