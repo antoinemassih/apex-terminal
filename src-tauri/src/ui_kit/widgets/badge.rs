@@ -23,6 +23,11 @@ pub struct Badge<'a> {
     kind: BadgeKind,
     text: String,
     tone: TagTone,
+    /// Optional raw colour override — if `Some`, this colour is used
+    /// instead of resolving `tone` through the theme. Used by legacy
+    /// callers (e.g. status_badge wrapper) that compute a colour
+    /// dynamically and want pass it through verbatim.
+    tone_color_override: Option<egui::Color32>,
     max_count: Option<u32>,
     _lt: std::marker::PhantomData<&'a ()>,
 }
@@ -34,6 +39,7 @@ impl<'a> Badge<'a> {
             text: String::new(),
             tone: TagTone::Bear,
             max_count: None,
+            tone_color_override: None,
             _lt: std::marker::PhantomData,
         }
     }
@@ -44,6 +50,7 @@ impl<'a> Badge<'a> {
             text: String::new(),
             tone: TagTone::Accent,
             max_count: None,
+            tone_color_override: None,
             _lt: std::marker::PhantomData,
         }
     }
@@ -54,12 +61,19 @@ impl<'a> Badge<'a> {
             text: s.into(),
             tone: TagTone::Accent,
             max_count: None,
+            tone_color_override: None,
             _lt: std::marker::PhantomData,
         }
     }
 
     pub fn tone(mut self, t: TagTone) -> Self { self.tone = t; self }
     pub fn max(mut self, max_count: u32) -> Self { self.max_count = Some(max_count); self }
+
+    /// Override the tone colour with an arbitrary `Color32`. Bypasses the
+    /// `TagTone` enum entirely — use only when the caller has a dynamic
+    /// colour that doesn't map cleanly to a tone (e.g. status colours
+    /// computed from connection state or order state).
+    pub fn tone_color(mut self, c: Color32) -> Self { self.tone_color_override = Some(c); self }
 
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
         // count(0) renders nothing.
@@ -68,7 +82,7 @@ impl<'a> Badge<'a> {
             return r;
         }
 
-        let tone_col = self.tone.color(theme);
+        let tone_col = self.tone_color_override.unwrap_or_else(|| self.tone.color(theme));
 
         // Resolve display text.
         let display = match self.kind {

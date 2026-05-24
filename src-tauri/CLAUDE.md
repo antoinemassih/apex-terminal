@@ -39,7 +39,11 @@ pub fn my_widget(ui: &mut Ui, theme: &Theme) { ... }
 pub fn my_widget(ui: &mut Ui, theme: &dyn ComponentTheme) { ... }
 ```
 
-There are 56 known offenders (Widget impls in `ui_kit/widgets/*.rs` and free `fn ft()` helpers). Don't add a 57th.
+Audited 2026-05-24: the `&THEMES[0]` punch list is **empty** in code paths
+(the 4 remaining grep hits in src/ are doc comments explicitly warning
+against the anti-pattern). The `ComponentTheme` trait + `PortableTheme`
++ ambient-theme stash all landed in May 2026 — see
+`docs/UI_EXTRACTION.md`. Don't add the first new one.
 
 ### 2. Never hardcode black for shadows
 
@@ -84,23 +88,21 @@ Button::new(label)
     .show(ui, t)
 ```
 
-There are 83 hand-rolled `egui::Button` calls in `chart/renderer/ui/`. Don't add an 84th — convert one when you're nearby.
+Audited 2026-05-24: hand-rolled `egui::Button` calls in
+`chart/renderer/ui/` (non-sacred) are down to **2 sites** —
+`inputs/select.rs` and `inputs/inputs.rs` — both intentional
+low-level uses (per-corner-radius pill segments that `ui_kit::Button`'s
+Variant system doesn't expose). Comments at those sites explain why
+they're kept.
 
-`ui_kit::Button` has named role presets for the common cases — use them instead of the deprecated free functions in `chart/renderer/ui/style.rs`:
+The deprecated free-fn buttons (`tb_btn`, `action_btn`, `trade_btn`,
+`cta_btn`, `simple_btn`, `small_action_btn`, `tab_bar`) all have
+**zero callers**; `tb_btn` and `tab_bar` have been deleted. The
+remaining ones (`status_badge`, `order_card`, `close_button`, etc.)
+are thin wrappers over `ui_kit::Badge` / `ui_kit::Card` / `Button::close`
+— safe to leave as backward-compat shims.
 
-| You used to call | Now use |
-|---|---|
-| `tb_btn(ui, label, active, ...)` | `Button::toolbar(label).active(b).show(ui, t)` |
-| `action_btn(ui, label, color, en)` | `Button::action(label).tint(color).enabled(en).show(ui, t)` |
-| `trade_btn(ui, label, color, w)` | `Button::trade(label).tint(color).min_size((w, 24.0)).show(ui, t)` |
-| `cta_btn(ui, label, color, en)` | `Button::cta(label).tint(color).enabled(en).show(ui, t)` |
-| `simple_btn(ui, label, color, w)` | `Button::simple(label).tint(color).min_width(w).show(ui, t)` |
-| `small_action_btn(ui, label, c)` | `Button::small_action(label).tint(c).show(ui, t)` |
-| `close_button(ui, dim)` | `Button::close().show(ui, t).clicked()` |
-| `ui.add(egui::Button::new(label).fill(tint_active).stroke(...).fg(...))` for toggle chips | `Button::toggle(label, active).tint(color).show(ui, t)` |
-| `Button::simple(label).variant(Variant::Ghost).min_size(vec2(avail, 22.0))` (full-width add-row) | `Button::outline_full_width(label).show(ui, t)` |
-
-The free functions are `#[deprecated]`. Migrate when you're nearby.
+For NEW code, still default to `ui_kit::Button`:
 
 If you find yourself adding `.fg(...)` / `.glyph_color(...)` / using `Variant::Chrome`, you probably need a new variant (see audit §6.1). Talk before reaching for Chrome — it's the escape hatch, not the default.
 
@@ -114,11 +116,11 @@ For new panels: implement `ui_kit::Panel` (`fn id(&self)`, `fn render(&mut self,
 
 ### 5. Don't use `ui.menu_button(...)` directly
 
-There are 33 sites doing this with custom `RichText` styling. They drift apart over time. If you need a dropdown trigger, either:
-- Use `ui_kit::Select` (for value pickers)
-- Wait for `Button::menu()` to land (audit Tier 1 item)
-
-In the meantime, copy the pattern from `top_nav.rs` so menus look the same.
+Audited 2026-05-24: **0 sites** of this pattern remain in
+`chart/renderer/ui/`. `Button::menu(label)` is landed and used
+throughout; `ui_kit::Select` is the value-picker. The 2 grep hits
+inside `ui_kit::widgets::{menu_item, button}` are the canonical
+implementations — they're allowed.
 
 ### 6. Light-theme parity
 

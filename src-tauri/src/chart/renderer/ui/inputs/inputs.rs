@@ -198,6 +198,11 @@ impl<'a> ThicknessPicker<'a> {
                 egui::CornerRadius::ZERO
             };
             let stroke_col = if sel { color_alpha(accent, alpha_heavy()) } else { color_alpha(border, alpha_line()) };
+            // Intentional low-level egui::Button — threshold-row toggle
+            // with per-position corner radii (first/middle/last cell of a
+            // segmented strip) and selection-driven stroke colour. Same
+            // shape problem as select.rs's pill segments — Variant doesn't
+            // expose per-corner radii. Kept as legitimate low-level use.
             if ui.add(egui::Button::new(
                     egui::RichText::new(format!("{:.1}", th)).monospace().size(self.font_size).color(fg))
                 .fill(bg)

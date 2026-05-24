@@ -327,6 +327,11 @@ impl<'a, T: PartialEq + Copy> SegmentedControl<'a, T> {
                     egui::CornerRadius::same(radius_pill() as u8)
                 };
 
+                // Intentional low-level egui::Button — pill segment with
+                // dynamic corner-radius depending on first/middle/last
+                // position. ui_kit::Button's Variant system doesn't expose
+                // per-corner radius; would need a new variant or escape
+                // hatch. Kept as-is; this is a legitimate low-level use.
                 let resp = ui.add(
                     egui::Button::new(
                         RichText::new(*label).monospace().size(font_sm()).strong().color(fg),

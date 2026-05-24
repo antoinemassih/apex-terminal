@@ -204,7 +204,13 @@ pub(super) fn pane_context_menu<F>(
                     }
                     // The inline delete X inside horizontal bracket-preset rows is
                     // a compact frameless icon, not a full-width menu row — left as-is.
-                    if ui.add(egui::Button::new(egui::RichText::new(Icon::X).size(font_2xs()).color(t.dim)).frame(false)).clicked() {
+                    // Inline delete-X — use ui_kit's `Button::icon` with the
+                    // muted-icon variant so we stop bypassing the kit. Visual
+                    // result: the same frameless tiny X glyph.
+                    if crate::ui_kit::widgets::Button::icon(Icon::X)
+                        .variant(crate::ui_kit::widgets::tokens::Variant::MutedIcon)
+                        .glyph_size(crate::ui_kit::tokens::font_2xs())
+                        .show(ui, t).clicked() {
                         delete_idx = Some(ti);
                     }
                 });

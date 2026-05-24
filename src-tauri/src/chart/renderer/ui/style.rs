@@ -1375,15 +1375,13 @@ pub fn form_row(ui: &mut egui::Ui, label: &str, label_width: f32, dim: Color32, 
 
 /// Status badge — small tinted pill (e.g. "DRAFT", "PLACED", "TRIGGERED").
 pub fn status_badge(ui: &mut egui::Ui, text: &str, color: Color32) {
-    // r_chip overrides r_sm for badges/chips when non-zero; allows pill chips alongside
-    // square buttons on the same style.
-    let st = current();
-    let chip_r = if st.r_chip > 0 { st.r_chip as f32 } else { radius_sm() };
-    let resp = ui.add(egui::Button::new(RichText::new(text).monospace().size(crate::dt_f32!(badge.font_size, 8.0)).strong().color(color))
-        .fill(color_alpha(color, alpha_subtle()))
-        .stroke(Stroke::new(stroke_thin(), color_alpha(color, alpha_dim())))
-        .corner_radius(chip_r)
-        .min_size(egui::vec2(0.0, crate::dt_f32!(badge.height, 16.0))));
+    // Thin wrapper over `ui_kit::Badge` so the inline egui::Button bypass is
+    // gone. Callers pass a raw colour; we forward via `.tone_color(c)` so the
+    // dynamic-status-colour use case (warn/bull/bear depending on state)
+    // keeps working without a TagTone enum mapping.
+    use crate::ui_kit::widgets::Badge;
+    let theme = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
+    let resp = Badge::text(text).tone_color(color).show(ui, &theme);
     hit(&resp.rect, "BADGE", "Badges");
 }
 

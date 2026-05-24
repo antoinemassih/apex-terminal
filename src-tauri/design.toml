@@ -1,18 +1,19 @@
 [font]
-xxs = 7.0
-xs = 8.0
-sm_tight = 9.0
-sm = 10.0
-md = 11.0
-input = 12.0
-lg = 13.0
-xl = 14.0
-xxl = 15.0
-display = 28.0
-display_lg = 36.0
+xxs = 8.300000190734863
+xs = 11.300000190734863
+sm_tight = 12.899999618530273
+sm = 13.699999809265137
+md = 13.600000381469727
+input = 14.399999618530273
+lg = 15.100000381469727
+xl = 16.899999618530273
+xxl = 17.0
+display = 29.899999618530273
+display_lg = 38.79999923706055
 
 [spacing]
 xs = 2.0
+xs_mid = 6.0
 sm = 4.0
 md = 6.0
 lg = 8.0
@@ -29,6 +30,7 @@ lg = 8.0
 [stroke]
 hair = 0.30000001192092896
 thin = 0.5
+medium = 0.800000011920929
 std = 1.0
 bold = 1.5
 thick = 2.0
@@ -47,6 +49,7 @@ dim = 60
 strong = 80
 active = 100
 heavy = 120
+solid = 200
 
 [shadow]
 offset = 2.0
@@ -61,7 +64,7 @@ gradient = [
 [toolbar]
 height = 36.0
 height_compact = 28.0
-btn_min_height = 22.0
+btn_min_height = 24.0
 btn_padding_x = 7.0
 right_controls_width = 150.0
 
@@ -157,7 +160,7 @@ height = 36.0
 trough_darken = 12
 trough_expand_x = 4.0
 btn_padding_x = 7.0
-btn_min_height = 22.0
+btn_min_height = 24.0
 
 [icon_button]
 icon_padding = 5.0
@@ -294,24 +297,240 @@ pane_tints = [
     62,
     120,
     180,
-    0,
+    30,
 ],
     [
     180,
     100,
     255,
-    0,
+    30,
 ],
     [
     46,
     204,
     113,
-    0,
+    30,
 ],
     [
     255,
     191,
     0,
+    30,
+],
+]
+
+[status]
+ok = [
+    120,
+    180,
+    120,
+    255,
+]
+warn = [
+    255,
+    165,
     0,
+    255,
+]
+error = [
+    224,
+    85,
+    96,
+    255,
+]
+info = [
+    100,
+    200,
+    255,
+    255,
+]
+
+[drawing]
+palette = [
+    [
+    70,
+    130,
+    255,
+    255,
+],
+    [
+    80,
+    200,
+    120,
+    255,
+],
+    [
+    255,
+    160,
+    60,
+    255,
+],
+    [
+    180,
+    100,
+    255,
+    255,
+],
+]
+
+[shadow_preset.card]
+offset = [
+    0,
+    2,
+]
+blur = 4
+spread = 0
+alpha = 60
+
+[shadow_preset.modal]
+offset = [
+    0,
+    8,
+]
+blur = 28
+spread = 2
+alpha = 80
+
+[shadow_preset.tooltip]
+offset = [
+    0,
+    2,
+]
+blur = 0
+spread = 0
+alpha = 60
+
+[shadow_preset.dropdown]
+offset = [
+    0,
+    8,
+]
+blur = 24
+spread = 1
+alpha = 40
+
+[semantic]
+hover_tint = [
+    255,
+    255,
+    255,
+    16,
+]
+focus_ring = [
+    100,
+    200,
+    255,
+    200,
+]
+disabled_fg = [
+    140,
+    140,
+    150,
+    160,
+]
+disabled_bg = [
+    40,
+    40,
+    46,
+    200,
+]
+order_cancel_bg = [
+    232,
+    156,
+    156,
+    255,
+]
+order_cancel_fg = [
+    70,
+    25,
+    25,
+    255,
+]
+sentiment_positive = [
+    80,
+    200,
+    120,
+    255,
+]
+sentiment_neutral = [
+    180,
+    180,
+    195,
+    255,
+]
+sentiment_negative = [
+    224,
+    85,
+    96,
+    255,
+]
+discord_blurple = [
+    88,
+    101,
+    242,
+    255,
+]
+order_state_recon = [
+    167,
+    139,
+    250,
+    255,
+]
+order_state_ctrl = [
+    255,
+    100,
+    100,
+    255,
+]
+
+[chat_author_palette]
+colors = [
+    [
+    74,
+    158,
+    255,
+    255,
+],
+    [
+    46,
+    204,
+    113,
+    255,
+],
+    [
+    243,
+    156,
+    18,
+    255,
+],
+    [
+    155,
+    89,
+    182,
+    255,
+],
+    [
+    231,
+    76,
+    60,
+    255,
+],
+    [
+    26,
+    188,
+    156,
+    255,
+],
+    [
+    241,
+    196,
+    15,
+    255,
+],
+    [
+    52,
+    152,
+    219,
+    255,
 ],
 ]
