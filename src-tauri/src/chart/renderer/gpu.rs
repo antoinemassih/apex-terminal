@@ -5982,6 +5982,11 @@ struct App {
     app_handle: Option<tauri::AppHandle>,
     iw: u32, ih: u32,
     windows: Vec<ChartWindow>,
+    /// Design-mode F12 inspector as a separate OS window (multi-monitor
+    /// popout). Created on-demand when the user clicks POP. None when
+    /// docked or not yet popped.
+    #[cfg(feature = "design-mode")]
+    inspector_window: Option<crate::chart::renderer::inspector_window::InspectorWindow>,
     spawn_rx: mpsc::Receiver<SpawnRequest>,
     /// Wave 2 (state): registry shared with the persist supervisor thread.
     /// All `Store<T>` instances created for the process lifetime are
@@ -6000,6 +6005,15 @@ struct GpuCtx {
     egui_ctx: egui::Context,
     egui_state: egui_winit::State,
     egui_renderer: egui_wgpu::Renderer,
+    // Kept around so the inspector window (design-mode) can create its
+    // own wgpu::Surface from the same Instance / Adapter / Device /
+    // Queue — avoids spinning up a second adapter (wasteful + double-VRAM).
+    // wgpu::Instance and wgpu::Adapter are Clone (cheap Arc internally
+    // in wgpu 24).
+    #[cfg(feature = "design-mode")]
+    instance: wgpu::Instance,
+    #[cfg(feature = "design-mode")]
+    adapter: wgpu::Adapter,
     // Set to true when window loses focus — causes a PointerGone event to be injected
     // into the next frame so egui never stays stuck in drag state.
     pointer_gone_needed: bool,
@@ -6124,6 +6138,10 @@ impl GpuCtx {
         Some(Self {
             device, queue, surface, config,
             egui_ctx, egui_state, egui_renderer,
+            #[cfg(feature = "design-mode")]
+            instance,
+            #[cfg(feature = "design-mode")]
+            adapter,
             pointer_gone_needed: false,
             chart_pipeline,
         })
@@ -6636,6 +6654,38 @@ impl ApplicationHandler for App {
         }
     }
     fn window_event(&mut self, _el: &ActiveEventLoop, wid: winit::window::WindowId, ev: WindowEvent) {
+        // ── Inspector window dispatch (design-mode only) ──────────────────
+        // Route events to the popped-out inspector OS window if its id matches.
+        // Done BEFORE the chart-window lookup so the inspector handles its own
+        // close/redraw without falling through.
+        #[cfg(feature = "design-mode")]
+        {
+            if let Some(insp_win) = self.inspector_window.as_mut() {
+                if insp_win.id == wid {
+                    let _ = insp_win.on_window_event(&ev);
+                    match ev {
+                        WindowEvent::CloseRequested => {
+                            insp_win.close_requested = true;
+                            // The about_to_wait tick will drop the struct and
+                            // clear Inspector::is_popout.
+                        }
+                        WindowEvent::Resized(s) => {
+                            insp_win.resize(s.width, s.height);
+                            insp_win.win.request_redraw();
+                        }
+                        WindowEvent::RedrawRequested => {
+                            insp_win.render();
+                        }
+                        WindowEvent::ScaleFactorChanged { .. } => {
+                            insp_win.win.request_redraw();
+                        }
+                        _ => {}
+                    }
+                    return;
+                }
+            }
+        }
+
         let cw = match self.windows.iter_mut().find(|w| w.id == wid) { Some(w) => w, None => return };
 
         // Trace mouse events in debug builds — helps diagnose macOS event delivery.
@@ -7011,6 +7061,59 @@ impl ApplicationHandler for App {
         // Check for new window spawn requests
         while let Ok(req) = self.spawn_rx.try_recv() {
             self.spawn_window(el, req.rx, Some(req.initial_cmd));
+        }
+
+        // ── Inspector window lifecycle (design-mode only) ─────────────────
+        // Polled from atomics flipped by the inspector code (POP/DOCK click
+        // happens deep in the render loop, far from `&ActiveEventLoop`).
+        #[cfg(feature = "design-mode")]
+        {
+            use crate::chart::renderer::inspector_window::{
+                self, InspectorWindow,
+            };
+            // Open request → create the OS window if not already open.
+            if inspector_window::take_open_request() && self.inspector_window.is_none() {
+                if let Some(cw) = self.windows.first() {
+                    let device = cw.gpu.device.clone();
+                    let queue = cw.gpu.queue.clone();
+                    let instance = cw.gpu.instance.clone();
+                    let adapter = cw.gpu.adapter.clone();
+                    if let Some(insp_win) =
+                        InspectorWindow::create(el, device, queue, &instance, &adapter)
+                    {
+                        eprintln!("[inspector_window] created (id={:?})", insp_win.id);
+                        self.inspector_window = Some(insp_win);
+                    }
+                } else {
+                    eprintln!(
+                        "[inspector_window] open requested but no chart window yet; ignoring"
+                    );
+                }
+            }
+            // Close request OR the OS window's X button → drop the struct
+            // and clear Inspector::is_popout so the inspector docks again.
+            let close_via_request = inspector_window::take_close_request();
+            let close_via_x = self
+                .inspector_window
+                .as_ref()
+                .map_or(false, |w| w.close_requested);
+            if close_via_request || close_via_x {
+                if self.inspector_window.is_some() {
+                    eprintln!("[inspector_window] closing");
+                    self.inspector_window = None;
+                    DESIGN_INSPECTOR.with(|cell| {
+                        if let Some(insp) = cell.borrow_mut().as_mut() {
+                            insp.is_popout = false;
+                        }
+                    });
+                }
+            }
+            // Continuously repaint the inspector window so slider drags +
+            // hover state stay responsive. Egui's repaint hint also
+            // requests it but a per-tick redraw guarantees liveness.
+            if let Some(insp_win) = self.inspector_window.as_ref() {
+                insp_win.win.request_redraw();
+            }
         }
 
         // Remove windows that requested close
@@ -8124,7 +8227,10 @@ pub fn open_window(rx: mpsc::Receiver<ChartCommand>, initial_cmd: ChartCommand, 
         let persist_supervisor = crate::state::spawn_persist_supervisor(store_registry.clone());
         let mut app = App {
             app_handle: handle, iw: 1920, ih: 1080,
-            windows: Vec::new(), spawn_rx,
+            windows: Vec::new(),
+            #[cfg(feature = "design-mode")]
+            inspector_window: None,
+            spawn_rx,
             store_registry, persist_supervisor,
         };
         let _ = el.run_app(&mut app);
@@ -8153,7 +8259,13 @@ pub fn open_window_blocking(rx: mpsc::Receiver<ChartCommand>, initial_cmd: Chart
     // Wave 2 (state): create the registry and spawn the persist supervisor.
     let store_registry = crate::state::StoreRegistry::new();
     let persist_supervisor = crate::state::spawn_persist_supervisor(store_registry.clone());
-    let mut app = App { app_handle, iw: 1920, ih: 1080, windows: Vec::new(), spawn_rx, store_registry, persist_supervisor };
+    let mut app = App {
+        app_handle, iw: 1920, ih: 1080,
+        windows: Vec::new(),
+        #[cfg(feature = "design-mode")]
+        inspector_window: None,
+        spawn_rx, store_registry, persist_supervisor,
+    };
     let _ = el.run_app(&mut app);
     *spawn_tx_lock.lock().unwrap() = None;
 }

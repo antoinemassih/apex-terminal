@@ -562,25 +562,22 @@ let _ = ctx;
         }
 
         // ── Dispatch: SidePanel (docked) or Window (popout) ──────────────────
+        // When `is_popout == true`, the InspectorWindow (separate OS window
+        // created by App::about_to_wait) renders the inspector body — so
+        // we DO NOT render it inline here. To dock back, the user closes
+        // the OS window via its X button (App detects CloseRequested and
+        // flips is_popout = false) or presses F12 to close the inspector.
         let is_popout = self.is_popout;
         if !is_popout {
-        egui::SidePanel::right("design_inspector")
-            .min_width(320.0)
-            .max_width(420.0)
-            .default_width(360.0)
-            .frame(panel_frame)
-            .show(ctx, |ui| { self.show_inspector_body(ui, tokens, &mut modified); });
-        } else {
-        let mut open = true;
-        egui::Window::new("design_inspector")
-            .open(&mut open)
-            .resizable([true, true])
-            .default_size(egui::vec2(360.0, 700.0))
-            .default_pos(egui::pos2(80.0, 40.0))
-            .frame(panel_frame)
-            .show(ctx, |ui| { self.show_inspector_body(ui, tokens, &mut modified); });
-        if !open { self.is_popout = false; }
+            egui::SidePanel::right("design_inspector")
+                .min_width(320.0)
+                .max_width(420.0)
+                .default_width(360.0)
+                .frame(panel_frame)
+                .show(ctx, |ui| { self.show_inspector_body(ui, tokens, &mut modified); });
         }
+        // is_popout == true: nothing rendered in this Context. The other
+        // OS window handles all of it.
         modified
     }
 
@@ -607,6 +604,14 @@ let _ = ctx;
                                 ).on_hover_text(if self.is_popout { "Dock back to side panel" } else { "Open in a real OS window (multi-monitor)" })
                                 .clicked() {
                                     self.is_popout = !self.is_popout;
+                                    // Talk to the App so it can create/destroy
+                                    // the OS window on the next event loop tick
+                                    // (where it has access to &ActiveEventLoop).
+                                    if self.is_popout {
+                                        crate::chart::renderer::inspector_window::request_open();
+                                    } else {
+                                        crate::chart::renderer::inspector_window::request_close();
+                                    }
                                 }
 
                                 // Help / Field Reference toggle

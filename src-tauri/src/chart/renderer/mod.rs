@@ -11,6 +11,8 @@
 //! - Render thread processes commands between frames (non-blocking)
 
 pub mod gpu;
+#[cfg(feature = "design-mode")]
+pub mod inspector_window;
 pub mod theme_impl;
 mod types;
 pub mod ui;
