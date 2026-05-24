@@ -53,7 +53,7 @@ impl ThemeChoice {
 }
 
 // Midnight — deep cool blue-black palette, higher-contrast accent.
-fn midnight() -> PortableTheme {
+pub fn midnight() -> PortableTheme {
     PortableTheme {
         accent:           Color32::from_rgb( 88, 160, 255),
         text:             Color32::from_rgb(230, 234, 242),
@@ -112,6 +112,12 @@ enum Story {
     Feedback,
     Labels,
     Panels,
+    Disclosure,
+    Overlays,
+    Sliders,
+    Forms,
+    Data,
+    Specialty,
 }
 
 impl Story {
@@ -122,16 +128,28 @@ impl Story {
         Story::Feedback,
         Story::Labels,
         Story::Panels,
+        Story::Disclosure,
+        Story::Overlays,
+        Story::Sliders,
+        Story::Forms,
+        Story::Data,
+        Story::Specialty,
     ];
 
     fn label(self) -> &'static str {
         match self {
-            Story::Buttons   => "Buttons",
-            Story::Selection => "Selection",
-            Story::Inputs    => "Inputs",
-            Story::Feedback  => "Feedback",
-            Story::Labels    => "Labels",
-            Story::Panels    => "Panels",
+            Story::Buttons    => "Buttons",
+            Story::Selection  => "Selection",
+            Story::Inputs     => "Inputs",
+            Story::Feedback   => "Feedback",
+            Story::Labels     => "Labels",
+            Story::Panels     => "Panels",
+            Story::Disclosure => "Disclosure",
+            Story::Overlays   => "Overlays",
+            Story::Sliders    => "Sliders",
+            Story::Forms      => "Forms",
+            Story::Data       => "Data",
+            Story::Specialty  => "Specialty",
         }
     }
 }
@@ -239,12 +257,18 @@ impl eframe::App for Playground {
                     .auto_shrink([false; 2])
                     .show(ui, |ui| {
                         match self.active_story {
-                            Story::Buttons   => stories::buttons::show(ui, &theme),
-                            Story::Selection => stories::selection::show(ui, &theme, &mut self.state.selection),
-                            Story::Inputs    => stories::inputs::show(ui, &theme, &mut self.state.inputs),
-                            Story::Feedback  => stories::feedback::show(ui, &theme),
-                            Story::Labels    => stories::labels::show(ui, &theme),
-                            Story::Panels    => stories::panels::show(ui, &theme),
+                            Story::Buttons    => stories::buttons::show(ui, &theme),
+                            Story::Selection  => stories::selection::show(ui, &theme, &mut self.state.selection),
+                            Story::Inputs     => stories::inputs::show(ui, &theme, &mut self.state.inputs),
+                            Story::Feedback   => stories::feedback::show(ui, &theme),
+                            Story::Labels     => stories::labels::show(ui, &theme),
+                            Story::Panels     => stories::panels::show(ui, &theme),
+                            Story::Disclosure => stories::disclosure::show(ui, &theme, &mut self.state.disclosure),
+                            Story::Overlays   => stories::overlays::show(ui, &theme, &mut self.state.overlays),
+                            Story::Sliders    => stories::sliders::show(ui, &theme, &mut self.state.sliders),
+                            Story::Forms      => stories::forms::show(ui, &theme, &mut self.state.forms),
+                            Story::Data       => stories::data::show(ui, &theme, &mut self.state.data),
+                            Story::Specialty  => stories::specialty::show(ui, &theme, &mut self.state.specialty),
                         }
                     });
             });
