@@ -538,8 +538,13 @@ pub(crate) const CHART_RIGHT_PAD: u32 = 20;           // Empty bars of space to 
 pub(crate) const MAX_RECENT_SYMBOLS: usize = 20;     // Max entries in recent symbols list
 pub(crate) const MAX_SEARCH_RESULTS: usize = 15;     // Max Yahoo/static search results
 
-// Shared helpers
-use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, color_dim, color_half, color_very_dim, separator, status_badge, order_card, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, segmented_control, paint_chrome_tile_button, ChromeTileState, chrome_tile_fg, FONT_LG, FONT_MD, FONT_SM, STROKE_THIN, STROKE_STD, alpha_faint, alpha_ghost, alpha_subtle, alpha_tint, alpha_muted, alpha_line, alpha_dim, alpha_strong, alpha_active, alpha_heavy, TEXT_PRIMARY, COLOR_AMBER};
+// Shared helpers (only the symbols actually used in gpu.rs — the rest of
+// the historical import list was untouched by cargo and is unused; cleaned
+// up 2026-05 to drop 32 dead names that produced "unused imports" warnings).
+use super::ui::style::{
+    draw_line_rgba, color_alpha, color_dim, color_half, color_very_dim,
+    alpha_muted, alpha_dim, alpha_strong, alpha_active,
+};
 use super::ui::style as style;
 use super::ui::foundation::text_style::TextStyle;
 use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner, compute_adx, compute_cci, compute_williams_r};
