@@ -482,6 +482,7 @@ impl<'a> Button<'a> {
             Size::Sm => st::font_sm(),
             Size::Md => st::font_md(),
             Size::Lg => st::font_lg(),
+            Size::Xl => st::font_lg(),
         };
         let fg = self.fg_override.unwrap_or_else(|| theme.dim());
         let label_text = if self.icon_only && self.label.is_empty() {

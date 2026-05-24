@@ -67,12 +67,14 @@ impl<'a> SelectableRow<'a> {
             Size::Sm => st::font_sm(),
             Size::Md => st::font_sm(),
             Size::Lg => st::font_md(),
+            Size::Xl => st::font_md(),
         };
         let row_h = match size {
             Size::Xs => 18.0,
             Size::Sm => st::gap_2xl(),     // 24
             Size::Md => st::gap_2xl(),     // 24
             Size::Lg => 28.0,
+            Size::Xl => 28.0,
         };
 
         // Resolve colors.

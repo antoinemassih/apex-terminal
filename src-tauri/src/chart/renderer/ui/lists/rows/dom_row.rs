@@ -25,9 +25,9 @@ use super::super::super::style::*;
 use crate::chart::renderer::ui::foundation::{
     interaction::InteractionState,
     shell::RowShell,
-    tokens::Size,
 };
 use crate::ui_kit::widgets::RowVariant;
+use crate::ui_kit::widgets::tokens::Size;
 
 /// Pre-computed column geometry shared across all rows in a ladder.
 /// Captured once at the top of `dom_panel::draw` and passed in via

@@ -47,7 +47,7 @@ impl<'a> Stepper<'a> {
             return r;
         }
 
-        let circle_d = match size { Size::Xs => 18.0, Size::Sm => 22.0, Size::Md => 26.0, Size::Lg => 32.0 };
+        let circle_d = match size { Size::Xs => 18.0, Size::Sm => 22.0, Size::Md => 26.0, Size::Lg | Size::Xl => 32.0 };
         let label_font = FontId::proportional(size.font_size());
         let num_font = FontId::proportional(circle_d * 0.45);
         let line_thickness = 2.0;

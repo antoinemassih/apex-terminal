@@ -211,8 +211,8 @@ fn paint_calendar<'a>(
         id_salt,
     } = cal;
 
-    let cell_px: f32 = match size { Size::Xs | Size::Sm => 28.0, Size::Md => 32.0, Size::Lg => 36.0 };
-    let header_font = match size { Size::Lg => st::font_md(), _ => st::font_sm() };
+    let cell_px: f32 = match size { Size::Xs | Size::Sm => 28.0, Size::Md => 32.0, Size::Lg | Size::Xl => 36.0 };
+    let header_font = match size { Size::Lg | Size::Xl => st::font_md(), _ => st::font_sm() };
     let day_font = match size { Size::Xs | Size::Sm => st::font_xs(), _ => st::font_sm() };
 
     // Stable id for state persistence.

@@ -99,6 +99,7 @@ impl<'a, T: Copy + PartialEq + 'a> SegmentedControl<'a, T> {
             (false, Size::Sm) => 22.0,
             (false, Size::Md) => 26.0,
             (false, Size::Lg) => 30.0,
+            (false, Size::Xl) => 30.0,
         };
         let pad_x = if self.compact { st::gap_2xs() } else { st::gap_xs() };
         let radius = if self.connected { 4.0_f32 } else { 4.0_f32 };

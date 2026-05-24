@@ -70,7 +70,7 @@ fn variant_color(variant: Variant, theme: &dyn ComponentTheme) -> Color32 {
 }
 
 fn paint_linear(ui: &mut Ui, theme: &dyn ComponentTheme, p: Progress) -> Response {
-    let h = match p.size { Size::Xs | Size::Sm => 4.0, Size::Md => 6.0, Size::Lg => 8.0 };
+    let h = match p.size { Size::Xs | Size::Sm => 4.0, Size::Md => 6.0, Size::Lg | Size::Xl => 8.0 };
     let avail = ui.available_width();
     let w = if avail > 220.0 { 200.0 } else { avail.max(60.0) };
     let (rect, response) = ui.allocate_exact_size(Vec2::new(w, h), Sense::hover());
@@ -108,8 +108,8 @@ fn paint_linear(ui: &mut Ui, theme: &dyn ComponentTheme, p: Progress) -> Respons
 }
 
 fn paint_circular(ui: &mut Ui, theme: &dyn ComponentTheme, p: Progress) -> Response {
-    let diameter = match p.size { Size::Xs => 16.0, Size::Sm => 22.0, Size::Md => 28.0, Size::Lg => 34.0 };
-    let stroke_w = match p.size { Size::Xs | Size::Sm => 2.0, Size::Md => 3.0, Size::Lg => 4.0 };
+    let diameter = match p.size { Size::Xs => 16.0, Size::Sm => 22.0, Size::Md => 28.0, Size::Lg | Size::Xl => 34.0 };
+    let stroke_w = match p.size { Size::Xs | Size::Sm => 2.0, Size::Md => 3.0, Size::Lg | Size::Xl => 4.0 };
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(diameter), Sense::hover());
     if !ui.is_rect_visible(rect) { return response; }
 

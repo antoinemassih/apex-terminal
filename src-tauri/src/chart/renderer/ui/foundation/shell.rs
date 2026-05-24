@@ -11,7 +11,8 @@ use egui::{Color32, Margin, Rect, Response, RichText, Sense, Stroke, StrokeKind,
 use super::super::style::*;
 use super::interaction::{apply_interaction, InteractionState, InteractionTokens};
 use super::text_style::TextStyle;
-use super::tokens::{Radius, Size};
+use super::tokens::Radius;
+use crate::ui_kit::widgets::tokens::Size;
 use crate::ui_kit::widgets::{CardVariant, RowVariant};
 
 type Theme = super::super::super::gpu::Theme;

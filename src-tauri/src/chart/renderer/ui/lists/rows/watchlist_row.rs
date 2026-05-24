@@ -18,9 +18,9 @@ use super::super::super::style::*;
 use crate::chart::renderer::ui::foundation::{
     interaction::InteractionState,
     shell::RowShell,
-    tokens::Size,
 };
 use crate::ui_kit::widgets::RowVariant;
+use crate::ui_kit::widgets::tokens::Size;
 use crate::ui_kit::widgets::HoverCard;
 use super::watchlist_columns::{
     spec as col_spec, ColumnCtx, WatchlistColumnId, WatchlistItemData,

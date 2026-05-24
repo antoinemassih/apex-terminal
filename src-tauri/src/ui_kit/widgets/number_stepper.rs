@@ -73,6 +73,7 @@ impl<'a, T: egui::emath::Numeric> NumberStepper<'a, T> {
             Size::Sm => st::font_sm(),
             Size::Md => st::font_md(),
             Size::Lg => st::font_lg(),
+            Size::Xl => st::font_lg(),
         };
         let mut dv = egui::DragValue::new(self.value).speed(self.step);
         if let Some(r) = self.range {

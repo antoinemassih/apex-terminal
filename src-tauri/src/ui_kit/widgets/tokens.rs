@@ -42,6 +42,11 @@ pub enum Variant {
     Toggle,
 }
 
+/// Canonical 5-tier size scale used across the design system.
+///
+/// `Xl` was added 2026-05 (P2.4 consolidation) to absorb the chart-shell
+/// `foundation::tokens::Size::Xl` which was the only difference between the
+/// two parallel enums. Use this enum for every widget AND every shell.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Size {
     Xs,
@@ -49,10 +54,11 @@ pub enum Size {
     #[default]
     Md,
     Lg,
+    Xl,
 }
 
 impl Size {
-    /// Maps to the typography scale (font_xs/sm/md/lg from style.rs).
+    /// Maps to the typography scale (font_xs/sm/md/lg/xl from style.rs).
     pub fn font_size(&self) -> f32 {
         match self {
             Size::Xs => crate::ui_kit::tokens::font_xs(),
@@ -60,17 +66,32 @@ impl Size {
             // Md uses sm typography by default — buttons aren't titles.
             Size::Md => crate::ui_kit::tokens::font_sm(),
             Size::Lg => crate::ui_kit::tokens::font_md(),
+            Size::Xl => crate::ui_kit::tokens::font_xl(),
         }
     }
 
-    /// Maps to the spacing grid (gap_2xs/xs/sm/md from style.rs).
+    /// Maps to the spacing grid (gap_2xs/xs/sm/md/lg from style.rs).
     pub fn padding_x(&self) -> f32 {
         match self {
             Size::Xs => crate::ui_kit::tokens::gap_2xs(),
             Size::Sm => crate::ui_kit::tokens::gap_xs(),
             Size::Md => crate::ui_kit::tokens::gap_sm(),
             Size::Lg => crate::ui_kit::tokens::gap_md(),
+            Size::Xl => crate::ui_kit::tokens::gap_2xl(),
         }
+    }
+
+    /// Symmetric padding as an `egui::Margin`. Used by shells that need
+    /// both x and y inner padding (e.g. RowShell, CardShell).
+    pub fn padding(&self) -> egui::Margin {
+        let (x, y) = match self {
+            Size::Xs => (crate::ui_kit::tokens::gap_sm(), crate::ui_kit::tokens::gap_xs()),
+            Size::Sm => (crate::ui_kit::tokens::gap_md(), crate::ui_kit::tokens::gap_xs()),
+            Size::Md => (crate::ui_kit::tokens::gap_md(), crate::ui_kit::tokens::gap_sm()),
+            Size::Lg => (crate::ui_kit::tokens::gap_lg(), crate::ui_kit::tokens::gap_md()),
+            Size::Xl => (crate::ui_kit::tokens::gap_2xl(), crate::ui_kit::tokens::gap_lg()),
+        };
+        egui::Margin { left: x as i8, right: x as i8, top: y as i8, bottom: y as i8 }
     }
 
     pub fn height(&self) -> f32 {
@@ -79,6 +100,7 @@ impl Size {
             Size::Sm => 22.0,
             Size::Md => 28.0,
             Size::Lg => 34.0,
+            Size::Xl => 40.0,
         }
     }
 }
