@@ -449,7 +449,15 @@ pub fn chain_summary() -> Vec<(String, usize, u64)> {
 fn proj_spawn<F: FnOnce() + Send + 'static>(task: F) {
     // Use the already-running apex-data-ws tokio runtime so we don't
     // allocate a new OS thread per projector fetch.
-    super::ws::runtime().spawn(tokio::task::spawn_blocking(task));
+    //
+    // We call `Runtime::spawn_blocking` directly on the runtime handle
+    // rather than the free function `tokio::task::spawn_blocking(...)`
+    // wrapped in `.spawn(...)`. The free function requires an *ambient*
+    // Tokio runtime context — render-thread call sites don't have one,
+    // so it panics with "there is no reactor running" (e.g. clicking
+    // Watchlist would crash). `Runtime::spawn_blocking` is a method on
+    // the runtime itself and brings its own context.
+    super::ws::runtime().spawn_blocking(task);
 }
 
 use std::collections::HashMap as StdHashMap;

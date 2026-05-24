@@ -257,6 +257,7 @@ pub(super) fn handle_keyboard_shortcuts(
         ));
         #[cfg(target_os = "windows")]
         {
+            use std::os::windows::process::CommandExt;
             let _ = std::process::Command::new("cmd")
                 .args(["/C", "start", "ms-screenclip:"])
                 .creation_flags(0x08000000)

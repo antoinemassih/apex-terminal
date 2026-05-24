@@ -188,8 +188,18 @@ fn render_chart_pane(
     }
 
     // ── Sync orders from OrderManager (single source of truth) ──
-    // Merge: OrderManager orders take precedence, keep local-only orders too
+    // Merge: OrderManager orders take precedence, keep local-only orders too.
+    //
+    // Exception: while an order line is being dragged the user IS the source of
+    // truth for that order's price/qty for the duration of the gesture. The
+    // drag handler updates `chart.orders[i].price` each frame; the broker round
+    // trip is async, so the manager's `mo.price` still reads the pre-drag value
+    // for several frames. Without this guard the sync would clobber the
+    // user's in-flight edits and the line would visually "snap back" each
+    // frame — the symptom was the line not following the cursor and only
+    // showing the final position when the drag stopped.
     {
+        let dragging_order_id = chart.dragging_order;
         let mgr_orders = crate::chart_renderer::trading::order_manager::all_order_levels_for(&chart.symbol);
         // Update existing local orders with manager state, add new ones.
         // Sync the full lifecycle `state` and `filled_ratio` so the renderer
@@ -199,8 +209,13 @@ fn render_chart_pane(
                 local.status = mo.status;
                 local.state = mo.state;
                 local.filled_ratio = mo.filled_ratio;
-                local.price = mo.price;
-                local.qty = mo.qty;
+                // Skip price/qty sync for the currently-dragged order so the
+                // drag handler's frame-by-frame updates aren't overwritten by
+                // a stale manager read.
+                if Some(local.id) != dragging_order_id {
+                    local.price = mo.price;
+                    local.qty = mo.qty;
+                }
             } else {
                 chart.orders.push(mo.clone());
             }

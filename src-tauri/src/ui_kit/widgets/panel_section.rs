@@ -360,10 +360,15 @@ impl<'a> PanelSection<'a> {
         // We re-interact on the header rect with a stable id so the
         // child label widgets above don't swallow the click.
         let header_rect = header_resp.response.rect;
+        // Only sense clicks on the whole header when it's collapsible — otherwise
+        // this overlay steals clicks from the action/delete button laid out above
+        // (egui hit-tests later widgets first). Hover-sense still produces a
+        // Response usable for .context_menu() attachment.
+        let header_sense = if collapsible { Sense::click() } else { Sense::hover() };
         let header_response = ui.interact(
             header_rect,
             ui.id().with(("panel_section_header", title_str)),
-            Sense::click(),
+            header_sense,
         );
         let header_response = if collapsible {
             let hr = header_response.on_hover_cursor(CursorIcon::PointingHand);
