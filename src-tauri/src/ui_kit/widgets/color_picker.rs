@@ -762,3 +762,10 @@ mod tests {
         assert!(parse_hex("#12345").is_none());
     }
 }
+
+impl<'a> egui::Widget for ColorPicker<'a> {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let theme = super::theme::active_theme(ui.ctx());
+        self.show(ui, &theme)
+    }
+}

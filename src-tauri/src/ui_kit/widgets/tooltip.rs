@@ -39,6 +39,7 @@ enum Content<'a> {
     Rich(RichFn<'a>),
 }
 
+#[must_use = "Widget does nothing until `.show(ui, theme)` or `ui.add(widget)` is called"]
 pub struct Tooltip<'a> {
     content: Content<'a>,
     delay_ms: u64,

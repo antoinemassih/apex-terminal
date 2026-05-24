@@ -31,6 +31,7 @@ pub enum SidebarStyle {
 }
 
 #[derive(Clone)]
+#[must_use = "Widget does nothing until `.show(ui, theme)` or `ui.add(widget)` is called"]
 pub struct SidebarItem<'a> {
     pub label: &'a str,
     pub icon: &'static str,
@@ -454,4 +455,11 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
     let _ = StrokeKind::Inside;
 
     response
+}
+
+impl<'a> egui::Widget for Sidebar<'a> {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let theme = super::theme::active_theme(ui.ctx());
+        self.show(ui, &theme)
+    }
 }

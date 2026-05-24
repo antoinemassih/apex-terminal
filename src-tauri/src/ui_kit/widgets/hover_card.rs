@@ -18,6 +18,7 @@ use crate::ui_kit::tokens::{
 
 const DEFAULT_DELAY_MS: u64 = (motion::DELAY_HOVER_CARD * 1000.0) as u64;
 
+#[must_use = "Widget does nothing until `.show(ui, theme)` or `ui.add(widget)` is called"]
 pub struct HoverCard {
     delay_ms: u64,
     placement: Placement,

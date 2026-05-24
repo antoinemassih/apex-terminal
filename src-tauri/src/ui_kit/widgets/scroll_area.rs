@@ -43,6 +43,7 @@ pub enum ScrollDirection {
 }
 
 /// Themed wrapper around `egui::ScrollArea`.
+#[must_use = "Widget does nothing until `.show(ui, theme)` or `ui.add(widget)` is called"]
 pub struct ThemedScrollArea {
     direction: ScrollDirection,
     auto_shrink: [bool; 2],

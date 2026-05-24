@@ -258,3 +258,10 @@ fn format_val(v: f64, step: Option<f64>) -> String {
         format!("{:.3}", v)
     }
 }
+
+impl<'a, T: egui::emath::Numeric> egui::Widget for RangeSlider<'a, T> {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let theme = super::theme::active_theme(ui.ctx());
+        self.show(ui, &theme)
+    }
+}

@@ -68,6 +68,7 @@ pub enum TabAlign {
 }
 
 #[derive(Clone, Debug)]
+#[must_use = "Widget does nothing until `.show(ui, theme)` or `ui.add(widget)` is called"]
 pub struct TabItem {
     pub label: String,
     pub icon: Option<&'static str>,

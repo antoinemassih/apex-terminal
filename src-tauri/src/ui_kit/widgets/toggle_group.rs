@@ -74,3 +74,10 @@ impl<'a, T: Copy + PartialEq + 'a> ToggleGroup<'a, T> {
         resp
     }
 }
+
+impl<'a, T: Copy + PartialEq + 'a> egui::Widget for ToggleGroup<'a, T> {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let theme = super::theme::active_theme(ui.ctx());
+        self.show(ui, &theme)
+    }
+}

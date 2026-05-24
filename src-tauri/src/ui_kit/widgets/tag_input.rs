@@ -393,3 +393,10 @@ fn measure_tag_width(ui: &Ui, text: &str, font_size: f32) -> f32 {
         .width()
     })
 }
+
+impl<'a> egui::Widget for TagInput<'a> {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let theme = super::theme::active_theme(ui.ctx());
+        self.show(ui, &theme)
+    }
+}

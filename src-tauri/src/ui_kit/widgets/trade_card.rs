@@ -123,3 +123,10 @@ impl<'a> TradeCard<'a> {
         resp
     }
 }
+
+impl<'a> egui::Widget for TradeCard<'a> {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let theme = super::theme::active_theme(ui.ctx());
+        self.show(ui, &theme)
+    }
+}

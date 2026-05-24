@@ -19,6 +19,7 @@ use crate::ui_kit::tokens::{
     alpha_line, color_alpha, gap_sm, radius_sm, stroke_thin,
 };
 
+#[must_use = "Widget does nothing until `.show(ui, theme)` or `ui.add(widget)` is called"]
 pub struct Popover<'a> {
     open: Option<&'a mut bool>,
     anchor: Option<Rect>,

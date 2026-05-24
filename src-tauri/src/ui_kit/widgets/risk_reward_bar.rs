@@ -111,3 +111,10 @@ impl RiskRewardBar {
         resp
     }
 }
+
+impl<'a> egui::Widget for RiskRewardBar {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let theme = super::theme::active_theme(ui.ctx());
+        self.show(ui, &theme)
+    }
+}

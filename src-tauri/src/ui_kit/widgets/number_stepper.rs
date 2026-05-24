@@ -110,3 +110,10 @@ impl<'a, T: egui::emath::Numeric> NumberStepper<'a, T> {
         resp.inner
     }
 }
+
+impl<'a, T: egui::emath::Numeric> egui::Widget for NumberStepper<'a, T> {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let theme = super::theme::active_theme(ui.ctx());
+        self.show(ui, &theme)
+    }
+}

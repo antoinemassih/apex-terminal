@@ -163,3 +163,10 @@ fn compute_pages(current: usize, total: usize, siblings: usize, boundary: usize)
 
     out
 }
+
+impl<'a> egui::Widget for Pagination<'a> {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let theme = super::theme::active_theme(ui.ctx());
+        self.show(ui, &theme)
+    }
+}

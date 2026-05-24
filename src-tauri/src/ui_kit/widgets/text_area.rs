@@ -258,3 +258,10 @@ fn paint_text_area<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, ta: TextArea<'a>
 
     outer.inner
 }
+
+impl<'a> egui::Widget for TextArea<'a> {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let theme = super::theme::active_theme(ui.ctx());
+        self.show(ui, &theme)
+    }
+}

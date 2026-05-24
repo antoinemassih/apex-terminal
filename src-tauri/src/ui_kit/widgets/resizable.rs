@@ -24,6 +24,7 @@ enum Orient {
     Vertical,
 }
 
+#[must_use = "Widget does nothing until `.show(ui, theme)` or `ui.add(widget)` is called"]
 pub struct Resizable<'a> {
     split: &'a mut f32,
     orient: Orient,
