@@ -4,6 +4,7 @@
 //! and renders on `egui::Order::Foreground` so it covers everything.
 
 use egui::{Align2, Color32, FontId, Order, Pos2, Rect, Stroke, Vec2};
+use super::style::{stroke_thin, stroke_std, stroke_thick};
 
 // ─── Excel palette ─────────────────────────────────────────────────────────
 const XL_TITLE_GREEN: Color32 = Color32::from_rgb(33, 115, 70);
@@ -92,6 +93,9 @@ pub fn render_tps_overlay(ctx: &egui::Context) -> bool {
             // Top accent stripe
             painter.line_segment(
                 [Pos2::new(screen.left(), y), Pos2::new(screen.right(), y)],
+                // Title-bar accent: 3px > stroke_thick (2.0). Kept as literal
+                // because no token tier matches; this is a one-shot per-frame
+                // boss-key overlay paint, perf cost negligible.
                 Stroke::new(3.0, XL_TITLE_GREEN),
             );
             y += title_h;
@@ -109,7 +113,7 @@ pub fn render_tps_overlay(ctx: &egui::Context) -> bool {
             }
             painter.line_segment(
                 [Pos2::new(screen.left(), y + menu_h - 1.0), Pos2::new(screen.right(), y + menu_h - 1.0)],
-                Stroke::new(1.0, XL_GRIDLINE),
+                Stroke::new(stroke_std(), XL_GRIDLINE),
             );
             y += menu_h;
 
@@ -119,13 +123,13 @@ pub fn render_tps_overlay(ctx: &egui::Context) -> bool {
             painter.rect_filled(formula_rect, 0.0, XL_MENUBAR_BG);
             // Name box
             let name_box = Rect::from_min_size(Pos2::new(screen.left() + 4.0, y + 3.0), Vec2::new(52.0, 16.0));
-            painter.rect_stroke(name_box, 2.0, Stroke::new(1.0, XL_GRIDLINE), egui::StrokeKind::Outside);
+            painter.rect_stroke(name_box, 2.0, Stroke::new(stroke_std(), XL_GRIDLINE), egui::StrokeKind::Outside);
             painter.text(name_box.center(), Align2::CENTER_CENTER, "A1", f(10.5), XL_TEXT);
             // fx label
             painter.text(Pos2::new(screen.left() + 62.0, y + formula_h * 0.5), Align2::LEFT_CENTER, "fx", f(11.0), XL_DIM);
             // Formula input area
             let fi_rect = Rect::from_min_size(Pos2::new(screen.left() + 78.0, y + 3.0), Vec2::new(screen.width() - 84.0, 16.0));
-            painter.rect_stroke(fi_rect, 0.0, Stroke::new(1.0, XL_GRIDLINE), egui::StrokeKind::Outside);
+            painter.rect_stroke(fi_rect, 0.0, Stroke::new(stroke_std(), XL_GRIDLINE), egui::StrokeKind::Outside);
             painter.text(
                 Pos2::new(fi_rect.left() + 4.0, y + formula_h * 0.5),
                 Align2::LEFT_CENTER,
@@ -135,7 +139,7 @@ pub fn render_tps_overlay(ctx: &egui::Context) -> bool {
             );
             painter.line_segment(
                 [Pos2::new(screen.left(), y + formula_h - 1.0), Pos2::new(screen.right(), y + formula_h - 1.0)],
-                Stroke::new(1.0, XL_GRIDLINE),
+                Stroke::new(stroke_std(), XL_GRIDLINE),
             );
             y += formula_h;
 
@@ -175,8 +179,8 @@ pub fn render_tps_overlay(ctx: &egui::Context) -> bool {
             // Row-number column header (corner cell)
             let corner = Rect::from_min_size(Pos2::new(screen.left(), grid_top), Vec2::new(row_header_w, row_h));
             painter.rect_filled(corner, 0.0, XL_HEADER_BG);
-            painter.line_segment([corner.right_top(), corner.right_bottom()], Stroke::new(1.0, XL_GRIDLINE));
-            painter.line_segment([corner.left_bottom(), corner.right_bottom()], Stroke::new(1.0, XL_GRIDLINE));
+            painter.line_segment([corner.right_top(), corner.right_bottom()], Stroke::new(stroke_std(), XL_GRIDLINE));
+            painter.line_segment([corner.left_bottom(), corner.right_bottom()], Stroke::new(stroke_std(), XL_GRIDLINE));
 
             // Column letter headers
             let mut cx = screen.left() + row_header_w;
@@ -189,12 +193,12 @@ pub fn render_tps_overlay(ctx: &egui::Context) -> bool {
                 } else {
                     painter.text(crect.center(), Align2::CENTER_CENTER, *hdr, f(10.5), XL_TEXT);
                 }
-                painter.line_segment([crect.right_top(), crect.right_bottom()], Stroke::new(0.5, XL_GRIDLINE));
+                painter.line_segment([crect.right_top(), crect.right_bottom()], Stroke::new(stroke_thin(), XL_GRIDLINE));
                 cx += cw;
             }
             painter.line_segment(
                 [Pos2::new(screen.left(), grid_top + row_h), Pos2::new(screen.right(), grid_top + row_h)],
-                Stroke::new(1.0, XL_GRIDLINE),
+                Stroke::new(stroke_std(), XL_GRIDLINE),
             );
 
             // ── Cell content ─────────────────────────────────────────────
@@ -256,7 +260,7 @@ pub fn render_tps_overlay(ctx: &egui::Context) -> bool {
                     f(9.5),
                     XL_DIM,
                 );
-                painter.line_segment([rn_rect.right_top(), rn_rect.right_bottom()], Stroke::new(0.5, XL_GRIDLINE));
+                painter.line_segment([rn_rect.right_top(), rn_rect.right_bottom()], Stroke::new(stroke_thin(), XL_GRIDLINE));
 
                 // Cells
                 let mut cx2 = screen.left() + row_header_w;
@@ -306,14 +310,14 @@ pub fn render_tps_overlay(ctx: &egui::Context) -> bool {
                     // Right gridline
                     painter.line_segment(
                         [Pos2::new(cx2 + cw, ry), Pos2::new(cx2 + cw, ry + row_h)],
-                        Stroke::new(0.5, XL_GRIDLINE),
+                        Stroke::new(stroke_thin(), XL_GRIDLINE),
                     );
                     cx2 += cw;
                 }
                 // Bottom row gridline
                 painter.line_segment(
                     [Pos2::new(screen.left(), ry + row_h), Pos2::new(screen.right(), ry + row_h)],
-                    Stroke::new(0.5, XL_GRIDLINE),
+                    Stroke::new(stroke_thin(), XL_GRIDLINE),
                 );
             }
 
@@ -322,7 +326,7 @@ pub fn render_tps_overlay(ctx: &egui::Context) -> bool {
                 Pos2::new(screen.left() + row_header_w, grid_top + row_h),
                 Vec2::new(col_widths[0], row_h),
             );
-            painter.rect_stroke(a1_rect, 0.0, Stroke::new(2.0, XL_SEL_BORDER), egui::StrokeKind::Outside);
+            painter.rect_stroke(a1_rect, 0.0, Stroke::new(stroke_thick(), XL_SEL_BORDER), egui::StrokeKind::Outside);
 
             // ── 6. Sheet tabs ─────────────────────────────────────────────
             let tabs_y = grid_bot;
@@ -339,9 +343,9 @@ pub fn render_tps_overlay(ctx: &egui::Context) -> bool {
                 let bg = if active { XL_SHEET_ACTIVE } else { XL_SHEET_INACT };
                 painter.rect_filled(tab_rect, egui::CornerRadius { nw: 3, ne: 3, sw: 0, se: 0 }, bg);
                 if active {
-                    painter.line_segment([tab_rect.left_top(), tab_rect.left_bottom()], Stroke::new(1.0, XL_GRIDLINE));
-                    painter.line_segment([tab_rect.right_top(), tab_rect.right_bottom()], Stroke::new(1.0, XL_GRIDLINE));
-                    painter.line_segment([tab_rect.left_top(), tab_rect.right_top()], Stroke::new(2.0, XL_TITLE_GREEN));
+                    painter.line_segment([tab_rect.left_top(), tab_rect.left_bottom()], Stroke::new(stroke_std(), XL_GRIDLINE));
+                    painter.line_segment([tab_rect.right_top(), tab_rect.right_bottom()], Stroke::new(stroke_std(), XL_GRIDLINE));
+                    painter.line_segment([tab_rect.left_top(), tab_rect.right_top()], Stroke::new(stroke_thick(), XL_TITLE_GREEN));
                 }
                 painter.text(tab_rect.center(), Align2::CENTER_CENTER, label, f(10.5), XL_TEXT);
                 tx2 += tw + 2.0;
@@ -353,7 +357,7 @@ pub fn render_tps_overlay(ctx: &egui::Context) -> bool {
             painter.rect_filled(stat_rect, 0.0, XL_STATUSBAR_BG);
             painter.line_segment(
                 [Pos2::new(screen.left(), stat_y), Pos2::new(screen.right(), stat_y)],
-                Stroke::new(1.0, XL_GRIDLINE),
+                Stroke::new(stroke_std(), XL_GRIDLINE),
             );
             // Status items — absolute x offsets from screen left
             let status_items: &[(&str, f32)] = &[
