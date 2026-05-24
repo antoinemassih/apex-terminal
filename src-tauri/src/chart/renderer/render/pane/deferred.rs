@@ -52,8 +52,14 @@ pub(super) fn handle_deferred(
 
         if occ.is_empty() {
             eprintln!("[option-chart] No OCC contract ticker — cannot fetch bars for {}", opt_sym);
+            crate::apex_data::live_state::push_toast(
+                format!("\x02No contract symbol for {} — cannot load option chart", opt_sym));
+            crate::wake_native_ui();
         } else if !crate::apex_data::is_enabled() {
             eprintln!("[option-chart] ApexData disabled — cannot fetch bars for {}", occ);
+            crate::apex_data::live_state::push_toast(
+                "\x02ApexData is disabled — option bars require an active ApexData subscription".to_string());
+            crate::wake_native_ui();
         } else {
             fetch_option_bars_background(occ.clone(), opt_sym, tf.clone(), panes[target].bar_source_mark);
         }

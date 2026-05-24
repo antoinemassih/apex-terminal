@@ -776,7 +776,12 @@ pub(crate) fn heatmap_cell_from_grouped(
 pub(crate) fn fetch_heatmap_cold_start() {
     std::thread::spawn(move || {
         let date = active_zero_dte_date().format("%Y-%m-%d").to_string();
-        let Some(bars) = crate::apex_data::rest::stocks_grouped_daily(&date) else { return };
+        let Some(bars) = crate::apex_data::rest::stocks_grouped_daily(&date) else {
+            crate::apex_data::live_state::push_toast(
+                "\x01Heatmap unavailable — ApexData returned no grouped bar data".to_string());
+            crate::wake_native_ui();
+            return;
+        };
         let cells: Vec<(String, f32, f64)> = bars.iter()
             .filter(|b| !b.ticker.is_empty() && b.v > 0.0)
             .map(heatmap_cell_from_grouped)
@@ -1104,6 +1109,9 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
 
     if !crate::apex_data::is_enabled() {
         crate::apex_log!("option.fetch", "ABORT: ApexData disabled");
+        crate::apex_data::live_state::push_toast(
+            "\x02ApexData is disabled — option bars require an active ApexData subscription".to_string());
+        crate::wake_native_ui();
         return;
     }
 
@@ -1213,6 +1221,25 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
                         }
                     }
                 }
+                // Both Last and Mark (fallback) returned empty or error — notify
+                // the user so the chart doesn't appear to hang indefinitely, and
+                // send an empty LoadBars so the pane knows loading finished.
+                crate::apex_log!("option.fetch",
+                    "ALL sources empty/failed for {occ} {tf} — no historical bars available");
+                let reason = if was_empty { "No historical bars" } else { "Fetch failed" };
+                crate::apex_data::live_state::push_toast(
+                    format!("\x01Option bars unavailable for {} ({})", occ, reason));
+                crate::wake_native_ui();
+                // Send empty LoadBars so the pane clears its loading state
+                // rather than staying blank with no indication of completion.
+                let cmd = ChartCommand::LoadBars {
+                    symbol: display_sym.clone(),
+                    timeframe: tf.clone(),
+                    bars: vec![],
+                    timestamps: vec![],
+                };
+                for tx in &txs { let _ = tx.send(cmd.clone()); }
+                crate::wake_native_ui();
             }
         }
     });

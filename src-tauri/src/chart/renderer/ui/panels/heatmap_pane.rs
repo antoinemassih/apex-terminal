@@ -135,9 +135,15 @@ pub(crate) fn render(
     }
 
     if cells.is_empty() {
-        // No data yet — empty pane (cold-start fetch is in flight).
+        let msg = if watchlist.heatmap_last_fetch
+            .map_or(false, |inst| inst.elapsed().as_secs() > 15)
+        {
+            "Heatmap unavailable — check ApexData connection"
+        } else {
+            "Loading heatmap…"
+        };
         painter.text(rect.center(), egui::Align2::CENTER_CENTER,
-            "Loading heatmap…", egui::FontId::proportional(font_sm()), t.dim);
+            msg, egui::FontId::proportional(font_sm()), t.dim);
         return;
     }
 
