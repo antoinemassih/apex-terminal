@@ -132,7 +132,7 @@ pub(crate) fn draw_widgets(
         painter.rect_filled(strip, 0.0, color_alpha(t.shadow_color, 18));
         painter.line_segment(
             [egui::pos2(strip.left(), strip.bottom()), egui::pos2(strip.right(), strip.bottom())],
-            Stroke::new(stroke_hair(), color_alpha(t.toolbar_border, ALPHA_MUTED)));
+            Stroke::new(stroke_hair(), color_alpha(t.toolbar_border, alpha_muted())));
     }
     if has_bottom {
         let max_h = chart.chart_widgets.iter()
@@ -144,7 +144,7 @@ pub(crate) fn draw_widgets(
         painter.rect_filled(strip, 0.0, color_alpha(t.shadow_color, 18));
         painter.line_segment(
             [egui::pos2(strip.left(), strip.top()), egui::pos2(strip.right(), strip.top())],
-            Stroke::new(stroke_hair(), color_alpha(t.toolbar_border, ALPHA_MUTED)));
+            Stroke::new(stroke_hair(), color_alpha(t.toolbar_border, alpha_muted())));
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -261,7 +261,7 @@ pub(crate) fn draw_widgets(
                     painter.line_segment(
                         [egui::pos2(gr.right() - offset, gr.bottom() - 1.0),
                          egui::pos2(gr.right() - 1.0, gr.bottom() - offset)],
-                        Stroke::new(stroke_std(), color_alpha(t.dim, ALPHA_MUTED)));
+                        Stroke::new(stroke_std(), color_alpha(t.dim, alpha_muted())));
                 }
             }
         } else {
@@ -281,7 +281,7 @@ pub(crate) fn draw_widgets(
                 Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 230));
             painter.line_segment(
                 [egui::pos2(hdr.left() + 4.0, hdr.bottom()), egui::pos2(hdr.right() - 4.0, hdr.bottom())],
-                Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, ALPHA_MUTED)));
+                Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())));
             // Label
             painter.text(egui::pos2(hdr.left() + 8.0, hdr.center().y),
                 egui::Align2::LEFT_CENTER, kind.icon(), egui::FontId::proportional(font_md()), t.accent);
@@ -302,9 +302,9 @@ pub(crate) fn draw_widgets(
                 egui::pos2(hdr.right() - btn_w - 20.0, hdr.center().y), egui::vec2(btn_w, btn_h));
             let ctx_hov = ptr.map(|p| ctx_rect.contains(p)).unwrap_or(false);
             painter.rect_filled(ctx_rect, r_sm_cr(),
-                if ctx_hov { color_alpha(t.accent, ALPHA_LINE) } else { color_alpha(t.toolbar_border, ALPHA_SUBTLE) });
+                if ctx_hov { color_alpha(t.accent, alpha_line()) } else { color_alpha(t.toolbar_border, alpha_subtle()) });
             painter.rect_stroke(ctx_rect, r_sm_cr(),
-                Stroke::new(stroke_thin(), if ctx_hov { t.accent } else { color_alpha(t.toolbar_border, ALPHA_MUTED) }),
+                Stroke::new(stroke_thin(), if ctx_hov { t.accent } else { color_alpha(t.toolbar_border, alpha_muted()) }),
                 egui::StrokeKind::Outside);
             painter.text(ctx_rect.center(), egui::Align2::CENTER_CENTER,
                 "\u{22EF}", egui::FontId::proportional(font_lg()),
@@ -317,9 +317,9 @@ pub(crate) fn draw_widgets(
                 egui::pos2(hdr.right() - 18.0, hdr.center().y), egui::vec2(btn_w, btn_h));
             let tog_hov = ptr.map(|p| tog_rect.contains(p)).unwrap_or(false);
             painter.rect_filled(tog_rect, r_sm_cr(),
-                if tog_hov { color_alpha(t.accent, ALPHA_LINE) } else { color_alpha(t.toolbar_border, ALPHA_SUBTLE) });
+                if tog_hov { color_alpha(t.accent, alpha_line()) } else { color_alpha(t.toolbar_border, alpha_subtle()) });
             painter.rect_stroke(tog_rect, r_sm_cr(),
-                Stroke::new(stroke_thin(), if tog_hov { t.accent } else { color_alpha(t.toolbar_border, ALPHA_MUTED) }),
+                Stroke::new(stroke_thin(), if tog_hov { t.accent } else { color_alpha(t.toolbar_border, alpha_muted()) }),
                 egui::StrokeKind::Outside);
             painter.text(tog_rect.center(), egui::Align2::CENTER_CENTER,
                 mode_icon, egui::FontId::proportional(font_lg()),
@@ -433,14 +433,14 @@ pub(crate) fn draw_widgets(
                 if dist_top < SNAP_ZONE && chart.chart_widgets[wi].dock == WidgetDock::Float {
                     let progress = 1.0 - (dist_top / SNAP_ZONE).clamp(0.0, 1.0);
                     let h = (4.0 * progress).max(1.0);
-                    let a = (ALPHA_TINT as f32 * progress) as u8;
+                    let a = (alpha_tint() as f32 * progress) as u8;
                     painter.rect_filled(
                         egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), h)),
                         0.0, color_alpha(t.accent, a));
                 } else if dist_bot < SNAP_ZONE && chart.chart_widgets[wi].dock == WidgetDock::Float {
                     let progress = 1.0 - (dist_bot / SNAP_ZONE).clamp(0.0, 1.0);
                     let h = (4.0 * progress).max(1.0);
-                    let a = (ALPHA_TINT as f32 * progress) as u8;
+                    let a = (alpha_tint() as f32 * progress) as u8;
                     painter.rect_filled(
                         egui::Rect::from_min_max(
                             egui::pos2(rect.left(), rect.bottom() - h), rect.max),
@@ -1318,7 +1318,7 @@ fn draw_trend_gauge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
 
     // Donut ring centered in body
     let r = (body.width().min(body.height()) * 0.32).min(34.0);
-    let track = color_alpha(t.toolbar_border, ALPHA_MUTED);
+    let track = color_alpha(t.toolbar_border, alpha_muted());
     donut_ring(p, egui::pos2(cx, cy - 4.0), r, 6.0, score, 100.0, color, track);
 
     // Hero number in center
@@ -1348,7 +1348,7 @@ fn draw_momentum_gauge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
         else { Color32::from_rgb(255, 191, 0) };
 
     let r = (body.width().min(body.height()) * 0.30).min(30.0);
-    let track = color_alpha(t.toolbar_border, ALPHA_MUTED);
+    let track = color_alpha(t.toolbar_border, alpha_muted());
     donut_ring(p, egui::pos2(cx, cy - 4.0), r, 6.0, rsi, 100.0, rsi_color, track);
 
     hero_number(p, egui::pos2(cx, cy - 4.0), &format!("{:.0}", rsi), rsi_color);
@@ -1377,7 +1377,7 @@ fn draw_volatility_widget(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, 
     let bar_h = 6.0;
 
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y), egui::vec2(bar_w, bar_h)),
-        3.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
+        3.0, color_alpha(t.toolbar_border, alpha_muted()));
     let pct = (wd.atr_pct / 5.0).clamp(0.0, 1.0);
     let vol_color = if wd.atr_pct > 3.0 { t.bear }
         else if wd.atr_pct > 1.5 { Color32::from_rgb(255, 191, 0) }
@@ -1454,7 +1454,7 @@ fn draw_session_timer(p: &egui::Painter, body: egui::Rect, t: &Theme) {
     let elapsed_frac = 1.0 - (remaining as f32 / total_session).clamp(0.0, 1.0);
 
     draw_arc(p, egui::pos2(cx, ring_cy), ring_r, 0.0, 2.0 * PI,
-        Stroke::new(stroke_thick(), color_alpha(t.toolbar_border, ALPHA_MUTED)), 60);
+        Stroke::new(stroke_thick(), color_alpha(t.toolbar_border, alpha_muted())), 60);
 
     let progress_color = if elapsed_frac > 0.9 { t.bear }
         else if elapsed_frac > 0.7 { Color32::from_rgb(255, 191, 0) }
@@ -1485,7 +1485,7 @@ fn draw_key_levels(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
         let badge_w = 24.0;
         let badge_rect = egui::Rect::from_min_size(
             egui::pos2(left, y - 8.0), egui::vec2(badge_w, 16.0));
-        p.rect_filled(badge_rect, 3.0, color_alpha(level_color, ALPHA_TINT));
+        p.rect_filled(badge_rect, 3.0, color_alpha(level_color, alpha_tint()));
         p.text(badge_rect.center(), egui::Align2::CENTER_CENTER,
             *label, egui::FontId::monospace(FONT_XS), level_color);
 
@@ -1497,7 +1497,7 @@ fn draw_key_levels(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
         while x < line_x_end {
             let end = (x + dash_len).min(line_x_end);
             p.line_segment([egui::pos2(x, y), egui::pos2(end, y)],
-                Stroke::new(STROKE_HAIR, color_alpha(level_color, ALPHA_MUTED)));
+                Stroke::new(stroke_hair(), color_alpha(level_color, alpha_muted())));
             x += dash_len + gap_len;
         }
 
@@ -1545,7 +1545,7 @@ fn draw_option_greeks(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
         let bar_w = (val.abs() * bar_max_w * 2.0).min(bar_max_w);
         let bar_rect = egui::Rect::from_min_size(
             egui::pos2(bar_x, y - 3.0), egui::vec2(bar_w, 6.0));
-        p.rect_filled(bar_rect, 2.0, color_alpha(*color, ALPHA_DIM));
+        p.rect_filled(bar_rect, 2.0, color_alpha(*color, alpha_dim()));
     }
 }
 
@@ -1561,9 +1561,9 @@ fn draw_risk_reward(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &T
 
     let risk_w = bar_w * (risk / total);
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y), egui::vec2(risk_w, bar_h)),
-        egui::CornerRadius { nw: 4, sw: 4, ne: 0, se: 0 }, color_alpha(t.bear, ALPHA_STRONG));
+        egui::CornerRadius { nw: 4, sw: 4, ne: 0, se: 0 }, color_alpha(t.bear, alpha_strong()));
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x + risk_w, bar_y), egui::vec2(bar_w - risk_w, bar_h)),
-        egui::CornerRadius { nw: 0, sw: 0, ne: 4, se: 4 }, color_alpha(t.bull, ALPHA_STRONG));
+        egui::CornerRadius { nw: 0, sw: 0, ne: 4, se: 4 }, color_alpha(t.bull, alpha_strong()));
     p.circle_filled(egui::pos2(bar_x + risk_w, bar_y + bar_h / 2.0), 4.0, t.text);
 
     let rr_str = format!("{:.1} : 1", reward);
@@ -1599,9 +1599,9 @@ fn draw_market_breadth(p: &egui::Painter, body: egui::Rect, t: &Theme) {
         let bar_y = y + 16.0;
         let bar_w = body.width() - 20.0;
         p.rect_filled(egui::Rect::from_min_size(egui::pos2(left, bar_y), egui::vec2(bar_w, 3.0)),
-            1.0, color_alpha(t.toolbar_border, ALPHA_FAINT));
+            1.0, color_alpha(t.toolbar_border, alpha_faint()));
         p.rect_filled(egui::Rect::from_min_size(egui::pos2(left, bar_y), egui::vec2(bar_w * bar_pct, 3.0)),
-            1.0, color_alpha(*color, ALPHA_DIM));
+            1.0, color_alpha(*color, alpha_dim()));
     }
 }
 
@@ -1640,7 +1640,7 @@ fn draw_rsi_multi(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
         };
 
         // Track ring (full circle, very faint)
-        let track_alpha = if ring_idx == 0 { ALPHA_MUTED } else { ALPHA_FAINT };
+        let track_alpha = if ring_idx == 0 { alpha_muted() } else { alpha_faint() };
         draw_arc_ring(p, egui::pos2(cx, cy), r, ring_w, 0.0, pi2,
             color_alpha(t.toolbar_border, track_alpha), 64);
 
@@ -1657,7 +1657,7 @@ fn draw_rsi_multi(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
             let outer = r + ring_w * 0.5 + 1.0;
             let p1 = egui::pos2(cx + inner * a.cos(), cy + inner * a.sin());
             let p2 = egui::pos2(cx + outer * a.cos(), cy + outer * a.sin());
-            p.line_segment([p1, p2], egui::Stroke::new(stroke_thin(), color_alpha(t.dim, ALPHA_FAINT)));
+            p.line_segment([p1, p2], egui::Stroke::new(stroke_thin(), color_alpha(t.dim, alpha_faint())));
         }
 
         // Timeframe label — positioned at the end of the arc
@@ -1912,7 +1912,7 @@ fn draw_trend_align(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
             if bullish { bull_count += 1; }
             let cx = ox + j as f32 * gap_x + gap_x * 0.5;
             let cy = oy + i as f32 * gap_y + gap_y * 0.5;
-            let color = if bullish { t.bull } else { color_alpha(t.dim, ALPHA_MUTED) };
+            let color = if bullish { t.bull } else { color_alpha(t.dim, alpha_muted()) };
             p.circle_filled(egui::pos2(cx, cy), dot_r, color);
         }
     }
@@ -1959,7 +1959,7 @@ fn draw_volume_shelf(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
 
         // Bar
         let bar_rect = egui::Rect::from_min_size(egui::pos2(body.left() + 50.0, y + 2.0), egui::vec2(bar_w, row_h - 6.0));
-        p.rect_filled(bar_rect, 3.0, color_alpha(color, ALPHA_DIM));
+        p.rect_filled(bar_rect, 3.0, color_alpha(color, alpha_dim()));
 
         // Price label
         p.text(egui::pos2(body.left() + 6.0, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
@@ -2007,7 +2007,7 @@ fn draw_flow_compass(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
     let r = (body.width().min(body.height()) * 0.36).min(65.0);
 
     // Dark circle background
-    p.circle_filled(egui::pos2(cx, cy), r + 2.0, color_alpha(t.toolbar_border, ALPHA_DIM));
+    p.circle_filled(egui::pos2(cx, cy), r + 2.0, color_alpha(t.toolbar_border, alpha_dim()));
 
     // Radial tick marks (chart12 style)
     let ticks = 36;
@@ -2019,7 +2019,7 @@ fn draw_flow_compass(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
         let p1 = egui::pos2(cx + inner * a.cos(), cy + inner * a.sin());
         let p2 = egui::pos2(cx + outer * a.cos(), cy + outer * a.sin());
         let w = if is_major { 1.5 } else { 0.5 };
-        p.line_segment([p1, p2], egui::Stroke::new(w, color_alpha(t.dim, ALPHA_LINE)));
+        p.line_segment([p1, p2], egui::Stroke::new(w, color_alpha(t.dim, alpha_line())));
     }
 
     // Cardinal labels
@@ -2065,7 +2065,7 @@ fn draw_vol_regime(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
         let color = if frac > 0.7 { t.bear } else if frac > 0.4 { egui::Color32::from_rgb(255, 191, 0) } else { t.bull };
 
         draw_arc_ring(p, egui::pos2(cx, cy), r, 5.0, 0.0, std::f32::consts::TAU,
-            color_alpha(t.toolbar_border, ALPHA_FAINT), 48);
+            color_alpha(t.toolbar_border, alpha_faint()), 48);
         let sweep = frac * std::f32::consts::TAU;
         draw_arc_ring(p, egui::pos2(cx, cy), r, 5.0, -std::f32::consts::FRAC_PI_2, sweep, color, 40);
 
@@ -2128,7 +2128,7 @@ fn draw_breadth_thermo(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
     let oy = body.top() + 4.0;
 
     let bull_col = t.bull;
-    let empty_col = color_alpha(t.dim, ALPHA_MUTED);
+    let empty_col = color_alpha(t.dim, alpha_muted());
 
     for row in 0..rows {
         for col in 0..cols {
@@ -2158,9 +2158,9 @@ fn draw_sector_rotation(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t
 
     // Quadrant lines
     p.line_segment([egui::pos2(cx - hw, cy), egui::pos2(cx + hw, cy)],
-        egui::Stroke::new(stroke_thin(), color_alpha(t.dim, ALPHA_MUTED)));
+        egui::Stroke::new(stroke_thin(), color_alpha(t.dim, alpha_muted())));
     p.line_segment([egui::pos2(cx, cy - hh), egui::pos2(cx, cy + hh)],
-        egui::Stroke::new(stroke_thin(), color_alpha(t.dim, ALPHA_MUTED)));
+        egui::Stroke::new(stroke_thin(), color_alpha(t.dim, alpha_muted())));
 
     // Quadrant labels
     p.text(egui::pos2(cx + hw * 0.5, cy - hh - 4.0), egui::Align2::CENTER_CENTER, "LEADING", mono_4xs(), color_muted(t.bull));
@@ -2195,7 +2195,7 @@ fn draw_options_sentiment(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData,
     let color = if sentiment > 60.0 { t.bull } else if sentiment < 40.0 { t.bear } else { egui::Color32::from_rgb(255, 191, 0) };
 
     donut_ring(p, egui::pos2(cx, cy), r, 8.0, sentiment, 100.0, color,
-        color_alpha(t.toolbar_border, ALPHA_MUTED));
+        color_alpha(t.toolbar_border, alpha_muted()));
 
     p.text(egui::pos2(cx, cy - 4.0), egui::Align2::CENTER_CENTER,
         &format!("{:.0}%", sentiment), egui::FontId::proportional(font_xl()), color);
@@ -2227,7 +2227,7 @@ fn draw_rel_strength(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
         let r = max_r - i as f32 * 18.0;
         let color = if *val > 70.0 { t.bull } else if *val < 30.0 { t.bear } else { egui::Color32::from_rgb(255, 191, 0) };
         donut_ring(p, egui::pos2(cx, cy), r, 6.0, *val, 100.0, color,
-            color_alpha(t.toolbar_border, ALPHA_FAINT));
+            color_alpha(t.toolbar_border, alpha_faint()));
         p.text(egui::pos2(body.right() - 6.0, cy - r), egui::Align2::RIGHT_CENTER,
             &format!("{} {:.0}", label, val), mono_4xs(), color_subtle(color));
     }
@@ -2290,7 +2290,7 @@ fn draw_earnings_mom(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &
         let y = body.top() + row as f32 * hh;
         let cell = egui::Rect::from_min_size(egui::pos2(x + 2.0, y + 2.0), egui::vec2(hw - 4.0, hh - 4.0));
 
-        p.rect_filled(cell, 3.0, color_alpha(*color, ALPHA_FAINT));
+        p.rect_filled(cell, 3.0, color_alpha(*color, alpha_faint()));
         p.text(egui::pos2(cell.left() + 6.0, cell.top() + 8.0), egui::Align2::LEFT_CENTER,
             label, mono_4xs(), color_half(t.dim));
         p.text(egui::pos2(cell.center().x, cell.center().y + 4.0), egui::Align2::CENTER_CENTER,
@@ -2308,7 +2308,7 @@ fn draw_liquidity_score(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
     let label = if score > 70.0 { "LIQUID" } else if score < 30.0 { "ILLIQUID" } else { "MODERATE" };
 
     donut_ring(p, egui::pos2(cx, cy), r, 8.0, score, 100.0, color,
-        color_alpha(t.toolbar_border, ALPHA_MUTED));
+        color_alpha(t.toolbar_border, alpha_muted()));
 
     p.text(egui::pos2(cx, cy - 4.0), egui::Align2::CENTER_CENTER,
         &format!("{:.0}", score), egui::FontId::proportional(font_xl()), color);
@@ -2363,7 +2363,7 @@ fn draw_signal_radar(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
             p.line_segment([
                 egui::pos2(cx + rr * a0.cos(), cy + rr * a0.sin()),
                 egui::pos2(cx + rr * a1.cos(), cy + rr * a1.sin())],
-                egui::Stroke::new(stroke_hair(), color_alpha(t.toolbar_border, ALPHA_FAINT)));
+                egui::Stroke::new(stroke_hair(), color_alpha(t.toolbar_border, alpha_faint())));
         }
     }
 
@@ -2374,12 +2374,12 @@ fn draw_signal_radar(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
         let end = egui::pos2(cx + spoke_r * angle.cos(), cy + spoke_r * angle.sin());
 
         // Spoke line
-        let spoke_col = if *active { t.accent } else { color_alpha(t.dim, ALPHA_FAINT) };
+        let spoke_col = if *active { t.accent } else { color_alpha(t.dim, alpha_faint()) };
         p.line_segment([egui::pos2(cx, cy), end], egui::Stroke::new(stroke_std(), spoke_col));
 
         // Dot at tip
         let dot_r = if *active { 4.0 } else { 2.0 };
-        let dot_col = if *active { t.accent } else { color_alpha(t.dim, ALPHA_MUTED) };
+        let dot_col = if *active { t.accent } else { color_alpha(t.dim, alpha_muted()) };
         p.circle_filled(end, dot_r, dot_col);
 
         // Label
@@ -2419,7 +2419,7 @@ fn draw_cross_asset(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &T
             egui::vec2(cell_w - 2.0, cell_h - 2.0));
 
         let col_c = if *positive { t.bull } else { t.bear };
-        p.rect_filled(cell, 3.0, color_alpha(col_c, ALPHA_FAINT));
+        p.rect_filled(cell, 3.0, color_alpha(col_c, alpha_faint()));
 
         // Symbol
         p.text(egui::pos2(cell.left() + 4.0, cell.top() + 8.0), egui::Align2::LEFT_CENTER,
@@ -2630,7 +2630,7 @@ fn draw_payoff_chart(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
     // Zero line
     let zero_y = chart_top + chart_h * 0.6; // put zero at 60% down
     p.line_segment([egui::pos2(left, zero_y), egui::pos2(right, zero_y)],
-        egui::Stroke::new(stroke_thin(), color_alpha(t.dim, ALPHA_MUTED)));
+        egui::Stroke::new(stroke_thin(), color_alpha(t.dim, alpha_muted())));
     p.text(egui::pos2(left - 2.0, zero_y), egui::Align2::RIGHT_CENTER,
         "0", mono_4xs(), color_very_dim(t.dim));
 
@@ -2693,7 +2693,7 @@ fn draw_options_flow(p: &egui::Painter, body: egui::Rect, t: &Theme) {
         // Side pill
         let pill_w = 28.0;
         let pill_rect = egui::Rect::from_min_size(egui::pos2(body.left() + 6.0, y + 2.0), egui::vec2(pill_w, row_h - 4.0));
-        p.rect_filled(pill_rect, 2.0, color_alpha(col, ALPHA_TINT));
+        p.rect_filled(pill_rect, 2.0, color_alpha(col, alpha_tint()));
         p.text(pill_rect.center(), egui::Align2::CENTER_CENTER,
             side, mono_4xs(), col);
 
@@ -2743,7 +2743,7 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
     // Separator
     p.line_segment(
         [egui::pos2(left, y), egui::pos2(right, y)],
-        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, ALPHA_MUTED)));
+        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())));
     y += 4.0;
 
     // ── "Close All" button ──
@@ -2889,13 +2889,13 @@ fn draw_correlation(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
 
     // Background track
     draw_arc(p, egui::pos2(cx, gauge_cy), r, 0.0, PI,
-        Stroke::new(stroke_heavy(), color_alpha(t.toolbar_border, ALPHA_MUTED)), 40);
+        Stroke::new(stroke_heavy(), color_alpha(t.toolbar_border, alpha_muted())), 40);
 
     // Colored zones: red left, green right
     draw_arc(p, egui::pos2(cx, gauge_cy), r, PI * 0.5, PI,
-        Stroke::new(stroke_extra_thick(), color_alpha(t.bear, ALPHA_FAINT)), 15);
+        Stroke::new(stroke_extra_thick(), color_alpha(t.bear, alpha_faint())), 15);
     draw_arc(p, egui::pos2(cx, gauge_cy), r, 0.0, PI * 0.5,
-        Stroke::new(stroke_extra_thick(), color_alpha(t.bull, ALPHA_FAINT)), 15);
+        Stroke::new(stroke_extra_thick(), color_alpha(t.bull, alpha_faint())), 15);
 
     // Needle: corr maps -1..+1 to PI..0
     let needle_a = PI * 0.5 * (1.0 - corr); // 0 at right, PI at left
@@ -2943,7 +2943,7 @@ fn draw_dark_pool(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
         // Gradient: low=dim, high=purple
         let intensity = wd.dark_pool_bars[i];
         let color = lerp_color(
-            color_alpha(t.dim, ALPHA_MUTED),
+            color_alpha(t.dim, alpha_muted()),
             Color32::from_rgb(160, 80, 220), // purple
             intensity);
         let bar_rect = egui::Rect::from_min_size(
@@ -3038,7 +3038,7 @@ fn draw_earnings_badge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
         let bar_x = body.left() + 12.0;
         let bar_w = body.width() - 24.0;
         p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y), egui::vec2(bar_w, 4.0)),
-            2.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
+            2.0, color_alpha(t.toolbar_border, alpha_muted()));
         // Show expected range centered
         let range_w = (bar_w * (implied_move_pct / 10.0).clamp(0.0, 1.0)).max(8.0);
         let range_x = bar_x + (bar_w - range_w) * 0.5;
@@ -3187,7 +3187,7 @@ fn draw_exit_gauge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
 
     // Track
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y), egui::vec2(bar_w, bar_h)),
-        4.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
+        4.0, color_alpha(t.toolbar_border, alpha_muted()));
 
     // Fill from bottom
     let fill_h = bar_h * (score / 100.0).clamp(0.0, 1.0);
@@ -3280,7 +3280,7 @@ fn draw_trade_plan(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
     let bar_x = left + 40.0;
     let bar_w = right - bar_x;
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, y + 2.0), egui::vec2(bar_w, 6.0)),
-        2.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
+        2.0, color_alpha(t.toolbar_border, alpha_muted()));
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, y + 2.0),
         egui::vec2(bar_w * (conviction / 100.0).clamp(0.0, 1.0), 6.0)),
         2.0, dir_col);
@@ -3309,7 +3309,7 @@ fn draw_change_points(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
     let start_x = cx - (count as f32 * 8.0) / 2.0;
     for i in 0..count {
         let x = start_x + i as f32 * 8.0 + 4.0;
-        p.circle_filled(egui::pos2(x, dot_y), 2.5, color_alpha(t.accent, ALPHA_DIM));
+        p.circle_filled(egui::pos2(x, dot_y), 2.5, color_alpha(t.accent, alpha_dim()));
     }
 }
 
@@ -3341,7 +3341,7 @@ fn draw_zone_strength(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
     let bar_x = left + 56.0;
     let bar_w = right - bar_x;
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, y - 2.0), egui::vec2(bar_w, 6.0)),
-        2.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
+        2.0, color_alpha(t.toolbar_border, alpha_muted()));
     let fill = (wd.zone_avg_strength / 10.0).clamp(0.0, 1.0);
     let str_col = if fill > 0.7 { t.bull } else if fill > 0.4 { Color32::from_rgb(255, 191, 0) } else { t.bear };
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, y - 2.0), egui::vec2(bar_w * fill, 6.0)),
@@ -3369,7 +3369,7 @@ fn draw_pattern_scanner(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
     let bar_x = body.left() + 12.0;
     let bar_w = body.width() - 24.0;
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y), egui::vec2(bar_w, 6.0)),
-        2.0, color_alpha(t.toolbar_border, ALPHA_MUTED));
+        2.0, color_alpha(t.toolbar_border, alpha_muted()));
     p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y),
         egui::vec2(bar_w * wd.pattern_latest_conf, 6.0)), 2.0, pat_col);
     p.text(egui::pos2(cx, bar_y + 14.0), egui::Align2::CENTER_CENTER,
@@ -3445,7 +3445,7 @@ fn draw_signal_dashboard(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t
     for (i, row) in rows.iter().enumerate() {
         let y = body.top() + 2.0 + i as f32 * row_h + row_h * 0.5;
         // Status dot
-        let dot_col = if row.active { row.color } else { color_alpha(t.dim, ALPHA_MUTED) };
+        let dot_col = if row.active { row.color } else { color_alpha(t.dim, alpha_muted()) };
         p.circle_filled(egui::pos2(left + 4.0, y), 2.5, dot_col);
         // Name
         p.text(egui::pos2(left + 14.0, y), egui::Align2::LEFT_CENTER,
@@ -3486,7 +3486,7 @@ fn draw_conviction_meter(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t
     let gauge_cy = body.top() + 38.0;
     let r = 28.0;
     draw_arc(p, egui::pos2(cx, gauge_cy), r, 0.0, PI,
-        Stroke::new(stroke_heavy(), color_alpha(t.toolbar_border, ALPHA_MUTED)), 40);
+        Stroke::new(stroke_heavy(), color_alpha(t.toolbar_border, alpha_muted())), 40);
     let sweep = (score / 100.0) * PI;
     draw_arc(p, egui::pos2(cx, gauge_cy), r, PI - sweep, PI, Stroke::new(3.5, color), 30); // TODO: off-token
 
@@ -3520,7 +3520,7 @@ pub(crate) fn resize_handle(
         p.line_segment(
             [egui::pos2(gr.right() - offset, gr.bottom()),
              egui::pos2(gr.right(), gr.bottom() - offset)],
-            Stroke::new(STROKE_THIN, color_alpha(t.dim, ALPHA_MUTED)));
+            Stroke::new(stroke_thin(), color_alpha(t.dim, alpha_muted())));
     }
 
     let resp = ui.interact(grip_rect, egui::Id::new(("widget_resize", wi)), egui::Sense::drag());

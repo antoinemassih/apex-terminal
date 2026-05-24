@@ -144,8 +144,8 @@ impl<T: Clone> SplitSection<T> {
 //   border  — separators, panel edges, faint structure
 //   warn    — single warning color (alerts, fat-finger, freeze)
 //
-// Hierarchy comes from color_alpha() opacity stops (ALPHA_GHOST through
-// ALPHA_HEAVY), NOT from new hues. If you find yourself adding a 7th color,
+// Hierarchy comes from color_alpha() opacity stops (alpha_ghost() through
+// alpha_heavy()), NOT from new hues. If you find yourself adding a 7th color,
 // the answer is almost always "use accent at a different opacity instead."
 //
 // Background tokens (`bg`, `toolbar_bg`) are surface fills, not palette
@@ -187,11 +187,11 @@ pub(crate) struct Theme {
     // These remain as fields so existing call-sites compile. New code should
     // use the deprecated getter forms below (e.g. `t.gold()`) which warn and
     // route through `color_alpha`. Eventually these fields will be removed.
-    /// LEGACY: use `color_alpha(t.accent, ALPHA_HEAVY)`.
+    /// LEGACY: use `color_alpha(t.accent, alpha_heavy())`.
     pub(crate) gold: egui::Color32,
     /// LEGACY: use `t.bear` (or `t.warn` for non-loss alerts).
     pub(crate) notification_red: egui::Color32,
-    /// LEGACY: use `color_alpha(t.bg, ALPHA_HEAVY)` — pure-black baseline.
+    /// LEGACY: use `color_alpha(t.bg, alpha_heavy())` — pure-black baseline.
     pub(crate) shadow_color: egui::Color32,
     /// LEGACY: use `t.text` (overlay text is just the primary foreground).
     pub(crate) overlay_text: egui::Color32,
@@ -203,11 +203,11 @@ pub(crate) struct Theme {
     pub(crate) rrg_weakening: egui::Color32,
     /// LEGACY: use `t.bear`.
     pub(crate) rrg_lagging: egui::Color32,
-    /// LEGACY: use `color_alpha(t.accent, ALPHA_GHOST)`.
+    /// LEGACY: use `color_alpha(t.accent, alpha_ghost())`.
     pub(crate) pinned_row_tint: egui::Color32,
-    /// LEGACY: use `color_alpha(t.dim, ALPHA_HEAVY)`.
+    /// LEGACY: use `color_alpha(t.dim, alpha_heavy())`.
     pub(crate) text_muted: egui::Color32,
-    /// LEGACY: use `color_alpha(t.bg, ALPHA_SOLID)` for HUD overlays.
+    /// LEGACY: use `color_alpha(t.bg, alpha_solid())` for HUD overlays.
     pub(crate) hud_bg: egui::Color32,
     /// LEGACY: use `t.toolbar_border`.
     pub(crate) hud_border: egui::Color32,
@@ -529,7 +529,7 @@ pub(crate) const MAX_RECENT_SYMBOLS: usize = 20;     // Max entries in recent sy
 pub(crate) const MAX_SEARCH_RESULTS: usize = 15;     // Max Yahoo/static search results
 
 // Shared helpers
-use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, color_dim, color_half, color_very_dim, separator, status_badge, order_card, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, segmented_control, paint_chrome_tile_button, ChromeTileState, chrome_tile_fg, FONT_LG, FONT_MD, FONT_SM, STROKE_THIN, STROKE_STD, ALPHA_FAINT, ALPHA_GHOST, ALPHA_SUBTLE, ALPHA_TINT, ALPHA_MUTED, ALPHA_LINE, ALPHA_DIM, ALPHA_STRONG, ALPHA_ACTIVE, ALPHA_HEAVY, TEXT_PRIMARY, COLOR_AMBER};
+use super::ui::style::{hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha, color_dim, color_half, color_very_dim, separator, status_badge, order_card, close_button, dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section, paint_tooltip_shadow, tooltip_frame, stat_row, segmented_control, paint_chrome_tile_button, ChromeTileState, chrome_tile_fg, FONT_LG, FONT_MD, FONT_SM, STROKE_THIN, STROKE_STD, alpha_faint, alpha_ghost, alpha_subtle, alpha_tint, alpha_muted, alpha_line, alpha_dim, alpha_strong, alpha_active, alpha_heavy, TEXT_PRIMARY, COLOR_AMBER};
 use super::ui::style as style;
 use super::ui::foundation::text_style::TextStyle;
 use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner, compute_adx, compute_cci, compute_williams_r};
@@ -3944,13 +3944,13 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
 
         // Active/pressed
         style.visuals.widgets.active.bg_fill         = color_alpha(t.accent, if is_light { 30 } else { 40 });
-        style.visuals.widgets.active.bg_stroke       = egui::Stroke::new(style::stroke_std(), color_alpha(t.accent, ALPHA_STRONG));
+        style.visuals.widgets.active.bg_stroke       = egui::Stroke::new(style::stroke_std(), color_alpha(t.accent, alpha_strong()));
         style.visuals.widgets.active.corner_radius   = r;
         style.visuals.widgets.active.fg_stroke       = egui::Stroke::new(style::stroke_std(), t.accent);
 
         // Open (menu/combo open state)
         style.visuals.widgets.open.bg_fill           = color_alpha(t.accent, if is_light { 25 } else { 35 });
-        style.visuals.widgets.open.bg_stroke         = egui::Stroke::new(style::stroke_std(), color_alpha(t.accent, ALPHA_ACTIVE));
+        style.visuals.widgets.open.bg_stroke         = egui::Stroke::new(style::stroke_std(), color_alpha(t.accent, alpha_active()));
         style.visuals.widgets.open.corner_radius     = r;
         style.visuals.widgets.open.fg_stroke         = egui::Stroke::new(style::stroke_std(), t.accent);
 
@@ -4214,7 +4214,7 @@ pub(crate) fn paint_widget_preview(p: &egui::Painter, r: egui::Rect, kind: super
             for i in 0..16 {
                 let a = (i as f32 / 16.0) * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
                 let a2 = ((i + 1) as f32 / 16.0) * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
-                let col = if i < 11 { accent } else { color_alpha(t.toolbar_border, ALPHA_MUTED) };
+                let col = if i < 11 { accent } else { color_alpha(t.toolbar_border, alpha_muted()) };
                 p.line_segment([
                     egui::pos2(cx + r_sz * a.cos(), cy + r_sz * a.sin()),
                     egui::pos2(cx + r_sz * a2.cos(), cy + r_sz * a2.sin())],
@@ -4229,7 +4229,7 @@ pub(crate) fn paint_widget_preview(p: &egui::Painter, r: egui::Rect, kind: super
                 for j in 0..12 {
                     let a = (j as f32 / 12.0) * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
                     let a2 = ((j + 1) as f32 / 12.0) * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
-                    let col = if (j as f32 / 12.0) < frac { accent } else { color_alpha(t.toolbar_border, ALPHA_MUTED) };
+                    let col = if (j as f32 / 12.0) < frac { accent } else { color_alpha(t.toolbar_border, alpha_muted()) };
                     p.line_segment([
                         egui::pos2(cx + r_sz * a.cos(), cy + r_sz * a.sin()),
                         egui::pos2(cx + r_sz * a2.cos(), cy + r_sz * a2.sin())],
@@ -4244,7 +4244,7 @@ pub(crate) fn paint_widget_preview(p: &egui::Painter, r: egui::Rect, kind: super
                     let dx = r.left() + 5.0 + col as f32 * 5.5;
                     let dy = r.top() + 5.0 + row as f32 * 5.5;
                     let on = (row + col) % 3 != 0;
-                    p.circle_filled(egui::pos2(dx, dy), 1.8, if on { bull } else { color_alpha(t.toolbar_border, ALPHA_MUTED) });
+                    p.circle_filled(egui::pos2(dx, dy), 1.8, if on { bull } else { color_alpha(t.toolbar_border, alpha_muted()) });
                 }
             }
         }
@@ -4276,22 +4276,22 @@ pub(crate) fn paint_widget_preview(p: &egui::Painter, r: egui::Rect, kind: super
         // 2x2 quadrant
         W::SectorRotation | W::EarningsMom => {
             p.line_segment([egui::pos2(cx, r.top() + 3.0), egui::pos2(cx, r.bottom() - 3.0)],
-                egui::Stroke::new(style::stroke_thin(), color_alpha(t.dim, ALPHA_MUTED)));
+                egui::Stroke::new(style::stroke_thin(), color_alpha(t.dim, alpha_muted())));
             p.line_segment([egui::pos2(r.left() + 3.0, cy), egui::pos2(r.right() - 3.0, cy)],
-                egui::Stroke::new(style::stroke_thin(), color_alpha(t.dim, ALPHA_MUTED)));
+                egui::Stroke::new(style::stroke_thin(), color_alpha(t.dim, alpha_muted())));
             for (dx, dy, col) in [(5.0, -5.0, bull), (-4.0, 3.0, bear), (3.0, 4.0, accent)] {
                 p.circle_filled(egui::pos2(cx + dx, cy + dy), 2.5, col);
             }
         }
         // Radar dots
         W::SignalRadar => {
-            p.circle_stroke(egui::pos2(cx, cy), 10.0, egui::Stroke::new(style::stroke_thin(), color_alpha(t.dim, ALPHA_MUTED)));
+            p.circle_stroke(egui::pos2(cx, cy), 10.0, egui::Stroke::new(style::stroke_thin(), color_alpha(t.dim, alpha_muted())));
             for i in 0..8 {
                 let a = (i as f32 / 8.0) * std::f32::consts::TAU;
                 let on = i % 3 != 0;
                 let rr = if on { 10.0 } else { 6.0 };
                 p.circle_filled(egui::pos2(cx + rr * a.cos(), cy + rr * a.sin()), 1.5,
-                    if on { accent } else { color_alpha(t.dim, ALPHA_MUTED) });
+                    if on { accent } else { color_alpha(t.dim, alpha_muted()) });
             }
         }
         // Grid cells
@@ -4301,7 +4301,7 @@ pub(crate) fn paint_widget_preview(p: &egui::Painter, r: egui::Rect, kind: super
                     let x = r.left() + 2.0 + col as f32 * 6.5;
                     let y = r.top() + 4.0 + row as f32 * 12.0;
                     let col_c = [bull, bear, bull, accent][col];
-                    p.rect_filled(egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(5.5, 10.0)), 1.0, color_alpha(col_c, ALPHA_DIM));
+                    p.rect_filled(egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(5.5, 10.0)), 1.0, color_alpha(col_c, alpha_dim()));
                 }
             }
         }
@@ -4311,7 +4311,7 @@ pub(crate) fn paint_widget_preview(p: &egui::Painter, r: egui::Rect, kind: super
             for i in 0..segs {
                 let a = std::f32::consts::PI + (i as f32 / segs as f32) * std::f32::consts::PI;
                 let a2 = std::f32::consts::PI + ((i + 1) as f32 / segs as f32) * std::f32::consts::PI;
-                let col = if i < 6 { accent } else { color_alpha(t.toolbar_border, ALPHA_MUTED) };
+                let col = if i < 6 { accent } else { color_alpha(t.toolbar_border, alpha_muted()) };
                 p.line_segment([
                     egui::pos2(cx + 10.0 * a.cos(), cy + 4.0 + 10.0 * a.sin()),
                     egui::pos2(cx + 10.0 * a2.cos(), cy + 4.0 + 10.0 * a2.sin())],
