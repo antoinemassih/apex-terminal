@@ -3909,6 +3909,15 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
     let theme_idx = panes[active_pane].theme_idx;
     let _t_owned = get_theme(theme_idx);
     let t = &_t_owned;
+    // P5b extraction Step 3: stash a portable copy of the chart Theme so
+    // ui_kit widgets reading `theme::active_theme(ctx)` get a PortableTheme
+    // carrying the active palette's colors (bull/bear/accent/text/etc.).
+    // Without this, ui_kit's portable active_theme returns the default
+    // PortableTheme and widgets show the wrong palette.
+    crate::ui_kit::widgets::theme::set_ambient_theme(
+        ctx,
+        crate::chart_renderer::theme_impl::theme_to_portable(t),
+    );
     {
         let mut style = (*ctx.style()).clone();
         style.visuals.panel_fill = t.toolbar_bg;

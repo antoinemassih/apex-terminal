@@ -24,7 +24,7 @@ use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 #[inline(always)]
 fn ambient(ctx: &egui::Context) -> super::super::super::gpu::Theme {
-    crate::ui_kit::widgets::theme::active_theme(ctx)
+    crate::chart_renderer::theme_impl::active_theme(ctx)
 }
 
 // ─── toolbar_btn (free function) ──────────────────────────────────────────────

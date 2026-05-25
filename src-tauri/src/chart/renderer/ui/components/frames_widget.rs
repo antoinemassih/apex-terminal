@@ -152,7 +152,7 @@ impl CardFrame {
             } else if let Some(ref ctx) = self.ctx {
                 // No explicit shadow colour but ctx is available — resolve from the
                 // ambient theme so light themes get a soft gray drop instead of black.
-                let t = crate::ui_kit::widgets::theme::active_theme(ctx);
+                let t = crate::chart_renderer::theme_impl::active_theme(ctx);
                 color_alpha(t.shadow_color, st.shadow_alpha)
             } else {
                 Color32::from_black_alpha(st.shadow_alpha)
@@ -290,7 +290,7 @@ impl<'a> PopupFrame<'a> {
                 // No explicit shadow colour — resolve from the ambient theme so
                 // light themes (Bauhaus/Peach/Ivory/Newsprint) get a soft gray
                 // drop shadow instead of hardcoded black.
-                let t = crate::ui_kit::widgets::theme::active_theme(ctx);
+                let t = crate::chart_renderer::theme_impl::active_theme(ctx);
                 color_alpha(t.shadow_color, st.shadow_alpha)
             };
             frame = frame.shadow(egui::epaint::Shadow {

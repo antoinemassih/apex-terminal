@@ -142,7 +142,7 @@ impl<'a> PanelHeaderWithClose<'a> {
         let _theme_fallback;
         let theme: &super::super::super::gpu::Theme = match self.theme_ref {
             Some(t) => t,
-            None => { _theme_fallback = crate::ui_kit::widgets::theme::active_theme(ui.ctx()); &_theme_fallback }
+            None => { _theme_fallback = crate::chart_renderer::theme_impl::active_theme(ui.ctx()); &_theme_fallback }
         };
         let mut h = super::super::super::ui::panels::kit::PanelHeader::new(self.title);
         if let Some(w) = self.watchlist_ref {
@@ -182,7 +182,7 @@ impl<'a> DialogHeaderWithClose<'a> {
 
     /// Render the header. Returns `true` if the close button was clicked.
     pub fn show(self, ui: &mut Ui) -> bool {
-        let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+        let theme = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
         crate::ui_kit::widgets::Header::dialog(self.title)
             .closable(true)
             .show(ui, &theme)

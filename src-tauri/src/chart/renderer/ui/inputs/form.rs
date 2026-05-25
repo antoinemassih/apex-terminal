@@ -23,7 +23,7 @@ type Theme = crate::chart_renderer::gpu::Theme;
 /// impls and `show()` methods that don't receive a `&Theme` argument, so we
 /// never have to fall back to `&THEMES[0]` (which would break light themes).
 fn ambient_theme(ctx: &egui::Context) -> Theme {
-    crate::ui_kit::widgets::theme::active_theme(ctx)
+    crate::chart_renderer::theme_impl::active_theme(ctx)
 }
 
 // ─── FieldSet ─────────────────────────────────────────────────────────────────

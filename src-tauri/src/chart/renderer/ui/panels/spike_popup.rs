@@ -228,7 +228,7 @@ pub fn draw(ctx: &egui::Context, screen_rect: egui::Rect) {
             .order(egui::Order::Foreground)
             .fixed_pos(rect.min)
             .show(ctx, |ui| {
-                let t = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+                let t = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
                 ui.set_min_size(egui::vec2(TOAST_W, TOAST_H));
                 egui::Frame::popup(ui.style())
                     .fill(color_alpha(t.toolbar_bg, alpha_solid()))
@@ -280,7 +280,7 @@ fn draw_toast_body(
 ) {
     // Header row: [SYM] [σ X.Y] [+1.7%] ··· [×]
     ui.horizontal(|ui| {
-        let t = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+        let t = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
         ui.label(egui::RichText::new(&spike.symbol).monospace().strong()
             .color(t.accent).size(font_md()));
         ui.label(egui::RichText::new(format!("σ{:.1}", spike.sigma))
@@ -289,7 +289,7 @@ fn draw_toast_body(
         ui.label(egui::RichText::new(format!("{:+.2}%", spike.pct_move))
             .monospace().color(move_col).size(font_sm()));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let spike_theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+            let spike_theme = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
             let r = crate::ui_kit::widgets::Button::close()
                 .placement(IconPlacement::PanelHeader)
                 .show(ui, &spike_theme);
@@ -301,7 +301,7 @@ fn draw_toast_body(
     });
     ui.add_space(gap_xs());
     {
-        let t = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+        let t = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
         ui.label(egui::RichText::new(&spike.headline).strong().size(font_sm())
             .color(t.text));
         ui.add_space(gap_2xs());
@@ -344,7 +344,7 @@ fn draw_toast_body(
 }
 
 fn small_btn(ui: &mut egui::Ui, label: &str) -> egui::Response {
-    let t = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    let t = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
     KitButton::new(label).variant(KitVariant::Ghost).size(KitSize::Xs)
         .min_size(egui::vec2(0.0, 18.0))
         .show(ui, &t)

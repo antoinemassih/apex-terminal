@@ -152,9 +152,22 @@ pub trait ComponentTheme {
 // `impl ComponentTheme for crate::chart_renderer::gpu::Theme` is the
 // chart-app's bridge to this trait and lives in `chart_renderer::theme_impl`
 // (correct dependency direction: chart_renderer -> ui_kit, not the reverse).
-// Re-exported here for back-compat with widgets that import
-// `super::theme::active_theme`.
-pub use crate::chart_renderer::theme_impl::active_theme;
+// P5b extraction Step 3: ui_kit now OWNS its own `active_theme()` so it
+// no longer re-exports from `chart_renderer::theme_impl`. The portable
+// implementation reads the ambient PortableTheme stashed by the host once
+// per frame (chart-app does this in `gpu::setup_theme` via the
+// `theme_impl::theme_to_portable` bridge). Falls back to the default
+// PortableTheme if no host stashed one — which is the right behaviour
+// when ui_kit ships as a standalone crate with no chart_renderer to
+// resolve a live palette index.
+//
+// The ~40 ui_kit widget callers (`super::theme::active_theme(ui.ctx())`)
+// continue to compile because PortableTheme implements `ComponentTheme`
+// and every widget signature takes `&dyn ComponentTheme` or generic
+// `T: ComponentTheme` (no concrete `gpu::Theme` reach-ins).
+pub fn active_theme(ctx: &egui::Context) -> PortableTheme {
+    get_ambient_theme::<PortableTheme>(ctx).unwrap_or_default()
+}
 
 // ── PortableTheme — the standalone Theme for non-trading apps ────────────────
 //
@@ -176,6 +189,8 @@ pub use crate::chart_renderer::theme_impl::active_theme;
 #[derive(Clone, Debug)]
 pub struct PortableTheme {
     pub accent: Color32,
+    pub bull: Color32,
+    pub bear: Color32,
     pub text: Color32,
     pub dim: Color32,
     pub border: Color32,
@@ -207,6 +222,8 @@ impl PortableTheme {
     pub fn dark() -> Self {
         Self {
             accent:           Color32::from_rgb( 70, 130, 220),
+            bull:             Color32::from_rgb( 52, 168, 110),
+            bear:             Color32::from_rgb(220,  80,  90),
             text:             Color32::from_rgb(220, 220, 222),
             dim:              Color32::from_rgb(140, 140, 145),
             border:           Color32::from_rgb( 56,  56,  60),
@@ -232,6 +249,8 @@ impl PortableTheme {
     pub fn light() -> Self {
         Self {
             accent:           Color32::from_rgb( 30,  90, 180),
+            bull:             Color32::from_rgb( 22, 130,  72),
+            bear:             Color32::from_rgb(190,  50,  60),
             text:             Color32::from_rgb( 28,  28,  32),
             dim:              Color32::from_rgb(110, 110, 116),
             border:           Color32::from_rgb(216, 216, 220),
@@ -260,10 +279,12 @@ impl Default for PortableTheme {
 
 impl ComponentTheme for PortableTheme {
     fn accent(&self) -> Color32 { self.accent }
-    // bull/bear use the trait defaults (delegate to accent via success/danger
-    // path — actually default to accent directly for portable themes).
-    fn bull(&self) -> Color32 { self.accent }
-    fn bear(&self) -> Color32 { self.warn }
+    // P5b: bull/bear now have dedicated fields so the ambient-stashed
+    // PortableTheme can carry the chart-app's actual bull/bear values
+    // (previously these collapsed to accent/warn, which made widgets like
+    // RiskRewardBar and MetricRow show wrong colors under extraction).
+    fn bull(&self) -> Color32 { self.bull }
+    fn bear(&self) -> Color32 { self.bear }
     fn text(&self) -> Color32 { self.text }
     fn dim(&self) -> Color32 { self.dim }
     fn border(&self) -> Color32 { self.border }

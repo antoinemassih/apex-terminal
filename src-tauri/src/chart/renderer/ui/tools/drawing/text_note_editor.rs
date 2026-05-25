@@ -2,7 +2,7 @@
 
 use egui::Context;
 use crate::ui_kit::widgets::Input;
-use crate::ui_kit::widgets::theme::active_theme;
+use crate::chart_renderer::theme_impl::active_theme;
 
 /// Everything the text-note editor needs (read) plus mutable text buffer.
 pub struct TextNoteCtx<'a> {

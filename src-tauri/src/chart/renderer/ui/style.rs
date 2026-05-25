@@ -819,7 +819,7 @@ pub fn popup_frame(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, f
 /// Fill and border now resolve from the active theme so light themes receive
 /// appropriate surface colors instead of the former hardcoded dark values.
 pub fn dialog_window(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, border_color: Option<Color32>) -> egui::Window<'static> {
-    let t = crate::ui_kit::widgets::theme::active_theme(ctx);
+    let t = crate::chart_renderer::theme_impl::active_theme(ctx);
     let fill = t.toolbar_bg;
     let border = border_color.unwrap_or(color_alpha(t.toolbar_border, 80));
     egui::Window::new(id.to_string())
@@ -832,7 +832,7 @@ pub fn dialog_window(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32,
 /// Theme-aware dialog window — rich shadow when shadows_enabled, flat hairline when not (#16).
 pub fn dialog_window_themed(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, toolbar_bg: Color32, toolbar_border: Color32, border_color: Option<Color32>) -> egui::Window<'static> {
     let st = current();
-    let t = crate::ui_kit::widgets::theme::active_theme(ctx);
+    let t = crate::chart_renderer::theme_impl::active_theme(ctx);
     let border = border_color.unwrap_or(color_alpha(toolbar_border, alpha_strong()));
     let corner_r = if st.r_lg == 0 { 0.0 } else { radius_lg() };
     let shadow = if st.shadows_enabled {
@@ -886,7 +886,7 @@ pub fn dialog_header_colored(ui: &mut egui::Ui, title: &str, dim: Color32, heade
                 let text_col = ui.style().visuals.override_text_color.unwrap_or(TEXT_PRIMARY);
                 ui.label(RichText::new(title).monospace().size(font_lg()).strong().color(text_col));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let t = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+                    let t = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
                     if crate::ui_kit::widgets::Button::close().show(ui, &t).clicked() {
                         closed = true;
                     }
@@ -931,7 +931,7 @@ pub fn dialog_separator(ui: &mut egui::Ui, margin: f32, color: Color32) {
 /// Resolves the active theme from the UI context so light themes get a
 /// soft gray gradient instead of the former hardcoded black.
 pub fn dialog_separator_shadow(ui: &mut egui::Ui, margin: f32, color: Color32) {
-    let t = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    let t = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
     dialog_separator_shadow_impl(ui, margin, color, t.shadow_color);
 }
 
@@ -1103,7 +1103,7 @@ pub fn segmented_control(
 #[deprecated(note = "use `ui_kit::Button::close().show(ui, theme).clicked()`")]
 #[inline]
 pub fn close_button(ui: &mut egui::Ui, _dim: Color32) -> bool {
-    let t = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    let t = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
     crate::ui_kit::widgets::Button::close().show(ui, &t).clicked()
 }
 
@@ -1138,7 +1138,7 @@ pub fn stat_row(ui: &mut egui::Ui, label: &str, value: &str, label_color: Color3
 /// Resolves the active theme from the painter's context so light themes get a
 /// soft gray drop shadow instead of the former hardcoded black.
 pub fn paint_tooltip_shadow(painter: &egui::Painter, rect: egui::Rect, radius: f32) {
-    let t = crate::ui_kit::widgets::theme::active_theme(painter.ctx());
+    let t = crate::chart_renderer::theme_impl::active_theme(painter.ctx());
     let shadow_rect = rect.translate(egui::vec2(shadow_offset(), shadow_offset()));
     painter.rect_filled(shadow_rect, radius, shadow_color_alpha(&t, shadow_alpha()));
 }

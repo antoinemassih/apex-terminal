@@ -23,7 +23,7 @@ use crate::ui_kit::widgets::SearchInput;
 
 #[inline(always)]
 fn ambient(ctx: &egui::Context) -> super::super::super::gpu::Theme {
-    crate::ui_kit::widgets::theme::active_theme(ctx)
+    crate::chart_renderer::theme_impl::active_theme(ctx)
 }
 
 // ─── Dropdown ─────────────────────────────────────────────────────────────────

@@ -12,7 +12,7 @@
 //! `active_theme_idx()` accessor stays in `ui_kit::widgets::theme`.
 
 use egui::Color32;
-use crate::ui_kit::widgets::theme::{ComponentTheme, active_theme_idx, get_ambient_theme};
+use crate::ui_kit::widgets::theme::{ComponentTheme, PortableTheme, active_theme_idx, get_ambient_theme};
 use super::gpu::{Theme, live_theme_count, get_theme};
 
 impl ComponentTheme for Theme {
@@ -41,7 +41,8 @@ impl ComponentTheme for Theme {
 
 /// Returns an owned `Theme` for the current frame. Resolution order:
 ///  1. The ambient theme stashed by `set_ambient_theme(ctx, theme)`
-///     — the portable path used by ui_kit widgets.
+///     — the chart-app path used by chart-renderer code that needs the
+///     full Theme (with bull/bear and all 30+ fields).
 ///  2. Fallback: read the active idx from egui memory and pull from the
 ///     chart-app's live theme registry. This is the legacy path for
 ///     callers that don't go through `set_ambient_theme`.
@@ -52,4 +53,39 @@ pub fn active_theme(ctx: &egui::Context) -> Theme {
     let n = live_theme_count();
     let idx = active_theme_idx(ctx).min(n.saturating_sub(1));
     get_theme(idx)
+}
+
+/// Bridge: copy a chart `Theme` into a portable `PortableTheme` so it can
+/// be ambient-stashed for ui_kit widgets that now read PortableTheme via
+/// the portable `ui_kit::widgets::theme::active_theme()` accessor.
+///
+/// Defined here (not in `ui_kit`) because of Rust's orphan rules: we can't
+/// `impl From<&Theme> for PortableTheme` from chart_renderer (both types
+/// are foreign relative to `From`). A free function is the simplest fix.
+///
+/// Called once per frame from `gpu::setup_theme` (P5b Step 3 wire-up).
+pub fn theme_to_portable(t: &Theme) -> PortableTheme {
+    PortableTheme {
+        accent:           t.accent,
+        bull:             t.bull,
+        bear:             t.bear,
+        text:             t.text,
+        dim:              t.dim,
+        border:           t.toolbar_border,
+        border_variant:   t.border_variant,
+        warn:             t.warn,
+        bg:               t.bg,
+        surface:          t.toolbar_bg,
+        element_hover:    t.element_hover,
+        element_active:   t.element_active,
+        element_selected: t.element_selected,
+        element_disabled: t.element_disabled,
+        ghost_hover:      t.ghost_hover,
+        ghost_active:     t.ghost_active,
+        icon:             t.icon,
+        icon_muted:       t.icon_muted,
+        icon_disabled:    t.icon_disabled,
+        icon_accent:      t.icon_accent,
+        shadow_color:     t.shadow_color,
+    }
 }

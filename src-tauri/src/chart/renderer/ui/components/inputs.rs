@@ -9,7 +9,7 @@ use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 #[inline(always)]
 fn ambient_theme(ctx: &egui::Context) -> crate::chart_renderer::gpu::Theme {
-    crate::ui_kit::widgets::theme::active_theme(ctx)
+    crate::chart_renderer::theme_impl::active_theme(ctx)
 }
 
 // ─── Search input ─────────────────────────────────────────────────────────────

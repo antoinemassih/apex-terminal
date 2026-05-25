@@ -98,7 +98,7 @@ impl<'a> Card<'a> {
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> Option<R> {
         // Resolve unset colors against the ambient theme so callers that never
         // called `.theme()` still get sensible text + dim colors.
-        let amb = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+        let amb = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
         let fg  = if self.fg  == Color32::TRANSPARENT { amb.text } else { self.fg };
         let dim = if self.dim == Color32::TRANSPARENT { amb.dim  } else { self.dim };
         let frame = match self.variant {

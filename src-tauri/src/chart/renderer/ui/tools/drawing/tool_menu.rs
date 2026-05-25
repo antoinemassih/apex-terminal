@@ -7,7 +7,7 @@ use crate::chart_renderer::gpu::Chart;
 use crate::chart_renderer::gpu::Watchlist;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::MenuItem;
-use crate::ui_kit::widgets::theme::active_theme;
+use crate::chart_renderer::theme_impl::active_theme;
 
 /// Output from the drawing-tool submenu.
 pub struct DrawingToolMenuOutput {

@@ -101,8 +101,10 @@ impl<'a> Toast<'a> {
     pub fn show(self, ui: &mut Ui) -> ToastResponse {
         // Resolve colors from the egui-stashed active theme if not set by .theme().
         let t = super::theme::active_theme(ui.ctx());
-        let bg     = self.bg.unwrap_or(t.toolbar_bg);
-        let border = self.border.unwrap_or(t.toolbar_border);
+        // P5b: active_theme now returns PortableTheme — fields are
+        // `surface` (was `toolbar_bg`) and `border` (was `toolbar_border`).
+        let bg     = self.bg.unwrap_or(t.surface);
+        let border = self.border.unwrap_or(t.border);
         let text   = self.text.unwrap_or(t.text);
         let accent = self.accent.unwrap_or(t.accent);
         let due = self.auto_dismiss_secs

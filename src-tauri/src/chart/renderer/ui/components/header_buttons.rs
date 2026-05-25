@@ -12,7 +12,7 @@ use crate::ui_kit::widgets::icon_placement::IconPlacement;
 /// Frameless, dim color, hover changes cursor. Used in compact header rows
 /// where a full `icon_btn` is too prominent.
 pub fn header_action_btn(ui: &mut Ui, glyph: &str, dim: Color32) -> Response {
-    let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    let theme = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
     Button::icon(glyph).variant(KitVariant::Ghost).size(KitSize::Xs)
         .glyph_color(dim).min_size(Vec2::new(14.0, 14.0))
         .placement(IconPlacement::PanelHeader)
@@ -24,7 +24,7 @@ pub fn header_action_btn(ui: &mut Ui, glyph: &str, dim: Color32) -> Response {
 pub fn secondary_close_btn(ui: &mut Ui, _dim: Color32) -> bool {
     Button::close()
         .placement(IconPlacement::TabClose)
-        .show(ui, &crate::ui_kit::widgets::theme::active_theme(ui.ctx()))
+        .show(ui, &crate::chart_renderer::theme_impl::active_theme(ui.ctx()))
         .on_hover_text("Close")
         .clicked()
 }
@@ -64,7 +64,7 @@ pub fn tab_bar_with_close(
                 let prev_inner = ui.spacing().item_spacing.x;
                 ui.spacing_mut().item_spacing.x = 1.0;
 
-                let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+                let theme = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
                 if is_active && !st.hairline_borders {
                     let resp = Button::toggle(s.as_str(), true).size(KitSize::Sm)
                         .min_size(Vec2::new(0.0, 18.0)).show(ui, &theme);

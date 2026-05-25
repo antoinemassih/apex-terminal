@@ -9,7 +9,7 @@ use super::super::super::gpu::Theme;
 
 #[inline(always)]
 fn ambient(ctx: &egui::Context) -> Theme {
-    crate::ui_kit::widgets::theme::active_theme(ctx)
+    crate::chart_renderer::theme_impl::active_theme(ctx)
 }
 
 // ─── ColorSwatchPicker ────────────────────────────────────────────────────────

@@ -39,7 +39,7 @@ pub fn big_action_btn(
 ) -> Response {
     let height: f32 = match size { ActionSize::Small => 24.0, ActionSize::Medium => 32.0, ActionSize::Large => 40.0 };
     let kit_size = match size { ActionSize::Small => KitSize::Sm, ActionSize::Medium => KitSize::Md, ActionSize::Large => KitSize::Lg };
-    let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    let theme = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
     let variant = match tier {
         ActionTier::Primary => KitVariant::Primary,
         ActionTier::Destructive => KitVariant::Danger,
@@ -66,7 +66,7 @@ pub fn side_pane_action_btn(
         Some(ic) => format!("{} {}", ic, label),
         None => label.to_owned(),
     };
-    let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    let theme = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
     KitButton::new(display.as_str()).variant(KitVariant::Secondary).size(KitSize::Sm)
         .tint(accent).min_size(egui::vec2(0.0, row_height_default()))
         .show(ui, &theme)
@@ -88,7 +88,7 @@ pub fn brand_cta_button(
 ) -> Response {
     let height: f32 = match size { ActionSize::Small => 24.0, ActionSize::Medium => 32.0, ActionSize::Large => 40.0 };
     let kit_size = match size { ActionSize::Small => KitSize::Sm, ActionSize::Medium => KitSize::Md, ActionSize::Large => KitSize::Lg };
-    let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    let theme = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
     // Chrome variant: brand_color is a custom fill (e.g. Discord blurple) that doesn't map to Primary/Danger.
     KitButton::new(label).variant(KitVariant::Chrome).size(kit_size)
         .fill(brand_color).fg(fg_color)

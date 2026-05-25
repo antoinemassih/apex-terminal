@@ -645,7 +645,7 @@ fn section_rule(ui: &mut Ui, t: &Theme) {
 /// Compact ghost button used inline in section headers ("Clear All", "Place").
 /// Replaces `style::small_action_btn` with a cleaner ghost/hover treatment.
 pub fn panel_action_btn(ui: &mut Ui, label: &str, color: Color32) -> bool {
-    let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    let theme = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
     Button::new(label).variant(Variant::Ghost).size(KitSize::Xs)
         .fg(color).min_size(Vec2::new(0.0, 16.0))
         .show(ui, &theme).clicked()

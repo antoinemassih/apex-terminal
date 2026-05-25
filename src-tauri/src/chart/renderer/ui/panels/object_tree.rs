@@ -80,7 +80,7 @@ fn sig_color(score: f32, t: &Theme) -> egui::Color32 {
 /// Thin adapter: delegates to `OpacityPicker` widget, returning `Some(new_opacity)` on click.
 fn opacity_picker(ui: &mut egui::Ui, current: f32, _id_salt: &str) -> Option<f32> {
     use crate::ui_kit::widgets::OpacityPicker;
-    use crate::ui_kit::widgets::theme::active_theme;
+    use crate::chart_renderer::theme_impl::active_theme;
     let mut value = current;
     let resp = OpacityPicker::new(&mut value).show(ui, &active_theme(ui.ctx()));
     if resp.changed() { Some(value) } else { None }

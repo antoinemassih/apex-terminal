@@ -9,7 +9,7 @@ use super::super::style::{font_xs, font_sm, color_alpha, alpha_solid, radius_sm,
 
 #[inline(always)]
 fn ambient(ctx: &egui::Context) -> crate::chart_renderer::gpu::Theme {
-    crate::ui_kit::widgets::theme::active_theme(ctx)
+    crate::chart_renderer::theme_impl::active_theme(ctx)
 }
 
 fn us_to_ms(us: u64) -> f64 { us as f64 / 1000.0 }
@@ -28,7 +28,7 @@ fn sparkline(ui: &mut egui::Ui, values: &[f64], width: f32, height: f32) {
     let ctx = ui.ctx().clone();
     let vals_f32: Vec<f32> = values.iter().map(|&v| v as f32).collect();
     let color_fn = move |v: f32| phase_color(&ctx, (v * 1000.0) as u64, 16_000, 33_000);
-    let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+    let theme = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
     crate::ui_kit::widgets::Sparkline::new(&vals_f32)
         .bars()
         .bar_color(&color_fn)

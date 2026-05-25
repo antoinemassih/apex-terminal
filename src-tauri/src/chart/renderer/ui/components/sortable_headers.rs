@@ -33,7 +33,7 @@ pub fn sortable_col_header(
     let text = format!("{}{}", s, arrow);
     let mut resp_out: Option<Response> = None;
     ui.allocate_ui_with_layout(Vec2::new(width, 14.0), layout, |ui| {
-        let theme = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+        let theme = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
         let resp = KitButton::new(text.as_str()).variant(KitVariant::Ghost).size(KitSize::Xs)
             .fg(color).frameless(true).show(ui, &theme);
         resp_out = Some(resp);

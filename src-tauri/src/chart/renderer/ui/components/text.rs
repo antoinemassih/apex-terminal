@@ -26,7 +26,7 @@ use super::super::style::*;
 use crate::chart::renderer::ui::foundation::text_style::TextStyle;
 #[inline(always)]
 fn ambient(ctx: &egui::Context) -> super::super::super::gpu::Theme {
-    crate::ui_kit::widgets::theme::active_theme(ctx)
+    crate::chart_renderer::theme_impl::active_theme(ctx)
 }
 
 // ─── Size enums (moved from labels.rs) ───────────────────────────────────────
