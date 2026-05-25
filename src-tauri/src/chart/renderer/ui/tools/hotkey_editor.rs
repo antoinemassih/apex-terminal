@@ -92,7 +92,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
             }
             ui.horizontal(|ui| {
                 ui.add_space(gap_lg());
-                ui.add(BodyLabel::new(hk_name.as_str()).size(font_sm()).monospace(true).color(egui::Color32::from_white_alpha(180)));
+                ui.add(BodyLabel::new(hk_name.as_str()).size(font_sm()).monospace(true).color(color_alpha(t.text, alpha_strong())));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if *is_editing {
                         ui.add(BodyLabel::new("Press a key...").size(font_sm()).monospace(true).color(t.accent));
@@ -102,7 +102,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                         }
                     }
                     let key_bg = if *is_editing { color_alpha(t.accent, alpha_tint()) } else { color_alpha(t.toolbar_border, alpha_tint()) };
-                    let key_fg = if *is_editing { t.accent } else { egui::Color32::from_white_alpha(140) };
+                    let key_fg = if *is_editing { t.accent } else { color_alpha(t.text, alpha_muted()) };
                     Button::new(hk_key_name.as_str()).variant(Variant::Chrome).size(Size::Sm).fg(key_fg)
                         .fill(key_bg).corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32).min_size(egui::vec2(80.0, row_height_dense())).show(ui, t);
                 });

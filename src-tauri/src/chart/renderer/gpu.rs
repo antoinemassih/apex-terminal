@@ -1490,7 +1490,7 @@ pub(crate) fn render_order_entry_body(
         armed:                 chart.armed,
     };
 
-    ui.add_space(4.0);
+    ui.add_space(crate::chart_renderer::ui::style::gap_xs());
     let outcome = ApertureOrderTicket::new()
         .variant(ApertureVariant::Aperture)
         .theme(t)
