@@ -99,7 +99,9 @@ if let Some(edit_id) = panes[ap].editing_indicator {
         })
         .show(|ui| {
             if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == edit_id) {
-                let m = 8.0;
+                // `m` = section indent. Was a hardcoded 8.0; now the same
+                // gap_sm() token the rest of the kit uses for inner padding.
+                let m = gap_sm();
 
                 ui.add_space(gap_sm());
 
@@ -117,7 +119,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                             (IndicatorType::TEMA, "TEMA"),
                         ];
                         if SegmentedControl::new().options(MA_KINDS).connected_pills(true).compact(true)
-                            .height(22.0).theme(t).show(ui, &mut ind.kind) {
+                            .height(row_height_compact()).theme(t).show(ui, &mut ind.kind) {
                             needs_recompute = true;
                         }
                     });
@@ -134,7 +136,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                             (IndicatorType::KeltnerChannels, "KC"),
                         ];
                         if SegmentedControl::new().options(BAND_KINDS).connected_pills(true).compact(true)
-                            .height(22.0).theme(t).show(ui, &mut ind.kind) {
+                            .height(row_height_compact()).theme(t).show(ui, &mut ind.kind) {
                             needs_recompute = true;
                         }
                     });
@@ -263,35 +265,24 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                             (0, "C"), (1, "O"), (2, "H"), (3, "L"), (4, "HL"), (5, "OHLC"),
                         ];
                         if SegmentedControl::new().options(SOURCES).connected_pills(true).compact(true)
-                            .height(20.0).theme(t).show(ui, &mut ind.source) {
+                            .height(row_height_compact()).theme(t).show(ui, &mut ind.source) {
                             needs_recompute = true;
                         }
                     });
                 }
 
-                // Timeframe source
+                // Timeframe source — Button::toggle handles its own rendering;
+                // the per-item `fg / bg / rounding / stroke_col` locals were
+                // dead (computed but never passed to Button::toggle).
                 ui.add_space(gap_xs());
                 ui.horizontal(|ui| {
                     ui.add_space(m);
                     ui.label(egui::RichText::new("TF    ").monospace().size(font_sm()).color(t.dim));
                     ui.add_space(gap_sm());
                     ui.spacing_mut().item_spacing.x = 0.0;
-                    let tfs = INDICATOR_TIMEFRAMES;
-                    let n = tfs.len();
-                    let r_sm = current().r_sm;
-                    for (i, &tf) in tfs.iter().enumerate() {
+                    for &tf in INDICATOR_TIMEFRAMES.iter() {
                         let label = if tf.is_empty() { "Chart" } else { tf };
                         let sel = ind.source_tf == tf;
-                        let fg = if sel { t.text } else { color_subtle(t.dim) };
-                        let bg = if sel { color_alpha(t.accent, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_subtle()) };
-                        let rounding = if i == 0 {
-                            egui::CornerRadius { nw: r_sm, sw: r_sm, ne: 0, se: 0 }
-                        } else if i == n - 1 {
-                            egui::CornerRadius { nw: 0, sw: 0, ne: r_sm, se: r_sm }
-                        } else {
-                            egui::CornerRadius::ZERO
-                        };
-                        let stroke_col = if sel { color_alpha(t.accent, alpha_heavy()) } else { color_alpha(t.toolbar_border, alpha_line()) };
                         if Button::toggle(label, sel).size(KitSize::Sm).show(ui, t)
                             .clicked() && !sel
                         {
@@ -332,7 +323,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         (LineStyle::Solid, "━"), (LineStyle::Dashed, "╌"), (LineStyle::Dotted, "┈"),
                     ];
                     SegmentedControl::new().options(LINE_STYLES).connected_pills(true).compact(true)
-                        .height(18.0).theme(t).show(ui, &mut ind.line_style);
+                        .height(row_height_compact()).theme(t).show(ui, &mut ind.line_style);
                 });
 
                 // ── BAND STYLING (BB / KC only) ──
@@ -385,32 +376,29 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 ui.add_space(gap_xs());
 
                 // ── Footer: visibility + delete ──
+                // Both buttons previously had 6+ overrides each (glyph_color, fill,
+                // corner_radius, stroke, min_size, frameless). Replaced with the
+                // semantic primitives: Toggle for vis, tone_destructive for delete.
                 ui.horizontal(|ui| {
                     ui.add_space(m);
                     let vis_icon = if ind.visible { Icon::EYE } else { Icon::EYE_SLASH };
-                    let vis_fg = if ind.visible { t.dim } else { color_dim(t.dim) };
-                    let vr = ui.add(Button::icon(vis_icon)
-                        .variant(Variant::Chrome)
-                        .glyph_color(vis_fg)
-                        .fill(if ind.visible { color_alpha(t.toolbar_border, alpha_soft()) } else { egui::Color32::TRANSPARENT })
-                        .corner_radius(current().r_sm as f32)
-                        .min_size(egui::vec2(24.0, row_height_default()))
-                        .frameless(true)
-                        .placement(IconPlacement::PanelHeader));
-                    Tooltip::new("Toggle Visibility").show(ui, &vr, t);
+                    let vr = Button::icon(vis_icon)
+                        .variant(Variant::Toggle)
+                        .active(ind.visible)
+                        .size(KitSize::Sm)
+                        .placement(IconPlacement::PanelHeader)
+                        .show(ui, t);
+                    Tooltip::new(if ind.visible { "Hide indicator" } else { "Show indicator" })
+                        .show(ui, &vr, t);
                     if vr.clicked() { ind.visible = !ind.visible; }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(m);
-                        let del_color = t.bear;
-                        let dr = ui.add(Button::icon(Icon::TRASH)
-                            .variant(Variant::Chrome)
-                            .glyph_color(del_color)
-                            .fill(color_alpha(del_color, alpha_ghost()))
-                            .corner_radius(current().r_sm as f32)
-                            .stroke(egui::Stroke::new(stroke_thin(), color_alpha(del_color, alpha_dim())))
-                            .min_size(egui::vec2(24.0, row_height_default()))
-                            .frameless(true)
-                            .placement(IconPlacement::PanelHeader).tone_destructive());
+                        let dr = Button::icon(Icon::TRASH)
+                            .variant(Variant::Ghost)
+                            .size(KitSize::Sm)
+                            .placement(IconPlacement::PanelHeader)
+                            .tone_destructive()
+                            .show(ui, t);
                         Tooltip::new("Delete Indicator").show(ui, &dr, t);
                         if dr.clicked() {
                             delete_id = Some(edit_id); close_editor = true;
