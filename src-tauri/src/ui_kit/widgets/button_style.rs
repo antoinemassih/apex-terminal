@@ -101,7 +101,13 @@ impl<'a> ButtonStyle for DefaultButtonStyle<'a> {
                     if matches!(variant, Variant::Danger) { t.bear() } else { t.accent() }
                 )
             }
-            Variant::Ghost | Variant::Chrome | Variant::TextOnly => t.text(),
+            // DynamicTint: fg defaults to t.text() but the Button widget
+            // honours `.tint(color)` as a stronger override at the call site —
+            // see `resolve_tint()` in button.rs which is consulted before the
+            // ButtonStyle fg is applied. So DynamicTint shares the Ghost
+            // default here and gets its colour from the tint pipeline.
+            Variant::Ghost | Variant::Chrome | Variant::TextOnly
+            | Variant::DynamicTint => t.text(),
             Variant::Secondary => t.text(),
             Variant::Link => match state {
                 // Slightly lighter accent on hover for link variant.
@@ -193,6 +199,11 @@ impl<'a> ButtonStyle for DefaultButtonStyle<'a> {
             },
             Variant::Link | Variant::Tab | Variant::TextOnly |
             Variant::Chrome | Variant::InlineClose => transparent,
+            // DynamicTint: transparent idle; on hover/active a low-alpha tint
+            // overlay using the caller-provided color (via .tint()) — the
+            // Button widget pipes the tint via `bg_override` so this default
+            // only fires when no tint is set.
+            Variant::DynamicTint => transparent,
             Variant::MutedIcon => match state {
                 ButtonState::Hover | ButtonState::Pressed => st::color_alpha(t.text(), 18),
                 _ => transparent,

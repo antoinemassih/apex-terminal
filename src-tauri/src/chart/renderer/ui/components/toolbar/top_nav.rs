@@ -475,7 +475,7 @@ pub(crate) fn render(
             }
 
 
-            ui.add(egui::Separator::default().spacing(4.0));
+            crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
 
             // ── TPS Reports boss-key button (~70px) ────────────────────────
             // Replaces the ticker/symbol display. Clicking masks the entire app
@@ -494,7 +494,7 @@ pub(crate) fn render(
                 }
             }
 
-            ui.add(egui::Separator::default().spacing(4.0));
+            crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
 
             // ── Scrollable middle section ──
             // Calculate available width: total - logo(25) - symbol(~70) - right section(~350)
@@ -570,7 +570,7 @@ pub(crate) fn render(
             }
             // (Range dropdown moved to the per-pane top-left strip.)
 
-            ui.add(egui::Separator::default().spacing(4.0));
+            crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
 
             // ── Draw dropdown + magnet + count ──
             {
@@ -695,7 +695,7 @@ pub(crate) fn render(
                 ui.spacing_mut().button_padding = prev_pad;
             }
 
-            ui.add(egui::Separator::default().spacing(4.0));
+            crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
 
             // ── Organized dropdown menus ──
             let _menu_font = mono_sm();
@@ -1397,7 +1397,7 @@ pub(crate) fn render(
 
             // (Hit-highlight toggle moved to the per-pane top-left strip.)
 
-            ui.add(egui::Separator::default().spacing(4.0));
+            crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
 
             // ── Workspace — icon-only dropdown (active workspace shown inside the menu) ──
             {
@@ -1480,7 +1480,7 @@ pub(crate) fn render(
                 }
             }
 
-            ui.add(egui::Separator::default().spacing(4.0));
+            crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
 
             // ── Layouts — favorites bar + dropdown ──
             // Helper: switch to a layout, creating panes as needed
@@ -1597,7 +1597,7 @@ pub(crate) fn render(
                 }
 
                 // Separator between window controls and panel toggles
-                ui.add(egui::Separator::default().spacing(4.0));
+                crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
 
                 // Panel toggle buttons (right-to-left, so ordered right→left)
                 ui.spacing_mut().item_spacing.x = gap_sm();
@@ -1721,7 +1721,7 @@ pub(crate) fn render(
                     }
                 }
 
-                ui.add(egui::Separator::default().spacing(4.0));
+                crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
 
                 // ── Right nav panel toggles — zero item spacing, second-smallest
                 //    inner button padding, hairline dividers between each. ──
@@ -1865,7 +1865,7 @@ pub(crate) fn render(
                         panes[ap].symbol.clone(), panes[ap].timeframe.clone());
                 }
 
-                ui.add(egui::Separator::default().spacing(4.0));
+                crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
             });
 
             // (Opt button is in scroll area, near account strip toggle)

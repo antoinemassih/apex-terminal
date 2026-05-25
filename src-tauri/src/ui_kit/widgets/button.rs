@@ -1083,7 +1083,7 @@ fn paint_secondary_with_treatment(
 fn default_radius(v: Variant) -> f32 {
     match v {
         Variant::Primary | Variant::Secondary | Variant::Danger | Variant::NeutralAction => 4.0,
-        Variant::Ghost | Variant::MutedIcon | Variant::InlineClose => 2.0,
+        Variant::Ghost | Variant::MutedIcon | Variant::InlineClose | Variant::DynamicTint => 2.0,
         Variant::Link | Variant::TextOnly | Variant::Tab => 0.0,
         Variant::Chip | Variant::Toggle => 99.0, // pill
         Variant::Chrome => 4.0,
@@ -1247,6 +1247,22 @@ fn resolve_palette(
             text,
             st::color_alpha(text, st::alpha_soft()),
             st::color_alpha(accent, st::alpha_active()),
+        ),
+        Variant::DynamicTint => (
+            // P6.5 — Ghost-like (transparent until hover) using the caller-
+            // supplied `.tint(color)` for fg / hover / active overlays /
+            // border. Replaces the `Variant::Chrome + .fg(dynamic_color)`
+            // escape-hatch pattern audited at ~15 call sites (option-type
+            // color, link-group color, connection-state color buttons).
+            // When no tint is set, `accent` falls back to `theme.accent()`
+            // so it degrades gracefully — same shape as Ghost with tint.
+            transparent,
+            st::color_alpha(accent, st::alpha_soft()),
+            st::color_alpha(accent, st::alpha_tint()),
+            accent,
+            accent,
+            transparent,
+            st::color_alpha(accent, st::alpha_strong()),
         ),
     }
 }

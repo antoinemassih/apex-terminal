@@ -471,7 +471,7 @@ fn draw_drawings_section(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &s
                                     per_drawing_op_set = Some((ds_id_for_menu.clone(), op));
                                 }
                             });
-                            ui.add(egui::Separator::default().spacing(2.0));
+                            crate::ui_kit::widgets::Separator::vertical().spacing(2.0).show(ui, t);
                             // UX-3 Fix 4: inline rename via context menu.
                             if MenuItem::new("Rename").icon(Icon::PENCIL_LINE).show(ui, t).clicked() {
                                 rename_id = Some(ds_id_rename_menu);

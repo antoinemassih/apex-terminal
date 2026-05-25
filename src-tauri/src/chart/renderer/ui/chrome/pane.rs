@@ -782,46 +782,46 @@ impl<'a> AccountStrip<'a> {
                         ui.label(RichText::new("NAV").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
                         ui.label(hero_text(&format!("${:.0}", acct.nav), t.text).strong());
 
-                        ui.add(egui::Separator::default().spacing(8.0));
+                        crate::ui_kit::widgets::Separator::vertical().spacing(8.0).show(ui, t);
 
                         // Buying Power
                         ui.label(RichText::new("BP").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
                         ui.label(RichText::new(format!("${:.0}", acct.buying_power)).monospace().size(font_md()).color(t.dim));
 
-                        ui.add(egui::Separator::default().spacing(8.0));
+                        crate::ui_kit::widgets::Separator::vertical().spacing(8.0).show(ui, t);
 
                         // Daily P&L — hero, colored
                         let daily_color = if acct.daily_pnl >= 0.0 { t.bull } else { t.bear };
                         ui.label(RichText::new("Day P&L").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
                         ui.label(hero_text(&format!("{:+.0}", acct.daily_pnl), daily_color).strong());
 
-                        ui.add(egui::Separator::default().spacing(8.0));
+                        crate::ui_kit::widgets::Separator::vertical().spacing(8.0).show(ui, t);
 
                         // Unrealized P&L
                         let unr_color = if acct.unrealized_pnl >= 0.0 { t.bull } else { t.bear };
                         ui.label(RichText::new("Unr P&L").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
                         ui.label(RichText::new(format!("{:+.0}", acct.unrealized_pnl)).monospace().size(font_md()).color(unr_color));
 
-                        ui.add(egui::Separator::default().spacing(8.0));
+                        crate::ui_kit::widgets::Separator::vertical().spacing(8.0).show(ui, t);
 
                         // Margin
                         ui.label(RichText::new("Margin").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
                         ui.label(RichText::new(format!("${:.0}", acct.initial_margin)).monospace().size(font_md()).color(t.dim));
 
-                        ui.add(egui::Separator::default().spacing(8.0));
+                        crate::ui_kit::widgets::Separator::vertical().spacing(8.0).show(ui, t);
 
                         // Excess Liquidity
                         ui.label(RichText::new("Excess").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
                         ui.label(RichText::new(format!("${:.0}", acct.excess_liquidity)).monospace().size(font_md()).color(t.dim));
 
-                        ui.add(egui::Separator::default().spacing(8.0));
+                        crate::ui_kit::widgets::Separator::vertical().spacing(8.0).show(ui, t);
 
                         // Realized P&L
                         let rpnl_color = if acct.realized_pnl >= 0.0 { t.bull } else { t.bear };
                         ui.label(RichText::new("Real P&L").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
                         ui.label(RichText::new(format!("{:+.0}", acct.realized_pnl)).monospace().size(font_md()).strong().color(rpnl_color));
 
-                        ui.add(egui::Separator::default().spacing(8.0));
+                        crate::ui_kit::widgets::Separator::vertical().spacing(8.0).show(ui, t);
 
                         // Emergency action buttons — UX-1 Fix 3: kbd hints from
                         // default_hotkeys (Ctrl+Shift+Q / Ctrl+Shift+F).
@@ -1029,7 +1029,7 @@ impl<'a> FloatingOrderPaneChrome<'a> {
                 Tooltip::new("Close").show(ui, &close_resp, theme_for_close);
                 if close_resp.clicked() { close_clicked = true; }
 
-                ui.add(egui::Separator::default().spacing(2.0));
+                crate::ui_kit::widgets::Separator::vertical().spacing(2.0).show(ui, theme_for_close);
 
                 // Expand/collapse toggle
                 let exp_icon = if advanced { Icon::MINUS } else { Icon::PLUS };

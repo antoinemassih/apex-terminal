@@ -40,6 +40,13 @@ pub enum Variant {
     /// font-scale / session-tint preset chips in settings panels. Construct
     /// via [`super::button::Button::toggle`].
     Toggle,
+    /// Dynamic tint — Ghost-like (transparent until hover) but uses the
+    /// caller-supplied `.tint(color)` for fg, hover overlay, and border.
+    /// Designed to absorb the ~15 `Variant::Chrome + .fg(dynamic_color)`
+    /// escape-hatch sites identified by the variant-completeness audit
+    /// (option-type colour, link-group colour, connection-state colour
+    /// buttons). Behaves like Ghost when no `.tint()` is set.
+    DynamicTint,
 }
 
 /// Canonical 5-tier size scale used across the design system.
