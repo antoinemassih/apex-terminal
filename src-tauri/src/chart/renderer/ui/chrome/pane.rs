@@ -993,6 +993,8 @@ impl<'a> FloatingOrderPaneChrome<'a> {
                 .min_size(egui::vec2(18.0, row_height_dense()))
                 .corner_radius(radius_sm())
                 .show(ui, armed_theme);
+            Tooltip::new(if armed { "Disarm — orders won't fire" } else { "Arm — required to place orders" })
+                .show(ui, &armed_resp, armed_theme);
             if armed_resp.clicked()  { armed_toggled = true; }
 
             // Title

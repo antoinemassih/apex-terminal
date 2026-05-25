@@ -276,7 +276,7 @@ pub fn show_drawing_properties_bar_ui(
         ui.add(egui::Separator::default().spacing(gap_xs()));
 
         // Delete
-        let r = KitButton::icon(Icon::TRASH).variant(KitVariant::Ghost).glyph_color(t.bear).placement(IconPlacement::ChartChrome).tone_destructive().show(ui, t);
+        let r = KitButton::icon(Icon::TRASH).variant(KitVariant::Ghost).placement(IconPlacement::ChartChrome).tone_destructive().show(ui, t);
         Tooltip::new("Delete").show(ui, &r, t);
         if r.clicked() {
             if let Some(d) = chart.drawings.iter().find(|d| d.id == sel_id) {

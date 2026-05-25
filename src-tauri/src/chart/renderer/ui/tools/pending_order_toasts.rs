@@ -45,10 +45,10 @@ pub fn show_pending_order_toasts(c: PendingOrderToastsCtx<'_>) {
                         .show(ui, c.t, |ui| {
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new(format!("{} x{} @ {:.2}", label, qty, price)).monospace().size(font_sm()).color(color));
-                                let r = KitButton::icon(Icon::CHECK).variant(KitVariant::Ghost).glyph_color(c.t.bull).placement(IconPlacement::Modal).tone_affirmative().show(ui, c.t);
+                                let r = KitButton::icon(Icon::CHECK).variant(KitVariant::Ghost).placement(IconPlacement::Modal).tone_affirmative().show(ui, c.t);
                                 Tooltip::new("Confirm order").show(ui, &r, c.t);
                                 if r.clicked() { confirm_ids.push(*oid); }
-                                let r = KitButton::icon(Icon::X).variant(KitVariant::Ghost).glyph_color(c.t.bear).placement(IconPlacement::Modal).tone_destructive().show(ui, c.t);
+                                let r = KitButton::icon(Icon::X).variant(KitVariant::Ghost).placement(IconPlacement::Modal).tone_destructive().show(ui, c.t);
                                 Tooltip::new("Cancel order").show(ui, &r, c.t);
                                 if r.clicked() { cancel_ids.push(*oid); }
                             });

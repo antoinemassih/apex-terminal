@@ -644,7 +644,7 @@ fn draw_bulk_actions(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &str, 
             }
         }
         // Bulk delete
-        let r = Button::icon(Icon::TRASH).variant(Variant::Ghost).glyph_color(t.bear).size(KitSize::Sm)
+        let r = Button::icon(Icon::TRASH).variant(Variant::Ghost).size(KitSize::Sm)
             .placement(IconPlacement::PanelHeader).tone_destructive()
             .show(ui, t);
         Tooltip::new("Delete selected").show(ui, &r, t);
@@ -812,7 +812,6 @@ fn draw_widgets_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
             .trailing(move |ui, t| {
                 let r = Button::icon(Icon::TRASH)
                     .variant(Variant::Ghost)
-                    .glyph_color(t.bear)
                     .size(KitSize::Xs)
                     .placement(IconPlacement::ListRow).tone_destructive()
                     .show(ui, t);

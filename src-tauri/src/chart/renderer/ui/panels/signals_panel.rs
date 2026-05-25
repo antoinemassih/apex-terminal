@@ -110,12 +110,13 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
         ui.horizontal(|ui| {
             ui.add_space(gap_sm());
             let icon = if **flag { Icon::EYE } else { Icon::EYE_SLASH };
-            if Button::icon(icon)
+            let resp = Button::icon(icon)
                 .variant(crate::ui_kit::widgets::tokens::Variant::Ghost)
                 .placement(crate::ui_kit::widgets::icon_placement::IconPlacement::ListRow)
                 .active(**flag)
-                .show(ui, t)
-                .clicked() { **flag = !**flag; }
+                .show(ui, t);
+            crate::ui_kit::widgets::Tooltip::new(if **flag { "Hide" } else { "Show" }).show(ui, &resp, t);
+            if resp.clicked() { **flag = !**flag; }
             ui.vertical(|ui| {
                 let lc = if **flag { t.text } else { color_half(t.dim) };
                 ui.add(widgets_text::BodyLabel::new(*name).monospace(true).strong(true).size(font_sm()).color(lc));

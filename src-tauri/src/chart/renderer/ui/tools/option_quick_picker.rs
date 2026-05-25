@@ -99,12 +99,13 @@ pub(crate) fn draw(
                             ui.add_space(gap_md());
                             // Back arrow
                             let can_back = dte_idx > 0;
-                            if KitButton::icon(Icon::CARET_LEFT)
+                            let back_resp = KitButton::icon(Icon::CARET_LEFT)
                                 .variant(crate::ui_kit::widgets::tokens::Variant::Ghost)
                                 .placement(crate::ui_kit::widgets::icon_placement::IconPlacement::Modal)
                                 .enabled(can_back)
-                                .show(ui, t)
-                                .clicked() && can_back
+                                .show(ui, t);
+                            crate::ui_kit::widgets::Tooltip::new("Earlier expiry").show(ui, &back_resp, t);
+                            if back_resp.clicked() && can_back
                             {
                                 panes[pi].option_quick_dte_idx = dte_idx - 1;
                                 let new_dte = DTE_LIST[dte_idx - 1];

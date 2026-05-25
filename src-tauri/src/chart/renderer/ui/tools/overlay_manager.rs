@@ -60,7 +60,7 @@ if panes[ap].overlay_editing {
                         panes[ap].symbol_overlays[oi].show_candles = !panes[ap].symbol_overlays[oi].show_candles;
                     }
                     // Delete
-                    let r = ui.add(Button::icon(Icon::X).variant(Variant::Ghost).glyph_color(color_half(t.bear)).size(KitSize::Sm).placement(IconPlacement::ListRow).tone_destructive());
+                    let r = ui.add(Button::icon(Icon::X).variant(Variant::Ghost).size(KitSize::Sm).placement(IconPlacement::ListRow).tone_destructive());
                     Tooltip::new("Remove overlay").show(ui, &r, t);
                     if r.clicked() {
                         delete_idx = Some(oi);
