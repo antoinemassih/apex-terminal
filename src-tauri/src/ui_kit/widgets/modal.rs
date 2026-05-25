@@ -409,12 +409,12 @@ impl<'a> Modal<'a> {
                 if self.scrim {
                     let scrim_id = Id::new(("apex_modal_scrim", id));
                     let viewport  = ctx.screen_rect();
-                    // Theme-aware scrim: use the theme bg color at ~50% alpha
-                    // (alpha_strong = 80/255 ≈ 31 %). We use a slightly higher
-                    // base value (120/255 ≈ 47 %) so light themes also dim
-                    // noticeably. The color inherits from `t.bg()` which is
-                    // dark for dark themes and light for light themes.
-                    let scrim_base = color_alpha(t.bg(), 120);
+                    // Theme-aware scrim — base color inherits from t.bg() (dark
+                    // for dark themes, light for light themes). Alpha sourced
+                    // from the `alpha_scrim` token (140/255 ≈ 55%) — between
+                    // heavy (120) and solid (200). Tokenized so a single
+                    // design-mode slider tunes scrim density app-wide.
+                    let scrim_base = color_alpha(t.bg(), crate::ui_kit::style::alpha_scrim());
                     let scrim_alpha = (scrim_base.a() as f32 * appear_t) as u8;
                     let scrim_color = Color32::from_rgba_unmultiplied(
                         scrim_base.r(), scrim_base.g(), scrim_base.b(), scrim_alpha,
