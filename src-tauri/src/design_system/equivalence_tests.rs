@@ -452,16 +452,10 @@ pub(crate) mod equivalence {
             // ── Derived fields ────────────────────────────────────────────────
             chk!(toolbar_border);
             chk!(border_variant);
-            chk!(element_hover);
-            chk!(element_active);
-            chk!(element_selected);
-            chk!(element_disabled);
-            chk!(ghost_hover);
-            chk!(ghost_active);
-            chk!(icon);
-            chk!(icon_muted);
-            chk!(icon_disabled);
-            chk!(icon_accent);
+            // P12 (2026-05-25): overlay fields removed from Theme — now derived
+            // at the ComponentTheme trait boundary from text/accent/dim. The
+            // adapter computes them identically on both sides, so equivalence
+            // is preserved without per-field assertions here.
 
             // ── Hand-authored extras ──────────────────────────────────────────
             chk!(notification_red);

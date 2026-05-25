@@ -134,6 +134,32 @@ pub trait ComponentTheme {
     /// dark themes, darker on light themes. Mirrors the chart-app's
     /// `style::color_layer_up(t, n)` helper so widgets get a portable path
     /// to the same effect.
+    // ── Dimension tokens (P4.2) ──────────────────────────────────────────────
+    // Default impls delegate to the per-frame TokenSnapshot via the token
+    // helper functions in `ui_kit::style`. Themes / hosts don't need to
+    // implement these — they pick up the active StyleSystem automatically.
+    // When ui_kit extracts to its own crate, these become the single trait-
+    // boundary path for both colours and dimensions.
+
+    fn font_xs(&self) -> f32   { crate::ui_kit::style::font_xs() }
+    fn font_sm(&self) -> f32   { crate::ui_kit::style::font_sm() }
+    fn font_md(&self) -> f32   { crate::ui_kit::style::font_md() }
+    fn font_lg(&self) -> f32   { crate::ui_kit::style::font_lg() }
+
+    fn gap_xs(&self) -> f32    { crate::ui_kit::style::gap_xs() }
+    fn gap_sm(&self) -> f32    { crate::ui_kit::style::gap_sm() }
+    fn gap_md(&self) -> f32    { crate::ui_kit::style::gap_md() }
+    fn gap_lg(&self) -> f32    { crate::ui_kit::style::gap_lg() }
+
+    fn radius_xs(&self) -> f32 { crate::ui_kit::style::radius_xs() }
+    fn radius_sm(&self) -> f32 { crate::ui_kit::style::radius_sm() }
+    fn radius_md(&self) -> f32 { crate::ui_kit::style::radius_md() }
+    fn radius_lg(&self) -> f32 { crate::ui_kit::style::radius_lg() }
+
+    fn stroke_thin(&self) -> f32 { crate::ui_kit::style::stroke_thin() }
+    fn stroke_std(&self)  -> f32 { crate::ui_kit::style::stroke_std() }
+    fn stroke_bold(&self) -> f32 { crate::ui_kit::style::stroke_bold() }
+
     fn color_layer_up(&self, n: u8) -> Color32 {
         let base = self.surface();
         let bg = self.bg();

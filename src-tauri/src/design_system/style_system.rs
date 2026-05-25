@@ -39,15 +39,18 @@ pub struct Typography {
 
 impl Default for Typography {
     fn default() -> Self {
+        // P2.2: aligned to TokenSnapshot DEFAULT (the values the live frame
+        // renders with via `frame_tokens()`). Was 10/11/13/15/18; corrected
+        // to match `font_xs()` … `font_xl()` in ui_kit/style.rs.
         Self {
-            size_xs: 10.0,
+            size_xs:  9.0,
             size_sm: 11.0,
             size_md: 13.0,
-            size_lg: 15.0,
-            size_xl: 18.0,
+            size_lg: 16.0,
+            size_xl: 22.0,
             mono_sm: 11.0,
             mono_md: 13.0,
-            mono_lg: 15.0,
+            mono_lg: 16.0,
         }
     }
 }
@@ -77,15 +80,18 @@ pub struct Spacing {
 
 impl Default for Spacing {
     fn default() -> Self {
+        // P2.2: aligned to TokenSnapshot DEFAULT. Was 2/4/6/8/12/16/24;
+        // corrected to gap_xs..gap_2xl in ui_kit/style.rs (4/8/12/16/20/24).
+        // The xs_mid 6.0 already matched and stays.
         Self {
-            xs: 2.0,
-            sm: 4.0,
-            xs_mid: 6.0,
-            md: 8.0,
-            lg: 12.0,
-            xl: 16.0,
-            xxl: 24.0,
-            gmd: 8.0,
+            xs:         4.0,
+            sm:         8.0,
+            xs_mid:     6.0,
+            md:        12.0,
+            lg:        16.0,
+            xl:        20.0,
+            xxl:       24.0,
+            gmd:        8.0,
             cta_height: 28.0,
         }
     }
@@ -108,7 +114,8 @@ pub struct Radii {
 
 impl Default for Radii {
     fn default() -> Self {
-        Self { none: 0.0, xs: 2.0, sm: 4.0, md: 6.0, lg: 8.0, full: 9999.0 }
+        // P2.2: aligned to TokenSnapshot DEFAULT (radius_lg corrected 8.0 → 12.0).
+        Self { none: 0.0, xs: 2.0, sm: 4.0, md: 6.0, lg: 12.0, full: 9999.0 }
     }
 }
 

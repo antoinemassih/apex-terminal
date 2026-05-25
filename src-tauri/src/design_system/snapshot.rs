@@ -169,12 +169,12 @@ pub struct DesignSnapshot {
 /// the first `begin_frame` call).  Values match the `Default` impl of each
 /// sub-struct so there is no visible mismatch on the first frame.
 pub const DEFAULT_SNAPSHOT: DesignSnapshot = DesignSnapshot {
-    // Typography
-    size_xs: 10.0, size_sm: 11.0, size_md: 13.0, size_lg: 15.0, size_xl: 18.0,
-    mono_sm: 11.0, mono_md: 13.0, mono_lg: 15.0,
-    // Spacing — gap_xs_mid matches DEFAULT_TOKEN_SNAPSHOT in style.rs (6.0)
-    gap_xs: 2.0, gap_xs_mid: 6.0, gap_sm: 4.0, gap_md: 8.0,
-    gap_lg: 12.0, gap_xl: 16.0, gap_xxl: 24.0,
+    // Typography — P2.2 aligned to DEFAULT_TOKEN_SNAPSHOT in ui_kit/style.rs
+    size_xs:  9.0, size_sm: 11.0, size_md: 13.0, size_lg: 16.0, size_xl: 22.0,
+    mono_sm: 11.0, mono_md: 13.0, mono_lg: 16.0,
+    // Spacing — P2.2 aligned to DEFAULT_TOKEN_SNAPSHOT in ui_kit/style.rs
+    gap_xs: 4.0, gap_xs_mid: 6.0, gap_sm: 8.0, gap_md: 12.0,
+    gap_lg: 16.0, gap_xl: 20.0, gap_xxl: 24.0,
     gmd: 8.0, cta_height: 28.0,
     // Radii — match DEFAULT_TOKEN_SNAPSHOT in style.rs
     radius_none: 0.0, radius_xs: 2.0, radius_sm: 4.0, radius_md: 6.0, radius_lg: 12.0,
@@ -324,8 +324,8 @@ mod tests {
         assert_eq!(snap.size_md, 13.0);
         assert_eq!(snap.mono_md, 13.0);
 
-        // Spacing
-        assert_eq!(snap.gap_md, 8.0);
+        // Spacing — P2.2 aligned: gap_md now 12.0 (matches TokenSnapshot)
+        assert_eq!(snap.gap_md, 12.0);
         assert_eq!(snap.gmd, 8.0);
 
         // Radii

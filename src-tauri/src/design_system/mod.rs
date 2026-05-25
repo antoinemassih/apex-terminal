@@ -35,9 +35,11 @@
 //!     Reconciling the two naming schemes (semantic vs tier) is a Phase 5
 //!     task tied to the `ComponentTheme` trait reshape — it touches
 //!     1400+ call sites.
-//!   - [`ThemeRegistry`] and [`ActiveTheme`] exist as a parallel design
-//!     waiting for that Phase 5 reshape; the runtime does NOT currently
-//!     read through them.
+//!   - [`ThemeRegistry`] is now exposed as a process-wide singleton via
+//!     [`live_registry()`] (P1.8). It owns the canonical {styles, schemes,
+//!     active pair} state. The chart-app's per-pane `theme_idx` path into
+//!     `gpu::LIVE_THEMES` remains the hot path for frame colour resolution.
+//!   - [`ActiveTheme`] is the snapshot type for resolving the active pair.
 //!
 //! ## Sub-modules
 //!
@@ -82,6 +84,6 @@ pub use builtin::{builtin_color_schemes, builtin_registry, builtin_style_systems
 pub use color_scheme::{ColorScheme, Meta, Rgba};
 pub use export::{export_builtin_themes, scan_theme_dir};
 pub use hot_reload::{active_override, start_theme_watcher, themes_dir};
-pub use registry::{ActiveTheme, ThemeRegistry};
+pub use registry::{ActiveTheme, ThemeRegistry, live_registry};
 pub use snapshot::{DesignSnapshot, DEFAULT_SNAPSHOT};
 pub use style_system::StyleSystem;
