@@ -1491,15 +1491,6 @@ fn aperture_stub_theme_full(
         text_muted:         Color32::from_rgb(180, 180, 195),
         hud_bg:             Color32::from_rgba_premultiplied(12, 12, 18, 230),
         hud_border:         Color32::from_rgb(50, 52, 64),
-        element_hover:      crate::chart_renderer::gpu::alpha(text, 12),
-        element_active:     crate::chart_renderer::gpu::alpha(text, 24),
-        element_selected:   crate::chart_renderer::gpu::alpha(accent, 24),
-        element_disabled:   crate::chart_renderer::gpu::alpha(dim, 80),
-        ghost_hover:        crate::chart_renderer::gpu::alpha(text, 6),
-        ghost_active:       crate::chart_renderer::gpu::alpha(text, 12),
-        icon:               text,
-        icon_muted:         crate::chart_renderer::gpu::alpha(text, 178),
-        icon_disabled:      crate::chart_renderer::gpu::alpha(text, 102),
-        icon_accent:        accent,
+        // P12: overlay fields removed — see theme_impl.rs for derivation.
     }
 }

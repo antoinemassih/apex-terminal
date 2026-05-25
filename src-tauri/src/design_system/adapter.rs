@@ -65,16 +65,9 @@ pub fn color_scheme_to_theme(cs: &ColorScheme) -> Theme {
     // ── Derived fields (same formulas as gpu.rs THEMES const) ────────────────
     let toolbar_border   = hairline_border(bg);
     let border_variant   = hairline_border_variant(bg);
-    let element_hover    = element_overlay(bg, 12);
-    let element_active   = element_overlay(bg, 24);
-    let element_selected = alpha(accent, 24);
-    let element_disabled = alpha(dim, 80);
-    let ghost_hover      = element_overlay(bg, 6);
-    let ghost_active     = element_overlay(bg, 12);
-    let icon             = text;
-    let icon_muted       = alpha(text, 178);
-    let icon_disabled    = alpha(text, 102);
-    let icon_accent      = accent;
+    // P12: 10 Zed-style overlay derivations (element_*, ghost_*, icon_*) were
+    // formerly stored on Theme. They now live in theme_impl.rs at the
+    // ComponentTheme trait boundary so palette overrides flow through.
     // cmd_palette: read from the ColorScheme (palette axis owns it now).
     // Convert the 11 Rgba slots to fully-opaque Color32.
     let cmd_palette: [egui::Color32; 11] = [
@@ -130,16 +123,6 @@ pub fn color_scheme_to_theme(cs: &ColorScheme) -> Theme {
         text_muted,
         hud_bg,
         hud_border,
-        element_hover,
-        element_active,
-        element_selected,
-        element_disabled,
-        ghost_hover,
-        ghost_active,
-        icon,
-        icon_muted,
-        icon_disabled,
-        icon_accent,
     }
 }
 

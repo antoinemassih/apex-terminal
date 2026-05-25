@@ -26,17 +26,27 @@ impl ComponentTheme for Theme {
     fn warn(&self) -> Color32 { self.warn }
     fn bg(&self) -> Color32 { self.bg }
     fn surface(&self) -> Color32 { self.toolbar_bg }
-    fn element_hover(&self) -> Color32 { self.element_hover }
-    fn element_active(&self) -> Color32 { self.element_active }
-    fn element_selected(&self) -> Color32 { self.element_selected }
-    fn element_disabled(&self) -> Color32 { self.element_disabled }
-    fn ghost_hover(&self) -> Color32 { self.ghost_hover }
-    fn ghost_active(&self) -> Color32 { self.ghost_active }
-    fn icon(&self) -> Color32 { self.icon }
-    fn icon_muted(&self) -> Color32 { self.icon_muted }
-    fn icon_disabled(&self) -> Color32 { self.icon_disabled }
-    fn icon_accent(&self) -> Color32 { self.icon_accent }
-    fn shadow_color(&self) -> Color32 { self.shadow_color }
+    // ── Derived overlays (Zed-style) ────────────────────────────────────
+    // Source: gpu.rs Theme struct doc; previously stored as 10 redundant
+    // fields on Theme + 15 initializer copies. Now derived from text/accent
+    // at the trait boundary so palettes only need to declare the base 6
+    // colors. Identical resolved values vs. the prior table.
+    fn element_hover(&self)    -> Color32 { color_alpha(self.text,   12) }
+    fn element_active(&self)   -> Color32 { color_alpha(self.text,   24) }
+    fn element_selected(&self) -> Color32 { color_alpha(self.accent, 24) }
+    fn element_disabled(&self) -> Color32 { color_alpha(self.dim,    80) }
+    fn ghost_hover(&self)      -> Color32 { color_alpha(self.text,    6) }
+    fn ghost_active(&self)     -> Color32 { color_alpha(self.text,   12) }
+    fn icon(&self)             -> Color32 { self.text }
+    fn icon_muted(&self)       -> Color32 { color_alpha(self.text,  178) }
+    fn icon_disabled(&self)    -> Color32 { color_alpha(self.text,  102) }
+    fn icon_accent(&self)      -> Color32 { self.accent }
+    fn shadow_color(&self)     -> Color32 { self.shadow_color }
+}
+
+#[inline]
+fn color_alpha(c: Color32, a: u8) -> Color32 {
+    Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), a)
 }
 
 /// Returns an owned `Theme` for the current frame. Resolution order:
@@ -76,16 +86,16 @@ pub fn theme_to_portable(t: &Theme) -> PortableTheme {
         warn:             t.warn,
         bg:               t.bg,
         surface:          t.toolbar_bg,
-        element_hover:    t.element_hover,
-        element_active:   t.element_active,
-        element_selected: t.element_selected,
-        element_disabled: t.element_disabled,
-        ghost_hover:      t.ghost_hover,
-        ghost_active:     t.ghost_active,
-        icon:             t.icon,
-        icon_muted:       t.icon_muted,
-        icon_disabled:    t.icon_disabled,
-        icon_accent:      t.icon_accent,
+        element_hover:    color_alpha(t.text,   12),
+        element_active:   color_alpha(t.text,   24),
+        element_selected: color_alpha(t.accent, 24),
+        element_disabled: color_alpha(t.dim,    80),
+        ghost_hover:      color_alpha(t.text,    6),
+        ghost_active:     color_alpha(t.text,   12),
+        icon:             t.text,
+        icon_muted:       color_alpha(t.text,  178),
+        icon_disabled:    color_alpha(t.text,  102),
+        icon_accent:      t.accent,
         shadow_color:     t.shadow_color,
     }
 }
