@@ -294,17 +294,16 @@ fn draw_step_broker(
     // Two side-by-side broker cards
     let card_w = (WIZARD_W - st::gap_lg() * 2.0 - st::gap_md()) * 0.5;
     ui.horizontal(|ui| {
-        // Interactive Brokers card
+        // Interactive Brokers card — was hand-rolled `egui::Frame::NONE.fill.stroke.corner_radius.inner_margin`
+        // (audit-flagged welcome wizard broker card). Migrated to OutlinedBox
+        // which carries all those token references behind one builder.
         ui.allocate_ui(Vec2::new(card_w, 120.0), |ui| {
-            let frame = egui::Frame::NONE
+            crate::ui_kit::widgets::OutlinedBox::new()
                 .fill(theme.toolbar_bg)
-                .stroke(egui::Stroke::new(
-                    st::stroke_std(),
-                    st::color_alpha(theme.toolbar_border, 120),
-                ))
-                .corner_radius(egui::CornerRadius::same(st::radius_sm() as u8))
-                .inner_margin(egui::Margin::same(st::gap_md() as i8));
-            frame.show(ui, |ui| {
+                .border(st::color_alpha(theme.toolbar_border, 120))
+                .radius_sm()
+                .padding(st::gap_md())
+                .show(ui, theme, |ui| {
                 ui.set_width(card_w - st::gap_md() * 2.0);
                 ui.label(
                     RichText::new("Interactive Brokers")
@@ -334,17 +333,15 @@ fn draw_step_broker(
 
         ui.add_space(st::gap_md());
 
-        // "Skip for now" card
+        // "Skip for now" card — same OutlinedBox migration as IBKR card above,
+        // with a softer border alpha (80 vs 120) to de-emphasise the skip path.
         ui.allocate_ui(Vec2::new(card_w, 120.0), |ui| {
-            let frame = egui::Frame::NONE
+            crate::ui_kit::widgets::OutlinedBox::new()
                 .fill(theme.toolbar_bg)
-                .stroke(egui::Stroke::new(
-                    st::stroke_std(),
-                    st::color_alpha(theme.toolbar_border, 80),
-                ))
-                .corner_radius(egui::CornerRadius::same(st::radius_sm() as u8))
-                .inner_margin(egui::Margin::same(st::gap_md() as i8));
-            frame.show(ui, |ui| {
+                .border(st::color_alpha(theme.toolbar_border, 80))
+                .radius_sm()
+                .padding(st::gap_md())
+                .show(ui, theme, |ui| {
                 ui.set_width(card_w - st::gap_md() * 2.0);
                 ui.label(
                     RichText::new("Skip for now")
