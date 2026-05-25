@@ -113,3 +113,20 @@ pub struct State {
     pub disabled: bool,
     pub focused: bool,
 }
+
+/// Per-style-preset button visual treatment. Selects which of 5 styling
+/// strategies the legacy `simple_btn()` path applies.
+///
+/// Owned by ui_kit (was in chart_renderer::ui::style; moved in P5b extraction
+/// Step 1 — the audit's HARD blocker). The chart-app's StyleSettings still
+/// has a `button_treatment: ButtonTreatment` field but the enum definition
+/// is now portable.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum ButtonTreatment {
+    #[default]
+    SoftPill,
+    OutlineAccent,
+    UnderlineActive,
+    RaisedActive,
+    BlackFillActive,
+}

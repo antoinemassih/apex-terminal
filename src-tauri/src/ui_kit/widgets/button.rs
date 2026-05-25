@@ -986,9 +986,10 @@ fn paint_secondary_with_treatment(
     use crate::ui_kit::widgets::motion as cmotion;
     use crate::ui_kit::tokens::{
         alpha_faint, alpha_ghost, alpha_muted, alpha_soft, alpha_strong,
-        btn_small_height, color_alpha, current, font_sm, r_md_cr, r_sm_cr, r_xs,
-        stroke_bold, stroke_std, stroke_thin, ButtonTreatment,
+        btn_small_height, color_alpha, font_sm, r_md_cr, r_sm_cr, r_xs,
+        stroke_bold, stroke_std, stroke_thin,
     };
+    use crate::ui_kit::widgets::tokens::ButtonTreatment;
 
     // Pick the dominant color: explicit fg/fill overrides win, then tint, then theme.text().
     let color = btn.fg_override
@@ -996,8 +997,13 @@ fn paint_secondary_with_treatment(
         .or_else(|| btn.resolve_tint(_theme))
         .unwrap_or_else(|| _theme.text());
 
-    let s = current();
-    let (fill, fg, stroke_w, stroke_col, cr) = match s.button_treatment {
+    // P5b: button_treatment now lives on TokenSnapshot — read once and cache.
+    // r_md / r_xs come from frame_tokens() too (no more current() reach-in).
+    let snap = crate::ui_kit::style::frame_tokens();
+    let treatment = snap.button_treatment;
+    let r_md_u8 = snap.radius_md as u8;
+    let r_xs_u8 = snap.radius_xs as u8;
+    let (fill, fg, stroke_w, stroke_col, cr) = match treatment {
         ButtonTreatment::SoftPill => (
             color_alpha(color, alpha_faint()),
             color,
@@ -1038,16 +1044,16 @@ fn paint_secondary_with_treatment(
     let hover_id = resp.id.with("ui_kit_simple_btn_hover");
     let hover_t = cmotion::ease_bool(ui.ctx(), hover_id, resp.hovered(), cmotion::FAST);
     if hover_t > 0.001 {
-        match s.button_treatment {
+        match treatment {
             ButtonTreatment::OutlineAccent => {
                 ui.painter().rect_filled(
                     resp.rect,
-                    current().r_md,
+                    egui::CornerRadius::same(r_md_u8),
                     cmotion::fade_in(color_alpha(color, alpha_soft()), hover_t),
                 );
                 ui.painter().rect_stroke(
                     resp.rect,
-                    current().r_md,
+                    egui::CornerRadius::same(r_md_u8),
                     Stroke::new(stroke_bold(), cmotion::fade_in(color, hover_t)),
                     StrokeKind::Inside,
                 );
@@ -1057,14 +1063,14 @@ fn paint_secondary_with_treatment(
             | ButtonTreatment::BlackFillActive => {
                 ui.painter().rect_filled(
                     resp.rect,
-                    current().r_xs,
+                    egui::CornerRadius::same(r_xs_u8),
                     cmotion::fade_in(color_alpha(color, alpha_ghost()), hover_t),
                 );
             }
             _ => {}
         }
     }
-    if matches!(s.button_treatment, ButtonTreatment::UnderlineActive) {
+    if matches!(treatment, ButtonTreatment::UnderlineActive) {
         let r = resp.rect;
         ui.painter().line_segment(
             [Pos2::new(r.left(), r.bottom() + 0.5), Pos2::new(r.right(), r.bottom() + 0.5)],

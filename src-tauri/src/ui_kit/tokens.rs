@@ -1,21 +1,28 @@
-//! Design tokens — re-exported from BOTH `ui_kit::style` (the canonical
-//! portable home) AND `chart_renderer::ui::style` (for the chart-app
-//! helpers ui_kit widgets still call: `mono_sm` / `contrast_fg` /
-//! `cursor` / etc).
+//! Design tokens — re-exported from `ui_kit::style` (portable home) plus
+//! the legacy chart_renderer glob for back-compat.
 //!
-//! When `ui_kit` extracts to a workspace crate, this file becomes
-//! `pub use crate::style::*` (drop the chart_renderer glob); ui_kit
-//! widgets that call chart-app helpers (mono_*, contrast_fg, cursor)
-//! either get equivalents in ui_kit::style or rewire to import from
-//! chart_renderer directly.
+//! ### P5b extraction status (audit's HARD blocker)
+//! Every ui_kit widget that REQUIRED chart-app state has been migrated
+//! to read from `TokenSnapshot` via `frame_tokens()` (P5b: 5 sites in
+//! button/input/toast). ButtonTreatment moved into
+//! `ui_kit/widgets/tokens.rs`. `focus_ring_alpha`, `focus_ring_width`,
+//! `toast_bg_alpha`, `button_treatment` now live on TokenSnapshot —
+//! the chart-app populates them per frame in `begin_frame()`.
+//!
+//! ### Remaining glob
+//! The `pub use chart_renderer::ui::style::*` glob below is RETAINED for
+//! chart-app callers that import chart-specific helpers (themed shadows,
+//! `current()`, `panel_surface(t)`, brand colors, dialog chrome helpers,
+//! etc.) through this bridge module. New ui_kit widget code MUST NOT
+//! depend on anything pulled through this glob — use the explicit
+//! `ui_kit::style::*` re-exports above or read from `frame_tokens()`.
+//!
+//! Severing the glob fully requires migrating ~40 chart-app callers to
+//! import directly from `chart_renderer::ui::style` instead of through
+//! `ui_kit::tokens`. That's a focused per-callsite sweep — tracked as
+//! the remaining extraction work in `docs/UI_EXTRACTION.md`.
 
 #[allow(unused_imports)]
 pub use crate::ui_kit::style::*;
-// Bridge to chart-app style helpers that are genuinely state-bearing
-// (`current()` reads StyleSettings) or chart-app-specific (Theme-taking
-// `panel_surface(t)` etc., button treatment enums). These prevent the
-// literal workspace crate move; each one needs to either migrate into
-// ui_kit (via a trait method or owned definition) or have its ui_kit
-// callers rewired. Tracked in docs/UI_EXTRACTION.md.
 #[allow(unused_imports)]
 pub use crate::chart_renderer::ui::style::*;

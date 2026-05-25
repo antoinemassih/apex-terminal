@@ -78,6 +78,16 @@ pub struct TokenSnapshot {
     pub shadow_offset: f32,
     pub shadow_alpha:  u8,
     pub shadow_spread: f32,
+
+    // ── P5b extraction fields (style-preset knobs read by ui_kit widgets) ──
+    // These previously required ui_kit widgets to call
+    // `chart_renderer::ui::style::current()` (the audit's HARD blocker).
+    // Now the chart-app's begin_frame() populates them into the snapshot
+    // and widgets read via `frame_tokens()` — fully portable.
+    pub focus_ring_alpha: u8,    // input focus ring alpha (0..=255)
+    pub focus_ring_width: f32,   // input focus ring stroke width (px)
+    pub toast_bg_alpha:   u8,    // toast bg fill alpha (glassmorphic toast)
+    pub button_treatment: super::widgets::tokens::ButtonTreatment, // legacy simple_btn variant
 }
 
 /// Compile-time defaults — match every token fn's non-design-mode constant
@@ -100,6 +110,12 @@ pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
     alpha_strong: 80, alpha_active: 100, alpha_heavy: 120, alpha_solid: 200,
     // Shadows.
     shadow_offset: 2.0, shadow_alpha: 60, shadow_spread: 4.0,
+    // Style-preset knobs (P5b): defaults match Aperture (the default preset).
+    // The chart-app overrides each frame via set_frame_tokens().
+    focus_ring_alpha: 160,
+    focus_ring_width: 1.5,
+    toast_bg_alpha:   235,
+    button_treatment: crate::ui_kit::widgets::tokens::ButtonTreatment::SoftPill,
 };
 
 thread_local! {

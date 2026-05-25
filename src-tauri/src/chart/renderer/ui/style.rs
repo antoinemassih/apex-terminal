@@ -161,6 +161,13 @@ pub fn begin_frame() {
         shadow_offset: crate::dt_f32!(shadow.offset, 2.0),
         shadow_alpha:  crate::dt_u8!(shadow.alpha,   60),
         shadow_spread: crate::dt_f32!(shadow.spread,  4.0),
+        // P5b — style-preset knobs pushed into the snapshot so ui_kit
+        // widgets (input focus ring, toast glassmorphic bg, simple_btn
+        // treatment) read them via frame_tokens() instead of current().
+        focus_ring_alpha: current().focus_ring_alpha,
+        focus_ring_width: current().focus_ring_width,
+        toast_bg_alpha:   current().toast_bg_alpha,
+        button_treatment: current().button_treatment,
     };
     // Push to the canonical ui_kit thread_local. ui_kit's
     // `frame_tokens()` reads this back for `radius_*` / `stroke_*` /
@@ -1514,14 +1521,11 @@ pub fn split_divider(ui: &mut egui::Ui, _id_salt: &str, dim: Color32) -> f32 {
 // These were introduced alongside the new widgets/* design-system primitives.
 // They centralize per-style overrides; for now they return reasonable defaults.
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum ButtonTreatment {
-    SoftPill,
-    OutlineAccent,
-    UnderlineActive,
-    RaisedActive,
-    BlackFillActive,
-}
+// P5b extraction Step 1: `ButtonTreatment` enum moved into ui_kit
+// (ui_kit/widgets/tokens.rs). Re-exported here so chart-renderer call
+// sites (StyleSettings.button_treatment, style preset constructors)
+// keep working without import changes.
+pub use crate::ui_kit::widgets::tokens::ButtonTreatment;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct StyleSettings {

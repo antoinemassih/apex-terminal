@@ -118,8 +118,8 @@ impl<'a> Toast<'a> {
         let slide_offset = (1.0 - appear_t) * 12.0; // px slide from right
 
         // toast_bg_alpha controls how opaque the toast background is (semi-transparent = glassmorphic).
-        let st_toast = crate::ui_kit::tokens::current();
-        let toast_fill = color_alpha(bg, st_toast.toast_bg_alpha);
+        // P5b: read toast bg alpha from TokenSnapshot instead of chart-only current().
+        let toast_fill = color_alpha(bg, crate::ui_kit::style::frame_tokens().toast_bg_alpha);
         let frame = egui::Frame::NONE
             .fill(toast_fill)
             .stroke(Stroke::new(stroke_thin(), color_alpha(border, alpha_strong())))

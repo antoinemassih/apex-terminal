@@ -450,13 +450,15 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
         // the input frame chrome, not over the text edit content.
         if focused {
             use egui::{CornerRadius, Stroke, StrokeKind};
-            let st = st::current();
-            let ring_color = st::color_alpha(theme.accent(), st.focus_ring_alpha);
+            // P5b: read focus-ring knobs from TokenSnapshot (chart-app
+            // populates them per frame) instead of the chart-only current().
+            let snap = crate::ui_kit::style::frame_tokens();
+            let ring_color = st::color_alpha(theme.accent(), snap.focus_ring_alpha);
             let ring_radius = CornerRadius::same((st::radius_sm() as u8).saturating_add(1));
             ui.painter().rect_stroke(
                 rect.expand(2.0),
                 ring_radius,
-                Stroke::new(st.focus_ring_width, ring_color),
+                Stroke::new(snap.focus_ring_width, ring_color),
                 StrokeKind::Outside,
             );
         }
