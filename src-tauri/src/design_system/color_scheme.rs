@@ -125,8 +125,6 @@ pub struct ColorScheme {
     pub bg: Rgba,
     /// Elevated surface (panels, cards, toolbars).
     pub surface: Rgba,
-    /// Further-elevated surface (modals, popovers, paper-like elements).
-    pub paper: Rgba,
 
     // ── Text ───────────────────────────────────────────────────────────────
     /// Primary text / foreground.
@@ -152,11 +150,6 @@ pub struct ColorScheme {
     /// Shadow tint colour (used by elevation helpers). Typically near-black
     /// for dark themes, near-neutral for light themes.
     pub shadow: Rgba,
-
-    // ── Extended palette ───────────────────────────────────────────────────
-    /// Additional accent tones (secondary accent, tertiary accent, …).
-    /// May be empty.
-    pub accent_alts: Vec<Rgba>,
 
     // ── Hand-authored extras (per-theme, not derivable) ────────────────────
     // These fields carry values that differ per theme and cannot be computed
@@ -203,7 +196,6 @@ impl ColorScheme {
             meta: Meta { id: String::new(), name: String::new(), is_dark: true },
             bg:      rgba::rgb(18,  18,  18),
             surface: rgba::rgb(28,  28,  28),
-            paper:   rgba::rgb(38,  38,  38),
             text:    rgba::rgb(220, 220, 220),
             dim:     rgba::rgb(120, 120, 120),
             border:  rgba::rgb(55,  55,  55),
@@ -212,7 +204,6 @@ impl ColorScheme {
             bear:    rgba::rgb(248, 113, 113),
             warn:    rgba::rgb(251, 191,  36),
             shadow:  rgba::rgba(0, 0, 0, 180),
-            accent_alts: Vec::new(),
             // extras: sensible generic defaults
             notification_red: rgba::rgb(231,  76,  60),
             gold:             rgba::rgb(255, 193,  37),
@@ -238,7 +229,6 @@ pub fn builtin_dark() -> ColorScheme {
         meta: Meta::new("apex-dark", "Apex Dark", true),
         bg:      rgba::rgb(18,  18,  18),
         surface: rgba::rgb(28,  28,  28),
-        paper:   rgba::rgb(38,  38,  38),
         text:    rgba::rgb(220, 220, 220),
         dim:     rgba::rgb(120, 120, 120),
         border:  rgba::rgb(55,  55,  55),
@@ -247,7 +237,6 @@ pub fn builtin_dark() -> ColorScheme {
         bear:    rgba::rgb(248, 113, 113),
         warn:    rgba::rgb(251, 191,  36),
         shadow:  rgba::rgba(0, 0, 0, 180),
-        accent_alts: vec![rgba::rgb(139, 92, 246)],
         notification_red: rgba::rgb(231,  76,  60),
         gold:             rgba::rgb(255, 193,  37),
         overlay_text:     rgba::rgb(240, 240, 240),
@@ -269,7 +258,6 @@ pub fn builtin_light() -> ColorScheme {
         meta: Meta::new("apex-light", "Apex Light", false),
         bg:      rgba::rgb(248, 248, 248),
         surface: rgba::rgb(255, 255, 255),
-        paper:   rgba::rgb(255, 255, 255),
         text:    rgba::rgb(20,  20,  20),
         dim:     rgba::rgb(130, 130, 130),
         border:  rgba::rgb(200, 200, 200),
@@ -278,7 +266,6 @@ pub fn builtin_light() -> ColorScheme {
         bear:    rgba::rgb(220,  38,  38),
         warn:    rgba::rgb(202, 138,   4),
         shadow:  rgba::rgba(0, 0, 0, 80),
-        accent_alts: vec![],
         notification_red: rgba::rgb(220,  38,  38),
         gold:             rgba::rgb(202, 138,   4),
         overlay_text:     rgba::rgb(20,  20,  20),

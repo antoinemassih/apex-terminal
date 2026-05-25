@@ -63,18 +63,6 @@ const fn clamp_u8(v: i16) -> u8 {
     if v < 0 { 0 } else if v > 255 { 255 } else { v as u8 }
 }
 
-/// Derive a "paper" layer from a surface colour: shift luminance by +8
-/// toward white (dark) or -8 toward black (light).
-const fn paper_from_surface(surf: Rgba, is_dark: bool) -> Rgba {
-    let shift: i16 = if is_dark { 8 } else { -8 };
-    [
-        clamp_u8(surf[0] as i16 + shift),
-        clamp_u8(surf[1] as i16 + shift),
-        clamp_u8(surf[2] as i16 + shift),
-        255,
-    ]
-}
-
 /// Kebab-case id from a theme name: lowercase, spaces → hyphens, strip accents.
 fn to_id(name: &str) -> String {
     name.chars()
@@ -136,7 +124,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             ColorScheme {
                 meta: Meta { id: to_id("Midnight"), name: "Midnight".into(), is_dark: true },
                 bg, surface: surf,
-                paper: paper_from_surface(surf, true),
                 text:   rgb(220, 220, 230),
                 dim:    rgb(100, 105, 115),
                 border,
@@ -145,7 +132,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 bear:   rgb(180, 65, 58),
                 warn:   rgb(255, 191, 0),
                 shadow: c(0, 0, 0, 180),
-                accent_alts: vec![],
                 notification_red: rgb(231,  76,  60),
                 gold:             rgb(255, 193,  37),
                 overlay_text:     rgb(240, 240, 250),
@@ -168,7 +154,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             ColorScheme {
                 meta: Meta { id: to_id("Nord"), name: "Nord".into(), is_dark: true },
                 bg, surface: surf,
-                paper: paper_from_surface(surf, true),
                 text:   rgb(220, 220, 230),
                 dim:    rgb(129, 161, 193),
                 border,
@@ -177,7 +162,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 bear:   rgb(191,  97, 106),
                 warn:   rgb(235, 203, 139),
                 shadow: c(0, 0, 0, 180),
-                accent_alts: vec![],
                 notification_red: rgb(191,  97, 106),
                 gold:             rgb(235, 203, 139),
                 overlay_text:     rgb(236, 239, 244),
@@ -200,7 +184,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             ColorScheme {
                 meta: Meta { id: to_id("Monokai"), name: "Monokai".into(), is_dark: true },
                 bg, surface: surf,
-                paper: paper_from_surface(surf, true),
                 text:   rgb(220, 220, 230),
                 dim:    rgb(165, 159, 133),
                 border,
@@ -209,7 +192,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 bear:   rgb(249,  38, 114),
                 warn:   rgb(230, 219, 116),
                 shadow: c(0, 0, 0, 180),
-                accent_alts: vec![],
                 notification_red: rgb(249,  38, 114),
                 gold:             rgb(255, 193,  37),
                 overlay_text:     rgb(248, 248, 240),
@@ -232,7 +214,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             ColorScheme {
                 meta: Meta { id: to_id("Solarized"), name: "Solarized".into(), is_dark: true },
                 bg, surface: surf,
-                paper: paper_from_surface(surf, true),
                 text:   rgb(220, 220, 230),
                 dim:    rgb(131, 148, 150),
                 border,
@@ -241,7 +222,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 bear:   rgb(220,  50,  47),
                 warn:   rgb(181, 137,   0),
                 shadow: c(0, 0, 0, 180),
-                accent_alts: vec![],
                 notification_red: rgb(220,  50,  47),
                 gold:             rgb(181, 137,   0),
                 overlay_text:     rgb(253, 246, 227),
@@ -264,7 +244,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             ColorScheme {
                 meta: Meta { id: to_id("Dracula"), name: "Dracula".into(), is_dark: true },
                 bg, surface: surf,
-                paper: paper_from_surface(surf, true),
                 text:   rgb(220, 220, 230),
                 dim:    rgb(189, 147, 249),
                 border,
@@ -273,7 +252,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 bear:   rgb(255,  85,  85),
                 warn:   rgb(241, 250, 140),
                 shadow: c(0, 0, 0, 180),
-                accent_alts: vec![],
                 notification_red: rgb(255,  85,  85),
                 gold:             rgb(241, 250, 140),
                 overlay_text:     rgb(248, 248, 242),
@@ -296,7 +274,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             ColorScheme {
                 meta: Meta { id: to_id("Gruvbox"), name: "Gruvbox".into(), is_dark: true },
                 bg, surface: surf,
-                paper: paper_from_surface(surf, true),
                 text:   rgb(220, 220, 230),
                 dim:    rgb(213, 196, 161),
                 border,
@@ -305,7 +282,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 bear:   rgb(251,  73,  52),
                 warn:   rgb(250, 189,  47),
                 shadow: c(0, 0, 0, 180),
-                accent_alts: vec![],
                 notification_red: rgb(251,  73,  52),
                 gold:             rgb(250, 189,  47),
                 overlay_text:     rgb(235, 219, 178),
@@ -328,7 +304,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             ColorScheme {
                 meta: Meta { id: to_id("Catppuccin"), name: "Catppuccin".into(), is_dark: true },
                 bg, surface: surf,
-                paper: paper_from_surface(surf, true),
                 text:   rgb(220, 220, 230),
                 dim:    rgb(180, 190, 254),
                 border,
@@ -337,7 +312,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 bear:   rgb(243, 139, 168),
                 warn:   rgb(249, 226, 175),
                 shadow: c(0, 0, 0, 180),
-                accent_alts: vec![],
                 notification_red: rgb(243, 139, 168),
                 gold:             rgb(249, 226, 175),
                 overlay_text:     rgb(205, 214, 244),
@@ -360,7 +334,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             ColorScheme {
                 meta: Meta { id: to_id("Tokyo Night"), name: "Tokyo Night".into(), is_dark: true },
                 bg, surface: surf,
-                paper: paper_from_surface(surf, true),
                 text:   rgb(220, 220, 230),
                 dim:    rgb(122, 162, 247),
                 border,
@@ -369,7 +342,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 bear:   rgb(247, 118, 142),
                 warn:   rgb(224, 175, 104),
                 shadow: c(0, 0, 0, 180),
-                accent_alts: vec![],
                 notification_red: rgb(247, 118, 142),
                 gold:             rgb(224, 175, 104),
                 overlay_text:     rgb(192, 202, 245),
@@ -392,7 +364,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             ColorScheme {
                 meta: Meta { id: to_id("Kanagawa"), name: "Kanagawa".into(), is_dark: true },
                 bg, surface: surf,
-                paper: paper_from_surface(surf, true),
                 text:   rgb(220, 220, 230),
                 dim:    rgb( 84,  88, 104),
                 border,
@@ -401,7 +372,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 bear:   rgb(195,  64,  67),
                 warn:   rgb(228, 175,  69),
                 shadow: c(0, 0, 0, 180),
-                accent_alts: vec![],
                 notification_red: rgb(195,  64,  67),
                 gold:             rgb(228, 175,  69),
                 overlay_text:     rgb(220, 215, 186),
@@ -424,7 +394,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             ColorScheme {
                 meta: Meta { id: to_id("Everforest"), name: "Everforest".into(), is_dark: true },
                 bg, surface: surf,
-                paper: paper_from_surface(surf, true),
                 text:   rgb(220, 220, 230),
                 dim:    rgb(157, 169, 140),
                 border,
@@ -433,7 +402,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 bear:   rgb(230, 126, 128),
                 warn:   rgb(223, 199, 118),
                 shadow: c(0, 0, 0, 180),
-                accent_alts: vec![],
                 notification_red: rgb(230, 126, 128),
                 gold:             rgb(223, 199, 118),
                 overlay_text:     rgb(211, 198, 170),
@@ -456,7 +424,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             ColorScheme {
                 meta: Meta { id: to_id("Vesper"), name: "Vesper".into(), is_dark: true },
                 bg, surface: surf,
-                paper: paper_from_surface(surf, true),
                 text:   rgb(220, 220, 230),
                 dim:    rgb(120, 120, 120),
                 border,
@@ -465,7 +432,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 bear:   rgb(238, 130,  98),
                 warn:   rgb(255, 199, 119),
                 shadow: c(0, 0, 0, 180),
-                accent_alts: vec![],
                 notification_red: rgb(238, 130,  98),
                 gold:             rgb(255, 193,  37),
                 overlay_text:     rgb(230, 230, 230),
@@ -489,7 +455,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 // "Rosé Pine" — strip non-ASCII 'é' → "rose-pine"
                 meta: Meta { id: "rose-pine".into(), name: "Rosé Pine".into(), is_dark: true },
                 bg, surface: surf,
-                paper: paper_from_surface(surf, true),
                 text:   rgb(220, 220, 230),
                 dim:    rgb(110, 106, 134),
                 border,
@@ -498,7 +463,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 bear:   rgb(235, 111, 146),
                 warn:   rgb(246, 193, 119),
                 shadow: c(0, 0, 0, 180),
-                accent_alts: vec![],
                 notification_red: rgb(235, 111, 146),
                 gold:             rgb(246, 193, 119),
                 overlay_text:     rgb(224, 222, 244),
@@ -521,7 +485,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             ColorScheme {
                 meta: Meta { id: to_id("Bauhaus"), name: "Bauhaus".into(), is_dark: false },
                 bg, surface: surf,
-                paper: paper_from_surface(surf, false),
                 text:   rgb( 22,  22,  24),
                 dim:    rgb(120, 125, 130),
                 border,
@@ -530,7 +493,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 bear:   rgb(200,  55,  45),
                 warn:   rgb(204, 120,   0),
                 shadow: c(40, 40, 40, 120),
-                accent_alts: vec![],
                 notification_red: rgb(200,  55,  45),
                 gold:             rgb(204, 153,   0),
                 overlay_text:     rgb( 20,  20,  22),
@@ -553,7 +515,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             ColorScheme {
                 meta: Meta { id: to_id("Peach"), name: "Peach".into(), is_dark: false },
                 bg, surface: surf,
-                paper: paper_from_surface(surf, false),
                 text:   rgb( 20,  20,  22),
                 dim:    rgb(115, 120, 125),
                 border,
@@ -562,7 +523,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 bear:   rgb(195,  50,  55),
                 warn:   rgb(200, 130,   0),
                 shadow: c(40, 40, 40, 120),
-                accent_alts: vec![],
                 notification_red: rgb(195,  50,  55),
                 gold:             rgb(200, 150,   0),
                 overlay_text:     rgb( 20,  20,  22),
@@ -585,7 +545,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             ColorScheme {
                 meta: Meta { id: to_id("Ivory"), name: "Ivory".into(), is_dark: false },
                 bg, surface: surf,
-                paper: paper_from_surface(surf, false),
                 text:   rgb( 18,  20,  22),
                 dim:    rgb(118, 122, 128),
                 border,
@@ -594,7 +553,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 bear:   rgb(210,  60,  50),
                 warn:   rgb(190, 140,   0),
                 shadow: c(40, 40, 40, 120),
-                accent_alts: vec![],
                 notification_red: rgb(210,  60,  50),
                 gold:             rgb(190, 150,   0),
                 overlay_text:     rgb( 18,  20,  22),
@@ -617,7 +575,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             ColorScheme {
                 meta: Meta { id: to_id("Newsprint"), name: "Newsprint".into(), is_dark: false },
                 bg, surface: surf,
-                paper: paper_from_surface(surf, false),
                 text:   rgb( 28,  28,  28),
                 dim:    rgb(120, 116, 104),
                 border,
@@ -626,7 +583,6 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 bear:   rgb(168,  52,  52),
                 warn:   rgb(168, 120,   0),
                 shadow: c(60, 50, 40, 120),
-                accent_alts: vec![],
                 notification_red: rgb(168,  52,  52),
                 gold:             rgb(168, 130,   0),
                 overlay_text:     rgb( 28,  28,  28),

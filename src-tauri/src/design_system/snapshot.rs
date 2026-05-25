@@ -150,7 +150,6 @@ pub struct DesignSnapshot {
     /// `[r, g, b, a]` of `colors.bg`
     pub bg:     [u8; 4],
     pub surface: [u8; 4],
-    pub paper:   [u8; 4],
     pub text:    [u8; 4],
     pub dim:     [u8; 4],
     pub border:  [u8; 4],
@@ -205,7 +204,6 @@ pub const DEFAULT_SNAPSHOT: DesignSnapshot = DesignSnapshot {
     // Colours — neutral dark defaults
     bg:      [18,  18,  18, 255],
     surface: [28,  28,  28, 255],
-    paper:   [38,  38,  38, 255],
     text:    [220, 220, 220, 255],
     dim:     [120, 120, 120, 255],
     border:  [55,  55,  55, 255],
@@ -293,7 +291,6 @@ pub fn snapshot(style: &StyleSystem, colors: &ColorScheme) -> DesignSnapshot {
         // Colours
         bg:      colors.bg,
         surface: colors.surface,
-        paper:   colors.paper,
         text:    colors.text,
         dim:     colors.dim,
         border:  colors.border,

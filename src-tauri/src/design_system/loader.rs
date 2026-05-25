@@ -185,7 +185,6 @@ impl ColorScheme {
 
         let bg      = read_color_or(&pal, "bg",      "palette", fallback.bg);
         let surface = read_color_or(&pal, "surface",  "palette", fallback.surface);
-        let paper   = read_color_or(&pal, "paper",    "palette", fallback.paper);
         let text    = read_color_or(&pal, "text",     "palette", fallback.text);
         let dim     = read_color_or(&pal, "dim",      "palette", fallback.dim);
         let border  = read_color_or(&pal, "border",   "palette", fallback.border);
@@ -194,24 +193,6 @@ impl ColorScheme {
         let bear    = read_color_or(&pal, "bear",     "palette", fallback.bear);
         let warn    = read_color_or(&pal, "warn",     "palette", fallback.warn);
         let shadow  = read_color_or(&pal, "shadow",   "palette", fallback.shadow);
-
-        // accent_alts: optional array of hex strings (plain or DTCG-wrapped)
-        let accent_alts = pal
-            .get("accent_alts")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|item| {
-                        // Support both plain `"#hex"` and DTCG `{ "$type": "color", "$value": "#hex" }`
-                        if let Some(s) = item.as_str() {
-                            rgba::from_hex(s)
-                        } else {
-                            read_color(item, "palette.accent_alts[]").ok()
-                        }
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
 
         // ── Hand-authored extras — fall back to builtin_dark() defaults ───────
         // Sparse / partial DTCG files (e.g. design-tool exports) may omit these
@@ -229,8 +210,7 @@ impl ColorScheme {
         let hud_border       = read_color_or(&pal, "hud_border",       "palette", fallback.hud_border);
 
         Ok(ColorScheme {
-            meta, bg, surface, paper, text, dim, border, accent, bull, bear, warn, shadow,
-            accent_alts,
+            meta, bg, surface, text, dim, border, accent, bull, bear, warn, shadow,
             notification_red, gold, overlay_text,
             rrg_leading, rrg_improving, rrg_weakening, rrg_lagging,
             pinned_row_tint, text_muted, hud_bg, hud_border,
@@ -256,7 +236,6 @@ impl ColorScheme {
 
         pal.insert("bg".into(),      color_token!(bg));
         pal.insert("surface".into(), color_token!(surface));
-        pal.insert("paper".into(),   color_token!(paper));
         pal.insert("text".into(),    color_token!(text));
         pal.insert("dim".into(),     color_token!(dim));
         pal.insert("border".into(),  color_token!(border));
@@ -277,18 +256,6 @@ impl ColorScheme {
         pal.insert("text_muted".into(),       color_token!(text_muted));
         pal.insert("hud_bg".into(),           color_token!(hud_bg));
         pal.insert("hud_border".into(),       color_token!(hud_border));
-
-        if !self.accent_alts.is_empty() {
-            let alts: Vec<Value> = self
-                .accent_alts
-                .iter()
-                .map(|c| {
-                    let hex = rgba::to_hex(*c);
-                    serde_json::json!({ "$type": "color", "$value": hex })
-                })
-                .collect();
-            pal.insert("accent_alts".into(), Value::Array(alts));
-        }
 
         let root = serde_json::json!({
             "meta": {

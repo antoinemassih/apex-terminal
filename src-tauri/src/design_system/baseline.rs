@@ -52,17 +52,6 @@ const fn hairline_border(bg: Rgba) -> Rgba {
     ]
 }
 
-/// Mirrors `builtin.rs::paper_from_surface`: shift +8 for dark, -8 for light.
-const fn paper_from_surface(surf: Rgba, is_dark: bool) -> Rgba {
-    let shift: i16 = if is_dark { 8 } else { -8 };
-    [
-        clamp_ch(surf[0] as i16 + shift),
-        clamp_ch(surf[1] as i16 + shift),
-        clamp_ch(surf[2] as i16 + shift),
-        255,
-    ]
-}
-
 // ── Public API ─────────────────────────────────────────────────────────────
 
 /// Returns the `StyleSystem` that exactly matches the Meridien style
@@ -285,16 +274,12 @@ pub fn baseline_color_scheme() -> ColorScheme {
     // sum = 120 < 384 → dark → shift +13 → (53, 53, 53)
     let border = hairline_border(bg);
 
-    // paper = surf + 8 per channel (dark theme)
-    let paper = paper_from_surface(surf, true);
-
     ColorScheme {
         meta: Meta::new("gruvbox-baseline", "Gruvbox (Baseline)", true),
 
         // ── Backgrounds ─────────────────────────────────────────────────
         bg,      // rgb(40, 40, 40)
         surface: surf,   // rgb(34, 34, 34) — toolbar_bg
-        paper,           // rgb(42, 42, 42) — derived
 
         // ── Text ────────────────────────────────────────────────────────
         text: rgb(220, 220, 230), // t.text
@@ -313,7 +298,6 @@ pub fn baseline_color_scheme() -> ColorScheme {
         // shadow_color = rgb(0,0,0); dark themes use alpha 180 per builtin.rs
         shadow: rgba(0, 0, 0, 180),
 
-        accent_alts: vec![],
 
         // ── Hand-authored extras (Gruvbox / THEMES[5] values) ───────────
         notification_red: rgb(251,  73,  52),
