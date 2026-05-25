@@ -178,27 +178,33 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
         let cur_override = watchlist.density_override;
         let btn_w: f32 = 80.0;
         let btn_h: f32 = 26.0;
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = gap_xs();
-            // Inherit button — clears the override.
-            let inherit_active = cur_override.is_none();
-            if Button::toggle("Inherit", inherit_active)
-                .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
-                .min_size(egui::vec2(btn_w, btn_h))
-                .show(ui, t).clicked() {
-                watchlist.density_override = None;
-                crate::chart_renderer::ui::style::set_density_override(None);
-            }
-            for &mode in DensityMode::all() {
-                let active = cur_override == Some(mode);
-                if Button::toggle(mode.label(), active)
+        // push_id scopes every Button::toggle Id inside this picker so the
+        // "Inherit" / "Standard" labels can't collide with the same labels in
+        // the BORDER / CORNER / SPACING / MOTION pickers (egui hashes the
+        // label as part of the Id; without a scope they all hash equally and
+        // egui panics with "Widget N changed layer_id during the frame").
+        ui.push_id("density_picker", |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = gap_xs();
+                let inherit_active = cur_override.is_none();
+                if Button::toggle("Inherit", inherit_active)
                     .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                     .min_size(egui::vec2(btn_w, btn_h))
                     .show(ui, t).clicked() {
-                    watchlist.density_override = Some(mode);
-                    crate::chart_renderer::ui::style::set_density_override(Some(mode));
+                    watchlist.density_override = None;
+                    crate::chart_renderer::ui::style::set_density_override(None);
                 }
-            }
+                for &mode in DensityMode::all() {
+                    let active = cur_override == Some(mode);
+                    if Button::toggle(mode.label(), active)
+                        .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
+                        .min_size(egui::vec2(btn_w, btn_h))
+                        .show(ui, t).clicked() {
+                        watchlist.density_override = Some(mode);
+                        crate::chart_renderer::ui::style::set_density_override(Some(mode));
+                    }
+                }
+            });
         });
     });
 
@@ -210,26 +216,28 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
         let cur = watchlist.border_weight_override;
         let btn_w: f32 = 80.0;
         let btn_h: f32 = 26.0;
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = gap_xs();
-            let inherit_active = cur.is_none();
-            if Button::toggle("Inherit", inherit_active)
-                .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
-                .min_size(egui::vec2(btn_w, btn_h))
-                .show(ui, t).clicked() {
-                watchlist.border_weight_override = None;
-                crate::ui_kit::style::set_border_weight_override(None);
-            }
-            for &mode in BorderWeight::all() {
-                let active = cur == Some(mode);
-                if Button::toggle(mode.label(), active)
+        ui.push_id("border_weight_picker", |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = gap_xs();
+                let inherit_active = cur.is_none();
+                if Button::toggle("Inherit", inherit_active)
                     .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                     .min_size(egui::vec2(btn_w, btn_h))
                     .show(ui, t).clicked() {
-                    watchlist.border_weight_override = Some(mode);
-                    crate::ui_kit::style::set_border_weight_override(Some(mode));
+                    watchlist.border_weight_override = None;
+                    crate::ui_kit::style::set_border_weight_override(None);
                 }
-            }
+                for &mode in BorderWeight::all() {
+                    let active = cur == Some(mode);
+                    if Button::toggle(mode.label(), active)
+                        .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
+                        .min_size(egui::vec2(btn_w, btn_h))
+                        .show(ui, t).clicked() {
+                        watchlist.border_weight_override = Some(mode);
+                        crate::ui_kit::style::set_border_weight_override(Some(mode));
+                    }
+                }
+            });
         });
     });
 
@@ -241,26 +249,28 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
         let cur = watchlist.corner_scale_override;
         let btn_w: f32 = 72.0;
         let btn_h: f32 = 26.0;
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = gap_xs();
-            let inherit_active = cur.is_none();
-            if Button::toggle("Inherit", inherit_active)
-                .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
-                .min_size(egui::vec2(btn_w, btn_h))
-                .show(ui, t).clicked() {
-                watchlist.corner_scale_override = None;
-                crate::ui_kit::style::set_corner_scale_override(None);
-            }
-            for &mode in CornerScale::all() {
-                let active = cur == Some(mode);
-                if Button::toggle(mode.label(), active)
+        ui.push_id("corner_scale_picker", |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = gap_xs();
+                let inherit_active = cur.is_none();
+                if Button::toggle("Inherit", inherit_active)
                     .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                     .min_size(egui::vec2(btn_w, btn_h))
                     .show(ui, t).clicked() {
-                    watchlist.corner_scale_override = Some(mode);
-                    crate::ui_kit::style::set_corner_scale_override(Some(mode));
+                    watchlist.corner_scale_override = None;
+                    crate::ui_kit::style::set_corner_scale_override(None);
                 }
-            }
+                for &mode in CornerScale::all() {
+                    let active = cur == Some(mode);
+                    if Button::toggle(mode.label(), active)
+                        .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
+                        .min_size(egui::vec2(btn_w, btn_h))
+                        .show(ui, t).clicked() {
+                        watchlist.corner_scale_override = Some(mode);
+                        crate::ui_kit::style::set_corner_scale_override(Some(mode));
+                    }
+                }
+            });
         });
     });
 
@@ -272,26 +282,28 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
         let cur = watchlist.spacing_scale_override;
         let btn_w: f32 = 80.0;
         let btn_h: f32 = 26.0;
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = gap_xs();
-            let inherit_active = cur.is_none();
-            if Button::toggle("Inherit", inherit_active)
-                .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
-                .min_size(egui::vec2(btn_w, btn_h))
-                .show(ui, t).clicked() {
-                watchlist.spacing_scale_override = None;
-                crate::ui_kit::style::set_spacing_scale_override(None);
-            }
-            for &mode in SpacingScale::all() {
-                let active = cur == Some(mode);
-                if Button::toggle(mode.label(), active)
+        ui.push_id("spacing_scale_picker", |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = gap_xs();
+                let inherit_active = cur.is_none();
+                if Button::toggle("Inherit", inherit_active)
                     .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                     .min_size(egui::vec2(btn_w, btn_h))
                     .show(ui, t).clicked() {
-                    watchlist.spacing_scale_override = Some(mode);
-                    crate::ui_kit::style::set_spacing_scale_override(Some(mode));
+                    watchlist.spacing_scale_override = None;
+                    crate::ui_kit::style::set_spacing_scale_override(None);
                 }
-            }
+                for &mode in SpacingScale::all() {
+                    let active = cur == Some(mode);
+                    if Button::toggle(mode.label(), active)
+                        .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
+                        .min_size(egui::vec2(btn_w, btn_h))
+                        .show(ui, t).clicked() {
+                        watchlist.spacing_scale_override = Some(mode);
+                        crate::ui_kit::style::set_spacing_scale_override(Some(mode));
+                    }
+                }
+            });
         });
     });
 
@@ -304,26 +316,28 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
         let cur = watchlist.motion_speed_override;
         let btn_w: f32 = 72.0;
         let btn_h: f32 = 26.0;
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = gap_xs();
-            let inherit_active = cur.is_none();
-            if Button::toggle("Inherit", inherit_active)
-                .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
-                .min_size(egui::vec2(btn_w, btn_h))
-                .show(ui, t).clicked() {
-                watchlist.motion_speed_override = None;
-                crate::ui_kit::style::set_motion_speed_override(None);
-            }
-            for &mode in MotionSpeed::all() {
-                let active = cur == Some(mode);
-                if Button::toggle(mode.label(), active)
+        ui.push_id("motion_speed_picker", |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = gap_xs();
+                let inherit_active = cur.is_none();
+                if Button::toggle("Inherit", inherit_active)
                     .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                     .min_size(egui::vec2(btn_w, btn_h))
                     .show(ui, t).clicked() {
-                    watchlist.motion_speed_override = Some(mode);
-                    crate::ui_kit::style::set_motion_speed_override(Some(mode));
+                    watchlist.motion_speed_override = None;
+                    crate::ui_kit::style::set_motion_speed_override(None);
                 }
-            }
+                for &mode in MotionSpeed::all() {
+                    let active = cur == Some(mode);
+                    if Button::toggle(mode.label(), active)
+                        .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
+                        .min_size(egui::vec2(btn_w, btn_h))
+                        .show(ui, t).clicked() {
+                        watchlist.motion_speed_override = Some(mode);
+                        crate::ui_kit::style::set_motion_speed_override(Some(mode));
+                    }
+                }
+            });
         });
     });
 
