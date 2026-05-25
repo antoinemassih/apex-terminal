@@ -44,7 +44,7 @@ impl<'a> OrderRow<'a> {
     pub fn new(side: OrderSideTag, symbol: &'a str, qty: i64, price: f32, status: &'a str) -> Self {
         Self {
             side, symbol, qty, price, status,
-            age: None, selected: false, height: 22.0, show_cancel: false,
+            age: None, selected: false, height: crate::chart_renderer::ui::style::style_row_height(), show_cancel: false,
             theme: None,
             theme_bull: None, theme_bear: None, theme_dim: None, theme_fg: None,
             theme_accent: None, theme_border: None,

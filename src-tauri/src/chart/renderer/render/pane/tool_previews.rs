@@ -514,7 +514,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
             let risk = (py(chart.pending_pts[0].1) - pos.y).abs();
             let stop_side = pos.y.min(entry_y);
             painter.rect_filled(egui::Rect::from_min_max(egui::pos2(ex, stop_side), egui::pos2(chart_right, stop_side + risk)),
-                0.0, egui::Color32::from_rgba_unmultiplied(231, 76, 60, 20));
+                0.0, color_alpha(t.bear, 20));
         } else if n_pts == 2 {
             // entry + stop placed, waiting for target
             let chart_right = rect.left() + cw;
@@ -523,9 +523,9 @@ pub(super) fn render_tool_previews<Py, Bx>(
             let stop_y  = py(chart.pending_pts[1].1);
             let risk_h  = (entry_y - stop_y).abs();
             painter.rect_filled(egui::Rect::from_min_max(egui::pos2(ex, entry_y.min(stop_y)), egui::pos2(chart_right, entry_y.max(stop_y))),
-                0.0, egui::Color32::from_rgba_unmultiplied(231, 76, 60, 25));
+                0.0, color_alpha(t.bear, 25));
             painter.rect_filled(egui::Rect::from_min_max(egui::pos2(ex, entry_y.min(pos.y)), egui::pos2(chart_right, entry_y.max(pos.y))),
-                0.0, egui::Color32::from_rgba_unmultiplied(46, 204, 113, 25));
+                0.0, color_alpha(t.bull, 25));
             painter.line_segment([egui::pos2(ex, entry_y), egui::pos2(chart_right, entry_y)], egui::Stroke::new(stroke_bold(), color_alpha(rr_color, 200)));
             painter.line_segment([egui::pos2(ex, stop_y), egui::pos2(chart_right, stop_y)], egui::Stroke::new(stroke_std(), color_alpha(COLOR_LOSS_RED, 160)));
             painter.line_segment([egui::pos2(ex, pos.y), egui::pos2(chart_right, pos.y)], egui::Stroke::new(stroke_std(), color_alpha(rr_color, 160)));

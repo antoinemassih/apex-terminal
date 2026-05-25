@@ -157,7 +157,7 @@ impl<'a> WatchlistRow<'a> {
     pub fn new(symbol: &'a str, price: f32, change_pct: f32) -> Self {
         Self {
             symbol, price, change_pct,
-            spark: None, selected: false, height: 22.0,
+            spark: None, selected: false, height: crate::chart_renderer::ui::style::style_row_height(),
             theme: None,
             theme_bg: None, theme_border: None, theme_accent: None,
             theme_bull: None, theme_bear: None, theme_dim: None, theme_fg: None,
@@ -468,9 +468,13 @@ impl<'a> WatchlistRow<'a> {
                         let pw = e_galley.size().x + 6.0;
                         let pill_rect = egui::Rect::from_min_size(
                             egui::pos2(ind_x, cy - 6.0), egui::vec2(pw, 12.0));
-                        painter.rect_filled(pill_rect, 6.0, color_alpha(theme_ref.accent, alpha_heavy()));
+                        let pill_fill = color_alpha(theme_ref.accent, alpha_heavy());
+                        painter.rect_filled(pill_rect, 6.0, pill_fill);
+                        // contrast_fg picks BLACK on a light/saturated accent fill,
+                        // WHITE on a dark one — so the pill reads on every theme
+                        // (Bauhaus orange, Newsprint dark green, Tokyo Night blue).
                         painter.text(egui::pos2(ind_x + pw / 2.0, cy), egui::Align2::CENTER_CENTER,
-                            &e_text, mono_sm(), Color32::BLACK);
+                            &e_text, mono_sm(), crate::ui_kit::style::contrast_fg(theme_ref.accent));
                         zones_body.borrow_mut().earnings = Some(pill_rect);
                         ind_x += pw + 3.0;
                     }

@@ -790,7 +790,7 @@ pub struct PanelDualAction<'a> {
 
 impl<'a> PanelDualAction<'a> {
     pub fn new(left: (&'a str, Tone), right: (&'a str, Tone)) -> Self {
-        Self { left, right, height: 22.0, gap: gap_xs() }
+        Self { left, right, height: crate::chart_renderer::ui::style::style_row_height(), gap: gap_xs() }
     }
     pub fn height(mut self, h: f32) -> Self { self.height = h; self }
     pub fn gap(mut self, g: f32) -> Self { self.gap = g; self }

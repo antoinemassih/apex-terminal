@@ -86,7 +86,7 @@ impl<'a, T> Table<'a, T> {
     pub fn new(columns: &'a [Column<'a>], rows: &'a [T], state: &'a mut TableState) -> Self {
         Self {
             columns, rows, state,
-            row_height: 22.0, striping: true, sticky_first: false, select_col: false,
+            row_height: crate::chart_renderer::ui::style::style_row_height(), striping: true, sticky_first: false, select_col: false,
             theme_handle: None,
             theme_dim: None, theme_fg: None, theme_accent: None,
             theme_border: None, theme_bg: None,

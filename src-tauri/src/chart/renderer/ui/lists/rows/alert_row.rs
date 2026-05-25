@@ -52,7 +52,7 @@ impl<'a> AlertRow<'a> {
         Self {
             symbol, cmp, target,
             armed: true, triggered: false, note: None,
-            selected: false, height: 22.0,
+            selected: false, height: crate::chart_renderer::ui::style::style_row_height(),
             theme: None,
             theme_bull: None, theme_bear: None, theme_dim: None, theme_fg: None,
             theme_accent: None, theme_border: None,

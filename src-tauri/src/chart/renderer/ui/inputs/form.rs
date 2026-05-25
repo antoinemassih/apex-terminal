@@ -1066,16 +1066,20 @@ pub struct ApertureOrderTicket {
 
 impl ApertureOrderTicket {
     pub fn new() -> Self {
+        // All colour fields default to TRANSPARENT sentinels — they are
+        // overwritten by `.theme(&Theme)` on the first call before render.
+        // Previously these held baked dark-theme literals that would have
+        // broken light themes if `.theme()` were ever skipped.
         Self {
             variant:        ApertureVariant::default(),
             panel_w:        0.0,
-            text:           Color32::from_rgb(220, 215, 205),
-            dim:            Color32::from_rgb(140, 132, 120),
-            bull:           Color32::from_rgb(100, 160, 88),
-            bear:           Color32::from_rgb(200, 88, 60),
-            accent:         Color32::from_rgb(100, 130, 200),
-            toolbar_bg:     Color32::from_rgb(28, 26, 24),
-            toolbar_border: Color32::from_rgb(60, 56, 50),
+            text:           Color32::TRANSPARENT,
+            dim:            Color32::TRANSPARENT,
+            bull:           Color32::TRANSPARENT,
+            bear:           Color32::TRANSPARENT,
+            accent:         Color32::TRANSPARENT,
+            toolbar_bg:     Color32::TRANSPARENT,
+            toolbar_border: Color32::TRANSPARENT,
         }
     }
     pub fn variant(mut self, v: ApertureVariant) -> Self { self.variant = v; self }
@@ -1106,11 +1110,10 @@ impl ApertureOrderTicket {
         let last    = s.last_price;
         let spread  = s.spread;
         let _ = self.variant;
-        let _ = self.text;
         // Build a minimal theme stub so sub-widgets that accept &Theme can be
         // called without the caller threading a full Theme reference here.
         let t_stub  = aperture_stub_theme_full(
-            self.dim, self.bull, self.bear, self.accent,
+            self.text, self.dim, self.bull, self.bear, self.accent,
             self.toolbar_bg, self.toolbar_border);
 
         let mut action = ApertureAction::None;
@@ -1447,8 +1450,11 @@ impl Default for ApertureOrderTicket {
 }
 
 /// Build a Theme stub for sub-widgets (SegmentedControl, Stepper, FormRow, TradeBtn)
-/// from the color fields the Aperture ticket carries.
+/// from the color fields the Aperture ticket carries. `text` was added to the
+/// signature in the post-Phase-2 light-theme sweep so the stub respects the
+/// actual palette's text colour instead of a baked dark-theme cream.
 fn aperture_stub_theme_full(
+    text: Color32,
     dim: Color32, bull: Color32, bear: Color32, accent: Color32,
     toolbar_bg: Color32, toolbar_border: Color32,
 ) -> Theme {
@@ -1462,7 +1468,7 @@ fn aperture_stub_theme_full(
         toolbar_border,
         border_variant: crate::chart_renderer::gpu::hairline_border_variant(toolbar_bg),
         accent,
-        text:           Color32::from_rgb(220, 215, 205),
+        text:           text,
         warn:               crate::chart_renderer::ui::style::COLOR_AMBER,
         notification_red:   COLOR_LOSS_RED,
         gold:               Color32::from_rgb(255, 193, 37),
@@ -1477,15 +1483,15 @@ fn aperture_stub_theme_full(
         text_muted:         Color32::from_rgb(180, 180, 195),
         hud_bg:             Color32::from_rgba_premultiplied(12, 12, 18, 230),
         hud_border:         Color32::from_rgb(50, 52, 64),
-        element_hover:      crate::chart_renderer::gpu::alpha(Color32::from_rgb(220, 215, 205), 12),
-        element_active:     crate::chart_renderer::gpu::alpha(Color32::from_rgb(220, 215, 205), 24),
+        element_hover:      crate::chart_renderer::gpu::alpha(text, 12),
+        element_active:     crate::chart_renderer::gpu::alpha(text, 24),
         element_selected:   crate::chart_renderer::gpu::alpha(accent, 24),
         element_disabled:   crate::chart_renderer::gpu::alpha(dim, 80),
-        ghost_hover:        crate::chart_renderer::gpu::alpha(Color32::from_rgb(220, 215, 205), 6),
-        ghost_active:       crate::chart_renderer::gpu::alpha(Color32::from_rgb(220, 215, 205), 12),
-        icon:               Color32::from_rgb(220, 215, 205),
-        icon_muted:         crate::chart_renderer::gpu::alpha(Color32::from_rgb(220, 215, 205), 178),
-        icon_disabled:      crate::chart_renderer::gpu::alpha(Color32::from_rgb(220, 215, 205), 102),
+        ghost_hover:        crate::chart_renderer::gpu::alpha(text, 6),
+        ghost_active:       crate::chart_renderer::gpu::alpha(text, 12),
+        icon:               text,
+        icon_muted:         crate::chart_renderer::gpu::alpha(text, 178),
+        icon_disabled:      crate::chart_renderer::gpu::alpha(text, 102),
         icon_accent:        accent,
     }
 }
