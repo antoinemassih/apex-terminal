@@ -156,7 +156,8 @@ pub(crate) fn draw(
             // a scrim in their own hue rather than a pure-black "screen-off" wash.
             let s = t.bg;
             ui.painter().rect_filled(screen, 0.0,
-                egui::Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), 140));
+                egui::Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(),
+                    crate::chart_renderer::ui::style::alpha_scrim()));
         });
 
     let ai_mode = watchlist.cmd_palette_ai_mode;

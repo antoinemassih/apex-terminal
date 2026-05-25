@@ -717,7 +717,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             // u8 tiers — defaults from DEFAULT_TOKEN_SNAPSHOT
             faint: 10, ghost: 15, soft_u8: 20, subtle_u8: 40,
             tint: 48, muted_u8: 60, dim: 60, line: 80,
-            strong_u8: 80, active: 100, heavy_u8: 120, solid: 200,
+            strong_u8: 80, active: 100, heavy_u8: 120, scrim: 140, solid: 200,
             // f32 multipliers
             subtle:        0.08,  // hover_bg_alpha = 20/255 ≈ 0.08
             soft:          0.14,  // active_bg_alpha = 35/255 ≈ 0.14
@@ -796,7 +796,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             // u8 tiers — defaults from DEFAULT_TOKEN_SNAPSHOT
             faint: 10, ghost: 15, soft_u8: 20, subtle_u8: 40,
             tint: 48, muted_u8: 60, dim: 60, line: 80,
-            strong_u8: 80, active: 100, heavy_u8: 120, solid: 200,
+            strong_u8: 80, active: 100, heavy_u8: 120, scrim: 140, solid: 200,
             // f32 multipliers
             subtle:        0.06,  // hover_bg_alpha = 15/255 ≈ 0.06
             soft:          0.10,  // active_bg_alpha = 25/255 ≈ 0.10
@@ -875,7 +875,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             // u8 tiers — defaults from DEFAULT_TOKEN_SNAPSHOT
             faint: 10, ghost: 15, soft_u8: 20, subtle_u8: 40,
             tint: 48, muted_u8: 60, dim: 60, line: 80,
-            strong_u8: 80, active: 100, heavy_u8: 120, solid: 200,
+            strong_u8: 80, active: 100, heavy_u8: 120, scrim: 140, solid: 200,
             // f32 multipliers
             subtle:        0.07,  // hover_bg_alpha = 18/255 ≈ 0.07
             soft:          0.12,  // active_bg_alpha = 30/255 ≈ 0.12

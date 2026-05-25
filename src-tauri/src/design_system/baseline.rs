@@ -198,6 +198,7 @@ pub fn baseline_style_system() -> StyleSystem {
             strong_u8: 80,
             active:   100,
             heavy_u8: 120,
+            scrim:    140,
             solid:    200,
             // f32 multipliers
             // hover_bg_alpha=20 → 20/255 ≈ 0.0784

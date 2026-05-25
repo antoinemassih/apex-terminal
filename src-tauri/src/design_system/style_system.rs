@@ -185,6 +185,8 @@ pub struct Alphas {
     pub active:  u8,   // 100
     /// Heavy — near-opaque overlay. Backs `alpha_heavy()` = 120.
     pub heavy_u8: u8,  // 120
+    /// Scrim — modal-backdrop / cmd-palette dimming. Backs `alpha_scrim()` = 140.
+    pub scrim:   u8,   // 140
     /// Solid — high-opacity element. Backs `alpha_solid()` = 200.
     pub solid:   u8,   // 200
 
@@ -220,6 +222,7 @@ impl Default for Alphas {
             strong_u8: 80,
             active:   100,
             heavy_u8: 120,
+            scrim:    140,
             solid:    200,
             // f32 multipliers
             subtle:        0.04,

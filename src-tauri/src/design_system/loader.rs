@@ -385,6 +385,7 @@ impl StyleSystem {
             strong_u8: read_u8_or(&al_sec, "strong_u8", "alphas", d_al.strong_u8),
             active:    read_u8_or(&al_sec, "active",    "alphas", d_al.active),
             heavy_u8:  read_u8_or(&al_sec, "heavy_u8",  "alphas", d_al.heavy_u8),
+            scrim:     read_u8_or(&al_sec, "scrim",     "alphas", d_al.scrim),
             solid:     read_u8_or(&al_sec, "solid",     "alphas", d_al.solid),
             // f32 multipliers
             subtle:        read_f32_or(&al_sec, "subtle",        "alphas", d_al.subtle),

@@ -156,6 +156,7 @@ pub fn begin_frame() {
         alpha_strong:  crate::dt_u8!(alpha.strong,  80),
         alpha_active:  crate::dt_u8!(alpha.active, 100),
         alpha_heavy:   crate::dt_u8!(alpha.heavy,  120),
+        alpha_scrim:   crate::dt_u8!(alpha.scrim,  140),
         alpha_solid:   crate::dt_u8!(alpha.solid,  200),
         // Shadows.
         shadow_offset: crate::dt_f32!(shadow.offset, 2.0),

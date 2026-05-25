@@ -99,6 +99,9 @@ pub struct DesignSnapshot {
     pub alpha_active: u8,
     /// Heavy alpha. Mirrors `TokenSnapshot::alpha_heavy` = 120.
     pub alpha_heavy_u8: u8,
+    /// Scrim alpha (140). Between heavy (120) and solid (200) — for
+    /// command-palette / modal-backdrop scrims that want to dim but not blank.
+    pub alpha_scrim: u8,
     /// Solid alpha. Mirrors `TokenSnapshot::alpha_solid` = 200.
     pub alpha_solid:  u8,
 
@@ -183,7 +186,7 @@ pub const DEFAULT_SNAPSHOT: DesignSnapshot = DesignSnapshot {
     // Alpha tiers (u8) — match DEFAULT_TOKEN_SNAPSHOT in style.rs
     alpha_faint: 10, alpha_ghost: 15, alpha_soft_u8: 20, alpha_subtle_u8: 40,
     alpha_tint: 48, alpha_muted_u8: 60, alpha_dim: 60, alpha_line: 80,
-    alpha_strong_u8: 80, alpha_active: 100, alpha_heavy_u8: 120, alpha_solid: 200,
+    alpha_strong_u8: 80, alpha_active: 100, alpha_heavy_u8: 120, alpha_scrim: 140, alpha_solid: 200,
     // Alpha multipliers (f32)
     alpha_subtle: 0.04, alpha_soft: 0.12, alpha_muted: 0.24, alpha_mid: 0.48,
     alpha_strong: 0.72, alpha_header_border: 0.18,
@@ -260,6 +263,7 @@ pub fn snapshot(style: &StyleSystem, colors: &ColorScheme) -> DesignSnapshot {
         alpha_strong_u8: al.strong_u8,
         alpha_active:    al.active,
         alpha_heavy_u8:  al.heavy_u8,
+        alpha_scrim:     al.scrim,
         alpha_solid:     al.solid,
         // Alpha multipliers (f32)
         alpha_subtle: al.subtle, alpha_soft: al.soft, alpha_muted: al.muted,
