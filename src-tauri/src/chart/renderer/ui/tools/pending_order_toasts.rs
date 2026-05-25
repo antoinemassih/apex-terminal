@@ -3,9 +3,9 @@
 use egui::Context;
 use crate::chart_renderer::gpu::{Theme, Chart};
 use crate::chart_renderer::trading::OrderStatus;
-use crate::chart_renderer::ui::style::{gap_sm, font_sm, stroke_std};
+use crate::chart_renderer::ui::style::{font_sm};
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::{Button as KitButton, Tooltip, tokens::Variant as KitVariant};
+use crate::ui_kit::widgets::{Button as KitButton, Tooltip, OutlinedBox, tokens::Variant as KitVariant};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 
 pub struct PendingOrderToastsCtx<'a> {
@@ -30,23 +30,29 @@ pub fn show_pending_order_toasts(c: PendingOrderToastsCtx<'_>) {
             .map(|o| (o.label(), o.price, o.qty, o.color(c.t.bull, c.t.bear)));
         if let Some((label, price, qty, color)) = order_data {
             let toast_y = c.base_y - ci as f32 * 34.0;
-            // retained as Window: per-order accent border color and chart-relative stack position can't be expressed via Modal API
-            egui::Window::new(format!("confirm_toast_{}_{}", c.pane_idx, oid))
+            // P6.6 migration: was raw `egui::Window::new(...)` with hand-rolled
+            // `Frame::popup(...).fill(...).inner_margin(...).stroke(...)`.
+            // The chart-relative stack position still needs egui::Area, but
+            // the frame chrome is now `OutlinedBox` (with .border() carrying
+            // the per-order side color — the API that audit P6.6 unblocked).
+            egui::Area::new(egui::Id::new(format!("confirm_toast_{}_{}", c.pane_idx, oid)))
                 .fixed_pos(egui::pos2(c.rect_left + 8.0, toast_y))
-                .fixed_size(egui::vec2(180.0, 26.0))
-                .title_bar(false)
-                .frame(egui::Frame::popup(&c.ctx.style()).fill(c.t.toolbar_bg).inner_margin(gap_sm())
-                    .stroke(egui::Stroke::new(stroke_std(), color)))
+                .order(egui::Order::Foreground)
                 .show(c.ctx, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(format!("{} x{} @ {:.2}", label, qty, price)).monospace().size(font_sm()).color(color));
-                        let r = KitButton::icon(Icon::CHECK).variant(KitVariant::Ghost).glyph_color(c.t.bull).placement(IconPlacement::Modal).tone_affirmative().show(ui, c.t);
-                        Tooltip::new("Confirm order").show(ui, &r, c.t);
-                        if r.clicked() { confirm_ids.push(*oid); }
-                        let r = KitButton::icon(Icon::X).variant(KitVariant::Ghost).glyph_color(c.t.bear).placement(IconPlacement::Modal).tone_destructive().show(ui, c.t);
-                        Tooltip::new("Cancel order").show(ui, &r, c.t);
-                        if r.clicked() { cancel_ids.push(*oid); }
-                    });
+                    OutlinedBox::new()
+                        .fill(c.t.toolbar_bg)
+                        .border(color) // per-order side color (bull green / bear red)
+                        .show(ui, c.t, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new(format!("{} x{} @ {:.2}", label, qty, price)).monospace().size(font_sm()).color(color));
+                                let r = KitButton::icon(Icon::CHECK).variant(KitVariant::Ghost).glyph_color(c.t.bull).placement(IconPlacement::Modal).tone_affirmative().show(ui, c.t);
+                                Tooltip::new("Confirm order").show(ui, &r, c.t);
+                                if r.clicked() { confirm_ids.push(*oid); }
+                                let r = KitButton::icon(Icon::X).variant(KitVariant::Ghost).glyph_color(c.t.bear).placement(IconPlacement::Modal).tone_destructive().show(ui, c.t);
+                                Tooltip::new("Cancel order").show(ui, &r, c.t);
+                                if r.clicked() { cancel_ids.push(*oid); }
+                            });
+                        });
                 });
         } else {
             cancel_ids.push(*oid); // order was deleted

@@ -890,18 +890,13 @@ fn draw_library_section(
             mono_sm(),
             if hovered { t.text } else { color_subtle(t.text) },
         );
-        let chip_text = format!("{}", match_count);
-        let galley = painter.layout_no_wrap(chip_text.clone(),
-            mono_xs(), t.dim);
-        let chip_w = galley.size().x + 10.0;
-        let chip_h = 14.0;
-        let chip_rect = egui::Rect::from_min_size(
-            egui::pos2(h_rect.right() - chip_w - 6.0, cy - chip_h / 2.0),
-            egui::vec2(chip_w, chip_h),
-        );
-        painter.rect_filled(chip_rect, 7.0, color_alpha(t.toolbar_border, alpha_subtle()));
-        painter.text(chip_rect.center(), egui::Align2::CENTER_CENTER,
-            chip_text, mono_xs(), t.dim);
+        // P6 migration — was 4 inline painter calls (rect_filled + text +
+        // hand-computed chip_w with magic 10px padding + magic 7px radius).
+        // Now uses `CountChip::paint_at` — token-driven pill (radius_sm,
+        // gap_xs padding, stroke_thin border, theme.dim tone). Painter-mode
+        // CountChip API designed exactly for this section-header pattern.
+        crate::ui_kit::widgets::CountChip::new(match_count as u32)
+            .paint_at(&painter, egui::pos2(h_rect.right() - 6.0, cy), t);
 
         cursor::focus_ring(ui, &h_resp, t.accent);
         if h_resp.clicked() && !force_open {
