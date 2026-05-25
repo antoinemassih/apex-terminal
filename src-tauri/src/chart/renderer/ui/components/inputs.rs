@@ -212,20 +212,21 @@ pub fn text_input_field(
     let id = ui.next_auto_id();
     let focused = ui.memory(|m| m.has_focus(id));
     let border_color = if focused { color_alpha(accent, alpha_active()) } else { color_alpha(border, alpha_line()) };
-    let frame = egui::Frame::NONE
-        .stroke(Stroke::new(stroke_std(), border_color))
-        .inner_margin(gap_sm())
-        .corner_radius(radius_sm());
     let mut resp_opt: Option<Response> = None;
-    frame.show(ui, |ui| {
-        let r = Input::new(buffer)
-            .id(id)
-            .frameless(true)
-            .placeholder(placeholder)
-            .full_width()
-            .show(ui, &ambient_theme(ui.ctx()));
-        resp_opt = Some(r.response);
-    });
+    crate::ui_kit::widgets::OutlinedBox::new()
+        .fill(egui::Color32::TRANSPARENT)
+        .border(border_color)
+        .radius_sm()
+        .padding(gap_sm())
+        .show(ui, &ambient_theme(ui.ctx()), |ui| {
+            let r = Input::new(buffer)
+                .id(id)
+                .frameless(true)
+                .placeholder(placeholder)
+                .full_width()
+                .show(ui, &ambient_theme(ui.ctx()));
+            resp_opt = Some(r.response);
+        });
     resp_opt.unwrap_or_else(|| ui.label(""))
 }
 

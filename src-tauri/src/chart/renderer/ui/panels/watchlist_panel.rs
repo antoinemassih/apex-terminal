@@ -357,12 +357,13 @@ if watchlist.open {
                             .fixed_pos(popup_pos)
                             .order(egui::Order::Foreground)
                             .show(ui.ctx(), |ui| {
-                                let frame = egui::Frame::NONE
+                                crate::ui_kit::widgets::OutlinedBox::new()
                                     .fill(t.toolbar_bg)
-                                    .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_strong())))
-                                    .inner_margin(gap_md())
-                                    .corner_radius(radius_sm());
-                                frame.show(ui, |ui| {
+                                    .border(color_alpha(t.toolbar_border, alpha_strong()))
+                                    .hairline()
+                                    .radius_sm()
+                                    .padding(gap_md())
+                                    .show(ui, t, |ui| {
                                     ui.set_min_width(180.0);
                                     // Search
                                     ui.horizontal(|ui| {

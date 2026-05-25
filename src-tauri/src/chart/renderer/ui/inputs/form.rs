@@ -56,14 +56,15 @@ impl<'a> FieldSet<'a> {
         body: impl FnOnce(&mut Ui) -> R,
     ) -> R {
         let s = current();
-        let stroke_w = if s.hairline_borders { s.stroke_std } else { stroke_thin() };
         let border = color_alpha(t.toolbar_border, alpha_muted());
-        let frame = egui::Frame::NONE
-            .stroke(Stroke::new(stroke_w, border))
-            .corner_radius(r_sm_cr())
-            .inner_margin(egui::Margin::same(self.inner_margin as i8));
+        let mut box_ = crate::ui_kit::widgets::OutlinedBox::new()
+            .fill(egui::Color32::TRANSPARENT)
+            .border(border)
+            .radius_sm()
+            .padding(self.inner_margin);
+        if !s.hairline_borders { box_ = box_.hairline(); }
 
-        let resp = frame.show(ui, |ui| {
+        let resp = box_.show(ui, t, |ui| {
             if let Some(title) = self.title {
                 ui.label(
                     RichText::new(title)
