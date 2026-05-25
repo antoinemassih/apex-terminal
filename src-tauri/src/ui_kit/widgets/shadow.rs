@@ -61,53 +61,10 @@ impl ShadowSpec {
         Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), alpha)
     }
 
-    /// Tooltips — short, low-rise, subtle. LEGACY: hardcoded black tint.
-    /// Prefer [`ShadowSpec::sm_themed`] in new code.
-    #[deprecated(note = "Use ShadowSpec::sm_themed(theme) for light-theme parity")]
-    pub fn sm() -> Self {
-        Self {
-            radius: 8.0,
-            offset: Vec2::new(0.0, 2.0),
-            color: Color32::from_rgba_unmultiplied(0, 0, 0, 64), // ~25% alpha
-            spread: 0.0,
-        }
-    }
-
-    /// Popovers, context menus. LEGACY: hardcoded black tint.
-    /// Prefer [`ShadowSpec::md_themed`] in new code.
-    #[deprecated(note = "Use ShadowSpec::md_themed(theme) for light-theme parity")]
-    pub fn md() -> Self {
-        Self {
-            radius: 16.0,
-            offset: Vec2::new(0.0, 4.0),
-            color: Color32::from_rgba_unmultiplied(0, 0, 0, 77), // ~30% alpha
-            spread: 0.0,
-        }
-    }
-
-    /// Modals. LEGACY: hardcoded black tint.
-    /// Prefer [`ShadowSpec::lg_themed`] in new code.
-    #[deprecated(note = "Use ShadowSpec::lg_themed(theme) for light-theme parity")]
-    pub fn lg() -> Self {
-        Self {
-            radius: 24.0,
-            offset: Vec2::new(0.0, 8.0),
-            color: Color32::from_rgba_unmultiplied(0, 0, 0, 89), // ~35% alpha
-            spread: 0.0,
-        }
-    }
-
-    /// Sheets, full-window overlays. LEGACY: hardcoded black tint.
-    /// Prefer [`ShadowSpec::xl_themed`] in new code.
-    #[deprecated(note = "Use ShadowSpec::xl_themed(theme) for light-theme parity")]
-    pub fn xl() -> Self {
-        Self {
-            radius: 32.0,
-            offset: Vec2::new(0.0, 12.0),
-            color: Color32::from_rgba_unmultiplied(0, 0, 0, 102), // ~40% alpha
-            spread: 0.0,
-        }
-    }
+    // P6.2 — deleted the four deprecated `sm/md/lg/xl()` constructors.
+    // They hardcoded a black shadow tint which broke light themes.
+    // All callers had already migrated to the `*_themed(theme)` variants
+    // below (audit confirmed 0 non-doc call sites remain).
 
     /// Tooltips — short, low-rise, subtle. Themed tint.
     pub fn sm_themed(t: &dyn crate::ui_kit::widgets::theme::ComponentTheme) -> Self {

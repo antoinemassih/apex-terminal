@@ -210,9 +210,13 @@ impl InspectorWindow {
     /// tessellates, renders via egui_wgpu, and presents.
     pub fn render(&mut self) {
         let raw_input = self.egui_state.take_egui_input(&self.win);
+        // P6.1 — inspector bg now derives from the active theme (was a
+        // hardcoded dark `from_rgb(14,14,20)` which was jarring on light themes).
+        let theme = crate::chart_renderer::theme_impl::active_theme(&self.egui_ctx);
+        let bg = theme.bg;
         let full_output = self.egui_ctx.run(raw_input, |ctx| {
             egui::CentralPanel::default()
-                .frame(egui::Frame::NONE.fill(egui::Color32::from_rgb(14, 14, 20)))
+                .frame(egui::Frame::NONE.fill(bg))
                 .show(ctx, |ui| {
                     render_inspector_body_into(ui);
                 });

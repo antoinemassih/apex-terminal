@@ -16,8 +16,9 @@ use super::super::inputs::select::SegmentedControl;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::LineStyle;
 
-/// Danger red — delete / destructive actions.
-const COLOR_DANGER: egui::Color32 = egui::Color32::from_rgb(224, 85, 96);
+// P6.1 — was `const COLOR_DANGER` hardcoded (224,85,96); destructive
+// action color now reads from `t.bear` at each call site so the picker
+// respects the active palette's destructive semantic colour.
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
 // ── Indicator editor popup (per-type properties panel) ──────────────────
@@ -400,7 +401,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     if vr.clicked() { ind.visible = !ind.visible; }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(m);
-                        let del_color = COLOR_DANGER;
+                        let del_color = t.bear;
                         let dr = ui.add(Button::icon(Icon::TRASH)
                             .variant(Variant::Chrome)
                             .glyph_color(del_color)

@@ -129,9 +129,12 @@ impl SemanticLabel {
     }
 
     /// Produce a `RichText` using the color already set via `.color(...)`.
-    /// Panics (debug) / uses `Color32::WHITE` (release) if no color was set.
+    /// P6.1 — fallback was `Color32::WHITE` (invisible on light themes); now
+    /// `Color32::TRANSPARENT` so a missing `.color(...)` shows nothing rather
+    /// than blowing out as white text on a light bg. Callers should always
+    /// invoke `.color(t.text)` etc. — debug builds assert this elsewhere.
     pub fn into_rich_text(self) -> RichText {
-        let fallback = self.color.unwrap_or(Color32::WHITE);
+        let fallback = self.color.unwrap_or(Color32::TRANSPARENT);
         self.into_rich_text_with_fallback(fallback)
     }
 

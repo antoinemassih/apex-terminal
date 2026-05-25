@@ -5,7 +5,7 @@
 //! spans, allocation counts, GPU/CPU/RAM stats, and recent jank events.
 
 use egui::{Color32, RichText};
-use super::super::style::{font_xs, font_sm, color_alpha, alpha_solid, radius_sm, stroke_std};
+use super::super::style::{font_xs, font_sm, color_alpha, alpha_solid, radius_sm, stroke_std, gap_xs};
 
 #[inline(always)]
 fn ambient(ctx: &egui::Context) -> crate::chart_renderer::gpu::Theme {
@@ -98,7 +98,7 @@ pub fn show(ctx: &egui::Context, open: &mut bool) {
             };
             sparkline(ui, &spark_vals, 120.0, 14.0);
 
-            ui.add_space(4.0);
+            ui.add_space(gap_xs());
             ui.separator();
 
             // ── Frame phase breakdown ──────────────────────────────────────
@@ -123,7 +123,7 @@ pub fn show(ctx: &egui::Context, open: &mut bool) {
                 }
             });
 
-            ui.add_space(4.0);
+            ui.add_space(gap_xs());
             ui.separator();
 
             // ── Subsystem span breakdown ───────────────────────────────────
@@ -145,7 +145,7 @@ pub fn show(ctx: &egui::Context, open: &mut bool) {
                     });
                 }
 
-                ui.add_space(4.0);
+                ui.add_space(gap_xs());
                 ui.separator();
             }
 
@@ -156,7 +156,7 @@ pub fn show(ctx: &egui::Context, open: &mut bool) {
             ui.label(RichText::new(format!("alloc: {} calls / {:.1} KB", a.frame_allocs, alloc_kb))
                 .font(label_font.clone()).color(alloc_col));
 
-            ui.add_space(4.0);
+            ui.add_space(gap_xs());
             ui.separator();
 
             // ── GPU / CPU / RAM ────────────────────────────────────────────
@@ -180,7 +180,7 @@ pub fn show(ctx: &egui::Context, open: &mut bool) {
                 .font(label_font.clone()).color(cpu_col));
 
             // ── Frame profiler zones (CPU side, in-process) ───────────────
-            ui.add_space(4.0);
+            ui.add_space(gap_xs());
             ui.separator();
             {
                 use crate::foundation::frame_profiler;
@@ -228,7 +228,7 @@ pub fn show(ctx: &egui::Context, open: &mut bool) {
 
             // ── Jank events ────────────────────────────────────────────────
             if !snap.jank_events.is_empty() {
-                ui.add_space(4.0);
+                ui.add_space(gap_xs());
                 ui.separator();
                 ui.label(RichText::new(format!("jank: {} recent events", snap.jank_events.len()))
                     .font(label_font.clone()).color(red));
@@ -239,7 +239,7 @@ pub fn show(ctx: &egui::Context, open: &mut bool) {
                 }
             }
 
-            ui.add_space(4.0);
+            ui.add_space(gap_xs());
             ui.label(RichText::new("Ctrl+Shift+P to close").font(label_font.clone()).color(dim));
         });
 }

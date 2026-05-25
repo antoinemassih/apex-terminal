@@ -95,7 +95,7 @@ pub mod panel_key_value_row;
 pub mod panel_sub_section;
 // DS-IMPL-2: new panel primitives (wave 3)
 pub mod table_header;
-pub mod pill_row;
+// pill_row deleted P6.2 — superseded by SegmentedControl + ToggleGroup; zero production callers.
 pub mod status_pill;
 pub mod panel_error;
 pub mod panel_toolbar;
@@ -171,7 +171,6 @@ pub use panel_key_value_row::PanelKeyValueRow;
 pub use metric_row::{MetricRow, Tone as MetricTone};
 pub use panel_toolbar::PanelToolbar;
 pub use table_header::TableHeader;
-pub use pill_row::{PillRow, PillRowResponse};
 pub use status_pill::StatusPill;
 
 // ─── Surfaces ────────────────────────────────────────────────────────

@@ -7,11 +7,12 @@ use crate::ui_kit::widgets::Button as KitButton;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
 // ─── Helper: luminance-aware contrast color ──────────────────────────────────
+// P6.1 — delegate to ui_kit's canonical contrast_fg helper (was a local copy
+// with hardcoded near-black/near-white extremes that didn't track theme).
 
 #[inline]
 fn ds_contrast_fg(bg: Color32) -> Color32 {
-    let lum = 0.299 * bg.r() as f32 + 0.587 * bg.g() as f32 + 0.114 * bg.b() as f32;
-    if lum > 140.0 { Color32::from_rgb(20, 20, 24) } else { Color32::from_rgb(240, 240, 244) }
+    crate::ui_kit::style::contrast_fg(bg)
 }
 
 // ─── BigActionButton ─────────────────────────────────────────────────────────
