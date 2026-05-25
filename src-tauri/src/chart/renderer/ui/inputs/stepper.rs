@@ -126,11 +126,12 @@ impl<'a, V: NumericValue> NumericStepper<'a, V> {
                 egui::Layout::left_to_right(egui::Align::Center),
                 |ui| {
                     ui.set_width(center_w);
-                    let frame = egui::Frame::NONE
+                    crate::ui_kit::widgets::OutlinedBox::new()
                         .fill(color_alpha(border, alpha_subtle()))
-                        .stroke(Stroke::new(stroke_std(),
-                            color_alpha(border, alpha_line())));
-                    frame.show(ui, |ui| {
+                        .border(color_alpha(border, alpha_line()))
+                        .square()
+                        .padding(0.0)
+                        .show(ui, &crate::chart_renderer::theme_impl::active_theme(ui.ctx()), |ui| {
                         ui.set_min_height(h - 2.0);
                         ui.with_layout(
                             egui::Layout::left_to_right(egui::Align::Center),

@@ -122,12 +122,12 @@ impl<'a> FloatingPaneChrome<'a> {
 
         // Outer frame: full-width fill + hairline border + square corners.
         let outer_rect_start = ui.cursor().min;
-        let frame = egui::Frame::NONE
+        let inner_resp = crate::ui_kit::widgets::OutlinedBox::new()
             .fill(bg)
-            .stroke(Stroke::new(stroke_std(), border_c))
-            .corner_radius(CornerRadius::ZERO);
-
-        let inner_resp = frame.show(ui, |ui| {
+            .border(border_c)
+            .square()
+            .padding(0.0)
+            .show(ui, &crate::chart_renderer::theme_impl::active_theme(ui.ctx()), |ui| {
             ui.set_min_width(self.width);
             // Use the frame's actual content rect so the header/hairlines
             // span edge-to-edge regardless of nested margins.

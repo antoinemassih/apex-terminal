@@ -87,6 +87,9 @@ impl OutlinedBox {
     pub fn radius_sm(mut self) -> Self { self.radius = Some(st::r_sm_cr()); self }
     pub fn radius_md(mut self) -> Self { self.radius = Some(st::r_md_cr()); self }
     pub fn radius_lg(mut self) -> Self { self.radius = Some(st::r_lg_cr()); self }
+    /// Square (no rounding). For sites like FloatingPane outer chrome / numeric steppers
+    /// where the design calls for hard 90° corners.
+    pub fn square(mut self) -> Self { self.radius = Some(CornerRadius::ZERO); self }
 
     /// Set inner padding (defaults to `gap_sm()`).
     pub fn padding(mut self, px: f32) -> Self { self.padding = Some(px); self }
