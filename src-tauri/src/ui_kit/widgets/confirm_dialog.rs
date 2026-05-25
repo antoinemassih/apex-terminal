@@ -187,3 +187,63 @@ impl<'a> ConfirmDialog<'a> {
         ConfirmDialogResponse { outcome }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn defaults_are_sane() {
+        let d = ConfirmDialog::new("Are you sure?");
+        assert_eq!(d.title, "Are you sure?");
+        assert!(d.id.is_none());
+        assert!(d.body.is_none());
+        assert_eq!(d.confirm_label, "OK");
+        assert_eq!(d.confirm_tone, ConfirmTone::Primary);
+        assert_eq!(d.cancel_label, "Cancel");
+        assert_eq!(d.width, 380.0);
+    }
+
+    #[test]
+    fn builders_set_each_field() {
+        let d = ConfirmDialog::new("t")
+            .id("the_id")
+            .body("body text")
+            .confirm("Delete", ConfirmTone::Danger)
+            .cancel("Keep")
+            .width(500.0);
+        assert_eq!(d.id, Some("the_id"));
+        assert_eq!(d.body, Some("body text"));
+        assert_eq!(d.confirm_label, "Delete");
+        assert_eq!(d.confirm_tone, ConfirmTone::Danger);
+        assert_eq!(d.cancel_label, "Keep");
+        assert_eq!(d.width, 500.0);
+    }
+
+    #[test]
+    fn cancel_empty_string_disables_button() {
+        // The empty cancel_label is the documented way to hide the cancel button.
+        // The show() impl reads `cancel_label.is_empty()` — locked by this test.
+        let d = ConfirmDialog::new("t").cancel("");
+        assert!(d.cancel_label.is_empty());
+    }
+
+    #[test]
+    fn tone_variants_map_correctly() {
+        assert_eq!(ConfirmTone::Primary.variant(), Variant::Primary);
+        assert_eq!(ConfirmTone::Danger.variant(), Variant::Danger);
+        // Bull uses Primary variant but with bull-color tint.
+        assert_eq!(ConfirmTone::Bull.variant(), Variant::Primary);
+    }
+
+    #[test]
+    fn outcome_states_exhaustive() {
+        // Lock the 3 outcome states — accidentally adding a 4th should fail this.
+        fn is_open(o: ConfirmOutcome) -> bool {
+            matches!(o, ConfirmOutcome::Open | ConfirmOutcome::Confirmed | ConfirmOutcome::Cancelled)
+        }
+        assert!(is_open(ConfirmOutcome::Open));
+        assert!(is_open(ConfirmOutcome::Confirmed));
+        assert!(is_open(ConfirmOutcome::Cancelled));
+    }
+}

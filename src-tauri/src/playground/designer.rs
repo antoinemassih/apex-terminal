@@ -146,6 +146,8 @@ pub fn color_scheme_to_portable(cs: &ColorScheme) -> PortableTheme {
             blend_toward(border, Color32::BLACK, 0.10)
         },
         warn: rgba_to_c(cs.warn),
+        bull: rgba_to_c(cs.bull),
+        bear: rgba_to_c(cs.bear),
         bg: rgba_to_c(cs.bg),
         surface: rgba_to_c(cs.surface),
         // Hover/active/selected/disabled tints derived from text/accent.

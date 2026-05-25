@@ -13,7 +13,8 @@
 //! to interact in adjacent labels.
 
 use _scaffold_lib::ui_kit::widgets::{
-    Button, ContextMenu, HoverCard, Modal, Popover, Sheet, SheetSide, SheetSize, Size, Tooltip,
+    Button, ConfirmDialog, ConfirmOutcome, ConfirmTone,
+    ContextMenu, HoverCard, Modal, Popover, Sheet, SheetSide, SheetSize, Size, Tooltip,
     Variant,
     theme::ComponentTheme,
 };
@@ -229,6 +230,71 @@ pub fn show<T: ComponentTheme>(ui: &mut Ui, theme: &T, state: &mut OverlaysState
         ui.label(egui::RichText::new("Last: $182.45  +1.2%").color(theme.dim()).size(10.0));
         ui.label(egui::RichText::new("Vol: 72.4M  Mkt Cap: $2.84T").color(theme.dim()).size(10.0));
     });
+
+    ui.add_space(8.0);
+
+    // ── ConfirmDialog (P6.4) ──────────────────────────────────────────────
+    rule(ui, theme);
+    story_heading(ui, theme, "ConfirmDialog");
+    ui.add_space(6.0);
+
+    ui.horizontal(|ui| {
+        if Button::new("Open primary confirm")
+            .variant(Variant::Primary)
+            .size(Size::Sm)
+            .show(ui, theme)
+            .clicked()
+        {
+            state.confirm_dialog_open = true;
+        }
+        if Button::new("Open danger confirm")
+            .variant(Variant::Danger)
+            .size(Size::Sm)
+            .show(ui, theme)
+            .clicked()
+        {
+            state.confirm_danger_open = true;
+        }
+        if let Some(outcome) = state.last_confirm_outcome {
+            ui.label(egui::RichText::new(format!("last: {outcome}")).color(theme.dim()).size(10.0));
+        }
+    });
+
+    if state.confirm_dialog_open {
+        let resp = ConfirmDialog::new("Save changes?")
+            .body("Your unsaved changes will be written to the active workspace.")
+            .confirm("Save", ConfirmTone::Primary)
+            .show(ui.ctx(), theme);
+        match resp.outcome {
+            ConfirmOutcome::Confirmed => {
+                state.confirm_dialog_open = false;
+                state.last_confirm_outcome = Some("confirmed");
+            }
+            ConfirmOutcome::Cancelled => {
+                state.confirm_dialog_open = false;
+                state.last_confirm_outcome = Some("cancelled");
+            }
+            ConfirmOutcome::Open => {}
+        }
+    }
+
+    if state.confirm_danger_open {
+        let resp = ConfirmDialog::new("Delete watchlist?")
+            .body("This watchlist and all its symbols will be permanently deleted.")
+            .confirm("Delete", ConfirmTone::Danger)
+            .show(ui.ctx(), theme);
+        match resp.outcome {
+            ConfirmOutcome::Confirmed => {
+                state.confirm_danger_open = false;
+                state.last_confirm_outcome = Some("deleted");
+            }
+            ConfirmOutcome::Cancelled => {
+                state.confirm_danger_open = false;
+                state.last_confirm_outcome = Some("cancelled");
+            }
+            ConfirmOutcome::Open => {}
+        }
+    }
 
     ui.add_space(8.0);
 }

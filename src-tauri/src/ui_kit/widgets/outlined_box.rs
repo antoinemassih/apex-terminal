@@ -151,3 +151,61 @@ pub trait OutlinedBoxResponseExt {
 impl<R> OutlinedBoxResponseExt for egui::InnerResponse<R> {
     fn response(&self) -> &Response { &self.response }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builder_default_state() {
+        let b = OutlinedBox::new();
+        assert!(b.fill.is_none());
+        assert!(b.border.is_none());
+        assert_eq!(b.border_tier, BorderTier::Standard);
+        assert!(b.radius.is_none());
+        assert!(b.padding.is_none());
+        assert!(b.padding_margin.is_none());
+        assert_eq!(b.outer_margin, None);
+    }
+
+    #[test]
+    fn border_tier_setters_mutually_exclusive() {
+        assert_eq!(OutlinedBox::new().hairline().border_tier, BorderTier::Hairline);
+        assert_eq!(OutlinedBox::new().bold_border().border_tier, BorderTier::Bold);
+        assert_eq!(OutlinedBox::new().borderless().border_tier, BorderTier::None);
+        // Last setter wins.
+        assert_eq!(
+            OutlinedBox::new().hairline().bold_border().borderless().border_tier,
+            BorderTier::None
+        );
+    }
+
+    #[test]
+    fn radius_shortcuts_match_tokens() {
+        assert_eq!(OutlinedBox::new().radius_xs().radius, Some(st::r_xs_cr()));
+        assert_eq!(OutlinedBox::new().radius_sm().radius, Some(st::r_sm_cr()));
+        assert_eq!(OutlinedBox::new().radius_md().radius, Some(st::r_md_cr()));
+        assert_eq!(OutlinedBox::new().radius_lg().radius, Some(st::r_lg_cr()));
+        assert_eq!(OutlinedBox::new().square().radius, Some(CornerRadius::ZERO));
+    }
+
+    #[test]
+    fn padding_margin_overrides_padding() {
+        // padding_margin sticks regardless of order
+        let m = Margin { left: 1, right: 2, top: 3, bottom: 4 };
+        let b = OutlinedBox::new().padding(99.0).padding_margin(m);
+        assert_eq!(b.padding_margin, Some(m));
+        assert_eq!(b.padding, Some(99.0));
+        // The show() resolver picks padding_margin when present — covered by
+        // the foundation/shell.rs RowShell integration site (asymmetric pad).
+    }
+
+    #[test]
+    fn fill_and_border_color_setters() {
+        let red = Color32::from_rgb(255, 0, 0);
+        let green = Color32::from_rgb(0, 255, 0);
+        let b = OutlinedBox::new().fill(red).border(green);
+        assert_eq!(b.fill, Some(red));
+        assert_eq!(b.border, Some(green));
+    }
+}

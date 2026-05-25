@@ -221,13 +221,22 @@ pub(super) fn pane_context_menu<F>(
             ui.label(egui::RichText::new("NEW PRESET").monospace().size(font_2xs()).color(t.dim));
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Name").monospace().size(font_xs()).color(t.dim));
-                ui.add(egui::TextEdit::singleline(&mut chart.new_bracket_name).desired_width(60.0).font(mono_xs()));
+                crate::ui_kit::widgets::Input::new(&mut chart.new_bracket_name)
+                    .width(60.0)
+                    .size(crate::ui_kit::widgets::tokens::Size::Xs)
+                    .show(ui, t);
             });
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Target %").monospace().size(font_xs()).color(t.dim));
-                ui.add(egui::TextEdit::singleline(&mut chart.new_bracket_target).desired_width(40.0).font(mono_xs()));
+                crate::ui_kit::widgets::Input::number(&mut chart.new_bracket_target)
+                    .width(40.0)
+                    .size(crate::ui_kit::widgets::tokens::Size::Xs)
+                    .show(ui, t);
                 ui.label(egui::RichText::new("Stop %").monospace().size(font_xs()).color(t.dim));
-                ui.add(egui::TextEdit::singleline(&mut chart.new_bracket_stop).desired_width(40.0).font(mono_xs()));
+                crate::ui_kit::widgets::Input::number(&mut chart.new_bracket_stop)
+                    .width(40.0)
+                    .size(crate::ui_kit::widgets::tokens::Size::Xs)
+                    .show(ui, t);
             });
             let can_create = !chart.new_bracket_name.trim().is_empty()
                 && chart.new_bracket_target.parse::<f32>().is_ok()

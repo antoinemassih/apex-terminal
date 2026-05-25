@@ -149,6 +149,34 @@ pub fn show(ui: &mut Ui, theme: &dyn ComponentTheme) {
     });
 
     ui.add_space(8.0);
+    // ── DynamicTint (P6.5) ────────────────────────────────────────────────
+    // Ghost-like button that takes the .tint(color) as its fg / hover overlay
+    // / border. Replaces the old `Variant::Chrome + .fg(dynamic_color)` pattern.
+    story_heading(ui, theme, "DynamicTint (caller-coloured Ghost)");
+    ui.add_space(6.0);
+    ui.horizontal(|ui| {
+        Button::new("Accent")
+            .variant(Variant::DynamicTint)
+            .tint(theme.accent())
+            .show(ui, theme);
+        ui.add_space(4.0);
+        Button::new("Bull")
+            .variant(Variant::DynamicTint)
+            .tint(theme.bull())
+            .show(ui, theme);
+        ui.add_space(4.0);
+        Button::new("Bear")
+            .variant(Variant::DynamicTint)
+            .tint(theme.bear())
+            .show(ui, theme);
+        ui.add_space(4.0);
+        Button::new("Warn")
+            .variant(Variant::DynamicTint)
+            .tint(theme.warn())
+            .show(ui, theme);
+    });
+
+    ui.add_space(8.0);
 
     ui.add_space(16.0);
     rule(ui, theme);

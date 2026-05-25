@@ -83,10 +83,13 @@ impl Default for DisclosureState {
 /// Persistent state for the Overlays story.
 #[derive(Default)]
 pub struct OverlaysState {
-    pub modal_open:        bool,
-    pub sheet_open:        bool,
-    pub popover_open:      bool,
-    pub context_menu_open: bool,
+    pub modal_open:           bool,
+    pub sheet_open:           bool,
+    pub popover_open:         bool,
+    pub context_menu_open:    bool,
+    pub confirm_dialog_open:  bool,
+    pub confirm_danger_open:  bool,
+    pub last_confirm_outcome: Option<&'static str>,
 }
 
 /// Persistent state for the Sliders story.

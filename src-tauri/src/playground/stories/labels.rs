@@ -7,7 +7,7 @@
 //!   Kbd: single key, multi-key sequences (5)
 
 use _scaffold_lib::ui_kit::widgets::{
-    Badge, Kbd, Label, Size, Tag, TagTone,
+    Badge, CountChip, CountChipTone, Kbd, Label, Size, Tag, TagTone,
     theme::ComponentTheme,
 };
 use egui::Ui;
@@ -115,6 +115,40 @@ pub fn show(ui: &mut Ui, theme: &dyn ComponentTheme) {
         Kbd::new("Esc").size(Size::Xs).show(ui, theme);
         ui.add_space(8.0);
         Kbd::new("Enter").size(Size::Md).show(ui, theme);
+    });
+
+    ui.add_space(8.0);
+
+    // ── CountChip (P6.6) ──────────────────────────────────────────────────
+    rule(ui, theme);
+    story_heading(ui, theme, "CountChip");
+    ui.add_space(6.0);
+
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("INDICATORS").color(theme.dim()).size(11.0));
+        CountChip::new(5).show(ui, theme);
+        ui.add_space(12.0);
+        ui.label(egui::RichText::new("ALERTS").color(theme.dim()).size(11.0));
+        CountChip::new(12).tone(CountChipTone::Accent).show(ui, theme);
+        ui.add_space(12.0);
+        ui.label(egui::RichText::new("WINS").color(theme.dim()).size(11.0));
+        CountChip::new(42).tone(CountChipTone::Bull).show(ui, theme);
+        ui.add_space(12.0);
+        ui.label(egui::RichText::new("LOSSES").color(theme.dim()).size(11.0));
+        CountChip::new(7).tone(CountChipTone::Bear).show(ui, theme);
+        ui.add_space(12.0);
+        ui.label(egui::RichText::new("PENDING").color(theme.dim()).size(11.0));
+        CountChip::new(3).tone(CountChipTone::Warn).show(ui, theme);
+    });
+    ui.add_space(6.0);
+
+    // .max() clamp — shows "99+" for any value > 99
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(".max(99) clamps overflow → ").color(theme.dim()).size(11.0));
+        CountChip::new(247).max(99).show(ui, theme);
+        ui.add_space(8.0);
+        ui.label(egui::RichText::new(".max(9) → ").color(theme.dim()).size(11.0));
+        CountChip::new(15).max(9).tone(CountChipTone::Accent).show(ui, theme);
     });
 
     ui.add_space(8.0);
