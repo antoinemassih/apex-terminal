@@ -133,6 +133,16 @@ fn main() {
         _scaffold_lib::design_system::start_theme_watcher(themes_dir);
     }
 
+    // Wire the chart-app's frame_profiler into ui_kit's portable motion
+    // module (P5b extraction Step 4). Without this registration ui_kit's
+    // ease_bool/ease_value would lose the in-flight animation telemetry
+    // that drives `foundation::frame_profiler` counters. With it, the
+    // primitives can live in ui_kit without depending on chart-app code.
+    _scaffold_lib::ui_kit::widgets::motion::set_animation_hooks(
+        _scaffold_lib::foundation::frame_profiler::animation_started,
+        _scaffold_lib::foundation::frame_profiler::animation_finished,
+    );
+
     // Start performance monitoring — Prometheus metrics + jank detection + GPU telemetry
     _scaffold_lib::monitoring::start();
 

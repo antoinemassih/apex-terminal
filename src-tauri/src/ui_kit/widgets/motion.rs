@@ -1,27 +1,197 @@
-//! Re-exports the motion primitives from chart/renderer/ui/components/motion.rs
-//! so widgets can stay decoupled from chart_renderer paths. Migrate the
-//! original module here in a future pass.
+//! Motion / animation primitives. Wraps egui's animate_* with cubic-ease
+//! and exposes a stable token API so durations and curves stay consistent.
 //!
-//! ### NOTE: foundation primitive, not a widget
+//! ### Foundation primitive, not a widget
 //! This module exposes timing constants and easing helpers (`ease_bool`,
-//! `cursor_visibility`, `INSTANT`, `DELAY_TOOLTIP`, …) consumed by
-//! widgets. It has no builder, no `show(ui, theme)`, and renders nothing
-//! on its own. The "Builder + show()" rule in `CLAUDE.md` does not apply.
+//! `cursor_visibility`, `INSTANT`, `DELAY_TOOLTIP`, …) consumed by widgets.
+//! It has no builder, no `show(ui, theme)`, and renders nothing on its own.
+//! The "Builder + show()" rule in `CLAUDE.md` does not apply.
 //!
-//! In addition to the re-exports, this module hosts ui_kit-only motion
-//! tokens that don't yet have a home in the legacy module:
-//!   - `CURSOR_BLINK_PERIOD` / `cursor_visibility` for custom-paint text
-//!     editors (Phase 2 — `ui_kit::widgets::Input` still uses egui's
-//!     built-in blink and is not migrated by this task).
-//!   - Scroll/momentum tuning constants consumed by
-//!     `ui_kit::widgets::scroll_area::ThemedScrollArea`.
-//!   - 25+ named Robert Penner easing functions (ease_out_back,
-//!     ease_out_elastic, ease_in_out_circ, etc.) for richer widget animation.
-//!   - `Curve` enum mapping popular curves to a value callable via
-//!     `Curve::apply(t)`.
-//!   - `Spring` physics with stiffness / damping / mass parameters.
+//! ### History
+//! Before 2026-05 the foundation primitives lived in
+//! `chart::renderer::ui::components::motion` and were re-exported here
+//! via `pub use`. P5b inlined them into ui_kit (the audit's extraction
+//! Step 4) so the kit no longer depends on chart_renderer for motion.
+//! The chart_renderer module now re-exports from here for back-compat.
+//!
+//! ### Animation kill switch
+//! `ease_bool` / `ease_value` short-circuit to the target value when the
+//! user's `MotionSpeed` override is `Off` — wired through the P5 token
+//! picker. Hosts that need a separate per-style toggle (StyleSettings
+//! `animations_enabled`) can compose: `if !style_anim { return target; }`.
+//!
+//! ### Profiler hook
+//! When the foundation lived in chart_renderer, ease_bool/value tracked
+//! in-flight animation counts via `foundation::frame_profiler`. To stay
+//! portable, ui_kit exposes a `set_animation_hooks(start_fn, finish_fn)`
+//! registration point; the chart-app calls it on startup. Default = no-ops.
 
-pub use crate::chart::renderer::ui::components::motion::*;
+use egui::{Color32, Context, Id};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicPtr, Ordering};
+
+// ── Profiler hook (registered by host) ─────────────────────────────────
+//
+// The chart-app's frame_profiler tracks in-flight animation counts. We
+// expose two function-pointer slots a host can register on startup; if
+// not registered, the calls are zero-cost no-ops. The chart-app wires
+// these in its startup path (native_main.rs) to keep the metrics flowing
+// without coupling ui_kit to `foundation::frame_profiler`.
+
+fn noop_hook() {}
+static ANIM_START: AtomicPtr<()> = AtomicPtr::new(noop_hook as *mut ());
+static ANIM_FINISH: AtomicPtr<()> = AtomicPtr::new(noop_hook as *mut ());
+
+/// Register host callbacks invoked on animation start/finish edges.
+/// Pass plain `fn()` function pointers. Defaults are no-ops; callers
+/// that don't register lose nothing.
+pub fn set_animation_hooks(start: fn(), finish: fn()) {
+    ANIM_START.store(start as *mut (), Ordering::Release);
+    ANIM_FINISH.store(finish as *mut (), Ordering::Release);
+}
+
+#[inline]
+fn fire_anim_start() {
+    let p = ANIM_START.load(Ordering::Acquire);
+    if !p.is_null() {
+        // SAFETY: we only ever store fn() pointers via set_animation_hooks
+        // or the noop_hook initializer above.
+        let f: fn() = unsafe { std::mem::transmute(p) };
+        f();
+    }
+}
+#[inline]
+fn fire_anim_finish() {
+    let p = ANIM_FINISH.load(Ordering::Acquire);
+    if !p.is_null() {
+        let f: fn() = unsafe { std::mem::transmute(p) };
+        f();
+    }
+}
+
+// ── In-flight animation tracking ───────────────────────────────────────
+//
+// egui's `animate_*_with_time` walks the cached value toward the target
+// over `duration`. We detect "still animating" by comparing the returned
+// value to its target — when |raw - target| > EPSILON the transition is
+// in flight. On every (idle → flying) transition we fire the registered
+// animation-start hook; on every (flying → idle) transition the finish
+// hook. State is per-thread (motion is only called from the render
+// thread) and capped at MAX_TRACKED entries. Stale Ids (widget unmounted
+// mid-animation) are reaped after STALE_TICK_THRESHOLD ticks of no
+// observation; if the reaped entry was still flagged in-flight we emit
+// a synthetic finish so the counter doesn't leak.
+
+/// Threshold below which a value is considered to have settled.
+const ANIM_EPSILON: f32 = 0.001;
+const STALE_TICK_THRESHOLD: u64 = 60;
+const MAX_TRACKED: usize = 1024;
+
+#[derive(Clone, Copy)]
+struct AnimEntry {
+    in_flight: bool,
+    last_seen_tick: u64,
+}
+
+thread_local! {
+    static ANIM_STATE: RefCell<HashMap<Id, AnimEntry>> = RefCell::new(HashMap::new());
+    static TICK: RefCell<u64> = const { RefCell::new(0) };
+}
+
+fn next_tick() -> u64 {
+    TICK.with(|t| {
+        let mut t = t.borrow_mut();
+        *t = t.wrapping_add(1);
+        *t
+    })
+}
+
+fn observe(id: Id, in_flight_now: bool, tick: u64) {
+    ANIM_STATE.with(|s| {
+        let mut map = s.borrow_mut();
+        let was_in_flight = map.get(&id).map(|e| e.in_flight).unwrap_or(false);
+        if in_flight_now && !was_in_flight {
+            fire_anim_start();
+        } else if !in_flight_now && was_in_flight {
+            fire_anim_finish();
+        }
+        if in_flight_now {
+            map.insert(id, AnimEntry { in_flight: true, last_seen_tick: tick });
+        } else {
+            map.remove(&id);
+        }
+        if map.len() > MAX_TRACKED {
+            map.retain(|_, e| {
+                let stale = tick.wrapping_sub(e.last_seen_tick) > STALE_TICK_THRESHOLD;
+                if stale && e.in_flight { fire_anim_finish(); }
+                !stale
+            });
+        }
+    });
+}
+
+// ── Duration tokens ────────────────────────────────────────────────────
+pub const FAST: f32 = 0.12;
+pub const MED:  f32 = 0.18;
+pub const SLOW: f32 = 0.28;
+
+// ── Easing ─────────────────────────────────────────────────────────────
+/// Cubic ease in/out. Input + output in 0..=1.
+#[inline]
+pub fn ease_in_out_cubic(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    if t < 0.5 { 4.0 * t * t * t } else { 1.0 - (-2.0 * t + 2.0).powi(3) / 2.0 }
+}
+
+/// Returns `true` if the user has set `MotionSpeed::Off`. Short-circuits
+/// every ease_* helper to snap behavior.
+#[inline]
+fn animations_disabled() -> bool {
+    crate::ui_kit::style::motion_speed_override() == crate::ui_kit::style::MotionSpeed::Off
+}
+
+// ── Bool tracker ───────────────────────────────────────────────────────
+pub fn ease_bool(ctx: &Context, id: Id, value: bool, duration: f32) -> f32 {
+    if animations_disabled() { return if value { 1.0 } else { 0.0 }; }
+    let raw = ctx.animate_bool_with_time(id, value, duration);
+    let target = if value { 1.0 } else { 0.0 };
+    let in_flight = (raw - target).abs() > ANIM_EPSILON;
+    observe(id, in_flight, next_tick());
+    ease_in_out_cubic(raw)
+}
+
+// ── Value tracker ──────────────────────────────────────────────────────
+pub fn ease_value(ctx: &Context, id: Id, target: f32, duration: f32) -> f32 {
+    if animations_disabled() { return target; }
+    let raw = ctx.animate_value_with_time(id, target, duration);
+    let in_flight = (raw - target).abs() > ANIM_EPSILON;
+    observe(id, in_flight, next_tick());
+    raw
+}
+
+// ── Lerp helpers ───────────────────────────────────────────────────────
+#[inline]
+pub fn lerp_f32(a: f32, b: f32, t: f32) -> f32 { a + (b - a) * t }
+
+#[inline]
+pub fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
+    let t = t.clamp(0.0, 1.0);
+    let lerp_u8 = |x: u8, y: u8| -> u8 {
+        (x as f32 + (y as f32 - x as f32) * t).round().clamp(0.0, 255.0) as u8
+    };
+    Color32::from_rgba_premultiplied(
+        lerp_u8(a.r(), b.r()), lerp_u8(a.g(), b.g()),
+        lerp_u8(a.b(), b.b()), lerp_u8(a.a(), b.a()),
+    )
+}
+
+/// Linearly fade alpha from 0 to `c`'s alpha based on t.
+#[inline]
+pub fn fade_in(c: Color32, t: f32) -> Color32 {
+    let t = t.clamp(0.0, 1.0);
+    Color32::from_rgba_premultiplied(c.r(), c.g(), c.b(), (c.a() as f32 * t).round() as u8)
+}
 
 // ── Named easing functions (Robert Penner / CSS spec) ─────────────────
 // All functions accept t in 0.0..=1.0 (normalized progress) and return
@@ -382,7 +552,7 @@ impl Spring {
     }
 }
 
-use egui::{Context, Id};
+// (Context, Id already imported at top of file in P5b motion-inlining.)
 
 // ── Delay / micro-timing tokens ────────────────────────────────────────
 /// Instant transitions (~30ms — for cursor blink smoothing, micro-flashes).

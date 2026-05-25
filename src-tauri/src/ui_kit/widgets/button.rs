@@ -983,7 +983,7 @@ fn paint_secondary_with_treatment(
     _theme: &dyn ComponentTheme,
     btn: &Button<'_>,
 ) -> Response {
-    use crate::chart::renderer::ui::components::motion as cmotion;
+    use crate::ui_kit::widgets::motion as cmotion;
     use crate::ui_kit::tokens::{
         alpha_faint, alpha_ghost, alpha_muted, alpha_soft, alpha_strong,
         btn_small_height, color_alpha, current, font_sm, r_md_cr, r_sm_cr, r_xs,
