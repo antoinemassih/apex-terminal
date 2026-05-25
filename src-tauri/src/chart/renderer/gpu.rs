@@ -4626,16 +4626,23 @@ pub(crate) struct Watchlist {
     /// UI style preset index (0..STYLE_NAMES.len()). Combines with `theme_idx`
     /// to form the full visual identity (e.g. "GruvBox/Meridien").
     pub(crate) style_idx: usize,
-    /// User density override. When `Some`, this replaces the per-preset
-    /// `StyleSettings.density` value at runtime so users can pick Compact /
-    /// Standard / Spacious independently of palette and style preset.
-    /// `None` (default) means inherit the preset's density.
-    /// Wired in P4.3 — read by `style_row_height` / `style_button_height`
-    /// / `style_tab_height` via `set_density_override()`.
-    /// Watchlist doesn't use derive-based serde — persistence wiring (save
-    /// to workspace JSON) is a separate task; today the value resets to
-    /// None on each app start.
+    /// User density override (Compact/Standard/Spacious). Scales row,
+    /// button, tab heights. `None` = inherit from active style preset.
+    /// Wired in P4.3; persisted in state.json.
     pub(crate) density_override: Option<crate::ui_kit::style::DensityMode>,
+    /// User border-weight override (Hairline/Standard/Bold). Multiplier on
+    /// every `stroke_*()` token. `None` = no override. P5.
+    pub(crate) border_weight_override: Option<crate::ui_kit::style::BorderWeight>,
+    /// User corner-scale override (Sharp/Subtle/Standard/Round). Multiplier on
+    /// every `radius_*()` token. `None` = no override. P5.
+    pub(crate) corner_scale_override: Option<crate::ui_kit::style::CornerScale>,
+    /// User spacing-scale override (Tight/Standard/Loose). Multiplier on
+    /// every `gap_*()` token. `None` = no override. P5.
+    pub(crate) spacing_scale_override: Option<crate::ui_kit::style::SpacingScale>,
+    /// User motion-speed override (Off/Fast/Standard/Slow). Multiplier on
+    /// every `motion_*()` duration token. Off disables animation entirely
+    /// — useful for accessibility, RDP, or distraction-free trading. P5.
+    pub(crate) motion_speed_override: Option<crate::ui_kit::style::MotionSpeed>,
     pub(crate) pending_opt_chart: Option<(String, f32, bool, String)>, // deferred option chart open
     /// Optional OCC contract ticker for the pending open. When present, used as the
     /// fetch key so real bars come from ApexData; pane.symbol stays the display label.
@@ -5005,6 +5012,10 @@ impl Watchlist {
                boss_key_active: false,
                style_idx: 0,
                density_override: None,
+               border_weight_override: None,
+               corner_scale_override: None,
+               spacing_scale_override: None,
+               motion_speed_override: None,
                pending_opt_chart: None, pending_opt_chart_contract: None, apex_diag_open: false, replay_pane_open: false, widget_gallery_open: false,
                wl_columns: crate::chart::renderer::ui::lists::rows::watchlist_columns::default_columns(),
                wl_columns_open: false,
@@ -6531,11 +6542,19 @@ impl App {
         wl.shared_y_axis = loaded_settings.shared_y_axis;
         if let Some(favs) = loaded_settings.draw_favorites.clone() { wl.draw_favorites = favs; }
         wl.style_idx = loaded_settings.style_idx;
-        // P4.3 — restore density override and immediately push to the global
-        // atomic so the first frame uses the user's saved choice instead of
-        // the style preset's default.
-        wl.density_override = loaded_settings.density_override;
+        // P4.3 + P5 — restore token-scale overrides and immediately push them
+        // to the global atomic slots so the first frame uses the user's saved
+        // choices instead of the style preset's defaults.
+        wl.density_override        = loaded_settings.density_override;
+        wl.border_weight_override  = loaded_settings.border_weight_override;
+        wl.corner_scale_override   = loaded_settings.corner_scale_override;
+        wl.spacing_scale_override  = loaded_settings.spacing_scale_override;
+        wl.motion_speed_override   = loaded_settings.motion_speed_override;
         crate::chart_renderer::ui::style::set_density_override(wl.density_override);
+        crate::ui_kit::style::set_border_weight_override(wl.border_weight_override);
+        crate::ui_kit::style::set_corner_scale_override(wl.corner_scale_override);
+        crate::ui_kit::style::set_spacing_scale_override(wl.spacing_scale_override);
+        crate::ui_kit::style::set_motion_speed_override(wl.motion_speed_override);
         wl.pane_split_h = loaded_settings.pane_split_h;
         wl.pane_split_v = loaded_settings.pane_split_v;
         wl.pane_split_h2 = loaded_settings.pane_split_h2;
@@ -7618,8 +7637,12 @@ pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &mut Watchl
         "recent_symbols": panes.first().map(|p| &p.recent_symbols).cloned().unwrap_or_default(),
         "draw_favorites": watchlist.draw_favorites,
         "style_idx": watchlist.style_idx,
-        // P4.3 — DensityMode user override (Compact/Standard/Spacious or null=inherit)
-        "density_override": watchlist.density_override.map(|m| m.as_u8()),
+        // P4.3 + P5 — user token-scale overrides (null = inherit from style preset).
+        "density_override":       watchlist.density_override.map(|m| m.as_u8()),
+        "border_weight_override": watchlist.border_weight_override.map(|m| m.as_u8()),
+        "corner_scale_override":  watchlist.corner_scale_override.map(|m| m.as_u8()),
+        "spacing_scale_override": watchlist.spacing_scale_override.map(|m| m.as_u8()),
+        "motion_speed_override":  watchlist.motion_speed_override.map(|m| m.as_u8()),
         "settings": {
             "font_scale": watchlist.font_scale,
             "font_idx": watchlist.font_idx,
@@ -7668,6 +7691,11 @@ struct LoadedSettings {
     style_idx: usize,
     // P4.3 — DensityMode override (None = inherit from style preset).
     density_override: Option<crate::ui_kit::style::DensityMode>,
+    // P5 — Border / Corner / Spacing / Motion overrides (None = inherit).
+    border_weight_override: Option<crate::ui_kit::style::BorderWeight>,
+    corner_scale_override:  Option<crate::ui_kit::style::CornerScale>,
+    spacing_scale_override: Option<crate::ui_kit::style::SpacingScale>,
+    motion_speed_override:  Option<crate::ui_kit::style::MotionSpeed>,
 }
 impl Default for LoadedSettings { fn default() -> Self { Self {
     font_scale: 1.6, font_idx: 0, compact_mode: false,
@@ -7680,6 +7708,10 @@ impl Default for LoadedSettings { fn default() -> Self { Self {
     draw_favorites: None,
     style_idx: 0,
     density_override: None,
+    border_weight_override: None,
+    corner_scale_override:  None,
+    spacing_scale_override: None,
+    motion_speed_override:  None,
 }}}
 
 fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
@@ -7885,14 +7917,24 @@ fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
     if let Some(s) = json.get("style_idx").and_then(|v| v.as_u64()) {
         settings.style_idx = (s as usize).min(STYLE_NAMES.len().saturating_sub(1));
     }
-    // P4.3 — DensityMode override. Top-level key. Missing or null → inherit
-    // from active style preset (the field default of `None`). Any value
-    // outside 0..=2 silently becomes `None`.
+    // P4.3 + P5 — user token-scale overrides. Each is a top-level key,
+    // u8 enum index (0..=N) or null. Missing/null/out-of-range → None
+    // (inherit from the active style preset). All four use the same shape.
     settings.density_override = json.get("density_override")
         .and_then(|v| v.as_u64())
-        .and_then(|n| if n <= 2 {
-            Some(crate::ui_kit::style::DensityMode::from_u8(n as u8))
-        } else { None });
+        .and_then(|n| if n <= 2 { Some(crate::ui_kit::style::DensityMode::from_u8(n as u8)) } else { None });
+    settings.border_weight_override = json.get("border_weight_override")
+        .and_then(|v| v.as_u64())
+        .and_then(|n| if n <= 2 { Some(crate::ui_kit::style::BorderWeight::from_u8(n as u8)) } else { None });
+    settings.corner_scale_override = json.get("corner_scale_override")
+        .and_then(|v| v.as_u64())
+        .and_then(|n| if n <= 3 { Some(crate::ui_kit::style::CornerScale::from_u8(n as u8)) } else { None });
+    settings.spacing_scale_override = json.get("spacing_scale_override")
+        .and_then(|v| v.as_u64())
+        .and_then(|n| if n <= 2 { Some(crate::ui_kit::style::SpacingScale::from_u8(n as u8)) } else { None });
+    settings.motion_speed_override = json.get("motion_speed_override")
+        .and_then(|v| v.as_u64())
+        .and_then(|n| if n <= 3 { Some(crate::ui_kit::style::MotionSpeed::from_u8(n as u8)) } else { None });
 
     (panes, layout, settings)
 }

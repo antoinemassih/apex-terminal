@@ -202,6 +202,131 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
         });
     });
 
+    // ── BORDER WEIGHT (P5) — Hairline / Standard / Bold ──
+    // Multiplier on every `stroke_*()` token. Hairline halves border thickness
+    // across the entire app (Meridien-style minimal chrome); Bold thickens.
+    PanelSection::new("BORDER WEIGHT").show(ui, t, |ui, t| {
+        use crate::ui_kit::style::BorderWeight;
+        let cur = watchlist.border_weight_override;
+        let btn_w: f32 = 80.0;
+        let btn_h: f32 = 26.0;
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = gap_xs();
+            let inherit_active = cur.is_none();
+            if Button::toggle("Inherit", inherit_active)
+                .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
+                .min_size(egui::vec2(btn_w, btn_h))
+                .show(ui, t).clicked() {
+                watchlist.border_weight_override = None;
+                crate::ui_kit::style::set_border_weight_override(None);
+            }
+            for &mode in BorderWeight::all() {
+                let active = cur == Some(mode);
+                if Button::toggle(mode.label(), active)
+                    .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
+                    .min_size(egui::vec2(btn_w, btn_h))
+                    .show(ui, t).clicked() {
+                    watchlist.border_weight_override = Some(mode);
+                    crate::ui_kit::style::set_border_weight_override(Some(mode));
+                }
+            }
+        });
+    });
+
+    // ── CORNER RADIUS (P5) — Sharp / Subtle / Standard / Round ──
+    // Multiplier on every `radius_*()` token. Sharp = 0× → zero rounding across
+    // the whole app (the Meridien square-corner aesthetic, but as a user knob).
+    PanelSection::new("CORNER RADIUS").show(ui, t, |ui, t| {
+        use crate::ui_kit::style::CornerScale;
+        let cur = watchlist.corner_scale_override;
+        let btn_w: f32 = 72.0;
+        let btn_h: f32 = 26.0;
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = gap_xs();
+            let inherit_active = cur.is_none();
+            if Button::toggle("Inherit", inherit_active)
+                .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
+                .min_size(egui::vec2(btn_w, btn_h))
+                .show(ui, t).clicked() {
+                watchlist.corner_scale_override = None;
+                crate::ui_kit::style::set_corner_scale_override(None);
+            }
+            for &mode in CornerScale::all() {
+                let active = cur == Some(mode);
+                if Button::toggle(mode.label(), active)
+                    .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
+                    .min_size(egui::vec2(btn_w, btn_h))
+                    .show(ui, t).clicked() {
+                    watchlist.corner_scale_override = Some(mode);
+                    crate::ui_kit::style::set_corner_scale_override(Some(mode));
+                }
+            }
+        });
+    });
+
+    // ── SPACING SCALE (P5) — Tight / Standard / Loose ──
+    // Multiplier on every `gap_*()` token. Independent from DENSITY which
+    // scales heights; SPACING SCALE controls horizontal/vertical gutters.
+    PanelSection::new("SPACING SCALE").show(ui, t, |ui, t| {
+        use crate::ui_kit::style::SpacingScale;
+        let cur = watchlist.spacing_scale_override;
+        let btn_w: f32 = 80.0;
+        let btn_h: f32 = 26.0;
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = gap_xs();
+            let inherit_active = cur.is_none();
+            if Button::toggle("Inherit", inherit_active)
+                .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
+                .min_size(egui::vec2(btn_w, btn_h))
+                .show(ui, t).clicked() {
+                watchlist.spacing_scale_override = None;
+                crate::ui_kit::style::set_spacing_scale_override(None);
+            }
+            for &mode in SpacingScale::all() {
+                let active = cur == Some(mode);
+                if Button::toggle(mode.label(), active)
+                    .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
+                    .min_size(egui::vec2(btn_w, btn_h))
+                    .show(ui, t).clicked() {
+                    watchlist.spacing_scale_override = Some(mode);
+                    crate::ui_kit::style::set_spacing_scale_override(Some(mode));
+                }
+            }
+        });
+    });
+
+    // ── MOTION SPEED (P5) — Off / Fast / Standard / Slow ──
+    // Multiplier on every `motion_*()` duration. Off disables animations
+    // entirely — useful for accessibility, RDP latency, or distraction-free
+    // focus during fast trading.
+    PanelSection::new("MOTION SPEED").show(ui, t, |ui, t| {
+        use crate::ui_kit::style::MotionSpeed;
+        let cur = watchlist.motion_speed_override;
+        let btn_w: f32 = 72.0;
+        let btn_h: f32 = 26.0;
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = gap_xs();
+            let inherit_active = cur.is_none();
+            if Button::toggle("Inherit", inherit_active)
+                .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
+                .min_size(egui::vec2(btn_w, btn_h))
+                .show(ui, t).clicked() {
+                watchlist.motion_speed_override = None;
+                crate::ui_kit::style::set_motion_speed_override(None);
+            }
+            for &mode in MotionSpeed::all() {
+                let active = cur == Some(mode);
+                if Button::toggle(mode.label(), active)
+                    .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
+                    .min_size(egui::vec2(btn_w, btn_h))
+                    .show(ui, t).clicked() {
+                    watchlist.motion_speed_override = Some(mode);
+                    crate::ui_kit::style::set_motion_speed_override(Some(mode));
+                }
+            }
+        });
+    });
+
     // ── TYPOGRAPHY — collapsible sub-categories ──
     PanelSection::new("TYPOGRAPHY").show(ui, t, |ui, t| {
         // SIZE SCALE

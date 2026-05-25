@@ -126,17 +126,23 @@ pub fn frame_tokens() -> TokenSnapshot {
 // stand-alone constants below.
 
 #[inline] pub fn gap_xs_mid() -> f32 { frame_tokens().gap_xs_mid }
-#[inline] pub fn radius_xs()  -> f32 { frame_tokens().radius_xs }
-#[inline] pub fn radius_sm()  -> f32 { frame_tokens().radius_sm }
-#[inline] pub fn radius_md()  -> f32 { frame_tokens().radius_md }
-#[inline] pub fn radius_lg()  -> f32 { frame_tokens().radius_lg }
+// Radius helpers apply the user's CornerScale override multiplier (Sharp/Subtle
+// /Standard/Round). Standard = 1.0× is the no-op; Sharp = 0.0× returns zero for
+// every tier (square-corner Meridien aesthetic). Override defaults to Standard.
+#[inline] pub fn radius_xs()  -> f32 { frame_tokens().radius_xs * corner_scale_override().scale() }
+#[inline] pub fn radius_sm()  -> f32 { frame_tokens().radius_sm * corner_scale_override().scale() }
+#[inline] pub fn radius_md()  -> f32 { frame_tokens().radius_md * corner_scale_override().scale() }
+#[inline] pub fn radius_lg()  -> f32 { frame_tokens().radius_lg * corner_scale_override().scale() }
 
-#[inline] pub fn stroke_hair()   -> f32 { frame_tokens().stroke_hair }
-#[inline] pub fn stroke_thin()   -> f32 { frame_tokens().stroke_thin }
-#[inline] pub fn stroke_medium() -> f32 { frame_tokens().stroke_medium }
-#[inline] pub fn stroke_std()    -> f32 { frame_tokens().stroke_std }
-#[inline] pub fn stroke_bold()   -> f32 { frame_tokens().stroke_bold }
-#[inline] pub fn stroke_thick()  -> f32 { frame_tokens().stroke_thick }
+// Stroke helpers apply the user's BorderWeight override (Hairline 0.5× /
+// Standard 1.0× / Bold 1.5×). Standard = no-op; Hairline minimises every
+// border across the app, Bold thickens them. Override defaults to Standard.
+#[inline] pub fn stroke_hair()   -> f32 { frame_tokens().stroke_hair   * border_weight_override().scale() }
+#[inline] pub fn stroke_thin()   -> f32 { frame_tokens().stroke_thin   * border_weight_override().scale() }
+#[inline] pub fn stroke_medium() -> f32 { frame_tokens().stroke_medium * border_weight_override().scale() }
+#[inline] pub fn stroke_std()    -> f32 { frame_tokens().stroke_std    * border_weight_override().scale() }
+#[inline] pub fn stroke_bold()   -> f32 { frame_tokens().stroke_bold   * border_weight_override().scale() }
+#[inline] pub fn stroke_thick()  -> f32 { frame_tokens().stroke_thick  * border_weight_override().scale() }
 
 #[inline] pub fn alpha_faint()   -> u8 { frame_tokens().alpha_faint }
 #[inline] pub fn alpha_ghost()   -> u8 { frame_tokens().alpha_ghost }
@@ -296,14 +302,17 @@ pub const FONT_XL:      f32 = 22.0;
 
 // `gap_2xs` stays a constant (no DesignTokens equivalent — used only for
 // icon-internal padding, ~2px). The rest read from the per-frame snapshot.
-#[inline] pub fn gap_2xs() -> f32 { 2.0 }
-#[inline] pub fn gap_xs()  -> f32 { frame_tokens().gap_xs }
-#[inline] pub fn gap_sm()  -> f32 { frame_tokens().gap_sm }
-#[inline] pub fn gap_md()  -> f32 { frame_tokens().gap_md }
-#[inline] pub fn gap_lg()  -> f32 { frame_tokens().gap_lg }
-#[inline] pub fn gap_xl()  -> f32 { frame_tokens().gap_xl }
-#[inline] pub fn gap_2xl() -> f32 { frame_tokens().gap_2xl }
-#[inline] pub fn gap_3xl() -> f32 { frame_tokens().gap_3xl }
+// Gap helpers apply the user's SpacingScale override (Tight 0.75× / Standard
+// 1.0× / Loose 1.25×). Standard = no-op; Tight condenses every gap, Loose
+// spreads them. Override defaults to Standard.
+#[inline] pub fn gap_2xs() -> f32 { 2.0 * spacing_scale_override().scale() }
+#[inline] pub fn gap_xs()  -> f32 { frame_tokens().gap_xs  * spacing_scale_override().scale() }
+#[inline] pub fn gap_sm()  -> f32 { frame_tokens().gap_sm  * spacing_scale_override().scale() }
+#[inline] pub fn gap_md()  -> f32 { frame_tokens().gap_md  * spacing_scale_override().scale() }
+#[inline] pub fn gap_lg()  -> f32 { frame_tokens().gap_lg  * spacing_scale_override().scale() }
+#[inline] pub fn gap_xl()  -> f32 { frame_tokens().gap_xl  * spacing_scale_override().scale() }
+#[inline] pub fn gap_2xl() -> f32 { frame_tokens().gap_2xl * spacing_scale_override().scale() }
+#[inline] pub fn gap_3xl() -> f32 { frame_tokens().gap_3xl * spacing_scale_override().scale() }
 
 pub const GAP_2XS:    f32 =  2.0;
 pub const GAP_XS:     f32 =  4.0;
@@ -362,16 +371,25 @@ pub const ELEVATION_3_FACTOR: f32 = 0.85;
 // Standardised animation durations in milliseconds. Use these instead of
 // inline magic numbers when adding animations.
 
-/// 0 ms — no animation; snap instantly.
+// Motion helpers apply the user's MotionSpeed override (Off 0× / Fast 0.5× /
+// Standard 1.0× / Slow 1.5×). Off makes every animation snap instant (good
+// for accessibility / over-RDP / power-user mode); Slow gives a comfortable
+// pace for demos. Override defaults to Standard. Reads on the hot path go
+// through one atomic load + multiplication.
+
+#[inline]
+fn motion_scale() -> f32 { motion_speed_override().scale() }
+
+/// 0 ms — no animation; snap instantly (unaffected by MotionSpeed override).
 #[inline] pub fn motion_instant() -> u32 {   0 }
 /// 80 ms — micro-interactions (hover state transitions).
-#[inline] pub fn motion_fast()    -> u32 {  80 }
+#[inline] pub fn motion_fast()    -> u32 { ( 80.0 * motion_scale()) as u32 }
 /// 160 ms — standard UI transitions (open/close, slide, fade).
-#[inline] pub fn motion_std()     -> u32 { 160 }
+#[inline] pub fn motion_std()     -> u32 { (160.0 * motion_scale()) as u32 }
 /// 240 ms — comfortable / non-urgent transitions.
-#[inline] pub fn motion_slow()    -> u32 { 240 }
+#[inline] pub fn motion_slow()    -> u32 { (240.0 * motion_scale()) as u32 }
 /// 400 ms — emphasis / decorative animations (rarely used).
-#[inline] pub fn motion_xslow()   -> u32 { 400 }
+#[inline] pub fn motion_xslow()   -> u32 { (400.0 * motion_scale()) as u32 }
 
 // ─── Density (P4.3) ──────────────────────────────────────────────────────────
 //
@@ -398,6 +416,14 @@ pub enum DensityMode {
     /// 1.15× — spacious / touch-friendly / accessibility-leaning.
     Spacious,
 }
+
+// ─── Generic 5-tier token scale (P5) ─────────────────────────────────────────
+//
+// `BorderWeight`, `CornerScale`, `SpacingScale`, `MotionSpeed` and `ElevationLevel`
+// all expose the same shape: a typed enum carrying a `scale()` multiplier applied
+// to a token tier at the read site, plus from_u8/as_u8/label/all helpers so the
+// settings panel can render them as toggle-button rows identical to the
+// DensityMode picker.
 
 impl DensityMode {
     /// Multiplier applied to height tokens (rows, buttons, tabs).
@@ -448,6 +474,182 @@ impl DensityMode {
     }
 }
 
+// ─── BorderWeight ────────────────────────────────────────────────────────────
+//
+// Multiplier applied to every `stroke_*()` token. Hairline = 0.5× makes every
+// border render at half thickness (the Meridien aesthetic); Bold = 1.5× makes
+// every border heavier (good for high-density chart annotations).
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum BorderWeight {
+    Hairline, // 0.5× — minimal chrome
+    #[default]
+    Standard, // 1.0× — preset default
+    Bold,     // 1.5× — heavier borders
+}
+
+impl BorderWeight {
+    #[inline]
+    pub fn scale(self) -> f32 {
+        match self {
+            BorderWeight::Hairline => 0.5,
+            BorderWeight::Standard => 1.0,
+            BorderWeight::Bold     => 1.5,
+        }
+    }
+    #[inline]
+    pub fn from_u8(v: u8) -> Self {
+        match v { 0 => Self::Hairline, 2 => Self::Bold, _ => Self::Standard }
+    }
+    #[inline]
+    pub fn as_u8(self) -> u8 {
+        match self { Self::Hairline => 0, Self::Standard => 1, Self::Bold => 2 }
+    }
+    #[inline]
+    pub fn label(self) -> &'static str {
+        match self { Self::Hairline => "Hairline", Self::Standard => "Standard", Self::Bold => "Bold" }
+    }
+    #[inline]
+    pub fn all() -> &'static [BorderWeight] {
+        &[BorderWeight::Hairline, BorderWeight::Standard, BorderWeight::Bold]
+    }
+}
+
+// ─── CornerScale ─────────────────────────────────────────────────────────────
+//
+// Multiplier applied to every `radius_*()` token. Sharp = 0× (zero rounding —
+// the Meridien square-corner aesthetic); Round = 1.5× (juicier rounding).
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum CornerScale {
+    Sharp,    // 0×    — all corners flat
+    Subtle,   // 0.5×  — barely rounded
+    #[default]
+    Standard, // 1.0×  — preset default
+    Round,    // 1.5×  — generous rounding
+}
+
+impl CornerScale {
+    #[inline]
+    pub fn scale(self) -> f32 {
+        match self {
+            CornerScale::Sharp    => 0.0,
+            CornerScale::Subtle   => 0.5,
+            CornerScale::Standard => 1.0,
+            CornerScale::Round    => 1.5,
+        }
+    }
+    #[inline]
+    pub fn from_u8(v: u8) -> Self {
+        match v { 0 => Self::Sharp, 1 => Self::Subtle, 3 => Self::Round, _ => Self::Standard }
+    }
+    #[inline]
+    pub fn as_u8(self) -> u8 {
+        match self { Self::Sharp => 0, Self::Subtle => 1, Self::Standard => 2, Self::Round => 3 }
+    }
+    #[inline]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Sharp    => "Sharp",
+            Self::Subtle   => "Subtle",
+            Self::Standard => "Standard",
+            Self::Round    => "Round",
+        }
+    }
+    #[inline]
+    pub fn all() -> &'static [CornerScale] {
+        &[CornerScale::Sharp, CornerScale::Subtle, CornerScale::Standard, CornerScale::Round]
+    }
+}
+
+// ─── SpacingScale ────────────────────────────────────────────────────────────
+//
+// Multiplier applied to every `gap_*()` token. Tight = 0.75× condenses
+// padding/gutters; Loose = 1.25× spreads them.
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum SpacingScale {
+    Tight,    // 0.75×
+    #[default]
+    Standard, // 1.0×
+    Loose,    // 1.25×
+}
+
+impl SpacingScale {
+    #[inline]
+    pub fn scale(self) -> f32 {
+        match self {
+            SpacingScale::Tight    => 0.75,
+            SpacingScale::Standard => 1.0,
+            SpacingScale::Loose    => 1.25,
+        }
+    }
+    #[inline]
+    pub fn from_u8(v: u8) -> Self {
+        match v { 0 => Self::Tight, 2 => Self::Loose, _ => Self::Standard }
+    }
+    #[inline]
+    pub fn as_u8(self) -> u8 {
+        match self { Self::Tight => 0, Self::Standard => 1, Self::Loose => 2 }
+    }
+    #[inline]
+    pub fn label(self) -> &'static str {
+        match self { Self::Tight => "Tight", Self::Standard => "Standard", Self::Loose => "Loose" }
+    }
+    #[inline]
+    pub fn all() -> &'static [SpacingScale] {
+        &[SpacingScale::Tight, SpacingScale::Standard, SpacingScale::Loose]
+    }
+}
+
+// ─── MotionSpeed ─────────────────────────────────────────────────────────────
+//
+// Multiplier applied to every `motion_*()` duration token. Off = 0× (skip all
+// animations, snap instantly — accessibility / power-user mode); Fast = 0.5×;
+// Slow = 1.5×.
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum MotionSpeed {
+    Off,      // 0×    — instant, no animation
+    Fast,     // 0.5×  — half-duration
+    #[default]
+    Standard, // 1.0×  — default timings
+    Slow,     // 1.5×  — relaxed
+}
+
+impl MotionSpeed {
+    #[inline]
+    pub fn scale(self) -> f32 {
+        match self {
+            MotionSpeed::Off      => 0.0,
+            MotionSpeed::Fast     => 0.5,
+            MotionSpeed::Standard => 1.0,
+            MotionSpeed::Slow     => 1.5,
+        }
+    }
+    #[inline]
+    pub fn from_u8(v: u8) -> Self {
+        match v { 0 => Self::Off, 1 => Self::Fast, 3 => Self::Slow, _ => Self::Standard }
+    }
+    #[inline]
+    pub fn as_u8(self) -> u8 {
+        match self { Self::Off => 0, Self::Fast => 1, Self::Standard => 2, Self::Slow => 3 }
+    }
+    #[inline]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Off      => "Off",
+            Self::Fast     => "Fast",
+            Self::Standard => "Standard",
+            Self::Slow     => "Slow",
+        }
+    }
+    #[inline]
+    pub fn all() -> &'static [MotionSpeed] {
+        &[MotionSpeed::Off, MotionSpeed::Fast, MotionSpeed::Standard, MotionSpeed::Slow]
+    }
+}
+
 // ─── Color utilities — pure egui math, no theme/state ────────────────────────
 
 /// Return `c` with its alpha replaced by `a`. Convenience wrapper around
@@ -479,3 +681,79 @@ pub fn color_alpha_mul(c: Color32, factor: f32) -> Color32 {
 #[inline] pub fn color_dim(c: Color32) -> Color32 { c.gamma_multiply(0.4) }
 /// 0.3× — barely visible (decorative chart rules, watermarks).
 #[inline] pub fn color_very_dim(c: Color32) -> Color32 { c.gamma_multiply(0.3) }
+
+// ─── User token-scale overrides (P5) ─────────────────────────────────────────
+//
+// Four global AtomicI8 slots store the user's BorderWeight / CornerScale /
+// SpacingScale / MotionSpeed choices. Negative = no override (use the
+// preset/default 1.0× scale); 0..=N maps to the enum's `from_u8`. The token
+// reader helpers (radius_*/stroke_*/gap_*/motion_*) consult these atomics on
+// every read — single relaxed atomic load, single multiplication. No lock
+// contention; the values are written infrequently (only when the user clicks
+// a picker in the settings panel).
+
+use std::sync::atomic::{AtomicI8, Ordering};
+
+static BORDER_WEIGHT_OVERRIDE:  AtomicI8 = AtomicI8::new(-1);
+static CORNER_SCALE_OVERRIDE:   AtomicI8 = AtomicI8::new(-1);
+static SPACING_SCALE_OVERRIDE:  AtomicI8 = AtomicI8::new(-1);
+static MOTION_SPEED_OVERRIDE:   AtomicI8 = AtomicI8::new(-1);
+
+/// Host-side: set the BorderWeight override. `None` clears it (use preset).
+pub fn set_border_weight_override(mode: Option<BorderWeight>) {
+    BORDER_WEIGHT_OVERRIDE.store(mode.map(|m| m.as_u8() as i8).unwrap_or(-1), Ordering::Release);
+}
+/// Read the override (or `Standard` if unset).
+#[inline]
+pub fn border_weight_override() -> BorderWeight {
+    let v = BORDER_WEIGHT_OVERRIDE.load(Ordering::Acquire);
+    if v < 0 { BorderWeight::Standard } else { BorderWeight::from_u8(v as u8) }
+}
+/// Read the override slot directly (None if not set).
+#[inline]
+pub fn border_weight_override_opt() -> Option<BorderWeight> {
+    let v = BORDER_WEIGHT_OVERRIDE.load(Ordering::Acquire);
+    if v < 0 { None } else { Some(BorderWeight::from_u8(v as u8)) }
+}
+
+pub fn set_corner_scale_override(mode: Option<CornerScale>) {
+    CORNER_SCALE_OVERRIDE.store(mode.map(|m| m.as_u8() as i8).unwrap_or(-1), Ordering::Release);
+}
+#[inline]
+pub fn corner_scale_override() -> CornerScale {
+    let v = CORNER_SCALE_OVERRIDE.load(Ordering::Acquire);
+    if v < 0 { CornerScale::Standard } else { CornerScale::from_u8(v as u8) }
+}
+#[inline]
+pub fn corner_scale_override_opt() -> Option<CornerScale> {
+    let v = CORNER_SCALE_OVERRIDE.load(Ordering::Acquire);
+    if v < 0 { None } else { Some(CornerScale::from_u8(v as u8)) }
+}
+
+pub fn set_spacing_scale_override(mode: Option<SpacingScale>) {
+    SPACING_SCALE_OVERRIDE.store(mode.map(|m| m.as_u8() as i8).unwrap_or(-1), Ordering::Release);
+}
+#[inline]
+pub fn spacing_scale_override() -> SpacingScale {
+    let v = SPACING_SCALE_OVERRIDE.load(Ordering::Acquire);
+    if v < 0 { SpacingScale::Standard } else { SpacingScale::from_u8(v as u8) }
+}
+#[inline]
+pub fn spacing_scale_override_opt() -> Option<SpacingScale> {
+    let v = SPACING_SCALE_OVERRIDE.load(Ordering::Acquire);
+    if v < 0 { None } else { Some(SpacingScale::from_u8(v as u8)) }
+}
+
+pub fn set_motion_speed_override(mode: Option<MotionSpeed>) {
+    MOTION_SPEED_OVERRIDE.store(mode.map(|m| m.as_u8() as i8).unwrap_or(-1), Ordering::Release);
+}
+#[inline]
+pub fn motion_speed_override() -> MotionSpeed {
+    let v = MOTION_SPEED_OVERRIDE.load(Ordering::Acquire);
+    if v < 0 { MotionSpeed::Standard } else { MotionSpeed::from_u8(v as u8) }
+}
+#[inline]
+pub fn motion_speed_override_opt() -> Option<MotionSpeed> {
+    let v = MOTION_SPEED_OVERRIDE.load(Ordering::Acquire);
+    if v < 0 { None } else { Some(MotionSpeed::from_u8(v as u8)) }
+}
