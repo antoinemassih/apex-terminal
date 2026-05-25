@@ -206,9 +206,12 @@ impl<'a> SidePanelShell<'a> {
             // Wrap the header in a Frame filled with `t.header_surface()`
             // so the side panel's header band matches the chart pane
             // header above it — same fill, same visual weight.
-            let header_resp = egui::Frame::NONE
+            let header_resp = crate::ui_kit::widgets::OutlinedBox::new()
                 .fill(t.header_surface())
-                .show(ui, |ui| {
+                .borderless()
+                .square()
+                .padding(0.0)
+                .show(ui, t, |ui| {
                     let closed = render_header(ui, t, title, icon, pane_metrics, header_actions);
                     if closed { close_clicked = true; }
                 });
@@ -314,9 +317,12 @@ impl<'a, T: PartialEq + Copy + 'a> SidePanelShellTabs<'a, T> {
             let mut actions = header_actions;
             // Same header_surface wrap as the static-title variant for
             // visual parity with the chart pane header.
-            let header_resp = egui::Frame::NONE
+            let header_resp = crate::ui_kit::widgets::OutlinedBox::new()
                 .fill(t.header_surface())
-                .show(ui, |ui| {
+                .borderless()
+                .square()
+                .padding(0.0)
+                .show(ui, t, |ui| {
                     let closed = header.show_with(ui, t, |ui| {
                         if let Some(a) = actions.take() { a(ui, t); }
                     });

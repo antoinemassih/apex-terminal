@@ -138,10 +138,12 @@ impl<'a> RowShell<'a> {
             return click;
         }
 
-        let resp = egui::Frame::NONE
+        let resp = crate::ui_kit::widgets::OutlinedBox::new()
             .fill(base_fill)
-            .inner_margin(pad)
-            .show(ui, |ui| {
+            .borderless()
+            .square()
+            .padding_margin(pad)
+            .show(ui, self.theme, |ui| {
                 ui.horizontal(|ui| {
                     if let Some(leading) = self.leading { leading(ui); }
                     ui.label(TextStyle::Body.as_rich(self.primary, fg));

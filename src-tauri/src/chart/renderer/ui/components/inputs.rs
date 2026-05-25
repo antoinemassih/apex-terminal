@@ -23,35 +23,37 @@ pub fn search_input(
     dim: Color32,
     border: Color32,
 ) -> egui::Response {
-    let st = current();
+    let s = current();
     let avail = ui.available_width();
-    let frame = egui::Frame::NONE
+    let (tier_fn, border_alpha): (fn() -> crate::ui_kit::widgets::OutlinedBox, u8) = if s.hairline_borders {
+        // Bold border + strong alpha when style-preset wants visible chrome.
+        (|| crate::ui_kit::widgets::OutlinedBox::new(), alpha_strong())
+    } else {
+        (|| crate::ui_kit::widgets::OutlinedBox::new().hairline(), alpha_muted())
+    };
+    let mut resp_out: Option<egui::Response> = None;
+    tier_fn()
         .fill(Color32::TRANSPARENT)
-        .corner_radius(r_sm_cr())
-        .stroke(if st.hairline_borders {
-            Stroke::new(st.stroke_std, color_alpha(border, alpha_strong()))
-        } else {
-            Stroke::new(st.stroke_thin, color_alpha(border, alpha_muted()))
-        })
-        .inner_margin(egui::Margin {
+        .border(color_alpha(border, border_alpha))
+        .radius_sm()
+        .padding_margin(egui::Margin {
             left: gap_md() as i8,
             right: gap_md() as i8,
             top: gap_xs() as i8,
             bottom: gap_xs() as i8,
+        })
+        .show(ui, &ambient_theme(ui.ctx()), |ui| {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("\u{1F50D}").size(font_sm()).color(dim));
+                let r = Input::new(buffer)
+                    .frameless(true)
+                    .text_color(accent)
+                    .placeholder(placeholder)
+                    .width(avail - 36.0)
+                    .show(ui, &ambient_theme(ui.ctx()));
+                resp_out = Some(r.response);
+            });
         });
-    let mut resp_out: Option<egui::Response> = None;
-    frame.show(ui, |ui| {
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("\u{1F50D}").size(font_sm()).color(dim));
-            let r = Input::new(buffer)
-                .frameless(true)
-                .text_color(accent)
-                .placeholder(placeholder)
-                .width(avail - 36.0)
-                .show(ui, &ambient_theme(ui.ctx()));
-            resp_out = Some(r.response);
-        });
-    });
     resp_out.expect("search_input response")
 }
 

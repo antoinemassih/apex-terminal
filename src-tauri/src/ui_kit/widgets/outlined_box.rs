@@ -40,6 +40,7 @@ use crate::ui_kit::tokens as st;
 /// Optional override for the border thickness tier.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum BorderTier {
+    None,     // no border (fill-only band)
     Hairline, // stroke_thin
     Standard, // stroke_std (default)
     Bold,     // stroke_bold
@@ -52,6 +53,7 @@ pub struct OutlinedBox {
     border_tier: BorderTier,
     radius: Option<CornerRadius>,
     padding: Option<f32>,
+    padding_margin: Option<Margin>,
     outer_margin: Option<f32>,
 }
 
@@ -63,6 +65,7 @@ impl OutlinedBox {
             border_tier: BorderTier::Standard,
             radius: None,
             padding: None,
+            padding_margin: None,
             outer_margin: None,
         }
     }
@@ -79,6 +82,11 @@ impl OutlinedBox {
     /// Use the bold-tier border (`stroke_bold`).
     pub fn bold_border(mut self) -> Self { self.border_tier = BorderTier::Bold; self }
 
+    /// Drop the border entirely. For fill-only bands (e.g. side-panel header
+    /// surface band) where you want OutlinedBox's tokens for fill/radius/padding
+    /// but no stroke at all. Pairs naturally with `.fill(theme.header_surface())`.
+    pub fn borderless(mut self) -> Self { self.border_tier = BorderTier::None; self }
+
     /// Set the corner radius via raw `CornerRadius`. Prefer the `.radius_*()` shortcuts.
     pub fn radius(mut self, r: CornerRadius) -> Self { self.radius = Some(r); self }
 
@@ -94,6 +102,10 @@ impl OutlinedBox {
     /// Set inner padding (defaults to `gap_sm()`).
     pub fn padding(mut self, px: f32) -> Self { self.padding = Some(px); self }
 
+    /// Asymmetric inner padding via Margin (overrides .padding()).
+    /// For rows where horizontal/vertical pad differ (e.g. RowShell).
+    pub fn padding_margin(mut self, m: Margin) -> Self { self.padding_margin = Some(m); self }
+
     /// Add an outer margin around the entire box.
     pub fn outer_margin(mut self, px: f32) -> Self { self.outer_margin = Some(px); self }
 
@@ -104,21 +116,24 @@ impl OutlinedBox {
         body: impl FnOnce(&mut Ui) -> R,
     ) -> egui::InnerResponse<R> {
         let fill = self.fill.unwrap_or_else(|| theme.bg());
-        let border = self.border.unwrap_or_else(|| theme.border());
-        let stroke_w = match self.border_tier {
-            BorderTier::Hairline => st::stroke_thin(),
-            BorderTier::Standard => st::stroke_std(),
-            BorderTier::Bold     => st::stroke_bold(),
+        let stroke = match self.border_tier {
+            BorderTier::None     => Stroke::NONE,
+            BorderTier::Hairline => Stroke::new(st::stroke_thin(), self.border.unwrap_or_else(|| theme.border())),
+            BorderTier::Standard => Stroke::new(st::stroke_std(),  self.border.unwrap_or_else(|| theme.border())),
+            BorderTier::Bold     => Stroke::new(st::stroke_bold(), self.border.unwrap_or_else(|| theme.border())),
         };
         let radius = self.radius.unwrap_or_else(st::r_sm_cr);
-        let inner = self.padding.unwrap_or_else(st::gap_sm);
+        let inner_margin = self.padding_margin.unwrap_or_else(|| {
+            let inner = self.padding.unwrap_or_else(st::gap_sm);
+            Margin::same(inner as i8)
+        });
         let outer = self.outer_margin.unwrap_or(0.0);
 
         egui::Frame::NONE
             .fill(fill)
-            .stroke(Stroke::new(stroke_w, border))
+            .stroke(stroke)
             .corner_radius(radius)
-            .inner_margin(Margin::same(inner as i8))
+            .inner_margin(inner_margin)
             .outer_margin(Margin::same(outer as i8))
             .show(ui, body)
     }
