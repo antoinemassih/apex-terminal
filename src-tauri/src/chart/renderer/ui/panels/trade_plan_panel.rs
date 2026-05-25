@@ -125,12 +125,13 @@ fn draw_plan(ui: &mut egui::Ui, plan: &TradePlanV2, t: &Theme) {
     if plan.day_type_suppressed() {
         let dt = plan.day_type.as_deref().unwrap_or("?");
         ui.add_space(gap_sm());
-        egui::Frame::NONE
+        crate::ui_kit::widgets::OutlinedBox::new()
             .fill(color_alpha(t.dim, alpha_ghost()))
-            .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.dim, alpha_muted())))
-            .corner_radius(4.0)
-            .inner_margin(8.0)
-            .show(ui, |ui| {
+            .border(color_alpha(t.dim, alpha_muted()))
+            .hairline()
+            .radius_sm()
+            .padding(gap_sm())
+            .show(ui, t, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.label(egui::RichText::new(format!("Day type: {dt}"))
                         .monospace().size(FONT_XS).color(t.dim));
@@ -146,12 +147,13 @@ fn draw_plan(ui: &mut egui::Ui, plan: &TradePlanV2, t: &Theme) {
     let dir_col = if is_long { t.bull } else { t.bear };
     let dir_label = if is_long { "LONG" } else { "SHORT" };
     ui.horizontal(|ui| {
-        egui::Frame::NONE
+        crate::ui_kit::widgets::OutlinedBox::new()
             .fill(color_alpha(dir_col, alpha_ghost()))
-            .stroke(egui::Stroke::new(stroke_thin(), color_alpha(dir_col, alpha_muted())))
-            .corner_radius(4.0)
-            .inner_margin(egui::Margin { left: 8, right: 8, top: 3, bottom: 3 })
-            .show(ui, |ui| {
+            .border(color_alpha(dir_col, alpha_muted()))
+            .hairline()
+            .radius_sm()
+            .padding_margin(egui::Margin { left: 8, right: 8, top: 3, bottom: 3 })
+            .show(ui, t, |ui| {
                 ui.label(egui::RichText::new(dir_label).monospace().strong()
                     .size(FONT_SM).color(dir_col));
             });

@@ -320,11 +320,12 @@ if watchlist.open {
                     // Column config popup
                     if watchlist.wl_columns_open {
                         ui.add_space(gap_xs());
-                        egui::Frame::NONE
+                        crate::ui_kit::widgets::OutlinedBox::new()
                             .fill(color_alpha(t.toolbar_border, alpha_faint()))
-                            .inner_margin(egui::Margin::same(gap_sm() as i8))
-                            .corner_radius(r_sm_cr())
-                            .show(ui, |ui| {
+                            .borderless()
+                            .radius_sm()
+                            .padding(gap_sm())
+                            .show(ui, t, |ui| {
                                 ui.add(MonospaceCode::new("COLUMNS").size_px(font_2xs()).color(t.accent).gamma(0.6));
                                 ui.add_space(gap_xs());
                                 for s in WL_COLUMNS_BUILTIN.iter() {

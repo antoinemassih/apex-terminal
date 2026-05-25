@@ -204,12 +204,13 @@ fn draw_play_editor(
 
     let pt = watchlist.play_editor_type;
 
-    egui::Frame::NONE
+    crate::ui_kit::widgets::OutlinedBox::new()
         .fill(color_alpha(t.toolbar_border, alpha_faint()))
-        .inner_margin(egui::Margin::same(gap_lg() as i8))
-        .corner_radius(r_lg_cr())
-        .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())))
-        .show(ui, |ui| {
+        .border(color_alpha(t.toolbar_border, alpha_muted()))
+        .hairline()
+        .radius_lg()
+        .padding(gap_lg())
+        .show(ui, t, |ui| {
             ui.add(super::super::components::text::SectionLabel::new("NEW PLAY").color(t.accent));
             ui.add_space(gap_xs());
 

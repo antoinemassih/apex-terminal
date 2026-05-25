@@ -433,11 +433,12 @@ fn draw_bulk_cancel_confirm(
     let avail = ui.available_width();
 
     // Outer frame with a subtle danger tint.
-    egui::Frame::NONE
+    crate::ui_kit::widgets::OutlinedBox::new()
         .fill(bg)
-        .inner_margin(egui::Margin::symmetric(gap_sm() as i8, gap_xs() as i8))
-        .corner_radius(egui::CornerRadius::same(radius_sm() as u8))
-        .show(ui, |ui| {
+        .borderless()
+        .radius_sm()
+        .padding_margin(egui::Margin::symmetric(gap_sm() as i8, gap_xs() as i8))
+        .show(ui, t, |ui| {
             ui.set_min_width(avail);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = gap_sm();
