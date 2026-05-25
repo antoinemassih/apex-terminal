@@ -411,7 +411,7 @@ fn live_themes() -> &'static RwLock<Vec<Theme>> {
         // runtime source of truth (not dead scaffolding).
         let themes: Vec<Theme> = crate::design_system::builtin_color_schemes()
             .iter()
-            .map(crate::design_system::color_scheme_to_theme)
+            .map(crate::chart_renderer::theme_adapter::color_scheme_to_theme)
             .collect();
         debug_assert!(
             themes.len() >= 16,
@@ -457,7 +457,7 @@ pub(crate) fn live_theme_count() -> usize {
 pub fn append_installed_themes(schemes: Vec<crate::design_system::ColorScheme>) {
     let mut guard = live_themes().write().unwrap_or_else(|e| e.into_inner());
     for scheme in schemes {
-        let candidate = crate::design_system::color_scheme_to_theme(&scheme);
+        let candidate = crate::chart_renderer::theme_adapter::color_scheme_to_theme(&scheme);
         let already_present = guard.iter().any(|t| t.name == candidate.name);
         if !already_present {
             guard.push(candidate);
@@ -473,7 +473,7 @@ pub fn append_installed_themes(schemes: Vec<crate::design_system::ColorScheme>) 
 pub fn upsert_installed_themes(schemes: Vec<crate::design_system::ColorScheme>) {
     let mut guard = live_themes().write().unwrap_or_else(|e| e.into_inner());
     for scheme in schemes {
-        let candidate = crate::design_system::color_scheme_to_theme(&scheme);
+        let candidate = crate::chart_renderer::theme_adapter::color_scheme_to_theme(&scheme);
         if let Some(slot) = guard.iter_mut().find(|t| t.name == candidate.name) {
             *slot = candidate;
         } else {

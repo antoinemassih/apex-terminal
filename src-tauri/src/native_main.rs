@@ -129,6 +129,12 @@ fn main() {
             }
         }
 
+        // Wire the scheme-reload callback so design_system can dispatch live
+        // scheme updates without depending on chart_renderer directly (P13).
+        _scaffold_lib::design_system::hot_reload::set_scheme_update_hook(
+            |schemes| _scaffold_lib::chart_renderer::gpu::upsert_installed_themes(schemes),
+        );
+
         // Start the background watcher — ZERO per-frame main-thread cost.
         _scaffold_lib::design_system::start_theme_watcher(themes_dir);
     }

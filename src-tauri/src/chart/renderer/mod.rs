@@ -14,6 +14,7 @@ pub mod gpu;
 #[cfg(feature = "design-mode")]
 pub mod inspector_window;
 pub mod theme_impl;
+pub mod theme_adapter;
 mod types;
 pub mod ui;
 pub mod compute;

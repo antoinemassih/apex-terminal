@@ -64,7 +64,9 @@
 //! - `gpu::CMD_PALETTE_DEFAULT` survives because the `#[cfg(test)]` THEMES
 //!   const still references it; will go away with THEMES.
 
-pub mod adapter;
+// P13: `adapter` (ColorScheme → gpu::Theme) moved into chart_renderer to sever
+// design_system's dependency on chart_renderer types. Re-imported via the
+// chart_renderer side at `chart_renderer::theme_adapter::color_scheme_to_theme`.
 pub mod baseline;
 pub mod builtin;
 pub mod color_scheme;
@@ -78,7 +80,10 @@ pub mod style_system;
 
 // ── Convenient top-level re-exports ──────────────────────────────────────────
 
-pub use adapter::color_scheme_to_theme;
+// `color_scheme_to_theme` lives in chart_renderer::theme_adapter (P13). The
+// design_system crate intentionally does not re-export it — callers should
+// import directly from chart_renderer, which keeps the dependency arrow
+// pointing the right way (chart_renderer → design_system, never reverse).
 pub use baseline::{baseline_color_scheme, baseline_style_system};
 pub use builtin::{builtin_color_schemes, builtin_registry, builtin_style_systems};
 pub use color_scheme::{ColorScheme, Meta, Rgba};

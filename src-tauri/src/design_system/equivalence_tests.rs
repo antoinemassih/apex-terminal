@@ -16,7 +16,7 @@
 #[cfg(test)]
 pub(crate) mod equivalence {
     use crate::design_system::builtin::{builtin_color_schemes, builtin_style_systems};
-    use crate::design_system::adapter::color_scheme_to_theme;
+    use crate::chart_renderer::theme_adapter::color_scheme_to_theme;
     use crate::chart_renderer::gpu::THEMES;
     use crate::chart_renderer::ui::style::style_defaults_pub;
 
