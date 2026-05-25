@@ -101,6 +101,20 @@ impl InputResponse {
 }
 
 impl<'a> Input<'a> {
+    /// Numeric-style input: right-aligned, no frame, sensible defaults for
+    /// price/qty/share entry. Replaces the
+    /// `Input::new(...).width(...).horizontal_align(RIGHT).frameless(true)`
+    /// repeated pattern found across order_edit_dialog and trade panels
+    /// (P6.6 variant gap).
+    ///
+    /// Caller still chains `.prefix("$")` / `.suffix(" shares")` / `.width(N)`
+    /// as needed — this just sets the right-align + frameless defaults.
+    pub fn number(value: &'a mut String) -> Self {
+        Self::new(value)
+            .horizontal_align(egui::Align::RIGHT)
+            .frameless(true)
+    }
+
     pub fn new(value: &'a mut String) -> Self {
         Self {
             value,

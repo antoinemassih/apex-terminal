@@ -82,6 +82,15 @@ impl<'a> Toast<'a> {
     pub fn auto_dismiss_secs(mut self, s: f32) -> Self { self.auto_dismiss_secs = Some(s); self }
     pub fn width(mut self, w: f32) -> Self { self.width = w; self }
     pub fn accent(mut self, c: Color32) -> Self { self.accent = Some(c); self }
+    /// Override the outer border color (defaults to theme border via `.theme()`).
+    /// P6.6 — added to absorb the `pending_order_toasts.rs` site that uses
+    /// raw `egui::Window::new(...)` with a custom border color (bull/bear
+    /// side color). Now that callsite can use `Toast::new(...).border_color(...)`.
+    pub fn border_color(mut self, c: Color32) -> Self { self.border = Some(c); self }
+    /// Override the body bg color (defaults to theme surface via `.theme()`).
+    pub fn bg_color(mut self, c: Color32) -> Self { self.bg = Some(c); self }
+    /// Override the text color (defaults to theme text via `.theme()`).
+    pub fn text_color(mut self, c: Color32) -> Self { self.text = Some(c); self }
     /// Stable id for the entrance animation. If unset, falls back to the title.
     pub fn id(mut self, id: &'a str) -> Self { self.id = Some(id); self }
     /// Theme — accepts any `ComponentTheme`.

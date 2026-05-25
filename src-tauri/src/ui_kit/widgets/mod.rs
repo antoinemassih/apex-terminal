@@ -98,6 +98,7 @@ pub mod table_header;
 // pill_row deleted P6.2 — superseded by SegmentedControl + ToggleGroup; zero production callers.
 pub mod outlined_box; // P6.4 — themed bordered container frame
 pub mod confirm_dialog; // P6.4 — preset modal for "are you sure?" prompts
+pub mod count_chip; // P6.6 — muted section-header count pill
 pub mod status_pill;
 pub mod panel_error;
 pub mod panel_toolbar;
@@ -175,6 +176,7 @@ pub use panel_toolbar::PanelToolbar;
 pub use table_header::TableHeader;
 pub use outlined_box::OutlinedBox;
 pub use confirm_dialog::{ConfirmDialog, ConfirmDialogResponse, ConfirmOutcome, ConfirmTone};
+pub use count_chip::{CountChip, CountChipTone};
 pub use status_pill::StatusPill;
 
 // ─── Surfaces ────────────────────────────────────────────────────────
