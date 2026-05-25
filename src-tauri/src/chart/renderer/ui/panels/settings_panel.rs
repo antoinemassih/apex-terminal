@@ -393,7 +393,7 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                             ui.painter().rect_stroke(r, radius_md(),
                                 egui::Stroke::new(if sel { stroke_bold() } else { stroke_thin() }, border_col), egui::StrokeKind::Outside);
 
-                            let name_col = if sel { t.accent } else { TEXT_PRIMARY };
+                            let name_col = if sel { t.accent } else { t.text };
                             ui.painter().text(
                                 egui::pos2(r.center().x, r.top() + 14.0),
                                 egui::Align2::CENTER_CENTER,
@@ -406,7 +406,7 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                                 egui::Align2::LEFT_CENTER,
                                 type_label, mono_sm(), type_col);
 
-                            let sample_col = if sel { TEXT_PRIMARY } else { color_subtle(t.dim) };
+                            let sample_col = if sel { t.text } else { color_subtle(t.dim) };
                             ui.painter().text(
                                 egui::pos2(r.right() - 8.0, r.bottom() - 12.0),
                                 egui::Align2::RIGHT_CENTER,

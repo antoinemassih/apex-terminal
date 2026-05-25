@@ -113,7 +113,7 @@ pub(crate) fn draw(
                             // DTE label (centered)
                             ui.vertical_centered(|ui| {
                                 ui.label(egui::RichText::new(dte_label(current_dte))
-                                    .monospace().size(font_lg()).strong().color(TEXT_PRIMARY));
+                                    .monospace().size(font_lg()).strong().color(t.text));
                             });
                             // Forward arrow
                             let can_fwd = dte_idx < DTE_LIST.len() - 1;
@@ -155,7 +155,7 @@ pub(crate) fn draw(
                                 ui.painter().text(
                                     prev_rect.center(), egui::Align2::CENTER_CENTER,
                                     format!("{} Prev Strike", Icon::CARET_LEFT),
-                                    egui::FontId::monospace(font_sm()), TEXT_PRIMARY);
+                                    egui::FontId::monospace(font_sm()), t.text);
                                 if prev_resp.clicked() {
                                     // Find the next-lower strike in the current type's chain
                                     let rows = if cur_is_call { &watchlist.chain_0dte.0 } else { &watchlist.chain_0dte.1 };
@@ -182,7 +182,7 @@ pub(crate) fn draw(
                                 ui.painter().text(
                                     next_rect.center(), egui::Align2::CENTER_CENTER,
                                     format!("Next Strike {}", Icon::CARET_RIGHT),
-                                    egui::FontId::monospace(font_sm()), TEXT_PRIMARY);
+                                    egui::FontId::monospace(font_sm()), t.text);
                                 if next_resp.clicked() {
                                     let rows = if cur_is_call { &watchlist.chain_0dte.0 } else { &watchlist.chain_0dte.1 };
                                     let rows = if current_dte == 0 { rows }
@@ -258,7 +258,7 @@ pub(crate) fn draw(
                                             }
                                             // STRIKE cell
                                             let (srect, _) = ui.allocate_exact_size(egui::vec2(cw, 20.0), egui::Sense::hover());
-                                            let strike_col = if is_atm { t.accent } else { TEXT_PRIMARY };
+                                            let strike_col = if is_atm { t.accent } else { t.text };
                                             let strike_txt = if (strike - strike.round()).abs() < 0.005 {
                                                 format!("{:.0}", strike)
                                             } else {

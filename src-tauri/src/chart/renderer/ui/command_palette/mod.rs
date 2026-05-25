@@ -152,7 +152,11 @@ pub(crate) fn draw(
         .fixed_pos(egui::pos2(0.0, 0.0))
         .order(egui::Order::Foreground)
         .show(ctx, |ui| {
-            ui.painter().rect_filled(screen, 0.0, egui::Color32::from_black_alpha(140));
+            // Scrim derives from theme bg so wild palettes (pink, lime, etc.) get
+            // a scrim in their own hue rather than a pure-black "screen-off" wash.
+            let s = t.bg;
+            ui.painter().rect_filled(screen, 0.0,
+                egui::Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), 140));
         });
 
     let ai_mode = watchlist.cmd_palette_ai_mode;

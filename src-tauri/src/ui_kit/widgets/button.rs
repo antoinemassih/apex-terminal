@@ -1204,12 +1204,15 @@ fn resolve_palette(
             transparent,
         ),
         Variant::NeutralAction => (
-            // Utility action (FLATTEN etc.) — neutral gray, dark fg.
-            Color32::from_gray(170),
-            Color32::from_gray(190),
-            Color32::from_gray(150),
-            Color32::BLACK,
-            Color32::BLACK,
+            // Utility action (FLATTEN etc.) — neutral fill derived from theme
+            // text alpha so it reads on any palette. P5b: was hardcoded gray
+            // which made the button a foreign object on non-default palettes
+            // (a gray island in a pink/lime/cyan theme).
+            st::color_alpha(theme.text(), 28),
+            st::color_alpha(theme.text(), 44),
+            st::color_alpha(theme.text(), 18),
+            st::contrast_fg(theme.surface()),
+            st::contrast_fg(theme.surface()),
             border,
             transparent,
         ),

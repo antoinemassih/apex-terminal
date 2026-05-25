@@ -115,7 +115,7 @@ pub(crate) fn draw(
                                                 ui.set_min_height(28.0);
                                                 ui.horizontal(|ui| {
                                                     ui.add(BodyLabel::new(Icon::STAR).size(font_sm()).color(t.accent));
-                                                    ui.add(BodyLabel::new(name).size(font_sm()).monospace(true).strong(true).color(TEXT_PRIMARY));
+                                                    ui.add(BodyLabel::new(name).size(font_sm()).monospace(true).strong(true).color(t.text));
                                                 });
                                                 ui.add(BodyLabel::new(&summary).size(font_xs()).monospace(true).color(color_muted(t.dim)));
                                             });

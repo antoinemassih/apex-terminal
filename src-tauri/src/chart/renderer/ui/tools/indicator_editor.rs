@@ -78,7 +78,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 // Color dot — uses the editing indicator's color (pre-fetched).
                 ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 10.0), 4.0, hdr_color);
                 ui.add_space(gap_md());
-                ui.label(egui::RichText::new(&hdr_name).monospace().size(font_sm()).strong().color(TEXT_PRIMARY));
+                ui.label(egui::RichText::new(&hdr_name).monospace().size(font_sm()).strong().color(t.text));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_space(gap_xs());
                     let r = Button::icon(Icon::X)

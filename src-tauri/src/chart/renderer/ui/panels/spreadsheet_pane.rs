@@ -733,7 +733,7 @@ pub(crate) fn render(
                                 egui::pos2(cell_rect.left() + 4.0, cell_rect.center().y),
                                 egui::Align2::LEFT_CENTER, &val,
                                 mono_sm(),
-                                TEXT_PRIMARY);
+                                t.text);
                         }
                         if selected_here {
                             ui.painter_at(cell_rect).rect_stroke(cell_rect, 0.0,

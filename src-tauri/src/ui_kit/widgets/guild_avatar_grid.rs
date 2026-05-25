@@ -99,7 +99,10 @@ impl<'a> GuildAvatarGrid<'a> {
                 let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
                 // Icon bg is always Discord dark-gray; contrast_fg returns WHITE here
                 // (same as the original hardcoded value) but is correct by semantics.
-                let tint = if hovered || selected { st::contrast_fg(bg) } else { Color32::from_gray(200) };
+                // Idle icon tint follows theme so the icons read correctly on
+                // pink/lime/cyan palettes (was hardcoded gray-200, which on a
+                // dark-green or dark-purple theme could disappear).
+                let tint = if hovered || selected { st::contrast_fg(bg) } else { theme.icon() };
                 ui.painter().image(tex.id(), icon_rect, uv, tint);
             } else {
                 // Initials fallback
@@ -115,7 +118,8 @@ impl<'a> GuildAvatarGrid<'a> {
                 let font = egui::FontId::monospace(if abbrev.len() > 1 { 9.0 } else { 11.0 });
                 // Initials bg is always dark (blurple/gray-70/gray-50); contrast_fg
                 // returns WHITE, same as before, but correct if bg ever changes.
-                let text_col = if selected || hovered { st::contrast_fg(bg) } else { Color32::from_gray(180) };
+                // Idle initials text follows theme.text(); was hardcoded gray-180.
+                let text_col = if selected || hovered { st::contrast_fg(bg) } else { theme.text() };
                 ui.painter().text(icon_rect.center(), egui::Align2::CENTER_CENTER, &abbrev, font, text_col);
             }
 
@@ -125,7 +129,9 @@ impl<'a> GuildAvatarGrid<'a> {
                 ui.painter().circle_filled(dot_center, 2.5, discord_blurple);
             } else if hovered {
                 let dot_center = egui::pos2(icon_rect.center().x, icon_rect.bottom() + 4.0);
-                ui.painter().circle_filled(dot_center, 1.5, Color32::from_gray(120));
+                // Hover dot follows theme.dim() so it scales with palette;
+                // was hardcoded gray-120.
+                ui.painter().circle_filled(dot_center, 1.5, theme.dim());
             }
 
             if resp.clicked() {

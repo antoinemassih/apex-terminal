@@ -173,7 +173,11 @@ impl<'a> Sheet<'a> {
         let mut backdrop_close = false;
         if self.modal {
             let scrim_alpha = (120.0 * t) as u8;
-            let scrim_color = Color32::from_black_alpha(scrim_alpha);
+            // Scrim derives from theme shadow_color (light themes pick a gray
+            // shadow, dark themes near-black) so the dimming overlay reads as
+            // a thematic veil rather than a screen blackout on light/wild palettes.
+            let s = theme.shadow_color();
+            let scrim_color = Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), scrim_alpha);
             let scrim_id = base_id.with("scrim");
             let _ = egui::Area::new(scrim_id)
                 .order(egui::Order::Background)

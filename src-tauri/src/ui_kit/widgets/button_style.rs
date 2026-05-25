@@ -121,7 +121,10 @@ impl<'a> ButtonStyle for DefaultButtonStyle<'a> {
                 ButtonState::Hover | ButtonState::Pressed => t.text(),
                 _ => half(t.dim()),
             },
-            Variant::NeutralAction => Color32::BLACK,
+            // P5b — NeutralAction fg: contrast_fg against the variant's fill so the
+            // text reads on any theme. Was hardcoded BLACK which became invisible
+            // on dark palettes.
+            Variant::NeutralAction => st::contrast_fg(t.surface()),
         };
 
         if state == ButtonState::Disabled {
@@ -196,11 +199,15 @@ impl<'a> ButtonStyle for DefaultButtonStyle<'a> {
                     st::color_alpha(t.accent(), st::alpha_tint()),
                 ButtonState::Disabled => transparent,
             },
+            // P5b — NeutralAction bg: derive from theme surface with a slight
+            // lift so the button reads as "neutral but present" on any palette.
+            // Was hardcoded gray-170/190/150 which became a foreign object on
+            // any non-default palette.
             Variant::NeutralAction => match state {
-                ButtonState::Idle    => Color32::from_gray(170),
-                ButtonState::Hover   => Color32::from_gray(190),
-                ButtonState::Active | ButtonState::Pressed => Color32::from_gray(150),
-                ButtonState::Disabled => Color32::from_gray(170),
+                ButtonState::Idle    => st::color_alpha(t.text(), 28),
+                ButtonState::Hover   => st::color_alpha(t.text(), 44),
+                ButtonState::Active | ButtonState::Pressed => st::color_alpha(t.text(), 18),
+                ButtonState::Disabled => st::color_alpha(t.text(), 18),
             },
         };
 

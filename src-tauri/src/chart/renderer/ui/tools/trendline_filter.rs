@@ -50,7 +50,7 @@ if watchlist.trendline_filter_open {
                 ui.horizontal(|ui| {
                     ui.add_space(m);
                     let type_label = format!("{} ({})", label, count);
-                    ui.add(MonospaceCode::new(&type_label).size_px(9.0).color(TEXT_SECONDARY));
+                    ui.add(MonospaceCode::new(&type_label).size_px(9.0).color(color_subtle(t.dim)));
                 });
             }
 
@@ -233,7 +233,7 @@ if chart.picker_open {
                     for (sym, name) in chart.recent_symbols.clone() {
                         let is_current = sym == chart.symbol;
                         let resp = ui.horizontal(|ui| {
-                            let sym_col = if is_current { t.bull } else { TEXT_PRIMARY };
+                            let sym_col = if is_current { t.bull } else { t.text };
                             let r = ui.add(Button::new(sym.as_str()).variant(Variant::Secondary).simple_treatment(true).fg(sym_col).min_size(egui::vec2(65.0, 0.0)));
                             ui.add(MonospaceCode::new(&name).size_px(9.0).color(t.dim));
                             r
@@ -253,7 +253,7 @@ if chart.picker_open {
                         if chart.recent_symbols.iter().any(|(r, _)| r == s.symbol) { continue; }
                         let is_current = s.symbol == chart.symbol;
                         let resp = ui.horizontal(|ui| {
-                            let sym_col = if is_current { t.bull } else { TEXT_SECONDARY };
+                            let sym_col = if is_current { t.bull } else { color_subtle(t.dim) };
                             let r = ui.add(Button::new(s.symbol).variant(Variant::Secondary).simple_treatment(true).fg(sym_col).min_size(egui::vec2(65.0, 0.0)));
                             ui.add(MonospaceCode::new(s.name).size_px(9.0).color(t.dim));
                             r
@@ -268,7 +268,7 @@ if chart.picker_open {
                     for (sym, name, tag) in &chart.picker_results {
                         let is_current = sym == &chart.symbol;
                         let resp = ui.horizontal(|ui| {
-                            let sym_col = if is_current { t.bull } else { TEXT_PRIMARY };
+                            let sym_col = if is_current { t.bull } else { t.text };
                             let r = ui.add(Button::new(sym.as_str()).variant(Variant::Secondary).simple_treatment(true).fg(sym_col).min_size(egui::vec2(65.0, 0.0)));
                             ui.vertical(|ui| {
                                 ui.add(MonospaceCode::new(name.as_str()).size_px(9.0).color(t.dim));

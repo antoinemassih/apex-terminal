@@ -1472,7 +1472,14 @@ fn aperture_stub_theme_full(
         warn:               crate::chart_renderer::ui::style::COLOR_AMBER,
         notification_red:   COLOR_LOSS_RED,
         gold:               Color32::from_rgb(255, 193, 37),
-        shadow_color:       Color32::from_rgb(0, 0, 0),
+        // Shadow tint follows the active palette (light themes use gray, dark
+        // themes near-black) — derived from toolbar_bg luminance so the stub
+        // theme respects the outer Theme passed via .theme(t).
+        shadow_color:       if (toolbar_bg.r() as u16 + toolbar_bg.g() as u16 + toolbar_bg.b() as u16) > 400 {
+            Color32::from_rgb(60, 60, 60)
+        } else {
+            Color32::from_rgb(0, 0, 0)
+        },
         overlay_text:       Color32::from_rgb(240, 240, 250),
         rrg_leading:        Color32::from_rgb(56, 203, 137),
         rrg_improving:      COLOR_INFO_CYAN,
