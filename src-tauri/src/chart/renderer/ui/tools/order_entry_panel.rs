@@ -6,7 +6,7 @@ use egui::Context;
 use crate::chart_renderer::gpu::{Theme, Chart, render_order_entry_body};
 use crate::chart_renderer::trading::{OrderSide, OrderLevel, OrderStatus, OrderState, AccountSummary, Position, IbOrder};
 use crate::chart_renderer::gpu::Watchlist;
-use crate::chart_renderer::ui::style::{color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, cursor, gap_xs, gap_sm, gap_lg, gap_2xl, font_xs, font_sm, font_md, radius_sm, radius_lg, stroke_std};
+use crate::chart_renderer::ui::style::{color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, cursor, gap_xs, gap_sm, gap_lg, gap_2xl, font_xs, font_sm, font_md, radius_sm, radius_lg, stroke_std, stroke_thin, alpha_tint, alpha_strong};
 use crate::chart_renderer::ui::components::frames_widget::PopupFrame;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{PanelEmpty, Button as KitButton};
@@ -79,14 +79,32 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
             .stroke(egui::Stroke::new(stroke_std(), color_alpha(c.t.toolbar_border, 100)))
             .corner_radius(radius_sm()))
         .show(c.ctx, |ui| {
-            // ── Header bar ──
+            // ── Header bar ── (redesigned 2026-05-26)
+            //   • Full-width allocate-then-paint so the strip spans the
+            //     entire inner width of the egui::Window. The previous
+            //     `panel_w` width was the WINDOW width, but `ui.horizontal`'s
+            //     internal item-spacing pushed the layout's min.x inward,
+            //     leaving a ~12 px gap on the right. Now we paint into
+            //     `ui.available_rect_before_wrap()` and overlay the children.
+            //   • 24 px tall (was 22) gives the armed icon a comfortable inset.
+            //   • Hairline divider beneath separates from the body.
+            const HDR_H: f32 = 24.0;
+            let hdr_rect_full = {
+                let r = ui.available_rect_before_wrap();
+                egui::Rect::from_min_size(r.min, egui::vec2(r.width(), HDR_H))
+            };
+            ui.painter().rect_filled(
+                hdr_rect_full,
+                egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 },
+                color_alpha(c.t.toolbar_border, alpha_tint()),
+            );
+            ui.painter().hline(
+                hdr_rect_full.x_range(),
+                hdr_rect_full.bottom(),
+                egui::Stroke::new(stroke_thin(), color_alpha(c.t.toolbar_border, alpha_strong())),
+            );
             let header_resp = ui.horizontal(|ui| {
                 ui.set_min_width(panel_w);
-                let hr = ui.max_rect();
-                ui.painter().rect_filled(
-                    egui::Rect::from_min_size(hr.min, egui::vec2(panel_w, 22.0)),
-                    egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 },
-                    color_alpha(c.t.toolbar_border, 30));
                 ui.add_space(gap_sm());
                 let armed_icon = if chart.armed { Icon::SHIELD_WARNING } else { Icon::PLAY };
                 let armed_color = if chart.armed { c.t.accent } else { color_dim(c.t.dim) };
