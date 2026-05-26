@@ -37,104 +37,23 @@ if let Some(edit_id) = panes[ap].editing_indicator {
         _ => 250.0,
     };
 
-    let frame = PopupFrame::new()
-        .colors(t.toolbar_bg, t.toolbar_border)
-        .ctx(ctx)
-        .no_inner_margin()
-        .corner_radius(current().r_md as f32)
-        .build();
-
     let id_str = format!("ind_editor_{}", edit_id);
 
-    // Pre-compute header data so the painter closure doesn't need to
-    // borrow `panes` (the body closure borrows it mutably).
-    // WHITE is a never-rendered placeholder: the closing branch (no indicator
-    // found) sets close_editor = true and the dot is never painted.
+    // Pre-compute header data so the body closure can mutably borrow `panes`.
     let (hdr_color, hdr_name) = panes[ap].indicators.iter().find(|i| i.id == edit_id)
         .map(|i| (hex_to_color(&i.color, 1.0), i.display_name()))
         .unwrap_or((egui::Color32::WHITE, String::new()));
 
-    let modal_resp = Modal::new(&id_str)
-        .ctx(ctx)
-        .theme(t)
+    // P+ — switched from Modal + hand-rolled header_painter to ToolOverlay.
+    // Header chrome (color dot, title, close button, drag cursor, divider)
+    // is now centralised in ui_kit and shared with every other tool panel.
+    let portable_t = crate::chart_renderer::theme_impl::theme_to_portable(t);
+    let modal_resp = crate::ui_kit::widgets::ToolOverlay::new(&hdr_name)
         .id(&id_str)
-        .anchor(Anchor::Window { pos: Some(egui::pos2(200.0, 80.0)) })
-        .size(egui::vec2(panel_w, 0.0))
-        .frame_kind(FrameKind::Custom(frame))
-        .header_style(HeaderStyle::None)
-        .separator(false)
-        .draggable_header(true)
-        .header_painter(|ui| {
-            // Redesigned header (2026-05-26):
-            //   • Full-width fill (ui.max_rect()), not the stale panel_w.
-            //   • No ui.interact() wrapper — that was blocking BOTH the close
-            //     button (click eaten by drag-sense) AND egui::Window's own
-            //     movable(true) handler. Window drag now works as designed;
-            //     cursor hint is set only when hovering empty header area.
-            //   • Color dot painted via allocate_space, not magic cursor math.
-            //   • Header strip is 28 px tall — taller hit target.
-            let mut hdr_close = false;
-            const HEADER_H: f32 = 28.0;
-            let avail_w = ui.available_width();
-            let (header_rect, header_resp) = ui.allocate_exact_size(
-                egui::vec2(avail_w, HEADER_H),
-                egui::Sense::hover(),
-            );
-            // Background fill — accent-tinted strip across the full inner width.
-            let r_top = current().r_md;
-            ui.painter().rect_filled(
-                header_rect,
-                egui::CornerRadius { nw: r_top, ne: r_top, sw: 0, se: 0 },
-                color_alpha(t.toolbar_border, alpha_tint()),
-            );
-            // Hairline divider beneath the header — separates from body.
-            ui.painter().hline(
-                header_rect.x_range(),
-                header_rect.bottom(),
-                egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_strong())),
-            );
-            // Hover anywhere on the strip (outside the close button) → drag cursor.
-            // egui::Window's movable(true) consumes the drag event itself.
-            if header_resp.hovered() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
-            }
-            // Color dot at a fixed offset from header_rect.left().
-            let dot_center = egui::pos2(
-                header_rect.left() + gap_md() + 4.0,
-                header_rect.center().y,
-            );
-            ui.painter().circle_filled(dot_center, 4.5, hdr_color);
-            // Title — centered vertically, just right of the dot.
-            ui.painter().text(
-                egui::pos2(header_rect.left() + gap_md() + 16.0, header_rect.center().y),
-                egui::Align2::LEFT_CENTER,
-                &hdr_name,
-                egui::FontId::monospace(font_sm()),
-                t.text,
-            );
-            // Close button — right-anchored in its own child UI so the
-            // Button widget gets a proper interactable region INSIDE the
-            // header rect WITHOUT a wrapping interact swallowing the click.
-            let close_size = 22.0_f32;
-            let close_rect = egui::Rect::from_min_size(
-                egui::pos2(header_rect.right() - close_size - gap_xs(),
-                           header_rect.center().y - close_size / 2.0),
-                egui::vec2(close_size, close_size),
-            );
-            let mut close_ui = ui.new_child(
-                egui::UiBuilder::new()
-                    .max_rect(close_rect)
-                    .layout(egui::Layout::centered_and_justified(egui::Direction::TopDown))
-            );
-            let close_resp = Button::icon(Icon::X)
-                .variant(Variant::Ghost)
-                .placement(IconPlacement::Modal)
-                .show(&mut close_ui, t);
-            Tooltip::new("Close").show(ui, &close_resp, t);
-            if close_resp.clicked() { hdr_close = true; }
-            hdr_close
-        })
-        .show(|ui| {
+        .width(panel_w)
+        .pos(egui::pos2(200.0, 80.0))
+        .accent_dot(hdr_color)
+        .show(ctx, &portable_t, |ui| {
             if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == edit_id) {
                 // Redesigned body (2026-05-26):
                 //   • Single `BODY_PAD` constant for left/right padding.

@@ -14,14 +14,12 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [
 // ── Overlay management pane ─────────────────────────────────────────────
 if panes[ap].overlay_editing {
     let mut delete_idx: Option<usize> = None;
-    let modal_resp = Modal::new("SYMBOL OVERLAYS")
+    // Migrated to ToolOverlay (2026-05-26) — consolidates header chrome.
+    let portable_t = crate::chart_renderer::theme_impl::theme_to_portable(t);
+    let modal_resp = crate::ui_kit::widgets::ToolOverlay::new("SYMBOL OVERLAYS")
         .id("overlay_mgr")
-        .ctx(ctx)
-        .theme(t)
-        .size(egui::vec2(260.0, 0.0))
-        .header_style(HeaderStyle::Dialog)
-        .draggable_header(true)
-        .show(|ui| {
+        .width(260.0)
+        .show(ctx, &portable_t, |ui| {
             let m = 8.0;
             ui.add_space(gap_sm());
 
