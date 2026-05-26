@@ -57,6 +57,26 @@ pub struct ToolOverlayResponse {
     /// `true` for the frame on which the user clicked the close button or
     /// the underlying egui::Window's X. Hosts treat this as "request close".
     pub closed: bool,
+    /// Pointer drag delta on the header strip THIS frame (only populated
+    /// when the overlay is `.controlled_pos()` — host-managed position).
+    /// Host adds this to its stored position to follow the drag.
+    pub drag_delta: egui::Vec2,
+}
+
+/// Position-management mode for the overlay window.
+#[derive(Clone, Copy)]
+enum PositionMode {
+    /// egui::Window owns the position. `.pos()` is the default on first show;
+    /// the user can drag the window and egui persists the new position in
+    /// its own memory. Best for ephemeral / one-shot tool windows.
+    EguiManaged,
+    /// Host owns the position. ToolOverlay places the window at `pos` every
+    /// frame (fixed_pos), captures drag delta on the header strip, and
+    /// returns it via `ToolOverlayResponse::drag_delta`. Host writes the
+    /// new position back to its own state. Best for tools that persist
+    /// position to disk / per-document state (e.g. floating order ticket
+    /// stored on Chart::order_panel_pos).
+    HostManaged,
 }
 
 #[must_use = "ToolOverlay does nothing until `.show(ctx, theme, body)` is called"]
@@ -65,6 +85,7 @@ pub struct ToolOverlay<'a> {
     id:              &'a str,
     width:           f32,
     pos:             Option<Pos2>,
+    position_mode:   PositionMode,
     accent_dot:      Option<Color32>,
     closable:        bool,
     draggable:       bool,
@@ -83,6 +104,7 @@ impl<'a> ToolOverlay<'a> {
             id: title, // host should override with a stable id via .id()
             width: 260.0,
             pos: None,
+            position_mode: PositionMode::EguiManaged,
             accent_dot: None,
             closable: true,
             draggable: true,
@@ -118,9 +140,21 @@ impl<'a> ToolOverlay<'a> {
     /// Window width. Default 260 px. Height auto-fits content.
     pub fn width(mut self, w: f32) -> Self { self.width = w; self }
 
-    /// Default position on first show. Host may persist drag offset
-    /// separately if it wants the position to stick across sessions.
+    /// Default position on first show (egui-managed mode). The user can
+    /// drag and egui remembers the new position in its own memory.
     pub fn pos(mut self, p: Pos2) -> Self { self.pos = Some(p); self }
+
+    /// Host-managed position: ToolOverlay paints the window at `p` EVERY
+    /// frame (fixed_pos, no egui-persisted drag state). Drag delta is
+    /// surfaced via `ToolOverlayResponse::drag_delta` so the host can
+    /// update its own state. Use this when the position lives in your
+    /// app's state, not in egui's memory (e.g. floating order ticket
+    /// persisted to disk per Chart).
+    pub fn controlled_pos(mut self, p: Pos2) -> Self {
+        self.pos = Some(p);
+        self.position_mode = PositionMode::HostManaged;
+        self
+    }
 
     /// Render a small color dot just left of the title text — used by
     /// indicator-editor (one dot per indicator color) and similar
@@ -171,13 +205,23 @@ impl<'a> ToolOverlay<'a> {
             .title_bar(false)
             .resizable(false)
             .frame(frame);
-        win = if self.draggable {
-            win.default_pos(self.pos.unwrap_or(egui::pos2(200.0, 80.0)))
-               .default_size(egui::vec2(self.width, 0.0))
-               .movable(true)
-        } else {
-            let p = self.pos.unwrap_or(egui::pos2(200.0, 80.0));
-            win.fixed_pos(p).fixed_size(egui::vec2(self.width, 0.0)).movable(false)
+        let host_managed = matches!(self.position_mode, PositionMode::HostManaged);
+        win = match self.position_mode {
+            PositionMode::EguiManaged if self.draggable => {
+                win.default_pos(self.pos.unwrap_or(egui::pos2(200.0, 80.0)))
+                   .default_size(egui::vec2(self.width, 0.0))
+                   .movable(true)
+            }
+            PositionMode::EguiManaged => {
+                let p = self.pos.unwrap_or(egui::pos2(200.0, 80.0));
+                win.fixed_pos(p).fixed_size(egui::vec2(self.width, 0.0)).movable(false)
+            }
+            PositionMode::HostManaged => {
+                // Always paint at the host-supplied pos; drag is captured
+                // manually below from header sense and reported back.
+                let p = self.pos.unwrap_or(egui::pos2(200.0, 80.0));
+                win.fixed_pos(p).fixed_size(egui::vec2(self.width, 0.0)).movable(false)
+            }
         };
 
         let title       = self.title;
@@ -202,11 +246,21 @@ impl<'a> ToolOverlay<'a> {
                 let r = ui.available_rect_before_wrap();
                 Rect::from_min_size(r.min, egui::vec2(r.width(), HEADER_H))
             };
-            // Allocate the rect so the body lays out below. Header is non-
-            // interactable at the frame level — egui::Window's movable(true)
-            // gives us the drag; the close button gets its own child UI so
-            // its click doesn't fight any wrapping sense.
-            let _hdr_resp = ui.allocate_rect(header_rect, egui::Sense::hover());
+            // Allocate the rect so the body lays out below. Sense depends on
+            // position mode: egui-managed → hover only (movable(true) handles
+            // drag), host-managed → click_and_drag so we capture the delta.
+            let _hdr_resp = if host_managed {
+                ui.interact(
+                    header_rect,
+                    egui::Id::new(("tool_overlay_hdr_drag", self.id)),
+                    egui::Sense::click_and_drag(),
+                )
+            } else {
+                ui.allocate_rect(header_rect, egui::Sense::hover())
+            };
+            if host_managed && _hdr_resp.dragged() {
+                response.drag_delta = _hdr_resp.drag_delta();
+            }
             ui.painter().rect_filled(
                 header_rect,
                 CornerRadius { nw: radius.nw, ne: radius.ne, sw: 0, se: 0 },

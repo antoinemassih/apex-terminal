@@ -67,100 +67,69 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
         return;
     }
 
-    // ── Expanded panel ──
-    egui::Window::new(format!("order_entry_{}", c.pane_idx))
-        .fixed_pos(abs_pos)
-        .fixed_size(egui::vec2(panel_w, 0.0))
-        .title_bar(false)
-        // TODO(ui-kit): expanded panel uses corner_radius(4.0) and zero margin — can't use PopupFrame without changing visuals.
-        .frame(egui::Frame::popup(&c.ctx.style())
-            .fill(c.t.toolbar_bg)
-            .inner_margin(egui::Margin::ZERO)
-            .stroke(egui::Stroke::new(stroke_std(), color_alpha(c.t.toolbar_border, 100)))
-            .corner_radius(radius_sm()))
-        .show(c.ctx, |ui| {
-            // ── Header bar ── (redesigned 2026-05-26)
-            //   • Full-width allocate-then-paint so the strip spans the
-            //     entire inner width of the egui::Window. The previous
-            //     `panel_w` width was the WINDOW width, but `ui.horizontal`'s
-            //     internal item-spacing pushed the layout's min.x inward,
-            //     leaving a ~12 px gap on the right. Now we paint into
-            //     `ui.available_rect_before_wrap()` and overlay the children.
-            //   • 24 px tall (was 22) gives the armed icon a comfortable inset.
-            //   • Hairline divider beneath separates from the body.
-            const HDR_H: f32 = 24.0;
-            let hdr_rect_full = {
-                let r = ui.available_rect_before_wrap();
-                egui::Rect::from_min_size(r.min, egui::vec2(r.width(), HDR_H))
-            };
-            ui.painter().rect_filled(
-                hdr_rect_full,
-                egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 },
-                color_alpha(c.t.toolbar_border, alpha_tint()),
-            );
-            ui.painter().hline(
-                hdr_rect_full.x_range(),
-                hdr_rect_full.bottom(),
-                egui::Stroke::new(stroke_thin(), color_alpha(c.t.toolbar_border, alpha_strong())),
-            );
-            let header_resp = ui.horizontal(|ui| {
-                ui.set_min_width(panel_w);
-                ui.add_space(gap_sm());
-                let armed_icon = if chart.armed { Icon::SHIELD_WARNING } else { Icon::PLAY };
-                let armed_color = if chart.armed { c.t.accent } else { color_dim(c.t.dim) };
-                ui.label(egui::RichText::new(armed_icon).size(font_md()).color(armed_color));
-                ui.label(egui::RichText::new("ORDER").monospace().size(font_sm()).strong().color(color_muted(c.t.dim)));
-                if let Some((_, ref positions, _)) = c.account_data_cached {
-                    if let Some(pos) = positions.iter().find(|p| p.symbol == chart.symbol) {
-                        let pos_color = if pos.qty > 0 { c.t.bull } else { c.t.bear };
-                        let pos_text = if pos.qty > 0 { format!("+{}", pos.qty) } else { format!("{}", pos.qty) };
-                        ui.label(egui::RichText::new(pos_text).monospace().size(font_sm()).strong().color(pos_color));
-                    }
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add_space(gap_sm());
-                    let exp_icon = if adv { Icon::MINUS } else { Icon::PLUS };
-                    ui.label(egui::RichText::new(exp_icon).size(font_sm()).color(color_half(c.t.dim)));
-                    ui.add(egui::Separator::default().spacing(gap_xs()));
-                    let dom_col = if chart.dom_open { c.t.accent } else { color_dim(c.t.dim) };
-                    ui.label(egui::RichText::new("DOM").monospace().size(font_xs()).color(dom_col));
-                });
-            });
-            let hdr_rect = header_resp.response.rect;
-            if let Some(mpos) = ui.input(|i| i.pointer.latest_pos()) {
-                if hdr_rect.contains(mpos) {
-                    let released = ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary));
-                    let dbl = ui.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
-                    let armed_rect = egui::Rect::from_min_size(hdr_rect.min, egui::vec2(22.0, 22.0));
-                    if armed_rect.contains(mpos) {
-                        cursor::modal(ui, egui::CursorIcon::PointingHand);
-                        if released { chart.armed = !chart.armed; }
-                    } else if mpos.x > hdr_rect.right() - 50.0 && mpos.x < hdr_rect.right() - 20.0 {
-                        cursor::modal(ui, egui::CursorIcon::PointingHand);
-                        if released { chart.dom_open = !chart.dom_open; }
-                    } else if mpos.x > hdr_rect.right() - 20.0 {
-                        cursor::modal(ui, egui::CursorIcon::PointingHand);
-                        if released { chart.order_advanced = !chart.order_advanced; }
-                    } else if dbl {
-                        chart.order_collapsed = true;
-                    } else {
-                        cursor::modal(ui, egui::CursorIcon::Grab);
-                    }
-                }
-            }
-            let drag_resp = ui.interact(hdr_rect, egui::Id::new(("order_panel_drag", c.pane_idx)), egui::Sense::drag());
-            if drag_resp.dragged() {
-                let delta = drag_resp.drag_delta();
-                chart.order_panel_pos.x += delta.x;
-                chart.order_panel_pos.y += delta.y;
-                chart.order_panel_pos.x = chart.order_panel_pos.x.clamp(0.0, (c.cw - panel_w).max(0.0));
-                if chart.order_panel_pos.y < 0.0 {
-                    chart.order_panel_pos.y = chart.order_panel_pos.y.clamp(-(c.ch - 30.0), -30.0);
-                } else {
-                    chart.order_panel_pos.y = chart.order_panel_pos.y.clamp(0.0, (c.ch - 30.0).max(0.0));
-                }
-            }
+    // ── Expanded panel ── (migrated to ToolOverlay 2026-05-26)
+    // Header gets:
+    //   • leading slot — armed-state Button (toggles `chart.armed`), inline
+    //     position pill (if any), held inside the existing header strip.
+    //   • trailing slot — DOM toggle + expand/collapse chevron.
+    // Position is host-managed (Chart::order_panel_pos), so drag delta is
+    // captured by ToolOverlay and applied here with the same window-edge
+    // clamping the old code had.
+    use crate::ui_kit::widgets::{ToolOverlay, Button as KitButton, Tooltip};
+    use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
+    let portable_t = crate::chart_renderer::theme_impl::theme_to_portable(c.t);
+    // Snapshot data the closures need to capture (immutable view to avoid
+    // multi-mut on `chart`).
+    let armed_now = chart.armed;
+    let adv_now   = adv;
+    let dom_open  = chart.dom_open;
+    let symbol_for_pos = chart.symbol.clone();
+    let position_pill = c.account_data_cached.as_ref()
+        .and_then(|(_, positions, _)| positions.iter().find(|p| p.symbol == symbol_for_pos))
+        .map(|pos| (pos.qty, if pos.qty > 0 { c.t.bull } else { c.t.bear }));
+    // Side-channel flags written by closures (closures take &mut Ui only).
+    let mut toggle_armed = false;
+    let mut toggle_dom = false;
+    let mut toggle_adv = false;
 
+    let overlay_resp = ToolOverlay::new("ORDER")
+        .id(&format!("order_entry_{}", c.pane_idx))
+        .width(panel_w)
+        .controlled_pos(abs_pos)
+        .header_leading(|ui| {
+            // Armed-state icon button — toggles armed on click.
+            let armed_icon = if armed_now { Icon::SHIELD_WARNING } else { Icon::PLAY };
+            let r = KitButton::icon(armed_icon)
+                .variant(KitVariant::Ghost)
+                .size(KitSize::Sm)
+                .show(ui, &portable_t);
+            Tooltip::new(if armed_now { "Disarm" } else { "Arm — required to place orders" })
+                .show(ui, &r, &portable_t);
+            if r.clicked() { toggle_armed = true; }
+            // Position pill — display only.
+            if let Some((qty, col)) = position_pill {
+                let txt = if qty > 0 { format!("+{}", qty) } else { format!("{}", qty) };
+                ui.label(egui::RichText::new(txt).monospace().size(font_sm()).strong().color(col));
+            }
+        })
+        .header_trailing(|ui| {
+            // Right-to-left layout: expand icon FIRST (rightmost), then DOM.
+            let exp_icon = if adv_now { Icon::MINUS } else { Icon::PLUS };
+            let r = KitButton::icon(exp_icon)
+                .variant(KitVariant::Ghost)
+                .size(KitSize::Sm)
+                .show(ui, &portable_t);
+            Tooltip::new(if adv_now { "Compact" } else { "Advanced" }).show(ui, &r, &portable_t);
+            if r.clicked() { toggle_adv = true; }
+            ui.add(egui::Separator::default().spacing(gap_xs()));
+            let dom_col = if dom_open { c.t.accent } else { color_dim(c.t.dim) };
+            let dom_resp = ui.add(egui::Label::new(
+                egui::RichText::new("DOM").monospace().size(font_xs()).color(dom_col)
+            ).sense(egui::Sense::click()));
+            crate::chart_renderer::ui::style::cursor::clickable(ui, &dom_resp);
+            if dom_resp.clicked() { toggle_dom = true; }
+        })
+        .show(c.ctx, &portable_t, |ui| {
             // ── DOM ladder (when open) ──
             if chart.dom_open {
                 render_dom_ladder(ui, c.t, chart, c.account_data_cached, panel_w);
@@ -175,6 +144,24 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
                 render_order_entry_body(ui, chart, c.t, c.pane_idx as u64, panel_w);
             }
         });
+
+    // Apply header toggles flagged inside the leading/trailing closures.
+    if toggle_armed { chart.armed = !chart.armed; }
+    if toggle_dom   { chart.dom_open = !chart.dom_open; }
+    if toggle_adv   { chart.order_advanced = !chart.order_advanced; }
+
+    // Apply drag delta from ToolOverlay's host-managed position.
+    let delta = overlay_resp.drag_delta;
+    if delta != egui::Vec2::ZERO {
+        chart.order_panel_pos.x += delta.x;
+        chart.order_panel_pos.y += delta.y;
+        chart.order_panel_pos.x = chart.order_panel_pos.x.clamp(0.0, (c.cw - panel_w).max(0.0));
+        if chart.order_panel_pos.y < 0.0 {
+            chart.order_panel_pos.y = chart.order_panel_pos.y.clamp(-(c.ch - 30.0), -30.0);
+        } else {
+            chart.order_panel_pos.y = chart.order_panel_pos.y.clamp(0.0, (c.ch - 30.0).max(0.0));
+        }
+    }
 }
 
 fn render_dom_ladder(
