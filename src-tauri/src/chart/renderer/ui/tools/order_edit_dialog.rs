@@ -62,27 +62,15 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
         format!("EDIT {}", c.order_label)
     };
 
-    let resp = Modal::new(&title)
-        .id(&format!("order_edit_{}", c.edit_id))
-        .ctx(c.ctx)
-        .theme(c.t)
-        .size(egui::vec2(dialog_w, 0.0))
-        .anchor(Anchor::Area { pos: popup_pos })
-        .header_style(HeaderStyle::Dialog)
-        .frame_kind(FrameKind::Custom(
-            egui::Frame::popup(&c.ctx.style())
-                .fill(c.t.toolbar_bg)
-                .inner_margin(0.0)
-                .stroke(egui::Stroke::new(stroke_thin(), color_alpha(c.t.toolbar_border, 60)))
-                .corner_radius(radius_md())
-                .shadow(egui::epaint::Shadow {
-                    offset: [0, 4], blur: 12, spread: 2,
-                    color: shadow_color_alpha(c.t, 80),
-                })
-        ))
-        .separator(false)
-        .show(|ui| {
-            ui.add_space(gap_sm());
+    // Migrated to ToolPopover (2026-05-26).
+    let portable_t = crate::chart_renderer::theme_impl::theme_to_portable(c.t);
+    let dialog_id = format!("order_edit_{}", c.edit_id);
+    let resp = crate::ui_kit::widgets::ToolPopover::new()
+        .id(&dialog_id)
+        .width(dialog_w)
+        .pos(popup_pos)
+        .title(&title)
+        .show(c.ctx, &portable_t, |ui| {
             let m = gap_lg();
 
             // Option contract info for trigger orders
@@ -188,7 +176,7 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
             });
             ui.add_space(gap_sm());
         });
-    if resp.closed { close_editor = true; }
+    if resp.dismissed { close_editor = true; }
 
     OrderEditOutput { close_editor, apply_price, apply_qty, cancel_it }
 }

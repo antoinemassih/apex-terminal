@@ -55,44 +55,16 @@ pub(crate) fn draw(
         let cur_strike = panes[pi].option_strike;
         let cur_is_call = panes[pi].option_type == "C";
 
-        use super::super::chrome::modal::{Modal, Anchor, HeaderStyle, FrameKind};
-        let custom_frame = egui::Frame::popup(&ctx.style())
-            .fill(t.toolbar_bg)
-            .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())))
-            .inner_margin(egui::Margin::same(gap_lg() as i8))
-            .corner_radius(r_lg_cr())
-            .shadow(egui::epaint::Shadow {
-                offset: [0, 4], blur: 14, spread: 0,
-                color: shadow_color_alpha(t, 80),
-            });
-        let modal_resp = Modal::new("OPT_QUICK_PICKER")
-            .id(&format!("opt_quick_picker_{}", pi))
-            .ctx(ctx)
-            .theme(t)
-            .size(egui::vec2(260.0, 0.0))
-            .anchor(Anchor::Area { pos })
-            .header_style(HeaderStyle::None)
-            .frame_kind(FrameKind::Custom(custom_frame))
-            .close_on_click_outside(true)
-            .separator(false)
-            .show(|ui| {
-                ui.set_width(260.0);
-
-                        // ── Header: underlying symbol + close ──
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(&underlying)
-                                .monospace().size(font_lg()).strong().color(t.accent));
-                            ui.label(egui::RichText::new(format!("@ {:.2}", spot))
-                                .monospace().size(font_sm()).color(t.dim));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                let r = KitButton::close().show(ui, t);
-                                Tooltip::new("Close").show(ui, &r, t);
-                                if r.clicked() { close_picker = true; }
-                            });
-                        });
-                        ui.add_space(gap_sm());
-                        separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
-                        ui.add_space(gap_sm());
+        // Migrated to ToolPopover (2026-05-26).
+        let portable_t = crate::chart_renderer::theme_impl::theme_to_portable(t);
+        let title_text = format!("{} @ {:.2}", underlying, spot);
+        let popover_id = format!("opt_quick_picker_{}", pi);
+        let modal_resp = crate::ui_kit::widgets::ToolPopover::new()
+            .id(&popover_id)
+            .width(260.0)
+            .pos(pos)
+            .title(&title_text)
+            .show(ctx, &portable_t, |ui| {
 
                         // ── Expiry nav: < [DTE] > ──
                         ui.horizontal(|ui| {
@@ -289,7 +261,7 @@ pub(crate) fn draw(
                                 });
                         }
             });
-        if modal_resp.closed { close_picker = true; }
+        if modal_resp.dismissed { close_picker = true; }
 
         if close_picker {
             panes[pi].option_quick_open = false;

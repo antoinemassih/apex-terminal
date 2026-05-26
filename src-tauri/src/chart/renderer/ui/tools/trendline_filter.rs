@@ -199,15 +199,14 @@ if chart.picker_open {
         }
     }
 
-    let picker_win_resp = Modal::new(&format!("picker_{}", picker_pane_idx))
-        .ctx(ctx)
-        .theme(t)
-        .size(egui::vec2(320.0, 420.0))
-        .anchor(Anchor::Area { pos: chart.picker_pos })
-        .header_style(HeaderStyle::None)
-        .separator(false)
-        .close_on_click_outside(true)
-        .show(|ui| {
+    // Migrated to ToolPopover (2026-05-26).
+    let portable_t = crate::chart_renderer::theme_impl::theme_to_portable(t);
+    let picker_id = format!("picker_{}", picker_pane_idx);
+    let picker_win_resp = crate::ui_kit::widgets::ToolPopover::new()
+        .id(&picker_id)
+        .width(320.0)
+        .pos(chart.picker_pos)
+        .show(ctx, &portable_t, |ui| {
             let input = crate::ui_kit::widgets::Input::new(&mut chart.picker_query)
                     .placeholder("Search any stock, ETF, index...")
                     .width(300.0)
@@ -299,7 +298,7 @@ if chart.picker_open {
         });
 
     // Click-away is handled by Modal::close_on_click_outside; also honour manual close flag.
-    if picker_win_resp.closed { close_picker = true; }
+    if picker_win_resp.dismissed { close_picker = true; }
     if close_picker { chart.picker_open = false; }
 
     if let Some((sym, name)) = new_symbol {
