@@ -15,6 +15,7 @@ pub mod gpu;
 pub mod inspector_window;
 pub mod theme_impl;
 pub mod theme_adapter;
+pub mod pane_layout;
 mod types;
 pub mod ui;
 pub mod compute;
