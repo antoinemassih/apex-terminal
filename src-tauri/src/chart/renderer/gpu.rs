@@ -6082,11 +6082,20 @@ impl GpuCtx {
         // The real fix for the underlying variance requires profiling +
         // targeted work in the chart paint hot path (sacred core.rs, single-
         // owner pass). Until then, keep the original config.
-        let (present_mode, frame_latency) = if caps.present_modes.contains(&wgpu::PresentMode::Fifo) {
-            (wgpu::PresentMode::Fifo, 2u32)
-        } else {
-            (wgpu::PresentMode::AutoVsync, 2u32)
-        };
+        // User-reported drag lag (2026-05-26): the Fifo+lat=2 baseline added
+        // ~33ms of perceptible delay when panning the chart. Prefer Mailbox
+        // where available — same vsync pacing (no tearing) but drops stale
+        // frames instead of queuing them, so the GPU never falls behind
+        // user input. macOS Metal historically only advertised [Fifo,
+        // Immediate] so the Fifo fallback is preserved for that path.
+        let (present_mode, frame_latency) =
+            if caps.present_modes.contains(&wgpu::PresentMode::Mailbox) {
+                (wgpu::PresentMode::Mailbox, 1u32)
+            } else if caps.present_modes.contains(&wgpu::PresentMode::Fifo) {
+                (wgpu::PresentMode::Fifo, 2u32)
+            } else {
+                (wgpu::PresentMode::AutoVsync, 2u32)
+            };
         eprintln!("[native-chart] PresentMode::{:?}, frame latency {}", present_mode, frame_latency);
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT, format: fmt,
@@ -7299,31 +7308,47 @@ impl ApplicationHandler for App {
             let paired = cw.watchlist.subscriptions.drain();
             apply_pane_events(&mut cw.panes, &paired, group_count, true);
 
-            // Request redraw only when something actually needs to repaint.
-            // Egui tracks pending repaint requests internally (animations,
-            // input changes, explicit ctx.request_repaint() calls including
-            // wake_native_ui from background threads). Calling request_redraw
-            // unconditionally was previously what kept the app at 60 fps even
-            // when nothing was changing — burning ~5-10% CPU and battery.
+            // ── Unconditional 60 fps redraw (2026-05-26 — perf rev) ──────────
             //
-            // Now: only request a redraw if egui needs one or there's
-            // pending input we haven't drained yet.
-            let egui_wants_repaint = cw.gpu.egui_ctx.has_requested_repaint();
-            if egui_wants_repaint {
-                crate::foundation::frame_profiler::note_repaint(
-                    concat!(file!(), ":", line!(), " about_to_wait_tick"),
-                );
-                cw.win.request_redraw();
-            }
+            // Apex is a real-time trading chart. Reactive-only repaint
+            // (gated on `egui_ctx.has_requested_repaint()`) was added earlier
+            // as a battery optimisation, but it has two problems for this
+            // workload:
+            //
+            //  1. Live ticks arrive ~100 Hz on active symbols. If a tick
+            //     lands between vsync intervals and the reactive path hasn't
+            //     yet called request_repaint for it, the candle update can
+            //     be delayed by up to a frame. For a scalper that's
+            //     unacceptable.
+            //  2. Even small per-frame work spikes (motion animations on
+            //     toolbar widgets, theme rebuild) can push a frame over the
+            //     16 ms vsync budget. With reactive repaint + Fifo+lat=2,
+            //     the slipped frame stacks input into the queue — exactly
+            //     the "drag feels delayed" symptom the user reported.
+            //
+            // Unconditional request_redraw + vsync (Mailbox preferred,
+            // Fifo+lat=2 fallback) pins the app at the display refresh and
+            // keeps the swapchain perpetually fresh. The GPU work is
+            // throttled by vsync so we don't actually burn the CPU at
+            // 1000 fps — but every vsync we hand the compositor the latest
+            // chart state.
+            //
+            // Battery cost: ~5-10% CPU vs idle reactive mode. For a trading
+            // app the app is never actually idle (constant ticks) so this
+            // delta is small in practice. If a future use-case wants the
+            // battery-saver mode back, gate this behind a runtime flag.
+            crate::foundation::frame_profiler::note_repaint(
+                concat!(file!(), ":", line!(), " about_to_wait_tick"),
+            );
+            cw.win.request_redraw();
         }
 
-        // Frame-pacing control flow:
-        //   • Always Wait — the loop sleeps until winit wakes it for a real
-        //     event (RedrawRequested triggered by request_redraw, input, OS
-        //     events). request_redraw is now driven by egui's repaint flags,
-        //     not unconditional, so when truly idle we sleep at 0 fps until a
-        //     tick / interaction wakes us via wake_native_ui or input.
-        el.set_control_flow(winit::event_loop::ControlFlow::Wait);
+        // Frame-pacing: Poll so the loop wakes every iteration to keep the
+        // unconditional request_redraw above firing at vsync cadence.
+        // Vsync (Mailbox / Fifo) handles the actual 60 fps gating downstream,
+        // so Poll doesn't burn the CPU at 1000 fps — it just guarantees we
+        // never sit waiting for an external wake when a frame is due.
+        el.set_control_flow(winit::event_loop::ControlFlow::Poll);
     }
 }
 
