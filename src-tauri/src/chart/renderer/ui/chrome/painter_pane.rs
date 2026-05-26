@@ -342,6 +342,14 @@ pub struct PainterPaneHeader<'a> {
     show_expand_btn: bool,
     /// Whether the pane is currently maximized (button lit).
     is_maximized: bool,
+    /// Phase 1c — show the split dropdown button (sibling of Expand).
+    /// Pane-level operation, distinct from the per-tab close.
+    show_split_btn: bool,
+    /// Phase 1c — show the close-pane button (sibling of Expand).
+    /// Distinct from `show_close` which closes the active tab.
+    show_close_pane_btn: bool,
+    /// Whether the split popup is currently open (button lit).
+    split_btn_active: bool,
 }
 
 impl<'a> PainterPaneHeader<'a> {
@@ -387,6 +395,9 @@ impl<'a> PainterPaneHeader<'a> {
             pane_index: 0,
             show_expand_btn: false,
             is_maximized: false,
+            show_split_btn: false,
+            show_close_pane_btn: false,
+            split_btn_active: false,
         }
     }
 
@@ -458,6 +469,16 @@ impl<'a> PainterPaneHeader<'a> {
     pub fn show_expand_btn(mut self, maximized: bool) -> Self {
         self.show_expand_btn = true; self.is_maximized = maximized; self
     }
+    /// Phase 1c — show the split-pane button (sibling of Expand). `popup_open`
+    /// = the H/V dropdown is currently showing (button lit).
+    pub fn show_split_btn(mut self, popup_open: bool) -> Self {
+        self.show_split_btn = true; self.split_btn_active = popup_open; self
+    }
+    /// Phase 1c — show the close-pane button (separate from the per-tab
+    /// close, which is gated on `show_close`).
+    pub fn show_close_pane_btn(mut self) -> Self {
+        self.show_close_pane_btn = true; self
+    }
 
     pub fn show(self, ui: &mut Ui) -> PainterPaneHeaderResponse {
         let t = self.theme;
@@ -525,6 +546,9 @@ impl<'a> PainterPaneHeader<'a> {
             tab_rects: Vec::new(),
             plus_tab_rect: None,
             clicked_expand: false,
+            clicked_split: false,
+            clicked_close_pane: false,
+            split_btn_rect: None,
             link_dot_rect: None,
         };
         out.hover_pos = ui.ctx().pointer_hover_pos().filter(|p| rect.contains(*p));
@@ -837,10 +861,17 @@ impl<'a> PainterPaneHeader<'a> {
             cx += PLUS_TAB_W + gap_sm();
         }
 
-        // ── Right cluster: [Expand] [OVERLAY] [DRAW] [ORDER] [DOM] [OPTIONS] [Close] (right-anchored) ──
+        // ── Right cluster: [ClosePane] [Split] [Expand] [OVERLAY] [DRAW] [ORDER] [DOM] [OPTIONS] [Close] (right-anchored) ──
         // Layout walks right-to-left for sizing, then left-to-right for painting.
+        // ClosePane + Split are the Phase-1c additions and sit OUTSIDE the
+        // existing close-tab gutter so they remain visible regardless of
+        // whether tab-close is active.
         const EXPAND_BTN_W: f32 = 28.0;
-        let expand_total = if self.show_expand_btn { EXPAND_BTN_W } else { 0.0 };
+        const SPLIT_BTN_W:  f32 = 28.0;
+        const CLOSE_PANE_BTN_W: f32 = 28.0;
+        let expand_total      = if self.show_expand_btn { EXPAND_BTN_W } else { 0.0 };
+        let split_total       = if self.show_split_btn  { SPLIT_BTN_W }  else { 0.0 };
+        let close_pane_total  = if self.show_close_pane_btn { CLOSE_PANE_BTN_W } else { 0.0 };
         let close_total = if self.show_close { gap_md() + CLOSE_BTN_SIZE + gap_md() } else { gap_sm() };
         let order_dom_total = {
             let mut w = 0.0f32;
@@ -852,16 +883,75 @@ impl<'a> PainterPaneHeader<'a> {
             w
         };
 
+        // Total span of the new Phase-1c pane controls (Split + ClosePane)
+        // sitting to the LEFT of Expand. They are leftmost in the right cluster.
+        let pane_ctrls_total = split_total + close_pane_total;
+
         // Strong divider before right icon cluster.
-        if order_dom_total > 0.0 || expand_total > 0.0 || self.show_close {
+        if order_dom_total > 0.0 || expand_total > 0.0 || pane_ctrls_total > 0.0 || self.show_close {
             header_divider_strong(
                 &painter,
-                rect.right() - close_total - order_dom_total - expand_total,
+                rect.right() - close_total - order_dom_total - expand_total - pane_ctrls_total,
                 rect, t,
             );
         }
 
-        // ── Expand button (leftmost in right cluster) ─────────────────────────
+        // ── Close-pane button (LEFTMOST in right cluster) ─────────────────────
+        if self.show_close_pane_btn {
+            let icon_h = h - ICON_BTN_INSET_V;
+            let cp_rect = Rect::from_min_size(
+                pos2(rect.right() - close_total - order_dom_total - expand_total - split_total - CLOSE_PANE_BTN_W,
+                     rect.center().y - icon_h / 2.0),
+                Vec2::new(CLOSE_PANE_BTN_W, icon_h),
+            );
+            let resp = ui.allocate_rect(cp_rect, Sense::click());
+            if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+            let col = if resp.hovered() { t.bear } else { color_subtle(t.dim) };
+            if resp.hovered() {
+                painter.rect_filled(cp_rect, radius_sm(), color_alpha(t.bear, alpha_subtle()));
+            }
+            // Use the X glyph from Phosphor — same family as the other header icons.
+            painter.text(
+                cp_rect.center(), Align2::CENTER_CENTER,
+                Icon::X,
+                FontId::proportional(font_md_plus()), col,
+            );
+            if resp.clicked() { out.clicked_close_pane = true; }
+        }
+
+        // ── Split button (sibling of Expand, sits to its LEFT) ────────────────
+        if self.show_split_btn {
+            let icon_h = h - ICON_BTN_INSET_V;
+            let split_rect = Rect::from_min_size(
+                pos2(rect.right() - close_total - order_dom_total - expand_total - SPLIT_BTN_W,
+                     rect.center().y - icon_h / 2.0),
+                Vec2::new(SPLIT_BTN_W, icon_h),
+            );
+            let resp = ui.allocate_rect(split_rect, Sense::click());
+            if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+            let col = if self.split_btn_active {
+                t.accent
+            } else if resp.hovered() {
+                t.text
+            } else {
+                color_subtle(t.dim)
+            };
+            if resp.hovered() || self.split_btn_active {
+                painter.rect_filled(split_rect, radius_sm(), color_alpha(
+                    if self.split_btn_active { t.accent } else { t.toolbar_border },
+                    if self.split_btn_active { alpha_tint() } else { alpha_subtle() },
+                ));
+            }
+            painter.text(
+                split_rect.center(), Align2::CENTER_CENTER,
+                Icon::BROWSERS,
+                FontId::proportional(font_md_plus()), col,
+            );
+            if resp.clicked() { out.clicked_split = true; }
+            out.split_btn_rect = Some(split_rect);
+        }
+
+        // ── Expand button (sibling of Split, sits to its RIGHT) ───────────────
         if self.show_expand_btn {
             let icon_h = h - ICON_BTN_INSET_V;
             let expand_rect = Rect::from_min_size(
@@ -1049,6 +1139,13 @@ pub struct PainterPaneHeaderResponse {
     pub plus_tab_rect: Option<Rect>,
     /// Expand/collapse button was clicked.
     pub clicked_expand: bool,
+    /// Phase 1c — split-pane button was clicked. Host pops the H/V picker.
+    pub clicked_split: bool,
+    /// Phase 1c — close-pane button was clicked (distinct from clicked_close
+    /// which closes the active tab).
+    pub clicked_close_pane: bool,
+    /// Phase 1c — screen rect of the split button, for anchoring the popup.
+    pub split_btn_rect: Option<Rect>,
     /// Screen rect of the link-group dot — for anchoring the group picker popup.
     pub link_dot_rect: Option<Rect>,
 }

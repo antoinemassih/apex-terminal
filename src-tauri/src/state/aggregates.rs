@@ -887,6 +887,13 @@ pub struct LayoutState {
     #[serde(default = "LayoutState::default_split")]
     pub pane_split_v6: f32,
 
+    /// Phase 1 PaneGrid topology — recursive split tree. `None` means
+    /// "fall back to the legacy 8-fraction path above". When `Some` it is
+    /// the canonical source of pane geometry; the fractions are kept
+    /// alongside for older builds and emergency fallback.
+    #[serde(default)]
+    pub pane_layout: Option<crate::chart_renderer::pane_layout::PaneLayout>,
+
     // ── Favorites ─────────────────────────────────────────────────────────
 
     /// Layout preset names pinned to the toolbar (e.g. `["1", "2", "2H", "4"]`).
@@ -988,6 +995,7 @@ impl Default for LayoutState {
             pane_split_v4: 0.5,
             pane_split_v5: 0.5,
             pane_split_v6: 0.5,
+            pane_layout: None,
             layout_favorites: Self::default_layout_favorites(),
             timeframe_favorites: Self::default_timeframe_favorites(),
             maximized_pane: None,
@@ -1815,6 +1823,7 @@ mod tests {
             pane_split_v4: 0.60,
             pane_split_v5: 0.45,
             pane_split_v6: 0.55,
+            pane_layout: None,
             layout_favorites: vec!["2H".into(), "4".into()],
             timeframe_favorites: vec!["5m".into(), "1h".into()],
             maximized_pane: Some(1),

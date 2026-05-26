@@ -1500,9 +1500,18 @@ pub(crate) fn render(
                 if *active_pane >= max { *active_pane = 0; }
                 // Phase 1: regenerate PaneLayout to match the freshly-picked
                 // template. The 19 named templates are now "preset trees" —
-                // selecting one resets the tree; subsequent right-click splits
-                // mutate the tree from that preset baseline.
-                let chart_indices: Vec<usize> = (0..panes.len().max(1)).collect();
+                // selecting one resets the tree; subsequent splits mutate
+                // the tree from that preset baseline.
+                // P16 fix #3 — truncate panes Vec to the template's max so
+                // we don't leak orphan Charts (template "2" + existing 4
+                // panes used to leave charts 2/3 orphaned in Vec<Chart>).
+                let template_max = ly.max_panes();
+                if panes.len() > template_max {
+                    panes.truncate(template_max);
+                    if *active_pane >= template_max { *active_pane = template_max.saturating_sub(1); }
+                    watchlist.maximized_pane = watchlist.maximized_pane.filter(|&m| m < template_max);
+                }
+                let chart_indices: Vec<usize> = (0..template_max.max(1)).collect();
                 watchlist.pane_layout = Some(
                     crate::chart_renderer::pane_layout::PaneLayout::from_template(ly, &chart_indices)
                 );
@@ -2243,7 +2252,14 @@ pub(crate) fn render(
             }
             if *active_pane >= max { *active_pane = 0; }
             // Phase 1: regenerate PaneLayout from the new template.
-            let chart_indices: Vec<usize> = (0..panes.len().max(1)).collect();
+            // P16 fix #3 — same orphan-truncation as the favourites branch.
+            let template_max = ly.max_panes();
+            if panes.len() > template_max {
+                panes.truncate(template_max);
+                if *active_pane >= template_max { *active_pane = template_max.saturating_sub(1); }
+                watchlist.maximized_pane = watchlist.maximized_pane.filter(|&m| m < template_max);
+            }
+            let chart_indices: Vec<usize> = (0..template_max.max(1)).collect();
             watchlist.pane_layout = Some(
                 crate::chart_renderer::pane_layout::PaneLayout::from_template(ly, &chart_indices)
             );

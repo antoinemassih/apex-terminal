@@ -447,6 +447,17 @@ pub(crate) fn live_theme_count() -> usize {
     live_themes().read().unwrap_or_else(|e| e.into_inner()).len()
 }
 
+// ─── Phase 1c — pending pane-close queue ─────────────────────────────────────
+//
+// Set by a pane's close-pane button click (per-pane loop), drained after the
+// loop completes so Vec<Chart> isn't mutated mid-iteration. Indices may
+// shift after a remove; the drain sorts descending so each remove is safe
+// against the indices that follow.
+thread_local! {
+    pub(crate) static PENDING_PANE_CLOSE: std::cell::RefCell<Vec<usize>> =
+        std::cell::RefCell::new(Vec::new());
+}
+
 // ─── PaneLayout integration helpers (Phase 1 — PaneGrid migration) ──────────
 //
 // The chart-app's render loop calls into these to read pane rects + drive
@@ -4754,6 +4765,11 @@ pub(crate) struct Watchlist {
     /// Watchlist is persisted via a hand-rolled JSON path (not serde-derived);
     /// the layout will be saved/restored alongside the other state fields.
     pub(crate) pane_layout: Option<crate::chart_renderer::pane_layout::PaneLayout>,
+    /// Phase 1c — when the user clicks a pane header's Split button, store
+    /// the pane_idx here so the H/V picker popup renders anchored to it.
+    /// `None` = popup is closed. Cleared when an axis is picked, Escape is
+    /// pressed, or the user clicks outside.
+    pub(crate) pane_split_popup_for: Option<usize>,
     // Command palette
     pub(crate) cmd_palette_open: bool,
     pub(crate) cmd_palette_query: String,
@@ -5061,6 +5077,7 @@ impl Watchlist {
                // Phase 1 PaneGrid topology — None means "use legacy 8-fraction path".
                // Migration happens on first user action that depends on the tree.
                pane_layout: None,
+               pane_split_popup_for: None,
                cmd_palette_open: false, cmd_palette_query: String::new(), cmd_palette_results: vec![], cmd_palette_sel: -1,
                cmd_palette_recent: vec![], cmd_palette_freq: std::collections::HashMap::new(),
                cmd_palette_ai_mode: false, cmd_palette_ai_input: String::new(),
@@ -5595,6 +5612,8 @@ impl Watchlist {
         let pane_split_v4 = self.pane_split_v4;
         let pane_split_v5 = self.pane_split_v5;
         let pane_split_v6 = self.pane_split_v6;
+        // P16 fix #1 — persist the PaneGrid tree if present.
+        let pane_layout_clone = self.pane_layout.clone();
         let layout_favorites = self.layout_favorites.clone();
         let timeframe_favorites = self.timeframe_favorites.clone();
         let maximized_pane = self.maximized_pane;
@@ -5616,6 +5635,7 @@ impl Watchlist {
             s.pane_split_v4 = pane_split_v4;
             s.pane_split_v5 = pane_split_v5;
             s.pane_split_v6 = pane_split_v6;
+            s.pane_layout = pane_layout_clone;
             s.layout_favorites = layout_favorites;
             s.timeframe_favorites = timeframe_favorites;
             s.maximized_pane = maximized_pane;
@@ -5648,6 +5668,10 @@ impl Watchlist {
         self.pane_split_v4 = snap.pane_split_v4;
         self.pane_split_v5 = snap.pane_split_v5;
         self.pane_split_v6 = snap.pane_split_v6;
+        // P16 fix #1 — restore the saved tree if present. Older workspaces
+        // omit pane_layout (#[serde(default)]) so loading them yields None,
+        // and ensure_pane_layout will materialize from the legacy template.
+        self.pane_layout = snap.pane_layout.clone();
         self.layout_favorites = snap.layout_favorites;
         self.timeframe_favorites = snap.timeframe_favorites;
         self.maximized_pane = snap.maximized_pane;

@@ -78,7 +78,13 @@ pub(super) fn execute(
         *layout = ly;
         if *active_pane >= max { *active_pane = 0; }
         // Phase 1: regenerate PaneLayout when layout is changed via cmd palette.
-        let chart_indices: Vec<usize> = (0..panes.len().max(1)).collect();
+        // P16 fix #3 — truncate orphans matching the toolbar branches.
+        if panes.len() > max {
+            panes.truncate(max);
+            if *active_pane >= max { *active_pane = max.saturating_sub(1); }
+            watchlist.maximized_pane = watchlist.maximized_pane.filter(|&m| m < max);
+        }
+        let chart_indices: Vec<usize> = (0..max.max(1)).collect();
         watchlist.pane_layout = Some(
             crate::chart_renderer::pane_layout::PaneLayout::from_template(ly, &chart_indices)
         );

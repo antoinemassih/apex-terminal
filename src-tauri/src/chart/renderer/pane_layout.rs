@@ -45,6 +45,28 @@ pub struct PaneLayout {
     state: PaneState<PaneSlot>,
 }
 
+// `Clone` and `PartialEq` are required by the LayoutState aggregate
+// (Watchlist is a Clone+PartialEq snapshot for the persist store). Both
+// PaneState<T> and Node<T> implement neither by derive — so we round-trip
+// via serde to clone, and compare via serde-serialized equality.
+impl Clone for PaneLayout {
+    fn clone(&self) -> Self {
+        // serde round-trip is fine here — PaneLayout clones only happen on
+        // persist sync (off the render hot path).
+        let json = serde_json::to_string(&self.state).expect("serialize PaneState");
+        let state: PaneState<PaneSlot> = serde_json::from_str(&json).expect("deserialize PaneState");
+        Self { state }
+    }
+}
+
+impl PartialEq for PaneLayout {
+    fn eq(&self, other: &Self) -> bool {
+        let a = serde_json::to_string(&self.state).ok();
+        let b = serde_json::to_string(&other.state).ok();
+        a.is_some() && a == b
+    }
+}
+
 impl Default for PaneLayout {
     fn default() -> Self {
         let (state, _root) = PaneState::new(0_usize);
@@ -140,40 +162,76 @@ impl PaneLayout {
     ) -> bool {
         let mut changed = false;
 
-        // Walk every Split in the tree, find its boundary rect, and let the
-        // user drag it. We can't borrow `self.state` for the walk AND mutate
-        // it inside the loop, so collect (SplitId, drag_rect, axis, current
-        // ratio, full child rect) up front then mutate after.
         let mut drag_targets: Vec<(SplitId, Rect, Axis, f32, Rect)> = Vec::new();
         collect_split_handles(&self.state, full_rect, gap, &mut drag_targets);
 
-        let hit_band = 6.0;
-        let _ = theme; // currently unused; reserved for divider color overrides
+        let hit_band = 8.0_f32;
+        let hl_band  = 3.0_f32;
+        let stroke_w = crate::ui_kit::style::stroke_std();
+        let border_col = theme.border();
 
         for (sid, mid_rect, axis, ratio, parent_rect) in drag_targets {
-            let drag_rect = match axis {
-                Axis::Horizontal => Rect::from_min_max(
-                    Pos2::new(mid_rect.center().x - hit_band, mid_rect.top()),
-                    Pos2::new(mid_rect.center().x + hit_band, mid_rect.bottom()),
-                ),
-                Axis::Vertical => Rect::from_min_max(
-                    Pos2::new(mid_rect.left(), mid_rect.center().y - hit_band),
-                    Pos2::new(mid_rect.right(), mid_rect.center().y + hit_band),
-                ),
+            let (drag_rect, hl_rect, divider_line) = match axis {
+                Axis::Horizontal => {
+                    let cx = mid_rect.center().x;
+                    (
+                        Rect::from_min_max(
+                            Pos2::new(cx - hit_band, mid_rect.top()),
+                            Pos2::new(cx + hit_band, mid_rect.bottom()),
+                        ),
+                        Rect::from_min_max(
+                            Pos2::new(cx - hl_band, mid_rect.top()),
+                            Pos2::new(cx + hl_band, mid_rect.bottom()),
+                        ),
+                        // Sub-pixel-perfect vertical divider line at the split.
+                        [Pos2::new(cx, mid_rect.top()), Pos2::new(cx, mid_rect.bottom())],
+                    )
+                }
+                Axis::Vertical => {
+                    let cy = mid_rect.center().y;
+                    (
+                        Rect::from_min_max(
+                            Pos2::new(mid_rect.left(),  cy - hit_band),
+                            Pos2::new(mid_rect.right(), cy + hit_band),
+                        ),
+                        Rect::from_min_max(
+                            Pos2::new(mid_rect.left(),  cy - hl_band),
+                            Pos2::new(mid_rect.right(), cy + hl_band),
+                        ),
+                        // Horizontal divider line.
+                        [Pos2::new(mid_rect.left(), cy), Pos2::new(mid_rect.right(), cy)],
+                    )
+                }
             };
+
+            // ── Permanent divider line (design-system token) ──────────────
+            // Painted every frame using stroke_std() + theme.border() so the
+            // separation between panes is always visible, not just on hover.
+            ui.painter().line_segment(divider_line, Stroke::new(stroke_w, border_col));
+
             let resp = ui.interact(
                 drag_rect,
                 egui::Id::new(("pane_layout_split", sid.0)),
-                Sense::drag(),
+                Sense::click_and_drag(),
             );
+
+            // ── Interactive feedback (over the permanent line) ───────────
+            // Hover = faint accent tint; active drag = stronger accent.
             if resp.hovered() || resp.dragged() {
                 ui.ctx().set_cursor_icon(match axis {
                     Axis::Horizontal => CursorIcon::ResizeHorizontal,
                     Axis::Vertical   => CursorIcon::ResizeVertical,
                 });
+                let alpha: u8 = if resp.dragged() { 180 } else { 90 };
+                let col = theme.accent();
+                ui.painter().rect_filled(
+                    hl_rect,
+                    egui::CornerRadius::ZERO,
+                    egui::Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), alpha),
+                );
             }
+
             if resp.dragged() {
-                // Convert the drag delta into a ratio delta along the axis.
                 if let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos()) {
                     let new_ratio = match axis {
                         Axis::Horizontal => {
@@ -193,6 +251,7 @@ impl PaneLayout {
             }
         }
 
+        let _ = Stroke::NONE; // suppress unused-import warning in some builds
         changed
     }
 }
@@ -392,5 +451,88 @@ mod tests {
         let closed = l.close_pane(0);
         assert_eq!(closed, None);
         assert_eq!(l.pane_count(), 1);
+    }
+
+    // ── P16 fix #6: multi-step sequences ───────────────────────────────────
+
+    #[test]
+    fn split_then_close_then_split_keeps_tree_consistent() {
+        let mut l = PaneLayout::single(0);
+        assert!(l.split_pane(0, Axis::Horizontal, 1).is_some());
+        assert_eq!(l.pane_count(), 2);
+        // close the newly added pane
+        assert_eq!(l.close_pane(1), Some(1));
+        assert_eq!(l.pane_count(), 1);
+        // split again — should work without panicking and produce a fresh leaf
+        assert!(l.split_pane(0, Axis::Vertical, 2).is_some());
+        assert_eq!(l.pane_count(), 2);
+        // slots reachable via iteration are exactly {0, 2}
+        let slots: std::collections::HashSet<usize> = l.iter_slots().map(|(_, s)| s).collect();
+        assert_eq!(slots, [0, 2].into_iter().collect());
+    }
+
+    #[test]
+    fn template_replace_resets_tree_without_leaking_ids() {
+        let mut l = PaneLayout::from_template(Layout::Two, &[0, 1]);
+        assert_eq!(l.pane_count(), 2);
+        l.replace_with_template(Layout::Four, &[0, 1, 2, 3]);
+        assert_eq!(l.pane_count(), 4);
+        let slots: std::collections::HashSet<usize> = l.iter_slots().map(|(_, s)| s).collect();
+        assert_eq!(slots, [0, 1, 2, 3].into_iter().collect());
+    }
+
+    #[test]
+    fn split_assigns_new_unique_pane_id() {
+        let mut l = PaneLayout::single(0);
+        let id1 = l.split_pane(0, Axis::Horizontal, 1).expect("first split");
+        let id2 = l.split_pane(0, Axis::Vertical,   2).expect("second split");
+        assert_ne!(id1, id2);
+        assert_eq!(l.pane_count(), 3);
+    }
+
+    #[test]
+    fn pane_rects_after_split_cover_full_area() {
+        let mut l = PaneLayout::from_template(Layout::One, &[0]);
+        l.split_pane(0, Axis::Horizontal, 1);
+        let area = Rect::from_min_size(Pos2::ZERO, egui::vec2(800.0, 400.0));
+        let rects = l.pane_rects(area, 0.0);
+        assert_eq!(rects.len(), 2);
+        let total_w: f32 = rects.iter().map(|(_, r)| r.width()).sum();
+        // Both children should split full width (within 1px tolerance).
+        assert!((total_w - area.width()).abs() < 1.0,
+                "rects don't span full width: total {} vs area {}", total_w, area.width());
+    }
+
+    #[test]
+    fn close_pane_serde_round_trip() {
+        let mut l = PaneLayout::from_template(Layout::Three, &[0, 1, 2]);
+        let closed = l.close_pane(1);
+        assert_eq!(closed, Some(1));
+        // Serialize → deserialize via the Clone impl (which round-trips JSON).
+        let cloned = l.clone();
+        assert_eq!(cloned.pane_count(), 2);
+        let cloned_slots: Vec<usize> = cloned.iter_slots().map(|(_, s)| s).collect();
+        let orig_slots:   Vec<usize> = l.iter_slots().map(|(_, s)| s).collect();
+        assert_eq!(cloned_slots, orig_slots);
+    }
+
+    #[test]
+    fn template_switch_after_splits_works() {
+        // Start at Two, split each leaf to make 4, then switch to "Two" again.
+        let mut l = PaneLayout::from_template(Layout::Two, &[0, 1]);
+        l.split_pane(0, Axis::Vertical, 2);
+        l.split_pane(1, Axis::Vertical, 3);
+        assert_eq!(l.pane_count(), 4);
+        l.replace_with_template(Layout::Two, &[0, 1]);
+        assert_eq!(l.pane_count(), 2);
+    }
+
+    #[test]
+    fn partial_eq_via_serde() {
+        let a = PaneLayout::from_template(Layout::Four, &[0, 1, 2, 3]);
+        let b = PaneLayout::from_template(Layout::Four, &[0, 1, 2, 3]);
+        assert_eq!(a, b);
+        let c = PaneLayout::from_template(Layout::Two, &[0, 1]);
+        assert_ne!(a, c);
     }
 }

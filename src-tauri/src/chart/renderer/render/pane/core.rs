@@ -476,6 +476,23 @@ fn render_chart_pane(
             .active_tab(chart.tab_active)
             .hovered_tab(chart.tab_hovered)
             .show_expand_btn(watchlist.maximized_pane == Some(pane_idx));
+        // Phase 1c: split + close-pane controls are gated on PaneLayout
+        // being active. close-pane is only meaningful when there's more
+        // than one pane to close (single-pane close would empty the area).
+        // P16 fix #7 — pane-width guard. The right cluster already carries
+        // OVERLAY/DRAW/ORDER/DOM/OPTIONS + Expand; adding Split + ClosePane
+        // (~56 px combined) can overflow narrow panes. Hide both controls
+        // below 280 px wide — at that size the user should maximize or pick
+        // a smaller layout template anyway.
+        const SPLIT_CONTROLS_MIN_W: f32 = 280.0;
+        let pane_w_for_ctrls = pane_rects.get(pane_idx).map(|r| r.width()).unwrap_or(0.0);
+        if watchlist.pane_layout.is_some() && pane_w_for_ctrls >= SPLIT_CONTROLS_MIN_W {
+            let split_open = watchlist.pane_split_popup_for == Some(pane_idx);
+            builder = builder.show_split_btn(split_open);
+            if visible_count > 1 {
+                builder = builder.show_close_pane_btn();
+            }
+        }
 
         if has_tabs {
             builder = builder.tabs(&tab_refs);
@@ -644,6 +661,29 @@ fn render_chart_pane(
             } else {
                 watchlist.maximized_pane = Some(pane_idx);
             }
+        }
+
+        // Phase 1c — Split-pane: toggle the popup anchored to this pane's
+        // split button. The popup is rendered after the pane render loop
+        // (inside the CentralPanel show, where pane_layout is reachable).
+        if hdr.clicked_split {
+            watchlist.pane_split_popup_for = if watchlist.pane_split_popup_for == Some(pane_idx) {
+                None
+            } else {
+                Some(pane_idx)
+            };
+        }
+
+        // Phase 1c — Close-pane: queue this pane_idx for removal after the
+        // per-pane loop finishes (mutating Vec<Chart> mid-iteration would
+        // invalidate the loop's indices). pane_layout already removes the
+        // leaf so the tree stays consistent immediately.
+        if hdr.clicked_close_pane {
+            if let Some(ref mut pl) = watchlist.pane_layout {
+                let _ = pl.close_pane(pane_idx);
+            }
+            crate::chart_renderer::gpu::PENDING_PANE_CLOSE.with(|q| q.borrow_mut().push(pane_idx));
+            watchlist.pane_split_popup_for = None;
         }
 
 
@@ -11562,12 +11602,21 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
     let central_frame = egui::Frame::NONE.fill(t.bg);
     egui::CentralPanel::default().frame(central_frame).show(ctx, |ui| {
         let full_rect = ui.available_rect_before_wrap();
-        let actual_count = layout.max_panes().min(panes.len());
         // Phase 1: lazily materialize PaneLayout from the current legacy
         // template on first frame after load. Once set, the tree becomes the
         // canonical source of pane geometry; legacy fractions remain in the
         // struct for backwards-compat / fallback only.
-        crate::chart_renderer::gpu::ensure_pane_layout(watchlist, *layout, actual_count);
+        let legacy_count = layout.max_panes().min(panes.len());
+        crate::chart_renderer::gpu::ensure_pane_layout(watchlist, *layout, legacy_count);
+        // `actual_count` reflects the LIVE pane count. When PaneLayout is in
+        // play it can exceed `Layout::max_panes()` (e.g. user picked "1"
+        // then split twice → 3 panes). Without this, visible_count stayed
+        // at 1 and the divider overlays were silently skipped.
+        let actual_count = if let Some(ref pl) = watchlist.pane_layout {
+            pl.pane_count()
+        } else {
+            legacy_count
+        };
         let gap = crate::chart_renderer::ui::style::current().pane_gap;
         let (visible_count, pane_rects) = if let Some(max_idx) = watchlist.maximized_pane {
             if max_idx < actual_count {
@@ -11599,22 +11648,6 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                 };
                 ui.painter().rect_filled(full_rect, 0.0, gap_col);
             }
-        }
-
-        // ── PaneLayout overlays (Phase 1) ──
-        // When the new tree-based PaneLayout is active, dragging dividers
-        // mutates the tree's split ratios directly via show_overlays. We
-        // skip the legacy geometry-based dragger below in that case —
-        // mutating the legacy pane_split_h/v fractions would be a no-op
-        // (PaneLayout reads its own ratios), and the legacy block's hit
-        // detection assumes the legacy template's exact divider topology.
-        if visible_count > 1 && watchlist.pane_layout.is_some() {
-            let pl_t = crate::chart_renderer::theme_impl::theme_to_portable(t);
-            let _changed = {
-                let pl = watchlist.pane_layout.as_mut().expect("checked some");
-                let gap_overlay = crate::chart_renderer::ui::style::current().pane_gap;
-                pl.show_overlays(ui, full_rect, gap_overlay, &pl_t)
-            };
         }
 
         // ── Legacy pane divider drag handles (geometry-based) ────────────
@@ -11792,13 +11825,162 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
             }
         }
 
-        for render_i in 0..visible_count {
-        // When maximized, render the maximized pane using rect index 0
-        let pane_idx = if let Some(max_idx) = watchlist.maximized_pane { max_idx } else { render_i };
-        // All pane types go through render_chart_pane which renders the header/tabs first,
-        // then dispatches to the type-specific content
-        render_chart_pane(ui, ctx, panes, pane_idx, active_pane, visible_count, &pane_rects, theme_idx, watchlist, &account_data_cached);
+        // Phase 1c: when PaneLayout is active, the leaf chart-indices may be
+        // sparse (a split appends a new chart to Vec<Chart> so indices can
+        // grow beyond visible_count). Iterate the actual leaf slots instead
+        // of 0..visible_count. Legacy path is dense, so 0..visible_count
+        // there. Maximized pane still wins for both paths.
+        let render_indices: Vec<usize> = if let Some(max_idx) = watchlist.maximized_pane {
+            vec![max_idx]
+        } else if let Some(ref pl) = watchlist.pane_layout {
+            pl.iter_slots().map(|(_id, slot)| slot).collect()
+        } else {
+            (0..visible_count).collect()
+        };
+        for &pane_idx in &render_indices {
+            if pane_idx >= panes.len() { continue; }
+            // All pane types go through render_chart_pane which renders the header/tabs first,
+            // then dispatches to the type-specific content
+            render_chart_pane(ui, ctx, panes, pane_idx, active_pane, visible_count, &pane_rects, theme_idx, watchlist, &account_data_cached);
         } // end for pane_idx
+
+        // ── PaneLayout divider drag overlays (Phase 1) ───────────────────
+        // Painted AFTER per-pane render so the highlight sits on top of the
+        // pane content and egui's hit-test gives the divider input priority
+        // (egui processes interactions in reverse paint order).
+        if visible_count > 1 && watchlist.pane_layout.is_some() {
+            let pl_t = crate::chart_renderer::theme_impl::theme_to_portable(t);
+            let _changed = {
+                let pl = watchlist.pane_layout.as_mut().expect("checked some");
+                let gap_overlay = crate::chart_renderer::ui::style::current().pane_gap;
+                pl.show_overlays(ui, full_rect, gap_overlay, &pl_t)
+            };
+        }
+
+        // ── Phase 1c: split popup + close-pane queue ─────────────────────
+        // Render the H/V picker popup if the user clicked any pane's split
+        // button this/last frame. Anchor it just below the active pane's
+        // top-right corner (the split button's natural neighbourhood).
+        if let Some(popup_pane_idx) = watchlist.pane_split_popup_for {
+            if popup_pane_idx < pane_rects.len() {
+                let anchor_rect = pane_rects[popup_pane_idx];
+                let popup_pos = egui::pos2(anchor_rect.right() - 140.0, anchor_rect.top() + 28.0);
+                let portable_t = crate::chart_renderer::theme_impl::theme_to_portable(t);
+                let mut chose_axis: Option<crate::ui_kit::widgets::pane_grid::Axis> = None;
+                let mut close_popup = false;
+                let area_resp = egui::Area::new(egui::Id::new(("pane_split_popup", popup_pane_idx)))
+                    .fixed_pos(popup_pos)
+                    .order(egui::Order::Foreground)
+                    .show(ctx, |ui| {
+                        crate::ui_kit::widgets::OutlinedBox::new()
+                            .fill(t.toolbar_bg)
+                            .border(crate::chart_renderer::ui::style::color_alpha(
+                                t.toolbar_border, crate::chart_renderer::ui::style::alpha_strong()))
+                            .radius_sm()
+                            .padding(crate::chart_renderer::ui::style::gap_sm())
+                            .show(ui, &portable_t, |ui| {
+                                ui.set_min_width(132.0);
+                                let h_resp = crate::ui_kit::widgets::Button::new("Split Horizontal")
+                                    .variant(crate::ui_kit::widgets::tokens::Variant::Ghost)
+                                    .size(crate::ui_kit::widgets::tokens::Size::Sm)
+                                    .full_width(true)
+                                    .show(ui, &portable_t);
+                                if h_resp.clicked() {
+                                    chose_axis = Some(crate::ui_kit::widgets::pane_grid::Axis::Horizontal);
+                                }
+                                let v_resp = crate::ui_kit::widgets::Button::new("Split Vertical")
+                                    .variant(crate::ui_kit::widgets::tokens::Variant::Ghost)
+                                    .size(crate::ui_kit::widgets::tokens::Size::Sm)
+                                    .full_width(true)
+                                    .show(ui, &portable_t);
+                                if v_resp.clicked() {
+                                    chose_axis = Some(crate::ui_kit::widgets::pane_grid::Axis::Vertical);
+                                }
+                            });
+                    });
+                // Click-outside or Escape closes the popup.
+                let popup_rect = area_resp.response.rect;
+                if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    close_popup = true;
+                }
+                if ctx.input(|i| i.pointer.any_pressed()) {
+                    if let Some(p) = ctx.input(|i| i.pointer.interact_pos()) {
+                        if !popup_rect.contains(p) {
+                            close_popup = true;
+                        }
+                    }
+                }
+                if let Some(axis) = chose_axis {
+                    // Add a fresh Chart to storage and link a new leaf at the
+                    // chosen axis. Use the source pane's theme so the new pane
+                    // doesn't visually pop.
+                    let mut new_chart = crate::chart_renderer::gpu::Chart::new();
+                    new_chart.theme_idx = panes[popup_pane_idx].theme_idx;
+                    panes.push(new_chart);
+                    let new_idx = panes.len() - 1;
+                    if let Some(ref mut pl) = watchlist.pane_layout {
+                        let _ = pl.split_pane(popup_pane_idx, axis, new_idx);
+                    }
+                    watchlist.pane_split_popup_for = None;
+                } else if close_popup {
+                    watchlist.pane_split_popup_for = None;
+                }
+            } else {
+                // Stale pane_idx (pane was closed since the popup opened).
+                watchlist.pane_split_popup_for = None;
+            }
+        }
+
+        // Drain queued pane-close requests. Remove in descending order so
+        // earlier indices stay valid as later ones are removed. If the
+        // active pane was closed, snap active_pane to a valid index.
+        crate::chart_renderer::gpu::PENDING_PANE_CLOSE.with(|q| {
+            let mut closes = q.borrow_mut();
+            if !closes.is_empty() {
+                closes.sort_unstable_by(|a, b| b.cmp(a)); // descending
+                for &idx in closes.iter() {
+                    if idx < panes.len() && panes.len() > 1 {
+                        panes.remove(idx);
+
+                        // P16 fix #2 — repair PaneLayout slot indices that
+                        // pointed at charts above `idx`. After Vec::remove,
+                        // every chart at position > idx shifted down by one;
+                        // the tree's leaf slots must follow or they'd point
+                        // at the wrong chart (or out of bounds).
+                        if let Some(ref mut pl) = watchlist.pane_layout {
+                            for (_pane_id, slot) in pl.iter_slots_mut() {
+                                if *slot > idx { *slot -= 1; }
+                            }
+                        }
+
+                        // P16 fix #4 — maximize_pane is also a chart_idx;
+                        // shift or clear it the same way.
+                        if let Some(max_idx) = watchlist.maximized_pane {
+                            if max_idx == idx {
+                                watchlist.maximized_pane = None;
+                            } else if max_idx > idx {
+                                watchlist.maximized_pane = Some(max_idx - 1);
+                            }
+                        }
+
+                        // P16 fix #8 — active_pane is also a chart_idx; if it
+                        // pointed at the closed chart, snap to the first
+                        // remaining leaf in the layout tree (or clamp).
+                        if *active_pane == idx {
+                            *active_pane = watchlist.pane_layout.as_ref()
+                                .and_then(|pl| pl.iter_slots().next().map(|(_id, s)| s))
+                                .unwrap_or(0);
+                        } else if *active_pane > idx {
+                            *active_pane -= 1;
+                        }
+                        if *active_pane >= panes.len() && !panes.is_empty() {
+                            *active_pane = panes.len() - 1;
+                        }
+                    }
+                }
+                closes.clear();
+            }
+        });
 
         // ── Cross-pane tab drag: ghost rendering + drop handling ──
         if let Some(drag) = watchlist.dragging_tab.clone() {
