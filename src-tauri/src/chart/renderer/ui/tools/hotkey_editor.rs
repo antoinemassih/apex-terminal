@@ -53,19 +53,14 @@ if let Some(edit_id) = watchlist.hotkey_editing_id {
 
 // ── Hotkey editor dialog ────────────────────────────────────────────────
 if watchlist.hotkey_editor_open {
-    use super::super::chrome::modal::{Modal, Anchor, HeaderStyle, FrameKind};
     let screen = ctx.screen_rect();
-    let resp = Modal::new("KEYBOARD SHORTCUTS")
+    // Migrated to ToolOverlay (2026-05-26) — shared header chrome.
+    let portable_t = crate::chart_renderer::theme_impl::theme_to_portable(t);
+    let resp = crate::ui_kit::widgets::ToolOverlay::new("KEYBOARD SHORTCUTS")
         .id("hotkey_editor")
-        .ctx(ctx)
-        .theme(t)
-        .size(egui::vec2(540.0, 0.0))
-        .anchor(Anchor::Window { pos: Some(egui::pos2(screen.center().x - 270.0, 40.0)) })
-        .header_style(HeaderStyle::Dialog)
-        .frame_kind(FrameKind::DialogWindow)
-        .separator(false)
-        .show(|ui| {
-            ui.add_space(gap_md());
+        .width(540.0)
+        .pos(egui::pos2(screen.center().x - 270.0, 40.0))
+        .show(ctx, &portable_t, |ui| {
             draw_content(ui, watchlist, t);
         });
     if resp.closed { watchlist.update_sidebar_state(|s| s.hotkey_editor_open = false); }

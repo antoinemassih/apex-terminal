@@ -61,16 +61,18 @@ pub struct ToolOverlayResponse {
 
 #[must_use = "ToolOverlay does nothing until `.show(ctx, theme, body)` is called"]
 pub struct ToolOverlay<'a> {
-    title:       &'a str,
-    id:          &'a str,
-    width:       f32,
-    pos:         Option<Pos2>,
-    accent_dot:  Option<Color32>,
-    closable:    bool,
-    draggable:   bool,
-    body_pad_x:  f32,
-    body_pad_y:  f32,
-    footer:      Option<Box<dyn FnOnce(&mut Ui) + 'a>>,
+    title:           &'a str,
+    id:              &'a str,
+    width:           f32,
+    pos:             Option<Pos2>,
+    accent_dot:      Option<Color32>,
+    closable:        bool,
+    draggable:       bool,
+    body_pad_x:      f32,
+    body_pad_y:      f32,
+    header_leading:  Option<Box<dyn FnOnce(&mut Ui) + 'a>>,
+    header_trailing: Option<Box<dyn FnOnce(&mut Ui) + 'a>>,
+    footer:          Option<Box<dyn FnOnce(&mut Ui) + 'a>>,
 }
 
 impl<'a> ToolOverlay<'a> {
@@ -86,8 +88,27 @@ impl<'a> ToolOverlay<'a> {
             draggable: true,
             body_pad_x: 14.0,
             body_pad_y: 8.0,
+            header_leading: None,
+            header_trailing: None,
             footer: None,
         }
+    }
+
+    /// Extra widgets injected at the LEFT side of the header strip, right
+    /// after the accent dot + title. Used by tools that surface a state
+    /// indicator (armed icon, mode toggle) inline with the title.
+    /// The body runs inside a child UI sized to the header height — fit
+    /// small icon-buttons or labels here, not large content.
+    pub fn header_leading(mut self, body: impl FnOnce(&mut Ui) + 'a) -> Self {
+        self.header_leading = Some(Box::new(body));
+        self
+    }
+
+    /// Extra widgets injected on the RIGHT, left of the close button. For
+    /// position pills, DOM toggles, expand/collapse, etc.
+    pub fn header_trailing(mut self, body: impl FnOnce(&mut Ui) + 'a) -> Self {
+        self.header_trailing = Some(Box::new(body));
+        self
     }
 
     /// Stable egui id for the underlying window. REQUIRED for any overlay
@@ -165,6 +186,8 @@ impl<'a> ToolOverlay<'a> {
         let body_pad_x  = self.body_pad_x;
         let body_pad_y  = self.body_pad_y;
         let mut footer  = self.footer;
+        let mut header_leading  = self.header_leading;
+        let mut header_trailing = self.header_trailing;
         let dim         = theme.dim();
         let text_color  = theme.text();
         let border_col  = border;
@@ -207,13 +230,51 @@ impl<'a> ToolOverlay<'a> {
                 ui.painter().circle_filled(dot_center, 4.5, dot);
                 text_x += 16.0;
             }
-            ui.painter().text(
-                egui::pos2(text_x, header_rect.center().y),
-                egui::Align2::LEFT_CENTER,
-                title,
+            // Measure title width so we can position the leading slot after it.
+            let title_galley = ui.fonts(|f| f.layout_no_wrap(
+                title.to_string(),
                 egui::FontId::monospace(st::font_sm()),
                 text_color,
+            ));
+            ui.painter().galley(
+                egui::pos2(text_x, header_rect.center().y - title_galley.size().y / 2.0),
+                title_galley.clone(),
+                text_color,
             );
+
+            // ── Optional header_leading slot (right of title text) ──────
+            if let Some(lh) = header_leading.take() {
+                let leading_x = text_x + title_galley.size().x + st::gap_sm();
+                let leading_rect = Rect::from_min_max(
+                    egui::pos2(leading_x, header_rect.top() + 2.0),
+                    egui::pos2(header_rect.right() - 28.0, header_rect.bottom() - 2.0),
+                );
+                let mut lh_ui = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(leading_rect)
+                        .layout(egui::Layout::left_to_right(egui::Align::Center))
+                );
+                lh(&mut lh_ui);
+            }
+
+            // Reserve close-button slot width (24 px) so trailing/close don't overlap.
+            let close_slot_w = if closable { 28.0_f32 } else { 0.0 };
+
+            // ── Optional header_trailing slot (left of close button) ────
+            if let Some(th) = header_trailing.take() {
+                let trailing_right = header_rect.right() - close_slot_w;
+                let trailing_left  = trailing_right - 140.0; // up to 140 px reserved
+                let trailing_rect = Rect::from_min_max(
+                    egui::pos2(trailing_left.max(header_rect.left() + 80.0), header_rect.top() + 2.0),
+                    egui::pos2(trailing_right, header_rect.bottom() - 2.0),
+                );
+                let mut th_ui = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(trailing_rect)
+                        .layout(egui::Layout::right_to_left(egui::Align::Center))
+                );
+                th(&mut th_ui);
+            }
 
             // ── Close button (own child UI — click never eaten by parent) ─
             if closable {
