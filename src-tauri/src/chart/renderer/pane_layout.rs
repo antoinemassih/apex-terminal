@@ -35,8 +35,12 @@ use crate::chart_renderer::gpu::Layout;
 use crate::ui_kit::widgets::pane_grid::{Axis, Node, PaneId, PaneState, SplitId, split_rect};
 use crate::ui_kit::widgets::theme::ComponentTheme;
 
-/// Leaf content — index into the chart-app's `Vec<Chart>` storage.
-pub type PaneSlot = usize;
+/// Leaf content — a stable u64 id assigned by `Watchlist::alloc_pane_id` and
+/// stored in lockstep with the chart in `Watchlist::pane_ids`. P17 #1 swap
+/// from raw `usize` indices to stable IDs eliminates the entire class of
+/// "leaf shifted to wrong chart after a close" bugs that previously required
+/// manual slot-decrement fixups in the close drain.
+pub type PaneSlot = u64;
 
 /// Recursive split-pane layout for the chart area. Owns the topology +
 /// split ratios; chart data lives elsewhere indexed by `PaneSlot`.
@@ -69,7 +73,7 @@ impl PartialEq for PaneLayout {
 
 impl Default for PaneLayout {
     fn default() -> Self {
-        let (state, _root) = PaneState::new(0_usize);
+        let (state, _root) = PaneState::new(0_u64);
         Self { state }
     }
 }
@@ -486,7 +490,7 @@ mod tests {
         assert!(l.split_pane(0, Axis::Vertical, 2).is_some());
         assert_eq!(l.pane_count(), 2);
         // slots reachable via iteration are exactly {0, 2}
-        let slots: std::collections::HashSet<usize> = l.iter_slots().map(|(_, s)| s).collect();
+        let slots: std::collections::HashSet<u64> = l.iter_slots().map(|(_, s)| s).collect();
         assert_eq!(slots, [0, 2].into_iter().collect());
     }
 
@@ -496,7 +500,7 @@ mod tests {
         assert_eq!(l.pane_count(), 2);
         l.replace_with_template(Layout::Four, &[0, 1, 2, 3]);
         assert_eq!(l.pane_count(), 4);
-        let slots: std::collections::HashSet<usize> = l.iter_slots().map(|(_, s)| s).collect();
+        let slots: std::collections::HashSet<u64> = l.iter_slots().map(|(_, s)| s).collect();
         assert_eq!(slots, [0, 1, 2, 3].into_iter().collect());
     }
 
@@ -530,8 +534,8 @@ mod tests {
         // Serialize → deserialize via the Clone impl (which round-trips JSON).
         let cloned = l.clone();
         assert_eq!(cloned.pane_count(), 2);
-        let cloned_slots: Vec<usize> = cloned.iter_slots().map(|(_, s)| s).collect();
-        let orig_slots:   Vec<usize> = l.iter_slots().map(|(_, s)| s).collect();
+        let cloned_slots: Vec<u64> = cloned.iter_slots().map(|(_, s)| s).collect();
+        let orig_slots:   Vec<u64> = l.iter_slots().map(|(_, s)| s).collect();
         assert_eq!(cloned_slots, orig_slots);
     }
 

@@ -1521,9 +1521,14 @@ pub(crate) fn render(
                     });
                     watchlist.maximized_pane = watchlist.maximized_pane.filter(|&m| m < template_max);
                 }
-                let chart_indices: Vec<usize> = (0..template_max.max(1)).collect();
+                // P17 #1 — sync ids then use them as PaneSlot values so the
+                // tree carries stable IDs instead of fragile indices.
+                crate::chart_renderer::gpu::ensure_pane_ids_synced(watchlist, panes.len());
+                let mut slot_ids: Vec<u64> = watchlist.pane_ids.iter().copied()
+                    .take(template_max.max(1)).collect();
+                while slot_ids.len() < template_max.max(1) { slot_ids.push(0); }
                 watchlist.pane_layout = Some(
-                    crate::chart_renderer::pane_layout::PaneLayout::from_template(ly, &chart_indices)
+                    crate::chart_renderer::pane_layout::PaneLayout::from_template(ly, &slot_ids)
                 );
             };
             // Show favorited layouts as segmented control + dropdown caret
@@ -1551,12 +1556,17 @@ pub(crate) fn render(
                 // P17 #4 — sync indicator. When PaneLayout diverges from the
                 // selected template (user split/closed since picking it), show
                 // "Custom" so the dropdown label stops lying about reality.
+                // Comparison is structural: we build a reference tree using the
+                // SAME ids the live tree currently has (otherwise PartialEq
+                // would always fail due to mismatched stable IDs).
                 let pane_layout_matches_template = match &watchlist.pane_layout {
                     None => true, // legacy path always matches
                     Some(pl) => {
                         let template_max = layout.max_panes();
-                        let chart_indices: Vec<usize> = (0..template_max.max(1)).collect();
-                        let reference = crate::chart_renderer::pane_layout::PaneLayout::from_template(*layout, &chart_indices);
+                        let mut slot_ids: Vec<u64> = watchlist.pane_ids.iter().copied()
+                            .take(template_max.max(1)).collect();
+                        while slot_ids.len() < template_max.max(1) { slot_ids.push(0); }
+                        let reference = crate::chart_renderer::pane_layout::PaneLayout::from_template(*layout, &slot_ids);
                         *pl == reference
                     }
                 };
@@ -2292,9 +2302,12 @@ pub(crate) fn render(
                 });
                 watchlist.maximized_pane = watchlist.maximized_pane.filter(|&m| m < template_max);
             }
-            let chart_indices: Vec<usize> = (0..template_max.max(1)).collect();
+            crate::chart_renderer::gpu::ensure_pane_ids_synced(watchlist, panes.len());
+            let mut slot_ids: Vec<u64> = watchlist.pane_ids.iter().copied()
+                .take(template_max.max(1)).collect();
+            while slot_ids.len() < template_max.max(1) { slot_ids.push(0); }
             watchlist.pane_layout = Some(
-                crate::chart_renderer::pane_layout::PaneLayout::from_template(ly, &chart_indices)
+                crate::chart_renderer::pane_layout::PaneLayout::from_template(ly, &slot_ids)
             );
         }
         if close_dd { watchlist.layout_dropdown_open = false; }

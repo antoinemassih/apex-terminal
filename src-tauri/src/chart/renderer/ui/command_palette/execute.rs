@@ -91,9 +91,11 @@ pub(super) fn execute(
             });
             watchlist.maximized_pane = watchlist.maximized_pane.filter(|&m| m < max);
         }
-        let chart_indices: Vec<usize> = (0..max.max(1)).collect();
+        crate::chart_renderer::gpu::ensure_pane_ids_synced(watchlist, panes.len());
+        let mut slot_ids: Vec<u64> = watchlist.pane_ids.iter().copied().take(max.max(1)).collect();
+        while slot_ids.len() < max.max(1) { slot_ids.push(0); }
         watchlist.pane_layout = Some(
-            crate::chart_renderer::pane_layout::PaneLayout::from_template(ly, &chart_indices)
+            crate::chart_renderer::pane_layout::PaneLayout::from_template(ly, &slot_ids)
         );
         return;
     }

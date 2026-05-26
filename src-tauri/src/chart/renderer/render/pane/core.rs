@@ -676,13 +676,14 @@ fn render_chart_pane(
 
         // Phase 1c — Close-pane: queue this pane_idx for removal after the
         // per-pane loop finishes (mutating Vec<Chart> mid-iteration would
-        // invalidate the loop's indices). pane_layout already removes the
-        // leaf so the tree stays consistent immediately.
+        // invalidate the loop's indices). P17 #1: close the leaf by its
+        // STABLE id so we don't depend on pane_idx being valid post-mutation.
         if hdr.clicked_close_pane {
             // P17 #3 — snapshot for undo BEFORE the destructive op.
             crate::chart_renderer::gpu::pane_layout_record_undo(watchlist);
-            if let Some(ref mut pl) = watchlist.pane_layout {
-                let _ = pl.close_pane(pane_idx);
+            let close_id = watchlist.pane_ids.get(pane_idx).copied();
+            if let (Some(id), Some(pl)) = (close_id, watchlist.pane_layout.as_mut()) {
+                let _ = pl.close_pane(id);
             }
             crate::chart_renderer::gpu::PENDING_PANE_CLOSE.with(|q| q.borrow_mut().push(pane_idx));
             watchlist.pane_split_popup_for = None;
@@ -11604,6 +11605,10 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
     let central_frame = egui::Frame::NONE.fill(t.bg);
     egui::CentralPanel::default().frame(central_frame).show(ctx, |ui| {
         let full_rect = ui.available_rect_before_wrap();
+        // P17 #1 — ensure pane_ids tracks panes Vec (lazy migration for
+        // workspaces that loaded before P17). MUST run before pane_layout
+        // materialization so the initial tree can use stable IDs.
+        crate::chart_renderer::gpu::ensure_pane_ids_synced(watchlist, panes.len());
         // Phase 1: lazily materialize PaneLayout from the current legacy
         // template on first frame after load. Once set, the tree becomes the
         // canonical source of pane geometry; legacy fractions remain in the
@@ -11832,21 +11837,29 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
         // grow beyond visible_count). Iterate the actual leaf slots instead
         // of 0..visible_count. Legacy path is dense, so 0..visible_count
         // there. Maximized pane still wins for both paths.
-        // P17 #6 — defensive prune. If pane_layout has stale slots pointing
-        // beyond panes.len() (workspace load with mismatched state, async
-        // chart removal), filter them out at the iteration boundary AND
-        // close them in the tree so the layout self-heals next frame.
-        if let Some(ref mut pl) = watchlist.pane_layout {
-            let n = panes.len();
-            let dead: Vec<usize> = pl.iter_slots()
-                .filter_map(|(_id, slot)| if slot >= n { Some(slot) } else { None })
-                .collect();
-            for slot in dead { let _ = pl.close_pane(slot); }
+        // P17 #6 — defensive prune. PaneSlot is now a stable u64 id; a slot
+        // whose id isn't in pane_ids means the chart was removed without the
+        // tree being told. Close those leaves so the tree self-heals.
+        if watchlist.pane_layout.is_some() {
+            let dead: Vec<u64> = {
+                let pl = watchlist.pane_layout.as_ref().unwrap();
+                let live_ids: std::collections::HashSet<u64> = watchlist.pane_ids.iter().copied().collect();
+                pl.iter_slots()
+                    .filter_map(|(_id, slot)| if !live_ids.contains(&slot) { Some(slot) } else { None })
+                    .collect()
+            };
+            if !dead.is_empty() {
+                let pl = watchlist.pane_layout.as_mut().unwrap();
+                for slot in dead { let _ = pl.close_pane(slot); }
+            }
         }
+        // Render order: maximize > pane_layout (id→idx translation) > legacy.
         let render_indices: Vec<usize> = if let Some(max_idx) = watchlist.maximized_pane {
             vec![max_idx]
         } else if let Some(ref pl) = watchlist.pane_layout {
-            pl.iter_slots().map(|(_id, slot)| slot).collect()
+            pl.iter_slots()
+                .filter_map(|(_id, slot)| crate::chart_renderer::gpu::chart_idx_for(watchlist, slot))
+                .collect()
         } else {
             (0..visible_count).collect()
         };
@@ -11939,24 +11952,23 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                 }
                 if let Some(axis) = chose_axis {
                     // P17 #14 — global pane limit. Refuse split if it would
-                    // push the count past the cap. 16 is well above any
-                    // legacy template (max 9) but bounded to keep the chart
-                    // pipeline / state-store sane.
+                    // push the count past the cap.
                     const MAX_TOTAL_PANES: usize = 16;
                     if panes.len() >= MAX_TOTAL_PANES {
                         watchlist.pane_split_popup_for = None;
                     } else {
-                        // P17 #3 — snapshot BEFORE the destructive split.
                         crate::chart_renderer::gpu::pane_layout_record_undo(watchlist);
-                        // Add a fresh Chart to storage and link a new leaf at
-                        // the chosen axis. Use the source pane's theme so the
-                        // new pane doesn't visually pop.
+                        let source_theme = panes[popup_pane_idx].theme_idx;
+                        let source_id = watchlist.pane_ids.get(popup_pane_idx).copied();
+                        // P17 #1 — push_chart_with_id keeps panes & pane_ids
+                        // in lockstep and returns the freshly minted ID to
+                        // use as the new leaf's PaneSlot.
                         let mut new_chart = crate::chart_renderer::gpu::Chart::new();
-                        new_chart.theme_idx = panes[popup_pane_idx].theme_idx;
-                        panes.push(new_chart);
-                        let new_idx = panes.len() - 1;
-                        if let Some(ref mut pl) = watchlist.pane_layout {
-                            let _ = pl.split_pane(popup_pane_idx, axis, new_idx);
+                        new_chart.theme_idx = source_theme;
+                        let new_id = crate::chart_renderer::gpu::push_chart_with_id(
+                            panes, watchlist, new_chart);
+                        if let (Some(src_id), Some(pl)) = (source_id, watchlist.pane_layout.as_mut()) {
+                            let _ = pl.split_pane(src_id, axis, new_id);
                         }
                         watchlist.pane_split_popup_for = None;
                     }
@@ -11978,21 +11990,18 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                 closes.sort_unstable_by(|a, b| b.cmp(a)); // descending
                 for &idx in closes.iter() {
                     if idx < panes.len() && panes.len() > 1 {
-                        panes.remove(idx);
-
-                        // P16 fix #2 — repair PaneLayout slot indices that
-                        // pointed at charts above `idx`. After Vec::remove,
-                        // every chart at position > idx shifted down by one;
-                        // the tree's leaf slots must follow or they'd point
-                        // at the wrong chart (or out of bounds).
-                        if let Some(ref mut pl) = watchlist.pane_layout {
-                            for (_pane_id, slot) in pl.iter_slots_mut() {
-                                if *slot > idx { *slot -= 1; }
-                            }
+                        // P17 #1 — remove_chart_at keeps pane_ids in lockstep
+                        // and returns the dead id so we can drop the matching
+                        // leaf from PaneLayout (which the close-button handler
+                        // usually already did, but template-truncation queues
+                        // raw indices without touching the tree first).
+                        let dead_id = crate::chart_renderer::gpu::remove_chart_at(panes, watchlist, idx);
+                        if let (Some(id), Some(pl)) = (dead_id, watchlist.pane_layout.as_mut()) {
+                            let _ = pl.close_pane(id);
                         }
-
-                        // P16 fix #4 — maximize_pane is also a chart_idx;
-                        // shift or clear it the same way.
+                        // P16 fix #4 — maximize_pane is still a chart_idx
+                        // (display-time index, not stable id), so it still
+                        // needs the legacy shift fixup.
                         if let Some(max_idx) = watchlist.maximized_pane {
                             if max_idx == idx {
                                 watchlist.maximized_pane = None;
@@ -12000,14 +12009,9 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                                 watchlist.maximized_pane = Some(max_idx - 1);
                             }
                         }
-
-                        // P16 fix #8 — active_pane is also a chart_idx; if it
-                        // pointed at the closed chart, snap to the first
-                        // remaining leaf in the layout tree (or clamp).
+                        // P16 fix #8 — active_pane is also a chart_idx.
                         if *active_pane == idx {
-                            *active_pane = watchlist.pane_layout.as_ref()
-                                .and_then(|pl| pl.iter_slots().next().map(|(_id, s)| s))
-                                .unwrap_or(0);
+                            *active_pane = 0; // pick first remaining
                         } else if *active_pane > idx {
                             *active_pane -= 1;
                         }
