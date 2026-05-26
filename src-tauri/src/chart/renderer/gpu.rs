@@ -458,6 +458,48 @@ thread_local! {
         std::cell::RefCell::new(Vec::new());
 }
 
+// ─── P17 #3 — PaneLayout undo/redo helpers ────────────────────────────────
+const PANE_LAYOUT_UNDO_CAP: usize = 32;
+
+/// Snapshot the current pane_layout onto the undo stack BEFORE applying a
+/// destructive operation (split, close, template change). The redo stack is
+/// cleared because the user's just diverged from the previous history. Cap
+/// the undo stack at PANE_LAYOUT_UNDO_CAP entries (oldest evicted FIFO).
+pub(crate) fn pane_layout_record_undo(wl: &mut Watchlist) {
+    let snap = wl.pane_layout.clone();
+    wl.pane_layout_undo.push(snap);
+    if wl.pane_layout_undo.len() > PANE_LAYOUT_UNDO_CAP {
+        let drop_n = wl.pane_layout_undo.len() - PANE_LAYOUT_UNDO_CAP;
+        wl.pane_layout_undo.drain(..drop_n);
+    }
+    wl.pane_layout_redo.clear();
+}
+
+/// Pop the most recent undo snapshot; push the current state onto redo.
+/// Returns `true` if anything was undone.
+pub(crate) fn pane_layout_undo(wl: &mut Watchlist) -> bool {
+    if let Some(prev) = wl.pane_layout_undo.pop() {
+        let current = wl.pane_layout.clone();
+        wl.pane_layout_redo.push(current);
+        wl.pane_layout = prev;
+        true
+    } else {
+        false
+    }
+}
+
+/// Pop the most recent redo snapshot; push the current state onto undo.
+pub(crate) fn pane_layout_redo(wl: &mut Watchlist) -> bool {
+    if let Some(next) = wl.pane_layout_redo.pop() {
+        let current = wl.pane_layout.clone();
+        wl.pane_layout_undo.push(current);
+        wl.pane_layout = next;
+        true
+    } else {
+        false
+    }
+}
+
 // ─── PaneLayout integration helpers (Phase 1 — PaneGrid migration) ──────────
 //
 // The chart-app's render loop calls into these to read pane rects + drive
@@ -4770,6 +4812,13 @@ pub(crate) struct Watchlist {
     /// `None` = popup is closed. Cleared when an axis is picked, Escape is
     /// pressed, or the user clicks outside.
     pub(crate) pane_split_popup_for: Option<usize>,
+    /// P17 #3 — undo stack for destructive pane operations. Each entry is
+    /// a snapshot of `pane_layout` taken IMMEDIATELY BEFORE a split/close.
+    /// Cap at 32 entries; oldest evicted FIFO.
+    pub(crate) pane_layout_undo: Vec<Option<crate::chart_renderer::pane_layout::PaneLayout>>,
+    /// Companion redo stack — populated when undo pops + pushes onto here.
+    /// Cleared whenever a NEW destructive op happens (standard editor model).
+    pub(crate) pane_layout_redo: Vec<Option<crate::chart_renderer::pane_layout::PaneLayout>>,
     // Command palette
     pub(crate) cmd_palette_open: bool,
     pub(crate) cmd_palette_query: String,
@@ -5078,6 +5127,8 @@ impl Watchlist {
                // Migration happens on first user action that depends on the tree.
                pane_layout: None,
                pane_split_popup_for: None,
+               pane_layout_undo: Vec::new(),
+               pane_layout_redo: Vec::new(),
                cmd_palette_open: false, cmd_palette_query: String::new(), cmd_palette_results: vec![], cmd_palette_sel: -1,
                cmd_palette_recent: vec![], cmd_palette_freq: std::collections::HashMap::new(),
                cmd_palette_ai_mode: false, cmd_palette_ai_input: String::new(),

@@ -679,6 +679,8 @@ fn render_chart_pane(
         // invalidate the loop's indices). pane_layout already removes the
         // leaf so the tree stays consistent immediately.
         if hdr.clicked_close_pane {
+            // P17 #3 — snapshot for undo BEFORE the destructive op.
+            crate::chart_renderer::gpu::pane_layout_record_undo(watchlist);
             if let Some(ref mut pl) = watchlist.pane_layout {
                 let _ = pl.close_pane(pane_idx);
             }
@@ -11830,6 +11832,17 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
         // grow beyond visible_count). Iterate the actual leaf slots instead
         // of 0..visible_count. Legacy path is dense, so 0..visible_count
         // there. Maximized pane still wins for both paths.
+        // P17 #6 — defensive prune. If pane_layout has stale slots pointing
+        // beyond panes.len() (workspace load with mismatched state, async
+        // chart removal), filter them out at the iteration boundary AND
+        // close them in the tree so the layout self-heals next frame.
+        if let Some(ref mut pl) = watchlist.pane_layout {
+            let n = panes.len();
+            let dead: Vec<usize> = pl.iter_slots()
+                .filter_map(|(_id, slot)| if slot >= n { Some(slot) } else { None })
+                .collect();
+            for slot in dead { let _ = pl.close_pane(slot); }
+        }
         let render_indices: Vec<usize> = if let Some(max_idx) = watchlist.maximized_pane {
             vec![max_idx]
         } else if let Some(ref pl) = watchlist.pane_layout {
@@ -11856,6 +11869,20 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                 pl.show_overlays(ui, full_rect, gap_overlay, &pl_t)
             };
         }
+
+        // ── P17 #3 + #10 — pane-layout undo/redo keyboard shortcuts ─────
+        // Ctrl+Shift+Alt+Z undo, Ctrl+Shift+Alt+Y redo — namespaced so they
+        // don't fight with text-field undo or the chart's drawing-undo
+        // (Ctrl+Z) shortcuts. The triple modifier makes it discoverable
+        // without being accidentally hit while typing.
+        let kb = ctx.input(|i| {
+            let m = i.modifiers;
+            let undo = m.command && m.shift && m.alt && i.key_pressed(egui::Key::Z);
+            let redo = m.command && m.shift && m.alt && i.key_pressed(egui::Key::Y);
+            (undo, redo)
+        });
+        if kb.0 { let _ = crate::chart_renderer::gpu::pane_layout_undo(watchlist); }
+        if kb.1 { let _ = crate::chart_renderer::gpu::pane_layout_redo(watchlist); }
 
         // ── Phase 1c: split popup + close-pane queue ─────────────────────
         // Render the H/V picker popup if the user clicked any pane's split
@@ -11911,17 +11938,28 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                     }
                 }
                 if let Some(axis) = chose_axis {
-                    // Add a fresh Chart to storage and link a new leaf at the
-                    // chosen axis. Use the source pane's theme so the new pane
-                    // doesn't visually pop.
-                    let mut new_chart = crate::chart_renderer::gpu::Chart::new();
-                    new_chart.theme_idx = panes[popup_pane_idx].theme_idx;
-                    panes.push(new_chart);
-                    let new_idx = panes.len() - 1;
-                    if let Some(ref mut pl) = watchlist.pane_layout {
-                        let _ = pl.split_pane(popup_pane_idx, axis, new_idx);
+                    // P17 #14 — global pane limit. Refuse split if it would
+                    // push the count past the cap. 16 is well above any
+                    // legacy template (max 9) but bounded to keep the chart
+                    // pipeline / state-store sane.
+                    const MAX_TOTAL_PANES: usize = 16;
+                    if panes.len() >= MAX_TOTAL_PANES {
+                        watchlist.pane_split_popup_for = None;
+                    } else {
+                        // P17 #3 — snapshot BEFORE the destructive split.
+                        crate::chart_renderer::gpu::pane_layout_record_undo(watchlist);
+                        // Add a fresh Chart to storage and link a new leaf at
+                        // the chosen axis. Use the source pane's theme so the
+                        // new pane doesn't visually pop.
+                        let mut new_chart = crate::chart_renderer::gpu::Chart::new();
+                        new_chart.theme_idx = panes[popup_pane_idx].theme_idx;
+                        panes.push(new_chart);
+                        let new_idx = panes.len() - 1;
+                        if let Some(ref mut pl) = watchlist.pane_layout {
+                            let _ = pl.split_pane(popup_pane_idx, axis, new_idx);
+                        }
+                        watchlist.pane_split_popup_for = None;
                     }
-                    watchlist.pane_split_popup_for = None;
                 } else if close_popup {
                     watchlist.pane_split_popup_for = None;
                 }

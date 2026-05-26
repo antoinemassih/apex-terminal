@@ -233,16 +233,35 @@ impl PaneLayout {
 
             if resp.dragged() {
                 if let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos()) {
-                    let new_ratio = match axis {
+                    // P17 #2 — min pane size guard. Clamp the resulting ratio
+                    // so neither child falls below MIN_PANE_PX (120 px).
+                    // Without this a user can shrink a pane to ~30 px and
+                    // hide all chart content / chrome.
+                    const MIN_PANE_PX: f32 = 120.0;
+                    let raw_ratio = match axis {
                         Axis::Horizontal => {
                             let w = (parent_rect.width() - gap).max(1.0);
-                            ((pos.x - parent_rect.min.x) / w).clamp(0.1, 0.9)
+                            (pos.x - parent_rect.min.x) / w
                         }
                         Axis::Vertical => {
                             let h = (parent_rect.height() - gap).max(1.0);
-                            ((pos.y - parent_rect.min.y) / h).clamp(0.1, 0.9)
+                            (pos.y - parent_rect.min.y) / h
                         }
                     };
+                    let (avail, min_ratio, max_ratio) = match axis {
+                        Axis::Horizontal => {
+                            let w = (parent_rect.width() - gap).max(1.0);
+                            let lo = (MIN_PANE_PX / w).min(0.45);
+                            (w, lo.max(0.1), (1.0 - lo).min(0.9))
+                        }
+                        Axis::Vertical => {
+                            let h = (parent_rect.height() - gap).max(1.0);
+                            let lo = (MIN_PANE_PX / h).min(0.45);
+                            (h, lo.max(0.1), (1.0 - lo).min(0.9))
+                        }
+                    };
+                    let _ = avail;
+                    let new_ratio = raw_ratio.clamp(min_ratio, max_ratio);
                     if (new_ratio - ratio).abs() > 1e-3 {
                         self.state.resize(sid, new_ratio);
                         changed = true;

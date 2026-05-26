@@ -77,11 +77,18 @@ pub(super) fn execute(
         }
         *layout = ly;
         if *active_pane >= max { *active_pane = 0; }
+        // P17 #3 — snapshot before destructive template change.
+        crate::chart_renderer::gpu::pane_layout_record_undo(watchlist);
         // Phase 1: regenerate PaneLayout when layout is changed via cmd palette.
-        // P16 fix #3 — truncate orphans matching the toolbar branches.
+        // P16 fix #3 — queue orphan panes for deferred removal so callers'
+        // local `ap` snapshots stay valid for the rest of the frame.
         if panes.len() > max {
-            panes.truncate(max);
-            if *active_pane >= max { *active_pane = max.saturating_sub(1); }
+            crate::chart_renderer::gpu::PENDING_PANE_CLOSE.with(|q| {
+                let mut closes = q.borrow_mut();
+                for idx in max..panes.len() {
+                    closes.push(idx);
+                }
+            });
             watchlist.maximized_pane = watchlist.maximized_pane.filter(|&m| m < max);
         }
         let chart_indices: Vec<usize> = (0..max.max(1)).collect();

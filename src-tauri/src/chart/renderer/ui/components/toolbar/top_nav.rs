@@ -1484,7 +1484,7 @@ pub(crate) fn render(
 
             // ── Layouts — favorites bar + dropdown ──
             // Helper: switch to a layout, creating panes as needed
-            let mut switch_layout = |ly: Layout, panes: &mut Vec<Chart>, layout: &mut Layout, active_pane: &mut usize| {
+            let switch_layout = |ly: Layout, panes: &mut Vec<Chart>, layout: &mut Layout, active_pane: &mut usize, watchlist: &mut Watchlist| {
                 if *layout == ly { return; }
                 let max = ly.max_panes();
                 while panes.len() < max {
@@ -1502,13 +1502,23 @@ pub(crate) fn render(
                 // template. The 19 named templates are now "preset trees" —
                 // selecting one resets the tree; subsequent splits mutate
                 // the tree from that preset baseline.
-                // P16 fix #3 — truncate panes Vec to the template's max so
-                // we don't leak orphan Charts (template "2" + existing 4
-                // panes used to leave charts 2/3 orphaned in Vec<Chart>).
+                // P16 fix #3 — queue orphan panes (indices >= template_max)
+                // for removal via the existing PENDING_PANE_CLOSE drain at
+                // end-of-frame. Doing the panes.truncate() inline would
+                // invalidate the `ap = *active_pane` snapshot taken at
+                // top_nav fn entry (used later in this same frame for
+                // panes[ap] lookups). Tree is regenerated NOW so the next
+                // frame's renders use the new template.
+                // P17 #3 — snapshot before template change (destructive).
+                crate::chart_renderer::gpu::pane_layout_record_undo(watchlist);
                 let template_max = ly.max_panes();
                 if panes.len() > template_max {
-                    panes.truncate(template_max);
-                    if *active_pane >= template_max { *active_pane = template_max.saturating_sub(1); }
+                    crate::chart_renderer::gpu::PENDING_PANE_CLOSE.with(|q| {
+                        let mut closes = q.borrow_mut();
+                        for idx in template_max..panes.len() {
+                            closes.push(idx);
+                        }
+                    });
                     watchlist.maximized_pane = watchlist.maximized_pane.filter(|&m| m < template_max);
                 }
                 let chart_indices: Vec<usize> = (0..template_max.max(1)).collect();
@@ -1534,13 +1544,31 @@ pub(crate) fn render(
                     let labels: Vec<&str> = fav_layouts.iter().map(|&&ly| ly.label()).collect();
                     let active_idx = fav_layouts.iter().position(|&&ly| *layout == ly).unwrap_or(0);
                     if let Some(i) = segmented_control(ui, active_idx, &labels, t.toolbar_bg, t.toolbar_border, t.accent, t.dim) {
-                        switch_layout(*fav_layouts[i], panes, layout, active_pane);
+                        switch_layout(*fav_layouts[i], panes, layout, active_pane, watchlist);
                     }
                     ui.add_space(gap_xs());
                 }
+                // P17 #4 — sync indicator. When PaneLayout diverges from the
+                // selected template (user split/closed since picking it), show
+                // "Custom" so the dropdown label stops lying about reality.
+                let pane_layout_matches_template = match &watchlist.pane_layout {
+                    None => true, // legacy path always matches
+                    Some(pl) => {
+                        let template_max = layout.max_panes();
+                        let chart_indices: Vec<usize> = (0..template_max.max(1)).collect();
+                        let reference = crate::chart_renderer::pane_layout::PaneLayout::from_template(*layout, &chart_indices);
+                        *pl == reference
+                    }
+                };
+                if !pane_layout_matches_template {
+                    ui.add_space(gap_xs());
+                    ui.label(egui::RichText::new("Custom")
+                        .monospace().size(font_xs()).color(color_alpha(t.accent, alpha_strong())));
+                }
                 // Dropdown caret for the full layout picker
                 let dd_btn = toolbar_btn(ui, Icon::CARET_DOWN, watchlist.layout_dropdown_open, t);
-                Tooltip::new("Layout picker").show(ui, &dd_btn, t);
+                Tooltip::new(if pane_layout_matches_template { "Layout picker" } else { "Layout picker (custom — pick to reset)" })
+                    .show(ui, &dd_btn, t);
                 if dd_btn.clicked() {
                     watchlist.layout_dropdown_open = !watchlist.layout_dropdown_open;
                     watchlist.layout_dropdown_pos = egui::pos2(dd_btn.rect.left(), dd_btn.rect.bottom() + 2.0);
@@ -2252,11 +2280,16 @@ pub(crate) fn render(
             }
             if *active_pane >= max { *active_pane = 0; }
             // Phase 1: regenerate PaneLayout from the new template.
-            // P16 fix #3 — same orphan-truncation as the favourites branch.
+            // P16 fix #3 — queue orphan panes for deferred removal (see the
+            // favourites branch comment for why we don't truncate inline).
             let template_max = ly.max_panes();
             if panes.len() > template_max {
-                panes.truncate(template_max);
-                if *active_pane >= template_max { *active_pane = template_max.saturating_sub(1); }
+                crate::chart_renderer::gpu::PENDING_PANE_CLOSE.with(|q| {
+                    let mut closes = q.borrow_mut();
+                    for idx in template_max..panes.len() {
+                        closes.push(idx);
+                    }
+                });
                 watchlist.maximized_pane = watchlist.maximized_pane.filter(|&m| m < template_max);
             }
             let chart_indices: Vec<usize> = (0..template_max.max(1)).collect();

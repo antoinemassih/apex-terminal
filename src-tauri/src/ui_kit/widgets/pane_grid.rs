@@ -305,8 +305,14 @@ impl<T> PaneState<T> {
     }
 
     /// Split `pane` along `axis`, inserting `new_content` as the new sibling.
-    /// Returns the new pane's `PaneId`, or `None` if `pane` was not found.
+    /// Returns the new pane's `PaneId`, or `None` if `pane` was not found OR
+    /// if splitting it would push the tree past `MAX_SPLIT_DEPTH` (8 levels),
+    /// at which point further splits produce panes too small to use.
     pub fn split(&mut self, pane: PaneId, axis: Axis, new_content: T) -> Option<PaneId> {
+        const MAX_SPLIT_DEPTH: usize = 8;
+        if depth_of(&self.layout, pane, 0) >= MAX_SPLIT_DEPTH {
+            return None;
+        }
         let new_pane_id  = PaneId(self.next_pane);
         let new_split_id = SplitId(self.next_split);
         match self.layout.do_split(pane, axis, new_content, new_pane_id, new_split_id) {
@@ -551,6 +557,21 @@ pub fn split_rect(rect: egui::Rect, axis: Axis, ratio: f32, gap: f32) -> (egui::
                 egui::vec2(rect.width(), bh),
             );
             (ar, br)
+        }
+    }
+}
+
+/// P17 #7 — compute the depth of `target` in `node` (root = 0). Returns
+/// `usize::MAX` if target isn't in the tree, so the depth check in
+/// `PaneState::split` becomes a no-op (target not found → split returns
+/// None for a different reason anyway).
+fn depth_of<T>(node: &Node<T>, target: PaneId, current: usize) -> usize {
+    match node {
+        Node::Leaf { id, .. } => if *id == target { current } else { usize::MAX },
+        Node::Split { a, b, .. } => {
+            let da = depth_of(a, target, current + 1);
+            if da != usize::MAX { return da; }
+            depth_of(b, target, current + 1)
         }
     }
 }
