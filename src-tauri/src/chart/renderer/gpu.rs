@@ -447,6 +447,60 @@ pub(crate) fn live_theme_count() -> usize {
     live_themes().read().unwrap_or_else(|e| e.into_inner()).len()
 }
 
+// ─── PaneLayout integration helpers (Phase 1 — PaneGrid migration) ──────────
+//
+// The chart-app's render loop calls into these to read pane rects + drive
+// dragger overlays from `Watchlist::pane_layout` when present, falling back
+// to the legacy `Layout` template + 8-fraction path when not. Keeping the
+// branching here means core.rs only needs surgical call-site changes.
+
+/// Lazy materialization: if `pane_layout` is `None`, build it from the
+/// current legacy `Layout` template + an enumeration of the current chart
+/// indices. Called once per frame from `setup_theme`; cheap no-op when
+/// pane_layout is already populated. Old workspaces that never had
+/// PaneLayout get upgraded silently the first time this fires.
+pub(crate) fn ensure_pane_layout(wl: &mut Watchlist, legacy: Layout, pane_count: usize) {
+    if wl.pane_layout.is_some() { return; }
+    let chart_indices: Vec<usize> = (0..pane_count.max(1)).collect();
+    wl.pane_layout = Some(
+        crate::chart_renderer::pane_layout::PaneLayout::from_template(legacy, &chart_indices)
+    );
+}
+
+/// Compute pane rects for the current frame, indexed by chart_idx so the
+/// existing `pane_rects[i] = rect for chart i` contract is preserved.
+///
+/// - When `pane_layout` is set: walks the tree depth-first, then scatters
+///   each leaf's rect into the output at the position `chart_idx` points at.
+///   This means panes may render in any tree order while the lookup table
+///   stays index-aligned with the chart-storage Vec.
+/// - When `pane_layout` is unset: legacy `Layout::pane_rects` path (one
+///   rect per chart, ordered 0..visible_count).
+pub(crate) fn compute_pane_rects_for_frame(
+    wl: &Watchlist,
+    legacy: Layout,
+    full_rect: egui::Rect,
+    visible_count: usize,
+    gap: f32,
+) -> Vec<egui::Rect> {
+    if let Some(ref pl) = wl.pane_layout {
+        let cap = visible_count.max(pl.pane_count());
+        let mut out = vec![full_rect; cap];
+        for (chart_idx, rect) in pl.pane_rects(full_rect, gap) {
+            if chart_idx < out.len() {
+                out[chart_idx] = rect;
+            }
+        }
+        out
+    } else {
+        legacy.pane_rects(
+            full_rect, visible_count,
+            wl.pane_split_h, wl.pane_split_v, wl.pane_split_h2, wl.pane_split_v2,
+            wl.pane_split_v3, wl.pane_split_v4, wl.pane_split_v5, wl.pane_split_v6,
+        )
+    }
+}
+
 /// Append user-installed colour schemes (from disk) to the live theme list.
 ///
 /// Each scheme is converted via `color_scheme_to_theme` and appended only if
@@ -4695,6 +4749,11 @@ pub(crate) struct Watchlist {
     pub(crate) pane_split_v5: f32,
     pub(crate) pane_split_v6: f32,
     pub(crate) pane_divider_dragging: bool,
+    /// Phase-1 PaneGrid topology. `None` = legacy 19-template + 8-split path
+    /// (older workspaces). `Some` = recursive split tree drives layout.
+    /// Watchlist is persisted via a hand-rolled JSON path (not serde-derived);
+    /// the layout will be saved/restored alongside the other state fields.
+    pub(crate) pane_layout: Option<crate::chart_renderer::pane_layout::PaneLayout>,
     // Command palette
     pub(crate) cmd_palette_open: bool,
     pub(crate) cmd_palette_query: String,
@@ -4999,6 +5058,9 @@ impl Watchlist {
                pane_split_h: 0.5, pane_split_v: 0.5, pane_split_h2: 0.5, pane_split_v2: 0.5,
                pane_split_v3: 0.5, pane_split_v4: 0.5, pane_split_v5: 0.5, pane_split_v6: 0.5,
                pane_divider_dragging: false,
+               // Phase 1 PaneGrid topology — None means "use legacy 8-fraction path".
+               // Migration happens on first user action that depends on the tree.
+               pane_layout: None,
                cmd_palette_open: false, cmd_palette_query: String::new(), cmd_palette_results: vec![], cmd_palette_sel: -1,
                cmd_palette_recent: vec![], cmd_palette_freq: std::collections::HashMap::new(),
                cmd_palette_ai_mode: false, cmd_palette_ai_input: String::new(),

@@ -11563,16 +11563,24 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
     egui::CentralPanel::default().frame(central_frame).show(ctx, |ui| {
         let full_rect = ui.available_rect_before_wrap();
         let actual_count = layout.max_panes().min(panes.len());
+        // Phase 1: lazily materialize PaneLayout from the current legacy
+        // template on first frame after load. Once set, the tree becomes the
+        // canonical source of pane geometry; legacy fractions remain in the
+        // struct for backwards-compat / fallback only.
+        crate::chart_renderer::gpu::ensure_pane_layout(watchlist, *layout, actual_count);
+        let gap = crate::chart_renderer::ui::style::current().pane_gap;
         let (visible_count, pane_rects) = if let Some(max_idx) = watchlist.maximized_pane {
             if max_idx < actual_count {
                 // Maximized: show only one pane fullscreen
                 (1, vec![full_rect])
             } else {
                 watchlist.maximized_pane = None;
-                (actual_count, layout.pane_rects(full_rect, actual_count, watchlist.pane_split_h, watchlist.pane_split_v, watchlist.pane_split_h2, watchlist.pane_split_v2, watchlist.pane_split_v3, watchlist.pane_split_v4, watchlist.pane_split_v5, watchlist.pane_split_v6))
+                (actual_count, crate::chart_renderer::gpu::compute_pane_rects_for_frame(
+                    watchlist, *layout, full_rect, actual_count, gap))
             }
         } else {
-            (actual_count, layout.pane_rects(full_rect, actual_count, watchlist.pane_split_h, watchlist.pane_split_v, watchlist.pane_split_h2, watchlist.pane_split_v2, watchlist.pane_split_v3, watchlist.pane_split_v4, watchlist.pane_split_v5, watchlist.pane_split_v6))
+            (actual_count, crate::chart_renderer::gpu::compute_pane_rects_for_frame(
+                watchlist, *layout, full_rect, actual_count, gap))
         };
 
         // Compute max pane header height (tabs make headers taller)
@@ -11593,8 +11601,26 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
             }
         }
 
-        // ── Pane divider drag handles (geometry-based, works for all layouts) ──
-        if visible_count > 1 {
+        // ── PaneLayout overlays (Phase 1) ──
+        // When the new tree-based PaneLayout is active, dragging dividers
+        // mutates the tree's split ratios directly via show_overlays. We
+        // skip the legacy geometry-based dragger below in that case —
+        // mutating the legacy pane_split_h/v fractions would be a no-op
+        // (PaneLayout reads its own ratios), and the legacy block's hit
+        // detection assumes the legacy template's exact divider topology.
+        if visible_count > 1 && watchlist.pane_layout.is_some() {
+            let pl_t = crate::chart_renderer::theme_impl::theme_to_portable(t);
+            let _changed = {
+                let pl = watchlist.pane_layout.as_mut().expect("checked some");
+                let gap_overlay = crate::chart_renderer::ui::style::current().pane_gap;
+                pl.show_overlays(ui, full_rect, gap_overlay, &pl_t)
+            };
+        }
+
+        // ── Legacy pane divider drag handles (geometry-based) ────────────
+        // Active only when pane_layout is None (older workspaces that haven't
+        // been materialized yet, or future paths that opt out of the tree).
+        if visible_count > 1 && watchlist.pane_layout.is_none() {
             // Find unique vertical divider X positions (between side-by-side panes)
             let mut v_dividers: Vec<f32> = Vec::new();
             // Find unique horizontal divider Y positions (between stacked panes)

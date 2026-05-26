@@ -1498,6 +1498,14 @@ pub(crate) fn render(
                 }
                 *layout = ly;
                 if *active_pane >= max { *active_pane = 0; }
+                // Phase 1: regenerate PaneLayout to match the freshly-picked
+                // template. The 19 named templates are now "preset trees" —
+                // selecting one resets the tree; subsequent right-click splits
+                // mutate the tree from that preset baseline.
+                let chart_indices: Vec<usize> = (0..panes.len().max(1)).collect();
+                watchlist.pane_layout = Some(
+                    crate::chart_renderer::pane_layout::PaneLayout::from_template(ly, &chart_indices)
+                );
             };
             // Show favorited layouts as segmented control + dropdown caret
             {
@@ -2234,6 +2242,11 @@ pub(crate) fn render(
                 panes.push(c);
             }
             if *active_pane >= max { *active_pane = 0; }
+            // Phase 1: regenerate PaneLayout from the new template.
+            let chart_indices: Vec<usize> = (0..panes.len().max(1)).collect();
+            watchlist.pane_layout = Some(
+                crate::chart_renderer::pane_layout::PaneLayout::from_template(ly, &chart_indices)
+            );
         }
         if close_dd { watchlist.layout_dropdown_open = false; }
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) { watchlist.layout_dropdown_open = false; }

@@ -77,6 +77,11 @@ pub(super) fn execute(
         }
         *layout = ly;
         if *active_pane >= max { *active_pane = 0; }
+        // Phase 1: regenerate PaneLayout when layout is changed via cmd palette.
+        let chart_indices: Vec<usize> = (0..panes.len().max(1)).collect();
+        watchlist.pane_layout = Some(
+            crate::chart_renderer::pane_layout::PaneLayout::from_template(ly, &chart_indices)
+        );
         return;
     }
 
