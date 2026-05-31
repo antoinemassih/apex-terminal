@@ -35,6 +35,24 @@ pub struct Typography {
     pub mono_md: f32,
     /// Monospace large (e.g. price display).
     pub mono_lg: f32,
+
+    /// Section / eyebrow label font size (`StyleSettings.font_section_label`).
+    /// Distinct from `size_xs` (which backs `font_caption`).
+    #[serde(default = "Typography::default_section_label")]
+    pub size_section_label: f32,
+    /// Letter-spacing (px) for general tracked-out labels (`label_letter_spacing_px`).
+    #[serde(default)]
+    pub label_tracking: f32,
+    /// Letter-spacing (px) for toolbar nav button text (`nav_letter_spacing_px`).
+    #[serde(default)]
+    pub nav_tracking: f32,
+    /// Letter-spacing (px) specifically for section/eyebrow headers (`section_header_tracking`).
+    #[serde(default)]
+    pub section_tracking: f32,
+}
+
+impl Typography {
+    fn default_section_label() -> f32 { 9.0 }
 }
 
 impl Default for Typography {
@@ -51,6 +69,10 @@ impl Default for Typography {
             mono_sm: 11.0,
             mono_md: 13.0,
             mono_lg: 16.0,
+            size_section_label: 9.0,
+            label_tracking: 0.0,
+            nav_tracking:   0.0,
+            section_tracking: 0.0,
         }
     }
 }
@@ -76,6 +98,26 @@ pub struct Spacing {
     pub gmd: f32,
     /// Standard button / control height.
     pub cta_height: f32,
+
+    /// Primary CTA button horizontal padding (`cta_padding_x`).
+    #[serde(default = "Spacing::default_cta_padding_x")]
+    pub cta_padding_x: f32,
+    /// Standard button height (`button_height_px`).
+    #[serde(default = "Spacing::default_button_height")]
+    pub button_height: f32,
+    /// Standard button horizontal padding (`button_padding_x`).
+    #[serde(default = "Spacing::default_button_padding_x")]
+    pub button_padding_x: f32,
+    /// Tab strip height (`tab_height`).
+    #[serde(default = "Spacing::default_tab_height")]
+    pub tab_height: f32,
+}
+
+impl Spacing {
+    fn default_cta_padding_x()   -> f32 { 12.0 }
+    fn default_button_height()   -> f32 { 24.0 }
+    fn default_button_padding_x()-> f32 { 10.0 }
+    fn default_tab_height()      -> f32 { 28.0 }
 }
 
 impl Default for Spacing {
@@ -93,6 +135,10 @@ impl Default for Spacing {
             xxl:       24.0,
             gmd:        8.0,
             cta_height: 28.0,
+            cta_padding_x:   12.0,
+            button_height:   24.0,
+            button_padding_x:10.0,
+            tab_height:      28.0,
         }
     }
 }
@@ -108,14 +154,25 @@ pub struct Radii {
     pub sm:   f32,
     pub md:   f32,
     pub lg:   f32,
-    /// Full pill / circular.
+    /// Full pill / circular (conceptual, used by helpers needing "max round").
     pub full: f32,
+    /// Pill radius as the runtime `r_pill` value (px, 0–99). Distinct from `full`:
+    /// Meridien uses 0 (sharp pill), Aperture/Octave use 99 (rounded pill).
+    #[serde(default = "Radii::default_pill")]
+    pub pill: f32,
+    /// Chip/badge corner radius (`r_chip`). 0 = use `sm`.
+    #[serde(default)]
+    pub chip: f32,
+}
+
+impl Radii {
+    fn default_pill() -> f32 { 99.0 }
 }
 
 impl Default for Radii {
     fn default() -> Self {
         // P2.2: aligned to TokenSnapshot DEFAULT (radius_lg corrected 8.0 → 12.0).
-        Self { none: 0.0, xs: 2.0, sm: 4.0, md: 6.0, lg: 12.0, full: 9999.0 }
+        Self { none: 0.0, xs: 2.0, sm: 4.0, md: 6.0, lg: 12.0, full: 9999.0, pill: 99.0, chip: 0.0 }
     }
 }
 
@@ -357,6 +414,86 @@ pub struct Treatments {
 
     /// Input focus ring style.
     pub focus_ring: FocusRingStyle,
+
+    /// Surface bevel treatment applied to button faces, panel headers, chips
+    /// and inline tabs. `None` = flat fill (editorial / light themes);
+    /// `Raised` = top highlight + bottom shadow (Zed faces — Alto/Mariner);
+    /// `Inset` = sunken well (inputs / TF pills). The highlight/shadow *tint*
+    /// is derived from palette luminance at paint time (light tint on dark
+    /// themes, dark tint on light), so it works for any colour scheme.
+    pub surface_bevel: BevelStyle,
+    /// Alpha (0-255) of the bevel top inner-highlight line. 0 = no highlight.
+    pub bevel_highlight_alpha: u8,
+    /// Alpha (0-255) of the bevel bottom inner-shadow line. 0 = no shadow.
+    pub bevel_shadow_alpha: u8,
+
+    // ── Per-style list row shape ──────────────────────────────────────────────
+    /// Horizontal inset (px) each side of a watchlist/list row. 0 = flush rows;
+    /// 6 = Aperture pill rows; 4 = Glass soft rows. Palette-independent.
+    pub wl_row_side_margin: f32,
+    /// Corner radius for list rows (px). 0 = square; 99 = full pill.
+    pub wl_row_corner_radius: u8,
+    /// Alpha (0-255) of a per-row hairline bottom divider. 0 = no divider.
+    pub wl_row_divider_alpha: u8,
+
+    // ── Per-style typography behaviour ────────────────────────────────────────
+    /// When `true`, section/eyebrow headers use the monospace family
+    /// (Alto/Mariner/Relay IBM Plex Mono; others proportional).
+    pub section_header_mono: bool,
+    /// When `true`, symbol text in list rows uses the monospace family.
+    pub wl_symbol_mono: bool,
+    /// Default tab treatment index for ui-kit Tabs widgets.
+    /// 0=Line, 1=Segmented, 2=Filled, 3=Card, 4=Pane.
+    pub panel_tab_treatment: u8,
+
+    // ── Active pane header fill ───────────────────────────────────────────────
+    /// When `true`, the active pane header fills with the accent colour
+    /// (Aperture signature — orange bar). All text inside flips to contrast.
+    pub pane_active_fill_accent: bool,
+
+    // ── Editorial / chrome behavioural flags (migrated from StyleSettings) ─────
+    /// Use a serif family for hero numerics / display headings (`serif_headlines`).
+    #[serde(default)] pub serif_headlines: bool,
+    /// Active-state button treatment index (`button_treatment`):
+    /// 0=SoftPill, 1=OutlineAccent, 2=UnderlineActive, 3=RaisedActive, 4=BlackFillActive.
+    #[serde(default)] pub button_treatment: u8,
+    /// Invert palette on active elements (fill=text, text=bg) — `invert_active_fill`.
+    #[serde(default)] pub invert_active_fill: bool,
+    /// Paint full-height vertical dividers between toolbar button clusters.
+    #[serde(default)] pub vertical_group_dividers: bool,
+    /// Show the active-tab accent underline in tab bars.
+    #[serde(default = "Treatments::default_true")] pub show_active_tab_underline: bool,
+    /// Paint a distinct recessed fill behind inactive pane headers.
+    #[serde(default = "Treatments::default_true")] pub inactive_header_fill: bool,
+    /// Drop icon glyphs from right-side toolbar nav buttons (label-only).
+    #[serde(default)] pub nav_buttons_label_only: bool,
+    /// Render toolbar nav button labels in ALL CAPS.
+    #[serde(default)] pub nav_buttons_uppercase_labels: bool,
+    /// Draw the tab underline directly under active tab text (not header bottom).
+    #[serde(default)] pub tab_underline_under_text: bool,
+    /// Show a floating card shadow even when `shadows_enabled` is false.
+    #[serde(default)] pub card_floating_shadow: bool,
+    /// Master toggle for drop shadows (cannot be derived from blur > 0).
+    #[serde(default = "Treatments::default_true")] pub shadows_enabled: bool,
+    /// Honour the "reduce motion" preference — false snaps all animation instant.
+    #[serde(default = "Treatments::default_true")] pub animations_enabled: bool,
+}
+
+impl Treatments {
+    fn default_true() -> bool { true }
+}
+
+/// Surface bevel mode (dimension-only; tint derives from palette luminance).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum BevelStyle {
+    /// Flat fill — no inset highlight/shadow (editorial, light, minimal themes).
+    #[default]
+    None,
+    /// Raised face — light inner highlight on top edge, dark inner shadow on
+    /// bottom edge (the Zed "raised button face" look — Alto / Mariner).
+    Raised,
+    /// Sunken well — inverted bevel (dark top, light bottom) for inputs / pills.
+    Inset,
 }
 
 /// How focus rings are drawn (dimension-only; ring colour comes from `ColorScheme.accent`).
@@ -378,6 +515,213 @@ impl Default for Treatments {
             uppercase_section_labels: false,
             segmented_filled_idle:    false,
             focus_ring:               FocusRingStyle::Outline,
+            surface_bevel:            BevelStyle::None,
+            bevel_highlight_alpha:    0,
+            bevel_shadow_alpha:       0,
+            wl_row_side_margin:       0.0,
+            wl_row_corner_radius:     0,
+            wl_row_divider_alpha:     0,
+            section_header_mono:      false,
+            wl_symbol_mono:           false,
+            panel_tab_treatment:      0,
+            pane_active_fill_accent:  false,
+            serif_headlines:          false,
+            button_treatment:         0,
+            invert_active_fill:       false,
+            vertical_group_dividers:  false,
+            show_active_tab_underline: true,
+            inactive_header_fill:     true,
+            nav_buttons_label_only:   false,
+            nav_buttons_uppercase_labels: false,
+            tab_underline_under_text: false,
+            card_floating_shadow:     false,
+            shadows_enabled:          true,
+            animations_enabled:       true,
+        }
+    }
+}
+
+// ── Chrome (geometry + finish; migrated from StyleSettings) ───────────────────
+
+/// Per-style chrome geometry and finish tokens that don't fit the semantic
+/// sub-structs above (toolbar/pane-header heights, divider alphas, indicator
+/// styles, focus-ring dimensions, drag handle, toast). All palette-independent
+/// dimensions — colour comes from `ColorScheme` at render time.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Chrome {
+    /// Multiplier on toolbar height (1.0 baseline, 1.4 Meridien tall).
+    pub toolbar_height_scale: f32,
+    /// Multiplier on pane-header height.
+    pub header_height_scale: f32,
+    /// Account strip panel height (px).
+    pub account_strip_height: f32,
+    /// Pane outline thickness (px).
+    pub pane_border_width: f32,
+    /// Gap between adjacent panes (px). >0 = tiled card layout.
+    pub pane_gap: f32,
+    /// Pane gap fill alpha (0-255). 0 = transparent gutters (show canvas bg).
+    pub pane_gap_alpha: u8,
+    /// Active pane indicator: 0=none, 1=top stripe, 2=header fill, 3=both.
+    pub pane_active_indicator: u8,
+    /// Active pane header fill multiplier (gamma over bg).
+    pub active_header_fill_multiply: f32,
+    /// Inactive pane header fill multiplier.
+    pub inactive_header_fill_multiply: f32,
+    /// Alpha of the hairline outer border around pane headers.
+    pub header_outer_border_alpha: u8,
+    /// Stroke width of the pane-header outer border (px).
+    pub header_outer_border_width: f32,
+    /// Alpha of the inter-section vertical dividers inside the pane header.
+    pub header_divider_alpha: u8,
+    /// Toolbar nav active-column tint alpha.
+    pub nav_active_col_alpha: u8,
+    /// Dialog / popup backdrop overlay alpha. 0 = no backdrop.
+    pub dialog_backdrop_alpha: u8,
+    /// Inactive tab text alpha multiplier (0.0-1.0).
+    pub tab_inactive_alpha: f32,
+    /// Inactive-tab hover background alpha.
+    pub tab_hover_bg_alpha: u8,
+    /// Active-tab underline thickness (px). 0 = no underline.
+    pub tab_underline_thickness: f32,
+    /// Section label top padding (px).
+    pub section_label_padding_top: f32,
+    /// Section label bottom padding (px).
+    pub section_label_padding_bottom: f32,
+    /// Drag handle (split divider) alpha multiplier (0.0-1.0).
+    pub drag_handle_alpha: f32,
+    /// Drag handle dot size multiplier.
+    pub drag_handle_dot_scale: f32,
+    /// Toast / status-bar background alpha.
+    pub toast_bg_alpha: u8,
+    /// Stripe/accent-banner fill alpha for order/alert cards.
+    pub card_stripe_alpha: u8,
+    /// Alpha for the floating card shadow when enabled.
+    pub card_floating_shadow_alpha: u8,
+    /// Saturation/brightness multiplier for accent on active elements.
+    pub accent_emphasis: f32,
+    /// Opacity multiplier for disabled widgets (0.0-1.0).
+    pub disabled_opacity: f32,
+    /// Focus ring stroke width (px).
+    pub focus_ring_width: f32,
+    /// Focus ring alpha (0-255).
+    pub focus_ring_alpha: u8,
+    /// Hover overlay alpha (0-255).
+    pub hover_bg_alpha: u8,
+    /// Active/pressed overlay alpha (0-255).
+    pub active_bg_alpha: u8,
+
+    // ── Shell region layout (floating-card chrome) ────────────────────────────
+    /// Gap (px) between major shell regions (top-nav, tool layer, workspace,
+    /// right rail). 0 = flush/contiguous chrome; 8 = Aperture floating cards.
+    #[serde(default)]
+    pub region_gap: f32,
+    /// Corner radius (px) of each shell region card. 0 = square.
+    #[serde(default = "Chrome::default_region_radius")]
+    pub region_radius: f32,
+    /// Border alpha (0-255) drawn around each shell region card.
+    #[serde(default = "Chrome::default_region_border_alpha")]
+    pub region_border_alpha: u8,
+
+    // ── Nav cluster styling (top-nav segments) ────────────────────────────────
+    /// Corner radius (px) of a nav cluster's background pill. 0 = square.
+    #[serde(default = "Chrome::default_nav_cluster_radius")]
+    pub nav_cluster_radius: f32,
+    /// Fill alpha (0-255) of a nav cluster background over the toolbar surface.
+    /// 0 = transparent clusters (default); >0 = visible grouped pills.
+    #[serde(default)]
+    pub nav_cluster_fill_alpha: u8,
+    /// Horizontal inner padding (px) inside a nav cluster.
+    #[serde(default = "Chrome::default_nav_cluster_padding")]
+    pub nav_cluster_padding: f32,
+
+    // ── Toolnav (second chrome row: tools + indicators + ticker) ──────────────
+    /// Height (px) of the second toolbar row (the "toolnav"). 0 = single-row
+    /// chrome (indicator dropdowns stay in the top nav). >0 = two-row chrome
+    /// (indicators + ticker move to the toolnav). Aperture/Glass use ~30.
+    #[serde(default)]
+    pub toolnav_height: f32,
+
+    // ── Footer (bottom dock: Orders / Positions / Account / Notifications) ─────
+    /// Whether the bottom dock (footer) is open by *default* for this style.
+    /// The user can always toggle it regardless (Ctrl+`), and that session
+    /// override wins — exactly mirroring the toolnav's hybrid visibility.
+    #[serde(default)]
+    pub footer_default_open: bool,
+
+    // ── Side panel anatomy (header / sections / footer card) ──────────────────
+    /// Header toggle/tab treatment for side panels (WATCH/POS/ALERT etc).
+    /// 0=Line, 1=Segmented, 2=Filled, 3=Card, 4=Pane — mirrors `panel_tab_treatment`
+    /// but scoped to the panel header strip.
+    #[serde(default)]
+    pub panel_header_treatment: u8,
+    /// Fill alpha (0-255) of a `PanelSection` body band over the panel surface.
+    /// 0 = transparent/flat sections; >0 = visible grouped bands.
+    #[serde(default)]
+    pub panel_section_fill_alpha: u8,
+    /// When true, a pinned panel footer renders as an elevated rounded *card*
+    /// (the ApertureJune P&L block) instead of a flat band.
+    #[serde(default)]
+    pub panel_footer_card: bool,
+    /// Corner radius (px) of the pinned footer card. 0 = square.
+    #[serde(default = "Chrome::default_panel_footer_radius")]
+    pub panel_footer_radius: f32,
+}
+
+impl Chrome {
+    fn default_region_radius()       -> f32 { 12.0 }
+    fn default_region_border_alpha() -> u8  { 40 }
+    fn default_nav_cluster_radius()  -> f32 { 8.0 }
+    fn default_nav_cluster_padding() -> f32 { 6.0 }
+    fn default_panel_footer_radius() -> f32 { 10.0 }
+}
+
+impl Default for Chrome {
+    fn default() -> Self {
+        // Matches style_defaults(_) Meridien baseline where a value exists,
+        // else the neutral 1.0/baseline.
+        Self {
+            toolbar_height_scale: 1.0,
+            header_height_scale: 1.0,
+            account_strip_height: 26.0,
+            pane_border_width: 1.0,
+            pane_gap: 0.0,
+            pane_gap_alpha: 0,
+            pane_active_indicator: 2,
+            active_header_fill_multiply: 0.7,
+            inactive_header_fill_multiply: 1.08,
+            header_outer_border_alpha: 38,
+            header_outer_border_width: 0.5,
+            header_divider_alpha: 50,
+            nav_active_col_alpha: 0,
+            dialog_backdrop_alpha: 0,
+            tab_inactive_alpha: 0.55,
+            tab_hover_bg_alpha: 18,
+            tab_underline_thickness: 2.0,
+            section_label_padding_top: 4.0,
+            section_label_padding_bottom: 2.0,
+            drag_handle_alpha: 0.6,
+            drag_handle_dot_scale: 1.0,
+            toast_bg_alpha: 220,
+            card_stripe_alpha: 255,
+            card_floating_shadow_alpha: 0,
+            accent_emphasis: 1.0,
+            disabled_opacity: 0.5,
+            focus_ring_width: 1.5,
+            focus_ring_alpha: 110,
+            hover_bg_alpha: 18,
+            active_bg_alpha: 30,
+            region_gap: 0.0,
+            region_radius: 12.0,
+            region_border_alpha: 40,
+            nav_cluster_radius: 8.0,
+            nav_cluster_fill_alpha: 0,
+            nav_cluster_padding: 6.0,
+            toolnav_height: 0.0,
+            footer_default_open: false,
+            panel_header_treatment: 0,
+            panel_section_fill_alpha: 0,
+            panel_footer_card: false,
+            panel_footer_radius: 10.0,
         }
     }
 }
@@ -413,6 +757,9 @@ pub struct StyleSystem {
     pub shadows:    Shadows,
     /// Non-colour behavioural flags and enums.
     pub treatments: Treatments,
+    /// Chrome geometry + finish tokens (toolbar/pane heights, dividers, focus ring…).
+    #[serde(default)]
+    pub chrome:     Chrome,
 }
 
 impl Default for StyleSystem {
@@ -436,6 +783,7 @@ impl StyleSystem {
             density:    Density::default(),
             shadows:    Shadows::default(),
             treatments: Treatments::default(),
+            chrome:     Chrome::default(),
         }
     }
 
@@ -444,7 +792,7 @@ impl StyleSystem {
     pub fn meridien() -> Self {
         Self {
             meta: Meta::new("meridien", "Meridien", true),
-            radii: Radii { none: 0.0, xs: 0.0, sm: 0.0, md: 0.0, lg: 0.0, full: 9999.0 },
+            radii: Radii { none: 0.0, xs: 0.0, sm: 0.0, md: 0.0, lg: 0.0, full: 9999.0, ..Radii::default() },
             strokes: Strokes { hair: 0.3, thin: 0.5, medium: 0.8, std: 0.5, bold: 1.0, thick: 1.5, md: 1.0, heavy: 1.5 },
             treatments: Treatments {
                 solid_active_fills:       true,
@@ -452,6 +800,12 @@ impl StyleSystem {
                 uppercase_section_labels: true,
                 segmented_filled_idle:    false,
                 focus_ring:               FocusRingStyle::Outline,
+                surface_bevel:            BevelStyle::None, // editorial — flat
+                bevel_highlight_alpha:    0,
+                bevel_shadow_alpha:       0,
+                wl_row_divider_alpha:     30,
+                section_header_mono:      false,
+                ..Treatments::default()
             },
             ..Self::builtin_default()
         }

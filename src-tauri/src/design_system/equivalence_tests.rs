@@ -53,12 +53,13 @@ pub(crate) mod equivalence {
         let schemes = builtin_color_schemes();
         let themes = THEMES;
 
-        assert_eq!(
-            schemes.len(),
-            themes.len(),
-            "scheme count {} ≠ theme count {}",
-            schemes.len(),
-            themes.len()
+        // Only the first `THEMES.len()` schemes have a legacy THEMES counterpart.
+        // Schemes beyond that (React palette ports: Aperture/Cadence/Alto/Mariner/
+        // Lucid) are new and verified by compilation, not against THEMES.
+        assert!(
+            schemes.len() >= themes.len(),
+            "scheme count {} < theme count {}",
+            schemes.len(), themes.len()
         );
 
         let mut strict_mismatches: Vec<String> = Vec::new();
@@ -181,10 +182,12 @@ pub(crate) mod equivalence {
     #[test]
     fn style_axis_equivalence() {
         let styles = builtin_style_systems();
-        // 0 → Meridien default arm; 1 → Aperture; 2 → Octave
+        // Only compare the first 3 canonical styles (Meridien/Aperture/Octave) which have
+        // corresponding style_defaults_pub() entries. The remaining 6 (Cadence/Alto/Mariner/
+        // Lucid/Relay/Glass) are new and not covered by the legacy style_defaults() function.
+        assert!(styles.len() >= 3, "expected at least 3 builtin style systems");
         let old_settings: Vec<_> = (0u8..=2).map(style_defaults_pub).collect();
-
-        assert_eq!(styles.len(), old_settings.len());
+        let styles = &styles[..3];
 
         let mut strict_mismatches: Vec<String> = Vec::new();
         let mut approx_differences: Vec<String> = Vec::new();
@@ -404,9 +407,11 @@ pub(crate) mod equivalence {
         let schemes = builtin_color_schemes();
         let themes  = THEMES;
 
-        assert_eq!(
-            schemes.len(), themes.len(),
-            "scheme count {} ≠ theme count {}",
+        // Only the first `THEMES.len()` schemes have a legacy THEMES counterpart;
+        // the React palette ports beyond that are new (verified by compilation).
+        assert!(
+            schemes.len() >= themes.len(),
+            "scheme count {} < theme count {}",
             schemes.len(), themes.len()
         );
 
@@ -518,7 +523,9 @@ pub(crate) mod equivalence {
         };
 
         let systems = builtin_style_systems();
-        assert_eq!(systems.len(), 3, "expected exactly 3 builtin style systems");
+        assert!(systems.len() >= 3, "expected at least 3 builtin style systems");
+        // Only the first 3 (Meridien/Aperture/Octave) have style_defaults_pub() counterparts.
+        let systems = &systems[..3];
 
         let mut deltas: Vec<String> = Vec::new();
 

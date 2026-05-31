@@ -21,14 +21,38 @@ use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width}
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 
-pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
+/// Map between `WatchlistTab` and the rail's instance-tab `u8` (for duplicates).
+fn wl_tab_to_u8(t: WatchlistTab) -> u8 {
+    match t { WatchlistTab::Stocks => 0, WatchlistTab::Chain => 1, WatchlistTab::Heat => 2 }
+}
+fn wl_tab_from_u8(v: u8) -> WatchlistTab {
+    match v { 1 => WatchlistTab::Chain, 2 => WatchlistTab::Heat, _ => WatchlistTab::Stocks }
+}
+
+/// Rail registration — the watchlist's entry in the [`super::right_rail`] registry.
+pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
+    id: "watchlist",
+    is_open: |w| w.open,
+    render: |cx, slot| { draw(cx.ctx, cx.watchlist, cx.panes, cx.active_pane, cx.t, Some(slot), None); },
+};
+
+/// Draw the watchlist. `instance_tab` = `Some` when rendered as a *duplicate
+/// instance* in the rail (its tab lives in the rail's spawn store, independent
+/// of the base panel's `watchlist.tab`); returns `true` then if the instance's
+/// close-X was clicked (the rail removes it). `None` = the base panel.
+pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme, slot: Option<super::side_panel_shell::RailSlot>, instance_tab: Option<&mut u8>) -> bool {
     let _z_watchlist = crate::foundation::frame_profiler::profile_zone("watchlist_panel");
+    let is_spawn = instance_tab.is_some();
+    let mut spawn_close = false;
 // ── Watchlist side panel ───────────────────────────────────────────────────
-if watchlist.open {
-    // Snapshot the active tab so SidePanelShell::tabs can take a &mut without
-    // conflicting with `&mut watchlist` inside the body closure (orders_panel
-    // pattern). Written back after the shell returns.
-    let mut active_tab = watchlist.tab;
+if is_spawn || watchlist.open {
+    // Active tab: from the instance store (duplicate) or the base `watchlist.tab`.
+    // Snapshotted so SidePanelShell::tabs can take a &mut without conflicting
+    // with `&mut watchlist` inside the body closure (orders_panel pattern).
+    let mut active_tab = match instance_tab.as_deref() {
+        Some(v) => wl_tab_from_u8(*v),
+        None => watchlist.tab,
+    };
     // Pre-resolve pane-aligned metrics outside the mutable borrow window so the
     // body can borrow &mut watchlist freely.
     let header_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
@@ -38,10 +62,19 @@ if watchlist.open {
         (WatchlistTab::Chain,  "CHAIN", None),
         (WatchlistTab::Heat,   "HEAT", None),
     ];
-    let shell_resp = SidePanelShell::tabs("watchlist", &mut active_tab, &tabs)
+    let shell_id = if is_spawn { "watchlist_inst" } else { "watchlist" };
+    let shell_resp = SidePanelShell::tabs(shell_id, &mut active_tab, &tabs)
         .width(Width::Narrow)
         .resizable(180.0..=480.0)
         .pane_metrics(header_h, title_font_size)
+        .rail_slot(slot)
+        .on_tab_secondary(|ui, tab| {
+            // Right-click a tab → spawn a duplicate watchlist instance on that tab.
+            if crate::ui_kit::widgets::MenuItem::new("Open as new instance").show(ui, t).clicked() {
+                super::right_rail::request_spawn("watchlist", wl_tab_to_u8(tab));
+                ui.close_menu();
+            }
+        })
         .show(ctx, t, |ui, t, tab| {
             let mut wl_switch_to: Option<usize> = None;
             let mut wl_fetch_syms: Vec<String> = Vec::new();
@@ -863,6 +896,10 @@ if watchlist.open {
                                             .separator(true)
                                             .hover_overlay(color_alpha(t.toolbar_border, alpha_soft()))
                                             .show_x_on_hover(true)
+                                            // Panel renders its own left-side rich tooltip
+                                            // (set_pending_wl_tooltip) — suppress the row's
+                                            // built-in HoverCard to avoid a duplicate.
+                                            .hover_card(false)
                                             .drag_confirmed(drag_confirmed)
                                             .sym_font(egui::FontId::monospace(font_sz))
                                             .chg_font(egui::FontId::proportional(font_sz))
@@ -1956,9 +1993,15 @@ if watchlist.open {
             }
         }); // close SidePanelShell::tabs body closure
 
-    if shell_resp.close_clicked { watchlist.update_sidebar_state(|s| s.watchlist_open = false); }
-    watchlist.tab = active_tab;
+    // Write the active tab back to its owner (instance store or base panel).
+    if let Some(it) = instance_tab { *it = wl_tab_to_u8(active_tab); }
+    else { watchlist.tab = active_tab; }
+    // Close: a duplicate's X removes the instance (rail handles it); the base's
+    // X closes the panel.
+    if shell_resp.close_clicked {
+        if is_spawn { spawn_close = true; }
+        else { watchlist.update_sidebar_state(|s| s.watchlist_open = false); }
+    }
 }
-
-
+spawn_close
 }

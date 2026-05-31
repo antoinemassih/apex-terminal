@@ -240,7 +240,14 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
 }
 
 /// Standalone panel — outer chrome via canonical SidePanelShell.
-pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
+/// Rail registration — see [`super::right_rail`].
+pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
+    id: "script",
+    is_open: |w| w.script_open,
+    render: |cx, slot| draw(cx.ctx, cx.watchlist, cx.t, Some(slot)),
+};
+
+pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme, slot: Option<super::side_panel_shell::RailSlot>) {
     if !watchlist.script_open { return; }
 
     let resp = SidePanelShell::new("apex_script", "APEX SCRIPT")
@@ -249,6 +256,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
             crate::chart_renderer::gpu::pane_tabs_header_h(watchlist),
             watchlist.pane_header_size.title_font(),
         )
+        .rail_slot(slot)
         .show(ctx, t, |ui, t| {
             draw_body(ui, watchlist, t, true);
         });

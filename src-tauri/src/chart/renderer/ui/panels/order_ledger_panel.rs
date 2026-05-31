@@ -28,17 +28,17 @@ use crate::data::connectivity::errors_sink::{report, ErrorLevel};
 
 /// Lightweight active-order row, derived from the lock-free snapshot.
 /// Avoids cloning the full `ManagedOrder` per render frame.
-struct ActiveRow {
-    id: u64,
-    symbol: String,
-    side: OrderSide,
-    state: OrderState,
-    qty: u32,
-    filled_qty: u32,
-    price: f32,
+pub(crate) struct ActiveRow {
+    pub(crate) id: u64,
+    pub(crate) symbol: String,
+    pub(crate) side: OrderSide,
+    pub(crate) state: OrderState,
+    pub(crate) qty: u32,
+    pub(crate) filled_qty: u32,
+    pub(crate) price: f32,
     /// First 8 chars of the persistent client_order_id (UUID v4 hex).
-    cid8: String,
-    updated_at: u64,
+    pub(crate) cid8: String,
+    pub(crate) updated_at: u64,
 }
 
 /// Filter chip selection for the journal feed.
@@ -79,11 +79,19 @@ impl LedgerView {
 
 /// Top-level draw entry. Mirrors the shape of `journal_panel::draw` /
 /// `alerts_panel::draw`. Only renders when `watchlist.order_ledger_open`.
+/// Rail registration — see [`super::right_rail`].
+pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
+    id: "order_ledger",
+    is_open: |w| w.order_ledger_open,
+    render: |cx, slot| draw(cx.ctx, cx.watchlist, cx.panes, cx.t, Some(slot)),
+};
+
 pub(crate) fn draw(
     ctx: &egui::Context,
     watchlist: &mut Watchlist,
     _panes: &[Chart],
     t: &Theme,
+    slot: Option<super::side_panel_shell::RailSlot>,
 ) {
     if !watchlist.order_ledger_open { return; }
 
@@ -93,6 +101,7 @@ pub(crate) fn draw(
         .width(Width::Medium)
         .resizable(280.0..=560.0)
         .pane_metrics(pane_h, pane_font)
+        .rail_slot(slot)
         .show(ctx, t, |ui, t| {
             ui.add_space(gap_xs());
 
@@ -494,7 +503,7 @@ fn draw_bulk_cancel_confirm(
 
 /// Collect every non-terminal order globally from the lock-free snapshot.
 /// Render-thread read; does not lock the order manager.
-fn collect_active_from_snapshot() -> Vec<ActiveRow> {
+pub(crate) fn collect_active_from_snapshot() -> Vec<ActiveRow> {
     let snap = order_manager::orders_snapshot();
     let mut out: Vec<ActiveRow> = snap.orders.iter()
         .filter(|o| o.state.is_active())
@@ -515,7 +524,7 @@ fn collect_active_from_snapshot() -> Vec<ActiveRow> {
     out
 }
 
-fn format_hms(ts_ms: u64) -> String {
+pub(crate) fn format_hms(ts_ms: u64) -> String {
     use chrono::TimeZone;
     let secs = (ts_ms / 1000) as i64;
     let nsecs = ((ts_ms % 1000) * 1_000_000) as u32;

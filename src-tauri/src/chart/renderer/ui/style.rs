@@ -169,6 +169,16 @@ pub fn begin_frame() {
         focus_ring_width: current().focus_ring_width,
         toast_bg_alpha:   current().toast_bg_alpha,
         button_treatment: current().button_treatment,
+        // Bevel — pushed from StyleSettings so ui_kit widgets read via frame_tokens().
+        surface_bevel:         current().surface_bevel,
+        bevel_highlight_alpha: current().bevel_highlight_alpha,
+        bevel_shadow_alpha:    current().bevel_shadow_alpha,
+        // Default tab treatment — Filled for Aperture/Cadence/Glass, Line for others.
+        panel_tab_treatment:   current().panel_tab_treatment,
+        // List row shape — pill for Aperture/Glass, hairlines for Alto/Mariner/Relay.
+        wl_row_side_margin:    current().wl_row_side_margin,
+        wl_row_corner_radius:  current().wl_row_corner_radius,
+        wl_row_divider_alpha:  current().wl_row_divider_alpha,
     };
     // Push to the canonical ui_kit thread_local. ui_kit's
     // `frame_tokens()` reads this back for `radius_*` / `stroke_*` /
@@ -1318,6 +1328,200 @@ pub(crate) fn panel_surface(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
     t.bg.gamma_multiply(ELEVATION_3_FACTOR)
 }
 
+// ─── Shell region framing (floating-card chrome) ─────────────────────────────
+//
+// When the active style sets `region_gap > 0` (Aperture/Glass), each major
+// shell region — top nav, tool layer, workspace, right rail — floats as a
+// rounded card separated by `region_gap` px of canvas. When `region_gap == 0`
+// (most styles) the helpers return flush flat-fill frames so the chrome reads
+// as one contiguous surface (today's look). Panes inside the workspace stay
+// contiguous regardless — only the *region* boundaries gap.
+
+/// True when the active style uses the floating-card region layout.
+#[inline]
+pub(crate) fn region_tiled() -> bool { current().region_gap > 0.0 }
+
+// ── Toolnav visibility override (hybrid: style default + user toggle) ─────────
+//
+// The active style provides a default via `Chrome.toolnav_height`; the user can
+// force the second row on/off regardless of style via this override. Mirrors
+// the BorderWeight/CornerScale override-axis pattern: -1 = no override (use the
+// style default), 0 = force hidden, 1 = force shown.
+static TOOLNAV_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
+
+/// Set the user's toolnav override. `None` clears it (revert to style default).
+pub(crate) fn set_toolnav_override(v: Option<bool>) {
+    use std::sync::atomic::Ordering;
+    TOOLNAV_OVERRIDE.store(v.map(|b| b as i8).unwrap_or(-1), Ordering::Release);
+}
+/// The user's toolnav override, if any (`None` = follow the style default).
+#[inline]
+pub(crate) fn toolnav_override_opt() -> Option<bool> {
+    use std::sync::atomic::Ordering;
+    let x = TOOLNAV_OVERRIDE.load(Ordering::Acquire);
+    if x < 0 { None } else { Some(x == 1) }
+}
+/// Resolved: should the toolnav (second chrome row) render this frame?
+/// User override wins; otherwise the style's `toolnav_height > 0` decides.
+#[inline]
+pub(crate) fn toolnav_visible() -> bool {
+    match toolnav_override_opt() {
+        Some(b) => b,
+        None => current().toolnav_height > 0.0,
+    }
+}
+/// Resolved toolnav height (px). Falls back to 30 when the user forces it on
+/// but the active style sets `toolnav_height = 0`.
+#[inline]
+pub(crate) fn toolnav_resolved_height() -> f32 {
+    let h = current().toolnav_height;
+    if h > 0.0 { h } else { 30.0 }
+}
+
+// ── Footer (bottom dock) visibility override (hybrid: style default + user) ──
+//
+// The active style provides the default via `Chrome.footer_default_open`; the
+// user can force the footer on/off regardless of style via this override.
+// Same tri-state pattern as the toolnav: -1 = no override (follow style
+// default), 0 = force hidden, 1 = force shown.
+static FOOTER_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
+
+/// Set the user's footer override. `None` clears it (revert to style default).
+pub(crate) fn set_footer_override(v: Option<bool>) {
+    use std::sync::atomic::Ordering;
+    FOOTER_OVERRIDE.store(v.map(|b| b as i8).unwrap_or(-1), Ordering::Release);
+}
+/// The user's footer override, if any (`None` = follow the style default).
+#[inline]
+pub(crate) fn footer_override_opt() -> Option<bool> {
+    use std::sync::atomic::Ordering;
+    let x = FOOTER_OVERRIDE.load(Ordering::Acquire);
+    if x < 0 { None } else { Some(x == 1) }
+}
+/// Resolved: should the bottom dock (footer) render this frame? User override
+/// wins; otherwise the active style's `footer_default_open` decides.
+#[inline]
+pub(crate) fn footer_visible() -> bool {
+    match footer_override_opt() {
+        Some(b) => b,
+        None => current().footer_default_open,
+    }
+}
+
+/// The inter-region gap (px). 0 when the style is flush.
+#[inline]
+pub(crate) fn region_gap() -> f32 { current().region_gap }
+
+/// Build an `egui::Frame` for a shell region panel (toolbar / side rail).
+/// `fill` is the region's surface colour. Floats as a rounded bordered card
+/// with `region_gap` outer margin when tiled; flat flush fill otherwise.
+pub(crate) fn region_frame(t: &crate::chart_renderer::gpu::Theme, fill: Color32) -> egui::Frame {
+    let st = current();
+    if st.region_gap <= 0.0 {
+        egui::Frame::NONE.fill(fill)
+    } else {
+        let g = st.region_gap as i8;
+        egui::Frame::NONE
+            .fill(fill)
+            .corner_radius(egui::CornerRadius::same(st.region_radius as u8))
+            .stroke(egui::Stroke::new(
+                stroke_thin(),
+                color_alpha(t.toolbar_border, st.region_border_alpha),
+            ))
+            .outer_margin(egui::Margin::same(g))
+    }
+}
+
+/// Paint a rounded region-card border over `rect` on the given painter. Used
+/// for the central workspace, which can't wrap itself in a Frame (its panel is
+/// drawn by the sacred core.rs). No-op when the style is flush.
+pub(crate) fn paint_region_card(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    t: &crate::chart_renderer::gpu::Theme,
+) {
+    let st = current();
+    if st.region_gap <= 0.0 || !rect.is_finite() || rect.width() < 8.0 { return; }
+    painter.rect_stroke(
+        rect,
+        egui::CornerRadius::same(st.region_radius as u8),
+        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, st.region_border_alpha)),
+        egui::StrokeKind::Inside,
+    );
+}
+
+/// Returns the bevel highlight alpha scaled for use as a gradient top —
+/// half of the crisp-line `bevel_highlight_alpha` so the fade is softer.
+/// Returns 0 when the active style has no bevel (no gradient painted).
+#[inline]
+pub(crate) fn current_style_bevel_hi() -> u8 {
+    current().bevel_highlight_alpha / 2
+}
+
+/// Paint a vertical highlight gradient fading from `top_alpha` (white, opaque)
+/// at the top edge to fully transparent at the bottom. This is the Rust analogue
+/// of React's `linear-gradient(180deg, rgba(255,…,a) 0%, transparent 100%)` —
+/// the warm/cool tint differences between Alto and Mariner are handled by the
+/// underlying toolbar_bg palette, so pure white overlay is palette-correct.
+/// No-op if `top_alpha == 0` or the rect is degenerate.
+pub(crate) fn paint_gradient_highlight(painter: &egui::Painter, rect: egui::Rect, top_alpha: u8) {
+    use crate::design_system::style_system::BevelStyle;
+    if frame_tokens().surface_bevel == BevelStyle::None { return; }
+    if top_alpha == 0 || !rect.is_finite() || rect.width() < 1.0 || rect.height() < 1.0 { return; }
+    let top = Color32::from_rgba_unmultiplied(255, 255, 255, top_alpha);
+    let bot = Color32::TRANSPARENT;
+    let uv  = egui::pos2(0.0, 0.0);
+    use egui::epaint::{Mesh, Vertex};
+    let mut mesh = Mesh::default();
+    mesh.vertices.extend_from_slice(&[
+        Vertex { pos: rect.left_top(),     uv, color: top },
+        Vertex { pos: rect.right_top(),    uv, color: top },
+        Vertex { pos: rect.right_bottom(), uv, color: bot },
+        Vertex { pos: rect.left_bottom(),  uv, color: bot },
+    ]);
+    mesh.indices.extend_from_slice(&[0, 1, 2, 0, 2, 3]);
+    painter.add(egui::Shape::mesh(mesh));
+}
+
+/// Paint a surface bevel (top inner-highlight + bottom inner-shadow lines) over
+/// an already-filled `rect`, per the active style's `surface_bevel` treatment.
+/// This is the Rust analogue of the React themes' `box-shadow: inset …` faces.
+///
+/// The tint is palette-independent — a white highlight and a black shadow — so
+/// it reads correctly on any colour scheme (matching the CSS which uses
+/// `rgba(255,255,255,a)` / `rgba(0,0,0,a)`); only the alphas come from the
+/// style. `Raised` puts the highlight on top (a lifted face); `Inset` flips it
+/// (a sunken well). No-op when the active style's bevel is `None`.
+pub(crate) fn paint_bevel(painter: &egui::Painter, rect: egui::Rect, radius: egui::CornerRadius) {
+    use crate::design_system::style_system::BevelStyle;
+    let st = current();
+    let hi = Color32::from_rgba_unmultiplied(255, 255, 255, st.bevel_highlight_alpha);
+    let sh = Color32::from_rgba_unmultiplied(0, 0, 0, st.bevel_shadow_alpha);
+    let (top_col, bot_col) = match st.surface_bevel {
+        BevelStyle::None => return,
+        BevelStyle::Raised => (hi, sh),
+        BevelStyle::Inset  => (sh, hi),
+    };
+    // Guard against degenerate / not-yet-laid-out rects (transient at startup).
+    if !rect.is_finite() || rect.width() < 1.0 || rect.height() < 1.0 {
+        return;
+    }
+    // Inset the lines by ~half the corner radius so they don't bleed past
+    // rounded corners.
+    let r = radius.nw.max(radius.ne).max(radius.sw).max(radius.se) as f32;
+    let inset = (r * 0.5).clamp(0.0, 3.0);
+    let y_top = rect.top() + 0.5;
+    let y_bot = rect.bottom() - 0.5;
+    painter.line_segment(
+        [egui::pos2(rect.left() + inset, y_top), egui::pos2(rect.right() - inset, y_top)],
+        Stroke::new(1.0, top_col),
+    );
+    painter.line_segment(
+        [egui::pos2(rect.left() + inset, y_bot), egui::pos2(rect.right() - inset, y_bot)],
+        Stroke::new(1.0, bot_col),
+    );
+}
+
 /// Header border — matches the chart pane header's perimeter hairline:
 /// `color_alpha(t.text, 38)` at `stroke_thin()`. Use for every panel
 /// header bottom rule, accordion rule, and side-panel header rule so
@@ -1684,6 +1888,10 @@ pub struct StyleSettings {
     pub section_label_padding_top: f32,
     /// Section label bottom padding in px (space below eyebrow labels before content).
     pub section_label_padding_bottom: f32,
+    /// When true, the active pane header fills with `accent` instead of a bg-multiply.
+    /// Aperture signature: the active pane header turns orange (accent). All text/icons
+    /// inside must use `contrast_fg(accent)` when this flag is set.
+    pub pane_active_fill_accent: bool,
     /// Pane gap (gutter) fill color override. None = use toolbar_border at pane_gap_alpha.
     pub pane_gap_color: Option<Color32>,
     /// Drag handle (split divider) color alpha multiplier (0.0-1.0).
@@ -1698,11 +1906,73 @@ pub struct StyleSettings {
     /// When non-zero, overrides r_sm for badge/chip corners specifically.
     pub r_chip: u8,
 
+    // ── Watchlist row shape ───────────────────────────────────────────────
+    /// Horizontal margin inset each side of a watchlist row (px).
+    /// 0 = flush (most themes); 6 = Aperture pill rows floating inside the list.
+    pub wl_row_side_margin: f32,
+    /// Corner radius for watchlist rows (px). 0 = no rounding; 99 = full pill.
+    pub wl_row_corner_radius: u8,
+    /// Alpha (0-255) of the per-row hairline bottom divider.
+    /// 0 = no divider (Aperture/Cadence); ~20 = Alto/Mariner Zed hairlines.
+    pub wl_row_divider_alpha: u8,
+    /// Use monospace font for symbol text in watchlist rows.
+    /// True for Alto/Mariner/Aperture (IBM Plex Mono / JetBrains); false for editorial themes.
+    pub wl_symbol_mono: bool,
+
+    // ── Panel section headers ─────────────────────────────────────────────
+    /// Use monospace font for section/eyebrow labels (Alto/Mariner: IBM Plex Mono).
+    pub section_header_mono: bool,
+    /// Tracking for section headers in px (above `label_letter_spacing_px` which is for
+    /// general labels; this specifically overrides the eyebrow/category header text).
+    pub section_header_tracking: f32,
+
+    // ── Panel tab default treatment ───────────────────────────────────────
+    /// Default `TabTreatment` for ui-kit `Tabs` widgets when no override is
+    /// specified at the call site. Encoded as u8 matching `TabTreatment::as_u8()`.
+    /// 0=Line(underline), 1=Segmented, 2=Filled, 3=Card, 4=Pane.
+    pub panel_tab_treatment: u8,
+
     // ── Accessibility ─────────────────────────────────────────────────────
     /// When false, all motion::ease_bool / ease_value calls snap immediately
     /// to their target value, honoring the system "reduce motion" preference.
     /// Default: true.
     pub animations_enabled: bool,
+
+    // ── Surface bevel (mirrors StyleSystem.Treatments) ─────────────────────
+    /// Bevel treatment for button faces / panel headers / chips / inline tabs.
+    /// Tint derives from palette luminance at paint time. See `paint_bevel`.
+    pub surface_bevel: crate::design_system::style_system::BevelStyle,
+    /// Alpha (0-255) of the bevel top inner-highlight line.
+    pub bevel_highlight_alpha: u8,
+    /// Alpha (0-255) of the bevel bottom inner-shadow line.
+    pub bevel_shadow_alpha: u8,
+
+    // ── Shell region layout (mirrors StyleSystem.Chrome) ───────────────────
+    /// Gap (px) between major shell regions. 0 = flush; 8 = Aperture floating cards.
+    pub region_gap: f32,
+    /// Shell region card corner radius (px).
+    pub region_radius: f32,
+    /// Shell region card border alpha (0-255).
+    pub region_border_alpha: u8,
+    /// Nav cluster background pill corner radius (px).
+    pub nav_cluster_radius: f32,
+    /// Nav cluster background fill alpha (0-255). 0 = transparent clusters.
+    pub nav_cluster_fill_alpha: u8,
+    /// Nav cluster horizontal inner padding (px).
+    pub nav_cluster_padding: f32,
+    /// Second toolbar row (toolnav) height (px). 0 = single-row chrome.
+    pub toolnav_height: f32,
+    /// Whether the bottom dock (footer) is open by default for this style.
+    /// User toggle (Ctrl+`) overrides via `footer_visible()`.
+    pub footer_default_open: bool,
+    /// Side-panel header toggle treatment (0=Line,1=Segmented,2=Filled,3=Card,4=Pane).
+    pub panel_header_treatment: u8,
+    /// PanelSection body band fill alpha (0-255). 0 = flat.
+    pub panel_section_fill_alpha: u8,
+    /// Pinned panel footer renders as an elevated card (true) vs flat band.
+    pub panel_footer_card: bool,
+    /// Pinned footer card corner radius (px).
+    pub panel_footer_radius: f32,
 }
 
 // Active style selection — set once at the top of each draw_chart frame
@@ -1754,14 +2024,17 @@ pub fn toolbar_rect() -> egui::Rect {
 fn style_defaults(id: u8) -> StyleSettings {
     match id {
         1 => StyleSettings {
-            r_xs: 4, r_sm: 6, r_md: 8, r_lg: 12, r_pill: 99,
+            // React fidelity: Aperture's signature big-radius scale (8/10/14/20).
+            // Lockstep with builtin.rs aperture.radii (adapter equivalence test).
+            r_xs: 8, r_sm: 10, r_md: 14, r_lg: 20, r_pill: 99,
             serif_headlines: false,
-            button_treatment: ButtonTreatment::SoftPill,
+            // Aperture signature: active chrome = inverted block (ink fill, light text).
+            button_treatment: ButtonTreatment::BlackFillActive,
             hairline_borders: false,
             stroke_hair: 0.5, stroke_thin: 1.0, stroke_std: 1.5,
             stroke_bold: 1.5, stroke_thick: 2.0,
             shadows_enabled: true, solid_active_fills: false, invert_active_fill: false,
-            uppercase_section_labels: false, label_letter_spacing_px: 0.0,
+            uppercase_section_labels: false, label_letter_spacing_px: 0.8,
             toolbar_height_scale: 1.0, header_height_scale: 1.0,
             font_hero: 22.0, vertical_group_dividers: false,
             show_active_tab_underline: true,
@@ -1784,7 +2057,9 @@ fn style_defaults(id: u8) -> StyleSettings {
             tab_underline_under_text: false, card_floating_shadow: false,
             card_floating_shadow_alpha: 0,
             cta_height_px: 40.0, cta_padding_x: 12.0,
-            pane_gap_alpha: 30, pane_active_indicator: 2,
+            // Gap alpha=0: transparent gutters show the canvas bg (pure black in Aperture palette).
+            // The rounded pane card frames define the tile edges; no gutter fill needed.
+            pane_gap_alpha: 0, pane_active_indicator: 2,
             nav_active_col_alpha: 0, dialog_backdrop_alpha: 0,
             tab_inactive_alpha: 0.55, tab_hover_bg_alpha: 18,
             section_label_padding_top: 6.0, section_label_padding_bottom: 2.0,
@@ -1793,6 +2068,20 @@ fn style_defaults(id: u8) -> StyleSettings {
             toast_bg_alpha: 200, card_stripe_alpha: 255,
             r_chip: 0,
             animations_enabled: true,
+            // Aperture signature: active pane header = accent (orange).
+            pane_active_fill_accent: true,
+            // Pill rows: symbols float as rounded items inside the watchlist.
+            wl_row_side_margin: 6.0, wl_row_corner_radius: 8, wl_row_divider_alpha: 0,
+            wl_symbol_mono: true, section_header_mono: false, section_header_tracking: 0.8,
+            panel_tab_treatment: 2, // Filled pills
+            surface_bevel: crate::design_system::style_system::BevelStyle::None,
+            bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
+            region_gap: 8.0, region_radius: 12.0, region_border_alpha: 40,
+            nav_cluster_radius: 99.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 8.0,
+            toolnav_height: 30.0,
+            footer_default_open: true,
+            panel_header_treatment: 2, panel_section_fill_alpha: 0,
+            panel_footer_card: true, panel_footer_radius: 10.0,
         },
         2 => StyleSettings {
             r_xs: 1, r_sm: 2, r_md: 3, r_lg: 4, r_pill: 99,
@@ -1834,6 +2123,18 @@ fn style_defaults(id: u8) -> StyleSettings {
             toast_bg_alpha: 220, card_stripe_alpha: 255,
             r_chip: 0,
             animations_enabled: true,
+            pane_active_fill_accent: false,
+            wl_row_side_margin: 0.0, wl_row_corner_radius: 0, wl_row_divider_alpha: 0,
+            wl_symbol_mono: false, section_header_mono: false, section_header_tracking: 0.0,
+            panel_tab_treatment: 0,
+            surface_bevel: crate::design_system::style_system::BevelStyle::None,
+            bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
+            region_gap: 0.0, region_radius: 0.0, region_border_alpha: 40,
+            nav_cluster_radius: 2.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 4.0,
+            toolnav_height: 0.0,
+            footer_default_open: true,
+            panel_header_treatment: 0, panel_section_fill_alpha: 0,
+            panel_footer_card: false, panel_footer_radius: 0.0,
         },
         _ => StyleSettings {
             // Phase B source-swap: Meridien (the default style) is redefined
@@ -1879,10 +2180,232 @@ fn style_defaults(id: u8) -> StyleSettings {
             toast_bg_alpha: 230, card_stripe_alpha: 255,
             r_chip: 0,
             animations_enabled: true,
+            pane_active_fill_accent: false,
+            wl_row_side_margin: 0.0, wl_row_corner_radius: 0, wl_row_divider_alpha: 0,
+            wl_symbol_mono: false, section_header_mono: false, section_header_tracking: 0.0,
+            panel_tab_treatment: 0,
+            surface_bevel: crate::design_system::style_system::BevelStyle::None,
+            bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
+            region_gap: 0.0, region_radius: 0.0, region_border_alpha: 40,
+            nav_cluster_radius: 0.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 6.0,
+            toolnav_height: 0.0,
+            footer_default_open: false,
+            panel_header_treatment: 0, panel_section_fill_alpha: 0,
+            panel_footer_card: false, panel_footer_radius: 0.0,
         },
     }
 }
 // └─ STYLE_DEFAULTS_END ───────────────────────────────────────────────────────
+
+// NOTE: The 6 ported personality presets (Cadence/Alto/Mariner/Lucid/Relay/Glass)
+// previously lived here as raw StyleSettings functions. They are now proper
+// StyleSystem entries in design_system::builtin_style_systems() and flow through
+// the style_system_to_style_settings adapter — the canonical two-axis path.
+// See design_system/builtin.rs for the authoritative personality definitions.
+
+// ─── Ported theme personalities (React ApexTerminalThemes → StyleSettings) ────
+//
+// Each function returns a bespoke StyleSettings built by struct-update over the
+// closest existing preset. Values are transcribed from the React mockup's
+// `global.css` `[data-ds="<theme>"]` token blocks plus its `html[data-ds]`
+// structural overrides — the styling source of truth tuned to ~90% fidelity.
+//
+// NOTE: the bevel / inset-shadow gradients that are signature to Cadence /
+// Alto / Mariner are CSS `box-shadow` effects with no StyleSettings field.
+// The dimensional character (radii, heights, density, tracking, underlines,
+// active-fill behaviour, button treatment, drop shadow) IS captured here;
+// faithful bevels would need a new widget-render capability, not a token.
+
+/// Cadence — Spotify-style pure-black canvas: pill primaries, elevated cards,
+/// 3px active tab underline, uppercase pill labels, flush (gapless) rows.
+fn cadence_style() -> StyleSettings {
+    StyleSettings {
+        r_xs: 4, r_sm: 6, r_md: 10, r_lg: 14, r_pill: 99, r_chip: 99,
+        serif_headlines: false,
+        button_treatment: ButtonTreatment::SoftPill,
+        hairline_borders: true,
+        stroke_hair: 0.5, stroke_thin: 1.0, stroke_std: 1.0,
+        stroke_bold: 1.5, stroke_thick: 2.0,
+        shadows_enabled: true, shadow_blur: 8.0, shadow_offset_y: 2.0, shadow_alpha: 90,
+        solid_active_fills: false, invert_active_fill: false,
+        uppercase_section_labels: true, label_letter_spacing_px: 0.6,
+        toolbar_height_scale: 1.0, header_height_scale: 1.0,
+        font_hero: 22.0,
+        show_active_tab_underline: true, tab_underline_thickness: 3.0,
+        tab_underline_under_text: false,
+        pane_gap: 0.0, pane_gap_alpha: 0,
+        pane_active_indicator: 2,
+        card_padding_y: 12.0, card_padding_x: 16.0,
+        row_height_px: 26.0, button_height_px: 28.0, button_padding_x: 14.0,
+        tab_height: 30.0,
+        font_section_label: 11.0, font_body: 13.0, font_caption: 11.0,
+        density: 1, accent_emphasis: 1.1,
+        cta_height_px: 32.0, cta_padding_x: 16.0,
+        wl_row_side_margin: 0.0, wl_row_corner_radius: 0, wl_row_divider_alpha: 0,
+        wl_symbol_mono: false, section_header_mono: false, section_header_tracking: 0.6,
+        panel_tab_treatment: 2, // Filled
+        // Elevated Spotify cards — subtle raised face.
+        surface_bevel: crate::design_system::style_system::BevelStyle::Raised,
+        bevel_highlight_alpha: 24, bevel_shadow_alpha: 60,
+        ..style_defaults(1) // Aperture base — modern/soft with shadows
+    }
+}
+
+/// Alto — Zed-inspired warm dark: raised button faces, amber active tint,
+/// 2px tab underline, mono uppercase eyebrows, sharp 2/4/6/8 radii.
+fn alto_style() -> StyleSettings {
+    StyleSettings {
+        r_xs: 2, r_sm: 4, r_md: 6, r_lg: 8, r_pill: 99, r_chip: 0,
+        serif_headlines: false,
+        button_treatment: ButtonTreatment::RaisedActive,
+        hairline_borders: false,
+        stroke_hair: 0.5, stroke_thin: 1.0, stroke_std: 1.0,
+        stroke_bold: 1.5, stroke_thick: 2.0,
+        shadows_enabled: true, shadow_blur: 8.0, shadow_offset_y: 2.0, shadow_alpha: 80,
+        solid_active_fills: false, invert_active_fill: false,
+        uppercase_section_labels: true, label_letter_spacing_px: 0.8,
+        toolbar_height_scale: 1.0, header_height_scale: 1.0,
+        font_hero: 22.0,
+        show_active_tab_underline: true, tab_underline_thickness: 2.0,
+        tab_underline_under_text: false,
+        pane_active_indicator: 2,
+        card_padding_y: 10.0, card_padding_x: 12.0,
+        row_height_px: 24.0, button_height_px: 24.0, button_padding_x: 10.0,
+        tab_height: 28.0,
+        font_section_label: 8.0, font_body: 11.0, font_caption: 9.0,
+        density: 1, accent_emphasis: 1.0,
+        // Zed warm-dark raised button faces — warm-cream highlight, dark base.
+        wl_row_side_margin: 0.0, wl_row_corner_radius: 0, wl_row_divider_alpha: 22,
+        wl_symbol_mono: true, section_header_mono: true, section_header_tracking: 0.8,
+        panel_tab_treatment: 0, // Line underline
+        surface_bevel: crate::design_system::style_system::BevelStyle::Raised,
+        bevel_highlight_alpha: 16, bevel_shadow_alpha: 90,
+        ..style_defaults(2) // Octave base — RaisedActive, hairline, compact
+    }
+}
+
+/// Mariner — Alto's nautical sibling: same warm-dark bones, steel-blue
+/// precision markers, ~10% tighter (compact), top-stripe active pane.
+fn mariner_style() -> StyleSettings {
+    StyleSettings {
+        row_height_px: 22.0, button_height_px: 22.0, tab_height: 26.0,
+        toolbar_height_scale: 0.9, header_height_scale: 0.95,
+        density: 0,
+        pane_active_indicator: 1, // top steel-blue stripe on active pane
+        font_body: 10.0,
+        accent_emphasis: 1.05,
+        // Slightly tighter divider for the instrument-panel density feel.
+        wl_row_divider_alpha: 28,
+        // Cool-tinted bevel — slightly stronger than Alto's warm one.
+        bevel_highlight_alpha: 20, bevel_shadow_alpha: 97,
+        ..alto_style()
+    }
+}
+
+/// Lucid — editorial LIGHT (Bauhaus): serif headlines, inverted solid
+/// primaries, no bevels (light themes layer not bevel), restrained radii.
+fn lucid_style() -> StyleSettings {
+    StyleSettings {
+        r_xs: 2, r_sm: 3, r_md: 5, r_lg: 8, r_pill: 99, r_chip: 0,
+        serif_headlines: true,
+        button_treatment: ButtonTreatment::UnderlineActive,
+        hairline_borders: false,
+        stroke_hair: 0.5, stroke_thin: 1.0, stroke_std: 1.0,
+        stroke_bold: 1.5, stroke_thick: 2.0,
+        shadows_enabled: false, shadow_blur: 0.0, shadow_offset_y: 0.0, shadow_alpha: 0,
+        card_floating_shadow: false, card_floating_shadow_alpha: 0,
+        solid_active_fills: true, invert_active_fill: true,
+        uppercase_section_labels: true, label_letter_spacing_px: 0.4,
+        toolbar_height_scale: 1.0, header_height_scale: 1.0,
+        font_hero: 28.0,
+        show_active_tab_underline: false, tab_underline_thickness: 0.0,
+        tab_underline_under_text: false,
+        vertical_group_dividers: false,
+        nav_letter_spacing_px: 0.0, nav_buttons_label_only: false,
+        nav_buttons_uppercase_labels: false,
+        pane_active_indicator: 1,
+        row_height_px: 26.0, button_height_px: 26.0, tab_height: 28.0,
+        font_section_label: 9.0, font_body: 12.0, font_caption: 10.0,
+        density: 1, accent_emphasis: 1.0,
+        cta_height_px: 36.0, cta_padding_x: 16.0,
+        wl_row_side_margin: 0.0, wl_row_corner_radius: 0, wl_row_divider_alpha: 12,
+        wl_symbol_mono: false, section_header_mono: false, section_header_tracking: 0.4,
+        panel_tab_treatment: 0, // Line underline
+        ..style_defaults(0) // Meridien base — editorial (serif/uppercase/invert)
+    }
+}
+
+/// Relay — dark editorial. Bloomberg/terminal character: dark bg, serif display
+/// headlines, high contrast, uppercase all labels, deep card shadows, no rounded
+/// corners. Pairs best with a high-contrast dark palette (e.g. Midnight, Vesper).
+fn relay_style() -> StyleSettings {
+    StyleSettings {
+        r_xs: 0, r_sm: 0, r_md: 2, r_lg: 4, r_pill: 0, r_chip: 0,
+        serif_headlines: true,
+        button_treatment: ButtonTreatment::SoftPill,
+        hairline_borders: true,
+        stroke_hair: 0.4, stroke_thin: 0.8, stroke_std: 1.0,
+        stroke_bold: 1.5, stroke_thick: 2.0,
+        shadows_enabled: true, shadow_blur: 12.0, shadow_offset_y: 4.0, shadow_alpha: 80,
+        card_floating_shadow: true, card_floating_shadow_alpha: 40,
+        solid_active_fills: true, invert_active_fill: true,
+        uppercase_section_labels: true, label_letter_spacing_px: 1.2,
+        toolbar_height_scale: 1.20, header_height_scale: 1.05,
+        font_hero: 48.0, // large display for hero numbers
+        vertical_group_dividers: true,
+        show_active_tab_underline: true, tab_underline_thickness: 2.0,
+        tab_underline_under_text: true,
+        nav_letter_spacing_px: 1.5, nav_buttons_label_only: true, nav_buttons_uppercase_labels: true,
+        pane_active_indicator: 1,
+        row_height_px: 24.0, button_height_px: 26.0, tab_height: 30.0,
+        font_section_label: 9.0, font_body: 11.0, font_caption: 9.0,
+        density: 1, accent_emphasis: 1.0,
+        cta_height_px: 34.0, cta_padding_x: 14.0,
+        wl_row_side_margin: 0.0, wl_row_corner_radius: 0, wl_row_divider_alpha: 30,
+        wl_symbol_mono: true, section_header_mono: true, section_header_tracking: 1.2,
+        panel_tab_treatment: 0, // Line underline
+        pane_active_fill_accent: false,
+        surface_bevel: crate::design_system::style_system::BevelStyle::None,
+        bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
+        ..style_defaults(0) // Meridien base
+    }
+}
+
+/// Glass — modern translucent. The Vercel/Linear/Notion feel: very soft large
+/// radii, light tinted fills, vivid accent, no hard borders. No bevel — panels
+/// feel like frosted glass. Large generous spacing.
+fn glass_style() -> StyleSettings {
+    StyleSettings {
+        r_xs: 6, r_sm: 10, r_md: 16, r_lg: 24, r_pill: 99, r_chip: 99,
+        serif_headlines: false,
+        button_treatment: ButtonTreatment::SoftPill,
+        hairline_borders: false,
+        stroke_hair: 0.3, stroke_thin: 0.5, stroke_std: 0.75,
+        stroke_bold: 1.0, stroke_thick: 1.5,
+        shadows_enabled: true, shadow_blur: 32.0, shadow_offset_y: 8.0, shadow_alpha: 30,
+        card_floating_shadow: true, card_floating_shadow_alpha: 20,
+        solid_active_fills: false, invert_active_fill: false,
+        uppercase_section_labels: false, label_letter_spacing_px: 0.2,
+        toolbar_height_scale: 1.05, header_height_scale: 1.0,
+        font_hero: 28.0,
+        vertical_group_dividers: false,
+        show_active_tab_underline: false, tab_underline_thickness: 0.0,
+        tab_underline_under_text: false,
+        nav_letter_spacing_px: 0.0, nav_buttons_label_only: false, nav_buttons_uppercase_labels: false,
+        pane_active_indicator: 2, // fill
+        row_height_px: 30.0, button_height_px: 32.0, tab_height: 34.0,
+        font_section_label: 10.0, font_body: 13.0, font_caption: 10.0,
+        density: 2, accent_emphasis: 1.2,
+        cta_height_px: 36.0, cta_padding_x: 18.0,
+        wl_row_side_margin: 4.0, wl_row_corner_radius: 10, wl_row_divider_alpha: 0,
+        wl_symbol_mono: false, section_header_mono: false, section_header_tracking: 0.0,
+        panel_tab_treatment: 2, // Filled
+        pane_active_fill_accent: false,
+        surface_bevel: crate::design_system::style_system::BevelStyle::None,
+        bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
+        ..style_defaults(1) // Aperture base — large radii, shadows
+    }
+}
 
 /// Public test accessor for `style_defaults`.
 /// Maps: 0 → Meridien (default `_` arm), 1 → Aperture, 2 → Octave.
@@ -1934,23 +2457,16 @@ pub fn style_system_to_style_settings(
 
     StyleSettings {
         // ── Radii ────────────────────────────────────────────────────────────
-        // r_xs/r_sm/r_md/r_lg have a clean 1-to-1 source in StyleSystem.
-        // r_pill does NOT: StyleSystem stores 9999.0 (conceptual "full round")
-        // for all three styles, but style_defaults uses 0 (Meridien, sharp pill)
-        // and 99 (Aperture/Octave). No consistent cap exists, so r_pill inherits
-        // from style_defaults(base_id) via the ..base spread below.
         r_xs: ss.radii.xs as u8,
         r_sm: ss.radii.sm as u8,
         r_md: ss.radii.md as u8,
         r_lg: ss.radii.lg as u8,
+        r_pill: ss.radii.pill as u8,
+        r_chip: ss.radii.chip as u8,
 
         // ── Strokes ──────────────────────────────────────────────────────────
-        // stroke_bold and stroke_thick map 1-to-1 for all three styles.
-        // stroke_hair/thin/std do NOT map consistently: Meridien uses
-        // strokes.hair/thin/std directly, but Aperture/Octave require a
-        // one-tier shift (strokes.thin→stroke_hair, strokes.std→stroke_thin,
-        // strokes.bold→stroke_std). Since no consistent cross-style mapping
-        // exists, stroke_hair/thin/std inherit from style_defaults(base_id).
+        // bold/thick map 1-to-1. hair/thin/std still inherit from base (the
+        // tier-shift makes them style-specific; low visual impact — deferred).
         stroke_bold:  ss.strokes.bold,
         stroke_thick: ss.strokes.thick,
 
@@ -1958,36 +2474,108 @@ pub fn style_system_to_style_settings(
         hairline_borders:         ss.treatments.hairline_borders,
         solid_active_fills:       ss.treatments.solid_active_fills,
         uppercase_section_labels: ss.treatments.uppercase_section_labels,
+        surface_bevel:            ss.treatments.surface_bevel,
+        bevel_highlight_alpha:    ss.treatments.bevel_highlight_alpha,
+        bevel_shadow_alpha:       ss.treatments.bevel_shadow_alpha,
+        wl_row_side_margin:       ss.treatments.wl_row_side_margin,
+        wl_row_corner_radius:     ss.treatments.wl_row_corner_radius,
+        wl_row_divider_alpha:     ss.treatments.wl_row_divider_alpha,
+        section_header_mono:      ss.treatments.section_header_mono,
+        wl_symbol_mono:           ss.treatments.wl_symbol_mono,
+        panel_tab_treatment:      ss.treatments.panel_tab_treatment,
+        pane_active_fill_accent:  ss.treatments.pane_active_fill_accent,
+        serif_headlines:          ss.treatments.serif_headlines,
+        button_treatment:         match ss.treatments.button_treatment {
+            1 => ButtonTreatment::OutlineAccent,
+            2 => ButtonTreatment::UnderlineActive,
+            3 => ButtonTreatment::RaisedActive,
+            4 => ButtonTreatment::BlackFillActive,
+            _ => ButtonTreatment::SoftPill,
+        },
+        invert_active_fill:           ss.treatments.invert_active_fill,
+        vertical_group_dividers:      ss.treatments.vertical_group_dividers,
+        show_active_tab_underline:    ss.treatments.show_active_tab_underline,
+        inactive_header_fill:         ss.treatments.inactive_header_fill,
+        nav_buttons_label_only:       ss.treatments.nav_buttons_label_only,
+        nav_buttons_uppercase_labels: ss.treatments.nav_buttons_uppercase_labels,
+        tab_underline_under_text:     ss.treatments.tab_underline_under_text,
+        card_floating_shadow:         ss.treatments.card_floating_shadow,
+        shadows_enabled:              ss.treatments.shadows_enabled,
+        animations_enabled:           ss.treatments.animations_enabled,
 
         // ── Spacing ──────────────────────────────────────────────────────────
-        cta_height_px:  ss.spacing.cta_height,
-        card_padding_y: ss.spacing.md,
-        card_padding_x: ss.spacing.lg,
+        cta_height_px:    ss.spacing.cta_height,
+        cta_padding_x:    ss.spacing.cta_padding_x,
+        card_padding_y:   ss.spacing.md,
+        card_padding_x:   ss.spacing.lg,
+        button_height_px: ss.spacing.button_height,
+        button_padding_x: ss.spacing.button_padding_x,
+        tab_height:       ss.spacing.tab_height,
 
         // ── Typography ───────────────────────────────────────────────────────
-        // font_caption maps to size_xs for all three styles (confirmed field-exact).
-        // font_section_label does NOT: Aperture size_xs=9 but style_defaults(1)
-        // font_section_label=10; it inherits from style_defaults(base_id).
-        font_caption: ss.typography.size_xs,
-        font_body:    ss.typography.size_sm,
-        font_hero:    ss.typography.size_xl,
+        font_caption:           ss.typography.size_xs,
+        font_body:              ss.typography.size_sm,
+        font_hero:              ss.typography.size_xl,
+        font_section_label:     ss.typography.size_section_label,
+        label_letter_spacing_px: ss.typography.label_tracking,
+        nav_letter_spacing_px:   ss.typography.nav_tracking,
+        section_header_tracking: ss.typography.section_tracking,
 
         // ── Density ──────────────────────────────────────────────────────────
         density,
         row_height_px: ss.density.row_height_dense,
 
         // ── Shadows ──────────────────────────────────────────────────────────
-        // shadow_blur/offset_y/alpha have a clean source.
-        // shadows_enabled cannot be derived from blur > 0: Meridien has blur=0
-        // but style_defaults(0).shadows_enabled=true; Octave has blur > 0 but
-        // style_defaults(2).shadows_enabled=false. Inherits from base.
         shadow_blur:     ss.shadows.card.blur,
         shadow_offset_y: ss.shadows.card.offset_y,
         shadow_alpha:    (ss.shadows.card.alpha * 255.0).round() as u8,
 
-        // All remaining fields (r_pill, stroke_hair/thin/std, shadows_enabled,
-        // font_section_label, and all other StyleSettings fields not carried
-        // cleanly by StyleSystem) inherit from style_defaults(base_id).
+        // ── Chrome (geometry + finish) ───────────────────────────────────────
+        toolbar_height_scale:          ss.chrome.toolbar_height_scale,
+        header_height_scale:           ss.chrome.header_height_scale,
+        account_strip_height:          ss.chrome.account_strip_height,
+        pane_border_width:             ss.chrome.pane_border_width,
+        pane_gap:                      ss.chrome.pane_gap,
+        pane_gap_alpha:                ss.chrome.pane_gap_alpha,
+        pane_active_indicator:         ss.chrome.pane_active_indicator,
+        active_header_fill_multiply:   ss.chrome.active_header_fill_multiply,
+        inactive_header_fill_multiply: ss.chrome.inactive_header_fill_multiply,
+        header_outer_border_alpha:     ss.chrome.header_outer_border_alpha,
+        header_outer_border_width:     ss.chrome.header_outer_border_width,
+        header_divider_alpha:          ss.chrome.header_divider_alpha,
+        nav_active_col_alpha:          ss.chrome.nav_active_col_alpha,
+        dialog_backdrop_alpha:         ss.chrome.dialog_backdrop_alpha,
+        tab_inactive_alpha:            ss.chrome.tab_inactive_alpha,
+        tab_hover_bg_alpha:            ss.chrome.tab_hover_bg_alpha,
+        tab_underline_thickness:       ss.chrome.tab_underline_thickness,
+        section_label_padding_top:     ss.chrome.section_label_padding_top,
+        section_label_padding_bottom:  ss.chrome.section_label_padding_bottom,
+        drag_handle_alpha:             ss.chrome.drag_handle_alpha,
+        drag_handle_dot_scale:         ss.chrome.drag_handle_dot_scale,
+        toast_bg_alpha:                ss.chrome.toast_bg_alpha,
+        card_stripe_alpha:             ss.chrome.card_stripe_alpha,
+        card_floating_shadow_alpha:    ss.chrome.card_floating_shadow_alpha,
+        accent_emphasis:               ss.chrome.accent_emphasis,
+        disabled_opacity:              ss.chrome.disabled_opacity,
+        focus_ring_width:              ss.chrome.focus_ring_width,
+        focus_ring_alpha:              ss.chrome.focus_ring_alpha,
+        hover_bg_alpha:                ss.chrome.hover_bg_alpha,
+        active_bg_alpha:               ss.chrome.active_bg_alpha,
+        region_gap:                    ss.chrome.region_gap,
+        region_radius:                 ss.chrome.region_radius,
+        region_border_alpha:           ss.chrome.region_border_alpha,
+        nav_cluster_radius:            ss.chrome.nav_cluster_radius,
+        nav_cluster_fill_alpha:        ss.chrome.nav_cluster_fill_alpha,
+        nav_cluster_padding:           ss.chrome.nav_cluster_padding,
+        toolnav_height:                ss.chrome.toolnav_height,
+        footer_default_open:           ss.chrome.footer_default_open,
+        panel_header_treatment:        ss.chrome.panel_header_treatment,
+        panel_section_fill_alpha:      ss.chrome.panel_section_fill_alpha,
+        panel_footer_card:             ss.chrome.panel_footer_card,
+        panel_footer_radius:           ss.chrome.panel_footer_radius,
+
+        // Only genuinely color-dependent / un-migrated fields inherit from base:
+        // pane_gap_color (Color32), stroke_hair/thin/std (tier-shift), r_pill cap.
         ..base
     }
 }
@@ -2010,8 +2598,8 @@ fn style_store() -> &'static std::sync::RwLock<Vec<(String, StyleSettings)>> {
         use crate::design_system::builtin_style_systems;
         let systems = builtin_style_systems();
         debug_assert_eq!(
-            systems.len(), 3,
-            "builtin_style_systems() must return exactly 3 entries (Meridien/Aperture/Octave)"
+            systems.len(), 9,
+            "builtin_style_systems() must return 9 entries (Meridien/Aperture/Octave/Cadence/Alto/Mariner/Lucid/Relay/Glass)"
         );
         let mut v: Vec<(String, StyleSettings)> = systems
             .iter()
@@ -2020,13 +2608,29 @@ fn style_store() -> &'static std::sync::RwLock<Vec<(String, StyleSettings)>> {
                 (ss.meta.name.clone(), style_system_to_style_settings(ss, i as u8))
             })
             .collect();
-        // Alias the remaining STYLE_NAMES (indices 3-9) to Meridien's settings
-        // so existing style_idx values don't out-of-range on first lookup.
-        let meridien = style_system_to_style_settings(&systems[0], 0);
-        let alias_names = ["Cadence", "Chord", "Lattice", "Tangent", "Tempo", "Contour", "Relay"];
-        for name in alias_names {
-            v.push((name.to_string(), meridien.clone()));
+        // Slots 3-6 carry bespoke personalities ported from the React
+        // ApexTerminalThemes mockup (the styling source of truth):
+        //   3 Cadence — Spotify-dark: pill primaries, elevated cards, 3px tab
+        //               underline, uppercase pills, flush rows, vivid accent.
+        //   4 Alto    — Zed warm-dark: raised button faces, amber active tint,
+        //               2px tab underline, mono uppercase eyebrows, sharp radii.
+        //   5 Mariner — Alto's nautical sibling: same bones, steel-blue precision
+        //               markers, ~10% tighter (compact density), top-stripe active pane.
+        //   6 Lucid   — editorial LIGHT (Bauhaus): serif headlines, inverted
+        //               solid primaries, no bevels (light layers), restrained radii.
+        // These are NOT equivalence-gated (only slots 0-2 are), so they're
+        // defined directly as StyleSettings via struct-update over a close base.
+        // Slots 3-8 are now sourced from builtin_style_systems() via the adapter —
+        // same as slots 0-2. All 9 personalities live in the design-system registry.
+        for i in 3..systems.len() {
+            let ss = &systems[i];
+            // Use base_id=1 (Aperture) for dark creative styles, 0 (Meridien) for editorial.
+            let base_id: u8 = if ss.meta.is_dark && ss.meta.id != "relay" { 1 } else { 0 };
+            v.push((ss.meta.name.clone(), style_system_to_style_settings(ss, base_id)));
         }
+        // One remaining alias slot for forward-compatibility.
+        let meridien = style_system_to_style_settings(&systems[0], 0);
+        v.push(("Contour".to_string(), meridien));
         std::sync::RwLock::new(v)
     })
 }
@@ -2171,6 +2775,16 @@ pub fn tb_group_break(ui: &mut egui::Ui, panel_rect: egui::Rect, border: egui::C
     ui.add_space(gap_md());
 }
 
+/// Returns the `FontId` for section/eyebrow header labels, respecting
+/// `section_header_mono` (Alto/Mariner/Relay use IBM Plex Mono for eyebrows).
+pub fn section_header_font_id() -> egui::FontId {
+    if current().section_header_mono {
+        egui::FontId::new(font_xs(), egui::FontFamily::Monospace)
+    } else {
+        egui::FontId::new(font_xs(), egui::FontFamily::Proportional)
+    }
+}
+
 /// Returns `s` uppercased (and letter-spaced) for active styles that request it (#5, #12).
 ///
 /// # Letter-spacing limitation
@@ -2184,7 +2798,10 @@ pub fn style_label_case(s: &str) -> String {
     let st = current();
     let base = if st.uppercase_section_labels { s.to_uppercase() } else { s.to_string() };
     // Apply letter-spacing approximation via Unicode thin-spaces (U+2009).
-    let sp = st.label_letter_spacing_px;
+    // Use the larger of label_letter_spacing_px and section_header_tracking so
+    // section headers get the full per-theme tracking (Alto/Mariner 0.8px,
+    // Relay 1.2px) without needing a separate call.
+    let sp = st.label_letter_spacing_px.max(st.section_header_tracking);
     if sp < 0.5 {
         base
     } else {
@@ -2250,6 +2867,69 @@ pub fn apply_ui_style(ctx: &egui::Context, settings: &StyleSettings, toolbar_bor
         style.spacing.interact_size.y  = 22.0;
         style.spacing.item_spacing     = egui::vec2(gap_sm(), gap_xs());
     }
+
+    // ── Per-style global widget corner radius ─────────────────────────────
+    // Push the style's r_md onto all egui widget families so dropdowns,
+    // menus, tooltips, and any egui-native widget match the per-theme radius.
+    // Meridien's ZERO is already set above in its block; handle others here.
+    if !is_meridien {
+        let cr_md = egui::CornerRadius::same(settings.r_md);
+        let cr_sm = egui::CornerRadius::same(settings.r_sm);
+        style.visuals.window_corner_radius  = cr_md;
+        style.visuals.menu_corner_radius    = cr_sm;
+        for state in [
+            &mut style.visuals.widgets.inactive,
+            &mut style.visuals.widgets.hovered,
+            &mut style.visuals.widgets.active,
+            &mut style.visuals.widgets.open,
+            &mut style.visuals.widgets.noninteractive,
+        ] {
+            state.corner_radius = cr_sm;
+        }
+    }
+
+    // ── Per-density item spacing ──────────────────────────────────────────
+    // Roomy styles (density=2, Glass/Aperture) get a bit more breathing room;
+    // compact styles (density=0, Octave/Mariner) tighten up.
+    style.spacing.item_spacing = match settings.density {
+        0 => egui::vec2(gap_xs(), 2.0),  // compact
+        2 => egui::vec2(gap_sm(), gap_xs()), // roomy
+        _ => style.spacing.item_spacing,  // keep existing
+    };
+
+    // ── Drop shadow for popup panels ─────────────────────────────────────
+    // Glass and Aperture have large soft shadows; Octave/Meridien flatten them.
+    if settings.shadows_enabled && settings.shadow_blur > 0.0 {
+        let sh_color = color_alpha(egui::Color32::BLACK, settings.shadow_alpha);
+        style.visuals.popup_shadow = egui::epaint::Shadow {
+            offset: [0, settings.shadow_offset_y as i8],
+            blur:   settings.shadow_blur as u8,
+            spread: 0,
+            color:  sh_color,
+        };
+        style.visuals.window_shadow = style.visuals.popup_shadow;
+    } else {
+        style.visuals.popup_shadow = egui::epaint::Shadow::NONE;
+        style.visuals.window_shadow = egui::epaint::Shadow::NONE;
+    }
+
+    // ── Per-style scrollbar ───────────────────────────────────────────────
+    // React themes specify scrollbar width in ::webkit-scrollbar:
+    //   Alto/Mariner/Lucid/Meridien/Relay: 7px — visible, part of the chrome
+    //   Cadence/Glass: 5px — minimal, unobtrusive
+    //   Aperture/Octave: default egui thin
+    let scroll_bar_width = match settings.density {
+        0 => 4.0, // compact (Octave/Mariner) — minimal
+        2 => 8.0, // roomy (Glass) — slightly wider for comfort
+        _ if settings.section_header_mono => 7.0, // Alto/Mariner/Relay — styled visible
+        _ if settings.serif_headlines     => 7.0, // Meridien/Lucid/Relay editorial
+        _                                  => 5.0, // others
+    };
+    style.spacing.scroll.bar_width    = scroll_bar_width;
+    style.spacing.scroll.bar_inner_margin = 2.0;
+    style.spacing.scroll.bar_outer_margin = 0.0;
+    // Scrollbar color: use dim border tinted with the theme border.
+    style.visuals.extreme_bg_color = color_alpha(toolbar_border, 35);
 
     // input_focus_color: derived from accent (§3.2 — no per-style override).
     style.visuals.selection.stroke = egui::Stroke::new(settings.focus_ring_width, accent);

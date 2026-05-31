@@ -566,6 +566,20 @@ pub struct SidebarState {
     #[serde(default)]
     pub order_health_open: bool,
 
+    /// Active tab in the bottom dock (0=Orders, 1=Positions, 2=Account, 3=Notifications).
+    /// Source: `Watchlist::bottom_dock_tab: u8`. (Footer *visibility* is a
+    /// style default + session override, not persisted here — see `footer_visible()`.)
+    #[serde(default)]
+    pub bottom_dock_tab: u8,
+
+    /// Persisted right-rail column width (px). Source: `Watchlist::rail_col_width`.
+    #[serde(default = "SidebarState::default_rail_col_width")]
+    pub rail_col_width: f32,
+
+    /// Persisted bottom-dock (footer) height (px). Source: `Watchlist::bottom_dock_height`.
+    #[serde(default = "SidebarState::default_bottom_dock_height")]
+    pub bottom_dock_height: f32,
+
     // ── Chart-adjacent panels ──────────────────────────────────────────────
 
     /// Account summary bar below the toolbar.
@@ -714,6 +728,8 @@ pub struct SidebarState {
 
 impl SidebarState {
     fn default_indicators_section_fracs() -> [f32; 3] { [0.18, 0.25, 0.57] }
+    fn default_rail_col_width() -> f32 { 400.0 }
+    fn default_bottom_dock_height() -> f32 { 240.0 }
 }
 
 impl Default for SidebarState {
@@ -727,6 +743,9 @@ impl Default for SidebarState {
             order_ledger_view: 0,
             order_ledger_filter: 0,
             order_health_open: false,
+            bottom_dock_tab: 0,
+            rail_col_width: 400.0,
+            bottom_dock_height: 240.0,
             account_strip_open: false,
             object_tree_open: false,
             trendline_filter_open: false,
@@ -1757,6 +1776,9 @@ mod tests {
             order_ledger_view: 2,
             order_ledger_filter: 3,
             order_health_open: true,
+            bottom_dock_tab: 2,
+            rail_col_width: 420.0,
+            bottom_dock_height: 260.0,
             account_strip_open: true,
             object_tree_open: true,
             trendline_filter_open: true,

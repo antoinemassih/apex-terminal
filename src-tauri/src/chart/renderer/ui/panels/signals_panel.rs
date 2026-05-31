@@ -13,16 +13,24 @@ use crate::apex_data::live_state;
 use crate::apex_data::types::{Calibrated, CombinedSignalV2};
 use crate::chart_renderer::SignalsTab;
 use crate::ui_kit::icons::Icon;
-use crate::chart_renderer::ui::panels::side_panel_shell::Width;
+use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width, RailSlot};
 use crate::ui_kit::widgets::{Button, PanelListRow};
-use crate::chart_renderer::ui::panels::split_section_panel::SplitSectionPanel;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 
-const ALL_TABS: &[(SignalsTab, &str)] = &[
-    (SignalsTab::Alerts, "Alerts"),
-    (SignalsTab::Signals, "Signals"),
-    (SignalsTab::Regime, "Regime"),
-];
+/// Rail registration — Signals is now a standard `SidePanelShell::tabs` panel
+/// (same header / colors / split system as the rest), hosted by the rail.
+pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
+    id: "signals",
+    is_open: |w| w.signals_panel_open,
+    render: |cx, slot| { draw(cx.ctx, cx.watchlist, cx.panes, cx.active_pane, cx.t, Some(slot), None); },
+};
+
+fn signals_tab_to_u8(t: SignalsTab) -> u8 {
+    match t { SignalsTab::Alerts => 0, SignalsTab::Signals => 1, SignalsTab::Regime => 2 }
+}
+fn signals_tab_from_u8(v: u8) -> SignalsTab {
+    match v { 1 => SignalsTab::Signals, 2 => SignalsTab::Regime, _ => SignalsTab::Alerts }
+}
 
 pub(crate) fn draw(
     ctx: &egui::Context,
@@ -30,30 +38,40 @@ pub(crate) fn draw(
     panes: &mut [Chart],
     ap: usize,
     t: &Theme,
-) {
-    if !watchlist.signals_panel_open { return; }
+    slot: Option<RailSlot>,
+    instance_tab: Option<&mut u8>,
+) -> bool {
+    let is_spawn = instance_tab.is_some();
+    let mut spawn_close = false;
+    if !is_spawn && !watchlist.signals_panel_open { return false; }
 
-    // Snapshot the active tab per section so the body closure can dispatch
-    // without holding a borrow into `watchlist.signals_splits` (which the
-    // widget owns mutably for the duration of `.show()`).
-    let tab_snapshot: Vec<SignalsTab> =
-        watchlist.signals_splits.iter().map(|s| s.tab).collect();
-
-    // Move splits out of watchlist so the body closure can take `&mut watchlist`
-    // freely (child draw_content panels require it). Restore after `.show()`.
-    let mut splits = std::mem::take(&mut watchlist.signals_splits);
     let pane_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
     let pane_font = watchlist.pane_header_size.title_font();
 
-    let resp = SplitSectionPanel::new("signals_panel", &mut splits)
-        .title("SIGNALS")
-        .tabs(ALL_TABS)
-        .default_tab(SignalsTab::Alerts)
+    // Active tab: instance override (duplicate) or the base's first split slot.
+    let mut active = match instance_tab.as_deref() {
+        Some(v) => signals_tab_from_u8(*v),
+        None => watchlist.signals_splits.first().map(|s| s.tab).unwrap_or(SignalsTab::Alerts),
+    };
+    let tabs = [
+        (SignalsTab::Alerts,  "ALERTS",  None),
+        (SignalsTab::Signals, "SIGNALS", None),
+        (SignalsTab::Regime,  "REGIME",  None),
+    ];
+
+    let shell_id = if is_spawn { "signals_inst" } else { "signals_panel" };
+    let resp = SidePanelShell::tabs(shell_id, &mut active, &tabs)
         .width(Width::Narrow)
         .resizable(240.0..=420.0)
         .pane_metrics(pane_h, pane_font)
-        .show(ctx, t, |ui, t, i, _frac| {
-            let tab = tab_snapshot.get(i).copied().unwrap_or(SignalsTab::Alerts);
+        .rail_slot(slot)
+        .on_tab_secondary(|ui, tab| {
+            if crate::ui_kit::widgets::MenuItem::new("Open as new instance").show(ui, t).clicked() {
+                super::right_rail::request_spawn("signals", signals_tab_to_u8(tab));
+                ui.close_menu();
+            }
+        })
+        .show(ctx, t, |ui, t, tab| {
             match tab {
                 SignalsTab::Alerts =>
                     super::alerts_panel::draw_content(ui, watchlist, panes, ap, t),
@@ -64,8 +82,15 @@ pub(crate) fn draw(
             }
         });
 
-    watchlist.signals_splits = splits;
-    if resp.close_clicked { watchlist.update_sidebar_state(|s| s.signals_panel_open = false); }
+    // Persist the active tab to its owner (instance store or base panel).
+    if let Some(it) = instance_tab { *it = signals_tab_to_u8(active); }
+    else if let Some(s) = watchlist.signals_splits.first_mut() { s.tab = active; }
+    else { watchlist.signals_splits.push(SplitSection { tab: active, frac: 1.0 }); }
+    if resp.close_clicked {
+        if is_spawn { spawn_close = true; }
+        else { watchlist.update_sidebar_state(|s| s.signals_panel_open = false); }
+    }
+    spawn_close
 }
 
 /// Per-signal visibility toggles.

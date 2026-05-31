@@ -310,18 +310,18 @@ mod tests {
         let dir = tmp.path();
 
         let written = export_builtin_themes(dir).expect("export failed");
-        // 16 colorschemes + 3 styles = 19
-        assert_eq!(written, 19, "expected 19 files written (16 + 3)");
+        // 21 colorschemes (16 THEMES + 5 React ports) + 9 styles = 30
+        assert_eq!(written, 30, "expected 30 files written (21 + 9)");
 
         let (schemes, styles) = scan_theme_dir(dir);
         assert_eq!(
-            schemes.len(), 16,
-            "scan_theme_dir must recover all 16 colorschemes, got {}",
+            schemes.len(), 21,
+            "scan_theme_dir must recover all 21 colorschemes, got {}",
             schemes.len()
         );
         assert_eq!(
-            styles.len(), 3,
-            "scan_theme_dir must recover all 3 style systems, got {}",
+            styles.len(), 9,
+            "scan_theme_dir must recover all 9 style systems, got {}",
             styles.len()
         );
     }

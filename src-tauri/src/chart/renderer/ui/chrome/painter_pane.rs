@@ -45,6 +45,7 @@ use egui::{Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, StrokeK
 use super::super::style::{
     alpha_active, alpha_ghost, alpha_line, alpha_muted, alpha_solid, alpha_subtle, alpha_tint,
     color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, contrast_fg, current, drawing_palette, font_md, font_md_plus, font_sm, gap_md, gap_sm, gap_xs,
+    paint_bevel, paint_gradient_highlight, current_style_bevel_hi,
     radius_sm, radius_md, stroke_hair, stroke_std, stroke_thin,
 };
 use crate::ui_kit::icons::Icon;
@@ -223,17 +224,24 @@ fn paint_icon_label_btn(
 /// AND `inactive_header_fill` is on) get the recessed `inactive_header_fill_multiply`.
 fn header_fill(painter: &egui::Painter, rect: Rect, theme: &Theme, is_active: bool, visible_count: usize) {
     let st = current();
-    if visible_count <= 1 {
-        return;
+    // Background fill (multi-pane only): active panes brighter, inactive recessed.
+    if visible_count > 1 {
+        let mul = if is_active {
+            Some(st.active_header_fill_multiply)
+        } else if st.inactive_header_fill {
+            Some(st.inactive_header_fill_multiply)
+        } else {
+            None
+        };
+        if let Some(mul) = mul {
+            painter.rect_filled(rect, 0.0, theme.bg.gamma_multiply(mul));
+        }
     }
-    let mul = if is_active {
-        st.active_header_fill_multiply
-    } else if st.inactive_header_fill {
-        st.inactive_header_fill_multiply
-    } else {
-        return;
-    };
-    painter.rect_filled(rect, 0.0, theme.bg.gamma_multiply(mul));
+    // Gradient highlight + crisp bevel lines — both no-ops when bevel is None.
+    // Gradient: soft white-to-transparent fade matching React's linear-gradient.
+    // Bevel: 1px highlight top + 1px shadow bottom.
+    paint_gradient_highlight(painter, rect, current_style_bevel_hi());
+    paint_bevel(painter, rect, egui::CornerRadius::ZERO);
 }
 
 /// Paint a vertical hairline divider at `cx` inside the header rect. Used
@@ -504,10 +512,64 @@ impl<'a> PainterPaneHeader<'a> {
         // The standalone bottom hairline previously painted here is removed —
         // the outer border's bottom edge now does that job.
 
-        // 1. Active-pane bg darken (only meaningful with >1 pane).
-        if self.visible_count > 1 && self.is_active {
-            let active_bg = color_subtle(t.bg);
-            painter.rect_filled(rect, 0.0, active_bg);
+        // 1. Active-pane header treatment (only meaningful with >1 pane).
+        //
+        // Three modes driven by StyleSettings:
+        //   pane_active_fill_accent=true (Aperture) → fill with accent color (orange bar).
+        //   pane_active_indicator & 2 (header fill, default) → direction-aware bg fill:
+        //     dark themes: slight darken (content-blending); light themes: slight lift.
+        //   pane_active_indicator & 1 (top stripe) → accent-colored 2px top edge.
+        {
+            let st = current();
+            if self.visible_count > 1 {
+                // ── Background fill ──────────────────────────────────────────
+                if self.is_active {
+                    if st.pane_active_fill_accent {
+                        // Aperture: solid accent fill (orange bar).
+                        painter.rect_filled(rect, 0.0, t.accent);
+                    } else if st.pane_active_indicator & 2 != 0 {
+                        // Standard fill: direction-aware so light themes lift
+                        // instead of darken. Mirror `color_layer_up` logic.
+                        let is_dark = (t.bg.r() as i16 + t.bg.g() as i16 + t.bg.b() as i16) < 384;
+                        let active_bg = if is_dark {
+                            // Dark theme: slightly darker = focused/immersive.
+                            color_subtle(t.bg)
+                        } else {
+                            // Light theme: slightly lighter = lifted/elevated.
+                            let ch = |c: i16| -> u8 { c.clamp(0, 255) as u8 };
+                            Color32::from_rgb(
+                                ch(t.bg.r() as i16 + 12),
+                                ch(t.bg.g() as i16 + 10),
+                                ch(t.bg.b() as i16 +  8),
+                            )
+                        };
+                        painter.rect_filled(rect, 0.0, active_bg);
+                    }
+                } else if st.inactive_header_fill {
+                    let is_dark = (t.bg.r() as i16 + t.bg.g() as i16 + t.bg.b() as i16) < 384;
+                    let inactive_bg = if is_dark {
+                        t.bg.gamma_multiply(st.inactive_header_fill_multiply)
+                    } else {
+                        // Light theme: slightly darker for inactive = recessed.
+                        let ch = |c: i16| -> u8 { c.clamp(0, 255) as u8 };
+                        Color32::from_rgb(
+                            ch(t.bg.r() as i16 - 10),
+                            ch(t.bg.g() as i16 - 10),
+                            ch(t.bg.b() as i16 - 10),
+                        )
+                    };
+                    painter.rect_filled(rect, 0.0, inactive_bg);
+                }
+            }
+            // ── Top accent stripe (Mariner "instrument needle", Meridien) ───
+            // pane_active_indicator bit 1: 2px accent-colored top edge on the
+            // active pane header. Signals focus without filling the whole bar.
+            if self.is_active && st.pane_active_indicator & 1 != 0 {
+                painter.line_segment(
+                    [pos2(rect.left(), rect.top() + 1.0), pos2(rect.right(), rect.top() + 1.0)],
+                    Stroke::new(2.0, t.accent),
+                );
+            }
         }
 
         // 2. Outer perimeter hairline — text-derived color so it stays visible
@@ -517,9 +579,23 @@ impl<'a> PainterPaneHeader<'a> {
         //    `header_outer_border_alpha` so per-style design tokens drive the
         //    look rather than a hardcoded value here.
         let st = current();
+        // Pre-compute accent-header flag and derived text colors. Must be before
+        // the outer border paint (which reads accent_header) and all color sites below.
+        let accent_header = current().pane_active_fill_accent
+            && self.is_active
+            && self.visible_count > 1;
+        let h_text   = if accent_header { contrast_fg(t.accent) } else { t.text };
+        let h_dim    = if accent_header { color_subtle(contrast_fg(t.accent)) } else { t.dim };
+        let h_accent = if accent_header { contrast_fg(t.accent) } else { t.accent };
+
         painter.rect_stroke(
             rect, 0.0,
-            Stroke::new(st.header_outer_border_width, color_alpha(t.text, st.header_outer_border_alpha)),
+            // On accent-filled header (Aperture), suppress the outer border —
+            // the vibrant fill is the focus indicator; a border would double it.
+            Stroke::new(
+                if accent_header { 0.0 } else { st.header_outer_border_width },
+                color_alpha(t.text, st.header_outer_border_alpha),
+            ),
             StrokeKind::Inside,
         );
 
@@ -615,7 +691,7 @@ impl<'a> PainterPaneHeader<'a> {
 
             for (ti, (sym, price_text, _chg)) in self.tabs.iter().enumerate() {
                 let is_active_tab = ti == self.active_tab;
-                let sym_galley = painter.layout_no_wrap(sym.to_string(), title_font.clone(), t.dim);
+                let sym_galley = painter.layout_no_wrap(sym.to_string(), title_font.clone(), h_dim);
                 let price_font = FontId::monospace((self.title_font_size - 1.0).max(font_sm()));
                 let price_galley = painter.layout_no_wrap(
                     price_text.to_string(), price_font.clone(), t.dim);
@@ -654,17 +730,23 @@ impl<'a> PainterPaneHeader<'a> {
                 let hover_t  = motion::ease_bool(ui.ctx(), hover_id,  tab_resp.hovered() && !is_active_tab, motion::FAST);
                 let idle_bg   = Color32::TRANSPARENT;
                 let hover_bg  = color_alpha(t.toolbar_border, style_st.tab_hover_bg_alpha);
-                // Active tab: noticeably darker than the (now lighter) inactive
-                // pane header so the contrast reads clearly.
-                let active_bg = color_dim(t.bg);
+                // Aperture: active tab on orange header = dark pill ("cream pill, orange text")
+                // Normal: active tab = darkened bg.
+                let active_bg = if accent_header {
+                    color_alpha(h_text, 200) // ~dark semi-opaque fill
+                } else {
+                    color_dim(t.bg)
+                };
                 let mut tab_bg = motion::lerp_color(idle_bg, hover_bg, hover_t);
                 tab_bg = motion::lerp_color(tab_bg, active_bg, active_t);
+                // Tab corner radius: pill for accent_header (Aperture), top-rounded otherwise.
                 let r_md = radius_md() as u8;
-                painter.rect_filled(
-                    tab_rect,
-                    egui::CornerRadius { nw: r_md, ne: r_md, sw: 0, se: 0 },
-                    tab_bg,
-                );
+                let tab_cr = if accent_header {
+                    egui::CornerRadius::same(style_st.r_pill.min(r_md + 4))
+                } else {
+                    egui::CornerRadius { nw: r_md, ne: r_md, sw: 0, se: 0 }
+                };
+                painter.rect_filled(tab_rect, tab_cr, tab_bg);
                 // Per Zed pattern: no accent top stripe, no top/left/right
                 // hairline borders on the active tab. Active signal lives in
                 // the active-tab-dot + bottom-edge accent line, both owned by
@@ -685,9 +767,11 @@ impl<'a> PainterPaneHeader<'a> {
 
                 // tab_inactive_alpha dims inactive tab text
                 let sym_col = if is_active_tab {
-                    if self.is_active && self.visible_count > 1 { t.accent } else { t.text }
+                    // On accent-filled header: active tab = dark contrasting text.
+                    // On normal header: active tab = accent color (usual).
+                    if self.is_active && self.visible_count > 1 { h_accent } else { t.text }
                 } else {
-                    t.dim.gamma_multiply(style_st.tab_inactive_alpha)
+                    if accent_header { color_subtle(h_text) } else { t.dim.gamma_multiply(style_st.tab_inactive_alpha) }
                 };
                 painter.text(
                     pos2(tab_rect.left() + tab_pad, tab_rect.center().y),
@@ -701,13 +785,18 @@ impl<'a> PainterPaneHeader<'a> {
                         side, expiry, t,
                     );
                 }
-                let price_color = self.price_color.unwrap_or(t.dim);
+                // On accent header (Aperture orange bar), use h_dim for price/change text.
+                let price_color = if accent_header && is_active_tab {
+                    h_dim
+                } else {
+                    self.price_color.unwrap_or(t.dim)
+                };
                 painter.text(
                     pos2(price_x, tab_rect.center().y),
                     Align2::LEFT_CENTER, price_text, price_font, price_color,
                 );
 
-                // Close × on hover or active
+                // Close × on hover or active — use h_dim on accent header.
                 let show_close_x = self.tabs.len() > 1
                     && (self.hovered_tab == Some(ti) || is_active_tab);
                 if show_close_x {
@@ -717,7 +806,15 @@ impl<'a> PainterPaneHeader<'a> {
                     );
                     let resp = ui.allocate_rect(close_rect, Sense::click());
                     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                    paint_close_glyph(&painter, close_rect, resp.hovered(), t, 2.0);
+                    // On orange header the theme has t.text = cream which would show wrong;
+                    // temporarily swap the close glyph color using a custom paint.
+                    if accent_header {
+                        let col = if resp.hovered() { h_text } else { h_dim };
+                        painter.text(close_rect.center(), egui::Align2::CENTER_CENTER,
+                            "×", FontId::proportional(10.0), col);
+                    } else {
+                        paint_close_glyph(&painter, close_rect, resp.hovered(), t, 2.0);
+                    }
                     if resp.clicked() {
                         out.clicked_close = true;
                         out.clicked_tab = Some(ti);
@@ -735,7 +832,7 @@ impl<'a> PainterPaneHeader<'a> {
             // so the pane-title reads as the primary header (vs axis labels /
             // chip text). Keep the tab-strip path on title_font so dense tab
             // rows don't grow.
-            let label_color = if self.is_active { t.bull } else { t.text };
+            let label_color = if accent_header { h_text } else if self.is_active { t.bull } else { t.text };
             let sym_font = FontId::monospace(crate::chart_renderer::ui::style::font_lg());
             let sym_galley = painter.layout_no_wrap(sym.to_string(), sym_font.clone(), label_color);
             // Allocate a click rect for the symbol label so callers can anchor pickers.
@@ -772,9 +869,9 @@ impl<'a> PainterPaneHeader<'a> {
 
             if let Some(tf) = self.timeframe {
                 let tf_font = FontId::monospace(font_sm());
-                let g = painter.layout_no_wrap(tf.to_string(), tf_font.clone(), t.dim);
+                let g = painter.layout_no_wrap(tf.to_string(), tf_font.clone(), h_dim);
                 painter.text(pos2(cx, rect.center().y), Align2::LEFT_CENTER, tf,
-                    tf_font, t.dim);
+                    tf_font, h_dim);
                 cx += g.size().x + gap_md();
             }
 
@@ -798,7 +895,7 @@ impl<'a> PainterPaneHeader<'a> {
         const CHIP_X_W: f32 = 12.0;
         for (i, ind) in self.indicators.iter().enumerate() {
             let chip_font = FontId::monospace(font_sm());
-            let g = painter.layout_no_wrap(ind.to_string(), chip_font.clone(), t.dim);
+            let g = painter.layout_no_wrap(ind.to_string(), chip_font.clone(), h_dim);
             let chip_pad = gap_md();
             let chip_w = chip_pad + g.size().x + gap_sm() + CHIP_X_W + chip_pad;
             let chip_h = (h - BADGE_INSET_V).min(CHIP_HEIGHT_MAX);
@@ -813,7 +910,7 @@ impl<'a> PainterPaneHeader<'a> {
             );
             painter.text(
                 pos2(chip_rect.left() + chip_pad, chip_rect.center().y),
-                Align2::LEFT_CENTER, ind, chip_font, t.dim,
+                Align2::LEFT_CENTER, ind, chip_font, h_dim,
             );
             let x_rect = Rect::from_center_size(
                 pos2(chip_rect.right() - chip_pad - CHIP_X_W / 2.0, chip_rect.center().y),

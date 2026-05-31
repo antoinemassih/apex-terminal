@@ -268,16 +268,25 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
 }
 
 /// Draw the RRG panel as a side panel (matches scanner_panel, news_panel pattern).
+/// Rail registration — see [`super::right_rail`].
+pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
+    id: "rrg",
+    is_open: |w| w.rrg_open,
+    render: |cx, slot| draw(cx.ctx, cx.watchlist, cx.t, Some(slot)),
+};
+
 pub(crate) fn draw(
     ctx: &egui::Context,
     watchlist: &mut Watchlist,
     t: &Theme,
+    slot: Option<super::side_panel_shell::RailSlot>,
 ) {
     if !watchlist.rrg_open { return; }
 
     let resp = SidePanelShell::new("rrg_panel", "RRG")
         .width(Width::Medium)
         .resizable(240.0..=500.0)
+        .rail_slot(slot)
         .show(ctx, t, |ui, t| {
             draw_content(ui, watchlist, t);
         });

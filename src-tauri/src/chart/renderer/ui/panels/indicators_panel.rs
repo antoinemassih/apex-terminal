@@ -370,12 +370,20 @@ fn swing_label(mode: u8) -> &'static str {
 
 // ─── Public entry ───────────────────────────────────────────────────────────
 
+/// Rail registration — see [`super::right_rail`].
+pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
+    id: "indicators",
+    is_open: |w| w.indicators_panel_open,
+    render: |cx, slot| draw(cx.ctx, cx.watchlist, cx.panes, cx.active_pane, cx.t, Some(slot)),
+};
+
 pub(crate) fn draw(
     ctx: &egui::Context,
     watchlist: &mut Watchlist,
     panes: &mut [Chart],
     ap: usize,
     t: &Theme,
+    slot: Option<super::side_panel_shell::RailSlot>,
 ) {
     if !watchlist.indicators_panel_open || panes.is_empty() {
         return;
@@ -388,6 +396,7 @@ pub(crate) fn draw(
             crate::chart_renderer::gpu::pane_tabs_header_h(watchlist),
             watchlist.pane_header_size.title_font(),
         )
+        .rail_slot(slot)
         .show(ctx, t, |ui, t| {
             // 3-way user-resizable split (TOOLS / ACTIVE / LIBRARY). The
             // section fractions persist on the Watchlist so the user's

@@ -35,7 +35,7 @@ use super::{
     color_scheme::{ColorScheme, Meta, Rgba, CMD_PALETTE_DEFAULT},
     registry::ThemeRegistry,
     style_system::{
-        Alphas, Density, Elevation, FocusRingStyle, Radii, Shadows, ShadowSpec,
+        Alphas, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, Radii, Shadows, ShadowSpec,
         Spacing, Strokes, StyleSystem, Treatments, Typography,
     },
 };
@@ -597,6 +597,162 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
             cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
+
+        // ══ React ApexTerminalThemes palette ports ════════════════════════════
+        // These 6 color schemes are transcribed directly from the React mockup's
+        // `global.css` `[data-ds="<theme>"]` token blocks — the styling source of
+        // truth tuned to ~90% source fidelity.  Pair with the matching style preset
+        // for the full intended look (e.g. scheme "Aperture" + style "Aperture").
+
+        // ── [16] Aperture — warm-tinted black canvas, orange accent ───────────
+        {
+            let bg   = rgb(  0,   0,   0); // pure black canvas
+            let surf = rgb( 20,  19,  17); // #141311 bg-panel
+            ColorScheme {
+                meta: Meta { id: "aperture".into(), name: "Aperture".into(), is_dark: true },
+                bg, surface: surf,
+                text:   rgb(244, 236, 224), // #f4ece0 warm cream
+                dim:    rgb(182, 173, 157), // #b6ad9d
+                border: c(255, 255, 255, 31), // rgba(255,255,255,0.12)
+                accent: rgb(239,  91,  59), // #ef5b3b orange
+                bull:   rgb( 78, 192, 122), // #4ec07a
+                bear:   rgb(216,  80,  62), // #d8503e
+                warn:   rgb(255, 138,  76), // #ff8a4c (accent-sub)
+                shadow: c(0, 0, 0, 180),
+                notification_red: rgb(216, 80, 62),
+                gold:             rgb(239, 91, 59),
+                overlay_text:     rgb(244, 236, 224),
+                rrg_leading:      rgb( 78, 192, 122),
+                rrg_improving:    rgb(239, 150,  90),
+                rrg_weakening:    rgb(255, 200,  80),
+                rrg_lagging:      rgb(216,  80,  62),
+                pinned_row_tint:  pre_rgba(239, 91, 59, 14),
+                text_muted:       rgb(118, 112,  95), // #76705f
+                hud_bg:           pre_rgba( 20, 19, 17, 230),
+                hud_border:       rgb( 50,  47,  40),
+                cmd_palette:      CMD_PALETTE_DEFAULT,
+            }
+        },
+
+        // ── [17] Cadence — Spotify-style pure black, vivid green accent ───────
+        {
+            let bg   = rgb(  0,   0,   0); // pure black
+            let surf = rgb( 18,  18,  18); // #121212
+            ColorScheme {
+                meta: Meta { id: "cadence".into(), name: "Cadence".into(), is_dark: true },
+                bg, surface: surf,
+                text:   rgb(255, 255, 255),
+                dim:    rgb(179, 179, 179), // #b3b3b3 text-secondary
+                border: c(255, 255, 255, 18), // rgba(255,255,255,0.07)
+                accent: rgb( 30, 215,  96), // #1ed760 Spotify green
+                bull:   rgb( 30, 215,  96), // same as accent (pos)
+                bear:   rgb(241,  94, 108), // #f15e6c
+                warn:   rgb( 22, 156,  70), // #169c46 accent-sub
+                shadow: c(0, 0, 0, 200),
+                notification_red: rgb(241, 94, 108),
+                gold:             rgb(255, 200,  50),
+                overlay_text:     rgb(255, 255, 255),
+                rrg_leading:      rgb( 30, 215,  96),
+                rrg_improving:    rgb( 80, 200, 160),
+                rrg_weakening:    rgb(200, 200,  50),
+                rrg_lagging:      rgb(241,  94, 108),
+                pinned_row_tint:  pre_rgba(30, 215, 96, 12),
+                text_muted:       rgb(122, 122, 122), // #7a7a7a
+                hud_bg:           pre_rgba(18, 18, 18, 230),
+                hud_border:       c(255, 255, 255, 25),
+                cmd_palette:      CMD_PALETTE_DEFAULT,
+            }
+        },
+
+        // ── [18] Alto — Zed-inspired warm dark, amber accent ─────────────────
+        {
+            let bg   = rgb( 21,  18,  14); // #15120e
+            let surf = rgb( 28,  24,  20); // #1c1814 bg-panel
+            ColorScheme {
+                meta: Meta { id: "alto".into(), name: "Alto".into(), is_dark: true },
+                bg, surface: surf,
+                text:   rgb(239, 231, 216), // #efe7d8
+                dim:    rgb(156, 147, 133), // #9c9385
+                border: rgb( 61,  52,  43), // #3d342b
+                accent: rgb(217, 152,  88), // #d99858 amber
+                bull:   rgb(111, 191, 115), // #6fbf73
+                bear:   rgb(226,  93,  93), // #e25d5d
+                warn:   rgb(184, 120,  56), // #b87838 accent-sub
+                shadow: c(0, 0, 0, 160),
+                notification_red: rgb(226, 93, 93),
+                gold:             rgb(217, 152, 88),
+                overlay_text:     rgb(239, 231, 216),
+                rrg_leading:      rgb(111, 191, 115),
+                rrg_improving:    rgb(217, 180, 100),
+                rrg_weakening:    rgb(200, 170,  60),
+                rrg_lagging:      rgb(226,  93,  93),
+                pinned_row_tint:  pre_rgba(217, 152, 88, 14),
+                text_muted:       rgb(107,  99,  88), // #6b6358
+                hud_bg:           pre_rgba(21, 18, 14, 230),
+                hud_border:       rgb( 61,  52,  43),
+                cmd_palette:      CMD_PALETTE_DEFAULT,
+            }
+        },
+
+        // ── [19] Mariner — Alto warm-dark, steel-blue accent ─────────────────
+        {
+            let bg   = rgb( 21,  18,  14);
+            let surf = rgb( 28,  24,  20);
+            ColorScheme {
+                meta: Meta { id: "mariner".into(), name: "Mariner".into(), is_dark: true },
+                bg, surface: surf,
+                text:   rgb(239, 231, 216),
+                dim:    rgb(156, 147, 133),
+                border: rgb( 61,  52,  43),
+                accent: rgb(110, 160, 200), // #6ea0c8 steel blue
+                bull:   rgb(111, 191, 115),
+                bear:   rgb(226,  93,  93),
+                warn:   rgb( 79, 126, 160), // #4f7ea0 accent-sub
+                shadow: c(0, 0, 0, 160),
+                notification_red: rgb(226, 93, 93),
+                gold:             rgb(200, 170, 80),
+                overlay_text:     rgb(239, 231, 216),
+                rrg_leading:      rgb(111, 191, 115),
+                rrg_improving:    rgb(110, 160, 200),
+                rrg_weakening:    rgb(200, 180,  60),
+                rrg_lagging:      rgb(226,  93,  93),
+                pinned_row_tint:  pre_rgba(110, 160, 200, 14),
+                text_muted:       rgb(107,  99,  88),
+                hud_bg:           pre_rgba(21, 18, 14, 230),
+                hud_border:       rgb( 61,  52,  43),
+                cmd_palette:      CMD_PALETTE_DEFAULT,
+            }
+        },
+
+        // ── [20] Lucid — editorial light, cream paper, terracotta accent ──────
+        {
+            let bg   = rgb(241, 237, 228); // #f1ede4 cream paper
+            let surf = rgb(247, 243, 234); // #f7f3ea bg-panel (lighter)
+            ColorScheme {
+                meta: Meta { id: "lucid".into(), name: "Lucid".into(), is_dark: false },
+                bg, surface: surf,
+                text:   rgb( 20,  20,  15), // #14140f near-black ink
+                dim:    rgb(138, 134, 117), // #8a8675
+                border: rgb(191, 181, 154), // #bfb59a
+                accent: rgb(214,  85,  43), // #d6552b terracotta
+                bull:   rgb( 31, 111,  59), // #1f6f3b deep green
+                bear:   rgb(196,  58,  31), // #c43a1f venetian red
+                warn:   rgb(196,  58,  31), // same as bear (editorial)
+                shadow: c(120, 110, 90, 100),
+                notification_red: rgb(196, 58, 31),
+                gold:             rgb(170, 120,  20),
+                overlay_text:     rgb( 20,  20,  15),
+                rrg_leading:      rgb( 31, 111,  59),
+                rrg_improving:    rgb(100, 160,  80),
+                rrg_weakening:    rgb(180, 130,  20),
+                rrg_lagging:      rgb(196,  58,  31),
+                pinned_row_tint:  pre_rgba(214, 85, 43, 12),
+                text_muted:       rgb(179, 173, 156), // #b3ad9c
+                hud_bg:           pre_rgba(241, 237, 228, 230),
+                hud_border:       rgb(191, 181, 154),
+                cmd_palette:      CMD_PALETTE_DEFAULT,
+            }
+        },
     ]
 }
 
@@ -635,6 +791,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             mono_sm: 11.0,
             mono_md: 13.0,
             mono_lg: 15.0,
+            size_section_label: 8.0, // font_section_label = 8
+            label_tracking: 0.0, nav_tracking: 0.0, section_tracking: 0.0,
         },
         spacing: Spacing {
             xs: 2.0,
@@ -646,6 +804,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             xxl: 24.0,
             gmd: 8.0,
             cta_height: 36.0, // cta_height_px
+            cta_padding_x: 16.0, button_height: 24.0, button_padding_x: 10.0, tab_height: 28.0,
         },
         // radii + strokes aligned to the LIVE default style (style_defaults(0)).
         // The Phase B source-swap deliberately defined Meridien-the-default as
@@ -658,6 +817,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             md: 6.0,
             lg: 12.0,
             full: 9999.0, // pill = fully round
+            pill: 0.0,    // r_pill = 0 (Meridien sharp pill)
+            chip: 0.0,    // r_chip = 0
         },
         strokes: Strokes {
             hair:   0.3,
@@ -702,6 +863,35 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             uppercase_section_labels: true,  // uppercase_section_labels = true
             segmented_filled_idle:    false,
             focus_ring: FocusRingStyle::Outline, // focus_ring_width = 1.0
+            surface_bevel: BevelStyle::None, bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
+            wl_row_side_margin: 0.0, wl_row_corner_radius: 0, wl_row_divider_alpha: 0,
+            section_header_mono: false, wl_symbol_mono: false, panel_tab_treatment: 0,
+            pane_active_fill_accent: false,
+            // Editorial chrome behaviour (from style_defaults(0)).
+            serif_headlines: true, button_treatment: 2 /*UnderlineActive*/, invert_active_fill: true,
+            vertical_group_dividers: true, show_active_tab_underline: true, inactive_header_fill: true,
+            nav_buttons_label_only: true, nav_buttons_uppercase_labels: true, tab_underline_under_text: true,
+            card_floating_shadow: true, shadows_enabled: true, animations_enabled: true,
+        },
+        chrome: Chrome {
+            toolbar_height_scale: 1.40, header_height_scale: 1.10, account_strip_height: 36.0,
+            pane_border_width: 1.0, pane_gap: 0.0, pane_gap_alpha: 0, pane_active_indicator: 1,
+            active_header_fill_multiply: 0.7, inactive_header_fill_multiply: 1.08,
+            header_outer_border_alpha: 38, header_outer_border_width: 0.5, header_divider_alpha: 50,
+            nav_active_col_alpha: 18, dialog_backdrop_alpha: 0,
+            tab_inactive_alpha: 0.6, tab_hover_bg_alpha: 12, tab_underline_thickness: 2.0,
+            section_label_padding_top: 4.0, section_label_padding_bottom: 2.0,
+            drag_handle_alpha: 0.5, drag_handle_dot_scale: 1.0,
+            toast_bg_alpha: 230, card_stripe_alpha: 255, card_floating_shadow_alpha: 25,
+            accent_emphasis: 1.0, disabled_opacity: 0.4,
+            focus_ring_width: 1.0, focus_ring_alpha: 120, hover_bg_alpha: 20, active_bg_alpha: 35,
+            // Meridien: flush contiguous chrome (no floating cards), single row.
+            region_gap: 0.0, region_radius: 0.0, region_border_alpha: 40,
+            nav_cluster_radius: 0.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 6.0,
+            toolnav_height: 0.0,
+            footer_default_open: false,
+            panel_header_treatment: 0, panel_section_fill_alpha: 0,
+            panel_footer_card: false, panel_footer_radius: 0.0,
         },
     };
 
@@ -718,6 +908,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             mono_sm: 11.0,
             mono_md: 13.0,
             mono_lg: 15.0,
+            size_section_label: 10.0, // font_section_label = 10
+            label_tracking: 0.8, nav_tracking: 0.0, section_tracking: 0.8,
         },
         spacing: Spacing {
             xs: 2.0,
@@ -729,14 +921,18 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             xxl: 24.0,
             gmd: 8.0,
             cta_height: 40.0, // cta_height_px = 40
+            cta_padding_x: 12.0, button_height: 28.0, button_padding_x: 14.0, tab_height: 32.0,
         },
         radii: Radii {
             none: 0.0,
-            xs: 4.0,      // r_xs = 4
-            sm: 6.0,      // r_sm = 6
-            md: 8.0,      // r_md = 8
-            lg: 12.0,     // r_lg = 12
+            // React fidelity: Aperture's signature big-radius scale (8/10/14/20).
+            // Must stay in lockstep with style_defaults(1).r_* (adapter equivalence test).
+            xs: 8.0,      // r_xs = 8
+            sm: 10.0,     // r_sm = 10
+            md: 14.0,     // r_md = 14
+            lg: 20.0,     // r_lg = 20
             full: 9999.0, // r_pill = 99
+            pill: 99.0, chip: 0.0,
         },
         strokes: Strokes {
             hair:   0.3,  // sub-pixel hairline
@@ -781,6 +977,37 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             uppercase_section_labels: false, // uppercase_section_labels = false
             segmented_filled_idle:    true,
             focus_ring: FocusRingStyle::Glow, // focus_ring_width = 2.0 → Glow
+            surface_bevel: BevelStyle::None, bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
+            // Aperture: pill rows, filled tabs, mono symbols, orange active header.
+            wl_row_side_margin: 6.0, wl_row_corner_radius: 8, wl_row_divider_alpha: 0,
+            section_header_mono: false, wl_symbol_mono: true, panel_tab_treatment: 2,
+            pane_active_fill_accent: true,
+            serif_headlines: false, button_treatment: 4 /*BlackFillActive*/, invert_active_fill: false,
+            vertical_group_dividers: false, show_active_tab_underline: true, inactive_header_fill: true,
+            nav_buttons_label_only: false, nav_buttons_uppercase_labels: false, tab_underline_under_text: false,
+            card_floating_shadow: false, shadows_enabled: true, animations_enabled: true,
+        },
+        chrome: Chrome {
+            toolbar_height_scale: 1.0, header_height_scale: 1.0, account_strip_height: 26.0,
+            pane_border_width: 1.0, pane_gap: 8.0, pane_gap_alpha: 0, pane_active_indicator: 2,
+            active_header_fill_multiply: 0.7, inactive_header_fill_multiply: 1.08,
+            header_outer_border_alpha: 38, header_outer_border_width: 0.5, header_divider_alpha: 50,
+            nav_active_col_alpha: 0, dialog_backdrop_alpha: 0,
+            tab_inactive_alpha: 0.55, tab_hover_bg_alpha: 18, tab_underline_thickness: 0.0,
+            section_label_padding_top: 6.0, section_label_padding_bottom: 2.0,
+            drag_handle_alpha: 0.7, drag_handle_dot_scale: 1.0,
+            toast_bg_alpha: 200, card_stripe_alpha: 255, card_floating_shadow_alpha: 0,
+            accent_emphasis: 1.1, disabled_opacity: 0.5,
+            focus_ring_width: 2.0, focus_ring_alpha: 90, hover_bg_alpha: 15, active_bg_alpha: 25,
+            // Aperture signature: 8px floating-card chrome, rounded regions + nav pills, 2-row.
+            region_gap: 8.0, region_radius: 12.0, region_border_alpha: 40,
+            nav_cluster_radius: 99.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 8.0,
+            toolnav_height: 30.0,
+            // Aperture ships the footer open by default (toggle anytime with Ctrl+`).
+            footer_default_open: true,
+            // Aperture side panels: filled header toggle + pinned P&L card.
+            panel_header_treatment: 2, panel_section_fill_alpha: 0,
+            panel_footer_card: true, panel_footer_radius: 10.0,
         },
     };
 
@@ -797,6 +1024,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             mono_sm: 11.0,
             mono_md: 13.0,
             mono_lg: 15.0,
+            size_section_label: 8.0,
+            label_tracking: 0.0, nav_tracking: 0.0, section_tracking: 0.0,
         },
         spacing: Spacing {
             xs: 2.0,
@@ -808,6 +1037,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             xxl: 24.0,
             gmd: 8.0,
             cta_height: 32.0, // cta_height_px = 32
+            cta_padding_x: 12.0, button_height: 22.0, button_padding_x: 8.0, tab_height: 26.0,
         },
         radii: Radii {
             none: 0.0,
@@ -816,6 +1046,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             md: 3.0,      // r_md = 3
             lg: 4.0,      // r_lg = 4
             full: 9999.0, // r_pill = 99
+            pill: 99.0, chip: 0.0,
         },
         strokes: Strokes {
             hair:   0.3,  // sub-pixel hairline
@@ -860,10 +1091,203 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             uppercase_section_labels: true,  // uppercase_section_labels = true
             segmented_filled_idle:    false,
             focus_ring: FocusRingStyle::Outline, // focus_ring_width = 1.5
+            surface_bevel: BevelStyle::None, bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
+            wl_row_side_margin: 0.0, wl_row_corner_radius: 0, wl_row_divider_alpha: 0,
+            section_header_mono: false, wl_symbol_mono: false, panel_tab_treatment: 0,
+            pane_active_fill_accent: false,
+            serif_headlines: false, button_treatment: 3 /*RaisedActive*/, invert_active_fill: false,
+            vertical_group_dividers: false, show_active_tab_underline: true, inactive_header_fill: true,
+            nav_buttons_label_only: false, nav_buttons_uppercase_labels: false, tab_underline_under_text: false,
+            card_floating_shadow: false, shadows_enabled: false, animations_enabled: true,
+        },
+        chrome: Chrome {
+            toolbar_height_scale: 1.0, header_height_scale: 1.0, account_strip_height: 26.0,
+            pane_border_width: 1.0, pane_gap: 2.0, pane_gap_alpha: 15, pane_active_indicator: 3,
+            active_header_fill_multiply: 0.7, inactive_header_fill_multiply: 1.08,
+            header_outer_border_alpha: 38, header_outer_border_width: 0.5, header_divider_alpha: 50,
+            nav_active_col_alpha: 25, dialog_backdrop_alpha: 0,
+            tab_inactive_alpha: 0.5, tab_hover_bg_alpha: 20, tab_underline_thickness: 1.0,
+            section_label_padding_top: 3.0, section_label_padding_bottom: 1.0,
+            drag_handle_alpha: 0.6, drag_handle_dot_scale: 0.85,
+            toast_bg_alpha: 220, card_stripe_alpha: 255, card_floating_shadow_alpha: 0,
+            accent_emphasis: 0.95, disabled_opacity: 0.45,
+            focus_ring_width: 1.5, focus_ring_alpha: 110, hover_bg_alpha: 18, active_bg_alpha: 30,
+            // Octave: dense flush chrome, single row.
+            region_gap: 0.0, region_radius: 0.0, region_border_alpha: 40,
+            nav_cluster_radius: 2.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 4.0,
+            toolnav_height: 0.0,
+            footer_default_open: true, // Octave is a dense desk style — ops footer on by default.
+            panel_header_treatment: 0, panel_section_fill_alpha: 0,
+            panel_footer_card: false, panel_footer_radius: 0.0,
         },
     };
 
-    vec![meridien, aperture, octave]
+    // ── Cadence (id=3) — Spotify-dark: pill primaries, elevated cards ────────
+    let cadence = StyleSystem {
+        meta: Meta::new("cadence", "Cadence", true),
+        typography: Typography {
+            size_section_label: 11.0, size_sm: 13.0,
+            label_tracking: 0.6, section_tracking: 0.6,
+            ..Typography::default()
+        },
+        radii: Radii { none: 0.0, xs: 4.0, sm: 6.0, md: 10.0, lg: 14.0, full: 9999.0, pill: 99.0, chip: 99.0 },
+        density: Density { factor: 1.0, row_height_dense: 26.0, row_height_comfortable: 34.0 },
+        shadows: Shadows {
+            card:     ShadowSpec { blur: 8.0,  spread: 0.0, offset_x: 0.0, offset_y: 2.0, alpha: 90.0/255.0 },
+            modal:    ShadowSpec { blur: 16.0, spread: 0.0, offset_x: 0.0, offset_y: 6.0, alpha: 90.0/255.0 },
+            tooltip:  ShadowSpec { blur: 6.0,  spread: 0.0, offset_x: 0.0, offset_y: 2.0, alpha: 90.0/255.0 },
+            dropdown: ShadowSpec { blur: 8.0,  spread: 0.0, offset_x: 0.0, offset_y: 4.0, alpha: 90.0/255.0 },
+        },
+        treatments: Treatments {
+            hairline_borders: true, uppercase_section_labels: true, segmented_filled_idle: true,
+            surface_bevel: BevelStyle::Raised, bevel_highlight_alpha: 24, bevel_shadow_alpha: 60,
+            panel_tab_treatment: 2, wl_row_divider_alpha: 0,
+            ..Treatments::default()
+        },
+        chrome: Chrome {
+            pane_gap: 0.0, pane_gap_alpha: 0, pane_active_indicator: 2,
+            tab_underline_thickness: 3.0, accent_emphasis: 1.1,
+            ..Chrome::default()
+        },
+        ..StyleSystem::builtin_default()
+    };
+
+    // ── Alto (id=4) — Zed warm-dark: raised button faces, amber bevel ────────
+    let alto = StyleSystem {
+        meta: Meta::new("alto", "Alto", true),
+        radii: Radii { none: 0.0, xs: 2.0, sm: 4.0, md: 6.0, lg: 8.0, full: 9999.0, pill: 99.0, chip: 0.0 },
+        density: Density { factor: 1.0, row_height_dense: 24.0, row_height_comfortable: 30.0 },
+        shadows: Shadows {
+            card: ShadowSpec { blur: 8.0, spread: 0.0, offset_x: 0.0, offset_y: 2.0, alpha: 80.0/255.0 },
+            ..Shadows::default()
+        },
+        treatments: Treatments {
+            hairline_borders: false, uppercase_section_labels: true,
+            surface_bevel: BevelStyle::Raised, bevel_highlight_alpha: 16, bevel_shadow_alpha: 90,
+            wl_row_divider_alpha: 22, section_header_mono: true, wl_symbol_mono: true,
+            panel_tab_treatment: 0,
+            ..Treatments::default()
+        },
+        chrome: Chrome {
+            pane_gap: 0.0, pane_active_indicator: 2, tab_underline_thickness: 2.0,
+            ..Chrome::default()
+        },
+        ..StyleSystem::builtin_default()
+    };
+
+    // ── Mariner (id=5) — Alto's nautical sibling, steel-blue, denser ─────────
+    let mariner = StyleSystem {
+        meta: Meta::new("mariner", "Mariner", true),
+        radii: alto.radii.clone(),
+        density: Density { factor: 0.85, row_height_dense: 22.0, row_height_comfortable: 28.0 },
+        shadows: alto.shadows.clone(),
+        treatments: Treatments {
+            hairline_borders: false, uppercase_section_labels: true,
+            surface_bevel: BevelStyle::Raised, bevel_highlight_alpha: 20, bevel_shadow_alpha: 97,
+            wl_row_divider_alpha: 28, section_header_mono: true, wl_symbol_mono: true,
+            panel_tab_treatment: 0,
+            ..Treatments::default()
+        },
+        chrome: Chrome {
+            // Nautical instrument: denser chrome + steel-blue top stripe on active pane.
+            toolbar_height_scale: 0.9, header_height_scale: 0.95,
+            pane_gap: 0.0, pane_active_indicator: 1, tab_underline_thickness: 2.0,
+            accent_emphasis: 1.05,
+            footer_default_open: true, // dense instrument style — ops footer on by default.
+            ..Chrome::default()
+        },
+        ..StyleSystem::builtin_default()
+    };
+
+    // ── Lucid (id=6) — editorial LIGHT: flat, restrained radii, serif hero ────
+    let lucid = StyleSystem {
+        meta: Meta::new("lucid", "Lucid", false),
+        typography: Typography { size_xl: 28.0, label_tracking: 0.4, section_tracking: 0.4, ..Typography::default() },
+        radii: Radii { none: 0.0, xs: 2.0, sm: 3.0, md: 5.0, lg: 8.0, full: 9999.0, pill: 99.0, chip: 0.0 },
+        density: Density { factor: 1.0, row_height_dense: 26.0, row_height_comfortable: 34.0 },
+        shadows: Shadows {
+            card: ShadowSpec { blur: 0.0, spread: 0.0, offset_x: 0.0, offset_y: 0.0, alpha: 0.0 },
+            ..Shadows::default()
+        },
+        treatments: Treatments {
+            solid_active_fills: true, hairline_borders: false, uppercase_section_labels: true,
+            serif_headlines: true, invert_active_fill: true,
+            surface_bevel: BevelStyle::None, bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
+            wl_row_divider_alpha: 12, panel_tab_treatment: 0, shadows_enabled: false,
+            ..Treatments::default()
+        },
+        chrome: Chrome {
+            pane_gap: 0.0, pane_active_indicator: 1, tab_underline_thickness: 0.0,
+            ..Chrome::default()
+        },
+        ..StyleSystem::builtin_default()
+    };
+
+    // ── Relay (id=7) — dark Bloomberg/editorial: sharp, serif hero, monospace ─
+    let relay = StyleSystem {
+        meta: Meta::new("relay", "Relay", true),
+        typography: Typography {
+            size_xl: 48.0, size_section_label: 9.0,
+            label_tracking: 1.2, nav_tracking: 1.5, section_tracking: 1.2,
+            ..Typography::default()
+        },
+        radii: Radii { none: 0.0, xs: 0.0, sm: 0.0, md: 2.0, lg: 4.0, full: 0.0, pill: 0.0, chip: 0.0 },
+        density: Density { factor: 1.0, row_height_dense: 24.0, row_height_comfortable: 30.0 },
+        shadows: Shadows {
+            card: ShadowSpec { blur: 12.0, spread: 0.0, offset_x: 0.0, offset_y: 4.0, alpha: 80.0/255.0 },
+            ..Shadows::default()
+        },
+        treatments: Treatments {
+            solid_active_fills: true, hairline_borders: true, uppercase_section_labels: true,
+            serif_headlines: true, invert_active_fill: true, vertical_group_dividers: true,
+            nav_buttons_label_only: true, nav_buttons_uppercase_labels: true, tab_underline_under_text: true,
+            card_floating_shadow: true,
+            surface_bevel: BevelStyle::None,
+            wl_row_divider_alpha: 30, section_header_mono: true, wl_symbol_mono: true,
+            panel_tab_treatment: 0,
+            ..Treatments::default()
+        },
+        chrome: Chrome {
+            toolbar_height_scale: 1.20, header_height_scale: 1.05,
+            pane_active_indicator: 1, tab_underline_thickness: 2.0,
+            card_floating_shadow_alpha: 40, nav_active_col_alpha: 18,
+            footer_default_open: true, // Bloomberg-terminal style — ops footer on by default.
+            ..Chrome::default()
+        },
+        ..StyleSystem::builtin_default()
+    };
+
+    // ── Glass (id=8) — modern translucent: very large radii, soft shadows ──────
+    let glass = StyleSystem {
+        meta: Meta::new("glass", "Glass", true),
+        typography: Typography { size_xl: 28.0, size_sm: 13.0, ..Typography::default() },
+        radii: Radii { none: 0.0, xs: 6.0, sm: 10.0, md: 16.0, lg: 24.0, full: 9999.0, pill: 99.0, chip: 99.0 },
+        density: Density { factor: 1.2, row_height_dense: 30.0, row_height_comfortable: 38.0 },
+        shadows: Shadows {
+            card:     ShadowSpec { blur: 32.0, spread: 0.0, offset_x: 0.0, offset_y: 8.0, alpha: 30.0/255.0 },
+            modal:    ShadowSpec { blur: 48.0, spread: 0.0, offset_x: 0.0, offset_y: 12.0, alpha: 30.0/255.0 },
+            tooltip:  ShadowSpec { blur: 16.0, spread: 0.0, offset_x: 0.0, offset_y: 4.0, alpha: 30.0/255.0 },
+            dropdown: ShadowSpec { blur: 24.0, spread: 0.0, offset_x: 0.0, offset_y: 8.0, alpha: 30.0/255.0 },
+        },
+        treatments: Treatments {
+            segmented_filled_idle: true, surface_bevel: BevelStyle::None,
+            wl_row_side_margin: 4.0, wl_row_corner_radius: 10, panel_tab_treatment: 2,
+            ..Treatments::default()
+        },
+        chrome: Chrome {
+            toolbar_height_scale: 1.05, pane_gap: 0.0, pane_gap_alpha: 0,
+            pane_active_indicator: 2, tab_underline_thickness: 0.0, accent_emphasis: 1.2,
+            // Glass: airy floating cards, generous radius, 2-row.
+            region_gap: 8.0, region_radius: 16.0, region_border_alpha: 30,
+            nav_cluster_radius: 99.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 10.0,
+            toolnav_height: 32.0,
+            panel_header_treatment: 2, panel_footer_card: true, panel_footer_radius: 16.0,
+            ..Chrome::default()
+        },
+        ..StyleSystem::builtin_default()
+    };
+
+    vec![meridien, aperture, octave, cadence, alto, mariner, lucid, relay, glass]
 }
 
 /// Builds a `ThemeRegistry` pre-populated with all built-in `ColorScheme`s
@@ -915,7 +1339,8 @@ mod tests {
         // Catppuccin, Tokyo Night, Kanagawa, Everforest, Vesper, Rosé Pine,
         // Bauhaus, Peach, Ivory, Newsprint.
         let schemes = builtin_color_schemes();
-        assert_eq!(schemes.len(), 16, "expected 16 schemes (all THEMES entries)");
+        // 16 THEMES-backed schemes + 5 React palette ports (Aperture/Cadence/Alto/Mariner/Lucid).
+        assert_eq!(schemes.len(), 21, "expected 21 schemes (16 THEMES + 5 React ports)");
     }
 
     #[test]
@@ -950,7 +1375,9 @@ mod tests {
     #[test]
     fn builtin_style_systems_has_three_entries() {
         let styles = builtin_style_systems();
-        assert_eq!(styles.len(), 3, "builtin_style_systems() must return exactly 3 entries");
+        // 3 canonical (Meridien/Aperture/Octave) + 6 React ports (Cadence/Alto/
+        // Mariner/Lucid/Relay/Glass) = 9 authoritative style systems.
+        assert_eq!(styles.len(), 9, "builtin_style_systems() must return 9 entries");
         for s in &styles {
             assert!(!s.meta.id.is_empty(), "style '{}' has an empty id", s.meta.name);
         }

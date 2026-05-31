@@ -284,7 +284,19 @@ fn now_ms() -> i64 {
 /// Render the pane. Mirrors the panel kit pattern (e.g. `news_panel::draw`):
 /// gated on `watchlist.provenance_open`, owns its own state via static
 /// runtime. Reads `watchlist.provenance_active_lineage` to know the root.
-pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
+/// Rail registration — see [`super::right_rail`]. Note: [`pump`] must still be
+/// called every frame (even when closed) from `top_nav` so external lineage
+/// requests can auto-open the panel; the rail only renders it once open.
+pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
+    id: "provenance",
+    is_open: |w| w.provenance_open,
+    render: |cx, slot| draw(cx.ctx, cx.watchlist, cx.t, Some(slot)),
+};
+
+/// Always-on per-frame work: drain background fetches and promote any pending
+/// open-requests (which may force the panel open). Runs regardless of open
+/// state — call it unconditionally from `top_nav`.
+pub(crate) fn pump(watchlist: &mut Watchlist) {
     // Always drain — even if closed — so background loads don't pile up.
     drain_fetches();
 
@@ -305,7 +317,9 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
         }
         watchlist.provenance_active_lineage = Some(req.lineage_id);
     }
+}
 
+pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme, slot: Option<super::side_panel_shell::RailSlot>) {
     if !watchlist.provenance_open { return; }
 
     let pane_h    = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
@@ -314,6 +328,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
         .width(Width::Wide)
         .resizable(260.0..=560.0)
         .pane_metrics(pane_h, pane_font)
+        .rail_slot(slot)
         .show(ctx, t, |ui, t| {
             draw_inner(ui, watchlist, t);
         });

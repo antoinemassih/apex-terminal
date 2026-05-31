@@ -137,6 +137,10 @@ pub struct WatchlistRow<'a> {
     separator: bool,
     hover_overlay: Option<Color32>,
     show_x_on_hover: bool,
+    /// Show the built-in rich `HoverCard` on prolonged hover. Default `true`.
+    /// Callers that render their own hover tooltip (the watchlist panel does)
+    /// set this `false` to avoid a duplicate card.
+    hover_card: bool,
     drag_confirmed: bool,
     sym_font_id: Option<egui::FontId>,
     chg_font_id: Option<egui::FontId>,
@@ -185,6 +189,7 @@ impl<'a> WatchlistRow<'a> {
             separator: false,
             hover_overlay: None,
             show_x_on_hover: false,
+            hover_card: true,
             drag_confirmed: false,
             sym_font_id: None,
             chg_font_id: None,
@@ -252,6 +257,8 @@ impl<'a> WatchlistRow<'a> {
     pub fn separator(mut self, v: bool) -> Self { self.separator = v; self }
     pub fn hover_overlay(mut self, c: Color32) -> Self { self.hover_overlay = Some(c); self }
     pub fn show_x_on_hover(mut self, v: bool) -> Self { self.show_x_on_hover = v; self }
+    /// Disable the built-in rich `HoverCard` (when the caller shows its own).
+    pub fn hover_card(mut self, v: bool) -> Self { self.hover_card = v; self }
     /// When true, hover-only effects (X glyph, hover overlay, hover star, cursor)
     /// are suppressed. Mirrors panel's `drag_confirmed` gating.
     pub fn drag_confirmed(mut self, v: bool) -> Self { self.drag_confirmed = v; self }
@@ -334,6 +341,7 @@ impl<'a> WatchlistRow<'a> {
         let drag_confirmed = self.drag_confirmed;
         let show_star_on_hover_flag = self.show_star_on_hover;
         let self_show_x_on_hover = self.show_x_on_hover;
+        let hover_card_enabled = self.hover_card;
         let hover_overlay_col = self.hover_overlay;
         let user_sense = self.sense;
         let price_flash_tint = self.price_flash_tint;
@@ -365,14 +373,51 @@ impl<'a> WatchlistRow<'a> {
         let zones: Rc<RefCell<ZoneRects>> = Rc::new(RefCell::new(ZoneRects::default()));
         let zones_body = zones.clone();
 
+        // Per-style watchlist row treatment — read once before the body closure.
+        let wl_margin   = crate::chart_renderer::ui::style::current().wl_row_side_margin;
+        let wl_radius   = crate::chart_renderer::ui::style::current().wl_row_corner_radius;
+        let wl_divider  = crate::chart_renderer::ui::style::current().wl_row_divider_alpha;
+
         let resp = RowShell::new(theme_ref, "")
             .variant(RowVariant::Default)
             .size(Size::Md)
             .state(InteractionState::default().selected(self.selected))
+            .pill(wl_margin, wl_radius) // pill-inset hover for Aperture/Glass; no-op when 0
             .painter_mode(true)
             .painter_height(row_h)
             .painter_body(move |ui, rect| {
                 let painter = ui.painter();
+                // Apply side-margin inset (Aperture pill rows, Glass soft rows).
+                // The inset rect is used for content layout; the full rect gets the bg.
+                let rect = if wl_margin > 0.0 {
+                    egui::Rect::from_min_max(
+                        egui::pos2(rect.left() + wl_margin, rect.top() + 1.0),
+                        egui::pos2(rect.right() - wl_margin, rect.bottom() - 1.0),
+                    )
+                } else { rect };
+                // Paint rounded bg for pill-row themes (Aperture, Glass).
+                // RowShell's hover overlay is full-width; we add a subtle rounded
+                // base fill to give rows their capsule shape at rest.
+                if wl_radius > 0 && wl_margin > 0.0 {
+                    let cr = egui::CornerRadius::same(wl_radius);
+                    painter.rect_filled(
+                        rect,
+                        cr,
+                        egui::Color32::from_rgba_unmultiplied(
+                            border.r(), border.g(), border.b(), 18,
+                        ),
+                    );
+                }
+                // Per-row hairline bottom divider (Alto/Mariner/Relay/Lucid).
+                if wl_divider > 0 {
+                    let dy = rect.bottom() - 0.5;
+                    painter.line_segment(
+                        [egui::pos2(rect.left(), dy), egui::pos2(rect.right(), dy)],
+                        egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(
+                            border.r(), border.g(), border.b(), wl_divider,
+                        )),
+                    );
+                }
                 let cy = rect.center().y;
                 let chg_col = if change_pct >= 0.0 { bull } else { bear };
 
@@ -643,8 +688,9 @@ impl<'a> WatchlistRow<'a> {
         }
 
         // ── HoverCard — rich symbol-detail card on prolonged hover ─────────
-        // Suppressed during drag to avoid distracting the user mid-reorder.
-        if !drag_confirmed {
+        // Suppressed during drag, and when the caller renders its own hover
+        // tooltip (the watchlist panel sets `.hover_card(false)`).
+        if !drag_confirmed && hover_card_enabled {
             // symbol is &'a str — no allocation needed here.
             let card_price = price;
             let card_change = change_pct;

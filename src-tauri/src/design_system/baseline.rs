@@ -19,7 +19,7 @@
 use super::{
     color_scheme::{ColorScheme, Meta, Rgba},
     style_system::{
-        Alphas, Density, Elevation, FocusRingStyle, Radii, Shadows, ShadowSpec,
+        Alphas, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, Radii, Shadows, ShadowSpec,
         Spacing, Strokes, StyleSystem, Treatments, Typography,
     },
 };
@@ -115,6 +115,8 @@ pub fn baseline_style_system() -> StyleSystem {
             mono_md: 13.0,
             // mono_lg: font_lg()=16.0
             mono_lg: 16.0,
+            size_section_label: 8.0,
+            label_tracking: 0.0, nav_tracking: 0.0, section_tracking: 0.0,
         },
 
         spacing: Spacing {
@@ -136,6 +138,7 @@ pub fn baseline_style_system() -> StyleSystem {
             gmd: 12.0,
             // cta_height_px = 36.0 (style_defaults(0))
             cta_height: 36.0,
+            cta_padding_x: 16.0, button_height: 24.0, button_padding_x: 10.0, tab_height: 28.0,
         },
 
         radii: Radii {
@@ -152,6 +155,7 @@ pub fn baseline_style_system() -> StyleSystem {
             // Anchor: five surfaces (toolbar, context menu) do not use r_pill directly;
             // keeping 9999.0 to match design-system convention.
             full: 9999.0,
+            pill: 0.0, chip: 0.0,
         },
 
         strokes: Strokes {
@@ -242,6 +246,22 @@ pub fn baseline_style_system() -> StyleSystem {
             segmented_filled_idle:    false,
             // focus_ring_width = 1.0 → Outline
             focus_ring: FocusRingStyle::Outline,
+            // Meridien is flat editorial — no bevel, flush rows, proportional headers.
+            surface_bevel: BevelStyle::None,
+            bevel_highlight_alpha: 0,
+            bevel_shadow_alpha: 0,
+            wl_row_side_margin: 0.0, wl_row_corner_radius: 0, wl_row_divider_alpha: 30,
+            section_header_mono: false, wl_symbol_mono: false, panel_tab_treatment: 0,
+            pane_active_fill_accent: false,
+            serif_headlines: true, button_treatment: 2, invert_active_fill: true,
+            vertical_group_dividers: true, show_active_tab_underline: true, inactive_header_fill: true,
+            nav_buttons_label_only: true, nav_buttons_uppercase_labels: true, tab_underline_under_text: true,
+            card_floating_shadow: true, shadows_enabled: true, animations_enabled: true,
+        },
+        chrome: Chrome {
+            toolbar_height_scale: 1.40, header_height_scale: 1.10, account_strip_height: 36.0,
+            pane_gap: 0.0, pane_active_indicator: 1, tab_underline_thickness: 2.0,
+            ..Chrome::default()
         },
     }
 }

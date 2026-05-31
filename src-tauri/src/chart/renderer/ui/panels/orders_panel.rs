@@ -21,6 +21,16 @@ use crate::chart_renderer::commands::{self, AppCommand};
 use crate::chart_renderer::trading::{AccountSummary, IbOrder, Position, OrderSide, OrderStatus};
 use crate::chart_renderer::BookTab;
 
+/// Rail registration — see [`super::right_rail`].
+pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
+    id: "orders",
+    is_open: |w| w.orders_panel_open,
+    render: |cx, slot| { draw(cx.ctx, cx.watchlist, cx.panes, cx.active_pane, cx.t, cx.account_data, Some(slot), None); },
+};
+
+fn book_tab_to_u8(t: BookTab) -> u8 { match t { BookTab::Book => 0, BookTab::Journal => 1 } }
+fn book_tab_from_u8(v: u8) -> BookTab { match v { 1 => BookTab::Journal, _ => BookTab::Book } }
+
 pub(crate) fn draw(
     ctx: &egui::Context,
     watchlist: &mut Watchlist,
@@ -28,10 +38,17 @@ pub(crate) fn draw(
     _ap: usize,
     t: &Theme,
     account_data_cached: &Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>,
-) {
-    if !watchlist.orders_panel_open { return; }
+    slot: Option<super::side_panel_shell::RailSlot>,
+    instance_tab: Option<&mut u8>,
+) -> bool {
+    let is_spawn = instance_tab.is_some();
+    let mut spawn_close = false;
+    if !is_spawn && !watchlist.orders_panel_open { return false; }
 
-    let mut book_tab = watchlist.book_tab;
+    let mut book_tab = match instance_tab.as_deref() {
+        Some(v) => book_tab_from_u8(*v),
+        None => watchlist.book_tab,
+    };
 
     let tabs = [
         (BookTab::Book, "BOOK", None),
@@ -43,9 +60,17 @@ pub(crate) fn draw(
     let pane_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
     let pane_font = watchlist.pane_header_size.title_font();
 
-    let resp = SidePanelShell::tabs("orders", &mut book_tab, &tabs)
+    let shell_id = if is_spawn { "orders_inst" } else { "orders" };
+    let resp = SidePanelShell::tabs(shell_id, &mut book_tab, &tabs)
         .width(Width::Medium)
         .pane_metrics(pane_h, pane_font)
+        .rail_slot(slot)
+        .on_tab_secondary(|ui, tab| {
+            if crate::ui_kit::widgets::MenuItem::new("Open as new instance").show(ui, t).clicked() {
+                super::right_rail::request_spawn("orders", book_tab_to_u8(tab));
+                ui.close_menu();
+            }
+        })
         .show(ctx, t, |ui, t, tab| {
             match tab {
                 BookTab::Journal => {
@@ -57,8 +82,13 @@ pub(crate) fn draw(
             }
         });
 
-    if resp.close_clicked { watchlist.update_sidebar_state(|s| s.orders_panel_open = false); }
-    watchlist.book_tab = book_tab;
+    // Persist the active tab to its owner (instance store or base panel).
+    if let Some(it) = instance_tab { *it = book_tab_to_u8(book_tab); }
+    else { watchlist.book_tab = book_tab; }
+    if resp.close_clicked {
+        if is_spawn { spawn_close = true; }
+        else { watchlist.update_sidebar_state(|s| s.orders_panel_open = false); }
+    }
 
     // Update position current prices from chart data.
     for pos in &mut watchlist.positions {
@@ -68,6 +98,7 @@ pub(crate) fn draw(
             }
         }
     }
+    spawn_close
 }
 
 // ── BOOK TAB BODY ──────────────────────────────────────────────────────────

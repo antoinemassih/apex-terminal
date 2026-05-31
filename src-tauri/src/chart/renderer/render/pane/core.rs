@@ -11604,7 +11604,23 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
     #[cfg(not(feature = "gpu_chart_v2"))]
     let central_frame = egui::Frame::NONE.fill(t.bg);
     egui::CentralPanel::default().frame(central_frame).show(ctx, |ui| {
-        let full_rect = ui.available_rect_before_wrap();
+        // Shell region (floating-card chrome): when the active style sets
+        // region_gap > 0 (Aperture/Glass), inset the whole workspace by that
+        // gap so it floats as a single card separated from the toolbar and side
+        // rail. Panes INSIDE stay contiguous (pane_gap is 0 for those styles).
+        // Surgical: a 4-line inset + one border paint; the rest of the workspace
+        // layout is unchanged. (Minimal sanctioned core.rs touch.)
+        let full_rect = {
+            let raw = ui.available_rect_before_wrap();
+            let rg = crate::chart_renderer::ui::style::region_gap();
+            if rg > 0.0 {
+                let inset = raw.shrink(rg);
+                crate::chart_renderer::ui::style::paint_region_card(ui.painter(), inset, t);
+                inset
+            } else {
+                raw
+            }
+        };
         // P17 #1 — ensure pane_ids tracks panes Vec (lazy migration for
         // workspaces that loaded before P17). MUST run before pane_layout
         // materialization so the initial tree can use stable IDs.

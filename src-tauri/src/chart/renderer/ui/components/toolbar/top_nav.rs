@@ -111,7 +111,8 @@ use crate::chart_renderer::ui::style::{
     alpha_faint, alpha_ghost, alpha_soft, alpha_muted, alpha_dim, alpha_strong, alpha_heavy,
     BTN_ICON_SM, BTN_ICON_LG,
     icon_sm,
-    set_toolbar_rect, tb_group_break, current as style_current,
+    set_toolbar_rect, tb_group_break, current as style_current, paint_bevel,
+    paint_gradient_highlight, current_style_bevel_hi,
     font_4xs, font_xs, font_2xs, font_sm, font_md, font_lg, font_xl,
     mono_xs, mono_sm, mono_md, mono_lg,
     gap_2xs, gap_xs, gap_sm, gap_md, gap_lg, gap_xl,
@@ -201,13 +202,16 @@ fn paint_nav_col_tint(
 
     if active_t > 0.001 {
         let st = style_current();
-        let ul_thickness = if st.tab_underline_thickness > 0.0 { st.tab_underline_thickness } else { st.stroke_bold };
-        let underline_y = tb_rect.bottom() - 1.0;
-        let ul_color = motion::fade_in(theme.accent, active_t);
-        bg_painter.line_segment(
-            [egui::pos2(btn_rect.left(),  underline_y),
-             egui::pos2(btn_rect.right(), underline_y)],
-            egui::Stroke::new(ul_thickness, ul_color));
+        // Only draw the underline when the style requests it AND has a positive
+        // thickness. Aperture uses pill/inverted active state (no underline line).
+        if st.show_active_tab_underline && st.tab_underline_thickness > 0.0 {
+            let underline_y = tb_rect.bottom() - 1.0;
+            let ul_color = motion::fade_in(theme.accent, active_t);
+            bg_painter.line_segment(
+                [egui::pos2(btn_rect.left(),  underline_y),
+                 egui::pos2(btn_rect.right(), underline_y)],
+                egui::Stroke::new(st.tab_underline_thickness, ul_color));
+        }
     }
 }
 
@@ -364,13 +368,28 @@ pub(crate) fn render(
     if toolbar_visible {
     // Toolbar height scaled per active style (1.40× for Meridien Bloomberg-style tall bar) (#4).
     let tb_scale = style_current().toolbar_height_scale;
+    // Shell region: floats as a rounded card with `region_gap` margin when the
+    // active style is tiled (Aperture/Glass); flush flat fill otherwise.
+    let rgap = crate::chart_renderer::ui::style::region_gap();
+    let tb_frame = crate::chart_renderer::ui::style::region_frame(t, t.toolbar_bg)
+        .inner_margin(egui::Margin { left: (gap_xs() + rgap) as i8, right: rgap as i8, top: 0, bottom: 0 });
+    let base_h = (if watchlist.compact_mode { 30.0 } else { 38.0 }) * tb_scale;
     egui::TopBottomPanel::top("tb")
-        .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: gap_xs() as i8, right: 0, top: 0, bottom: 0 }))
-        .exact_height((if watchlist.compact_mode { 30.0 } else { 38.0 }) * tb_scale)
+        .frame(tb_frame)
+        // Add 2×gap to the reserved height so the card itself keeps `base_h`
+        // after the outer margin insets it top + bottom.
+        .exact_height(base_h + 2.0 * rgap)
         .show(ctx, |ui| {
         let tb_rect = ui.max_rect();
         // Publish toolbar rect so tb_btn can read it for full-height hover/active column overlays.
         set_toolbar_rect(tb_rect);
+        // Gradient + bevel for Alto/Mariner/Cadence (Raised bevel):
+        // 1. Vertical white-highlight gradient (top→transparent) — matches React's
+        //    linear-gradient(bg-elevated, bg-panel) without hardcoding palette colors.
+        // 2. Crisp 1px bevel lines on top/bottom edges.
+        // Both are no-ops when the active style has no bevel (None).
+        paint_gradient_highlight(ui.painter(), tb_rect, current_style_bevel_hi());
+        paint_bevel(ui.painter(), tb_rect, egui::CornerRadius::ZERO);
         crate::design_tokens::register_hit(
             [tb_rect.min.x, tb_rect.min.y, tb_rect.width(), tb_rect.height()],
             "TOOLBAR", "Toolbar");
@@ -1438,7 +1457,8 @@ pub(crate) fn render(
                     if !watchlist.active_workspace.is_empty() {
                         if ui.button(egui::RichText::new(format!("{} Save \"{}\"", Icon::CHECK, watchlist.active_workspace))
                             .monospace().size(font_sm()).color(t.accent)).clicked() {
-                            save_workspace(&watchlist.active_workspace, panes, *layout);
+                            let ws_name = watchlist.active_workspace.clone();
+                            save_workspace(&ws_name, panes, *layout, watchlist);
                             ui.close_menu();
                         }
                     }
@@ -1456,7 +1476,7 @@ pub(crate) fn render(
                             if KitButton::new("Save As").variant(KitVariant::Primary).size(KitSize::Sm)
                                 .tint(t.accent).show(ui, t).clicked() {
                                 let name = watchlist.workspace_save_name.trim().to_string();
-                                save_workspace(&name, panes, *layout);
+                                save_workspace(&name, panes, *layout, watchlist);
                                 watchlist.active_workspace = name;
                                 watchlist.workspace_save_name.clear();
                                 ui.close_menu();
@@ -1720,7 +1740,15 @@ pub(crate) fn render(
                 // glyph under all styles.
                 let st = style_current();
                 let nav_label = |icon: &str, label: &str| -> String {
-                    let txt = if st.nav_buttons_uppercase_labels { label.to_uppercase() } else { label.to_string() };
+                    let mut txt = if st.nav_buttons_uppercase_labels { label.to_uppercase() } else { label.to_string() };
+                    // Apply nav letter-spacing via Unicode thin-spaces (same egui
+                    // approximation as `style_label_case`): no CSS letter-spacing
+                    // in egui, so we insert U+2009 between glyphs. >1.5px = double.
+                    let sp = st.nav_letter_spacing_px;
+                    if sp >= 0.5 {
+                        let sep = if sp > 1.5 { "\u{2009}\u{2009}" } else { "\u{2009}" };
+                        txt = txt.chars().map(|c| c.to_string()).collect::<Vec<_>>().join(sep);
+                    }
                     if st.nav_buttons_label_only { txt } else { format!("{} {}", icon, txt) }
                 };
 
@@ -1828,6 +1856,28 @@ pub(crate) fn render(
                 if resp.clicked() { watchlist.update_sidebar_state(|s| s.playbook_panel_open = !s.playbook_panel_open); }
                 nav_divider!(ui, resp);
 
+                // Chart Library (saved chart layouts)
+                let resp = toolbar_btn(ui, &nav_label(Icon::FOLDER, "Charts"), watchlist.charts_library_open, t);
+                Tooltip::new("Chart Library (saved layouts)").show(ui, &resp, t);
+                paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.charts_library_open, "right_charts");
+                if resp.clicked() { watchlist.charts_library_open = !watchlist.charts_library_open; }
+                nav_divider!(ui, resp);
+
+                // Toolnav (second chrome row) toggle — hybrid: overrides the
+                // active style's default. Clicking forces the row on/off.
+                {
+                    let tn_on = crate::chart_renderer::ui::style::toolnav_visible();
+                    let resp = toolbar_btn(ui, &nav_label(Icon::BROWSERS, "Toolbar"), tn_on, t);
+                    Tooltip::new("Second toolbar row (ticker · tools). Style default; click to override.")
+                        .show(ui, &resp, t);
+                    paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), tn_on, "right_toolnav");
+                    if resp.clicked() {
+                        crate::chart_renderer::ui::style::set_toolnav_override(Some(!tn_on));
+                    }
+                    nav_divider!(ui, resp);
+                }
+
+
                 // Watchlist toggle
                 let resp = toolbar_btn(ui, &nav_label(Icon::LIST, "Watchlist"), watchlist.open, t);
                 Tooltip::new("Watchlist").show(ui, &resp, t);
@@ -1927,6 +1977,13 @@ pub(crate) fn render(
         });
     });
     } // end if toolbar_visible
+
+    // ── Toolnav: second chrome row (tools + ticker). Renders only when the
+    // active style sets Chrome.toolnav_height > 0 (Aperture/Glass). Stacks
+    // directly below the main toolbar, above the workspace.
+    if toolbar_visible {
+        super::toolnav::render_toolnav(ctx, watchlist, t);
+    }
 
     if watchlist.account_strip_open {
         let mut do_cancel_all = false;
@@ -2247,7 +2304,7 @@ pub(crate) fn render(
                             {
                                 let name = watchlist.pane_template_name.trim().to_string();
                                 // Persist via workspace machinery (handles layout + symbols + TF)
-                                save_workspace(&name, panes, *layout);
+                                save_workspace(&name, panes, *layout, watchlist);
                                 // Also store in pane_templates so the list updates immediately
                                 let layout_val = serde_json::json!({
                                     "kind": "layout_template",
@@ -2717,67 +2774,49 @@ pub(crate) fn render(
     // Signals sidebar (signals_panel.rs → SignalsTab::Regime). Top dock space
     // was too valuable to reserve for a 40-48px always-visible cell strip.
 
-    // ── ProvenancePane (SOTA UX §4.1) — right side panel, evidence DAG.
-    // Hidden by default; opens when `provenance_pane::request_open(lineage_id)`
-    // is called from signals_panel (or any other panel that surfaces lineage).
-    span_begin("sidebar.provenance");
-    crate::chart_renderer::ui::panels::provenance_pane::draw(ctx, watchlist, t);
+    // ── Bottom dock (footer): Orders / Positions / Account / Notifications.
+    // Created before the rails so it spans the full width beneath them and the
+    // workspace + rails shrink above it. Toggle: Ctrl+` .
+    if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Backtick)) {
+        let now = crate::chart_renderer::ui::style::footer_visible();
+        crate::chart_renderer::ui::style::set_footer_override(Some(!now));
+    }
+    span_begin("sidebar.bottom_dock");
+    crate::chart_renderer::ui::panels::bottom_dock::draw(ctx, watchlist, account_data_cached, t);
 
-    // ── Watchlist side panel
-    span_begin("sidebar.watchlist");
-    crate::chart_renderer::ui::panels::watchlist_panel::draw(ctx, watchlist, panes, ap, t);
+    // ── Right rail: the SINGLE auto-arranged container for ALL dockable
+    // right-side panels — watchlist, orders, indicators, playbook, scanner,
+    // tape, journal, rrg, script, order ledger, provenance. Each renders
+    // through `SidePanelShell` rail-mode, dispatched by the `right_rail::PANELS`
+    // registry. There are deliberately NO per-panel draw calls for them here.
+    span_begin("sidebar.right_rail");
+    crate::chart_renderer::ui::panels::right_rail::render(ctx, watchlist, panes, ap, account_data_cached, *layout, t);
 
-    // ── Object Tree side panel
-    span_begin("sidebar.object_tree");
-    crate::chart_renderer::ui::panels::object_tree::draw(ctx, watchlist, panes, ap, t);
+    // Provenance auto-opens from external lineage requests (SOTA UX §4.1), so
+    // its per-frame pump must run even while the panel is closed; the rail
+    // renders the panel itself once open.
+    crate::chart_renderer::ui::panels::provenance_pane::pump(watchlist);
 
-    // ── Book pane (Positions/Orders + Journal tabs) ─────────────────────────
-    span_begin("sidebar.orders");
-    crate::chart_renderer::ui::panels::orders_panel::draw(ctx, watchlist, panes, ap, t, account_data_cached);
-
-    // ── Order Ledger (Wave 3 visibility panel) ──────────────────────────────
-    // Hotkey: Ctrl+L toggles. The render loop takes a non-mutable `panes`
-    // slice for active-order display; cancel actions dispatch through the
-    // global `order_manager` API.
+    // Order Ledger toggle (Ctrl+L) — the panel is rail-hosted.
     if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::L)) {
         watchlist.update_sidebar_state(|s| s.order_ledger_open = !s.order_ledger_open);
     }
-    span_begin("sidebar.order_ledger");
-    crate::chart_renderer::ui::panels::order_ledger_panel::draw(ctx, watchlist, panes, t);
 
-    // ── Order System Health (operator observability) ────────────────────────
+    // ── Object Tree side panel (not rail-hosted)
+    span_begin("sidebar.object_tree");
+    crate::chart_renderer::ui::panels::object_tree::draw(ctx, watchlist, panes, ap, t);
+
+    // ── Order System Health (floating Modal, not rail-hosted) ────────────────
     // Hotkey: Ctrl+Shift+O toggles a small dashboard with submit-latency,
-    // reject-rate, top reject reasons, active-state counts and broker contact
-    // age. Recomputes journal aggregates at most once/sec via in-panel cache.
+    // reject-rate, top reject reasons, active-state counts and broker contact age.
     if ctx.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::O)) {
         watchlist.update_sidebar_state(|s| s.order_health_open = !s.order_health_open);
     }
     span_begin("sidebar.order_health");
     crate::chart_renderer::ui::panels::order_health_panel::draw(ctx, watchlist, t);
 
-    // ── Scanner side panel
-    span_begin("sidebar.scanner");
-    crate::chart_renderer::ui::panels::scanner_panel::draw(ctx, watchlist, panes, ap, t);
-
-    // ── Time & Sales side panel
-    span_begin("sidebar.tape");
-    crate::chart_renderer::ui::panels::tape_panel::draw(ctx, watchlist, &panes[ap].symbol, t);
-
-    // ── RRG (Relative Rotation Graph) side panel
-    span_begin("sidebar.rrg");
-    crate::chart_renderer::ui::panels::rrg_panel::draw(ctx, watchlist, t);
-
-    // ── Analysis sidebar (unified RRG / T&S / Scanner / Scripts)
-    span_begin("sidebar.analysis");
-    crate::chart_renderer::ui::panels::analysis_panel::draw(ctx, watchlist, panes, *active_pane, t);
-
-    // ── Indicators panel (active + library + tool toggles)
-    span_begin("sidebar.indicators");
-    crate::chart_renderer::ui::panels::indicators_panel::draw(ctx, watchlist, panes, ap, t);
-
-    // ── Signals sidebar (unified Alerts + Signals)
-    span_begin("sidebar.signals");
-    crate::chart_renderer::ui::panels::signals_panel::draw(ctx, watchlist, panes, ap, t);
+    // Analysis + Signals are now standard SidePanelShell::tabs panels hosted by
+    // the right rail (see right_rail::PANELS) — no direct draw here.
 
     // ── Trade plan v2 sidebar (SOTA §4.4)
     span_begin("sidebar.trade_plan_v2");
@@ -2791,23 +2830,12 @@ pub(crate) fn render(
     let screen_rect = ctx.screen_rect();
     crate::chart_renderer::ui::panels::spike_popup::draw(ctx, screen_rect);
 
-    // ── Feed sidebar (unified News + Discord + Screenshots)
-    span_begin("sidebar.feed");
-    crate::chart_renderer::ui::panels::feed_panel::draw(ctx, watchlist, panes, ap, t);
+    // Feed is now a standard SidePanelShell::tabs panel hosted by the right rail.
 
-    // ── Playbook sidebar
-    span_begin("sidebar.playbook");
-    crate::chart_renderer::ui::panels::playbook_panel::draw(ctx, watchlist, panes, ap, t);
+    // Chart Library ("Charts") is now a standard SidePanelShell::tabs panel
+    // hosted by the right rail (see right_rail::PANELS) — no direct draw here.
 
-    // ── Journal sidebar
-    span_begin("sidebar.journal");
-    crate::chart_renderer::ui::panels::journal_panel::draw(ctx, watchlist, t);
-
-    // ── Script / Backtesting panel
-    span_begin("sidebar.script");
-    crate::chart_renderer::ui::panels::script_panel::draw(ctx, watchlist, t);
-
-    // ── Spread Builder panel
+    // ── Spread Builder panel (floating Modal, not rail-hosted)
     span_begin("sidebar.spread");
     crate::chart_renderer::ui::panels::spread_panel::draw(ctx, watchlist, &panes[ap].symbol, t);
     span_begin("top_panel.tail");

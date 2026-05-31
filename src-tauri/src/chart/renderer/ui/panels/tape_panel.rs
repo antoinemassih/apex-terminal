@@ -122,12 +122,20 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, active_
     });
 }
 
-pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol: &str, t: &Theme) {
+/// Rail registration — see [`super::right_rail`].
+pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
+    id: "tape",
+    is_open: |w| w.tape_open,
+    render: |cx, slot| draw(cx.ctx, cx.watchlist, &cx.symbol, cx.t, Some(slot)),
+};
+
+pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol: &str, t: &Theme, slot: Option<super::side_panel_shell::RailSlot>) {
     if !watchlist.tape_open { return; }
 
     let resp = SidePanelShell::new("time_and_sales", "TIME & SALES")
         .width(Width::Narrow)
         .resizable(180.0..=350.0)
+        .rail_slot(slot)
         .show(ctx, t, |ui, t| {
             // Symbol breadcrumb under the chrome header
             ui.horizontal(|ui| {

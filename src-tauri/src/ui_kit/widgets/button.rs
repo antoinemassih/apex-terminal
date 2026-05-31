@@ -820,6 +820,9 @@ fn show_styled_impl<'a, S: ButtonStyle>(
         // Background.
         if !frameless && bg.a() > 0 {
             painter.rect_filled(rect, cr, bg);
+            // Surface bevel — reads the per-frame bevel token pushed by the
+            // chart-app's begin_frame(). No-op when bevel is None (default).
+            crate::ui_kit::style::paint_bevel_portable(&painter, rect, cr);
         }
         // Border (Secondary, Chrome stroke override, or active state).
         if !frameless {

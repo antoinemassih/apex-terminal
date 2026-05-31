@@ -268,9 +268,29 @@ pub(crate) const fn rgba_pre(r: u8, g: u8, b: u8, a: u8) -> egui::Color32 { egui
 /// alongside the theme as e.g. "GruvBox/Meridien". Actual visual differences
 /// will be wired later.
 pub(crate) const STYLE_NAMES: &[&str] = &[
-    "Meridien", "Aperture", "Octave", "Cadence", "Chord",
-    "Lattice",  "Tangent",  "Tempo",  "Contour", "Relay",
+    "Meridien", "Aperture", "Octave", "Cadence", "Alto",
+    "Mariner",  "Lucid",    "Relay",  "Glass",   "Contour",
 ];
+
+/// Per-theme preferred **proportional** font, ported from the React mockup's
+/// `--ds-font-ui` per `[data-ds]` block. Returns an index into the font table
+/// used by `init_fonts` (0=JetBrains, 1=Inter, 2=PlusJakarta, 3=SpaceGrotesk,
+/// 4=DM Sans, 5=Geist). `None` = no per-theme preference (use the user picker).
+///
+/// NOTE: monospace stays pinned to JetBrains Mono regardless (tabular-digit
+/// policy in `init_fonts`). Alto/Mariner specify IBM Plex Sans in React, which
+/// is NOT bundled here — they fall back to Geist (closest neutral technical
+/// face). Bundle IBM Plex Sans/Mono TTFs for true Alto/Mariner fidelity.
+pub(crate) fn style_preferred_font(style_id: u8) -> Option<usize> {
+    match style_id {
+        1 => Some(1), // Aperture → Inter (React: Inter Tight)
+        3 => Some(1), // Cadence  → Inter
+        4 => Some(6), // Alto     → IBM Plex Sans (React: --ds-font-ui: 'IBM Plex Sans')
+        5 => Some(6), // Mariner  → IBM Plex Sans (same family — instrument panel)
+        6 => Some(4), // Lucid    → DM Sans
+        _ => None,    // Meridien / Octave / unnamed → user font picker
+    }
+}
 
 /// Returns the style id for a watchlist's selected style.
 /// Any valid index within the live preset list is returned as-is.
@@ -293,6 +313,89 @@ pub(crate) fn pane_header_h(wl: &Watchlist) -> f32 {
     };
     // Multiply by current().header_height_scale so the design-mode slider has effect.
     (style_adj * super::ui::style::current().header_height_scale).max(12.0)
+}
+
+/// Paint rounded corner + border frames over each chart pane on the Foreground layer.
+/// Called after `draw_chart` inside the egui run closure so the frames sit on top of
+/// chart content. Only fires for styles with `r_md > 0` and `pane_gap > 0` (tiled
+/// card styles like Aperture and Glass).
+fn paint_pane_card_frames(ctx: &egui::Context, panes: &[Chart], layout: Layout, wl: &Watchlist) {
+    use crate::chart_renderer::ui::style::{current as style_current, color_alpha};
+    let st = style_current();
+    // Only paint when the style requests visible tiled cards (Aperture/Glass).
+    if st.pane_gap <= 0.0 || st.r_md == 0 { return; }
+    let gap = st.pane_gap;
+    let cr = egui::CornerRadius::same(st.r_md);
+    let border_alpha = 40u8; // subtle border matching React's --ds-border-dim (~rgba(255,255,255,0.06))
+
+    let layer = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("pane_card_frames"));
+    let painter = ctx.layer_painter(layer);
+    let t = crate::chart_renderer::theme_impl::active_theme(ctx);
+    let border_col = color_alpha(t.toolbar_border, border_alpha + 20);
+
+    // Compute pane rects (mirror of `pane_rects_for_layout`).
+    let screen = ctx.screen_rect();
+    // Approximate the chart area (below toolbar, above bottom bar).
+    // We use the full screen minus the toolbar height as a best-effort rect.
+    let toolbar_h = (if wl.compact_mode { 30.0 } else { 38.0 }) * st.toolbar_height_scale;
+    let chart_area = egui::Rect::from_min_max(
+        egui::pos2(screen.left(), screen.top() + toolbar_h),
+        screen.max,
+    );
+
+    let visible = panes.len().min(layout.max_panes());
+    if visible <= 1 { return; }
+
+    let rects = compute_pane_rects_for_frame(wl, layout, chart_area, visible, gap);
+    let bg_col = t.bg;
+    let r = st.r_md as f32;
+    for rect in rects.iter().take(visible) {
+        if !rect.is_finite() || rect.width() < 8.0 || rect.height() < 8.0 { continue; }
+
+        // ── Corner masks: paint bg-colored L-shaped patches over each corner ──
+        // This hides the chart content's square corners, approximating clip-to-radius.
+        // Each corner needs two rect fills forming an L at radius r.
+        let corners = [
+            (rect.left(), rect.top()),                     // top-left
+            (rect.right() - r, rect.top()),                // top-right
+            (rect.left(), rect.bottom() - r),              // bottom-left
+            (rect.right() - r, rect.bottom() - r),        // bottom-right
+        ];
+        let is_tl_or_tr = |i: usize| i < 2;
+        let is_left = |i: usize| i % 2 == 0;
+        for (i, (cx, cy)) in corners.iter().enumerate() {
+            // Horizontal strip (full width r, partial height r/2)
+            let h_rect = egui::Rect::from_min_size(
+                egui::pos2(*cx, *cy),
+                egui::vec2(r, r * 0.45),
+            );
+            // Vertical strip (partial width r/2, full height r)
+            let v_rect = egui::Rect::from_min_size(
+                egui::pos2(*cx, *cy),
+                egui::vec2(r * 0.45, r),
+            );
+            let _ = (is_tl_or_tr(i), is_left(i)); // suppress unused warnings
+            painter.rect_filled(h_rect, egui::CornerRadius::ZERO, bg_col);
+            painter.rect_filled(v_rect, egui::CornerRadius::ZERO, bg_col);
+        }
+
+        // ── Rounded border: defines the card edge on top of corner masks ──
+        painter.rect_stroke(
+            *rect, cr,
+            egui::Stroke::new(st.pane_border_width.max(1.0), border_col),
+            egui::StrokeKind::Inside,
+        );
+    }
+
+    // ── Toolbar card border (Aperture/Glass tiled look) ──────────────────────
+    // The toolbar is also a floating tile in Aperture. Paint its card border
+    // using the stored toolbar rect (set each frame by set_toolbar_rect).
+    let tb = super::ui::style::toolbar_rect();
+    if tb.is_finite() && tb.width() > 8.0 {
+        painter.rect_stroke(tb, cr,
+            egui::Stroke::new(st.pane_border_width.max(1.0), border_col),
+            egui::StrokeKind::Inside);
+    }
 }
 
 /// Style-aware tabs pane header height. Mirrors `PaneHeaderSize::tabs_header_h`.
@@ -4766,6 +4869,13 @@ pub(crate) struct Watchlist {
     /// subsystem. Toggled via Ctrl+Shift+O. See
     /// `chart::renderer::ui::panels::order_health_panel`.
     pub(crate) order_health_open: bool,
+    /// Active bottom-dock tab: 0=Orders, 1=Positions, 2=Account, 3=Notifications.
+    /// (Footer *visibility* is a style default + session override — `footer_visible()`.)
+    pub(crate) bottom_dock_tab: u8,
+    /// Persisted right-rail column width (px). Driven by the rail's resize grip.
+    pub(crate) rail_col_width: f32,
+    /// Persisted bottom-dock (footer) height (px). Driven by the dock's resize grip.
+    pub(crate) bottom_dock_height: f32,
     pub(crate) trendline_filter_open: bool, // trendline filter dropdown
     pub(crate) account_strip_open: bool, // account summary bar below toolbar
     pub(crate) object_tree_open: bool, // object tree panel (drawings, indicators, overlays)
@@ -5024,6 +5134,8 @@ pub(crate) struct Watchlist {
     // Screenshot library
     pub(crate) screenshot_open: bool,
     pub(crate) screenshot_entries: Vec<super::ui::panels::screenshot_panel::ScreenshotEntry>,
+    /// Chart Library sidepane open state (transient — not persisted).
+    pub(crate) charts_library_open: bool,
     // RRG (Relative Rotation Graph)
     pub(crate) rrg_open: bool,
     pub(crate) rrg_sectors: Vec<super::ui::panels::rrg_panel::RRGSector>,
@@ -5181,6 +5293,8 @@ impl Watchlist {
                order_ledger_sym_expanded: std::collections::HashMap::new(),
                order_ledger_pending_bulk_cancel: None,
                order_health_open: false,
+               bottom_dock_tab: 0,
+               rail_col_width: 400.0, bottom_dock_height: 240.0,
                settings_open: false, font_scale: 1.6, native_dpi_scale: 1.0, font_idx: 0,
                default_stock_qty: 100, default_options_qty: 1, default_order_type: 0, default_tif: 0, default_outside_rth: false,
                compact_mode: false,
@@ -5296,6 +5410,7 @@ impl Watchlist {
                script_backtest: None,
                screenshot_open: false,
                screenshot_entries: super::ui::panels::screenshot_panel::load_screenshots(),
+               charts_library_open: false,
                rrg_open: false, rrg_sectors: vec![], rrg_cycle_phase: String::new(),
                rrg_time_offset: 0.0, rrg_tail_length: 5,
                analysis_open: false,
@@ -5631,6 +5746,9 @@ impl Watchlist {
         let order_ledger_view = self.order_ledger_view;
         let order_ledger_filter = self.order_ledger_filter;
         let order_health_open = self.order_health_open;
+        let bottom_dock_tab = self.bottom_dock_tab;
+        let rail_col_width = self.rail_col_width;
+        let bottom_dock_height = self.bottom_dock_height;
         let account_strip_open = self.account_strip_open;
         let object_tree_open = self.object_tree_open;
         let trendline_filter_open = self.trendline_filter_open;
@@ -5666,6 +5784,9 @@ impl Watchlist {
             s.order_ledger_view = order_ledger_view;
             s.order_ledger_filter = order_ledger_filter;
             s.order_health_open = order_health_open;
+            s.bottom_dock_tab = bottom_dock_tab;
+            s.rail_col_width = rail_col_width;
+            s.bottom_dock_height = bottom_dock_height;
             s.account_strip_open = account_strip_open;
             s.object_tree_open = object_tree_open;
             s.trendline_filter_open = trendline_filter_open;
@@ -5707,6 +5828,9 @@ impl Watchlist {
         self.order_ledger_view = snap.order_ledger_view;
         self.order_ledger_filter = snap.order_ledger_filter;
         self.order_health_open = snap.order_health_open;
+        self.bottom_dock_tab = snap.bottom_dock_tab;
+        self.rail_col_width = snap.rail_col_width;
+        self.bottom_dock_height = snap.bottom_dock_height;
         self.account_strip_open = snap.account_strip_open;
         self.object_tree_open = snap.object_tree_open;
         self.trendline_filter_open = snap.trendline_filter_open;
@@ -6395,10 +6519,25 @@ impl GpuCtx {
         // Bump shadow pipeline frame counter for texture pool recycling.
         crate::ui_kit::widgets::shadow_pipeline::next_frame();
 
-        // Mirror the user's font_idx into TextEngine so PolishedLabel
-        // (which passes Family::SansSerif as a sentinel) shapes with
-        // the matching primary font.
-        crate::ui_kit::widgets::text_engine::set_active_font_idx(watchlist.font_idx);
+        // Effective proportional font = per-theme preference (ported from the
+        // React `--ds-font-ui` blocks) falling back to the user's picker. The
+        // active style's font wins on themed presets (Aperture/Cadence/Alto/
+        // Mariner/Lucid); Meridien/Octave defer to the user picker. Monospace
+        // stays JetBrains regardless (tabular-digit policy in init_fonts).
+        let effective_font = style_preferred_font(style_id(watchlist))
+            .unwrap_or(watchlist.font_idx);
+        // Mirror into TextEngine so PolishedLabel (Family::SansSerif sentinel)
+        // shapes with the matching primary font.
+        crate::ui_kit::widgets::text_engine::set_active_font_idx(effective_font);
+        // Re-install egui fonts only when the effective font actually changes —
+        // `set_fonts` is a global, allocation-heavy call, never per-frame.
+        {
+            use std::sync::atomic::{AtomicUsize, Ordering};
+            static LAST_FONT: AtomicUsize = AtomicUsize::new(usize::MAX);
+            if LAST_FONT.swap(effective_font, Ordering::Relaxed) != effective_font {
+                crate::ui_kit::icons::init_fonts(&self.egui_ctx, effective_font);
+            }
+        }
 
         // Mirror the active pane's background luminance into TextEngine so
         // theme-aware gamma can adapt glyph rendering to light/dark themes.
@@ -6436,7 +6575,14 @@ impl GpuCtx {
         // genuinely quiet frames (no clicks, drags, key presses, scrolls).
         crate::foundation::frame_profiler::note_input_events(raw_input.events.len() as u32);
         let full_output = self.egui_ctx.run(raw_input, |ctx| {
+            // NOTE: the inter-region gaps show the GPU chart pipeline's surface
+            // clear (already the theme bg), so no egui canvas paint is needed.
+            // An opaque egui Background-layer rect here would composite OVER the
+            // GPU chart and blank the screen — do NOT add one.
             draw_chart(ctx, panes, active_pane, layout, watchlist, toasts, conn_panel_open, rx);
+            // Aperture/Glass tiled-card overlay: paint rounded corners + border on each pane
+            // AFTER draw_chart so it sits on top of the chart content. Uses Foreground layer.
+            paint_pane_card_frames(ctx, panes, *layout, watchlist);
             // Boss key: paint the TPS overlay on top of everything when active.
             // render_tps_overlay returns true when the user dismisses it
             // (Esc or the fake-Excel ✕ close button).
@@ -7262,6 +7408,29 @@ impl ApplicationHandler for App {
                             cw.panes = new_panes;
                             cw.layout = new_layout;
                             cw.active_pane = 0;
+                            // v4: restore pane geometry. v3 (and older) files omit
+                            // these keys, so loading them leaves the current
+                            // geometry untouched (back-compat). Drawings are NOT
+                            // restored here — they reload from Postgres via the
+                            // per-pane symbol-load triggered by pending_symbol_change.
+                            if let Some(splits) = json.get("splits") {
+                                let gf = |k: &str, def: f32| splits.get(k).and_then(|v| v.as_f64()).map(|f| f as f32).unwrap_or(def);
+                                cw.watchlist.pane_split_h  = gf("h",  0.5);
+                                cw.watchlist.pane_split_v  = gf("v",  0.5);
+                                cw.watchlist.pane_split_h2 = gf("h2", 0.5);
+                                cw.watchlist.pane_split_v2 = gf("v2", 0.5);
+                                cw.watchlist.pane_split_v3 = gf("v3", 0.5);
+                                cw.watchlist.pane_split_v4 = gf("v4", 0.5);
+                                cw.watchlist.pane_split_v5 = gf("v5", 0.5);
+                                cw.watchlist.pane_split_v6 = gf("v6", 0.5);
+                            }
+                            if let Some(pl) = json.get("pane_layout") {
+                                if !pl.is_null() {
+                                    if let Ok(tree) = serde_json::from_value::<Option<crate::chart_renderer::pane_layout::PaneLayout>>(pl.clone()) {
+                                        cw.watchlist.pane_layout = tree;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -7278,6 +7447,8 @@ impl ApplicationHandler for App {
                     use crate::chart_renderer::ui::tools::notification::Notification;
                     let new_toasts: Vec<Notification> = PENDING_TOASTS.with(|ts| ts.borrow_mut().drain(..).collect());
                     if !new_toasts.is_empty() {
+                        // Tee into the persistent history log (bottom dock's Notifications tab).
+                        crate::chart_renderer::ui::tools::notification::record_history(&new_toasts);
                         // Collect existing messages as owned Strings to release the borrow before pushing.
                         let existing: std::collections::HashSet<String> = cw.toasts.iter().map(|n: &Notification| n.message.clone()).collect();
                         let mut seen = std::collections::HashSet::<String>::new();
@@ -7660,7 +7831,7 @@ fn workspace_dir() -> std::path::PathBuf {
     let mut p = state_path(); p.pop(); p.push("workspaces"); let _ = std::fs::create_dir_all(&p); p
 }
 
-fn workspace_to_json(panes: &[Chart], layout: Layout) -> String {
+fn workspace_to_json(panes: &[Chart], layout: Layout, wl: &Watchlist) -> String {
     let pane_data: Vec<serde_json::Value> = panes.iter().map(|p| {
         let indicators: Vec<serde_json::Value> = p.indicators.iter().map(|ind| serde_json::json!({
             "kind": ind.kind.label(), "period": ind.period, "color": ind.color,
@@ -7723,20 +7894,54 @@ fn workspace_to_json(panes: &[Chart], layout: Layout) -> String {
         })
     }).collect();
     let state = serde_json::json!({
-        "version": 3,
+        // v4: adds pane split ratios so a saved chart restores its exact pane
+        // geometry. Drawings are intentionally NOT serialized here — they live
+        // in their own per-symbol Postgres store and reload automatically when a
+        // restored pane's symbol loads (see drawing_db + fetch.rs symbol-load).
+        "version": 4,
         "layout": layout.label(),
         "theme_idx": panes.first().map(|p| p.theme_idx).unwrap_or(5),
         "panes": pane_data,
         "recent_symbols": panes.first().map(|p| &p.recent_symbols).cloned().unwrap_or_default(),
+        // Pane geometry: the authoritative recursive split tree (modern path)
+        // plus the legacy float ratios (fallback path). Restored together with
+        // the layout so split positions survive a save/load round-trip.
+        "pane_layout": serde_json::to_value(&wl.pane_layout).unwrap_or(serde_json::Value::Null),
+        "splits": {
+            "h":  wl.pane_split_h,  "v":  wl.pane_split_v,
+            "h2": wl.pane_split_h2, "v2": wl.pane_split_v2,
+            "v3": wl.pane_split_v3, "v4": wl.pane_split_v4,
+            "v5": wl.pane_split_v5, "v6": wl.pane_split_v6,
+        },
     });
     serde_json::to_string_pretty(&state).unwrap_or_default()
 }
 
-pub(crate) fn save_workspace(name: &str, panes: &[Chart], layout: Layout) {
-    let json = workspace_to_json(panes, layout);
-    let safe_name: String = name.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' }).collect();
-    let path = workspace_dir().join(format!("{}.json", safe_name));
+/// Filesystem-safe workspace file stem (shared by save/delete/rename so they
+/// always resolve to the same path for a given display name).
+fn sanitize_workspace_name(name: &str) -> String {
+    name.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' }).collect()
+}
+
+pub(crate) fn save_workspace(name: &str, panes: &[Chart], layout: Layout, wl: &Watchlist) {
+    let json = workspace_to_json(panes, layout, wl);
+    let path = workspace_dir().join(format!("{}.json", sanitize_workspace_name(name)));
     let _ = crate::state::persistence::atomic_write(&path, json.as_bytes());
+}
+
+/// Delete a saved workspace by display name. No-op if it doesn't exist.
+pub(crate) fn delete_workspace(name: &str) {
+    let path = workspace_dir().join(format!("{}.json", sanitize_workspace_name(name)));
+    let _ = std::fs::remove_file(path);
+}
+
+/// Rename a saved workspace file. No-op if `old` is missing or names collide.
+pub(crate) fn rename_workspace(old: &str, new: &str) {
+    let from = workspace_dir().join(format!("{}.json", sanitize_workspace_name(old)));
+    let to   = workspace_dir().join(format!("{}.json", sanitize_workspace_name(new)));
+    if from != to && from.exists() {
+        let _ = std::fs::rename(from, to);
+    }
 }
 
 pub(crate) fn list_workspaces() -> Vec<String> {

@@ -471,12 +471,20 @@ pub(crate) fn draw_content(
     let _ = (panes, ap); // silence unused warnings when called from analysis_panel
 }
 
+/// Rail registration — see [`super::right_rail`].
+pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
+    id: "scanner",
+    is_open: |w| w.scanner_open,
+    render: |cx, slot| draw(cx.ctx, cx.watchlist, cx.panes, cx.active_pane, cx.t, Some(slot)),
+};
+
 pub(crate) fn draw(
     ctx: &egui::Context,
     watchlist: &mut Watchlist,
     panes: &mut [Chart],
     ap: usize,
     t: &Theme,
+    slot: Option<super::side_panel_shell::RailSlot>,
 ) {
     if !watchlist.scanner_open { return; }
 
@@ -485,6 +493,7 @@ pub(crate) fn draw(
     let resp = SidePanelShell::new("scanner_panel", "SCANNERS")
         .width(Width::Narrow)
         .resizable(180.0..=420.0)
+        .rail_slot(slot)
         .show(ctx, t, |ui, t| {
             let panel_w = ui.available_width();
             draw_content(ui, watchlist, panes, ap, t, &mut pending_symbol, panel_w);

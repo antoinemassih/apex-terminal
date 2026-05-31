@@ -143,11 +143,12 @@ pub struct Tabs<'a> {
 }
 
 impl<'a> Tabs<'a> {
+    pub fn new_default_treatment(active: &'a mut usize, labels: &'a [&'a str]) -> Self { Self::new(active, labels) }
     pub fn new(active: &'a mut usize, labels: &'a [&'a str]) -> Self {
         Self {
             active,
             source: Source::Labels(labels),
-            treatment: TabTreatment::default(),
+            treatment: crate::ui_kit::style::style_tab_treatment(),
             size: Size::Md,
             closable: false,
             reorderable: false,
@@ -162,7 +163,9 @@ impl<'a> Tabs<'a> {
         Self {
             active,
             source: Source::Items(items),
-            treatment: TabTreatment::default(),
+            // Default treatment comes from the active style preset — callers that
+            // want a specific treatment chain `.treatment(...)` to override.
+            treatment: crate::ui_kit::style::style_tab_treatment(),
             size: Size::Md,
             closable: false,
             reorderable: false,
