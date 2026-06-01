@@ -19,6 +19,7 @@ pub mod top_nav;
 pub mod nav_cluster;
 pub mod ticker_strip;
 pub mod toolnav;
+pub mod alert_feed;
 
 use egui::{Color32, Response, RichText, Stroke, Ui, Widget};
 use super::super::style::*;

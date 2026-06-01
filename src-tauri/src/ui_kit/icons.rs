@@ -105,6 +105,7 @@ impl Icon {
     pub const MAGNET: &'static str = ph::MAGNET;
     pub const BROADCAST: &'static str = ph::BROADCAST;
     pub const TREE_STRUCTURE: &'static str = ph::TREE_STRUCTURE;
+    pub const STACK: &'static str = ph::STACK;
     pub const LOCK: &'static str = ph::LOCK;
     pub const LOCK_OPEN: &'static str = ph::LOCK_OPEN;
     pub const LIGHTNING: &'static str = ph::LIGHTNING;

@@ -4732,7 +4732,7 @@ pub(crate) struct SavedOption {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum WatchlistTab { Stocks, Chain, Heat }
+pub(crate) enum WatchlistTab { Stocks, Chain, Heat, Scan }
 
 // ─── Scanner types ──────────────────────────────────────────────────────────
 

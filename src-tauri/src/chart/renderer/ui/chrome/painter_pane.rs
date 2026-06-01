@@ -76,6 +76,8 @@ const ICON_BTN_W_DOM: f32 = 52.0;
 const ICON_BTN_W_OPTIONS: f32 = 68.0;
 const ICON_BTN_W_OV: f32 = 80.0;
 const ICON_BTN_W_DRAWING: f32 = 60.0;
+/// Width for the LAYERS (object-tree) button.
+const ICON_BTN_W_LAYERS: f32 = 60.0;
 /// Maximum height for option side / DTE badges.
 const BADGE_HEIGHT_MAX: f32 = 16.0;
 /// Vertical inset reserved around badges (top + bottom combined).
@@ -336,10 +338,14 @@ pub struct PainterPaneHeader<'a> {
     show_overlay_btn: bool,
     /// Whether overlay editing is active or overlays are present (button lit).
     overlay_btn_active: bool,
-    /// Show drawing-palette toggle button (immediately left of ORDER).
+    /// Show drawing-palette toggle button (kept for compatibility; not shown by default).
     show_drawing_btn: bool,
     /// Whether the per-pane drawing palette is currently visible (button lit).
     drawing_btn_active: bool,
+    /// Show object-tree layers button (replaces the old signals / draw button).
+    show_layers_btn: bool,
+    /// Whether the object tree is currently open (button lit).
+    layers_btn_active: bool,
     /// Whether the DOM sidebar is currently open (button lit).
     dom_btn_active: bool,
     /// Sense for tab strip interactions — use `Sense::click_and_drag()` for cross-pane drag.
@@ -399,6 +405,8 @@ impl<'a> PainterPaneHeader<'a> {
             overlay_btn_active: false,
             show_drawing_btn: false,
             drawing_btn_active: false,
+            show_layers_btn: false,
+            layers_btn_active: false,
             tab_sense: None,
             pane_index: 0,
             show_expand_btn: false,
@@ -468,6 +476,10 @@ impl<'a> PainterPaneHeader<'a> {
     /// right of the OVERLAY button). `active` = palette is currently visible.
     pub fn show_drawing_btn(mut self, active: bool) -> Self {
         self.show_drawing_btn = true; self.drawing_btn_active = active; self
+    }
+    /// Show layers (object-tree) button. `active` = object tree panel is open.
+    pub fn show_layers_btn(mut self, active: bool) -> Self {
+        self.show_layers_btn = true; self.layers_btn_active = active; self
     }
     /// Override tab `Sense` — use `Sense::click_and_drag()` for cross-pane drag support.
     pub fn tab_sense(mut self, s: Sense) -> Self { self.tab_sense = Some(s); self }
@@ -619,6 +631,7 @@ impl<'a> PainterPaneHeader<'a> {
             clicked_options: false,
             clicked_overlay: false,
             clicked_drawing: false,
+            clicked_layers: false,
             tab_rects: Vec::new(),
             plus_tab_rect: None,
             clicked_expand: false,
@@ -958,136 +971,42 @@ impl<'a> PainterPaneHeader<'a> {
             cx += PLUS_TAB_W + gap_sm();
         }
 
-        // ── Right cluster: [ClosePane] [Split] [Expand] [OVERLAY] [DRAW] [ORDER] [DOM] [OPTIONS] [Close] (right-anchored) ──
-        // Layout walks right-to-left for sizing, then left-to-right for painting.
-        // ClosePane + Split are the Phase-1c additions and sit OUTSIDE the
-        // existing close-tab gutter so they remain visible regardless of
-        // whether tab-close is active.
+        // ── Right cluster: [OVERLAY] [LAYERS] [DOM] [OPTIONS] | [ClosePane] [Split] [Expand] | [×] ──
+        // Pane-action controls (close/split/expand) sit at far-right, just left of
+        // the close-tab button. Icon buttons (OVERLAY, LAYERS, etc.) sit to their left.
         const EXPAND_BTN_W: f32 = 28.0;
         const SPLIT_BTN_W:  f32 = 28.0;
         const CLOSE_PANE_BTN_W: f32 = 28.0;
-        let expand_total      = if self.show_expand_btn { EXPAND_BTN_W } else { 0.0 };
-        let split_total       = if self.show_split_btn  { SPLIT_BTN_W }  else { 0.0 };
+        let expand_total      = if self.show_expand_btn     { EXPAND_BTN_W     } else { 0.0 };
+        let split_total       = if self.show_split_btn      { SPLIT_BTN_W      } else { 0.0 };
         let close_pane_total  = if self.show_close_pane_btn { CLOSE_PANE_BTN_W } else { 0.0 };
-        let close_total = if self.show_close { gap_md() + CLOSE_BTN_SIZE + gap_md() } else { gap_sm() };
+        let close_total       = if self.show_close          { gap_md() + CLOSE_BTN_SIZE + gap_md() } else { gap_sm() };
+        // Pane-action controls are at the far right (left of close-tab button).
+        let pane_ctrls_total  = close_pane_total + split_total + expand_total;
         let order_dom_total = {
             let mut w = 0.0f32;
             if self.show_overlay_btn { w += ICON_BTN_W_OV; }
-            if self.show_drawing_btn { w += ICON_BTN_W_DRAWING; }
+            if self.show_layers_btn  { w += ICON_BTN_W_LAYERS; }
             if self.show_order_btn   { w += ICON_BTN_W; }
             if self.show_dom_btn     { w += ICON_BTN_W_DOM; }
             if self.show_options_btn { w += ICON_BTN_W_OPTIONS; }
             w
         };
 
-        // Total span of the new Phase-1c pane controls (Split + ClosePane)
-        // sitting to the LEFT of Expand. They are leftmost in the right cluster.
-        let pane_ctrls_total = split_total + close_pane_total;
-
-        // Strong divider before right icon cluster.
-        if order_dom_total > 0.0 || expand_total > 0.0 || pane_ctrls_total > 0.0 || self.show_close {
+        // Strong divider at the left edge of the entire right cluster.
+        if order_dom_total > 0.0 || pane_ctrls_total > 0.0 || self.show_close {
             header_divider_strong(
                 &painter,
-                rect.right() - close_total - order_dom_total - expand_total - pane_ctrls_total,
+                rect.right() - close_total - pane_ctrls_total - order_dom_total,
                 rect, t,
             );
         }
 
-        // ── Close-pane button (LEFTMOST in right cluster) ─────────────────────
-        if self.show_close_pane_btn {
-            let icon_h = h - ICON_BTN_INSET_V;
-            let cp_rect = Rect::from_min_size(
-                pos2(rect.right() - close_total - order_dom_total - expand_total - split_total - CLOSE_PANE_BTN_W,
-                     rect.center().y - icon_h / 2.0),
-                Vec2::new(CLOSE_PANE_BTN_W, icon_h),
-            );
-            let resp = ui.allocate_rect(cp_rect, Sense::click());
-            if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-            let col = if resp.hovered() { t.bear } else { color_subtle(t.dim) };
-            if resp.hovered() {
-                painter.rect_filled(cp_rect, radius_sm(), color_alpha(t.bear, alpha_subtle()));
-            }
-            // Use the X glyph from Phosphor — same family as the other header icons.
-            painter.text(
-                cp_rect.center(), Align2::CENTER_CENTER,
-                Icon::X,
-                FontId::proportional(font_md_plus()), col,
-            );
-            if resp.clicked() { out.clicked_close_pane = true; }
-        }
-
-        // ── Split button (sibling of Expand, sits to its LEFT) ────────────────
-        if self.show_split_btn {
-            let icon_h = h - ICON_BTN_INSET_V;
-            let split_rect = Rect::from_min_size(
-                pos2(rect.right() - close_total - order_dom_total - expand_total - SPLIT_BTN_W,
-                     rect.center().y - icon_h / 2.0),
-                Vec2::new(SPLIT_BTN_W, icon_h),
-            );
-            let resp = ui.allocate_rect(split_rect, Sense::click());
-            if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-            let col = if self.split_btn_active {
-                t.accent
-            } else if resp.hovered() {
-                t.text
-            } else {
-                color_subtle(t.dim)
-            };
-            if resp.hovered() || self.split_btn_active {
-                painter.rect_filled(split_rect, radius_sm(), color_alpha(
-                    if self.split_btn_active { t.accent } else { t.toolbar_border },
-                    if self.split_btn_active { alpha_tint() } else { alpha_subtle() },
-                ));
-            }
-            painter.text(
-                split_rect.center(), Align2::CENTER_CENTER,
-                Icon::BROWSERS,
-                FontId::proportional(font_md_plus()), col,
-            );
-            if resp.clicked() { out.clicked_split = true; }
-            out.split_btn_rect = Some(split_rect);
-        }
-
-        // ── Expand button (sibling of Split, sits to its RIGHT) ───────────────
-        if self.show_expand_btn {
-            let icon_h = h - ICON_BTN_INSET_V;
-            let expand_rect = Rect::from_min_size(
-                pos2(rect.right() - close_total - order_dom_total - EXPAND_BTN_W,
-                     rect.center().y - icon_h / 2.0),
-                Vec2::new(EXPAND_BTN_W, icon_h),
-            );
-            let resp = ui.allocate_rect(expand_rect, Sense::click());
-            if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-            let col = if self.is_maximized {
-                t.accent
-            } else if resp.hovered() {
-                t.text
-            } else {
-                color_subtle(t.dim)
-            };
-            if resp.hovered() || self.is_maximized {
-                painter.rect_filled(expand_rect, radius_sm(), color_alpha(
-                    if self.is_maximized { t.accent } else { t.toolbar_border },
-                    if self.is_maximized { alpha_tint() } else { alpha_subtle() },
-                ));
-            }
-            painter.text(
-                expand_rect.center(), Align2::CENTER_CENTER,
-                Icon::ARROWS_OUT_SIMPLE,
-                FontId::proportional(font_md_plus()), col,
-            );
-            if resp.clicked() { out.clicked_expand = true; }
-            // Divider between expand and ORDER/DOM cluster
-            if order_dom_total > 0.0 {
-                header_divider_strong(&painter, rect.right() - close_total - order_dom_total, rect, t);
-            }
-        }
-
-        // ── OV + Order + DOM + Options icon buttons ───────────────────────────
+        // ── OV + Layers + DOM + Options icon buttons ──────────────────────────
         {
             use crate::ui_kit::widgets::Button;
             let icon_h = h - ICON_BTN_INSET_V;
-            let mut rx = rect.right() - close_total - order_dom_total;
+            let mut rx = rect.right() - close_total - pane_ctrls_total - order_dom_total;
 
             if self.show_overlay_btn {
                 let r = Rect::from_min_size(
@@ -1101,22 +1020,22 @@ impl<'a> PainterPaneHeader<'a> {
                     .show_at(ui, &painter, r, t);
                 if resp.clicked() { out.clicked_overlay = true; }
                 rx += ICON_BTN_W_OV;
-                if self.show_drawing_btn || self.show_order_btn || self.show_dom_btn || self.show_options_btn {
+                if self.show_layers_btn || self.show_order_btn || self.show_dom_btn || self.show_options_btn {
                     header_divider_strong(&painter, rx, rect, t);
                 }
             }
-            if self.show_drawing_btn {
+            if self.show_layers_btn {
                 let r = Rect::from_min_size(
                     pos2(rx, rect.center().y - icon_h / 2.0),
-                    Vec2::new(ICON_BTN_W_DRAWING, icon_h),
+                    Vec2::new(ICON_BTN_W_LAYERS, icon_h),
                 );
-                let resp = Button::new("DRAW")
-                    .leading_icon(Icon::PENCIL_LINE)
+                let resp = Button::new("LAYERS")
+                    .leading_icon(Icon::STACK)
                     .status(true)
-                    .active(self.drawing_btn_active)
+                    .active(self.layers_btn_active)
                     .show_at(ui, &painter, r, t);
-                if resp.clicked() { out.clicked_drawing = true; }
-                rx += ICON_BTN_W_DRAWING;
+                if resp.clicked() { out.clicked_layers = true; }
+                rx += ICON_BTN_W_LAYERS;
                 if self.show_order_btn || self.show_dom_btn || self.show_options_btn {
                     header_divider_strong(&painter, rx, rect, t);
                 }
@@ -1149,7 +1068,7 @@ impl<'a> PainterPaneHeader<'a> {
                     .show_at(ui, &painter, r, t);
                 if resp.clicked() { out.clicked_dom = true; }
                 rx += ICON_BTN_W_DOM;
-                if self.show_options_btn || self.show_close {
+                if self.show_options_btn {
                     header_divider_strong(&painter, rx, rect, t);
                 }
             }
@@ -1165,11 +1084,87 @@ impl<'a> PainterPaneHeader<'a> {
                     .show_at(ui, &painter, r, t);
                 if resp.clicked() { out.clicked_options = true; }
                 rx += ICON_BTN_W_OPTIONS;
-                if self.show_close {
-                    header_divider_strong(&painter, rx, rect, t);
-                }
+            }
+            // Divider between icon-button cluster and pane-action controls.
+            if pane_ctrls_total > 0.0 && order_dom_total > 0.0 {
+                header_divider_strong(&painter, rx, rect, t);
             }
             let _ = rx;
+        }
+
+        // ── Pane-action controls: [ClosePane] [Split] [Expand] (far-right) ────
+        {
+            let icon_h  = h - ICON_BTN_INSET_V;
+            let pc_left = rect.right() - close_total - pane_ctrls_total;
+            let mut px  = pc_left;
+
+            if self.show_close_pane_btn {
+                let cp_rect = Rect::from_min_size(
+                    pos2(px, rect.center().y - icon_h / 2.0),
+                    Vec2::new(CLOSE_PANE_BTN_W, icon_h),
+                );
+                let resp = ui.allocate_rect(cp_rect, Sense::click());
+                if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                let col = if resp.hovered() { t.bear } else { color_subtle(t.dim) };
+                if resp.hovered() {
+                    painter.rect_filled(cp_rect, radius_sm(), color_alpha(t.bear, alpha_subtle()));
+                }
+                painter.text(
+                    cp_rect.center(), Align2::CENTER_CENTER,
+                    Icon::X, FontId::proportional(font_md_plus()), col,
+                );
+                if resp.clicked() { out.clicked_close_pane = true; }
+                px += CLOSE_PANE_BTN_W;
+            }
+
+            if self.show_split_btn {
+                let split_rect = Rect::from_min_size(
+                    pos2(px, rect.center().y - icon_h / 2.0),
+                    Vec2::new(SPLIT_BTN_W, icon_h),
+                );
+                let resp = ui.allocate_rect(split_rect, Sense::click());
+                if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                let col = if self.split_btn_active { t.accent }
+                    else if resp.hovered() { t.text }
+                    else { color_subtle(t.dim) };
+                if resp.hovered() || self.split_btn_active {
+                    painter.rect_filled(split_rect, radius_sm(), color_alpha(
+                        if self.split_btn_active { t.accent } else { t.toolbar_border },
+                        if self.split_btn_active { alpha_tint() } else { alpha_subtle() },
+                    ));
+                }
+                painter.text(
+                    split_rect.center(), Align2::CENTER_CENTER,
+                    Icon::BROWSERS, FontId::proportional(font_md_plus()), col,
+                );
+                if resp.clicked() { out.clicked_split = true; }
+                out.split_btn_rect = Some(split_rect);
+                px += SPLIT_BTN_W;
+            }
+
+            if self.show_expand_btn {
+                let expand_rect = Rect::from_min_size(
+                    pos2(px, rect.center().y - icon_h / 2.0),
+                    Vec2::new(EXPAND_BTN_W, icon_h),
+                );
+                let resp = ui.allocate_rect(expand_rect, Sense::click());
+                if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                let col = if self.is_maximized { t.accent }
+                    else if resp.hovered() { t.text }
+                    else { color_subtle(t.dim) };
+                if resp.hovered() || self.is_maximized {
+                    painter.rect_filled(expand_rect, radius_sm(), color_alpha(
+                        if self.is_maximized { t.accent } else { t.toolbar_border },
+                        if self.is_maximized { alpha_tint() } else { alpha_subtle() },
+                    ));
+                }
+                painter.text(
+                    expand_rect.center(), Align2::CENTER_CENTER,
+                    Icon::ARROWS_OUT_SIMPLE, FontId::proportional(font_md_plus()), col,
+                );
+                if resp.clicked() { out.clicked_expand = true; }
+            }
+            let _ = px;
         }
 
         // ── Close button (right-anchored) ──
@@ -1224,8 +1219,10 @@ pub struct PainterPaneHeaderResponse {
     pub clicked_options: bool,
     /// Symbol-overlay toggle button was clicked.
     pub clicked_overlay: bool,
-    /// Drawing-palette toggle button was clicked.
+    /// Drawing-palette toggle button was clicked (kept for compat; not shown by default).
     pub clicked_drawing: bool,
+    /// Layers (object-tree) button was clicked.
+    pub clicked_layers: bool,
     /// DOM sidebar toggle button was clicked.
     pub clicked_dom: bool,
     /// Per-tab screen rects (in tab-strip mode). Empty in simple-symbol mode.

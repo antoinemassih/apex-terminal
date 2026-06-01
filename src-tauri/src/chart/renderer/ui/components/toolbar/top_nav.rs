@@ -254,302 +254,38 @@ pub(crate) fn tf_to_secs(tf: &str) -> u32 {
     ALL_TIMEFRAMES.iter().find(|t| t.0 == tf).map(|t| t.1).unwrap_or(0)
 }
 
-pub(crate) fn render(
-    ctx: &egui::Context,
-    panes: &mut Vec<Chart>,
-    active_pane: &mut usize,
-    layout: &mut Layout,
+/// Chart controls cluster — interval / drawing tools / object-tree / indicators
+/// / widgets (+ alt-bar settings). Lives in the toolbar (toolnav) when it is
+/// visible, else falls back inline in the top-nav row so it stays reachable
+/// when the toolbar is toggled off. `tb_rect` is the host row's rect, used by
+/// `paint_nav_col_tint` for the column-hover treatment.
+pub(crate) fn render_chart_controls(
+    ui: &mut egui::Ui,
     watchlist: &mut Watchlist,
+    panes: &mut [Chart],
+    ap: usize,
     t: &Theme,
-    theme_idx: usize,
-    account_data_cached: &Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>,
-    win_ref: Option<Arc<Window>>,
-    conn_panel_open: &mut bool,
-    toasts: &[crate::chart_renderer::ui::tools::notification::Notification],
+    tb_rect: egui::Rect,
 ) {
+    if panes.is_empty() { return; }
+    let ap = ap.min(panes.len() - 1);
+    ui.spacing_mut().item_spacing.x = 0.0;
+    ui.spacing_mut().button_padding = egui::vec2(gap_md(), gap_sm());
     {
-        use std::sync::Once;
-        static SHORTCUTS_REGISTERED: Once = Once::new();
-        SHORTCUTS_REGISTERED.call_once(|| {
-            use crate::foundation::shortcuts::{register, shortcut_cmd, ShortcutEntry, Shortcut};
-            register(ShortcutEntry {
-                shortcut: shortcut_cmd(egui::Key::L),
-                action: "panel.order_ledger_toggle",
-                description: "Toggle order ledger panel",
-                category: "Panels",
-            });
-            // UX-1 Fix 1: Alt+S focuses the symbol input in the top toolbar.
-            if let Err(e) = crate::foundation::shortcuts::registry().write().unwrap().register(ShortcutEntry {
-                shortcut: Shortcut {
-                    modifiers: egui::Modifiers { alt: true, ..egui::Modifiers::NONE },
-                    key: egui::Key::S,
-                },
-                action: "nav.focus_symbol_input",
-                description: "Focus symbol input in toolbar",
-                category: "Navigation",
-            }) {
-                eprintln!("[shortcuts] {}", e);
-            }
-        });
+        let v = &mut ui.style_mut().visuals.widgets;
+        v.inactive.bg_fill        = egui::Color32::TRANSPARENT;
+        v.inactive.weak_bg_fill   = egui::Color32::TRANSPARENT;
+        v.inactive.bg_stroke      = egui::Stroke::NONE;
+        v.hovered.bg_fill         = egui::Color32::TRANSPARENT;
+        v.hovered.weak_bg_fill    = egui::Color32::TRANSPARENT;
+        v.hovered.bg_stroke       = egui::Stroke::NONE;
+        v.active.bg_fill          = egui::Color32::TRANSPARENT;
+        v.active.weak_bg_fill     = egui::Color32::TRANSPARENT;
+        v.active.bg_stroke        = egui::Stroke::NONE;
+        v.open.bg_fill            = egui::Color32::TRANSPARENT;
+        v.open.weak_bg_fill       = egui::Color32::TRANSPARENT;
+        v.open.bg_stroke          = egui::Stroke::NONE;
     }
-    use crate::monitoring::{span_begin, span_end};
-    let ap = *active_pane;
-    span_begin("top_panel");
-
-    // ── Trading-block banner (kill / halt / auto-halt) ──────────────────────
-    // Renders BEFORE the toolbar so it always sits at the very top of the
-    // window, regardless of the toolbar auto-hide state. Operator must see
-    // this immediately when trading is gated.
-    {
-        use crate::chart_renderer::trading::order_manager;
-        if order_manager::is_trading_blocked() {
-            let (auto, kill, halted) = order_manager::trading_block_reason();
-            let (msg, fill) = if kill {
-                (
-                    "\u{1F6D1} KILL SWITCH ENGAGED \u{2014} new orders blocked",
-                    t.bear,
-                )
-            } else if halted && auto {
-                (
-                    "\u{26A0} BROKER DISCONNECTED \u{2014} auto-halted, will resume on reconnect",
-                    t.bear,
-                )
-            } else {
-                // user-engaged halt
-                (
-                    "\u{23F8} TRADING HALTED \u{2014} press Ctrl+Shift+R to resume",
-                    t.warn,
-                )
-            };
-            egui::TopBottomPanel::top("trading_block_banner")
-                .exact_height(28.0)
-                .frame(egui::Frame::NONE
-                    .fill(fill)
-                    .inner_margin(egui::Margin { left: gap_md() as i8, right: gap_md() as i8, top: 4, bottom: 4 }))
-                .show(ctx, |ui| {
-                    let fg = crate::chart_renderer::ui::style::contrast_fg(fill);
-                    ui.horizontal_centered(|ui| {
-                        ui.label(egui::RichText::new(msg)
-                            .color(fg)
-                            .size(font_md() as f32)
-                            .strong());
-                    });
-                });
-        }
-    }
-
-    // Auto-hide toolbar logic
-    let toolbar_visible = if watchlist.toolbar_auto_hide {
-        let mouse_y = ctx.input(|i| i.pointer.hover_pos().map(|p| p.y));
-        let tb_h = if watchlist.compact_mode { 28.0 } else { 36.0 };
-        let in_trigger_zone = mouse_y.map_or(false, |y| y < 8.0);
-        let in_toolbar = mouse_y.map_or(false, |y| y < tb_h);
-        if in_trigger_zone || in_toolbar {
-            watchlist.toolbar_hover_time = Some(std::time::Instant::now());
-            true
-        } else if let Some(t_hover) = watchlist.toolbar_hover_time {
-            if t_hover.elapsed().as_millis() < 500 { true }
-            else { watchlist.toolbar_hover_time = None; false }
-        } else {
-            false
-        }
-    } else {
-        true
-    };
-
-    if !toolbar_visible {
-        // Show thin accent hint line at the very top
-        egui::TopBottomPanel::top("tb_hint")
-            .exact_height(2.0)
-            .frame(egui::Frame::NONE.fill(t.accent))
-            .show(ctx, |_ui| {});
-    }
-
-    if toolbar_visible {
-    // Toolbar height scaled per active style (1.40× for Meridien Bloomberg-style tall bar) (#4).
-    let tb_scale = style_current().toolbar_height_scale;
-    // Shell region: floats as a rounded card with `region_gap` margin when the
-    // active style is tiled (Aperture/Glass); flush flat fill otherwise.
-    let rgap = crate::chart_renderer::ui::style::region_gap();
-    let tb_frame = crate::chart_renderer::ui::style::region_frame(t, t.toolbar_bg)
-        .inner_margin(egui::Margin { left: (gap_xs() + rgap) as i8, right: rgap as i8, top: 0, bottom: 0 });
-    let base_h = (if watchlist.compact_mode { 30.0 } else { 38.0 }) * tb_scale;
-    egui::TopBottomPanel::top("tb")
-        .frame(tb_frame)
-        // Add 2×gap to the reserved height so the card itself keeps `base_h`
-        // after the outer margin insets it top + bottom.
-        .exact_height(base_h + 2.0 * rgap)
-        .show(ctx, |ui| {
-        let tb_rect = ui.max_rect();
-        // Publish toolbar rect so tb_btn can read it for full-height hover/active column overlays.
-        set_toolbar_rect(tb_rect);
-        // Gradient + bevel for Alto/Mariner/Cadence (Raised bevel):
-        // 1. Vertical white-highlight gradient (top→transparent) — matches React's
-        //    linear-gradient(bg-elevated, bg-panel) without hardcoding palette colors.
-        // 2. Crisp 1px bevel lines on top/bottom edges.
-        // Both are no-ops when the active style has no bevel (None).
-        paint_gradient_highlight(ui.painter(), tb_rect, current_style_bevel_hi());
-        paint_bevel(ui.painter(), tb_rect, egui::CornerRadius::ZERO);
-        crate::design_tokens::register_hit(
-            [tb_rect.min.x, tb_rect.min.y, tb_rect.width(), tb_rect.height()],
-            "TOOLBAR", "Toolbar");
-
-        // Window drag handle — spans the full toolbar. Uses Sense::drag only,
-        // so later-drawn buttons (which sense click) get priority for clicks.
-        // Double-click toggles maximize.
-        let drag_resp = ui.interact(tb_rect, egui::Id::new("tb_window_drag"), egui::Sense::click_and_drag());
-        if drag_resp.drag_started() {
-            let win_ref: Option<Arc<Window>> = CURRENT_WINDOW.with(|w| w.borrow().clone());
-            if let Some(w) = &win_ref { let _ = w.drag_window(); }
-        }
-        if drag_resp.double_clicked() {
-            let win_ref: Option<Arc<Window>> = CURRENT_WINDOW.with(|w| w.borrow().clone());
-            if let Some(w) = &win_ref { let m = w.is_maximized(); w.set_maximized(!m); }
-        }
-        // Bottom border line
-        ui.painter().line_segment(
-            [egui::pos2(tb_rect.left(), tb_rect.bottom()), egui::pos2(tb_rect.right(), tb_rect.bottom())],
-            egui::Stroke::new(stroke_std(), t.toolbar_border),
-        );
-
-        // Paper-mode bottom line removed — the $ badge in the toolbar (below)
-        // is now the canonical "live vs paper" affordance.
-
-        ui.horizontal_centered(|ui| {
-            ui.spacing_mut().item_spacing.x = gap_xs();
-
-            // ── Logo (with left edge margin so the glyph doesn't kiss the
-            //         window border) ──
-            ui.add_space(gap_sm());
-            let (logo_rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
-            let lp = ui.painter_at(logo_rect);
-            let lc = logo_rect.center();
-            lp.add(egui::Shape::line(vec![
-                egui::pos2(lc.x, lc.y - 6.0), egui::pos2(lc.x + 6.0, lc.y + 5.0),
-                egui::pos2(lc.x - 6.0, lc.y + 5.0), egui::pos2(lc.x, lc.y - 6.0),
-            ], egui::Stroke::new(stroke_std(), t.accent)));
-            lp.line_segment([egui::pos2(lc.x - 3.5, lc.y + 1.0), egui::pos2(lc.x + 3.5, lc.y + 1.0)], egui::Stroke::new(stroke_std(), t.accent));
-
-            ui.add_space(gap_sm());
-            ui.spacing_mut().item_spacing.x = gap_xs();
-
-            // ── Account button (broker + connection state) ──
-            // #7: When vertical_group_dividers active (Meridien), paint a full-column
-            //     hover fill spanning the entire toolbar height before the button widget.
-            {
-                let connected = account_data_cached.as_ref().map_or(false, |(s,_,_)| s.connected);
-                // PERF: hoist the connected/disconnected variants to &'static strs so
-                // we skip a per-frame `format!` heap allocation in the account button.
-                let acct_label_owned: &'static str = if connected {
-                    concat!("IBKR ", "\u{F1A5}")  // CIRCLE_FILL
-                } else {
-                    concat!("IBKR ", "\u{F198}")  // CIRCLE
-                };
-                let acct_active = watchlist.account_strip_open;
-                let acct_resp = toolbar_btn(ui, &acct_label_owned, acct_active, t);
-                Tooltip::new("Account Summary").show(ui, &acct_resp, t);
-                if style_current().vertical_group_dividers && acct_resp.hovered() {
-                    let col = color_alpha(t.toolbar_border, 80);
-                    let btn_rect = acct_resp.rect;
-                    let col_rect = egui::Rect::from_min_max(
-                        egui::pos2(btn_rect.left() - 2.0, tb_rect.top()),
-                        egui::pos2(btn_rect.right() + 2.0, tb_rect.bottom()),
-                    );
-                    ui.painter().rect_filled(col_rect, egui::CornerRadius::ZERO, col);
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                }
-                if acct_resp.clicked() {
-                    watchlist.update_sidebar_state(|s| s.account_strip_open = !s.account_strip_open);
-                }
-            }
-
-            // ── Paper / Live — bigger badge $-button. ──
-            // LIVE  → solid green fill + dark `$` glyph (very visible "this is real money")
-            // PAPER → transparent fill + warn-colored `$` glyph (visible but neutral)
-            {
-                let paper = crate::chart_renderer::trading::order_manager::is_paper_mode();
-                let live = !paper;
-                let (fill, fg) = if live {
-                    (t.bull, crate::chart_renderer::ui::style::contrast_fg(t.bull))
-                } else {
-                    (egui::Color32::TRANSPARENT, t.warn)
-                };
-                let tip = if live {
-                    "LIVE — real-money trading active. Click to switch to Paper."
-                } else {
-                    "PAPER — practice mode (no real orders). Click to switch to Live."
-                };
-                let resp = KitButton::new("$").variant(KitVariant::Ghost).size(KitSize::Sm)
-                    .fg(fg).fill(fill).min_size(egui::vec2(28.0, row_height_default()))
-                    .show(ui, t);
-                Tooltip::new(tip).show(ui, &resp, t);
-                if resp.clicked() {
-                    if let Err(reason) = crate::chart_renderer::trading::order_manager::set_paper_mode(!paper) {
-                        crate::data::connectivity::errors_sink::report(
-                            crate::data::connectivity::errors_sink::ErrorLevel::Warn,
-                            "trading", "paper_mode_toggle_blocked", reason,
-                        );
-                    }
-                }
-            }
-
-
-            crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
-
-            // ── TPS Reports boss-key button (~70px) ────────────────────────
-            // Replaces the ticker/symbol display. Clicking masks the entire app
-            // with a fake Excel TPS-report spreadsheet (Cmd+Shift+H to dismiss).
-            {
-                let active = watchlist.boss_key_active;
-                let resp = KitButton::new("TPS")
-                    .variant(KitVariant::Ghost)
-                    .size(KitSize::Sm)
-                    .show(ui, t);
-                Tooltip::new(
-                    if active { "Show trading view (⌘⇧H)" } else { "Hide screen — TPS Reports (⌘⇧H)" }
-                ).show(ui, &resp, t);
-                if resp.clicked() {
-                    watchlist.boss_key_active = !watchlist.boss_key_active;
-                }
-            }
-
-            crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
-
-            // ── Scrollable middle section ──
-            // Calculate available width: total - logo(25) - symbol(~70) - right section(~350)
-            let right_width = 130.0; // window controls + Opt button
-            let middle_width = (ui.available_width() - right_width).max(60.0);
-            egui::ScrollArea::horizontal().max_width(middle_width).show(ui, |ui| {
-            // Density-first defaults for the entire scrollable middle nav:
-            //   item_spacing.x = 0       → no auto gap between buttons; cluster
-            //                              breaks come from explicit `add_space()`.
-            //   button_padding = (12, 8) → gap_md horizontal, gap_sm vertical.
-            //                              Comfortable click targets without
-            //                              bloating the toolbar height.
-            ui.spacing_mut().item_spacing.x = 0.0;
-            ui.spacing_mut().button_padding = egui::vec2(gap_md(), gap_sm());
-
-            // ── Strip the egui-default button bg / border so menu_button and
-            //    plain Button widgets paint transparently. The visible
-            //    hover/active fill comes from `paint_nav_col_tint` (full
-            //    toolbar-height column treatment, matching the right-side panel
-            //    toggles). Without this, the dropdowns paint *both* treatments.
-            {
-                let v = &mut ui.style_mut().visuals.widgets;
-                v.inactive.bg_fill        = egui::Color32::TRANSPARENT;
-                v.inactive.weak_bg_fill   = egui::Color32::TRANSPARENT;
-                v.inactive.bg_stroke      = egui::Stroke::NONE;
-                v.hovered.bg_fill         = egui::Color32::TRANSPARENT;
-                v.hovered.weak_bg_fill    = egui::Color32::TRANSPARENT;
-                v.hovered.bg_stroke       = egui::Stroke::NONE;
-                v.active.bg_fill          = egui::Color32::TRANSPARENT;
-                v.active.weak_bg_fill     = egui::Color32::TRANSPARENT;
-                v.active.bg_stroke        = egui::Stroke::NONE;
-                v.open.bg_fill            = egui::Color32::TRANSPARENT;
-                v.open.weak_bg_fill       = egui::Color32::TRANSPARENT;
-                v.open.bg_stroke          = egui::Stroke::NONE;
-            }
-
             // ── Interval buttons — favorites segmented control + dropdown caret ──
             // Favorites appear "outside" as quick-access buttons (mirrors layouts).
             // Full timeframe list lives in the dropdown; star toggles favoriting.
@@ -1414,6 +1150,341 @@ pub(crate) fn render(
                 }).show(ui, &widgets_menu.response, t);
             }
 
+            crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
+
+            // ── Magnet snap — relocated from the drawing palette. ──
+            {
+                let cur_magnet = panes[ap].magnet;
+                let r = toolbar_btn(ui, Icon::MAGNET, cur_magnet, t);
+                Tooltip::new("Magnet snap").show(ui, &r, t);
+                if r.clicked() {
+                    crate::chart_renderer::commands::push(
+                        crate::chart_renderer::commands::AppCommand::SetChartFlag {
+                            pane: ap,
+                            flag: crate::chart_renderer::commands::ChartFlag::Magnet,
+                            value: !cur_magnet,
+                        },
+                    );
+                }
+            }
+            // ── Hit-alert toggle — relocated from the drawing palette. Shift
+            //    fans the change out to all panes (same as broadcast). ──
+            {
+                let cur_hit = panes[ap].hit_highlight;
+                let cur_broadcast = watchlist.broadcast_mode;
+                let r = toolbar_btn(ui, Icon::LINE_SEGMENT, cur_hit, t);
+                Tooltip::new("Hit alerts — trendline / swing flash").show(ui, &r, t);
+                if r.clicked() {
+                    let shift = ui.input(|i| i.modifiers.shift);
+                    let v = !cur_hit;
+                    panes[ap].hit_highlight = v;
+                    publish_toggle(
+                        watchlist, shift || cur_broadcast,
+                        crate::state::subscriptions::PaneToggle::HitHighlight, v, ap,
+                    );
+                }
+            }
+}
+
+pub(crate) fn render(
+    ctx: &egui::Context,
+    panes: &mut Vec<Chart>,
+    active_pane: &mut usize,
+    layout: &mut Layout,
+    watchlist: &mut Watchlist,
+    t: &Theme,
+    theme_idx: usize,
+    account_data_cached: &Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>,
+    win_ref: Option<Arc<Window>>,
+    conn_panel_open: &mut bool,
+    toasts: &[crate::chart_renderer::ui::tools::notification::Notification],
+) {
+    {
+        use std::sync::Once;
+        static SHORTCUTS_REGISTERED: Once = Once::new();
+        SHORTCUTS_REGISTERED.call_once(|| {
+            use crate::foundation::shortcuts::{register, shortcut_cmd, ShortcutEntry, Shortcut};
+            register(ShortcutEntry {
+                shortcut: shortcut_cmd(egui::Key::L),
+                action: "panel.order_ledger_toggle",
+                description: "Toggle order ledger panel",
+                category: "Panels",
+            });
+            // UX-1 Fix 1: Alt+S focuses the symbol input in the top toolbar.
+            if let Err(e) = crate::foundation::shortcuts::registry().write().unwrap().register(ShortcutEntry {
+                shortcut: Shortcut {
+                    modifiers: egui::Modifiers { alt: true, ..egui::Modifiers::NONE },
+                    key: egui::Key::S,
+                },
+                action: "nav.focus_symbol_input",
+                description: "Focus symbol input in toolbar",
+                category: "Navigation",
+            }) {
+                eprintln!("[shortcuts] {}", e);
+            }
+        });
+    }
+    use crate::monitoring::{span_begin, span_end};
+    let ap = *active_pane;
+    span_begin("top_panel");
+
+    // ── Trading-block banner (kill / halt / auto-halt) ──────────────────────
+    // Renders BEFORE the toolbar so it always sits at the very top of the
+    // window, regardless of the toolbar auto-hide state. Operator must see
+    // this immediately when trading is gated.
+    {
+        use crate::chart_renderer::trading::order_manager;
+        if order_manager::is_trading_blocked() {
+            let (auto, kill, halted) = order_manager::trading_block_reason();
+            let (msg, fill) = if kill {
+                (
+                    "\u{1F6D1} KILL SWITCH ENGAGED \u{2014} new orders blocked",
+                    t.bear,
+                )
+            } else if halted && auto {
+                (
+                    "\u{26A0} BROKER DISCONNECTED \u{2014} auto-halted, will resume on reconnect",
+                    t.bear,
+                )
+            } else {
+                // user-engaged halt
+                (
+                    "\u{23F8} TRADING HALTED \u{2014} press Ctrl+Shift+R to resume",
+                    t.warn,
+                )
+            };
+            egui::TopBottomPanel::top("trading_block_banner")
+                .exact_height(28.0)
+                .frame(egui::Frame::NONE
+                    .fill(fill)
+                    .inner_margin(egui::Margin { left: gap_md() as i8, right: gap_md() as i8, top: 4, bottom: 4 }))
+                .show(ctx, |ui| {
+                    let fg = crate::chart_renderer::ui::style::contrast_fg(fill);
+                    ui.horizontal_centered(|ui| {
+                        ui.label(egui::RichText::new(msg)
+                            .color(fg)
+                            .size(font_md() as f32)
+                            .strong());
+                    });
+                });
+        }
+    }
+
+    // Auto-hide toolbar logic
+    let toolbar_visible = if watchlist.toolbar_auto_hide {
+        let mouse_y = ctx.input(|i| i.pointer.hover_pos().map(|p| p.y));
+        let tb_h = if watchlist.compact_mode { 28.0 } else { 36.0 };
+        let in_trigger_zone = mouse_y.map_or(false, |y| y < 8.0);
+        let in_toolbar = mouse_y.map_or(false, |y| y < tb_h);
+        if in_trigger_zone || in_toolbar {
+            watchlist.toolbar_hover_time = Some(std::time::Instant::now());
+            true
+        } else if let Some(t_hover) = watchlist.toolbar_hover_time {
+            if t_hover.elapsed().as_millis() < 500 { true }
+            else { watchlist.toolbar_hover_time = None; false }
+        } else {
+            false
+        }
+    } else {
+        true
+    };
+
+    if !toolbar_visible {
+        // Show thin accent hint line at the very top
+        egui::TopBottomPanel::top("tb_hint")
+            .exact_height(2.0)
+            .frame(egui::Frame::NONE.fill(t.accent))
+            .show(ctx, |_ui| {});
+    }
+
+    let mut order_clicked = false;
+    if toolbar_visible {
+    // Toolbar height scaled per active style (1.40× for Meridien Bloomberg-style tall bar) (#4).
+    let tb_scale = style_current().toolbar_height_scale;
+    // Shell region: floats as a rounded card with `region_gap` margin when the
+    // active style is tiled (Aperture/Glass); flush flat fill otherwise.
+    let rgap = crate::chart_renderer::ui::style::region_gap();
+    let tb_frame = crate::chart_renderer::ui::style::region_frame(t, t.toolbar_bg)
+        .inner_margin(egui::Margin { left: (gap_xs() + rgap) as i8, right: rgap as i8, top: 0, bottom: 0 });
+    let base_h = (if watchlist.compact_mode { 30.0 } else { 38.0 }) * tb_scale;
+    egui::TopBottomPanel::top("tb")
+        .frame(tb_frame)
+        // Add 2×gap to the reserved height so the card itself keeps `base_h`
+        // after the outer margin insets it top + bottom.
+        .exact_height(base_h + 2.0 * rgap)
+        .show(ctx, |ui| {
+        let tb_rect = ui.max_rect();
+        // Publish toolbar rect so tb_btn can read it for full-height hover/active column overlays.
+        set_toolbar_rect(tb_rect);
+        // Gradient + bevel for Alto/Mariner/Cadence (Raised bevel):
+        // 1. Vertical white-highlight gradient (top→transparent) — matches React's
+        //    linear-gradient(bg-elevated, bg-panel) without hardcoding palette colors.
+        // 2. Crisp 1px bevel lines on top/bottom edges.
+        // Both are no-ops when the active style has no bevel (None).
+        paint_gradient_highlight(ui.painter(), tb_rect, current_style_bevel_hi());
+        paint_bevel(ui.painter(), tb_rect, egui::CornerRadius::ZERO);
+        crate::design_tokens::register_hit(
+            [tb_rect.min.x, tb_rect.min.y, tb_rect.width(), tb_rect.height()],
+            "TOOLBAR", "Toolbar");
+
+        // Window drag handle — spans the full toolbar. Uses Sense::drag only,
+        // so later-drawn buttons (which sense click) get priority for clicks.
+        // Double-click toggles maximize.
+        let drag_resp = ui.interact(tb_rect, egui::Id::new("tb_window_drag"), egui::Sense::click_and_drag());
+        if drag_resp.drag_started() {
+            let win_ref: Option<Arc<Window>> = CURRENT_WINDOW.with(|w| w.borrow().clone());
+            if let Some(w) = &win_ref { let _ = w.drag_window(); }
+        }
+        if drag_resp.double_clicked() {
+            let win_ref: Option<Arc<Window>> = CURRENT_WINDOW.with(|w| w.borrow().clone());
+            if let Some(w) = &win_ref { let m = w.is_maximized(); w.set_maximized(!m); }
+        }
+        // Bottom border line
+        ui.painter().line_segment(
+            [egui::pos2(tb_rect.left(), tb_rect.bottom()), egui::pos2(tb_rect.right(), tb_rect.bottom())],
+            egui::Stroke::new(stroke_std(), t.toolbar_border),
+        );
+
+        // Paper-mode bottom line removed — the $ badge in the toolbar (below)
+        // is now the canonical "live vs paper" affordance.
+
+        ui.horizontal_centered(|ui| {
+            ui.spacing_mut().item_spacing.x = gap_xs();
+
+            // ── Logo (with left edge margin so the glyph doesn't kiss the
+            //         window border) ──
+            ui.add_space(gap_sm());
+            let (logo_rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
+            let lp = ui.painter_at(logo_rect);
+            let lc = logo_rect.center();
+            lp.add(egui::Shape::line(vec![
+                egui::pos2(lc.x, lc.y - 6.0), egui::pos2(lc.x + 6.0, lc.y + 5.0),
+                egui::pos2(lc.x - 6.0, lc.y + 5.0), egui::pos2(lc.x, lc.y - 6.0),
+            ], egui::Stroke::new(stroke_std(), t.accent)));
+            lp.line_segment([egui::pos2(lc.x - 3.5, lc.y + 1.0), egui::pos2(lc.x + 3.5, lc.y + 1.0)], egui::Stroke::new(stroke_std(), t.accent));
+
+            ui.add_space(gap_sm());
+            ui.spacing_mut().item_spacing.x = gap_xs();
+
+            // ── Account button (broker + connection state) ──
+            // #7: When vertical_group_dividers active (Meridien), paint a full-column
+            //     hover fill spanning the entire toolbar height before the button widget.
+            {
+                let connected = account_data_cached.as_ref().map_or(false, |(s,_,_)| s.connected);
+                // PERF: hoist the connected/disconnected variants to &'static strs so
+                // we skip a per-frame `format!` heap allocation in the account button.
+                let acct_label_owned: &'static str = if connected {
+                    concat!("IBKR ", "\u{F1A5}")  // CIRCLE_FILL
+                } else {
+                    concat!("IBKR ", "\u{F198}")  // CIRCLE
+                };
+                let acct_active = watchlist.account_strip_open;
+                let acct_resp = toolbar_btn(ui, &acct_label_owned, acct_active, t);
+                Tooltip::new("Account Summary").show(ui, &acct_resp, t);
+                if style_current().vertical_group_dividers && acct_resp.hovered() {
+                    let col = color_alpha(t.toolbar_border, 80);
+                    let btn_rect = acct_resp.rect;
+                    let col_rect = egui::Rect::from_min_max(
+                        egui::pos2(btn_rect.left() - 2.0, tb_rect.top()),
+                        egui::pos2(btn_rect.right() + 2.0, tb_rect.bottom()),
+                    );
+                    ui.painter().rect_filled(col_rect, egui::CornerRadius::ZERO, col);
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                if acct_resp.clicked() {
+                    watchlist.update_sidebar_state(|s| s.account_strip_open = !s.account_strip_open);
+                }
+            }
+
+            // ── Paper / Live — bigger badge $-button. ──
+            // LIVE  → solid green fill + dark `$` glyph (very visible "this is real money")
+            // PAPER → transparent fill + warn-colored `$` glyph (visible but neutral)
+            {
+                let paper = crate::chart_renderer::trading::order_manager::is_paper_mode();
+                let live = !paper;
+                let (fill, fg) = if live {
+                    (t.bull, crate::chart_renderer::ui::style::contrast_fg(t.bull))
+                } else {
+                    (egui::Color32::TRANSPARENT, t.warn)
+                };
+                let tip = if live {
+                    "LIVE — real-money trading active. Click to switch to Paper."
+                } else {
+                    "PAPER — practice mode (no real orders). Click to switch to Live."
+                };
+                let resp = KitButton::new("$").variant(KitVariant::Ghost).size(KitSize::Sm)
+                    .fg(fg).fill(fill).min_size(egui::vec2(28.0, row_height_default()))
+                    .show(ui, t);
+                Tooltip::new(tip).show(ui, &resp, t);
+                if resp.clicked() {
+                    if let Err(reason) = crate::chart_renderer::trading::order_manager::set_paper_mode(!paper) {
+                        crate::data::connectivity::errors_sink::report(
+                            crate::data::connectivity::errors_sink::ErrorLevel::Warn,
+                            "trading", "paper_mode_toggle_blocked", reason,
+                        );
+                    }
+                }
+            }
+
+
+            crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
+
+            // ── TPS Reports boss-key button (~70px) ────────────────────────
+            // Replaces the ticker/symbol display. Clicking masks the entire app
+            // with a fake Excel TPS-report spreadsheet (Cmd+Shift+H to dismiss).
+            {
+                let active = watchlist.boss_key_active;
+                let resp = KitButton::new("TPS")
+                    .variant(KitVariant::Ghost)
+                    .size(KitSize::Sm)
+                    .show(ui, t);
+                Tooltip::new(
+                    if active { "Show trading view (⌘⇧H)" } else { "Hide screen — TPS Reports (⌘⇧H)" }
+                ).show(ui, &resp, t);
+                if resp.clicked() {
+                    watchlist.boss_key_active = !watchlist.boss_key_active;
+                }
+            }
+
+            crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
+
+            // ── Scrollable middle section ──
+            // Calculate available width: total - logo(25) - symbol(~70) - right section(~350)
+            let right_width = 130.0; // window controls + Opt button
+            let middle_width = (ui.available_width() - right_width).max(60.0);
+            egui::ScrollArea::horizontal().max_width(middle_width).show(ui, |ui| {
+            // Density-first defaults for the entire scrollable middle nav:
+            //   item_spacing.x = 0       → no auto gap between buttons; cluster
+            //                              breaks come from explicit `add_space()`.
+            //   button_padding = (12, 8) → gap_md horizontal, gap_sm vertical.
+            //                              Comfortable click targets without
+            //                              bloating the toolbar height.
+            ui.spacing_mut().item_spacing.x = 0.0;
+            ui.spacing_mut().button_padding = egui::vec2(gap_md(), gap_sm());
+
+            // ── Strip the egui-default button bg / border so menu_button and
+            //    plain Button widgets paint transparently. The visible
+            //    hover/active fill comes from `paint_nav_col_tint` (full
+            //    toolbar-height column treatment, matching the right-side panel
+            //    toggles). Without this, the dropdowns paint *both* treatments.
+            {
+                let v = &mut ui.style_mut().visuals.widgets;
+                v.inactive.bg_fill        = egui::Color32::TRANSPARENT;
+                v.inactive.weak_bg_fill   = egui::Color32::TRANSPARENT;
+                v.inactive.bg_stroke      = egui::Stroke::NONE;
+                v.hovered.bg_fill         = egui::Color32::TRANSPARENT;
+                v.hovered.weak_bg_fill    = egui::Color32::TRANSPARENT;
+                v.hovered.bg_stroke       = egui::Stroke::NONE;
+                v.active.bg_fill          = egui::Color32::TRANSPARENT;
+                v.active.weak_bg_fill     = egui::Color32::TRANSPARENT;
+                v.active.bg_stroke        = egui::Stroke::NONE;
+                v.open.bg_fill            = egui::Color32::TRANSPARENT;
+                v.open.weak_bg_fill       = egui::Color32::TRANSPARENT;
+                v.open.bg_stroke          = egui::Stroke::NONE;
+            }
+
+            // (Chart controls live in the toolnav row — no fallback when off.)
+
             // (Hit-highlight toggle moved to the per-pane top-left strip.)
 
             crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
@@ -1804,6 +1875,29 @@ pub(crate) fn render(
                     }
                 }
 
+                // ORDER — prominent CTA; spawns a floating ticket for the
+                // active pane. Sits left of Search in the right cluster.
+                {
+                    let order = crate::ui_kit::widgets::Button::new("ORDER")
+                        .fill(t.accent)
+                        .show(ui, t);
+                    crate::ui_kit::widgets::Tooltip::new("New order ticket (active chart)")
+                        .show(ui, &order, t);
+                    if order.clicked() { order_clicked = true; }
+                }
+
+                // Toolbar (toolnav row) on/off — icon-only toggle, immediately
+                // left of Search. Default ON for every style; this overrides it.
+                {
+                    let tn_on = crate::chart_renderer::ui::style::toolnav_visible();
+                    let resp = toolbar_btn(ui, Icon::BROWSERS, tn_on, t);
+                    paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), tn_on, "right_toolnav");
+                    crate::ui_kit::widgets::Tooltip::new("Toolbar").show(ui, &resp, t);
+                    if resp.clicked() {
+                        crate::chart_renderer::ui::style::set_toolnav_override(Some(!tn_on));
+                    }
+                }
+
                 crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
 
                 // ── Right nav panel toggles — zero item spacing, second-smallest
@@ -1863,20 +1957,7 @@ pub(crate) fn render(
                 if resp.clicked() { watchlist.charts_library_open = !watchlist.charts_library_open; }
                 nav_divider!(ui, resp);
 
-                // Toolnav (second chrome row) toggle — hybrid: overrides the
-                // active style's default. Clicking forces the row on/off.
-                {
-                    let tn_on = crate::chart_renderer::ui::style::toolnav_visible();
-                    let resp = toolbar_btn(ui, &nav_label(Icon::BROWSERS, "Toolbar"), tn_on, t);
-                    Tooltip::new("Second toolbar row (ticker · tools). Style default; click to override.")
-                        .show(ui, &resp, t);
-                    paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), tn_on, "right_toolnav");
-                    if resp.clicked() {
-                        crate::chart_renderer::ui::style::set_toolnav_override(Some(!tn_on));
-                    }
-                    nav_divider!(ui, resp);
-                }
-
+                // (Toolbar toggle moved next to Search — see below.)
 
                 // Watchlist toggle
                 let resp = toolbar_btn(ui, &nav_label(Icon::LIST, "Watchlist"), watchlist.open, t);
@@ -1978,11 +2059,26 @@ pub(crate) fn render(
     });
     } // end if toolbar_visible
 
-    // ── Toolnav: second chrome row (tools + ticker). Renders only when the
+    // Spawn order ticket if the ORDER button in the top-nav right cluster was clicked.
+    if order_clicked {
+        if let Some(chart) = panes.get_mut(ap) {
+            let fid = chart.floating_order_panes.iter().map(|p| p.id).max().unwrap_or(0) + 1;
+            let sym = chart.symbol.clone();
+            let sr  = ctx.screen_rect();
+            chart.floating_order_panes.push(crate::chart_renderer::trading::FloatingOrderPane {
+                id: fid, title: sym.clone(), symbol: sym,
+                strike: 0.0, is_call: false, qty: 1,
+                pos: egui::pos2(sr.center().x - 105.0, sr.center().y - 100.0),
+                collapsed: false,
+            });
+        }
+    }
+
+    // ── Toolnav: second chrome row (tools + alert feed). Renders only when the
     // active style sets Chrome.toolnav_height > 0 (Aperture/Glass). Stacks
     // directly below the main toolbar, above the workspace.
     if toolbar_visible {
-        super::toolnav::render_toolnav(ctx, watchlist, t);
+        super::toolnav::render_toolnav(ctx, watchlist, panes, ap, t);
     }
 
     if watchlist.account_strip_open {

@@ -71,7 +71,7 @@ pub(crate) static PANELS: &[RailPanelDef] = &[
     super::orders_panel::RAIL,
     super::indicators_panel::RAIL,
     super::playbook_panel::RAIL,
-    super::scanner_panel::RAIL,
+    // Scanner moved into the Watchlist as the "SCAN" tab — no standalone rail entry.
     super::tape_panel::RAIL,
     super::journal_panel::RAIL,
     super::rrg_panel::RAIL,

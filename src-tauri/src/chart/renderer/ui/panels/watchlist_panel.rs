@@ -23,10 +23,10 @@ use crate::ui_kit::widgets::icon_placement::IconPlacement;
 
 /// Map between `WatchlistTab` and the rail's instance-tab `u8` (for duplicates).
 fn wl_tab_to_u8(t: WatchlistTab) -> u8 {
-    match t { WatchlistTab::Stocks => 0, WatchlistTab::Chain => 1, WatchlistTab::Heat => 2 }
+    match t { WatchlistTab::Stocks => 0, WatchlistTab::Chain => 1, WatchlistTab::Heat => 2, WatchlistTab::Scan => 3 }
 }
 fn wl_tab_from_u8(v: u8) -> WatchlistTab {
-    match v { 1 => WatchlistTab::Chain, 2 => WatchlistTab::Heat, _ => WatchlistTab::Stocks }
+    match v { 1 => WatchlistTab::Chain, 2 => WatchlistTab::Heat, 3 => WatchlistTab::Scan, _ => WatchlistTab::Stocks }
 }
 
 /// Rail registration — the watchlist's entry in the [`super::right_rail`] registry.
@@ -61,6 +61,7 @@ if is_spawn || watchlist.open {
         (WatchlistTab::Stocks, "LIST", None),
         (WatchlistTab::Chain,  "CHAIN", None),
         (WatchlistTab::Heat,   "HEAT", None),
+        (WatchlistTab::Scan,   "SCAN", None),
     ];
     let shell_id = if is_spawn { "watchlist_inst" } else { "watchlist" };
     let shell_resp = SidePanelShell::tabs(shell_id, &mut active_tab, &tabs)
@@ -1977,6 +1978,16 @@ if is_spawn || watchlist.open {
                     super::heat_panel::render_heat_panel(ui, watchlist, t, &active_sym, &mut pending_symbol);
                     if let Some(sym) = pending_symbol {
                         panes[ap].pending_symbol_change = Some(sym);
+                    }
+                }
+
+                // Scanner now lives as a watchlist tab (moved from its own panel).
+                WatchlistTab::Scan => {
+                    let panel_w = ui.available_width();
+                    let mut pending_symbol: Option<String> = None;
+                    super::scanner_panel::draw_content(ui, watchlist, panes, ap, t, &mut pending_symbol, panel_w);
+                    if let Some(sym) = pending_symbol {
+                        if let Some(p) = panes.get_mut(ap) { p.pending_symbol_change = Some(sym); }
                     }
                 }
 

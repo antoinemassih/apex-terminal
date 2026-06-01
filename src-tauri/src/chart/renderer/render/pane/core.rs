@@ -463,9 +463,11 @@ fn render_chart_pane(
             .can_go_fwd(can_go_fwd)
             .show_plus_tab(true)
             .show_overlay_btn(chart.overlay_editing || !chart.symbol_overlays.is_empty())
-            .show_drawing_btn(show_drawing_palette)
-            .show_order_btn(chart.floating_order_panes.iter().any(|p| p.strike == 0.0))
-            .show_dom_btn(chart.dom_sidebar_open);
+            // DRAW button removed — drawing tools live in the toolbar (toolnav).
+            // Layers button (object tree) added separately below.
+            // Order button moved to the toolbar (toolnav far-right) — no per-pane button.
+            .show_dom_btn(chart.dom_sidebar_open)
+            .show_layers_btn(watchlist.object_tree_open);
         if !chart.is_option {
             builder = builder.show_options_btn(chart.show_strikes_overlay);
         }
@@ -880,14 +882,14 @@ fn render_chart_pane(
                 }
             }
         }
-        // Symbol-overlay editor toggle (moved out of the in-chart top-left strip).
+        // Symbol-overlay editor toggle.
         if hdr.clicked_overlay {
             chart.overlay_editing = !chart.overlay_editing;
             if chart.overlay_editing { chart.overlay_editing_idx = None; }
         }
-        // Drawing-palette show/hide toggle.
-        if hdr.clicked_drawing {
-            ctx.data_mut(|d| d.insert_temp(show_drawing_palette_id, !show_drawing_palette));
+        // Layers (object tree) — toggle for the active pane.
+        if hdr.clicked_layers {
+            watchlist.update_sidebar_state(|s| s.object_tree_open = !s.object_tree_open);
         }
     }
 
@@ -9052,26 +9054,8 @@ fn render_chart_pane(
                             }
                         });
                 }
-                // Magnet snap — moved from the top toolbar.
-                {
-                    let r = ToolBarButton::icon(Icon::MAGNET)
-                        .active(cur_magnet)
-                        .show(ui, t);
-                    if r.clicked() {
-                        new_magnet = Some(!cur_magnet);
-                    }
-                }
-                // Hit-alert toggle (trendline/swing hit detection flash) —
-                // moved from the top toolbar; Shift fans out via publish_toggle.
-                {
-                    let r = ToolBarButton::icon(Icon::LINE_SEGMENT)
-                        .active(cur_hit)
-                        .show(ui, t);
-                    if r.clicked() {
-                        let shift = ui.input(|i| i.modifiers.shift);
-                        new_hit = Some((!cur_hit, shift || cur_broadcast));
-                    }
-                }
+                // (Magnet snap + hit-alert toggle relocated to the toolbar /
+                //  toolnav — see top_nav::render_chart_controls.)
                 // Trendline filter — moved from the top toolbar.
                 {
                     let r = ToolBarButton::icon(Icon::FUNNEL)

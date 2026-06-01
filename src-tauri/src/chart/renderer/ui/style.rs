@@ -1362,12 +1362,14 @@ pub(crate) fn toolnav_override_opt() -> Option<bool> {
     if x < 0 { None } else { Some(x == 1) }
 }
 /// Resolved: should the toolnav (second chrome row) render this frame?
-/// User override wins; otherwise the style's `toolnav_height > 0` decides.
+/// User override wins; otherwise the toolbar is ON by default for every style
+/// (it's the primary control hub — interval / tools / indicators / order live
+/// here). `toolnav_height` now only sets the height when shown, not visibility.
 #[inline]
 pub(crate) fn toolnav_visible() -> bool {
     match toolnav_override_opt() {
         Some(b) => b,
-        None => current().toolnav_height > 0.0,
+        None => true,
     }
 }
 /// Resolved toolnav height (px). Falls back to 30 when the user forces it on
