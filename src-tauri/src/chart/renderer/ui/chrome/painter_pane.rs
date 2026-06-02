@@ -52,6 +52,33 @@ use crate::ui_kit::icons::Icon;
 
 type Theme = super::super::super::gpu::Theme;
 
+// ─── Button-state primitives ─────────────────────────────────────────────────
+
+/// Collapsed show+active pair for each toggleable pane-header button.
+/// Replaces the previous 10× `show_X: bool` + `X_active: bool` flat fields.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ButtonState {
+    pub(crate) show:   bool,
+    pub(crate) active: bool,
+}
+
+/// Index into the `PainterPaneHeader::buttons` array.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(usize)]
+pub(crate) enum PaneBtn {
+    Template  = 0,
+    Order     = 1,
+    Dom       = 2,
+    Options   = 3,
+    Overlay   = 4,
+    Drawing   = 5, // kept for compatibility; never shown by default
+    Layers    = 6,
+    Expand    = 7,
+    Split     = 8,
+    ClosePanе = 9,
+}
+const PANE_BTN_COUNT: usize = 10;
+
 // ─── Sizing constants ────────────────────────────────────────────────────────
 // Promoted from inline magic numbers. Grouped here so visual tuning lands in one place.
 
@@ -112,7 +139,9 @@ fn badge_fg(theme: &Theme) -> Color32 {
 /// Tri-state color tuple used by every painter-mode button in the header.
 /// Returns `(bg, fg, border)`. Inactive / hovered / active resolve to the same
 /// alpha tiers across +Tab, ORDER, DOM, etc. — so a style-knob change propagates.
-fn painter_btn_colors(t: &Theme, hovered: bool, active: bool) -> (Color32, Color32, Color32) {
+///
+/// `pub(crate)` so other chrome modules can reuse the same button-color logic.
+pub(crate) fn painter_btn_colors(t: &Theme, hovered: bool, active: bool) -> (Color32, Color32, Color32) {
     if active {
         (color_alpha(t.accent, alpha_tint()),
          t.accent,
@@ -131,7 +160,9 @@ fn painter_btn_colors(t: &Theme, hovered: bool, active: bool) -> (Color32, Color
 /// Paint the close `×` glyph inside `rect`, with the standard hover treatment
 /// (bear color + tinted background). Used by the per-tab close, the indicator
 /// chip remove-X, and the pane-level close button.
-fn paint_close_glyph(painter: &egui::Painter, rect: Rect, hovered: bool, theme: &Theme, font_size_offset: f32) {
+///
+/// `pub(crate)` so other chrome modules can reuse the same close-glyph style.
+pub(crate) fn paint_close_glyph(painter: &egui::Painter, rect: Rect, hovered: bool, theme: &Theme, font_size_offset: f32) {
     let col = if hovered { theme.bear } else { color_subtle(theme.dim) };
     if hovered {
         painter.rect_filled(rect, radius_sm(), color_alpha(theme.bear, alpha_tint()));
@@ -147,7 +178,9 @@ fn paint_close_glyph(painter: &egui::Painter, rect: Rect, hovered: bool, theme: 
 /// cursor). `h_avail` is the available header height used to size the badge.
 ///
 /// Paints nothing if both side and expiry are empty/unrecognised.
-fn paint_option_badges(
+///
+/// `pub(crate)` for reuse by other pane-chrome renderers.
+pub(crate) fn paint_option_badges(
     painter: &egui::Painter,
     cx: f32,
     center_y: f32,
@@ -322,47 +355,16 @@ pub struct PainterPaneHeader<'a> {
     // ── New knobs ──────────────────────────────────────────────────────────
     /// Option badges: `(side, expiry_str)` — paints C/P pill + DTE countdown badge.
     option_badges: Option<(&'a str, &'a str)>,
-    /// Whether to show the star/template button after symbol/tabs.
-    show_template_btn: bool,
-    /// Whether the template button is currently active (popup open).
-    template_btn_active: bool,
-    /// Show Order-entry toggle button (top-right cluster).
-    show_order_btn: bool,
-    /// Whether the order entry panel is currently open (button lit).
-    order_btn_active: bool,
-    /// Show DOM sidebar toggle button (top-right cluster).
-    show_dom_btn: bool,
-    show_options_btn: bool,
-    options_btn_active: bool,
-    /// Show symbol-overlay toggle button (left of ORDER in the right cluster).
-    show_overlay_btn: bool,
-    /// Whether overlay editing is active or overlays are present (button lit).
-    overlay_btn_active: bool,
-    /// Show drawing-palette toggle button (kept for compatibility; not shown by default).
-    show_drawing_btn: bool,
-    /// Whether the per-pane drawing palette is currently visible (button lit).
-    drawing_btn_active: bool,
-    /// Show object-tree layers button (replaces the old signals / draw button).
-    show_layers_btn: bool,
-    /// Whether the object tree is currently open (button lit).
-    layers_btn_active: bool,
-    /// Whether the DOM sidebar is currently open (button lit).
-    dom_btn_active: bool,
+    /// All toggleable icon buttons keyed by [`PaneBtn`].
+    /// Replaces 10 × (show_X, X_active) bool pairs.
+    buttons: [ButtonState; PANE_BTN_COUNT],
     /// Sense for tab strip interactions — use `Sense::click_and_drag()` for cross-pane drag.
     tab_sense: Option<Sense>,
     /// Pane index — used to build unique egui Ids for tab interactions.
     pane_index: usize,
-    /// Show expand/collapse button in the right cluster.
-    show_expand_btn: bool,
-    /// Whether the pane is currently maximized (button lit).
+    /// Whether the pane is currently maximized (drives Expand button colour).
     is_maximized: bool,
-    /// Phase 1c — show the split dropdown button (sibling of Expand).
-    /// Pane-level operation, distinct from the per-tab close.
-    show_split_btn: bool,
-    /// Phase 1c — show the close-pane button (sibling of Expand).
-    /// Distinct from `show_close` which closes the active tab.
-    show_close_pane_btn: bool,
-    /// Whether the split popup is currently open (button lit).
+    /// Whether the split popup is currently open (drives Split button colour).
     split_btn_active: bool,
 }
 
@@ -393,26 +395,10 @@ impl<'a> PainterPaneHeader<'a> {
             hovered_tab: None,
             title_font_size: font_md(),
             option_badges: None,
-            show_template_btn: false,
-            template_btn_active: false,
-            show_order_btn: false,
-            order_btn_active: false,
-            show_dom_btn: false,
-            dom_btn_active: false,
-            show_options_btn: false,
-            options_btn_active: false,
-            show_overlay_btn: false,
-            overlay_btn_active: false,
-            show_drawing_btn: false,
-            drawing_btn_active: false,
-            show_layers_btn: false,
-            layers_btn_active: false,
+            buttons: [ButtonState::default(); PANE_BTN_COUNT],
             tab_sense: None,
             pane_index: 0,
-            show_expand_btn: false,
             is_maximized: false,
-            show_split_btn: false,
-            show_close_pane_btn: false,
             split_btn_active: false,
         }
     }
@@ -454,32 +440,30 @@ impl<'a> PainterPaneHeader<'a> {
     }
     /// Show star/template button. `active` = popup is already open.
     pub fn show_template_btn(mut self, active: bool) -> Self {
-        self.show_template_btn = true; self.template_btn_active = active; self
+        self.buttons[PaneBtn::Template as usize] = ButtonState { show: true, active }; self
     }
     /// Show order-entry toggle button. `active` = order entry is currently open.
     pub fn show_order_btn(mut self, active: bool) -> Self {
-        self.show_order_btn = true; self.order_btn_active = active; self
+        self.buttons[PaneBtn::Order as usize] = ButtonState { show: true, active }; self
     }
     /// Show DOM sidebar toggle button. `active` = DOM sidebar is currently open.
     pub fn show_dom_btn(mut self, active: bool) -> Self {
-        self.show_dom_btn = true; self.dom_btn_active = active; self
+        self.buttons[PaneBtn::Dom as usize] = ButtonState { show: true, active }; self
     }
     pub fn show_options_btn(mut self, active: bool) -> Self {
-        self.show_options_btn = true; self.options_btn_active = active; self
+        self.buttons[PaneBtn::Options as usize] = ButtonState { show: true, active }; self
     }
-    /// Show symbol-overlay toggle button (rendered LEFT of the ORDER button).
-    /// `active` = overlay editing is on or symbol overlays are present.
+    /// Show symbol-overlay toggle button. `active` = overlay editing is on or overlays present.
     pub fn show_overlay_btn(mut self, active: bool) -> Self {
-        self.show_overlay_btn = true; self.overlay_btn_active = active; self
+        self.buttons[PaneBtn::Overlay as usize] = ButtonState { show: true, active }; self
     }
-    /// Show drawing-palette toggle button (rendered IMMEDIATELY LEFT of ORDER,
-    /// right of the OVERLAY button). `active` = palette is currently visible.
+    /// Show drawing-palette toggle button (kept for compatibility; not shown by default).
     pub fn show_drawing_btn(mut self, active: bool) -> Self {
-        self.show_drawing_btn = true; self.drawing_btn_active = active; self
+        self.buttons[PaneBtn::Drawing as usize] = ButtonState { show: true, active }; self
     }
     /// Show layers (object-tree) button. `active` = object tree panel is open.
     pub fn show_layers_btn(mut self, active: bool) -> Self {
-        self.show_layers_btn = true; self.layers_btn_active = active; self
+        self.buttons[PaneBtn::Layers as usize] = ButtonState { show: true, active }; self
     }
     /// Override tab `Sense` — use `Sense::click_and_drag()` for cross-pane drag support.
     pub fn tab_sense(mut self, s: Sense) -> Self { self.tab_sense = Some(s); self }
@@ -487,17 +471,17 @@ impl<'a> PainterPaneHeader<'a> {
     pub fn pane_index(mut self, i: usize) -> Self { self.pane_index = i; self }
     /// Show expand button. `maximized` = pane is currently maximized (button lit).
     pub fn show_expand_btn(mut self, maximized: bool) -> Self {
-        self.show_expand_btn = true; self.is_maximized = maximized; self
+        self.buttons[PaneBtn::Expand as usize] = ButtonState { show: true, active: false };
+        self.is_maximized = maximized; self
     }
-    /// Phase 1c — show the split-pane button (sibling of Expand). `popup_open`
-    /// = the H/V dropdown is currently showing (button lit).
+    /// Show the split-pane button. `popup_open` = H/V dropdown is showing (button lit).
     pub fn show_split_btn(mut self, popup_open: bool) -> Self {
-        self.show_split_btn = true; self.split_btn_active = popup_open; self
+        self.buttons[PaneBtn::Split as usize] = ButtonState { show: true, active: false };
+        self.split_btn_active = popup_open; self
     }
-    /// Phase 1c — show the close-pane button (separate from the per-tab
-    /// close, which is gated on `show_close`).
+    /// Show the close-pane button (distinct from the per-tab close).
     pub fn show_close_pane_btn(mut self) -> Self {
-        self.show_close_pane_btn = true; self
+        self.buttons[PaneBtn::ClosePanе as usize] = ButtonState { show: true, active: false }; self
     }
 
     pub fn show(self, ui: &mut Ui) -> PainterPaneHeaderResponse {
@@ -977,19 +961,19 @@ impl<'a> PainterPaneHeader<'a> {
         const EXPAND_BTN_W: f32 = 28.0;
         const SPLIT_BTN_W:  f32 = 28.0;
         const CLOSE_PANE_BTN_W: f32 = 28.0;
-        let expand_total      = if self.show_expand_btn     { EXPAND_BTN_W     } else { 0.0 };
-        let split_total       = if self.show_split_btn      { SPLIT_BTN_W      } else { 0.0 };
-        let close_pane_total  = if self.show_close_pane_btn { CLOSE_PANE_BTN_W } else { 0.0 };
+        let expand_total      = if self.buttons[PaneBtn::Expand as usize].show     { EXPAND_BTN_W     } else { 0.0 };
+        let split_total       = if self.buttons[PaneBtn::Split as usize].show      { SPLIT_BTN_W      } else { 0.0 };
+        let close_pane_total  = if self.buttons[PaneBtn::ClosePanе as usize].show { CLOSE_PANE_BTN_W } else { 0.0 };
         let close_total       = if self.show_close          { gap_md() + CLOSE_BTN_SIZE + gap_md() } else { gap_sm() };
         // Pane-action controls are at the far right (left of close-tab button).
         let pane_ctrls_total  = close_pane_total + split_total + expand_total;
         let order_dom_total = {
             let mut w = 0.0f32;
-            if self.show_overlay_btn { w += ICON_BTN_W_OV; }
-            if self.show_layers_btn  { w += ICON_BTN_W_LAYERS; }
-            if self.show_order_btn   { w += ICON_BTN_W; }
-            if self.show_dom_btn     { w += ICON_BTN_W_DOM; }
-            if self.show_options_btn { w += ICON_BTN_W_OPTIONS; }
+            if self.buttons[PaneBtn::Overlay as usize].show { w += ICON_BTN_W_OV; }
+            if self.buttons[PaneBtn::Layers as usize].show  { w += ICON_BTN_W_LAYERS; }
+            if self.buttons[PaneBtn::Order as usize].show   { w += ICON_BTN_W; }
+            if self.buttons[PaneBtn::Dom as usize].show     { w += ICON_BTN_W_DOM; }
+            if self.buttons[PaneBtn::Options as usize].show { w += ICON_BTN_W_OPTIONS; }
             w
         };
 
@@ -1008,7 +992,7 @@ impl<'a> PainterPaneHeader<'a> {
             let icon_h = h - ICON_BTN_INSET_V;
             let mut rx = rect.right() - close_total - pane_ctrls_total - order_dom_total;
 
-            if self.show_overlay_btn {
+            if self.buttons[PaneBtn::Overlay as usize].show {
                 let r = Rect::from_min_size(
                     pos2(rx, rect.center().y - icon_h / 2.0),
                     Vec2::new(ICON_BTN_W_OV, icon_h),
@@ -1016,15 +1000,15 @@ impl<'a> PainterPaneHeader<'a> {
                 let resp = Button::new("OVERLAY")
                     .leading_icon(Icon::EYE)
                     .status(true)
-                    .active(self.overlay_btn_active)
+                    .active(self.buttons[PaneBtn::Overlay as usize].active)
                     .show_at(ui, &painter, r, t);
                 if resp.clicked() { out.clicked_overlay = true; }
                 rx += ICON_BTN_W_OV;
-                if self.show_layers_btn || self.show_order_btn || self.show_dom_btn || self.show_options_btn {
+                if self.buttons[PaneBtn::Layers as usize].show || self.buttons[PaneBtn::Order as usize].show || self.buttons[PaneBtn::Dom as usize].show || self.buttons[PaneBtn::Options as usize].show {
                     header_divider_strong(&painter, rx, rect, t);
                 }
             }
-            if self.show_layers_btn {
+            if self.buttons[PaneBtn::Layers as usize].show {
                 let r = Rect::from_min_size(
                     pos2(rx, rect.center().y - icon_h / 2.0),
                     Vec2::new(ICON_BTN_W_LAYERS, icon_h),
@@ -1032,15 +1016,15 @@ impl<'a> PainterPaneHeader<'a> {
                 let resp = Button::new("LAYERS")
                     .leading_icon(Icon::STACK)
                     .status(true)
-                    .active(self.layers_btn_active)
+                    .active(self.buttons[PaneBtn::Layers as usize].active)
                     .show_at(ui, &painter, r, t);
                 if resp.clicked() { out.clicked_layers = true; }
                 rx += ICON_BTN_W_LAYERS;
-                if self.show_order_btn || self.show_dom_btn || self.show_options_btn {
+                if self.buttons[PaneBtn::Order as usize].show || self.buttons[PaneBtn::Dom as usize].show || self.buttons[PaneBtn::Options as usize].show {
                     header_divider_strong(&painter, rx, rect, t);
                 }
             }
-            if self.show_order_btn {
+            if self.buttons[PaneBtn::Order as usize].show {
                 let r = Rect::from_min_size(
                     pos2(rx, rect.center().y - icon_h / 2.0),
                     Vec2::new(ICON_BTN_W, icon_h),
@@ -1048,15 +1032,15 @@ impl<'a> PainterPaneHeader<'a> {
                 let resp = Button::new("ORDER")
                     .leading_icon(Icon::CURRENCY_DOLLAR)
                     .status(true)
-                    .active(self.order_btn_active)
+                    .active(self.buttons[PaneBtn::Order as usize].active)
                     .show_at(ui, &painter, r, t);
                 if resp.clicked() { out.clicked_order = true; }
                 rx += ICON_BTN_W;
-                if self.show_dom_btn {
+                if self.buttons[PaneBtn::Dom as usize].show {
                     header_divider_strong(&painter, rx, rect, t);
                 }
             }
-            if self.show_dom_btn {
+            if self.buttons[PaneBtn::Dom as usize].show {
                 let r = Rect::from_min_size(
                     pos2(rx, rect.center().y - icon_h / 2.0),
                     Vec2::new(ICON_BTN_W_DOM, icon_h),
@@ -1064,15 +1048,15 @@ impl<'a> PainterPaneHeader<'a> {
                 let resp = Button::new("DOM")
                     .leading_icon(Icon::LADDER)
                     .status(true)
-                    .active(self.dom_btn_active)
+                    .active(self.buttons[PaneBtn::Dom as usize].active)
                     .show_at(ui, &painter, r, t);
                 if resp.clicked() { out.clicked_dom = true; }
                 rx += ICON_BTN_W_DOM;
-                if self.show_options_btn {
+                if self.buttons[PaneBtn::Options as usize].show {
                     header_divider_strong(&painter, rx, rect, t);
                 }
             }
-            if self.show_options_btn {
+            if self.buttons[PaneBtn::Options as usize].show {
                 let r = Rect::from_min_size(
                     pos2(rx, rect.center().y - icon_h / 2.0),
                     Vec2::new(ICON_BTN_W_OPTIONS, icon_h),
@@ -1080,7 +1064,7 @@ impl<'a> PainterPaneHeader<'a> {
                 let resp = Button::new("OPTIONS")
                     .leading_icon(Icon::CIRCLE)
                     .status(true)
-                    .active(self.options_btn_active)
+                    .active(self.buttons[PaneBtn::Options as usize].active)
                     .show_at(ui, &painter, r, t);
                 if resp.clicked() { out.clicked_options = true; }
                 rx += ICON_BTN_W_OPTIONS;
@@ -1098,7 +1082,7 @@ impl<'a> PainterPaneHeader<'a> {
             let pc_left = rect.right() - close_total - pane_ctrls_total;
             let mut px  = pc_left;
 
-            if self.show_close_pane_btn {
+            if self.buttons[PaneBtn::ClosePanе as usize].show {
                 let cp_rect = Rect::from_min_size(
                     pos2(px, rect.center().y - icon_h / 2.0),
                     Vec2::new(CLOSE_PANE_BTN_W, icon_h),
@@ -1117,7 +1101,7 @@ impl<'a> PainterPaneHeader<'a> {
                 px += CLOSE_PANE_BTN_W;
             }
 
-            if self.show_split_btn {
+            if self.buttons[PaneBtn::Split as usize].show {
                 let split_rect = Rect::from_min_size(
                     pos2(px, rect.center().y - icon_h / 2.0),
                     Vec2::new(SPLIT_BTN_W, icon_h),
@@ -1142,7 +1126,7 @@ impl<'a> PainterPaneHeader<'a> {
                 px += SPLIT_BTN_W;
             }
 
-            if self.show_expand_btn {
+            if self.buttons[PaneBtn::Expand as usize].show {
                 let expand_rect = Rect::from_min_size(
                     pos2(px, rect.center().y - icon_h / 2.0),
                     Vec2::new(EXPAND_BTN_W, icon_h),
