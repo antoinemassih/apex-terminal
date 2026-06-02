@@ -62,10 +62,11 @@ pub(crate) struct ButtonState {
     pub(crate) active: bool,
 }
 
-/// Index into the `PainterPaneHeader::buttons` array.
+/// Index into the `PainterPaneHeader::buttons` array. Also the discriminant of
+/// `PainterPaneHeaderResponse::clicked_button`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(usize)]
-pub(crate) enum PaneBtn {
+pub enum PaneBtn {
     Template  = 0,
     Order     = 1,
     Dom       = 2,
@@ -604,23 +605,14 @@ impl<'a> PainterPaneHeader<'a> {
             clicked_indicator_remove: None,
             clicked_tab: None,
             hover_pos: None,
-            clicked_template: false,
+            clicked_button: None,
             tab_drag_started: None,
             tab_drag_pos: None,
             tab_drag_released: None,
             symbol_rect: None,
             clicked_symbol: false,
-            clicked_order: false,
-            clicked_dom: false,
-            clicked_options: false,
-            clicked_overlay: false,
-            clicked_drawing: false,
-            clicked_layers: false,
             tab_rects: Vec::new(),
             plus_tab_rect: None,
-            clicked_expand: false,
-            clicked_split: false,
-            clicked_close_pane: false,
             split_btn_rect: None,
             link_dot_rect: None,
         };
@@ -1027,15 +1019,8 @@ impl<'a> PainterPaneHeader<'a> {
                 }
             }
 
-            // Dispatch click to the (legacy) per-button response fields.
-            match clicked_btn {
-                Some(PaneBtn::Overlay) => out.clicked_overlay = true,
-                Some(PaneBtn::Layers)  => out.clicked_layers  = true,
-                Some(PaneBtn::Order)   => out.clicked_order   = true,
-                Some(PaneBtn::Dom)     => out.clicked_dom      = true,
-                Some(PaneBtn::Options) => out.clicked_options  = true,
-                _ => {}
-            }
+            // Record which icon-cluster button was clicked (if any).
+            if clicked_btn.is_some() { out.clicked_button = clicked_btn; }
 
             // Divider between icon-button cluster and pane-action controls.
             if pane_ctrls_total > 0.0 && order_dom_total > 0.0 {
@@ -1064,7 +1049,7 @@ impl<'a> PainterPaneHeader<'a> {
                     cp_rect.center(), Align2::CENTER_CENTER,
                     Icon::X, FontId::proportional(font_md_plus()), col,
                 );
-                if resp.clicked() { out.clicked_close_pane = true; }
+                if resp.clicked() { out.clicked_button = Some(PaneBtn::ClosePanе); }
                 px += CLOSE_PANE_BTN_W;
             }
 
@@ -1088,7 +1073,7 @@ impl<'a> PainterPaneHeader<'a> {
                     split_rect.center(), Align2::CENTER_CENTER,
                     Icon::BROWSERS, FontId::proportional(font_md_plus()), col,
                 );
-                if resp.clicked() { out.clicked_split = true; }
+                if resp.clicked() { out.clicked_button = Some(PaneBtn::Split); }
                 out.split_btn_rect = Some(split_rect);
                 px += SPLIT_BTN_W;
             }
@@ -1113,7 +1098,7 @@ impl<'a> PainterPaneHeader<'a> {
                     expand_rect.center(), Align2::CENTER_CENTER,
                     Icon::ARROWS_OUT_SIMPLE, FontId::proportional(font_md_plus()), col,
                 );
-                if resp.clicked() { out.clicked_expand = true; }
+                if resp.clicked() { out.clicked_button = Some(PaneBtn::Expand); }
             }
             let _ = px;
         }
@@ -1153,8 +1138,11 @@ pub struct PainterPaneHeaderResponse {
     pub hover_pos: Option<egui::Pos2>,
 
     // ── New response fields ────────────────────────────────────────────────
-    /// Star/template button was clicked.
-    pub clicked_template: bool,
+    /// Which toggle/action button in the right cluster was clicked this frame
+    /// (Template / Order / Dom / Options / Overlay / Drawing / Layers / Expand /
+    /// Split / ClosePane). At most one per frame. Replaces the previous explosion
+    /// of `clicked_X: bool` fields — match on the [`PaneBtn`] variant instead.
+    pub clicked_button: Option<PaneBtn>,
     /// Index of the tab whose drag just started (first frame of drag).
     pub tab_drag_started: Option<usize>,
     /// Pointer position reported during drag, per dragging tab index.
@@ -1165,34 +1153,24 @@ pub struct PainterPaneHeaderResponse {
     pub symbol_rect: Option<Rect>,
     /// Symbol label was clicked (simple-label mode only).
     pub clicked_symbol: bool,
-    /// Order-entry toggle button was clicked.
-    pub clicked_order: bool,
-    pub clicked_options: bool,
-    /// Symbol-overlay toggle button was clicked.
-    pub clicked_overlay: bool,
-    /// Drawing-palette toggle button was clicked (kept for compat; not shown by default).
-    pub clicked_drawing: bool,
-    /// Layers (object-tree) button was clicked.
-    pub clicked_layers: bool,
-    /// DOM sidebar toggle button was clicked.
-    pub clicked_dom: bool,
     /// Per-tab screen rects (in tab-strip mode). Empty in simple-symbol mode.
     /// Use these to anchor popups (the pane picker, etc.) to a specific tab.
     pub tab_rects: Vec<Rect>,
     /// Screen rect of the +Tab button when shown — for anchoring pickers
     /// triggered by the plus-tab click.
     pub plus_tab_rect: Option<Rect>,
-    /// Expand/collapse button was clicked.
-    pub clicked_expand: bool,
-    /// Phase 1c — split-pane button was clicked. Host pops the H/V picker.
-    pub clicked_split: bool,
-    /// Phase 1c — close-pane button was clicked (distinct from clicked_close
-    /// which closes the active tab).
-    pub clicked_close_pane: bool,
     /// Phase 1c — screen rect of the split button, for anchoring the popup.
     pub split_btn_rect: Option<Rect>,
     /// Screen rect of the link-group dot — for anchoring the group picker popup.
     pub link_dot_rect: Option<Rect>,
+}
+
+impl PainterPaneHeaderResponse {
+    /// Convenience: was the given right-cluster button clicked this frame?
+    #[inline]
+    pub fn clicked(&self, btn: PaneBtn) -> bool {
+        self.clicked_button == Some(btn)
+    }
 }
 
 // ─── Local helpers ──────────────────────────────────────────────────────────

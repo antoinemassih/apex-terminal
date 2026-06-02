@@ -310,7 +310,7 @@ fn render_chart_pane(
     let show_header = true;
     if show_header {
         let _z_pane_header = crate::foundation::frame_profiler::profile_zone("pane_header");
-        use crate::chart_renderer::ui::widgets::painter_pane::PainterPaneHeader;
+        use crate::chart_renderer::ui::widgets::painter_pane::{PainterPaneHeader, PaneBtn};
 
         let header_rect = egui::Rect::from_min_size(pane_rect.min, egui::vec2(pane_rect.width(), pane_top_offset));
         crate::design_tokens::register_hit(
@@ -657,7 +657,7 @@ fn render_chart_pane(
         // ── Wire response → chart mutations ───────────────────────────────
 
         // Expand / restore toggle
-        if hdr.clicked_expand {
+        if hdr.clicked(PaneBtn::Expand) {
             if watchlist.maximized_pane == Some(pane_idx) {
                 watchlist.maximized_pane = None;
             } else {
@@ -668,7 +668,7 @@ fn render_chart_pane(
         // Phase 1c — Split-pane: toggle the popup anchored to this pane's
         // split button. The popup is rendered after the pane render loop
         // (inside the CentralPanel show, where pane_layout is reachable).
-        if hdr.clicked_split {
+        if hdr.clicked(PaneBtn::Split) {
             watchlist.pane_split_popup_for = if watchlist.pane_split_popup_for == Some(pane_idx) {
                 None
             } else {
@@ -680,7 +680,7 @@ fn render_chart_pane(
         // per-pane loop finishes (mutating Vec<Chart> mid-iteration would
         // invalidate the loop's indices). P17 #1: close the leaf by its
         // STABLE id so we don't depend on pane_idx being valid post-mutation.
-        if hdr.clicked_close_pane {
+        if hdr.clicked(PaneBtn::ClosePanе) {
             // P17 #3 — snapshot for undo BEFORE the destructive op.
             crate::chart_renderer::gpu::pane_layout_record_undo(watchlist);
             let close_id = watchlist.pane_ids.get(pane_idx).copied();
@@ -775,7 +775,7 @@ fn render_chart_pane(
         }
 
         // Template button
-        if hdr.clicked_template {
+        if hdr.clicked(PaneBtn::Template) {
             chart.template_popup_open = !chart.template_popup_open;
             chart.template_popup_pos = egui::pos2(header_rect.right() - 30.0, header_rect.bottom() + 4.0);
         }
@@ -856,7 +856,7 @@ fn render_chart_pane(
         }
 
         // Order button — always spawns a new floating order pane for this chart's symbol
-        if hdr.clicked_order {
+        if hdr.clicked(PaneBtn::Order) {
             let fid = chart.floating_order_panes.iter().map(|p| p.id).max().unwrap_or(0) + 1;
             let sym = chart.symbol.clone();
             chart.floating_order_panes.push(FloatingOrderPane {
@@ -867,9 +867,9 @@ fn render_chart_pane(
             });
         }
         // DOM sidebar toggle
-        if hdr.clicked_dom { chart.dom.sidebar_open = !chart.dom.sidebar_open; }
+        if hdr.clicked(PaneBtn::Dom) { chart.dom.sidebar_open = !chart.dom.sidebar_open; }
         // Options strikes overlay toggle (moved from chart top-right circle button)
-        if hdr.clicked_options {
+        if hdr.clicked(PaneBtn::Options) {
             chart.show_strikes_overlay = !chart.show_strikes_overlay;
             if chart.show_strikes_overlay && !chart.overlay_chain_loading {
                 let needs_fetch = chart.overlay_chain_symbol != chart.symbol
@@ -883,12 +883,12 @@ fn render_chart_pane(
             }
         }
         // Symbol-overlay editor toggle.
-        if hdr.clicked_overlay {
+        if hdr.clicked(PaneBtn::Overlay) {
             chart.overlay_editing = !chart.overlay_editing;
             if chart.overlay_editing { chart.overlay_editing_idx = None; }
         }
         // Layers (object tree) — toggle for the active pane.
-        if hdr.clicked_layers {
+        if hdr.clicked(PaneBtn::Layers) {
             watchlist.update_sidebar_state(|s| s.object_tree_open = !s.object_tree_open);
         }
     }
