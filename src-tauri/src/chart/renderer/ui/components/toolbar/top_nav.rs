@@ -150,7 +150,7 @@ pub(crate) fn publish_toggle(
 
 /// Wave 13a helper: sibling of `publish_toggle` for the tri-state
 /// `swing_leg_mode` toggle (u8 cycling 0→1→2→0).
-fn publish_swing_leg_mode(
+pub(crate) fn publish_swing_leg_mode(
     watchlist: &mut Watchlist,
     fan_out: bool,
     value: u8,
@@ -169,7 +169,7 @@ fn publish_swing_leg_mode(
 /// every header element — icon buttons, dropdowns, panel toggles — shares the
 /// same hover/active pixel signature regardless of which widget primitive it
 /// uses underneath.
-fn paint_nav_col_tint(
+pub(crate) fn paint_nav_col_tint(
     ui: &egui::Ui,
     tb_rect: egui::Rect,
     btn_rect: egui::Rect,
@@ -258,7 +258,7 @@ pub(crate) fn tf_to_secs(tf: &str) -> u32 {
 /// share the same `toolbar_bg` fill instead of the default egui window fill.
 /// Call once at the top of every `.show_menu()` / `.show()` closure.
 #[inline]
-fn apply_menu_style(ui: &mut egui::Ui, t: &Theme) {
+pub(crate) fn apply_menu_style(ui: &mut egui::Ui, t: &Theme) {
     ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
     ui.style_mut().visuals.window_fill             = t.toolbar_bg;
 }
