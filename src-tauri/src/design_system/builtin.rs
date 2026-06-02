@@ -1225,6 +1225,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
         },
         chrome: Chrome {
             pane_gap: 0.0, pane_active_indicator: 1, tab_underline_thickness: 0.0,
+            // Lucid: sharp editorial outline — thin border, no fill, near-square corners.
+            button_group_radius: 3.0, button_group_fill_alpha: 0, button_group_border_alpha: 30, button_group_padding: 6.0,
             ..Chrome::default()
         },
         ..StyleSystem::builtin_default()
@@ -1287,6 +1289,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             // Glass: airy floating cards, generous radius, 2-row.
             region_gap: 8.0, region_radius: 16.0, region_border_alpha: 30,
             nav_cluster_radius: 99.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 10.0,
+            // Glass: frosted fill-only group (no hard border) — distinct from Aperture's box.
+            button_group_radius: 12.0, button_group_fill_alpha: 16, button_group_border_alpha: 0, button_group_padding: 6.0,
             toolnav_height: 32.0,
             panel_header_treatment: 2, panel_footer_card: true, panel_footer_radius: 16.0,
             ..Chrome::default()

@@ -191,14 +191,31 @@ pub(crate) fn paint_nav_col_tint(
     tint = motion::lerp_color(tint, active_target, active_t);
     if tint.a() == 0 { return; }
 
-    let col_rect = egui::Rect::from_min_max(
-        egui::pos2(btn_rect.left(),  tb_rect.top()),
-        egui::pos2(btn_rect.right(), tb_rect.bottom()),
-    );
+    // Enclosed styles (Aperture/Glass/Lucid) nest a rounded, vertically-inset
+    // hover/active chip inside the group box instead of a full-height square
+    // column — so the highlight reads as "inside the section", not a full bleed.
+    let (col_rect, col_radius) = if crate::chart_renderer::ui::style::button_group_enclosed() {
+        let inset = 5.0;
+        (
+            egui::Rect::from_min_max(
+                egui::pos2(btn_rect.left(),  tb_rect.top() + inset),
+                egui::pos2(btn_rect.right(), tb_rect.bottom() - inset),
+            ),
+            egui::CornerRadius::same(style_current().r_sm as u8),
+        )
+    } else {
+        (
+            egui::Rect::from_min_max(
+                egui::pos2(btn_rect.left(),  tb_rect.top()),
+                egui::pos2(btn_rect.right(), tb_rect.bottom()),
+            ),
+            egui::CornerRadius::ZERO,
+        )
+    };
     let bg_painter = ui.ctx().layer_painter(
         egui::LayerId::new(egui::Order::Background, egui::Id::new(("nav_col_bg", label_id)))
     );
-    bg_painter.rect_filled(col_rect, 0.0, tint);
+    bg_painter.rect_filled(col_rect, col_radius, tint);
 
     if active_t > 0.001 {
         let st = style_current();
@@ -798,6 +815,9 @@ pub(crate) fn render(
                 // Panel toggle buttons (right-to-left, so ordered right→left)
                 ui.spacing_mut().item_spacing.x = gap_sm();
 
+                // Button-group enclosure — shared by the actions + sidebar-toggle groups.
+                use crate::chart_renderer::ui::style::{button_group_enclosed, ButtonGroupBox};
+                let bg_enclosed = button_group_enclosed();
 
                 // Connection status — apex_data feed dot mapped from ConnectionState.
                 // Green = Subscribed, Amber = Connecting/Authenticated, Red = Backoff/Failed/Idle.
@@ -873,6 +893,10 @@ pub(crate) fn render(
                     if st.nav_buttons_label_only { txt } else { format!("{} {}", icon, txt) }
                 };
 
+                // ── Actions group box (Settings / Search / ORDER / Toolbar toggle) ──
+                let actions_box = ButtonGroupBox::begin(ui);
+                let mut actions_rect: Option<egui::Rect> = None;
+
                 // Settings — always icon-only. UX-1 Fix 2: updated hover text
                 // with Cmd+, shortcut hint; Cmd+, also toggles settings.
                 {
@@ -907,6 +931,7 @@ pub(crate) fn render(
                     let settings_resp = toolbar_btn(ui, Icon::GEAR, watchlist.settings_open, t);
                     Tooltip::new("Settings (Cmd+,)").show(ui, &settings_resp, t);
                     paint_nav_col_tint(ui, tb_rect, settings_resp.rect, t, settings_resp.hovered(), watchlist.settings_open, "right_settings");
+                    actions_rect = Some(settings_resp.rect);
                     if settings_resp.clicked() { watchlist.update_sidebar_state(|s| s.settings_open = !s.settings_open); }
                 }
 
@@ -946,6 +971,12 @@ pub(crate) fn render(
                     if resp.clicked() {
                         crate::chart_renderer::ui::style::set_toolnav_override(Some(!tn_on));
                     }
+                    actions_rect = Some(actions_rect.map_or(resp.rect, |r: egui::Rect| r.union(resp.rect)));
+                }
+
+                // Close the actions group box.
+                if let Some(rect) = actions_rect {
+                    actions_box.end(ui, t, rect, tb_rect);
                 }
 
                 crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
@@ -960,12 +991,8 @@ pub(crate) fn render(
                 // column has visible margin on either side of the text.
                 ui.spacing_mut().button_padding = egui::vec2(gap_lg(), gap_sm());
 
-                // Button-group enclosure: in enclosed styles (Aperture) the 8
-                // sidebar toggles render inside one rounded box and the internal
-                // hairline dividers are suppressed. `sidebar_box` reserves the
-                // background slot; `sidebar_rect` accumulates the button bounds.
-                use crate::chart_renderer::ui::style::{button_group_enclosed, ButtonGroupBox};
-                let bg_enclosed = button_group_enclosed();
+                // Sidebar-toggle group box (Feed → Signals). `sidebar_box` reserves
+                // the background slot; `sidebar_rect` accumulates the button bounds.
                 let sidebar_box = ButtonGroupBox::begin(ui);
                 let mut sidebar_rect: Option<egui::Rect> = None;
 
