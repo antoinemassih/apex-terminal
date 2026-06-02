@@ -79,6 +79,18 @@ pub(crate) fn render(
         v.open.weak_bg_fill       = egui::Color32::TRANSPARENT;
         v.open.bg_stroke          = egui::Stroke::NONE;
     }
+    // Button-group enclosure: when the active style draws group boxes (Aperture)
+    // we wrap each section in a rounded rect and drop the internal separators.
+    use crate::chart_renderer::ui::style::{button_group_enclosed, ButtonGroupBox};
+    let bg_enclosed = button_group_enclosed();
+    let group_box = |ui: &mut egui::Ui, x0: f32, x1: f32, b: ButtonGroupBox| {
+        b.end(ui, t, egui::Rect::from_min_max(
+            egui::pos2(x0, tb_rect.top()), egui::pos2(x1, tb_rect.bottom())), tb_rect);
+    };
+
+            // ── Interval group (own button-section box) ──
+            let interval_box = ButtonGroupBox::begin(ui);
+            let interval_x0 = ui.cursor().left();
             // ── Interval buttons — favorites segmented control + dropdown caret ──
             ui.add_space(gap_xs());
             {
@@ -110,8 +122,20 @@ pub(crate) fn render(
                     watchlist.timeframe_dropdown_pos = egui::pos2(tf_dd_btn.rect.left(), tf_dd_btn.rect.bottom() + 2.0);
                 }
             }
+            // Close the interval group box.
+            let interval_x1 = ui.cursor().left();
+            group_box(ui, interval_x0, interval_x1, interval_box);
 
-            crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
+            // Separator between interval and tools — replaced by box-gap when enclosed.
+            if bg_enclosed {
+                ui.add_space(gap_md());
+            } else {
+                crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
+            }
+
+            // ── Tools group (own button-section box: drawing → hit) ──
+            let tools_box = ButtonGroupBox::begin(ui);
+            let tools_x0 = ui.cursor().left();
 
             // ── Draw dropdown ──
             {
@@ -220,7 +244,7 @@ pub(crate) fn render(
                 ui.spacing_mut().button_padding = prev_pad;
             }
 
-            crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
+            if !bg_enclosed { crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t); }
 
             let _menu_font = mono_sm();
 
@@ -831,7 +855,7 @@ pub(crate) fn render(
                 }).show(ui, &widgets_menu.response, t);
             }
 
-            crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
+            if !bg_enclosed { crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t); }
 
             // ── Magnet snap ──
             {
@@ -864,4 +888,7 @@ pub(crate) fn render(
                     );
                 }
             }
+            // Close the tools group box.
+            let tools_x1 = ui.cursor().left();
+            group_box(ui, tools_x0, tools_x1, tools_box);
 }

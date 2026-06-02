@@ -960,6 +960,15 @@ pub(crate) fn render(
                 // column has visible margin on either side of the text.
                 ui.spacing_mut().button_padding = egui::vec2(gap_lg(), gap_sm());
 
+                // Button-group enclosure: in enclosed styles (Aperture) the 8
+                // sidebar toggles render inside one rounded box and the internal
+                // hairline dividers are suppressed. `sidebar_box` reserves the
+                // background slot; `sidebar_rect` accumulates the button bounds.
+                use crate::chart_renderer::ui::style::{button_group_enclosed, ButtonGroupBox};
+                let bg_enclosed = button_group_enclosed();
+                let sidebar_box = ButtonGroupBox::begin(ui);
+                let mut sidebar_rect: Option<egui::Rect> = None;
+
                 // Divider drawn at the left edge of the just-drawn button's rect (RTL layout).
                 //
                 // Paints on the Foreground layer (NOT `$ui.painter()`) because with
@@ -973,16 +982,21 @@ pub(crate) fn render(
                 // hairline-faint per the theme palette.
                 macro_rules! nav_divider {
                     ($ui:expr, $resp:expr) => {{
-                        let x = ($resp.rect.left() - 4.0).round() + 0.5;
-                        let col = color_alpha(t.dim, alpha_dim());
-                        let painter = $ui.ctx().layer_painter(egui::LayerId::new(
-                            egui::Order::Foreground,
-                            egui::Id::new(("nav_divider", x.to_bits())),
-                        ));
-                        painter.line_segment(
-                            [egui::pos2(x, tb_rect.top()), egui::pos2(x, tb_rect.bottom())],
-                            egui::Stroke::new(stroke_std(), col),
-                        );
+                        // Accumulate the group's bounding rect for the enclosure box.
+                        sidebar_rect = Some(sidebar_rect.map_or($resp.rect, |r: egui::Rect| r.union($resp.rect)));
+                        // Enclosed styles draw the box instead of per-button dividers.
+                        if !bg_enclosed {
+                            let x = ($resp.rect.left() - 4.0).round() + 0.5;
+                            let col = color_alpha(t.dim, alpha_dim());
+                            let painter = $ui.ctx().layer_painter(egui::LayerId::new(
+                                egui::Order::Foreground,
+                                egui::Id::new(("nav_divider", x.to_bits())),
+                            ));
+                            painter.line_segment(
+                                [egui::pos2(x, tb_rect.top()), egui::pos2(x, tb_rect.bottom())],
+                                egui::Stroke::new(stroke_std(), col),
+                            );
+                        }
                     }};
                 }
 
@@ -1032,6 +1046,7 @@ pub(crate) fn render(
                     let signals_resp = toolbar_btn(ui, &nav_label(Icon::LIGHTNING, "Signals"), watchlist.signals_panel_open, t);
                     Tooltip::new("Signals (Alerts + Signals)").show(ui, &signals_resp, t);
                     paint_nav_col_tint(ui, tb_rect, signals_resp.rect, t, signals_resp.hovered(), watchlist.signals_panel_open, "right_signals");
+                    sidebar_rect = Some(sidebar_rect.map_or(signals_resp.rect, |r: egui::Rect| r.union(signals_resp.rect)));
                     if active_count > 0 {
                         // Overlay a Badge at the top-right corner of the Signals button.
                         // Painter-mode positioning: anchor the badge so its center sits at
@@ -1065,6 +1080,11 @@ pub(crate) fn render(
                         Badge::count(active_count as u32).max(99).tone(TagTone::Accent).show(&mut child, t);
                     }
                     if signals_resp.clicked() { watchlist.update_sidebar_state(|s| s.signals_panel_open = !s.signals_panel_open); }
+                }
+
+                // Close the sidebar-toggle group box (Feed → Signals). No-op for flat styles.
+                if let Some(rect) = sidebar_rect {
+                    sidebar_box.end(ui, t, rect, tb_rect);
                 }
 
                 ui.spacing_mut().item_spacing.x = prev_spacing;

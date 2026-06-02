@@ -1439,6 +1439,79 @@ pub(crate) fn footer_visible() -> bool {
 #[inline]
 pub(crate) fn region_gap() -> f32 { current().region_gap }
 
+// ── Button-group enclosure ────────────────────────────────────────────────────
+// A toolbar "button group" is a run of related buttons (sidebar toggles, chart
+// tools). Enclosed styles (Aperture) draw a rounded-rect box around the group
+// and suppress the internal hairline dividers; flat styles (Meridien/Octave)
+// space the buttons and rely on dividers.
+
+/// True when the active style draws a rounded-rect enclosure around button
+/// groups (any fill or border). When false, callers should keep their
+/// inter-button dividers/separators.
+#[inline]
+pub(crate) fn button_group_enclosed() -> bool {
+    let st = current();
+    st.button_group_border_alpha > 0 || st.button_group_fill_alpha > 0
+}
+
+/// Horizontal inner padding (px) inside a button-group enclosure.
+#[inline]
+pub(crate) fn button_group_padding() -> f32 { current().button_group_padding }
+
+/// A deferred rounded-rect enclosure painted *behind* a run of toolbar buttons.
+///
+/// Usage mirrors `segmented_control`'s trough: reserve a background paint slot
+/// before emitting the buttons (so it renders behind them), then call `end`
+/// with the buttons' bounding `content` rect to fill the slot. A no-op for flat
+/// styles (`begin` records no slot), so callers can wrap unconditionally.
+pub(crate) struct ButtonGroupBox {
+    slot: Option<egui::layers::ShapeIdx>,
+}
+
+impl ButtonGroupBox {
+    /// Reserve a background slot if the active style draws group enclosures.
+    pub(crate) fn begin(ui: &mut egui::Ui) -> Self {
+        let slot = if button_group_enclosed() {
+            Some(ui.painter().add(egui::Shape::Noop))
+        } else {
+            None
+        };
+        Self { slot }
+    }
+
+    /// Fill the reserved slot with a rounded-rect box around `content`, inset
+    /// vertically from the `host` toolbar row. No-op when flat.
+    pub(crate) fn end(
+        self,
+        ui: &mut egui::Ui,
+        t: &crate::chart_renderer::gpu::Theme,
+        content: egui::Rect,
+        host: egui::Rect,
+    ) {
+        let Some(slot) = self.slot else { return; };
+        let st = current();
+        let pad = st.button_group_padding;
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(content.left() - pad, host.top() + 3.0),
+            egui::pos2(content.right() + pad, host.bottom() - 3.0),
+        );
+        if !rect.is_finite() || rect.width() < 4.0 { return; }
+        let cr = egui::CornerRadius::same(st.button_group_radius as u8);
+        if st.button_group_fill_alpha > 0 {
+            ui.painter().set(slot, egui::Shape::rect_filled(
+                rect, cr, color_alpha(t.toolbar_border, st.button_group_fill_alpha),
+            ));
+        }
+        if st.button_group_border_alpha > 0 {
+            ui.painter().rect_stroke(
+                rect, cr,
+                egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, st.button_group_border_alpha)),
+                egui::StrokeKind::Inside,
+            );
+        }
+    }
+}
+
 /// Build an `egui::Frame` for a shell region panel (toolbar / side rail).
 /// `fill` is the region's surface colour. Floats as a rounded bordered card
 /// with `region_gap` outer margin when tiled; flat flush fill otherwise.
@@ -1987,6 +2060,14 @@ pub struct StyleSettings {
     pub nav_cluster_fill_alpha: u8,
     /// Nav cluster horizontal inner padding (px).
     pub nav_cluster_padding: f32,
+    /// Button-group enclosure corner radius (px).
+    pub button_group_radius: f32,
+    /// Button-group enclosure fill alpha (0-255). 0 = transparent.
+    pub button_group_fill_alpha: u8,
+    /// Button-group enclosure border alpha (0-255). 0 = no box → flat + dividers.
+    pub button_group_border_alpha: u8,
+    /// Button-group enclosure horizontal inner padding (px).
+    pub button_group_padding: f32,
     /// Second toolbar row (toolnav) height (px). 0 = single-row chrome.
     pub toolnav_height: f32,
     /// Whether the bottom dock (footer) is open by default for this style.
@@ -2105,6 +2186,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
             region_gap: 8.0, region_radius: 12.0, region_border_alpha: 40,
             nav_cluster_radius: 99.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 8.0,
+            button_group_radius: 10.0, button_group_fill_alpha: 10, button_group_border_alpha: 45, button_group_padding: 6.0,
             toolnav_height: 30.0,
             footer_default_open: true,
             panel_header_treatment: 2, panel_section_fill_alpha: 0,
@@ -2158,6 +2240,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
             region_gap: 0.0, region_radius: 0.0, region_border_alpha: 40,
             nav_cluster_radius: 2.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 4.0,
+            button_group_radius: 2.0, button_group_fill_alpha: 0, button_group_border_alpha: 0, button_group_padding: 4.0,
             toolnav_height: 0.0,
             footer_default_open: true,
             panel_header_treatment: 0, panel_section_fill_alpha: 0,
@@ -2215,6 +2298,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
             region_gap: 0.0, region_radius: 0.0, region_border_alpha: 40,
             nav_cluster_radius: 0.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 6.0,
+            button_group_radius: 0.0, button_group_fill_alpha: 0, button_group_border_alpha: 0, button_group_padding: 6.0,
             toolnav_height: 0.0,
             footer_default_open: false,
             panel_header_treatment: 0, panel_section_fill_alpha: 0,
@@ -2243,196 +2327,6 @@ fn style_defaults(id: u8) -> StyleSettings {
 // active-fill behaviour, button treatment, drop shadow) IS captured here;
 // faithful bevels would need a new widget-render capability, not a token.
 
-/// Cadence — Spotify-style pure-black canvas: pill primaries, elevated cards,
-/// 3px active tab underline, uppercase pill labels, flush (gapless) rows.
-fn cadence_style() -> StyleSettings {
-    StyleSettings {
-        r_xs: 4, r_sm: 6, r_md: 10, r_lg: 14, r_pill: 99, r_chip: 99,
-        serif_headlines: false,
-        button_treatment: ButtonTreatment::SoftPill,
-        hairline_borders: true,
-        stroke_hair: 0.5, stroke_thin: 1.0, stroke_std: 1.0,
-        stroke_bold: 1.5, stroke_thick: 2.0,
-        shadows_enabled: true, shadow_blur: 8.0, shadow_offset_y: 2.0, shadow_alpha: 90,
-        solid_active_fills: false, invert_active_fill: false,
-        uppercase_section_labels: true, label_letter_spacing_px: 0.6,
-        toolbar_height_scale: 1.0, header_height_scale: 1.0,
-        font_hero: 22.0,
-        show_active_tab_underline: true, tab_underline_thickness: 3.0,
-        tab_underline_under_text: false,
-        pane_gap: 0.0, pane_gap_alpha: 0,
-        pane_active_indicator: 2,
-        card_padding_y: 12.0, card_padding_x: 16.0,
-        row_height_px: 26.0, button_height_px: 28.0, button_padding_x: 14.0,
-        tab_height: 30.0,
-        font_section_label: 11.0, font_body: 13.0, font_caption: 11.0,
-        density: 1, accent_emphasis: 1.1,
-        cta_height_px: 32.0, cta_padding_x: 16.0,
-        wl_row_side_margin: 0.0, wl_row_corner_radius: 0, wl_row_divider_alpha: 0,
-        wl_symbol_mono: false, section_header_mono: false, section_header_tracking: 0.6,
-        panel_tab_treatment: 2, // Filled
-        // Elevated Spotify cards — subtle raised face.
-        surface_bevel: crate::design_system::style_system::BevelStyle::Raised,
-        bevel_highlight_alpha: 24, bevel_shadow_alpha: 60,
-        ..style_defaults(1) // Aperture base — modern/soft with shadows
-    }
-}
-
-/// Alto — Zed-inspired warm dark: raised button faces, amber active tint,
-/// 2px tab underline, mono uppercase eyebrows, sharp 2/4/6/8 radii.
-fn alto_style() -> StyleSettings {
-    StyleSettings {
-        r_xs: 2, r_sm: 4, r_md: 6, r_lg: 8, r_pill: 99, r_chip: 0,
-        serif_headlines: false,
-        button_treatment: ButtonTreatment::RaisedActive,
-        hairline_borders: false,
-        stroke_hair: 0.5, stroke_thin: 1.0, stroke_std: 1.0,
-        stroke_bold: 1.5, stroke_thick: 2.0,
-        shadows_enabled: true, shadow_blur: 8.0, shadow_offset_y: 2.0, shadow_alpha: 80,
-        solid_active_fills: false, invert_active_fill: false,
-        uppercase_section_labels: true, label_letter_spacing_px: 0.8,
-        toolbar_height_scale: 1.0, header_height_scale: 1.0,
-        font_hero: 22.0,
-        show_active_tab_underline: true, tab_underline_thickness: 2.0,
-        tab_underline_under_text: false,
-        pane_active_indicator: 2,
-        card_padding_y: 10.0, card_padding_x: 12.0,
-        row_height_px: 24.0, button_height_px: 24.0, button_padding_x: 10.0,
-        tab_height: 28.0,
-        font_section_label: 8.0, font_body: 11.0, font_caption: 9.0,
-        density: 1, accent_emphasis: 1.0,
-        // Zed warm-dark raised button faces — warm-cream highlight, dark base.
-        wl_row_side_margin: 0.0, wl_row_corner_radius: 0, wl_row_divider_alpha: 22,
-        wl_symbol_mono: true, section_header_mono: true, section_header_tracking: 0.8,
-        panel_tab_treatment: 0, // Line underline
-        surface_bevel: crate::design_system::style_system::BevelStyle::Raised,
-        bevel_highlight_alpha: 16, bevel_shadow_alpha: 90,
-        ..style_defaults(2) // Octave base — RaisedActive, hairline, compact
-    }
-}
-
-/// Mariner — Alto's nautical sibling: same warm-dark bones, steel-blue
-/// precision markers, ~10% tighter (compact), top-stripe active pane.
-fn mariner_style() -> StyleSettings {
-    StyleSettings {
-        row_height_px: 22.0, button_height_px: 22.0, tab_height: 26.0,
-        toolbar_height_scale: 0.9, header_height_scale: 0.95,
-        density: 0,
-        pane_active_indicator: 1, // top steel-blue stripe on active pane
-        font_body: 10.0,
-        accent_emphasis: 1.05,
-        // Slightly tighter divider for the instrument-panel density feel.
-        wl_row_divider_alpha: 28,
-        // Cool-tinted bevel — slightly stronger than Alto's warm one.
-        bevel_highlight_alpha: 20, bevel_shadow_alpha: 97,
-        ..alto_style()
-    }
-}
-
-/// Lucid — editorial LIGHT (Bauhaus): serif headlines, inverted solid
-/// primaries, no bevels (light themes layer not bevel), restrained radii.
-fn lucid_style() -> StyleSettings {
-    StyleSettings {
-        r_xs: 2, r_sm: 3, r_md: 5, r_lg: 8, r_pill: 99, r_chip: 0,
-        serif_headlines: true,
-        button_treatment: ButtonTreatment::UnderlineActive,
-        hairline_borders: false,
-        stroke_hair: 0.5, stroke_thin: 1.0, stroke_std: 1.0,
-        stroke_bold: 1.5, stroke_thick: 2.0,
-        shadows_enabled: false, shadow_blur: 0.0, shadow_offset_y: 0.0, shadow_alpha: 0,
-        card_floating_shadow: false, card_floating_shadow_alpha: 0,
-        solid_active_fills: true, invert_active_fill: true,
-        uppercase_section_labels: true, label_letter_spacing_px: 0.4,
-        toolbar_height_scale: 1.0, header_height_scale: 1.0,
-        font_hero: 28.0,
-        show_active_tab_underline: false, tab_underline_thickness: 0.0,
-        tab_underline_under_text: false,
-        vertical_group_dividers: false,
-        nav_letter_spacing_px: 0.0, nav_buttons_label_only: false,
-        nav_buttons_uppercase_labels: false,
-        pane_active_indicator: 1,
-        row_height_px: 26.0, button_height_px: 26.0, tab_height: 28.0,
-        font_section_label: 9.0, font_body: 12.0, font_caption: 10.0,
-        density: 1, accent_emphasis: 1.0,
-        cta_height_px: 36.0, cta_padding_x: 16.0,
-        wl_row_side_margin: 0.0, wl_row_corner_radius: 0, wl_row_divider_alpha: 12,
-        wl_symbol_mono: false, section_header_mono: false, section_header_tracking: 0.4,
-        panel_tab_treatment: 0, // Line underline
-        ..style_defaults(0) // Meridien base — editorial (serif/uppercase/invert)
-    }
-}
-
-/// Relay — dark editorial. Bloomberg/terminal character: dark bg, serif display
-/// headlines, high contrast, uppercase all labels, deep card shadows, no rounded
-/// corners. Pairs best with a high-contrast dark palette (e.g. Midnight, Vesper).
-fn relay_style() -> StyleSettings {
-    StyleSettings {
-        r_xs: 0, r_sm: 0, r_md: 2, r_lg: 4, r_pill: 0, r_chip: 0,
-        serif_headlines: true,
-        button_treatment: ButtonTreatment::SoftPill,
-        hairline_borders: true,
-        stroke_hair: 0.4, stroke_thin: 0.8, stroke_std: 1.0,
-        stroke_bold: 1.5, stroke_thick: 2.0,
-        shadows_enabled: true, shadow_blur: 12.0, shadow_offset_y: 4.0, shadow_alpha: 80,
-        card_floating_shadow: true, card_floating_shadow_alpha: 40,
-        solid_active_fills: true, invert_active_fill: true,
-        uppercase_section_labels: true, label_letter_spacing_px: 1.2,
-        toolbar_height_scale: 1.20, header_height_scale: 1.05,
-        font_hero: 48.0, // large display for hero numbers
-        vertical_group_dividers: true,
-        show_active_tab_underline: true, tab_underline_thickness: 2.0,
-        tab_underline_under_text: true,
-        nav_letter_spacing_px: 1.5, nav_buttons_label_only: true, nav_buttons_uppercase_labels: true,
-        pane_active_indicator: 1,
-        row_height_px: 24.0, button_height_px: 26.0, tab_height: 30.0,
-        font_section_label: 9.0, font_body: 11.0, font_caption: 9.0,
-        density: 1, accent_emphasis: 1.0,
-        cta_height_px: 34.0, cta_padding_x: 14.0,
-        wl_row_side_margin: 0.0, wl_row_corner_radius: 0, wl_row_divider_alpha: 30,
-        wl_symbol_mono: true, section_header_mono: true, section_header_tracking: 1.2,
-        panel_tab_treatment: 0, // Line underline
-        pane_active_fill_accent: false,
-        surface_bevel: crate::design_system::style_system::BevelStyle::None,
-        bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
-        ..style_defaults(0) // Meridien base
-    }
-}
-
-/// Glass — modern translucent. The Vercel/Linear/Notion feel: very soft large
-/// radii, light tinted fills, vivid accent, no hard borders. No bevel — panels
-/// feel like frosted glass. Large generous spacing.
-fn glass_style() -> StyleSettings {
-    StyleSettings {
-        r_xs: 6, r_sm: 10, r_md: 16, r_lg: 24, r_pill: 99, r_chip: 99,
-        serif_headlines: false,
-        button_treatment: ButtonTreatment::SoftPill,
-        hairline_borders: false,
-        stroke_hair: 0.3, stroke_thin: 0.5, stroke_std: 0.75,
-        stroke_bold: 1.0, stroke_thick: 1.5,
-        shadows_enabled: true, shadow_blur: 32.0, shadow_offset_y: 8.0, shadow_alpha: 30,
-        card_floating_shadow: true, card_floating_shadow_alpha: 20,
-        solid_active_fills: false, invert_active_fill: false,
-        uppercase_section_labels: false, label_letter_spacing_px: 0.2,
-        toolbar_height_scale: 1.05, header_height_scale: 1.0,
-        font_hero: 28.0,
-        vertical_group_dividers: false,
-        show_active_tab_underline: false, tab_underline_thickness: 0.0,
-        tab_underline_under_text: false,
-        nav_letter_spacing_px: 0.0, nav_buttons_label_only: false, nav_buttons_uppercase_labels: false,
-        pane_active_indicator: 2, // fill
-        row_height_px: 30.0, button_height_px: 32.0, tab_height: 34.0,
-        font_section_label: 10.0, font_body: 13.0, font_caption: 10.0,
-        density: 2, accent_emphasis: 1.2,
-        cta_height_px: 36.0, cta_padding_x: 18.0,
-        wl_row_side_margin: 4.0, wl_row_corner_radius: 10, wl_row_divider_alpha: 0,
-        wl_symbol_mono: false, section_header_mono: false, section_header_tracking: 0.0,
-        panel_tab_treatment: 2, // Filled
-        pane_active_fill_accent: false,
-        surface_bevel: crate::design_system::style_system::BevelStyle::None,
-        bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
-        ..style_defaults(1) // Aperture base — large radii, shadows
-    }
-}
 
 /// Public test accessor for `style_defaults`.
 /// Maps: 0 → Meridien (default `_` arm), 1 → Aperture, 2 → Octave.
@@ -2594,6 +2488,10 @@ pub fn style_system_to_style_settings(
         nav_cluster_radius:            ss.chrome.nav_cluster_radius,
         nav_cluster_fill_alpha:        ss.chrome.nav_cluster_fill_alpha,
         nav_cluster_padding:           ss.chrome.nav_cluster_padding,
+        button_group_radius:           ss.chrome.button_group_radius,
+        button_group_fill_alpha:       ss.chrome.button_group_fill_alpha,
+        button_group_border_alpha:     ss.chrome.button_group_border_alpha,
+        button_group_padding:          ss.chrome.button_group_padding,
         toolnav_height:                ss.chrome.toolnav_height,
         footer_default_open:           ss.chrome.footer_default_open,
         panel_header_treatment:        ss.chrome.panel_header_treatment,

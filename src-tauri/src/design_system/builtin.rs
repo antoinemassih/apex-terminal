@@ -888,6 +888,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             // Meridien: flush contiguous chrome (no floating cards), single row.
             region_gap: 0.0, region_radius: 0.0, region_border_alpha: 40,
             nav_cluster_radius: 0.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 6.0,
+            // Flat: button groups are spaced + divider-separated, no enclosure box.
+            button_group_radius: 0.0, button_group_fill_alpha: 0, button_group_border_alpha: 0, button_group_padding: 6.0,
             toolnav_height: 0.0,
             footer_default_open: false,
             panel_header_treatment: 0, panel_section_fill_alpha: 0,
@@ -1002,6 +1004,9 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             // Aperture signature: 8px floating-card chrome, rounded regions + nav pills, 2-row.
             region_gap: 8.0, region_radius: 12.0, region_border_alpha: 40,
             nav_cluster_radius: 99.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 8.0,
+            // Aperture: button groups render as enclosed rounded-rect sections
+            // (subtle fill + hairline border); internal dividers are suppressed.
+            button_group_radius: 10.0, button_group_fill_alpha: 10, button_group_border_alpha: 45, button_group_padding: 6.0,
             toolnav_height: 30.0,
             // Aperture ships the footer open by default (toggle anytime with Ctrl+`).
             footer_default_open: true,
@@ -1115,6 +1120,8 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             // Octave: dense flush chrome, single row.
             region_gap: 0.0, region_radius: 0.0, region_border_alpha: 40,
             nav_cluster_radius: 2.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 4.0,
+            // Flat dense: minimal-radius groups, no enclosure box (dividers do the work).
+            button_group_radius: 2.0, button_group_fill_alpha: 0, button_group_border_alpha: 0, button_group_padding: 4.0,
             toolnav_height: 0.0,
             footer_default_open: true, // Octave is a dense desk style — ops footer on by default.
             panel_header_treatment: 0, panel_section_fill_alpha: 0,
