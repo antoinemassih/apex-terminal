@@ -1901,6 +1901,26 @@ impl Default for AltBarsState {
     }
 }
 
+/// Symbol-search picker popup state (the `/`-triggered quick symbol switcher).
+/// Field names drop the old `picker_` prefix.
+#[derive(Default)]
+pub(crate) struct SymbolPickerState {
+    /// Popup is open. (was `picker_open`)
+    pub(crate) open:       bool,
+    /// Current query text. (was `picker_query`)
+    pub(crate) query:      String,
+    /// Results: `(symbol, name, exchange/type)`. (was `picker_results`)
+    pub(crate) results:    Vec<(String, String, String)>,
+    /// Last query searched — debounce guard. (was `picker_last_query`)
+    pub(crate) last_query: String,
+    /// Background search in flight. (was `picker_searching`)
+    pub(crate) searching:  bool,
+    /// Receiver for background search results. (was `picker_rx`)
+    pub(crate) rx:         Option<mpsc::Receiver<Vec<(String, String, String)>>>,
+    /// Anchor position for the popup. (was `picker_pos`)
+    pub(crate) pos:        egui::Pos2,
+}
+
 /// All state for the DOM (Depth-of-Market / Price Ladder) panel.
 #[derive(Clone)]
 pub(crate) struct DomPanelState {
@@ -1942,10 +1962,6 @@ impl Default for DomPanelState {
 /// (`if let Some((bar, price)) = …`) continue to work unchanged.
 pub(crate) type DrawCoord = (f32, f32);
 
-/// A price/bar coordinate pair used during in-progress drawing operations.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct DrawPoint { pub(crate) bar: f32, pub(crate) price: f32 }
-
 /// A detected change-point on the price series (from the change-point detection engine).
 #[derive(Debug, Clone)]
 pub(crate) struct ChangePoint {
@@ -1964,21 +1980,6 @@ pub(crate) struct TradePlan {
     pub(crate) contract:   String,
     pub(crate) rr:         f32,
     pub(crate) conviction: f32,
-}
-
-/// A symbol search result row returned by the picker.
-#[derive(Debug, Clone)]
-pub(crate) struct SymbolSearchResult {
-    pub(crate) symbol:        String,
-    pub(crate) name:          String,
-    pub(crate) exchange_type: String,
-}
-
-/// A recently-loaded symbol entry (most-recent-first, capped at 20).
-#[derive(Debug, Clone)]
-pub(crate) struct RecentSymbol {
-    pub(crate) symbol: String,
-    pub(crate) name:   String,
 }
 
 /// Measure-tool state (shift+drag distance measurement).
@@ -2128,7 +2129,7 @@ pub(crate) struct Chart {
     pub(crate) precursor_score: f32,
     pub(crate) precursor_direction: i8,
     pub(crate) precursor_description: String,
-    pub(crate) change_points: Vec<(i64, String, f32)>, // (time, type, confidence)
+    pub(crate) change_points: Vec<ChangePoint>,
     pub(crate) trade_plan: Option<TradePlan>,
     pub(crate) divergence_markers: Vec<super::DivergenceMarker>,
     pub(crate) show_divergences: bool,
@@ -2163,12 +2164,7 @@ pub(crate) struct Chart {
     pub(crate) zoom_selecting: bool, pub(crate) zoom_start: egui::Pos2,
     pub(crate) axis_drag_mode: u8, // 0=none, 1=xaxis, 2=yaxis
     // Symbol picker
-    pub(crate) picker_open: bool, pub(crate) picker_query: String,
-    pub(crate) picker_results: Vec<(String, String, String)>, // (symbol, name, exchange/type)
-    pub(crate) picker_last_query: String, // debounce: only search when query changes
-    pub(crate) picker_searching: bool, // true while background search is in flight
-    pub(crate) picker_rx: Option<mpsc::Receiver<Vec<(String, String, String)>>>, // receives search results from bg thread
-    pub(crate) picker_pos: egui::Pos2, // anchor position for the popup
+    pub(crate) picker: SymbolPickerState,
     pub(crate) recent_symbols: Vec<(String, String)>, // (symbol, name) — most recent first, max 20
     // Group management
     pub(crate) group_manager_open: bool,
@@ -2467,8 +2463,7 @@ impl Chart {
             last_signal_fetch: std::time::Instant::now(), drawings_requested: false,
             draw_color: indicator_default_color(0, &get_theme(5)), group_manager_open: false, new_group_name: String::new(),
             zoom_selecting: false, zoom_start: egui::Pos2::ZERO, axis_drag_mode: 0,
-            picker_open: false, picker_query: String::new(), picker_results: vec![],
-            picker_last_query: String::new(), picker_searching: false, picker_rx: None, picker_pos: egui::Pos2::ZERO,
+            picker: SymbolPickerState::default(),
             recent_symbols: vec![("AAPL".into(), "Apple".into()), ("SPY".into(), "S&P 500 ETF".into()), ("TSLA".into(), "Tesla".into()), ("NVDA".into(), "Nvidia".into()), ("MSFT".into(), "Microsoft".into())],
             orders: vec![], next_order_id: 1, order_qty: 100, order_is_buy: true, order_market: true, order_limit_price: String::new(),
             order_type_idx: 0, order_tif_idx: 0, order_outside_rth: false, order_advanced: false, order_bracket: false,
@@ -2837,7 +2832,7 @@ impl Chart {
             }
             ChartCommand::ChangePointMarker { symbol, time, change_type, confidence } => {
                 if symbol == self.symbol {
-                    self.change_points.push((time, change_type, confidence));
+                    self.change_points.push(ChangePoint { time, kind: change_type, confidence });
                     // Keep only last 20
                     if self.change_points.len() > 20 {
                         self.change_points.remove(0);
@@ -5037,7 +5032,7 @@ pub(crate) struct Watchlist {
     /// every `motion_*()` duration token. Off disables animation entirely
     /// — useful for accessibility, RDP, or distraction-free trading. P5.
     pub(crate) motion_speed_override: Option<crate::ui_kit::style::MotionSpeed>,
-    pub(crate) pending_opt_chart: Option<(String, f32, bool, String)>, // deferred option chart open
+    pub(crate) pending_opt_chart: Option<PendingOptionChart>, // deferred option chart open
     /// Optional OCC contract ticker for the pending open. When present, used as the
     /// fetch key so real bars come from ApexData; pane.symbol stays the display label.
     pub(crate) pending_opt_chart_contract: Option<String>,

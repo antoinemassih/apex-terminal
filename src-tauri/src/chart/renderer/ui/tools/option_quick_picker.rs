@@ -303,7 +303,7 @@ pub(crate) fn draw(
                     crate::chart_renderer::gpu::fetch_option_bars_background(occ_final, opt_sym, tf, mark);
                 }
             } else {
-                watchlist.pending_opt_chart = Some((underlying.clone(), strike, is_call, String::new()));
+                watchlist.pending_opt_chart = Some(crate::chart_renderer::gpu::PendingOptionChart { symbol: underlying.clone(), strike, is_call, expiry: String::new() });
                 watchlist.pending_opt_chart_contract = Some(occ);
             }
             panes[pi].option_quick_open = false;

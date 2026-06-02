@@ -1032,12 +1032,12 @@ fn render_chart_pane(
                             );
                             if resp.changed()
                                 && !chart.pane_picker_query.is_empty()
-                                && chart.pane_picker_query != chart.picker_last_query
+                                && chart.pane_picker_query != chart.picker.last_query
                             {
                                 let q = chart.pane_picker_query.clone();
-                                chart.picker_last_query = q.clone();
-                                chart.picker_searching = true;
-                                chart.picker_results.clear();
+                                chart.picker.last_query = q.clone();
+                                chart.picker.searching = true;
+                                chart.picker.results.clear();
                                 fetch_search_background(q, format!("pane_picker_{}", pane_idx));
                             }
 
@@ -1059,7 +1059,7 @@ fn render_chart_pane(
                                     });
                                 }
                             } else {
-                                let results = chart.picker_results.clone();
+                                let results = chart.picker.results.clone();
                                 for (sym, name, _exch) in &results {
                                     ui.horizontal(|ui| {
                                         if ui.add(egui::Button::new(
@@ -1275,7 +1275,7 @@ fn render_chart_pane(
                                         fetch_option_bars_background(occ_final, opt_sym, tf, mark);
                                     }
                                 } else {
-                                    watchlist.pending_opt_chart = Some((underlying.clone(), strike, is_call, String::new()));
+                                    watchlist.pending_opt_chart = Some(PendingOptionChart { symbol: underlying.clone(), strike, is_call, expiry: String::new() });
                                     watchlist.pending_opt_chart_contract = Some(occ);
                                 }
                                 close_picker = true;
@@ -3439,7 +3439,7 @@ fn render_chart_pane(
                     if let Some(pos) = hover_pos {
                         if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
                             if chart_btn_rect.contains(pos) {
-                                watchlist.pending_opt_chart = Some((chart.symbol.clone(), si.strike, si.is_call, String::new()));
+                                watchlist.pending_opt_chart = Some(PendingOptionChart { symbol: chart.symbol.clone(), strike: si.strike, is_call: si.is_call, expiry: String::new() });
                                 watchlist.pending_opt_chart_contract = Some(si.contract.clone());
                             } else if pill_rect.contains(pos) {
                                 // Open floating order pane
@@ -6557,8 +6557,8 @@ fn render_chart_pane(
                 });
                 // Demo change points
                 if chart.timestamps.len() > 20 {
-                    chart.change_points.push((chart.timestamps[chart.timestamps.len() - 15], "directional".into(), 0.85));
-                    chart.change_points.push((chart.timestamps[chart.timestamps.len() - 8], "volume".into(), 0.72));
+                    chart.change_points.push(ChangePoint { time: chart.timestamps[chart.timestamps.len() - 15], kind: "directional".into(), confidence: 0.85 });
+                    chart.change_points.push(ChangePoint { time: chart.timestamps[chart.timestamps.len() - 8], kind: "volume".into(), confidence: 0.72 });
                 }
                 // Demo VIX expiry alert
                 chart.vix_expiry_active = true;
@@ -6639,7 +6639,8 @@ fn render_chart_pane(
     if chart.show_change_points {
         let ts_ref = if chart.candle_mode == CandleMode::Standard { &chart.timestamps } else { &chart.alt.timestamps };
         let bars_ref = if chart.candle_mode == CandleMode::Standard { &chart.bars } else { &chart.alt.bars };
-        for (cp_time, cp_type, cp_conf) in &chart.change_points {
+        for cp in &chart.change_points {
+            let (cp_time, cp_type, cp_conf) = (&cp.time, &cp.kind, &cp.confidence);
             let bar_f = SignalDrawing::time_to_bar(*cp_time, ts_ref);
             let x = bx(bar_f);
             if x < rect.left() || x > rect.left() + cw { continue; }

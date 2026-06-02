@@ -1031,7 +1031,7 @@ impl WidgetData {
 
         let change_points_count = chart.change_points.len();
         let change_points_latest = chart.change_points.last()
-            .map(|(_, t, _)| t.clone()).unwrap_or_default();
+            .map(|cp| cp.kind.clone()).unwrap_or_default();
 
         // ── All positions for PositionsPanel ──
         let (all_positions, day_pnl) = {

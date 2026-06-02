@@ -2002,7 +2002,7 @@ if is_spawn || watchlist.open {
             // Both pending fields are set in lockstep so the consumer takes
             // the real OCC ticker, not a synthesized guess.
             if let Some(info) = open_option_chart {
-                watchlist.pending_opt_chart = Some(info);
+                watchlist.pending_opt_chart = Some(crate::chart_renderer::gpu::PendingOptionChart { symbol: info.0, strike: info.1, is_call: info.2, expiry: info.3 });
                 watchlist.pending_opt_chart_contract = clicked_occ_ticker.take();
             }
         }); // close SidePanelShell::tabs body closure

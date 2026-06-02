@@ -104,38 +104,38 @@ if watchlist.trendline_filter_open {
 span_begin("symbol_picker");
 for picker_pane_idx in 0..panes.len() {
 let chart = &mut panes[picker_pane_idx];
-if chart.picker_open {
+if chart.picker.open {
     let mut close_picker = false;
     let mut new_symbol: Option<(String, String)> = None; // (symbol, name)
 
     // Check for background search results
-    if let Some(rx) = &chart.picker_rx {
+    if let Some(rx) = &chart.picker.rx {
         if let Ok(results) = rx.try_recv() {
-            chart.picker_results = results;
-            chart.picker_searching = false;
+            chart.picker.results = results;
+            chart.picker.searching = false;
         }
     }
 
     // Launch search when query changes
-    if chart.picker_query != chart.picker_last_query {
-        chart.picker_last_query = chart.picker_query.clone();
-        let q = chart.picker_query.trim().to_string();
+    if chart.picker.query != chart.picker.last_query {
+        chart.picker.last_query = chart.picker.query.clone();
+        let q = chart.picker.query.trim().to_string();
 
         if q.is_empty() {
             // Empty query: show recents + popular from static list
-            chart.picker_results.clear();
-            chart.picker_searching = false;
-            chart.picker_rx = None;
+            chart.picker.results.clear();
+            chart.picker.searching = false;
+            chart.picker.rx = None;
         } else {
             // Immediate: show static matches while Yahoo search runs
             let static_results: Vec<(String, String, String)> = crate::ui_kit::symbols::search_symbols(&q, 10)
                 .iter().map(|s| (s.symbol.to_string(), s.name.to_string(), String::new())).collect();
-            chart.picker_results = static_results;
+            chart.picker.results = static_results;
 
             // Fire background search: ApexIB first, Yahoo fallback
-            chart.picker_searching = true;
+            chart.picker.searching = true;
             let (tx, rx) = std::sync::mpsc::channel();
-            chart.picker_rx = Some(rx);
+            chart.picker.rx = Some(rx);
             let query = q.clone();
             std::thread::spawn(move || {
                 let client = reqwest::blocking::Client::builder()
@@ -205,16 +205,16 @@ if chart.picker_open {
     let picker_win_resp = crate::ui_kit::widgets::ToolPopover::new()
         .id(&picker_id)
         .width(320.0)
-        .pos(chart.picker_pos)
+        .pos(chart.picker.pos)
         .show(ctx, &portable_t, |ui| {
-            let input = crate::ui_kit::widgets::Input::new(&mut chart.picker_query)
+            let input = crate::ui_kit::widgets::Input::new(&mut chart.picker.query)
                     .placeholder("Search any stock, ETF, index...")
                     .width(300.0)
                     .font_size(11.0)
                     .show(ui, t);
             input.request_focus(ui.ctx());
 
-            if chart.picker_searching {
+            if chart.picker.searching {
                 ui.horizontal(|ui| {
                     crate::ui_kit::widgets::Spinner::new().show(ui, t);
                     ui.add(MonospaceCode::new("Searching...").size_px(9.0).color(t.dim));
@@ -224,7 +224,7 @@ if chart.picker_open {
             ui.separator();
 
             egui::ScrollArea::vertical().max_height(370.0).show(ui, |ui| {
-                let show_recents = chart.picker_query.trim().is_empty();
+                let show_recents = chart.picker.query.trim().is_empty();
 
                 if show_recents && !chart.recent_symbols.is_empty() {
                     ui.add(MonospaceCode::new("RECENT").size_px(9.0).color(t.dim));
@@ -264,7 +264,7 @@ if chart.picker_open {
                     }
                 } else {
                     // Search results
-                    for (sym, name, tag) in &chart.picker_results {
+                    for (sym, name, tag) in &chart.picker.results {
                         let is_current = sym == &chart.symbol;
                         let resp = ui.horizontal(|ui| {
                             let sym_col = if is_current { t.bull } else { t.text };
@@ -282,7 +282,7 @@ if chart.picker_open {
                             close_picker = true;
                         }
                     }
-                    if chart.picker_results.is_empty() && !chart.picker_searching && !chart.picker_query.trim().is_empty() {
+                    if chart.picker.results.is_empty() && !chart.picker.searching && !chart.picker.query.trim().is_empty() {
                         ui.add(MonospaceCode::new("No results").size_px(9.0).color(t.dim));
                     }
                 }
@@ -290,7 +290,7 @@ if chart.picker_open {
 
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) { close_picker = true; }
             if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                if let Some((sym, name, _)) = chart.picker_results.first() {
+                if let Some((sym, name, _)) = chart.picker.results.first() {
                     new_symbol = Some((sym.clone(), name.clone()));
                     close_picker = true;
                 }
@@ -299,7 +299,7 @@ if chart.picker_open {
 
     // Click-away is handled by Modal::close_on_click_outside; also honour manual close flag.
     if picker_win_resp.dismissed { close_picker = true; }
-    if close_picker { chart.picker_open = false; }
+    if close_picker { chart.picker.open = false; }
 
     if let Some((sym, name)) = new_symbol {
         // Add to recents (move to front if already there)

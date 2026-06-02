@@ -18,7 +18,8 @@ pub(super) fn handle_deferred(
 ) {
     // ── Handle deferred option chart open ──
     // Replaces the CURRENT (active) pane with the option chart
-    if let Some((sym, strike, is_call, expiry)) = watchlist.pending_opt_chart.take() {
+    if let Some(p) = watchlist.pending_opt_chart.take() {
+        let (sym, strike, is_call, expiry) = (p.symbol, p.strike, p.is_call, p.expiry);
         let ap = *active_pane;
         let raw_occ = watchlist.pending_opt_chart_contract.take().unwrap_or_default();
         crate::apex_log!("option.click", "sym={sym} strike={strike} is_call={is_call} expiry='{expiry}' raw_occ='{raw_occ}'");
