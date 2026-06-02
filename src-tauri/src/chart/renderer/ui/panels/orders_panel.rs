@@ -352,14 +352,15 @@ fn draw_book(
 
             // Select-all toggle.
             {
-                let active_orders: Vec<(usize, u32)> = panes.iter().enumerate()
+                use crate::chart_renderer::gpu::SelectedOrder;
+                let active_orders: Vec<SelectedOrder> = panes.iter().enumerate()
                     .flat_map(|(pi, p)| p.orders.iter()
                         .filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed)
-                        .map(move |o| (pi, o.id)))
+                        .map(move |o| SelectedOrder { pane_idx: pi, order_id: o.id }))
                     .collect();
                 let all_selected = !active_orders.is_empty()
-                    && active_orders.iter().all(|(pi, oid)|
-                        watchlist.selected_order_ids.iter().any(|(p, id)| p == pi && id == oid));
+                    && active_orders.iter().all(|s|
+                        watchlist.selected_order_ids.iter().any(|sel| sel.pane_idx == s.pane_idx && sel.order_id == s.order_id));
                 if !active_orders.is_empty() {
                     ui.horizontal(|ui| {
                         let check_icon = if all_selected { Icon::CHECK_SQUARE } else { Icon::SQUARE_EMPTY };
@@ -387,7 +388,7 @@ fn draw_book(
 
             // ── Order rows + history list ──
             egui::ScrollArea::vertical().show(ui, |ui| {
-                let mut toggle_select: Option<(usize, u32)> = None;
+                let mut toggle_select: Option<SelectedOrder> = None;
                 let mut any_rows = false;
 
                 for (pi, pane) in panes.iter().enumerate() {
@@ -402,7 +403,7 @@ fn draw_book(
                         let is_active = order.status == OrderStatus::Draft
                             || order.status == OrderStatus::Placed;
                         let is_selected = watchlist.selected_order_ids.iter()
-                            .any(|(p, id)| *p == pi && *id == order.id);
+                            .any(|s| s.pane_idx == pi && s.order_id == order.id);
                         let side_tag = match order.side {
                             OrderSide::Buy | OrderSide::TriggerBuy | OrderSide::OcoTarget
                                 => OrderSideTag::Buy,
@@ -428,7 +429,7 @@ fn draw_book(
                             commands::push(AppCommand::CancelOrder { pane: pi, id: order.id });
                         }
                         if resp.clicked() && is_active {
-                            toggle_select = Some((pi, order.id));
+                            toggle_select = Some(SelectedOrder { pane_idx: pi, order_id: order.id });
                         }
                     }
                 }
@@ -437,14 +438,14 @@ fn draw_book(
                     PanelEmpty::new("No working orders").show(ui, t);
                 }
 
-                if let Some((pi, oid)) = toggle_select {
+                if let Some(sel) = toggle_select {
                     let already = watchlist.selected_order_ids.iter()
-                        .any(|(p, id)| *p == pi && *id == oid);
+                        .any(|s| s.pane_idx == sel.pane_idx && s.order_id == sel.order_id);
                     if already {
                         watchlist.selected_order_ids
-                            .retain(|(p, id)| !(*p == pi && *id == oid));
+                            .retain(|s| !(s.pane_idx == sel.pane_idx && s.order_id == sel.order_id));
                     } else {
-                        watchlist.selected_order_ids.push((pi, oid));
+                        watchlist.selected_order_ids.push(sel);
                     }
                 }
             });

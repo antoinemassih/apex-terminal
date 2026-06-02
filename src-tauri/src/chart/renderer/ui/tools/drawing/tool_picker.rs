@@ -124,7 +124,7 @@ fn drawing_label(tool: &str) -> &'static str {
 fn drawing_is_active(tool: &str, chart: &Chart) -> bool {
     match tool {
         "magnifier" => chart.zoom_selecting,
-        "measure" => chart.measure_active,
+        "measure" => chart.measure.mode,
         _ => false,
     }
 }

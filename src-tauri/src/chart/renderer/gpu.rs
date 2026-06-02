@@ -1873,6 +1873,107 @@ pub(crate) enum PaneType {
 
 impl Default for PaneType { fn default() -> Self { Self::Chart } }
 
+// ─── Named value types (replace anonymous tuples) ────────────────────────────
+
+/// A price/bar coordinate pair used during in-progress drawing operations.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct DrawPoint { pub(crate) bar: f32, pub(crate) price: f32 }
+
+/// A detected change-point on the price series (from the change-point detection engine).
+#[derive(Debug, Clone)]
+pub(crate) struct ChangePoint {
+    pub(crate) time:       i64,
+    pub(crate) kind:       String,
+    pub(crate) confidence: f32,
+}
+
+/// An active trade plan anchored to a chart pane.
+#[derive(Debug, Clone)]
+pub(crate) struct TradePlan {
+    pub(crate) direction:  i8,
+    pub(crate) entry:      f32,
+    pub(crate) target:     f32,
+    pub(crate) stop:       f32,
+    pub(crate) contract:   String,
+    pub(crate) rr:         f32,
+    pub(crate) conviction: f32,
+}
+
+/// A symbol search result row returned by the picker.
+#[derive(Debug, Clone)]
+pub(crate) struct SymbolSearchResult {
+    pub(crate) symbol:        String,
+    pub(crate) name:          String,
+    pub(crate) exchange_type: String,
+}
+
+/// A recently-loaded symbol entry (most-recent-first, capped at 20).
+#[derive(Debug, Clone)]
+pub(crate) struct RecentSymbol {
+    pub(crate) symbol: String,
+    pub(crate) name:   String,
+}
+
+/// Measure-tool state (shift+drag distance measurement).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct MeasureState {
+    /// User is shift-dragging to measure (was `measuring`).
+    pub(crate) active: bool,
+    /// Start point in `(bar, price)` canvas coords (was `measure_start`).
+    pub(crate) start:  Option<(f32, f32)>,
+    /// Measure mode was activated via context menu (was `measure_active`).
+    pub(crate) mode:   bool,
+}
+
+/// A gamma-exposure level for the options gamma overlay.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct GammaLevel {
+    /// Strike price.
+    pub(crate) price:     f32,
+    /// Net gamma exposure (positive = stabilising, negative = accelerating).
+    pub(crate) exposure:  f32,
+}
+
+/// Watchlist item drag state.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct WatchlistDragState {
+    pub(crate) section_idx: usize,
+    pub(crate) item_idx:    usize,
+}
+
+/// A pending option-chart open request (deferred until next frame).
+#[derive(Debug, Clone)]
+pub(crate) struct PendingOptionChart {
+    pub(crate) symbol:  String,
+    pub(crate) strike:  f32,
+    pub(crate) is_call: bool,
+    pub(crate) expiry:  String,
+}
+
+/// A watchlist custom price-change filter.
+#[derive(Debug, Clone)]
+pub(crate) struct CustomFilter {
+    pub(crate) name:       String,
+    pub(crate) min_change: f32,
+    pub(crate) max_change: f32,
+}
+
+/// A multi-selected order reference (pane + broker order id).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SelectedOrder {
+    pub(crate) pane_idx: usize,
+    pub(crate) order_id: u32,
+}
+
+/// A fetched options chain (calls + puts).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct OptionChain {
+    pub(crate) calls: Vec<OptionRow>,
+    pub(crate) puts:  Vec<OptionRow>,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 pub(crate) struct Chart {
     pub(crate) pane_type: PaneType,
     pub(crate) symbol: String, pub(crate) timeframe: String,
@@ -1987,8 +2088,6 @@ pub(crate) struct Chart {
     pub(crate) last_signal_fetch: std::time::Instant,
     pub(crate) hide_all_drawings: bool,
     pub(crate) hide_all_indicators: bool,
-    #[allow(dead_code)]
-    pub(crate) drawing_list_open: bool, // DEPRECATED: consolidated into object_tree
     pub(crate) ohlc_tooltip: bool, // show OHLC values at crosshair
     pub(crate) measure_tooltip: bool, // show big distance-only measurement at crosshair
     pub(crate) show_volume: bool,
@@ -2049,9 +2148,7 @@ pub(crate) struct Chart {
     pub(crate) dragging_play_line: Option<u32>,
     pub(crate) play_click_to_set: Option<super::PlayLineKind>, // click-on-chart fills price
     // Measure tool (shift+drag)
-    pub(crate) measuring: bool,
-    pub(crate) measure_start: Option<(f32, f32)>, // (bar, price) start point
-    pub(crate) measure_active: bool, // context menu activated measure mode
+    pub(crate) measure: MeasureState,
     pub(crate) dom_open: bool, // DOM / Price Ladder floating window
     // DOM full sidebar mode
     pub(crate) dom_sidebar_open: bool,
@@ -2072,9 +2169,6 @@ pub(crate) struct Chart {
     // Symbol/timeframe change request — signals the App to reload data
     pub(crate) pending_symbol_change: Option<String>,
     pub(crate) pending_timeframe_change: Option<String>,
-    // Cached formatted strings — updated only when data changes, not every frame
-    #[allow(dead_code)] cached_ohlc: String,
-    #[allow(dead_code)] cached_ohlc_bar_count: usize,
     // Undo/redo
     pub(crate) undo_stack: Vec<DrawingAction>,
     pub(crate) redo_stack: Vec<DrawingAction>,
@@ -2129,7 +2223,7 @@ pub(crate) struct Chart {
     /// unavailable). Renderer paints a "PLACEHOLDER" tag on the axis.
     pub(crate) overlay_chain_placeholder: bool,
     pub(crate) floating_order_panes: Vec<FloatingOrderPane>, // floating order entry windows
-    pub(crate) gamma_levels: Vec<(f32, f32)>, // (price, gamma_exposure) — positive = stabilizing, negative = accelerating
+    pub(crate) gamma_levels: Vec<GammaLevel>,
     pub(crate) gamma_call_wall: f32,
     pub(crate) gamma_put_wall: f32,
     pub(crate) gamma_zero: f32,
@@ -2309,7 +2403,7 @@ impl Chart {
             selected_id: None, selected_ids: vec![], dragging_drawing: None,
             drag_start_price: 0.0, drag_start_bar: 0.0,
             groups: vec![DrawingGroup { id: "default".into(), name: "Temp".into(), color: None }],
-            hidden_groups: vec![], hide_all_drawings: false, hide_all_indicators: false, show_volume: true, show_oscillators: true, drawing_list_open: false, ohlc_tooltip: true, measure_tooltip: false,
+            hidden_groups: vec![], hide_all_drawings: false, hide_all_indicators: false, show_volume: true, show_oscillators: true, ohlc_tooltip: true, measure_tooltip: false,
             signal_drawings: vec![], hide_signal_drawings: false,
             pattern_labels: vec![], show_pattern_labels: true,
             trend_health_score: 0.0, trend_health_direction: 0, trend_health_regime: String::new(),
@@ -2341,12 +2435,11 @@ impl Chart {
             trigger_setup: TriggerSetup::default(), trigger_levels: vec![], next_trigger_id: 1, dragging_trigger: None, editing_trigger: None, pending_und_order: None,
             widget_cache_bar_count: 0, widget_cache: None,
             play_lines: vec![], next_play_line_id: 1, dragging_play_line: None, play_click_to_set: None,
-            measuring: false, measure_start: None, measure_active: false, dom_open: false,
+            measure: MeasureState::default(), dom_open: false,
             dom_sidebar_open: false, dom_levels: vec![], dom_tick_size: 0.01, dom_center_price: 0.0, dom_width: super::ui::panels::dom_panel::DOM_SIDEBAR_W,
             dom_selected_price: None, dom_order_type: super::ui::panels::dom_panel::DomOrderType::Market, dom_armed: false, dom_col_mode: 1, dom_dragging: None,
             dom_position: 0, dom_fullscreen: false,
             pending_symbol_change: None, pending_timeframe_change: None,
-            cached_ohlc: String::new(), cached_ohlc_bar_count: 0,
             undo_stack: vec![], redo_stack: vec![], drag_drawing_snapshot: None,
             text_edit_id: None, text_edit_buf: String::new(),
             indicator_pts_buf: Vec::with_capacity(512), fmt_buf: String::with_capacity(256),
@@ -3839,10 +3932,10 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                         }).collect()
                     };
                     if *dte == 0 {
-                        watchlist.chain_0dte = (to_rows(calls), to_rows(puts));
+                        watchlist.chain_0dte = OptionChain { calls: to_rows(calls), puts: to_rows(puts) };
                         watchlist.chain_0dte_placeholder = *placeholder;
                     } else {
-                        watchlist.chain_far = (to_rows(calls), to_rows(puts));
+                        watchlist.chain_far = OptionChain { calls: to_rows(calls), puts: to_rows(puts) };
                         watchlist.chain_far_placeholder = *placeholder;
                     }
                     watchlist.chain_loading = false;
@@ -3856,8 +3949,8 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                     }
                     if *underlying_price > 0.0 { watchlist.chain_underlying_price = *underlying_price; }
                     eprintln!("[chain] Loaded {} calls + {} puts for {} dte={} price={:.2}",
-                        if *dte == 0 { watchlist.chain_0dte.0.len() } else { watchlist.chain_far.0.len() },
-                        if *dte == 0 { watchlist.chain_0dte.1.len() } else { watchlist.chain_far.1.len() },
+                        if *dte == 0 { watchlist.chain_0dte.calls.len() } else { watchlist.chain_far.calls.len() },
+                        if *dte == 0 { watchlist.chain_0dte.puts.len()  } else { watchlist.chain_far.puts.len()  },
                         symbol, dte, underlying_price);
                 }
             }
@@ -4807,8 +4900,6 @@ pub(crate) struct Watchlist {
     pub(crate) active_watchlist_idx: usize,
     pub(crate) watchlist_name_editing: bool,
     pub(crate) watchlist_name_buf: String,
-    #[allow(dead_code)]
-    pub(crate) watchlist_ctx_menu_idx: Option<usize>, // which watchlist index has context menu open
     pub(crate) search_query: String,
     pub(crate) search_results: Vec<(String, String)>,
     pub(crate) search_sel: i32, // -1 = none, 0+ = highlighted suggestion index
@@ -4819,18 +4910,14 @@ pub(crate) struct Watchlist {
     pub(crate) divider_y: f32, // screen Y of divider (set during render)
     pub(crate) divider_total_h: f32, // total available height for split calculation
     // Drag-and-drop state
-    pub(crate) dragging: Option<(usize, usize)>,       // (section_idx, item_idx) being dragged
-    pub(crate) drag_start_pos: Option<egui::Pos2>, // mouse position when drag started
-    pub(crate) drop_target: Option<(usize, usize)>,     // (section_idx, insert_before_item_idx)
-    pub(crate) drag_confirmed: bool, // true once mouse moved enough to confirm drag
+    pub(crate) dragging:       Option<WatchlistDragState>,
+    pub(crate) drag_start_pos: Option<egui::Pos2>,
+    pub(crate) drop_target:    Option<WatchlistDragState>,
+    pub(crate) drag_confirmed: bool,
     // Section editing
     pub(crate) renaming_section: Option<u32>, // section id being renamed
     pub(crate) rename_buf: String,
-    #[allow(dead_code)]
-    pub(crate) color_picking_section: Option<u32>, // section id picking color
     // Toolbar
-    #[allow(dead_code)] toolbar_scroll: f32,
-    #[allow(dead_code)] shortcuts_open: bool, // superseded by hotkey_editor_open
     pub(crate) hotkey_editor_open: bool,
     pub(crate) hotkey_editing_id: Option<u32>,
     pub(crate) settings_open: bool,
@@ -4924,10 +5011,9 @@ pub(crate) struct Watchlist {
     pub(crate) wl_columns_open: bool, // settings popup
     pub(crate) filter_text: String,
     pub(crate) filter_preset: String,
-    pub(crate) custom_filters: Vec<(String, f32, f32)>, // (name, min_change%, max_change%)
+    pub(crate) custom_filters: Vec<CustomFilter>,
     pub(crate) filter_min_change: f32,
     pub(crate) filter_max_change: f32,
-    #[allow(dead_code)] filter_min_rvol: f32,  // reserved for RVOL filter when data is available
     // Heatmap
     pub(crate) heat_index: String,
     pub(crate) heat_collapsed: std::collections::HashSet<String>,
@@ -4936,7 +5022,7 @@ pub(crate) struct Watchlist {
     // Orders
     pub(crate) orders_panel_open: bool,
     pub(crate) order_entry_open: bool,
-    pub(crate) selected_order_ids: Vec<(usize, u32)>, // (pane_idx, order_id) for multi-select
+    pub(crate) selected_order_ids: Vec<SelectedOrder>,
     // Positions
     pub(crate) positions: Vec<Position>,
     // Alerts
@@ -4950,8 +5036,8 @@ pub(crate) struct Watchlist {
     pub(crate) chain_sym_input: String,
     pub(crate) chain_num_strikes: usize, // legacy fallback
     pub(crate) chain_far_dte: i32,
-    pub(crate) chain_0dte: (Vec<OptionRow>, Vec<OptionRow>), // (calls, puts) for 0DTE
-    pub(crate) chain_far: (Vec<OptionRow>, Vec<OptionRow>), // (calls, puts) for far DTE
+    pub(crate) chain_0dte: OptionChain,
+    pub(crate) chain_far:  OptionChain,
     /// True when chain_0dte / chain_far rows are locally-synthesized
     /// Black-Scholes placeholder data (real upstream unavailable).
     pub(crate) chain_0dte_placeholder: bool,
@@ -5282,12 +5368,11 @@ impl Watchlist {
         Self { open: false, tab: WatchlistTab::Stocks, sections, next_section_id,
                link_groups,
                saved_watchlists, active_watchlist_idx: active_idx,
-               watchlist_name_editing: false, watchlist_name_buf: String::new(), watchlist_ctx_menu_idx: None,
+               watchlist_name_editing: false, watchlist_name_buf: String::new(),
                search_query: String::new(), search_results: vec![], search_sel: -1, search_refocus: false,
                options_visible: true, options_split: 0.6, divider_dragging: false, divider_y: 0.0, divider_total_h: 0.0,
                dragging: None, drag_start_pos: None, drop_target: None, drag_confirmed: false,
-               renaming_section: None, rename_buf: String::new(), color_picking_section: None,
-               toolbar_scroll: 0.0, shortcuts_open: false,
+               renaming_section: None, rename_buf: String::new(),
                hotkey_editor_open: false, hotkey_editing_id: None, hotkeys: default_hotkeys(),
                order_ledger_open: false, order_ledger_view: 0, order_ledger_filter: 0, order_ledger_search: String::new(),
                order_ledger_sym_expanded: std::collections::HashMap::new(),
@@ -5313,10 +5398,10 @@ impl Watchlist {
                pending_opt_chart: None, pending_opt_chart_contract: None, apex_diag_open: false, replay_pane_open: false, widget_gallery_open: false,
                wl_columns: crate::chart::renderer::ui::lists::rows::watchlist_columns::default_columns(),
                wl_columns_open: false,
-               filter_open: false, filter_text: String::new(), filter_preset: "All".into(), filter_min_change: -999.0, filter_max_change: 999.0, filter_min_rvol: -1.0, custom_filters: vec![],
+               filter_open: false, filter_text: String::new(), filter_preset: "All".into(), filter_min_change: -999.0, filter_max_change: 999.0, custom_filters: vec![],
                orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(), alerts_panel_open: false,
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
-               chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
+               chain_0dte: OptionChain::default(), chain_far: OptionChain::default(),
                chain_select_mode: false, chain_loading: false, chain_last_fetch: None, chain_frozen: false, chain_center_offset: 0, chain_underlying_price: 0.0, chain_0dte_placeholder: false, chain_far_placeholder: false,
                chain_0_num_strikes: 10, chain_0_frozen: false, chain_0_offset: 0, chain_0_strike_mode: StrikeMode::Count, chain_0_nmf: 0,
                chain_far_num_strikes: 10, chain_far_frozen: false, chain_far_offset: 0, chain_far_strike_mode: StrikeMode::Count, chain_far_nmf: 0,
@@ -7184,10 +7269,10 @@ impl ApplicationHandler for App {
                                     }).collect()
                                 };
                                 if dte == 0 {
-                                    cw.watchlist.chain_0dte = (to_rows(calls), to_rows(puts));
+                                    cw.watchlist.chain_0dte = OptionChain { calls: to_rows(calls), puts: to_rows(puts) };
                                     cw.watchlist.chain_0dte_placeholder = placeholder;
                                 } else {
-                                    cw.watchlist.chain_far = (to_rows(calls), to_rows(puts));
+                                    cw.watchlist.chain_far = OptionChain { calls: to_rows(calls), puts: to_rows(puts) };
                                     cw.watchlist.chain_far_placeholder = placeholder;
                                 }
                                 cw.watchlist.chain_loading = false;

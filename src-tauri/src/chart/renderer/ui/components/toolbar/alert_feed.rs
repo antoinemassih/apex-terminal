@@ -111,7 +111,14 @@ fn seed_placeholders() {
 /// available width via an inner `ScrollArea`. Clicking a badge dismisses it.
 pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
     seed_placeholders();
-    use crate::chart_renderer::ui::style::{font_xs, gap_xs, gap_sm};
+    use crate::chart_renderer::ui::style::{
+        font_xs, font_sm, gap_xs, gap_sm,
+        color_alpha,
+        BADGE_HEIGHT, BADGE_MIN_WIDTH, BADGE_ACCENT_WIDTH,
+        BADGE_DISMISS_WIDTH, BADGE_DISMISS_PADDING,
+        BADGE_CORNER_RADIUS, BADGE_TINT_ALPHA,
+        ALPHA_SECONDARY_TEXT, ALPHA_INTERACTIVE,
+    };
 
     let alerts: Vec<AlertItem> = store().lock().unwrap().iter().cloned().collect();
 
@@ -119,7 +126,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         ui.label(
             egui::RichText::new("No alerts")
                 .size(font_xs())
-                .color(Color32::from_rgba_unmultiplied(t.dim.r(), t.dim.g(), t.dim.b(), 70)),
+                .color(color_alpha(t.dim, ALPHA_SECONDARY_TEXT)),
         );
         return;
     }
@@ -135,38 +142,34 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
                 for alert in &alerts {
                     let accent = kind_color(alert.kind, t);
                     let text   = badge_text(alert);
-                    let badge_h = 20.0_f32;
 
                     let text_w = ui.fonts(|f| {
                         f.layout_no_wrap(text.clone(), FontId::monospace(font_xs()), t.text)
                             .rect.width()
                     });
-                    // left accent bar (3px) + inner left pad + text + inner right pad + dismiss btn
-                    let badge_w = (3.0 + gap_xs() + text_w + gap_sm() + 14.0).max(64.0);
+                    let badge_w = (BADGE_ACCENT_WIDTH + gap_xs() + text_w + gap_sm() + BADGE_DISMISS_WIDTH)
+                        .max(BADGE_MIN_WIDTH);
 
                     let (rect, resp) = ui.allocate_exact_size(
-                        egui::vec2(badge_w, badge_h),
+                        egui::vec2(badge_w, BADGE_HEIGHT),
                         Sense::click(),
                     );
 
                     if ui.is_rect_visible(rect) {
                         let p = ui.painter();
+                        let cr = egui::CornerRadius::same(BADGE_CORNER_RADIUS);
 
                         // Tinted pill background
-                        p.rect_filled(
-                            rect,
-                            egui::CornerRadius::same(3),
-                            Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 18),
-                        );
+                        p.rect_filled(rect, cr, color_alpha(accent, BADGE_TINT_ALPHA));
                         // Left accent bar
                         p.rect_filled(
-                            egui::Rect::from_min_size(rect.min, egui::vec2(3.0, rect.height())),
-                            egui::CornerRadius::same(3),
+                            egui::Rect::from_min_size(rect.min, egui::vec2(BADGE_ACCENT_WIDTH, rect.height())),
+                            cr,
                             accent,
                         );
                         // Badge text
                         p.text(
-                            egui::pos2(rect.left() + 3.0 + gap_xs(), rect.center().y),
+                            egui::pos2(rect.left() + BADGE_ACCENT_WIDTH + gap_xs(), rect.center().y),
                             egui::Align2::LEFT_CENTER,
                             &text,
                             FontId::monospace(font_xs()),
@@ -174,11 +177,11 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
                         );
                         // Dismiss ×
                         p.text(
-                            egui::pos2(rect.right() - 8.0, rect.center().y),
+                            egui::pos2(rect.right() - BADGE_DISMISS_PADDING, rect.center().y),
                             egui::Align2::CENTER_CENTER,
                             "×",
-                            FontId::proportional(11.0),
-                            Color32::from_rgba_unmultiplied(t.dim.r(), t.dim.g(), t.dim.b(), 160),
+                            FontId::proportional(font_sm()),
+                            color_alpha(t.dim, ALPHA_INTERACTIVE),
                         );
                     }
 

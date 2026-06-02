@@ -254,6 +254,24 @@ pub(crate) fn tf_to_secs(tf: &str) -> u32 {
     ALL_TIMEFRAMES.iter().find(|t| t.0 == tf).map(|t| t.1).unwrap_or(0)
 }
 
+/// Apply the standard menu/dropdown background style so all pop-up menus
+/// share the same `toolbar_bg` fill instead of the default egui window fill.
+/// Call once at the top of every `.show_menu()` / `.show()` closure.
+#[inline]
+fn apply_menu_style(ui: &mut egui::Ui, t: &Theme) {
+    ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+    ui.style_mut().visuals.window_fill             = t.toolbar_bg;
+}
+
+/// Standard tri-state text colour for dropdown / list rows.
+/// - Current/selected → accent
+/// - Hovered          → primary text
+/// - Default          → dim
+#[inline]
+fn row_text_color(is_current: bool, hovered: bool, t: &Theme) -> egui::Color32 {
+    if is_current { t.accent } else if hovered { t.text } else { t.dim }
+}
+
 /// Chart controls cluster — interval / drawing tools / object-tree / indicators
 /// / widgets (+ alt-bar settings). Lives in the toolbar (toolnav) when it is
 /// visible, else falls back inline in the top-nav row so it stays reachable
@@ -340,8 +358,7 @@ pub(crate) fn render_chart_controls(
                     .glyph_size(font_lg())
                     .fg(if has_tool { t.accent } else { t.dim })
                     .show_menu(ui, t, |ui| {
-                    ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                    ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                    apply_menu_style(ui, t);
                     let cur = cur_tool.as_str();
                     let sections: &[(&str, &[(&str, &str)])] = &[
                         ("LINES", &[("trendline", "Trendline"), ("hline", "Horizontal Line"), ("vline", "Vertical Line"), ("ray", "Ray")]),
@@ -521,13 +538,11 @@ pub(crate) fn render_chart_controls(
             let indicators_menu = KitButton::menu(Icon::CHART_LINE)
                 .glyph_size(font_lg())
                 .show_menu(ui, t, |ui| {
-                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                apply_menu_style(ui, t);
 
             // Moving Averages dropdown (always creates new instance — supports multiple)
             KitButton::menu("MAs").show_menu(ui, t, |ui| {
-                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                apply_menu_style(ui, t);
                 let ma_types = [(IndicatorType::SMA, "SMA"), (IndicatorType::EMA, "EMA"), (IndicatorType::WMA, "WMA"),
                     (IndicatorType::DEMA, "DEMA"), (IndicatorType::TEMA, "TEMA"), (IndicatorType::VWAP, "VWAP")];
                 // Show existing MA instances with edit/remove
@@ -619,8 +634,7 @@ pub(crate) fn render_chart_controls(
 
             // Oscillators dropdown (multi-select)
             KitButton::menu("Osc").show_menu(ui, t, |ui| {
-                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                apply_menu_style(ui, t);
                 let osc_types = [(IndicatorType::RSI, "RSI"), (IndicatorType::MACD, "MACD"),
                     (IndicatorType::Stochastic, "Stochastic"), (IndicatorType::CCI, "CCI"),
                     (IndicatorType::WilliamsR, "Williams %R"), (IndicatorType::ADX, "ADX"), (IndicatorType::ATR, "ATR")];
@@ -697,8 +711,7 @@ pub(crate) fn render_chart_controls(
 
             // Volume dropdown
             KitButton::menu("Vol").show_menu(ui, t, |ui| {
-                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                apply_menu_style(ui, t);
                 let vol = panes[ap].show_volume;
                 if ui.add(SelectableRow::new("Volume Bars", vol)).clicked() {
                     let shift = ui.input(|i| i.modifiers.shift); let nv = !vol;
@@ -740,8 +753,7 @@ pub(crate) fn render_chart_controls(
 
             // Overlays dropdown — two-layer with categories
             KitButton::menu("Overlay").show_menu(ui, t, |ui| {
-                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                apply_menu_style(ui, t);
                 ui.set_min_width(150.0);
 
                 // ── Technical Overlays (indicator-based)
@@ -808,22 +820,23 @@ pub(crate) fn render_chart_controls(
                             if let Some(last_bar) = panes[ap].bars.last() {
                                 let price = last_bar.close;
                                 let step = if price > 200.0 { 5.0 } else if price > 50.0 { 2.5 } else { 1.0 };
-                                let mut levels = vec![];
+                                use crate::chart_renderer::gpu::GammaLevel;
+                                let mut levels: Vec<GammaLevel> = vec![];
                                 for i in -15..=15_i32 {
                                     let level_price = (price / step).round() * step + i as f32 * step;
                                     let dist = i.abs() as f32;
                                     let gex = if dist < 5.0 { (500.0 - dist * 80.0) * (1.0 + 0.3 * (level_price * 7.3).sin()) }
                                     else { (-100.0 - (dist - 5.0) * 50.0) * (1.0 + 0.2 * (level_price * 3.1).sin()) };
-                                    levels.push((level_price, gex));
+                                    levels.push(GammaLevel { price: level_price, exposure: gex });
                                 }
-                                let max_pos = levels.iter().filter(|(_, g)| *g > 0.0).max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-                                let max_neg = levels.iter().filter(|(_, g)| *g < 0.0).min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-                                panes[ap].gamma_call_wall = max_pos.map_or(price + 10.0 * step, |l| l.0);
-                                panes[ap].gamma_put_wall = max_neg.map_or(price - 10.0 * step, |l| l.0);
+                                let max_pos = levels.iter().filter(|l| l.exposure > 0.0).max_by(|a, b| a.exposure.partial_cmp(&b.exposure).unwrap_or(std::cmp::Ordering::Equal));
+                                let max_neg = levels.iter().filter(|l| l.exposure < 0.0).min_by(|a, b| a.exposure.partial_cmp(&b.exposure).unwrap_or(std::cmp::Ordering::Equal));
+                                panes[ap].gamma_call_wall = max_pos.map_or(price + 10.0 * step, |l| l.price);
+                                panes[ap].gamma_put_wall  = max_neg.map_or(price - 10.0 * step, |l| l.price);
                                 let mut zero = price;
-                                for w in levels.windows(2) { if w[0].1 >= 0.0 && w[1].1 < 0.0 { zero = (w[0].0 + w[1].0) / 2.0; break; } }
+                                for w in levels.windows(2) { if w[0].exposure >= 0.0 && w[1].exposure < 0.0 { zero = (w[0].price + w[1].price) / 2.0; break; } }
                                 panes[ap].gamma_zero = zero;
-                                panes[ap].gamma_hvl = max_pos.map_or(price, |l| l.0);
+                                panes[ap].gamma_hvl  = max_pos.map_or(price, |l| l.price);
                                 panes[ap].gamma_levels = levels;
                             }
                         }
@@ -920,8 +933,7 @@ pub(crate) fn render_chart_controls(
 
             // Tools dropdown — display tools and cursor enhancements (now nested under Indicators)
             KitButton::menu("Tools").show_menu(ui, t, |ui| {
-                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                apply_menu_style(ui, t);
 
                 ui.label(egui::RichText::new("DISPLAY").monospace().size(font_sm()).color(color_half(t.dim)));
                 let ohlc = panes[ap].ohlc_tooltip;
@@ -992,8 +1004,7 @@ pub(crate) fn render_chart_controls(
 
             // ── Suites dropdown (advanced analysis tools — also nested under Indicators) ──
             KitButton::menu("Suites").show_menu(ui, t, |ui| {
-                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                apply_menu_style(ui, t);
                 let sl_mode = panes[ap].swing_leg_mode;
                 let sl_active = sl_mode > 0;
                 let sl_suffix = match sl_mode { 1 => " (Vertical)", 2 => " (Diagonal)", _ => "" };
@@ -1037,8 +1048,7 @@ pub(crate) fn render_chart_controls(
             let widgets_menu = KitButton::menu(Icon::CIRCLES_FOUR)
                 .glyph_size(font_lg())
                 .show_menu(ui, t, |ui| {
-                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                apply_menu_style(ui, t);
                 ui.set_min_width(160.0);
                 let active_kinds: Vec<ChartWidgetKind> = panes[ap].chart_widgets.iter()
                     .filter(|w| w.visible).map(|w| w.kind).collect();
@@ -1495,8 +1505,7 @@ pub(crate) fn render(
                 let ws_menu = KitButton::menu(Icon::BROWSERS)
                     .glyph_size(font_lg())
                     .show_menu(ui, t, |ui| {
-                    ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                    ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                    apply_menu_style(ui, t);
                     ui.set_min_width(200.0);
 
                     ui.label(egui::RichText::new("WORKSPACES").monospace().size(font_xs()).color(color_half(t.dim)));
@@ -1936,56 +1945,44 @@ pub(crate) fn render(
                     }};
                 }
 
-                // Feed pane (News + Discord + Screenshots)
-                let resp = toolbar_btn(ui, &nav_label(Icon::NEWSPAPER, "Feed"), watchlist.feed_panel_open, t);
-                Tooltip::new("Feed (News, Discord, Screenshots)").show(ui, &resp, t);
-                paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.feed_panel_open, "right_feed");
-                if resp.clicked() { watchlist.update_sidebar_state(|s| s.feed_panel_open = !s.feed_panel_open); }
-                nav_divider!(ui, resp);
+                // ── Panel toggle helper macro ─────────────────────────────────
+                // Renders a toolbar button + tooltip + column-tint + click handler
+                // + divider for panels that follow the standard sidebar-toggle pattern.
+                macro_rules! panel_toggle {
+                    ($icon:expr, $lbl:expr, $field:ident, $tip:expr, $tint:expr) => {{
+                        let resp = toolbar_btn(ui, &nav_label($icon, $lbl), watchlist.$field, t);
+                        Tooltip::new($tip).show(ui, &resp, t);
+                        paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.$field, $tint);
+                        if resp.clicked() { watchlist.update_sidebar_state(|s| s.$field = !s.$field); }
+                        nav_divider!(ui, resp);
+                    }};
+                }
 
-                // Playbook
-                let resp = toolbar_btn(ui, &nav_label(Icon::STAR, "Playbook"), watchlist.playbook_panel_open, t);
-                Tooltip::new("Playbook (Trade Ideas)").show(ui, &resp, t);
-                paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.playbook_panel_open, "right_playbook");
-                if resp.clicked() { watchlist.update_sidebar_state(|s| s.playbook_panel_open = !s.playbook_panel_open); }
-                nav_divider!(ui, resp);
+                panel_toggle!(Icon::NEWSPAPER,      "Feed",       feed_panel_open,       "Feed (News, Discord, Screenshots)",           "right_feed");
+                panel_toggle!(Icon::STAR,            "Playbook",   playbook_panel_open,   "Playbook (Trade Ideas)",                      "right_playbook");
 
-                // Chart Library (saved chart layouts)
-                let resp = toolbar_btn(ui, &nav_label(Icon::FOLDER, "Charts"), watchlist.charts_library_open, t);
-                Tooltip::new("Chart Library (saved layouts)").show(ui, &resp, t);
-                paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.charts_library_open, "right_charts");
-                if resp.clicked() { watchlist.charts_library_open = !watchlist.charts_library_open; }
-                nav_divider!(ui, resp);
+                // Chart Library uses direct assignment (not update_sidebar_state)
+                {
+                    let resp = toolbar_btn(ui, &nav_label(Icon::FOLDER, "Charts"), watchlist.charts_library_open, t);
+                    Tooltip::new("Chart Library (saved layouts)").show(ui, &resp, t);
+                    paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.charts_library_open, "right_charts");
+                    if resp.clicked() { watchlist.charts_library_open = !watchlist.charts_library_open; }
+                    nav_divider!(ui, resp);
+                }
 
                 // (Toolbar toggle moved next to Search — see below.)
 
-                // Watchlist toggle
-                let resp = toolbar_btn(ui, &nav_label(Icon::LIST, "Watchlist"), watchlist.open, t);
-                Tooltip::new("Watchlist").show(ui, &resp, t);
-                paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.open, "right_watchlist");
-                if resp.clicked() { watchlist.update_sidebar_state(|s| s.watchlist_open = !s.watchlist_open); }
-                nav_divider!(ui, resp);
-
-                // Orders panel
-                let resp = toolbar_btn(ui, &nav_label(Icon::CURRENCY_DOLLAR, "Orders"), watchlist.orders_panel_open, t);
-                Tooltip::new("Orders Panel").show(ui, &resp, t);
-                paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.orders_panel_open, "right_orders");
-                if resp.clicked() { watchlist.update_sidebar_state(|s| s.orders_panel_open = !s.orders_panel_open); }
-                nav_divider!(ui, resp);
-
-                // Analysis sidebar toggle
-                let resp = toolbar_btn(ui, &nav_label(Icon::CHART_LINE, "Analysis"), watchlist.analysis_open, t);
-                Tooltip::new("Analysis Sidebar").show(ui, &resp, t);
-                paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.analysis_open, "right_analysis");
-                if resp.clicked() { watchlist.update_sidebar_state(|s| s.analysis_open = !s.analysis_open); }
-                nav_divider!(ui, resp);
-
-                // Indicators panel — manage active indicators + library + tool toggles
-                let resp = toolbar_btn(ui, &nav_label(Icon::PULSE, "Indicators"), watchlist.indicators_panel_open, t);
-                Tooltip::new("Indicators (Active + Library + Tools)").show(ui, &resp, t);
-                paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.indicators_panel_open, "right_indicators");
-                if resp.clicked() { watchlist.update_sidebar_state(|s| s.indicators_panel_open = !s.indicators_panel_open); }
-                nav_divider!(ui, resp);
+                // Watchlist: display field (`open`) differs from state field (`watchlist_open`)
+                {
+                    let resp = toolbar_btn(ui, &nav_label(Icon::LIST, "Watchlist"), watchlist.open, t);
+                    Tooltip::new("Watchlist").show(ui, &resp, t);
+                    paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.open, "right_watchlist");
+                    if resp.clicked() { watchlist.update_sidebar_state(|s| s.watchlist_open = !s.watchlist_open); }
+                    nav_divider!(ui, resp);
+                }
+                panel_toggle!(Icon::CURRENCY_DOLLAR, "Orders",     orders_panel_open,     "Orders Panel",                                "right_orders");
+                panel_toggle!(Icon::CHART_LINE,      "Analysis",   analysis_open,         "Analysis Sidebar",                            "right_analysis");
+                panel_toggle!(Icon::PULSE,           "Indicators", indicators_panel_open, "Indicators (Active + Library + Tools)",       "right_indicators");
 
                 // Signals panel (Alerts + Signals) — no divider after, it's the last in the group
                 {
@@ -2177,7 +2174,7 @@ pub(crate) fn render(
                     }
 
                     // Label
-                    let lc = if is_cur { t.accent } else if hovered { t.text } else { t.dim };
+                    let lc = row_text_color(is_cur, hovered, t);
                     ui.painter().text(
                         egui::pos2(row_rect.left() + 14.0, row_rect.center().y),
                         egui::Align2::LEFT_CENTER, tf_label,
@@ -2293,7 +2290,7 @@ pub(crate) fn render(
                     }
 
                     // Label + description
-                    let lc = if is_cur { t.accent } else if hovered { t.text } else { t.dim };
+                    let lc = row_text_color(is_cur, hovered, t);
                     ui.painter().text(egui::pos2(row_rect.left() + 42.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.label(), mono_sm(), lc);
                     let dc = if hovered { color_alpha(t.dim, alpha_heavy()) } else { color_muted(t.dim) };
                     ui.painter().text(egui::pos2(row_rect.left() + 74.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.description(), mono_sm(), dc);

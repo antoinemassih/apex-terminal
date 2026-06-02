@@ -482,14 +482,39 @@ pub mod cursor {
 // semantic intent (muted/strong = chrome; dim/line = borders).
 // alpha_faint/ghost/soft/subtle/tint/muted/dim/line/strong/active/heavy/solid
 // moved to `crate::ui_kit::style`. `alpha_whisper` / `alpha_hint` also there.
-pub fn alpha_intense()     -> u8 { 140 }
-pub fn alpha_prominent()   -> u8 { 180 }
-pub fn alpha_near_opaque() -> u8 { 230 }
+pub fn alpha_intense()          -> u8 { 140 }
+pub fn alpha_prominent()        -> u8 { 180 }
+pub fn alpha_near_opaque()      -> u8 { 230 }
+/// Button hover tint — light overlay behind hovered elements (between faint=10 and soft=20).
+pub fn alpha_button_hover()     -> u8 { 18  }
+/// Secondary / placeholder text — between muted=60 and line=80.
+pub fn alpha_secondary_text()   -> u8 { 70  }
+/// Interactive highlighted text / active row fills — between strong=80 and solid=200.
+pub fn alpha_interactive()      -> u8 { 160 }
 
 /// Use with `color_alpha(color, ALPHA_*)` for consistent opacity tiers.
-pub const ALPHA_INTENSE:     u8 = 140;
-pub const ALPHA_PROMINENT:   u8 = 180;
-pub const ALPHA_NEAR_OPAQUE: u8 = 230;
+pub const ALPHA_INTENSE:        u8 = 140;
+pub const ALPHA_PROMINENT:      u8 = 180;
+pub const ALPHA_NEAR_OPAQUE:    u8 = 230;
+pub const ALPHA_BUTTON_HOVER:   u8 = 18;
+pub const ALPHA_SECONDARY_TEXT: u8 = 70;
+pub const ALPHA_INTERACTIVE:    u8 = 160;
+
+// ─── Badge / alert pill tokens ────────────────────────────────────────────────
+/// Height of an alert badge pill.
+pub const BADGE_HEIGHT:         f32 = 20.0;
+/// Minimum width of a badge pill (prevents single-word badges from looking squished).
+pub const BADGE_MIN_WIDTH:      f32 = 64.0;
+/// Left accent stripe width on a badge.
+pub const BADGE_ACCENT_WIDTH:   f32 = 3.0;
+/// Width reserved for the dismiss × button on the right of a badge.
+pub const BADGE_DISMISS_WIDTH:  f32 = 14.0;
+/// Right inset of the dismiss × glyph inside its reserved space.
+pub const BADGE_DISMISS_PADDING: f32 = 8.0;
+/// Corner radius for badge pills (slightly smaller than radius_xs for compactness).
+pub const BADGE_CORNER_RADIUS:  u8  = 3;
+/// Alpha for the tinted pill background (accent color at low opacity).
+pub const BADGE_TINT_ALPHA:     u8  = 18;
 
 // ─── Drop shadow tokens ───────────────────────────────────────────────────────
 // shadow_offset / shadow_alpha / shadow_spread now in `crate::ui_kit::style`.

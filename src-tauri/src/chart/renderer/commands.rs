@@ -381,11 +381,11 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         AppCommand::PlaceSelectedOrders => {
             // snapshot selection before mutating panes (selection is on watchlist).
             let sel = watchlist.selected_order_ids.clone();
-            for (pi, oid) in &sel {
-                if let Some(pane) = panes.get_mut(*pi) {
+            for s in &sel {
+                if let Some(pane) = panes.get_mut(s.pane_idx) {
                     // resolve pair_id while we have access to the order
-                    let pair_id = pane.orders.iter().find(|o| o.id == *oid).and_then(|o| o.pair_id);
-                    if let Some(o) = pane.orders.iter_mut().find(|o| o.id == *oid) {
+                    let pair_id = pane.orders.iter().find(|o| o.id == s.order_id).and_then(|o| o.pair_id);
+                    if let Some(o) = pane.orders.iter_mut().find(|o| o.id == s.order_id) {
                         if o.status == OrderStatus::Draft { o.status = OrderStatus::Placed; }
                     }
                     if let Some(pid) = pair_id {
@@ -400,9 +400,9 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
 
         AppCommand::CancelSelectedOrders => {
             let sel = watchlist.selected_order_ids.clone();
-            for (pi, oid) in &sel {
-                if let Some(pane) = panes.get_mut(*pi) {
-                    cancel_order_with_pair(&mut pane.orders, *oid);
+            for s in &sel {
+                if let Some(pane) = panes.get_mut(s.pane_idx) {
+                    cancel_order_with_pair(&mut pane.orders, s.order_id);
                 }
             }
             watchlist.selected_order_ids.clear();

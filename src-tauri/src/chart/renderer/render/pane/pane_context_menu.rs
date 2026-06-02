@@ -59,7 +59,7 @@ pub(super) fn pane_context_menu<F>(
             ui.close_menu();
         }
         if MenuItem::new("Measure (Shift+Drag)").icon(Icon::RULER).show(ui, t).clicked() {
-            chart.measure_active = true; chart.measure_start = None;
+            chart.measure.mode = true; chart.measure.start = None;
             ui.close_menu();
         }
         ui.separator();

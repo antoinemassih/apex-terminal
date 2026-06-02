@@ -427,7 +427,7 @@ if is_spawn || watchlist.open {
                                                 ("+5%", 5.0, 999.0), ("-5%", -999.0, -5.0),
                                                 ("Big", 3.0, 999.0),
                                             ];
-                                            for cf in &watchlist.custom_filters { p.push((&cf.0, cf.1, cf.2)); }
+                                            for cf in &watchlist.custom_filters { p.push((&cf.name, cf.min_change, cf.max_change)); }
                                             p
                                         };
                                         for (name, min_chg, max_chg) in &presets {
@@ -732,7 +732,7 @@ if is_spawn || watchlist.open {
                                     // No flash on initial load (prev_price == 0) or options (too dense).
                                     let item_prev_price = item.prev_price;
                                     let item_price_change_at = item.price_change_at;
-                                    let is_dragged = drag_confirmed && dragging == Some((si, ii));
+                                    let is_dragged = drag_confirmed && dragging.map_or(false, |d| d.section_idx == si && d.item_idx == ii);
 
                                     // Skip rendering the dragged item in-place (it's shown as floating)
                                     if is_dragged {
@@ -815,7 +815,7 @@ if is_spawn || watchlist.open {
 
                                         let drag_resp = resp.response.interact(egui::Sense::click_and_drag());
                                         if drag_resp.drag_started() {
-                                            watchlist.dragging = Some((si, ii));
+                                            watchlist.dragging = Some(crate::chart_renderer::gpu::WatchlistDragState { section_idx: si, item_idx: ii });
                                             watchlist.drag_start_pos = pointer_pos;
                                             watchlist.drag_confirmed = false;
                                         }
@@ -981,7 +981,7 @@ if is_spawn || watchlist.open {
 
                                         // ── Drag start ──
                                         if wresp.response.drag_started() {
-                                            watchlist.dragging = Some((si, ii));
+                                            watchlist.dragging = Some(crate::chart_renderer::gpu::WatchlistDragState { section_idx: si, item_idx: ii });
                                             watchlist.drag_start_pos = pointer_pos;
                                             watchlist.drag_confirmed = false;
                                         }
@@ -1054,11 +1054,12 @@ if is_spawn || watchlist.open {
                                         best = Some((si, 0, 0.0));
                                     }
                                 }
-                                watchlist.drop_target = best.map(|(s, i, _)| (s, i));
+                                watchlist.drop_target = best.map(|(s, i, _)| crate::chart_renderer::gpu::WatchlistDragState { section_idx: s, item_idx: i });
                             }
 
                             // Draw insertion indicator line
-                            if let Some((dt_sec, dt_idx)) = watchlist.drop_target {
+                            if let Some(dt) = watchlist.drop_target {
+                                let (dt_sec, dt_idx) = (dt.section_idx, dt.item_idx);
                                 // Find the Y position for the indicator
                                 let indicator_y = if let Some(&(_, _, rect)) = row_rects.iter().find(|&&(s, i, _)| s == dt_sec && i == dt_idx) {
                                     rect.min.y
@@ -1085,7 +1086,8 @@ if is_spawn || watchlist.open {
                             }
 
                             // Draw floating label at cursor
-                            if let (Some((src_sec, src_idx)), Some(mouse)) = (watchlist.dragging, pointer_pos) {
+                            if let (Some(drag), Some(mouse)) = (watchlist.dragging, pointer_pos) {
+                                let (src_sec, src_idx) = (drag.section_idx, drag.item_idx);
                                 if src_sec < watchlist.sections.len() && src_idx < watchlist.sections[src_sec].items.len() {
                                     let drag_sym = &watchlist.sections[src_sec].items[src_idx].symbol;
                                     let float_rect = egui::Rect::from_min_size(
@@ -1101,7 +1103,8 @@ if is_spawn || watchlist.open {
 
                         // Drop: on pointer release while dragging
                         if pointer_released && watchlist.drag_confirmed {
-                            if let (Some((src_sec, src_idx)), Some((dst_sec, dst_idx))) = (watchlist.dragging, watchlist.drop_target) {
+                            if let (Some(src), Some(dst)) = (watchlist.dragging, watchlist.drop_target) {
+                                let (src_sec, src_idx, dst_sec, dst_idx) = (src.section_idx, src.item_idx, dst.section_idx, dst.item_idx);
                                 // Adjust destination index if same section and source is before target
                                 let adj_dst = if src_sec == dst_sec && src_idx < dst_idx { dst_idx - 1 } else { dst_idx };
                                 watchlist.move_item(src_sec, src_idx, dst_sec, adj_dst);
@@ -1396,7 +1399,7 @@ if is_spawn || watchlist.open {
                             .or_else(|| panes.iter().find(|p| p.symbol == watchlist.chain_symbol).and_then(|p| p.bars.last().map(|b| b.close)))
                             .unwrap_or(0.0)
                     };
-                    if watchlist.chain_0dte.0.is_empty() && !watchlist.chain_loading {
+                    if watchlist.chain_0dte.calls.is_empty() && !watchlist.chain_loading {
                         let ns = watchlist.chain_num_strikes;
                         let sym = watchlist.chain_symbol.clone();
                         let far_dte = watchlist.chain_far_dte;
@@ -1516,7 +1519,7 @@ if is_spawn || watchlist.open {
                             watchlist.chain_symbol = watchlist.chain_sym_input.trim().to_uppercase();
                             watchlist.chain_sym_input.clear();
                             watchlist.search_results.clear();
-                            watchlist.chain_0dte = (vec![], vec![]);
+                            watchlist.chain_0dte = crate::chart_renderer::gpu::OptionChain::default();
                             watchlist.chain_underlying_price = 0.0; // reset price for new symbol
                             watchlist.chain_center_offset = 0;
                             watchlist.chain_loading = false;
@@ -1532,7 +1535,7 @@ if is_spawn || watchlist.open {
                                     watchlist.chain_symbol = sym;
                                     watchlist.chain_sym_input.clear();
                                     watchlist.search_results.clear();
-                                    watchlist.chain_0dte = (vec![], vec![]);
+                                    watchlist.chain_0dte = crate::chart_renderer::gpu::OptionChain::default();
                                     watchlist.chain_underlying_price = 0.0;
                                     watchlist.chain_center_offset = 0;
                                     watchlist.chain_loading = false;
@@ -1841,10 +1844,10 @@ if is_spawn || watchlist.open {
                         // min_width removed — was preventing sidebar resize
                         let sym = watchlist.chain_symbol.clone();
                         let sel = watchlist.chain_select_mode;
-                        let calls_0 = watchlist.chain_0dte.0.clone();
-                        let puts_0 = watchlist.chain_0dte.1.clone();
-                        let calls_f = watchlist.chain_far.0.clone();
-                        let puts_f = watchlist.chain_far.1.clone();
+                        let calls_0 = watchlist.chain_0dte.calls.clone();
+                        let puts_0 = watchlist.chain_0dte.puts.clone();
+                        let calls_f = watchlist.chain_far.calls.clone();
+                        let puts_f = watchlist.chain_far.puts.clone();
                         let far_dte = watchlist.chain_far_dte;
 
                         // Per-chain controls: 0DTE

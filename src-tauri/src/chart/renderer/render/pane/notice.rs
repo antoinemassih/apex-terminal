@@ -204,7 +204,7 @@ pub(crate) fn pane_notice_for(chart: &Chart) -> Option<PaneNotice> {
                 .key("M", if chart.magnet { "magnet on" } else { "magnet off" }),
         );
     }
-    if chart.measure_active {
+    if chart.measure.mode {
         return Some(
             PaneNotice::new(Icon::RULER, "Measure", "drag across the chart to measure")
                 .key("Esc", "exit"),

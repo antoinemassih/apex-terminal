@@ -1135,7 +1135,7 @@ fn render_chart_pane(
 
                             // Chain table
                             let chain_ref = if current_dte == 0 { &watchlist.chain_0dte } else { &watchlist.chain_far };
-                            let (calls, puts) = (&chain_ref.0, &chain_ref.1);
+                            let (calls, puts) = (&chain_ref.calls, &chain_ref.puts);
                             let mut pending_load: Option<(f32, bool)> = None;
 
                             // Quick prev/next strike navigation — only meaningful when
@@ -1244,8 +1244,8 @@ fn render_chart_pane(
                             // Apply selected contract
                             if let Some((strike, is_call)) = pending_load {
                                 let rows = if current_dte == 0 {
-                                    if is_call { &watchlist.chain_0dte.0 } else { &watchlist.chain_0dte.1 }
-                                } else if is_call { &watchlist.chain_far.0 } else { &watchlist.chain_far.1 };
+                                    if is_call { &watchlist.chain_0dte.calls } else { &watchlist.chain_0dte.puts }
+                                } else if is_call { &watchlist.chain_far.calls } else { &watchlist.chain_far.puts };
                                 let occ = rows.iter()
                                     .find(|r| (r.strike - strike).abs() < 0.01)
                                     .map(|r| r.contract.clone())
@@ -2831,7 +2831,7 @@ fn render_chart_pane(
     // ── Auto Support/Resistance ───────────────────────────────────────────
     // ── Gamma Levels Overlay (GEX) ────────────────────────────────────────
     if chart.show_gamma && !chart.gamma_levels.is_empty() {
-        let max_gex = chart.gamma_levels.iter().map(|(_, g)| g.abs()).fold(0.0_f32, f32::max).max(1.0);
+        let max_gex = chart.gamma_levels.iter().map(|l| l.exposure.abs()).fold(0.0_f32, f32::max).max(1.0);
         let max_bar_w = cw * 0.12; // max band width as fraction of chart width
 
         let last_price = chart.bars.last().map_or(0.0, |b| b.close);
@@ -2864,7 +2864,8 @@ fn render_chart_pane(
         }
 
         // Gamma bands at each level
-        for &(price, gex) in &chart.gamma_levels {
+        for l in &chart.gamma_levels {
+            let (price, gex) = (l.price, l.exposure);
             let y = py(price);
             if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
             let norm = gex.abs() / max_gex;
@@ -9536,7 +9537,7 @@ fn render_chart_pane(
             }
             chart.dragging_drawing = None;
         }
-        if chart.measuring { chart.measuring = false; chart.measure_start = None; chart.measure_active = false; }
+        if chart.measure.active { chart.measure.active = false; chart.measure.start = None; chart.measure.mode = false; }
     }
 
     // ── PRIORITY 0: Alert badge PLACE/X click handling (overlay on top of everything) ──
@@ -9877,7 +9878,7 @@ fn render_chart_pane(
     // ── PRIORITY 2: Modal tools ─────────────────────────────────────────
 
     // 2a: Measure tool (shift+drag or context menu)
-    if !event_consumed && (shift_held || chart.measure_active) && chart.draw_tool.is_empty() {
+    if !event_consumed && (shift_held || chart.measure.mode) && chart.draw_tool.is_empty() {
         // Set cursor unconditionally whenever measure is armed — even if pointer hasn't entered pane yet
         crate::chart_renderer::ui::style::cursor::modal(ui, egui::CursorIcon::Crosshair);
         if let Some(pos) = hover_pos {
@@ -9885,13 +9886,13 @@ fn render_chart_pane(
             let price_f = pos_to_price(pos);
 
             if ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary)) && in_chart_body {
-                chart.measure_start = Some((bar_f, price_f));
-                chart.measuring = true;
+                chart.measure.start = Some((bar_f, price_f));
+                chart.measure.active = true;
             }
 
-            if chart.measuring {
+            if chart.measure.active {
                 event_consumed = true;
-                if let Some((sb, sp)) = chart.measure_start {
+                if let Some((sb, sp)) = chart.measure.start {
                     let start_pos = egui::pos2(bx(sb), py(sp));
                     let end_pos = egui::pos2(bx(bar_f), py(price_f));
 
@@ -9946,9 +9947,9 @@ fn render_chart_pane(
                 }
 
                 if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
-                    chart.measuring = false;
-                    chart.measure_start = None;
-                    chart.measure_active = false;
+                    chart.measure.active = false;
+                    chart.measure.start = None;
+                    chart.measure.mode = false;
                 }
             }
         }
@@ -10740,7 +10741,7 @@ fn render_chart_pane(
 
     // ── PRIORITY 7: Hover cursors (uses cached hover_hit / hover_order) ──
     if !event_consumed && pointer_in_pane && chart.draw_tool.is_empty()
-        && !chart.measure_active && !chart.zoom_selecting {
+        && !chart.measure.mode && !chart.zoom_selecting {
         if in_xaxis {
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
         } else if in_yaxis {
@@ -10774,10 +10775,10 @@ fn render_chart_pane(
     // winit on Windows doesn't support ZoomIn cursor (falls back to arrow) and Crosshair
     // is just a hairline +. We hide the system cursor and paint a phosphor icon at the
     // pointer position for a proper visual signal of the active tool.
-    if chart.measure_active || chart.measuring || chart.zoom_selecting {
+    if chart.measure.mode || chart.measure.active || chart.zoom_selecting {
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
         if let Some(p) = hover_pos {
-            if in_chart_body || chart.measure_active || chart.zoom_selecting {
+            if in_chart_body || chart.measure.mode || chart.zoom_selecting {
                 let (icon, icon_color) = if chart.zoom_selecting {
                     (Icon::MAGNIFYING_GLASS_PLUS, t.accent)
                 } else {
@@ -11199,7 +11200,7 @@ fn drawing_label(tool: &str) -> &'static str {
 fn drawing_is_active(tool: &str, chart: &Chart) -> bool {
     match tool {
         "magnifier" => chart.zoom_selecting,
-        "measure" => chart.measure_active,
+        "measure" => chart.measure.mode,
         _ => false,
     }
 }
@@ -11214,7 +11215,7 @@ fn apply_draw_tool(tool: &str, chart: &mut Chart) {
             chart.draw_tool.clear();
         }
         "measure" => {
-            chart.measure_active = !chart.measure_active;
+            chart.measure.mode = !chart.measure.mode;
             chart.draw_tool.clear();
         }
         _ => { chart.draw_tool = tool.to_string(); }
@@ -11428,8 +11429,8 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                             strike, last, bid, ask, volume: vol, oi, iv, itm, contract,
                         }).collect()
                     };
-                    watchlist.chain_0dte = (to_rows(c0), to_rows(p0));
-                    watchlist.chain_far  = (to_rows(cf), to_rows(pf));
+                    watchlist.chain_0dte = crate::chart_renderer::gpu::OptionChain { calls: to_rows(c0), puts: to_rows(p0) };
+                    watchlist.chain_far  = crate::chart_renderer::gpu::OptionChain { calls: to_rows(cf), puts: to_rows(pf) };
                     // Throttled log: emit only when the summary changes or
                     // ≥5s elapsed. Was firing every frame at 60+ Hz.
                     {
@@ -11438,15 +11439,15 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                         let m = LAST.get_or_init(|| Mutex::new((String::new(), std::time::Instant::now() - std::time::Duration::from_secs(60))));
                         let key = format!("{}:{}c/{}p:{}c/{}p:{:.2}:{}",
                             sym,
-                            watchlist.chain_0dte.0.len(), watchlist.chain_0dte.1.len(),
-                            watchlist.chain_far.0.len(), watchlist.chain_far.1.len(),
+                            watchlist.chain_0dte.calls.len(), watchlist.chain_0dte.puts.len(),
+                            watchlist.chain_far.calls.len(), watchlist.chain_far.puts.len(),
                             spot0, cached.len());
                         let mut g = m.lock().unwrap();
                         if g.0 != key || g.1.elapsed() >= std::time::Duration::from_secs(5) {
                             crate::apex_log!("chain.refresh",
                                 "{}: 0DTE={}c/{}p, far(dte={})={}c/{}p, spot={:.2}, cache={} rows",
-                                sym, watchlist.chain_0dte.0.len(), watchlist.chain_0dte.1.len(),
-                                far_dte, watchlist.chain_far.0.len(), watchlist.chain_far.1.len(),
+                                sym, watchlist.chain_0dte.calls.len(), watchlist.chain_0dte.puts.len(),
+                                far_dte, watchlist.chain_far.calls.len(), watchlist.chain_far.puts.len(),
                                 spot0, cached.len());
                             g.0 = key; g.1 = std::time::Instant::now();
                         }
@@ -11470,8 +11471,8 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
             }
             if p.symbol.is_empty() { continue; }
             let spot = watchlist.chain_underlying_price;
-            let calls = if !watchlist.chain_0dte.0.is_empty() { &watchlist.chain_0dte.0 }
-                        else { &watchlist.chain_far.0 };
+            let calls = if !watchlist.chain_0dte.calls.is_empty() { &watchlist.chain_0dte.calls }
+                        else { &watchlist.chain_far.calls };
             if let Some(atm) = calls.iter()
                 .min_by(|a, b| (a.strike - spot).abs()
                     .partial_cmp(&((b.strike - spot).abs()))

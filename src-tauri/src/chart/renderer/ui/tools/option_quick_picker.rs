@@ -131,9 +131,9 @@ pub(crate) fn draw(
                                     egui::FontId::monospace(font_sm()), t.text);
                                 if prev_resp.clicked() {
                                     // Find the next-lower strike in the current type's chain
-                                    let rows = if cur_is_call { &watchlist.chain_0dte.0 } else { &watchlist.chain_0dte.1 };
+                                    let rows = if cur_is_call { &watchlist.chain_0dte.calls } else { &watchlist.chain_0dte.puts };
                                     let rows = if current_dte == 0 { rows }
-                                        else if cur_is_call { &watchlist.chain_far.0 } else { &watchlist.chain_far.1 };
+                                        else if cur_is_call { &watchlist.chain_far.calls } else { &watchlist.chain_far.puts };
                                     let mut sorted: Vec<f32> = rows.iter().map(|r| r.strike).collect();
                                     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
                                     if let Some(&lower) = sorted.iter().rev().find(|&&s| s < cur_strike) {
@@ -157,9 +157,9 @@ pub(crate) fn draw(
                                     format!("Next Strike {}", Icon::CARET_RIGHT),
                                     egui::FontId::monospace(font_sm()), t.text);
                                 if next_resp.clicked() {
-                                    let rows = if cur_is_call { &watchlist.chain_0dte.0 } else { &watchlist.chain_0dte.1 };
+                                    let rows = if cur_is_call { &watchlist.chain_0dte.calls } else { &watchlist.chain_0dte.puts };
                                     let rows = if current_dte == 0 { rows }
-                                        else if cur_is_call { &watchlist.chain_far.0 } else { &watchlist.chain_far.1 };
+                                        else if cur_is_call { &watchlist.chain_far.calls } else { &watchlist.chain_far.puts };
                                     let mut sorted: Vec<f32> = rows.iter().map(|r| r.strike).collect();
                                     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
                                     if let Some(&higher) = sorted.iter().find(|&&s| s > cur_strike) {
@@ -192,7 +192,7 @@ pub(crate) fn draw(
                         } else {
                             &watchlist.chain_far
                         };
-                        let (calls, puts) = (&chain_ref.0, &chain_ref.1);
+                        let (calls, puts) = (&chain_ref.calls, &chain_ref.puts);
 
                         if calls.is_empty() && puts.is_empty() {
                             PanelLoading::new().show(ui, t);
@@ -270,9 +270,9 @@ pub(crate) fn draw(
         // Handle strike click → swap the contract on this pane (not a split).
         if let Some((strike, is_call)) = pending_load {
             let rows = if current_dte == 0 {
-                if is_call { &watchlist.chain_0dte.0 } else { &watchlist.chain_0dte.1 }
+                if is_call { &watchlist.chain_0dte.calls } else { &watchlist.chain_0dte.puts }
             } else {
-                if is_call { &watchlist.chain_far.0 } else { &watchlist.chain_far.1 }
+                if is_call { &watchlist.chain_far.calls } else { &watchlist.chain_far.puts }
             };
             let occ = rows.iter()
                 .find(|r| (r.strike - strike).abs() < 0.01)
