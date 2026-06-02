@@ -789,62 +789,8 @@ pub(crate) fn render(
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
 
-                // Window control buttons — custom drawn for clean look
-                let win_btn = |ui: &mut egui::Ui, danger: bool| -> (egui::Response, egui::Rect) {
-                    let (r, resp) = ui.allocate_exact_size(BTN_ICON_LG, egui::Sense::click());
-                    if resp.hovered() {
-                        let bg = if danger { t.bear } else { color_alpha(t.toolbar_border, 80) };
-                        ui.painter().rect_filled(r, 0.0, bg);
-                    }
-                    crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
-                    if resp.clicked() { TB_BTN_CLICKED.with(|f| f.set(true)); }
-                    (resp, r)
-                };
-
-                // Close — draw X with lines
-                {
-                    let (resp, r) = win_btn(ui, true);
-                    let c = r.center();
-                    let s = 4.5;
-                    let col = if resp.hovered() { contrast_fg(t.bear) } else { color_subtle(t.dim) };
-                    ui.painter().line_segment([egui::pos2(c.x - s, c.y - s), egui::pos2(c.x + s, c.y + s)], egui::Stroke::new(stroke_std(), col));
-                    ui.painter().line_segment([egui::pos2(c.x + s, c.y - s), egui::pos2(c.x - s, c.y + s)], egui::Stroke::new(stroke_std(), col));
-                    if resp.clicked() {
-                        save_state(panes, *layout, watchlist);
-                        watchlist.persist();
-                        CLOSE_REQUESTED.with(|f| f.set(true));
-                    }
-                }
-                // Maximize — draw square outline (or overlapping squares when maximized)
-                {
-                    let (resp, r) = win_btn(ui, false);
-                    let c = r.center();
-                    let s = 4.5;
-                    let col = if resp.hovered() { t.dim } else { color_subtle(t.dim) };
-                    let is_max = win_ref.as_ref().map_or(false, |w| w.is_maximized());
-                    if is_max {
-                        // Restore icon: two overlapping squares
-                        let o = 1.5;
-                        ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s + o, c.y - s), egui::vec2(s * 2.0 - o, s * 2.0 - o)), 0.5, egui::Stroke::new(stroke_std(), col), egui::StrokeKind::Outside);
-                        ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s, c.y - s + o), egui::vec2(s * 2.0 - o, s * 2.0 - o)), 0.5, egui::Stroke::new(stroke_std(), col), egui::StrokeKind::Outside);
-                    } else {
-                        ui.painter().rect_stroke(egui::Rect::from_center_size(c, egui::vec2(s * 2.0, s * 2.0)), 0.5, egui::Stroke::new(stroke_std(), col), egui::StrokeKind::Outside);
-                    }
-                    if resp.clicked() {
-                        if let Some(w) = &win_ref { let m = w.is_maximized(); w.set_maximized(!m); }
-                    }
-                }
-                // Minimize — draw horizontal line
-                {
-                    let (resp, r) = win_btn(ui, false);
-                    let c = r.center();
-                    let s = 5.0;
-                    let col = if resp.hovered() { t.dim } else { color_subtle(t.dim) };
-                    ui.painter().line_segment([egui::pos2(c.x - s, c.y), egui::pos2(c.x + s, c.y)], egui::Stroke::new(stroke_std(), col));
-                    if resp.clicked() {
-                        if let Some(w) = &win_ref { w.set_minimized(true); }
-                    }
-                }
+                // Window controls (Close / Maximize / Minimize) — delegated.
+                super::window_controls::render_window_controls(ui, panes, *layout, watchlist, &win_ref, t);
 
                 // Separator between window controls and panel toggles
                 crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);

@@ -18,6 +18,7 @@
 pub mod top_nav;
 pub mod chart_controls;
 pub mod dropdowns;
+pub mod window_controls;
 pub mod nav_cluster;
 pub mod ticker_strip;
 pub mod toolnav;

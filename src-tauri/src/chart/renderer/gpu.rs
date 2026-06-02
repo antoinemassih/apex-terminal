@@ -1232,10 +1232,6 @@ impl IndicatorType {
         }
     }
     pub(crate) fn all() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::BollingerBands, Self::Ichimoku, Self::ParabolicSAR, Self::Supertrend, Self::KeltnerChannels, Self::RSI, Self::MACD, Self::Stochastic, Self::ADX, Self::CCI, Self::WilliamsR, Self::ATR] }
-    #[allow(dead_code)]
-    fn overlays() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::BollingerBands, Self::Ichimoku, Self::ParabolicSAR, Self::Supertrend, Self::KeltnerChannels] }
-    #[allow(dead_code)]
-    fn oscillators() -> &'static [Self] { &[Self::RSI, Self::MACD, Self::Stochastic, Self::ADX, Self::CCI, Self::WilliamsR, Self::ATR] }
     pub(crate) fn default_period(self) -> usize {
         match self {
             Self::SMA | Self::EMA | Self::WMA | Self::DEMA | Self::TEMA => 20,
@@ -6380,11 +6376,6 @@ impl Watchlist {
         vec![]
     }
 
-    /// Get name of the active watchlist.
-    #[allow(dead_code)]
-    fn active_name(&self) -> &str {
-        self.saved_watchlists.get(self.active_watchlist_idx).map(|w| w.name.as_str()).unwrap_or("Default")
-    }
 }
 
 // Black-Scholes, strike_interval, atm_strike, get_iv, sim_oi — now in compute.rs
