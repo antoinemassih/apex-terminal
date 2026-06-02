@@ -49,6 +49,14 @@ use crate::ui_kit::icons::Icon;
 // Disambiguate APEXIB_URL (exists in both gpu and trading)
 use crate::chart_renderer::gpu::APEXIB_URL;
 
+// ── Pane-header popup anchoring ───────────────────────────────────────────────
+/// Vertical gap (px) between the pane-header bottom edge and a popup anchored
+/// below it (pane picker, template popup). Was a magic `+ 4.0` at 4 sites.
+const PANE_POPUP_GAP_Y: f32 = 4.0;
+/// Horizontal inset (px) from the header right edge for the right-anchored
+/// template popup. Was a magic `- 30.0`.
+const PANE_POPUP_RIGHT_INSET: f32 = 30.0;
+
 pub(crate) fn render_toolbar(
     ctx: &egui::Context,
     panes: &mut Vec<Chart>,
@@ -771,13 +779,13 @@ fn render_chart_pane(
             chart.pane_picker_option_mode = chart.is_option;
             let anchor_x = hdr.plus_tab_rect.map(|r| r.left())
                 .unwrap_or_else(|| header_rect.left());
-            chart.pane_picker_pos = egui::pos2(anchor_x, header_rect.bottom() + 4.0);
+            chart.pane_picker_pos = egui::pos2(anchor_x, header_rect.bottom() + PANE_POPUP_GAP_Y);
         }
 
         // Template button
         if hdr.clicked(PaneBtn::Template) {
             chart.template_popup_open = !chart.template_popup_open;
-            chart.template_popup_pos = egui::pos2(header_rect.right() - 30.0, header_rect.bottom() + 4.0);
+            chart.template_popup_pos = egui::pos2(header_rect.right() - PANE_POPUP_RIGHT_INSET, header_rect.bottom() + PANE_POPUP_GAP_Y);
         }
 
         // Symbol click (simple-label mode — opens pane picker)
@@ -789,7 +797,7 @@ fn render_chart_pane(
             if let Some(sr) = hdr.symbol_rect {
                 chart.pane_picker_pos = egui::pos2(sr.left(), sr.bottom() + 4.0);
             } else {
-                chart.pane_picker_pos = egui::pos2(header_rect.left() + 4.0, header_rect.bottom() + 4.0);
+                chart.pane_picker_pos = egui::pos2(header_rect.left() + PANE_POPUP_GAP_Y, header_rect.bottom() + PANE_POPUP_GAP_Y);
             }
         }
 
@@ -841,7 +849,7 @@ fn render_chart_pane(
                 chart.pane_picker_option_mode = chart.is_option;
                 let anchor_x = hdr.tab_rects.get(ci).map(|r| r.left())
                     .unwrap_or_else(|| header_rect.left());
-                chart.pane_picker_pos = egui::pos2(anchor_x, header_rect.bottom() + 4.0);
+                chart.pane_picker_pos = egui::pos2(anchor_x, header_rect.bottom() + PANE_POPUP_GAP_Y);
             }
         }
 
