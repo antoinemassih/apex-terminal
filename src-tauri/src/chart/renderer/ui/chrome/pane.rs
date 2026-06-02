@@ -876,7 +876,7 @@ impl Default for AccountStrip<'_> {
 ///     .title(&pane.title)
 ///     .width(fp_panel_w)
 ///     .armed(chart.armed)
-///     .advanced(chart.order_advanced)
+///     .advanced(chart.order_panel.advanced)
 ///     .position_text(pos_text, pos_color) // optional
 ///     .theme(t)
 ///     .show(ui, |ui| {
@@ -908,7 +908,7 @@ pub struct FloatingOrderPaneChromeResponse {
     pub close_clicked: bool,
     /// Armed toggle was clicked — caller should flip `chart.armed`.
     pub armed_toggled: bool,
-    /// Expand/collapse toggle was clicked — caller should flip `chart.order_advanced`.
+    /// Expand/collapse toggle was clicked — caller should flip `chart.order_panel.advanced`.
     pub advanced_toggled: bool,
     /// Drag delta this frame (zero if not dragging).
     pub drag_delta: egui::Vec2,

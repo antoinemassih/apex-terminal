@@ -350,12 +350,12 @@ pub(super) fn handle_keyboard_shortcuts(
             let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
             let result = submit_order(OrderIntent {
                 symbol: chart.symbol.clone(), side: OrderSide::Buy,
-                order_type: ManagedOrderType::Market, price: last_price, qty: chart.order_qty,
+                order_type: ManagedOrderType::Market, price: last_price, qty: chart.order_panel.qty,
                 source: OrderSource::Hotkey, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price, tif: 0, outside_rth: false,
                 strategy_id: None, override_warnings: false,
             });
             if let OrderResult::Accepted(id) = result {
-                chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price: last_price, qty: chart.order_qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price: last_price, qty: chart.order_panel.qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
             }
         }
         // Ctrl+Shift+B: Sell market at last price
@@ -363,12 +363,12 @@ pub(super) fn handle_keyboard_shortcuts(
             let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
             let result = submit_order(OrderIntent {
                 symbol: chart.symbol.clone(), side: OrderSide::Sell,
-                order_type: ManagedOrderType::Market, price: last_price, qty: chart.order_qty,
+                order_type: ManagedOrderType::Market, price: last_price, qty: chart.order_panel.qty,
                 source: OrderSource::Hotkey, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price, tif: 0, outside_rth: false,
                 strategy_id: None, override_warnings: false,
             });
             if let OrderResult::Accepted(id) = result {
-                chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price: last_price, qty: chart.order_qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price: last_price, qty: chart.order_panel.qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
             }
         }
         // Ctrl+Shift+Q: Cancel all orders — routes through the broker abstraction

@@ -75,7 +75,7 @@ pub(super) fn handle_deferred(
     let mut und_action: Option<(usize, OrderSide, String, String, f32, String, u32)> = None;
     for (pi, pane) in panes.iter_mut().enumerate() {
         if let Some(side) = pane.pending_und_order.take() {
-            und_action = Some((pi, side, pane.underlying.clone(), pane.option_type.clone(), pane.option_strike, pane.option_expiry.clone(), pane.order_qty));
+            und_action = Some((pi, side, pane.underlying.clone(), pane.option_type.clone(), pane.option_strike, pane.option_expiry.clone(), pane.order_panel.qty));
         }
     }
     if let Some((source_pi, side, underlying, opt_type, strike, expiry, qty)) = und_action {

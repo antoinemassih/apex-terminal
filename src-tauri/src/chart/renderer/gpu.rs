@@ -1662,19 +1662,19 @@ pub(crate) fn render_order_entry_body(
     if super::ui::style::current().hairline_borders {
         let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
         let spread = (last_price * 0.0001).max(0.01);
-        let oe_qty_snapshot = chart.order_qty;
+        let oe_qty_snapshot = chart.order_panel.qty;
         let mut oe_state = super::ui::inputs::form::OrderTicketState {
             symbol:         &chart.symbol,
-            is_buy:         &mut chart.order_is_buy,
-            order_type_idx: &mut chart.order_type_idx,
-            order_tif_idx:  &mut chart.order_tif_idx,
-            order_qty:      &mut chart.order_qty,
-            order_market:   &mut chart.order_market,
-            limit_price:    &mut chart.order_limit_price,
-            stop_price:     &mut chart.order_stop_price,
-            tp_price:       &mut chart.order_tp_price,
-            sl_price:       &mut chart.order_sl_price,
-            bracket:        &mut chart.order_bracket,
+            is_buy:         &mut chart.order_panel.is_buy,
+            order_type_idx: &mut chart.order_panel.type_idx,
+            order_tif_idx:  &mut chart.order_panel.tif_idx,
+            order_qty:      &mut chart.order_panel.qty,
+            order_market:   &mut chart.order_panel.market,
+            limit_price:    &mut chart.order_panel.limit_price,
+            stop_price:     &mut chart.order_panel.stop_price,
+            tp_price:       &mut chart.order_panel.tp_price,
+            sl_price:       &mut chart.order_panel.sl_price,
+            bracket:        &mut chart.order_panel.bracket,
             bid:            (last_price - spread).max(0.0),
             last:           last_price,
             ask:            last_price + spread,
@@ -1688,17 +1688,17 @@ pub(crate) fn render_order_entry_body(
         if outcome.review_clicked {
             // Translate REVIEW click into a submit — same path as the existing BUY/SELL buttons.
             // Side is determined by order_is_buy that the widget just toggled.
-            let side = if chart.order_is_buy { "BUY" } else { "SELL" };
+            let side = if chart.order_panel.is_buy { "BUY" } else { "SELL" };
             let sym  = chart.symbol.clone();
-            let qty  = chart.order_qty;
-            let ot   = chart.order_type_idx;
-            let tif  = chart.order_tif_idx;
-            let price = if chart.order_market { last_price } else {
-                chart.order_limit_price.parse::<f32>().unwrap_or(last_price)
+            let qty  = chart.order_panel.qty;
+            let ot   = chart.order_panel.type_idx;
+            let tif  = chart.order_panel.tif_idx;
+            let price = if chart.order_panel.market { last_price } else {
+                chart.order_panel.limit_price.parse::<f32>().unwrap_or(last_price)
             };
-            let bracket = chart.order_bracket;
-            let tp = chart.order_tp_price.parse::<f32>().ok();
-            let sl = chart.order_sl_price.parse::<f32>().ok();
+            let bracket = chart.order_panel.bracket;
+            let tp = chart.order_panel.tp_price.parse::<f32>().ok();
+            let sl = chart.order_panel.sl_price.parse::<f32>().ok();
             std::thread::spawn(move || {
                 submit_ib_order(&sym, side, qty, ot, tif, price, bracket, tp, sl);
             });
@@ -1714,20 +1714,20 @@ pub(crate) fn render_order_entry_body(
     let mut oe_state = ApertureOrderState {
         last_price,
         spread,
-        order_advanced:        chart.order_advanced,
-        order_market:          &mut chart.order_market,
-        order_type_idx:        &mut chart.order_type_idx,
-        order_tif_idx:         &mut chart.order_tif_idx,
-        order_qty:             &mut chart.order_qty,
-        order_notional_mode:   &mut chart.order_notional_mode,
-        order_notional_amount: &mut chart.order_notional_amount,
-        order_limit_price:     &mut chart.order_limit_price,
-        order_stop_price:      &mut chart.order_stop_price,
-        order_trail_amt:       &mut chart.order_trail_amt,
-        order_bracket:         &mut chart.order_bracket,
-        order_tp_price:        &mut chart.order_tp_price,
-        order_sl_price:        &mut chart.order_sl_price,
-        order_outside_rth:     &mut chart.order_outside_rth,
+        order_advanced:        chart.order_panel.advanced,
+        order_market:          &mut chart.order_panel.market,
+        order_type_idx:        &mut chart.order_panel.type_idx,
+        order_tif_idx:         &mut chart.order_panel.tif_idx,
+        order_qty:             &mut chart.order_panel.qty,
+        order_notional_mode:   &mut chart.order_panel.notional_mode,
+        order_notional_amount: &mut chart.order_panel.notional_amount,
+        order_limit_price:     &mut chart.order_panel.limit_price,
+        order_stop_price:      &mut chart.order_panel.stop_price,
+        order_trail_amt:       &mut chart.order_panel.trail_amt,
+        order_bracket:         &mut chart.order_panel.bracket,
+        order_tp_price:        &mut chart.order_panel.tp_price,
+        order_sl_price:        &mut chart.order_panel.sl_price,
+        order_outside_rth:     &mut chart.order_panel.outside_rth,
         is_option:             chart.is_option,
         option_type:           &chart.option_type,
         armed:                 chart.armed,
@@ -1742,19 +1742,19 @@ pub(crate) fn render_order_entry_body(
 
     // Handle the action returned by the widget — submission lives here because
     // submit_ib_order / submit_order are in this module.
-    let adv = chart.order_advanced;
+    let adv = chart.order_panel.advanced;
     match outcome.action {
         ApertureAction::TriggerBuy  => { chart.pending_und_order = Some(OrderSide::TriggerBuy); }
         ApertureAction::TriggerSell => { chart.pending_und_order = Some(OrderSide::TriggerSell); }
         ApertureAction::Buy { price } => {
             if chart.armed && adv {
                 let sym = chart.symbol.clone();
-                let qty = chart.order_qty;
-                let ot_idx = chart.order_type_idx;
-                let tif_idx = chart.order_tif_idx;
-                let bracket = chart.order_bracket;
-                let tp = chart.order_tp_price.parse::<f32>().ok();
-                let sl = chart.order_sl_price.parse::<f32>().ok();
+                let qty = chart.order_panel.qty;
+                let ot_idx = chart.order_panel.type_idx;
+                let tif_idx = chart.order_panel.tif_idx;
+                let bracket = chart.order_panel.bracket;
+                let tp = chart.order_panel.tp_price.parse::<f32>().ok();
+                let sl = chart.order_panel.sl_price.parse::<f32>().ok();
                 std::thread::spawn(move || {
                     submit_ib_order(&sym, "BUY", qty, ot_idx, tif_idx, price, bracket, tp, sl);
                 });
@@ -1762,17 +1762,17 @@ pub(crate) fn render_order_entry_body(
                 use super::trading::order_manager::*;
                 let intent = OrderIntent {
                     symbol: chart.symbol.clone(), side: OrderSide::Buy,
-                    order_type: ManagedOrderType::Limit, price, qty: chart.order_qty,
-                    source: OrderSource::OrderPanel, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: chart.order_tif_idx as u8, outside_rth: chart.order_outside_rth,
+                    order_type: ManagedOrderType::Limit, price, qty: chart.order_panel.qty,
+                    source: OrderSource::OrderPanel, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: chart.order_panel.tif_idx as u8, outside_rth: chart.order_panel.outside_rth,
                     strategy_id: None, override_warnings: false,
                 };
                 let result = submit_order(intent.clone());
                 match result {
                     OrderResult::Accepted(id) => {
-                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_panel.qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
                     }
                     OrderResult::NeedsConfirmation(id) => {
-                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_panel.qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
                         chart.pending_confirms.push((id as u32, std::time::Instant::now()));
                     }
                     OrderResult::NeedsApproval { reason, .. } => {
@@ -1791,12 +1791,12 @@ pub(crate) fn render_order_entry_body(
         ApertureAction::Sell { price } => {
             if chart.armed && adv {
                 let sym = chart.symbol.clone();
-                let qty = chart.order_qty;
-                let ot_idx = chart.order_type_idx;
-                let tif_idx = chart.order_tif_idx;
-                let bracket = chart.order_bracket;
-                let tp = chart.order_tp_price.parse::<f32>().ok();
-                let sl = chart.order_sl_price.parse::<f32>().ok();
+                let qty = chart.order_panel.qty;
+                let ot_idx = chart.order_panel.type_idx;
+                let tif_idx = chart.order_panel.tif_idx;
+                let bracket = chart.order_panel.bracket;
+                let tp = chart.order_panel.tp_price.parse::<f32>().ok();
+                let sl = chart.order_panel.sl_price.parse::<f32>().ok();
                 std::thread::spawn(move || {
                     submit_ib_order(&sym, "SELL", qty, ot_idx, tif_idx, price, bracket, tp, sl);
                 });
@@ -1804,17 +1804,17 @@ pub(crate) fn render_order_entry_body(
                 use super::trading::order_manager::*;
                 let intent = OrderIntent {
                     symbol: chart.symbol.clone(), side: OrderSide::Sell,
-                    order_type: ManagedOrderType::Limit, price, qty: chart.order_qty,
-                    source: OrderSource::OrderPanel, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: chart.order_tif_idx as u8, outside_rth: chart.order_outside_rth,
+                    order_type: ManagedOrderType::Limit, price, qty: chart.order_panel.qty,
+                    source: OrderSource::OrderPanel, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: chart.order_panel.tif_idx as u8, outside_rth: chart.order_panel.outside_rth,
                     strategy_id: None, override_warnings: false,
                 };
                 let result = submit_order(intent.clone());
                 match result {
                     OrderResult::Accepted(id) => {
-                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_panel.qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
                     }
                     OrderResult::NeedsConfirmation(id) => {
-                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_panel.qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
                         chart.pending_confirms.push((id as u32, std::time::Instant::now()));
                     }
                     OrderResult::NeedsApproval { reason, .. } => {
@@ -1963,6 +1963,43 @@ pub(crate) struct OptionQuickPicker {
     pub(crate) open:    bool,        // was option_quick_open
     pub(crate) pos:     egui::Pos2,  // was option_quick_pos
     pub(crate) dte_idx: usize,       // was option_quick_dte_idx
+}
+
+/// The per-pane order-ticket panel state (MeridienOrderTicket / ApertureOrderTicket).
+/// Field names drop the old `order_`/`order_panel_` prefix. NOTE: distinct from the
+/// `form::OrderTicketState`/`ApertureOrderState` adapters, which borrow these fields.
+pub(crate) struct OrderPanelState {
+    pub(crate) qty:             u32,        // was order_qty
+    pub(crate) is_buy:          bool,       // was order_is_buy
+    pub(crate) market:          bool,       // was order_market (true=market, false=limit)
+    pub(crate) limit_price:     String,     // was order_limit_price
+    pub(crate) type_idx:        usize,      // was order_type_idx (0=MKT,1=LMT,2=STP,3=STP-LMT,4=TRAIL)
+    pub(crate) tif_idx:         usize,      // was order_tif_idx (0=DAY,1=GTC,2=IOC)
+    pub(crate) outside_rth:     bool,       // was order_outside_rth
+    pub(crate) advanced:        bool,       // was order_advanced (expanded mode)
+    pub(crate) bracket:         bool,       // was order_bracket
+    pub(crate) stop_price:      String,     // was order_stop_price
+    pub(crate) trail_amt:       String,     // was order_trail_amt
+    pub(crate) tp_price:        String,     // was order_tp_price
+    pub(crate) sl_price:        String,     // was order_sl_price
+    pub(crate) pos:             egui::Pos2, // was order_panel_pos
+    pub(crate) dragging:        bool,       // was order_panel_dragging
+    pub(crate) collapsed:       bool,       // was order_collapsed
+    pub(crate) notional_mode:   bool,       // was order_notional_mode
+    pub(crate) notional_amount: String,     // was order_notional_amount
+}
+
+impl Default for OrderPanelState {
+    fn default() -> Self {
+        Self {
+            qty: 100, is_buy: true, market: true, limit_price: String::new(),
+            type_idx: 0, tif_idx: 0, outside_rth: false, advanced: false, bracket: false,
+            stop_price: String::new(), trail_amt: String::new(),
+            tp_price: String::new(), sl_price: String::new(),
+            pos: egui::pos2(8.0, -80.0), dragging: false, collapsed: false,
+            notional_mode: false, notional_amount: String::new(),
+        }
+    }
 }
 
 /// All state for the DOM (Depth-of-Market / Price Ladder) panel.
@@ -2206,22 +2243,7 @@ pub(crate) struct Chart {
     // Orders
     pub(crate) orders: Vec<OrderLevel>,
     pub(crate) next_order_id: u32,
-    pub(crate) order_qty: u32,
-    pub(crate) order_is_buy: bool, // true=buy, false=sell (used by MeridienOrderTicket)
-    pub(crate) order_market: bool, // true=market, false=limit
-    pub(crate) order_limit_price: String, // limit price as editable text
-    pub(crate) order_type_idx: usize, // 0=MKT, 1=LMT, 2=STP, 3=STP-LMT, 4=TRAIL
-    pub(crate) order_tif_idx: usize, // 0=DAY, 1=GTC, 2=IOC
-    pub(crate) order_outside_rth: bool, // allow trading outside regular trading hours
-    pub(crate) order_advanced: bool, // expanded mode
-    pub(crate) order_bracket: bool, // bracket mode: entry + TP + SL
-    pub(crate) order_stop_price: String, // stop trigger price (for STP, STP-LMT)
-    pub(crate) order_trail_amt: String, // trailing amount (for TRAIL)
-    pub(crate) order_tp_price: String, // take profit price (bracket)
-    pub(crate) order_sl_price: String, // stop loss price (bracket)
-    pub(crate) order_panel_pos: egui::Pos2, // draggable position (relative to chart rect)
-    pub(crate) order_panel_dragging: bool,
-    pub(crate) order_collapsed: bool, // true = show as pill, double-click to expand
+    pub(crate) order_panel: OrderPanelState,
     pub(crate) dragging_order: Option<u32>, // order id being dragged
     pub(crate) dragging_alert: Option<u32>, // alert id being dragged (includes drafts)
     pub(crate) editing_order: Option<u32>,
@@ -2340,8 +2362,7 @@ pub(crate) struct Chart {
     /// `ReplayOverlay` doc comment for the render contract.
     pub replay_overlay: Option<ReplayOverlay>,
     // Notional-based order entry
-    pub(crate) order_notional_mode: bool,
-    pub(crate) order_notional_amount: String,
+    // (order_notional_mode / order_notional_amount moved into `order_panel`.)
     // Bracket order templates
     pub(crate) bracket_templates: Vec<BracketTemplate>,
     pub(crate) new_bracket_name: String,
@@ -2496,11 +2517,7 @@ impl Chart {
             zoom_selecting: false, zoom_start: egui::Pos2::ZERO, axis_drag_mode: 0,
             picker: SymbolPickerState::default(),
             recent_symbols: vec![("AAPL".into(), "Apple".into()), ("SPY".into(), "S&P 500 ETF".into()), ("TSLA".into(), "Tesla".into()), ("NVDA".into(), "Nvidia".into()), ("MSFT".into(), "Microsoft".into())],
-            orders: vec![], next_order_id: 1, order_qty: 100, order_is_buy: true, order_market: true, order_limit_price: String::new(),
-            order_type_idx: 0, order_tif_idx: 0, order_outside_rth: false, order_advanced: false, order_bracket: false,
-            order_stop_price: String::new(), order_trail_amt: String::new(),
-            order_tp_price: String::new(), order_sl_price: String::new(),
-            order_panel_pos: egui::pos2(8.0, -80.0), order_panel_dragging: false, order_collapsed: false,
+            orders: vec![], next_order_id: 1, order_panel: OrderPanelState::default(),
             dragging_order: None, dragging_alert: None, editing_order: None, edit_order_qty: String::new(), edit_order_price: String::new(),
             armed: false, pending_confirms: vec![],
             trigger_setup: TriggerSetup::default(), trigger_levels: vec![], next_trigger_id: 1, dragging_trigger: None, editing_trigger: None, pending_und_order: None,
@@ -2531,7 +2548,6 @@ impl Chart {
             cvd_data: vec![], delta_data: vec![], rvol_data: vec![], vol_analytics_computed: 0,
             replay_mode: false, replay_bar_count: 0, replay_playing: false, replay_speed: 1.0, replay_last_step: None,
             replay_overlay: None,
-            order_notional_mode: false, order_notional_amount: String::new(),
             bracket_templates: vec![
                 BracketTemplate { name: "Tight".into(),  target_pct: 1.0, stop_pct: 0.5 },
                 BracketTemplate { name: "Normal".into(), target_pct: 2.0, stop_pct: 1.0 },

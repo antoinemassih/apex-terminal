@@ -30,12 +30,12 @@ pub struct OrderEntryPanelCtx<'a> {
 
 pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
     let chart = c.chart;
-    let adv = chart.order_advanced;
+    let adv = chart.order_panel.advanced;
     let panel_w = if adv { 270.0 } else { 210.0 };
     let abs_pos = c.abs_pos;
 
     // ── Collapsed pill ──
-    if chart.order_collapsed {
+    if chart.order_panel.collapsed {
         let pill_w = 90.0;
         // retained as Window: needs corner_radius(12) + custom drag delta capture that bypasses Modal API
         egui::Window::new(format!("order_pill_{}", c.pane_idx))
@@ -56,12 +56,12 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
                     ui.label(egui::RichText::new("ORDER").monospace().size(font_sm()).strong().color(color_subtle(c.t.dim)));
                 });
                 let pill_resp = ui.interact(resp.response.rect, egui::Id::new(("order_pill_interact", c.pane_idx)), egui::Sense::click_and_drag());
-                if pill_resp.double_clicked() { chart.order_collapsed = false; }
+                if pill_resp.double_clicked() { chart.order_panel.collapsed = false; }
                 cursor::draggable(ui, &pill_resp);
                 if pill_resp.dragged() {
                     let delta = pill_resp.drag_delta();
-                    chart.order_panel_pos.x += delta.x;
-                    chart.order_panel_pos.y += delta.y;
+                    chart.order_panel.pos.x += delta.x;
+                    chart.order_panel.pos.y += delta.y;
                 }
             });
         return;
@@ -148,18 +148,18 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
     // Apply header toggles flagged inside the leading/trailing closures.
     if toggle_armed { chart.armed = !chart.armed; }
     if toggle_dom   { chart.dom.open = !chart.dom.open; }
-    if toggle_adv   { chart.order_advanced = !chart.order_advanced; }
+    if toggle_adv   { chart.order_panel.advanced = !chart.order_panel.advanced; }
 
     // Apply drag delta from ToolOverlay's host-managed position.
     let delta = overlay_resp.drag_delta;
     if delta != egui::Vec2::ZERO {
-        chart.order_panel_pos.x += delta.x;
-        chart.order_panel_pos.y += delta.y;
-        chart.order_panel_pos.x = chart.order_panel_pos.x.clamp(0.0, (c.cw - panel_w).max(0.0));
-        if chart.order_panel_pos.y < 0.0 {
-            chart.order_panel_pos.y = chart.order_panel_pos.y.clamp(-(c.ch - 30.0), -30.0);
+        chart.order_panel.pos.x += delta.x;
+        chart.order_panel.pos.y += delta.y;
+        chart.order_panel.pos.x = chart.order_panel.pos.x.clamp(0.0, (c.cw - panel_w).max(0.0));
+        if chart.order_panel.pos.y < 0.0 {
+            chart.order_panel.pos.y = chart.order_panel.pos.y.clamp(-(c.ch - 30.0), -30.0);
         } else {
-            chart.order_panel_pos.y = chart.order_panel_pos.y.clamp(0.0, (c.ch - 30.0).max(0.0));
+            chart.order_panel.pos.y = chart.order_panel.pos.y.clamp(0.0, (c.ch - 30.0).max(0.0));
         }
     }
 }
@@ -240,11 +240,11 @@ fn render_dom_ladder(
                 use crate::chart_renderer::trading::order_manager::*;
                 if let Some(id) = submit_and_get_id(OrderIntent {
                     symbol: chart.symbol.clone(), side: OrderSide::Buy,
-                    order_type: ManagedOrderType::Limit, price, qty: chart.order_qty,
+                    order_type: ManagedOrderType::Limit, price, qty: chart.order_panel.qty,
                     source: OrderSource::ChartClick, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
                     strategy_id: None, override_warnings: false,
                 }) {
-                    chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                    chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_panel.qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
                 }
             }
             let pc = if is_current { t.text } else if price > current_price { color_subtle(t.bull) } else { color_subtle(t.bear) };
@@ -258,11 +258,11 @@ fn render_dom_ladder(
                 use crate::chart_renderer::trading::order_manager::*;
                 if let Some(id) = submit_and_get_id(OrderIntent {
                     symbol: chart.symbol.clone(), side: OrderSide::Sell,
-                    order_type: ManagedOrderType::Limit, price, qty: chart.order_qty,
+                    order_type: ManagedOrderType::Limit, price, qty: chart.order_panel.qty,
                     source: OrderSource::ChartClick, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
                     strategy_id: None, override_warnings: false,
                 }) {
-                    chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                    chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_panel.qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
                 }
             }
         });

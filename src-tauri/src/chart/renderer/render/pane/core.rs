@@ -1411,7 +1411,7 @@ fn render_chart_pane(
                 orders: &combined_orders,
                 dom_selected_price: &mut chart.dom.selected_price,
                 dom_order_type: &mut chart.dom.order_type,
-                order_qty: &mut chart.order_qty,
+                order_qty: &mut chart.order_panel.qty,
                 new_order: &mut dom_new_order,
                 cancel_all: &mut dom_cancel_all,
                 cancel_order_id: &mut dom_cancel_order_id,
@@ -1450,7 +1450,7 @@ fn render_chart_pane(
             let intent = OrderIntent {
                 symbol: chart.symbol.clone(), side, order_type: ot, price, qty,
                 source: OrderSource::DomLadder, pair_with: None,
-                option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: dom_last_price, tif: chart.order_tif_idx as u8, outside_rth: chart.order_outside_rth,
+                option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: dom_last_price, tif: chart.order_panel.tif_idx as u8, outside_rth: chart.order_panel.outside_rth,
                 strategy_id: None, override_warnings: false,
             };
             let result = submit_order(intent.clone());
@@ -3502,7 +3502,7 @@ fn render_chart_pane(
         let mut close_ids: Vec<u32> = Vec::new();
 
         for pane in &mut floating_panes {
-            let adv = chart.order_advanced;
+            let adv = chart.order_panel.advanced;
             let fp_panel_w = if adv { 340.0 } else { 300.0 };
 
             egui::Window::new(format!("float_order_{}_{}", pane_idx, pane.id))
@@ -3531,7 +3531,7 @@ fn render_chart_pane(
 
                     let mut buy_clicked  = false;
                     let mut sell_clicked = false;
-                    let is_buy           = chart.order_is_buy;
+                    let is_buy           = chart.order_panel.is_buy;
                     let chrome_title     = chart.symbol.clone();
                     let last_px          = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
                     let first_px         = chart.bars.first().map(|b| b.close).unwrap_or(last_px);
@@ -3579,8 +3579,8 @@ fn render_chart_pane(
                         chart.pane_picker_open = true;
                         chart.pane_picker_pos  = egui::pos2(pane.pos.x, pane.pos.y + 30.0);
                     }
-                    if buy_clicked               { chart.order_is_buy = true;  }
-                    if sell_clicked              { chart.order_is_buy = false; }
+                    if buy_clicked               { chart.order_panel.is_buy = true;  }
+                    if sell_clicked              { chart.order_panel.is_buy = false; }
                     if cr.drag_delta != egui::Vec2::ZERO {
                         pane.pos.x += cr.drag_delta.x;
                         pane.pos.y += cr.drag_delta.y;
@@ -10617,8 +10617,8 @@ fn render_chart_pane(
             } else if zone == Zone::YAxis && !chart.floating_order_panes.is_empty() {
                 // ── Click-on-price: set limit order price from Y-axis click ──
                 let clicked_price = py_inv(pos.y);
-                chart.order_limit_price = format!("{:.2}", clicked_price);
-                chart.order_market = false;
+                chart.order_panel.limit_price = format!("{:.2}", clicked_price);
+                chart.order_panel.market = false;
             }
         }
     }
