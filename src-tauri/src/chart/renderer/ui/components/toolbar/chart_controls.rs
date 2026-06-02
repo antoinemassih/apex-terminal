@@ -227,55 +227,55 @@ pub(crate) fn render(
             // Alt chart type settings row
             match panes[ap].candle_mode {
                 CandleMode::Renko => {
-                    let is_auto = panes[ap].renko_brick_size == 0.0;
+                    let is_auto = panes[ap].alt.renko_brick == 0.0;
                     let auto_label = if is_auto { "Auto" } else { "Manual" };
                     if KitButton::new(auto_label).variant(KitVariant::Ghost).size(KitSize::Sm)
                         .fg(if is_auto { t.accent } else { t.dim }).frameless(true)
                         .min_size(egui::vec2(32.0, 16.0)).show(ui, t).clicked() {
                         if is_auto {
-                            panes[ap].renko_brick_size = Chart::auto_brick_size(&panes[ap].bars, 0.5);
+                            panes[ap].alt.renko_brick = Chart::auto_brick_size(&panes[ap].bars, 0.5);
                         } else {
-                            panes[ap].renko_brick_size = 0.0;
+                            panes[ap].alt.renko_brick = 0.0;
                         }
-                        panes[ap].alt_bars_dirty = true;
+                        panes[ap].alt.dirty = true;
                     }
                     if !is_auto {
-                        let mut val = panes[ap].renko_brick_size;
+                        let mut val = panes[ap].alt.renko_brick;
                         let resp = NumberStepper::new(&mut val).step(0.01).range(0.01..=10000.0).decimals(2).prefix("Brick: ").show(ui, t);
                         if resp.changed() {
-                            panes[ap].renko_brick_size = val;
-                            panes[ap].alt_bars_dirty = true;
+                            panes[ap].alt.renko_brick = val;
+                            panes[ap].alt.dirty = true;
                         }
                     }
                 }
                 CandleMode::RangeBar => {
-                    let is_auto = panes[ap].range_bar_size == 0.0;
+                    let is_auto = panes[ap].alt.range_size == 0.0;
                     let auto_label = if is_auto { "Auto" } else { "Manual" };
                     if KitButton::new(auto_label).variant(KitVariant::Ghost).size(KitSize::Sm)
                         .fg(if is_auto { t.accent } else { t.dim }).frameless(true)
                         .min_size(egui::vec2(32.0, 16.0)).show(ui, t).clicked() {
                         if is_auto {
-                            panes[ap].range_bar_size = Chart::auto_brick_size(&panes[ap].bars, 1.0);
+                            panes[ap].alt.range_size = Chart::auto_brick_size(&panes[ap].bars, 1.0);
                         } else {
-                            panes[ap].range_bar_size = 0.0;
+                            panes[ap].alt.range_size = 0.0;
                         }
-                        panes[ap].alt_bars_dirty = true;
+                        panes[ap].alt.dirty = true;
                     }
                     if !is_auto {
-                        let mut val = panes[ap].range_bar_size;
+                        let mut val = panes[ap].alt.range_size;
                         let resp = NumberStepper::new(&mut val).step(0.01).range(0.01..=10000.0).decimals(2).prefix("Range: ").show(ui, t);
                         if resp.changed() {
-                            panes[ap].range_bar_size = val;
-                            panes[ap].alt_bars_dirty = true;
+                            panes[ap].alt.range_size = val;
+                            panes[ap].alt.dirty = true;
                         }
                     }
                 }
                 CandleMode::TickBar => {
-                    let mut val = panes[ap].tick_bar_count as i32;
+                    let mut val = panes[ap].alt.tick_count as i32;
                     let resp = NumberStepper::new(&mut val).step(10.0).range(1..=100000).prefix("Ticks: ").integer().show(ui, t);
                     if resp.changed() {
-                        panes[ap].tick_bar_count = val.max(1) as u32;
-                        panes[ap].alt_bars_dirty = true;
+                        panes[ap].alt.tick_count = val.max(1) as u32;
+                        panes[ap].alt.dirty = true;
                     }
                 }
                 _ => {}

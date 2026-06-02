@@ -1014,7 +1014,7 @@ impl WidgetData {
             .unwrap_or((-1, String::new()));
 
         // ── ApexSignals data ──
-        let trade_plan = chart.trade_plan.as_ref().map(|tp| (tp.0, tp.1, tp.2, tp.3, tp.5, tp.6));
+        let trade_plan = chart.trade_plan.as_ref().map(|tp| (tp.direction, tp.entry, tp.target, tp.stop, tp.rr, tp.conviction));
 
         let (pattern_count, pattern_latest, pattern_latest_bull, pattern_latest_conf) =
             if chart.pattern_labels.is_empty() { (0, String::new(), false, 0.0) }

@@ -82,7 +82,7 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
     // multi-mut on `chart`).
     let armed_now = chart.armed;
     let adv_now   = adv;
-    let dom_open  = chart.dom_open;
+    let dom_open  = chart.dom.open;
     let symbol_for_pos = chart.symbol.clone();
     let position_pill = c.account_data_cached.as_ref()
         .and_then(|(_, positions, _)| positions.iter().find(|p| p.symbol == symbol_for_pos))
@@ -131,7 +131,7 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
         })
         .show(c.ctx, &portable_t, |ui| {
             // ── DOM ladder (when open) ──
-            if chart.dom_open {
+            if chart.dom.open {
                 render_dom_ladder(ui, c.t, chart, c.account_data_cached, panel_w);
             }
 
@@ -147,7 +147,7 @@ pub fn show_order_entry_panel(c: OrderEntryPanelCtx<'_>) {
 
     // Apply header toggles flagged inside the leading/trailing closures.
     if toggle_armed { chart.armed = !chart.armed; }
-    if toggle_dom   { chart.dom_open = !chart.dom_open; }
+    if toggle_dom   { chart.dom.open = !chart.dom.open; }
     if toggle_adv   { chart.order_advanced = !chart.order_advanced; }
 
     // Apply drag delta from ToolOverlay's host-managed position.

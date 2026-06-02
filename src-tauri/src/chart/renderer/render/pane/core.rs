@@ -466,7 +466,7 @@ fn render_chart_pane(
             // DRAW button removed — drawing tools live in the toolbar (toolnav).
             // Layers button (object tree) added separately below.
             // Order button moved to the toolbar (toolnav far-right) — no per-pane button.
-            .show_dom_btn(chart.dom_sidebar_open)
+            .show_dom_btn(chart.dom.sidebar_open)
             .show_layers_btn(watchlist.object_tree_open);
         if !chart.is_option {
             builder = builder.show_options_btn(chart.show_strikes_overlay);
@@ -867,7 +867,7 @@ fn render_chart_pane(
             });
         }
         // DOM sidebar toggle
-        if hdr.clicked_dom { chart.dom_sidebar_open = !chart.dom_sidebar_open; }
+        if hdr.clicked_dom { chart.dom.sidebar_open = !chart.dom.sidebar_open; }
         // Options strikes overlay toggle (moved from chart top-right circle button)
         if hdr.clicked_options {
             chart.show_strikes_overlay = !chart.show_strikes_overlay;
@@ -1345,17 +1345,17 @@ fn render_chart_pane(
     }
 
     // ── DOM Sidebar — left/right/fullscreen, controlled from the panel menu.
-    let dom_w = if chart.dom_sidebar_open {
-        if chart.dom_fullscreen { pane_rect.width() } else { chart.dom_width }
+    let dom_w = if chart.dom.sidebar_open {
+        if chart.dom.fullscreen { pane_rect.width() } else { chart.dom.width }
     } else { 0.0 };
     let full_rect = egui::Rect::from_min_size(
         egui::pos2(pane_rect.left(), pane_rect.top() + pane_top_offset),
         egui::vec2(pane_rect.width(), pane_rect.height() - pane_top_offset),
     );
-    if chart.dom_sidebar_open {
+    if chart.dom.sidebar_open {
         // Position: 0 = left edge, 1 = right edge. Fullscreen anchors to left
         // and consumes the full width regardless of position.
-        let dom_left = if chart.dom_fullscreen || chart.dom_position == 0 {
+        let dom_left = if chart.dom.fullscreen || chart.dom.position == 0 {
             full_rect.left()
         } else {
             full_rect.right() - dom_w
@@ -1367,19 +1367,19 @@ fn render_chart_pane(
         let current_price = chart.bars.last().map(|b| b.close).unwrap_or(100.0);
         // Auto-detect tick size based on symbol
         let is_index = chart.symbol == "SPX" || chart.symbol == "NDX" || chart.symbol == "DJI" || chart.symbol == "RUT";
-        if chart.dom_tick_size < 0.001 || (is_index && chart.dom_tick_size < 0.5) {
-            chart.dom_tick_size = if is_index { 1.0 } else { 0.01 };
+        if chart.dom.tick_size < 0.001 || (is_index && chart.dom.tick_size < 0.5) {
+            chart.dom.tick_size = if is_index { 1.0 } else { 0.01 };
         }
         // Auto-center on current price if center_price is 0 (first open)
-        if chart.dom_center_price == 0.0 {
-            chart.dom_center_price = (current_price / chart.dom_tick_size).round() * chart.dom_tick_size;
+        if chart.dom.center_price == 0.0 {
+            chart.dom.center_price = (current_price / chart.dom.tick_size).round() * chart.dom.tick_size;
         }
         // Generate mock levels if empty or stale
-        if chart.dom_levels.is_empty() || (chart.dom_levels.first().map(|l| (l.price - chart.dom_center_price).abs() > chart.dom_tick_size * 40.0).unwrap_or(true)) {
-            chart.dom_levels = crate::chart_renderer::ui::panels::dom_panel::generate_mock_levels(chart.dom_center_price, chart.dom_tick_size, 30);
+        if chart.dom.levels.is_empty() || (chart.dom.levels.first().map(|l| (l.price - chart.dom.center_price).abs() > chart.dom.tick_size * 40.0).unwrap_or(true)) {
+            chart.dom.levels = crate::chart_renderer::ui::panels::dom_panel::generate_mock_levels(chart.dom.center_price, chart.dom.tick_size, 30);
         }
         // Sync OrderManager armed state
-        crate::chart_renderer::trading::order_manager::set_armed(chart.dom_armed);
+        crate::chart_renderer::trading::order_manager::set_armed(chart.dom.armed);
         // Feed DOM with orders from both local chart.orders AND OrderManager
         let mgr_orders = crate::chart_renderer::trading::order_manager::active_orders_for(&chart.symbol);
         let mut combined_orders = chart.orders.clone();
@@ -1396,23 +1396,23 @@ fn render_chart_pane(
             let mut adapter = DomPaneAdapter {
                 dom_rect,
                 current_price,
-                levels: &chart.dom_levels,
-                tick_size: chart.dom_tick_size,
-                center_price: &mut chart.dom_center_price,
-                dom_width: &mut chart.dom_width,
+                levels: &chart.dom.levels,
+                tick_size: chart.dom.tick_size,
+                center_price: &mut chart.dom.center_price,
+                dom_width: &mut chart.dom.width,
                 orders: &combined_orders,
-                dom_selected_price: &mut chart.dom_selected_price,
-                dom_order_type: &mut chart.dom_order_type,
+                dom_selected_price: &mut chart.dom.selected_price,
+                dom_order_type: &mut chart.dom.order_type,
                 order_qty: &mut chart.order_qty,
                 new_order: &mut dom_new_order,
                 cancel_all: &mut dom_cancel_all,
                 cancel_order_id: &mut dom_cancel_order_id,
                 move_order: &mut dom_move_order,
-                dom_armed: &mut chart.dom_armed,
-                dom_col_mode: &mut chart.dom_col_mode,
-                dom_dragging: &mut chart.dom_dragging,
-                dom_position: &mut chart.dom_position,
-                dom_fullscreen: &mut chart.dom_fullscreen,
+                dom_armed: &mut chart.dom.armed,
+                dom_col_mode: &mut chart.dom.col_mode,
+                dom_dragging: &mut chart.dom.dragging,
+                dom_position: &mut chart.dom.position,
+                dom_fullscreen: &mut chart.dom.fullscreen,
             };
             // DomPaneAdapter does not read PaneContext::panes; we pass an
             // empty slice to avoid a second mutable borrow of `panes` while
@@ -1432,7 +1432,7 @@ fn render_chart_pane(
         // Process DOM order actions through OrderManager
         if let Some((side, price, qty)) = dom_new_order {
             use crate::chart_renderer::trading::order_manager::*;
-            let ot = if chart.dom_order_type == crate::chart_renderer::ui::panels::dom_panel::DomOrderType::Market {
+            let ot = if chart.dom.order_type == crate::chart_renderer::ui::panels::dom_panel::DomOrderType::Market {
                 ManagedOrderType::Market
             } else {
                 ManagedOrderType::Limit
@@ -1490,7 +1490,7 @@ fn render_chart_pane(
     // pane's left edge; when DOM is on the left, the chart shifts right by
     // dom_w. Fullscreen DOM consumes the whole pane so the chart shrinks to
     // zero width and the candle/indicator paths short-circuit on n==0.
-    let chart_left_offset = if chart.dom_sidebar_open && !chart.dom_fullscreen && chart.dom_position == 0 {
+    let chart_left_offset = if chart.dom.sidebar_open && !chart.dom.fullscreen && chart.dom.position == 0 {
         dom_w
     } else { 0.0 };
     let chart_w = (full_rect.width() - dom_w).max(0.0);
@@ -2206,8 +2206,8 @@ fn render_chart_pane(
 
     // ── Alternative chart types (Renko, Range, Tick) — rendered from alt_bars ──
     let is_alt_mode = matches!(chart.candle_mode, CandleMode::Renko | CandleMode::RangeBar | CandleMode::TickBar);
-    if is_alt_mode && !chart.alt_bars.is_empty() {
-        let alt_n = chart.alt_bars.len();
+    if is_alt_mode && !chart.alt.bars.is_empty() {
+        let alt_n = chart.alt.bars.len();
         let alt_vs = chart.vs.min(alt_n as f32 - 1.0).max(0.0);
         let alt_end = ((alt_vs as u32) + chart.vc + dynamic_pad).min(alt_n as u32);
 
@@ -2217,7 +2217,7 @@ fn render_chart_pane(
         alt_wick_mesh.texture_id = egui::TextureId::default();
 
         for i in (alt_vs as u32)..alt_end {
-            if let Some(b) = chart.alt_bars.get(i as usize) {
+            if let Some(b) = chart.alt.bars.get(i as usize) {
                 let x = bx(i as f32);
                 let is_bull = b.close >= b.open;
                 let c = if is_bull { t.bull } else { t.bear };
@@ -6477,8 +6477,8 @@ fn render_chart_pane(
 
     // ── Candlestick pattern labels (from ApexSignals) ────────────────────
     if chart.show_pattern_labels && !chart.pattern_labels.is_empty() {
-        let bars_ref = if chart.candle_mode == CandleMode::Standard { &chart.bars } else { &chart.alt_bars };
-        let ts_ref = if chart.candle_mode == CandleMode::Standard { &chart.timestamps } else { &chart.alt_timestamps };
+        let bars_ref = if chart.candle_mode == CandleMode::Standard { &chart.bars } else { &chart.alt.bars };
+        let ts_ref = if chart.candle_mode == CandleMode::Standard { &chart.timestamps } else { &chart.alt.timestamps };
         for pl in &chart.pattern_labels {
             let bar_f = SignalDrawing::time_to_bar(pl.time, ts_ref);
             let x = bx(bar_f);
@@ -6542,7 +6542,11 @@ fn render_chart_pane(
                     crate::chart_renderer::SignalZone { zone_type: "fvg".into(), price_high: price * 0.995, price_low: price * 0.991, start_time: 0, strength: 5.0, touches: 0, fresh: true },
                 ];
                 // Demo trade plan
-                chart.trade_plan = Some((1, price, price * 1.02, price * 0.985, format!("{} {}C 5DTE", chart.symbol, (price / 5.0).round() * 5.0), 2.8, 85.0));
+                chart.trade_plan = Some(crate::chart_renderer::gpu::TradePlan {
+                    direction: 1, entry: price, target: price * 1.02, stop: price * 0.985,
+                    contract: format!("{} {}C 5DTE", chart.symbol, (price / 5.0).round() * 5.0),
+                    rr: 2.8, conviction: 85.0,
+                });
                 // Demo change points
                 if chart.timestamps.len() > 20 {
                     chart.change_points.push((chart.timestamps[chart.timestamps.len() - 15], "directional".into(), 0.85));
@@ -6625,8 +6629,8 @@ fn render_chart_pane(
 
     // ── Change-point markers — small diamonds on the time axis ───────────
     if chart.show_change_points {
-        let ts_ref = if chart.candle_mode == CandleMode::Standard { &chart.timestamps } else { &chart.alt_timestamps };
-        let bars_ref = if chart.candle_mode == CandleMode::Standard { &chart.bars } else { &chart.alt_bars };
+        let ts_ref = if chart.candle_mode == CandleMode::Standard { &chart.timestamps } else { &chart.alt.timestamps };
+        let bars_ref = if chart.candle_mode == CandleMode::Standard { &chart.bars } else { &chart.alt.bars };
         for (cp_time, cp_type, cp_conf) in &chart.change_points {
             let bar_f = SignalDrawing::time_to_bar(*cp_time, ts_ref);
             let x = bx(bar_f);
@@ -6666,7 +6670,9 @@ fn render_chart_pane(
 
     // ── Trade plan — floating card + subtle chart lines ──────────────────
     if chart.show_trade_plan {
-    if let Some((dir, entry, target, stop, ref contract, rr, conviction)) = chart.trade_plan {
+    if let Some(tp) = &chart.trade_plan {
+        let (dir, entry, target, stop, contract, rr, conviction) =
+            (tp.direction, tp.entry, tp.target, tp.stop, &tp.contract, tp.rr, tp.conviction);
         let entry_y = py(entry);
         let target_y = py(target);
         let stop_y = py(stop);
@@ -9091,7 +9097,7 @@ fn render_chart_pane(
         if let Some(mode) = new_candle {
             if mode != chart.candle_mode {
                 chart.candle_mode = mode;
-                chart.alt_bars_dirty = true;
+                chart.alt.dirty = true;
                 chart.indicator_bar_count = 0;
             }
         }

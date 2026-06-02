@@ -1875,6 +1875,72 @@ impl Default for PaneType { fn default() -> Self { Self::Chart } }
 
 // ─── Named value types (replace anonymous tuples) ────────────────────────────
 
+/// State for the alternative (non-time) chart bar types: Renko, Range, Tick.
+/// The computed bars live here and are rebuilt when `dirty` or the source
+/// bar count changes.
+#[derive(Clone)]
+pub(crate) struct AltBarsState {
+    /// Renko brick size; 0.0 = auto (ATR-based). (was `renko_brick_size`)
+    pub(crate) renko_brick: f32,
+    /// Range-bar size; 0.0 = auto. (was `range_bar_size`)
+    pub(crate) range_size:  f32,
+    /// Tick-bar count; default 500. (was `tick_bar_count`)
+    pub(crate) tick_count:  u32,
+    /// Recomputed non-time bars. (was `alt_bars`)
+    pub(crate) bars:        Vec<Bar>,
+    /// Timestamps for the alt bars. (was `alt_timestamps`)
+    pub(crate) timestamps:  Vec<i64>,
+    /// True when the alt bars need recomputation. (was `alt_bars_dirty`)
+    pub(crate) dirty:       bool,
+    /// Source bar count when `bars` was last computed. (was `alt_bars_source_len`)
+    pub(crate) source_len:  usize,
+}
+
+impl Default for AltBarsState {
+    fn default() -> Self {
+        Self {
+            renko_brick: 0.0, range_size: 0.0, tick_count: 500,
+            bars: vec![], timestamps: vec![], dirty: true, source_len: 0,
+        }
+    }
+}
+
+/// All state for the DOM (Depth-of-Market / Price Ladder) panel.
+#[derive(Clone)]
+pub(crate) struct DomPanelState {
+    /// Floating DOM window open.
+    pub(crate) open:           bool,
+    /// DOM built into the right side-rail of the pane (sidebar mode).
+    pub(crate) sidebar_open:   bool,
+    pub(crate) levels:         Vec<super::ui::panels::dom_panel::DomLevel>,
+    pub(crate) tick_size:      f32,
+    pub(crate) center_price:   f32,
+    pub(crate) width:          f32,
+    pub(crate) selected_price: Option<f32>,
+    pub(crate) order_type:     super::ui::panels::dom_panel::DomOrderType,
+    pub(crate) armed:          bool,
+    /// 0 = single-column, 1 = split bid/ask columns.
+    pub(crate) col_mode:       u8,
+    pub(crate) dragging:       Option<(u32, f32)>,
+    /// 0 = left edge of pane, 1 = right edge.
+    pub(crate) position:       u8,
+    /// DOM panel takes the full pane area; chart regions hidden.
+    pub(crate) fullscreen:     bool,
+}
+
+impl Default for DomPanelState {
+    fn default() -> Self {
+        Self {
+            open: false, sidebar_open: false,
+            levels: vec![], tick_size: 0.01, center_price: 0.0,
+            width: super::ui::panels::dom_panel::DOM_SIDEBAR_W,
+            selected_price: None,
+            order_type: super::ui::panels::dom_panel::DomOrderType::Market,
+            armed: false, col_mode: 1, dragging: None, position: 0, fullscreen: false,
+        }
+    }
+}
+
 /// `(bar_index, price)` coordinate used during in-progress drawing operations.
 /// A transparent alias over `(f32, f32)` — existing destructuring patterns
 /// (`if let Some((bar, price)) = …`) continue to work unchanged.
@@ -2067,7 +2133,7 @@ pub(crate) struct Chart {
     pub(crate) precursor_direction: i8,
     pub(crate) precursor_description: String,
     pub(crate) change_points: Vec<(i64, String, f32)>, // (time, type, confidence)
-    pub(crate) trade_plan: Option<(i8, f32, f32, f32, String, f32, f32)>, // (dir, entry, target, stop, contract, rr, conviction)
+    pub(crate) trade_plan: Option<TradePlan>,
     pub(crate) divergence_markers: Vec<super::DivergenceMarker>,
     pub(crate) show_divergences: bool,
     pub(crate) signal_demo_toggle: bool, // set to true to toggle demo on/off
@@ -2154,23 +2220,7 @@ pub(crate) struct Chart {
     pub(crate) play_click_to_set: Option<super::PlayLineKind>, // click-on-chart fills price
     // Measure tool (shift+drag)
     pub(crate) measure: MeasureState,
-    pub(crate) dom_open: bool, // DOM / Price Ladder floating window
-    // DOM full sidebar mode
-    pub(crate) dom_sidebar_open: bool,
-    pub(crate) dom_levels: Vec<super::ui::panels::dom_panel::DomLevel>,
-    pub(crate) dom_tick_size: f32,
-    pub(crate) dom_center_price: f32,
-    pub(crate) dom_width: f32,
-    pub(crate) dom_selected_price: Option<f32>,
-    pub(crate) dom_order_type: super::ui::panels::dom_panel::DomOrderType,
-    pub(crate) dom_armed: bool,
-    pub(crate) dom_col_mode: u8,
-    pub(crate) dom_dragging: Option<(u32, f32)>,
-    /// 0 = anchored to left edge of pane, 1 = anchored to right edge.
-    pub(crate) dom_position: u8,
-    /// When true the DOM panel takes the entire chart pane area; the
-    /// candle/indicator/oscillator regions are hidden until disabled.
-    pub(crate) dom_fullscreen: bool,
+    pub(crate) dom: DomPanelState,
     // Symbol/timeframe change request — signals the App to reload data
     pub(crate) pending_symbol_change: Option<String>,
     pub(crate) pending_timeframe_change: Option<String>,
@@ -2187,13 +2237,7 @@ pub(crate) struct Chart {
     pub(crate) vp_mode: VolumeProfileMode,
     pub(crate) candle_mode: CandleMode,
     // Alternative chart types (Renko, Range, Tick)
-    pub(crate) renko_brick_size: f32,    // 0.0 = auto (ATR-based)
-    pub(crate) range_bar_size: f32,      // 0.0 = auto
-    pub(crate) tick_bar_count: u32,      // default 500
-    pub(crate) alt_bars: Vec<Bar>,       // recomputed non-time bars
-    pub(crate) alt_timestamps: Vec<i64>, // timestamps for alt bars
-    pub(crate) alt_bars_dirty: bool,     // true when alt bars need recomputation
-    pub(crate) alt_bars_source_len: usize, // source bar count when alt_bars was last computed
+    pub(crate) alt: AltBarsState,
     pub(crate) show_footprint: bool, // hover-activated volume footprint on individual bars
     pub(crate) vp_data: Option<VolumeProfileData>,
     pub(crate) vp_last_vs: f32,
@@ -2440,17 +2484,13 @@ impl Chart {
             trigger_setup: TriggerSetup::default(), trigger_levels: vec![], next_trigger_id: 1, dragging_trigger: None, editing_trigger: None, pending_und_order: None,
             widget_cache_bar_count: 0, widget_cache: None,
             play_lines: vec![], next_play_line_id: 1, dragging_play_line: None, play_click_to_set: None,
-            measure: MeasureState::default(), dom_open: false,
-            dom_sidebar_open: false, dom_levels: vec![], dom_tick_size: 0.01, dom_center_price: 0.0, dom_width: super::ui::panels::dom_panel::DOM_SIDEBAR_W,
-            dom_selected_price: None, dom_order_type: super::ui::panels::dom_panel::DomOrderType::Market, dom_armed: false, dom_col_mode: 1, dom_dragging: None,
-            dom_position: 0, dom_fullscreen: false,
+            measure: MeasureState::default(), dom: DomPanelState::default(),
             pending_symbol_change: None, pending_timeframe_change: None,
             undo_stack: vec![], redo_stack: vec![], drag_drawing_snapshot: None,
             text_edit_id: None, text_edit_buf: String::new(),
             indicator_pts_buf: Vec::with_capacity(512), fmt_buf: String::with_capacity(256),
             vp_mode: VolumeProfileMode::Off, candle_mode: CandleMode::Standard,
-            renko_brick_size: 0.0, range_bar_size: 0.0, tick_bar_count: 500,
-            alt_bars: vec![], alt_timestamps: vec![], alt_bars_dirty: true, alt_bars_source_len: 0,
+            alt: AltBarsState::default(),
             show_footprint: false, vp_data: None, vp_last_vs: -1.0, vp_last_vc: 0,
             show_vwap_bands: false, show_cvd: false, show_delta_volume: false, show_rvol: true,
             show_ma_ribbon: false, show_prev_close: true, show_auto_sr: false, show_auto_fib: false, swing_leg_mode: 0,
@@ -2810,7 +2850,10 @@ impl Chart {
             }
             ChartCommand::TradePlanUpdate { symbol, direction, entry_price, target_price, stop_price, contract_name, contract_entry: _, contract_target: _, risk_reward, conviction, summary } => {
                 if symbol == self.symbol {
-                    self.trade_plan = Some((direction, entry_price, target_price, stop_price, contract_name, risk_reward, conviction));
+                    self.trade_plan = Some(TradePlan {
+                        direction, entry: entry_price, target: target_price, stop: stop_price,
+                        contract: contract_name, rr: risk_reward, conviction,
+                    });
                     PENDING_TOASTS.with(|ts| ts.borrow_mut().push(
                         crate::chart_renderer::ui::tools::notification::Notification::new(summary, crate::chart_renderer::ui::tools::notification::NotificationSeverity::Info).with_value(conviction).with_source("trade_plan")
                     ));
@@ -2831,30 +2874,30 @@ impl Chart {
         }
         let (bars, ts) = match self.candle_mode {
             CandleMode::Renko => {
-                let brick = if self.renko_brick_size > 0.0 {
-                    self.renko_brick_size
+                let brick = if self.alt.renko_brick > 0.0 {
+                    self.alt.renko_brick
                 } else {
                     Self::auto_brick_size(&self.bars, 0.5)
                 };
                 Self::compute_renko_bars(&self.bars, &self.timestamps, brick)
             }
             CandleMode::RangeBar => {
-                let range = if self.range_bar_size > 0.0 {
-                    self.range_bar_size
+                let range = if self.alt.range_size > 0.0 {
+                    self.alt.range_size
                 } else {
                     Self::auto_brick_size(&self.bars, 1.0)
                 };
                 Self::compute_range_bars(&self.bars, &self.timestamps, range)
             }
             CandleMode::TickBar => {
-                Self::compute_tick_bars(&self.bars, &self.timestamps, self.tick_bar_count)
+                Self::compute_tick_bars(&self.bars, &self.timestamps, self.alt.tick_count)
             }
             _ => return,
         };
-        self.alt_bars = bars;
-        self.alt_timestamps = ts;
-        self.alt_bars_dirty = false;
-        self.alt_bars_source_len = self.bars.len();
+        self.alt.bars = bars;
+        self.alt.timestamps = ts;
+        self.alt.dirty = false;
+        self.alt.source_len = self.bars.len();
     }
 
     /// Auto-calculate brick/range size from ATR(14) * multiplier
@@ -3206,8 +3249,8 @@ impl Chart {
         // Freeze range while actively drawing so new bars don't rescale the Y-axis mid-draw
         if let Some(r) = self.draw_price_freeze { return r; }
         // Use alt_bars for alternative chart types
-        let bars_ref = if matches!(self.candle_mode, CandleMode::Renko | CandleMode::RangeBar | CandleMode::TickBar) && !self.alt_bars.is_empty() {
-            &self.alt_bars
+        let bars_ref = if matches!(self.candle_mode, CandleMode::Renko | CandleMode::RangeBar | CandleMode::TickBar) && !self.alt.bars.is_empty() {
+            &self.alt.bars
         } else {
             &self.bars
         };
@@ -4043,7 +4086,7 @@ pub(crate) fn update_simulation(panes: &mut [Chart]) {
     for chart in panes.iter_mut() {
         // Recompute alt bars if dirty or source bars changed
         if matches!(chart.candle_mode, CandleMode::Renko | CandleMode::RangeBar | CandleMode::TickBar) {
-            if chart.alt_bars_dirty || chart.alt_bars_source_len != chart.bars.len() {
+            if chart.alt.dirty || chart.alt.source_len != chart.bars.len() {
                 chart.recompute_alt_bars();
             }
         }
@@ -7431,10 +7474,10 @@ impl ApplicationHandler for App {
                     "rnk" => CandleMode::Renko, "rng" => CandleMode::RangeBar, "tck" => CandleMode::TickBar,
                                             _ => CandleMode::Standard,
                                         };
-                                        chart.renko_brick_size = p.get("renko_brick_size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                                        chart.range_bar_size = p.get("range_bar_size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                                        chart.tick_bar_count = p.get("tick_bar_count").and_then(|v| v.as_u64()).unwrap_or(500) as u32;
-                                        chart.alt_bars_dirty = true;
+                                        chart.alt.renko_brick = p.get("renko_brick_size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                        chart.alt.range_size = p.get("range_bar_size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                        chart.alt.tick_count = p.get("tick_bar_count").and_then(|v| v.as_u64()).unwrap_or(500) as u32;
+                                        chart.alt.dirty = true;
                                         chart.vp_mode = match p.get("vp_mode").and_then(|v| v.as_str()).unwrap_or("off") {
                                             "classic" => VolumeProfileMode::Classic, "heatmap" => VolumeProfileMode::Heatmap,
                                             "strip" => VolumeProfileMode::Strip, "clean" => VolumeProfileMode::Clean,
@@ -7961,9 +8004,9 @@ fn workspace_to_json(panes: &[Chart], layout: Layout, wl: &Watchlist) -> String 
                 CandleMode::HeikinAshi => "ha", CandleMode::Line => "line", CandleMode::Area => "area",
                     CandleMode::Renko => "rnk", CandleMode::RangeBar => "rng", CandleMode::TickBar => "tck",
             },
-            "renko_brick_size": p.renko_brick_size,
-            "range_bar_size": p.range_bar_size,
-            "tick_bar_count": p.tick_bar_count,
+            "renko_brick_size": p.alt.renko_brick,
+            "range_bar_size": p.alt.range_size,
+            "tick_bar_count": p.alt.tick_count,
             "vp_mode": match p.vp_mode {
                 VolumeProfileMode::Off => "off", VolumeProfileMode::Classic => "classic",
                 VolumeProfileMode::Heatmap => "heatmap", VolumeProfileMode::Strip => "strip",
@@ -8115,9 +8158,9 @@ pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &mut Watchl
                 CandleMode::HeikinAshi => "ha", CandleMode::Line => "line", CandleMode::Area => "area",
                     CandleMode::Renko => "rnk", CandleMode::RangeBar => "rng", CandleMode::TickBar => "tck",
             },
-            "renko_brick_size": p.renko_brick_size,
-            "range_bar_size": p.range_bar_size,
-            "tick_bar_count": p.tick_bar_count,
+            "renko_brick_size": p.alt.renko_brick,
+            "range_bar_size": p.alt.range_size,
+            "tick_bar_count": p.alt.tick_count,
             "vp_mode": match p.vp_mode {
                 VolumeProfileMode::Off => "off", VolumeProfileMode::Classic => "classic",
                 VolumeProfileMode::Heatmap => "heatmap", VolumeProfileMode::Strip => "strip",
@@ -8313,10 +8356,10 @@ fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
                     "rnk" => CandleMode::Renko, "rng" => CandleMode::RangeBar, "tck" => CandleMode::TickBar,
                 _ => CandleMode::Standard,
             };
-            chart.renko_brick_size = p.get("renko_brick_size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-            chart.range_bar_size = p.get("range_bar_size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-            chart.tick_bar_count = p.get("tick_bar_count").and_then(|v| v.as_u64()).unwrap_or(500) as u32;
-            chart.alt_bars_dirty = true; // force recompute on load
+            chart.alt.renko_brick = p.get("renko_brick_size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+            chart.alt.range_size = p.get("range_bar_size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+            chart.alt.tick_count = p.get("tick_bar_count").and_then(|v| v.as_u64()).unwrap_or(500) as u32;
+            chart.alt.dirty = true; // force recompute on load
             // Restore volume profile mode
             chart.vp_mode = match p.get("vp_mode").and_then(|v| v.as_str()).unwrap_or("off") {
                 "classic" => VolumeProfileMode::Classic, "heatmap" => VolumeProfileMode::Heatmap,
