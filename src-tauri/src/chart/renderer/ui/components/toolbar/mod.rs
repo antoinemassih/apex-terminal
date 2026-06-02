@@ -16,6 +16,8 @@
 #![allow(dead_code, unused_imports)]
 
 pub mod top_nav;
+pub mod chart_controls;
+pub mod dropdowns;
 pub mod nav_cluster;
 pub mod ticker_strip;
 pub mod toolnav;

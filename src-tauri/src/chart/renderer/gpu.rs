@@ -1875,6 +1875,11 @@ impl Default for PaneType { fn default() -> Self { Self::Chart } }
 
 // ─── Named value types (replace anonymous tuples) ────────────────────────────
 
+/// `(bar_index, price)` coordinate used during in-progress drawing operations.
+/// A transparent alias over `(f32, f32)` — existing destructuring patterns
+/// (`if let Some((bar, price)) = …`) continue to work unchanged.
+pub(crate) type DrawCoord = (f32, f32);
+
 /// A price/bar coordinate pair used during in-progress drawing operations.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct DrawPoint { pub(crate) bar: f32, pub(crate) price: f32 }
@@ -2036,9 +2041,9 @@ pub(crate) struct Chart {
     /// Top-Y of the hovered category row, in screen coords — used to align
     /// the flyout to the row that spawned it (not the top of the menu).
     pub(crate) draw_picker_hover_cat_y: f32,
-    pub(crate) pending_pt: Option<(f32,f32)>,  // first click (bar, price)
-    pub(crate) pending_pt2: Option<(f32,f32)>, // second click for channel (bar, price)
-    pub(crate) pending_pts: Vec<(f32,f32)>,    // multi-point: pitchfork(3), xabcd(5), elliott(3/5)
+    pub(crate) pending_pt:  Option<DrawCoord>, // first click (bar, price)
+    pub(crate) pending_pt2: Option<DrawCoord>, // second click for channel (bar, price)
+    pub(crate) pending_pts: Vec<DrawCoord>,    // multi-point: pitchfork(3), xabcd(5), elliott(3/5)
     pub(crate) magnet: bool, // snap to OHLC when placing drawings
     pub(crate) selected_id: Option<String>,
     pub(crate) selected_ids: Vec<String>, // multi-select with shift

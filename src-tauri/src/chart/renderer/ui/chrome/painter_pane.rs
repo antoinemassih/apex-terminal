@@ -986,94 +986,61 @@ impl<'a> PainterPaneHeader<'a> {
             );
         }
 
-        // ── OV + Layers + DOM + Options icon buttons ──────────────────────────
+        // ── Icon button cluster (OVERLAY / LAYERS / ORDER / DOM / OPTIONS) ────
+        // Table-driven: one entry per button; each renders identically.
+        // Only visible buttons are rendered; dividers appear between them.
         {
             use crate::ui_kit::widgets::Button;
-            let icon_h = h - ICON_BTN_INSET_V;
-            let mut rx = rect.right() - close_total - pane_ctrls_total - order_dom_total;
 
-            if self.buttons[PaneBtn::Overlay as usize].show {
+            // (btn_enum, label, icon, width)
+            const BTN_TABLE: &[(PaneBtn, &str, &str, f32)] = &[
+                (PaneBtn::Overlay, "OVERLAY", Icon::EYE,            ICON_BTN_W_OV),
+                (PaneBtn::Layers,  "LAYERS",  Icon::STACK,           ICON_BTN_W_LAYERS),
+                (PaneBtn::Order,   "ORDER",   Icon::CURRENCY_DOLLAR, ICON_BTN_W),
+                (PaneBtn::Dom,     "DOM",     Icon::LADDER,          ICON_BTN_W_DOM),
+                (PaneBtn::Options, "OPTIONS", Icon::CIRCLE,          ICON_BTN_W_OPTIONS),
+            ];
+
+            let visible: Vec<(PaneBtn, &str, &str, f32)> = BTN_TABLE.iter()
+                .filter(|(btn, ..)| self.buttons[*btn as usize].show)
+                .copied()
+                .collect();
+
+            let icon_h = h - ICON_BTN_INSET_V;
+            let mut rx  = rect.right() - close_total - pane_ctrls_total - order_dom_total;
+            let mut clicked_btn: Option<PaneBtn> = None;
+
+            for (pos, &(btn, label, icon, width)) in visible.iter().enumerate() {
                 let r = Rect::from_min_size(
                     pos2(rx, rect.center().y - icon_h / 2.0),
-                    Vec2::new(ICON_BTN_W_OV, icon_h),
+                    Vec2::new(width, icon_h),
                 );
-                let resp = Button::new("OVERLAY")
-                    .leading_icon(Icon::EYE)
+                let resp = Button::new(label)
+                    .leading_icon(icon)
                     .status(true)
-                    .active(self.buttons[PaneBtn::Overlay as usize].active)
+                    .active(self.buttons[btn as usize].active)
                     .show_at(ui, &painter, r, t);
-                if resp.clicked() { out.clicked_overlay = true; }
-                rx += ICON_BTN_W_OV;
-                if self.buttons[PaneBtn::Layers as usize].show || self.buttons[PaneBtn::Order as usize].show || self.buttons[PaneBtn::Dom as usize].show || self.buttons[PaneBtn::Options as usize].show {
+                if resp.clicked() { clicked_btn = Some(btn); }
+                rx += width;
+                if pos + 1 < visible.len() {
                     header_divider_strong(&painter, rx, rect, t);
                 }
             }
-            if self.buttons[PaneBtn::Layers as usize].show {
-                let r = Rect::from_min_size(
-                    pos2(rx, rect.center().y - icon_h / 2.0),
-                    Vec2::new(ICON_BTN_W_LAYERS, icon_h),
-                );
-                let resp = Button::new("LAYERS")
-                    .leading_icon(Icon::STACK)
-                    .status(true)
-                    .active(self.buttons[PaneBtn::Layers as usize].active)
-                    .show_at(ui, &painter, r, t);
-                if resp.clicked() { out.clicked_layers = true; }
-                rx += ICON_BTN_W_LAYERS;
-                if self.buttons[PaneBtn::Order as usize].show || self.buttons[PaneBtn::Dom as usize].show || self.buttons[PaneBtn::Options as usize].show {
-                    header_divider_strong(&painter, rx, rect, t);
-                }
+
+            // Dispatch click to the (legacy) per-button response fields.
+            match clicked_btn {
+                Some(PaneBtn::Overlay) => out.clicked_overlay = true,
+                Some(PaneBtn::Layers)  => out.clicked_layers  = true,
+                Some(PaneBtn::Order)   => out.clicked_order   = true,
+                Some(PaneBtn::Dom)     => out.clicked_dom      = true,
+                Some(PaneBtn::Options) => out.clicked_options  = true,
+                _ => {}
             }
-            if self.buttons[PaneBtn::Order as usize].show {
-                let r = Rect::from_min_size(
-                    pos2(rx, rect.center().y - icon_h / 2.0),
-                    Vec2::new(ICON_BTN_W, icon_h),
-                );
-                let resp = Button::new("ORDER")
-                    .leading_icon(Icon::CURRENCY_DOLLAR)
-                    .status(true)
-                    .active(self.buttons[PaneBtn::Order as usize].active)
-                    .show_at(ui, &painter, r, t);
-                if resp.clicked() { out.clicked_order = true; }
-                rx += ICON_BTN_W;
-                if self.buttons[PaneBtn::Dom as usize].show {
-                    header_divider_strong(&painter, rx, rect, t);
-                }
-            }
-            if self.buttons[PaneBtn::Dom as usize].show {
-                let r = Rect::from_min_size(
-                    pos2(rx, rect.center().y - icon_h / 2.0),
-                    Vec2::new(ICON_BTN_W_DOM, icon_h),
-                );
-                let resp = Button::new("DOM")
-                    .leading_icon(Icon::LADDER)
-                    .status(true)
-                    .active(self.buttons[PaneBtn::Dom as usize].active)
-                    .show_at(ui, &painter, r, t);
-                if resp.clicked() { out.clicked_dom = true; }
-                rx += ICON_BTN_W_DOM;
-                if self.buttons[PaneBtn::Options as usize].show {
-                    header_divider_strong(&painter, rx, rect, t);
-                }
-            }
-            if self.buttons[PaneBtn::Options as usize].show {
-                let r = Rect::from_min_size(
-                    pos2(rx, rect.center().y - icon_h / 2.0),
-                    Vec2::new(ICON_BTN_W_OPTIONS, icon_h),
-                );
-                let resp = Button::new("OPTIONS")
-                    .leading_icon(Icon::CIRCLE)
-                    .status(true)
-                    .active(self.buttons[PaneBtn::Options as usize].active)
-                    .show_at(ui, &painter, r, t);
-                if resp.clicked() { out.clicked_options = true; }
-                rx += ICON_BTN_W_OPTIONS;
-            }
+
             // Divider between icon-button cluster and pane-action controls.
             if pane_ctrls_total > 0.0 && order_dom_total > 0.0 {
                 header_divider_strong(&painter, rx, rect, t);
             }
-            let _ = rx;
         }
 
         // ── Pane-action controls: [ClosePane] [Split] [Expand] (far-right) ────
