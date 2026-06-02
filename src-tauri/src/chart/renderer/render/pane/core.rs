@@ -784,8 +784,8 @@ fn render_chart_pane(
 
         // Template button
         if hdr.clicked(PaneBtn::Template) {
-            chart.template_popup_open = !chart.template_popup_open;
-            chart.template_popup_pos = egui::pos2(header_rect.right() - PANE_POPUP_RIGHT_INSET, header_rect.bottom() + PANE_POPUP_GAP_Y);
+            chart.template_popup.open = !chart.template_popup.open;
+            chart.template_popup.pos = egui::pos2(header_rect.right() - PANE_POPUP_RIGHT_INSET, header_rect.bottom() + PANE_POPUP_GAP_Y);
         }
 
         // Symbol click (simple-label mode — opens pane picker)
@@ -1098,7 +1098,7 @@ fn render_chart_pane(
                                 chart.symbol.clone()
                             };
                             let spot = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
-                            let dte_idx = chart.option_quick_dte_idx.min(DTE_LIST.len() - 1);
+                            let dte_idx = chart.option_quick.dte_idx.min(DTE_LIST.len() - 1);
                             let current_dte = DTE_LIST[dte_idx];
 
                             // Underlying display + DTE nav
@@ -1117,7 +1117,7 @@ fn render_chart_pane(
                                     .size(crate::chart_renderer::ui::style::font_lg()).color(back_col))
                                     .fill(egui::Color32::TRANSPARENT)
                                 ).clicked() && can_back {
-                                    chart.option_quick_dte_idx = dte_idx - 1;
+                                    chart.option_quick.dte_idx = dte_idx - 1;
                                     let new_dte = DTE_LIST[dte_idx - 1];
                                     fetch_chain_background(underlying.clone(), 15, new_dte, spot);
                                 }
@@ -1129,7 +1129,7 @@ fn render_chart_pane(
                                     .size(crate::chart_renderer::ui::style::font_lg()).color(fwd_col))
                                     .fill(egui::Color32::TRANSPARENT)
                                 ).clicked() && can_fwd {
-                                    chart.option_quick_dte_idx = dte_idx + 1;
+                                    chart.option_quick.dte_idx = dte_idx + 1;
                                     let new_dte = DTE_LIST[dte_idx + 1];
                                     fetch_chain_background(underlying.clone(), 15, new_dte, spot);
                                 }
@@ -2073,18 +2073,18 @@ fn render_chart_pane(
 
     // Volume Profile — cache recompute + rendering (behind candles).
     // MARK_BARS_PROTOCOL: skip when in Mark mode (volume=0 → empty profile).
-    if chart.vp_mode != VolumeProfileMode::Off && !chart.bar_source_mark {
-        if chart.vp_data.is_none() || chart.vp_last_vs != chart.vs || chart.vp_last_vc != chart.vc {
+    if chart.vp.mode != VolumeProfileMode::Off && !chart.bar_source_mark {
+        if chart.vp.data.is_none() || chart.vp.last_vs != chart.vs || chart.vp.last_vc != chart.vc {
             let start = chart.vs.max(0.0) as usize;
             let end_vp = (start + chart.vc as usize + 8).min(chart.bars.len());
-            chart.vp_data = compute_volume_profile(&chart.bars, start, end_vp, 60);
-            chart.vp_last_vs = chart.vs;
-            chart.vp_last_vc = chart.vc;
+            chart.vp.data = compute_volume_profile(&chart.bars, start, end_vp, 60);
+            chart.vp.last_vs = chart.vs;
+            chart.vp.last_vc = chart.vc;
         }
     }
 
-    if chart.vp_mode == VolumeProfileMode::Classic {
-        if let Some(ref vp) = chart.vp_data {
+    if chart.vp.mode == VolumeProfileMode::Classic {
+        if let Some(ref vp) = chart.vp.data {
             let max_bar_width = cw * 0.25;
             for level in &vp.levels {
                 let y = py(level.price);
@@ -2107,8 +2107,8 @@ fn render_chart_pane(
         }
     }
 
-    if chart.vp_mode == VolumeProfileMode::Heatmap {
-        if let Some(ref vp) = chart.vp_data {
+    if chart.vp.mode == VolumeProfileMode::Heatmap {
+        if let Some(ref vp) = chart.vp.data {
             for level in &vp.levels {
                 let y_top = py(level.price + vp.price_step / 2.0);
                 let y_bot = py(level.price - vp.price_step / 2.0);
@@ -2137,8 +2137,8 @@ fn render_chart_pane(
         }
     }
 
-    if chart.vp_mode == VolumeProfileMode::Strip {
-        if let Some(ref vp) = chart.vp_data {
+    if chart.vp.mode == VolumeProfileMode::Strip {
+        if let Some(ref vp) = chart.vp.data {
             let strip_w = 50.0_f32;
             let strip_x = rect.left() + cw - strip_w;
             for level in &vp.levels {
@@ -2177,8 +2177,8 @@ fn render_chart_pane(
         }
     }
 
-    if chart.vp_mode == VolumeProfileMode::Clean {
-        if let Some(ref vp) = chart.vp_data {
+    if chart.vp.mode == VolumeProfileMode::Clean {
+        if let Some(ref vp) = chart.vp.data {
             let gold = egui::Color32::from_rgb(255, 193, 37);
             let vah_y = py(vp.vah); let val_y = py(vp.val);
             if vah_y.is_finite() && val_y.is_finite() {
@@ -8034,16 +8034,16 @@ fn render_chart_pane(
     //   2nd click (a tool already active) → open the favorites picker at cursor
     //   Click while picker is open → close it
     if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Middle)) && pointer_in_pane {
-        if chart.draw_picker_open {
-            chart.draw_picker_open = false;
+        if chart.draw_picker.open {
+            chart.draw_picker.open = false;
         } else if chart.draw_tool.is_empty() {
             chart.draw_tool = "trendline".to_string();
             chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear();
         } else {
             // Open picker at the cursor position
             if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
-                chart.draw_picker_pos = pos;
-                chart.draw_picker_open = true;
+                chart.draw_picker.pos = pos;
+                chart.draw_picker.open = true;
             }
         }
     }
@@ -8063,11 +8063,11 @@ fn render_chart_pane(
         i.key_pressed(egui::Key::D) && !i.modifiers.command && !i.modifiers.ctrl
     });
     if (alt_click || d_pressed) && pointer_in_pane {
-        if chart.draw_picker_open {
-            chart.draw_picker_open = false;
+        if chart.draw_picker.open {
+            chart.draw_picker.open = false;
         } else if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
-            chart.draw_picker_pos = pos;
-            chart.draw_picker_open = true;
+            chart.draw_picker.pos = pos;
+            chart.draw_picker.open = true;
             // Opt+click drag-starts a new drawing on the underlying pointer
             // press — clear pending-state so the picker click doesn't begin
             // a phantom line.
@@ -8249,7 +8249,7 @@ fn render_chart_pane(
                 }
 
                 // OHLC tooltip (togglable — hidden when footprint is active)
-                if chart.ohlc_tooltip && !chart.show_footprint && !chart.draw_picker_open {
+                if chart.ohlc_tooltip && !chart.show_footprint && !chart.draw_picker.open {
                     if let Some(bar_data) = chart.bars.get(bar_idx) {
                         let tooltip_x = pos.x + 15.0;
                         let tooltip_y = pos.y - 5.0;
@@ -11127,8 +11127,8 @@ fn render_chart_pane(
     }
 
     // ── Drawing-tool picker (opened by 2nd middle-click) ────────────────────
-    if chart.draw_picker_open {
-        let pos = chart.draw_picker_pos;
+    if chart.draw_picker.open {
+        let pos = chart.draw_picker.pos;
         let picker_out = crate::chart_renderer::ui::widgets::drawing::show_drawing_tool_picker(
             ctx, t, chart, watchlist, pane_idx, pos,
         );
@@ -11140,7 +11140,7 @@ fn render_chart_pane(
                 watchlist.draw_favorites.push(tool);
             }
         }
-        if picker_out.close { chart.draw_picker_open = false; }
+        if picker_out.close { chart.draw_picker.open = false; }
     }
 
     span_end(); // interaction

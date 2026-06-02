@@ -481,9 +481,9 @@ pub(crate) fn render(
                     (VolumeProfileMode::Heatmap, "Heatmap"), (VolumeProfileMode::Strip, "Strip"),
                     (VolumeProfileMode::Clean, "Clean (POC/VA)"),
                 ] {
-                    let active = panes[ap].vp_mode == mode;
+                    let active = panes[ap].vp.mode == mode;
                     if ui.add(SelectableRow::new(label, active)).clicked() {
-                        panes[ap].vp_mode = mode; panes[ap].vp_data = None;
+                        panes[ap].vp.mode = mode; panes[ap].vp.data = None;
                     }
                 }
             });

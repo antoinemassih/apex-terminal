@@ -36,17 +36,17 @@ pub(crate) fn draw(
 ) {
     // Iterate through panes; any with option_quick_open renders its own popup
     for pi in 0..panes.len() {
-        if !panes[pi].option_quick_open { continue; }
+        if !panes[pi].option_quick.open { continue; }
         let underlying = panes[pi].underlying.clone();
         if underlying.is_empty() {
-            panes[pi].option_quick_open = false;
+            panes[pi].option_quick.open = false;
             continue;
         }
 
-        let pos = panes[pi].option_quick_pos;
+        let pos = panes[pi].option_quick.pos;
         let mut close_picker = false;
         let mut pending_load: Option<(f32, bool)> = None; // (strike, is_call)
-        let dte_idx = panes[pi].option_quick_dte_idx.min(DTE_LIST.len() - 1);
+        let dte_idx = panes[pi].option_quick.dte_idx.min(DTE_LIST.len() - 1);
         let current_dte = DTE_LIST[dte_idx];
 
         // Ensure we always see fresh data for the current DTE
@@ -79,7 +79,7 @@ pub(crate) fn draw(
                             crate::ui_kit::widgets::Tooltip::new("Earlier expiry").show(ui, &back_resp, t);
                             if back_resp.clicked() && can_back
                             {
-                                panes[pi].option_quick_dte_idx = dte_idx - 1;
+                                panes[pi].option_quick.dte_idx = dte_idx - 1;
                                 let new_dte = DTE_LIST[dte_idx - 1];
                                 fetch_chain_background(underlying.clone(), 15, new_dte, spot);
                             }
@@ -99,7 +99,7 @@ pub(crate) fn draw(
                                     .show(ui, t)
                                     .clicked() && can_fwd
                                 {
-                                    panes[pi].option_quick_dte_idx = dte_idx + 1;
+                                    panes[pi].option_quick.dte_idx = dte_idx + 1;
                                     let new_dte = DTE_LIST[dte_idx + 1];
                                     fetch_chain_background(underlying.clone(), 15, new_dte, spot);
                                 }
@@ -264,7 +264,7 @@ pub(crate) fn draw(
         if modal_resp.dismissed { close_picker = true; }
 
         if close_picker {
-            panes[pi].option_quick_open = false;
+            panes[pi].option_quick.open = false;
         }
 
         // Handle strike click → swap the contract on this pane (not a split).
@@ -306,7 +306,7 @@ pub(crate) fn draw(
                 watchlist.pending_opt_chart = Some(crate::chart_renderer::gpu::PendingOptionChart { symbol: underlying.clone(), strike, is_call, expiry: String::new() });
                 watchlist.pending_opt_chart_contract = Some(occ);
             }
-            panes[pi].option_quick_open = false;
+            panes[pi].option_quick.open = false;
         }
     }
 }

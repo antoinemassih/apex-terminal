@@ -1921,6 +1921,50 @@ pub(crate) struct SymbolPickerState {
     pub(crate) pos:        egui::Pos2,
 }
 
+/// Volume-profile display state: the active mode plus the cached computed data
+/// and the view keys it was computed for (cache-invalidation).
+pub(crate) struct VolumeProfileState {
+    /// Display mode (Off / Classic / Heatmap / Strip / Clean). (was `vp_mode`)
+    pub(crate) mode:    VolumeProfileMode,
+    /// Cached computed profile. (was `vp_data`)
+    pub(crate) data:    Option<VolumeProfileData>,
+    /// View-start the cache was computed for; -1 = stale. (was `vp_last_vs`)
+    pub(crate) last_vs: f32,
+    /// View-count the cache was computed for. (was `vp_last_vc`)
+    pub(crate) last_vc: u32,
+}
+
+impl Default for VolumeProfileState {
+    fn default() -> Self {
+        Self { mode: VolumeProfileMode::Off, data: None, last_vs: -1.0, last_vc: 0 }
+    }
+}
+
+/// Drawing-tool picker popup state (2nd middle-click radial picker).
+#[derive(Default)]
+pub(crate) struct DrawPickerState {
+    pub(crate) open:        bool,            // was draw_picker_open
+    pub(crate) pos:         egui::Pos2,      // was draw_picker_pos
+    pub(crate) hover_cat:   Option<String>,  // was draw_picker_hover_cat
+    pub(crate) hover_cat_y: f32,             // was draw_picker_hover_cat_y
+}
+
+/// Template popup state (pane-header T button).
+#[derive(Default)]
+pub(crate) struct TemplatePopup {
+    pub(crate) open:      bool,        // was template_popup_open
+    pub(crate) pos:       egui::Pos2,  // was template_popup_pos
+    pub(crate) save_name: String,      // was template_save_name
+}
+
+/// Option quick-picker popup state (options-tab click).
+#[derive(Default)]
+pub(crate) struct OptionQuickPicker {
+    pub(crate) open:    bool,        // was option_quick_open
+    pub(crate) pos:     egui::Pos2,  // was option_quick_pos
+    pub(crate) dte_idx: usize,       // was option_quick_dte_idx
+}
+
 /// All state for the DOM (Depth-of-Market / Price Ladder) panel.
 #[derive(Clone)]
 pub(crate) struct DomPanelState {
@@ -2084,26 +2128,16 @@ pub(crate) struct Chart {
     pub(crate) auto_scroll: bool, pub(crate) last_input: std::time::Instant,
     pub(crate) draw_price_freeze: Option<(f32, f32)>, // locks y-range while drawing so new bars can't rescale
     // Template popup (opened from pane header T button)
-    pub(crate) template_popup_open: bool,
-    pub(crate) template_popup_pos: egui::Pos2,
-    pub(crate) template_save_name: String,
+    pub(crate) template_popup: TemplatePopup,
     // Option quick-picker popup (opened by clicking an options tab)
-    pub(crate) option_quick_open: bool,
-    pub(crate) option_quick_pos: egui::Pos2,
-    pub(crate) option_quick_dte_idx: usize,
+    pub(crate) option_quick: OptionQuickPicker,
     pub(crate) history_loading: bool, // true while fetching older bars
     pub(crate) history_exhausted: bool, // true if no more history available
     pub(crate) tick_counter: u64, pub(crate) last_candle_time: std::time::Instant, pub(crate) sim_price: f32, pub(crate) sim_seed: u64,
     pub(crate) theme_idx: usize,
     pub(crate) draw_tool: String, // "", "hline", "trendline", "hzone", "barmarker", "fibonacci", "channel"
     /// Drawing-tool picker (opened by 2nd middle-click while a tool is active).
-    pub(crate) draw_picker_open: bool,
-    pub(crate) draw_picker_pos: egui::Pos2,
-    /// Currently hovered category label in the picker (drives the flyout submenu).
-    pub(crate) draw_picker_hover_cat: Option<String>,
-    /// Top-Y of the hovered category row, in screen coords — used to align
-    /// the flyout to the row that spawned it (not the top of the menu).
-    pub(crate) draw_picker_hover_cat_y: f32,
+    pub(crate) draw_picker: DrawPickerState,
     pub(crate) pending_pt:  Option<DrawCoord>, // first click (bar, price)
     pub(crate) pending_pt2: Option<DrawCoord>, // second click for channel (bar, price)
     pub(crate) pending_pts: Vec<DrawCoord>,    // multi-point: pitchfork(3), xabcd(5), elliott(3/5)
@@ -2226,14 +2260,11 @@ pub(crate) struct Chart {
     // Reusable buffers to avoid per-frame allocations
     pub(crate) indicator_pts_buf: Vec<egui::Pos2>,
     pub(crate) fmt_buf: String, // reusable format buffer
-    pub(crate) vp_mode: VolumeProfileMode,
+    pub(crate) vp: VolumeProfileState,
     pub(crate) candle_mode: CandleMode,
     // Alternative chart types (Renko, Range, Tick)
     pub(crate) alt: AltBarsState,
     pub(crate) show_footprint: bool, // hover-activated volume footprint on individual bars
-    pub(crate) vp_data: Option<VolumeProfileData>,
-    pub(crate) vp_last_vs: f32,
-    pub(crate) vp_last_vc: u32,
     // Volume analytics
     pub(crate) show_vwap_bands: bool,
     pub(crate) show_cvd: bool,
@@ -2433,14 +2464,14 @@ impl Chart {
             ],
             vs: 0.0, vc: 200, price_lock: None, log_scale: false, drag_zoom_active: false, drag_zoom_start: None,
             auto_scroll: true, draw_price_freeze: None,
-            template_popup_open: false, template_popup_pos: egui::Pos2::ZERO, template_save_name: String::new(),
-            option_quick_open: false, option_quick_pos: egui::Pos2::ZERO, option_quick_dte_idx: 0,
+            template_popup: TemplatePopup::default(),
+            option_quick: OptionQuickPicker::default(),
             history_loading: false, history_exhausted: false,
             last_input: std::time::Instant::now(), tick_counter: 0,
             last_candle_time: std::time::Instant::now(), sim_price: 0.0,
             sim_seed: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(42),
             theme_idx: 5, // Gruvbox
-            draw_tool: String::new(), draw_picker_open: false, draw_picker_pos: egui::Pos2::ZERO, draw_picker_hover_cat: None, draw_picker_hover_cat_y: 0.0, pending_pt: None, pending_pt2: None, pending_pts: vec![], magnet: true,
+            draw_tool: String::new(), draw_picker: DrawPickerState::default(), pending_pt: None, pending_pt2: None, pending_pts: vec![], magnet: true,
             selected_id: None, selected_ids: vec![], dragging_drawing: None,
             drag_start_price: 0.0, drag_start_bar: 0.0,
             groups: vec![DrawingGroup { id: "default".into(), name: "Temp".into(), color: None }],
@@ -2480,9 +2511,9 @@ impl Chart {
             undo_stack: vec![], redo_stack: vec![], drag_drawing_snapshot: None,
             text_edit_id: None, text_edit_buf: String::new(),
             indicator_pts_buf: Vec::with_capacity(512), fmt_buf: String::with_capacity(256),
-            vp_mode: VolumeProfileMode::Off, candle_mode: CandleMode::Standard,
+            vp: VolumeProfileState::default(), candle_mode: CandleMode::Standard,
             alt: AltBarsState::default(),
-            show_footprint: false, vp_data: None, vp_last_vs: -1.0, vp_last_vc: 0,
+            show_footprint: false,
             show_vwap_bands: false, show_cvd: false, show_delta_volume: false, show_rvol: true,
             show_ma_ribbon: false, show_prev_close: true, show_auto_sr: false, show_auto_fib: false, swing_leg_mode: 0,
             symbol_overlays: vec![], overlay_editing: false, overlay_editing_idx: None, overlay_input: String::new(),
@@ -7464,7 +7495,7 @@ impl ApplicationHandler for App {
                                         chart.alt.range_size = p.get("range_bar_size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
                                         chart.alt.tick_count = p.get("tick_bar_count").and_then(|v| v.as_u64()).unwrap_or(500) as u32;
                                         chart.alt.dirty = true;
-                                        chart.vp_mode = match p.get("vp_mode").and_then(|v| v.as_str()).unwrap_or("off") {
+                                        chart.vp.mode = match p.get("vp_mode").and_then(|v| v.as_str()).unwrap_or("off") {
                                             "classic" => VolumeProfileMode::Classic, "heatmap" => VolumeProfileMode::Heatmap,
                                             "strip" => VolumeProfileMode::Strip, "clean" => VolumeProfileMode::Clean,
                                             _ => VolumeProfileMode::Off,
@@ -7993,7 +8024,7 @@ fn workspace_to_json(panes: &[Chart], layout: Layout, wl: &Watchlist) -> String 
             "renko_brick_size": p.alt.renko_brick,
             "range_bar_size": p.alt.range_size,
             "tick_bar_count": p.alt.tick_count,
-            "vp_mode": match p.vp_mode {
+            "vp_mode": match p.vp.mode {
                 VolumeProfileMode::Off => "off", VolumeProfileMode::Classic => "classic",
                 VolumeProfileMode::Heatmap => "heatmap", VolumeProfileMode::Strip => "strip",
                 VolumeProfileMode::Clean => "clean",
@@ -8147,7 +8178,7 @@ pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &mut Watchl
             "renko_brick_size": p.alt.renko_brick,
             "range_bar_size": p.alt.range_size,
             "tick_bar_count": p.alt.tick_count,
-            "vp_mode": match p.vp_mode {
+            "vp_mode": match p.vp.mode {
                 VolumeProfileMode::Off => "off", VolumeProfileMode::Classic => "classic",
                 VolumeProfileMode::Heatmap => "heatmap", VolumeProfileMode::Strip => "strip",
                 VolumeProfileMode::Clean => "clean",
@@ -8347,7 +8378,7 @@ fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
             chart.alt.tick_count = p.get("tick_bar_count").and_then(|v| v.as_u64()).unwrap_or(500) as u32;
             chart.alt.dirty = true; // force recompute on load
             // Restore volume profile mode
-            chart.vp_mode = match p.get("vp_mode").and_then(|v| v.as_str()).unwrap_or("off") {
+            chart.vp.mode = match p.get("vp_mode").and_then(|v| v.as_str()).unwrap_or("off") {
                 "classic" => VolumeProfileMode::Classic, "heatmap" => VolumeProfileMode::Heatmap,
                 "strip" => VolumeProfileMode::Strip, "clean" => VolumeProfileMode::Clean,
                 _ => VolumeProfileMode::Off,
