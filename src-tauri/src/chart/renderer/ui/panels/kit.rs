@@ -95,7 +95,7 @@ fn paint_chrome_perimeter(painter: &egui::Painter, rect: Rect, t: &Theme) {
         rect, 0.0,
         Stroke::new(
             st.header_outer_border_width,
-            color_alpha(t.text, st.header_outer_border_alpha),
+            tint(t, SxTone::Text, st.header_outer_border_alpha),
         ),
         StrokeKind::Inside,
     );
@@ -428,7 +428,7 @@ impl<'a, T: PartialEq + Copy + 'a> PanelHeaderTabs<'a, T> {
             let hover_t  = motion::ease_bool(ui.ctx(), hover_id,  tab_resp.hovered() && !is_active, motion::FAST);
             let corners = CornerRadius { nw: r_md_corner, ne: r_md_corner, sw: 0, se: 0 };
             let idle_bg   = Color32::TRANSPARENT;
-            let hover_bg  = color_alpha(t.toolbar_border, st_settings.tab_hover_bg_alpha);
+            let hover_bg  = tint(t, SxTone::Border, st_settings.tab_hover_bg_alpha);
             let active_bg = color_dim(t.bg);
             let mut tab_bg = motion::lerp_color(idle_bg, hover_bg, hover_t);
             tab_bg = motion::lerp_color(tab_bg, active_bg, active_t);

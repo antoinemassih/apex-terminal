@@ -47,6 +47,7 @@ use crate::ui_kit::tokens::{
     alpha_ghost, color_alpha, font_xs, gap_md, gap_xs, stroke_thin,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 
 /// One column definition. Mirrors the sizing fields of
 /// `panel_list_row::Column` so callers can declare both header and data rows
@@ -123,7 +124,7 @@ impl TableHeader {
 
         let cy = rect.center().y;
         let mut x = inner_left;
-        let col_color = color_alpha(t.dim(), 180); // muted but readable
+        let col_color = color_alpha(palette_ct(t).base(Tone::Dim), 180); // muted but readable
 
         for (i, c) in self.cols.iter().enumerate() {
             let cell_w = c.width + per_col_flex;

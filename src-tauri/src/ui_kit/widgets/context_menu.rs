@@ -51,6 +51,8 @@ pub struct MenuTheme {
 impl MenuTheme {
     pub fn from_component<T: ComponentTheme + ?Sized>(t: &T) -> Self {
         Self {
+            // NB: `t: &T` is `?Sized` here, so it can't coerce to palette_ct's
+            // `&dyn ComponentTheme` — these stay direct (byte-identical anyway).
             accent: t.accent(),
             dim: t.dim(),
             bg: t.bg(),

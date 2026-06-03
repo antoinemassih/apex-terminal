@@ -163,18 +163,18 @@ pub fn icon_glyph_color(t: &dyn ComponentTheme, tone: IconTone, state: IconState
     use IconTone::*;
     use IconState::*;
     match (tone, state) {
-        (Neutral,     Idle)     => t.dim(),
-        (Neutral,     Hover)    => t.text(),
-        (Neutral,     Active)   => t.accent(),
-        (Neutral,     Disabled) => color_alpha(t.dim(), alpha_muted()),
-        (Destructive, Idle)     => color_alpha(t.bear(), alpha_soft()),
-        (Destructive, Hover)    => t.bear(),
-        (Destructive, Active)   => t.bear(),
-        (Destructive, Disabled) => color_alpha(t.bear(), alpha_muted()),
-        (Affirmative, Idle)     => color_alpha(t.bull(), alpha_soft()),
-        (Affirmative, Hover)    => t.bull(),
-        (Affirmative, Active)   => t.bull(),
-        (Affirmative, Disabled) => color_alpha(t.bull(), alpha_muted()),
+        (Neutral,     Idle)     => palette_ct(t).base(Tone::Dim),
+        (Neutral,     Hover)    => palette_ct(t).base(Tone::Text),
+        (Neutral,     Active)   => palette_ct(t).base(Tone::Accent),
+        (Neutral,     Disabled) => color_alpha(palette_ct(t).base(Tone::Dim), alpha_muted()),
+        (Destructive, Idle)     => color_alpha(palette_ct(t).base(Tone::Bear), alpha_soft()),
+        (Destructive, Hover)    => palette_ct(t).base(Tone::Bear),
+        (Destructive, Active)   => palette_ct(t).base(Tone::Bear),
+        (Destructive, Disabled) => color_alpha(palette_ct(t).base(Tone::Bear), alpha_muted()),
+        (Affirmative, Idle)     => color_alpha(palette_ct(t).base(Tone::Bull), alpha_soft()),
+        (Affirmative, Hover)    => palette_ct(t).base(Tone::Bull),
+        (Affirmative, Active)   => palette_ct(t).base(Tone::Bull),
+        (Affirmative, Disabled) => color_alpha(palette_ct(t).base(Tone::Bull), alpha_muted()),
     }
 }
 
@@ -183,7 +183,7 @@ pub fn icon_glyph_color(t: &dyn ComponentTheme, tone: IconTone, state: IconState
 /// Call only when `IconPlacement::hover_bg()` returns `true`. `TabClose` and
 /// non-interactive placements skip this entirely.
 pub fn icon_hover_bg(t: &dyn ComponentTheme) -> Color32 {
-    color_alpha(t.text(), alpha_ghost())
+    color_alpha(palette_ct(t).base(Tone::Text), alpha_ghost())
 }
 
 #[cfg(test)]

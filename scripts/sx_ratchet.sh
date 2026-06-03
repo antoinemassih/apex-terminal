@@ -16,7 +16,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-BASELINE=81
+BASELINE=4
 
 PATTERN='color_alpha\((theme|t)\.(accent|dim|text|bull|bear|warn|bg|toolbar_border|toolbar_bg)'
 ROOTS="src-tauri/src/chart/renderer/ui src-tauri/src/ui_kit/widgets"

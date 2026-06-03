@@ -13,12 +13,12 @@
 //!
 //! Behavior:
 //! - Row height scales with `Size` (defaults to ~24px / `gap_2xl()`).
-//! - Idle: transparent background, `theme.text()` label.
-//! - Selected: `color_alpha(theme.accent(), alpha_soft())` background,
-//!   `theme.accent()` label.
-//! - Hover: `color_alpha(theme.text(), alpha_faint())` background tint.
-//! - Disabled: `st::color_dim(theme.text())` label, hover-only sense.
-//! - Optional leading icon: `theme.dim()` color, `font_sm()` size,
+//! - Idle: transparent background, `palette_ct(theme).base(Tone::Text)` label.
+//! - Selected: `color_alpha(palette_ct(theme).base(Tone::Accent), alpha_soft())` background,
+//!   `palette_ct(theme).base(Tone::Accent)` label.
+//! - Hover: `color_alpha(palette_ct(theme).base(Tone::Text), alpha_faint())` background tint.
+//! - Disabled: `st::color_dim(palette_ct(theme).base(Tone::Text))` label, hover-only sense.
+//! - Optional leading icon: `palette_ct(theme).base(Tone::Dim)` color, `font_sm()` size,
 //!   `gap_xs()` from text.
 //!
 //! Returns a normal `Response` so callers use `.clicked()` exactly like
