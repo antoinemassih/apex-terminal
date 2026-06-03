@@ -642,4 +642,60 @@ mod tests {
             let _ = style.border(Variant::Primary, state);
         }
     }
+
+    /// Characterization digest — pins the EXACT fg/bg/border bytes of every
+    /// ButtonStyle across all 14 variants × 6 states on both dark and light
+    /// themes (≈3000 channel values folded with FNV-1a). Any change to button
+    /// styling output flips the digest.
+    ///
+    /// This is the byte-identity net for the DS#1 recipe refactor: build the
+    /// declarative recipe, route the styles through it, and keep this green to
+    /// prove the look is unchanged across every variant/state/theme.
+    #[test]
+    fn button_styles_characterization_digest() {
+        use crate::ui_kit::widgets::tokens::Variant::*;
+        let variants = [
+            Primary, Secondary, Ghost, Danger, Link, Chrome, Chip, Tab,
+            InlineClose, MutedIcon, NeutralAction, TextOnly, Toggle, DynamicTint,
+        ];
+        let states = [
+            ButtonState::Idle, ButtonState::Hover, ButtonState::Active,
+            ButtonState::Pressed, ButtonState::Disabled, ButtonState::Loading,
+        ];
+        let fold = |mut acc: u64, c: Color32| -> u64 {
+            for b in [c.r(), c.g(), c.b(), c.a()] {
+                acc = (acc ^ b as u64).wrapping_mul(1099511628211);
+            }
+            acc
+        };
+        let mut digest: u64 = 1469598103934665603; // FNV offset basis
+        for theme in [PortableTheme::dark(), PortableTheme::light()] {
+            let d = DefaultButtonStyle::new(&theme);
+            let o = OutlinedButtonStyle::new(&theme);
+            let s = SoftButtonStyle::new(&theme);
+            let e = ElevatedButtonStyle::new(&theme);
+            let m = MutedButtonStyle::new(&theme);
+            let a = AccentEmphasisStyle::new(&theme);
+            let styles: [&dyn ButtonStyle; 6] = [&d, &o, &s, &e, &m, &a];
+            for style in styles {
+                for &v in &variants {
+                    for &st in &states {
+                        digest = fold(digest, style.fg(v, st));
+                        digest = fold(digest, style.bg(v, st));
+                        digest = fold(digest, style.border(v, st));
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            digest, BUTTON_STYLE_DIGEST,
+            "button styling output changed (digest {digest}). If intentional, \
+             update BUTTON_STYLE_DIGEST; if this is the DS#1 recipe refactor, \
+             the recipe is NOT byte-identical yet."
+        );
+    }
+
+    // Pinned digest of all ButtonStyle output. Update only on an intentional
+    // visual change to buttons.
+    const BUTTON_STYLE_DIGEST: u64 = 14977099151003970929;
 }
