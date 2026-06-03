@@ -8,7 +8,8 @@
 //! allocation, no lock, no color math on the hot path.
 
 use egui::{Color32, CornerRadius, Response, Sense, Stroke, StrokeKind, Ui};
-use super::color::{palette, Palette, Shade, Tone};
+use super::color::{palette, palette_ct, Palette, Shade, Tone};
+use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::ui_kit::tokens as st;
 
 type Theme = crate::chart_renderer::gpu::Theme;
@@ -303,6 +304,30 @@ impl Sx {
         bc = lerp_color(bc, bc_a, active_t);
         if bc.a() > 0 {
             ui.painter().rect_stroke(rect, cr, Stroke::new(bw, bc), StrokeKind::Inside);
+        }
+    }
+
+    /// Paint this style's Normal-state box (fill + border) directly into `rect`,
+    /// resolving colors from a [`ComponentTheme`] — the ui_kit-facing paint entry.
+    ///
+    /// This is the DS#4 bridge: a widget DECLARES its box as an `Sx`
+    /// (`Sx::new().rounded_md().bg_alpha(tone, 32).border_alpha(tone, 200, w)`)
+    /// and renders it in one call, instead of hand-writing `rect_filled` +
+    /// `rect_stroke`. Immediate paint (not a reserved slot) — call it before
+    /// emitting the widget's own content so the box sits behind it.
+    pub fn paint_box_ct(&self, ui: &Ui, rect: egui::Rect, t: &dyn ComponentTheme) {
+        let pal = palette_ct(t);
+        let d = self.resolved(StyleState::Normal);
+        let cr = CornerRadius::same(d.radius.unwrap_or(0.0) as u8);
+        if let Some(fill) = d.fill {
+            ui.painter().rect_filled(rect, cr, fill.resolve(&pal));
+        }
+        if let Some(b) = d.border {
+            ui.painter().rect_stroke(
+                rect, cr,
+                Stroke::new(b.width, b.color.resolve(&pal)),
+                StrokeKind::Inside,
+            );
         }
     }
 

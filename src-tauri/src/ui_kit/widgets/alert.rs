@@ -10,10 +10,10 @@
 //!     .closable(true)
 //!     .show(ui, theme);
 
-use egui::{Color32, CornerRadius, FontId, Pos2, Response, Sense, Stroke, StrokeKind, Ui, Vec2, Widget};
+use egui::{Color32, FontId, Pos2, Response, Sense, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
-use crate::ui_kit::sx::{palette_ct, Tone};
+use crate::ui_kit::sx::{palette_ct, Sx, Tone};
 use crate::ui_kit::tokens as st;
 use crate::ui_kit::icons::Icon;
 
@@ -111,10 +111,22 @@ impl Alert {
         let action_clicked = false;
 
         if ui.is_rect_visible(rect) {
+            // DS#4: the Alert box is DECLARED as an Sx (tinted fill + border on
+            // the variant tone) and painted in one call — no hand-rolled
+            // rect_filled/rect_stroke. Byte-identical to the prior code.
+            let box_tone = match self.variant {
+                AlertVariant::Info => Tone::Accent,
+                AlertVariant::Success => Tone::Bull,
+                AlertVariant::Warning => Tone::Warn,
+                AlertVariant::Error => Tone::Bear,
+            };
+            Sx::new()
+                .rounded_md()
+                .bg_alpha(box_tone, 32)
+                .border_alpha(box_tone, 200, st::stroke_std())
+                .paint_box_ct(ui, rect, theme);
+
             let painter = ui.painter_at(rect);
-            let cr = CornerRadius::same(st::radius_md() as u8);
-            painter.rect_filled(rect, cr, st::color_alpha(color, 32));
-            painter.rect_stroke(rect, cr, Stroke::new(st::stroke_std(), st::color_alpha(color, 200)), StrokeKind::Inside);
 
             // Leading icon
             let icon_center = Pos2::new(rect.left() + pad + icon_size * 0.5, rect.top() + pad + icon_size * 0.5);
