@@ -15,6 +15,7 @@
 //! `PanelKeyValueRow` (kv pairs) and `PanelListRow::columns` (state rows).
 
 use std::collections::HashMap;
+use crate::ui_kit::sx::Tone;
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
@@ -299,7 +300,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
 // ── Row helpers ──────────────────────────────────────────────────────────────
 
 /// Render one active-state row via `PanelListRow::columns`.
-/// Label left, count right. Count dims to `color_alpha(t.dim, alpha_strong())`
+/// Label left, count right. Count dims to `tint(t, Tone::Dim, alpha_strong())`
 /// when zero; uses the provided `color` otherwise.
 fn render_state_row(
     ui: &mut egui::Ui,
@@ -309,7 +310,7 @@ fn render_state_row(
     color: egui::Color32,
 ) {
     let count_str = count.to_string();
-    let count_color = if count == 0 { color_alpha(t.dim, alpha_strong()) } else { color };
+    let count_color = if count == 0 { tint(t, Tone::Dim, alpha_strong()) } else { color };
     PanelListRow::new(label)
         .columns(&[
             Column::left(label).color(t.text),

@@ -15,6 +15,8 @@
 #![allow(unused_imports, unused_variables)]
 
 use crate::ui_kit::icons::Icon;
+use crate::chart_renderer::ui::style::tint;
+use crate::ui_kit::sx::Tone;
 use crate::ui_kit::widgets::{
     Button as KitButton, MenuItem, NumberStepper, SelectableRow, Tooltip,
     tokens::{Variant as KitVariant, Size as KitSize},
@@ -798,12 +800,12 @@ pub(crate) fn render(
                             crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
                             crate::chart_renderer::ui::style::cursor::focus_ring(ui, &resp, t.accent);
                             if resp.hovered() {
-                                p.rect_filled(r, 4.0, color_alpha(t.accent, alpha_ghost()));
+                                p.rect_filled(r, 4.0, tint(t, Tone::Accent, alpha_ghost()));
                             }
 
                             let preview_rect = egui::Rect::from_min_size(
                                 egui::pos2(r.left() + 4.0, r.top() + 4.0), egui::vec2(28.0, 28.0));
-                            let preview_bg = color_alpha(t.toolbar_border, alpha_faint());
+                            let preview_bg = tint(t, Tone::Border, alpha_faint());
                             p.rect_filled(preview_rect, 4.0, preview_bg);
                             paint_widget_preview(p, preview_rect, kind, t, is_active);
 

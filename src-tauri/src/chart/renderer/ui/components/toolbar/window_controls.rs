@@ -5,6 +5,8 @@
 //! inside the top-nav's right-to-left fixed cluster, before the panel toggles.
 
 use std::sync::Arc;
+use crate::chart_renderer::ui::style::tint;
+use crate::ui_kit::sx::Tone;
 use winit::window::Window;
 
 use crate::chart_renderer::gpu::{
@@ -31,7 +33,7 @@ pub(crate) fn render_window_controls(
     let win_btn = |ui: &mut egui::Ui, danger: bool| -> (egui::Response, egui::Rect) {
         let (r, resp) = ui.allocate_exact_size(BTN_ICON_LG, egui::Sense::click());
         if resp.hovered() {
-            let bg = if danger { t.bear } else { color_alpha(t.toolbar_border, 80) };
+            let bg = if danger { t.bear } else { tint(t, Tone::Border, 80) };
             ui.painter().rect_filled(r, 0.0, bg);
         }
         crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);

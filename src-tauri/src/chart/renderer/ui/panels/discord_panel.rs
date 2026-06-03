@@ -15,6 +15,7 @@
 //! Agent C's notes). Do NOT theme-bind those — they're locked.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::components::text as widgets_text;
 use crate::ui_kit::widgets::Input;
@@ -253,7 +254,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
         });
         ui.add_space(gap_xs());
         let sep_rect = ui.allocate_exact_size(egui::vec2(panel_w, 1.0), egui::Sense::hover()).0;
-        ui.painter().rect_filled(sep_rect, 0.0, color_alpha(t.toolbar_border, alpha_dim()));
+        ui.painter().rect_filled(sep_rect, 0.0, tint(t, Tone::Border, alpha_dim()));
     }
 
     // ── Content area ──
@@ -466,7 +467,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
 
         // Input area
         let sep_rect = ui.allocate_exact_size(egui::vec2(content_w, 1.0), egui::Sense::hover()).0;
-        ui.painter().rect_filled(sep_rect, 0.0, color_alpha(t.toolbar_border, alpha_muted()));
+        ui.painter().rect_filled(sep_rect, 0.0, tint(t, Tone::Border, alpha_muted()));
         ui.add_space(gap_xs());
         ui.horizontal(|ui| {
             ui.add_space(gap_sm());

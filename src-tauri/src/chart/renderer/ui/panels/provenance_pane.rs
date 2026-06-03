@@ -20,6 +20,7 @@
 //!   don't depend on egui.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Mutex, OnceLock};
 
@@ -383,7 +384,7 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
     ui.painter().line_segment(
         [egui::pos2(ui.min_rect().left(), ui.cursor().min.y),
          egui::pos2(ui.min_rect().right(), ui.cursor().min.y)],
-        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_faint())));
+        egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_faint())));
     ui.add_space(gap_sm());
 
     // ── Body ──
@@ -468,7 +469,7 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                     ui.painter().line_segment(
                         [egui::pos2(ui.min_rect().left(), ui.cursor().min.y),
                          egui::pos2(ui.min_rect().right(), ui.cursor().min.y)],
-                        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_faint())));
+                        egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_faint())));
                     ui.add_space(gap_xs());
                     ui.label(egui::RichText::new("FOCUSED NODE").monospace()
                         .size(FONT_XS).color(t.dim));
@@ -495,7 +496,7 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
     ui.painter().line_segment(
         [egui::pos2(ui.min_rect().left(), ui.cursor().min.y),
          egui::pos2(ui.min_rect().right(), ui.cursor().min.y)],
-        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_faint())));
+        egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_faint())));
     ui.add_space(gap_xs());
     ui.horizontal(|ui| {
         ui.add_space(gap_sm());

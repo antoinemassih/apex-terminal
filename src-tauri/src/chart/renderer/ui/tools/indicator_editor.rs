@@ -1,6 +1,7 @@
 //! Indicator Editor UI component.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::ui_kit::widgets::{Button, Tooltip};
@@ -269,7 +270,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 });
 
                 ui.add_space(gap_sm());
-                dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, alpha_muted()));
+                dialog_separator_shadow(ui, m, tint(t, Tone::Border, alpha_muted()));
                 ui.add_space(gap_sm());
 
                 // ── APPEARANCE ──
@@ -345,7 +346,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 }
 
                 ui.add_space(gap_sm());
-                dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, alpha_muted()));
+                dialog_separator_shadow(ui, m, tint(t, Tone::Border, alpha_muted()));
                 ui.add_space(gap_xs());
 
                 // ── Footer: visibility + delete ──

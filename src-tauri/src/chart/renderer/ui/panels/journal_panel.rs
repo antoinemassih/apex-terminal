@@ -11,6 +11,7 @@
 //!     4-column layout — `PanelKeyValueRow` only handles 2 columns.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme, JournalEntry};
 use super::super::components::text::MonospaceCode;
@@ -250,7 +251,7 @@ fn draw_insight_row(ui: &mut egui::Ui, label: &str, total: u32, wr: f32, pnl: f6
         let bar_w = 40.0;
         let (br, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
         let p = ui.painter();
-        p.rect_filled(br, radius_xs(), color_alpha(t.toolbar_border, alpha_faint()));
+        p.rect_filled(br, radius_xs(), tint(t, Tone::Border, alpha_faint()));
         p.rect_filled(egui::Rect::from_min_size(br.min, egui::vec2(bar_w * wr / 100.0, 8.0)),
             radius_xs(), color_alpha(col, alpha_dim()));
         ui.label(egui::RichText::new(format!("{:.0}%", wr)).monospace().size(font_xs()).color(col));

@@ -25,6 +25,7 @@
 #![allow(dead_code)]
 
 use egui;
+use crate::ui_kit::sx::Tone;
 
 use super::super::style::*;
 use super::super::super::gpu::{Chart, Theme, Watchlist};
@@ -126,8 +127,8 @@ fn draw_plan(ui: &mut egui::Ui, plan: &TradePlanV2, t: &Theme) {
         let dt = plan.day_type.as_deref().unwrap_or("?");
         ui.add_space(gap_sm());
         crate::ui_kit::widgets::OutlinedBox::new()
-            .fill(color_alpha(t.dim, alpha_ghost()))
-            .border(color_alpha(t.dim, alpha_muted()))
+            .fill(tint(t, Tone::Dim, alpha_ghost()))
+            .border(tint(t, Tone::Dim, alpha_muted()))
             .hairline()
             .radius_sm()
             .padding(gap_sm())

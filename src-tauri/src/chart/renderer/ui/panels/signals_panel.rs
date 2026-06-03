@@ -6,6 +6,7 @@
 //! body dispatch.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::components::text as widgets_text;
 use super::super::super::gpu::{Watchlist, Chart, Theme, SplitSection};
@@ -108,7 +109,7 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
         });
     });
     ui.add_space(gap_sm());
-    separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+    separator(ui, tint(t, Tone::Border, alpha_muted()));
     ui.add_space(gap_md());
 
     ui.add(widgets_text::SectionLabel::new("VISIBILITY").tiny().color(t.dim));
@@ -158,7 +159,7 @@ fn draw_signals_toggles(ui: &mut egui::Ui, panes: &mut [Chart], ap: usize, t: &T
     // Reads from `live_state::all_combined_sorted()` (populated by the
     // `combined` WS frame routed through `ws::dispatch`).
     ui.add_space(gap_md());
-    separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+    separator(ui, tint(t, Tone::Border, alpha_muted()));
     ui.add_space(gap_sm());
     ui.add(widgets_text::SectionLabel::new("CALIBRATED SIGNALS").tiny().color(t.dim));
     ui.add_space(gap_xs());

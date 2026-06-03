@@ -1,6 +1,7 @@
 //! Trendline Filter UI component.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use super::super::components::text::MonospaceCode;
@@ -55,7 +56,7 @@ if watchlist.trendline_filter_open {
             }
 
             ui.add_space(gap_sm());
-            dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, alpha_line()));
+            dialog_separator_shadow(ui, m, tint(t, Tone::Border, alpha_line()));
             ui.add_space(gap_sm());
 
             // Visibility toggles
@@ -81,7 +82,7 @@ if watchlist.trendline_filter_open {
             // Groups
             if !chart.groups.is_empty() {
                 ui.add_space(gap_sm());
-                dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, alpha_line()));
+                dialog_separator_shadow(ui, m, tint(t, Tone::Border, alpha_line()));
                 ui.add_space(gap_sm());
                 dialog_section(ui, "GROUPS", m, color_half(t.dim));
                 for g in chart.groups.clone() {

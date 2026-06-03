@@ -40,6 +40,7 @@
 #![allow(dead_code)]
 
 use std::ops::RangeInclusive;
+use crate::ui_kit::sx::Tone;
 
 use egui::{Context, Ui};
 
@@ -615,7 +616,7 @@ fn render_body_and_footer<'a>(
                         .corner_radius(egui::CornerRadius::same(cst.panel_footer_radius as u8))
                         .stroke(egui::Stroke::new(
                             stroke_thin(),
-                            crate::chart_renderer::ui::style::color_alpha(t.toolbar_border, 60),
+                            crate::chart_renderer::ui::style::tint(t, Tone::Border, 60),
                         ))
                         .inner_margin(egui::Margin::same(gap_sm() as i8))
                         .outer_margin(egui::Margin::same(gap_sm() as i8));

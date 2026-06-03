@@ -5,6 +5,8 @@
 //! Eventually this replaces the toast system for all trading-related events.
 
 use std::collections::VecDeque;
+use crate::chart_renderer::ui::style::tint;
+use crate::ui_kit::sx::Tone;
 use std::sync::{Mutex, OnceLock};
 use std::sync::atomic::{AtomicU64, Ordering};
 use egui::{Color32, FontId, Sense};
@@ -126,7 +128,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         ui.label(
             egui::RichText::new("No alerts")
                 .size(font_xs())
-                .color(color_alpha(t.dim, ALPHA_SECONDARY_TEXT)),
+                .color(tint(t, Tone::Dim, ALPHA_SECONDARY_TEXT)),
         );
         return;
     }
@@ -181,7 +183,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
                             egui::Align2::CENTER_CENTER,
                             "×",
                             FontId::proportional(font_sm()),
-                            color_alpha(t.dim, ALPHA_INTERACTIVE),
+                            tint(t, Tone::Dim, ALPHA_INTERACTIVE),
                         );
                     }
 

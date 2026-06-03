@@ -5,6 +5,7 @@
 //! Body: `PanelSection` per group, `PanelListRow` per service.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use super::connection_state_snapshot;
@@ -61,7 +62,7 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
     let custom_frame = egui::Frame::popup(&_ctx.style())
         .fill(t.toolbar_bg)
         .inner_margin(0.0)
-        .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_active())))
+        .stroke(egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_active())))
         .corner_radius(r_lg_cr());
 
     // Wave 12d: ApexData status now derives from the push-based snapshot

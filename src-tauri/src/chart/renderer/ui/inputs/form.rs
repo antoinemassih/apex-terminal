@@ -12,6 +12,7 @@
 #![allow(dead_code, unused_imports)]
 
 use egui::{Color32, Response, RichText, Stroke, Ui, Vec2};
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{FormRow, Tooltip};
@@ -56,7 +57,7 @@ impl<'a> FieldSet<'a> {
         body: impl FnOnce(&mut Ui) -> R,
     ) -> R {
         let s = current();
-        let border = color_alpha(t.toolbar_border, alpha_muted());
+        let border = tint(t, Tone::Border, alpha_muted());
         let mut box_ = crate::ui_kit::widgets::OutlinedBox::new()
             .fill(egui::Color32::TRANSPARENT)
             .border(border)

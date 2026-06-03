@@ -1,6 +1,7 @@
 //! Overlay Manager UI component.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use super::super::components::text::MonospaceCode;
@@ -69,7 +70,7 @@ if panes[ap].overlay_editing {
 
             if n_ov > 0 {
                 ui.add_space(gap_xs());
-                dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, alpha_muted()));
+                dialog_separator_shadow(ui, m, tint(t, Tone::Border, alpha_muted()));
                 ui.add_space(gap_xs());
             }
 

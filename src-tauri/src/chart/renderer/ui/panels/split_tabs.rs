@@ -20,6 +20,7 @@
 //! which the widget grows/shrinks as panes are added/removed.
 
 use egui::Ui;
+use crate::ui_kit::sx::Tone;
 use super::kit::PanelHeaderTabs;
 use crate::ui_kit::widgets::{OutlinedBox, MenuItem};
 use crate::ui_kit::widgets::theme::ComponentTheme;
@@ -137,7 +138,7 @@ impl<'a, T: Copy + PartialEq> SplitTabs<'a, T> {
 
             // Divider between the two panes.
             if i + 1 < n {
-                let col = color_alpha(t.toolbar_border, 150);
+                let col = tint(t, Tone::Border, 150);
                 match axis {
                     SplitAxis::Horizontal => {
                         let x = sub.right() + gap * 0.5;

@@ -40,6 +40,8 @@
 #![allow(dead_code)]
 
 use std::ops::RangeInclusive;
+use crate::chart_renderer::ui::style::tint;
+use crate::ui_kit::sx::Tone;
 
 use egui::{Color32, Context, Pos2, Sense, Stroke, Ui, Vec2};
 
@@ -260,7 +262,7 @@ impl<'a, T: PartialEq + Copy + Clone + 'a> SplitSectionPanel<'a, T> {
                     [Pos2::new(row_rect.left(), row_rect.bottom()),
                      Pos2::new(row_rect.right(), row_rect.bottom())],
                     Stroke::new(stroke_thin(),
-                        color_alpha(t.toolbar_border, alpha_faint())),
+                        tint(t, Tone::Border, alpha_faint())),
                 );
 
                 // ── Body for this section ─────────────────────────────────
