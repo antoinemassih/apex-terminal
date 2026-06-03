@@ -300,7 +300,7 @@ fn header_divider(painter: &egui::Painter, cx: f32, rect: Rect, theme: &Theme) {
 /// toggle — used between adjacent buttons that visually need a separator
 /// regardless of style preset (e.g. ORDER ↔ DOM).
 fn header_divider_inline(painter: &egui::Painter, cx: f32, rect: Rect, theme: &Theme) {
-    let col = color_alpha(theme.toolbar_border, current().header_divider_alpha);
+    let col = tint(theme, Tone::Border, current().header_divider_alpha);
     painter.line_segment(
         [pos2(cx, rect.top() + 3.0), pos2(cx, rect.bottom() - 3.0)],
         Stroke::new(stroke_hair(), col),
@@ -593,7 +593,7 @@ impl<'a> PainterPaneHeader<'a> {
             // the vibrant fill is the focus indicator; a border would double it.
             Stroke::new(
                 if accent_header { 0.0 } else { st.header_outer_border_width },
-                color_alpha(t.text, st.header_outer_border_alpha),
+                tint(t, Tone::Text, st.header_outer_border_alpha),
             ),
             StrokeKind::Inside,
         );
@@ -720,7 +720,7 @@ impl<'a> PainterPaneHeader<'a> {
                 let active_t = motion::ease_bool(ui.ctx(), active_id, is_active_tab, motion::MED);
                 let hover_t  = motion::ease_bool(ui.ctx(), hover_id,  tab_resp.hovered() && !is_active_tab, motion::FAST);
                 let idle_bg   = Color32::TRANSPARENT;
-                let hover_bg  = color_alpha(t.toolbar_border, style_st.tab_hover_bg_alpha);
+                let hover_bg  = tint(t, Tone::Border, style_st.tab_hover_bg_alpha);
                 // Aperture: active tab on orange header = dark pill ("cream pill, orange text")
                 // Normal: active tab = darkened bg.
                 let active_bg = if accent_header {

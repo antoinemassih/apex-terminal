@@ -27,6 +27,8 @@
 //! (Spread, Order Health) — draggable popups, not dockable side panels.
 
 use std::cell::RefCell;
+use crate::chart_renderer::ui::style::tint;
+use crate::ui_kit::sx::Tone;
 use super::rail_layout::{RailHeight, compute_rail_rects, pack_columns};
 use super::side_panel_shell::{RailSlot, take_size_cycle};
 use super::super::style::{region_gap, color_alpha, alpha_solid, alpha_heavy};
@@ -196,7 +198,7 @@ pub(crate) fn render(
             let hx = handle.center().x;
             ui.painter().line_segment(
                 [egui::pos2(hx, handle.top()), egui::pos2(hx, handle.bottom())],
-                egui::Stroke::new(2.0, color_alpha(t.accent, if active { alpha_solid() } else { alpha_heavy() })),
+                egui::Stroke::new(2.0, tint(t, Tone::Accent, if active { alpha_solid() } else { alpha_heavy() })),
             );
             r
         }).inner;

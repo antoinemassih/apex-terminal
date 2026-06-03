@@ -227,7 +227,7 @@ pub(crate) fn draw_widgets(
                 Color32::from_rgba_unmultiplied(255, 255, 255, if t.is_light() { 50 } else { 10 }));
             // Border
             painter.rect_stroke(card_rect, r_lg_cr(),
-                Stroke::new(stroke_std(), color_alpha(t.toolbar_border, if t.is_light() { 50 } else { 30 })),
+                Stroke::new(stroke_std(), tint(t, Tone::Border, if t.is_light() { 50 } else { 30 })),
                 egui::StrokeKind::Outside);
         }
 
@@ -1983,7 +1983,7 @@ fn draw_confluence(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
         let y = body.top() + 2.0 + i as f32 * row_h;
         let bar_w = (*count as f32 / 5.0).min(1.0) * (body.width() - 70.0);
         let proximity_alpha = (1.0 - dist / 3.0).max(0.2);
-        let color = color_alpha(t.accent, (proximity_alpha * 180.0) as u8);
+        let color = tint(t, Tone::Accent, (proximity_alpha * 180.0) as u8);
 
         // Confluence bar
         p.rect_filled(egui::Rect::from_min_size(egui::pos2(body.left() + 55.0, y + 3.0),
@@ -2752,7 +2752,7 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
     let btn_rect = egui::Rect::from_min_size(
         egui::pos2(right - btn_w, y), egui::vec2(btn_w, 14.0));
     let btn_hov = hover.map(|p| btn_rect.contains(p)).unwrap_or(false);
-    p.rect_filled(btn_rect, 3.0, color_alpha(t.bear, if btn_hov { 80 } else { 40 }));
+    p.rect_filled(btn_rect, 3.0, tint(t, Tone::Bear, if btn_hov { 80 } else { 40 }));
     p.rect_stroke(btn_rect, 3.0, egui::Stroke::new(if btn_hov { 1.0 } else { 0.5 }, if btn_hov { color_subtle(t.bear) } else { color_half(t.bear) }),
         egui::StrokeKind::Outside);
     p.text(btn_rect.center(), egui::Align2::CENTER_CENTER,

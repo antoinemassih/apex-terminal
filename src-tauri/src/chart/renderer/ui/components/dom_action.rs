@@ -164,7 +164,7 @@ pub fn paint_dom_action(
             let (fill, text_col) = if ctx.is_light {
                 (t.accent, contrast_fg(t.accent))
             } else {
-                (color_alpha(t.accent, if hover { 55 } else { 28 }), t.accent)
+                (tint(t, Tone::Accent, if hover { 55 } else { 28 }), t.accent)
             };
             painter.rect_filled(rect, r_xs, fill);
             painter.rect_stroke(rect, r_xs, border_stroke, egui::StrokeKind::Inside);

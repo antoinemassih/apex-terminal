@@ -366,9 +366,9 @@ pub(crate) fn render(
                     // Colours route through theme (bear = positive correlation,
                     // accent = negative) — no raw RGB.
                     let cell_col = if corr > 0.0 {
-                        color_alpha(t.bear, (intensity * alpha_intense() as f32) as u8)
+                        tint(t, Tone::Bear, (intensity * alpha_intense() as f32) as u8)
                     } else {
-                        color_alpha(t.accent, (intensity * alpha_intense() as f32) as u8)
+                        tint(t, Tone::Accent, (intensity * alpha_intense() as f32) as u8)
                     };
                     let cell_rect = egui::Rect::from_min_size(egui::pos2(cx, cy_pos), egui::vec2(cell_sz - 1.0, cell_sz - 1.0));
                     painter.rect_filled(cell_rect, radius_xs(), cell_col);

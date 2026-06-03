@@ -126,7 +126,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, account: &Acc
                 let cx = full.center().x;
                 ui.painter().line_segment(
                     [egui::pos2(cx - 14.0, gy), egui::pos2(cx + 14.0, gy)],
-                    egui::Stroke::new(2.0, color_alpha(t.dim, if gresp.hovered() { 210 } else { 90 })),
+                    egui::Stroke::new(2.0, tint(t, Tone::Dim, if gresp.hovered() { 210 } else { 90 })),
                 );
                 ui.add_space(DOCK_GRIP_H);
 

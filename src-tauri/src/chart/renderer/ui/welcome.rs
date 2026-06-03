@@ -97,7 +97,7 @@ impl WelcomeWizard {
                 ui.add_space(st::gap_md());
 
                 // ── Separator ─────────────────────────────────────────────────
-                let sep_col = st::color_alpha(theme.toolbar_border, st::alpha_muted());
+                let sep_col = st::tint(theme, Tone::Border, st::alpha_muted());
                 st::dialog_separator(ui, 0.0, sep_col);
                 ui.add_space(st::gap_md());
 
@@ -135,7 +135,7 @@ impl WelcomeWizard {
 
                 ui.add_space(st::gap_sm());
                 {
-                    let sep_col = st::color_alpha(theme.toolbar_border, st::alpha_muted());
+                    let sep_col = st::tint(theme, Tone::Border, st::alpha_muted());
                     let avail = ui.available_width();
                     let (rect, _) = ui.allocate_exact_size(
                         egui::Vec2::new(avail, st::stroke_thin()),

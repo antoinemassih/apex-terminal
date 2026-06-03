@@ -1457,9 +1457,9 @@ pub(crate) fn render(
             let body_bg    = egui::Color32::from_rgba_unmultiplied(
                 base_bg.r(), base_bg.g(), base_bg.b(), (230.0 * alpha) as u8);
             let bar_col    = color_alpha(sev_color, (255.0 * bar_alpha_f * alpha) as u8);
-            let text_col   = color_alpha(t.text, (230.0 * alpha) as u8);
+            let text_col   = tint(t, Tone::Text, (230.0 * alpha) as u8);
             let icon_col   = color_alpha(sev_color, (200.0 * alpha) as u8);
-            let dim_col    = color_alpha(t.dim, (160.0 * alpha) as u8);
+            let dim_col    = tint(t, Tone::Dim, (160.0 * alpha) as u8);
             let border_col = if is_pinned {
                 color_alpha(sev_color, (alpha_muted() as f32 * alpha) as u8)
             } else {
@@ -1732,7 +1732,7 @@ pub(crate) fn render(
         let st = style_current();
         let wl_tip_cr = st.r_md as f32;
         let wl_tip_stroke_w = if st.hairline_borders { st.stroke_std } else { crate::chart_renderer::ui::style::stroke_thin() };
-        let wl_tip_border = if st.hairline_borders { t.toolbar_border } else { color_alpha(t.toolbar_border, crate::chart_renderer::ui::style::alpha_strong()) };
+        let wl_tip_border = if st.hairline_borders { t.toolbar_border } else { tint(t, Tone::Border, crate::chart_renderer::ui::style::alpha_strong()) };
         egui::Area::new(egui::Id::new("wl_tooltip_deferred"))
             .fixed_pos(egui::pos2(tip_x, tip_y))
             .order(egui::Order::Tooltip)

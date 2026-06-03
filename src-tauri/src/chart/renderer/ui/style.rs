@@ -13,6 +13,7 @@
 
 use egui::{self, Color32, RichText, Stroke};
 use std::cell::Cell;
+use crate::ui_kit::sx::Tone;
 
 // ─── Owned-by-ui_kit re-exports (UI extraction, item 1) ──────────────────────
 // The stateless token primitives (font/gap/alpha/stroke/radius constants,
@@ -864,7 +865,7 @@ pub fn popup_frame(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, f
 pub fn dialog_window(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, border_color: Option<Color32>) -> egui::Window<'static> {
     let t = crate::chart_renderer::theme_impl::active_theme(ctx);
     let fill = t.toolbar_bg;
-    let border = border_color.unwrap_or(color_alpha(t.toolbar_border, 80));
+    let border = border_color.unwrap_or(tint(&t, Tone::Border, 80));
     egui::Window::new(id.to_string())
         .fixed_pos(pos).fixed_size(egui::vec2(width, 0.0))
         .title_bar(false)
@@ -1252,7 +1253,7 @@ pub fn darken(c: Color32, amount: f32) -> Color32 {
 // ─── Semantic interaction-state colors ───────────────────────────────────────
 // Canonical hover / pressed / active / divider / disabled tones built on the
 // primitives above. Call-sites should reach for these instead of inlining
-// `lighten(c, 0.10)` / `color_alpha(t.toolbar_border, 36)` etc.
+// `lighten(c, 0.10)` / `tint(t, Tone::Border, 36)` etc.
 
 /// Brighten a color by 10% — canonical hover treatment for filled surfaces.
 #[inline] pub fn color_hover(c: Color32) -> Color32 { lighten(c, 0.10) }
@@ -1264,27 +1265,27 @@ pub fn darken(c: Color32, amount: f32) -> Color32 {
 /// HOVER_BG_ALPHA constant — gives ~7% text alpha overlay.
 #[inline]
 pub fn hover_tint_text(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
-    color_alpha(t.text, 18)
+    tint(t, Tone::Text, 18)
 }
 
 /// Subtle accent fill for active chips/toggles. Use when a toggleable
 /// surface needs a "yes I'm on" visual that's quieter than a full accent.
 #[inline]
 pub fn active_chip_fill(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
-    color_alpha(t.accent, alpha_soft())
+    tint(t, Tone::Accent, alpha_soft())
 }
 
 /// Standard hairline divider color. Wraps the toolbar_border + alpha 36 pair
 /// that's been hand-written across ~5 files for section dividers.
 #[inline]
 pub fn divider_color(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
-    color_alpha(t.toolbar_border, 36)
+    tint(t, Tone::Border, 36)
 }
 
 /// Disabled overlay — soft dim wash to apply over content that's not interactive.
 #[inline]
 pub fn disabled_overlay(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
-    color_alpha(t.dim, alpha_dim())
+    tint(t, Tone::Dim, alpha_dim())
 }
 
 // ─── L2 surface helper (panel sub-section / card layer) ──────────────────────
@@ -1293,7 +1294,7 @@ pub fn disabled_overlay(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
 //   L0: t.bg              — app canvas
 //   L1: t.toolbar_bg      — panel body
 //   L2: `color_layer_up`  — sub-section / card / active tab body
-//   L3: hover/selected    — color_alpha(t.text, 8) or color_alpha(t.accent, 24)
+//   L3: hover/selected    — tint(t, Tone::Text, 8) or tint(t, Tone::Accent, 24)
 //
 // Direction (lighten vs darken) is derived from the theme's `bg` brightness so
 // the lift reads the same on dark + light themes.
@@ -1573,7 +1574,7 @@ pub(crate) fn region_frame(t: &crate::chart_renderer::gpu::Theme, fill: Color32)
             .corner_radius(egui::CornerRadius::same(st.region_radius as u8))
             .stroke(egui::Stroke::new(
                 stroke_thin(),
-                color_alpha(t.toolbar_border, st.region_border_alpha),
+                tint(t, Tone::Border, st.region_border_alpha),
             ))
             .outer_margin(egui::Margin::same(g))
     }
@@ -1592,7 +1593,7 @@ pub(crate) fn paint_region_card(
     painter.rect_stroke(
         rect,
         egui::CornerRadius::same(st.region_radius as u8),
-        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, st.region_border_alpha)),
+        egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, st.region_border_alpha)),
         egui::StrokeKind::Inside,
     );
 }
@@ -1670,12 +1671,12 @@ pub(crate) fn paint_bevel(painter: &egui::Painter, rect: egui::Rect, radius: egu
 }
 
 /// Header border — matches the chart pane header's perimeter hairline:
-/// `color_alpha(t.text, 38)` at `stroke_thin()`. Use for every panel
+/// `tint(t, Tone::Text, 38)` at `stroke_thin()`. Use for every panel
 /// header bottom rule, accordion rule, and side-panel header rule so
 /// the entire chrome family reads as one bordered system.
 #[inline]
 pub(crate) fn header_border(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
-    color_alpha(t.text, 38)
+    tint(t, Tone::Text, 38)
 }
 
 /// Inverse of `color_layer_up` — moves the surface DOWN one or more
@@ -2929,16 +2930,16 @@ pub fn paint_chrome_tile_button(
     let sw = current().stroke_thin;
     let (bg, border) = match state {
         ChromeTileState::Active  => (
-            color_alpha(t.accent, 38),
-            color_alpha(t.accent, alpha_active()),
+            tint(t, Tone::Accent, 38),
+            tint(t, Tone::Accent, alpha_active()),
         ),
         ChromeTileState::Hovered => (
-            color_alpha(t.toolbar_border, alpha_subtle()),
-            color_alpha(t.accent, alpha_line()),
+            tint(t, Tone::Border, alpha_subtle()),
+            tint(t, Tone::Accent, alpha_line()),
         ),
         ChromeTileState::Idle    => (
-            color_alpha(t.toolbar_border, 18),
-            color_alpha(t.toolbar_border, alpha_muted()),
+            tint(t, Tone::Border, 18),
+            tint(t, Tone::Border, alpha_muted()),
         ),
     };
     painter.rect_filled(rect, cr, bg);
