@@ -9,6 +9,7 @@
 
 use egui::{Color32, CornerRadius, Response, Sense, Stroke, StrokeKind, Ui};
 use super::color::{palette, Palette, Shade, Tone};
+use crate::ui_kit::tokens as st;
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
@@ -111,6 +112,52 @@ impl SxDelta {
     pub fn text_shade(mut self, tone: Tone, s: Shade) -> Self { self.text = Some((tone, s)); self }
     pub fn text_size(mut self, sz: f32) -> Self { self.text_size = Some(sz); self }
 
+    // ── Token-tier builders ─────────────────────────────────────────────────
+    // These resolve through the unified token scale (`frame_tokens()` × the live
+    // corner-scale / spacing-scale / border-weight overrides), NOT raw numbers —
+    // so an Sx-styled dimension responds to the same inspector knobs as a
+    // `st::`-styled one. This is what makes Sx the single system for *all* styles
+    // (spacing, radius, typography, borders), not just color. Values are captured
+    // at build time; Sx is rebuilt per frame, so live override changes propagate.
+
+    /// Corner radius tiers (obey the CornerScale override; Sharp ⇒ 0 everywhere).
+    pub fn rounded_xs(self) -> Self { self.rounded(st::radius_xs()) }
+    pub fn rounded_sm(self) -> Self { self.rounded(st::radius_sm()) }
+    pub fn rounded_md(self) -> Self { self.rounded(st::radius_md()) }
+    pub fn rounded_lg(self) -> Self { self.rounded(st::radius_lg()) }
+
+    /// Inter-element gap tiers (obey the SpacingScale override).
+    pub fn gap_xs(self) -> Self { self.gap(st::gap_xs()) }
+    pub fn gap_sm(self) -> Self { self.gap(st::gap_sm()) }
+    pub fn gap_md(self) -> Self { self.gap(st::gap_md()) }
+    pub fn gap_lg(self) -> Self { self.gap(st::gap_lg()) }
+
+    /// Symmetric padding tiers (spacing scale on both axes).
+    pub fn p_xs(self) -> Self { self.p(st::gap_xs()) }
+    pub fn p_sm(self) -> Self { self.p(st::gap_sm()) }
+    pub fn p_md(self) -> Self { self.p(st::gap_md()) }
+    pub fn p_lg(self) -> Self { self.p(st::gap_lg()) }
+    /// Axis padding tiers.
+    pub fn px_sm(self) -> Self { self.px(st::gap_sm()) }
+    pub fn px_md(self) -> Self { self.px(st::gap_md()) }
+    pub fn py_xs(self) -> Self { self.py(st::gap_xs()) }
+    pub fn py_sm(self) -> Self { self.py(st::gap_sm()) }
+
+    /// Type-scale tiers (obey the typography token set).
+    pub fn text_xs(self) -> Self { self.text_size(st::font_xs()) }
+    pub fn text_sm(self) -> Self { self.text_size(st::font_sm()) }
+    pub fn text_md(self) -> Self { self.text_size(st::font_md()) }
+    pub fn text_lg(self) -> Self { self.text_size(st::font_lg()) }
+
+    /// Border-weight tiers (obey the BorderWeight override). Color from a tone.
+    pub fn border_hair(self, tone: Tone) -> Self { self.border(tone, st::stroke_hair()) }
+    pub fn border_thin(self, tone: Tone) -> Self { self.border(tone, st::stroke_thin()) }
+    pub fn border_std(self, tone: Tone) -> Self { self.border(tone, st::stroke_std()) }
+    /// Tinted thin border (the common hairline-overlay case).
+    pub fn border_thin_alpha(self, tone: Tone, alpha: u8) -> Self {
+        self.border_alpha(tone, alpha, st::stroke_thin())
+    }
+
     /// Overlay `over`'s set fields on top of `self`.
     #[inline]
     pub(crate) fn merge(self, over: SxDelta) -> SxDelta {
@@ -159,6 +206,13 @@ impl Sx {
         border(tone: Tone, width: f32), border_shade(tone: Tone, shade: Shade, width: f32),
         border_alpha(tone: Tone, alpha: u8, width: f32),
         text(tone: Tone), text_shade(tone: Tone, s: Shade), text_size(sz: f32),
+        // Token-tier (scale-aware) builders — the "all styles" surface.
+        rounded_xs(), rounded_sm(), rounded_md(), rounded_lg(),
+        gap_xs(), gap_sm(), gap_md(), gap_lg(),
+        p_xs(), p_sm(), p_md(), p_lg(), px_sm(), px_md(), py_xs(), py_sm(),
+        text_xs(), text_sm(), text_md(), text_lg(),
+        border_hair(tone: Tone), border_thin(tone: Tone), border_std(tone: Tone),
+        border_thin_alpha(tone: Tone, alpha: u8),
     );
 
     /// Hover override: `Sx::new().bg(Accent).hover(|d| d.bg_shade(Accent, S400))`.
