@@ -110,6 +110,13 @@ pub(crate) enum Col {
     Subtle(Tone),
     /// The tone's base lifted toward white by `pct`/100 (neutral surface nudge).
     Lighten(Tone, u8),
+    /// The theme's `border_variant` color (a secondary border, outside the tone set).
+    Var,
+    /// `border_variant` at an explicit alpha.
+    VarAlpha(u8),
+    /// The tone's base with each RGB channel shifted by `lift` (Elevated's
+    /// surface elevation — opaque, alpha forced to 255).
+    SurfaceLift(Tone, i16),
 }
 
 /// Lift a color toward white by `amt` (0..1), preserving alpha. Shared by
@@ -139,6 +146,13 @@ pub(crate) fn resolve(col: Col, t: &dyn ComponentTheme) -> Color32 {
         Col::Half(tone) => st::color_half(pal.base(tone)),
         Col::Subtle(tone) => st::color_subtle(pal.base(tone)),
         Col::Lighten(tone, pct) => lighten(pal.base(tone), pct as f32 / 100.0),
+        Col::Var => t.border_variant(),
+        Col::VarAlpha(a) => st::color_alpha(t.border_variant(), a),
+        Col::SurfaceLift(tone, lift) => {
+            let c = pal.base(tone);
+            let cl = |x: i16| x.clamp(0, 255) as u8;
+            Color32::from_rgb(cl(c.r() as i16 + lift), cl(c.g() as i16 + lift), cl(c.b() as i16 + lift))
+        }
     }
 }
 
@@ -260,57 +274,31 @@ impl<'a> OutlinedButtonStyle<'a> {
     }
 }
 
+// OutlinedButtonStyle recipe — transparent fill, colored border + text.
+fn outlined_fg(v: Variant, s: ButtonState) -> Col {
+    let tone = match v { V::Danger => Tone::Bear, V::Ghost | V::Secondary => Tone::Dim, _ => Tone::Accent };
+    if matches!(s, Disabled | Loading) { Alpha(tone, 90) } else { Base(tone) }
+}
+fn outlined_bg(v: Variant, s: ButtonState) -> Col {
+    let tone = match v { V::Danger => Tone::Bear, _ => Tone::Accent };
+    match s {
+        Hover => Alpha(tone, st::alpha_faint()),
+        Active | Pressed => Alpha(tone, st::alpha_ghost()),
+        _ => None,
+    }
+}
+fn outlined_border(v: Variant, s: ButtonState) -> Col {
+    let tone = match v { V::Danger => Tone::Bear, V::Ghost | V::Secondary => Tone::Border, _ => Tone::Accent };
+    match s {
+        Disabled | Loading => Alpha(tone, 60),
+        Hover => Alpha(tone, 200),
+        _ => Base(tone),
+    }
+}
 impl<'a> ButtonStyle for OutlinedButtonStyle<'a> {
-    fn fg(&self, variant: Variant, state: ButtonState) -> Color32 {
-        let t = self.theme;
-        let base = match variant {
-            Variant::Danger => palette_ct(t).base(Tone::Bear),
-            Variant::Ghost | Variant::Secondary => palette_ct(t).base(Tone::Dim),
-            _ => palette_ct(t).base(Tone::Accent),
-        };
-        if matches!(state, ButtonState::Disabled | ButtonState::Loading) {
-            st::color_alpha(base, 90)
-        } else {
-            base
-        }
-    }
-
-    fn bg(&self, variant: Variant, state: ButtonState) -> Color32 {
-        let t = self.theme;
-        match state {
-            ButtonState::Hover => {
-                let tint = match variant {
-                    Variant::Danger => palette_ct(t).base(Tone::Bear),
-                    _ => palette_ct(t).base(Tone::Accent),
-                };
-                st::color_alpha(tint, st::alpha_faint())
-            }
-            ButtonState::Active | ButtonState::Pressed => {
-                let tint = match variant {
-                    Variant::Danger => palette_ct(t).base(Tone::Bear),
-                    _ => palette_ct(t).base(Tone::Accent),
-                };
-                st::color_alpha(tint, st::alpha_ghost())
-            }
-            _ => Color32::TRANSPARENT,
-        }
-    }
-
-    fn border(&self, variant: Variant, state: ButtonState) -> Color32 {
-        let t = self.theme;
-        let base = match variant {
-            Variant::Danger => palette_ct(t).base(Tone::Bear),
-            Variant::Ghost | Variant::Secondary => palette_ct(t).base(Tone::Border),
-            _ => palette_ct(t).base(Tone::Accent),
-        };
-        if matches!(state, ButtonState::Disabled | ButtonState::Loading) {
-            st::color_alpha(base, 60)
-        } else if state == ButtonState::Hover {
-            st::color_alpha(base, 200)
-        } else {
-            base
-        }
-    }
+    fn fg(&self, v: Variant, s: ButtonState) -> Color32 { resolve(outlined_fg(v, s), self.theme) }
+    fn bg(&self, v: Variant, s: ButtonState) -> Color32 { resolve(outlined_bg(v, s), self.theme) }
+    fn border(&self, v: Variant, s: ButtonState) -> Color32 { resolve(outlined_border(v, s), self.theme) }
 }
 
 // ── SoftButtonStyle ───────────────────────────────────────────────────────────
@@ -335,40 +323,26 @@ impl<'a> SoftButtonStyle<'a> {
     }
 }
 
+// SoftButtonStyle recipe — tinted fill, no border.
+fn soft_tone(v: Variant) -> Tone {
+    match v { V::Danger => Tone::Bear, V::Ghost | V::Secondary => Tone::Text, _ => Tone::Accent }
+}
+fn soft_fg(v: Variant, s: ButtonState) -> Col {
+    if matches!(s, Disabled | Loading) { Alpha(soft_tone(v), 100) } else { Base(soft_tone(v)) }
+}
+fn soft_bg(v: Variant, s: ButtonState) -> Col {
+    let a = match s {
+        Disabled | Loading => st::alpha_faint(),
+        Idle => st::alpha_soft(),
+        Hover => st::alpha_subtle(),
+        Active | Pressed => st::alpha_tint(),
+    };
+    Alpha(soft_tone(v), a)
+}
 impl<'a> ButtonStyle for SoftButtonStyle<'a> {
-    fn fg(&self, variant: Variant, state: ButtonState) -> Color32 {
-        let t = self.theme;
-        let base = match variant {
-            Variant::Danger => palette_ct(t).base(Tone::Bear),
-            Variant::Ghost | Variant::Secondary => palette_ct(t).base(Tone::Text),
-            _ => palette_ct(t).base(Tone::Accent),
-        };
-        if matches!(state, ButtonState::Disabled | ButtonState::Loading) {
-            st::color_alpha(base, 100)
-        } else {
-            base
-        }
-    }
-
-    fn bg(&self, variant: Variant, state: ButtonState) -> Color32 {
-        let t = self.theme;
-        let tint = match variant {
-            Variant::Danger => palette_ct(t).base(Tone::Bear),
-            Variant::Ghost | Variant::Secondary => palette_ct(t).base(Tone::Text),
-            _ => palette_ct(t).base(Tone::Accent),
-        };
-        let alpha = match state {
-            ButtonState::Disabled | ButtonState::Loading => st::alpha_faint(),
-            ButtonState::Idle     => st::alpha_soft(),
-            ButtonState::Hover    => st::alpha_subtle(),
-            ButtonState::Active | ButtonState::Pressed => st::alpha_tint(),
-        };
-        st::color_alpha(tint, alpha)
-    }
-
-    fn border(&self, _variant: Variant, _state: ButtonState) -> Color32 {
-        Color32::TRANSPARENT
-    }
+    fn fg(&self, v: Variant, s: ButtonState) -> Color32 { resolve(soft_fg(v, s), self.theme) }
+    fn bg(&self, v: Variant, s: ButtonState) -> Color32 { resolve(soft_bg(v, s), self.theme) }
+    fn border(&self, _v: Variant, _s: ButtonState) -> Color32 { Color32::TRANSPARENT }
 }
 
 // ── ElevatedButtonStyle ───────────────────────────────────────────────────────
@@ -392,69 +366,46 @@ impl<'a> ElevatedButtonStyle<'a> {
     }
 }
 
+// ElevatedButtonStyle recipe — surface-lifted fill + border, "raised card" feel.
+fn elevated_fg(v: Variant, s: ButtonState) -> Col {
+    let tone = match v { V::Danger => Tone::Bear, V::Ghost | V::Secondary => Tone::Text, _ => Tone::Accent };
+    if matches!(s, Disabled | Loading) { Alpha(tone, 90) } else { Base(tone) }
+}
+fn elevated_bg(v: Variant, s: ButtonState) -> Col {
+    match v {
+        // Surface-lifted fill — surface color nudged brighter per state.
+        V::Ghost | V::Secondary => SurfaceLift(Tone::Surface, match s {
+            Idle => 12, Hover => 22, Active | Pressed => 32, Disabled | Loading => 0,
+        }),
+        _ => {
+            let tone = if matches!(v, V::Danger) { Tone::Bear } else { Tone::Accent };
+            let a = match s {
+                Disabled | Loading => st::alpha_faint(),
+                Idle => st::alpha_ghost(),
+                Hover => st::alpha_soft(),
+                Active | Pressed => st::alpha_subtle(),
+            };
+            Alpha(tone, a)
+        }
+    }
+}
+fn elevated_border(v: Variant, s: ButtonState) -> Col {
+    let a = match s {
+        Disabled | Loading => st::alpha_soft(),
+        Idle => st::alpha_muted(),
+        Hover => st::alpha_strong(),
+        Active | Pressed => 255,
+    };
+    match v {
+        V::Danger => Alpha(Tone::Bear, a),
+        V::Ghost | V::Secondary => VarAlpha(a),
+        _ => Alpha(Tone::Accent, a),
+    }
+}
 impl<'a> ButtonStyle for ElevatedButtonStyle<'a> {
-    fn fg(&self, variant: Variant, state: ButtonState) -> Color32 {
-        let t = self.theme;
-        let base = match variant {
-            Variant::Danger => palette_ct(t).base(Tone::Bear),
-            Variant::Ghost | Variant::Secondary => palette_ct(t).base(Tone::Text),
-            _ => palette_ct(t).base(Tone::Accent),
-        };
-        if matches!(state, ButtonState::Disabled | ButtonState::Loading) {
-            st::color_alpha(base, 90)
-        } else {
-            base
-        }
-    }
-
-    fn bg(&self, variant: Variant, state: ButtonState) -> Color32 {
-        let t = self.theme;
-        let tint = match variant {
-            Variant::Danger => palette_ct(t).base(Tone::Bear),
-            Variant::Ghost | Variant::Secondary => palette_ct(t).base(Tone::Surface),
-            _ => palette_ct(t).base(Tone::Accent),
-        };
-        let alpha = match state {
-            ButtonState::Disabled | ButtonState::Loading => st::alpha_faint(),
-            ButtonState::Idle     => st::alpha_ghost(),
-            ButtonState::Hover    => st::alpha_soft(),
-            ButtonState::Active | ButtonState::Pressed => st::alpha_subtle(),
-        };
-        match variant {
-            Variant::Ghost | Variant::Secondary => {
-                // Surface-lifted fill — use the surface color directly, not tinted.
-                let lift: i16 = match state {
-                    ButtonState::Idle     => 12,
-                    ButtonState::Hover    => 22,
-                    ButtonState::Active | ButtonState::Pressed => 32,
-                    ButtonState::Disabled | ButtonState::Loading => 0,
-                };
-                let clamp = |c: i16| c.clamp(0, 255) as u8;
-                Color32::from_rgb(
-                    clamp(tint.r() as i16 + lift),
-                    clamp(tint.g() as i16 + lift),
-                    clamp(tint.b() as i16 + lift),
-                )
-            }
-            _ => st::color_alpha(tint, alpha),
-        }
-    }
-
-    fn border(&self, variant: Variant, state: ButtonState) -> Color32 {
-        let t = self.theme;
-        let base = match variant {
-            Variant::Danger => palette_ct(t).base(Tone::Bear),
-            Variant::Ghost | Variant::Secondary => t.border_variant(),
-            _ => palette_ct(t).base(Tone::Accent),
-        };
-        let alpha = match state {
-            ButtonState::Disabled | ButtonState::Loading => st::alpha_soft(),
-            ButtonState::Idle     => st::alpha_muted(),
-            ButtonState::Hover    => st::alpha_strong(),
-            ButtonState::Active | ButtonState::Pressed => 255,
-        };
-        st::color_alpha(base, alpha)
-    }
+    fn fg(&self, v: Variant, s: ButtonState) -> Color32 { resolve(elevated_fg(v, s), self.theme) }
+    fn bg(&self, v: Variant, s: ButtonState) -> Color32 { resolve(elevated_bg(v, s), self.theme) }
+    fn border(&self, v: Variant, s: ButtonState) -> Color32 { resolve(elevated_border(v, s), self.theme) }
 }
 
 // ── MutedButtonStyle ──────────────────────────────────────────────────────────
@@ -478,33 +429,32 @@ impl<'a> MutedButtonStyle<'a> {
     }
 }
 
+// MutedButtonStyle recipe — understated dim treatment, variant-agnostic.
+fn muted_fg(_v: Variant, s: ButtonState) -> Col {
+    match s {
+        Disabled | Loading => Alpha(Tone::Dim, 80),
+        Hover | Active | Pressed => Base(Tone::Text),
+        Idle => Base(Tone::Dim),
+    }
+}
+fn muted_bg(_v: Variant, s: ButtonState) -> Col {
+    match s {
+        Hover => Alpha(Tone::Text, 12),
+        Active | Pressed => Alpha(Tone::Text, 20),
+        _ => None,
+    }
+}
+fn muted_border(_v: Variant, s: ButtonState) -> Col {
+    match s {
+        Disabled | Loading => Alpha(Tone::Border, 80),
+        Active | Pressed => Var,
+        _ => Base(Tone::Border),
+    }
+}
 impl<'a> ButtonStyle for MutedButtonStyle<'a> {
-    fn fg(&self, _variant: Variant, state: ButtonState) -> Color32 {
-        let t = self.theme;
-        match state {
-            ButtonState::Disabled | ButtonState::Loading => st::color_alpha(palette_ct(t).base(Tone::Dim), 80),
-            ButtonState::Hover | ButtonState::Active | ButtonState::Pressed => palette_ct(t).base(Tone::Text),
-            ButtonState::Idle => palette_ct(t).base(Tone::Dim),
-        }
-    }
-
-    fn bg(&self, _variant: Variant, state: ButtonState) -> Color32 {
-        let t = self.theme;
-        match state {
-            ButtonState::Hover    => st::color_alpha(palette_ct(t).base(Tone::Text), 12),
-            ButtonState::Active | ButtonState::Pressed => st::color_alpha(palette_ct(t).base(Tone::Text), 20),
-            _ => Color32::TRANSPARENT,
-        }
-    }
-
-    fn border(&self, _variant: Variant, state: ButtonState) -> Color32 {
-        let t = self.theme;
-        match state {
-            ButtonState::Disabled | ButtonState::Loading => st::color_alpha(palette_ct(t).base(Tone::Border), 80),
-            ButtonState::Active | ButtonState::Pressed => t.border_variant(),
-            _ => palette_ct(t).base(Tone::Border),
-        }
-    }
+    fn fg(&self, v: Variant, s: ButtonState) -> Color32 { resolve(muted_fg(v, s), self.theme) }
+    fn bg(&self, v: Variant, s: ButtonState) -> Color32 { resolve(muted_bg(v, s), self.theme) }
+    fn border(&self, v: Variant, s: ButtonState) -> Color32 { resolve(muted_border(v, s), self.theme) }
 }
 
 // ── AccentEmphasisStyle ───────────────────────────────────────────────────────
@@ -528,32 +478,24 @@ impl<'a> AccentEmphasisStyle<'a> {
     }
 }
 
+// AccentEmphasisStyle recipe — every variant renders as the accent ramp.
+fn accent_bg(_v: Variant, s: ButtonState) -> Col {
+    match s {
+        Disabled | Loading => Alpha(Tone::Accent, 90),
+        Hover => Shade(Tone::Accent, Shade::S400),
+        Active | Pressed => Shade(Tone::Accent, Shade::S600),
+        Idle => Base(Tone::Accent),
+    }
+}
 impl<'a> ButtonStyle for AccentEmphasisStyle<'a> {
-    fn fg(&self, _variant: Variant, state: ButtonState) -> Color32 {
-        let t = self.theme;
-        let base = st::contrast_fg(palette_ct(t).base(Tone::Accent));
-        if matches!(state, ButtonState::Disabled | ButtonState::Loading) {
-            st::color_alpha(base, 120)
-        } else {
-            base
-        }
+    fn fg(&self, _v: Variant, s: ButtonState) -> Color32 {
+        // Contrast fg over the accent fill; disabled fades it (alpha-of-contrast,
+        // so it stays a one-line post-transform rather than a Col case).
+        let base = resolve(Contrast(Tone::Accent), self.theme);
+        if matches!(s, Disabled | Loading) { st::color_alpha(base, 120) } else { base }
     }
-
-    fn bg(&self, _variant: Variant, state: ButtonState) -> Color32 {
-        // Same Sx accent ramp as DefaultButtonStyle's filled variants — one
-        // shared source of "lighter on hover, darker on press".
-        let pal = palette_ct(self.theme);
-        match state {
-            ButtonState::Disabled | ButtonState::Loading => st::color_alpha(pal.base(Tone::Accent), 90),
-            ButtonState::Idle     => pal.base(Tone::Accent),
-            ButtonState::Hover    => pal.shade(Tone::Accent, Shade::S400),
-            ButtonState::Active | ButtonState::Pressed => pal.shade(Tone::Accent, Shade::S600),
-        }
-    }
-
-    fn border(&self, _variant: Variant, _state: ButtonState) -> Color32 {
-        Color32::TRANSPARENT
-    }
+    fn bg(&self, v: Variant, s: ButtonState) -> Color32 { resolve(accent_bg(v, s), self.theme) }
+    fn border(&self, _v: Variant, _s: ButtonState) -> Color32 { Color32::TRANSPARENT }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
