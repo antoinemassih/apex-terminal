@@ -12349,6 +12349,30 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
         PERF_HUD_OPEN.store(open, Ordering::Relaxed);
     }
 
+    // ── Perf stderr logger (set APEX_PERF_LOG=1) ────────────────────────────
+    // Dumps frame time + top subsystem spans every ~120 frames so frame cost
+    // (and where it goes) can be measured from the terminal without the HUD.
+    if std::env::var_os("APEX_PERF_LOG").is_some() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static FRAME_CNT: AtomicU32 = AtomicU32::new(0);
+        let c = FRAME_CNT.fetch_add(1, Ordering::Relaxed) + 1;
+        if c % 120 == 0 {
+            let snap = crate::monitoring::current_snapshot();
+            let mut spans = snap.subsystems.spans.clone();
+            spans.sort_by(|a, b| b.1.cmp(&a.1)); // by avg_us desc
+            let top: Vec<String> = spans.iter().take(8)
+                .map(|(n, avg, _max, _last)| format!("{}={:.2}ms", n, *avg as f64 / 1000.0))
+                .collect();
+            eprintln!(
+                "[PERF] frame avg {:.2}ms ({:.0} fps) last {:.2}ms | {}",
+                snap.frames.avg_frame_us as f64 / 1000.0,
+                snap.frames.fps,
+                snap.frames.last_frame_us as f64 / 1000.0,
+                top.join("  "),
+            );
+        }
+    }
+
     // ── Widget Gallery (Ctrl+Shift+G) — developer-only visual QA panel ──────
     {
         if ctx.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::G)) {
