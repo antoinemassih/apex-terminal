@@ -21,6 +21,8 @@
 #![allow(dead_code)]
 
 use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Ui, Vec2};
+use crate::chart_renderer::ui::style::tint;
+use crate::ui_kit::sx::Tone as SxTone;
 
 use super::super::style::{
     alpha_dim, alpha_ghost, alpha_line, alpha_soft, alpha_subtle, alpha_tint,
@@ -629,7 +631,7 @@ impl<'a> PanelSection<'a> {
                         RichText::new(m)
                             .monospace()
                             .size(font_xs())
-                            .color(color_alpha(t.dim, alpha_line())),
+                            .color(tint(t, SxTone::Dim, alpha_line())),
                     );
                 }
             });
@@ -649,7 +651,7 @@ impl<'a> PanelSection<'a> {
 
 /// Hairline section rule: ~12% opacity of the toolbar border, full panel width.
 fn section_rule(ui: &mut Ui, t: &Theme) {
-    let color = color_alpha(t.toolbar_border, alpha_subtle());
+    let color = tint(t, SxTone::Border, alpha_subtle());
     let rect = ui.available_rect_before_wrap();
     let y = ui.cursor().min.y;
     ui.painter().line_segment(
@@ -692,7 +694,7 @@ impl<'a> PanelEmpty<'a> {
     pub fn indent(mut self, px: f32) -> Self { self.indent = px; self }
 
     pub fn show(self, ui: &mut Ui, t: &Theme) {
-        let color = color_alpha(t.dim, alpha_line());
+        let color = tint(t, SxTone::Dim, alpha_line());
         ui.horizontal(|ui| {
             if self.indent > 0.0 { ui.add_space(self.indent); }
             if let Some(g) = self.glyph {
@@ -870,7 +872,7 @@ impl<'a> Stat<'a> {
 
 impl<'a> Stat<'a> {
     pub fn show(self, ui: &mut Ui, t: &Theme) {
-        let lc = color_alpha(t.dim, alpha_line());
+        let lc = tint(t, SxTone::Dim, alpha_line());
         let vc = self.tone.color(t);
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = gap_xs();
