@@ -9,7 +9,7 @@
 //! ```
 //!
 //! Mirrors the single-thumb [`Slider`] track + thumb dimensions and motion.
-//! The filled segment between the two thumbs uses `palette_ct(theme).base(Tone::Accent)` at
+//! The filled segment between the two thumbs uses `theme.accent()` at
 //! `alpha_active()`. On drag, the widget automatically picks whichever
 //! thumb is closer to the pointer; the two thumbs cannot cross.
 

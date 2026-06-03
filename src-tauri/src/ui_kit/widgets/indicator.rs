@@ -8,7 +8,7 @@
 //! API:
 //!   ui.add(Indicator::dot().tone(IndicatorTone::Bull));
 //!   ui.add(Indicator::pulsing().tone(IndicatorTone::Warn));
-//!   ui.add(Indicator::dot().custom_color(palette_ct(theme).base(SxTone::Bull)));
+//!   ui.add(Indicator::dot().custom_color(theme.bull()));
 //!   ui.add(Indicator::dot().custom_color(c).label("XLK").size_px(6.0));
 
 use egui::{Color32, Response, Sense, Stroke, Ui, Vec2, Widget};

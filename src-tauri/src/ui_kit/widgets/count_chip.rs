@@ -19,7 +19,7 @@
 //! });
 //! ```
 //!
-//! Color defaults to `palette_ct(theme).base(SxTone::Dim)` at alpha ~38 fill, dim text. Override via
+//! Color defaults to `theme.dim()` at alpha ~38 fill, dim text. Override via
 //! `.tone(CountChipTone::Accent)` for a more prominent count (e.g. unread).
 
 use egui::{Color32, FontId, Sense, Stroke, Ui, Vec2};

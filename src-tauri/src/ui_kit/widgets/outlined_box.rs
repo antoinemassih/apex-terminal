@@ -17,7 +17,7 @@
 //!
 //! // With explicit fill, radius, and padding.
 //! OutlinedBox::new()
-//!     .fill(palette_ct(theme).base(Tone::Surface))
+//!     .fill(theme.surface())
 //!     .radius_md()
 //!     .padding(gap_md())
 //!     .show(ui, theme, |ui| { /* … */ });
@@ -27,8 +27,8 @@
 //! ```
 //!
 //! ### Defaults
-//! - Fill: `palette_ct(theme).base(Tone::Bg)` (deepest background — use `.fill(palette_ct(theme).base(Tone::Surface))` for raised cards)
-//! - Border: `palette_ct(theme).base(Tone::Border)` at `stroke_std()` (or `stroke_thin()` when `.hairline()`)
+//! - Fill: `theme.bg()` (deepest background — use `.fill(theme.surface())` for raised cards)
+//! - Border: `theme.border()` at `stroke_std()` (or `stroke_thin()` when `.hairline()`)
 //! - Corner radius: `radius_sm()`
 //! - Inner padding: `gap_sm()`
 
@@ -71,10 +71,10 @@ impl OutlinedBox {
         }
     }
 
-    /// Override the fill color (defaults to `palette_ct(theme).base(Tone::Bg)`).
+    /// Override the fill color (defaults to `theme.bg()`).
     pub fn fill(mut self, c: Color32) -> Self { self.fill = Some(c); self }
 
-    /// Override the border color (defaults to `palette_ct(theme).base(Tone::Border)`).
+    /// Override the border color (defaults to `theme.border()`).
     pub fn border(mut self, c: Color32) -> Self { self.border = Some(c); self }
 
     /// Use the hairline-tier border (`stroke_thin`).

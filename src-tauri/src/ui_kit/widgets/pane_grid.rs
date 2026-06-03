@@ -21,7 +21,7 @@
 //! - `.show_pane_chrome(false)` — strip border + header. Use when embedding
 //!   inside another container that provides its own chrome.
 //! - `.splitter_width(w)` — override the 6 px hit-band (keep ≥ 2 px).
-//! - `.splitter_color(c)` — override the default `palette_ct(theme).base(Tone::Border)` line.
+//! - `.splitter_color(c)` — override the default `theme.border()` line.
 //! - `.on_split(cb)` / `.on_close(cb)` — receive split/close events after the
 //!   fact (useful for logging or persistence side-effects).
 //!
@@ -633,7 +633,7 @@ where
         self
     }
 
-    /// Override the splitter line color (default: `palette_ct(theme).base(Tone::Border)`).
+    /// Override the splitter line color (default: `theme.border()`).
     pub fn splitter_color(mut self, c: Color32) -> Self {
         self.splitter_color = Some(c);
         self

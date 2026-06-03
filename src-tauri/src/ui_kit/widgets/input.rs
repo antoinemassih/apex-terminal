@@ -183,7 +183,7 @@ impl<'a> Input<'a> {
     /// Disables most chrome (leading/trailing icons, prefix/suffix, clear
     /// button) — caller is responsible for sizing.
     pub fn multiline(mut self, v: bool) -> Self { self.multiline = v; self }
-    /// Override the editor text color (instead of `palette_ct(theme).base(Tone::Text)`).
+    /// Override the editor text color (instead of `theme.text()`).
     pub fn text_color(mut self, c: egui::Color32) -> Self { self.text_color_override = Some(c); self }
     /// Override the input's background fill (instead of `theme.surface_raised()`).
     pub fn background_color(mut self, c: egui::Color32) -> Self { self.background_color_override = Some(c); self }

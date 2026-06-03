@@ -214,13 +214,13 @@ impl<'a> Modal<'a> {
         self
     }
     /// Override the accent (title) color for `HeaderStyle::Panel`. Defaults
-    /// to `palette_ct(theme).base(Tone::Accent)`.
+    /// to `theme.accent()`.
     pub fn panel_accent(mut self, c: Color32) -> Self {
         self.panel_accent = Some(c);
         self
     }
     /// Override the dim (subtitle / close-button) color for `HeaderStyle::Panel`.
-    /// Defaults to `palette_ct(theme).base(Tone::Dim)`.
+    /// Defaults to `theme.dim()`.
     pub fn panel_dim(mut self, c: Color32) -> Self {
         self.panel_dim = Some(c);
         self

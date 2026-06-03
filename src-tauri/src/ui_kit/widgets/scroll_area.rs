@@ -144,7 +144,7 @@ impl ThemedScrollArea {
                 style.spacing.scroll.bar_width = 0.0;
             }
 
-            // Thumb color: palette_ct(theme).base(Tone::Dim) at full alpha; track: faint border.
+            // Thumb color: theme.dim() at full alpha; track: faint border.
             let thumb = palette_ct(theme).base(Tone::Dim);
             let track = color_alpha(palette_ct(theme).base(Tone::Border), 80);
             let visuals = &mut style.visuals.widgets;
