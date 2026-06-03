@@ -35,7 +35,7 @@ use super::{
     color_scheme::{ColorScheme, Meta, Rgba, CMD_PALETTE_DEFAULT},
     registry::ThemeRegistry,
     style_system::{
-        Alphas, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, Radii, Shadows, ShadowSpec,
+        Alphas, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, GroupEnclosure, Radii, Shadows, ShadowSpec,
         Spacing, Strokes, StyleSystem, Treatments, Typography,
     },
 };
@@ -889,7 +889,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             region_gap: 0.0, region_radius: 0.0, region_border_alpha: 40,
             nav_cluster_radius: 0.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 6.0,
             // Flat: button groups are spaced + divider-separated, no enclosure box.
-            button_group_radius: 0.0, button_group_fill_alpha: 0, button_group_border_alpha: 0, button_group_padding: 6.0,
+            button_group: GroupEnclosure::None,
             toolnav_height: 0.0,
             footer_default_open: false,
             panel_header_treatment: 0, panel_section_fill_alpha: 0,
@@ -1006,7 +1006,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             nav_cluster_radius: 99.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 8.0,
             // Aperture: button groups render as enclosed rounded-rect sections
             // (subtle fill + hairline border); internal dividers are suppressed.
-            button_group_radius: 10.0, button_group_fill_alpha: 10, button_group_border_alpha: 45, button_group_padding: 6.0,
+            button_group: GroupEnclosure::Bordered,
             toolnav_height: 30.0,
             // Aperture ships the footer open by default (toggle anytime with Ctrl+`).
             footer_default_open: true,
@@ -1121,7 +1121,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             region_gap: 0.0, region_radius: 0.0, region_border_alpha: 40,
             nav_cluster_radius: 2.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 4.0,
             // Flat dense: minimal-radius groups, no enclosure box (dividers do the work).
-            button_group_radius: 2.0, button_group_fill_alpha: 0, button_group_border_alpha: 0, button_group_padding: 4.0,
+            button_group: GroupEnclosure::None,
             toolnav_height: 0.0,
             footer_default_open: true, // Octave is a dense desk style — ops footer on by default.
             panel_header_treatment: 0, panel_section_fill_alpha: 0,
@@ -1226,7 +1226,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
         chrome: Chrome {
             pane_gap: 0.0, pane_active_indicator: 1, tab_underline_thickness: 0.0,
             // Lucid: sharp editorial outline — thin border, no fill, near-square corners.
-            button_group_radius: 3.0, button_group_fill_alpha: 0, button_group_border_alpha: 30, button_group_padding: 6.0,
+            button_group: GroupEnclosure::Sharp,
             ..Chrome::default()
         },
         ..StyleSystem::builtin_default()
@@ -1290,7 +1290,7 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             region_gap: 8.0, region_radius: 16.0, region_border_alpha: 30,
             nav_cluster_radius: 99.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 10.0,
             // Glass: frosted fill-only group (no hard border) — distinct from Aperture's box.
-            button_group_radius: 12.0, button_group_fill_alpha: 16, button_group_border_alpha: 0, button_group_padding: 6.0,
+            button_group: GroupEnclosure::Frosted,
             toolnav_height: 32.0,
             panel_header_treatment: 2, panel_footer_card: true, panel_footer_radius: 16.0,
             ..Chrome::default()

@@ -1445,18 +1445,43 @@ pub(crate) fn region_gap() -> f32 { current().region_gap }
 // and suppress the internal hairline dividers; flat styles (Meridien/Octave)
 // space the buttons and rely on dividers.
 
-/// True when the active style draws a rounded-rect enclosure around button
-/// groups (any fill or border). When false, callers should keep their
-/// inter-button dividers/separators.
+/// True when the active style draws an enclosure around button groups.
+/// When false, callers keep their inter-button dividers/separators.
 #[inline]
 pub(crate) fn button_group_enclosed() -> bool {
-    let st = current();
-    st.button_group_border_alpha > 0 || st.button_group_fill_alpha > 0
+    !matches!(current().button_group, crate::design_system::style_system::GroupEnclosure::None)
 }
 
-/// Horizontal inner padding (px) inside a button-group enclosure.
-#[inline]
-pub(crate) fn button_group_padding() -> f32 { current().button_group_padding }
+/// Inner horizontal padding around an enclosed button group.
+const BUTTON_GROUP_PAD: f32 = 6.0;
+
+/// The composed `Sx` for each group-enclosure treatment. **This is the single
+/// place each look is defined** — adding a new treatment is a new arm here plus
+/// a [`GroupEnclosure`](crate::design_system::style_system::GroupEnclosure)
+/// variant, with no token threaded through the style pipeline.
+/// `Tone::Border` resolves to `theme.toolbar_border`.
+fn group_enclosure_sx(
+    kind: crate::design_system::style_system::GroupEnclosure,
+) -> Option<crate::ui_kit::sx::Sx> {
+    use crate::design_system::style_system::GroupEnclosure as G;
+    use crate::ui_kit::sx::{Sx, Tone};
+    Some(match kind {
+        G::None => return None,
+        // Aperture — rounded box: subtle fill + hairline border.
+        G::Bordered => Sx::new()
+            .rounded(10.0)
+            .bg_alpha(Tone::Border, 10)
+            .border_alpha(Tone::Border, 45, stroke_thin()),
+        // Glass — frosted fill-only, no hard border.
+        G::Frosted => Sx::new()
+            .rounded(12.0)
+            .bg_alpha(Tone::Border, 16),
+        // Lucid — sharp editorial outline: border-only, near-square.
+        G::Sharp => Sx::new()
+            .rounded(3.0)
+            .border_alpha(Tone::Border, 30, stroke_thin()),
+    })
+}
 
 /// A deferred rounded-rect enclosure painted *behind* a run of toolbar buttons.
 ///
@@ -1489,27 +1514,16 @@ impl ButtonGroupBox {
         host: egui::Rect,
     ) {
         let Some(slot) = self.slot else { return; };
-        let st = current();
-        let pad = st.button_group_padding;
+        let Some(sx) = group_enclosure_sx(current().button_group) else { return; };
+        let pad = BUTTON_GROUP_PAD;
         let rect = egui::Rect::from_min_max(
             egui::pos2(content.left() - pad, host.top() + 3.0),
             egui::pos2(content.right() + pad, host.bottom() - 3.0),
         );
         if !rect.is_finite() || rect.width() < 4.0 { return; }
-
-        // The enclosure is now described as a composed `Sx` utility style and
-        // painted by the generic engine — no bespoke rect_filled/rect_stroke.
-        // `Tone::Border` resolves to `theme.toolbar_border`, so `bg_alpha` /
-        // `border_alpha` reproduce the exact legacy `color_alpha(toolbar_border, a)`.
-        // Adding a new group look is now `Sx` composition, not new paint code.
-        use crate::ui_kit::sx::{Sx, Tone, StyleState};
-        let sx = Sx::new()
-            .rounded(st.button_group_radius)
-            .when(st.button_group_fill_alpha > 0,
-                  |d| d.bg_alpha(Tone::Border, st.button_group_fill_alpha))
-            .when(st.button_group_border_alpha > 0,
-                  |d| d.border_alpha(Tone::Border, st.button_group_border_alpha, stroke_thin()));
-        sx.paint_into(ui, t, slot, rect, StyleState::Normal);
+        // The look is a composed `Sx` chosen by the style's `GroupEnclosure`
+        // (see `group_enclosure_sx`), painted by the generic engine.
+        sx.paint_into(ui, t, slot, rect, crate::ui_kit::sx::StyleState::Normal);
     }
 }
 
@@ -2061,14 +2075,8 @@ pub struct StyleSettings {
     pub nav_cluster_fill_alpha: u8,
     /// Nav cluster horizontal inner padding (px).
     pub nav_cluster_padding: f32,
-    /// Button-group enclosure corner radius (px).
-    pub button_group_radius: f32,
-    /// Button-group enclosure fill alpha (0-255). 0 = transparent.
-    pub button_group_fill_alpha: u8,
-    /// Button-group enclosure border alpha (0-255). 0 = no box → flat + dividers.
-    pub button_group_border_alpha: u8,
-    /// Button-group enclosure horizontal inner padding (px).
-    pub button_group_padding: f32,
+    /// Toolbar button-group enclosure treatment (look composed as `Sx`).
+    pub button_group: crate::design_system::style_system::GroupEnclosure,
     /// Second toolbar row (toolnav) height (px). 0 = single-row chrome.
     pub toolnav_height: f32,
     /// Whether the bottom dock (footer) is open by default for this style.
@@ -2187,7 +2195,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
             region_gap: 8.0, region_radius: 12.0, region_border_alpha: 40,
             nav_cluster_radius: 99.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 8.0,
-            button_group_radius: 10.0, button_group_fill_alpha: 10, button_group_border_alpha: 45, button_group_padding: 6.0,
+            button_group: crate::design_system::style_system::GroupEnclosure::Bordered,
             toolnav_height: 30.0,
             footer_default_open: true,
             panel_header_treatment: 2, panel_section_fill_alpha: 0,
@@ -2241,7 +2249,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
             region_gap: 0.0, region_radius: 0.0, region_border_alpha: 40,
             nav_cluster_radius: 2.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 4.0,
-            button_group_radius: 2.0, button_group_fill_alpha: 0, button_group_border_alpha: 0, button_group_padding: 4.0,
+            button_group: crate::design_system::style_system::GroupEnclosure::None,
             toolnav_height: 0.0,
             footer_default_open: true,
             panel_header_treatment: 0, panel_section_fill_alpha: 0,
@@ -2299,7 +2307,7 @@ fn style_defaults(id: u8) -> StyleSettings {
             bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
             region_gap: 0.0, region_radius: 0.0, region_border_alpha: 40,
             nav_cluster_radius: 0.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 6.0,
-            button_group_radius: 0.0, button_group_fill_alpha: 0, button_group_border_alpha: 0, button_group_padding: 6.0,
+            button_group: crate::design_system::style_system::GroupEnclosure::None,
             toolnav_height: 0.0,
             footer_default_open: false,
             panel_header_treatment: 0, panel_section_fill_alpha: 0,
@@ -2489,10 +2497,7 @@ pub fn style_system_to_style_settings(
         nav_cluster_radius:            ss.chrome.nav_cluster_radius,
         nav_cluster_fill_alpha:        ss.chrome.nav_cluster_fill_alpha,
         nav_cluster_padding:           ss.chrome.nav_cluster_padding,
-        button_group_radius:           ss.chrome.button_group_radius,
-        button_group_fill_alpha:       ss.chrome.button_group_fill_alpha,
-        button_group_border_alpha:     ss.chrome.button_group_border_alpha,
-        button_group_padding:          ss.chrome.button_group_padding,
+        button_group:                  ss.chrome.button_group,
         toolnav_height:                ss.chrome.toolnav_height,
         footer_default_open:           ss.chrome.footer_default_open,
         panel_header_treatment:        ss.chrome.panel_header_treatment,

@@ -543,6 +543,23 @@ impl Default for Treatments {
 
 // ── Chrome (geometry + finish; migrated from StyleSettings) ───────────────────
 
+/// How a toolbar button-group is enclosed. The concrete look (radius / fill /
+/// border) lives as composed `Sx` at the render site, not as data threaded
+/// through the style pipeline — so a new treatment is one new variant here plus
+/// its `Sx` recipe, with no schema change.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum GroupEnclosure {
+    /// Flat — buttons spaced + separated by hairline dividers (Meridien/Octave).
+    #[default]
+    None,
+    /// Rounded box: subtle fill + hairline border (Aperture).
+    Bordered,
+    /// Frosted: fill-only, no hard border (Glass).
+    Frosted,
+    /// Sharp editorial outline: near-square, border-only (Lucid).
+    Sharp,
+}
+
 /// Per-style chrome geometry and finish tokens that don't fit the semantic
 /// sub-structs above (toolbar/pane-header heights, divider alphas, indicator
 /// styles, focus-ring dimensions, drag handle, toast). All palette-independent
@@ -635,24 +652,12 @@ pub struct Chrome {
     pub nav_cluster_padding: f32,
 
     // ── Button group enclosure (toolbar button-section boxes) ─────────────────
-    // A "button group" is a run of related toolbar buttons (e.g. the sidebar
-    // toggles, or the chart-tool dropdowns). When `button_group_border_alpha`
-    // or `button_group_fill_alpha` is >0 the group is drawn as a rounded
-    // rectangle enclosure (Aperture); otherwise the buttons are spaced flat and
-    // separated by hairline dividers (Meridien/Octave).
-    /// Corner radius (px) of a button-group enclosure box.
-    #[serde(default = "Chrome::default_button_group_radius")]
-    pub button_group_radius: f32,
-    /// Fill alpha (0-255) of the enclosure box. 0 = transparent.
+    // A "button group" is a run of related toolbar buttons (sidebar toggles,
+    // chart-tool dropdowns, actions). The *look* of the enclosure is now a named
+    // recipe ([`GroupEnclosure`]) composed as an `Sx` at render time — adding a
+    // new treatment is a new enum variant + its `Sx`, not four threaded numbers.
     #[serde(default)]
-    pub button_group_fill_alpha: u8,
-    /// Border alpha (0-255) of the enclosure box. 0 = no border. Drives whether
-    /// the group renders as an enclosed box vs flat-with-dividers.
-    #[serde(default)]
-    pub button_group_border_alpha: u8,
-    /// Horizontal inner padding (px) inside a button-group enclosure.
-    #[serde(default = "Chrome::default_button_group_padding")]
-    pub button_group_padding: f32,
+    pub button_group: GroupEnclosure,
 
     // ── Toolnav (second chrome row: tools + indicators + ticker) ──────────────
     /// Height (px) of the second toolbar row (the "toolnav"). 0 = single-row
@@ -693,8 +698,6 @@ impl Chrome {
     fn default_nav_cluster_radius()  -> f32 { 8.0 }
     fn default_nav_cluster_padding() -> f32 { 6.0 }
     fn default_panel_footer_radius() -> f32 { 10.0 }
-    fn default_button_group_radius()  -> f32 { 8.0 }
-    fn default_button_group_padding() -> f32 { 6.0 }
 }
 
 impl Default for Chrome {
@@ -739,10 +742,7 @@ impl Default for Chrome {
             nav_cluster_fill_alpha: 0,
             nav_cluster_padding: 6.0,
             // No enclosure by default — flat styles space buttons + draw dividers.
-            button_group_radius: 8.0,
-            button_group_fill_alpha: 0,
-            button_group_border_alpha: 0,
-            button_group_padding: 6.0,
+            button_group: GroupEnclosure::None,
             toolnav_height: 0.0,
             footer_default_open: false,
             panel_header_treatment: 0,
