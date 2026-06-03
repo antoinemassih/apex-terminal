@@ -43,6 +43,7 @@ use crate::ui_kit::tokens::{
     stroke_thin,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone as SxTone};
 use crate::ui_kit::widgets::panel_section::Tone as PanelTone;
 use crate::ui_kit::widgets::tokens::Size;
 

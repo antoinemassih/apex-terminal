@@ -42,6 +42,7 @@ use crate::ui_kit::tokens::{
     color_layer_up, gap_md, radius_md, shadow_card_themed,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone as SxTone};
 
 #[must_use = "PanelCard must be rendered with `.show(...)`"]
 pub struct PanelCard {

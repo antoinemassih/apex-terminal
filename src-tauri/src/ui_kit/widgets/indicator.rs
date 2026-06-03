@@ -8,13 +8,14 @@
 //! API:
 //!   ui.add(Indicator::dot().tone(IndicatorTone::Bull));
 //!   ui.add(Indicator::pulsing().tone(IndicatorTone::Warn));
-//!   ui.add(Indicator::dot().custom_color(theme.bull()));
+//!   ui.add(Indicator::dot().custom_color(palette_ct(theme).base(SxTone::Bull)));
 //!   ui.add(Indicator::dot().custom_color(c).label("XLK").size_px(6.0));
 
 use egui::{Color32, Response, Sense, Stroke, Ui, Vec2, Widget};
 
 use super::motion;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone as SxTone};
 use crate::ui_kit::tokens as st;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -31,12 +32,12 @@ pub enum IndicatorTone {
 impl IndicatorTone {
     fn resolve(self, theme: &dyn ComponentTheme, custom: Option<Color32>) -> Color32 {
         match self {
-            IndicatorTone::Neutral => theme.dim(),
-            IndicatorTone::Accent => theme.accent(),
-            IndicatorTone::Bull => theme.bull(),
-            IndicatorTone::Bear => theme.bear(),
-            IndicatorTone::Warn => theme.warn(),
-            IndicatorTone::Custom => custom.unwrap_or_else(|| theme.dim()),
+            IndicatorTone::Neutral => palette_ct(theme).base(SxTone::Dim),
+            IndicatorTone::Accent => palette_ct(theme).base(SxTone::Accent),
+            IndicatorTone::Bull => palette_ct(theme).base(SxTone::Bull),
+            IndicatorTone::Bear => palette_ct(theme).base(SxTone::Bear),
+            IndicatorTone::Warn => palette_ct(theme).base(SxTone::Warn),
+            IndicatorTone::Custom => custom.unwrap_or_else(|| palette_ct(theme).base(SxTone::Dim)),
         }
     }
 }
@@ -114,7 +115,7 @@ impl<'a> Indicator<'a> {
 
         if let Some(text) = label {
             // Lay out horizontally: [dot] [gap_xs] [label].
-            let label_color = theme.text();
+            let label_color = palette_ct(theme).base(SxTone::Text);
             let combined = ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
 

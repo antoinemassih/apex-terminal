@@ -71,6 +71,7 @@ use crate::ui_kit::tokens::{
     color_alpha, font_sm, font_xs, gap_lg, gap_md, gap_sm, gap_xs, stroke_thin,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone as SxTone};
 
 /// Shared semantic tone for the panel body primitives. Resolves to a theme
 /// color via [`Tone::color`]. Defined here so the seven panel-body widgets

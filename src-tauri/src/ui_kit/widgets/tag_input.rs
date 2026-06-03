@@ -20,6 +20,7 @@ use egui::{
 
 use super::tag::{Tag, TagTone};
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone as SxTone};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
 
@@ -107,9 +108,9 @@ impl<'a> TagInput<'a> {
         let mut outer_resp: Option<Response> = None;
         let focused = ui.memory(|m| m.has_focus(edit_id));
         let border_col = if focused {
-            theme.accent()
+            palette_ct(theme).base(SxTone::Accent)
         } else {
-            theme.border()
+            palette_ct(theme).base(SxTone::Border)
         };
 
         let result = ui.vertical(|ui| {
@@ -158,9 +159,9 @@ impl<'a> TagInput<'a> {
                         let painter = ui.painter_at(container_rect);
                         let radius = CornerRadius::same(st::radius_sm() as u8);
                         let bg = if disabled {
-                            st::color_alpha(theme.surface(), 128)
+                            st::color_alpha(palette_ct(theme).base(SxTone::Surface), 128)
                         } else {
-                            theme.surface()
+                            palette_ct(theme).base(SxTone::Surface)
                         };
                         painter.rect_filled(container_rect, radius, bg);
                         painter.rect_stroke(
@@ -232,9 +233,9 @@ impl<'a> TagInput<'a> {
                         child.spacing_mut().button_padding = Vec2::ZERO;
 
                         let text_col = if disabled {
-                            st::color_alpha(theme.text(), 128)
+                            st::color_alpha(palette_ct(theme).base(SxTone::Text), 128)
                         } else {
-                            theme.text()
+                            palette_ct(theme).base(SxTone::Text)
                         };
 
                         let te = egui::TextEdit::singleline(&mut buffer)
@@ -255,7 +256,7 @@ impl<'a> TagInput<'a> {
                                 egui::Align2::LEFT_CENTER,
                                 placeholder,
                                 FontId::monospace(font_size),
-                                st::color_alpha(theme.dim(), 160),
+                                st::color_alpha(palette_ct(theme).base(SxTone::Dim), 160),
                             );
                         }
 
@@ -323,8 +324,8 @@ impl<'a> TagInput<'a> {
                     .fixed_pos(popup_pos)
                     .show(ui.ctx(), |ui| {
                         let popup_w = container_rect.width();
-                        let bg = theme.surface();
-                        let border = theme.border();
+                        let bg = palette_ct(theme).base(SxTone::Surface);
+                        let border = palette_ct(theme).base(SxTone::Border);
 
                         egui::Frame::none()
                             .fill(bg)
@@ -340,7 +341,7 @@ impl<'a> TagInput<'a> {
                                             egui::RichText::new(*sug)
                                                 .monospace()
                                                 .size(font_size)
-                                                .color(theme.text()),
+                                                .color(palette_ct(theme).base(SxTone::Text)),
                                         )
                                         .sense(Sense::click()),
                                     );
