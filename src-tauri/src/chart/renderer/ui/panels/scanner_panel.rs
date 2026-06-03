@@ -12,6 +12,7 @@
 //!     refresh control (was hand-rolled `icon_btn` chrome).
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
@@ -221,7 +222,7 @@ pub(crate) fn draw_content(
             });
         }
         ui.add_space(gap_xs());
-        separator(ui, color_alpha(t.toolbar_border, alpha_dim()));
+        separator(ui, tint(t, Tone::Border, alpha_dim()));
         ui.add_space(gap_xs());
     }
 
@@ -395,7 +396,7 @@ pub(crate) fn draw_content(
                             .chg_font(mono_sm())
                             .price_font(mono_sm())
                             .fg(t.text)
-                            .hover_overlay(color_alpha(t.accent, alpha_ghost()))
+                            .hover_overlay(tint(t, Tone::Accent, alpha_ghost()))
                             .show(ui);
                         Tooltip::new(format!("Vol: {}", fmt_volume(r.volume)))
                             .show(ui, &resp.response, t);
@@ -419,7 +420,7 @@ pub(crate) fn draw_content(
                 }
 
                 ui.add_space(gap_xs());
-                separator(ui, color_alpha(t.toolbar_border, alpha_dim()));
+                separator(ui, tint(t, Tone::Border, alpha_dim()));
                 ui.add_space(gap_xs());
             }
 

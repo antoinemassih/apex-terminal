@@ -8,6 +8,7 @@
 
 use egui;
 use super::super::style::*;
+use crate::ui_kit::sx::Tone;
 use super::super::super::gpu::{Watchlist, Theme, Chart};
 use super::super::super::commands::{self, AppCommand};
 use crate::ui_kit::widgets::{FormRow, FormRowAlign};
@@ -35,7 +36,7 @@ fn setting_form_row<'a>(label: &'a str, t: &Theme) -> FormRow<'a> {
     FormRow::new(label)
         .gutter(190.0)
         .label_left(true)
-        .label_color(color_alpha(t.text, 180))
+        .label_color(tint(t, Tone::Text, 180))
         .alignment(FormRowAlign::Right)
         .inner_pad(10.0)
         .margins(0.0, gap_xs())
@@ -97,7 +98,7 @@ let modal_resp = Modal::new("SETTINGS")
         });
         tab = TAB_VARIANTS[idx.min(TAB_VARIANTS.len() - 1)];
         ui.data_mut(|d| d.insert_temp(tab_id, tab));
-        separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+        separator(ui, tint(t, Tone::Border, alpha_muted()));
         ui.add_space(gap_sm());
 
         // ── Tab content in a scroll area ──
@@ -428,12 +429,12 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                             let (r, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
                             crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
 
-                            let bg = if sel { color_alpha(t.accent, alpha_tint()) }
-                                else if resp.hovered() { color_alpha(t.toolbar_border, alpha_subtle()) }
-                                else { color_alpha(t.toolbar_border, alpha_faint()) };
+                            let bg = if sel { tint(t, Tone::Accent, alpha_tint()) }
+                                else if resp.hovered() { tint(t, Tone::Border, alpha_subtle()) }
+                                else { tint(t, Tone::Border, alpha_faint()) };
                             let border_col = if sel { t.accent }
-                                else if resp.hovered() { color_alpha(t.accent, alpha_line()) }
-                                else { color_alpha(t.toolbar_border, alpha_muted()) };
+                                else if resp.hovered() { tint(t, Tone::Accent, alpha_line()) }
+                                else { tint(t, Tone::Border, alpha_muted()) };
                             ui.painter().rect_filled(r, radius_md(), bg);
                             ui.painter().rect_stroke(r, radius_md(),
                                 egui::Stroke::new(if sel { stroke_bold() } else { stroke_thin() }, border_col), egui::StrokeKind::Outside);
@@ -580,7 +581,7 @@ fn draw_chart(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Chart, t
                         for (label, hex) in [("Navy", "#1a1a2e"), ("Purple", "#2d1b4e"), ("Green", "#1a2e1a"), ("Red", "#2e1a1a"), ("Blue", "#1a2e3e")] {
                             let active = chart.session_bg_color == hex;
                             let c = hex_to_color(hex, 1.0);
-                            let fg = if active { t.accent } else { color_alpha(t.text, 120) };
+                            let fg = if active { t.accent } else { tint(t, Tone::Text, 120) };
                             let bg = if active { color_alpha(c, alpha_strong()) } else { color_alpha(c, alpha_muted()) };
                             if Button::new(label).variant(Variant::Chrome).size(Size::Xs).fg(fg)
                                 .fill(bg).corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32).min_size(egui::vec2(38.0, row_height_dense())).show(ui, t).clicked() {
@@ -803,7 +804,7 @@ fn draw_shortcuts(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
         });
         ui.add(SectionLabel::new("SHORTCUT").tiny().color(color_dim(t.dim)));
     });
-    separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+    separator(ui, tint(t, Tone::Border, alpha_muted()));
     ui.add_space(gap_xs());
 
     super::super::tools::hotkey_editor::draw_content(ui, watchlist, t);

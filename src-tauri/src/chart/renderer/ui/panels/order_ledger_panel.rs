@@ -12,6 +12,8 @@
 //!      symbol/client-id search box.
 
 use egui;
+use crate::chart_renderer::ui::style::tint;
+use crate::ui_kit::sx::Tone;
 
 use super::super::style::{self, *};
 use super::super::super::gpu::{Watchlist, Chart, Theme};
@@ -140,7 +142,7 @@ pub(crate) fn draw(
                 ui.add(MonospaceCode::new("View").size_px(font_sm()).color(t.dim));
                 for v in LedgerView::all() {
                     let active = watchlist.order_ledger_view == v as u8;
-                    let bg = if active { color_alpha(t.accent, alpha_strong()) } else { color_alpha(t.toolbar_border, alpha_ghost()) };
+                    let bg = if active { tint(t, Tone::Accent, alpha_strong()) } else { tint(t, Tone::Border, alpha_ghost()) };
                     let fg = if active { t.accent } else { t.dim };
                     let resp = ui.add(egui::Label::new(
                         egui::RichText::new(v.label()).monospace().size(font_sm()).color(fg)
@@ -307,7 +309,7 @@ pub(crate) fn draw(
 
             // ── Section 2: Journal feed ──────────────────────────────────
             if matches!(view, LedgerView::Journal | LedgerView::All) {
-                separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+                separator(ui, tint(t, Tone::Border, alpha_muted()));
                 ui.add_space(gap_xs());
                 ui.add(SectionLabel::new(&format!("JOURNAL ({})", events.len())).tiny().color(t.accent));
                 ui.add_space(gap_xs());
@@ -317,7 +319,7 @@ pub(crate) fn draw(
                     let cur = LedgerFilter::all()[watchlist.order_ledger_filter as usize % 5];
                     for (i, f) in LedgerFilter::all().iter().enumerate() {
                         let active = *f == cur;
-                        let bg = if active { color_alpha(t.accent, alpha_strong()) } else { color_alpha(t.toolbar_border, alpha_ghost()) };
+                        let bg = if active { tint(t, Tone::Accent, alpha_strong()) } else { tint(t, Tone::Border, alpha_ghost()) };
                         let fg = if active { t.accent } else { t.dim };
                         let resp = ui.add(egui::Label::new(
                             egui::RichText::new(f.label()).monospace().size(font_xs()).color(fg)
@@ -437,8 +439,8 @@ fn draw_bulk_cancel_confirm(
     sym: &str,
     working: usize,
 ) {
-    let warn_color = color_alpha(t.bear, 220);
-    let bg = color_alpha(t.bear, 18);
+    let warn_color = tint(t, Tone::Bear, 220);
+    let bg = tint(t, Tone::Bear, 18);
     let avail = ui.available_width();
 
     // Outer frame with a subtle danger tint.

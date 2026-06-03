@@ -1,6 +1,7 @@
 //! Watchlist side panel — stocks list, options chain, heatmap.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use super::super::widgets::rows::{
@@ -320,7 +321,7 @@ if is_spawn || watchlist.open {
                         PopupFrame::new().colors(t.toolbar_bg, t.toolbar_border).ctx(ctx).build().show(ui, |ui| {
                             for (i, (sym, name)) in watchlist.search_results.clone().iter().enumerate() {
                                 let is_sel = i as i32 == watchlist.search_sel;
-                                let bg = if is_sel { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
+                                let bg = if is_sel { tint(t, Tone::Accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
                                 let fg = if is_sel { t.text } else { t.dim };
                                 let lbl = format!("{:6} {}", sym, name);
                                 // legacy: monospace RichText; Button uses plain text
@@ -355,7 +356,7 @@ if is_spawn || watchlist.open {
                     if watchlist.wl_columns_open {
                         ui.add_space(gap_xs());
                         crate::ui_kit::widgets::OutlinedBox::new()
-                            .fill(color_alpha(t.toolbar_border, alpha_faint()))
+                            .fill(tint(t, Tone::Border, alpha_faint()))
                             .borderless()
                             .radius_sm()
                             .padding(gap_sm())
@@ -394,7 +395,7 @@ if is_spawn || watchlist.open {
                             .show(ui.ctx(), |ui| {
                                 crate::ui_kit::widgets::OutlinedBox::new()
                                     .fill(t.toolbar_bg)
-                                    .border(color_alpha(t.toolbar_border, alpha_strong()))
+                                    .border(tint(t, Tone::Border, alpha_strong()))
                                     .hairline()
                                     .radius_sm()
                                     .padding(gap_md())
@@ -530,9 +531,9 @@ if is_spawn || watchlist.open {
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.top() + 1.0), egui::pos2(sec_rect.right(), sec_rect.top() + 1.0)],
                                     egui::Stroke::new(stroke_thin(), shadow_color_alpha(t, alpha_tint())));
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.bottom() - 1.0), egui::pos2(sec_rect.right(), sec_rect.bottom() - 1.0)],
-                                    egui::Stroke::new(stroke_std(), color_alpha(t.text, 10)));
+                                    egui::Stroke::new(stroke_std(), tint(t, Tone::Text, 10)));
                                 p.line_segment([egui::pos2(sec_rect.left(), sec_rect.bottom()), egui::pos2(sec_rect.right(), sec_rect.bottom())],
-                                    egui::Stroke::new(stroke_thin(), color_alpha(t.text, 5)));
+                                    egui::Stroke::new(stroke_thin(), tint(t, Tone::Text, 5)));
                             }
                             // 3px top padding so rows sit at the same position as before.
                             ui.add_space(gap_xs());
@@ -543,7 +544,7 @@ if is_spawn || watchlist.open {
                                 // Active row paints over an accent-tinted bg; use the theme's
                                 // text color so light themes (Bauhaus / Peach / Ivory / Newsprint)
                                 // don't get unreadable white-on-light foreground.
-                                let sym_fg = if is_active { t.text } else { color_alpha(t.text, 230) };
+                                let sym_fg = if is_active { t.text } else { tint(t, Tone::Text, 230) };
                                 let wresp = WatchlistRow::new(pin_sym, *pin_price, change_pct)
                                     .theme(t)
                                     .height(28.0)
@@ -560,7 +561,7 @@ if is_spawn || watchlist.open {
                                     })
                                     .sym_layout(-6.0, 12.0, 10.0)
                                     .price_right_inset(8.0)
-                                    .hover_overlay(color_alpha(t.toolbar_border, alpha_ghost()))
+                                    .hover_overlay(tint(t, Tone::Border, alpha_ghost()))
                                     .separator(true)
                                     .show(ui);
                                 // Star click → unpin; body click → activate.
@@ -594,7 +595,7 @@ if is_spawn || watchlist.open {
                                 ui.painter().line_segment(
                                     [egui::pos2(ui.min_rect().left(), cursor_y),
                                      egui::pos2(ui.min_rect().left() + full_w, cursor_y)],
-                                    egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_strong())));
+                                    egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_strong())));
                                 ui.add_space(gap_xs());
                             }
 
@@ -771,7 +772,7 @@ if is_spawn || watchlist.open {
                                         } else {
                                             "---".into()
                                         };
-                                        let row_bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
+                                        let row_bg = if is_active { tint(t, Tone::Accent, 18) } else { egui::Color32::TRANSPARENT };
 
                                         let resp = ui.horizontal(|ui| {
                                             // ui.set_min_width removed — was preventing sidebar resize
@@ -830,7 +831,7 @@ if is_spawn || watchlist.open {
                                         if drag_resp.hovered() && !drag_confirmed {
                                             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                             if !is_active {
-                                                ui.painter().rect_filled(row_rect, 0.0, color_alpha(t.toolbar_border, alpha_subtle()));
+                                                ui.painter().rect_filled(row_rect, 0.0, tint(t, Tone::Border, alpha_subtle()));
                                             }
                                         }
                                     } else {
@@ -855,15 +856,15 @@ if is_spawn || watchlist.open {
                                             // Request a repaint in ~16 ms to keep the fade smooth.
                                             ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
                                             if item_price >= item_prev_price {
-                                                Some(color_alpha(t.bull, flash_alpha))
+                                                Some(tint(t, Tone::Bull, flash_alpha))
                                             } else {
-                                                Some(color_alpha(t.bear, flash_alpha))
+                                                Some(tint(t, Tone::Bear, flash_alpha))
                                             }
                                         })();
 
                                         // Pinned section: slightly distinct background tint (active wins).
                                         let row_tint = if is_active {
-                                            color_alpha(t.accent, 18)
+                                            tint(t, Tone::Accent, 18)
                                         } else if item_pinned {
                                             // Two layered tints (panel previously painted both): blend into one.
                                             // 80,120,200,12 + t.text @ alpha 4 → use the bluish tint; the t.text@4
@@ -895,7 +896,7 @@ if is_spawn || watchlist.open {
                                             .sense(egui::Sense::click_and_drag())
                                             .row_tint(row_tint)
                                             .separator(true)
-                                            .hover_overlay(color_alpha(t.toolbar_border, alpha_soft()))
+                                            .hover_overlay(tint(t, Tone::Border, alpha_soft()))
                                             .show_x_on_hover(true)
                                             // Panel renders its own left-side rich tooltip
                                             // (set_pending_wl_tooltip) — suppress the row's
@@ -1092,7 +1093,7 @@ if is_spawn || watchlist.open {
                                     let drag_sym = &watchlist.sections[src_sec].items[src_idx].symbol;
                                     let float_rect = egui::Rect::from_min_size(
                                         egui::pos2(mouse.x - 30.0, mouse.y - 10.0), egui::vec2(80.0, 20.0));
-                                    ui.painter().rect_filled(float_rect, 4.0, color_alpha(t.accent, alpha_muted()));
+                                    ui.painter().rect_filled(float_rect, 4.0, tint(t, Tone::Accent, alpha_muted()));
                                     ui.painter().rect_stroke(float_rect, 4.0, egui::Stroke::new(stroke_std(), t.accent), egui::StrokeKind::Outside);
                                     ui.painter().text(float_rect.center(), egui::Align2::CENTER_CENTER,
                                         drag_sym, mono_md(), t.text);
@@ -1173,7 +1174,7 @@ if is_spawn || watchlist.open {
                             egui::Rect::from_min_max(
                                 egui::pos2(div_r.left(), div_y + 1.0),
                                 egui::pos2(div_r.right(), div_y + 4.0)),
-                            0.0, color_alpha(t.toolbar_border, 160));
+                            0.0, tint(t, Tone::Border, 160));
                         // Store divider Y position for drag handling outside the panel
                         watchlist.divider_y = div_rect.center().y;
                         watchlist.divider_total_h = total_avail;
@@ -1292,13 +1293,13 @@ if is_spawn || watchlist.open {
                                         let is_call = item_option_type == "C";
                                         let color = if is_call { t.bull } else { t.bear };
                                         let is_active = item_sym == active_sym;
-                                        let row_bg = if is_active { color_alpha(t.accent, 18) } else { egui::Color32::TRANSPARENT };
+                                        let row_bg = if is_active { tint(t, Tone::Accent, 18) } else { egui::Color32::TRANSPARENT };
 
                                         let (rect, resp) = ui.allocate_exact_size(egui::vec2(full_w, 28.0), egui::Sense::click());
                                         let painter = ui.painter();
                                         painter.rect_filled(rect, 0.0, row_bg);
                                         if resp.hovered() {
-                                            painter.rect_filled(rect, 0.0, color_alpha(t.toolbar_border, alpha_subtle()));
+                                            painter.rect_filled(rect, 0.0, tint(t, Tone::Border, alpha_subtle()));
                                         }
                                         cursor::focus_ring(ui, &resp, t.accent);
                                         crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
@@ -1321,7 +1322,7 @@ if is_spawn || watchlist.open {
                                         // Faint separator
                                         painter.line_segment(
                                             [egui::pos2(rect.left() + 16.0, rect.bottom() - 0.5), egui::pos2(rect.right() - 4.0, rect.bottom() - 0.5)],
-                                            egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())));
+                                            egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_muted())));
 
                                         if resp.clicked() {
                                             click_opt = Some((item_underlying.clone(), item_strike, is_call, item_expiry.clone()));
@@ -1436,7 +1437,7 @@ if is_spawn || watchlist.open {
                             egui::Sense::hover(),
                         );
                         ui.painter().rect_filled(
-                            strip_rect, 0.0, color_alpha(t.warn, alpha_dim()));
+                            strip_rect, 0.0, tint(t, Tone::Warn, alpha_dim()));
                         ui.painter().text(
                             strip_rect.center(),
                             egui::Align2::CENTER_CENTER,
@@ -1487,7 +1488,7 @@ if is_spawn || watchlist.open {
                     // ── Symbol selector + price ──
                     ui.horizontal(|ui| {
                         let has_focus = ui.memory(|m| m.has_focus(egui::Id::new("chain_sym_edit")));
-                        let input_bg = if has_focus { color_alpha(t.toolbar_border, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_ghost()) };
+                        let input_bg = if has_focus { tint(t, Tone::Border, alpha_dim()) } else { tint(t, Tone::Border, alpha_ghost()) };
                         let sym_resp = Input::new(&mut watchlist.chain_sym_input)
                             .id(egui::Id::new("chain_sym_edit"))
                             .placeholder(watchlist.chain_symbol.clone())
@@ -1549,7 +1550,7 @@ if is_spawn || watchlist.open {
                     let sep_r = ui.available_rect_before_wrap();
                     ui.painter().line_segment(
                         [egui::pos2(sep_r.left(), ui.cursor().min.y), egui::pos2(sep_r.right(), ui.cursor().min.y)],
-                        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())));
+                        egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_muted())));
                     ui.add_space(gap_sm());
 
                     // Loading indicator — canonical PanelLoading.
@@ -1599,15 +1600,15 @@ if is_spawn || watchlist.open {
                     let render_row = |ui: &mut egui::Ui, row: &OptionRow, is_call: bool, exp_label: &str, sym: &str, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32| {
                         let is_saved = saved.iter().any(|s| s.contract == row.contract);
                         let color = if is_call { t.bull } else { t.bear };
-                        let base_tint = if is_call { color_alpha(t.bull, 8) } else { color_alpha(t.bear, 8) };
+                        let base_tint = if is_call { tint(t, Tone::Bull, 8) } else { tint(t, Tone::Bear, 8) };
                         let itm_bg = if row.itm { color.gamma_multiply(0.06) } else { base_tint };
-                        let saved_bg = if is_saved { color_alpha(t.accent, alpha_muted()) } else { itm_bg };
+                        let saved_bg = if is_saved { tint(t, Tone::Accent, alpha_muted()) } else { itm_bg };
 
                         // Reserve a clickable rect for the whole row
                         let (rect, row_resp) = ui.allocate_exact_size(egui::vec2(w, 26.0), egui::Sense::click());
 
                         // Paint background
-                        let bg = if row_resp.hovered() { color_alpha(t.toolbar_border, alpha_line()) } else { saved_bg };
+                        let bg = if row_resp.hovered() { tint(t, Tone::Border, alpha_line()) } else { saved_bg };
                         ui.painter().rect_filled(rect, 0.0, bg);
                         if row_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                         cursor::focus_ring(ui, &row_resp, t.accent);
@@ -1648,10 +1649,10 @@ if is_spawn || watchlist.open {
 
                         // IV indicator — left edge strip on the row
                         if row.iv > 0.0 {
-                            let iv_color = if row.iv > 0.7 { color_alpha(t.bear, 180) }
-                                else if row.iv > 0.5 { color_alpha(t.warn, 140) }
-                                else if row.iv > 0.3 { color_alpha(t.warn, alpha_active()) }
-                                else { color_alpha(t.bull, alpha_active()) };
+                            let iv_color = if row.iv > 0.7 { tint(t, Tone::Bear, 180) }
+                                else if row.iv > 0.5 { tint(t, Tone::Warn, 140) }
+                                else if row.iv > 0.3 { tint(t, Tone::Warn, alpha_active()) }
+                                else { tint(t, Tone::Bull, alpha_active()) };
                             painter.rect_filled(egui::Rect::from_min_size(
                                 egui::pos2(rect.left(), rect.top()), egui::vec2(3.0, rect.height())),
                                 0.0, iv_color);
@@ -1665,7 +1666,7 @@ if is_spawn || watchlist.open {
                         // Faint row separator
                         painter.line_segment(
                             [egui::pos2(rect.left() + 4.0, rect.bottom() - 0.5), egui::pos2(rect.right() - 4.0, rect.bottom() - 0.5)],
-                            egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_tint())));
+                            egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_tint())));
 
                         // Click handling
                         if row_resp.clicked() {
@@ -1813,14 +1814,14 @@ if is_spawn || watchlist.open {
                             // Lines on either side of the badge
                             ui.painter().line_segment(
                                 [egui::pos2(r.left() + 4.0, y + 10.0), egui::pos2(center_x - badge_w / 2.0 - 4.0, y + 10.0)],
-                                egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_strong())));
+                                egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_strong())));
                             ui.painter().line_segment(
                                 [egui::pos2(center_x + badge_w / 2.0 + 4.0, y + 10.0), egui::pos2(r.right() - 4.0, y + 10.0)],
-                                egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_strong())));
+                                egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_strong())));
                             // Badge background
                             let badge_rect = egui::Rect::from_center_size(egui::pos2(center_x, y + 10.0), egui::vec2(badge_w, 18.0));
-                            ui.painter().rect_filled(badge_rect, 9.0, color_alpha(t.toolbar_border, alpha_muted()));
-                            ui.painter().rect_stroke(badge_rect, 9.0, egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_strong())), egui::StrokeKind::Outside);
+                            ui.painter().rect_filled(badge_rect, 9.0, tint(t, Tone::Border, alpha_muted()));
+                            ui.painter().rect_stroke(badge_rect, 9.0, egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_strong())), egui::StrokeKind::Outside);
                             // Price text
                             let badge_text = if center_offset != 0 {
                                 format!("${:.2} ({:+})", price, center_offset)
@@ -1908,7 +1909,7 @@ if is_spawn || watchlist.open {
                         let sep_r = ui.available_rect_before_wrap();
                         ui.painter().line_segment(
                             [egui::pos2(sep_r.left() + 4.0, ui.cursor().min.y), egui::pos2(sep_r.right() - 4.0, ui.cursor().min.y)],
-                            egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_line())));
+                            egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_line())));
                         ui.add_space(gap_sm());
 
                         // Per-chain controls: far DTE

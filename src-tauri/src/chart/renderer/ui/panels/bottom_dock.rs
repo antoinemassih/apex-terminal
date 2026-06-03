@@ -15,6 +15,8 @@
 //!   * Notifications → `notification::history_snapshot()` (the toast log)
 
 use egui;
+use crate::chart_renderer::ui::style::tint;
+use crate::ui_kit::sx::Tone;
 use super::super::style::{self, *};
 use super::super::super::gpu::{Watchlist, Theme};
 use super::kit::PanelHeaderTabs;
@@ -83,7 +85,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, account: &Acc
         frame = frame
             .outer_margin(egui::Margin { left: rgap as i8, right: rgap as i8, top: 0, bottom: rgap as i8 })
             .corner_radius(egui::CornerRadius::same(rr))
-            .stroke(egui::Stroke::new(1.0, color_alpha(t.toolbar_border, 150)));
+            .stroke(egui::Stroke::new(1.0, tint(t, Tone::Border, 150)));
     }
 
     // Seed the split slots from the persisted primary tab on first use.
@@ -171,7 +173,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, account: &Acc
                     ui.painter().text(
                         egui::pos2(strip_rect.right() - 8.0, strip_rect.center().y),
                         egui::Align2::RIGHT_CENTER, "▴",
-                        egui::FontId::proportional(11.0), color_alpha(t.dim, 150),
+                        egui::FontId::proportional(11.0), tint(t, Tone::Dim, 150),
                     );
                 });
             }

@@ -11,6 +11,7 @@
 //! 4. **Start trading** — close wizard, flip `has_seen_welcome = true`.
 
 use egui::{Context, FontId, RichText, Vec2};
+use crate::ui_kit::sx::Tone;
 
 use crate::chart::renderer::gpu::Theme;
 use crate::chart::renderer::ui::style as st;
@@ -300,7 +301,7 @@ fn draw_step_broker(
         ui.allocate_ui(Vec2::new(card_w, 120.0), |ui| {
             crate::ui_kit::widgets::OutlinedBox::new()
                 .fill(theme.toolbar_bg)
-                .border(st::color_alpha(theme.toolbar_border, 120))
+                .border(st::tint(theme, Tone::Border, 120))
                 .radius_sm()
                 .padding(st::gap_md())
                 .show(ui, theme, |ui| {
@@ -338,7 +339,7 @@ fn draw_step_broker(
         ui.allocate_ui(Vec2::new(card_w, 120.0), |ui| {
             crate::ui_kit::widgets::OutlinedBox::new()
                 .fill(theme.toolbar_bg)
-                .border(st::color_alpha(theme.toolbar_border, 80))
+                .border(st::tint(theme, Tone::Border, 80))
                 .radius_sm()
                 .padding(st::gap_md())
                 .show(ui, theme, |ui| {
@@ -401,7 +402,7 @@ fn draw_step_risk(
                 ui.label(
                     RichText::new("Daily loss cap (USD)")
                         .font(FontId::proportional(st::font_sm()))
-                        .color(st::color_alpha(theme.text, 180)),
+                        .color(st::tint(theme, Tone::Text, 180)),
                 );
             });
         });
@@ -433,7 +434,7 @@ fn draw_step_risk(
                 ui.label(
                     RichText::new("Max position size (% of account)")
                         .font(FontId::proportional(st::font_sm()))
-                        .color(st::color_alpha(theme.text, 180)),
+                        .color(st::tint(theme, Tone::Text, 180)),
                 );
             });
         });

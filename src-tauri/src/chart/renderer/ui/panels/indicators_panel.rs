@@ -16,6 +16,7 @@
 //! etc.) are unchanged — this migration only touches the chrome around them.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use crate::ui_kit::widgets::{Button, PanelEmpty, PanelListRow, PanelSection, PanelSectionGroup, Tooltip};
 use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
@@ -537,7 +538,7 @@ fn tool_group_divider(ui: &mut egui::Ui, t: &Theme) {
     let cx = rect.center().x;
     ui.painter().line_segment(
         [egui::pos2(cx, rect.top() + 5.0), egui::pos2(cx, rect.bottom() - 5.0)],
-        egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_muted())),
+        egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_muted())),
     );
 }
 
@@ -771,7 +772,7 @@ fn active_indicator_row(
 }
 
 fn active_bool_row(ui: &mut egui::Ui, t: &Theme, tg: Tg, to_disable: &mut Option<Tg>) {
-    let accent = color_alpha(t.accent, alpha_strong());
+    let accent = tint(t, Tone::Accent, alpha_strong());
     // Stack-format the id_salt — u8 discriminant, no heap allocation.
     let mut id_buf = [0u8; 16];
     let id_len = {
@@ -796,7 +797,7 @@ fn active_bool_row(ui: &mut egui::Ui, t: &Theme, tg: Tg, to_disable: &mut Option
 }
 
 fn active_vp_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
-    let accent = color_alpha(t.accent, alpha_strong());
+    let accent = tint(t, Tone::Accent, alpha_strong());
     let primary = format!("Volume profile · {}", vp_label(chart.vp.mode));
     let want_disable = std::cell::Cell::new(false);
     let d_ref = &want_disable;
@@ -815,7 +816,7 @@ fn active_vp_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
 }
 
 fn active_swing_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
-    let accent = color_alpha(t.accent, alpha_strong());
+    let accent = tint(t, Tone::Accent, alpha_strong());
     let primary = format!("SwingRange · {}", swing_label(chart.swing_leg_mode));
     let want_disable = std::cell::Cell::new(false);
     let d_ref = &want_disable;
@@ -880,7 +881,7 @@ fn draw_library_section(
         let hovered = h_resp.hovered();
         if hovered {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            ui.painter().rect_filled(h_rect, 3.0, color_alpha(t.toolbar_border, alpha_subtle()));
+            ui.painter().rect_filled(h_rect, 3.0, tint(t, Tone::Border, alpha_subtle()));
         }
         let painter = ui.painter_at(h_rect);
         let cy = h_rect.center().y;
@@ -932,7 +933,7 @@ fn draw_library_section(
             ui.painter().line_segment(
                 [egui::pos2(div_rect.left() + 8.0, div_rect.center().y),
                  egui::pos2(div_rect.right() - 8.0, div_rect.center().y)],
-                egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_muted())),
+                egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_muted())),
             );
             ui.add_space(gap_xs());
         }

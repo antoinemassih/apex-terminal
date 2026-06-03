@@ -6,6 +6,7 @@
 //! data the Watchlist CHAIN tab uses), fetched via `fetch_chain_background`.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
@@ -119,11 +120,11 @@ pub(crate) fn draw(
                                     egui::vec2(half_w, 22.0), egui::Sense::click());
                                 crate::chart_renderer::ui::style::cursor::clickable(ui, &prev_resp);
                                 let prev_bg = if prev_resp.hovered() {
-                                    color_alpha(t.accent, alpha_tint())
-                                } else { color_alpha(t.toolbar_border, alpha_subtle()) };
+                                    tint(t, Tone::Accent, alpha_tint())
+                                } else { tint(t, Tone::Border, alpha_subtle()) };
                                 ui.painter().rect_filled(prev_rect, r_md_cr(), prev_bg);
                                 ui.painter().rect_stroke(prev_rect, r_md_cr(),
-                                    egui::Stroke::new(stroke_thin(), color_alpha(t.accent, alpha_line())),
+                                    egui::Stroke::new(stroke_thin(), tint(t, Tone::Accent, alpha_line())),
                                     egui::StrokeKind::Inside);
                                 ui.painter().text(
                                     prev_rect.center(), egui::Align2::CENTER_CENTER,
@@ -146,11 +147,11 @@ pub(crate) fn draw(
                                     egui::vec2(half_w, 22.0), egui::Sense::click());
                                 crate::chart_renderer::ui::style::cursor::clickable(ui, &next_resp);
                                 let next_bg = if next_resp.hovered() {
-                                    color_alpha(t.accent, alpha_tint())
-                                } else { color_alpha(t.toolbar_border, alpha_subtle()) };
+                                    tint(t, Tone::Accent, alpha_tint())
+                                } else { tint(t, Tone::Border, alpha_subtle()) };
                                 ui.painter().rect_filled(next_rect, r_md_cr(), next_bg);
                                 ui.painter().rect_stroke(next_rect, r_md_cr(),
-                                    egui::Stroke::new(stroke_thin(), color_alpha(t.accent, alpha_line())),
+                                    egui::Stroke::new(stroke_thin(), tint(t, Tone::Accent, alpha_line())),
                                     egui::StrokeKind::Inside);
                                 ui.painter().text(
                                     next_rect.center(), egui::Align2::CENTER_CENTER,
@@ -168,7 +169,7 @@ pub(crate) fn draw(
                                 }
                             });
                             ui.add_space(gap_sm());
-                            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+                            separator(ui, tint(t, Tone::Border, alpha_muted()));
                             ui.add_space(gap_sm());
                         }
 
@@ -179,7 +180,7 @@ pub(crate) fn draw(
                             col_header(ui, "STRIKE", cw, color_half(t.dim), false);
                             col_header(ui, "PUT",    cw, color_half(t.dim), false);
                         });
-                        separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+                        separator(ui, tint(t, Tone::Border, alpha_muted()));
 
                         // ── Chain rows ──
                         // Source: watchlist.chain_0dte when current_dte == 0, else chain_far
@@ -220,7 +221,7 @@ pub(crate) fn draw(
                                             let (crect, cresp) = ui.allocate_exact_size(egui::vec2(cw, 20.0), egui::Sense::click());
                                             crate::chart_renderer::ui::style::cursor::clickable(ui, &cresp);
                                             if cresp.hovered() {
-                                                ui.painter().rect_filled(crect, r_sm_cr(), color_alpha(t.bull, alpha_ghost()));
+                                                ui.painter().rect_filled(crect, r_sm_cr(), tint(t, Tone::Bull, alpha_ghost()));
                                             }
                                             ui.painter().text(crect.center(), egui::Align2::CENTER_CENTER,
                                                 &call_text, egui::FontId::monospace(font_sm()),
@@ -247,7 +248,7 @@ pub(crate) fn draw(
                                             let (prect, presp) = ui.allocate_exact_size(egui::vec2(cw, 20.0), egui::Sense::click());
                                             crate::chart_renderer::ui::style::cursor::clickable(ui, &presp);
                                             if presp.hovered() {
-                                                ui.painter().rect_filled(prect, r_sm_cr(), color_alpha(t.bear, alpha_ghost()));
+                                                ui.painter().rect_filled(prect, r_sm_cr(), tint(t, Tone::Bear, alpha_ghost()));
                                             }
                                             ui.painter().text(prect.center(), egui::Align2::CENTER_CENTER,
                                                 &put_text, egui::FontId::monospace(font_sm()),

@@ -20,6 +20,7 @@
 //!     file — the host (`playbook_panel`) owns the shell.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::ui_kit::widgets::{Button, PanelCard, PanelEmpty, PanelKeyValueRow, PanelSection, PanelTone, RiskRewardBar, Tooltip};
@@ -62,7 +63,7 @@ pub(crate) fn draw_content(
         let chart = if !panes.is_empty() { Some(&mut panes[ap]) } else { None };
         draw_play_editor(ui, watchlist, chart, t);
         ui.add_space(gap_sm());
-        separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+        separator(ui, tint(t, Tone::Border, alpha_muted()));
         ui.add_space(gap_sm());
     }
 
@@ -205,8 +206,8 @@ fn draw_play_editor(
     let pt = watchlist.play_editor_type;
 
     crate::ui_kit::widgets::OutlinedBox::new()
-        .fill(color_alpha(t.toolbar_border, alpha_faint()))
-        .border(color_alpha(t.toolbar_border, alpha_muted()))
+        .fill(tint(t, Tone::Border, alpha_faint()))
+        .border(tint(t, Tone::Border, alpha_muted()))
         .hairline()
         .radius_lg()
         .padding(gap_lg())
@@ -283,7 +284,7 @@ fn draw_play_editor(
 
             // ── Legs section ──
             ui.add_space(gap_xs());
-            separator(ui, color_alpha(t.toolbar_border, alpha_faint()));
+            separator(ui, tint(t, Tone::Border, alpha_faint()));
             ui.add_space(gap_xs());
 
             ui.horizontal(|ui| {
@@ -403,7 +404,7 @@ fn draw_play_editor(
             }
 
             ui.add_space(gap_xs());
-            separator(ui, color_alpha(t.toolbar_border, alpha_faint()));
+            separator(ui, tint(t, Tone::Border, alpha_faint()));
             ui.add_space(gap_xs());
 
             // ── Tag chips + custom input ──

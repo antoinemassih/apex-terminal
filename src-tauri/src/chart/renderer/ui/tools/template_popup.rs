@@ -2,6 +2,7 @@
 //! Shows saved chart templates with apply + delete, and "Save Current" input.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::{self, Watchlist, Chart, Theme, CandleMode, INDICATOR_COLORS};
 use crate::ui_kit::icons::Icon;
@@ -47,7 +48,7 @@ pub(crate) fn draw(
                             ] {
                                 let active = panes[pi].pane_type == ptype;
                                 let fg = if active { t.accent } else { color_half(t.dim) };
-                                let bg = if active { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
+                                let bg = if active { tint(t, Tone::Accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
                                 let btn_label = format!("{} {}", icon, label);
                                 if KitButton::toggle(btn_label.as_str(), active)
                                     .size(KitSize::Xs).show(ui, t).clicked() {
@@ -56,7 +57,7 @@ pub(crate) fn draw(
                             }
                         });
                         ui.add_space(gap_sm());
-                        separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+                        separator(ui, tint(t, Tone::Border, alpha_muted()));
                         ui.add_space(gap_sm());
 
                         // Template list
@@ -118,7 +119,7 @@ pub(crate) fn draw(
                                         cursor::focus_ring(ui, &click_resp, t.accent);
                                         if click_resp.hovered() {
                                             ui.painter().rect_filled(row_rect, radius_sm(),
-                                                color_alpha(t.accent, alpha_faint()));
+                                                tint(t, Tone::Accent, alpha_faint()));
                                         }
                                         if click_resp.clicked() {
                                             apply_idx = Some(i);
@@ -129,7 +130,7 @@ pub(crate) fn draw(
                                 });
 
                             ui.add_space(gap_sm());
-                            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+                            separator(ui, tint(t, Tone::Border, alpha_muted()));
                             ui.add_space(gap_sm());
                         }
 

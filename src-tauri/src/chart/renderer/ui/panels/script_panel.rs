@@ -19,6 +19,7 @@
 //! shell-agnostic.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::tokens::Size as KitSize;
@@ -276,9 +277,9 @@ fn draw_output_tab(ui: &mut egui::Ui, watchlist: &Watchlist, t: &Theme) {
         ui.add_space(gap_xs());
         let is_error = watchlist.script_output.starts_with("Error");
         let (card_bg, card_border) = if is_error {
-            (color_alpha(t.bear, 18), color_alpha(t.bear, alpha_line()))
+            (tint(t, Tone::Bear, 18), tint(t, Tone::Bear, alpha_line()))
         } else {
-            (color_alpha(t.toolbar_border, alpha_tint()), color_alpha(t.toolbar_border, alpha_muted()))
+            (tint(t, Tone::Border, alpha_tint()), tint(t, Tone::Border, alpha_muted()))
         };
         let text_color = if is_error { t.bear } else { color_subtle(t.dim) };
         ui.horizontal(|ui| {
@@ -322,8 +323,8 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         let card_w = (w - m * 2.0 - 8.0) / stats.len() as f32;
         for (label, value, color) in &stats {
             let (rect, _) = ui.allocate_exact_size(egui::vec2(card_w, 38.0), egui::Sense::hover());
-            ui.painter().rect_filled(rect, 3.0, color_alpha(t.toolbar_border, alpha_tint()));
-            ui.painter().rect_stroke(rect, 3.0, egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_line())), egui::StrokeKind::Outside);
+            ui.painter().rect_filled(rect, 3.0, tint(t, Tone::Border, alpha_tint()));
+            ui.painter().rect_stroke(rect, 3.0, egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_line())), egui::StrokeKind::Outside);
 
             ui.painter().text(
                 egui::pos2(rect.center().x, rect.min.y + 10.0),
@@ -374,7 +375,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         egui::pos2(ui.cursor().min.x + m, div_y),
         egui::vec2(w - m * 2.0, 1.0),
     );
-    ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, alpha_muted()));
+    ui.painter().rect_filled(div_rect, 0.0, tint(t, Tone::Border, alpha_muted()));
     ui.add_space(gap_xs());
 
     for trade in &result.trades {
@@ -385,7 +386,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         );
         let resp = ui.allocate_rect(row_rect, egui::Sense::hover());
         if resp.hovered() {
-            ui.painter().rect_filled(row_rect, 1.0, color_alpha(t.toolbar_border, alpha_subtle()));
+            ui.painter().rect_filled(row_rect, 1.0, tint(t, Tone::Border, alpha_subtle()));
         }
 
         let base_x = ui.cursor().min.x;

@@ -8,6 +8,7 @@
 //! Chain:  `aapl then 5m then widget rsi-multi`
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::style::*;
 use super::components::*;
 use super::components_extra::*;
@@ -166,7 +167,7 @@ pub(crate) fn draw(
         .fixed_pos(egui::pos2(pal_x, pal_y))
         .fixed_size(egui::vec2(pal_w, 0.0))
         .title_bar(false)
-        .frame(PopupFrame::new().colors(color_alpha(t.toolbar_bg, 252), t.accent).ctx(ctx).build())
+        .frame(PopupFrame::new().colors(tint(t, Tone::Surface, 252), t.accent).ctx(ctx).build())
         .show(ctx, |ui| {
             if ai_mode {
                 draw_ai_mode(ui, watchlist, t, pal_w);
@@ -422,8 +423,8 @@ fn draw_normal_mode(
                             let (rect, resp) = ui.allocate_exact_size(
                                 egui::vec2(ui.available_width(), row_h),
                                 egui::Sense::click());
-                            let bg = if is_sel { color_alpha(t.accent, alpha_tint()) }
-                                     else if resp.hovered() { color_alpha(t.accent, 18) }
+                            let bg = if is_sel { tint(t, Tone::Accent, alpha_tint()) }
+                                     else if resp.hovered() { tint(t, Tone::Accent, 18) }
                                      else { egui::Color32::TRANSPARENT };
                             let painter = ui.painter_at(rect);
                             painter.rect_filled(rect, current().r_md, bg);
@@ -462,7 +463,7 @@ fn draw_normal_mode(
                                     egui::Align2::RIGHT_CENTER,
                                     "•",
                                     egui::FontId::proportional(super::style::font_sm()),
-                                    color_alpha(t.accent, 180),
+                                    tint(t, Tone::Accent, 180),
                                 );
                             }
 

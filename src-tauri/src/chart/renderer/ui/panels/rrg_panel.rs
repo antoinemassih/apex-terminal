@@ -6,6 +6,7 @@
 //! Sectors rotate clockwise: Improving -> Leading -> Weakening -> Lagging -> Improving
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
 use super::super::components::text::MonospaceCode;
@@ -218,14 +219,14 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
         // Time slider
         ui.add_space(gap_xs());
         ui.horizontal(|ui| {
-            ui.add(MonospaceCode::new("TIME").xs().color(color_alpha(t.dim, alpha_active())));
+            ui.add(MonospaceCode::new("TIME").xs().color(tint(t, Tone::Dim, alpha_active())));
             ui.spacing_mut().slider_width = plot_size - 50.0;
             Slider::new(&mut watchlist.rrg_time_offset, 0.0..=0.95)
                 .show_value(false)
                 .show(ui, t);
         });
         ui.horizontal(|ui| {
-            ui.add(MonospaceCode::new("TAIL").xs().color(color_alpha(t.dim, alpha_active())));
+            ui.add(MonospaceCode::new("TAIL").xs().color(tint(t, Tone::Dim, alpha_active())));
             ui.spacing_mut().slider_width = plot_size - 50.0;
             let mut tail = watchlist.rrg_tail_length as f32;
             if Slider::new(&mut tail, 1.0..=15.0).show_value(false).step(1.0).show(ui, t).changed() {
@@ -241,7 +242,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
             "LATE EXPANSION"
         };
         ui.horizontal(|ui| {
-            ui.add(MonospaceCode::new("CYCLE:").xs().color(color_alpha(t.dim, alpha_heavy())));
+            ui.add(MonospaceCode::new("CYCLE:").xs().color(tint(t, Tone::Dim, alpha_heavy())));
             ui.add(MonospaceCode::new(phase).xs().color(t.bull));
         });
     });
@@ -360,35 +361,35 @@ fn draw_rrg_content(
     painter.rect_filled(
         egui::Rect::from_min_max(egui::pos2(center.x, plot_rect.top()), plot_rect.right_bottom().into()),
         0.0,
-        color_alpha(t.bull, 8),
+        tint(t, Tone::Bull, 8),
     );
     // Correct: Leading = top-right corner
     painter.rect_filled(
         egui::Rect::from_min_max(egui::pos2(center.x, plot_rect.top()), egui::pos2(plot_rect.right(), center.y)),
         0.0,
-        color_alpha(t.bull, 8),
+        tint(t, Tone::Bull, 8),
     );
     // Weakening (bottom-right): faint yellow
     painter.rect_filled(
         egui::Rect::from_min_max(egui::pos2(center.x, center.y), egui::pos2(plot_rect.right(), plot_rect.bottom())),
         0.0,
-        color_alpha(t.warn, 8),
+        tint(t, Tone::Warn, 8),
     );
     // Lagging (bottom-left): faint red
     painter.rect_filled(
         egui::Rect::from_min_max(egui::pos2(plot_rect.left(), center.y), egui::pos2(center.x, plot_rect.bottom())),
         0.0,
-        color_alpha(t.bear, 8),
+        tint(t, Tone::Bear, 8),
     );
     // Improving (top-left): faint blue
     painter.rect_filled(
         egui::Rect::from_min_max(egui::pos2(plot_rect.left(), plot_rect.top()), center),
         0.0,
-        color_alpha(t.accent, 8),
+        tint(t, Tone::Accent, 8),
     );
 
     // ── Axis crosshair at (100, alpha_active()) ──
-    let axis_color = color_alpha(t.dim, alpha_tint());
+    let axis_color = tint(t, Tone::Dim, alpha_tint());
     let axis_stroke = egui::Stroke::new(stroke_std(), axis_color);
     // Vertical line (RS-Ratio = 100)
     painter.line_segment(
@@ -402,7 +403,7 @@ fn draw_rrg_content(
     );
 
     // ── Axis labels ──
-    let axis_label_color = color_alpha(t.dim, alpha_dim());
+    let axis_label_color = tint(t, Tone::Dim, alpha_dim());
     let axis_font = mono_sm();
     // X-axis label
     painter.text(
@@ -422,7 +423,7 @@ fn draw_rrg_content(
     );
 
     // ── Axis tick marks ──
-    let tick_color = color_alpha(t.dim, alpha_subtle());
+    let tick_color = tint(t, Tone::Dim, alpha_subtle());
     let tick_font = mono_sm();
     // X-axis ticks
     let x_step = ((max_x - min_x) / 4.0).max(0.5);
@@ -439,7 +440,7 @@ fn draw_rrg_content(
         if (xv - 100.0).abs() > 0.1 {
             painter.line_segment(
                 [egui::pos2(screen.x, plot_rect.top()), egui::pos2(screen.x, plot_rect.bottom())],
-                egui::Stroke::new(stroke_thin(), color_alpha(t.dim, 12)),
+                egui::Stroke::new(stroke_thin(), tint(t, Tone::Dim, 12)),
             );
         }
         xv += x_step;
@@ -459,7 +460,7 @@ fn draw_rrg_content(
         if (yv - 100.0).abs() > 0.1 {
             painter.line_segment(
                 [egui::pos2(plot_rect.left(), screen.y), egui::pos2(plot_rect.right(), screen.y)],
-                egui::Stroke::new(stroke_thin(), color_alpha(t.dim, 12)),
+                egui::Stroke::new(stroke_thin(), tint(t, Tone::Dim, 12)),
             );
         }
         yv += y_step;
@@ -474,7 +475,7 @@ fn draw_rrg_content(
         egui::Align2::RIGHT_TOP,
         "LEADING",
         quad_font.clone(),
-        color_alpha(t.bull, quad_alpha),
+        tint(t, Tone::Bull, quad_alpha),
     );
     // Weakening (bottom-right)
     painter.text(
@@ -482,7 +483,7 @@ fn draw_rrg_content(
         egui::Align2::RIGHT_BOTTOM,
         "WEAKENING",
         quad_font.clone(),
-        color_alpha(t.warn, quad_alpha),
+        tint(t, Tone::Warn, quad_alpha),
     );
     // Lagging (bottom-left)
     painter.text(
@@ -490,7 +491,7 @@ fn draw_rrg_content(
         egui::Align2::LEFT_BOTTOM,
         "LAGGING",
         quad_font.clone(),
-        color_alpha(t.bear, quad_alpha),
+        tint(t, Tone::Bear, quad_alpha),
     );
     // Improving (top-left)
     painter.text(
@@ -498,7 +499,7 @@ fn draw_rrg_content(
         egui::Align2::LEFT_TOP,
         "IMPROVING",
         quad_font,
-        color_alpha(t.accent, quad_alpha),
+        tint(t, Tone::Accent, quad_alpha),
     );
 
     // ── Draw sector tails and dots ──
@@ -565,7 +566,7 @@ fn draw_rrg_content(
     painter.rect_stroke(
         plot_rect,
         0.0,
-        egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_muted())),
+        egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_muted())),
         egui::StrokeKind::Outside,
     );
 }
