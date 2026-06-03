@@ -22,6 +22,7 @@ use egui::{Color32, Pos2, Rect, Response, Stroke, Ui, Vec2};
 use super::motion;
 use super::placement::{compute as compute_placement, Placement, Side};
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::PolishedLabel;
 use super::tokens::Size as KitSize;
 
@@ -126,9 +127,9 @@ impl<'a> Tooltip<'a> {
         // elevation_2: tooltip is a mid-tier overlay (bg × 0.88).
         // Inlined from style::elevation_2 — ComponentTheme::bg() is sufficient;
         // no concrete &Theme needed.
-        let bg = theme.bg().gamma_multiply(0.88);
-        let border = color_alpha(theme.border(), alpha_line());
-        let fg = theme.text();
+        let bg = palette_ct(theme).base(Tone::Bg).gamma_multiply(0.88);
+        let border = color_alpha(palette_ct(theme).base(Tone::Border), alpha_line());
+        let fg = palette_ct(theme).base(Tone::Text);
 
         // Pre-compute estimated size by laying the content into a probe Area
         // off-screen — but for simplicity, position via Area + compute on the
@@ -253,7 +254,7 @@ pub fn paint_tooltip_card(
     // Surface fill — elevation_2 (bg × 0.88) at near-solid alpha so the chart
     // bleeds through faintly behind text, matching the previous 240-alpha
     // fidelity while applying the correct depth tier.
-    let surf = theme.bg().gamma_multiply(0.88);
+    let surf = palette_ct(theme).base(Tone::Bg).gamma_multiply(0.88);
     painter.rect_filled(
         rect,
         cr,
@@ -264,7 +265,7 @@ pub fn paint_tooltip_card(
     // cr_u8 == 0 and skip this). Color depends on theme luminance: light
     // themes get a darker bevel, dark themes a faint white highlight.
     if cr_u8 > 0 {
-        let dark_theme = contrast_fg(theme.bg()) == egui::Color32::WHITE;
+        let dark_theme = contrast_fg(palette_ct(theme).base(Tone::Bg)) == egui::Color32::WHITE;
         let bevel_alpha = if dark_theme { 8 } else { 30 };
         painter.rect_filled(
             egui::Rect::from_min_max(rect.min, egui::pos2(rect.right(), rect.top() + 1.0)),
@@ -275,7 +276,7 @@ pub fn paint_tooltip_card(
 
     // Outer border — single source for stroke width and alpha.
     let stroke_w = if st.hairline_borders { st.stroke_std } else { stroke_thin() };
-    let border_col = crate::ui_kit::tokens::color_alpha(theme.border(), alpha_line());
+    let border_col = crate::ui_kit::tokens::color_alpha(palette_ct(theme).base(Tone::Border), alpha_line());
     painter.rect_stroke(
         rect,
         cr,
@@ -360,7 +361,7 @@ impl<'a> PainterTooltip<'a> {
         let pad_v = Self::pad_v();
         let pad_label = Self::pad_label();
         let font = egui::FontId::monospace(font_sm());
-        let sep_color = color_alpha(theme.text(), alpha_tint());
+        let sep_color = color_alpha(palette_ct(theme).base(Tone::Text), alpha_tint());
 
         for (i, (line, col)) in self.lines.iter().enumerate() {
             let cy = rect.top() + pad_v + i as f32 * line_h + line_h / 2.0;

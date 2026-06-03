@@ -13,12 +13,12 @@
 //!
 //! Behavior:
 //! - Row height scales with `Size` (defaults to ~24px / `gap_2xl()`).
-//! - Idle: transparent background, `theme.text()` label.
-//! - Selected: `color_alpha(theme.accent(), alpha_soft())` background,
-//!   `theme.accent()` label.
-//! - Hover: `color_alpha(theme.text(), alpha_faint())` background tint.
-//! - Disabled: `st::color_dim(theme.text())` label, hover-only sense.
-//! - Optional leading icon: `theme.dim()` color, `font_sm()` size,
+//! - Idle: transparent background, `palette_ct(theme).base(Tone::Text)` label.
+//! - Selected: `color_alpha(palette_ct(theme).base(Tone::Accent), alpha_soft())` background,
+//!   `palette_ct(theme).base(Tone::Accent)` label.
+//! - Hover: `color_alpha(palette_ct(theme).base(Tone::Text), alpha_faint())` background tint.
+//! - Disabled: `st::color_dim(palette_ct(theme).base(Tone::Text))` label, hover-only sense.
+//! - Optional leading icon: `palette_ct(theme).base(Tone::Dim)` color, `font_sm()` size,
 //!   `gap_xs()` from text.
 //!
 //! Returns a normal `Response` so callers use `.clicked()` exactly like
@@ -27,6 +27,7 @@
 use egui::{CornerRadius, FontId, Pos2, Response, Sense, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
 
@@ -79,13 +80,13 @@ impl<'a> SelectableRow<'a> {
 
         // Resolve colors.
         let text_color = if disabled {
-            st::color_dim(theme.text())
+            st::color_dim(palette_ct(theme).base(Tone::Text))
         } else if selected {
-            theme.accent()
+            palette_ct(theme).base(Tone::Accent)
         } else {
-            theme.text()
+            palette_ct(theme).base(Tone::Text)
         };
-        let icon_color = if disabled { st::color_half(theme.dim()) } else { theme.dim() };
+        let icon_color = if disabled { st::color_half(palette_ct(theme).base(Tone::Dim)) } else { palette_ct(theme).base(Tone::Dim) };
 
         // Measure label.
         let label_font = FontId::monospace(font_size);
@@ -123,10 +124,10 @@ impl<'a> SelectableRow<'a> {
 
         // Background fill.
         if selected {
-            let bg = st::color_alpha(theme.accent(), st::alpha_soft());
+            let bg = st::color_alpha(palette_ct(theme).base(Tone::Accent), st::alpha_soft());
             painter.rect_filled(rect, cr, bg);
         } else if response.hovered() && !disabled {
-            let bg = st::color_alpha(theme.text(), st::alpha_faint());
+            let bg = st::color_alpha(palette_ct(theme).base(Tone::Text), st::alpha_faint());
             painter.rect_filled(rect, cr, bg);
         }
 
@@ -138,7 +139,7 @@ impl<'a> SelectableRow<'a> {
         // Focus ring for keyboard navigation — egui's Sense::click() already
         // fires clicked() on Enter/Space when the widget has keyboard focus.
         if !disabled {
-            st::cursor::focus_ring(ui, &response, theme.accent());
+            st::cursor::focus_ring(ui, &response, palette_ct(theme).base(Tone::Accent));
         }
 
         // Layout: leading icon, then label.

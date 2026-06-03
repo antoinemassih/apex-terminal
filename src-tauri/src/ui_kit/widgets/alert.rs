@@ -13,6 +13,7 @@
 use egui::{Color32, CornerRadius, FontId, Pos2, Response, Sense, Stroke, StrokeKind, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::tokens as st;
 use crate::ui_kit::icons::Icon;
 
@@ -62,10 +63,10 @@ impl Alert {
 
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> AlertResponse {
         let color = match self.variant {
-            AlertVariant::Info => theme.accent(),
-            AlertVariant::Success => theme.bull(),
-            AlertVariant::Warning => theme.warn(),
-            AlertVariant::Error => theme.bear(),
+            AlertVariant::Info => palette_ct(theme).base(Tone::Accent),
+            AlertVariant::Success => palette_ct(theme).base(Tone::Bull),
+            AlertVariant::Warning => palette_ct(theme).base(Tone::Warn),
+            AlertVariant::Error => palette_ct(theme).base(Tone::Bear),
         };
         let icon = self.icon.unwrap_or_else(|| match self.variant {
             AlertVariant::Info => Icon::CIRCLE,
@@ -87,8 +88,8 @@ impl Alert {
         let title_font = FontId::proportional(st::font_sm());
         let body_font = FontId::proportional(st::font_sm());
 
-        let text_color = theme.text();
-        let dim_color = theme.dim();
+        let text_color = palette_ct(theme).base(Tone::Text);
+        let dim_color = palette_ct(theme).base(Tone::Dim);
 
         let title_galley = self.title.as_ref().map(|t| {
             ui.fonts(|f| f.layout(t.clone(), title_font.clone(), text_color, text_max_w))

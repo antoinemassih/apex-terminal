@@ -21,6 +21,7 @@ use super::motion;
 use super::placement::{Align, Placement, Side};
 use super::popover::Popover;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use super::button::Button;
 use super::tooltip::Tooltip;
@@ -270,7 +271,7 @@ fn paint_calendar<'a>(
                     ui.allocate_exact_size(Vec2::new(title_w.max(80.0), size.height()), Sense::click());
                 let hovered = title_resp.hovered();
                 let hover_t = motion::ease_bool(ui.ctx(), id.with("title_hover"), hovered, motion::FAST);
-                let bg_hover = st::color_alpha(theme.text(), st::alpha_ghost());
+                let bg_hover = st::color_alpha(palette_ct(theme).base(Tone::Text), st::alpha_ghost());
                 if hover_t > 0.001 {
                     ui.painter().rect_filled(
                         title_rect,
@@ -283,7 +284,7 @@ fn paint_calendar<'a>(
                     egui::Align2::CENTER_CENTER,
                     &title,
                     FontId::proportional(header_font),
-                    theme.text(),
+                    palette_ct(theme).base(Tone::Text),
                 );
                 if title_resp.clicked() {
                     state.year_picker_open = !state.year_picker_open;
@@ -312,7 +313,7 @@ fn paint_calendar<'a>(
                             let mut picked_month: Option<u32> = None;
                             ui.label(
                                 RichText::new("Year")
-                                    .monospace().size(st::font_xs()).color(theme.dim()),
+                                    .monospace().size(st::font_xs()).color(palette_ct(theme).base(Tone::Dim)),
                             );
                             // 5x5 grid of years cur ±10
                             egui::Grid::new(pop_id.with("years"))
@@ -326,7 +327,7 @@ fn paint_calendar<'a>(
                                         let resp = Button::new(label.as_str())
                                             .variant(super::tokens::Variant::Chip)
                                             .active(is_cur)
-                                            .tint(theme.accent())
+                                            .tint(palette_ct(theme).base(Tone::Accent))
                                             .size(super::tokens::Size::Xs)
                                             .min_size(Vec2::new(40.0, 20.0))
                                             .show(ui, theme);
@@ -337,7 +338,7 @@ fn paint_calendar<'a>(
                             ui.add_space(st::gap_2xs());
                             ui.label(
                                 RichText::new("Month")
-                                    .monospace().size(st::font_xs()).color(theme.dim()),
+                                    .monospace().size(st::font_xs()).color(palette_ct(theme).base(Tone::Dim)),
                             );
                             egui::Grid::new(pop_id.with("months"))
                                 .num_columns(4)
@@ -349,7 +350,7 @@ fn paint_calendar<'a>(
                                         let resp = Button::new(month_label)
                                             .variant(super::tokens::Variant::Chip)
                                             .active(is_cur)
-                                            .tint(theme.accent())
+                                            .tint(palette_ct(theme).base(Tone::Accent))
                                             .size(super::tokens::Size::Xs)
                                             .min_size(Vec2::new(40.0, 20.0))
                                             .show(ui, theme);
@@ -464,7 +465,7 @@ fn paint_one_month(
             egui::Align2::CENTER_CENTER,
             weekday_short(wd),
             FontId::monospace(st::font_xs()),
-            theme.dim(),
+            palette_ct(theme).base(Tone::Dim),
         );
         day_x += cell_px;
         wd = wd.succ();
@@ -475,7 +476,7 @@ fn paint_one_month(
             egui::Align2::CENTER_CENTER,
             "Wk",
             FontId::monospace(st::font_xs()),
-            theme.dim(),
+            palette_ct(theme).base(Tone::Dim),
         );
     }
 
@@ -498,7 +499,7 @@ fn paint_one_month(
                 egui::Align2::CENTER_CENTER,
                 format!("{}", wk),
                 FontId::monospace(st::font_xs()),
-                theme.dim(),
+                palette_ct(theme).base(Tone::Dim),
             );
         }
 
@@ -553,7 +554,7 @@ fn paint_one_month(
 
             // Paint cell background.
             let radius = CornerRadius::same(st::radius_sm() as u8);
-            let accent = theme.accent();
+            let accent = palette_ct(theme).base(Tone::Accent);
             let mid_bg = st::color_alpha(accent, st::alpha_ghost());
             let preview_bg = st::color_alpha(accent, st::alpha_faint());
 
@@ -567,7 +568,7 @@ fn paint_one_month(
                     } else if preview_mid {
                         painter.rect_filled(cell_rect.shrink(2.0), radius, preview_bg);
                     } else if hover_t > 0.001 && !disabled {
-                        let base = st::color_alpha(theme.text(), 18);
+                        let base = st::color_alpha(palette_ct(theme).base(Tone::Text), 18);
                         painter.rect_filled(
                             cell_rect.shrink(2.0),
                             radius,
@@ -592,11 +593,11 @@ fn paint_one_month(
                 CellSel::Selected | CellSel::RangeStart | CellSel::RangeEnd => st::contrast_fg(accent),
                 CellSel::None => {
                     if !in_month {
-                        st::color_alpha(theme.dim(), 80)
+                        st::color_alpha(palette_ct(theme).base(Tone::Dim), 80)
                     } else if disabled {
-                        st::color_alpha(theme.text(), 80)
+                        st::color_alpha(palette_ct(theme).base(Tone::Text), 80)
                     } else {
-                        theme.text()
+                        palette_ct(theme).base(Tone::Text)
                     }
                 }
             };

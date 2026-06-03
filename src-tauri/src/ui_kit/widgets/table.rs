@@ -50,6 +50,7 @@ use crate::ui_kit::icons::Icon;
 
 use super::motion;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tooltip::Tooltip;
 
 use crate::ui_kit::tokens::{
@@ -292,7 +293,7 @@ impl<'a, T: Clone> Table<'a, T> {
         if self.show_header {
             let header_rect = Rect::from_min_size(outer.min, Vec2::new(avail_w, header_h));
             ui.painter()
-                .rect_filled(header_rect, 0.0, color_alpha(theme.surface(), 200));
+                .rect_filled(header_rect, 0.0, color_alpha(palette_ct(theme).base(Tone::Surface), 200));
 
             // Bottom border.
             ui.painter().line_segment(
@@ -300,7 +301,7 @@ impl<'a, T: Clone> Table<'a, T> {
                     Pos2::new(header_rect.left(), header_rect.bottom()),
                     Pos2::new(header_rect.right(), header_rect.bottom()),
                 ],
-                Stroke::new(stroke_thin(), theme.border()),
+                Stroke::new(stroke_thin(), palette_ct(theme).base(Tone::Border)),
             );
 
             for (i, col) in self.columns.iter().enumerate() {
@@ -321,11 +322,11 @@ impl<'a, T: Clone> Table<'a, T> {
                 let is_sorted = self.state.sort_col == Some(i)
                     && self.state.sort_dir != SortDir::None;
                 let label_color = if is_sorted {
-                    theme.accent()
+                    palette_ct(theme).base(Tone::Accent)
                 } else if resp.hovered() && col.sortable {
-                    theme.text()
+                    palette_ct(theme).base(Tone::Text)
                 } else {
-                    theme.dim()
+                    palette_ct(theme).base(Tone::Dim)
                 };
 
                 let pad_x = gap_xs();
@@ -337,9 +338,9 @@ impl<'a, T: Clone> Table<'a, T> {
                     None
                 };
                 let glyph_color = if is_sorted {
-                    theme.accent()
+                    palette_ct(theme).base(Tone::Accent)
                 } else {
-                    color_alpha(theme.dim(), 140)
+                    color_alpha(palette_ct(theme).base(Tone::Dim), 140)
                 };
 
                 let font = FontId::new(font_xs(), FontFamily::Proportional);
@@ -447,8 +448,8 @@ impl<'a, T: Clone> Table<'a, T> {
                             motion::FAST,
                         );
                         let line_color = motion::lerp_color(
-                            color_alpha(theme.border(), alpha_muted()),
-                            theme.accent(),
+                            color_alpha(palette_ct(theme).base(Tone::Border), alpha_muted()),
+                            palette_ct(theme).base(Tone::Accent),
                             t,
                         );
                         ui.painter().line_segment(
@@ -491,7 +492,7 @@ impl<'a, T: Clone> Table<'a, T> {
                     egui::Align2::CENTER_CENTER,
                     text,
                     font,
-                    theme.dim(),
+                    palette_ct(theme).base(Tone::Dim),
                 );
             }
             let response = ui.allocate_rect(outer, Sense::hover());
@@ -550,7 +551,7 @@ impl<'a, T: Clone> Table<'a, T> {
                         ui.painter().rect_filled(
                             row_rect,
                             0.0,
-                            color_alpha(theme.surface(), 60),
+                            color_alpha(palette_ct(theme).base(Tone::Surface), 60),
                         );
                     }
 
@@ -562,7 +563,7 @@ impl<'a, T: Clone> Table<'a, T> {
                             motion::FAST,
                         );
                         if t > 0.0 {
-                            let bg = color_alpha(theme.text(), 18);
+                            let bg = color_alpha(palette_ct(theme).base(Tone::Text), 18);
                             // Multiply alpha by t for fade.
                             let bg =
                                 egui::Color32::from_rgba_unmultiplied(bg.r(), bg.g(), bg.b(), ((bg.a() as f32) * t) as u8);
@@ -574,7 +575,7 @@ impl<'a, T: Clone> Table<'a, T> {
                         ui.painter().rect_filled(
                             row_rect,
                             0.0,
-                            color_alpha(theme.accent(), alpha_ghost()),
+                            color_alpha(palette_ct(theme).base(Tone::Accent), alpha_ghost()),
                         );
                     }
 
