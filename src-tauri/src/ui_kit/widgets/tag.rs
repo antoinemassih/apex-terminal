@@ -34,14 +34,27 @@ pub enum TagTone {
 }
 
 impl TagTone {
-    pub fn color(&self, theme: &dyn ComponentTheme) -> Color32 {
+    /// Map to the unified Sx [`Tone`](crate::ui_kit::sx::Tone) vocabulary so
+    /// Tag/Badge resolve through the same palette as the rest of the style
+    /// system. This is the single tone vocabulary — there is no separate
+    /// widget-layer color list.
+    #[inline]
+    pub fn to_tone(self) -> crate::ui_kit::sx::Tone {
+        use crate::ui_kit::sx::Tone;
         match self {
-            TagTone::Neutral => theme.dim(),
-            TagTone::Accent => theme.accent(),
-            TagTone::Bull => theme.bull(),
-            TagTone::Bear => theme.bear(),
-            TagTone::Warn => theme.warn(),
+            TagTone::Neutral => Tone::Dim,
+            TagTone::Accent => Tone::Accent,
+            TagTone::Bull => Tone::Bull,
+            TagTone::Bear => Tone::Bear,
+            TagTone::Warn => Tone::Warn,
         }
+    }
+
+    /// Resolve the base color through the unified Sx palette. Byte-identical to
+    /// the previous direct `theme.dim()/accent()/…` reads (Sx `S500` == the
+    /// theme base), but now routed through the one shared color authority.
+    pub fn color(&self, theme: &dyn ComponentTheme) -> Color32 {
+        crate::ui_kit::sx::palette_ct(theme).base(self.to_tone())
     }
 }
 

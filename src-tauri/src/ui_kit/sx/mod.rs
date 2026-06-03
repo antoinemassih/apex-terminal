@@ -14,6 +14,6 @@ pub mod style;
 pub mod recipe;
 pub mod recipes;
 
-pub use color::{palette, Palette, Shade, Tone};
+pub use color::{palette, palette_ct, Palette, Shade, Tone};
 pub use style::{BorderSpec, Fill, Sx, SxDelta, StyleState};
 pub use recipe::Recipe;
