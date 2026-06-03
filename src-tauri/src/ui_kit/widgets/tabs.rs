@@ -1023,7 +1023,7 @@ fn paint_one_tab_painter(
         let bw = (bg.rect.width() + 10.0).max(14.0);
         let bh = 14.0;
         let br = Rect::from_min_size(Pos2::new(cx, cy - bh * 0.5), Vec2::new(bw, bh));
-        painter.rect_filled(br, CornerRadius::same(7), alpha(theme.bear())); // TODO: off-token
+        painter.rect_filled(br, CornerRadius::same(7), alpha(palette_ct(theme).base(Tone::Bear))); // radius: full-round pill (intentional)
         painter.text(br.center(), Align2::CENTER_CENTER, &s,
             FontId::monospace(st::font_xs_plus()), crate::ui_kit::tokens::contrast_fg(palette_ct(theme).base(Tone::Bear)));
         cx += bw + inner_gap;
