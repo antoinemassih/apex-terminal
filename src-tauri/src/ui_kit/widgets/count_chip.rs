@@ -25,7 +25,7 @@
 use egui::{Color32, FontId, Sense, Stroke, Ui, Vec2};
 
 use super::theme::ComponentTheme;
-use crate::ui_kit::sx::{palette_ct, Tone as SxTone};
+use crate::ui_kit::sx::Sx;
 use crate::ui_kit::tokens as st;
 
 /// Visual prominence tier.
@@ -137,13 +137,12 @@ impl CountChip {
             egui::pos2(right_anchor.x - w, right_anchor.y - h * 0.5),
             Vec2::new(w, h),
         );
-        painter.rect_filled(rect, st::r_sm_cr(), fill);
-        painter.rect_stroke(
-            rect,
-            st::r_sm_cr(),
-            Stroke::new(st::stroke_thin(), st::color_alpha(tone_fg, 60)),
-            egui::StrokeKind::Inside,
-        );
+        // DS#4: declare the chip box — tinted fill + hairline border.
+        Sx::new()
+            .rounded_sm()
+            .bg_color(fill)
+            .border_color(st::color_alpha(tone_fg, 60), st::stroke_thin())
+            .paint_box_at(painter, rect, theme_dyn);
         painter.text(rect.center(), egui::Align2::CENTER_CENTER, &text, font, fg);
         rect
     }

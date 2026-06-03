@@ -14,6 +14,7 @@ use egui::{Color32, CornerRadius, FontId, Pos2, Response, Sense, Stroke, StrokeK
 use super::theme::ComponentTheme;
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::sx::Sx;
 use crate::ui_kit::icons::Icon;
 
 /// Tone palette for Tag/Badge — each tone maps to one color in the
@@ -134,14 +135,12 @@ impl<'a> Tag<'a> {
 
         if ui.is_rect_visible(rect) {
             let painter = ui.painter_at(rect);
-            let radius = (h * 0.5) as u8;
-            let cr = CornerRadius::same(radius);
-
+            // DS#4: declare the chip box — outline (border-only) or soft fill.
+            let chip = Sx::new().rounded(h * 0.5);
             if self.outline {
-                painter.rect_stroke(rect, cr, Stroke::new(st::stroke_std(), tone_col), StrokeKind::Inside);
+                chip.border_color(tone_col, st::stroke_std()).paint_box_at(&painter, rect, theme);
             } else {
-                let bg = st::color_alpha(tone_col, 32);
-                painter.rect_filled(rect, cr, bg);
+                chip.bg_color(st::color_alpha(tone_col, 32)).paint_box_at(&painter, rect, theme);
             }
 
             let cy = rect.center().y;

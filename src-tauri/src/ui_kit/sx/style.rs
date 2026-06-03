@@ -108,6 +108,12 @@ impl SxDelta {
         self.border = Some(BorderSpec { color: Fill::Alpha(tone, alpha), width });
         self
     }
+    /// Border from an explicit raw color — for widgets that resolve their own
+    /// color (e.g. a tone-enum pill). The border-side mirror of `bg_color`.
+    pub fn border_color(mut self, c: Color32, width: f32) -> Self {
+        self.border = Some(BorderSpec { color: Fill::Solid(c), width });
+        self
+    }
 
     pub fn text(mut self, tone: Tone) -> Self { self.text = Some((tone, Shade::S500)); self }
     pub fn text_shade(mut self, tone: Tone, s: Shade) -> Self { self.text = Some((tone, s)); self }
@@ -207,7 +213,7 @@ impl Sx {
         px(n: f32), py(n: f32), p(n: f32), rounded(r: f32), gap(g: f32), opacity(o: f32),
         bg(tone: Tone), bg_shade(tone: Tone, s: Shade), bg_alpha(tone: Tone, alpha: u8), bg_color(c: Color32),
         border(tone: Tone, width: f32), border_shade(tone: Tone, shade: Shade, width: f32),
-        border_alpha(tone: Tone, alpha: u8, width: f32),
+        border_alpha(tone: Tone, alpha: u8, width: f32), border_color(c: Color32, width: f32),
         text(tone: Tone), text_shade(tone: Tone, s: Shade), text_size(sz: f32),
         // Token-tier (scale-aware) builders — the "all styles" surface.
         rounded_xs(), rounded_sm(), rounded_md(), rounded_lg(),
@@ -316,14 +322,20 @@ impl Sx {
     /// `rect_stroke`. Immediate paint (not a reserved slot) — call it before
     /// emitting the widget's own content so the box sits behind it.
     pub fn paint_box_ct(&self, ui: &Ui, rect: egui::Rect, t: &dyn ComponentTheme) {
+        self.paint_box_at(ui.painter(), rect, t);
+    }
+
+    /// As [`paint_box_ct`], but into a caller-supplied `Painter` — for widgets
+    /// that already hold a (clipped) painter, or paint helpers with no `Ui`.
+    pub fn paint_box_at(&self, painter: &egui::Painter, rect: egui::Rect, t: &dyn ComponentTheme) {
         let pal = palette_ct(t);
         let d = self.resolved(StyleState::Normal);
         let cr = CornerRadius::same(d.radius.unwrap_or(0.0) as u8);
         if let Some(fill) = d.fill {
-            ui.painter().rect_filled(rect, cr, fill.resolve(&pal));
+            painter.rect_filled(rect, cr, fill.resolve(&pal));
         }
         if let Some(b) = d.border {
-            ui.painter().rect_stroke(
+            painter.rect_stroke(
                 rect, cr,
                 Stroke::new(b.width, b.color.resolve(&pal)),
                 StrokeKind::Inside,

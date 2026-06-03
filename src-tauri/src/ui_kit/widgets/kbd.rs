@@ -5,12 +5,12 @@
 //!   ui.add(Kbd::new("Ctrl+K"));
 //!   ui.add(Kbd::sequence(&["Cmd", "Shift", "P"]));
 
-use egui::{CornerRadius, FontId, Pos2, Response, Sense, Stroke, StrokeKind, Ui, Vec2, Widget};
+use egui::{FontId, Pos2, Response, Sense, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
-use crate::ui_kit::sx::{palette_ct, Tone};
+use crate::ui_kit::sx::{palette_ct, Sx, Tone};
 
 #[must_use = "Kbd does nothing until `.show(ui, theme)` or `ui.add(kbd)` is called"]
 pub struct Kbd<'a> {
@@ -50,8 +50,11 @@ impl<'a> Kbd<'a> {
         let cap_h: f32 = font_size + pad_y * 2.0 + 2.0;
         let plus_gap: f32 = 3.0;
         let pal = palette_ct(theme);
-        let bg = st::color_alpha(pal.base(Tone::Surface), 200);
-        let border = pal.base(Tone::Border);
+        // DS#4: each keycap box is DECLARED once as an Sx and painted per key.
+        let cap_sx = Sx::new()
+            .rounded_sm()
+            .bg_alpha(Tone::Surface, 200)
+            .border(Tone::Border, st::stroke_std());
         let text_col = pal.base(Tone::Text);
         let dim = pal.base(Tone::Dim);
 
@@ -79,9 +82,7 @@ impl<'a> Kbd<'a> {
             for (i, k) in self.keys.iter().enumerate() {
                 let w = cap_widths[i];
                 let cap_rect = egui::Rect::from_min_size(Pos2::new(x, rect.top()), Vec2::new(w, cap_h));
-                let cr = CornerRadius::same(st::radius_sm() as u8);
-                painter.rect_filled(cap_rect, cr, bg);
-                painter.rect_stroke(cap_rect, cr, Stroke::new(st::stroke_std(), border), StrokeKind::Inside);
+                cap_sx.paint_box_at(&painter, cap_rect, theme);
                 painter.text(
                     cap_rect.center(),
                     egui::Align2::CENTER_CENTER,
