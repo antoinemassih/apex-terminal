@@ -1497,19 +1497,21 @@ fn group_enclosure_sx(
     use crate::ui_kit::sx::{Sx, Tone};
     Some(match kind {
         G::None => return None,
-        // Aperture — rounded box: subtle fill + hairline border.
+        // Aperture — rounded box: subtle fill + hairline border. Radius +
+        // border now ride the token scale, so the enclosure tracks the
+        // CornerScale / BorderWeight knobs like everything else.
         G::Bordered => Sx::new()
-            .rounded(10.0)
+            .rounded_md()
             .bg_alpha(Tone::Border, 10)
-            .border_alpha(Tone::Border, 45, stroke_thin()),
+            .border_thin_alpha(Tone::Border, 45),
         // Glass — frosted fill-only, no hard border.
         G::Frosted => Sx::new()
-            .rounded(12.0)
+            .rounded_lg()
             .bg_alpha(Tone::Border, 16),
         // Lucid — sharp editorial outline: border-only, near-square.
         G::Sharp => Sx::new()
-            .rounded(3.0)
-            .border_alpha(Tone::Border, 30, stroke_thin()),
+            .rounded_xs()
+            .border_thin_alpha(Tone::Border, 30),
     })
 }
 

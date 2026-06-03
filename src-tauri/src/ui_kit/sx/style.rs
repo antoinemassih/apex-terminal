@@ -140,8 +140,10 @@ impl SxDelta {
     /// Axis padding tiers.
     pub fn px_sm(self) -> Self { self.px(st::gap_sm()) }
     pub fn px_md(self) -> Self { self.px(st::gap_md()) }
+    pub fn px_lg(self) -> Self { self.px(st::gap_lg()) }
     pub fn py_xs(self) -> Self { self.py(st::gap_xs()) }
     pub fn py_sm(self) -> Self { self.py(st::gap_sm()) }
+    pub fn py_md(self) -> Self { self.py(st::gap_md()) }
 
     /// Type-scale tiers (obey the typography token set).
     pub fn text_xs(self) -> Self { self.text_size(st::font_xs()) }
@@ -209,7 +211,7 @@ impl Sx {
         // Token-tier (scale-aware) builders — the "all styles" surface.
         rounded_xs(), rounded_sm(), rounded_md(), rounded_lg(),
         gap_xs(), gap_sm(), gap_md(), gap_lg(),
-        p_xs(), p_sm(), p_md(), p_lg(), px_sm(), px_md(), py_xs(), py_sm(),
+        p_xs(), p_sm(), p_md(), p_lg(), px_sm(), px_md(), px_lg(), py_xs(), py_sm(), py_md(),
         text_xs(), text_sm(), text_md(), text_lg(),
         border_hair(tone: Tone), border_thin(tone: Tone), border_std(tone: Tone),
         border_thin_alpha(tone: Tone, alpha: u8),
