@@ -83,167 +83,159 @@ impl<'a> DefaultButtonStyle<'a> {
     }
 }
 
+// ── Declarative color vocabulary (the recipe layer) ───────────────────────────
+//
+// `Col` is the alphabet a button variant is *declared* in — each variant states
+// its fg/bg/border per state as DATA (`Col`), and the single `resolve()` below
+// turns a `Col` into a concrete `Color32` against the theme palette. This is the
+// cva/shadcn idea adapted to immediate-mode: variants are declarations, not
+// imperative color math. New treatments are new `Col` tables, not new structs.
+
+/// A declarative color source, resolved against the palette at paint time.
+#[derive(Clone, Copy)]
+pub(crate) enum Col {
+    /// Fully transparent.
+    None,
+    /// The tone's base (500) color.
+    Base(Tone),
+    /// A genuine ramp shade of the tone (lighter/darker step).
+    Shade(Tone, Shade),
+    /// The tone's base at an explicit alpha (the `color_alpha` tint).
+    Alpha(Tone, u8),
+    /// A readable foreground that contrasts against the tone's base fill.
+    Contrast(Tone),
+    /// `color_half` of the tone's base.
+    Half(Tone),
+    /// `color_subtle` of the tone's base.
+    Subtle(Tone),
+    /// The tone's base lifted toward white by `pct`/100 (neutral surface nudge).
+    Lighten(Tone, u8),
+}
+
+/// Lift a color toward white by `amt` (0..1), preserving alpha. Shared by
+/// `Col::Lighten` — the one non-ramp lightening (a neutral-surface nudge).
+fn lighten(c: Color32, amt: f32) -> Color32 {
+    let lerp = |x: u8| -> u8 {
+        let v = x as f32 + (255.0 - x as f32) * amt.clamp(0.0, 1.0);
+        v.round().clamp(0.0, 255.0) as u8
+    };
+    Color32::from_rgba_premultiplied(lerp(c.r()), lerp(c.g()), lerp(c.b()), c.a())
+}
+
+/// Halve a color's alpha (the disabled/loading dim). Applied to fg+bg, not border.
+fn dim_disabled(c: Color32) -> Color32 {
+    Color32::from_rgba_premultiplied(c.r(), c.g(), c.b(), (c.a() as f32 * 0.5).round() as u8)
+}
+
+/// Resolve a declarative [`Col`] to a concrete color against the theme palette.
+pub(crate) fn resolve(col: Col, t: &dyn ComponentTheme) -> Color32 {
+    let pal = palette_ct(t);
+    match col {
+        Col::None => Color32::TRANSPARENT,
+        Col::Base(tone) => pal.base(tone),
+        Col::Shade(tone, s) => pal.shade(tone, s),
+        Col::Alpha(tone, a) => st::color_alpha(pal.base(tone), a),
+        Col::Contrast(tone) => st::contrast_fg(pal.base(tone)),
+        Col::Half(tone) => st::color_half(pal.base(tone)),
+        Col::Subtle(tone) => st::color_subtle(pal.base(tone)),
+        Col::Lighten(tone, pct) => lighten(pal.base(tone), pct as f32 / 100.0),
+    }
+}
+
+// ── DefaultButtonStyle recipe ─────────────────────────────────────────────────
+// Each function below is the declarative variant table for one channel. Read
+// top-to-bottom it's the whole button design in `Col` terms — no color math.
+
+use Col::*;
+use ButtonState::{Idle, Hover, Active, Pressed, Disabled, Loading};
+use Variant as V;
+
+/// Foreground (text/icon) spec per variant × state.
+fn default_fg(v: Variant, s: ButtonState) -> Col {
+    match v {
+        V::Primary => Contrast(Tone::Accent),
+        V::Danger  => Contrast(Tone::Bear),
+        // DynamicTint shares the Ghost default; its real color comes from the
+        // call-site `.tint()` pipeline in button.rs.
+        V::Ghost | V::Chrome | V::TextOnly | V::DynamicTint | V::Secondary => Base(Tone::Text),
+        V::Link => match s { Hover => Alpha(Tone::Accent, 230), _ => Base(Tone::Accent) },
+        V::Chip | V::Toggle => match s {
+            Idle => Half(Tone::Text),
+            Hover => Base(Tone::Text),
+            Active | Pressed => Base(Tone::Accent),
+            Disabled | Loading => Half(Tone::Dim),
+        },
+        V::Tab => match s { Active => Base(Tone::Text), _ => Alpha(Tone::Dim, 178) },
+        V::InlineClose => match s { Hover | Pressed => Base(Tone::Text), _ => Subtle(Tone::Dim) },
+        V::MutedIcon => match s { Hover | Pressed => Base(Tone::Text), _ => Half(Tone::Dim) },
+        V::NeutralAction => Contrast(Tone::Surface),
+    }
+}
+
+/// Background fill spec per variant × state. Filled variants step the ramp
+/// (S500 idle → S400 hover → S600 press).
+fn default_bg(v: Variant, s: ButtonState) -> Col {
+    match v {
+        V::Primary => match s {
+            Hover => Shade(Tone::Accent, Shade::S400),
+            Active | Pressed => Shade(Tone::Accent, Shade::S600),
+            _ => Base(Tone::Accent),
+        },
+        V::Danger => match s {
+            Hover => Shade(Tone::Bear, Shade::S400),
+            Active | Pressed => Shade(Tone::Bear, Shade::S600),
+            _ => Base(Tone::Bear),
+        },
+        V::Secondary => match s {
+            Hover => Lighten(Tone::Surface, 8),
+            Active | Pressed => Alpha(Tone::Accent, st::alpha_tint()),
+            _ => Base(Tone::Surface),
+        },
+        V::Ghost => match s {
+            Hover => Alpha(Tone::Text, 18),
+            Active | Pressed => Alpha(Tone::Accent, st::alpha_soft()),
+            _ => None,
+        },
+        V::Chip | V::Toggle => match s {
+            Hover => Alpha(Tone::Text, 18),
+            Active | Pressed => Alpha(Tone::Accent, st::alpha_tint()),
+            _ => None,
+        },
+        V::MutedIcon => match s { Hover | Pressed => Alpha(Tone::Text, 18), _ => None },
+        V::NeutralAction => match s {
+            Idle => Alpha(Tone::Text, 28),
+            Hover => Alpha(Tone::Text, 44),
+            _ => Alpha(Tone::Text, 18), // Active|Pressed|Disabled|Loading
+        },
+        V::Link | V::Tab | V::TextOnly | V::Chrome | V::InlineClose | V::DynamicTint => None,
+    }
+}
+
+/// Border spec per variant × state.
+fn default_border(v: Variant, s: ButtonState) -> Col {
+    match v {
+        V::Secondary | V::Toggle => match s {
+            Active | Pressed => Alpha(Tone::Accent, st::alpha_active()),
+            _ => Base(Tone::Border),
+        },
+        V::NeutralAction => Base(Tone::Border),
+        _ => None,
+    }
+}
+
 impl<'a> ButtonStyle for DefaultButtonStyle<'a> {
     fn fg(&self, variant: Variant, state: ButtonState) -> Color32 {
-        let t = self.theme;
-        let muted = |c: Color32| -> Color32 {
-            Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 178)
-        };
-        let half = |c: Color32| -> Color32 { st::color_half(c) };
-        let disabled_alpha = |c: Color32| -> Color32 {
-            Color32::from_rgba_premultiplied(c.r(), c.g(), c.b(),
-                (c.a() as f32 * 0.5).round() as u8)
-        };
-
-        let base = match variant {
-            Variant::Primary | Variant::Danger => {
-                // White/contrast fg on filled buttons.
-                st::contrast_fg(
-                    if matches!(variant, Variant::Danger) { palette_ct(t).base(Tone::Bear) } else { palette_ct(t).base(Tone::Accent) }
-                )
-            }
-            // DynamicTint: fg defaults to palette_ct(t).base(Tone::Text) but the Button widget
-            // honours `.tint(color)` as a stronger override at the call site —
-            // see `resolve_tint()` in button.rs which is consulted before the
-            // ButtonStyle fg is applied. So DynamicTint shares the Ghost
-            // default here and gets its colour from the tint pipeline.
-            Variant::Ghost | Variant::Chrome | Variant::TextOnly
-            | Variant::DynamicTint => palette_ct(t).base(Tone::Text),
-            Variant::Secondary => palette_ct(t).base(Tone::Text),
-            Variant::Link => match state {
-                // Slightly lighter accent on hover for link variant.
-                ButtonState::Hover => st::color_alpha(palette_ct(t).base(Tone::Accent), 230),
-                _ => palette_ct(t).base(Tone::Accent),
-            },
-            Variant::Chip | Variant::Toggle => match state {
-                ButtonState::Idle => half(palette_ct(t).base(Tone::Text)),
-                ButtonState::Hover => palette_ct(t).base(Tone::Text),
-                ButtonState::Active | ButtonState::Pressed => palette_ct(t).base(Tone::Accent),
-                ButtonState::Disabled | ButtonState::Loading => half(palette_ct(t).base(Tone::Dim)),
-            },
-            Variant::Tab => match state {
-                ButtonState::Active => palette_ct(t).base(Tone::Text),
-                _ => muted(palette_ct(t).base(Tone::Dim)),
-            },
-            Variant::InlineClose => match state {
-                ButtonState::Hover | ButtonState::Pressed => palette_ct(t).base(Tone::Text),
-                _ => st::color_subtle(palette_ct(t).base(Tone::Dim)),
-            },
-            Variant::MutedIcon => match state {
-                ButtonState::Hover | ButtonState::Pressed => palette_ct(t).base(Tone::Text),
-                _ => half(palette_ct(t).base(Tone::Dim)),
-            },
-            // P5b — NeutralAction fg: contrast_fg against the variant's fill so the
-            // text reads on any theme. Was hardcoded BLACK which became invisible
-            // on dark palettes.
-            Variant::NeutralAction => st::contrast_fg(palette_ct(t).base(Tone::Surface)),
-        };
-
-        if matches!(state, ButtonState::Disabled | ButtonState::Loading) {
-            disabled_alpha(base)
-        } else {
-            base
-        }
+        let c = resolve(default_fg(variant, state), self.theme);
+        if matches!(state, Disabled | Loading) { dim_disabled(c) } else { c }
     }
 
     fn bg(&self, variant: Variant, state: ButtonState) -> Color32 {
-        let t = self.theme;
-        // Unified Sx palette — filled variants step along the tone's shade ramp
-        // (S500 idle → S400 hover → S600 press) instead of ad-hoc lighten/darken
-        // magic numbers, so the whole button system reads from one ramp source.
-        let pal = palette_ct(t);
-        let transparent = Color32::TRANSPARENT;
-        let disabled_alpha = |c: Color32| -> Color32 {
-            Color32::from_rgba_premultiplied(c.r(), c.g(), c.b(),
-                (c.a() as f32 * 0.5).round() as u8)
-        };
-        // Surface-lift helper (Secondary's idle→hover lighten — not a ramp step
-        // because it nudges the neutral surface, not a semantic tone).
-        let lighten = |c: Color32, amt: f32| -> Color32 {
-            let lerp = |x: u8| -> u8 {
-                let v = x as f32 + (255.0 - x as f32) * amt.clamp(0.0, 1.0);
-                v.round().clamp(0.0, 255.0) as u8
-            };
-            Color32::from_rgba_premultiplied(lerp(c.r()), lerp(c.g()), lerp(c.b()), c.a())
-        };
-
-        let base = match variant {
-            Variant::Primary => match state {
-                ButtonState::Idle   => pal.base(Tone::Accent),
-                ButtonState::Hover  => pal.shade(Tone::Accent, Shade::S400),
-                ButtonState::Active | ButtonState::Pressed => pal.shade(Tone::Accent, Shade::S600),
-                ButtonState::Disabled | ButtonState::Loading => pal.base(Tone::Accent),
-            },
-            Variant::Secondary => match state {
-                ButtonState::Idle  => palette_ct(t).base(Tone::Surface),
-                ButtonState::Hover => lighten(palette_ct(t).base(Tone::Surface), 0.08),
-                ButtonState::Active | ButtonState::Pressed =>
-                    st::color_alpha(palette_ct(t).base(Tone::Accent), st::alpha_tint()),
-                ButtonState::Disabled | ButtonState::Loading => palette_ct(t).base(Tone::Surface),
-            },
-            Variant::Ghost => match state {
-                ButtonState::Idle  => transparent,
-                ButtonState::Hover => st::color_alpha(palette_ct(t).base(Tone::Text), 18),
-                ButtonState::Active | ButtonState::Pressed =>
-                    st::color_alpha(palette_ct(t).base(Tone::Accent), st::alpha_soft()),
-                ButtonState::Disabled | ButtonState::Loading => transparent,
-            },
-            Variant::Danger => match state {
-                ButtonState::Idle   => pal.base(Tone::Bear),
-                ButtonState::Hover  => pal.shade(Tone::Bear, Shade::S400),
-                ButtonState::Active | ButtonState::Pressed => pal.shade(Tone::Bear, Shade::S600),
-                ButtonState::Disabled | ButtonState::Loading => pal.base(Tone::Bear),
-            },
-            Variant::Link | Variant::Tab | Variant::TextOnly |
-            Variant::Chrome | Variant::InlineClose => transparent,
-            // DynamicTint: transparent idle; on hover/active a low-alpha tint
-            // overlay using the caller-provided color (via .tint()) — the
-            // Button widget pipes the tint via `bg_override` so this default
-            // only fires when no tint is set.
-            Variant::DynamicTint => transparent,
-            Variant::MutedIcon => match state {
-                ButtonState::Hover | ButtonState::Pressed => st::color_alpha(palette_ct(t).base(Tone::Text), 18),
-                _ => transparent,
-            },
-            Variant::Chip | Variant::Toggle => match state {
-                ButtonState::Idle  => transparent,
-                ButtonState::Hover => st::color_alpha(palette_ct(t).base(Tone::Text), 18),
-                ButtonState::Active | ButtonState::Pressed =>
-                    st::color_alpha(palette_ct(t).base(Tone::Accent), st::alpha_tint()),
-                ButtonState::Disabled | ButtonState::Loading => transparent,
-            },
-            // P5b — NeutralAction bg: derive from theme surface with a slight
-            // lift so the button reads as "neutral but present" on any palette.
-            // Was hardcoded gray-170/190/150 which became a foreign object on
-            // any non-default palette.
-            Variant::NeutralAction => match state {
-                ButtonState::Idle    => st::color_alpha(palette_ct(t).base(Tone::Text), 28),
-                ButtonState::Hover   => st::color_alpha(palette_ct(t).base(Tone::Text), 44),
-                ButtonState::Active | ButtonState::Pressed => st::color_alpha(palette_ct(t).base(Tone::Text), 18),
-                ButtonState::Disabled | ButtonState::Loading => st::color_alpha(palette_ct(t).base(Tone::Text), 18),
-            },
-        };
-
-        if matches!(state, ButtonState::Disabled | ButtonState::Loading) {
-            disabled_alpha(base)
-        } else {
-            base
-        }
+        let c = resolve(default_bg(variant, state), self.theme);
+        if matches!(state, Disabled | Loading) { dim_disabled(c) } else { c }
     }
 
     fn border(&self, variant: Variant, state: ButtonState) -> Color32 {
-        let t = self.theme;
-        let transparent = Color32::TRANSPARENT;
-
-        match variant {
-            Variant::Secondary | Variant::Toggle => match state {
-                ButtonState::Active | ButtonState::Pressed =>
-                    st::color_alpha(palette_ct(t).base(Tone::Accent), st::alpha_active()),
-                _ => palette_ct(t).base(Tone::Border),
-            },
-            Variant::NeutralAction => palette_ct(t).base(Tone::Border),
-            _ => transparent,
-        }
+        resolve(default_border(variant, state), self.theme)
     }
 }
 
