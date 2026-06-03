@@ -20,6 +20,7 @@
 use egui::{RichText, Ui, Vec2};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::tokens as st;
 
 /// Canonical top-label form field wrapper.
@@ -148,7 +149,7 @@ fn paint_label_and_control<'a, R>(
                 RichText::new(label_text)
                     .monospace()
                     .size(st::font_sm())
-                    .color(theme.text()),
+                    .color(palette_ct(theme).base(Tone::Text)),
             );
             if field.required {
                 ui.add_space(st::gap_xs());
@@ -180,7 +181,7 @@ fn paint_label_and_control<'a, R>(
             let col = if field.error.is_some() {
                 theme.danger()
             } else {
-                st::color_alpha(theme.dim(), st::alpha_dim())
+                st::color_alpha(palette_ct(theme).base(Tone::Dim), st::alpha_dim())
             };
             // Allocate the exact reserved height so layout is stable.
             ui.allocate_ui(Vec2::new(ui.available_width(), sub_h), |ui| {

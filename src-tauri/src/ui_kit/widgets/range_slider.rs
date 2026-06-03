@@ -9,7 +9,7 @@
 //! ```
 //!
 //! Mirrors the single-thumb [`Slider`] track + thumb dimensions and motion.
-//! The filled segment between the two thumbs uses `theme.accent()` at
+//! The filled segment between the two thumbs uses `palette_ct(theme).base(Tone::Accent)` at
 //! `alpha_active()`. On drag, the widget automatically picks whichever
 //! thumb is closer to the pointer; the two thumbs cannot cross.
 
@@ -18,6 +18,7 @@ use std::ops::RangeInclusive;
 
 use super::motion;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
 
@@ -107,7 +108,7 @@ fn paint_range_slider<T: egui::emath::Numeric>(
                 egui::Align2::LEFT_TOP,
                 text,
                 egui::FontId::proportional(st::font_xs()),
-                st::color_alpha(theme.text(), 180),
+                st::color_alpha(palette_ct(theme).base(Tone::Text), 180),
             );
             ui.allocate_exact_size(
                 Vec2::new(galley.rect.width(), galley.rect.height() + 2.0),
@@ -133,7 +134,7 @@ fn paint_range_slider<T: egui::emath::Numeric>(
                 egui::Align2::LEFT_TOP,
                 &text,
                 egui::FontId::proportional(st::font_xs()),
-                st::color_alpha(theme.text(), 180),
+                st::color_alpha(palette_ct(theme).base(Tone::Text), 180),
             );
             ui.allocate_exact_size(
                 Vec2::new(galley.rect.width(), galley.rect.height() + 2.0),
@@ -205,15 +206,15 @@ fn paint_range_slider<T: egui::emath::Numeric>(
             let painter = ui.painter_at(rect);
 
             // ── track background ─────────────────────────────────────────
-            let track_bg = st::color_alpha(theme.dim(), 64);
+            let track_bg = st::color_alpha(palette_ct(theme).base(Tone::Dim), 64);
             let cr = CornerRadius::same((track_h * 0.5) as u8);
             painter.rect_filled(track_rect, cr, track_bg);
 
             // ── filled segment between thumbs ─────────────────────────────
             let fill_col = if disabled {
-                st::color_alpha(theme.accent(), st::alpha_muted())
+                st::color_alpha(palette_ct(theme).base(Tone::Accent), st::alpha_muted())
             } else {
-                st::color_alpha(theme.accent(), st::alpha_active())
+                st::color_alpha(palette_ct(theme).base(Tone::Accent), st::alpha_active())
             };
             let fill_rect = egui::Rect::from_min_max(
                 Pos2::new(lo_x, track_rect.min.y),
@@ -229,7 +230,7 @@ fn paint_range_slider<T: egui::emath::Numeric>(
             for (center_x, scale_t) in [(lo_x, sc_lo), (hi_x, sc_hi)] {
                 let center = Pos2::new(center_x, track_y);
                 let d = thumb_d + scale_t * hover_ex;
-                painter.circle_filled(center, d * 0.5, theme.bg());
+                painter.circle_filled(center, d * 0.5, palette_ct(theme).base(Tone::Bg));
                 painter.circle_stroke(
                     center,
                     d * 0.5,

@@ -25,6 +25,7 @@
 use egui::{Color32, Context, Id, Pos2, Rect, Stroke, Ui, Vec2};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::motion;
 
 use crate::ui_kit::widgets::frames::{
@@ -213,13 +214,13 @@ impl<'a> Modal<'a> {
         self
     }
     /// Override the accent (title) color for `HeaderStyle::Panel`. Defaults
-    /// to `theme.accent()`.
+    /// to `palette_ct(theme).base(Tone::Accent)`.
     pub fn panel_accent(mut self, c: Color32) -> Self {
         self.panel_accent = Some(c);
         self
     }
     /// Override the dim (subtitle / close-button) color for `HeaderStyle::Panel`.
-    /// Defaults to `theme.dim()`.
+    /// Defaults to `palette_ct(theme).base(Tone::Dim)`.
     pub fn panel_dim(mut self, c: Color32) -> Self {
         self.panel_dim = Some(c);
         self

@@ -24,6 +24,7 @@ use egui::{
 use super::motion;
 use super::popover::Popover;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use super::{Input, Slider};
 use crate::ui_kit::tokens as st;
@@ -256,7 +257,7 @@ fn paint_compact<'a>(
                     egui::Align2::LEFT_CENTER,
                     text,
                     FontId::proportional(st::font_sm()),
-                    st::color_alpha(theme.text(), 200),
+                    st::color_alpha(palette_ct(theme).base(Tone::Text), 200),
                 );
                 let galley = ui.fonts(|f| {
                     // layout-only: only `.rect.width()` is read.
@@ -321,7 +322,7 @@ fn paint_inline<'a>(
             ui.label(
                 egui::RichText::new(text)
                     .size(st::font_sm())
-                    .color(theme.dim()),
+                    .color(palette_ct(theme).base(Tone::Dim)),
             );
             ui.add_space(st::gap_2xs());
         }
@@ -363,7 +364,7 @@ fn paint_swatch(
 
     // Animated border.
     let hover_t = motion::ease_bool(ui.ctx(), id.with("swatch_hover"), hovered, motion::FAST);
-    let border = motion::lerp_color(theme.border(), theme.accent(), hover_t);
+    let border = motion::lerp_color(palette_ct(theme).base(Tone::Border), palette_ct(theme).base(Tone::Accent), hover_t);
     painter.rect_stroke(rect, radius, Stroke::new(st::stroke_std(), border), StrokeKind::Inside);
 }
 
@@ -469,12 +470,12 @@ fn paint_picker_body(
         p
     } else {
         default_presets = [
-            theme.accent(),
-            theme.bull(),
-            theme.bear(),
-            theme.warn(),
-            theme.text(),
-            theme.dim(),
+            palette_ct(theme).base(Tone::Accent),
+            palette_ct(theme).base(Tone::Bull),
+            palette_ct(theme).base(Tone::Bear),
+            palette_ct(theme).base(Tone::Warn),
+            palette_ct(theme).base(Tone::Text),
+            palette_ct(theme).base(Tone::Dim),
         ];
         &default_presets
     };

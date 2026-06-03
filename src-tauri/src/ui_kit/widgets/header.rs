@@ -51,6 +51,7 @@ use egui::{Align, CornerRadius, FontId, Layout, Response, RichText, Sense, Strok
 
 use crate::ui_kit::tokens as st;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::Tooltip;
 use super::icon_placement::IconPlacement;
 
@@ -194,13 +195,13 @@ impl<'a> Header<'a> {
         // ── Leading icon ──
         if let Some(icon) = self.leading_icon {
             let icon_font = FontId::proportional(font_size + 2.0);
-            let g = painter.layout_no_wrap(icon.to_string(), icon_font.clone(), theme.dim());
+            let g = painter.layout_no_wrap(icon.to_string(), icon_font.clone(), palette_ct(theme).base(Tone::Dim));
             painter.text(
                 egui::pos2(left_cursor, cy),
                 egui::Align2::LEFT_CENTER,
                 icon,
                 icon_font,
-                theme.text(),
+                palette_ct(theme).base(Tone::Text),
             );
             left_cursor += g.size().x + st::gap_sm();
         }
@@ -212,7 +213,7 @@ impl<'a> Header<'a> {
             self.title.to_string()
         };
         let title_font = FontId::monospace(font_size);
-        let title_color = theme.text();
+        let title_color = palette_ct(theme).base(Tone::Text);
         let g = painter.layout_no_wrap(title_text.clone(), title_font.clone(), title_color);
         painter.text(
             egui::pos2(left_cursor, cy),
@@ -231,7 +232,7 @@ impl<'a> Header<'a> {
                 egui::Align2::LEFT_CENTER,
                 sub,
                 sub_font,
-                st::color_muted(theme.dim()),
+                st::color_muted(palette_ct(theme).base(Tone::Dim)),
             );
         }
 
@@ -287,7 +288,7 @@ impl<'a> Header<'a> {
             let y = rect.bottom() - 0.5;
             painter.line_segment(
                 [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
-                Stroke::new(st::stroke_thin(), st::color_alpha(theme.border(), st::alpha_muted())),
+                Stroke::new(st::stroke_thin(), st::color_alpha(palette_ct(theme).base(Tone::Border), st::alpha_muted())),
             );
         }
 

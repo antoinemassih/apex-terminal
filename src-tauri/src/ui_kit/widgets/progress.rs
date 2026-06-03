@@ -14,6 +14,7 @@
 use egui::{Color32, CornerRadius, Pos2, Response, Sense, Stroke, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::{Size, Variant};
 use crate::ui_kit::tokens as st;
 
@@ -63,9 +64,9 @@ impl Widget for Progress {
 
 fn variant_color(variant: Variant, theme: &dyn ComponentTheme) -> Color32 {
     match variant {
-        Variant::Primary => theme.accent(),
-        Variant::Danger => theme.bear(),
-        _ => theme.accent(),
+        Variant::Primary => palette_ct(theme).base(Tone::Accent),
+        Variant::Danger => palette_ct(theme).base(Tone::Bear),
+        _ => palette_ct(theme).base(Tone::Accent),
     }
 }
 
@@ -78,7 +79,7 @@ fn paint_linear(ui: &mut Ui, theme: &dyn ComponentTheme, p: Progress) -> Respons
 
     let painter = ui.painter_at(rect);
     let cr = CornerRadius::same((h * 0.5) as u8);
-    painter.rect_filled(rect, cr, st::color_alpha(theme.dim(), 64));
+    painter.rect_filled(rect, cr, st::color_alpha(palette_ct(theme).base(Tone::Dim), 64));
 
     let fill = variant_color(p.variant, theme);
 
@@ -118,7 +119,7 @@ fn paint_circular(ui: &mut Ui, theme: &dyn ComponentTheme, p: Progress) -> Respo
     let radius = diameter * 0.5 - stroke_w * 0.5;
 
     // Track full circle.
-    painter.circle_stroke(center, radius, Stroke::new(stroke_w, st::color_alpha(theme.dim(), 64)));
+    painter.circle_stroke(center, radius, Stroke::new(stroke_w, st::color_alpha(palette_ct(theme).base(Tone::Dim), 64)));
 
     let color = variant_color(p.variant, theme);
 

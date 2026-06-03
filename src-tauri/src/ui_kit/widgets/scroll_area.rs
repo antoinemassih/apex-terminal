@@ -32,6 +32,7 @@ use egui::{Color32, Id, Response, Stroke, Ui};
 
 use super::motion;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::tokens::color_alpha;
 
 /// Direction passed to `egui::ScrollArea`'s constructor.
@@ -143,9 +144,9 @@ impl ThemedScrollArea {
                 style.spacing.scroll.bar_width = 0.0;
             }
 
-            // Thumb color: theme.dim() at full alpha; track: faint border.
-            let thumb = theme.dim();
-            let track = color_alpha(theme.border(), 80);
+            // Thumb color: palette_ct(theme).base(Tone::Dim) at full alpha; track: faint border.
+            let thumb = palette_ct(theme).base(Tone::Dim);
+            let track = color_alpha(palette_ct(theme).base(Tone::Border), 80);
             let visuals = &mut style.visuals.widgets;
             visuals.inactive.bg_fill = color_alpha(thumb, 110);
             visuals.hovered.bg_fill = color_alpha(thumb, 180);

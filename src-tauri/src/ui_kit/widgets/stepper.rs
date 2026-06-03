@@ -12,6 +12,7 @@
 use egui::{Color32, FontId, Pos2, Response, Sense, Stroke, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
 use crate::ui_kit::icons::Icon;
@@ -52,9 +53,9 @@ impl<'a> Stepper<'a> {
         let num_font = FontId::proportional(circle_d * 0.45);
         let line_thickness = 2.0;
 
-        let accent = theme.accent();
-        let dim = theme.dim();
-        let text = theme.text();
+        let accent = palette_ct(theme).base(Tone::Accent);
+        let dim = palette_ct(theme).base(Tone::Dim);
+        let text = palette_ct(theme).base(Tone::Text);
         let line_completed = accent;
         let line_future = st::color_alpha(dim, 80);
 

@@ -10,6 +10,7 @@ use egui::{Color32, FontId, Pos2, Response, Sense, Stroke, Ui, Vec2, Widget};
 
 use super::motion;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
 
@@ -105,8 +106,8 @@ fn paint_radio<T: PartialEq + Copy>(
     let center = Pos2::new(rect.left() + d * 0.5, rect.center().y);
     let radius = d * 0.5;
 
-    let accent = theme.accent();
-    let border = theme.border();
+    let accent = palette_ct(theme).base(Tone::Accent);
+    let border = palette_ct(theme).base(Tone::Border);
 
     // Background fill (transparent off → accent on).
     let off_bg = Color32::TRANSPARENT;
@@ -150,7 +151,7 @@ fn paint_radio<T: PartialEq + Copy>(
     if let Some(s) = r.label {
         let lx = center.x + radius + gap;
         let ly = rect.center().y;
-        let mut text_color = theme.text();
+        let mut text_color = palette_ct(theme).base(Tone::Text);
         if r.disabled { text_color = with_alpha_scale(text_color, 0.5); }
         painter.text(
             Pos2::new(lx, ly),
@@ -165,7 +166,7 @@ fn paint_radio<T: PartialEq + Copy>(
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
 
-    st::cursor::focus_ring(ui, &response, theme.accent());
+    st::cursor::focus_ring(ui, &response, palette_ct(theme).base(Tone::Accent));
 
     response
 }

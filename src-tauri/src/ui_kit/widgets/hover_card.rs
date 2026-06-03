@@ -11,6 +11,7 @@ use egui::{Color32, Rect, Response, Stroke, Ui, Vec2};
 use super::motion;
 use super::placement::{compute as compute_placement, Placement, Side};
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 
 use crate::ui_kit::tokens::{
     alpha_line, color_alpha, gap_sm, radius_sm, stroke_thin,
@@ -103,8 +104,8 @@ impl HoverCard {
 
         // elevation_2: HoverCard is a mid-tier overlay (bg × 0.88), same tier
         // as Tooltip. Inlined via ComponentTheme::bg() — no concrete &Theme needed.
-        let bg = theme.bg().gamma_multiply(0.88);
-        let border = color_alpha(theme.border(), alpha_line());
+        let bg = palette_ct(theme).base(Tone::Bg).gamma_multiply(0.88);
+        let border = color_alpha(palette_ct(theme).base(Tone::Border), alpha_line());
 
         let size_id = id.with("size");
         let prior_size: Vec2 = ctx

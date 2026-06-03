@@ -33,6 +33,7 @@ use egui::{Color32, Id, Key, Rect, Sense, Stroke, StrokeKind, Ui, Vec2};
 
 use super::motion;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::{Button, Tooltip};
 use super::{PolishedLabel, PolishedFontWeight};
 use super::tokens::{Size as KitSize, Variant};
@@ -229,8 +230,8 @@ impl<'a> Sheet<'a> {
         let panel_rect = Rect::from_min_size(translated_min, open_rect.size());
 
         // ---------------- Sheet content ----------------
-        let bg = theme.bg();
-        let border = theme.border();
+        let bg = palette_ct(theme).base(Tone::Bg);
+        let border = palette_ct(theme).base(Tone::Border);
         let title = self.title.clone();
         let side = self.side;
         let mut header_close = false;

@@ -14,6 +14,7 @@
 
 use egui::{Color32, Response, Ui};
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::tokens as st;
 
 // ── Data ──────────────────────────────────────────────────────────────────────
@@ -105,40 +106,40 @@ impl<'a> HeatmapGrid<'a> {
             if is_hovered {
                 painter.rect_filled(
                     egui::Rect::from_min_size(egui::pos2(cx, cy), egui::vec2(col_w, cell_h)),
-                    2.0, st::color_alpha(theme.text(), 12));
+                    2.0, st::color_alpha(palette_ct(theme).base(Tone::Text), 12));
             }
             // Active symbol border
             if is_active {
                 painter.rect_stroke(
                     egui::Rect::from_min_size(egui::pos2(cx, cy + 1.0), egui::vec2(col_w, cell_h - 2.0)),
                     2.0,
-                    egui::Stroke::new(st::stroke_bold(), theme.accent()),
+                    egui::Stroke::new(st::stroke_bold(), palette_ct(theme).base(Tone::Accent)),
                     egui::StrokeKind::Outside);
             }
             // Background bar (proportional to peer magnitude)
             let bar_frac = if max_pct > 0.0 { item.change_pct.abs() / max_pct } else { 0.0 };
             let bar_w = bar_frac * col_w * 0.6;
             let bar_col = if is_up {
-                st::color_alpha(theme.bull(), (25.0 + intensity * 55.0) as u8)
+                st::color_alpha(palette_ct(theme).base(Tone::Bull), (25.0 + intensity * 55.0) as u8)
             } else {
-                st::color_alpha(theme.bear(), (25.0 + intensity * 55.0) as u8)
+                st::color_alpha(palette_ct(theme).base(Tone::Bear), (25.0 + intensity * 55.0) as u8)
             };
             painter.rect_filled(
                 egui::Rect::from_min_size(egui::pos2(cx, cy + 1.0), egui::vec2(bar_w, cell_h - 2.0)),
                 2.0, bar_col);
             // Left-edge accent strip
             let edge_a = (120.0 + intensity * 135.0) as u8;
-            let edge_col = if is_up { st::color_alpha(theme.bull(), edge_a) } else { st::color_alpha(theme.bear(), edge_a) };
+            let edge_col = if is_up { st::color_alpha(palette_ct(theme).base(Tone::Bull), edge_a) } else { st::color_alpha(palette_ct(theme).base(Tone::Bear), edge_a) };
             painter.rect_filled(
                 egui::Rect::from_min_size(egui::pos2(cx, cy + 1.0), egui::vec2(3.0, cell_h - 2.0)),
                 0.0, edge_col);
             // Symbol text
             let sym_col: Color32 = if is_active {
-                theme.text()
+                palette_ct(theme).base(Tone::Text)
             } else if is_hovered {
-                st::color_alpha(theme.text(), 230)
+                st::color_alpha(palette_ct(theme).base(Tone::Text), 230)
             } else {
-                st::color_alpha(theme.text(), 190)
+                st::color_alpha(palette_ct(theme).base(Tone::Text), 190)
             };
             painter.text(
                 egui::pos2(cx + 7.0, cy + cell_h / 2.0),
@@ -147,7 +148,7 @@ impl<'a> HeatmapGrid<'a> {
                 egui::FontId::monospace(font_sz),
                 sym_col);
             // Change% text
-            let chg_col = if is_up { theme.bull() } else { theme.bear() };
+            let chg_col = if is_up { palette_ct(theme).base(Tone::Bull) } else { palette_ct(theme).base(Tone::Bear) };
             painter.text(
                 egui::pos2(cx + col_w - 3.0, cy + cell_h / 2.0),
                 egui::Align2::RIGHT_CENTER,

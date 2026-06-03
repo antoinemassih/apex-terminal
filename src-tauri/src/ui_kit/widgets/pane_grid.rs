@@ -21,7 +21,7 @@
 //! - `.show_pane_chrome(false)` — strip border + header. Use when embedding
 //!   inside another container that provides its own chrome.
 //! - `.splitter_width(w)` — override the 6 px hit-band (keep ≥ 2 px).
-//! - `.splitter_color(c)` — override the default `theme.border()` line.
+//! - `.splitter_color(c)` — override the default `palette_ct(theme).base(Tone::Border)` line.
 //! - `.on_split(cb)` / `.on_close(cb)` — receive split/close events after the
 //!   fact (useful for logging or persistence side-effects).
 //!
@@ -42,6 +42,7 @@ use egui::{
 use serde::{Deserialize, Serialize};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 // ContextMenu / MenuItem / DangerMenuItem are available for future enhancement
 // (Tier B: themed context menus). For now we use egui's built-in context_menu
 // with plain Button rows — removes a borrow-conflict between the closure's &mut Ui
@@ -632,7 +633,7 @@ where
         self
     }
 
-    /// Override the splitter line color (default: `theme.border()`).
+    /// Override the splitter line color (default: `palette_ct(theme).base(Tone::Border)`).
     pub fn splitter_color(mut self, c: Color32) -> Self {
         self.splitter_color = Some(c);
         self
@@ -675,7 +676,7 @@ where
             on_close,
         } = self;
 
-        let splitter_color = splitter_color.unwrap_or_else(|| theme.border());
+        let splitter_color = splitter_color.unwrap_or_else(|| palette_ct(theme).base(Tone::Border));
 
         let mut pending: Vec<PendingAction> = Vec::new();
 
@@ -799,7 +800,7 @@ fn paint_node<T, R>(
                 motion::FAST,
             );
             let idle_c   = st::color_alpha(splitter_color, st::alpha_strong());
-            let hot_c    = st::color_alpha(theme.accent(), st::alpha_heavy());
+            let hot_c    = st::color_alpha(palette_ct(theme).base(Tone::Accent), st::alpha_heavy());
             let line_col = motion::lerp_color(idle_c, hot_c, hover_t);
             ui.painter().rect_filled(rect_div, CornerRadius::ZERO, line_col);
         }
@@ -902,9 +903,9 @@ fn draw_pane_chrome(
 
     // Outer border.
     let border_color = if focused {
-        st::color_alpha(theme.accent(), st::alpha_subtle())
+        st::color_alpha(palette_ct(theme).base(Tone::Accent), st::alpha_subtle())
     } else {
-        st::color_alpha(theme.border(), st::alpha_subtle())
+        st::color_alpha(palette_ct(theme).base(Tone::Border), st::alpha_subtle())
     };
     ui.painter().rect_stroke(
         rect,
@@ -918,7 +919,7 @@ fn draw_pane_chrome(
     ui.painter().rect_filled(
         header_rect,
         CornerRadius::ZERO,
-        st::color_alpha(theme.surface(), st::alpha_subtle()),
+        st::color_alpha(palette_ct(theme).base(Tone::Surface), st::alpha_subtle()),
     );
 
     // Title label.
@@ -928,7 +929,7 @@ fn draw_pane_chrome(
         egui::Align2::LEFT_CENTER,
         format!("Pane {}", id.0),
         egui::FontId::proportional(st::font_xs()),
-        st::color_alpha(theme.dim(), st::alpha_strong()),
+        st::color_alpha(palette_ct(theme).base(Tone::Dim), st::alpha_strong()),
     );
 
     // Close "×" button — icon-sized square in the right side of header.
@@ -947,7 +948,7 @@ fn draw_pane_chrome(
     let glyph_color = if close_resp.hovered() {
         theme.danger()
     } else {
-        st::color_alpha(theme.dim(), st::alpha_strong())
+        st::color_alpha(palette_ct(theme).base(Tone::Dim), st::alpha_strong())
     };
     ui.painter().text(
         close_rect.center(),

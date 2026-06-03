@@ -17,6 +17,7 @@ use super::motion;
 use super::placement::{Align, Placement, Side};
 use super::popover::Popover;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
 
@@ -156,18 +157,18 @@ fn paint_date_picker<'a>(
     let focus_t = motion::ease_bool(ui.ctx(), id.with("focus"), open, motion::FAST);
     let dim = |c: egui::Color32| if disabled { st::color_half(c) } else { c };
 
-    let mut border_col = motion::lerp_color(theme.border(), theme.dim(), hover_t);
-    border_col = motion::lerp_color(border_col, theme.accent(), focus_t);
+    let mut border_col = motion::lerp_color(palette_ct(theme).base(Tone::Border), palette_ct(theme).base(Tone::Dim), hover_t);
+    border_col = motion::lerp_color(border_col, palette_ct(theme).base(Tone::Accent), focus_t);
     border_col = dim(border_col);
 
     let radius = CornerRadius::same(st::radius_sm() as u8);
     if ui.is_rect_visible(rect) {
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, radius, dim(theme.surface()));
+        painter.rect_filled(rect, radius, dim(palette_ct(theme).base(Tone::Surface)));
         painter.rect_stroke(rect, radius, Stroke::new(st::stroke_std(), border_col), StrokeKind::Inside);
 
         // Leading calendar icon.
-        let icon_color = dim(motion::lerp_color(theme.dim(), theme.accent(), focus_t));
+        let icon_color = dim(motion::lerp_color(palette_ct(theme).base(Tone::Dim), palette_ct(theme).base(Tone::Accent), focus_t));
         let cy = rect.center().y;
         let icon_x = rect.left() + pad_x;
         painter.text(
@@ -181,9 +182,9 @@ fn paint_date_picker<'a>(
         // Trigger text.
         let text_x = icon_x + font_size * 1.1 + icon_gap;
         let text_col = if is_placeholder {
-            dim(st::color_alpha(theme.dim(), 160))
+            dim(st::color_alpha(palette_ct(theme).base(Tone::Dim), 160))
         } else {
-            dim(theme.text())
+            dim(palette_ct(theme).base(Tone::Text))
         };
         let max_text_w = rect.right() - pad_x - text_x;
         let truncated = truncate_to_width(ui, &trigger_text, font_size, max_text_w);

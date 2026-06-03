@@ -17,7 +17,7 @@
 //!
 //! // With explicit fill, radius, and padding.
 //! OutlinedBox::new()
-//!     .fill(theme.surface())
+//!     .fill(palette_ct(theme).base(Tone::Surface))
 //!     .radius_md()
 //!     .padding(gap_md())
 //!     .show(ui, theme, |ui| { /* … */ });
@@ -27,14 +27,15 @@
 //! ```
 //!
 //! ### Defaults
-//! - Fill: `theme.bg()` (deepest background — use `.fill(theme.surface())` for raised cards)
-//! - Border: `theme.border()` at `stroke_std()` (or `stroke_thin()` when `.hairline()`)
+//! - Fill: `palette_ct(theme).base(Tone::Bg)` (deepest background — use `.fill(palette_ct(theme).base(Tone::Surface))` for raised cards)
+//! - Border: `palette_ct(theme).base(Tone::Border)` at `stroke_std()` (or `stroke_thin()` when `.hairline()`)
 //! - Corner radius: `radius_sm()`
 //! - Inner padding: `gap_sm()`
 
 use egui::{Color32, CornerRadius, Margin, Response, Stroke, Ui};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::tokens as st;
 
 /// Optional override for the border thickness tier.
@@ -70,10 +71,10 @@ impl OutlinedBox {
         }
     }
 
-    /// Override the fill color (defaults to `theme.bg()`).
+    /// Override the fill color (defaults to `palette_ct(theme).base(Tone::Bg)`).
     pub fn fill(mut self, c: Color32) -> Self { self.fill = Some(c); self }
 
-    /// Override the border color (defaults to `theme.border()`).
+    /// Override the border color (defaults to `palette_ct(theme).base(Tone::Border)`).
     pub fn border(mut self, c: Color32) -> Self { self.border = Some(c); self }
 
     /// Use the hairline-tier border (`stroke_thin`).
@@ -115,12 +116,12 @@ impl OutlinedBox {
         theme: &dyn ComponentTheme,
         body: impl FnOnce(&mut Ui) -> R,
     ) -> egui::InnerResponse<R> {
-        let fill = self.fill.unwrap_or_else(|| theme.bg());
+        let fill = self.fill.unwrap_or_else(|| palette_ct(theme).base(Tone::Bg));
         let stroke = match self.border_tier {
             BorderTier::None     => Stroke::NONE,
-            BorderTier::Hairline => Stroke::new(st::stroke_thin(), self.border.unwrap_or_else(|| theme.border())),
-            BorderTier::Standard => Stroke::new(st::stroke_std(),  self.border.unwrap_or_else(|| theme.border())),
-            BorderTier::Bold     => Stroke::new(st::stroke_bold(), self.border.unwrap_or_else(|| theme.border())),
+            BorderTier::Hairline => Stroke::new(st::stroke_thin(), self.border.unwrap_or_else(|| palette_ct(theme).base(Tone::Border))),
+            BorderTier::Standard => Stroke::new(st::stroke_std(),  self.border.unwrap_or_else(|| palette_ct(theme).base(Tone::Border))),
+            BorderTier::Bold     => Stroke::new(st::stroke_bold(), self.border.unwrap_or_else(|| palette_ct(theme).base(Tone::Border))),
         };
         let radius = self.radius.unwrap_or_else(st::r_sm_cr);
         let inner_margin = self.padding_margin.unwrap_or_else(|| {

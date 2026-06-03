@@ -30,6 +30,7 @@ use egui::Color32;
 
 use super::modal::{Modal, HeaderStyle, Anchor};
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::button::Button;
 use super::tokens::{Size, Variant};
 use crate::ui_kit::tokens as st;
@@ -56,7 +57,7 @@ impl ConfirmTone {
     }
     fn tint(self, theme: &dyn ComponentTheme) -> Option<Color32> {
         match self {
-            ConfirmTone::Bull => Some(theme.bull()),
+            ConfirmTone::Bull => Some(palette_ct(theme).base(Tone::Bull)),
             _ => None,
         }
     }
@@ -146,7 +147,7 @@ impl<'a> ConfirmDialog<'a> {
                     ui.label(
                         egui::RichText::new(text)
                             .size(st::font_sm())
-                            .color(theme.text()),
+                            .color(palette_ct(theme).base(Tone::Text)),
                     );
                     ui.add_space(st::gap_md());
                 }
