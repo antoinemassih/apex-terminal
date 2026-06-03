@@ -256,6 +256,7 @@ impl<'a, T: Clone> Table<'a, T> {
     }
 
     pub fn show(mut self, ui: &mut Ui, theme: &dyn ComponentTheme) -> TableResponse {
+        let pal = palette_ct(theme); // bind once: avoid per-read Palette copies in this hot table
         let avail_w = ui.available_width();
         let avail_h = ui.available_height();
         let origin = ui.cursor().min;
@@ -293,7 +294,7 @@ impl<'a, T: Clone> Table<'a, T> {
         if self.show_header {
             let header_rect = Rect::from_min_size(outer.min, Vec2::new(avail_w, header_h));
             ui.painter()
-                .rect_filled(header_rect, 0.0, color_alpha(palette_ct(theme).base(Tone::Surface), 200));
+                .rect_filled(header_rect, 0.0, color_alpha(pal.base(Tone::Surface), 200));
 
             // Bottom border.
             ui.painter().line_segment(
@@ -301,7 +302,7 @@ impl<'a, T: Clone> Table<'a, T> {
                     Pos2::new(header_rect.left(), header_rect.bottom()),
                     Pos2::new(header_rect.right(), header_rect.bottom()),
                 ],
-                Stroke::new(stroke_thin(), palette_ct(theme).base(Tone::Border)),
+                Stroke::new(stroke_thin(), pal.base(Tone::Border)),
             );
 
             for (i, col) in self.columns.iter().enumerate() {
@@ -322,11 +323,11 @@ impl<'a, T: Clone> Table<'a, T> {
                 let is_sorted = self.state.sort_col == Some(i)
                     && self.state.sort_dir != SortDir::None;
                 let label_color = if is_sorted {
-                    palette_ct(theme).base(Tone::Accent)
+                    pal.base(Tone::Accent)
                 } else if resp.hovered() && col.sortable {
-                    palette_ct(theme).base(Tone::Text)
+                    pal.base(Tone::Text)
                 } else {
-                    palette_ct(theme).base(Tone::Dim)
+                    pal.base(Tone::Dim)
                 };
 
                 let pad_x = gap_xs();
@@ -338,9 +339,9 @@ impl<'a, T: Clone> Table<'a, T> {
                     None
                 };
                 let glyph_color = if is_sorted {
-                    palette_ct(theme).base(Tone::Accent)
+                    pal.base(Tone::Accent)
                 } else {
-                    color_alpha(palette_ct(theme).base(Tone::Dim), 140)
+                    color_alpha(pal.base(Tone::Dim), 140)
                 };
 
                 let font = FontId::new(font_xs(), FontFamily::Proportional);
@@ -448,8 +449,8 @@ impl<'a, T: Clone> Table<'a, T> {
                             motion::FAST,
                         );
                         let line_color = motion::lerp_color(
-                            color_alpha(palette_ct(theme).base(Tone::Border), alpha_muted()),
-                            palette_ct(theme).base(Tone::Accent),
+                            color_alpha(pal.base(Tone::Border), alpha_muted()),
+                            pal.base(Tone::Accent),
                             t,
                         );
                         ui.painter().line_segment(
@@ -492,7 +493,7 @@ impl<'a, T: Clone> Table<'a, T> {
                     egui::Align2::CENTER_CENTER,
                     text,
                     font,
-                    palette_ct(theme).base(Tone::Dim),
+                    pal.base(Tone::Dim),
                 );
             }
             let response = ui.allocate_rect(outer, Sense::hover());
@@ -551,7 +552,7 @@ impl<'a, T: Clone> Table<'a, T> {
                         ui.painter().rect_filled(
                             row_rect,
                             0.0,
-                            color_alpha(palette_ct(theme).base(Tone::Surface), 60),
+                            color_alpha(pal.base(Tone::Surface), 60),
                         );
                     }
 
@@ -563,7 +564,7 @@ impl<'a, T: Clone> Table<'a, T> {
                             motion::FAST,
                         );
                         if t > 0.0 {
-                            let bg = color_alpha(palette_ct(theme).base(Tone::Text), 18);
+                            let bg = color_alpha(pal.base(Tone::Text), 18);
                             // Multiply alpha by t for fade.
                             let bg =
                                 egui::Color32::from_rgba_unmultiplied(bg.r(), bg.g(), bg.b(), ((bg.a() as f32) * t) as u8);
@@ -575,7 +576,7 @@ impl<'a, T: Clone> Table<'a, T> {
                         ui.painter().rect_filled(
                             row_rect,
                             0.0,
-                            color_alpha(palette_ct(theme).base(Tone::Accent), alpha_ghost()),
+                            color_alpha(pal.base(Tone::Accent), alpha_ghost()),
                         );
                     }
 

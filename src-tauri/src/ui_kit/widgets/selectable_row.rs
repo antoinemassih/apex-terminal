@@ -13,12 +13,12 @@
 //!
 //! Behavior:
 //! - Row height scales with `Size` (defaults to ~24px / `gap_2xl()`).
-//! - Idle: transparent background, `palette_ct(theme).base(Tone::Text)` label.
-//! - Selected: `color_alpha(palette_ct(theme).base(Tone::Accent), alpha_soft())` background,
-//!   `palette_ct(theme).base(Tone::Accent)` label.
-//! - Hover: `color_alpha(palette_ct(theme).base(Tone::Text), alpha_faint())` background tint.
-//! - Disabled: `st::color_dim(palette_ct(theme).base(Tone::Text))` label, hover-only sense.
-//! - Optional leading icon: `palette_ct(theme).base(Tone::Dim)` color, `font_sm()` size,
+//! - Idle: transparent background, `pal.base(Tone::Text)` label.
+//! - Selected: `color_alpha(pal.base(Tone::Accent), alpha_soft())` background,
+//!   `pal.base(Tone::Accent)` label.
+//! - Hover: `color_alpha(pal.base(Tone::Text), alpha_faint())` background tint.
+//! - Disabled: `st::color_dim(pal.base(Tone::Text))` label, hover-only sense.
+//! - Optional leading icon: `pal.base(Tone::Dim)` color, `font_sm()` size,
 //!   `gap_xs()` from text.
 //!
 //! Returns a normal `Response` so callers use `.clicked()` exactly like
@@ -56,6 +56,7 @@ impl<'a> SelectableRow<'a> {
     pub fn size(mut self, s: Size) -> Self { self.size = s; self }
 
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
+        let pal = palette_ct(theme); // bind once: avoid per-read Palette copies in this hot row
         let SelectableRow { label, selected, disabled, leading_icon, size } = self;
 
         // Sizing. Row height ~gap_2xl() (24px) at default Sm; scales modestly.
@@ -80,13 +81,13 @@ impl<'a> SelectableRow<'a> {
 
         // Resolve colors.
         let text_color = if disabled {
-            st::color_dim(palette_ct(theme).base(Tone::Text))
+            st::color_dim(pal.base(Tone::Text))
         } else if selected {
-            palette_ct(theme).base(Tone::Accent)
+            pal.base(Tone::Accent)
         } else {
-            palette_ct(theme).base(Tone::Text)
+            pal.base(Tone::Text)
         };
-        let icon_color = if disabled { st::color_half(palette_ct(theme).base(Tone::Dim)) } else { palette_ct(theme).base(Tone::Dim) };
+        let icon_color = if disabled { st::color_half(pal.base(Tone::Dim)) } else { pal.base(Tone::Dim) };
 
         // Measure label.
         let label_font = FontId::monospace(font_size);
@@ -124,10 +125,10 @@ impl<'a> SelectableRow<'a> {
 
         // Background fill.
         if selected {
-            let bg = st::color_alpha(palette_ct(theme).base(Tone::Accent), st::alpha_soft());
+            let bg = st::color_alpha(pal.base(Tone::Accent), st::alpha_soft());
             painter.rect_filled(rect, cr, bg);
         } else if response.hovered() && !disabled {
-            let bg = st::color_alpha(palette_ct(theme).base(Tone::Text), st::alpha_faint());
+            let bg = st::color_alpha(pal.base(Tone::Text), st::alpha_faint());
             painter.rect_filled(rect, cr, bg);
         }
 
@@ -139,7 +140,7 @@ impl<'a> SelectableRow<'a> {
         // Focus ring for keyboard navigation — egui's Sense::click() already
         // fires clicked() on Enter/Space when the widget has keyboard focus.
         if !disabled {
-            st::cursor::focus_ring(ui, &response, palette_ct(theme).base(Tone::Accent));
+            st::cursor::focus_ring(ui, &response, pal.base(Tone::Accent));
         }
 
         // Layout: leading icon, then label.

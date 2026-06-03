@@ -433,6 +433,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
     /// the body click signal **and** (when `.trailing_buttons(&[...])` was
     /// set) the index of the trailing button that fired this frame.
     pub fn show_full(self, ui: &mut Ui, t: &T) -> PanelListRowResponse {
+        let pal = palette_ct(t); // bind once: hottest widget (one per list row)
         let Self {
             id_salt,
             primary,
@@ -544,7 +545,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
                 motion::FAST,
             );
             if hover_t > 0.0 {
-                let bg = color_alpha(palette_ct(t).base(SxTone::Text), (alpha_ghost() as f32 * hover_t).round() as u8);
+                let bg = color_alpha(pal.base(SxTone::Text), (alpha_ghost() as f32 * hover_t).round() as u8);
                 painter.rect_filled(rect, cr, bg);
             }
         }
@@ -558,7 +559,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
         );
         if selected_t > 0.0 {
             let sel_bg = color_alpha(
-                palette_ct(t).base(SxTone::Accent),
+                pal.base(SxTone::Accent),
                 (SELECTED_BG_ALPHA as f32 * selected_t).round() as u8,
             );
             painter.rect_filled(rect, cr, sel_bg);
@@ -567,7 +568,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
         // Left accent stripe — eases with selected_t so it fades alongside the bg.
         if selected_t > 0.0 {
             let stripe_alpha = (255.0_f32 * selected_t).round() as u8;
-            let stripe_color = color_alpha(palette_ct(t).base(SxTone::Accent), stripe_alpha);
+            let stripe_color = color_alpha(pal.base(SxTone::Accent), stripe_alpha);
             let stripe = Rect::from_min_max(
                 Pos2::new(rect.left(), rect.top()),
                 Pos2::new(rect.left() + SELECTED_STRIPE_W, rect.bottom()),
@@ -638,14 +639,14 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
                     if let Some(p) = primary {
                         let font = FontId::monospace(font_sm());
                         let galley = ui.fonts(|f| {
-                            f.layout_no_wrap(p.to_string(), font.clone(), palette_ct(t).base(SxTone::Text))
+                            f.layout_no_wrap(p.to_string(), font.clone(), pal.base(SxTone::Text))
                         });
                         let (r, _) = ui.allocate_exact_size(galley.size(), Sense::hover());
-                        ui.painter().galley(r.min, galley, palette_ct(t).base(SxTone::Text));
+                        ui.painter().galley(r.min, galley, pal.base(SxTone::Text));
                     }
                     if let Some(s) = secondary {
                         let font = FontId::monospace(font_xs());
-                        let col = color_muted(palette_ct(t).base(SxTone::Dim));
+                        let col = color_muted(pal.base(SxTone::Dim));
                         let galley = ui.fonts(|f| {
                             f.layout_no_wrap(s.to_string(), font.clone(), col)
                         });
@@ -700,12 +701,12 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
                 }
 
                 // Icon glyph. Hover snaps to full tone color; idle is
-                // tone-at-`palette_ct(t).base(SxTone::Dim)`-opacity so the icons sit visually quiet
+                // tone-at-`pal.base(SxTone::Dim)`-opacity so the icons sit visually quiet
                 // when the row is idle. Active state implies full color.
                 let glyph_color = if br.hovered() || btn.active {
                     tone_col
                 } else {
-                    color_alpha(tone_col, palette_ct(t).base(SxTone::Dim).a())
+                    color_alpha(tone_col, pal.base(SxTone::Dim).a())
                 };
                 painter.text(
                     r.center(),
@@ -727,7 +728,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
         // `Sense::click()` already handles Enter/Space → clicked() natively,
         // so the ring is the only missing piece for full keyboard support.
         if hoverable {
-            st::cursor::focus_ring(ui, &resp, palette_ct(t).base(SxTone::Accent));
+            st::cursor::focus_ring(ui, &resp, pal.base(SxTone::Accent));
         }
 
         PanelListRowResponse {
