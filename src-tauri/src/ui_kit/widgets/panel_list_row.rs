@@ -106,7 +106,6 @@ use crate::ui_kit::tokens::{
     radius_sm,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
-use crate::ui_kit::sx::{palette_ct, Tone as SxTone};
 use crate::ui_kit::widgets::{motion, Tooltip};
 
 /// Horizontal alignment for a `Column` cell in `PanelListRow::columns` mode.

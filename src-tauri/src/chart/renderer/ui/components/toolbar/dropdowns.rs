@@ -11,6 +11,8 @@
 #![allow(unused_imports)]
 
 use crate::ui_kit::icons::Icon;
+use crate::chart_renderer::ui::style::tint;
+use crate::ui_kit::sx::Tone;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::{Variant as KitVariant, Size as KitSize}, Input};
 use crate::chart_renderer::gpu::{Chart, Watchlist, Theme, save_workspace, save_templates};
 use crate::chart_renderer::gpu::Layout;
@@ -49,7 +51,7 @@ pub(crate) fn render_timeframe_dropdown(
         .frame(egui::Frame::popup(&ctx.style())
             .fill(t.toolbar_bg)
             .inner_margin(egui::Margin::same(gap_md() as i8))
-            .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, 120)))
+            .stroke(egui::Stroke::new(stroke_std(), tint(t, Tone::Border, 120)))
             .corner_radius(r_md_cr()))
         .show(ctx, |ui| {
             let hover_pos = ui.input(|i| i.pointer.hover_pos());
@@ -61,7 +63,7 @@ pub(crate) fn render_timeframe_dropdown(
                         let y = ui.cursor().min.y;
                         ui.painter().line_segment(
                             [egui::pos2(ui.min_rect().left() + 8.0, y), egui::pos2(ui.min_rect().left() + 236.0, y)],
-                            egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, 50)));
+                            egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, 50)));
                         ui.add_space(gap_sm());
                     }
                     ui.horizontal(|ui| {
@@ -78,7 +80,7 @@ pub(crate) fn render_timeframe_dropdown(
                 let hovered = hover_pos.map_or(false, |p| row_rect.contains(p));
 
                 if hovered || is_cur {
-                    let bg = if is_cur { color_alpha(t.accent, 25) } else { color_alpha(t.toolbar_border, 30) };
+                    let bg = if is_cur { tint(t, Tone::Accent, 25) } else { tint(t, Tone::Border, 30) };
                     ui.painter().rect_filled(row_rect, 3.0, bg);
                 }
                 if is_cur {
@@ -93,7 +95,7 @@ pub(crate) fn render_timeframe_dropdown(
 
                 let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(icon_sm(), icon_sm()));
                 let sh = hover_pos.map_or(false, |p| sr.contains(p));
-                let sc = if is_fav { color_alpha(t.accent, alpha_heavy()) } else if sh { color_half(t.dim) } else { color_very_dim(t.dim) };
+                let sc = if is_fav { tint(t, Tone::Accent, alpha_heavy()) } else if sh { color_half(t.dim) } else { color_very_dim(t.dim) };
                 ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, egui::FontId::proportional(font_sm()), sc);
                 if sh { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 if sh && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
@@ -163,7 +165,7 @@ pub(crate) fn render_layout_dropdown(
         .frame(egui::Frame::popup(&ctx.style())
             .fill(t.toolbar_bg)
             .inner_margin(egui::Margin::same(gap_md() as i8))
-            .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, 120)))
+            .stroke(egui::Stroke::new(stroke_std(), tint(t, Tone::Border, 120)))
             .corner_radius(r_md_cr()))
         .show(ctx, |ui| {
             let hover_pos = ui.input(|i| i.pointer.hover_pos());
@@ -176,7 +178,7 @@ pub(crate) fn render_layout_dropdown(
                         let y = ui.cursor().min.y;
                         ui.painter().line_segment(
                             [egui::pos2(ui.min_rect().left() + 8.0, y), egui::pos2(ui.min_rect().left() + 236.0, y)],
-                            egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, 50)));
+                            egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, 50)));
                         ui.add_space(gap_sm());
                     }
                     ui.horizontal(|ui| {
@@ -193,7 +195,7 @@ pub(crate) fn render_layout_dropdown(
                 let hovered = hover_pos.map_or(false, |p| row_rect.contains(p));
 
                 if hovered || is_cur {
-                    let bg = if is_cur { color_alpha(t.accent, 25) } else { color_alpha(t.toolbar_border, 30) };
+                    let bg = if is_cur { tint(t, Tone::Accent, 25) } else { tint(t, Tone::Border, 30) };
                     ui.painter().rect_filled(row_rect, 3.0, bg);
                 }
                 if is_cur {
@@ -211,12 +213,12 @@ pub(crate) fn render_layout_dropdown(
 
                 let lc = row_text_color(is_cur, hovered, t);
                 ui.painter().text(egui::pos2(row_rect.left() + 42.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.label(), mono_sm(), lc);
-                let dc = if hovered { color_alpha(t.dim, alpha_heavy()) } else { color_muted(t.dim) };
+                let dc = if hovered { tint(t, Tone::Dim, alpha_heavy()) } else { color_muted(t.dim) };
                 ui.painter().text(egui::pos2(row_rect.left() + 74.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.description(), mono_sm(), dc);
 
                 let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(icon_sm(), icon_sm()));
                 let sh = hover_pos.map_or(false, |p| sr.contains(p));
-                let sc = if is_fav { color_alpha(t.accent, alpha_heavy()) } else if sh { color_half(t.dim) } else { color_very_dim(t.dim) };
+                let sc = if is_fav { tint(t, Tone::Accent, alpha_heavy()) } else if sh { color_half(t.dim) } else { color_very_dim(t.dim) };
                 ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, egui::FontId::proportional(font_sm()), sc);
                 if sh { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 if sh && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
@@ -240,7 +242,7 @@ pub(crate) fn render_layout_dropdown(
                 let y = ui.cursor().min.y;
                 ui.painter().line_segment(
                     [egui::pos2(ui.min_rect().left() + 8.0, y), egui::pos2(ui.min_rect().left() + 236.0, y)],
-                    egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, 50)));
+                    egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, 50)));
                 ui.add_space(gap_sm());
                 ui.horizontal(|ui| {
                     ui.add_space(gap_md());
@@ -253,7 +255,7 @@ pub(crate) fn render_layout_dropdown(
                     let row_rect = egui::Rect::from_min_size(row_min, egui::vec2(236.0, 24.0));
                     let row_hover = hover_pos.map_or(false, |p| row_rect.contains(p));
                     if row_hover {
-                        ui.painter().rect_filled(row_rect, 3.0, color_alpha(t.toolbar_border, 30));
+                        ui.painter().rect_filled(row_rect, 3.0, tint(t, Tone::Border, 30));
                     }
                     let lc = if row_hover { t.text } else { t.dim };
                     ui.painter().text(egui::pos2(row_rect.left() + 8.0, row_rect.center().y), egui::Align2::LEFT_CENTER, tpl_name.as_str(), mono_sm(), lc);
@@ -263,10 +265,10 @@ pub(crate) fn render_layout_dropdown(
                         egui::vec2(apply_w, 20.0),
                     );
                     let apply_hov = hover_pos.map_or(false, |p| apply_rect.contains(p));
-                    let apply_fill = if apply_hov { color_alpha(t.accent, 40) } else { color_alpha(t.accent, 15) };
+                    let apply_fill = if apply_hov { tint(t, Tone::Accent, 40) } else { tint(t, Tone::Accent, 15) };
                     ui.painter().rect_filled(apply_rect, 3.0, apply_fill);
                     ui.painter().text(apply_rect.center(), egui::Align2::CENTER_CENTER, "Apply", mono_sm(),
-                        if apply_hov { t.accent } else { color_alpha(t.accent, 180) });
+                        if apply_hov { t.accent } else { tint(t, Tone::Accent, 180) });
                     if apply_hov { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     if apply_hov && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
                         watchlist.active_workspace = tpl_name.clone();
@@ -283,7 +285,7 @@ pub(crate) fn render_layout_dropdown(
                 let y = ui.cursor().min.y;
                 ui.painter().line_segment(
                     [egui::pos2(ui.min_rect().left() + 8.0, y), egui::pos2(ui.min_rect().left() + 236.0, y)],
-                    egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, 50)));
+                    egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, 50)));
                 ui.add_space(gap_sm());
                 ui.horizontal(|ui| {
                     use crate::ui_kit::widgets::Input;

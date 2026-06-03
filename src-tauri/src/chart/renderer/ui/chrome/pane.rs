@@ -11,6 +11,8 @@
 #![allow(dead_code, unused_imports)]
 
 use egui::{Color32, Pos2, Rect, Response, RichText, Sense, Stroke, StrokeKind, Ui, Vec2, Widget};
+use crate::chart_renderer::ui::style::tint;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::components::pane_header_bar;
 use super::super::components::PaneHeader;
@@ -779,46 +781,46 @@ impl<'a> AccountStrip<'a> {
                         ui.add_space(pad);
 
                         // NAV — hero number
-                        ui.label(RichText::new("NAV").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new("NAV").monospace().size(font_md()).color(tint(t, Tone::Dim, 128)));
                         ui.label(hero_text(&format!("${:.0}", acct.nav), t.text).strong());
 
                         crate::ui_kit::widgets::Separator::vertical().spacing(8.0).show(ui, t);
 
                         // Buying Power
-                        ui.label(RichText::new("BP").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new("BP").monospace().size(font_md()).color(tint(t, Tone::Dim, 128)));
                         ui.label(RichText::new(format!("${:.0}", acct.buying_power)).monospace().size(font_md()).color(t.dim));
 
                         crate::ui_kit::widgets::Separator::vertical().spacing(8.0).show(ui, t);
 
                         // Daily P&L — hero, colored
                         let daily_color = if acct.daily_pnl >= 0.0 { t.bull } else { t.bear };
-                        ui.label(RichText::new("Day P&L").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new("Day P&L").monospace().size(font_md()).color(tint(t, Tone::Dim, 128)));
                         ui.label(hero_text(&format!("{:+.0}", acct.daily_pnl), daily_color).strong());
 
                         crate::ui_kit::widgets::Separator::vertical().spacing(8.0).show(ui, t);
 
                         // Unrealized P&L
                         let unr_color = if acct.unrealized_pnl >= 0.0 { t.bull } else { t.bear };
-                        ui.label(RichText::new("Unr P&L").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new("Unr P&L").monospace().size(font_md()).color(tint(t, Tone::Dim, 128)));
                         ui.label(RichText::new(format!("{:+.0}", acct.unrealized_pnl)).monospace().size(font_md()).color(unr_color));
 
                         crate::ui_kit::widgets::Separator::vertical().spacing(8.0).show(ui, t);
 
                         // Margin
-                        ui.label(RichText::new("Margin").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new("Margin").monospace().size(font_md()).color(tint(t, Tone::Dim, 128)));
                         ui.label(RichText::new(format!("${:.0}", acct.initial_margin)).monospace().size(font_md()).color(t.dim));
 
                         crate::ui_kit::widgets::Separator::vertical().spacing(8.0).show(ui, t);
 
                         // Excess Liquidity
-                        ui.label(RichText::new("Excess").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new("Excess").monospace().size(font_md()).color(tint(t, Tone::Dim, 128)));
                         ui.label(RichText::new(format!("${:.0}", acct.excess_liquidity)).monospace().size(font_md()).color(t.dim));
 
                         crate::ui_kit::widgets::Separator::vertical().spacing(8.0).show(ui, t);
 
                         // Realized P&L
                         let rpnl_color = if acct.realized_pnl >= 0.0 { t.bull } else { t.bear };
-                        ui.label(RichText::new("Real P&L").monospace().size(font_md()).color(color_alpha(t.dim, 128)));
+                        ui.label(RichText::new("Real P&L").monospace().size(font_md()).color(tint(t, Tone::Dim, 128)));
                         ui.label(RichText::new(format!("{:+.0}", acct.realized_pnl)).monospace().size(font_md()).strong().color(rpnl_color));
 
                         crate::ui_kit::widgets::Separator::vertical().spacing(8.0).show(ui, t);
@@ -846,12 +848,12 @@ impl<'a> AccountStrip<'a> {
                         }
                     } else {
                         // Disconnected
-                        ui.label(RichText::new("IB Disconnected").monospace().size(font_sm()).color(color_alpha(t.dim, 128)));
-                        ui.label(RichText::new(format!("connecting to {}...", self.broker_url)).monospace().size(font_sm()).color(color_alpha(t.dim, 76)));
+                        ui.label(RichText::new("IB Disconnected").monospace().size(font_sm()).color(tint(t, Tone::Dim, 128)));
+                        ui.label(RichText::new(format!("connecting to {}...", self.broker_url)).monospace().size(font_sm()).color(tint(t, Tone::Dim, 76)));
                     }
                 } else {
                     // Loading
-                    ui.label(RichText::new("Loading account...").monospace().size(font_md()).color(color_alpha(t.dim, 102)));
+                    ui.label(RichText::new("Loading account...").monospace().size(font_md()).color(tint(t, Tone::Dim, 102)));
                 }
             });
         }).response

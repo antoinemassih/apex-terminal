@@ -41,6 +41,8 @@
 #![allow(dead_code, unused_imports)]
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2, pos2};
+use crate::chart_renderer::ui::style::tint;
+use crate::ui_kit::sx::Tone;
 
 use super::super::style::{
     alpha_active, alpha_ghost, alpha_line, alpha_muted, alpha_solid, alpha_subtle, alpha_tint,
@@ -144,17 +146,17 @@ fn badge_fg(theme: &Theme) -> Color32 {
 /// `pub(crate)` so other chrome modules can reuse the same button-color logic.
 pub(crate) fn painter_btn_colors(t: &Theme, hovered: bool, active: bool) -> (Color32, Color32, Color32) {
     if active {
-        (color_alpha(t.accent, alpha_tint()),
+        (tint(t, Tone::Accent, alpha_tint()),
          t.accent,
-         color_alpha(t.accent, alpha_active()))
+         tint(t, Tone::Accent, alpha_active()))
     } else if hovered {
-        (color_alpha(t.toolbar_border, alpha_subtle()),
+        (tint(t, Tone::Border, alpha_subtle()),
          t.text,
-         color_alpha(t.accent, alpha_line()))
+         tint(t, Tone::Accent, alpha_line()))
     } else {
-        (color_alpha(t.toolbar_border, alpha_ghost()),
+        (tint(t, Tone::Border, alpha_ghost()),
          color_subtle(t.dim),
-         color_alpha(t.toolbar_border, alpha_muted()))
+         tint(t, Tone::Border, alpha_muted()))
     }
 }
 
@@ -166,7 +168,7 @@ pub(crate) fn painter_btn_colors(t: &Theme, hovered: bool, active: bool) -> (Col
 pub(crate) fn paint_close_glyph(painter: &egui::Painter, rect: Rect, hovered: bool, theme: &Theme, font_size_offset: f32) {
     let col = if hovered { theme.bear } else { color_subtle(theme.dim) };
     if hovered {
-        painter.rect_filled(rect, radius_sm(), color_alpha(theme.bear, alpha_tint()));
+        painter.rect_filled(rect, radius_sm(), tint(theme, Tone::Bear, alpha_tint()));
     }
     painter.text(
         rect.center(), Align2::CENTER_CENTER,
@@ -214,7 +216,7 @@ pub(crate) fn paint_option_badges(
         let g = painter.layout_no_wrap(lbl.clone(), badge_font.clone(), dark_fg);
         let bw = g.size().x + 6.0;
         let r = Rect::from_min_size(pos2(cx + consumed, by), Vec2::new(bw, bh));
-        painter.rect_filled(r, radius_sm(), color_alpha(theme.accent, alpha_solid()));
+        painter.rect_filled(r, radius_sm(), tint(theme, Tone::Accent, alpha_solid()));
         painter.text(r.center(), Align2::CENTER_CENTER, &lbl, badge_font, dark_fg);
         consumed += bw + 6.0;
     }
@@ -287,7 +289,7 @@ fn header_fill(painter: &egui::Painter, rect: Rect, theme: &Theme, is_active: bo
 fn header_divider(painter: &egui::Painter, cx: f32, rect: Rect, theme: &Theme) {
     if !current().vertical_group_dividers { return; }
     let alpha = current().header_divider_alpha;
-    let col = color_alpha(theme.toolbar_border, alpha);
+    let col = tint(theme, Tone::Border, alpha);
     painter.line_segment(
         [pos2(cx, rect.top() + 4.0), pos2(cx, rect.bottom() - 4.0)],
         Stroke::new(stroke_hair(), col),
@@ -894,7 +896,7 @@ impl<'a> PainterPaneHeader<'a> {
             );
             painter.rect_stroke(
                 chip_rect, radius_sm(),
-                Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())),
+                Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_muted())),
                 StrokeKind::Inside,
             );
             painter.text(
@@ -1043,7 +1045,7 @@ impl<'a> PainterPaneHeader<'a> {
                 if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 let col = if resp.hovered() { t.bear } else { color_subtle(t.dim) };
                 if resp.hovered() {
-                    painter.rect_filled(cp_rect, radius_sm(), color_alpha(t.bear, alpha_subtle()));
+                    painter.rect_filled(cp_rect, radius_sm(), tint(t, Tone::Bear, alpha_subtle()));
                 }
                 painter.text(
                     cp_rect.center(), Align2::CENTER_CENTER,
@@ -1180,7 +1182,7 @@ fn nav_colors(enabled: bool, hovered: bool, t: &Theme, ui: &mut Ui) -> (Color32,
     if enabled {
         if hovered {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            (color_alpha(t.toolbar_border, alpha_dim()), t.text)
+            (tint(t, Tone::Border, alpha_dim()), t.text)
         } else {
             (Color32::TRANSPARENT, color_subtle(t.dim))
         }

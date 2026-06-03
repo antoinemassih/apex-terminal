@@ -33,7 +33,6 @@ use crate::ui_kit::tokens::{
     color_alpha, color_muted, font_sm, font_xs, gap_lg, gap_xs,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
-use crate::ui_kit::sx::{palette_ct, Tone as SxTone};
 
 #[must_use = "PanelKeyValueRow must be rendered with `.show(...)`"]
 pub struct PanelKeyValueRow<'a> {

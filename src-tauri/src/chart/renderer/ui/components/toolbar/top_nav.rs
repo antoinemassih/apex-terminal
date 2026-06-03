@@ -84,6 +84,8 @@ impl<'a> TopNav<'a> {
 }
 
 use std::sync::Arc;
+use crate::chart_renderer::ui::style::tint;
+use crate::ui_kit::sx::Tone;
 use winit::window::Window;
 
 use crate::ui_kit::icons::Icon;
@@ -185,8 +187,8 @@ pub(crate) fn paint_nav_col_tint(
     let hover_t  = motion::ease_bool(ui.ctx(), hover_id,  hovered && !active, motion::FAST);
     if active_t < 0.001 && hover_t < 0.001 { return; }
 
-    let active_target = color_alpha(theme.toolbar_border, alpha_strong());
-    let hover_target  = color_alpha(theme.dim,            alpha_ghost());
+    let active_target = tint(theme, Tone::Border, alpha_strong());
+    let hover_target  = tint(theme, Tone::Dim, alpha_ghost());
     let mut tint = motion::lerp_color(egui::Color32::TRANSPARENT, hover_target, hover_t);
     tint = motion::lerp_color(tint, active_target, active_t);
     if tint.a() == 0 { return; }
@@ -504,7 +506,7 @@ pub(crate) fn render(
                 let acct_resp = toolbar_btn(ui, &acct_label_owned, acct_active, t);
                 Tooltip::new("Account Summary").show(ui, &acct_resp, t);
                 if style_current().vertical_group_dividers && acct_resp.hovered() {
-                    let col = color_alpha(t.toolbar_border, 80);
+                    let col = tint(t, Tone::Border, 80);
                     let btn_rect = acct_resp.rect;
                     let col_rect = egui::Rect::from_min_max(
                         egui::pos2(btn_rect.left() - 2.0, tb_rect.top()),
@@ -785,7 +787,7 @@ pub(crate) fn render(
                 if !pane_layout_matches_template {
                     ui.add_space(gap_xs());
                     ui.label(egui::RichText::new("Custom")
-                        .monospace().size(font_xs()).color(color_alpha(t.accent, alpha_strong())));
+                        .monospace().size(font_xs()).color(tint(t, Tone::Accent, alpha_strong())));
                 }
                 // Dropdown caret for the full layout picker
                 let dd_btn = toolbar_btn(ui, Icon::CARET_DOWN, watchlist.layout_dropdown_open, t);
@@ -1014,7 +1016,7 @@ pub(crate) fn render(
                         // Enclosed styles draw the box instead of per-button dividers.
                         if !bg_enclosed {
                             let x = ($resp.rect.left() - 4.0).round() + 0.5;
-                            let col = color_alpha(t.dim, alpha_dim());
+                            let col = tint(t, Tone::Dim, alpha_dim());
                             let painter = $ui.ctx().layer_painter(egui::LayerId::new(
                                 egui::Order::Foreground,
                                 egui::Id::new(("nav_divider", x.to_bits())),
@@ -1173,7 +1175,7 @@ pub(crate) fn render(
             .exact_height(style_current().account_strip_height)
             .frame(egui::Frame::NONE.fill(t.toolbar_bg)
                 .inner_margin(egui::Margin { left: 0, right: 0, top: 2, bottom: 2 })
-                .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_dim()))))
+                .stroke(egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_dim()))))
             .show(ctx, |ui| {
                 crate::chart::renderer::ui::chrome::pane::AccountStrip::new()
                     .account_data(account_data_cached.as_ref().map(|(a, _, _)| a))
@@ -1567,8 +1569,8 @@ pub(crate) fn render(
         // ── "+N more" chip ──────────────────────────────────────────────────
         if hidden_count > 0 {
             let chip_y = base_y - visible_indices.len() as f32 * toast_pitch - chip_h - 2.0;
-            let chip_col = color_alpha(t.dim, alpha_muted());
-            let chip_bg  = color_alpha(t.toolbar_bg, alpha_muted());
+            let chip_col = tint(t, Tone::Dim, alpha_muted());
+            let chip_bg  = tint(t, Tone::Surface, alpha_muted());
             egui::Window::new("toast_v2_chip")
                 .id(Id::new("toast_v2_chip"))
                 .fixed_pos(pos2(screen.left() + LEFT, chip_y))
@@ -1741,7 +1743,7 @@ pub(crate) fn render(
                     ui.set_max_width(tip_w);
                     ui.label(TextStyle::NumericLg.as_rich(&tip.sym, t.text));
                     ui.horizontal(|ui| {
-                        ui.label(TextStyle::Numeric.as_rich(&format!("${:.2}", tip.price), color_alpha(t.text,220)));
+                        ui.label(TextStyle::Numeric.as_rich(&format!("${:.2}", tip.price), tint(t, Tone::Text, 220)));
                         ui.label(TextStyle::Numeric.as_rich(&format!("{:+.2}%", change_pct), chg_col));
                     });
                     ui.add_space(gap_sm()); ui.separator(); ui.add_space(gap_sm());
@@ -1751,7 +1753,7 @@ pub(crate) fn render(
                             ui.label(TextStyle::MonoSm.as_rich(&format!("{:.2}", tip.day_low), dim));
                             let bar_w = 60.0;
                             let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
-                            ui.painter().rect_filled(bar_rect, 2.0, color_alpha(t.text,15));
+                            ui.painter().rect_filled(bar_rect, 2.0, tint(t, Tone::Text, 15));
                             let range = tip.day_high - tip.day_low;
                             if range > 0.0 {
                                 let pos = ((tip.price - tip.day_low) / range).clamp(0.0, 1.0);
@@ -1766,7 +1768,7 @@ pub(crate) fn render(
                             ui.label(TextStyle::MonoSm.as_rich(&format!("{:.0}", tip.low_52wk), dim));
                             let bar_w = 60.0;
                             let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
-                            ui.painter().rect_filled(bar_rect, 2.0, color_alpha(t.text,15));
+                            ui.painter().rect_filled(bar_rect, 2.0, tint(t, Tone::Text, 15));
                             let range = tip.high_52wk - tip.low_52wk;
                             if range > 0.0 {
                                 let pos = ((tip.price - tip.low_52wk) / range).clamp(0.0, 1.0);
@@ -1786,7 +1788,7 @@ pub(crate) fn render(
                     }
                     if tip.earnings_days >= 0 && tip.earnings_days <= 14 {
                         ui.add_space(gap_xs());
-                        ui.label(TextStyle::MonoSm.as_rich(&format!("{} Earnings in {} days", Icon::LIGHTNING, tip.earnings_days), color_alpha(t.accent, alpha_heavy())));
+                        ui.label(TextStyle::MonoSm.as_rich(&format!("{} Earnings in {} days", Icon::LIGHTNING, tip.earnings_days), tint(t, Tone::Accent, alpha_heavy())));
                     }
                     if !tip.tags.is_empty() {
                         ui.add_space(gap_xs());
