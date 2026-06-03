@@ -10,6 +10,7 @@ use egui::{Color32, CornerRadius, FontId, Pos2, Response, Sense, Ui, Vec2, Widge
 
 use super::tag::TagTone;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 
 #[derive(Clone, Copy)]
 enum BadgeKind {

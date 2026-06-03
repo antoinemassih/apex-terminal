@@ -27,6 +27,7 @@
 use egui::{Color32, Context, CornerRadius, Pos2, Rect, Sense, Stroke, Ui};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::tokens as st;
 
 #[derive(Default)]
@@ -111,14 +112,14 @@ impl<'a> ToolPopover<'a> {
     ) -> ToolPopoverResponse {
         let mut response = ToolPopoverResponse::default();
         let radius = st::r_sm_cr();
-        let bg = theme.surface();
-        let border = theme.border();
+        let bg = palette_ct(theme).base(Tone::Surface);
+        let border = palette_ct(theme).base(Tone::Border);
         let title  = self.title;
         let body_pad_x = self.body_pad_x;
         let body_pad_y = self.body_pad_y;
         let mut footer = self.footer;
-        let text_color = theme.text();
-        let dim_color  = theme.dim();
+        let text_color = palette_ct(theme).base(Tone::Text);
+        let dim_color  = palette_ct(theme).base(Tone::Dim);
         let border_col = border;
 
         let area = egui::Area::new(egui::Id::new(self.id))

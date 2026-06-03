@@ -47,6 +47,7 @@
 use egui::{Color32, Context, CornerRadius, Pos2, Rect, Stroke, Ui};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::{Size as KitSize, Variant};
 use super::{Button, Tooltip};
 use crate::ui_kit::icons::Icon;
@@ -189,8 +190,8 @@ impl<'a> ToolOverlay<'a> {
     ) -> ToolOverlayResponse {
         let mut response = ToolOverlayResponse::default();
         let radius = st::r_md_cr();
-        let bg = theme.surface();
-        let border = theme.border();
+        let bg = palette_ct(theme).base(Tone::Surface);
+        let border = palette_ct(theme).base(Tone::Border);
 
         // Build the underlying egui::Window. Movable when draggable, fixed
         // otherwise. title_bar(false) — we paint our own header strip.
@@ -232,8 +233,8 @@ impl<'a> ToolOverlay<'a> {
         let mut footer  = self.footer;
         let mut header_leading  = self.header_leading;
         let mut header_trailing = self.header_trailing;
-        let dim         = theme.dim();
-        let text_color  = theme.text();
+        let dim         = palette_ct(theme).base(Tone::Dim);
+        let text_color  = palette_ct(theme).base(Tone::Text);
         let border_col  = border;
 
         win.show(ctx, |ui| {

@@ -148,7 +148,7 @@ impl<'a, T: Copy + PartialEq + 'a> SegmentedControl<'a, T> {
 
         // ── Connected mode: draw the outer container ──────────────────────
         if self.connected {
-            let fill = theme.surface();
+            let fill = palette_ct(theme).base(Tone::Surface);
             painter.rect_filled(total_rect, cr, fill);
             painter.rect_stroke(total_rect, cr, Stroke::new(st::stroke_thin(), border), StrokeKind::Inside);
         }

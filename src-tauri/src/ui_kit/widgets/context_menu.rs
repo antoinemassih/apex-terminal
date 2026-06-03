@@ -24,6 +24,7 @@
 use egui::{Align2, Color32, FontId, Id, Pos2, Response, RichText, Sense, Stroke, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::motion;
 
 use crate::ui_kit::widgets::frames::{BorderAlpha, PopupFrame};
