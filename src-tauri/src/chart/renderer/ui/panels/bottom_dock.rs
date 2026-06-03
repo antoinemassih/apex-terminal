@@ -353,20 +353,25 @@ fn draw_notifications(ui: &mut egui::Ui, t: &Theme) {
         return;
     }
 
-    egui::ScrollArea::vertical().id_salt("dock_notifs").auto_shrink([false, false]).show(ui, |ui| {
-        for n in &hist {
-            let col = n.severity.color(t);
-            ui.horizontal(|ui| {
-                ui.add(MonospaceCode::new("●").size_px(font_xs()).color(col));
-                ui.add(MonospaceCode::new(&format!("{:>6}", ago(n.created.elapsed())))
-                    .size_px(font_xs()).color(color_half(t.dim)));
-                if let Some(src) = n.source {
-                    ui.add(MonospaceCode::new(&format!("[{}]", src)).size_px(font_xs()).color(t.dim).gamma(0.6));
-                }
-                ui.add(MonospaceCode::new(&n.message).size_px(font_sm()).color(t.text));
-            });
-        }
-    });
+    // Virtualized: only build the rows actually visible in the viewport, not
+    // all ~300. Keeps per-frame cost constant regardless of history depth
+    // (fixes the bottom_dock render creep as the ring fills toward its cap).
+    let row_h = font_sm() + ui.spacing().item_spacing.y;
+    egui::ScrollArea::vertical().id_salt("dock_notifs").auto_shrink([false, false])
+        .show_rows(ui, row_h, hist.len(), |ui, range| {
+            for n in &hist[range] {
+                let col = n.severity.color(t);
+                ui.horizontal(|ui| {
+                    ui.add(MonospaceCode::new("●").size_px(font_xs()).color(col));
+                    ui.add(MonospaceCode::new(&format!("{:>6}", ago(n.created.elapsed())))
+                        .size_px(font_xs()).color(color_half(t.dim)));
+                    if let Some(src) = n.source {
+                        ui.add(MonospaceCode::new(&format!("[{}]", src)).size_px(font_xs()).color(t.dim).gamma(0.6));
+                    }
+                    ui.add(MonospaceCode::new(&n.message).size_px(font_sm()).color(t.text));
+                });
+            }
+        });
 }
 
 // ── Formatting helpers ──────────────────────────────────────────────────────
