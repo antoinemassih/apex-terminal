@@ -19,6 +19,7 @@ use egui::Color32;
 use super::theme::ComponentTheme;
 use super::tokens::Variant;
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::sx::{palette_ct, Shade, Tone};
 
 // ── ButtonState ───────────────────────────────────────────────────────────────
 
@@ -147,12 +148,17 @@ impl<'a> ButtonStyle for DefaultButtonStyle<'a> {
 
     fn bg(&self, variant: Variant, state: ButtonState) -> Color32 {
         let t = self.theme;
+        // Unified Sx palette — filled variants step along the tone's shade ramp
+        // (S500 idle → S400 hover → S600 press) instead of ad-hoc lighten/darken
+        // magic numbers, so the whole button system reads from one ramp source.
+        let pal = palette_ct(t);
         let transparent = Color32::TRANSPARENT;
         let disabled_alpha = |c: Color32| -> Color32 {
             Color32::from_rgba_premultiplied(c.r(), c.g(), c.b(),
                 (c.a() as f32 * 0.5).round() as u8)
         };
-        // Inline helpers to avoid reaching outside this crate boundary.
+        // Surface-lift helper (Secondary's idle→hover lighten — not a ramp step
+        // because it nudges the neutral surface, not a semantic tone).
         let lighten = |c: Color32, amt: f32| -> Color32 {
             let lerp = |x: u8| -> u8 {
                 let v = x as f32 + (255.0 - x as f32) * amt.clamp(0.0, 1.0);
@@ -160,22 +166,13 @@ impl<'a> ButtonStyle for DefaultButtonStyle<'a> {
             };
             Color32::from_rgba_premultiplied(lerp(c.r()), lerp(c.g()), lerp(c.b()), c.a())
         };
-        let darken = |c: Color32, amt: f32| -> Color32 {
-            let f = (1.0 - amt).clamp(0.0, 1.0);
-            Color32::from_rgba_premultiplied(
-                (c.r() as f32 * f) as u8,
-                (c.g() as f32 * f) as u8,
-                (c.b() as f32 * f) as u8,
-                c.a(),
-            )
-        };
 
         let base = match variant {
             Variant::Primary => match state {
-                ButtonState::Idle   => t.accent(),
-                ButtonState::Hover  => lighten(t.accent(), 0.10),
-                ButtonState::Active | ButtonState::Pressed => darken(t.accent(), 0.08),
-                ButtonState::Disabled | ButtonState::Loading => t.accent(),
+                ButtonState::Idle   => pal.base(Tone::Accent),
+                ButtonState::Hover  => pal.shade(Tone::Accent, Shade::S400),
+                ButtonState::Active | ButtonState::Pressed => pal.shade(Tone::Accent, Shade::S600),
+                ButtonState::Disabled | ButtonState::Loading => pal.base(Tone::Accent),
             },
             Variant::Secondary => match state {
                 ButtonState::Idle  => t.surface(),
@@ -192,10 +189,10 @@ impl<'a> ButtonStyle for DefaultButtonStyle<'a> {
                 ButtonState::Disabled | ButtonState::Loading => transparent,
             },
             Variant::Danger => match state {
-                ButtonState::Idle   => t.bear(),
-                ButtonState::Hover  => lighten(t.bear(), 0.10),
-                ButtonState::Active | ButtonState::Pressed => darken(t.bear(), 0.08),
-                ButtonState::Disabled | ButtonState::Loading => t.bear(),
+                ButtonState::Idle   => pal.base(Tone::Bear),
+                ButtonState::Hover  => pal.shade(Tone::Bear, Shade::S400),
+                ButtonState::Active | ButtonState::Pressed => pal.shade(Tone::Bear, Shade::S600),
+                ButtonState::Disabled | ButtonState::Loading => pal.base(Tone::Bear),
             },
             Variant::Link | Variant::Tab | Variant::TextOnly |
             Variant::Chrome | Variant::InlineClose => transparent,
@@ -551,29 +548,14 @@ impl<'a> ButtonStyle for AccentEmphasisStyle<'a> {
     }
 
     fn bg(&self, _variant: Variant, state: ButtonState) -> Color32 {
-        let t = self.theme;
-        let acc = t.accent();
+        // Same Sx accent ramp as DefaultButtonStyle's filled variants — one
+        // shared source of "lighter on hover, darker on press".
+        let pal = palette_ct(self.theme);
         match state {
-            ButtonState::Disabled | ButtonState::Loading => st::color_alpha(acc, 90),
-            ButtonState::Idle     => acc,
-            ButtonState::Hover    => {
-                // Lighten by ~10%
-                let lerp = |x: u8| -> u8 {
-                    let v = x as f32 + (255.0 - x as f32) * 0.10;
-                    v.round().clamp(0.0, 255.0) as u8
-                };
-                Color32::from_rgba_premultiplied(lerp(acc.r()), lerp(acc.g()), lerp(acc.b()), acc.a())
-            }
-            ButtonState::Active | ButtonState::Pressed => {
-                // Darken by ~8%
-                let f = 0.92_f32;
-                Color32::from_rgba_premultiplied(
-                    (acc.r() as f32 * f) as u8,
-                    (acc.g() as f32 * f) as u8,
-                    (acc.b() as f32 * f) as u8,
-                    acc.a(),
-                )
-            }
+            ButtonState::Disabled | ButtonState::Loading => st::color_alpha(pal.base(Tone::Accent), 90),
+            ButtonState::Idle     => pal.base(Tone::Accent),
+            ButtonState::Hover    => pal.shade(Tone::Accent, Shade::S400),
+            ButtonState::Active | ButtonState::Pressed => pal.shade(Tone::Accent, Shade::S600),
         }
     }
 
