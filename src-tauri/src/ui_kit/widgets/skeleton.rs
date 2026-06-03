@@ -16,6 +16,7 @@ use egui::{CornerRadius, Pos2, Response, Sense, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::sx::{palette_ct, Tone};
 
 #[derive(Clone, Copy)]
 enum Shape {
@@ -69,7 +70,7 @@ fn paint_rect(ui: &mut Ui, theme: &dyn ComponentTheme, w: f32, h: f32, radius: f
     let cr = CornerRadius::same(radius as u8);
 
     // Base.
-    painter.rect_filled(rect, cr, st::color_alpha(theme.dim(), 40));
+    painter.rect_filled(rect, cr, st::color_alpha(palette_ct(theme).base(Tone::Dim), 40));
 
     // Shimmer band, ~1.4s cycle.
     let time = ui.input(|i| i.time);
@@ -79,8 +80,8 @@ fn paint_rect(ui: &mut Ui, theme: &dyn ComponentTheme, w: f32, h: f32, radius: f
     let x_left = rect.left() - band_w + phase * total_travel;
 
     // Three vertical strips for a soft gradient feel.
-    let band_color_full = st::color_alpha(theme.text(), 24);
-    let band_color_soft = st::color_alpha(theme.text(), 12);
+    let band_color_full = st::color_alpha(palette_ct(theme).base(Tone::Text), 24);
+    let band_color_soft = st::color_alpha(palette_ct(theme).base(Tone::Text), 12);
     let strips = [
         (-0.5, 0.5, band_color_soft),
         (-0.25, 0.25, band_color_full),
@@ -117,14 +118,14 @@ fn paint_lines(ui: &mut Ui, theme: &dyn ComponentTheme, count: u32, w: f32, radi
         let rect = egui::Rect::from_min_size(Pos2::new(outer.left(), y), Vec2::new(line_w, line_h));
         let painter = ui.painter_at(rect);
         let cr = CornerRadius::same(radius as u8);
-        painter.rect_filled(rect, cr, st::color_alpha(theme.dim(), 40));
+        painter.rect_filled(rect, cr, st::color_alpha(palette_ct(theme).base(Tone::Dim), 40));
 
         let time = ui.input(|i| i.time);
         let phase = ((time / 1.4) % 1.0) as f32;
         let band_w = (line_w * 0.30).max(20.0);
         let total_travel = line_w + band_w;
         let x_left = rect.left() - band_w + phase * total_travel;
-        let band_color = st::color_alpha(theme.text(), 24);
+        let band_color = st::color_alpha(palette_ct(theme).base(Tone::Text), 24);
         let x0 = x_left.max(rect.left());
         let x1 = (x_left + band_w).min(rect.right());
         if x1 > x0 {

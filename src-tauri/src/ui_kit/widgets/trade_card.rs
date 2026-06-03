@@ -11,6 +11,7 @@
 use egui::{Response, Ui};
 use super::theme::ComponentTheme;
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::sx::{palette_ct, Tone};
 
 // ── Data — mirrors JournalEntry fields used by draw_card ─────────────────────
 
@@ -54,15 +55,16 @@ impl<'a> TradeCard<'a> {
         let (card_rect, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
         let p = ui.painter();
 
+        let pal = palette_ct(theme);
         let is_win = entry.pnl > 0.0;
-        let pnl_col = if is_win { theme.bull() } else { theme.bear() };
-        let dir_col = if entry.side == "Long" { theme.bull() } else { theme.bear() };
+        let pnl_col = if is_win { pal.base(Tone::Bull) } else { pal.base(Tone::Bear) };
+        let dir_col = if entry.side == "Long" { pal.base(Tone::Bull) } else { pal.base(Tone::Bear) };
 
         let bg = if resp.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            color_alpha(theme.border(), alpha_subtle())
+            color_alpha(pal.base(Tone::Border), alpha_subtle())
         } else {
-            color_alpha(theme.border(), 8)
+            color_alpha(pal.base(Tone::Border), 8)
         };
         p.rect_filled(card_rect, radius_sm(), bg);
 
@@ -79,7 +81,7 @@ impl<'a> TradeCard<'a> {
 
         // Row 1: symbol · side · P&L
         p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
-            entry.symbol, egui::FontId::monospace(font_sm()), theme.text());
+            entry.symbol, egui::FontId::monospace(font_sm()), pal.base(Tone::Text));
         p.text(egui::pos2(cx + 50.0, cy + 4.0), egui::Align2::LEFT_CENTER,
             entry.side, egui::FontId::monospace(font_xs()), dir_col);
         let sign = if entry.pnl >= 0.0 { "+" } else { "" };
@@ -90,7 +92,7 @@ impl<'a> TradeCard<'a> {
 
         // Row 2: setup · duration · R-multiple
         p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
-            entry.setup_type, st::mono_sm(), color_subtle(theme.accent()));
+            entry.setup_type, st::mono_sm(), color_subtle(pal.base(Tone::Accent)));
         let dur = if entry.duration_mins >= 1440 {
             format!("{:.0}d", entry.duration_mins as f64 / 1440.0)
         } else if entry.duration_mins >= 60 {
@@ -99,8 +101,8 @@ impl<'a> TradeCard<'a> {
             format!("{}m", entry.duration_mins)
         };
         p.text(egui::pos2(cx + 60.0, cy + 4.0), egui::Align2::LEFT_CENTER,
-            &dur, st::mono_sm(), color_half(theme.dim()));
-        let r_col = if entry.r_multiple > 0.0 { theme.bull() } else { theme.bear() };
+            &dur, st::mono_sm(), color_half(pal.base(Tone::Dim)));
+        let r_col = if entry.r_multiple > 0.0 { pal.base(Tone::Bull) } else { pal.base(Tone::Bear) };
         p.text(egui::pos2(cx + 90.0, cy + 4.0), egui::Align2::LEFT_CENTER,
             &format!("{:+.1}R", entry.r_multiple), st::mono_sm(), r_col);
         cy += 14.0;
@@ -108,15 +110,15 @@ impl<'a> TradeCard<'a> {
         // Row 3: entry→exit prices · timeframe
         p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
             &format!("{:.2} \u{2192} {:.2}", entry.entry_price, entry.exit_price),
-            st::mono_sm(), color_dim(theme.dim()));
+            st::mono_sm(), color_dim(pal.base(Tone::Dim)));
         p.text(egui::pos2(card_rect.right() - 8.0, cy + 4.0), egui::Align2::RIGHT_CENTER,
-            entry.timeframe, st::mono_sm(), color_dim(theme.dim()));
+            entry.timeframe, st::mono_sm(), color_dim(pal.base(Tone::Dim)));
 
         // Optional notes row
         if !entry.notes.is_empty() {
             cy += 14.0;
             p.text(egui::pos2(cx, cy + 4.0), egui::Align2::LEFT_CENTER,
-                entry.notes, st::mono_sm(), st::color_dim(theme.dim()));
+                entry.notes, st::mono_sm(), st::color_dim(pal.base(Tone::Dim)));
         }
 
         ui.add_space(gap_xs());

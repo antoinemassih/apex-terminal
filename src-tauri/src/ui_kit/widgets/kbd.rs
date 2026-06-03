@@ -10,6 +10,7 @@ use egui::{CornerRadius, FontId, Pos2, Response, Sense, Stroke, StrokeKind, Ui, 
 use super::theme::ComponentTheme;
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::sx::{palette_ct, Tone};
 
 #[must_use = "Kbd does nothing until `.show(ui, theme)` or `ui.add(kbd)` is called"]
 pub struct Kbd<'a> {
@@ -48,10 +49,11 @@ impl<'a> Kbd<'a> {
         let pad_y: f32 = 1.0;
         let cap_h: f32 = font_size + pad_y * 2.0 + 2.0;
         let plus_gap: f32 = 3.0;
-        let bg = st::color_alpha(theme.surface(), 200);
-        let border = theme.border();
-        let text_col = theme.text();
-        let dim = theme.dim();
+        let pal = palette_ct(theme);
+        let bg = st::color_alpha(pal.base(Tone::Surface), 200);
+        let border = pal.base(Tone::Border);
+        let text_col = pal.base(Tone::Text);
+        let dim = pal.base(Tone::Dim);
 
         // Pre-measure each cap.
         let mut cap_widths: Vec<f32> = Vec::with_capacity(self.keys.len());

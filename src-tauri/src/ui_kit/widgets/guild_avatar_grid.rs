@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use super::theme::ComponentTheme;
 use super::Tooltip;
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::sx::{palette_ct, Tone};
 
 // ── Widget ────────────────────────────────────────────────────────────────────
 
@@ -119,7 +120,7 @@ impl<'a> GuildAvatarGrid<'a> {
                 // Initials bg is always dark (blurple/gray-70/gray-50); contrast_fg
                 // returns WHITE, same as before, but correct if bg ever changes.
                 // Idle initials text follows theme.text(); was hardcoded gray-180.
-                let text_col = if selected || hovered { st::contrast_fg(bg) } else { theme.text() };
+                let text_col = if selected || hovered { st::contrast_fg(bg) } else { palette_ct(theme).base(Tone::Text) };
                 ui.painter().text(icon_rect.center(), egui::Align2::CENTER_CENTER, &abbrev, font, text_col);
             }
 
@@ -131,7 +132,7 @@ impl<'a> GuildAvatarGrid<'a> {
                 let dot_center = egui::pos2(icon_rect.center().x, icon_rect.bottom() + 4.0);
                 // Hover dot follows theme.dim() so it scales with palette;
                 // was hardcoded gray-120.
-                ui.painter().circle_filled(dot_center, 1.5, theme.dim());
+                ui.painter().circle_filled(dot_center, 1.5, palette_ct(theme).base(Tone::Dim));
             }
 
             if resp.clicked() {

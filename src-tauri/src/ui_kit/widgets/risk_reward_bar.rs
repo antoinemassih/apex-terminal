@@ -11,6 +11,7 @@
 use egui::{Response, Sense, Ui, Vec2};
 use super::theme::ComponentTheme;
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::sx::{palette_ct, Tone};
 
 /// Horizontal 2-segment risk/reward bar.
 #[must_use = "RiskRewardBar does nothing until `.show(ui, theme)` is called"]
@@ -58,6 +59,7 @@ impl RiskRewardBar {
             Sense::hover(),
         );
         let p = ui.painter();
+        let pal = palette_ct(theme);
 
         // Background track
         let border_col = st::color_alpha(
@@ -77,7 +79,7 @@ impl RiskRewardBar {
                 egui::vec2(self.width * risk_pct, self.height),
             ),
             2.0,
-            st::color_alpha(theme.bear(), st::alpha_dim()),
+            st::color_alpha(pal.base(Tone::Bear), st::alpha_dim()),
         );
 
         // Reward segment (bull)
@@ -87,14 +89,14 @@ impl RiskRewardBar {
                 egui::vec2(self.width * (1.0 - risk_pct), self.height),
             ),
             2.0,
-            st::color_alpha(theme.bull(), st::alpha_dim()),
+            st::color_alpha(pal.base(Tone::Bull), st::alpha_dim()),
         );
 
         // Divider dot
         p.circle_filled(
             egui::pos2(bar_rect.left() + self.width * risk_pct, bar_rect.center().y),
             3.0,
-            theme.text(),
+            pal.base(Tone::Text),
         );
 
         if self.show_label {
@@ -104,7 +106,7 @@ impl RiskRewardBar {
                 egui::Align2::CENTER_CENTER,
                 format!("R/R: {:.2}", rr),
                 egui::FontId::monospace(st::font_xs()),
-                theme.text(),
+                pal.base(Tone::Text),
             );
         }
 

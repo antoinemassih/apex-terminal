@@ -13,6 +13,7 @@
 
 use egui::{Color32, Response, Sense, Ui};
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 
 /// Six discrete opacity levels used across the app. Re-exported so panels can
 /// share the same constant instead of defining their own.
@@ -78,8 +79,9 @@ impl<'a> OpacityPicker<'a> {
     }
 
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
-        let accent = theme.accent();
-        let dim = theme.dim();
+        let pal = palette_ct(theme);
+        let accent = pal.base(Tone::Accent);
+        let dim = pal.base(Tone::Dim);
         let cur_idx = closest_level_idx(self.levels, *self.value);
         let total_w = (self.seg_w + self.gap) * self.levels.len() as f32;
 
