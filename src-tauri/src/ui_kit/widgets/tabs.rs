@@ -37,6 +37,7 @@ use super::motion;
 use super::theme::ComponentTheme;
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::icons::Icon;
 
 // ── Public types ───────────────────────────────────────────────────────────────
@@ -833,6 +834,11 @@ fn paint_one_tab_painter(
         }
     };
 
+    // Active/hover fills source their base from the unified Sx palette (S500 ==
+    // theme base, byte-identical). Pane keeps color_dim() so it stays matched to
+    // chrome::painter_pane's tab strip.
+    let pal = palette_ct(theme);
+
     // Background per treatment.
     match treatment {
         TabTreatment::Line => {
@@ -844,12 +850,12 @@ fn paint_one_tab_painter(
         TabTreatment::Segmented => {
             if is_active {
                 let inset = rect.shrink2(Vec2::new(2.0, 2.0));
-                let bg = motion::fade_in(theme.bg(), active_t);
+                let bg = motion::fade_in(pal.base(Tone::Bg), active_t);
                 painter.rect_filled(inset, CornerRadius::same(st::radius_sm() as u8), alpha(bg));
             } else if hover_t > 0.01 {
                 let bg = motion::lerp_color(
                     Color32::TRANSPARENT,
-                    st::color_alpha(theme.bg(), 100),
+                    st::color_alpha(pal.base(Tone::Bg), 100),
                     hover_t,
                 );
                 painter.rect_filled(rect.shrink2(Vec2::new(2.0, 2.0)),
@@ -858,12 +864,12 @@ fn paint_one_tab_painter(
         }
         TabTreatment::Filled => {
             if is_active {
-                let bg = motion::fade_in(theme.surface(), active_t);
+                let bg = motion::fade_in(pal.base(Tone::Surface), active_t);
                 painter.rect_filled(rect, CornerRadius::same(st::radius_sm() as u8), alpha(bg));
             } else if hover_t > 0.01 {
                 let bg = motion::lerp_color(
                     Color32::TRANSPARENT,
-                    st::color_alpha(theme.surface(), 120),
+                    st::color_alpha(pal.base(Tone::Surface), 120),
                     hover_t,
                 );
                 painter.rect_filled(rect, CornerRadius::same(st::radius_sm() as u8), alpha(bg));
@@ -881,12 +887,12 @@ fn paint_one_tab_painter(
             let r_md = st::radius_md() as u8;
             let corners = CornerRadius { nw: r_md, ne: r_md, sw: 0, se: 0 };
             if is_active {
-                let bg = motion::fade_in(st::color_dim(theme.bg()), active_t);
+                let bg = motion::fade_in(st::color_dim(pal.base(Tone::Bg)), active_t);
                 painter.rect_filled(rect, corners, alpha(bg));
             } else if hover_t > 0.01 {
                 let bg = motion::lerp_color(
                     Color32::TRANSPARENT,
-                    st::color_alpha(theme.border(), 40),
+                    st::color_alpha(pal.base(Tone::Border), 40),
                     hover_t,
                 );
                 painter.rect_filled(rect, corners, alpha(bg));
@@ -900,9 +906,9 @@ fn paint_one_tab_painter(
             // separators + the full-width hairline below the strip are painted
             // post-loop in `paint_tabs`.
             if is_active {
-                let bg = motion::fade_in(st::color_alpha(theme.surface(), 220), active_t);
+                let bg = motion::fade_in(st::color_alpha(pal.base(Tone::Surface), 220), active_t);
                 painter.rect_filled(rect, CornerRadius::ZERO, alpha(bg));
-                let accent_col = motion::fade_in(theme.accent(), active_t);
+                let accent_col = motion::fade_in(pal.base(Tone::Accent), active_t);
                 painter.rect_filled(
                     Rect::from_min_size(
                         Pos2::new(rect.left(), rect.top()),
@@ -912,7 +918,7 @@ fn paint_one_tab_painter(
                     alpha(accent_col),
                 );
                 let border = motion::fade_in(
-                    st::color_alpha(theme.border(), st::alpha_strong()),
+                    st::color_alpha(pal.base(Tone::Border), st::alpha_strong()),
                     active_t,
                 );
                 let bs = Stroke::new(st::stroke_thin(), alpha(border));

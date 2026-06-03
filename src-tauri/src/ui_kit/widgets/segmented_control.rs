@@ -19,6 +19,7 @@ use super::theme::ComponentTheme;
 use super::tokens::Size;
 use super::motion;
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::sx::{palette_ct, Tone};
 
 /// Horizontal connected-pill selector for picking one of N fixed options.
 ///
@@ -139,8 +140,9 @@ impl<'a, T: Copy + PartialEq + 'a> SegmentedControl<'a, T> {
             return outer_resp;
         }
 
-        let accent = theme.accent();
-        let border = theme.border();
+        let pal = palette_ct(theme);
+        let accent = pal.base(Tone::Accent);
+        let border = pal.base(Tone::Border);
         let painter = ui.painter_at(total_rect);
         let cr = CornerRadius::same(radius as u8);
 
@@ -180,9 +182,9 @@ impl<'a, T: Copy + PartialEq + 'a> SegmentedControl<'a, T> {
             let active_t = motion::ease_bool(ui.ctx(), seg_id.with("a"), is_active, motion::MED);
 
             // Background
-            let idle_bg   = if self.connected { Color32::TRANSPARENT } else { theme.surface() };
+            let idle_bg   = if self.connected { Color32::TRANSPARENT } else { pal.base(Tone::Surface) };
             let active_bg = st::color_alpha(accent, st::alpha_tint());
-            let hover_bg  = st::color_alpha(theme.text(), 18);
+            let hover_bg  = st::color_alpha(pal.base(Tone::Text), 18);
 
             let mut bg = motion::lerp_color(idle_bg, hover_bg, hover_t);
             bg = motion::lerp_color(bg, active_bg, active_t);
@@ -225,13 +227,13 @@ impl<'a, T: Copy + PartialEq + 'a> SegmentedControl<'a, T> {
             }
 
             // Label
-            let fg_idle   = st::color_alpha(theme.dim(), 200);
+            let fg_idle   = st::color_alpha(pal.base(Tone::Dim), 200);
             let fg_active = accent;
             let fg_t = if is_active { 1.0_f32 } else { hover_t * 0.4 };
             let mut fg = motion::lerp_color(fg_idle, fg_active, active_t);
             // Subtle brighten on hover when not active.
             if !is_active {
-                fg = motion::lerp_color(fg, theme.text(), fg_t);
+                fg = motion::lerp_color(fg, pal.base(Tone::Text), fg_t);
             }
             if self.disabled {
                 fg = st::color_alpha(fg, (fg.a() as f32 * 0.5) as u8);
