@@ -1445,6 +1445,36 @@ pub(crate) fn region_gap() -> f32 { current().region_gap }
 // and suppress the internal hairline dividers; flat styles (Meridien/Octave)
 // space the buttons and rely on dividers.
 
+// ── Ramp-based shading (bridge to the `sx` color system) ──────────────────────
+// Real lightness shades (Tailwind-style 50…950) for general use, backed by the
+// per-theme cached `Palette`. Prefer these over ad-hoc `color_alpha(tone, a)` in
+// NEW code that wants a genuine shade rather than an alpha tint. Existing
+// `color_alpha` sites are migrated incrementally (each is a visual change).
+
+/// A genuine ramp shade of a semantic tone (e.g. `shade(t, Tone::Accent, Shade::S600)`).
+#[inline]
+pub(crate) fn shade(
+    t: &crate::chart_renderer::gpu::Theme,
+    tone: crate::ui_kit::sx::Tone,
+    s: crate::ui_kit::sx::Shade,
+) -> Color32 {
+    crate::ui_kit::sx::palette(t).shade(tone, s)
+}
+
+/// The base (500) color of a semantic tone at an explicit alpha — the ramp
+/// system's equivalent of `color_alpha`, but tone-addressed. Part of the public
+/// ramp API for incremental adoption.
+#[allow(dead_code)]
+#[inline]
+pub(crate) fn tint(
+    t: &crate::chart_renderer::gpu::Theme,
+    tone: crate::ui_kit::sx::Tone,
+    alpha: u8,
+) -> Color32 {
+    let c = crate::ui_kit::sx::palette(t).base(tone);
+    Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha)
+}
+
 /// True when the active style draws an enclosure around button groups.
 /// When false, callers keep their inter-button dividers/separators.
 #[inline]

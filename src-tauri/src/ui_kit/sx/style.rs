@@ -12,6 +12,13 @@ use super::color::{palette, Palette, Shade, Tone};
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
+#[inline]
+fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
+    let t = t.clamp(0.0, 1.0);
+    let l = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
+    Color32::from_rgba_unmultiplied(l(a.r(), b.r()), l(a.g(), b.g()), l(a.b(), b.b()), l(a.a(), b.a()))
+}
+
 /// How a box is filled.
 #[derive(Clone, Copy)]
 pub enum Fill {
@@ -209,6 +216,40 @@ impl Sx {
         }
     }
 
+    /// Paint with a motion-eased blend from `Normal` toward `Hover` by `hover_t`
+    /// and toward `Active` by `active_t` (both 0..1, from egui's `animate_bool`).
+    /// Fill/border colors lerp so the box fades between states like the legacy
+    /// `Button`'s motion engine — closing the main Sx↔Button capability gap.
+    fn paint_eased(
+        &self, ui: &Ui, slot: egui::layers::ShapeIdx, rect: egui::Rect,
+        hover_t: f32, active_t: f32, pal: &Palette,
+    ) {
+        let base = self.resolved(StyleState::Normal);
+        let hov  = self.resolved(StyleState::Hover);
+        let act  = self.resolved(StyleState::Active);
+        let cr = CornerRadius::same(base.radius.unwrap_or(0.0) as u8);
+
+        // Fill: lerp Normal→Hover→Active. A missing fill is treated as transparent.
+        let fill_of = |d: &SxDelta| d.fill.map(|f| f.resolve(pal)).unwrap_or(Color32::TRANSPARENT);
+        let mut fc = lerp_color(fill_of(&base), fill_of(&hov), hover_t);
+        fc = lerp_color(fc, fill_of(&act), active_t);
+        if fc.a() > 0 {
+            ui.painter().set(slot, egui::Shape::rect_filled(rect, cr, fc));
+        }
+
+        // Border: lerp the same way (transparent when absent).
+        let border_of = |d: &SxDelta| d.border.map(|b| (b.color.resolve(pal), b.width))
+            .unwrap_or((Color32::TRANSPARENT, base.border.map(|b| b.width).unwrap_or(1.0)));
+        let (bc_n, bw) = border_of(&base);
+        let (bc_h, _)  = border_of(&hov);
+        let (bc_a, _)  = border_of(&act);
+        let mut bc = lerp_color(bc_n, bc_h, hover_t);
+        bc = lerp_color(bc, bc_a, active_t);
+        if bc.a() > 0 {
+            ui.painter().rect_stroke(rect, cr, Stroke::new(bw, bc), StrokeKind::Inside);
+        }
+    }
+
     /// Paint this style's box at an explicit `rect` into a caller-reserved slot.
     /// For decorations whose geometry the caller already knows (e.g. a
     /// button-group enclosure spanning measured button bounds). The slot must
@@ -248,11 +289,12 @@ impl Sx {
             body(ui)
         });
         let rect = ir.response.rect;
-        let resp = ui.interact(rect, ui.id().with(("sx", rect.min.x.to_bits(), rect.min.y.to_bits())), sense);
-        let st = if resp.is_pointer_button_down_on() { StyleState::Active }
-                 else if resp.hovered() { StyleState::Hover }
-                 else { StyleState::Normal };
-        self.paint(ui, slot, rect, st, &pal);
+        let id = ui.id().with(("sx", rect.min.x.to_bits(), rect.min.y.to_bits()));
+        let resp = ui.interact(rect, id, sense);
+        // Motion-eased state blend (egui's built-in animation; no extra deps).
+        let hover_t = ui.ctx().animate_bool(id.with("h"), resp.hovered());
+        let active_t = ui.ctx().animate_bool(id.with("a"), resp.is_pointer_button_down_on());
+        self.paint_eased(ui, slot, rect, hover_t, active_t, &pal);
         (resp, ir.inner)
     }
 

@@ -194,9 +194,11 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
             });
         }
         ui.add_space(gap_xs());
+        // Adopt the ramp bridge: a real lightness shade of `Dim`, not an alpha tint.
+        use crate::ui_kit::sx::{Shade, Tone};
         ui.label(egui::RichText::new(
-            "via ui_kit::sx — utilities + cva recipe, resolved against the active theme ramps. Hover for the accent ring."
-        ).size(9.0).italics().color(color_subtle(t.dim)));
+            "via ui_kit::sx — utilities + cva recipe + motion, resolved against the active theme ramps. Hover for the eased accent ring."
+        ).size(9.0).italics().color(shade(t, Tone::Dim, Shade::S300)));
     });
 
     // ── DENSITY override (Compact / Standard / Spacious) — P4.3 ──
