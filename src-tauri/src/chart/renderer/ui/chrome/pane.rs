@@ -126,7 +126,7 @@ impl<'a> Widget for PaneTimeframeBadge<'a> {
         ui.add(
             KitButton::new(label_ref)
                 .variant(Variant::Secondary)
-                .corner_radius(9.0) // TODO: off-token
+                .corner_radius(radius_lg()) // token: tracks CornerScale
                 .active(self.active)
                 .fg(fg),
         )
