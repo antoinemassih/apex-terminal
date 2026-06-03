@@ -10,6 +10,7 @@ use egui::{FontId, Pos2, Response, Sense, Stroke, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::sx::{palette_ct, Tone};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Orientation { Horizontal, Vertical }
@@ -53,7 +54,9 @@ impl<'a> Separator<'a> {
     pub fn spacing(mut self, px: f32) -> Self { self.spacing = Some(px); self }
 
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
-        let mut color = theme.border();
+        // Hairline color from the unified Sx Border tone (S500 == theme.border()).
+        let pal = palette_ct(theme);
+        let mut color = pal.base(Tone::Border);
         if self.faint {
             color = st::color_alpha(color, 80);
         }
@@ -73,7 +76,7 @@ impl<'a> Separator<'a> {
 
                     if let Some(label) = self.label.as_ref() {
                         let font_size = st::font_xs();
-                        let dim = theme.dim();
+                        let dim = pal.base(Tone::Dim);
                         let galley = ui.fonts(|f| f.layout_no_wrap(label.clone(), FontId::proportional(font_size), dim));
                         let lw = galley.rect.width();
                         let gap = st::gap_sm();
