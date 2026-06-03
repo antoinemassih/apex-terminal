@@ -1496,19 +1496,20 @@ impl ButtonGroupBox {
             egui::pos2(content.right() + pad, host.bottom() - 3.0),
         );
         if !rect.is_finite() || rect.width() < 4.0 { return; }
-        let cr = egui::CornerRadius::same(st.button_group_radius as u8);
-        if st.button_group_fill_alpha > 0 {
-            ui.painter().set(slot, egui::Shape::rect_filled(
-                rect, cr, color_alpha(t.toolbar_border, st.button_group_fill_alpha),
-            ));
-        }
-        if st.button_group_border_alpha > 0 {
-            ui.painter().rect_stroke(
-                rect, cr,
-                egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, st.button_group_border_alpha)),
-                egui::StrokeKind::Inside,
-            );
-        }
+
+        // The enclosure is now described as a composed `Sx` utility style and
+        // painted by the generic engine — no bespoke rect_filled/rect_stroke.
+        // `Tone::Border` resolves to `theme.toolbar_border`, so `bg_alpha` /
+        // `border_alpha` reproduce the exact legacy `color_alpha(toolbar_border, a)`.
+        // Adding a new group look is now `Sx` composition, not new paint code.
+        use crate::ui_kit::sx::{Sx, Tone, StyleState};
+        let sx = Sx::new()
+            .rounded(st.button_group_radius)
+            .when(st.button_group_fill_alpha > 0,
+                  |d| d.bg_alpha(Tone::Border, st.button_group_fill_alpha))
+            .when(st.button_group_border_alpha > 0,
+                  |d| d.border_alpha(Tone::Border, st.button_group_border_alpha, stroke_thin()));
+        sx.paint_into(ui, t, slot, rect, StyleState::Normal);
     }
 }
 
