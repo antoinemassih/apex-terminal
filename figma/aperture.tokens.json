@@ -1,0 +1,102 @@
+{
+  "_about": "Aperture design tokens — names match the apex-terminal Sx design system; values are the ApertureDesign Figma palette/metrics. Import with the Tokens Studio (Figma Tokens) plugin → it creates Figma Variables. Set the collection's MODE name to 'Aperture' (color) so a mode == a ColorScheme in code. Duplicate the mode + swap the `color.*` values to add MERIDIAN.",
+
+  "color": {
+    "_comment": "The 9 CORE Sx Tones. These are the only colors the engine resolves by name — every fill should bind to one of these (or a ramp step).",
+    "accent":  { "value": "#EF5B3B", "type": "color", "description": "brand / Flamingo — ticker symbols, +TICKET, primary CTAs" },
+    "bull":    { "value": "#4EC07A", "type": "color", "description": "positive / Emerald — up %, bid side" },
+    "bear":    { "value": "#D8503E", "type": "color", "description": "negative / Valencia — down %, ask side" },
+    "warn":    { "value": "#F5C64A", "type": "color", "description": "caution / Cream Can" },
+    "text":    { "value": "#F4ECE0", "type": "color", "description": "primary text / Merino — also the ACTIVE-tab swatch fill" },
+    "dim":     { "value": "#B6AD9D", "type": "color", "description": "secondary text / Nomad — inactive tab labels" },
+    "border":  { "value": "rgba(255,255,255,0.06)", "type": "color", "description": "hairline dividers / White 6%" },
+    "surface": { "value": "#1A1816", "type": "color", "description": "panel surface / Cod Gray (radius 20 panels, footer dock)" },
+    "bg":      { "value": "#000000", "type": "color", "description": "app canvas / Black" }
+  },
+
+  "colorExtended": {
+    "_comment": "NOT core Sx Tones — these bind to ComponentTheme's extra fields / ramp steps. Use only where the 9 tones can't express it (the Aperture design needs them).",
+    "dim-2":           { "value": "#76705F", "type": "color", "description": "deepest dim / Pablo — balances, version, inactive footer (≈ dim ramp 700)" },
+    "surface-raised":  { "value": "#272822", "type": "color", "description": "toolbar strip / Heavy Metal (one elevation over surface)" },
+    "surface-enclosure": { "value": "#1A1612", "type": "color", "description": "pill-group enclosure fill / Zeus — also active-tab TEXT color (contrast on Merino)" },
+    "enclosure-translucent": { "value": "rgba(26,22,18,0.6)", "type": "color", "description": "Zeus 60% — ticker-tab pill, icon-button bg" },
+    "border-variant":  { "value": "#1F1D1A", "type": "color", "description": "stronger/secondary border" },
+    "bull-bright":     { "value": "#34D399", "type": "color", "description": "Shamrock — depth/size numerics" },
+    "bear-bright":     { "value": "#F87171", "type": "color", "description": "Froly — ask-side numerics on tinted rows" },
+    "info":            { "value": "#4F8CFF", "type": "color", "description": "Dodger Blue — selection/info accent" },
+    "accent-2":        { "value": "#7C5CF3", "type": "color", "description": "Cornflower Blue — secondary accent (purple)" }
+  },
+
+  "colorOverlay": {
+    "_comment": "Pre-resolved hover/selection veils + row tints (bind directly; do NOT use raw alpha numbers).",
+    "hover":        { "value": "rgba(255,255,255,0.05)", "type": "color" },
+    "selected":     { "value": "rgba(255,255,255,0.07)", "type": "color" },
+    "bull-row":     { "value": "rgba(78,192,122,0.1)", "type": "color" },
+    "bear-row":     { "value": "rgba(216,80,62,0.1)", "type": "color" }
+  },
+
+  "radius": {
+    "_comment": "Number variables (borderRadius). Bind every corner to these. `full` = pill.",
+    "xs":   { "value": "6",   "type": "borderRadius", "description": "chips / cells" },
+    "sm":   { "value": "12",  "type": "borderRadius", "description": "small buttons / chips (Figma 11–13)" },
+    "md":   { "value": "16",  "type": "borderRadius", "description": "round icon buttons (32×32)" },
+    "lg":   { "value": "20",  "type": "borderRadius", "description": "panels / footer dock" },
+    "card": { "value": "14",  "type": "borderRadius", "description": "P&L / small cards" },
+    "full": { "value": "999", "type": "borderRadius", "description": "all pills — nav tabs, ticker tabs, footer pills, group enclosures" }
+  },
+
+  "spacing": {
+    "_comment": "Number variables (spacing). Bind auto-layout padding + item gap to these.",
+    "2xs": { "value": "2",  "type": "spacing" },
+    "xs":  { "value": "4",  "type": "spacing", "description": "group inner padding, tight gaps" },
+    "sm":  { "value": "8",  "type": "spacing", "description": "toolbar padding, button-row gap" },
+    "md":  { "value": "12", "type": "spacing", "description": "card padding, content gap" },
+    "lg":  { "value": "16", "type": "spacing", "description": "panel padding" },
+    "xl":  { "value": "24", "type": "spacing" },
+    "tab-overlap": { "value": "-3", "type": "spacing", "description": "NEGATIVE gap inside a nav group so the active swatch overlaps neighbours (Aperture signature)" }
+  },
+
+  "stroke": {
+    "_comment": "Border widths.",
+    "hair": { "value": "0.667", "type": "borderWidth", "description": "hairline dividers" },
+    "thin": { "value": "1",     "type": "borderWidth", "description": "standard panel/card outline" },
+    "std":  { "value": "1.5",   "type": "borderWidth" },
+    "bold": { "value": "2",     "type": "borderWidth", "description": "emphasis" }
+  },
+
+  "fontFamily": {
+    "ui":      { "value": "Inter",          "type": "fontFamilies", "description": "all textual UI + display numbers" },
+    "mono":    { "value": "JetBrains Mono",  "type": "fontFamilies", "description": "EVERY numeric / price / table cell" }
+  },
+
+  "fontSize": {
+    "_comment": "Number variables. The `display/*` ramp is the giant chart price headline.",
+    "2xs":         { "value": "9",   "type": "fontSizes", "description": "eyebrow labels" },
+    "xs":          { "value": "10",  "type": "fontSizes", "description": "table cells, column headers" },
+    "sm":          { "value": "12",  "type": "fontSizes", "description": "data values, body" },
+    "md":          { "value": "13",  "type": "fontSizes", "description": "default UI / tab labels" },
+    "lg":          { "value": "16",  "type": "fontSizes" },
+    "xl":          { "value": "22",  "type": "fontSizes", "description": "card values (sentiment / intraday)" },
+    "display-sm":  { "value": "35",  "type": "fontSizes" },
+    "display-md":  { "value": "44",  "type": "fontSizes" },
+    "display-lg":  { "value": "59",  "type": "fontSizes" },
+    "display-xl":  { "value": "79",  "type": "fontSizes" },
+    "display-2xl": { "value": "110", "type": "fontSizes", "description": "hero price / NAV" }
+  },
+
+  "typography": {
+    "_comment": "Composite TEXT STYLES (Figma can't put font-family in a number var). Note the tight NEGATIVE tracking on display + positive tracking + UPPERCASE on eyebrows/headers.",
+    "body":         { "value": { "fontFamily": "Inter", "fontWeight": "Regular", "fontSize": "12", "letterSpacing": "0%" }, "type": "typography" },
+    "label":        { "value": { "fontFamily": "Inter", "fontWeight": "Semi Bold", "fontSize": "13", "letterSpacing": "0%" }, "type": "typography", "description": "tab labels" },
+    "eyebrow-upper":{ "value": { "fontFamily": "Inter", "fontWeight": "Bold", "fontSize": "9", "letterSpacing": "14%", "textCase": "uppercase" }, "type": "typography" },
+    "data":         { "value": { "fontFamily": "JetBrains Mono", "fontWeight": "Bold", "fontSize": "12", "letterSpacing": "0%" }, "type": "typography", "description": "price / data cells" },
+    "cell-upper":   { "value": { "fontFamily": "JetBrains Mono", "fontWeight": "Bold", "fontSize": "10", "letterSpacing": "10%", "textCase": "uppercase" }, "type": "typography", "description": "table column headers" },
+    "display":      { "value": { "fontFamily": "Inter", "fontWeight": "Medium", "fontSize": "79", "letterSpacing": "-5.5%", "lineHeight": "83.6" }, "type": "typography", "description": "hero price — tight negative tracking" }
+  },
+
+  "shadow": {
+    "_comment": "EFFECT STYLES (not variables).",
+    "card":  { "value": { "x": "0", "y": "10", "blur": "30", "spread": "0", "color": "rgba(0,0,0,0.4)", "type": "dropShadow" }, "type": "boxShadow", "description": "96×96 round cards" },
+    "modal": { "value": { "x": "0", "y": "30", "blur": "80", "spread": "0", "color": "rgba(0,0,0,0.6)", "type": "dropShadow" }, "type": "boxShadow", "description": "overlays / modals" }
+  }
+}
