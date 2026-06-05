@@ -174,6 +174,48 @@ pub(crate) fn dot_matrix(
     }
 }
 
+// ── Lollipops ─────────────────────────────────────────────────────────────────
+
+/// **Lollipops** — horizontal stems with a tip dot, one row per `(frac 0..1,
+/// colour)`, left-anchored across `rect`. For volume-at-price / ranked rows; the
+/// caller can redraw an emphasised row (POC) on top.
+pub(crate) fn lollipops(
+    p: &egui::Painter, rect: egui::Rect, rows: &[(f32, Color32)], st: &ChartStyle, t: &Theme,
+) {
+    let _ = t;
+    let n = rows.len();
+    if n == 0 { return; }
+    let step = rect.height() / n as f32;
+    for (i, &(frac, col)) in rows.iter().enumerate() {
+        let y = rect.top() + i as f32 * step + step * 0.5;
+        let w = (frac.clamp(0.0, 1.0) * rect.width()).max(0.0);
+        p.line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.left() + w, y)],
+            Stroke::new(st.line_std, color_alpha(col, alpha_line())));
+        p.circle_filled(egui::pos2(rect.left() + w, y), st.line_bold + 1.0, col);
+    }
+}
+
+// ── Scatter / quadrant ──────────────────────────────────────────────────────
+
+/// **Scatter quadrant** — points at `(x, y)` in `-1..1` plotted about the centre
+/// of `rect` (x→right, y→up) over a faint quadrant cross. Each point is
+/// `(x, y, colour)`. The caller draws axis / point labels.
+pub(crate) fn scatter_quadrant(
+    p: &egui::Painter, rect: egui::Rect, points: &[(f32, f32, Color32)], dot_r: f32, st: &ChartStyle, t: &Theme,
+) {
+    let c = rect.center();
+    let hw = rect.width() * 0.5;
+    let hh = rect.height() * 0.5;
+    let grid = tint(t, Tone::Border, st.track_alpha);
+    p.line_segment([egui::pos2(c.x - hw, c.y), egui::pos2(c.x + hw, c.y)], Stroke::new(st.line_thin, grid));
+    p.line_segment([egui::pos2(c.x, c.y - hh), egui::pos2(c.x, c.y + hh)], Stroke::new(st.line_thin, grid));
+    for &(x, y, col) in points {
+        let px = c.x + x.clamp(-1.0, 1.0) * hw;
+        let py = c.y - y.clamp(-1.0, 1.0) * hh;
+        p.circle_filled(egui::pos2(px, py), dot_r, col);
+    }
+}
+
 // ── Histogram ─────────────────────────────────────────────────────────────────
 
 /// **Histogram** — contiguous distribution bars (no inter-bar gap), value-shaded

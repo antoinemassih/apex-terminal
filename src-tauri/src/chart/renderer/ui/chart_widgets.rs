@@ -21,8 +21,8 @@ use super::overlays::kit::{
 };
 use super::overlays::registry::OverlayWidget;
 use super::overlays::viz::charts::{
-    bars_colored, dot_matrix, hbars, heatmap_signed, multiring_colored, multiring_radius,
-    multiring_thickness,
+    bars_colored, dot_matrix, hbars, heatmap_signed, lollipops, multiring_colored, multiring_radius,
+    multiring_thickness, scatter_quadrant,
 };
 use super::overlays::viz::style::ChartStyle;
 use super::super::gpu::*;
@@ -1246,32 +1246,25 @@ fn draw_volume_profile(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
         .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(i, _)| i).unwrap_or(0);
 
-    for i in 0..n {
-        let y = body.top() + pad * 0.5 + i as f32 * step + step * 0.5;
-        let w = max_w * wd.vol_bars[i].max(0.03);
-        let is_poc = i == max_idx;
-
-        // Color: gradient from cool to warm, POC in accent
-        let color = if is_poc { t.accent } else {
+    // Kit primitive: horizontal lollipops, cool→warm gradient with POC in accent.
+    let st = ChartStyle::resolve(t);
+    let rect = egui::Rect::from_min_size(
+        egui::pos2(bar_x, body.top() + pad * 0.5), egui::vec2(max_w, total_h));
+    let rows: Vec<(f32, Color32)> = (0..n).map(|i| {
+        let color = if i == max_idx { t.accent } else {
             let frac = i as f32 / n as f32;
-            if frac < 0.33 { t.bull }
-            else if frac < 0.66 { Color32::from_rgb(220, 180, 60) }
-            else { t.bear }
+            if frac < 0.33 { t.bull } else if frac < 0.66 { Color32::from_rgb(220, 180, 60) } else { t.bear }
         };
+        (wd.vol_bars[i].max(0.03), color)
+    }).collect();
+    lollipops(p, rect, &rows, &st, t);
 
-        // Thin line + circle at tip (lollipop style)
-        let line_alpha = if is_poc { 200u8 } else { 100 };
-        let circle_r = if is_poc { 4.0 } else { 2.5 };
-        p.line_segment([egui::pos2(bar_x, y), egui::pos2(bar_x + w, y)],
-            egui::Stroke::new(if is_poc { 2.0 } else { 1.0 },
-                egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), line_alpha)));
-        p.circle_filled(egui::pos2(bar_x + w, y), circle_r, color);
-
-        if is_poc {
-            p.text(egui::pos2(bar_x + w + 8.0, y),
-                egui::Align2::LEFT_CENTER, "POC", egui::FontId::monospace(FONT_XS), t.accent);
-        }
-    }
+    // POC emphasis + label on top.
+    let y = body.top() + pad * 0.5 + max_idx as f32 * step + step * 0.5;
+    let w = max_w * wd.vol_bars[max_idx].max(0.03);
+    p.circle_filled(egui::pos2(bar_x + w, y), 4.0, t.accent);
+    p.text(egui::pos2(bar_x + w + 8.0, y),
+        egui::Align2::LEFT_CENTER, "POC", egui::FontId::monospace(FONT_XS), t.accent);
 }
 
 fn draw_session_timer(p: &egui::Painter, body: egui::Rect, t: &Theme) {
@@ -1801,31 +1794,32 @@ fn draw_sector_rotation(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t
     let hw = body.width() * 0.38;
     let hh = body.height() * 0.36;
 
-    // Quadrant lines
-    p.line_segment([egui::pos2(cx - hw, cy), egui::pos2(cx + hw, cy)],
-        egui::Stroke::new(stroke_thin(), tint(t, Tone::Dim, alpha_muted())));
-    p.line_segment([egui::pos2(cx, cy - hh), egui::pos2(cx, cy + hh)],
-        egui::Stroke::new(stroke_thin(), tint(t, Tone::Dim, alpha_muted())));
-
     // Quadrant labels
     p.text(egui::pos2(cx + hw * 0.5, cy - hh - 4.0), egui::Align2::CENTER_CENTER, "LEADING", mono_4xs(), color_muted(t.bull));
     p.text(egui::pos2(cx - hw * 0.5, cy - hh - 4.0), egui::Align2::CENTER_CENTER, "IMPROVING", mono_4xs(), color_muted(t.accent));
     p.text(egui::pos2(cx - hw * 0.5, cy + hh + 6.0), egui::Align2::CENTER_CENTER, "LAGGING", mono_4xs(), color_muted(t.bear));
     p.text(egui::pos2(cx + hw * 0.5, cy + hh + 6.0), egui::Align2::CENTER_CENTER, "WEAKENING", mono_4xs(), color_half(t.dim));
 
-    // Sector dots (placeholder positions)
+    // Sector dots (placeholder positions): (rs, mom) ∈ [-1,1].
     let sectors = [("XLK", 0.6, 0.3), ("XLF", 0.3, -0.2), ("XLE", -0.4, 0.5),
                    ("XLV", -0.2, -0.3), ("XLI", 0.4, -0.1), ("XLU", -0.5, -0.4),
                    ("XLC", 0.1, 0.4), ("XLRE", -0.3, 0.1)];
+    let quad_col = |rs: f32, mom: f32| if rs > 0.0 && mom > 0.0 { t.bull }
+        else if rs < 0.0 && mom < 0.0 { t.bear } else { t.dim };
+
+    // Kit primitive: quadrant cross + sector dots.
+    let st = ChartStyle::resolve(t);
+    let scatter_rect = egui::Rect::from_center_size(egui::pos2(cx, cy), egui::vec2(hw * 2.0, hh * 2.0));
+    let points: Vec<(f32, f32, Color32)> = sectors.iter()
+        .map(|(_, rs, mom)| (*rs, *mom, quad_col(*rs, *mom))).collect();
+    scatter_quadrant(p, scatter_rect, &points, 4.0, &st, t);
+
+    // Sector labels above each dot.
     for (label, rs, mom) in sectors {
         let sx = cx + rs * hw;
         let sy = cy - mom * hh;
-        let col = if rs > 0.0 && mom > 0.0 { t.bull }
-            else if rs < 0.0 && mom < 0.0 { t.bear }
-            else { t.dim };
-        p.circle_filled(egui::pos2(sx, sy), 4.0, col);
         p.text(egui::pos2(sx, sy - 7.0), egui::Align2::CENTER_CENTER, label,
-            mono_4xs(), color_subtle(col));
+            mono_4xs(), color_subtle(quad_col(rs, mom)));
     }
 }
 
