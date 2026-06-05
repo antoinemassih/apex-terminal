@@ -19,6 +19,7 @@ use super::overlays::kit::{
     draw_arc, hero_number, sub_label, donut_ring, radial_gauge, radial_gauge_stacked, metric_row,
     overlay_card_frame, overlay_card_header,
 };
+use super::overlays::registry::OverlayWidget;
 use super::super::gpu::*;
 use crate::chart_renderer::{ChartWidgetKind, WidgetDisplayMode, WidgetDock};
 use crate::ui_kit::widgets::Button;
@@ -204,7 +205,7 @@ pub(crate) fn draw_widgets(
         if !w.collapsed {
             let body = card_rect;
             let mut btns = Vec::new();
-            draw_widget_body(&painter, body, kind, &wd, t, hover_pos, &mut btns);
+            kind.body(&painter, body, &wd, t, hover_pos, &mut btns);
             // Opacity fade: overlay bg-colored rect to dim the widget toward background
             if w.opacity < 0.999 {
                 let fade = ((1.0 - w.opacity).clamp(0.0, 1.0) * 255.0) as u8;
@@ -491,7 +492,7 @@ fn draw_mini_badge(p: &egui::Painter, rect: egui::Rect, kind: ChartWidgetKind,
     // Faint pill background
     p.rect_filled(rect, radius_sm(), color_alpha(t.shadow_color, alpha_soft()));
 
-    let (label, value, color) = mini_summary(kind, wd, t);
+    let (label, value, color) = kind.mini(wd, t);
     p.text(egui::pos2(lx, cy), egui::Align2::LEFT_CENTER,
         label, egui::FontId::monospace(FONT_2XS), color_half(t.dim));
     p.text(egui::pos2(rect.right() - 4.0, cy), egui::Align2::RIGHT_CENTER,
@@ -724,6 +725,23 @@ fn draw_widget_body(p: &egui::Painter, body: egui::Rect, kind: ChartWidgetKind,
         ChartWidgetKind::PositionsPanel=> draw_positions_panel(p, body, wd, t, hover, btns),
         ChartWidgetKind::DailyPnl      => draw_daily_pnl(p, body, wd, t, hover, btns),
         ChartWidgetKind::Custom        => draw_custom(p, body, t),
+    }
+}
+
+/// `OverlayWidget` for `ChartWidgetKind` — the canonical render seam (see
+/// `overlays::registry`). Both methods delegate to the dispatch matches above;
+/// per-kind `mini`/`body` logic can later move in here behind this same
+/// contract, retiring the two god-matches without touching any call site.
+impl OverlayWidget for ChartWidgetKind {
+    fn mini(self, wd: &WidgetData, t: &Theme) -> (&'static str, String, Color32) {
+        mini_summary(self, wd, t)
+    }
+
+    fn body(
+        self, p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme,
+        hover: Option<egui::Pos2>, btns: &mut Vec<(egui::Rect, WidgetBtnAction)>,
+    ) {
+        draw_widget_body(p, body, self, wd, t, hover, btns)
     }
 }
 
