@@ -13,3 +13,4 @@
 //! the kit one at a time.
 
 pub mod kit;
+pub mod indicators;
