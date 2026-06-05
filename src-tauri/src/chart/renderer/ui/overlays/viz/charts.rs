@@ -14,7 +14,7 @@ use egui::{self, Color32, Pos2, Stroke};
 use crate::ui_kit::sx::{Tone, Shade};
 use crate::chart_renderer::ui::style::*;
 use crate::chart_renderer::gpu::Theme;
-use super::style::{ChartStyle, FillMode, categorical, stroke_path};
+use super::style::{ChartStyle, FillMode, LineCap, categorical, stroke_path};
 
 // ── Geometry helpers (y-down screen convention; angle 0 = +x, grows clockwise) ─
 
@@ -34,6 +34,17 @@ fn arc_points(center: Pos2, r: f32, a0: f32, a1: f32, segs: usize) -> Vec<Pos2> 
 fn stroke_arc(p: &egui::Painter, center: Pos2, r: f32, a0: f32, a1: f32, stroke: Stroke) {
     let pts = arc_points(center, r, a0, a1, 48);
     for w in pts.windows(2) { p.line_segment([w[0], w[1]], stroke); }
+}
+
+/// Stroke an arc with the style's [`LineCap`] — round caps add a filled disc at
+/// each end so the arc reads with rounded (vs square) terminations.
+fn stroke_arc_capped(p: &egui::Painter, center: Pos2, r: f32, a0: f32, a1: f32, stroke: Stroke, cap: LineCap) {
+    stroke_arc(p, center, r, a0, a1, stroke);
+    if cap == LineCap::Round {
+        let rad = stroke.width * 0.5;
+        p.circle_filled(polar(center, r, a0), rad, stroke.color);
+        p.circle_filled(polar(center, r, a1), rad, stroke.color);
+    }
 }
 
 /// Fill a wedge (pie slice) `a0`→`a1` as a triangle fan from `center`.
@@ -191,7 +202,7 @@ pub(crate) fn donut(
     p: &egui::Painter, center: Pos2, radius: f32, segments: &[f32], st: &ChartStyle, t: &Theme,
 ) {
     let total: f32 = segments.iter().map(|v| v.max(0.0)).sum::<f32>().max(1e-6);
-    let thick = (radius * 0.30).max(4.0);
+    let thick = (radius * 0.30).max(4.0) * st.ring_scale;
     let track = tint(t, Tone::Border, st.track_alpha);
     stroke_arc(p, center, radius, 0.0, TAU, Stroke::new(thick, track));
     let mut a = TOP;
@@ -199,8 +210,8 @@ pub(crate) fn donut(
     for (i, &v) in segments.iter().enumerate() {
         let sweep = TAU * (v.max(0.0) / total);
         if sweep <= gap_a { a += sweep; continue; }
-        stroke_arc(p, center, radius, a + gap_a * 0.5, a + sweep - gap_a * 0.5,
-            Stroke::new(thick, categorical(t, i)));
+        stroke_arc_capped(p, center, radius, a + gap_a * 0.5, a + sweep - gap_a * 0.5,
+            Stroke::new(thick, categorical(t, i)), st.cap);
         a += sweep;
     }
 }
@@ -329,14 +340,14 @@ pub(crate) fn multiring_colored(
 ) {
     let n = rings.len();
     if n == 0 { return; }
-    let thick = multiring_thickness(radius, n);
+    let thick = multiring_thickness(radius, n) * st.ring_scale;
     let track = tint(t, Tone::Border, st.track_alpha);
     for (i, &(v, col)) in rings.iter().enumerate() {
         let rr = multiring_radius(radius, n, i);
         stroke_arc(p, center, rr, 0.0, TAU, Stroke::new(thick, track));
         let frac = v.clamp(0.0, 1.0);
         if frac > 0.001 {
-            stroke_arc(p, center, rr, TOP, TOP + TAU * frac, Stroke::new(thick, col));
+            stroke_arc_capped(p, center, rr, TOP, TOP + TAU * frac, Stroke::new(thick, col), st.cap);
         }
     }
 }

@@ -1459,8 +1459,8 @@ fn draw_rsi_multi(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
         .map(|&rsi| ((rsi / 100.0).clamp(0.0, 1.0), color_for(rsi))).collect();
     multiring_colored(p, egui::pos2(cx, cy), max_r, &rings, &st, t);
 
-    // Oversold / overbought (30 / 70) tick marks on each ring.
-    let thick = multiring_thickness(max_r, n);
+    // Oversold / overbought (30 / 70) tick marks on each ring (match scaled rings).
+    let thick = multiring_thickness(max_r, n) * st.ring_scale;
     for i in 0..n {
         let r = multiring_radius(max_r, n, i);
         for zone in [0.30_f32, 0.70] {

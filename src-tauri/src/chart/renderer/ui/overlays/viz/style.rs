@@ -23,6 +23,10 @@ pub(crate) enum LinePattern { Solid, Dashed, Dotted }
 #[allow(dead_code)] // Hollow used by outline-only chart variants
 pub(crate) enum FillMode { Solid, Soft, Hollow }
 
+/// How a stroke / arc terminates: square (`Butt`) or rounded (`Round`).
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum LineCap { Butt, Round }
+
 /// Resolved, per-theme chart style. Cheap to construct (reads cached token fns).
 #[derive(Clone, Copy)]
 pub(crate) struct ChartStyle {
@@ -39,6 +43,10 @@ pub(crate) struct ChartStyle {
     pub corner: f32,
     /// Inter-element gap (bars, cells).
     pub gap: f32,
+    /// How rings / arcs / lines terminate (round vs square ends).
+    pub cap: LineCap,
+    /// Per-theme multiplier on ring/arc stroke thickness (gauges, multi-rings).
+    pub ring_scale: f32,
     /// Hero value font (big number).
     pub num_lg: f32,
     /// Secondary value / axis font.
@@ -62,6 +70,11 @@ impl ChartStyle {
             track_alpha: alpha_subtle(),
             corner: radius_sm(),
             gap: gap_xs(),
+            // Derived per theme from existing style tokens: rounded-radii styles
+            // get round ring/line ends; sharp (radii≈0) styles get square ends.
+            // Ring thickness tracks the style's stroke weight.
+            cap: if radius_sm() >= 3.0 { LineCap::Round } else { LineCap::Butt },
+            ring_scale: stroke_std().clamp(0.7, 1.5),
             num_lg: font_xl(),
             num_md: font_md(),
             num_sm: font_xs(),
