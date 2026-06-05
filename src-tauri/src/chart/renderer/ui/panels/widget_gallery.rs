@@ -169,6 +169,12 @@ pub fn show_widget_gallery(ui: &mut egui::Ui, theme: &Theme) {
         .show(ui, theme);
     ui.label("Developer-only — every ui_kit::widgets widget with sample variants for visual QA.");
 
+    // ★ Data Viz — the new stylable chart-primitive library.
+    section(ui, theme, "\u{2605} Data Viz (chart primitives)");
+    ui.label("Stylable, theme-aware charts — re-tint with ColorScheme, re-shape with StyleSystem (stroke/dash/fonts/proportions).");
+    ui.add_space(8.0);
+    viz_gallery(ui, theme);
+
     // 0. Subpixel AA A/B
     section(ui, theme, "0. Subpixel AA A/B");
     ui.label("Same text, two render paths. Subpixel runs through the custom wgpu pipeline; grayscale through egui's bilinear sampler.");
@@ -736,4 +742,103 @@ pub fn show_widget_gallery(ui: &mut egui::Ui, theme: &Theme) {
     });
 
     ui.add_space(24.0);
+}
+
+/// Dedicated, lightweight viz gallery (no GPU-heavy subpixel-AA section, so it's
+/// stable to leave open) — the canonical preview for the chart primitives.
+pub fn show_chart_gallery(ui: &mut egui::Ui, theme: &Theme) {
+    PolishedLabel::new("Chart Viz Gallery")
+        .size(KitSize::Lg)
+        .weight(PolishedFontWeight::Semibold)
+        .show(ui, theme);
+    ui.label("Stylable, theme-aware chart primitives — re-tint with ColorScheme, re-shape with StyleSystem.");
+    ui.add_space(10.0);
+    viz_gallery(ui, theme);
+}
+
+/// Grid of the new viz chart primitives with sample data, drawn with the active
+/// theme so the per-theme styling is visible at a glance.
+fn viz_gallery(ui: &mut egui::Ui, theme: &Theme) {
+    use crate::chart_renderer::ui::overlays::viz::charts;
+    use crate::chart_renderer::ui::overlays::viz::style::{ChartStyle, LinePattern, FillMode};
+    use crate::ui_kit::sx::Tone;
+
+    let cst = ChartStyle::resolve(theme);
+    let cols = 4usize;
+    let cell_w = 200.0f32;
+    let cell_h = 132.0f32;
+    let pad_x = 16.0f32;
+    let title_h = 20.0f32;
+    let row_h = cell_h + title_h + 12.0;
+    let demos = 12usize;
+    let rows = demos.div_ceil(cols);
+
+    let size = egui::vec2(cols as f32 * cell_w + (cols as f32 - 1.0) * pad_x, rows as f32 * row_h);
+    let (area, _resp) = ui.allocate_exact_size(size, egui::Sense::hover());
+    let p = ui.painter_at(area);
+
+    // Sample data.
+    let bars_d = [3.0f32, 5.0, 2.0, 8.0, 6.0, 4.0, 7.0, 5.0, 3.0, 6.0];
+    let series: Vec<f32> = (0..32).map(|i| {
+        let x = i as f32 * 0.4;
+        50.0 + 18.0 * (x).sin() + 7.0 * (x * 2.3).cos() + i as f32 * 0.3
+    }).collect();
+    let hist: Vec<f32> = (0..24).map(|i| {
+        let x = (i as f32 - 11.0) / 5.0;
+        (-x * x).exp()
+    }).collect();
+    let heat: Vec<f32> = (0..24).map(|i| ((i * 7 % 11) as f32 / 10.0)).collect();
+
+    let cell_origin = |i: usize| -> (f32, f32) {
+        let (r, c) = (i / cols, i % cols);
+        (area.left() + c as f32 * (cell_w + pad_x), area.top() + r as f32 * row_h)
+    };
+    let title = |i: usize, s: &str| {
+        let (x, y) = cell_origin(i);
+        p.text(egui::pos2(x, y), egui::Align2::LEFT_TOP, s,
+            egui::FontId::monospace(st::font_xs()), st::tint(theme, Tone::Dim, st::alpha_line()));
+    };
+    let cell = |i: usize| -> egui::Rect {
+        let (x, y) = cell_origin(i);
+        let r = egui::Rect::from_min_size(egui::pos2(x, y + title_h), egui::vec2(cell_w, cell_h));
+        p.rect_stroke(r, st::radius_sm() as u8,
+            egui::Stroke::new(st::stroke_thin(), st::tint(theme, Tone::Border, st::alpha_subtle())),
+            egui::StrokeKind::Inside);
+        r.shrink(12.0)
+    };
+    let centered = |i: usize| -> (egui::Pos2, f32) {
+        let inner = cell(i);
+        (inner.center(), inner.width().min(inner.height()) * 0.46)
+    };
+
+    title(0, "stat");
+    charts::stat(&p, cell(0), "RSI", "72", "14-period", Tone::Bull, &cst, theme);
+    title(1, "bars");
+    charts::bars(&p, cell(1), &bars_d, Tone::Accent, &cst, theme);
+    title(2, "area / line");
+    charts::area_line(&p, cell(2), &series, Tone::Bull, &cst, theme);
+    title(3, "histogram");
+    charts::histogram(&p, cell(3), &hist, Tone::Warn, &cst, theme);
+
+    title(4, "donut");
+    { let (c, r) = centered(4); charts::donut(&p, c, r, &[5.0, 3.0, 2.0, 1.0], &cst, theme); }
+    title(5, "pie");
+    { let (c, r) = centered(5); charts::pie(&p, c, r, &[4.0, 3.0, 2.0, 1.5], &cst, theme); }
+    title(6, "radar");
+    { let (c, r) = centered(6); charts::radar(&p, c, r, &[0.8, 0.6, 0.95, 0.45, 0.7, 0.55], Tone::Accent, &cst, theme); }
+    title(7, "heatmap");
+    charts::heatmap(&p, cell(7), 4, 6, &heat, Tone::Bull, &cst, theme);
+
+    title(8, "multi-ring");
+    { let (c, r) = centered(8); charts::multiring(&p, c, r, &[0.82, 0.55, 0.3], &cst, theme); }
+    title(9, "line · dashed");
+    { let mut d = cst; d.pattern = LinePattern::Dashed; d.fill = FillMode::Hollow;
+      charts::area_line(&p, cell(9), &series, Tone::Bear, &d, theme); }
+    title(10, "line · dotted");
+    { let mut d = cst; d.pattern = LinePattern::Dotted; d.fill = FillMode::Hollow;
+      charts::area_line(&p, cell(10), &series, Tone::Accent, &d, theme); }
+    title(11, "stat · bear");
+    charts::stat(&p, cell(11), "\u{0394} DAY", "-1.8%", "vs prior close", Tone::Bear, &cst, theme);
+
+    ui.add_space(8.0);
 }

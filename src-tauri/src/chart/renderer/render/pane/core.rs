@@ -12396,6 +12396,34 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
         }
     }
 
+    // ── Chart Viz Gallery (Ctrl+Shift+V) — stable preview of the viz chart
+    //    primitives (no GPU-heavy subpixel section). Toggle kept in egui memory
+    //    so it needs no Watchlist plumbing. ──────────────────────────────────
+    {
+        let id = egui::Id::new("apex_chart_viz_gallery_open");
+        let mut open = ctx.memory(|m| m.data.get_temp::<bool>(id).unwrap_or(false));
+        if ctx.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::V)) {
+            open = !open;
+        }
+        if open {
+            let theme_idx = if !panes.is_empty() && *active_pane < panes.len() {
+                panes[*active_pane].theme_idx
+            } else { 0 };
+            let theme = get_theme(theme_idx);
+            let mut win_open = true;
+            egui::Window::new("Chart Viz Gallery")
+                .open(&mut win_open)
+                .default_size((920.0, 660.0))
+                .resizable(true)
+                .scroll([false, true])
+                .show(ctx, |ui| {
+                    crate::chart::renderer::ui::panels::widget_gallery::show_chart_gallery(ui, &theme);
+                });
+            if !win_open { open = false; }
+        }
+        ctx.memory_mut(|m| m.data.insert_temp(id, open));
+    }
+
     super::deferred::handle_deferred(ctx, panes, active_pane, layout, watchlist);
 
     // Drain any AppCommand pushed during this frame's UI render. Theme/style

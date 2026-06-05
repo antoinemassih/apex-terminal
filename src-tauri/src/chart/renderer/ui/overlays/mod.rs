@@ -18,3 +18,4 @@
 pub mod kit;
 pub mod indicators;
 pub mod registry;
+pub mod viz;
