@@ -151,6 +151,29 @@ pub(crate) fn hbars(
     }
 }
 
+// ── Dot matrix ────────────────────────────────────────────────────────────────
+
+/// **Dot matrix** — a `rows`×`cols` grid of dots coloured by `cells` (row-major;
+/// the caller decides on/off / state colours). The caller draws axis labels /
+/// scores around it. `dot_r` ≤ 0 auto-sizes the dot from the cell spacing.
+pub(crate) fn dot_matrix(
+    p: &egui::Painter, rect: egui::Rect, rows: usize, cols: usize, cells: &[Color32], dot_r: f32,
+) {
+    if rows == 0 || cols == 0 { return; }
+    let gx = rect.width() / cols as f32;
+    let gy = rect.height() / rows as f32;
+    let r = if dot_r > 0.0 { dot_r } else { (gx.min(gy) * 0.32).max(1.5) };
+    for i in 0..rows {
+        for j in 0..cols {
+            if let Some(&col) = cells.get(i * cols + j) {
+                let cx = rect.left() + j as f32 * gx + gx * 0.5;
+                let cy = rect.top() + i as f32 * gy + gy * 0.5;
+                p.circle_filled(egui::pos2(cx, cy), r, col);
+            }
+        }
+    }
+}
+
 // ── Histogram ─────────────────────────────────────────────────────────────────
 
 /// **Histogram** — contiguous distribution bars (no inter-bar gap), value-shaded

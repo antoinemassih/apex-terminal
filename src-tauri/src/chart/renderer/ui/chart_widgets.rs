@@ -21,7 +21,8 @@ use super::overlays::kit::{
 };
 use super::overlays::registry::OverlayWidget;
 use super::overlays::viz::charts::{
-    bars_colored, hbars, heatmap_signed, multiring_colored, multiring_radius, multiring_thickness,
+    bars_colored, dot_matrix, hbars, heatmap_signed, multiring_colored, multiring_radius,
+    multiring_thickness,
 };
 use super::overlays::viz::style::ChartStyle;
 use super::super::gpu::*;
@@ -1544,24 +1545,25 @@ fn draw_trend_align(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
         p.text(egui::pos2(ox + j as f32 * gap_x + gap_x * 0.5, oy - 6.0),
             egui::Align2::CENTER_CENTER, label, mono_4xs(), color_half(t.dim));
     }
-
-    let mut bull_count = 0u32;
-    let total = (rows * cols) as u32;
-
+    // Row labels
     for (i, tf) in tf_labels.iter().enumerate() {
-        // Row label
         p.text(egui::pos2(body.left() + 14.0, oy + i as f32 * gap_y + gap_y * 0.5),
             egui::Align2::CENTER_CENTER, tf, egui::FontId::monospace(font_4xs()), color_muted(t.dim));
+    }
 
+    // Kit primitive: bullish/dim dot grid.
+    let mut bull_count = 0u32;
+    let total = (rows * cols) as u32;
+    let mut cells: Vec<Color32> = Vec::with_capacity(rows * cols);
+    for i in 0..rows {
         for j in 0..cols {
-            let bullish = wd.trend_grid[i][j];
-            if bullish { bull_count += 1; }
-            let cx = ox + j as f32 * gap_x + gap_x * 0.5;
-            let cy = oy + i as f32 * gap_y + gap_y * 0.5;
-            let color = if bullish { t.bull } else { tint(t, Tone::Dim, alpha_muted()) };
-            p.circle_filled(egui::pos2(cx, cy), dot_r, color);
+            if wd.trend_grid[i][j] { bull_count += 1; cells.push(t.bull); }
+            else { cells.push(tint(t, Tone::Dim, alpha_muted())); }
         }
     }
+    let grid = egui::Rect::from_min_size(
+        egui::pos2(ox, oy), egui::vec2(gap_x * cols as f32, gap_y * rows as f32));
+    dot_matrix(p, grid, rows, cols, &cells, dot_r);
 
     // Alignment score bottom-right
     let pct = bull_count as f32 / total as f32 * 100.0;
@@ -1774,23 +1776,14 @@ fn draw_breadth_thermo(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
 
     let grid_w = body.width() - 50.0;
     let grid_h = body.height() - 20.0;
-    let gap_x = grid_w / cols as f32;
-    let gap_y = grid_h / rows as f32;
     let ox = body.left() + 6.0;
     let oy = body.top() + 4.0;
 
-    let bull_col = t.bull;
-    let empty_col = tint(t, Tone::Dim, alpha_muted());
-
-    for row in 0..rows {
-        for col in 0..cols {
-            let idx = row * cols + col;
-            let cx = ox + col as f32 * gap_x + gap_x * 0.5;
-            let cy = oy + row as f32 * gap_y + gap_y * 0.5;
-            let color = if idx < filled { bull_col } else { empty_col };
-            p.circle_filled(egui::pos2(cx, cy), dot_r, color);
-        }
-    }
+    // Kit primitive: filled / empty thermometer dot grid.
+    let cells: Vec<Color32> = (0..total_dots)
+        .map(|idx| if idx < filled { t.bull } else { tint(t, Tone::Dim, alpha_muted()) }).collect();
+    let grid = egui::Rect::from_min_size(egui::pos2(ox, oy), egui::vec2(grid_w, grid_h));
+    dot_matrix(p, grid, rows, cols, &cells, dot_r);
 
     // Score on the right
     let sc = if score > 60.0 { t.bull } else if score < 40.0 { t.bear } else { t.warn };
