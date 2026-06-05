@@ -122,6 +122,35 @@ pub(crate) fn radial_gauge_stacked(
         caption, egui::FontId::monospace(FONT_2XS), color);
 }
 
+/// Big value + caption (no ring), centred at `center` — the non-gauge "stat".
+#[allow(dead_code)] // kit primitive — for the stat-style overlays migrating next
+pub(crate) fn stat(p: &egui::Painter, center: egui::Pos2, value: &str, caption: &str, color: Color32) {
+    hero_number(p, center, value, color);
+    sub_label(p, egui::pos2(center.x, center.y + 22.0), caption, color);
+}
+
+/// A labelled metric row: dim `label` (left) + `value` (right) + a thin
+/// progress bar below at `frac` 0..1. The breadth / greeks-style overlay row.
+/// `rect.top()` is the text baseline; the bar sits ~11px under it.
+pub(crate) fn metric_row(
+    p: &egui::Painter, rect: egui::Rect, label: &str, value: &str,
+    frac: f32, color: Color32, t: &Theme,
+) {
+    p.text(egui::pos2(rect.left(), rect.top()), egui::Align2::LEFT_TOP,
+        label, egui::FontId::monospace(FONT_2XS),
+        Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 120));
+    p.text(egui::pos2(rect.right(), rect.top()), egui::Align2::RIGHT_TOP,
+        value, egui::FontId::monospace(FONT_SM), color);
+    let bar_y = rect.top() + 11.0;
+    let track = egui::Rect::from_min_size(egui::pos2(rect.left(), bar_y), egui::vec2(rect.width(), 3.0));
+    p.rect_filled(track, 1.0, tint(t, Tone::Border, alpha_faint()));
+    let fw = rect.width() * frac.clamp(0.0, 1.0);
+    if fw > 0.5 {
+        let fill = egui::Rect::from_min_size(egui::pos2(rect.left(), bar_y), egui::vec2(fw, 3.0));
+        p.rect_filled(fill, 1.0, color_alpha(color, alpha_dim()));
+    }
+}
+
 /// Horizontal progress / ratio bar (track + fill) at `rect`, `frac` 0..1.
 #[allow(dead_code)] // kit primitive — ready for the next batch of bar widgets
 pub(crate) fn progress_bar(

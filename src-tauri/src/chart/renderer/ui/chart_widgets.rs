@@ -16,7 +16,7 @@ use crate::ui_kit::sx::Tone;
 use super::style::*;
 use super::overlays::indicators::*;
 use super::overlays::kit::{
-    draw_arc, hero_number, sub_label, donut_ring, radial_gauge, radial_gauge_stacked,
+    draw_arc, hero_number, sub_label, donut_ring, radial_gauge, radial_gauge_stacked, metric_row,
 };
 use super::super::gpu::*;
 use crate::chart_renderer::{ChartWidgetKind, WidgetDisplayMode, WidgetDock};
@@ -1480,20 +1480,14 @@ fn draw_market_breadth(p: &egui::Painter, body: egui::Rect, t: &Theme) {
     let left = body.left() + 10.0;
     let right = body.right() - 10.0;
 
+    let w = body.width() - 20.0;
     for (i, (label, value, color, bar_pct)) in metrics.iter().enumerate() {
         let y = body.top() + 4.0 + i as f32 * row_h;
-        p.text(egui::pos2(left, y + 5.0), egui::Align2::LEFT_TOP,
-            *label, egui::FontId::monospace(FONT_2XS),
-            Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 120));
-        p.text(egui::pos2(right, y + 5.0), egui::Align2::RIGHT_TOP,
-            *value, egui::FontId::monospace(FONT_SM), *color);
-        let bar_y = y + 16.0;
-        let bar_w = body.width() - 20.0;
-        p.rect_filled(egui::Rect::from_min_size(egui::pos2(left, bar_y), egui::vec2(bar_w, 3.0)),
-            1.0, tint(t, Tone::Border, alpha_faint()));
-        p.rect_filled(egui::Rect::from_min_size(egui::pos2(left, bar_y), egui::vec2(bar_w * bar_pct, 3.0)),
-            1.0, color_alpha(*color, alpha_dim()));
+        // Kit metric row: label + value + thin bar.
+        let row = egui::Rect::from_min_size(egui::pos2(left, y + 5.0), egui::vec2(w, row_h));
+        metric_row(p, row, label, value, *bar_pct, *color, t);
     }
+    let _ = right;
 }
 
 fn draw_rsi_multi(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
