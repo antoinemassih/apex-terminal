@@ -21,7 +21,7 @@ use super::overlays::kit::{
 };
 use super::overlays::registry::OverlayWidget;
 use super::overlays::viz::charts::{
-    bars_colored, heatmap_signed, multiring_colored, multiring_radius, multiring_thickness,
+    bars_colored, hbars, heatmap_signed, multiring_colored, multiring_radius, multiring_thickness,
 };
 use super::overlays::viz::style::ChartStyle;
 use super::super::gpu::*;
@@ -1371,6 +1371,15 @@ fn draw_option_greeks(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
     let right = body.right() - 10.0;
     let bar_max_w = body.width() * 0.35;
 
+    // Kit primitive: horizontal magnitude bars (|value| scaled), one per greek.
+    let st = ChartStyle::resolve(t);
+    let bars_rect = egui::Rect::from_min_size(
+        egui::pos2(left + 64.0, body.top() + 4.0), egui::vec2(bar_max_w, row_h * 4.0));
+    let rows: Vec<(f32, Color32)> = greeks.iter()
+        .map(|(_, val, color)| ((val.abs() * 2.0).min(1.0), color_alpha(*color, alpha_dim()))).collect();
+    hbars(p, bars_rect, &rows, 6.0, &st);
+
+    // Labels (left) + values (right).
     for (i, (name, val, color)) in greeks.iter().enumerate() {
         let y = body.top() + 4.0 + i as f32 * row_h + row_h / 2.0;
         p.text(egui::pos2(left, y), egui::Align2::LEFT_CENTER,
@@ -1378,11 +1387,6 @@ fn draw_option_greeks(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
         let val_str = if val.abs() < 0.01 { format!("{:.3}", val) } else { format!("{:.2}", val) };
         p.text(egui::pos2(right, y), egui::Align2::RIGHT_CENTER,
             &val_str, egui::FontId::monospace(FONT_LG), t.text);
-        let bar_x = left + 64.0;
-        let bar_w = (val.abs() * bar_max_w * 2.0).min(bar_max_w);
-        let bar_rect = egui::Rect::from_min_size(
-            egui::pos2(bar_x, y - 3.0), egui::vec2(bar_w, 6.0));
-        p.rect_filled(bar_rect, 2.0, color_alpha(*color, alpha_dim()));
     }
 }
 
@@ -1590,23 +1594,27 @@ fn draw_volume_shelf(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
         );
         return;
     }
-    let row_h = (body.height() - 8.0) / wd.vol_shelves.len().min(5) as f32;
+    let count = wd.vol_shelves.len();
+    let row_h = (body.height() - 8.0) / count.min(5) as f32;
     let max_w = body.width() - 60.0;
 
-    for (i, (price, strength, is_support)) in wd.vol_shelves.iter().enumerate() {
+    // Kit primitive: horizontal strength bars (bull = support, bear = resistance).
+    let st = ChartStyle::resolve(t);
+    let bars_rect = egui::Rect::from_min_size(
+        egui::pos2(body.left() + 50.0, body.top() + 4.0), egui::vec2(max_w, row_h * count as f32));
+    let rows: Vec<(f32, Color32)> = wd.vol_shelves.iter().map(|(_, strength, is_support)| {
+        let color = if *is_support { t.bull } else { t.bear };
+        (*strength, color_alpha(color, alpha_dim()))
+    }).collect();
+    hbars(p, bars_rect, &rows, row_h - 6.0, &st);
+
+    // Price + S/R labels.
+    for (i, (price, _strength, is_support)) in wd.vol_shelves.iter().enumerate() {
         let y = body.top() + 4.0 + i as f32 * row_h;
         let color = if *is_support { t.bull } else { t.bear };
-        let bar_w = max_w * strength;
         let label = if *is_support { "S" } else { "R" };
-
-        // Bar
-        let bar_rect = egui::Rect::from_min_size(egui::pos2(body.left() + 50.0, y + 2.0), egui::vec2(bar_w, row_h - 6.0));
-        p.rect_filled(bar_rect, 3.0, color_alpha(color, alpha_dim()));
-
-        // Price label
         p.text(egui::pos2(body.left() + 6.0, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
             &format!("{:.1}", price), egui::FontId::monospace(FONT_XS), t.text);
-        // S/R label inside bar
         p.text(egui::pos2(body.left() + 52.0, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
             label, egui::FontId::monospace(FONT_2XS), color);
     }
@@ -1618,17 +1626,23 @@ fn draw_confluence(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
         p.text(body.center(), egui::Align2::CENTER_CENTER, "NO CLUSTERS", egui::FontId::monospace(FONT_SM), color_dim(t.dim));
         return;
     }
-    let row_h = (body.height() - 4.0) / wd.confluence_zones.len().min(5) as f32;
+    let zones = wd.confluence_zones.len();
+    let row_h = (body.height() - 4.0) / zones.min(5) as f32;
+    let max_w = body.width() - 70.0;
+
+    // Kit primitive: horizontal cluster-strength bars (count → length, proximity → alpha).
+    let st = ChartStyle::resolve(t);
+    let bars_rect = egui::Rect::from_min_size(
+        egui::pos2(body.left() + 55.0, body.top() + 2.0), egui::vec2(max_w, row_h * zones as f32));
+    let rows: Vec<(f32, Color32)> = wd.confluence_zones.iter().map(|(_, count, dist)| {
+        let frac = (*count as f32 / 5.0).min(1.0);
+        let proximity_alpha = (1.0 - dist / 3.0).max(0.2);
+        (frac, tint(t, Tone::Accent, (proximity_alpha * 180.0) as u8))
+    }).collect();
+    hbars(p, bars_rect, &rows, row_h - 8.0, &st);
 
     for (i, (price, count, dist)) in wd.confluence_zones.iter().enumerate() {
         let y = body.top() + 2.0 + i as f32 * row_h;
-        let bar_w = (*count as f32 / 5.0).min(1.0) * (body.width() - 70.0);
-        let proximity_alpha = (1.0 - dist / 3.0).max(0.2);
-        let color = tint(t, Tone::Accent, (proximity_alpha * 180.0) as u8);
-
-        // Confluence bar
-        p.rect_filled(egui::Rect::from_min_size(egui::pos2(body.left() + 55.0, y + 3.0),
-            egui::vec2(bar_w, row_h - 8.0)), 2.0, color);
 
         // Price
         p.text(egui::pos2(body.left() + 6.0, y + row_h * 0.5), egui::Align2::LEFT_CENTER,

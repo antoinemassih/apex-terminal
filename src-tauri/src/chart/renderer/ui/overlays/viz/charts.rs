@@ -133,6 +133,24 @@ pub(crate) fn bars_colored(
     }
 }
 
+/// **Horizontal bars** — `rows` of `(frac 0..1, colour)`, each a left-anchored
+/// bar of height `bar_h` centred in its row, stacked top→bottom across `rect`.
+/// The caller draws labels / values around them (greeks, S/R shelves, …).
+pub(crate) fn hbars(
+    p: &egui::Painter, rect: egui::Rect, rows: &[(f32, Color32)], bar_h: f32, st: &ChartStyle,
+) {
+    let n = rows.len();
+    if n == 0 { return; }
+    let row_h = rect.height() / n as f32;
+    let cr = st.corner.min(bar_h * 0.5) as u8;
+    for (i, &(frac, col)) in rows.iter().enumerate() {
+        let cy = rect.top() + i as f32 * row_h + row_h * 0.5;
+        let w = (frac.clamp(0.0, 1.0) * rect.width()).max(0.0);
+        let r = egui::Rect::from_min_size(egui::pos2(rect.left(), cy - bar_h * 0.5), egui::vec2(w, bar_h));
+        p.rect_filled(r, cr, col);
+    }
+}
+
 // ── Histogram ─────────────────────────────────────────────────────────────────
 
 /// **Histogram** — contiguous distribution bars (no inter-bar gap), value-shaded
