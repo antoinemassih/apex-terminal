@@ -16,10 +16,12 @@ use crate::ui_kit::sx::Tone;
 use super::style::*;
 use super::overlays::indicators::*;
 use super::overlays::kit::{
-    draw_arc, hero_number, sub_label, donut_ring, radial_gauge, radial_gauge_stacked, metric_row,
+    draw_arc, hero_number, sub_label, radial_gauge, radial_gauge_stacked, metric_row,
     overlay_card_frame, overlay_card_header, overlay_header_ctx_rect, progress_bar,
 };
 use super::overlays::registry::OverlayWidget;
+use super::overlays::viz::charts::{heatmap_signed, multiring_colored, multiring_radius};
+use super::overlays::viz::style::ChartStyle;
 use super::super::gpu::*;
 use crate::chart_renderer::{ChartWidgetKind, WidgetDisplayMode, WidgetDock};
 use crate::ui_kit::widgets::Button;
@@ -1761,27 +1763,23 @@ fn draw_vol_regime(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
 fn draw_momentum_heat(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
     let labels = ["1D", "2D", "5D", "10D", "20D", "60D", "120D", "1Y"];
     let cols = 8;
-    let col_w = body.width() / cols as f32;
-    let bar_h = body.height() - 20.0;
     let max_abs = wd.roc_bars.iter().map(|v| v.abs()).fold(0.0f32, f32::max).max(0.01);
+    // Signed cells (-1..1): sign → bull/bear, magnitude → intensity.
+    let cells: Vec<f32> = wd.roc_bars.iter().map(|&roc| (roc / max_abs).clamp(-1.0, 1.0)).collect();
 
+    let st = ChartStyle::resolve(t);
+    let grid = egui::Rect::from_min_max(body.min, egui::pos2(body.right(), body.bottom() - 18.0));
+    heatmap_signed(p, grid, 1, cols, &cells, t.bull, t.bear, &st, t);
+
+    // Value (in each cell) + timeframe label (below), placed at the kit cell centres.
+    let cw = grid.width() / cols as f32;
     for (i, &roc) in wd.roc_bars.iter().enumerate() {
-        let x = body.left() + i as f32 * col_w;
+        let cxp = grid.left() + i as f32 * cw + cw * 0.5;
         let intensity = (roc.abs() / max_abs).clamp(0.0, 1.0);
-        let color = if roc > 0.0 { t.bull } else { t.bear };
-        let alpha = (intensity * 200.0 + 30.0) as u8;
-
-        // Color block
-        p.rect_filled(egui::Rect::from_min_size(egui::pos2(x + 1.0, body.top()), egui::vec2(col_w - 2.0, bar_h)),
-            2.0, egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha));
-
-        // ROC value
-        p.text(egui::pos2(x + col_w * 0.5, body.top() + bar_h * 0.5), egui::Align2::CENTER_CENTER,
+        p.text(egui::pos2(cxp, grid.center().y), egui::Align2::CENTER_CENTER,
             &format!("{:+.0}", roc), egui::FontId::monospace(FONT_2XS),
             if intensity > 0.5 { shadow_color_alpha(t, 200) } else { t.text });
-
-        // Label
-        p.text(egui::pos2(x + col_w * 0.5, body.bottom() - 6.0), egui::Align2::CENTER_CENTER,
+        p.text(egui::pos2(cxp, body.bottom() - 6.0), egui::Align2::CENTER_CENTER,
             labels[i], mono_4xs(), color_half(t.dim));
     }
 }
@@ -1892,12 +1890,20 @@ fn draw_rel_strength(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
         ("vs Sector", (wd.rs_rank * 0.9 + 5.0).clamp(0.0, 100.0)),
         ("vs Peers", (wd.rs_rank * 1.1 - 3.0).clamp(0.0, 100.0)),
     ];
+    let n = metrics.len();
 
+    // Kit primitive: concentric value rings, each coloured by its own strength.
+    let st = ChartStyle::resolve(t);
+    let ring_args: Vec<(f32, egui::Color32)> = metrics.iter().map(|(_, v)| {
+        let col = if *v > 70.0 { t.bull } else if *v < 30.0 { t.bear } else { t.warn };
+        (*v / 100.0, col)
+    }).collect();
+    multiring_colored(p, egui::pos2(cx, cy), max_r, &ring_args, &st, t);
+
+    // Per-ring labels, aligned to each ring's radius.
     for (i, (label, val)) in metrics.iter().enumerate() {
-        let r = max_r - i as f32 * 18.0;
+        let r = multiring_radius(max_r, n, i);
         let color = if *val > 70.0 { t.bull } else if *val < 30.0 { t.bear } else { t.warn };
-        donut_ring(p, egui::pos2(cx, cy), r, 6.0, *val, 100.0, color,
-            tint(t, Tone::Border, alpha_faint()));
         p.text(egui::pos2(body.right() - 6.0, cy - r), egui::Align2::RIGHT_CENTER,
             &format!("{} {:.0}", label, val), mono_4xs(), color_subtle(color));
     }

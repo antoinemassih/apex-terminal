@@ -258,24 +258,68 @@ pub(crate) fn heatmap(
     }
 }
 
+// ── Heatmap (signed / diverging) ──────────────────────────────────────────────
+
+/// **Signed heatmap** — like [`heatmap`] but each `values` cell is `-1..1`:
+/// magnitude drives intensity (ramped from a faint track), sign picks `pos` vs
+/// `neg` colour. For momentum / ROC / change grids that are bull-vs-bear.
+pub(crate) fn heatmap_signed(
+    p: &egui::Painter, rect: egui::Rect, rows: usize, cols: usize, values: &[f32],
+    pos: Color32, neg: Color32, st: &ChartStyle, t: &Theme,
+) {
+    if rows == 0 || cols == 0 { return; }
+    // Contiguous cells (gap baked into a 1px inset) so a caller can place labels
+    // at `rect.left() + c*cw + cw/2` without knowing internal spacing.
+    let cw = rect.width() / cols as f32;
+    let ch = rect.height() / rows as f32;
+    let track = tint(t, Tone::Border, alpha_faint());
+    for r in 0..rows {
+        for c in 0..cols {
+            let v = values.get(r * cols + c).copied().unwrap_or(0.0).clamp(-1.0, 1.0);
+            let col = if v >= 0.0 { pos } else { neg };
+            let fill = super::super::kit::lerp_color(track, col, v.abs());
+            let x = rect.left() + c as f32 * cw;
+            let y = rect.top() + r as f32 * ch;
+            let cell = egui::Rect::from_min_size(egui::pos2(x + 0.5, y + 0.5), egui::vec2(cw - 1.0, ch - 1.0));
+            p.rect_filled(cell, st.corner.min(cw * 0.2) as u8, fill);
+        }
+    }
+}
+
 // ── Multi-ring ────────────────────────────────────────────────────────────────
 
-/// **Multi-ring** — concentric value rings, outermost first. Each `values[i]`
-/// (0..1) fills its ring from 12 o'clock clockwise; colour is [`categorical`].
-pub(crate) fn multiring(
-    p: &egui::Painter, center: Pos2, radius: f32, values: &[f32], st: &ChartStyle, t: &Theme,
+/// Radius of ring `i` (0 = outermost) for an `n`-ring [`multiring`] of `radius`.
+/// Exposed so callers can place per-ring labels exactly on their ring.
+pub(crate) fn multiring_radius(radius: f32, n: usize, i: usize) -> f32 {
+    let thick = (radius / (n.max(1) as f32 * 1.7)).max(3.0);
+    let step = (radius - thick * 0.5) / n.max(1) as f32;
+    radius - i as f32 * step
+}
+
+/// **Multi-ring** — concentric value rings, outermost first. Each ring is
+/// `(value 0..1, colour)`; it fills from 12 o'clock clockwise over a faint track.
+pub(crate) fn multiring_colored(
+    p: &egui::Painter, center: Pos2, radius: f32, rings: &[(f32, Color32)], st: &ChartStyle, t: &Theme,
 ) {
-    let n = values.len();
+    let n = rings.len();
     if n == 0 { return; }
     let thick = (radius / (n as f32 * 1.7)).max(3.0);
-    let step = (radius - thick * 0.5) / n.max(1) as f32;
     let track = tint(t, Tone::Border, st.track_alpha);
-    for (i, &v) in values.iter().enumerate() {
-        let rr = radius - i as f32 * step;
+    for (i, &(v, col)) in rings.iter().enumerate() {
+        let rr = multiring_radius(radius, n, i);
         stroke_arc(p, center, rr, 0.0, TAU, Stroke::new(thick, track));
         let frac = v.clamp(0.0, 1.0);
         if frac > 0.001 {
-            stroke_arc(p, center, rr, TOP, TOP + TAU * frac, Stroke::new(thick, categorical(t, i)));
+            stroke_arc(p, center, rr, TOP, TOP + TAU * frac, Stroke::new(thick, col));
         }
     }
+}
+
+/// [`multiring_colored`] with [`categorical`] colours from the `values`.
+pub(crate) fn multiring(
+    p: &egui::Painter, center: Pos2, radius: f32, values: &[f32], st: &ChartStyle, t: &Theme,
+) {
+    let rings: Vec<(f32, Color32)> = values.iter().enumerate()
+        .map(|(i, &v)| (v, categorical(t, i))).collect();
+    multiring_colored(p, center, radius, &rings, st, t);
 }
