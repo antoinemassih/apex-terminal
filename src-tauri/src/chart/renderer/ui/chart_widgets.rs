@@ -17,7 +17,7 @@ use super::style::*;
 use super::overlays::indicators::*;
 use super::overlays::kit::{
     draw_arc, hero_number, sub_label, donut_ring, radial_gauge, radial_gauge_stacked, metric_row,
-    overlay_card_frame, overlay_card_header,
+    overlay_card_frame, overlay_card_header, progress_bar,
 };
 use super::overlays::registry::OverlayWidget;
 use super::super::gpu::*;
@@ -1201,14 +1201,13 @@ fn draw_volatility_widget(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, 
     let bar_w = body.width() - 24.0;
     let bar_h = 6.0;
 
-    p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y), egui::vec2(bar_w, bar_h)),
-        3.0, tint(t, Tone::Border, alpha_muted()));
     let pct = (wd.atr_pct / 5.0).clamp(0.0, 1.0);
     let vol_color = if wd.atr_pct > 3.0 { t.bear }
         else if wd.atr_pct > 1.5 { t.warn }
         else { t.bull };
-    p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, bar_y), egui::vec2(bar_w * pct, bar_h)),
-        3.0, vol_color);
+    // Kit primitive: pill track + fill (radius = h/2 = 3 here, matching the old hand-roll).
+    progress_bar(p, egui::Rect::from_min_size(egui::pos2(bar_x, bar_y), egui::vec2(bar_w, bar_h)),
+        pct, vol_color, t);
     p.text(egui::pos2(cx, bar_y + 14.0), egui::Align2::CENTER_CENTER,
         &format!("{:.2}% of price", wd.atr_pct), egui::FontId::monospace(FONT_XS), vol_color);
 

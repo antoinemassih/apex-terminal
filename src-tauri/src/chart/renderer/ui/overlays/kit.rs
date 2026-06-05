@@ -260,7 +260,7 @@ pub(crate) fn overlay_card_header(
 }
 
 /// Horizontal progress / ratio bar (track + fill) at `rect`, `frac` 0..1.
-#[allow(dead_code)] // kit primitive — ready for the next batch of bar widgets
+/// Pill-rounded (corner = height/2). Used by the volatility / ratio widgets.
 pub(crate) fn progress_bar(
     p: &egui::Painter, rect: egui::Rect, frac: f32, color: Color32, t: &Theme,
 ) {
