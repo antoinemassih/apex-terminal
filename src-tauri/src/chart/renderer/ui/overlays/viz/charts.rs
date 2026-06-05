@@ -468,3 +468,47 @@ pub(crate) fn compass(
     p.circle_filled(center, 4.0, needle);
     p.circle_filled(end, 3.0, needle);
 }
+
+// ── Spoke radar ───────────────────────────────────────────────────────────────
+
+/// **Spoke radar** — faint concentric reference rings + one spoke per item,
+/// evenly spaced from 12 o'clock. Each spoke is `(length_frac 0..1, colour)`
+/// with a tip dot. The caller draws spoke labels / centre value.
+pub(crate) fn spoke_radar(
+    p: &egui::Painter, center: Pos2, r: f32, spokes: &[(f32, Color32)], st: &ChartStyle, t: &Theme,
+) {
+    let grid = tint(t, Tone::Border, st.track_alpha);
+    for ring in [0.33_f32, 0.66, 1.0] {
+        let pts = arc_points(center, r * ring, 0.0, TAU, 40);
+        for w in pts.windows(2) { p.line_segment([w[0], w[1]], Stroke::new(st.line_thin, grid)); }
+    }
+    let n = spokes.len();
+    for (i, &(frac, col)) in spokes.iter().enumerate() {
+        let a = (i as f32 / n.max(1) as f32) * TAU - FRAC_PI_2;
+        let end = polar(center, r * frac.clamp(0.0, 1.0), a);
+        p.line_segment([center, end], Stroke::new(st.line_std, col));
+        p.circle_filled(end, st.line_bold + 1.5, col);
+    }
+}
+
+// ── Tile grid ─────────────────────────────────────────────────────────────────
+
+/// **Tile grid** — a `rows`×`cols` grid of rounded, tinted tiles coloured by
+/// `cells` (row-major). The caller draws the per-tile text.
+pub(crate) fn tile_grid(
+    p: &egui::Painter, rect: egui::Rect, rows: usize, cols: usize, cells: &[Color32], st: &ChartStyle,
+) {
+    if rows == 0 || cols == 0 { return; }
+    let cw = rect.width() / cols as f32;
+    let ch = rect.height() / rows as f32;
+    for r in 0..rows {
+        for c in 0..cols {
+            if let Some(&col) = cells.get(r * cols + c) {
+                let x = rect.left() + c as f32 * cw;
+                let y = rect.top() + r as f32 * ch;
+                let cell = egui::Rect::from_min_size(egui::pos2(x + 1.0, y + 1.0), egui::vec2(cw - 2.0, ch - 2.0));
+                p.rect_filled(cell, st.corner as u8, col);
+            }
+        }
+    }
+}

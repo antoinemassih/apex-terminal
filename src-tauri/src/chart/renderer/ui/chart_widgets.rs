@@ -22,7 +22,7 @@ use super::overlays::kit::{
 use super::overlays::registry::OverlayWidget;
 use super::overlays::viz::charts::{
     bars_colored, compass, dot_matrix, hbars, heatmap_signed, lollipops, multiring_colored,
-    multiring_radius, multiring_thickness, scatter_quadrant,
+    multiring_radius, multiring_thickness, scatter_quadrant, spoke_radar, tile_grid,
 };
 use super::overlays::viz::style::ChartStyle;
 use super::super::gpu::*;
@@ -1961,36 +1961,16 @@ fn draw_signal_radar(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
     let n = signals.len();
     let active_count = signals.iter().filter(|(_, a, _)| *a).count();
 
-    // Concentric reference rings
-    for ring in [0.33, 0.66, 1.0] {
-        let rr = r * ring;
-        let segs = 40;
-        for i in 0..segs {
-            let a0 = (i as f32 / segs as f32) * std::f32::consts::TAU;
-            let a1 = ((i + 1) as f32 / segs as f32) * std::f32::consts::TAU;
-            p.line_segment([
-                egui::pos2(cx + rr * a0.cos(), cy + rr * a0.sin()),
-                egui::pos2(cx + rr * a1.cos(), cy + rr * a1.sin())],
-                egui::Stroke::new(stroke_hair(), tint(t, Tone::Border, alpha_faint())));
-        }
-    }
+    // Kit primitive: reference rings + signal spokes with tip dots.
+    let st = ChartStyle::resolve(t);
+    let spokes: Vec<(f32, Color32)> = signals.iter().map(|(_, active, intensity)| {
+        if *active { (intensity.max(0.3), t.accent) } else { (0.15, tint(t, Tone::Dim, alpha_faint())) }
+    }).collect();
+    spoke_radar(p, egui::pos2(cx, cy), r, &spokes, &st, t);
 
-    // Signal spokes + dots
-    for (i, (name, active, intensity)) in signals.iter().enumerate() {
+    // Spoke labels, at each spoke's angle.
+    for (i, (name, active, _intensity)) in signals.iter().enumerate() {
         let angle = (i as f32 / n as f32) * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
-        let spoke_r = r * if *active { intensity.max(0.3) } else { 0.15 };
-        let end = egui::pos2(cx + spoke_r * angle.cos(), cy + spoke_r * angle.sin());
-
-        // Spoke line
-        let spoke_col = if *active { t.accent } else { tint(t, Tone::Dim, alpha_faint()) };
-        p.line_segment([egui::pos2(cx, cy), end], egui::Stroke::new(stroke_std(), spoke_col));
-
-        // Dot at tip
-        let dot_r = if *active { 4.0 } else { 2.0 };
-        let dot_col = if *active { t.accent } else { tint(t, Tone::Dim, alpha_muted()) };
-        p.circle_filled(end, dot_r, dot_col);
-
-        // Label
         let label_r = r + 10.0;
         let lx = cx + label_r * angle.cos();
         let ly = cy + label_r * angle.sin();
@@ -2018,6 +1998,13 @@ fn draw_cross_asset(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &T
     let cell_w = body.width() / cols as f32;
     let cell_h = body.height() / rows as f32;
 
+    // Kit primitive: tinted asset tiles (bull = up, bear = down).
+    let st = ChartStyle::resolve(t);
+    let cells: Vec<Color32> = assets.iter()
+        .map(|(_, _, positive)| color_alpha(if *positive { t.bull } else { t.bear }, alpha_faint())).collect();
+    tile_grid(p, body, rows, cols, &cells, &st);
+
+    // Symbol + change text per tile.
     for (i, (sym, chg, positive)) in assets.iter().enumerate() {
         let col = i % cols;
         let row = i / cols;
@@ -2025,14 +2012,9 @@ fn draw_cross_asset(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &T
         let y = body.top() + row as f32 * cell_h;
         let cell = egui::Rect::from_min_size(egui::pos2(x + 1.0, y + 1.0),
             egui::vec2(cell_w - 2.0, cell_h - 2.0));
-
         let col_c = if *positive { t.bull } else { t.bear };
-        p.rect_filled(cell, 3.0, color_alpha(col_c, alpha_faint()));
-
-        // Symbol
         p.text(egui::pos2(cell.left() + 4.0, cell.top() + 8.0), egui::Align2::LEFT_CENTER,
             sym, egui::FontId::monospace(FONT_2XS), color_half(t.dim));
-        // Change
         p.text(egui::pos2(cell.center().x, cell.center().y + 4.0), egui::Align2::CENTER_CENTER,
             chg, egui::FontId::proportional(font_md()), col_c);
     }
