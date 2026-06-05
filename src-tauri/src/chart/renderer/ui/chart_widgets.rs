@@ -14,6 +14,7 @@
 use egui::{self, Color32, Stroke};
 use crate::ui_kit::sx::Tone;
 use super::style::*;
+use super::overlays::kit::{draw_arc, hero_number, sub_label, donut_ring, radial_gauge};
 use super::super::gpu::*;
 use crate::chart_renderer::{ChartWidgetKind, WidgetDisplayMode, WidgetDock};
 use crate::ui_kit::widgets::Button;
@@ -1210,20 +1211,7 @@ fn compute_atr(bars: &[crate::chart_renderer::types::Bar], period: usize) -> f32
 // Shared painting helpers
 // ═══════════════════════════════════════════════════════════════════════════════
 
-fn draw_arc(p: &egui::Painter, center: egui::Pos2, radius: f32, start: f32, end: f32,
-            stroke: Stroke, segments: usize) {
-    if segments < 2 { return; }
-    let step = (end - start) / segments as f32;
-    let points: Vec<egui::Pos2> = (0..=segments)
-        .map(|i| {
-            let a = start + step * i as f32;
-            egui::pos2(center.x + radius * a.cos(), center.y - radius * a.sin())
-        })
-        .collect();
-    for pair in points.windows(2) {
-        p.line_segment([pair[0], pair[1]], stroke);
-    }
-}
+// draw_arc moved to overlays::kit (imported below).
 
 fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
     let t = t.clamp(0.0, 1.0);
@@ -1257,50 +1245,7 @@ fn widget_sentiment(kind: ChartWidgetKind, wd: &WidgetData) -> f32 {
     }
 }
 
-/// Hero number — large proportional display font, the focal point of every widget.
-fn hero_number(p: &egui::Painter, pos: egui::Pos2, text: &str, color: Color32) {
-    p.text(pos, egui::Align2::CENTER_CENTER,
-        text, egui::FontId::proportional(font_display_md()), color);
-}
-
-/// Even larger hero for primary KPIs.
-fn hero_number_lg(p: &egui::Painter, pos: egui::Pos2, text: &str, color: Color32) {
-    p.text(pos, egui::Align2::CENTER_CENTER,
-        text, egui::FontId::proportional(font_display_lg()), color);
-}
-
-/// Small uppercase label — editorial style.
-fn sub_label(p: &egui::Painter, pos: egui::Pos2, text: &str, color: Color32) {
-    p.text(pos, egui::Align2::CENTER_CENTER,
-        text, egui::FontId::monospace(FONT_XS),
-        Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 170));
-}
-
-/// Donut ring gauge — thick arc with value in center (infographic style).
-fn donut_ring(p: &egui::Painter, center: egui::Pos2, radius: f32, thickness: f32,
-              value: f32, max: f32, color: Color32, track_color: Color32) {
-    let segs = 48;
-    let tau = std::f32::consts::TAU;
-
-    // Track (full circle)
-    draw_arc(p, center, radius, 0.0, tau, egui::Stroke::new(thickness, track_color), segs);
-
-    // Value arc (starting from top, going clockwise)
-    let frac = (value / max).clamp(0.0, 1.0);
-    // Rotate so 0 is at top: start at -PI/2, go clockwise
-    let start = -std::f32::consts::FRAC_PI_2;
-    for i in 0..segs {
-        let t0 = i as f32 / segs as f32;
-        let t1 = (i + 1) as f32 / segs as f32;
-        if t0 >= frac { break; }
-        let t1 = t1.min(frac);
-        let a0 = start + t0 * tau;
-        let a1 = start + t1 * tau;
-        let p0 = egui::pos2(center.x + radius * a0.cos(), center.y + radius * a0.sin());
-        let p1 = egui::pos2(center.x + radius * a1.cos(), center.y + radius * a1.sin());
-        p.line_segment([p0, p1], egui::Stroke::new(thickness, color));
-    }
-}
+// hero_number / hero_number_lg / sub_label / donut_ring moved to overlays::kit.
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Widget renderers (unchanged from premium version)
@@ -1317,19 +1262,12 @@ fn draw_trend_gauge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
         lerp_color(t.bear, t.warn, (score - 33.0) / 33.0)
     } else { t.bear };
 
-    // Donut ring centered in body
     let r = (body.width().min(body.height()) * 0.32).min(34.0);
-    let track = tint(t, Tone::Border, alpha_muted());
-    donut_ring(p, egui::pos2(cx, cy - 4.0), r, 6.0, score, 100.0, color, track);
-
-    // Hero number in center
-    hero_number(p, egui::pos2(cx, cy - 4.0), &format!("{:.0}", score), color);
-
-    // Regime label below
     let regime = if wd.trend_regime.is_empty() {
         if score > 66.0 { "STRONG" } else if score > 33.0 { "MIXED" } else { "WEAK" }
     } else { &wd.trend_regime };
-    sub_label(p, egui::pos2(cx, cy + r + 10.0), regime, color);
+    // Kit one-call gauge.
+    radial_gauge(p, egui::pos2(cx, cy - 4.0), r, score / 100.0, &format!("{:.0}", score), regime, color, t);
 
     // Direction arrow
     let dir_icon = match wd.trend_dir { d if d > 0 => "\u{25B2}", d if d < 0 => "\u{25BC}", _ => "\u{25C6}" };
@@ -1349,13 +1287,9 @@ fn draw_momentum_gauge(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
         else { t.warn };
 
     let r = (body.width().min(body.height()) * 0.30).min(30.0);
-    let track = tint(t, Tone::Border, alpha_muted());
-    donut_ring(p, egui::pos2(cx, cy - 4.0), r, 6.0, rsi, 100.0, rsi_color, track);
-
-    hero_number(p, egui::pos2(cx, cy - 4.0), &format!("{:.0}", rsi), rsi_color);
-
     let zone = if rsi > 70.0 { "OVERBOUGHT" } else if rsi < 30.0 { "OVERSOLD" } else { "NEUTRAL" };
-    sub_label(p, egui::pos2(cx, cy + r + 10.0), zone, rsi_color);
+    // Kit one-call gauge: donut + hero + caption, theme-resolved track.
+    radial_gauge(p, egui::pos2(cx, cy - 4.0), r, rsi / 100.0, &format!("{:.0}", rsi), zone, rsi_color, t);
 
     let mom_col = if mom > 0.0 { t.bull } else { t.bear };
     p.text(egui::pos2(body.right() - 8.0, body.bottom() - 6.0), egui::Align2::RIGHT_CENTER,
