@@ -151,6 +151,59 @@ pub(crate) fn metric_row(
     }
 }
 
+// ── Card shell (the chrome every overlay widget shares) ───────────────────────
+
+/// The shared overlay **card shell** — drop shadow, sentiment-tinted background,
+/// a top bevel highlight and the border — painted *under* every widget body.
+///
+/// This centralises what used to be ~40 lines of inline magic-alpha painting in
+/// `chart_widgets`, so all overlay cards share one shell and one set of Sx tones.
+/// `sentiment` is the widget's data state in `-1..=1` (drives the subtle green↔red
+/// background tint); `card` is the body rect (the header floats above it).
+pub(crate) fn overlay_card_frame(
+    p: &egui::Painter, card: egui::Rect, sentiment: f32, t: &Theme,
+) {
+    // Drop shadow — two stacked soft rects offset downward.
+    p.rect_filled(card.translate(egui::vec2(0.0, 3.0)).expand(2.0),
+        r_lg_cr(), color_alpha(t.shadow_color, 20));
+    p.rect_filled(card.translate(egui::vec2(0.0, 1.5)).expand(1.0),
+        r_lg_cr(), color_alpha(t.shadow_color, 10));
+
+    // Sentiment-driven background tint — pastel on light themes, a faint shift of
+    // the toolbar surface on dark themes so the card reads against the chart.
+    let is_light = t.is_light();
+    let (sr, sg, sb) = if is_light {
+        match sentiment {
+            s if s > 0.6  => (200, 235, 200),  // soft green
+            s if s > 0.2  => (215, 235, 210),  // sage
+            s if s > -0.2 => (238, 238, 234),  // warm neutral
+            s if s > -0.6 => (240, 225, 195),  // warm amber
+            _             => (240, 210, 205),  // soft rose
+        }
+    } else {
+        match sentiment {
+            s if s > 0.6  => (t.bull.r() / 3 + t.toolbar_bg.r() * 2 / 3, t.bull.g() / 3 + t.toolbar_bg.g() * 2 / 3, t.bull.b() / 3 + t.toolbar_bg.b() * 2 / 3),
+            s if s > 0.2  => (t.toolbar_bg.r().saturating_add(8), t.toolbar_bg.g().saturating_add(12), t.toolbar_bg.b().saturating_add(6)),
+            s if s > -0.2 => (t.toolbar_bg.r().saturating_add(5), t.toolbar_bg.g().saturating_add(5), t.toolbar_bg.b().saturating_add(5)),
+            s if s > -0.6 => (t.toolbar_bg.r().saturating_add(15), t.toolbar_bg.g().saturating_add(10), t.toolbar_bg.b()),
+            _             => (t.bear.r() / 4 + t.toolbar_bg.r() * 3 / 4, t.bear.g() / 4 + t.toolbar_bg.g() * 3 / 4, t.bear.b() / 4 + t.toolbar_bg.b() * 3 / 4),
+        }
+    };
+    p.rect_filled(card, r_lg_cr(), Color32::from_rgb(sr, sg, sb));
+
+    // Top bevel highlight — a 1px lighter line along the top edge.
+    let r_lg_u8 = r_lg_cr().nw;
+    p.rect_filled(
+        egui::Rect::from_min_max(card.min, egui::pos2(card.right(), card.top() + 1.0)),
+        egui::CornerRadius { nw: r_lg_u8, ne: r_lg_u8, sw: 0, se: 0 },
+        Color32::from_rgba_unmultiplied(255, 255, 255, if is_light { 50 } else { 10 }));
+
+    // Border.
+    p.rect_stroke(card, r_lg_cr(),
+        Stroke::new(stroke_std(), tint(t, Tone::Border, if is_light { 50 } else { 30 })),
+        egui::StrokeKind::Outside);
+}
+
 /// Horizontal progress / ratio bar (track + fill) at `rect`, `frac` 0..1.
 #[allow(dead_code)] // kit primitive — ready for the next batch of bar widgets
 pub(crate) fn progress_bar(

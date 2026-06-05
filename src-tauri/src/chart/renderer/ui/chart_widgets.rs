@@ -17,6 +17,7 @@ use super::style::*;
 use super::overlays::indicators::*;
 use super::overlays::kit::{
     draw_arc, hero_number, sub_label, donut_ring, radial_gauge, radial_gauge_stacked, metric_row,
+    overlay_card_frame,
 };
 use super::super::gpu::*;
 use crate::chart_renderer::{ChartWidgetKind, WidgetDisplayMode, WidgetDock};
@@ -192,47 +193,11 @@ pub(crate) fn draw_widgets(
             card_rect.max);
         let card_hovered = !draw_faded && ui.rect_contains_pointer(hover_zone);
 
-        // Card mode: data-driven pastel background
+        // Card mode: the shared overlay shell (shadow + sentiment bg + bevel +
+        // border) — one Sx-toned source of truth in the overlay kit.
         if mode == WidgetDisplayMode::Card {
-            // Shadow
-            painter.rect_filled(card_rect.translate(egui::vec2(0.0, 3.0)).expand(2.0),
-                r_lg_cr(), color_alpha(t.shadow_color, 20));
-            painter.rect_filled(card_rect.translate(egui::vec2(0.0, 1.5)).expand(1.0),
-                r_lg_cr(), color_alpha(t.shadow_color, 10));
-
-            // Sentiment-driven background: the color reflects the data state
             let sentiment = widget_sentiment(kind, &wd);
-            let is_light = t.is_light();
-            // Pastel tint colors — more prominent on light themes
-            let (sr, sg, sb) = if is_light {
-                match sentiment {
-                    s if s > 0.6  => (200, 235, 200),  // soft green
-                    s if s > 0.2  => (215, 235, 210),  // sage
-                    s if s > -0.2 => (238, 238, 234),  // warm neutral
-                    s if s > -0.6 => (240, 225, 195),  // warm amber
-                    _             => (240, 210, 205),   // soft rose
-                }
-            } else {
-                match sentiment {
-                    s if s > 0.6  => (t.bull.r() / 3 + t.toolbar_bg.r() * 2 / 3, t.bull.g() / 3 + t.toolbar_bg.g() * 2 / 3, t.bull.b() / 3 + t.toolbar_bg.b() * 2 / 3),
-                    s if s > 0.2  => (t.toolbar_bg.r().saturating_add(8), t.toolbar_bg.g().saturating_add(12), t.toolbar_bg.b().saturating_add(6)),
-                    s if s > -0.2 => (t.toolbar_bg.r().saturating_add(5), t.toolbar_bg.g().saturating_add(5), t.toolbar_bg.b().saturating_add(5)),
-                    s if s > -0.6 => (t.toolbar_bg.r().saturating_add(15), t.toolbar_bg.g().saturating_add(10), t.toolbar_bg.b()),
-                    _             => (t.bear.r() / 4 + t.toolbar_bg.r() * 3 / 4, t.bear.g() / 4 + t.toolbar_bg.g() * 3 / 4, t.bear.b() / 4 + t.toolbar_bg.b() * 3 / 4),
-                }
-            };
-            painter.rect_filled(card_rect, r_lg_cr(), Color32::from_rgb(sr, sg, sb));
-
-            // Top bevel
-            let r_lg_u8 = r_lg_cr().nw;
-            painter.rect_filled(
-                egui::Rect::from_min_max(card_rect.min, egui::pos2(card_rect.right(), card_rect.top() + 1.0)),
-                egui::CornerRadius { nw: r_lg_u8, ne: r_lg_u8, sw: 0, se: 0 },
-                Color32::from_rgba_unmultiplied(255, 255, 255, if t.is_light() { 50 } else { 10 }));
-            // Border
-            painter.rect_stroke(card_rect, r_lg_cr(),
-                Stroke::new(stroke_std(), tint(t, Tone::Border, if t.is_light() { 50 } else { 30 })),
-                egui::StrokeKind::Outside);
+            overlay_card_frame(&painter, card_rect, sentiment, t);
         }
 
         // Widget body — full card rect (header floats above, not inside)
