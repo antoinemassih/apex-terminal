@@ -3087,53 +3087,92 @@ fn draw_news_ticker(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Th
 /// Draw a loading skeleton shimmer when no bar data is loaded yet.
 fn draw_loading_skeleton(p: &egui::Painter, body: egui::Rect, t: &Theme) {
     let center = body.center();
-    let radius = (body.width().min(body.height()) * 0.10).clamp(8.0, 16.0);
+    let radius = (body.width().min(body.height()) * 0.10).clamp(12.0, 20.0);
     draw_refined_spinner(p, center, radius, t.accent);
-    p.text(egui::pos2(center.x, center.y + radius + 12.0), egui::Align2::CENTER_CENTER,
+    p.text(egui::pos2(center.x, center.y + radius + 14.0), egui::Align2::CENTER_CENTER,
         "Loading\u{2026}", egui::FontId::monospace(FONT_XS), color_dim(t.dim));
 }
 
-/// Smooth rotating arc — a refined, understated loading indicator.
-/// Draws a faint full-circle track plus a 90° arc that completes one revolution
-/// per second. Mirrors the `Progress::circular_indeterminate` widget in ui_kit
-/// so painter-mode and flow-layout sites share one visual language.
+/// Worm 2 logo animation — three logo shapes (dot, boomerang, ring) with ghost
+/// outlines and traveling segments at different speeds.
 pub(crate) fn draw_refined_spinner(p: &egui::Painter, center: egui::Pos2, radius: f32, color: egui::Color32) {
-    // Use egui's time (seconds since app start, f64) — cast to f32 only for the
-    // fractional phase.  The Unix epoch approach hits f32 precision limits
-    // (~128-second steps at current timestamps) causing the arc to freeze.
     let now = p.ctx().input(|i| i.time);
-    let stroke_w = (radius * 0.16).max(1.5);
-    let r = (radius - stroke_w * 0.5).max(2.0);
+    let size = radius * 2.0;
+    let rect = egui::Rect::from_center_size(center, egui::vec2(size, size));
+    let scale = size / 24.0;
+    let stroke_w = (radius * 0.14).max(1.5);
+    let ghost = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 36);
+    let to_s = |x: f32, y: f32| egui::pos2(rect.min.x + x * scale, rect.min.y + y * scale);
 
-    // Faint full-circle track behind the moving arc.
-    let track_col = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 48);
-    p.circle_stroke(center, r, egui::Stroke::new(stroke_w, track_col));
-
-    // Rotating arc with a breathing span (60°–270°) for a Material-style feel.
-    let phase = now.rem_euclid(1.2) as f32 / 1.2; // 0..1 over 1.2 s
-    let start_deg = (now.rem_euclid(1.0) as f32) * 360.0 - 90.0;
-    let span_deg = 60.0 + 105.0 * (std::f32::consts::PI * phase).sin();
-    let segments = ((span_deg / 6.0) as usize).max(8);
-    let mut points = Vec::with_capacity(segments + 1);
-    for i in 0..=segments {
-        let t = i as f32 / segments as f32;
-        let deg = start_deg + span_deg * t;
-        let rad = deg.to_radians();
-        points.push(egui::pos2(center.x + rad.cos() * r, center.y + rad.sin() * r));
+    // Dot — small circle top-left
+    let dot_c = to_s(6.15852, 6.28967);
+    let dot_r = (3.5638 * scale - stroke_w * 0.5).max(1.0);
+    p.circle_stroke(dot_c, dot_r, egui::Stroke::new(stroke_w, ghost));
+    {
+        let phase = ((now / 1.1) % 1.0) as f32;
+        spinner_arc(p, dot_c, dot_r, phase * 360.0 - 90.0, 198.0, stroke_w, color);
     }
-    p.add(egui::Shape::line(points, egui::Stroke::new(stroke_w, color)));
-    // PERF: cap spinner repaint to ~60fps instead of unconditional `request_repaint()`
-    // which forced egui to never sleep — that drove the GPU at max rate whenever the
-    // spinner was on screen, stealing frame budget from pan/zoom.
+
+    // Ring — large circle bottom-right
+    let ring_c = to_s(15.577, 15.7082);
+    let ring_r = (5.85481 * scale - stroke_w * 0.5).max(1.0);
+    p.circle_stroke(ring_c, ring_r, egui::Stroke::new(stroke_w, ghost));
+    {
+        let phase = ((now / 2.6) % 1.0) as f32;
+        spinner_arc(p, ring_c, ring_r, phase * 360.0 - 90.0, 136.8, stroke_w, color);
+    }
+
+    // Boomerang arc — sampled bezier path
+    let arc_pts = spinner_boomerang(scale, rect.min);
+    p.add(egui::Shape::line(arc_pts.clone(), egui::Stroke::new(stroke_w, ghost)));
+    {
+        let n = arc_pts.len();
+        let worm_len = ((n as f32 * 0.42) as usize).max(2);
+        let phase = ((now / 1.7) % 1.0) as f32;
+        let i0 = (phase * n as f32) as usize % n;
+        let pts: Vec<egui::Pos2> = (0..=worm_len).map(|k| arc_pts[(i0 + k) % n]).collect();
+        if pts.len() >= 2 {
+            p.add(egui::Shape::line(pts, egui::Stroke::new(stroke_w, color)));
+        }
+    }
+
     p.ctx().request_repaint_after(std::time::Duration::from_millis(16));
 }
 
 /// Ui-level refined spinner — drop-in replacement for `ui.spinner()`.
 pub(crate) fn refined_spinner(ui: &mut egui::Ui, color: egui::Color32) {
-    let size = ui.spacing().interact_size.y.max(14.0);
+    let size = ui.spacing().interact_size.y.max(18.0);
     let (rect, _) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::hover());
-    draw_refined_spinner(ui.painter(), rect.center(), size * 0.42, color);
+    draw_refined_spinner(ui.painter(), rect.center(), size * 0.5, color);
     ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
+}
+
+fn spinner_arc(p: &egui::Painter, center: egui::Pos2, radius: f32, start_deg: f32, span_deg: f32, stroke_w: f32, color: egui::Color32) {
+    let segs = ((span_deg.abs() / 6.0) as usize).max(6);
+    let pts: Vec<egui::Pos2> = (0..=segs).map(|i| {
+        let rad = (start_deg + span_deg * i as f32 / segs as f32).to_radians();
+        egui::pos2(center.x + rad.cos() * radius, center.y + rad.sin() * radius)
+    }).collect();
+    p.add(egui::Shape::line(pts, egui::Stroke::new(stroke_w, color)));
+}
+
+fn spinner_boomerang(scale: f32, origin: egui::Pos2) -> Vec<egui::Pos2> {
+    let s = |x: f32, y: f32| egui::pos2(origin.x + x * scale, origin.y + y * scale);
+    let cb = |p0: [f32;2], p1: [f32;2], p2: [f32;2], p3: [f32;2], t: f32| -> egui::Pos2 {
+        let u = 1.0 - t;
+        s(u*u*u*p0[0]+3.0*u*u*t*p1[0]+3.0*u*t*t*p2[0]+t*t*t*p3[0],
+          u*u*u*p0[1]+3.0*u*u*t*p1[1]+3.0*u*t*t*p2[1]+t*t*t*p3[1])
+    };
+    let n = 7usize;
+    let mut pts: Vec<egui::Pos2> = Vec::with_capacity(64);
+    for i in 0..n { pts.push(cb([13.6456,3.38161],[15.5131,1.51417],[18.5651,1.53812],[20.4625,3.43547], i as f32/n as f32)); }
+    for i in 0..n { pts.push(cb([20.4625,3.43547],[22.3595,5.33285],[22.3837,8.385],[20.5163,10.2525], i as f32/n as f32)); }
+    pts.push(s(20.3209,10.4355)); pts.push(s(20.4293,10.5439)); pts.push(s(10.4567,20.5166));
+    for i in 0..n { pts.push(cb([10.4353,20.538],[8.52338,22.45],[5.42336,22.4505],[3.51134,20.5387], i as f32/n as f32)); }
+    for i in 0..n { pts.push(cb([3.51134,20.5387],[1.59935,18.6267],[1.59935,15.526],[3.51134,13.614], i as f32/n as f32)); }
+    pts.push(s(13.1263,3.99895));
+    for i in 0..=n { pts.push(cb([13.1263,3.99895],[13.2793,3.78238],[13.4519,3.57531],[13.6456,3.38161], i as f32/n as f32)); }
+    pts
 }
 
 /// Compute aggregate conviction from all signal sources (0-100).
