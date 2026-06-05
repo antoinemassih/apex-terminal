@@ -204,6 +204,61 @@ pub(crate) fn overlay_card_frame(
         egui::StrokeKind::Outside);
 }
 
+/// Draws the floating **header bar** above a hovered card — the kind icon +
+/// label, an optional lock glyph, and the context-menu (`⋯`) + mode-toggle
+/// buttons — and returns the two button hit-rects `(ctx_btn, mode_btn)` for the
+/// caller's interaction routing. Painter-only: the caller owns click handling
+/// and cursor feedback (the buttons' hover *visuals* are driven by `ptr` here).
+pub(crate) fn overlay_card_header(
+    p: &egui::Painter, card: egui::Rect, card_w: f32,
+    icon: &str, label: &str, locked: bool, mode_icon: &str,
+    ptr: Option<egui::Pos2>, t: &Theme,
+) -> (egui::Rect, egui::Rect) {
+    let hdr_h = 26.0;
+    let hdr = egui::Rect::from_min_size(
+        egui::pos2(card.left(), card.top() - hdr_h - 2.0),
+        egui::vec2(card_w, hdr_h));
+    // Header background + a hairline divider along its bottom edge.
+    let hdr_r = r_lg_cr().nw;
+    p.rect_filled(hdr,
+        egui::CornerRadius { nw: hdr_r, ne: hdr_r, sw: 0, se: 0 },
+        Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 230));
+    p.line_segment(
+        [egui::pos2(hdr.left() + 4.0, hdr.bottom()), egui::pos2(hdr.right() - 4.0, hdr.bottom())],
+        Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_muted())));
+    // Icon + label (+ lock glyph).
+    p.text(egui::pos2(hdr.left() + 8.0, hdr.center().y),
+        egui::Align2::LEFT_CENTER, icon, egui::FontId::proportional(font_md()), t.accent);
+    p.text(egui::pos2(hdr.left() + 24.0, hdr.center().y),
+        egui::Align2::LEFT_CENTER, label, egui::FontId::monospace(font_xs()), t.text);
+    if locked {
+        p.text(egui::pos2(hdr.left() + 24.0 + label.len() as f32 * 7.0 + 6.0, hdr.center().y),
+            egui::Align2::LEFT_CENTER, "\u{1F512}", egui::FontId::proportional(font_xs()), color_half(t.dim));
+    }
+
+    let btn_w = 32.0;
+    let btn_h = 22.0;
+
+    // One header button: hover-lit fill + stroke + glyph. Returns its rect.
+    let mut header_btn = |center_x: f32, glyph: &str| -> egui::Rect {
+        let r = egui::Rect::from_center_size(
+            egui::pos2(center_x, hdr.center().y), egui::vec2(btn_w, btn_h));
+        let hov = ptr.map(|q| r.contains(q)).unwrap_or(false);
+        p.rect_filled(r, r_sm_cr(),
+            if hov { tint(t, Tone::Accent, alpha_line()) } else { tint(t, Tone::Border, alpha_subtle()) });
+        p.rect_stroke(r, r_sm_cr(),
+            Stroke::new(stroke_thin(), if hov { t.accent } else { tint(t, Tone::Border, alpha_muted()) }),
+            egui::StrokeKind::Outside);
+        p.text(r.center(), egui::Align2::CENTER_CENTER,
+            glyph, egui::FontId::proportional(font_lg()), if hov { t.accent } else { t.dim });
+        r
+    };
+
+    let ctx_rect = header_btn(hdr.right() - btn_w - 20.0, "\u{22EF}");
+    let tog_rect = header_btn(hdr.right() - 18.0, mode_icon);
+    (ctx_rect, tog_rect)
+}
+
 /// Horizontal progress / ratio bar (track + fill) at `rect`, `frac` 0..1.
 #[allow(dead_code)] // kit primitive — ready for the next batch of bar widgets
 pub(crate) fn progress_bar(

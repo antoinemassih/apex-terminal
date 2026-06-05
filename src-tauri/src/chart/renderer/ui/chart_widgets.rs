@@ -17,7 +17,7 @@ use super::style::*;
 use super::overlays::indicators::*;
 use super::overlays::kit::{
     draw_arc, hero_number, sub_label, donut_ring, radial_gauge, radial_gauge_stacked, metric_row,
-    overlay_card_frame,
+    overlay_card_frame, overlay_card_header,
 };
 use super::super::gpu::*;
 use crate::chart_renderer::{ChartWidgetKind, WidgetDisplayMode, WidgetDock};
@@ -238,63 +238,14 @@ pub(crate) fn draw_widgets(
             draw_mini_badge(&painter, card_rect, kind, &wd, t);
         }
 
-        // ── Header bar — floats ABOVE the card on hover ──
-        let hdr_h = 26.0;
+        // ── Header bar — floats ABOVE the card on hover (kit-drawn shell) ──
+        let hdr_h = 26.0; // kept in scope: widens the drag hit-rect below
         if card_hovered && !w.collapsed {
-            let hdr = egui::Rect::from_min_size(
-                egui::pos2(card_rect.left(), card_rect.top() - hdr_h - 2.0),
-                egui::vec2(card_w, hdr_h));
-            // Header background
-            let hdr_r = r_lg_cr().nw;
-            painter.rect_filled(hdr,
-                egui::CornerRadius { nw: hdr_r, ne: hdr_r, sw: 0, se: 0 },
-                Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 230));
-            painter.line_segment(
-                [egui::pos2(hdr.left() + 4.0, hdr.bottom()), egui::pos2(hdr.right() - 4.0, hdr.bottom())],
-                Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_muted())));
-            // Label
-            painter.text(egui::pos2(hdr.left() + 8.0, hdr.center().y),
-                egui::Align2::LEFT_CENTER, kind.icon(), egui::FontId::proportional(font_md()), t.accent);
-            painter.text(egui::pos2(hdr.left() + 24.0, hdr.center().y),
-                egui::Align2::LEFT_CENTER, kind.label(), egui::FontId::monospace(font_xs()), t.text);
-            if w.locked {
-                painter.text(egui::pos2(hdr.left() + 24.0 + kind.label().len() as f32 * 7.0 + 6.0, hdr.center().y),
-                    egui::Align2::LEFT_CENTER, "\u{1F512}", egui::FontId::proportional(font_xs()), color_half(t.dim));
-            }
-
-            // ── Buttons — large, visible, with hover backgrounds ──
-            let btn_w = 32.0;
-            let btn_h = 22.0;
             let ptr = ui.ctx().pointer_hover_pos();
-
-            // Context menu ⋯
-            let ctx_rect = egui::Rect::from_center_size(
-                egui::pos2(hdr.right() - btn_w - 20.0, hdr.center().y), egui::vec2(btn_w, btn_h));
-            let ctx_hov = ptr.map(|p| ctx_rect.contains(p)).unwrap_or(false);
-            painter.rect_filled(ctx_rect, r_sm_cr(),
-                if ctx_hov { tint(t, Tone::Accent, alpha_line()) } else { tint(t, Tone::Border, alpha_subtle()) });
-            painter.rect_stroke(ctx_rect, r_sm_cr(),
-                Stroke::new(stroke_thin(), if ctx_hov { t.accent } else { tint(t, Tone::Border, alpha_muted()) }),
-                egui::StrokeKind::Outside);
-            painter.text(ctx_rect.center(), egui::Align2::CENTER_CENTER,
-                "\u{22EF}", egui::FontId::proportional(font_lg()),
-                if ctx_hov { t.accent } else { t.dim });
-            if ctx_hov { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+            let (ctx_rect, tog_rect) = overlay_card_header(
+                &painter, card_rect, card_w, kind.icon(), kind.label(),
+                w.locked, mode_icon, ptr, t);
             card_ctx_rect = Some(ctx_rect);
-
-            // Mode toggle
-            let tog_rect = egui::Rect::from_center_size(
-                egui::pos2(hdr.right() - 18.0, hdr.center().y), egui::vec2(btn_w, btn_h));
-            let tog_hov = ptr.map(|p| tog_rect.contains(p)).unwrap_or(false);
-            painter.rect_filled(tog_rect, r_sm_cr(),
-                if tog_hov { tint(t, Tone::Accent, alpha_line()) } else { tint(t, Tone::Border, alpha_subtle()) });
-            painter.rect_stroke(tog_rect, r_sm_cr(),
-                Stroke::new(stroke_thin(), if tog_hov { t.accent } else { tint(t, Tone::Border, alpha_muted()) }),
-                egui::StrokeKind::Outside);
-            painter.text(tog_rect.center(), egui::Align2::CENTER_CENTER,
-                mode_icon, egui::FontId::proportional(font_lg()),
-                if tog_hov { t.accent } else { t.dim });
-            if tog_hov { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             card_toggle_rect = Some(tog_rect);
         }
 
