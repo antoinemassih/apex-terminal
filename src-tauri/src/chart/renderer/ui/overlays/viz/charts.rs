@@ -9,7 +9,7 @@
 //! active `StyleSystem`. Wave 1: stat · bars · area/line · histogram · donut ·
 //! pie · radar · heatmap · multi-ring.
 
-use std::f32::consts::{PI, TAU};
+use std::f32::consts::{PI, TAU, FRAC_PI_2};
 use egui::{self, Color32, Pos2, Stroke};
 use crate::ui_kit::sx::{Tone, Shade};
 use crate::chart_renderer::ui::style::*;
@@ -442,4 +442,29 @@ pub(crate) fn multiring(
     let rings: Vec<(f32, Color32)> = values.iter().enumerate()
         .map(|(i, &v)| (v, categorical(t, i))).collect();
     multiring_colored(p, center, radius, &rings, st, t);
+}
+
+// ── Compass ───────────────────────────────────────────────────────────────────
+
+/// **Compass** — a dial (faint disc + radial ticks, every 9th major) with a
+/// directional needle. `frac` in `-1..1` sweeps the needle left→up→right;
+/// `needle` colours it. The caller draws cardinal / centre labels.
+pub(crate) fn compass(
+    p: &egui::Painter, center: Pos2, r: f32, frac: f32, needle: Color32, st: &ChartStyle, t: &Theme,
+) {
+    p.circle_filled(center, r + 2.0, tint(t, Tone::Border, alpha_dim()));
+    let ticks = 36;
+    for i in 0..ticks {
+        let a = (i as f32 / ticks as f32) * TAU - FRAC_PI_2;
+        let major = i % 9 == 0;
+        let inner = if major { r - 10.0 } else { r - 5.0 };
+        let w = if major { st.line_std } else { st.line_thin };
+        p.line_segment([polar(center, inner, a), polar(center, r + 2.0, a)],
+            Stroke::new(w, tint(t, Tone::Dim, alpha_line())));
+    }
+    let na = frac.clamp(-1.0, 1.0) * FRAC_PI_2 - FRAC_PI_2;
+    let end = polar(center, r - 14.0, na);
+    p.line_segment([center, end], Stroke::new(st.line_bold + 1.5, needle));
+    p.circle_filled(center, 4.0, needle);
+    p.circle_filled(end, 3.0, needle);
 }

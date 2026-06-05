@@ -21,8 +21,8 @@ use super::overlays::kit::{
 };
 use super::overlays::registry::OverlayWidget;
 use super::overlays::viz::charts::{
-    bars_colored, dot_matrix, hbars, heatmap_signed, lollipops, multiring_colored, multiring_radius,
-    multiring_thickness, scatter_quadrant,
+    bars_colored, compass, dot_matrix, hbars, heatmap_signed, lollipops, multiring_colored,
+    multiring_radius, multiring_thickness, scatter_quadrant,
 };
 use super::overlays::viz::style::ChartStyle;
 use super::super::gpu::*;
@@ -1656,25 +1656,14 @@ fn draw_flow_compass(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
     let cx = body.center().x;
     let cy = body.center().y - 6.0;
     let r = (body.width().min(body.height()) * 0.36).min(65.0);
-
-    // Dark circle background
-    p.circle_filled(egui::pos2(cx, cy), r + 2.0, tint(t, Tone::Border, alpha_dim()));
-
-    // Radial tick marks (chart12 style)
-    let ticks = 36;
-    for i in 0..ticks {
-        let a = (i as f32 / ticks as f32) * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
-        let is_major = i % 9 == 0;
-        let inner = if is_major { r - 10.0 } else { r - 5.0 };
-        let outer = r + 2.0;
-        let p1 = egui::pos2(cx + inner * a.cos(), cy + inner * a.sin());
-        let p2 = egui::pos2(cx + outer * a.cos(), cy + outer * a.sin());
-        let w = if is_major { 1.5 } else { 0.5 };
-        p.line_segment([p1, p2], egui::Stroke::new(w, tint(t, Tone::Dim, alpha_line())));
-    }
-
-    // Cardinal labels
     let bias = wd.momentum; // use momentum as flow proxy
+    let needle_col = if bias > 0.0 { t.bull } else { t.bear };
+
+    // Kit primitive: dial + ticks + directional needle.
+    let st = ChartStyle::resolve(t);
+    compass(p, egui::pos2(cx, cy), r, (bias / 10.0).clamp(-1.0, 1.0), needle_col, &st, t);
+
+    // BUY / SELL cardinal labels.
     for (label, angle_offset) in [("BUY", 0.0f32), ("SELL", std::f32::consts::PI)] {
         let a = angle_offset - std::f32::consts::FRAC_PI_2;
         let lx = cx + (r + 14.0) * a.cos();
@@ -1682,14 +1671,6 @@ fn draw_flow_compass(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
         p.text(egui::pos2(lx, ly), egui::Align2::CENTER_CENTER, label,
             mono_4xs(), color_half(t.dim));
     }
-
-    // Needle
-    let needle_angle = (bias / 10.0).clamp(-1.0, 1.0) * std::f32::consts::FRAC_PI_2 - std::f32::consts::FRAC_PI_2;
-    let needle_end = egui::pos2(cx + (r - 14.0) * needle_angle.cos(), cy + (r - 14.0) * needle_angle.sin());
-    let needle_col = if bias > 0.0 { t.bull } else { t.bear };
-    p.line_segment([egui::pos2(cx, cy), needle_end], egui::Stroke::new(stroke_extra_thick(), needle_col));
-    p.circle_filled(egui::pos2(cx, cy), 4.0, needle_col);
-    p.circle_filled(needle_end, 3.0, needle_col);
 
     // Center label
     p.text(egui::pos2(cx, body.bottom() - 8.0), egui::Align2::CENTER_CENTER,
@@ -1710,17 +1691,22 @@ fn draw_vol_regime(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &The
         ("ATRp", wd.atr_percentile, 100.0),         // ATR percentile
     ];
 
+    let n = metrics.len();
+    let regime_frac = |val: f32, max: f32| (val / max).clamp(0.0, 1.0);
+    let regime_color = |frac: f32| if frac > 0.7 { t.bear } else if frac > 0.4 { t.warn } else { t.bull };
+
+    // Kit primitive: concentric value rings, coloured by regime intensity.
+    let st = ChartStyle::resolve(t);
+    let rings: Vec<(f32, Color32)> = metrics.iter().map(|(_, val, max)| {
+        let frac = regime_frac(*val, *max);
+        (frac, regime_color(frac))
+    }).collect();
+    multiring_colored(p, egui::pos2(cx, cy), max_r, &rings, &st, t);
+
+    // Right-side labels, aligned to each ring.
     for (i, (label, val, max)) in metrics.iter().enumerate() {
-        let r = max_r - i as f32 * 14.0;
-        let frac = (val / max).clamp(0.0, 1.0);
-        let color = if frac > 0.7 { t.bear } else if frac > 0.4 { t.warn } else { t.bull };
-
-        draw_arc_ring(p, egui::pos2(cx, cy), r, 5.0, 0.0, std::f32::consts::TAU,
-            tint(t, Tone::Border, alpha_faint()), 48);
-        let sweep = frac * std::f32::consts::TAU;
-        draw_arc_ring(p, egui::pos2(cx, cy), r, 5.0, -std::f32::consts::FRAC_PI_2, sweep, color, 40);
-
-        // Label at right
+        let r = multiring_radius(max_r, n, i);
+        let color = regime_color(regime_frac(*val, *max));
         p.text(egui::pos2(body.right() - 6.0, cy - r), egui::Align2::RIGHT_CENTER,
             &format!("{} {:.0}", label, val), mono_4xs(), color_subtle(color));
     }
@@ -1951,21 +1937,6 @@ fn draw_liquidity_score(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
 
     radial_gauge_stacked(p, egui::pos2(cx, cy), r, score / 100.0,
         &format!("{:.0}", score), label, color, t);
-}
-
-fn draw_arc_ring(p: &egui::Painter, center: egui::Pos2, radius: f32, width: f32,
-                 start: f32, sweep: f32, color: egui::Color32, segments: usize) {
-    if sweep.abs() < 0.001 { return; }
-    for i in 0..segments {
-        let t0 = i as f32 / segments as f32;
-        let t1 = (i + 1) as f32 / segments as f32;
-        if t0 * sweep.abs() > sweep.abs() { break; }
-        let a0 = start + t0 * sweep;
-        let a1 = start + t1.min(1.0) * sweep;
-        let p0 = egui::pos2(center.x + radius * a0.cos(), center.y + radius * a0.sin());
-        let p1 = egui::pos2(center.x + radius * a1.cos(), center.y + radius * a1.sin());
-        p.line_segment([p0, p1], egui::Stroke::new(width, color));
-    }
 }
 
 /// Signal Radar — radial map of all active ApexSignals (chart26 radial inspiration)
