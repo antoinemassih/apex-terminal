@@ -20,7 +20,7 @@ use super::overlays::kit::{
     overlay_card_frame, overlay_card_header, overlay_header_ctx_rect, progress_bar,
 };
 use super::overlays::registry::OverlayWidget;
-use super::overlays::viz::charts::{heatmap_signed, multiring_colored, multiring_radius};
+use super::overlays::viz::charts::{heatmap_signed, multiring_colored, multiring_radius, multiring_thickness};
 use super::overlays::viz::style::ChartStyle;
 use super::super::gpu::*;
 use crate::chart_renderer::{ChartWidgetKind, WidgetDisplayMode, WidgetDock};
@@ -1439,73 +1439,37 @@ fn draw_rsi_multi(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
     let cy = body.center().y - 4.0;
     let tf_labels = ["5m", "15m", "30m", "1h", "4h", "1D", "1W"];
 
-    // Ring geometry: outermost = fastest (5m), innermost = slowest (1W)
+    let n = 7;
     let max_r = (body.width().min(body.height()) * 0.44).min(88.0);
-    let ring_gap = 2.0;
-    let ring_w = ((max_r - 14.0) / 7.0 - ring_gap).max(3.0);
-    let pi2 = std::f32::consts::TAU;
-    let start_angle = -std::f32::consts::FRAC_PI_2; // top
+    let st = ChartStyle::resolve(t);
+    let start_angle = -std::f32::consts::FRAC_PI_2; // 12 o'clock
 
-    // Zone markers: thin reference arcs at RSI 30 and 70
-    let os_frac = 30.0 / 100.0; // oversold
-    let ob_frac = 70.0 / 100.0; // overbought
+    // Per-ring gradient colour by RSI level (bear → amber → bull).
+    let color_for = |rsi: f32| -> egui::Color32 {
+        if rsi > 70.0 { t.bull }
+        else if rsi > 55.0 { lerp_color(t.warn, t.bull, (rsi - 55.0) / 15.0) }
+        else if rsi > 45.0 { t.warn }
+        else if rsi > 30.0 { lerp_color(t.bear, t.warn, (rsi - 30.0) / 15.0) }
+        else { t.bear }
+    };
+    // Kit primitive: concentric value rings (outer = 5m … inner = 1W).
+    let rings: Vec<(f32, egui::Color32)> = wd.rsi_multi.iter()
+        .map(|&rsi| ((rsi / 100.0).clamp(0.0, 1.0), color_for(rsi))).collect();
+    multiring_colored(p, egui::pos2(cx, cy), max_r, &rings, &st, t);
 
-    for (i, &rsi) in wd.rsi_multi.iter().enumerate() {
-        let ring_idx = i; // 0=5m(outer), 6=1W(inner)
-        let r = max_r - ring_idx as f32 * (ring_w + ring_gap);
-        let frac = (rsi / 100.0).clamp(0.0, 1.0);
-
-        // Color: gradient from bear (oversold) through amber to bull (overbought)
-        let color = if rsi > 70.0 {
-            t.bull
-        } else if rsi > 55.0 {
-            lerp_color(t.warn, t.bull, (rsi - 55.0) / 15.0)
-        } else if rsi > 45.0 {
-            t.warn // amber neutral
-        } else if rsi > 30.0 {
-            lerp_color(t.bear, t.warn, (rsi - 30.0) / 15.0)
-        } else {
-            t.bear
-        };
-
-        // Track ring (full circle, very faint)
-        let track_alpha = if ring_idx == 0 { alpha_muted() } else { alpha_faint() };
-        draw_arc_ring(p, egui::pos2(cx, cy), r, ring_w, 0.0, pi2,
-            tint(t, Tone::Border, track_alpha), 64);
-
-        // Value arc
-        let sweep = frac * pi2;
-        if sweep > 0.01 {
-            draw_arc_ring(p, egui::pos2(cx, cy), r, ring_w, start_angle, sweep, color, 48);
+    // Oversold / overbought (30 / 70) tick marks on each ring.
+    let thick = multiring_thickness(max_r, n);
+    for i in 0..n {
+        let r = multiring_radius(max_r, n, i);
+        for zone in [0.30_f32, 0.70] {
+            let a = start_angle + zone * std::f32::consts::TAU;
+            let inner = r - thick * 0.5 - 1.0;
+            let outer = r + thick * 0.5 + 1.0;
+            p.line_segment(
+                [egui::pos2(cx + inner * a.cos(), cy + inner * a.sin()),
+                 egui::pos2(cx + outer * a.cos(), cy + outer * a.sin())],
+                egui::Stroke::new(stroke_thin(), tint(t, Tone::Dim, alpha_faint())));
         }
-
-        // Oversold/overbought tick marks on the track
-        for zone_frac in [os_frac, ob_frac] {
-            let a = start_angle + zone_frac * pi2;
-            let inner = r - ring_w * 0.5 - 1.0;
-            let outer = r + ring_w * 0.5 + 1.0;
-            let p1 = egui::pos2(cx + inner * a.cos(), cy + inner * a.sin());
-            let p2 = egui::pos2(cx + outer * a.cos(), cy + outer * a.sin());
-            p.line_segment([p1, p2], egui::Stroke::new(stroke_thin(), tint(t, Tone::Dim, alpha_faint())));
-        }
-
-        // Timeframe label — positioned at the end of the arc
-        let label_angle = start_angle + sweep + 0.15;
-        let label_r = r;
-        let lx = cx + label_r * label_angle.cos();
-        let ly = cy + label_r * label_angle.sin();
-        // Only show if there's room (sweep > 30%)
-        if frac > 0.15 {
-            p.text(egui::pos2(lx, ly), egui::Align2::CENTER_CENTER,
-                tf_labels[i], mono_4xs(),
-                color_subtle(color));
-        }
-
-        // Small dot at arc tip
-        let tip_angle = start_angle + sweep;
-        let dot_x = cx + r * tip_angle.cos();
-        let dot_y = cy + r * tip_angle.sin();
-        p.circle_filled(egui::pos2(dot_x, dot_y), ring_w * 0.35, color);
     }
 
     // Center: average RSI as hero number
@@ -1529,14 +1493,13 @@ fn draw_rsi_multi(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
     p.text(egui::pos2(legend_lx + 88.0, legend_y), egui::Align2::LEFT_CENTER,
         ">70", mono_4xs(), color_subtle(t.bull));
 
-    // Timeframe labels on the right side of each ring (static positions)
+    // Timeframe labels on the right side of each ring, aligned to each ring.
     let label_x = body.right() - 6.0;
     for (i, label) in tf_labels.iter().enumerate() {
-        let r = max_r - i as f32 * (ring_w + ring_gap);
-        let ly = cy - r;
+        let r = multiring_radius(max_r, n, i);
         let rsi = wd.rsi_multi[i];
         let color = if rsi > 70.0 { t.bull } else if rsi < 30.0 { t.bear } else { t.dim };
-        p.text(egui::pos2(label_x, ly), egui::Align2::RIGHT_CENTER,
+        p.text(egui::pos2(label_x, cy - r), egui::Align2::RIGHT_CENTER,
             &format!("{} {:.0}", label, rsi), egui::FontId::monospace(font_4xs()), color);
     }
 }

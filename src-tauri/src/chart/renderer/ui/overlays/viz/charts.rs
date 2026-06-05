@@ -288,11 +288,16 @@ pub(crate) fn heatmap_signed(
 
 // ── Multi-ring ────────────────────────────────────────────────────────────────
 
+/// Stroke thickness of each ring for an `n`-ring [`multiring`] of `radius`.
+/// Exposed so callers can size on-ring ticks / dots to match.
+pub(crate) fn multiring_thickness(radius: f32, n: usize) -> f32 {
+    (radius / (n.max(1) as f32 * 1.7)).max(3.0)
+}
+
 /// Radius of ring `i` (0 = outermost) for an `n`-ring [`multiring`] of `radius`.
 /// Exposed so callers can place per-ring labels exactly on their ring.
 pub(crate) fn multiring_radius(radius: f32, n: usize, i: usize) -> f32 {
-    let thick = (radius / (n.max(1) as f32 * 1.7)).max(3.0);
-    let step = (radius - thick * 0.5) / n.max(1) as f32;
+    let step = (radius - multiring_thickness(radius, n) * 0.5) / n.max(1) as f32;
     radius - i as f32 * step
 }
 
@@ -303,7 +308,7 @@ pub(crate) fn multiring_colored(
 ) {
     let n = rings.len();
     if n == 0 { return; }
-    let thick = (radius / (n as f32 * 1.7)).max(3.0);
+    let thick = multiring_thickness(radius, n);
     let track = tint(t, Tone::Border, st.track_alpha);
     for (i, &(v, col)) in rings.iter().enumerate() {
         let rr = multiring_radius(radius, n, i);
