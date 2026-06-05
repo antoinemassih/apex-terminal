@@ -14,7 +14,9 @@
 use egui::{self, Color32, Stroke};
 use crate::ui_kit::sx::Tone;
 use super::style::*;
-use super::overlays::kit::{draw_arc, hero_number, sub_label, donut_ring, radial_gauge};
+use super::overlays::kit::{
+    draw_arc, hero_number, sub_label, donut_ring, radial_gauge, radial_gauge_stacked,
+};
 use super::super::gpu::*;
 use crate::chart_renderer::{ChartWidgetKind, WidgetDisplayMode, WidgetDock};
 use crate::ui_kit::widgets::Button;
@@ -2129,13 +2131,8 @@ fn draw_options_sentiment(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData,
     let sentiment = 62.0f32;
     let color = if sentiment > 60.0 { t.bull } else if sentiment < 40.0 { t.bear } else { t.warn };
 
-    donut_ring(p, egui::pos2(cx, cy), r, 8.0, sentiment, 100.0, color,
-        tint(t, Tone::Border, alpha_muted()));
-
-    p.text(egui::pos2(cx, cy - 4.0), egui::Align2::CENTER_CENTER,
-        &format!("{:.0}%", sentiment), egui::FontId::proportional(font_xl()), color);
-    p.text(egui::pos2(cx, cy + 14.0), egui::Align2::CENTER_CENTER,
-        "BULLISH", egui::FontId::monospace(FONT_2XS), color);
+    radial_gauge_stacked(p, egui::pos2(cx, cy), r, sentiment / 100.0,
+        &format!("{:.0}%", sentiment), "BULLISH", color, t);
 
     // Metrics below
     let my = cy + r + 16.0;
@@ -2242,13 +2239,8 @@ fn draw_liquidity_score(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
     let color = if score > 70.0 { t.bull } else if score < 30.0 { t.bear } else { t.warn };
     let label = if score > 70.0 { "LIQUID" } else if score < 30.0 { "ILLIQUID" } else { "MODERATE" };
 
-    donut_ring(p, egui::pos2(cx, cy), r, 8.0, score, 100.0, color,
-        tint(t, Tone::Border, alpha_muted()));
-
-    p.text(egui::pos2(cx, cy - 4.0), egui::Align2::CENTER_CENTER,
-        &format!("{:.0}", score), egui::FontId::proportional(font_xl()), color);
-    p.text(egui::pos2(cx, cy + 14.0), egui::Align2::CENTER_CENTER,
-        label, egui::FontId::monospace(FONT_2XS), color);
+    radial_gauge_stacked(p, egui::pos2(cx, cy), r, score / 100.0,
+        &format!("{:.0}", score), label, color, t);
 }
 
 fn draw_arc_ring(p: &egui::Painter, center: egui::Pos2, radius: f32, width: f32,

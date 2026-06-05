@@ -107,6 +107,21 @@ pub(crate) fn radial_gauge(
     sub_label(p, egui::pos2(center.x, center.y + radius + 12.0), caption, color);
 }
 
+/// Gauge variant with the value + caption **stacked inside** the ring (vs
+/// [`radial_gauge`]'s caption below it) — a thicker 8px ring, `font_xl` value
+/// and a tiny `FONT_2XS` caption. For the sentiment / liquidity-style gauges.
+pub(crate) fn radial_gauge_stacked(
+    p: &egui::Painter, center: egui::Pos2, radius: f32,
+    frac: f32, value: &str, caption: &str, color: Color32, t: &Theme,
+) {
+    let track = tint(t, Tone::Border, alpha_muted());
+    donut_ring(p, center, radius, 8.0, frac.clamp(0.0, 1.0), 1.0, color, track);
+    p.text(egui::pos2(center.x, center.y - 4.0), egui::Align2::CENTER_CENTER,
+        value, egui::FontId::proportional(font_xl()), color);
+    p.text(egui::pos2(center.x, center.y + 14.0), egui::Align2::CENTER_CENTER,
+        caption, egui::FontId::monospace(FONT_2XS), color);
+}
+
 /// Horizontal progress / ratio bar (track + fill) at `rect`, `frac` 0..1.
 #[allow(dead_code)] // kit primitive — ready for the next batch of bar widgets
 pub(crate) fn progress_bar(
