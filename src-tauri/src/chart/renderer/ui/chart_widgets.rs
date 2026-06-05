@@ -17,7 +17,7 @@ use super::style::*;
 use super::overlays::indicators::*;
 use super::overlays::kit::{
     draw_arc, hero_number, sub_label, donut_ring, radial_gauge, radial_gauge_stacked, metric_row,
-    overlay_card_frame, overlay_card_header, progress_bar,
+    overlay_card_frame, overlay_card_header, overlay_header_ctx_rect, progress_bar,
 };
 use super::overlays::registry::OverlayWidget;
 use super::super::gpu::*;
@@ -186,8 +186,8 @@ pub(crate) fn draw_widgets(
         let mut card_ctx_rect: Option<egui::Rect> = None;
         let mut card_toggle_rect: Option<egui::Rect> = None;
 
-        // Mode icon
-        let mode_icon = if mode == WidgetDisplayMode::Card { "\u{25FC}" } else { "\u{25CB}" };
+        // Appearance (display-mode) button icon — a proper Phosphor glyph.
+        let mode_icon = crate::ui_kit::icons::Icon::PALETTE;
         // Hover area includes the header zone above the card (so header doesn't vanish)
         let hover_zone = egui::Rect::from_min_max(
             egui::pos2(card_rect.left(), card_rect.top() - 30.0),
@@ -398,11 +398,20 @@ pub(crate) fn draw_widgets(
         if ui.memory(|m| m.is_popup_open(popup_id)) {
             let is_locked = chart.chart_widgets[wi].locked;
             let is_docked = chart.chart_widgets[wi].dock != WidgetDock::Float;
-            // Anchor popup below the header (which floats above the card)
-            let anchor_rect = egui::Rect::from_center_size(
-                egui::pos2(chart.chart_widgets[wi].anim_x + chart.chart_widgets[wi].w - 50.0,
-                           chart.chart_widgets[wi].anim_y - 4.0),
-                egui::vec2(icon_lg(), icon_lg()));
+            // Anchor the popup to the ACTUAL ⋯ button rect (reconstructed from the
+            // same geometry the header paints). Critically the anchor must contain
+            // the button: `popup_below_widget`'s CloseOnClickOutside closes when
+            // `anchor.clicked_elsewhere()` — if the anchor doesn't cover the button,
+            // the very click that opened the menu reads as "outside" and the popup
+            // closes the same frame (the flicker). `clicked_elsewhere()` tests the
+            // pointer against the anchor rect regardless of Sense, so hover-sense
+            // is right here: it fixes the close test without the anchor stealing
+            // the ⋯ button's own toggle-to-close click.
+            let w = &chart.chart_widgets[wi];
+            let card_h = if w.collapsed { 26.0 } else { w.h };
+            let card_rect = egui::Rect::from_min_size(
+                egui::pos2(w.anim_x, w.anim_y), egui::vec2(w.w, card_h));
+            let anchor_rect = overlay_header_ctx_rect(card_rect, w.w);
             let anchor_resp = ui.interact(anchor_rect,
                 egui::Id::new(("widget_ctx_anchor", wi)), egui::Sense::hover());
             egui::popup_below_widget(ui, popup_id, &anchor_resp,

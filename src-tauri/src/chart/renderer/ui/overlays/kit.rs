@@ -13,8 +13,14 @@
 
 use egui::{self, Color32, Stroke};
 use crate::ui_kit::sx::Tone;
+use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::ui::style::*;
 use crate::chart_renderer::gpu::Theme;
+
+/// Height of the floating overlay header bar (above the card). Shared by
+/// [`overlay_card_header`] and [`overlay_header_ctx_rect`] so the popup anchor
+/// and the painted button can't drift apart.
+pub(crate) const OVERLAY_HEADER_H: f32 = 26.0;
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
 
@@ -214,10 +220,9 @@ pub(crate) fn overlay_card_header(
     icon: &str, label: &str, locked: bool, mode_icon: &str,
     ptr: Option<egui::Pos2>, t: &Theme,
 ) -> (egui::Rect, egui::Rect) {
-    let hdr_h = 26.0;
     let hdr = egui::Rect::from_min_size(
-        egui::pos2(card.left(), card.top() - hdr_h - 2.0),
-        egui::vec2(card_w, hdr_h));
+        egui::pos2(card.left(), card.top() - OVERLAY_HEADER_H - 2.0),
+        egui::vec2(card_w, OVERLAY_HEADER_H));
     // Header background + a hairline divider along its bottom edge.
     let hdr_r = r_lg_cr().nw;
     p.rect_filled(hdr,
@@ -254,9 +259,23 @@ pub(crate) fn overlay_card_header(
         r
     };
 
-    let ctx_rect = header_btn(hdr.right() - btn_w - 20.0, "\u{22EF}");
+    let ctx_rect = header_btn(hdr.right() - btn_w - 20.0, Icon::DOTS_THREE);
     let tog_rect = header_btn(hdr.right() - 18.0, mode_icon);
     (ctx_rect, tog_rect)
+}
+
+/// The header **context (⋯) button** rect for a card of width `card_w` at
+/// `card`. Must reproduce exactly the rect [`overlay_card_header`] paints, so the
+/// context-menu popup can anchor to it — otherwise the very click that opens the
+/// menu is seen as an "outside" click and the popup closes the same frame.
+pub(crate) fn overlay_header_ctx_rect(card: egui::Rect, card_w: f32) -> egui::Rect {
+    let hdr = egui::Rect::from_min_size(
+        egui::pos2(card.left(), card.top() - OVERLAY_HEADER_H - 2.0),
+        egui::vec2(card_w, OVERLAY_HEADER_H));
+    let btn_w = 32.0;
+    let btn_h = 22.0;
+    egui::Rect::from_center_size(
+        egui::pos2(hdr.right() - btn_w - 20.0, hdr.center().y), egui::vec2(btn_w, btn_h))
 }
 
 /// Horizontal progress / ratio bar (track + fill) at `rect`, `frac` 0..1.
