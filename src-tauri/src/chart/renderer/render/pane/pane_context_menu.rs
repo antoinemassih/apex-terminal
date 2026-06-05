@@ -59,7 +59,7 @@ pub(super) fn pane_context_menu<F>(
             ui.close_menu();
         }
         if MenuItem::new("Measure (Shift+Drag)").icon(Icon::RULER).show(ui, t).clicked() {
-            chart.measure_active = true; chart.measure_start = None;
+            chart.measure.mode = true; chart.measure.start = None;
             ui.close_menu();
         }
         ui.separator();
@@ -69,11 +69,11 @@ pub(super) fn pane_context_menu<F>(
             use crate::chart_renderer::trading::order_manager::*;
             if let Some(id) = submit_and_get_id(OrderIntent {
                 symbol: chart.symbol.clone(), side: OrderSide::Buy,
-                order_type: ManagedOrderType::Limit, price: click_price, qty: chart.order_qty,
+                order_type: ManagedOrderType::Limit, price: click_price, qty: chart.order_panel.qty,
                 source: OrderSource::ChartClick, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
                 strategy_id: None, override_warnings: false,
             }) {
-                chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price: click_price, qty: chart.order_panel.qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
             }
             ui.close_menu();
         }
@@ -81,11 +81,11 @@ pub(super) fn pane_context_menu<F>(
             use crate::chart_renderer::trading::order_manager::*;
             if let Some(id) = submit_and_get_id(OrderIntent {
                 symbol: chart.symbol.clone(), side: OrderSide::Sell,
-                order_type: ManagedOrderType::Limit, price: click_price, qty: chart.order_qty,
+                order_type: ManagedOrderType::Limit, price: click_price, qty: chart.order_panel.qty,
                 source: OrderSource::ChartClick, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
                 strategy_id: None, override_warnings: false,
             }) {
-                chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price: click_price, qty: chart.order_panel.qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
             }
             ui.close_menu();
         }
@@ -93,11 +93,11 @@ pub(super) fn pane_context_menu<F>(
             use crate::chart_renderer::trading::order_manager::*;
             if let Some(id) = submit_and_get_id(OrderIntent {
                 symbol: chart.symbol.clone(), side: OrderSide::Stop,
-                order_type: ManagedOrderType::Stop, price: click_price, qty: chart.order_qty,
+                order_type: ManagedOrderType::Stop, price: click_price, qty: chart.order_panel.qty,
                 source: OrderSource::ChartClick, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
                 strategy_id: None, override_warnings: false,
             }) {
-                chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Stop, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Stop, price: click_price, qty: chart.order_panel.qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
             }
             ui.close_menu();
         }
@@ -109,14 +109,14 @@ pub(super) fn pane_context_menu<F>(
             let intents = vec![
                 OrderIntent {
                     symbol: chart.symbol.clone(), side: OrderSide::OcoTarget,
-                    order_type: ManagedOrderType::Limit, price: target_price, stop_price: 0.0, qty: chart.order_qty,
+                    order_type: ManagedOrderType::Limit, price: target_price, stop_price: 0.0, qty: chart.order_panel.qty,
                     source: OrderSource::Oco, pair_with: None, option_symbol: None, option_con_id: None,
                     trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
                     strategy_id: None, override_warnings: false,
                 },
                 OrderIntent {
                     symbol: chart.symbol.clone(), side: OrderSide::OcoStop,
-                    order_type: ManagedOrderType::Stop, price: stop_price, stop_price: stop_price, qty: chart.order_qty,
+                    order_type: ManagedOrderType::Stop, price: stop_price, stop_price: stop_price, qty: chart.order_panel.qty,
                     source: OrderSource::Oco, pair_with: None, option_symbol: None, option_con_id: None,
                     trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
                     strategy_id: None, override_warnings: false,
@@ -145,8 +145,8 @@ pub(super) fn pane_context_menu<F>(
                 }
             }
             if ids.len() >= 2 {
-                chart.orders.push(OrderLevel { id: ids[0] as u32, side: OrderSide::OcoTarget, price: target_price, qty: chart.order_qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: Some(ids[1] as u32), option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
-                chart.orders.push(OrderLevel { id: ids[1] as u32, side: OrderSide::OcoStop, price: stop_price, qty: chart.order_qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: Some(ids[0] as u32), option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                chart.orders.push(OrderLevel { id: ids[0] as u32, side: OrderSide::OcoTarget, price: target_price, qty: chart.order_panel.qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: Some(ids[1] as u32), option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                chart.orders.push(OrderLevel { id: ids[1] as u32, side: OrderSide::OcoStop, price: stop_price, qty: chart.order_panel.qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: Some(ids[0] as u32), option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
             }
             ui.close_menu();
         }
@@ -165,14 +165,14 @@ pub(super) fn pane_context_menu<F>(
                         let intents = vec![
                             OrderIntent {
                                 symbol: chart.symbol.clone(), side: OrderSide::OcoTarget,
-                                order_type: ManagedOrderType::Limit, price: target_price, stop_price: 0.0, qty: chart.order_qty,
+                                order_type: ManagedOrderType::Limit, price: target_price, stop_price: 0.0, qty: chart.order_panel.qty,
                                 source: OrderSource::Oco, pair_with: None, option_symbol: None, option_con_id: None,
                                 trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
                                 strategy_id: None, override_warnings: false,
                             },
                             OrderIntent {
                                 symbol: chart.symbol.clone(), side: OrderSide::OcoStop,
-                                order_type: ManagedOrderType::Stop, price: stop_price, stop_price: stop_price, qty: chart.order_qty,
+                                order_type: ManagedOrderType::Stop, price: stop_price, stop_price: stop_price, qty: chart.order_panel.qty,
                                 source: OrderSource::Oco, pair_with: None, option_symbol: None, option_con_id: None,
                                 trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
                                 strategy_id: None, override_warnings: false,
@@ -197,8 +197,8 @@ pub(super) fn pane_context_menu<F>(
                             }
                         }
                         if ids.len() >= 2 {
-                            chart.orders.push(OrderLevel { id: ids[0] as u32, side: OrderSide::OcoTarget, price: target_price, qty: chart.order_qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: Some(ids[1] as u32), option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
-                            chart.orders.push(OrderLevel { id: ids[1] as u32, side: OrderSide::OcoStop,   price: stop_price,   qty: chart.order_qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: Some(ids[0] as u32), option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                            chart.orders.push(OrderLevel { id: ids[0] as u32, side: OrderSide::OcoTarget, price: target_price, qty: chart.order_panel.qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: Some(ids[1] as u32), option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                            chart.orders.push(OrderLevel { id: ids[1] as u32, side: OrderSide::OcoStop,   price: stop_price,   qty: chart.order_panel.qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: Some(ids[0] as u32), option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
                         }
                         ui.close_menu();
                     }
@@ -221,13 +221,22 @@ pub(super) fn pane_context_menu<F>(
             ui.label(egui::RichText::new("NEW PRESET").monospace().size(font_2xs()).color(t.dim));
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Name").monospace().size(font_xs()).color(t.dim));
-                ui.add(egui::TextEdit::singleline(&mut chart.new_bracket_name).desired_width(60.0).font(mono_xs()));
+                crate::ui_kit::widgets::Input::new(&mut chart.new_bracket_name)
+                    .width(60.0)
+                    .size(crate::ui_kit::widgets::tokens::Size::Xs)
+                    .show(ui, t);
             });
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Target %").monospace().size(font_xs()).color(t.dim));
-                ui.add(egui::TextEdit::singleline(&mut chart.new_bracket_target).desired_width(40.0).font(mono_xs()));
+                crate::ui_kit::widgets::Input::number(&mut chart.new_bracket_target)
+                    .width(40.0)
+                    .size(crate::ui_kit::widgets::tokens::Size::Xs)
+                    .show(ui, t);
                 ui.label(egui::RichText::new("Stop %").monospace().size(font_xs()).color(t.dim));
-                ui.add(egui::TextEdit::singleline(&mut chart.new_bracket_stop).desired_width(40.0).font(mono_xs()));
+                crate::ui_kit::widgets::Input::number(&mut chart.new_bracket_stop)
+                    .width(40.0)
+                    .size(crate::ui_kit::widgets::tokens::Size::Xs)
+                    .show(ui, t);
             });
             let can_create = !chart.new_bracket_name.trim().is_empty()
                 && chart.new_bracket_target.parse::<f32>().is_ok()
@@ -248,18 +257,18 @@ pub(super) fn pane_context_menu<F>(
             let target_price = click_price * 1.02;
             if let Some(id1) = submit_and_get_id(OrderIntent {
                 symbol: chart.symbol.clone(), side: OrderSide::TriggerBuy,
-                order_type: ManagedOrderType::Limit, price: click_price, qty: chart.order_qty,
+                order_type: ManagedOrderType::Limit, price: click_price, qty: chart.order_panel.qty,
                 source: OrderSource::Trigger, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
                 strategy_id: None, override_warnings: false,
             }) {
                 if let Some(id2) = submit_and_get_id(OrderIntent {
                     symbol: chart.symbol.clone(), side: OrderSide::TriggerSell,
-                    order_type: ManagedOrderType::Limit, price: target_price, qty: chart.order_qty,
+                    order_type: ManagedOrderType::Limit, price: target_price, qty: chart.order_panel.qty,
                     source: OrderSource::Trigger, pair_with: Some(id1), option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
                     strategy_id: None, override_warnings: false,
                 }) {
-                    chart.orders.push(OrderLevel { id: id1 as u32, side: OrderSide::TriggerBuy, price: click_price, qty: chart.order_qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: Some(id2 as u32), option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
-                    chart.orders.push(OrderLevel { id: id2 as u32, side: OrderSide::TriggerSell, price: target_price, qty: chart.order_qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: Some(id1 as u32), option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                    chart.orders.push(OrderLevel { id: id1 as u32, side: OrderSide::TriggerBuy, price: click_price, qty: chart.order_panel.qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: Some(id2 as u32), option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                    chart.orders.push(OrderLevel { id: id2 as u32, side: OrderSide::TriggerSell, price: target_price, qty: chart.order_panel.qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: Some(id1 as u32), option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
                 }
             }
             ui.close_menu();

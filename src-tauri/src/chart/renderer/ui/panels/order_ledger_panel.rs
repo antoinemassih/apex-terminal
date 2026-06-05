@@ -12,6 +12,8 @@
 //!      symbol/client-id search box.
 
 use egui;
+use crate::chart_renderer::ui::style::tint;
+use crate::ui_kit::sx::Tone;
 
 use super::super::style::{self, *};
 use super::super::super::gpu::{Watchlist, Chart, Theme};
@@ -28,17 +30,17 @@ use crate::data::connectivity::errors_sink::{report, ErrorLevel};
 
 /// Lightweight active-order row, derived from the lock-free snapshot.
 /// Avoids cloning the full `ManagedOrder` per render frame.
-struct ActiveRow {
-    id: u64,
-    symbol: String,
-    side: OrderSide,
-    state: OrderState,
-    qty: u32,
-    filled_qty: u32,
-    price: f32,
+pub(crate) struct ActiveRow {
+    pub(crate) id: u64,
+    pub(crate) symbol: String,
+    pub(crate) side: OrderSide,
+    pub(crate) state: OrderState,
+    pub(crate) qty: u32,
+    pub(crate) filled_qty: u32,
+    pub(crate) price: f32,
     /// First 8 chars of the persistent client_order_id (UUID v4 hex).
-    cid8: String,
-    updated_at: u64,
+    pub(crate) cid8: String,
+    pub(crate) updated_at: u64,
 }
 
 /// Filter chip selection for the journal feed.
@@ -79,11 +81,19 @@ impl LedgerView {
 
 /// Top-level draw entry. Mirrors the shape of `journal_panel::draw` /
 /// `alerts_panel::draw`. Only renders when `watchlist.order_ledger_open`.
+/// Rail registration — see [`super::right_rail`].
+pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
+    id: "order_ledger",
+    is_open: |w| w.order_ledger_open,
+    render: |cx, slot| draw(cx.ctx, cx.watchlist, cx.panes, cx.t, Some(slot)),
+};
+
 pub(crate) fn draw(
     ctx: &egui::Context,
     watchlist: &mut Watchlist,
     _panes: &[Chart],
     t: &Theme,
+    slot: Option<super::side_panel_shell::RailSlot>,
 ) {
     if !watchlist.order_ledger_open { return; }
 
@@ -93,6 +103,7 @@ pub(crate) fn draw(
         .width(Width::Medium)
         .resizable(280.0..=560.0)
         .pane_metrics(pane_h, pane_font)
+        .rail_slot(slot)
         .show(ctx, t, |ui, t| {
             ui.add_space(gap_xs());
 
@@ -131,7 +142,7 @@ pub(crate) fn draw(
                 ui.add(MonospaceCode::new("View").size_px(font_sm()).color(t.dim));
                 for v in LedgerView::all() {
                     let active = watchlist.order_ledger_view == v as u8;
-                    let bg = if active { color_alpha(t.accent, alpha_strong()) } else { color_alpha(t.toolbar_border, alpha_ghost()) };
+                    let bg = if active { tint(t, Tone::Accent, alpha_strong()) } else { tint(t, Tone::Border, alpha_ghost()) };
                     let fg = if active { t.accent } else { t.dim };
                     let resp = ui.add(egui::Label::new(
                         egui::RichText::new(v.label()).monospace().size(font_sm()).color(fg)
@@ -298,7 +309,7 @@ pub(crate) fn draw(
 
             // ── Section 2: Journal feed ──────────────────────────────────
             if matches!(view, LedgerView::Journal | LedgerView::All) {
-                separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+                separator(ui, tint(t, Tone::Border, alpha_muted()));
                 ui.add_space(gap_xs());
                 ui.add(SectionLabel::new(&format!("JOURNAL ({})", events.len())).tiny().color(t.accent));
                 ui.add_space(gap_xs());
@@ -308,7 +319,7 @@ pub(crate) fn draw(
                     let cur = LedgerFilter::all()[watchlist.order_ledger_filter as usize % 5];
                     for (i, f) in LedgerFilter::all().iter().enumerate() {
                         let active = *f == cur;
-                        let bg = if active { color_alpha(t.accent, alpha_strong()) } else { color_alpha(t.toolbar_border, alpha_ghost()) };
+                        let bg = if active { tint(t, Tone::Accent, alpha_strong()) } else { tint(t, Tone::Border, alpha_ghost()) };
                         let fg = if active { t.accent } else { t.dim };
                         let resp = ui.add(egui::Label::new(
                             egui::RichText::new(f.label()).monospace().size(font_xs()).color(fg)
@@ -428,16 +439,17 @@ fn draw_bulk_cancel_confirm(
     sym: &str,
     working: usize,
 ) {
-    let warn_color = color_alpha(t.bear, 220);
-    let bg = color_alpha(t.bear, 18);
+    let warn_color = tint(t, Tone::Bear, 220);
+    let bg = tint(t, Tone::Bear, 18);
     let avail = ui.available_width();
 
     // Outer frame with a subtle danger tint.
-    egui::Frame::NONE
+    crate::ui_kit::widgets::OutlinedBox::new()
         .fill(bg)
-        .inner_margin(egui::Margin::symmetric(gap_sm() as i8, gap_xs() as i8))
-        .corner_radius(egui::CornerRadius::same(radius_sm() as u8))
-        .show(ui, |ui| {
+        .borderless()
+        .radius_sm()
+        .padding_margin(egui::Margin::symmetric(gap_sm() as i8, gap_xs() as i8))
+        .show(ui, t, |ui| {
             ui.set_min_width(avail);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = gap_sm();
@@ -493,7 +505,7 @@ fn draw_bulk_cancel_confirm(
 
 /// Collect every non-terminal order globally from the lock-free snapshot.
 /// Render-thread read; does not lock the order manager.
-fn collect_active_from_snapshot() -> Vec<ActiveRow> {
+pub(crate) fn collect_active_from_snapshot() -> Vec<ActiveRow> {
     let snap = order_manager::orders_snapshot();
     let mut out: Vec<ActiveRow> = snap.orders.iter()
         .filter(|o| o.state.is_active())
@@ -514,7 +526,7 @@ fn collect_active_from_snapshot() -> Vec<ActiveRow> {
     out
 }
 
-fn format_hms(ts_ms: u64) -> String {
+pub(crate) fn format_hms(ts_ms: u64) -> String {
     use chrono::TimeZone;
     let secs = (ts_ms / 1000) as i64;
     let nsecs = ((ts_ms % 1000) * 1_000_000) as u32;

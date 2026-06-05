@@ -21,11 +21,13 @@
 #![allow(dead_code)]
 
 use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Ui, Vec2};
+use crate::chart_renderer::ui::style::tint;
+use crate::ui_kit::sx::Tone as SxTone;
 
 use super::super::style::{
     alpha_dim, alpha_ghost, alpha_line, alpha_soft, alpha_subtle, alpha_tint,
     color_alpha, color_dim, color_subtle, current, font_md, font_xs, gap_md, gap_sm, gap_xs,
-    style_label_case, stroke_thin,
+    section_header_font_id, style_label_case, stroke_thin,
 };
 use super::super::components::text::SectionLabel;
 use crate::chart_renderer::gpu::{Theme, Watchlist};
@@ -93,7 +95,7 @@ fn paint_chrome_perimeter(painter: &egui::Painter, rect: Rect, t: &Theme) {
         rect, 0.0,
         Stroke::new(
             st.header_outer_border_width,
-            color_alpha(t.text, st.header_outer_border_alpha),
+            tint(t, SxTone::Text, st.header_outer_border_alpha),
         ),
         StrokeKind::Inside,
     );
@@ -233,7 +235,8 @@ impl<'a> PanelHeader<'a> {
         paint_chrome_perimeter(&painter, rect, t);
         paint_header_shadow(ui, rect, t);
 
-        let title_font = FontId::monospace(font_size);
+        // Use per-style font family: mono for Alto/Mariner/Relay, proportional for others.
+        let title_font = FontId::new(font_size, section_header_font_id().family);
 
         // Paint icon + title in painter mode.
         let mut cx = rect.left() + gap_sm();
@@ -314,7 +317,7 @@ impl<'a> PanelHeader<'a> {
 /// ]).show(ui, t);
 /// ```
 #[must_use = "PanelHeaderTabs must be rendered with `.show(...)`"]
-pub struct PanelHeaderTabs<'a, T: PartialEq + Copy> {
+pub struct PanelHeaderTabs<'a, T: PartialEq + Copy + 'a> {
     current: &'a mut T,
     tabs: &'a [(T, &'a str)],
     height_override: Option<f32>,
@@ -322,9 +325,13 @@ pub struct PanelHeaderTabs<'a, T: PartialEq + Copy> {
     closable: bool,
     salt: &'a str,
     watchlist: Option<&'a Watchlist>,
+    /// Optional per-tab right-click handler — invoked inside each tab's
+    /// `context_menu` with that tab's value. Used by `SplitTabs` for the
+    /// "open this tab as a new instance" menu; ignored by plain callers.
+    on_tab_secondary: Option<Box<dyn FnMut(&mut Ui, T) + 'a>>,
 }
 
-impl<'a, T: PartialEq + Copy> PanelHeaderTabs<'a, T> {
+impl<'a, T: PartialEq + Copy + 'a> PanelHeaderTabs<'a, T> {
     pub fn new(current: &'a mut T, tabs: &'a [(T, &'a str)]) -> Self {
         Self {
             current, tabs,
@@ -333,7 +340,15 @@ impl<'a, T: PartialEq + Copy> PanelHeaderTabs<'a, T> {
             closable: true,
             salt: "panel_tabs",
             watchlist: None,
+            on_tab_secondary: None,
         }
+    }
+
+    /// Attach a per-tab right-click (context-menu) handler. The closure runs
+    /// inside the right-clicked tab's `context_menu`, receiving that tab's value.
+    pub fn on_tab_secondary(mut self, f: impl FnMut(&mut Ui, T) + 'a) -> Self {
+        self.on_tab_secondary = Some(Box::new(f));
+        self
     }
     pub fn height(mut self, h: f32) -> Self { self.height_override = Some(h); self }
     pub fn font_size(mut self, px: f32) -> Self { self.font_size_override = Some(px); self }
@@ -350,7 +365,7 @@ impl<'a, T: PartialEq + Copy> PanelHeaderTabs<'a, T> {
     }
 
     /// Render with trailing actions placed to the LEFT of the close button.
-    pub fn show_with(self, ui: &mut Ui, t: &Theme, actions: impl FnOnce(&mut Ui)) -> bool {
+    pub fn show_with(mut self, ui: &mut Ui, t: &Theme, actions: impl FnOnce(&mut Ui)) -> bool {
         let (resolved_h, resolved_font) = header_metrics(self.watchlist);
         let h_panel = self.height_override.unwrap_or(resolved_h);
         let font_size = self.font_size_override.unwrap_or(resolved_font);
@@ -366,7 +381,8 @@ impl<'a, T: PartialEq + Copy> PanelHeaderTabs<'a, T> {
         paint_chrome_perimeter(&painter, rect, t);
         paint_header_shadow(ui, rect, t);
 
-        let title_font = FontId::monospace(font_size);
+        // Use per-style font family: mono for Alto/Mariner/Relay, proportional for others.
+        let title_font = FontId::new(font_size, section_header_font_id().family);
         let h = rect.height();
         let st_settings = current();
         let r_md_corner = super::super::style::radius_md() as u8;
@@ -384,7 +400,7 @@ impl<'a, T: PartialEq + Copy> PanelHeaderTabs<'a, T> {
         let active_idx = self.tabs.iter().position(|(v, _)| *v == *self.current).unwrap_or(0);
         let mut new_active = active_idx;
 
-        for (ti, (_, label)) in self.tabs.iter().enumerate() {
+        for (ti, (tab_val, label)) in self.tabs.iter().enumerate() {
             let is_active = ti == active_idx;
             let label_galley = painter.layout_no_wrap(
                 label.to_string(), title_font.clone(), t.dim,
@@ -412,7 +428,7 @@ impl<'a, T: PartialEq + Copy> PanelHeaderTabs<'a, T> {
             let hover_t  = motion::ease_bool(ui.ctx(), hover_id,  tab_resp.hovered() && !is_active, motion::FAST);
             let corners = CornerRadius { nw: r_md_corner, ne: r_md_corner, sw: 0, se: 0 };
             let idle_bg   = Color32::TRANSPARENT;
-            let hover_bg  = color_alpha(t.toolbar_border, st_settings.tab_hover_bg_alpha);
+            let hover_bg  = tint(t, SxTone::Border, st_settings.tab_hover_bg_alpha);
             let active_bg = color_dim(t.bg);
             let mut tab_bg = motion::lerp_color(idle_bg, hover_bg, hover_t);
             tab_bg = motion::lerp_color(tab_bg, active_bg, active_t);
@@ -440,6 +456,11 @@ impl<'a, T: PartialEq + Copy> PanelHeaderTabs<'a, T> {
             );
 
             if tab_resp.clicked() { new_active = ti; }
+            // Per-tab right-click menu (e.g. SplitTabs "open as new instance").
+            if let Some(cb) = self.on_tab_secondary.as_mut() {
+                let tv = *tab_val;
+                tab_resp.context_menu(|ui| cb(ui, tv));
+            }
             tab_rects.push(tab_rect);
             cx += tab_w + 1.0;
         }
@@ -500,13 +521,16 @@ pub enum Tone {
 
 impl Tone {
     pub fn color(self, t: &Theme) -> Color32 {
+        // Resolve through the unified Sx palette (kit's local Tone is the gallery's
+        // own intent enum; SxTone is the shared color vocabulary).
+        let p = crate::ui_kit::sx::palette(t);
         match self {
-            Tone::Default => t.dim,
-            Tone::Accent  => t.accent,
-            Tone::Success => t.bull,
-            Tone::Danger  => t.bear,
-            Tone::Warn    => t.warn,
-            Tone::Text    => t.text,
+            Tone::Default => p.base(SxTone::Dim),
+            Tone::Accent  => p.base(SxTone::Accent),
+            Tone::Success => p.base(SxTone::Bull),
+            Tone::Danger  => p.base(SxTone::Bear),
+            Tone::Warn    => p.base(SxTone::Warn),
+            Tone::Text    => p.base(SxTone::Text),
         }
     }
 }
@@ -610,7 +634,7 @@ impl<'a> PanelSection<'a> {
                         RichText::new(m)
                             .monospace()
                             .size(font_xs())
-                            .color(color_alpha(t.dim, alpha_line())),
+                            .color(tint(t, SxTone::Dim, alpha_line())),
                     );
                 }
             });
@@ -630,7 +654,7 @@ impl<'a> PanelSection<'a> {
 
 /// Hairline section rule: ~12% opacity of the toolbar border, full panel width.
 fn section_rule(ui: &mut Ui, t: &Theme) {
-    let color = color_alpha(t.toolbar_border, alpha_subtle());
+    let color = tint(t, SxTone::Border, alpha_subtle());
     let rect = ui.available_rect_before_wrap();
     let y = ui.cursor().min.y;
     ui.painter().line_segment(
@@ -673,7 +697,7 @@ impl<'a> PanelEmpty<'a> {
     pub fn indent(mut self, px: f32) -> Self { self.indent = px; self }
 
     pub fn show(self, ui: &mut Ui, t: &Theme) {
-        let color = color_alpha(t.dim, alpha_line());
+        let color = tint(t, SxTone::Dim, alpha_line());
         ui.horizontal(|ui| {
             if self.indent > 0.0 { ui.add_space(self.indent); }
             if let Some(g) = self.glyph {
@@ -851,7 +875,7 @@ impl<'a> Stat<'a> {
 
 impl<'a> Stat<'a> {
     pub fn show(self, ui: &mut Ui, t: &Theme) {
-        let lc = color_alpha(t.dim, alpha_line());
+        let lc = tint(t, SxTone::Dim, alpha_line());
         let vc = self.tone.color(t);
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = gap_xs();

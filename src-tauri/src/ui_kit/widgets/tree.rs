@@ -18,6 +18,7 @@ use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, Response, Sense, S
 
 use super::motion;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::tokens as st;
 use crate::ui_kit::icons::Icon;
 
@@ -223,15 +224,15 @@ fn render_row<T: TreeNode>(
     let cr = CornerRadius::same(st::radius_sm() as u8);
 
     if selected {
-        painter.rect_filled(rect, cr, st::color_alpha(theme.accent(), st::alpha_ghost()));
+        painter.rect_filled(rect, cr, st::color_alpha(palette_ct(theme).base(Tone::Accent), st::alpha_ghost()));
     } else if hover_t > 0.001 {
-        let bg = st::color_alpha(theme.text(), 18);
+        let bg = st::color_alpha(palette_ct(theme).base(Tone::Text), 18);
         painter.rect_filled(rect, cr, motion::lerp_color(Color32::TRANSPARENT, bg, hover_t));
     }
 
     // Indent guides (vertical hairlines).
     if cfg.show_indent_guides && depth > 0 {
-        let guide_col = st::color_alpha(theme.border(), 100);
+        let guide_col = st::color_alpha(palette_ct(theme).base(Tone::Border), 100);
         for d in 0..depth {
             let x = rect.left() + (d as f32) * cfg.indent_size + cfg.indent_size * 0.5;
             painter.line_segment(
@@ -252,7 +253,7 @@ fn render_row<T: TreeNode>(
         let caret_resp = ui.interact(caret_rect, row_id.with("caret"), Sense::click());
         let expanded = state.is_expanded(id);
         let glyph = if expanded { Icon::CARET_DOWN } else { Icon::CARET_RIGHT };
-        let caret_color = if caret_resp.hovered() { theme.text() } else { theme.dim() };
+        let caret_color = if caret_resp.hovered() { palette_ct(theme).base(Tone::Text) } else { palette_ct(theme).base(Tone::Dim) };
         painter.text(
             caret_rect.center(),
             Align2::CENTER_CENTER,
@@ -278,12 +279,12 @@ fn render_row<T: TreeNode>(
         let cb_resp = ui.interact(cb_rect, row_id.with("cb"), Sense::click());
         let on = state.is_checked(id);
         let on_t = motion::ease_bool(ui.ctx(), row_id.with("cb_on"), on, motion::FAST);
-        let bg = motion::lerp_color(Color32::TRANSPARENT, theme.accent(), on_t);
+        let bg = motion::lerp_color(Color32::TRANSPARENT, palette_ct(theme).base(Tone::Accent), on_t);
         painter.rect_filled(cb_rect, CornerRadius::same(st::radius_xs() as u8), bg);
         painter.rect_stroke(
             cb_rect,
             CornerRadius::same(st::radius_xs() as u8),
-            Stroke::new(st::stroke_std(), motion::lerp_color(theme.border(), theme.accent(), on_t)),
+            Stroke::new(st::stroke_std(), motion::lerp_color(palette_ct(theme).base(Tone::Border), palette_ct(theme).base(Tone::Accent), on_t)),
             egui::StrokeKind::Inside,
         );
         if on {
@@ -292,7 +293,7 @@ fn render_row<T: TreeNode>(
             let p1 = Pos2::new(c.x - s * 0.25, c.y + s * 0.02);
             let p2 = Pos2::new(c.x - s * 0.05, c.y + s * 0.20);
             let p3 = Pos2::new(c.x + s * 0.28, c.y - s * 0.18);
-            let stroke = Stroke::new(1.4, st::contrast_fg(theme.accent())); // TODO: off-token (stroke width)
+            let stroke = Stroke::new(1.4, st::contrast_fg(palette_ct(theme).base(Tone::Accent))); // TODO: off-token (stroke width)
             painter.line_segment([p1, p2], stroke);
             painter.line_segment([p2, p3], stroke);
         }
@@ -312,7 +313,7 @@ fn render_row<T: TreeNode>(
                 Align2::CENTER_CENTER,
                 glyph,
                 FontId::proportional(st::font_sm()),
-                theme.dim(),
+                palette_ct(theme).base(Tone::Dim),
             );
             x += iw + 4.0;
         }
@@ -334,7 +335,7 @@ fn render_row<T: TreeNode>(
             Align2::LEFT_CENTER,
             item.label(),
             FontId::proportional(st::font_sm()),
-            theme.text(),
+            palette_ct(theme).base(Tone::Text),
         );
     }
 

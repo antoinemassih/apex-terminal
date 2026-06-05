@@ -99,6 +99,9 @@ pub struct DesignSnapshot {
     pub alpha_active: u8,
     /// Heavy alpha. Mirrors `TokenSnapshot::alpha_heavy` = 120.
     pub alpha_heavy_u8: u8,
+    /// Scrim alpha (140). Between heavy (120) and solid (200) — for
+    /// command-palette / modal-backdrop scrims that want to dim but not blank.
+    pub alpha_scrim: u8,
     /// Solid alpha. Mirrors `TokenSnapshot::alpha_solid` = 200.
     pub alpha_solid:  u8,
 
@@ -147,7 +150,6 @@ pub struct DesignSnapshot {
     /// `[r, g, b, a]` of `colors.bg`
     pub bg:     [u8; 4],
     pub surface: [u8; 4],
-    pub paper:   [u8; 4],
     pub text:    [u8; 4],
     pub dim:     [u8; 4],
     pub border:  [u8; 4],
@@ -167,12 +169,12 @@ pub struct DesignSnapshot {
 /// the first `begin_frame` call).  Values match the `Default` impl of each
 /// sub-struct so there is no visible mismatch on the first frame.
 pub const DEFAULT_SNAPSHOT: DesignSnapshot = DesignSnapshot {
-    // Typography
-    size_xs: 10.0, size_sm: 11.0, size_md: 13.0, size_lg: 15.0, size_xl: 18.0,
-    mono_sm: 11.0, mono_md: 13.0, mono_lg: 15.0,
-    // Spacing — gap_xs_mid matches DEFAULT_TOKEN_SNAPSHOT in style.rs (6.0)
-    gap_xs: 2.0, gap_xs_mid: 6.0, gap_sm: 4.0, gap_md: 8.0,
-    gap_lg: 12.0, gap_xl: 16.0, gap_xxl: 24.0,
+    // Typography — P2.2 aligned to DEFAULT_TOKEN_SNAPSHOT in ui_kit/style.rs
+    size_xs:  9.0, size_sm: 11.0, size_md: 13.0, size_lg: 16.0, size_xl: 22.0,
+    mono_sm: 11.0, mono_md: 13.0, mono_lg: 16.0,
+    // Spacing — P2.2 aligned to DEFAULT_TOKEN_SNAPSHOT in ui_kit/style.rs
+    gap_xs: 4.0, gap_xs_mid: 6.0, gap_sm: 8.0, gap_md: 12.0,
+    gap_lg: 16.0, gap_xl: 20.0, gap_xxl: 24.0,
     gmd: 8.0, cta_height: 28.0,
     // Radii — match DEFAULT_TOKEN_SNAPSHOT in style.rs
     radius_none: 0.0, radius_xs: 2.0, radius_sm: 4.0, radius_md: 6.0, radius_lg: 12.0,
@@ -183,7 +185,7 @@ pub const DEFAULT_SNAPSHOT: DesignSnapshot = DesignSnapshot {
     // Alpha tiers (u8) — match DEFAULT_TOKEN_SNAPSHOT in style.rs
     alpha_faint: 10, alpha_ghost: 15, alpha_soft_u8: 20, alpha_subtle_u8: 40,
     alpha_tint: 48, alpha_muted_u8: 60, alpha_dim: 60, alpha_line: 80,
-    alpha_strong_u8: 80, alpha_active: 100, alpha_heavy_u8: 120, alpha_solid: 200,
+    alpha_strong_u8: 80, alpha_active: 100, alpha_heavy_u8: 120, alpha_scrim: 140, alpha_solid: 200,
     // Alpha multipliers (f32)
     alpha_subtle: 0.04, alpha_soft: 0.12, alpha_muted: 0.24, alpha_mid: 0.48,
     alpha_strong: 0.72, alpha_header_border: 0.18,
@@ -202,7 +204,6 @@ pub const DEFAULT_SNAPSHOT: DesignSnapshot = DesignSnapshot {
     // Colours — neutral dark defaults
     bg:      [18,  18,  18, 255],
     surface: [28,  28,  28, 255],
-    paper:   [38,  38,  38, 255],
     text:    [220, 220, 220, 255],
     dim:     [120, 120, 120, 255],
     border:  [55,  55,  55, 255],
@@ -260,6 +261,7 @@ pub fn snapshot(style: &StyleSystem, colors: &ColorScheme) -> DesignSnapshot {
         alpha_strong_u8: al.strong_u8,
         alpha_active:    al.active,
         alpha_heavy_u8:  al.heavy_u8,
+        alpha_scrim:     al.scrim,
         alpha_solid:     al.solid,
         // Alpha multipliers (f32)
         alpha_subtle: al.subtle, alpha_soft: al.soft, alpha_muted: al.muted,
@@ -289,7 +291,6 @@ pub fn snapshot(style: &StyleSystem, colors: &ColorScheme) -> DesignSnapshot {
         // Colours
         bg:      colors.bg,
         surface: colors.surface,
-        paper:   colors.paper,
         text:    colors.text,
         dim:     colors.dim,
         border:  colors.border,
@@ -323,8 +324,8 @@ mod tests {
         assert_eq!(snap.size_md, 13.0);
         assert_eq!(snap.mono_md, 13.0);
 
-        // Spacing
-        assert_eq!(snap.gap_md, 8.0);
+        // Spacing — P2.2 aligned: gap_md now 12.0 (matches TokenSnapshot)
+        assert_eq!(snap.gap_md, 12.0);
         assert_eq!(snap.gmd, 8.0);
 
         // Radii

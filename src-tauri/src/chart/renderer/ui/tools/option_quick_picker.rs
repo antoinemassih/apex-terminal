@@ -6,6 +6,7 @@
 //! data the Watchlist CHAIN tab uses), fetched via `fetch_chain_background`.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
@@ -36,17 +37,17 @@ pub(crate) fn draw(
 ) {
     // Iterate through panes; any with option_quick_open renders its own popup
     for pi in 0..panes.len() {
-        if !panes[pi].option_quick_open { continue; }
+        if !panes[pi].option_quick.open { continue; }
         let underlying = panes[pi].underlying.clone();
         if underlying.is_empty() {
-            panes[pi].option_quick_open = false;
+            panes[pi].option_quick.open = false;
             continue;
         }
 
-        let pos = panes[pi].option_quick_pos;
+        let pos = panes[pi].option_quick.pos;
         let mut close_picker = false;
         let mut pending_load: Option<(f32, bool)> = None; // (strike, is_call)
-        let dte_idx = panes[pi].option_quick_dte_idx.min(DTE_LIST.len() - 1);
+        let dte_idx = panes[pi].option_quick.dte_idx.min(DTE_LIST.len() - 1);
         let current_dte = DTE_LIST[dte_idx];
 
         // Ensure we always see fresh data for the current DTE
@@ -55,58 +56,31 @@ pub(crate) fn draw(
         let cur_strike = panes[pi].option_strike;
         let cur_is_call = panes[pi].option_type == "C";
 
-        use super::super::chrome::modal::{Modal, Anchor, HeaderStyle, FrameKind};
-        let custom_frame = egui::Frame::popup(&ctx.style())
-            .fill(t.toolbar_bg)
-            .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())))
-            .inner_margin(egui::Margin::same(gap_lg() as i8))
-            .corner_radius(r_lg_cr())
-            .shadow(egui::epaint::Shadow {
-                offset: [0, 4], blur: 14, spread: 0,
-                color: shadow_color_alpha(t, 80),
-            });
-        let modal_resp = Modal::new("OPT_QUICK_PICKER")
-            .id(&format!("opt_quick_picker_{}", pi))
-            .ctx(ctx)
-            .theme(t)
-            .size(egui::vec2(260.0, 0.0))
-            .anchor(Anchor::Area { pos })
-            .header_style(HeaderStyle::None)
-            .frame_kind(FrameKind::Custom(custom_frame))
-            .close_on_click_outside(true)
-            .separator(false)
-            .show(|ui| {
-                ui.set_width(260.0);
-
-                        // ── Header: underlying symbol + close ──
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(&underlying)
-                                .monospace().size(font_lg()).strong().color(t.accent));
-                            ui.label(egui::RichText::new(format!("@ {:.2}", spot))
-                                .monospace().size(font_sm()).color(t.dim));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                let r = KitButton::close().show(ui, t);
-                                Tooltip::new("Close").show(ui, &r, t);
-                                if r.clicked() { close_picker = true; }
-                            });
-                        });
-                        ui.add_space(gap_sm());
-                        separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
-                        ui.add_space(gap_sm());
+        // Migrated to ToolPopover (2026-05-26).
+        let portable_t = crate::chart_renderer::theme_impl::theme_to_portable(t);
+        let title_text = format!("{} @ {:.2}", underlying, spot);
+        let popover_id = format!("opt_quick_picker_{}", pi);
+        let modal_resp = crate::ui_kit::widgets::ToolPopover::new()
+            .id(&popover_id)
+            .width(260.0)
+            .pos(pos)
+            .title(&title_text)
+            .show(ctx, &portable_t, |ui| {
 
                         // ── Expiry nav: < [DTE] > ──
                         ui.horizontal(|ui| {
                             ui.add_space(gap_md());
                             // Back arrow
                             let can_back = dte_idx > 0;
-                            if KitButton::icon(Icon::CARET_LEFT)
+                            let back_resp = KitButton::icon(Icon::CARET_LEFT)
                                 .variant(crate::ui_kit::widgets::tokens::Variant::Ghost)
                                 .placement(crate::ui_kit::widgets::icon_placement::IconPlacement::Modal)
                                 .enabled(can_back)
-                                .show(ui, t)
-                                .clicked() && can_back
+                                .show(ui, t);
+                            crate::ui_kit::widgets::Tooltip::new("Earlier expiry").show(ui, &back_resp, t);
+                            if back_resp.clicked() && can_back
                             {
-                                panes[pi].option_quick_dte_idx = dte_idx - 1;
+                                panes[pi].option_quick.dte_idx = dte_idx - 1;
                                 let new_dte = DTE_LIST[dte_idx - 1];
                                 fetch_chain_background(underlying.clone(), 15, new_dte, spot);
                             }
@@ -126,7 +100,7 @@ pub(crate) fn draw(
                                     .show(ui, t)
                                     .clicked() && can_fwd
                                 {
-                                    panes[pi].option_quick_dte_idx = dte_idx + 1;
+                                    panes[pi].option_quick.dte_idx = dte_idx + 1;
                                     let new_dte = DTE_LIST[dte_idx + 1];
                                     fetch_chain_background(underlying.clone(), 15, new_dte, spot);
                                 }
@@ -146,11 +120,11 @@ pub(crate) fn draw(
                                     egui::vec2(half_w, 22.0), egui::Sense::click());
                                 crate::chart_renderer::ui::style::cursor::clickable(ui, &prev_resp);
                                 let prev_bg = if prev_resp.hovered() {
-                                    color_alpha(t.accent, alpha_tint())
-                                } else { color_alpha(t.toolbar_border, alpha_subtle()) };
+                                    tint(t, Tone::Accent, alpha_tint())
+                                } else { tint(t, Tone::Border, alpha_subtle()) };
                                 ui.painter().rect_filled(prev_rect, r_md_cr(), prev_bg);
                                 ui.painter().rect_stroke(prev_rect, r_md_cr(),
-                                    egui::Stroke::new(stroke_thin(), color_alpha(t.accent, alpha_line())),
+                                    egui::Stroke::new(stroke_thin(), tint(t, Tone::Accent, alpha_line())),
                                     egui::StrokeKind::Inside);
                                 ui.painter().text(
                                     prev_rect.center(), egui::Align2::CENTER_CENTER,
@@ -158,9 +132,9 @@ pub(crate) fn draw(
                                     egui::FontId::monospace(font_sm()), t.text);
                                 if prev_resp.clicked() {
                                     // Find the next-lower strike in the current type's chain
-                                    let rows = if cur_is_call { &watchlist.chain_0dte.0 } else { &watchlist.chain_0dte.1 };
+                                    let rows = if cur_is_call { &watchlist.chain_0dte.calls } else { &watchlist.chain_0dte.puts };
                                     let rows = if current_dte == 0 { rows }
-                                        else if cur_is_call { &watchlist.chain_far.0 } else { &watchlist.chain_far.1 };
+                                        else if cur_is_call { &watchlist.chain_far.calls } else { &watchlist.chain_far.puts };
                                     let mut sorted: Vec<f32> = rows.iter().map(|r| r.strike).collect();
                                     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
                                     if let Some(&lower) = sorted.iter().rev().find(|&&s| s < cur_strike) {
@@ -173,20 +147,20 @@ pub(crate) fn draw(
                                     egui::vec2(half_w, 22.0), egui::Sense::click());
                                 crate::chart_renderer::ui::style::cursor::clickable(ui, &next_resp);
                                 let next_bg = if next_resp.hovered() {
-                                    color_alpha(t.accent, alpha_tint())
-                                } else { color_alpha(t.toolbar_border, alpha_subtle()) };
+                                    tint(t, Tone::Accent, alpha_tint())
+                                } else { tint(t, Tone::Border, alpha_subtle()) };
                                 ui.painter().rect_filled(next_rect, r_md_cr(), next_bg);
                                 ui.painter().rect_stroke(next_rect, r_md_cr(),
-                                    egui::Stroke::new(stroke_thin(), color_alpha(t.accent, alpha_line())),
+                                    egui::Stroke::new(stroke_thin(), tint(t, Tone::Accent, alpha_line())),
                                     egui::StrokeKind::Inside);
                                 ui.painter().text(
                                     next_rect.center(), egui::Align2::CENTER_CENTER,
                                     format!("Next Strike {}", Icon::CARET_RIGHT),
                                     egui::FontId::monospace(font_sm()), t.text);
                                 if next_resp.clicked() {
-                                    let rows = if cur_is_call { &watchlist.chain_0dte.0 } else { &watchlist.chain_0dte.1 };
+                                    let rows = if cur_is_call { &watchlist.chain_0dte.calls } else { &watchlist.chain_0dte.puts };
                                     let rows = if current_dte == 0 { rows }
-                                        else if cur_is_call { &watchlist.chain_far.0 } else { &watchlist.chain_far.1 };
+                                        else if cur_is_call { &watchlist.chain_far.calls } else { &watchlist.chain_far.puts };
                                     let mut sorted: Vec<f32> = rows.iter().map(|r| r.strike).collect();
                                     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
                                     if let Some(&higher) = sorted.iter().find(|&&s| s > cur_strike) {
@@ -195,7 +169,7 @@ pub(crate) fn draw(
                                 }
                             });
                             ui.add_space(gap_sm());
-                            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+                            separator(ui, tint(t, Tone::Border, alpha_muted()));
                             ui.add_space(gap_sm());
                         }
 
@@ -206,7 +180,7 @@ pub(crate) fn draw(
                             col_header(ui, "STRIKE", cw, color_half(t.dim), false);
                             col_header(ui, "PUT",    cw, color_half(t.dim), false);
                         });
-                        separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+                        separator(ui, tint(t, Tone::Border, alpha_muted()));
 
                         // ── Chain rows ──
                         // Source: watchlist.chain_0dte when current_dte == 0, else chain_far
@@ -219,7 +193,7 @@ pub(crate) fn draw(
                         } else {
                             &watchlist.chain_far
                         };
-                        let (calls, puts) = (&chain_ref.0, &chain_ref.1);
+                        let (calls, puts) = (&chain_ref.calls, &chain_ref.puts);
 
                         if calls.is_empty() && puts.is_empty() {
                             PanelLoading::new().show(ui, t);
@@ -247,7 +221,7 @@ pub(crate) fn draw(
                                             let (crect, cresp) = ui.allocate_exact_size(egui::vec2(cw, 20.0), egui::Sense::click());
                                             crate::chart_renderer::ui::style::cursor::clickable(ui, &cresp);
                                             if cresp.hovered() {
-                                                ui.painter().rect_filled(crect, r_sm_cr(), color_alpha(t.bull, alpha_ghost()));
+                                                ui.painter().rect_filled(crect, r_sm_cr(), tint(t, Tone::Bull, alpha_ghost()));
                                             }
                                             ui.painter().text(crect.center(), egui::Align2::CENTER_CENTER,
                                                 &call_text, egui::FontId::monospace(font_sm()),
@@ -274,7 +248,7 @@ pub(crate) fn draw(
                                             let (prect, presp) = ui.allocate_exact_size(egui::vec2(cw, 20.0), egui::Sense::click());
                                             crate::chart_renderer::ui::style::cursor::clickable(ui, &presp);
                                             if presp.hovered() {
-                                                ui.painter().rect_filled(prect, r_sm_cr(), color_alpha(t.bear, alpha_ghost()));
+                                                ui.painter().rect_filled(prect, r_sm_cr(), tint(t, Tone::Bear, alpha_ghost()));
                                             }
                                             ui.painter().text(prect.center(), egui::Align2::CENTER_CENTER,
                                                 &put_text, egui::FontId::monospace(font_sm()),
@@ -288,18 +262,18 @@ pub(crate) fn draw(
                                 });
                         }
             });
-        if modal_resp.closed { close_picker = true; }
+        if modal_resp.dismissed { close_picker = true; }
 
         if close_picker {
-            panes[pi].option_quick_open = false;
+            panes[pi].option_quick.open = false;
         }
 
         // Handle strike click → swap the contract on this pane (not a split).
         if let Some((strike, is_call)) = pending_load {
             let rows = if current_dte == 0 {
-                if is_call { &watchlist.chain_0dte.0 } else { &watchlist.chain_0dte.1 }
+                if is_call { &watchlist.chain_0dte.calls } else { &watchlist.chain_0dte.puts }
             } else {
-                if is_call { &watchlist.chain_far.0 } else { &watchlist.chain_far.1 }
+                if is_call { &watchlist.chain_far.calls } else { &watchlist.chain_far.puts }
             };
             let occ = rows.iter()
                 .find(|r| (r.strike - strike).abs() < 0.01)
@@ -330,10 +304,10 @@ pub(crate) fn draw(
                     crate::chart_renderer::gpu::fetch_option_bars_background(occ_final, opt_sym, tf, mark);
                 }
             } else {
-                watchlist.pending_opt_chart = Some((underlying.clone(), strike, is_call, String::new()));
+                watchlist.pending_opt_chart = Some(crate::chart_renderer::gpu::PendingOptionChart { symbol: underlying.clone(), strike, is_call, expiry: String::new() });
                 watchlist.pending_opt_chart_contract = Some(occ);
             }
-            panes[pi].option_quick_open = false;
+            panes[pi].option_quick.open = false;
         }
     }
 }

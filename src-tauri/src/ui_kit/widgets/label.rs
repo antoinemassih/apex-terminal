@@ -11,6 +11,7 @@ use egui::{Color32, FontFamily, FontId, Response, Sense, Ui, Widget};
 
 use super::theme::ComponentTheme;
 use super::tokens::Size;
+use crate::ui_kit::sx::{palette_ct, Tone};
 
 #[derive(Clone)]
 enum Family {
@@ -84,10 +85,9 @@ impl<'a> Label<'a> {
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
         let color = if let Some(c) = self.color {
             c
-        } else if self.muted {
-            theme.dim()
         } else {
-            theme.text()
+            let pal = palette_ct(theme);
+            if self.muted { pal.base(Tone::Dim) } else { pal.base(Tone::Text) }
         };
         let font_size = self.size.font_size();
         // Resolve family. `strong` upgrades the default Proportional

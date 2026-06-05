@@ -30,6 +30,7 @@
 use egui::{Button, Color32, CursorIcon, Response, RichText, Ui};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::tokens as st;
 use crate::ui_kit::icons::Icon;
 
@@ -134,7 +135,7 @@ impl<'a> MenuItem<'a> {
             btn = btn.shortcut_text(
                 RichText::new(hint.clone())
                     .size(st::font_sm())
-                    .color(st::color_alpha(theme.dim(), 160)),
+                    .color(st::color_alpha(palette_ct(theme).base(Tone::Dim), 160)),
             );
         }
 

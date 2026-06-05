@@ -14,6 +14,9 @@ use egui::{Response, RichText, Ui};
 
 use super::theme::ComponentTheme;
 use crate::ui_kit::tokens as st;
+// `Tone` (below) is MetricRow's own public value-tone enum; alias the Sx tone
+// to avoid the name clash while still sourcing colors from the unified palette.
+use crate::ui_kit::sx::{palette_ct, Tone as SxTone};
 
 /// Semantic tint for the value side of a `MetricRow`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -64,14 +67,15 @@ impl<'a> MetricRow<'a> {
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
         let label_size = self.label_font.unwrap_or_else(st::font_xs);
         let value_size = self.value_font.unwrap_or_else(st::font_sm);
-        let label_color = theme.dim();
+        let pal = palette_ct(theme);
+        let label_color = pal.base(SxTone::Dim);
         let value_color = match self.tone {
-            Tone::Default => theme.text(),
-            Tone::Muted   => st::color_muted(theme.dim()),
-            Tone::Accent  => theme.accent(),
-            Tone::Bull    => theme.bull(),
-            Tone::Bear    => theme.bear(),
-            Tone::Warn    => theme.warn(),
+            Tone::Default => pal.base(SxTone::Text),
+            Tone::Muted   => st::color_muted(pal.base(SxTone::Dim)),
+            Tone::Accent  => pal.base(SxTone::Accent),
+            Tone::Bull    => pal.base(SxTone::Bull),
+            Tone::Bear    => pal.base(SxTone::Bear),
+            Tone::Warn    => pal.base(SxTone::Warn),
         };
 
         let resp = ui.horizontal(|ui| {
@@ -92,7 +96,7 @@ impl<'a> MetricRow<'a> {
             let painter = ui.painter();
             painter.line_segment(
                 [egui::pos2(r.left(), bar_y), egui::pos2(r.left() + total_w, bar_y)],
-                egui::Stroke::new(st::stroke_thin(), st::color_alpha(theme.border(), st::alpha_line())),
+                egui::Stroke::new(st::stroke_thin(), st::color_alpha(pal.base(SxTone::Border), st::alpha_line())),
             );
             painter.line_segment(
                 [egui::pos2(r.left(), bar_y), egui::pos2(r.left() + total_w * p, bar_y)],

@@ -9,6 +9,7 @@
 #![allow(dead_code, unused_imports)]
 
 use egui::{self, Ui};
+use crate::ui_kit::sx::Tone;
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 
 use super::super::super::style::*;
@@ -77,7 +78,7 @@ impl<'a> PlayCard<'a> {
             // TODO(design-system): theme-aware bevel highlight; 40 ≈ alpha_subtle(), 8 is custom.
             egui::Color32::from_rgba_unmultiplied(255, 255, 255, if t.is_light() { alpha_subtle() } else { 8 }));
 
-        p.rect_stroke(card_rect, RADIUS_LG, egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_strong())), egui::StrokeKind::Outside);
+        p.rect_stroke(card_rect, RADIUS_LG, egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_strong())), egui::StrokeKind::Outside);
 
         // Accent stripe
         p.rect_filled(egui::Rect::from_min_max(
@@ -155,12 +156,12 @@ impl<'a> PlayCard<'a> {
             let bar_x = cx;
             let bar_w = card_w - 24.0;
             let bar_rect = egui::Rect::from_min_size(egui::pos2(bar_x, cy), egui::vec2(bar_w, 4.0));
-            p.rect_filled(bar_rect, 2.0, color_alpha(t.toolbar_border, alpha_muted()));
+            p.rect_filled(bar_rect, 2.0, tint(t, Tone::Border, alpha_muted()));
             let total_range = (play.target_price - play.stop_price).abs();
             let risk = (play.entry_price - play.stop_price).abs();
             let risk_pct = if total_range > 0.0 { (risk / total_range).min(1.0) } else { 0.5 };
-            p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, cy), egui::vec2(bar_w * risk_pct, 4.0)), 2.0, color_alpha(t.bear, alpha_dim()));
-            p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x + bar_w * risk_pct, cy), egui::vec2(bar_w * (1.0 - risk_pct), 4.0)), 2.0, color_alpha(t.bull, alpha_dim()));
+            p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x, cy), egui::vec2(bar_w * risk_pct, 4.0)), 2.0, tint(t, Tone::Bear, alpha_dim()));
+            p.rect_filled(egui::Rect::from_min_size(egui::pos2(bar_x + bar_w * risk_pct, cy), egui::vec2(bar_w * (1.0 - risk_pct), 4.0)), 2.0, tint(t, Tone::Bull, alpha_dim()));
             p.circle_filled(egui::pos2(bar_x + bar_w * risk_pct, cy + 2.0), 3.0, t.text);
             cy += 10.0;
         }
@@ -199,7 +200,7 @@ impl<'a> PlayCard<'a> {
             if play.status == PlayStatus::Draft {
                 let act_rect = egui::Rect::from_min_size(egui::pos2(card_rect.right() - 60.0, card_rect.bottom() - 18.0), egui::vec2(52.0, 14.0));
                 let act_resp = ui.interact(act_rect, egui::Id::new(("play_act", &play.id[..8])), egui::Sense::click());
-                let act_bg = if act_resp.hovered() { color_alpha(t.accent, alpha_dim()) } else { color_alpha(t.accent, alpha_ghost()) };
+                let act_bg = if act_resp.hovered() { tint(t, Tone::Accent, alpha_dim()) } else { tint(t, Tone::Accent, alpha_ghost()) };
                 ui.painter().rect_filled(act_rect, 3.0, act_bg);
                 ui.painter().text(act_rect.center(), egui::Align2::CENTER_CENTER, "Activate", mono_sm(), t.accent);
                 crate::chart_renderer::ui::style::cursor::clickable(ui, &act_resp);

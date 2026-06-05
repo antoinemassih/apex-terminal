@@ -16,6 +16,7 @@
 //! etc.) are unchanged — this migration only touches the chrome around them.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use crate::ui_kit::widgets::{Button, PanelEmpty, PanelListRow, PanelSection, PanelSectionGroup, Tooltip};
 use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
@@ -370,12 +371,20 @@ fn swing_label(mode: u8) -> &'static str {
 
 // ─── Public entry ───────────────────────────────────────────────────────────
 
+/// Rail registration — see [`super::right_rail`].
+pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
+    id: "indicators",
+    is_open: |w| w.indicators_panel_open,
+    render: |cx, slot| draw(cx.ctx, cx.watchlist, cx.panes, cx.active_pane, cx.t, Some(slot)),
+};
+
 pub(crate) fn draw(
     ctx: &egui::Context,
     watchlist: &mut Watchlist,
     panes: &mut [Chart],
     ap: usize,
     t: &Theme,
+    slot: Option<super::side_panel_shell::RailSlot>,
 ) {
     if !watchlist.indicators_panel_open || panes.is_empty() {
         return;
@@ -388,6 +397,7 @@ pub(crate) fn draw(
             crate::chart_renderer::gpu::pane_tabs_header_h(watchlist),
             watchlist.pane_header_size.title_font(),
         )
+        .rail_slot(slot)
         .show(ctx, t, |ui, t| {
             // 3-way user-resizable split (TOOLS / ACTIVE / LIBRARY). The
             // section fractions persist on the Watchlist so the user's
@@ -448,7 +458,7 @@ pub(crate) fn draw(
 fn active_count(c: &Chart) -> usize {
     let toggles = library_active_toggles();
     let bool_count = toggles.iter().filter(|tg| bool_get(c, **tg)).count();
-    let vp = (c.vp_mode != VolumeProfileMode::Off) as usize;
+    let vp = (c.vp.mode != VolumeProfileMode::Off) as usize;
     let sw = (c.swing_leg_mode > 0) as usize;
     c.indicators.len() + bool_count + vp + sw + c.symbol_overlays.len()
 }
@@ -528,7 +538,7 @@ fn tool_group_divider(ui: &mut egui::Ui, t: &Theme) {
     let cx = rect.center().x;
     ui.painter().line_segment(
         [egui::pos2(cx, rect.top() + 5.0), egui::pos2(cx, rect.bottom() - 5.0)],
-        egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_muted())),
+        egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_muted())),
     );
 }
 
@@ -537,7 +547,7 @@ fn tool_group_divider(ui: &mut egui::Ui, t: &Theme) {
 fn draw_active_section(ui: &mut egui::Ui, chart: &mut Chart, t: &Theme) {
     let active_toggles = library_active_toggles();
     let active_bool_count = active_toggles.iter().filter(|tg| bool_get(chart, **tg)).count();
-    let vp_active = chart.vp_mode != VolumeProfileMode::Off;
+    let vp_active = chart.vp.mode != VolumeProfileMode::Off;
     let swing_active = chart.swing_leg_mode > 0;
     let overlay_count = chart.symbol_overlays.len();
     let total_active = chart.indicators.len()
@@ -762,7 +772,7 @@ fn active_indicator_row(
 }
 
 fn active_bool_row(ui: &mut egui::Ui, t: &Theme, tg: Tg, to_disable: &mut Option<Tg>) {
-    let accent = color_alpha(t.accent, alpha_strong());
+    let accent = tint(t, Tone::Accent, alpha_strong());
     // Stack-format the id_salt — u8 discriminant, no heap allocation.
     let mut id_buf = [0u8; 16];
     let id_len = {
@@ -787,8 +797,8 @@ fn active_bool_row(ui: &mut egui::Ui, t: &Theme, tg: Tg, to_disable: &mut Option
 }
 
 fn active_vp_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
-    let accent = color_alpha(t.accent, alpha_strong());
-    let primary = format!("Volume profile · {}", vp_label(chart.vp_mode));
+    let accent = tint(t, Tone::Accent, alpha_strong());
+    let primary = format!("Volume profile · {}", vp_label(chart.vp.mode));
     let want_disable = std::cell::Cell::new(false);
     let d_ref = &want_disable;
     PanelListRow::new("act_vp")
@@ -801,12 +811,12 @@ fn active_vp_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
         })
         .show(ui, t);
     if want_disable.get() {
-        chart.vp_mode = VolumeProfileMode::Off; chart.vp_data = None;
+        chart.vp.mode = VolumeProfileMode::Off; chart.vp.data = None;
     }
 }
 
 fn active_swing_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart) {
-    let accent = color_alpha(t.accent, alpha_strong());
+    let accent = tint(t, Tone::Accent, alpha_strong());
     let primary = format!("SwingRange · {}", swing_label(chart.swing_leg_mode));
     let want_disable = std::cell::Cell::new(false);
     let d_ref = &want_disable;
@@ -871,7 +881,7 @@ fn draw_library_section(
         let hovered = h_resp.hovered();
         if hovered {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            ui.painter().rect_filled(h_rect, 3.0, color_alpha(t.toolbar_border, alpha_subtle()));
+            ui.painter().rect_filled(h_rect, 3.0, tint(t, Tone::Border, alpha_subtle()));
         }
         let painter = ui.painter_at(h_rect);
         let cy = h_rect.center().y;
@@ -923,7 +933,7 @@ fn draw_library_section(
             ui.painter().line_segment(
                 [egui::pos2(div_rect.left() + 8.0, div_rect.center().y),
                  egui::pos2(div_rect.right() - 8.0, div_rect.center().y)],
-                egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_muted())),
+                egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_muted())),
             );
             ui.add_space(gap_xs());
         }
@@ -1043,11 +1053,11 @@ fn lib_bool_row(ui: &mut egui::Ui, t: &Theme, tg: Tg, chart: &mut Chart, sec_idx
 }
 
 fn lib_vp_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart, sec_idx: usize) {
-    let active = chart.vp_mode != VolumeProfileMode::Off;
+    let active = chart.vp.mode != VolumeProfileMode::Off;
     let mut id_buf = [0u8; 48];
     let id_len = lib_id_buf(&mut id_buf, sec_idx, "VP");
     let id_salt = std::str::from_utf8(&id_buf[..id_len]).unwrap_or("lib_row");
-    let trail_text: String = if active { vp_label(chart.vp_mode).to_string() } else { "+".to_string() };
+    let trail_text: String = if active { vp_label(chart.vp.mode).to_string() } else { "+".to_string() };
     let trail_col = if active { t.accent } else { t.dim };
     let resp = PanelListRow::new(&id_salt)
         .primary("Volume profile")
@@ -1064,14 +1074,14 @@ fn lib_vp_row(ui: &mut egui::Ui, t: &Theme, chart: &mut Chart, sec_idx: usize) {
         .show(ui, t);
     if resp.clicked() {
         // Cycle Off → Classic → Heatmap → Strip → Clean → Off
-        chart.vp_mode = match chart.vp_mode {
+        chart.vp.mode = match chart.vp.mode {
             VolumeProfileMode::Off => VolumeProfileMode::Classic,
             VolumeProfileMode::Classic => VolumeProfileMode::Heatmap,
             VolumeProfileMode::Heatmap => VolumeProfileMode::Strip,
             VolumeProfileMode::Strip => VolumeProfileMode::Clean,
             VolumeProfileMode::Clean => VolumeProfileMode::Off,
         };
-        chart.vp_data = None;
+        chart.vp.data = None;
     }
 }
 

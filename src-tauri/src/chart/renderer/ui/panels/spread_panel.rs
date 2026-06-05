@@ -1,6 +1,7 @@
 //! Spread/Combo Builder panel — build and submit multi-leg option strategies.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
 use super::super::components::text::MonospaceCode;
@@ -235,7 +236,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
     let frame = egui::Frame::popup(&ctx.style())
         .fill(t.toolbar_bg)
         .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-        .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())))
+        .stroke(egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_heavy())))
         .corner_radius(r_lg_cr());
 
     let resp = Modal::new("SPREAD BUILDER")
@@ -263,7 +264,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 egui::pos2(ui.cursor().min.x, ui.cursor().min.y),
                 egui::vec2(w, 1.0),
             );
-            ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, alpha_dim()));
+            ui.painter().rect_filled(div_rect, 0.0, tint(t, Tone::Border, alpha_dim()));
             ui.add_space(gap_sm());
 
             egui::ScrollArea::vertical().id_salt("spread_body").show(ui, |ui| {
@@ -332,7 +333,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                         egui::vec2(w - m * 2.0 + 4.0, 26.0),
                     );
                     let _ = ui.allocate_rect(card_rect, egui::Sense::hover());
-                    ui.painter().rect_filled(card_rect, 3.0, color_alpha(t.toolbar_border, alpha_subtle()));
+                    ui.painter().rect_filled(card_rect, 3.0, tint(t, Tone::Border, alpha_subtle()));
 
                     // Draw leg label + controls
                     let leg_label_col = if leg.side == "BUY" { t.bull } else { t.bear };

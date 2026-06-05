@@ -1,6 +1,7 @@
 //! Hotkey Editor UI component.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use super::super::components::text::{BodyLabel, SectionLabel};
@@ -53,19 +54,14 @@ if let Some(edit_id) = watchlist.hotkey_editing_id {
 
 // ── Hotkey editor dialog ────────────────────────────────────────────────
 if watchlist.hotkey_editor_open {
-    use super::super::chrome::modal::{Modal, Anchor, HeaderStyle, FrameKind};
     let screen = ctx.screen_rect();
-    let resp = Modal::new("KEYBOARD SHORTCUTS")
+    // Migrated to ToolOverlay (2026-05-26) — shared header chrome.
+    let portable_t = crate::chart_renderer::theme_impl::theme_to_portable(t);
+    let resp = crate::ui_kit::widgets::ToolOverlay::new("KEYBOARD SHORTCUTS")
         .id("hotkey_editor")
-        .ctx(ctx)
-        .theme(t)
-        .size(egui::vec2(540.0, 0.0))
-        .anchor(Anchor::Window { pos: Some(egui::pos2(screen.center().x - 270.0, 40.0)) })
-        .header_style(HeaderStyle::Dialog)
-        .frame_kind(FrameKind::DialogWindow)
-        .separator(false)
-        .show(|ui| {
-            ui.add_space(gap_md());
+        .width(540.0)
+        .pos(egui::pos2(screen.center().x - 270.0, 40.0))
+        .show(ctx, &portable_t, |ui| {
             draw_content(ui, watchlist, t);
         });
     if resp.closed { watchlist.update_sidebar_state(|s| s.hotkey_editor_open = false); }
@@ -92,7 +88,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
             }
             ui.horizontal(|ui| {
                 ui.add_space(gap_lg());
-                ui.add(BodyLabel::new(hk_name.as_str()).size(font_sm()).monospace(true).color(egui::Color32::from_white_alpha(180)));
+                ui.add(BodyLabel::new(hk_name.as_str()).size(font_sm()).monospace(true).color(tint(t, Tone::Text, alpha_strong())));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if *is_editing {
                         ui.add(BodyLabel::new("Press a key...").size(font_sm()).monospace(true).color(t.accent));
@@ -101,8 +97,8 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
                             watchlist.hotkey_editing_id = Some(*hk_id);
                         }
                     }
-                    let key_bg = if *is_editing { color_alpha(t.accent, alpha_tint()) } else { color_alpha(t.toolbar_border, alpha_tint()) };
-                    let key_fg = if *is_editing { t.accent } else { egui::Color32::from_white_alpha(140) };
+                    let key_bg = if *is_editing { tint(t, Tone::Accent, alpha_tint()) } else { tint(t, Tone::Border, alpha_tint()) };
+                    let key_fg = if *is_editing { t.accent } else { tint(t, Tone::Text, alpha_muted()) };
                     Button::new(hk_key_name.as_str()).variant(Variant::Chrome).size(Size::Sm).fg(key_fg)
                         .fill(key_bg).corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32).min_size(egui::vec2(80.0, row_height_dense())).show(ui, t);
                 });

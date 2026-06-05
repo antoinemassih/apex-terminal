@@ -1,6 +1,7 @@
 //! Overlay Manager UI component.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use super::super::components::text::MonospaceCode;
@@ -14,14 +15,12 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [
 // ── Overlay management pane ─────────────────────────────────────────────
 if panes[ap].overlay_editing {
     let mut delete_idx: Option<usize> = None;
-    let modal_resp = Modal::new("SYMBOL OVERLAYS")
+    // Migrated to ToolOverlay (2026-05-26) — consolidates header chrome.
+    let portable_t = crate::chart_renderer::theme_impl::theme_to_portable(t);
+    let modal_resp = crate::ui_kit::widgets::ToolOverlay::new("SYMBOL OVERLAYS")
         .id("overlay_mgr")
-        .ctx(ctx)
-        .theme(t)
-        .size(egui::vec2(260.0, 0.0))
-        .header_style(HeaderStyle::Dialog)
-        .draggable_header(true)
-        .show(|ui| {
+        .width(260.0)
+        .show(ctx, &portable_t, |ui| {
             let m = 8.0;
             ui.add_space(gap_sm());
 
@@ -60,7 +59,7 @@ if panes[ap].overlay_editing {
                         panes[ap].symbol_overlays[oi].show_candles = !panes[ap].symbol_overlays[oi].show_candles;
                     }
                     // Delete
-                    let r = ui.add(Button::icon(Icon::X).variant(Variant::Ghost).glyph_color(color_half(t.bear)).size(KitSize::Sm).placement(IconPlacement::ListRow).tone_destructive());
+                    let r = ui.add(Button::icon(Icon::X).variant(Variant::Ghost).size(KitSize::Sm).placement(IconPlacement::ListRow).tone_destructive());
                     Tooltip::new("Remove overlay").show(ui, &r, t);
                     if r.clicked() {
                         delete_idx = Some(oi);
@@ -71,7 +70,7 @@ if panes[ap].overlay_editing {
 
             if n_ov > 0 {
                 ui.add_space(gap_xs());
-                dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, alpha_muted()));
+                dialog_separator_shadow(ui, m, tint(t, Tone::Border, alpha_muted()));
                 ui.add_space(gap_xs());
             }
 

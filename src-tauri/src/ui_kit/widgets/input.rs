@@ -37,6 +37,7 @@ use egui::{
 
 use super::motion;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
 
@@ -244,7 +245,7 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
                 egui::RichText::new(lbl)
                     .monospace()
                     .size(st::font_xs())
-                    .color(theme.dim()),
+                    .color(palette_ct(theme).base(Tone::Dim)),
             );
             ui.add_space(st::gap_2xs() * 0.5);
         }
@@ -268,18 +269,18 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
         let hover_t = motion::ease_bool(ui.ctx(), id.with("hover"), hovered, motion::FAST);
         let focus_t = motion::ease_bool(ui.ctx(), id.with("focus"), focused, motion::FAST);
 
-        let border_idle = theme.border();
-        let border_hover = theme.dim();
-        let border_focus = theme.accent();
+        let border_idle = palette_ct(theme).base(Tone::Border);
+        let border_hover = palette_ct(theme).base(Tone::Dim);
+        let border_focus = palette_ct(theme).base(Tone::Accent);
 
         let mut border_col = motion::lerp_color(border_idle, border_hover, hover_t);
         border_col = motion::lerp_color(border_col, border_focus, focus_t);
 
         if warning && !focused {
-            border_col = theme.warn();
+            border_col = palette_ct(theme).base(Tone::Warn);
         }
         if invalid {
-            border_col = theme.bear();
+            border_col = palette_ct(theme).base(Tone::Bear);
         }
 
         let bg_fill = background_color_override.unwrap_or_else(|| theme.surface_raised());
@@ -297,12 +298,12 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
         let mut left_x = rect.left() + pad_x;
         let mut right_x = rect.right() - pad_x;
 
-        let icon_color_idle = theme.dim();
-        let icon_color_focus = theme.accent();
+        let icon_color_idle = palette_ct(theme).base(Tone::Dim);
+        let icon_color_focus = palette_ct(theme).base(Tone::Accent);
         let icon_color = motion::lerp_color(icon_color_idle, icon_color_focus, focus_t);
-        let muted = theme.dim();
+        let muted = palette_ct(theme).base(Tone::Dim);
         let text_col = text_color_override.unwrap_or_else(|| {
-            if disabled { st::color_alpha(theme.text(), 128) } else { theme.text() }
+            if disabled { st::color_alpha(palette_ct(theme).base(Tone::Text), 128) } else { palette_ct(theme).base(Tone::Text) }
         });
 
         let painter = ui.painter_at(rect);
@@ -319,7 +320,7 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
             let div_x = (left_x).round() + 0.5;
             painter.line_segment(
                 [Pos2::new(div_x, rect.top() + st::gap_xs()), Pos2::new(div_x, rect.bottom() - st::gap_xs())],
-                Stroke::new(st::stroke_thin(), st::color_alpha(theme.border(), st::alpha_strong())),
+                Stroke::new(st::stroke_thin(), st::color_alpha(palette_ct(theme).base(Tone::Border), st::alpha_strong())),
             );
             left_x += icon_gap;
         }
@@ -424,7 +425,7 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
                     egui::Align2::LEFT_CENTER,
                     ph,
                     font_id.clone(),
-                    st::color_alpha(theme.dim(), 160),
+                    st::color_alpha(palette_ct(theme).base(Tone::Dim), 160),
                 );
             }
         }
@@ -467,7 +468,7 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
             // P5b: read focus-ring knobs from TokenSnapshot (chart-app
             // populates them per frame) instead of the chart-only current().
             let snap = crate::ui_kit::style::frame_tokens();
-            let ring_color = st::color_alpha(theme.accent(), snap.focus_ring_alpha);
+            let ring_color = st::color_alpha(palette_ct(theme).base(Tone::Accent), snap.focus_ring_alpha);
             let ring_radius = CornerRadius::same((st::radius_sm() as u8).saturating_add(1));
             ui.painter().rect_stroke(
                 rect.expand(2.0),
@@ -489,11 +490,11 @@ fn paint_input<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a>) ->
 
     if let Some(helper) = &helper_text {
         let color = if invalid {
-            theme.bear()
+            palette_ct(theme).base(Tone::Bear)
         } else if warning {
-            theme.warn()
+            palette_ct(theme).base(Tone::Warn)
         } else {
-            theme.dim()
+            palette_ct(theme).base(Tone::Dim)
         };
         ui.add_space(st::gap_2xs() * 0.5);
         ui.label(
@@ -551,7 +552,7 @@ fn paint_input_bare<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a
 
     let font_size = font_size_override.unwrap_or_else(|| size.font_size().max(st::font_md()));
     let text_col = text_color_override.unwrap_or_else(|| {
-        if disabled { st::color_alpha(theme.text(), 128) } else { theme.text() }
+        if disabled { st::color_alpha(palette_ct(theme).base(Tone::Text), 128) } else { palette_ct(theme).base(Tone::Text) }
     });
     let font_id = if proportional {
         FontId::proportional(font_size)
@@ -564,7 +565,7 @@ fn paint_input_bare<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a
             egui::RichText::new(lbl)
                 .monospace()
                 .size(st::font_xs())
-                .color(theme.dim()),
+                .color(palette_ct(theme).base(Tone::Dim)),
         );
         ui.add_space(st::gap_2xs() * 0.5);
     }
@@ -606,7 +607,7 @@ fn paint_input_bare<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a
         let inner_margin = margin_override.unwrap_or_else(|| Margin::same(st::gap_sm() as i8));
         let frame = egui::Frame::NONE
             .fill(bg)
-            .stroke(Stroke::new(st::stroke_std(), theme.border()))
+            .stroke(Stroke::new(st::stroke_std(), palette_ct(theme).base(Tone::Border)))
             .inner_margin(inner_margin)
             .corner_radius(CornerRadius::same(st::radius_sm() as u8));
         let mut out: Option<Response> = None;
@@ -645,7 +646,7 @@ fn paint_input_bare<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, input: Input<'a
             egui::RichText::new(helper)
                 .monospace()
                 .size(st::font_xs())
-                .color(theme.dim()),
+                .color(palette_ct(theme).base(Tone::Dim)),
         );
     }
 

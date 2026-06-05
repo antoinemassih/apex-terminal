@@ -7,16 +7,23 @@
 //! dispatch (News / Discord / Screenshots).
 
 use egui;
-use super::super::super::gpu::{Watchlist, Chart, Theme};
+use super::super::super::gpu::{Watchlist, Chart, Theme, SplitSection};
 use crate::chart_renderer::FeedTab;
-use crate::chart_renderer::ui::panels::split_section_panel::SplitSectionPanel;
-use crate::chart_renderer::ui::panels::side_panel_shell::Width;
+use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width, RailSlot};
 
-const ALL_TABS: &[(FeedTab, &str)] = &[
-    (FeedTab::News, "News"),
-    (FeedTab::Discord, "Discord"),
-    (FeedTab::Screenshots, "Screenshots"),
-];
+/// Rail registration — Feed is now a standard `SidePanelShell::tabs` panel.
+pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
+    id: "feed",
+    is_open: |w| w.feed_panel_open,
+    render: |cx, slot| { draw(cx.ctx, cx.watchlist, cx.panes, cx.active_pane, cx.t, Some(slot), None); },
+};
+
+fn feed_tab_to_u8(t: FeedTab) -> u8 {
+    match t { FeedTab::News => 0, FeedTab::Discord => 1, FeedTab::Screenshots => 2 }
+}
+fn feed_tab_from_u8(v: u8) -> FeedTab {
+    match v { 1 => FeedTab::Discord, 2 => FeedTab::Screenshots, _ => FeedTab::News }
+}
 
 pub(crate) fn draw(
     ctx: &egui::Context,
@@ -24,32 +31,42 @@ pub(crate) fn draw(
     panes: &mut [Chart],
     ap: usize,
     t: &Theme,
-) {
-    if !watchlist.feed_panel_open { return; }
+    slot: Option<RailSlot>,
+    instance_tab: Option<&mut u8>,
+) -> bool {
+    let is_spawn = instance_tab.is_some();
+    let mut spawn_close = false;
+    if !is_spawn && !watchlist.feed_panel_open { return false; }
 
     super::discord_panel::drain_background(ctx, watchlist);
     let active_symbol = if !panes.is_empty() { panes[ap].symbol.clone() } else { String::new() };
 
-    // Snapshot per-section active tab so the body closure can dispatch
-    // without holding a borrow into the splits Vec (owned by the widget).
-    let tab_snapshot: Vec<FeedTab> =
-        watchlist.feed_splits.iter().map(|s| s.tab).collect();
-
-    // Move splits out so the body closure can use `&mut watchlist` freely
-    // for the child draw_content panels. Restore after `.show()`.
-    let mut splits = std::mem::take(&mut watchlist.feed_splits);
     let pane_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
     let pane_font = watchlist.pane_header_size.title_font();
 
-    let resp = SplitSectionPanel::new("feed_panel", &mut splits)
-        .title("FEED")
-        .tabs(ALL_TABS)
-        .default_tab(FeedTab::News)
+    let mut active = match instance_tab.as_deref() {
+        Some(v) => feed_tab_from_u8(*v),
+        None => watchlist.feed_splits.first().map(|s| s.tab).unwrap_or(FeedTab::News),
+    };
+    let tabs = [
+        (FeedTab::News,        "NEWS",        None),
+        (FeedTab::Discord,     "DISCORD",     None),
+        (FeedTab::Screenshots, "SCREENSHOTS", None),
+    ];
+
+    let shell_id = if is_spawn { "feed_inst" } else { "feed_panel" };
+    let resp = SidePanelShell::tabs(shell_id, &mut active, &tabs)
         .width(Width::Medium)
         .resizable(260.0..=480.0)
         .pane_metrics(pane_h, pane_font)
-        .show(ctx, t, |ui, t, i, _frac| {
-            let tab = tab_snapshot.get(i).copied().unwrap_or(FeedTab::News);
+        .rail_slot(slot)
+        .on_tab_secondary(|ui, tab| {
+            if crate::ui_kit::widgets::MenuItem::new("Open as new instance").show(ui, t).clicked() {
+                super::right_rail::request_spawn("feed", feed_tab_to_u8(tab));
+                ui.close_menu();
+            }
+        })
+        .show(ctx, t, |ui, t, tab| {
             match tab {
                 FeedTab::News =>
                     super::news_panel::draw_content(ui, watchlist, &active_symbol, t),
@@ -60,6 +77,13 @@ pub(crate) fn draw(
             }
         });
 
-    watchlist.feed_splits = splits;
-    if resp.close_clicked { watchlist.update_sidebar_state(|s| s.feed_panel_open = false); }
+    // Persist the active tab to its owner (instance store or base panel).
+    if let Some(it) = instance_tab { *it = feed_tab_to_u8(active); }
+    else if let Some(s) = watchlist.feed_splits.first_mut() { s.tab = active; }
+    else { watchlist.feed_splits.push(SplitSection { tab: active, frac: 1.0 }); }
+    if resp.close_clicked {
+        if is_spawn { spawn_close = true; }
+        else { watchlist.update_sidebar_state(|s| s.feed_panel_open = false); }
+    }
+    spawn_close
 }

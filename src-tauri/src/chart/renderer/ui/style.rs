@@ -13,6 +13,7 @@
 
 use egui::{self, Color32, RichText, Stroke};
 use std::cell::Cell;
+use crate::ui_kit::sx::Tone;
 
 // ─── Owned-by-ui_kit re-exports (UI extraction, item 1) ──────────────────────
 // The stateless token primitives (font/gap/alpha/stroke/radius constants,
@@ -156,6 +157,7 @@ pub fn begin_frame() {
         alpha_strong:  crate::dt_u8!(alpha.strong,  80),
         alpha_active:  crate::dt_u8!(alpha.active, 100),
         alpha_heavy:   crate::dt_u8!(alpha.heavy,  120),
+        alpha_scrim:   crate::dt_u8!(alpha.scrim,  140),
         alpha_solid:   crate::dt_u8!(alpha.solid,  200),
         // Shadows.
         shadow_offset: crate::dt_f32!(shadow.offset, 2.0),
@@ -168,6 +170,16 @@ pub fn begin_frame() {
         focus_ring_width: current().focus_ring_width,
         toast_bg_alpha:   current().toast_bg_alpha,
         button_treatment: current().button_treatment,
+        // Bevel — pushed from StyleSettings so ui_kit widgets read via frame_tokens().
+        surface_bevel:         current().surface_bevel,
+        bevel_highlight_alpha: current().bevel_highlight_alpha,
+        bevel_shadow_alpha:    current().bevel_shadow_alpha,
+        // Default tab treatment — Filled for Aperture/Cadence/Glass, Line for others.
+        panel_tab_treatment:   current().panel_tab_treatment,
+        // List row shape — pill for Aperture/Glass, hairlines for Alto/Mariner/Relay.
+        wl_row_side_margin:    current().wl_row_side_margin,
+        wl_row_corner_radius:  current().wl_row_corner_radius,
+        wl_row_divider_alpha:  current().wl_row_divider_alpha,
     };
     // Push to the canonical ui_kit thread_local. ui_kit's
     // `frame_tokens()` reads this back for `radius_*` / `stroke_*` /
@@ -471,14 +483,39 @@ pub mod cursor {
 // semantic intent (muted/strong = chrome; dim/line = borders).
 // alpha_faint/ghost/soft/subtle/tint/muted/dim/line/strong/active/heavy/solid
 // moved to `crate::ui_kit::style`. `alpha_whisper` / `alpha_hint` also there.
-pub fn alpha_intense()     -> u8 { 140 }
-pub fn alpha_prominent()   -> u8 { 180 }
-pub fn alpha_near_opaque() -> u8 { 230 }
+pub fn alpha_intense()          -> u8 { 140 }
+pub fn alpha_prominent()        -> u8 { 180 }
+pub fn alpha_near_opaque()      -> u8 { 230 }
+/// Button hover tint — light overlay behind hovered elements (between faint=10 and soft=20).
+pub fn alpha_button_hover()     -> u8 { 18  }
+/// Secondary / placeholder text — between muted=60 and line=80.
+pub fn alpha_secondary_text()   -> u8 { 70  }
+/// Interactive highlighted text / active row fills — between strong=80 and solid=200.
+pub fn alpha_interactive()      -> u8 { 160 }
 
 /// Use with `color_alpha(color, ALPHA_*)` for consistent opacity tiers.
-pub const ALPHA_INTENSE:     u8 = 140;
-pub const ALPHA_PROMINENT:   u8 = 180;
-pub const ALPHA_NEAR_OPAQUE: u8 = 230;
+pub const ALPHA_INTENSE:        u8 = 140;
+pub const ALPHA_PROMINENT:      u8 = 180;
+pub const ALPHA_NEAR_OPAQUE:    u8 = 230;
+pub const ALPHA_BUTTON_HOVER:   u8 = 18;
+pub const ALPHA_SECONDARY_TEXT: u8 = 70;
+pub const ALPHA_INTERACTIVE:    u8 = 160;
+
+// ─── Badge / alert pill tokens ────────────────────────────────────────────────
+/// Height of an alert badge pill.
+pub const BADGE_HEIGHT:         f32 = 20.0;
+/// Minimum width of a badge pill (prevents single-word badges from looking squished).
+pub const BADGE_MIN_WIDTH:      f32 = 64.0;
+/// Left accent stripe width on a badge.
+pub const BADGE_ACCENT_WIDTH:   f32 = 3.0;
+/// Width reserved for the dismiss × button on the right of a badge.
+pub const BADGE_DISMISS_WIDTH:  f32 = 14.0;
+/// Right inset of the dismiss × glyph inside its reserved space.
+pub const BADGE_DISMISS_PADDING: f32 = 8.0;
+/// Corner radius for badge pills (slightly smaller than radius_xs for compactness).
+pub const BADGE_CORNER_RADIUS:  u8  = 3;
+/// Alpha for the tinted pill background (accent color at low opacity).
+pub const BADGE_TINT_ALPHA:     u8  = 18;
 
 // ─── Drop shadow tokens ───────────────────────────────────────────────────────
 // shadow_offset / shadow_alpha / shadow_spread now in `crate::ui_kit::style`.
@@ -828,7 +865,7 @@ pub fn popup_frame(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, f
 pub fn dialog_window(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, border_color: Option<Color32>) -> egui::Window<'static> {
     let t = crate::chart_renderer::theme_impl::active_theme(ctx);
     let fill = t.toolbar_bg;
-    let border = border_color.unwrap_or(color_alpha(t.toolbar_border, 80));
+    let border = border_color.unwrap_or(tint(&t, Tone::Border, 80));
     egui::Window::new(id.to_string())
         .fixed_pos(pos).fixed_size(egui::vec2(width, 0.0))
         .title_bar(false)
@@ -1216,7 +1253,7 @@ pub fn darken(c: Color32, amount: f32) -> Color32 {
 // ─── Semantic interaction-state colors ───────────────────────────────────────
 // Canonical hover / pressed / active / divider / disabled tones built on the
 // primitives above. Call-sites should reach for these instead of inlining
-// `lighten(c, 0.10)` / `color_alpha(t.toolbar_border, 36)` etc.
+// `lighten(c, 0.10)` / `tint(t, Tone::Border, 36)` etc.
 
 /// Brighten a color by 10% — canonical hover treatment for filled surfaces.
 #[inline] pub fn color_hover(c: Color32) -> Color32 { lighten(c, 0.10) }
@@ -1228,27 +1265,27 @@ pub fn darken(c: Color32, amount: f32) -> Color32 {
 /// HOVER_BG_ALPHA constant — gives ~7% text alpha overlay.
 #[inline]
 pub fn hover_tint_text(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
-    color_alpha(t.text, 18)
+    tint(t, Tone::Text, 18)
 }
 
 /// Subtle accent fill for active chips/toggles. Use when a toggleable
 /// surface needs a "yes I'm on" visual that's quieter than a full accent.
 #[inline]
 pub fn active_chip_fill(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
-    color_alpha(t.accent, alpha_soft())
+    tint(t, Tone::Accent, alpha_soft())
 }
 
 /// Standard hairline divider color. Wraps the toolbar_border + alpha 36 pair
 /// that's been hand-written across ~5 files for section dividers.
 #[inline]
 pub fn divider_color(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
-    color_alpha(t.toolbar_border, 36)
+    tint(t, Tone::Border, 36)
 }
 
 /// Disabled overlay — soft dim wash to apply over content that's not interactive.
 #[inline]
 pub fn disabled_overlay(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
-    color_alpha(t.dim, alpha_dim())
+    tint(t, Tone::Dim, alpha_dim())
 }
 
 // ─── L2 surface helper (panel sub-section / card layer) ──────────────────────
@@ -1257,7 +1294,7 @@ pub fn disabled_overlay(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
 //   L0: t.bg              — app canvas
 //   L1: t.toolbar_bg      — panel body
 //   L2: `color_layer_up`  — sub-section / card / active tab body
-//   L3: hover/selected    — color_alpha(t.text, 8) or color_alpha(t.accent, 24)
+//   L3: hover/selected    — tint(t, Tone::Text, 8) or tint(t, Tone::Accent, 24)
 //
 // Direction (lighten vs darken) is derived from the theme's `bg` brightness so
 // the lift reads the same on dark + light themes.
@@ -1317,13 +1354,329 @@ pub(crate) fn panel_surface(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
     t.bg.gamma_multiply(ELEVATION_3_FACTOR)
 }
 
+// ─── Shell region framing (floating-card chrome) ─────────────────────────────
+//
+// When the active style sets `region_gap > 0` (Aperture/Glass), each major
+// shell region — top nav, tool layer, workspace, right rail — floats as a
+// rounded card separated by `region_gap` px of canvas. When `region_gap == 0`
+// (most styles) the helpers return flush flat-fill frames so the chrome reads
+// as one contiguous surface (today's look). Panes inside the workspace stay
+// contiguous regardless — only the *region* boundaries gap.
+
+/// True when the active style uses the floating-card region layout.
+#[inline]
+pub(crate) fn region_tiled() -> bool { current().region_gap > 0.0 }
+
+// ── Toolnav visibility override (hybrid: style default + user toggle) ─────────
+//
+// The active style provides a default via `Chrome.toolnav_height`; the user can
+// force the second row on/off regardless of style via this override. Mirrors
+// the BorderWeight/CornerScale override-axis pattern: -1 = no override (use the
+// style default), 0 = force hidden, 1 = force shown.
+static TOOLNAV_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
+
+/// Set the user's toolnav override. `None` clears it (revert to style default).
+pub(crate) fn set_toolnav_override(v: Option<bool>) {
+    use std::sync::atomic::Ordering;
+    TOOLNAV_OVERRIDE.store(v.map(|b| b as i8).unwrap_or(-1), Ordering::Release);
+}
+/// The user's toolnav override, if any (`None` = follow the style default).
+#[inline]
+pub(crate) fn toolnav_override_opt() -> Option<bool> {
+    use std::sync::atomic::Ordering;
+    let x = TOOLNAV_OVERRIDE.load(Ordering::Acquire);
+    if x < 0 { None } else { Some(x == 1) }
+}
+/// Resolved: should the toolnav (second chrome row) render this frame?
+/// User override wins; otherwise the toolbar is ON by default for every style
+/// (it's the primary control hub — interval / tools / indicators / order live
+/// here). `toolnav_height` now only sets the height when shown, not visibility.
+#[inline]
+pub(crate) fn toolnav_visible() -> bool {
+    match toolnav_override_opt() {
+        Some(b) => b,
+        None => true,
+    }
+}
+/// Resolved toolnav height (px). Falls back to 30 when the user forces it on
+/// but the active style sets `toolnav_height = 0`.
+#[inline]
+pub(crate) fn toolnav_resolved_height() -> f32 {
+    let h = current().toolnav_height;
+    if h > 0.0 { h } else { 30.0 }
+}
+
+// ── Footer (bottom dock) visibility override (hybrid: style default + user) ──
+//
+// The active style provides the default via `Chrome.footer_default_open`; the
+// user can force the footer on/off regardless of style via this override.
+// Same tri-state pattern as the toolnav: -1 = no override (follow style
+// default), 0 = force hidden, 1 = force shown.
+static FOOTER_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
+
+/// Set the user's footer override. `None` clears it (revert to style default).
+pub(crate) fn set_footer_override(v: Option<bool>) {
+    use std::sync::atomic::Ordering;
+    FOOTER_OVERRIDE.store(v.map(|b| b as i8).unwrap_or(-1), Ordering::Release);
+}
+/// The user's footer override, if any (`None` = follow the style default).
+#[inline]
+pub(crate) fn footer_override_opt() -> Option<bool> {
+    use std::sync::atomic::Ordering;
+    let x = FOOTER_OVERRIDE.load(Ordering::Acquire);
+    if x < 0 { None } else { Some(x == 1) }
+}
+/// Resolved: should the bottom dock (footer) render this frame? User override
+/// wins; otherwise the active style's `footer_default_open` decides.
+#[inline]
+pub(crate) fn footer_visible() -> bool {
+    match footer_override_opt() {
+        Some(b) => b,
+        None => current().footer_default_open,
+    }
+}
+
+/// The inter-region gap (px). 0 when the style is flush.
+#[inline]
+pub(crate) fn region_gap() -> f32 { current().region_gap }
+
+// ── Button-group enclosure ────────────────────────────────────────────────────
+// A toolbar "button group" is a run of related buttons (sidebar toggles, chart
+// tools). Enclosed styles (Aperture) draw a rounded-rect box around the group
+// and suppress the internal hairline dividers; flat styles (Meridien/Octave)
+// space the buttons and rely on dividers.
+
+// ── Ramp-based shading (bridge to the `sx` color system) ──────────────────────
+// Real lightness shades (Tailwind-style 50…950) for general use, backed by the
+// per-theme cached `Palette`. Prefer these over ad-hoc `color_alpha(tone, a)` in
+// NEW code that wants a genuine shade rather than an alpha tint. Existing
+// `color_alpha` sites are migrated incrementally (each is a visual change).
+
+/// A genuine ramp shade of a semantic tone (e.g. `shade(t, Tone::Accent, Shade::S600)`).
+#[inline]
+pub(crate) fn shade(
+    t: &crate::chart_renderer::gpu::Theme,
+    tone: crate::ui_kit::sx::Tone,
+    s: crate::ui_kit::sx::Shade,
+) -> Color32 {
+    crate::ui_kit::sx::palette(t).shade(tone, s)
+}
+
+/// The base (500) color of a semantic tone at an explicit alpha — the ramp
+/// system's equivalent of `color_alpha`, but tone-addressed. Part of the public
+/// ramp API for incremental adoption.
+#[allow(dead_code)]
+#[inline]
+pub(crate) fn tint(
+    t: &crate::chart_renderer::gpu::Theme,
+    tone: crate::ui_kit::sx::Tone,
+    alpha: u8,
+) -> Color32 {
+    let c = crate::ui_kit::sx::palette(t).base(tone);
+    Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha)
+}
+
+/// True when the active style draws an enclosure around button groups.
+/// When false, callers keep their inter-button dividers/separators.
+#[inline]
+pub(crate) fn button_group_enclosed() -> bool {
+    !matches!(current().button_group, crate::design_system::style_system::GroupEnclosure::None)
+}
+
+/// Inner horizontal padding around an enclosed button group.
+const BUTTON_GROUP_PAD: f32 = 6.0;
+
+/// The composed `Sx` for each group-enclosure treatment. **This is the single
+/// place each look is defined** — adding a new treatment is a new arm here plus
+/// a [`GroupEnclosure`](crate::design_system::style_system::GroupEnclosure)
+/// variant, with no token threaded through the style pipeline.
+/// `Tone::Border` resolves to `theme.toolbar_border`.
+fn group_enclosure_sx(
+    kind: crate::design_system::style_system::GroupEnclosure,
+) -> Option<crate::ui_kit::sx::Sx> {
+    use crate::design_system::style_system::GroupEnclosure as G;
+    use crate::ui_kit::sx::{Sx, Tone};
+    Some(match kind {
+        G::None => return None,
+        // Aperture — rounded box: subtle fill + hairline border. Radius +
+        // border now ride the token scale, so the enclosure tracks the
+        // CornerScale / BorderWeight knobs like everything else.
+        G::Bordered => Sx::new()
+            .rounded_md()
+            .bg_alpha(Tone::Border, 10)
+            .border_thin_alpha(Tone::Border, 45),
+        // Glass — frosted fill-only, no hard border.
+        G::Frosted => Sx::new()
+            .rounded_lg()
+            .bg_alpha(Tone::Border, 16),
+        // Lucid — sharp editorial outline: border-only, near-square.
+        G::Sharp => Sx::new()
+            .rounded_xs()
+            .border_thin_alpha(Tone::Border, 30),
+    })
+}
+
+/// A deferred rounded-rect enclosure painted *behind* a run of toolbar buttons.
+///
+/// Usage mirrors `segmented_control`'s trough: reserve a background paint slot
+/// before emitting the buttons (so it renders behind them), then call `end`
+/// with the buttons' bounding `content` rect to fill the slot. A no-op for flat
+/// styles (`begin` records no slot), so callers can wrap unconditionally.
+pub(crate) struct ButtonGroupBox {
+    slot: Option<egui::layers::ShapeIdx>,
+}
+
+impl ButtonGroupBox {
+    /// Reserve a background slot if the active style draws group enclosures.
+    pub(crate) fn begin(ui: &mut egui::Ui) -> Self {
+        let slot = if button_group_enclosed() {
+            Some(ui.painter().add(egui::Shape::Noop))
+        } else {
+            None
+        };
+        Self { slot }
+    }
+
+    /// Fill the reserved slot with a rounded-rect box around `content`, inset
+    /// vertically from the `host` toolbar row. No-op when flat.
+    pub(crate) fn end(
+        self,
+        ui: &mut egui::Ui,
+        t: &crate::chart_renderer::gpu::Theme,
+        content: egui::Rect,
+        host: egui::Rect,
+    ) {
+        let Some(slot) = self.slot else { return; };
+        let Some(sx) = group_enclosure_sx(current().button_group) else { return; };
+        let pad = BUTTON_GROUP_PAD;
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(content.left() - pad, host.top() + 3.0),
+            egui::pos2(content.right() + pad, host.bottom() - 3.0),
+        );
+        if !rect.is_finite() || rect.width() < 4.0 { return; }
+        // The look is a composed `Sx` chosen by the style's `GroupEnclosure`
+        // (see `group_enclosure_sx`), painted by the generic engine.
+        sx.paint_into(ui, t, slot, rect, crate::ui_kit::sx::StyleState::Normal);
+    }
+}
+
+/// Build an `egui::Frame` for a shell region panel (toolbar / side rail).
+/// `fill` is the region's surface colour. Floats as a rounded bordered card
+/// with `region_gap` outer margin when tiled; flat flush fill otherwise.
+pub(crate) fn region_frame(t: &crate::chart_renderer::gpu::Theme, fill: Color32) -> egui::Frame {
+    let st = current();
+    if st.region_gap <= 0.0 {
+        egui::Frame::NONE.fill(fill)
+    } else {
+        let g = st.region_gap as i8;
+        egui::Frame::NONE
+            .fill(fill)
+            .corner_radius(egui::CornerRadius::same(st.region_radius as u8))
+            .stroke(egui::Stroke::new(
+                stroke_thin(),
+                tint(t, Tone::Border, st.region_border_alpha),
+            ))
+            .outer_margin(egui::Margin::same(g))
+    }
+}
+
+/// Paint a rounded region-card border over `rect` on the given painter. Used
+/// for the central workspace, which can't wrap itself in a Frame (its panel is
+/// drawn by the sacred core.rs). No-op when the style is flush.
+pub(crate) fn paint_region_card(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    t: &crate::chart_renderer::gpu::Theme,
+) {
+    let st = current();
+    if st.region_gap <= 0.0 || !rect.is_finite() || rect.width() < 8.0 { return; }
+    painter.rect_stroke(
+        rect,
+        egui::CornerRadius::same(st.region_radius as u8),
+        egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, st.region_border_alpha)),
+        egui::StrokeKind::Inside,
+    );
+}
+
+/// Returns the bevel highlight alpha scaled for use as a gradient top —
+/// half of the crisp-line `bevel_highlight_alpha` so the fade is softer.
+/// Returns 0 when the active style has no bevel (no gradient painted).
+#[inline]
+pub(crate) fn current_style_bevel_hi() -> u8 {
+    current().bevel_highlight_alpha / 2
+}
+
+/// Paint a vertical highlight gradient fading from `top_alpha` (white, opaque)
+/// at the top edge to fully transparent at the bottom. This is the Rust analogue
+/// of React's `linear-gradient(180deg, rgba(255,…,a) 0%, transparent 100%)` —
+/// the warm/cool tint differences between Alto and Mariner are handled by the
+/// underlying toolbar_bg palette, so pure white overlay is palette-correct.
+/// No-op if `top_alpha == 0` or the rect is degenerate.
+pub(crate) fn paint_gradient_highlight(painter: &egui::Painter, rect: egui::Rect, top_alpha: u8) {
+    use crate::design_system::style_system::BevelStyle;
+    if frame_tokens().surface_bevel == BevelStyle::None { return; }
+    if top_alpha == 0 || !rect.is_finite() || rect.width() < 1.0 || rect.height() < 1.0 { return; }
+    let top = Color32::from_rgba_unmultiplied(255, 255, 255, top_alpha);
+    let bot = Color32::TRANSPARENT;
+    let uv  = egui::pos2(0.0, 0.0);
+    use egui::epaint::{Mesh, Vertex};
+    let mut mesh = Mesh::default();
+    mesh.vertices.extend_from_slice(&[
+        Vertex { pos: rect.left_top(),     uv, color: top },
+        Vertex { pos: rect.right_top(),    uv, color: top },
+        Vertex { pos: rect.right_bottom(), uv, color: bot },
+        Vertex { pos: rect.left_bottom(),  uv, color: bot },
+    ]);
+    mesh.indices.extend_from_slice(&[0, 1, 2, 0, 2, 3]);
+    painter.add(egui::Shape::mesh(mesh));
+}
+
+/// Paint a surface bevel (top inner-highlight + bottom inner-shadow lines) over
+/// an already-filled `rect`, per the active style's `surface_bevel` treatment.
+/// This is the Rust analogue of the React themes' `box-shadow: inset …` faces.
+///
+/// The tint is palette-independent — a white highlight and a black shadow — so
+/// it reads correctly on any colour scheme (matching the CSS which uses
+/// `rgba(255,255,255,a)` / `rgba(0,0,0,a)`); only the alphas come from the
+/// style. `Raised` puts the highlight on top (a lifted face); `Inset` flips it
+/// (a sunken well). No-op when the active style's bevel is `None`.
+pub(crate) fn paint_bevel(painter: &egui::Painter, rect: egui::Rect, radius: egui::CornerRadius) {
+    use crate::design_system::style_system::BevelStyle;
+    let st = current();
+    let hi = Color32::from_rgba_unmultiplied(255, 255, 255, st.bevel_highlight_alpha);
+    let sh = Color32::from_rgba_unmultiplied(0, 0, 0, st.bevel_shadow_alpha);
+    let (top_col, bot_col) = match st.surface_bevel {
+        BevelStyle::None => return,
+        BevelStyle::Raised => (hi, sh),
+        BevelStyle::Inset  => (sh, hi),
+    };
+    // Guard against degenerate / not-yet-laid-out rects (transient at startup).
+    if !rect.is_finite() || rect.width() < 1.0 || rect.height() < 1.0 {
+        return;
+    }
+    // Inset the lines by ~half the corner radius so they don't bleed past
+    // rounded corners.
+    let r = radius.nw.max(radius.ne).max(radius.sw).max(radius.se) as f32;
+    let inset = (r * 0.5).clamp(0.0, 3.0);
+    let y_top = rect.top() + 0.5;
+    let y_bot = rect.bottom() - 0.5;
+    painter.line_segment(
+        [egui::pos2(rect.left() + inset, y_top), egui::pos2(rect.right() - inset, y_top)],
+        Stroke::new(1.0, top_col),
+    );
+    painter.line_segment(
+        [egui::pos2(rect.left() + inset, y_bot), egui::pos2(rect.right() - inset, y_bot)],
+        Stroke::new(1.0, bot_col),
+    );
+}
+
 /// Header border — matches the chart pane header's perimeter hairline:
-/// `color_alpha(t.text, 38)` at `stroke_thin()`. Use for every panel
+/// `tint(t, Tone::Text, 38)` at `stroke_thin()`. Use for every panel
 /// header bottom rule, accordion rule, and side-panel header rule so
 /// the entire chrome family reads as one bordered system.
 #[inline]
 pub(crate) fn header_border(t: &crate::chart_renderer::gpu::Theme) -> Color32 {
-    color_alpha(t.text, 38)
+    tint(t, Tone::Text, 38)
 }
 
 /// Inverse of `color_layer_up` — moves the surface DOWN one or more
@@ -1683,6 +2036,10 @@ pub struct StyleSettings {
     pub section_label_padding_top: f32,
     /// Section label bottom padding in px (space below eyebrow labels before content).
     pub section_label_padding_bottom: f32,
+    /// When true, the active pane header fills with `accent` instead of a bg-multiply.
+    /// Aperture signature: the active pane header turns orange (accent). All text/icons
+    /// inside must use `contrast_fg(accent)` when this flag is set.
+    pub pane_active_fill_accent: bool,
     /// Pane gap (gutter) fill color override. None = use toolbar_border at pane_gap_alpha.
     pub pane_gap_color: Option<Color32>,
     /// Drag handle (split divider) color alpha multiplier (0.0-1.0).
@@ -1697,11 +2054,75 @@ pub struct StyleSettings {
     /// When non-zero, overrides r_sm for badge/chip corners specifically.
     pub r_chip: u8,
 
+    // ── Watchlist row shape ───────────────────────────────────────────────
+    /// Horizontal margin inset each side of a watchlist row (px).
+    /// 0 = flush (most themes); 6 = Aperture pill rows floating inside the list.
+    pub wl_row_side_margin: f32,
+    /// Corner radius for watchlist rows (px). 0 = no rounding; 99 = full pill.
+    pub wl_row_corner_radius: u8,
+    /// Alpha (0-255) of the per-row hairline bottom divider.
+    /// 0 = no divider (Aperture/Cadence); ~20 = Alto/Mariner Zed hairlines.
+    pub wl_row_divider_alpha: u8,
+    /// Use monospace font for symbol text in watchlist rows.
+    /// True for Alto/Mariner/Aperture (IBM Plex Mono / JetBrains); false for editorial themes.
+    pub wl_symbol_mono: bool,
+
+    // ── Panel section headers ─────────────────────────────────────────────
+    /// Use monospace font for section/eyebrow labels (Alto/Mariner: IBM Plex Mono).
+    pub section_header_mono: bool,
+    /// Tracking for section headers in px (above `label_letter_spacing_px` which is for
+    /// general labels; this specifically overrides the eyebrow/category header text).
+    pub section_header_tracking: f32,
+
+    // ── Panel tab default treatment ───────────────────────────────────────
+    /// Default `TabTreatment` for ui-kit `Tabs` widgets when no override is
+    /// specified at the call site. Encoded as u8 matching `TabTreatment::as_u8()`.
+    /// 0=Line(underline), 1=Segmented, 2=Filled, 3=Card, 4=Pane.
+    pub panel_tab_treatment: u8,
+
     // ── Accessibility ─────────────────────────────────────────────────────
     /// When false, all motion::ease_bool / ease_value calls snap immediately
     /// to their target value, honoring the system "reduce motion" preference.
     /// Default: true.
     pub animations_enabled: bool,
+
+    // ── Surface bevel (mirrors StyleSystem.Treatments) ─────────────────────
+    /// Bevel treatment for button faces / panel headers / chips / inline tabs.
+    /// Tint derives from palette luminance at paint time. See `paint_bevel`.
+    pub surface_bevel: crate::design_system::style_system::BevelStyle,
+    /// Alpha (0-255) of the bevel top inner-highlight line.
+    pub bevel_highlight_alpha: u8,
+    /// Alpha (0-255) of the bevel bottom inner-shadow line.
+    pub bevel_shadow_alpha: u8,
+
+    // ── Shell region layout (mirrors StyleSystem.Chrome) ───────────────────
+    /// Gap (px) between major shell regions. 0 = flush; 8 = Aperture floating cards.
+    pub region_gap: f32,
+    /// Shell region card corner radius (px).
+    pub region_radius: f32,
+    /// Shell region card border alpha (0-255).
+    pub region_border_alpha: u8,
+    /// Nav cluster background pill corner radius (px).
+    pub nav_cluster_radius: f32,
+    /// Nav cluster background fill alpha (0-255). 0 = transparent clusters.
+    pub nav_cluster_fill_alpha: u8,
+    /// Nav cluster horizontal inner padding (px).
+    pub nav_cluster_padding: f32,
+    /// Toolbar button-group enclosure treatment (look composed as `Sx`).
+    pub button_group: crate::design_system::style_system::GroupEnclosure,
+    /// Second toolbar row (toolnav) height (px). 0 = single-row chrome.
+    pub toolnav_height: f32,
+    /// Whether the bottom dock (footer) is open by default for this style.
+    /// User toggle (Ctrl+`) overrides via `footer_visible()`.
+    pub footer_default_open: bool,
+    /// Side-panel header toggle treatment (0=Line,1=Segmented,2=Filled,3=Card,4=Pane).
+    pub panel_header_treatment: u8,
+    /// PanelSection body band fill alpha (0-255). 0 = flat.
+    pub panel_section_fill_alpha: u8,
+    /// Pinned panel footer renders as an elevated card (true) vs flat band.
+    pub panel_footer_card: bool,
+    /// Pinned footer card corner radius (px).
+    pub panel_footer_radius: f32,
 }
 
 // Active style selection — set once at the top of each draw_chart frame
@@ -1753,14 +2174,17 @@ pub fn toolbar_rect() -> egui::Rect {
 fn style_defaults(id: u8) -> StyleSettings {
     match id {
         1 => StyleSettings {
-            r_xs: 4, r_sm: 6, r_md: 8, r_lg: 12, r_pill: 99,
+            // React fidelity: Aperture's signature big-radius scale (8/10/14/20).
+            // Lockstep with builtin.rs aperture.radii (adapter equivalence test).
+            r_xs: 8, r_sm: 10, r_md: 14, r_lg: 20, r_pill: 99,
             serif_headlines: false,
-            button_treatment: ButtonTreatment::SoftPill,
+            // Aperture signature: active chrome = inverted block (ink fill, light text).
+            button_treatment: ButtonTreatment::BlackFillActive,
             hairline_borders: false,
             stroke_hair: 0.5, stroke_thin: 1.0, stroke_std: 1.5,
             stroke_bold: 1.5, stroke_thick: 2.0,
             shadows_enabled: true, solid_active_fills: false, invert_active_fill: false,
-            uppercase_section_labels: false, label_letter_spacing_px: 0.0,
+            uppercase_section_labels: false, label_letter_spacing_px: 0.8,
             toolbar_height_scale: 1.0, header_height_scale: 1.0,
             font_hero: 22.0, vertical_group_dividers: false,
             show_active_tab_underline: true,
@@ -1783,7 +2207,9 @@ fn style_defaults(id: u8) -> StyleSettings {
             tab_underline_under_text: false, card_floating_shadow: false,
             card_floating_shadow_alpha: 0,
             cta_height_px: 40.0, cta_padding_x: 12.0,
-            pane_gap_alpha: 30, pane_active_indicator: 2,
+            // Gap alpha=0: transparent gutters show the canvas bg (pure black in Aperture palette).
+            // The rounded pane card frames define the tile edges; no gutter fill needed.
+            pane_gap_alpha: 0, pane_active_indicator: 2,
             nav_active_col_alpha: 0, dialog_backdrop_alpha: 0,
             tab_inactive_alpha: 0.55, tab_hover_bg_alpha: 18,
             section_label_padding_top: 6.0, section_label_padding_bottom: 2.0,
@@ -1792,6 +2218,21 @@ fn style_defaults(id: u8) -> StyleSettings {
             toast_bg_alpha: 200, card_stripe_alpha: 255,
             r_chip: 0,
             animations_enabled: true,
+            // Aperture signature: active pane header = accent (orange).
+            pane_active_fill_accent: true,
+            // Pill rows: symbols float as rounded items inside the watchlist.
+            wl_row_side_margin: 6.0, wl_row_corner_radius: 8, wl_row_divider_alpha: 0,
+            wl_symbol_mono: true, section_header_mono: false, section_header_tracking: 0.8,
+            panel_tab_treatment: 2, // Filled pills
+            surface_bevel: crate::design_system::style_system::BevelStyle::None,
+            bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
+            region_gap: 8.0, region_radius: 12.0, region_border_alpha: 40,
+            nav_cluster_radius: 99.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 8.0,
+            button_group: crate::design_system::style_system::GroupEnclosure::Bordered,
+            toolnav_height: 30.0,
+            footer_default_open: true,
+            panel_header_treatment: 2, panel_section_fill_alpha: 0,
+            panel_footer_card: true, panel_footer_radius: 10.0,
         },
         2 => StyleSettings {
             r_xs: 1, r_sm: 2, r_md: 3, r_lg: 4, r_pill: 99,
@@ -1833,6 +2274,19 @@ fn style_defaults(id: u8) -> StyleSettings {
             toast_bg_alpha: 220, card_stripe_alpha: 255,
             r_chip: 0,
             animations_enabled: true,
+            pane_active_fill_accent: false,
+            wl_row_side_margin: 0.0, wl_row_corner_radius: 0, wl_row_divider_alpha: 0,
+            wl_symbol_mono: false, section_header_mono: false, section_header_tracking: 0.0,
+            panel_tab_treatment: 0,
+            surface_bevel: crate::design_system::style_system::BevelStyle::None,
+            bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
+            region_gap: 0.0, region_radius: 0.0, region_border_alpha: 40,
+            nav_cluster_radius: 2.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 4.0,
+            button_group: crate::design_system::style_system::GroupEnclosure::None,
+            toolnav_height: 0.0,
+            footer_default_open: true,
+            panel_header_treatment: 0, panel_section_fill_alpha: 0,
+            panel_footer_card: false, panel_footer_radius: 0.0,
         },
         _ => StyleSettings {
             // Phase B source-swap: Meridien (the default style) is redefined
@@ -1878,10 +2332,43 @@ fn style_defaults(id: u8) -> StyleSettings {
             toast_bg_alpha: 230, card_stripe_alpha: 255,
             r_chip: 0,
             animations_enabled: true,
+            pane_active_fill_accent: false,
+            wl_row_side_margin: 0.0, wl_row_corner_radius: 0, wl_row_divider_alpha: 0,
+            wl_symbol_mono: false, section_header_mono: false, section_header_tracking: 0.0,
+            panel_tab_treatment: 0,
+            surface_bevel: crate::design_system::style_system::BevelStyle::None,
+            bevel_highlight_alpha: 0, bevel_shadow_alpha: 0,
+            region_gap: 0.0, region_radius: 0.0, region_border_alpha: 40,
+            nav_cluster_radius: 0.0, nav_cluster_fill_alpha: 0, nav_cluster_padding: 6.0,
+            button_group: crate::design_system::style_system::GroupEnclosure::None,
+            toolnav_height: 0.0,
+            footer_default_open: false,
+            panel_header_treatment: 0, panel_section_fill_alpha: 0,
+            panel_footer_card: false, panel_footer_radius: 0.0,
         },
     }
 }
 // └─ STYLE_DEFAULTS_END ───────────────────────────────────────────────────────
+
+// NOTE: The 6 ported personality presets (Cadence/Alto/Mariner/Lucid/Relay/Glass)
+// previously lived here as raw StyleSettings functions. They are now proper
+// StyleSystem entries in design_system::builtin_style_systems() and flow through
+// the style_system_to_style_settings adapter — the canonical two-axis path.
+// See design_system/builtin.rs for the authoritative personality definitions.
+
+// ─── Ported theme personalities (React ApexTerminalThemes → StyleSettings) ────
+//
+// Each function returns a bespoke StyleSettings built by struct-update over the
+// closest existing preset. Values are transcribed from the React mockup's
+// `global.css` `[data-ds="<theme>"]` token blocks plus its `html[data-ds]`
+// structural overrides — the styling source of truth tuned to ~90% fidelity.
+//
+// NOTE: the bevel / inset-shadow gradients that are signature to Cadence /
+// Alto / Mariner are CSS `box-shadow` effects with no StyleSettings field.
+// The dimensional character (radii, heights, density, tracking, underlines,
+// active-fill behaviour, button treatment, drop shadow) IS captured here;
+// faithful bevels would need a new widget-render capability, not a token.
+
 
 /// Public test accessor for `style_defaults`.
 /// Maps: 0 → Meridien (default `_` arm), 1 → Aperture, 2 → Octave.
@@ -1933,23 +2420,16 @@ pub fn style_system_to_style_settings(
 
     StyleSettings {
         // ── Radii ────────────────────────────────────────────────────────────
-        // r_xs/r_sm/r_md/r_lg have a clean 1-to-1 source in StyleSystem.
-        // r_pill does NOT: StyleSystem stores 9999.0 (conceptual "full round")
-        // for all three styles, but style_defaults uses 0 (Meridien, sharp pill)
-        // and 99 (Aperture/Octave). No consistent cap exists, so r_pill inherits
-        // from style_defaults(base_id) via the ..base spread below.
         r_xs: ss.radii.xs as u8,
         r_sm: ss.radii.sm as u8,
         r_md: ss.radii.md as u8,
         r_lg: ss.radii.lg as u8,
+        r_pill: ss.radii.pill as u8,
+        r_chip: ss.radii.chip as u8,
 
         // ── Strokes ──────────────────────────────────────────────────────────
-        // stroke_bold and stroke_thick map 1-to-1 for all three styles.
-        // stroke_hair/thin/std do NOT map consistently: Meridien uses
-        // strokes.hair/thin/std directly, but Aperture/Octave require a
-        // one-tier shift (strokes.thin→stroke_hair, strokes.std→stroke_thin,
-        // strokes.bold→stroke_std). Since no consistent cross-style mapping
-        // exists, stroke_hair/thin/std inherit from style_defaults(base_id).
+        // bold/thick map 1-to-1. hair/thin/std still inherit from base (the
+        // tier-shift makes them style-specific; low visual impact — deferred).
         stroke_bold:  ss.strokes.bold,
         stroke_thick: ss.strokes.thick,
 
@@ -1957,36 +2437,109 @@ pub fn style_system_to_style_settings(
         hairline_borders:         ss.treatments.hairline_borders,
         solid_active_fills:       ss.treatments.solid_active_fills,
         uppercase_section_labels: ss.treatments.uppercase_section_labels,
+        surface_bevel:            ss.treatments.surface_bevel,
+        bevel_highlight_alpha:    ss.treatments.bevel_highlight_alpha,
+        bevel_shadow_alpha:       ss.treatments.bevel_shadow_alpha,
+        wl_row_side_margin:       ss.treatments.wl_row_side_margin,
+        wl_row_corner_radius:     ss.treatments.wl_row_corner_radius,
+        wl_row_divider_alpha:     ss.treatments.wl_row_divider_alpha,
+        section_header_mono:      ss.treatments.section_header_mono,
+        wl_symbol_mono:           ss.treatments.wl_symbol_mono,
+        panel_tab_treatment:      ss.treatments.panel_tab_treatment,
+        pane_active_fill_accent:  ss.treatments.pane_active_fill_accent,
+        serif_headlines:          ss.treatments.serif_headlines,
+        button_treatment:         match ss.treatments.button_treatment {
+            1 => ButtonTreatment::OutlineAccent,
+            2 => ButtonTreatment::UnderlineActive,
+            3 => ButtonTreatment::RaisedActive,
+            4 => ButtonTreatment::BlackFillActive,
+            _ => ButtonTreatment::SoftPill,
+        },
+        invert_active_fill:           ss.treatments.invert_active_fill,
+        vertical_group_dividers:      ss.treatments.vertical_group_dividers,
+        show_active_tab_underline:    ss.treatments.show_active_tab_underline,
+        inactive_header_fill:         ss.treatments.inactive_header_fill,
+        nav_buttons_label_only:       ss.treatments.nav_buttons_label_only,
+        nav_buttons_uppercase_labels: ss.treatments.nav_buttons_uppercase_labels,
+        tab_underline_under_text:     ss.treatments.tab_underline_under_text,
+        card_floating_shadow:         ss.treatments.card_floating_shadow,
+        shadows_enabled:              ss.treatments.shadows_enabled,
+        animations_enabled:           ss.treatments.animations_enabled,
 
         // ── Spacing ──────────────────────────────────────────────────────────
-        cta_height_px:  ss.spacing.cta_height,
-        card_padding_y: ss.spacing.md,
-        card_padding_x: ss.spacing.lg,
+        cta_height_px:    ss.spacing.cta_height,
+        cta_padding_x:    ss.spacing.cta_padding_x,
+        card_padding_y:   ss.spacing.md,
+        card_padding_x:   ss.spacing.lg,
+        button_height_px: ss.spacing.button_height,
+        button_padding_x: ss.spacing.button_padding_x,
+        tab_height:       ss.spacing.tab_height,
 
         // ── Typography ───────────────────────────────────────────────────────
-        // font_caption maps to size_xs for all three styles (confirmed field-exact).
-        // font_section_label does NOT: Aperture size_xs=9 but style_defaults(1)
-        // font_section_label=10; it inherits from style_defaults(base_id).
-        font_caption: ss.typography.size_xs,
-        font_body:    ss.typography.size_sm,
-        font_hero:    ss.typography.size_xl,
+        font_caption:           ss.typography.size_xs,
+        font_body:              ss.typography.size_sm,
+        font_hero:              ss.typography.size_xl,
+        font_section_label:     ss.typography.size_section_label,
+        label_letter_spacing_px: ss.typography.label_tracking,
+        nav_letter_spacing_px:   ss.typography.nav_tracking,
+        section_header_tracking: ss.typography.section_tracking,
 
         // ── Density ──────────────────────────────────────────────────────────
         density,
         row_height_px: ss.density.row_height_dense,
 
         // ── Shadows ──────────────────────────────────────────────────────────
-        // shadow_blur/offset_y/alpha have a clean source.
-        // shadows_enabled cannot be derived from blur > 0: Meridien has blur=0
-        // but style_defaults(0).shadows_enabled=true; Octave has blur > 0 but
-        // style_defaults(2).shadows_enabled=false. Inherits from base.
         shadow_blur:     ss.shadows.card.blur,
         shadow_offset_y: ss.shadows.card.offset_y,
         shadow_alpha:    (ss.shadows.card.alpha * 255.0).round() as u8,
 
-        // All remaining fields (r_pill, stroke_hair/thin/std, shadows_enabled,
-        // font_section_label, and all other StyleSettings fields not carried
-        // cleanly by StyleSystem) inherit from style_defaults(base_id).
+        // ── Chrome (geometry + finish) ───────────────────────────────────────
+        toolbar_height_scale:          ss.chrome.toolbar_height_scale,
+        header_height_scale:           ss.chrome.header_height_scale,
+        account_strip_height:          ss.chrome.account_strip_height,
+        pane_border_width:             ss.chrome.pane_border_width,
+        pane_gap:                      ss.chrome.pane_gap,
+        pane_gap_alpha:                ss.chrome.pane_gap_alpha,
+        pane_active_indicator:         ss.chrome.pane_active_indicator,
+        active_header_fill_multiply:   ss.chrome.active_header_fill_multiply,
+        inactive_header_fill_multiply: ss.chrome.inactive_header_fill_multiply,
+        header_outer_border_alpha:     ss.chrome.header_outer_border_alpha,
+        header_outer_border_width:     ss.chrome.header_outer_border_width,
+        header_divider_alpha:          ss.chrome.header_divider_alpha,
+        nav_active_col_alpha:          ss.chrome.nav_active_col_alpha,
+        dialog_backdrop_alpha:         ss.chrome.dialog_backdrop_alpha,
+        tab_inactive_alpha:            ss.chrome.tab_inactive_alpha,
+        tab_hover_bg_alpha:            ss.chrome.tab_hover_bg_alpha,
+        tab_underline_thickness:       ss.chrome.tab_underline_thickness,
+        section_label_padding_top:     ss.chrome.section_label_padding_top,
+        section_label_padding_bottom:  ss.chrome.section_label_padding_bottom,
+        drag_handle_alpha:             ss.chrome.drag_handle_alpha,
+        drag_handle_dot_scale:         ss.chrome.drag_handle_dot_scale,
+        toast_bg_alpha:                ss.chrome.toast_bg_alpha,
+        card_stripe_alpha:             ss.chrome.card_stripe_alpha,
+        card_floating_shadow_alpha:    ss.chrome.card_floating_shadow_alpha,
+        accent_emphasis:               ss.chrome.accent_emphasis,
+        disabled_opacity:              ss.chrome.disabled_opacity,
+        focus_ring_width:              ss.chrome.focus_ring_width,
+        focus_ring_alpha:              ss.chrome.focus_ring_alpha,
+        hover_bg_alpha:                ss.chrome.hover_bg_alpha,
+        active_bg_alpha:               ss.chrome.active_bg_alpha,
+        region_gap:                    ss.chrome.region_gap,
+        region_radius:                 ss.chrome.region_radius,
+        region_border_alpha:           ss.chrome.region_border_alpha,
+        nav_cluster_radius:            ss.chrome.nav_cluster_radius,
+        nav_cluster_fill_alpha:        ss.chrome.nav_cluster_fill_alpha,
+        nav_cluster_padding:           ss.chrome.nav_cluster_padding,
+        button_group:                  ss.chrome.button_group,
+        toolnav_height:                ss.chrome.toolnav_height,
+        footer_default_open:           ss.chrome.footer_default_open,
+        panel_header_treatment:        ss.chrome.panel_header_treatment,
+        panel_section_fill_alpha:      ss.chrome.panel_section_fill_alpha,
+        panel_footer_card:             ss.chrome.panel_footer_card,
+        panel_footer_radius:           ss.chrome.panel_footer_radius,
+
+        // Only genuinely color-dependent / un-migrated fields inherit from base:
+        // pane_gap_color (Color32), stroke_hair/thin/std (tier-shift), r_pill cap.
         ..base
     }
 }
@@ -2009,8 +2562,8 @@ fn style_store() -> &'static std::sync::RwLock<Vec<(String, StyleSettings)>> {
         use crate::design_system::builtin_style_systems;
         let systems = builtin_style_systems();
         debug_assert_eq!(
-            systems.len(), 3,
-            "builtin_style_systems() must return exactly 3 entries (Meridien/Aperture/Octave)"
+            systems.len(), 9,
+            "builtin_style_systems() must return 9 entries (Meridien/Aperture/Octave/Cadence/Alto/Mariner/Lucid/Relay/Glass)"
         );
         let mut v: Vec<(String, StyleSettings)> = systems
             .iter()
@@ -2019,13 +2572,29 @@ fn style_store() -> &'static std::sync::RwLock<Vec<(String, StyleSettings)>> {
                 (ss.meta.name.clone(), style_system_to_style_settings(ss, i as u8))
             })
             .collect();
-        // Alias the remaining STYLE_NAMES (indices 3-9) to Meridien's settings
-        // so existing style_idx values don't out-of-range on first lookup.
-        let meridien = style_system_to_style_settings(&systems[0], 0);
-        let alias_names = ["Cadence", "Chord", "Lattice", "Tangent", "Tempo", "Contour", "Relay"];
-        for name in alias_names {
-            v.push((name.to_string(), meridien.clone()));
+        // Slots 3-6 carry bespoke personalities ported from the React
+        // ApexTerminalThemes mockup (the styling source of truth):
+        //   3 Cadence — Spotify-dark: pill primaries, elevated cards, 3px tab
+        //               underline, uppercase pills, flush rows, vivid accent.
+        //   4 Alto    — Zed warm-dark: raised button faces, amber active tint,
+        //               2px tab underline, mono uppercase eyebrows, sharp radii.
+        //   5 Mariner — Alto's nautical sibling: same bones, steel-blue precision
+        //               markers, ~10% tighter (compact density), top-stripe active pane.
+        //   6 Lucid   — editorial LIGHT (Bauhaus): serif headlines, inverted
+        //               solid primaries, no bevels (light layers), restrained radii.
+        // These are NOT equivalence-gated (only slots 0-2 are), so they're
+        // defined directly as StyleSettings via struct-update over a close base.
+        // Slots 3-8 are now sourced from builtin_style_systems() via the adapter —
+        // same as slots 0-2. All 9 personalities live in the design-system registry.
+        for i in 3..systems.len() {
+            let ss = &systems[i];
+            // Use base_id=1 (Aperture) for dark creative styles, 0 (Meridien) for editorial.
+            let base_id: u8 = if ss.meta.is_dark && ss.meta.id != "relay" { 1 } else { 0 };
+            v.push((ss.meta.name.clone(), style_system_to_style_settings(ss, base_id)));
         }
+        // One remaining alias slot for forward-compatibility.
+        let meridien = style_system_to_style_settings(&systems[0], 0);
+        v.push(("Contour".to_string(), meridien));
         std::sync::RwLock::new(v)
     })
 }
@@ -2170,6 +2739,16 @@ pub fn tb_group_break(ui: &mut egui::Ui, panel_rect: egui::Rect, border: egui::C
     ui.add_space(gap_md());
 }
 
+/// Returns the `FontId` for section/eyebrow header labels, respecting
+/// `section_header_mono` (Alto/Mariner/Relay use IBM Plex Mono for eyebrows).
+pub fn section_header_font_id() -> egui::FontId {
+    if current().section_header_mono {
+        egui::FontId::new(font_xs(), egui::FontFamily::Monospace)
+    } else {
+        egui::FontId::new(font_xs(), egui::FontFamily::Proportional)
+    }
+}
+
 /// Returns `s` uppercased (and letter-spaced) for active styles that request it (#5, #12).
 ///
 /// # Letter-spacing limitation
@@ -2183,7 +2762,10 @@ pub fn style_label_case(s: &str) -> String {
     let st = current();
     let base = if st.uppercase_section_labels { s.to_uppercase() } else { s.to_string() };
     // Apply letter-spacing approximation via Unicode thin-spaces (U+2009).
-    let sp = st.label_letter_spacing_px;
+    // Use the larger of label_letter_spacing_px and section_header_tracking so
+    // section headers get the full per-theme tracking (Alto/Mariner 0.8px,
+    // Relay 1.2px) without needing a separate call.
+    let sp = st.label_letter_spacing_px.max(st.section_header_tracking);
     if sp < 0.5 {
         base
     } else {
@@ -2250,6 +2832,69 @@ pub fn apply_ui_style(ctx: &egui::Context, settings: &StyleSettings, toolbar_bor
         style.spacing.item_spacing     = egui::vec2(gap_sm(), gap_xs());
     }
 
+    // ── Per-style global widget corner radius ─────────────────────────────
+    // Push the style's r_md onto all egui widget families so dropdowns,
+    // menus, tooltips, and any egui-native widget match the per-theme radius.
+    // Meridien's ZERO is already set above in its block; handle others here.
+    if !is_meridien {
+        let cr_md = egui::CornerRadius::same(settings.r_md);
+        let cr_sm = egui::CornerRadius::same(settings.r_sm);
+        style.visuals.window_corner_radius  = cr_md;
+        style.visuals.menu_corner_radius    = cr_sm;
+        for state in [
+            &mut style.visuals.widgets.inactive,
+            &mut style.visuals.widgets.hovered,
+            &mut style.visuals.widgets.active,
+            &mut style.visuals.widgets.open,
+            &mut style.visuals.widgets.noninteractive,
+        ] {
+            state.corner_radius = cr_sm;
+        }
+    }
+
+    // ── Per-density item spacing ──────────────────────────────────────────
+    // Roomy styles (density=2, Glass/Aperture) get a bit more breathing room;
+    // compact styles (density=0, Octave/Mariner) tighten up.
+    style.spacing.item_spacing = match settings.density {
+        0 => egui::vec2(gap_xs(), 2.0),  // compact
+        2 => egui::vec2(gap_sm(), gap_xs()), // roomy
+        _ => style.spacing.item_spacing,  // keep existing
+    };
+
+    // ── Drop shadow for popup panels ─────────────────────────────────────
+    // Glass and Aperture have large soft shadows; Octave/Meridien flatten them.
+    if settings.shadows_enabled && settings.shadow_blur > 0.0 {
+        let sh_color = color_alpha(egui::Color32::BLACK, settings.shadow_alpha);
+        style.visuals.popup_shadow = egui::epaint::Shadow {
+            offset: [0, settings.shadow_offset_y as i8],
+            blur:   settings.shadow_blur as u8,
+            spread: 0,
+            color:  sh_color,
+        };
+        style.visuals.window_shadow = style.visuals.popup_shadow;
+    } else {
+        style.visuals.popup_shadow = egui::epaint::Shadow::NONE;
+        style.visuals.window_shadow = egui::epaint::Shadow::NONE;
+    }
+
+    // ── Per-style scrollbar ───────────────────────────────────────────────
+    // React themes specify scrollbar width in ::webkit-scrollbar:
+    //   Alto/Mariner/Lucid/Meridien/Relay: 7px — visible, part of the chrome
+    //   Cadence/Glass: 5px — minimal, unobtrusive
+    //   Aperture/Octave: default egui thin
+    let scroll_bar_width = match settings.density {
+        0 => 4.0, // compact (Octave/Mariner) — minimal
+        2 => 8.0, // roomy (Glass) — slightly wider for comfort
+        _ if settings.section_header_mono => 7.0, // Alto/Mariner/Relay — styled visible
+        _ if settings.serif_headlines     => 7.0, // Meridien/Lucid/Relay editorial
+        _                                  => 5.0, // others
+    };
+    style.spacing.scroll.bar_width    = scroll_bar_width;
+    style.spacing.scroll.bar_inner_margin = 2.0;
+    style.spacing.scroll.bar_outer_margin = 0.0;
+    // Scrollbar color: use dim border tinted with the theme border.
+    style.visuals.extreme_bg_color = color_alpha(toolbar_border, 35);
+
     // input_focus_color: derived from accent (§3.2 — no per-style override).
     style.visuals.selection.stroke = egui::Stroke::new(settings.focus_ring_width, accent);
 
@@ -2285,16 +2930,16 @@ pub fn paint_chrome_tile_button(
     let sw = current().stroke_thin;
     let (bg, border) = match state {
         ChromeTileState::Active  => (
-            color_alpha(t.accent, 38),
-            color_alpha(t.accent, alpha_active()),
+            tint(t, Tone::Accent, 38),
+            tint(t, Tone::Accent, alpha_active()),
         ),
         ChromeTileState::Hovered => (
-            color_alpha(t.toolbar_border, alpha_subtle()),
-            color_alpha(t.accent, alpha_line()),
+            tint(t, Tone::Border, alpha_subtle()),
+            tint(t, Tone::Accent, alpha_line()),
         ),
         ChromeTileState::Idle    => (
-            color_alpha(t.toolbar_border, 18),
-            color_alpha(t.toolbar_border, alpha_muted()),
+            tint(t, Tone::Border, 18),
+            tint(t, Tone::Border, alpha_muted()),
         ),
     };
     painter.rect_filled(rect, cr, bg);

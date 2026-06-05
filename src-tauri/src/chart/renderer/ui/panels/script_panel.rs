@@ -19,6 +19,7 @@
 //! shell-agnostic.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::widgets::tokens::Size as KitSize;
@@ -240,7 +241,14 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
 }
 
 /// Standalone panel — outer chrome via canonical SidePanelShell.
-pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
+/// Rail registration — see [`super::right_rail`].
+pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
+    id: "script",
+    is_open: |w| w.script_open,
+    render: |cx, slot| draw(cx.ctx, cx.watchlist, cx.t, Some(slot)),
+};
+
+pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme, slot: Option<super::side_panel_shell::RailSlot>) {
     if !watchlist.script_open { return; }
 
     let resp = SidePanelShell::new("apex_script", "APEX SCRIPT")
@@ -249,6 +257,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
             crate::chart_renderer::gpu::pane_tabs_header_h(watchlist),
             watchlist.pane_header_size.title_font(),
         )
+        .rail_slot(slot)
         .show(ctx, t, |ui, t| {
             draw_body(ui, watchlist, t, true);
         });
@@ -268,9 +277,9 @@ fn draw_output_tab(ui: &mut egui::Ui, watchlist: &Watchlist, t: &Theme) {
         ui.add_space(gap_xs());
         let is_error = watchlist.script_output.starts_with("Error");
         let (card_bg, card_border) = if is_error {
-            (color_alpha(t.bear, 18), color_alpha(t.bear, alpha_line()))
+            (tint(t, Tone::Bear, 18), tint(t, Tone::Bear, alpha_line()))
         } else {
-            (color_alpha(t.toolbar_border, alpha_tint()), color_alpha(t.toolbar_border, alpha_muted()))
+            (tint(t, Tone::Border, alpha_tint()), tint(t, Tone::Border, alpha_muted()))
         };
         let text_color = if is_error { t.bear } else { color_subtle(t.dim) };
         ui.horizontal(|ui| {
@@ -314,8 +323,8 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         let card_w = (w - m * 2.0 - 8.0) / stats.len() as f32;
         for (label, value, color) in &stats {
             let (rect, _) = ui.allocate_exact_size(egui::vec2(card_w, 38.0), egui::Sense::hover());
-            ui.painter().rect_filled(rect, 3.0, color_alpha(t.toolbar_border, alpha_tint()));
-            ui.painter().rect_stroke(rect, 3.0, egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_line())), egui::StrokeKind::Outside);
+            ui.painter().rect_filled(rect, 3.0, tint(t, Tone::Border, alpha_tint()));
+            ui.painter().rect_stroke(rect, 3.0, egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_line())), egui::StrokeKind::Outside);
 
             ui.painter().text(
                 egui::pos2(rect.center().x, rect.min.y + 10.0),
@@ -366,7 +375,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         egui::pos2(ui.cursor().min.x + m, div_y),
         egui::vec2(w - m * 2.0, 1.0),
     );
-    ui.painter().rect_filled(div_rect, 0.0, color_alpha(t.toolbar_border, alpha_muted()));
+    ui.painter().rect_filled(div_rect, 0.0, tint(t, Tone::Border, alpha_muted()));
     ui.add_space(gap_xs());
 
     for trade in &result.trades {
@@ -377,7 +386,7 @@ fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme
         );
         let resp = ui.allocate_rect(row_rect, egui::Sense::hover());
         if resp.hovered() {
-            ui.painter().rect_filled(row_rect, 1.0, color_alpha(t.toolbar_border, alpha_subtle()));
+            ui.painter().rect_filled(row_rect, 1.0, tint(t, Tone::Border, alpha_subtle()));
         }
 
         let base_x = ui.cursor().min.x;

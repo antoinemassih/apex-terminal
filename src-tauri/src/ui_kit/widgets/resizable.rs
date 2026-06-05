@@ -16,6 +16,7 @@ use egui::{Color32, CornerRadius, CursorIcon, Rect, Response, Sense, Ui, Vec2};
 
 use super::motion;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::tokens as st;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -201,8 +202,8 @@ impl<'a> Resizable<'a> {
             div_resp.hovered() || div_resp.dragged(),
             motion::FAST,
         );
-        let idle = st::color_alpha(theme.border(), st::alpha_strong());
-        let active = st::color_alpha(theme.accent(), st::alpha_heavy());
+        let idle = st::color_alpha(palette_ct(theme).base(Tone::Border), st::alpha_strong());
+        let active = st::color_alpha(palette_ct(theme).base(Tone::Accent), st::alpha_heavy());
         let div_color = motion::lerp_color(idle, active, active_t);
         ui.painter().rect_filled(rect_div, CornerRadius::ZERO, div_color);
 

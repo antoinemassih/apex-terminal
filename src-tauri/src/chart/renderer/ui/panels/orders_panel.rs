@@ -21,6 +21,16 @@ use crate::chart_renderer::commands::{self, AppCommand};
 use crate::chart_renderer::trading::{AccountSummary, IbOrder, Position, OrderSide, OrderStatus};
 use crate::chart_renderer::BookTab;
 
+/// Rail registration — see [`super::right_rail`].
+pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
+    id: "orders",
+    is_open: |w| w.orders_panel_open,
+    render: |cx, slot| { draw(cx.ctx, cx.watchlist, cx.panes, cx.active_pane, cx.t, cx.account_data, Some(slot), None); },
+};
+
+fn book_tab_to_u8(t: BookTab) -> u8 { match t { BookTab::Book => 0, BookTab::Journal => 1 } }
+fn book_tab_from_u8(v: u8) -> BookTab { match v { 1 => BookTab::Journal, _ => BookTab::Book } }
+
 pub(crate) fn draw(
     ctx: &egui::Context,
     watchlist: &mut Watchlist,
@@ -28,10 +38,17 @@ pub(crate) fn draw(
     _ap: usize,
     t: &Theme,
     account_data_cached: &Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>,
-) {
-    if !watchlist.orders_panel_open { return; }
+    slot: Option<super::side_panel_shell::RailSlot>,
+    instance_tab: Option<&mut u8>,
+) -> bool {
+    let is_spawn = instance_tab.is_some();
+    let mut spawn_close = false;
+    if !is_spawn && !watchlist.orders_panel_open { return false; }
 
-    let mut book_tab = watchlist.book_tab;
+    let mut book_tab = match instance_tab.as_deref() {
+        Some(v) => book_tab_from_u8(*v),
+        None => watchlist.book_tab,
+    };
 
     let tabs = [
         (BookTab::Book, "BOOK", None),
@@ -43,9 +60,17 @@ pub(crate) fn draw(
     let pane_h = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
     let pane_font = watchlist.pane_header_size.title_font();
 
-    let resp = SidePanelShell::tabs("orders", &mut book_tab, &tabs)
+    let shell_id = if is_spawn { "orders_inst" } else { "orders" };
+    let resp = SidePanelShell::tabs(shell_id, &mut book_tab, &tabs)
         .width(Width::Medium)
         .pane_metrics(pane_h, pane_font)
+        .rail_slot(slot)
+        .on_tab_secondary(|ui, tab| {
+            if crate::ui_kit::widgets::MenuItem::new("Open as new instance").show(ui, t).clicked() {
+                super::right_rail::request_spawn("orders", book_tab_to_u8(tab));
+                ui.close_menu();
+            }
+        })
         .show(ctx, t, |ui, t, tab| {
             match tab {
                 BookTab::Journal => {
@@ -57,8 +82,13 @@ pub(crate) fn draw(
             }
         });
 
-    if resp.close_clicked { watchlist.update_sidebar_state(|s| s.orders_panel_open = false); }
-    watchlist.book_tab = book_tab;
+    // Persist the active tab to its owner (instance store or base panel).
+    if let Some(it) = instance_tab { *it = book_tab_to_u8(book_tab); }
+    else { watchlist.book_tab = book_tab; }
+    if resp.close_clicked {
+        if is_spawn { spawn_close = true; }
+        else { watchlist.update_sidebar_state(|s| s.orders_panel_open = false); }
+    }
 
     // Update position current prices from chart data.
     for pos in &mut watchlist.positions {
@@ -68,6 +98,7 @@ pub(crate) fn draw(
             }
         }
     }
+    spawn_close
 }
 
 // ── BOOK TAB BODY ──────────────────────────────────────────────────────────
@@ -321,14 +352,15 @@ fn draw_book(
 
             // Select-all toggle.
             {
-                let active_orders: Vec<(usize, u32)> = panes.iter().enumerate()
+                use crate::chart_renderer::gpu::SelectedOrder;
+                let active_orders: Vec<SelectedOrder> = panes.iter().enumerate()
                     .flat_map(|(pi, p)| p.orders.iter()
                         .filter(|o| o.status == OrderStatus::Draft || o.status == OrderStatus::Placed)
-                        .map(move |o| (pi, o.id)))
+                        .map(move |o| SelectedOrder { pane_idx: pi, order_id: o.id }))
                     .collect();
                 let all_selected = !active_orders.is_empty()
-                    && active_orders.iter().all(|(pi, oid)|
-                        watchlist.selected_order_ids.iter().any(|(p, id)| p == pi && id == oid));
+                    && active_orders.iter().all(|s|
+                        watchlist.selected_order_ids.iter().any(|sel| sel.pane_idx == s.pane_idx && sel.order_id == s.order_id));
                 if !active_orders.is_empty() {
                     ui.horizontal(|ui| {
                         let check_icon = if all_selected { Icon::CHECK_SQUARE } else { Icon::SQUARE_EMPTY };
@@ -356,7 +388,7 @@ fn draw_book(
 
             // ── Order rows + history list ──
             egui::ScrollArea::vertical().show(ui, |ui| {
-                let mut toggle_select: Option<(usize, u32)> = None;
+                let mut toggle_select: Option<SelectedOrder> = None;
                 let mut any_rows = false;
 
                 for (pi, pane) in panes.iter().enumerate() {
@@ -371,7 +403,7 @@ fn draw_book(
                         let is_active = order.status == OrderStatus::Draft
                             || order.status == OrderStatus::Placed;
                         let is_selected = watchlist.selected_order_ids.iter()
-                            .any(|(p, id)| *p == pi && *id == order.id);
+                            .any(|s| s.pane_idx == pi && s.order_id == order.id);
                         let side_tag = match order.side {
                             OrderSide::Buy | OrderSide::TriggerBuy | OrderSide::OcoTarget
                                 => OrderSideTag::Buy,
@@ -397,7 +429,7 @@ fn draw_book(
                             commands::push(AppCommand::CancelOrder { pane: pi, id: order.id });
                         }
                         if resp.clicked() && is_active {
-                            toggle_select = Some((pi, order.id));
+                            toggle_select = Some(SelectedOrder { pane_idx: pi, order_id: order.id });
                         }
                     }
                 }
@@ -406,14 +438,14 @@ fn draw_book(
                     PanelEmpty::new("No working orders").show(ui, t);
                 }
 
-                if let Some((pi, oid)) = toggle_select {
+                if let Some(sel) = toggle_select {
                     let already = watchlist.selected_order_ids.iter()
-                        .any(|(p, id)| *p == pi && *id == oid);
+                        .any(|s| s.pane_idx == sel.pane_idx && s.order_id == sel.order_id);
                     if already {
                         watchlist.selected_order_ids
-                            .retain(|(p, id)| !(*p == pi && *id == oid));
+                            .retain(|s| !(s.pane_idx == sel.pane_idx && s.order_id == sel.order_id));
                     } else {
-                        watchlist.selected_order_ids.push((pi, oid));
+                        watchlist.selected_order_ids.push(sel);
                     }
                 }
             });

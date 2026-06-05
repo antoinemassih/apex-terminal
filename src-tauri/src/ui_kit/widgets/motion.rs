@@ -151,9 +151,28 @@ fn animations_disabled() -> bool {
     crate::ui_kit::style::motion_speed_override() == crate::ui_kit::style::MotionSpeed::Off
 }
 
+/// Returns `true` while the pointer is being dragged anywhere in the app
+/// (chart pan, slider drag, tab reorder, etc.). During a drag the user
+/// doesn't care about button hover / tab transition animations on widgets
+/// the cursor sweeps past — and those animations are surprisingly expensive
+/// in aggregate because each `animate_*_with_time` call schedules a frame-
+/// budget repaint while the animation settles. Pausing them eliminates the
+/// per-frame budget pressure that makes Fifo+lat=2 input lag perceptible.
+///
+/// (2026-05-26 perf fix — root cause of "drag feels delayed" was that
+/// motion.rs grew from a 74-line stub at PREICED to a full 608-line impl
+/// post-iced-wave; the egui-side `animate_*` calls under it push some frames
+/// over the 16ms vsync budget, exposing the latent buffered input lag.)
+#[inline]
+fn pointer_is_dragging(ctx: &Context) -> bool {
+    ctx.input(|i| i.pointer.is_decidedly_dragging())
+}
+
 // ── Bool tracker ───────────────────────────────────────────────────────
 pub fn ease_bool(ctx: &Context, id: Id, value: bool, duration: f32) -> f32 {
-    if animations_disabled() { return if value { 1.0 } else { 0.0 }; }
+    if animations_disabled() || pointer_is_dragging(ctx) {
+        return if value { 1.0 } else { 0.0 };
+    }
     let raw = ctx.animate_bool_with_time(id, value, duration);
     let target = if value { 1.0 } else { 0.0 };
     let in_flight = (raw - target).abs() > ANIM_EPSILON;
@@ -163,7 +182,9 @@ pub fn ease_bool(ctx: &Context, id: Id, value: bool, duration: f32) -> f32 {
 
 // ── Value tracker ──────────────────────────────────────────────────────
 pub fn ease_value(ctx: &Context, id: Id, target: f32, duration: f32) -> f32 {
-    if animations_disabled() { return target; }
+    if animations_disabled() || pointer_is_dragging(ctx) {
+        return target;
+    }
     let raw = ctx.animate_value_with_time(id, target, duration);
     let in_flight = (raw - target).abs() > ANIM_EPSILON;
     observe(id, in_flight, next_tick());

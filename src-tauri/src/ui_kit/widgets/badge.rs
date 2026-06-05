@@ -6,10 +6,11 @@
 //!   ui.add(Badge::count(150).max(99));     // "99+"
 //!   ui.add(Badge::dot().tone(TagTone::Warn));
 
-use egui::{Color32, CornerRadius, FontId, Pos2, Response, Sense, Ui, Vec2, Widget};
+use egui::{Color32, FontId, Pos2, Response, Sense, Ui, Vec2, Widget};
 
 use super::tag::TagTone;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::Sx;
 
 #[derive(Clone, Copy)]
 enum BadgeKind {
@@ -123,8 +124,8 @@ impl<'a> Badge<'a> {
 
         if ui.is_rect_visible(rect) {
             let painter = ui.painter_at(rect);
-            let cr = CornerRadius::same((h * 0.5) as u8);
-            painter.rect_filled(rect, cr, tone_col);
+            // DS#4: the pill is declared as an Sx solid-fill box.
+            Sx::new().rounded(h * 0.5).bg_color(tone_col).paint_box_at(&painter, rect, theme);
             painter.text(
                 Pos2::new(rect.center().x, rect.center().y),
                 egui::Align2::CENTER_CENTER,

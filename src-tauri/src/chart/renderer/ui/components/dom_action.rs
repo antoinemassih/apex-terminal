@@ -9,6 +9,8 @@
 //! lock-step with the canonical buttons.
 
 use super::super::style::*;
+use crate::chart_renderer::ui::style::tint;
+use crate::ui_kit::sx::Tone;
 use egui::{self, Color32, Response, Ui};
 
 /// Search / command-launcher pill. Painter-positioned because it sits inside
@@ -145,14 +147,14 @@ pub fn paint_dom_action(
         QtyStepper => {
             let fill = if ctx.is_light {
                 if hover { color_alpha(ctx.dark_ink, 60) } else { color_alpha(ctx.dark_ink, 30) }
-            } else if hover { color_alpha(t.toolbar_border, alpha_dim()) }
-              else { color_alpha(t.toolbar_border, alpha_soft()) };
+            } else if hover { tint(t, Tone::Border, alpha_dim()) }
+              else { tint(t, Tone::Border, alpha_soft()) };
             painter.rect_filled(rect, r_xs, fill);
             painter.rect_stroke(rect, r_xs, border_stroke, egui::StrokeKind::Inside);
             painter.text(rect.center(), egui::Align2::CENTER_CENTER, label, font_glyph, ctx.strong_text);
         }
         QtyReadout => {
-            let fill = if ctx.is_light { Color32::WHITE } else { color_alpha(t.bg, 180) };
+            let fill = if ctx.is_light { Color32::WHITE } else { tint(t, Tone::Bg, 180) };
             let text_col = if ctx.is_light { ctx.dark_ink } else { t.text };
             painter.rect_filled(rect, egui::CornerRadius::ZERO, fill);
             painter.rect_stroke(rect, egui::CornerRadius::ZERO, border_stroke, egui::StrokeKind::Inside);
@@ -162,7 +164,7 @@ pub fn paint_dom_action(
             let (fill, text_col) = if ctx.is_light {
                 (t.accent, contrast_fg(t.accent))
             } else {
-                (color_alpha(t.accent, if hover { 55 } else { 28 }), t.accent)
+                (tint(t, Tone::Accent, if hover { 55 } else { 28 }), t.accent)
             };
             painter.rect_filled(rect, r_xs, fill);
             painter.rect_stroke(rect, r_xs, border_stroke, egui::StrokeKind::Inside);
@@ -170,7 +172,7 @@ pub fn paint_dom_action(
         }
         ArmedChip => {
             let ac = if ctx.armed { t.bear } else { color_dim(t.dim) };
-            let fill = if ctx.armed { color_alpha(ac, 35) } else { color_alpha(t.toolbar_border, alpha_ghost()) };
+            let fill = if ctx.armed { color_alpha(ac, 35) } else { tint(t, Tone::Border, alpha_ghost()) };
             painter.rect_filled(rect, r_xs, fill);
             let stroke_a = if ctx.armed { 90 } else { 30 };
             painter.rect_stroke(rect, r_xs,
@@ -203,9 +205,9 @@ pub fn paint_dom_action(
         }
         Subtle => {
             painter.rect_filled(rect, r_xs,
-                if hover { color_alpha(t.dim, alpha_muted()) } else { color_alpha(t.toolbar_border, alpha_soft()) });
+                if hover { tint(t, Tone::Dim, alpha_muted()) } else { tint(t, Tone::Border, alpha_soft()) });
             painter.rect_stroke(rect, r_xs,
-                egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_line())),
+                egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_line())),
                 egui::StrokeKind::Outside);
             painter.text(rect.center(), egui::Align2::CENTER_CENTER, label, font_label,
                 if hover { t.dim } else { color_half(t.dim) });

@@ -77,6 +77,26 @@ pub(super) fn execute(
         }
         *layout = ly;
         if *active_pane >= max { *active_pane = 0; }
+        // P17 #3 — snapshot before destructive template change.
+        crate::chart_renderer::gpu::pane_layout_record_undo(watchlist);
+        // Phase 1: regenerate PaneLayout when layout is changed via cmd palette.
+        // P16 fix #3 — queue orphan panes for deferred removal so callers'
+        // local `ap` snapshots stay valid for the rest of the frame.
+        if panes.len() > max {
+            crate::chart_renderer::gpu::PENDING_PANE_CLOSE.with(|q| {
+                let mut closes = q.borrow_mut();
+                for idx in max..panes.len() {
+                    closes.push(idx);
+                }
+            });
+            watchlist.maximized_pane = watchlist.maximized_pane.filter(|&m| m < max);
+        }
+        crate::chart_renderer::gpu::ensure_pane_ids_synced(watchlist, panes.len());
+        let mut slot_ids: Vec<u64> = watchlist.pane_ids.iter().copied().take(max.max(1)).collect();
+        while slot_ids.len() < max.max(1) { slot_ids.push(0); }
+        watchlist.pane_layout = Some(
+            crate::chart_renderer::pane_layout::PaneLayout::from_template(ly, &slot_ids)
+        );
         return;
     }
 

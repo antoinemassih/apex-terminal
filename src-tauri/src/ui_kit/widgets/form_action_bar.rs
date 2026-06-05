@@ -23,6 +23,7 @@ use egui::{Stroke, Ui};
 
 use super::button::Button;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::{Size, Variant};
 use crate::ui_kit::tokens as st;
 
@@ -112,7 +113,7 @@ impl<'a> FormActionBar<'a> {
                 egui::Sense::hover(),
             );
             if ui.is_rect_visible(rect) {
-                let sep_col = st::color_alpha(theme.border(), st::alpha_dim());
+                let sep_col = st::color_alpha(palette_ct(theme).base(Tone::Border), st::alpha_dim());
                 ui.painter().hline(
                     rect.x_range(),
                     rect.center().y,
@@ -225,8 +226,8 @@ mod tests {
     fn separator_is_painted() {
         let src = include_str!("form_action_bar.rs");
         assert!(
-            src.contains("alpha_dim()") && src.contains("theme.border()"),
-            "form_action_bar must paint a separator using theme.border() + alpha_dim"
+            src.contains("alpha_dim()") && src.contains("palette_ct(theme).base(Tone::Border)"),
+            "form_action_bar must paint a separator using palette_ct(theme).base(Tone::Border) + alpha_dim"
         );
     }
 }

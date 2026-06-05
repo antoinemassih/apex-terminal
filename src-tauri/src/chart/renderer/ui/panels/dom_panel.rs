@@ -2,6 +2,7 @@
 //! volume, delta, imbalance highlighting, and order management.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::Theme;
 use super::super::widgets::rows::dom_row::{ColumnLayout, DomRow, DomRowDragCx};
@@ -86,7 +87,7 @@ pub(crate) fn draw(
     let edge_x = if on_left { dom_rect.right() } else { dom_rect.left() };
     painter.line_segment(
         [egui::pos2(edge_x, dom_rect.top()), egui::pos2(edge_x, dom_rect.bottom())],
-        egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())),
+        egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_heavy())),
     );
     if !*dom_fullscreen {
         let hr = egui::Rect::from_min_size(
@@ -106,7 +107,7 @@ pub(crate) fn draw(
             let hx = if on_left { edge_x - 1.0 } else { edge_x + 1.0 };
             painter.line_segment(
                 [egui::pos2(hx, dom_rect.top() + 14.0), egui::pos2(hx, dom_rect.bottom())],
-                egui::Stroke::new(stroke_thick(), color_alpha(t.accent, alpha_strong())),
+                egui::Stroke::new(stroke_thick(), tint(t, Tone::Accent, alpha_strong())),
             );
         }
     }
@@ -172,7 +173,7 @@ pub(crate) fn draw(
     // Subtle background tint so the trigger reads as a button even at rest.
     painter.rect_filled(mode_rect,
         egui::CornerRadius::same(radius_sm() as u8),
-        color_alpha(t.toolbar_border, alpha_subtle()));
+        tint(t, Tone::Border, alpha_subtle()));
     {
         // Action enum so item_render and trigger_render get a real value to
         // dispatch on (plain &str labels would skip the trigger render path).
@@ -241,7 +242,7 @@ pub(crate) fn draw(
     let sep_y = hy + header_h;
     painter.line_segment(
         [egui::pos2(inner.left(), sep_y), egui::pos2(inner.right(), sep_y)],
-        egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_strong())),
+        egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_strong())),
     );
 
     // ── SIMULATED data badge ──────────────────────────────────────────────────
@@ -251,7 +252,7 @@ pub(crate) fn draw(
     {
         let badge_font = egui::FontId::monospace(font_sm());
         let badge_fg   = t.warn;
-        let badge_bg   = color_alpha(t.warn, 28);
+        let badge_bg   = tint(t, Tone::Warn, 28);
         let badge_pad_x = gap_xs();
         let badge_pad_y = 2.0_f32;
         let galley = painter.layout_no_wrap("SIMULATED".to_string(), badge_font, badge_fg);
@@ -302,7 +303,7 @@ pub(crate) fn draw(
     // Hairline divider between DOM ladder and the controls.
     painter.line_segment(
         [egui::pos2(inner.left(), ctrl_top), egui::pos2(inner.right(), ctrl_top)],
-        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_strong())),
+        egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_strong())),
     );
 
     let fm = egui::FontId::monospace(font_md());
@@ -317,10 +318,10 @@ pub(crate) fn draw(
     let stepper_w = half_w;
     let stepper_rect = egui::Rect::from_min_size(egui::pos2(cx, r1y), egui::vec2(stepper_w, r1h));
     let stepper_radius = egui::CornerRadius::same((r1h * 0.5) as u8);
-    painter.rect_filled(stepper_rect, stepper_radius, color_alpha(t.bg, 200));
+    painter.rect_filled(stepper_rect, stepper_radius, tint(t, Tone::Bg, 200));
     painter.rect_stroke(
         stepper_rect, stepper_radius,
-        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_line())),
+        egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_line())),
         egui::StrokeKind::Inside,
     );
     let btn_w = r1h; // square hit areas at each end
@@ -328,7 +329,7 @@ pub(crate) fn draw(
     let minus_rect = egui::Rect::from_min_size(stepper_rect.min, egui::vec2(btn_w, r1h));
     let minus_resp = ui.allocate_rect(minus_rect, egui::Sense::click());
     if minus_resp.hovered() {
-        painter.rect_filled(minus_rect, stepper_radius, color_alpha(t.text, alpha_subtle()));
+        painter.rect_filled(minus_rect, stepper_radius, tint(t, Tone::Text, alpha_subtle()));
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     painter.text(minus_rect.center(), egui::Align2::CENTER_CENTER, "−", fm.clone(),
@@ -343,7 +344,7 @@ pub(crate) fn draw(
         egui::vec2(btn_w, r1h));
     let plus_resp = ui.allocate_rect(plus_rect, egui::Sense::click());
     if plus_resp.hovered() {
-        painter.rect_filled(plus_rect, stepper_radius, color_alpha(t.text, alpha_subtle()));
+        painter.rect_filled(plus_rect, stepper_radius, tint(t, Tone::Text, alpha_subtle()));
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     painter.text(plus_rect.center(), egui::Align2::CENTER_CENTER, "+", fm.clone(),
@@ -382,7 +383,7 @@ pub(crate) fn draw(
         // Filled red bg, white icon, subtle border.
         painter.rect_filled(arm_rect, arm_radius, t.bear);
         painter.rect_stroke(arm_rect, arm_radius,
-            egui::Stroke::new(stroke_thin(), color_alpha(t.bear, alpha_strong())),
+            egui::Stroke::new(stroke_thin(), tint(t, Tone::Bear, alpha_strong())),
             egui::StrokeKind::Inside);
         // Armed badge glyph on `t.bear` fill — use contrast_fg so a light
         // bear (if ever introduced) gets black instead of unreadable white.
@@ -391,13 +392,13 @@ pub(crate) fn draw(
             contrast_fg(t.bear));
     } else {
         let bg = if arm_resp.hovered() {
-            color_alpha(t.toolbar_border, alpha_dim())
+            tint(t, Tone::Border, alpha_dim())
         } else {
-            color_alpha(t.toolbar_border, alpha_subtle())
+            tint(t, Tone::Border, alpha_subtle())
         };
         painter.rect_filled(arm_rect, arm_radius, bg);
         painter.rect_stroke(arm_rect, arm_radius,
-            egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_line())),
+            egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_line())),
             egui::StrokeKind::Inside);
         painter.text(arm_rect.center(), egui::Align2::CENTER_CENTER,
             Icon::PULSE, egui::FontId::proportional(font_md() + 1.0),

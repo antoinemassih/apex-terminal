@@ -25,6 +25,7 @@
 use egui::{Color32, FontId, Sense, Stroke, Ui, Vec2};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::Sx;
 use crate::ui_kit::tokens as st;
 
 /// Visual prominence tier.
@@ -101,6 +102,15 @@ impl CountChip {
     pub fn max(mut self, max: u32) -> Self { self.max = Some(max); self }
     pub fn fg(mut self, c: Color32) -> Self { self.fg = Some(c); self }
 
+    /// Resolved display text after applying `.max()` clamp. Exposed for tests
+    /// and for code that wants the same label without painting.
+    pub fn display_text(&self) -> String {
+        match self.max {
+            Some(max) if self.count > max => format!("{}+", max),
+            _ => format!("{}", self.count),
+        }
+    }
+
     /// Paint into an existing painter at an absolute rect. For chrome that
     /// already runs in painter mode (chart-pane HUDs, panel-section painter
     /// headers like indicators_panel.rs:870-906). Pre-computes the rect's
@@ -112,10 +122,7 @@ impl CountChip {
         right_anchor: egui::Pos2,
         theme: &T,
     ) -> egui::Rect {
-        let text = match self.max {
-            Some(max) if self.count > max => format!("{}+", max),
-            _ => format!("{}", self.count),
-        };
+        let text = self.display_text();
         let theme_dyn: &dyn ComponentTheme = &ThemeBox(theme);
         let (tone_fg, tone_fill_base) = self.tone.colors(theme_dyn);
         let fg = self.fg.unwrap_or(tone_fg);
@@ -130,24 +137,18 @@ impl CountChip {
             egui::pos2(right_anchor.x - w, right_anchor.y - h * 0.5),
             Vec2::new(w, h),
         );
-        painter.rect_filled(rect, st::r_sm_cr(), fill);
-        painter.rect_stroke(
-            rect,
-            st::r_sm_cr(),
-            Stroke::new(st::stroke_thin(), st::color_alpha(tone_fg, 60)),
-            egui::StrokeKind::Inside,
-        );
+        // DS#4: declare the chip box — tinted fill + hairline border.
+        Sx::new()
+            .rounded_sm()
+            .bg_color(fill)
+            .border_color(st::color_alpha(tone_fg, 60), st::stroke_thin())
+            .paint_box_at(painter, rect, theme_dyn);
         painter.text(rect.center(), egui::Align2::CENTER_CENTER, &text, font, fg);
         rect
     }
 
     pub fn show<T: ComponentTheme + ?Sized>(self, ui: &mut Ui, theme: &T) -> egui::Response {
-        // Display text — clamp to `max` if set.
-        let text = if let Some(max) = self.max {
-            if self.count > max { format!("{}+", max) } else { format!("{}", self.count) }
-        } else {
-            format!("{}", self.count)
-        };
+        let text = self.display_text();
 
         let theme_dyn: &dyn ComponentTheme = &ThemeBox(theme);
         let (tone_fg, tone_fill_base) = self.tone.colors(theme_dyn);
@@ -180,5 +181,42 @@ impl CountChip {
             );
         }
         response
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_text_no_max() {
+        assert_eq!(CountChip::new(0).display_text(), "0");
+        assert_eq!(CountChip::new(5).display_text(), "5");
+        assert_eq!(CountChip::new(247).display_text(), "247");
+    }
+
+    #[test]
+    fn display_text_under_max_unchanged() {
+        assert_eq!(CountChip::new(5).max(9).display_text(), "5");
+        assert_eq!(CountChip::new(9).max(9).display_text(), "9");
+        assert_eq!(CountChip::new(99).max(99).display_text(), "99");
+    }
+
+    #[test]
+    fn display_text_over_max_appends_plus() {
+        assert_eq!(CountChip::new(10).max(9).display_text(), "9+");
+        assert_eq!(CountChip::new(100).max(99).display_text(), "99+");
+        assert_eq!(CountChip::new(9999).max(99).display_text(), "99+");
+    }
+
+    #[test]
+    fn builder_chain_compiles_for_every_tone() {
+        // Smoke-test that every public API entry chains without compile errors.
+        let _ = CountChip::new(1).tone(CountChipTone::Muted);
+        let _ = CountChip::new(1).tone(CountChipTone::Accent);
+        let _ = CountChip::new(1).tone(CountChipTone::Bull);
+        let _ = CountChip::new(1).tone(CountChipTone::Bear);
+        let _ = CountChip::new(1).tone(CountChipTone::Warn);
+        let _ = CountChip::new(1).max(99).fg(Color32::WHITE);
     }
 }

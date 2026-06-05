@@ -40,6 +40,7 @@
 #![allow(dead_code)]
 
 use std::ops::RangeInclusive;
+use crate::ui_kit::sx::Tone;
 
 use egui::{Context, Ui};
 
@@ -63,6 +64,78 @@ use crate::chart_renderer::gpu::{Watchlist, pane_tabs_header_h};
 pub struct SidePanelShellResponse {
     /// `true` if the close-X was clicked this frame.
     pub close_clicked: bool,
+}
+
+// ─── Rail-slot mode (the right_rail manager drives this) ──────────────────────
+//
+// When the right_rail manager is laying panels out, it sets a per-panel slot
+// (a rect on the rail's egui layer + the panel's current height) just before
+// calling that panel's existing `draw(...)`. SidePanelShell then renders its
+// body INTO that slot — as a child Ui with a size-control header — instead of
+// creating its own `egui::SidePanel`. The panel's own code is unchanged.
+
+use crate::chart_renderer::ui::panels::rail_layout::RailHeight;
+
+/// An assigned rail slot for the panel about to render.
+#[derive(Clone, Copy)]
+pub(crate) struct RailSlot {
+    pub rect: egui::Rect,
+    pub layer: egui::LayerId,
+    pub height: RailHeight,
+}
+
+// Rail-slot plumbing: the manager passes a `RailSlot` into the shell builder via
+// `.rail_slot(Some(slot))`. The split-toggle click is reported back through one
+// shared egui frame-memory flag — NOT keyed by panel id. The rail renders panels
+// one slot at a time (set slot → render → read), so a single flag is unambiguous:
+// whatever panel just rendered is the one whose toggle was clicked. (Keying by id
+// was fragile — the shell id and the registry id differ for most panels.)
+fn cycle_mem_id() -> egui::Id { egui::Id::new("rail_size_cycle_pending") }
+
+/// Rail manager: read-and-clear the split-toggle request for the panel that just
+/// rendered (one-shot). Call immediately after each panel's render.
+pub(crate) fn take_size_cycle(ctx: &Context) -> bool {
+    let mid = cycle_mem_id();
+    let v = ctx.data(|d| d.get_temp::<bool>(mid).unwrap_or(false));
+    if v { ctx.data_mut(|d| d.insert_temp(mid, false)); }
+    v
+}
+
+/// Create the child Ui a panel renders into when in rail-slot mode, painting
+/// the slot's body surface first so the real header band composites over it
+/// exactly as in standalone mode.
+fn rail_slot_ui(ctx: &Context, id: &str, slot: RailSlot, t: &Theme) -> Ui {
+    let mut ui = Ui::new(
+        ctx.clone(),
+        egui::Id::new(("rail_slot_ui", id)),
+        egui::UiBuilder::new().max_rect(slot.rect).layer_id(slot.layer),
+    );
+    ui.set_clip_rect(slot.rect);
+    // Slot body surface (matches the standalone panel frame fill).
+    ui.painter().rect_filled(slot.rect, egui::CornerRadius::ZERO, t.panel_surface());
+    ui
+}
+
+/// The size-cycle control (`1`/`½`/`⅓`) injected into a rail panel's header,
+/// to the LEFT of the close button. Returns `true` if clicked (the right_rail
+/// manager applies the cycle next frame). Rendered as a header action so it
+/// sits in the same trailing slot as the real header's other actions.
+fn render_rail_size_control(ui: &mut Ui, t: &Theme, height: RailHeight) {
+    // Split toggle: Full ⇄ Half. Depicts two stacked cells (vertical rail split);
+    // highlighted when already split (Half).
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(20.0, 16.0), egui::Sense::click());
+    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    let split = height == RailHeight::Half;
+    let col = if resp.hovered() || split { t.accent } else { t.dim };
+    let stroke = egui::Stroke::new(1.2, col);
+    let r = rect.shrink2(egui::vec2(3.0, 2.0));
+    ui.painter().rect_stroke(r, egui::CornerRadius::same(2), stroke, egui::StrokeKind::Inside);
+    // Horizontal divider → two stacked halves (the rail splits vertically).
+    let y = r.center().y;
+    ui.painter().line_segment([egui::pos2(r.left(), y), egui::pos2(r.right(), y)], stroke);
+    if resp.clicked() {
+        ui.ctx().data_mut(|d| d.insert_temp(cycle_mem_id(), true));
+    }
 }
 
 /// Width preset for side panels. Default presets cover ~95% of cases; if a
@@ -116,6 +189,7 @@ pub struct SidePanelShell<'a> {
     pane_metrics: Option<(f32, f32)>,
     header_actions: Option<Box<dyn FnOnce(&mut Ui, &Theme) + 'a>>,
     footer: Option<Box<dyn FnOnce(&mut Ui, &Theme) + 'a>>,
+    rail_slot: Option<RailSlot>,
 }
 
 impl<'a> SidePanelShell<'a> {
@@ -131,7 +205,17 @@ impl<'a> SidePanelShell<'a> {
             pane_metrics: None,
             header_actions: None,
             footer: None,
+            rail_slot: None,
         }
+    }
+
+    /// Render into a rail slot instead of an `egui::SidePanel`. When `Some`, the
+    /// real header + body paint into the manager-assigned rect (with the
+    /// size-cycle control injected into the header actions), and
+    /// [`SidePanelShellResponse::size_cycle_requested`] reports clicks. `None`
+    /// (the default) renders the normal docked side panel.
+    pub(crate) fn rail_slot(mut self, slot: Option<RailSlot>) -> Self {
+        self.rail_slot = slot; self
     }
 
     /// Optional leading icon (glyph string from `ui_kit::icons::Icon`).
@@ -195,8 +279,39 @@ impl<'a> SidePanelShell<'a> {
         t: &Theme,
         body: impl FnOnce(&mut Ui, &Theme),
     ) -> SidePanelShellResponse {
+        // Rail-slot mode: render the REAL header + body into the assigned slot
+        // (not a crude strip) so the panel keeps its native header styling. The
+        // only addition is the size-cycle control, injected left of the close.
+        if let Some(slot) = self.rail_slot {
+            let SidePanelShell { id, title, icon, pane_metrics, header_actions, footer, .. } = self;
+            let mut ui = rail_slot_ui(ctx, id, slot, t);
+            let mut close_clicked = false;
+            let header_resp = crate::ui_kit::widgets::OutlinedBox::new()
+                .fill(t.header_surface()).borderless().square().padding(0.0)
+                .show(&mut ui, t, |ui| {
+                    let actions = move |ui: &mut Ui, t: &Theme| {
+                        render_rail_size_control(ui, t, slot.height);
+                        if let Some(a) = header_actions { a(ui, t); }
+                    };
+                    let closed = render_header(ui, t, title, icon, pane_metrics, Some(Box::new(actions)));
+                    if closed { close_clicked = true; }
+                });
+            paint_header_underline_and_shadow(&mut ui, t, header_resp.response.rect, id);
+            render_body_and_footer(&mut ui, t, body, footer);
+            return SidePanelShellResponse { close_clicked };
+        }
         let panel = build_side_panel(self.id, self.side, self.width, self.width_bounds.as_ref());
-        let frame = PanelFrame::new(t.panel_surface(), t.toolbar_border).theme(t).build();
+        let mut frame = PanelFrame::new(t.panel_surface(), t.toolbar_border).theme(t).build();
+        // Shell region: float the rail as a rounded card when the active style
+        // is tiled (Aperture/Glass). Gap on all sides separates it from the
+        // workspace (left) and window edge (right).
+        let rgap = crate::chart_renderer::ui::style::region_gap();
+        if rgap > 0.0 {
+            let rr = crate::chart_renderer::ui::style::current().region_radius as u8;
+            frame = frame
+                .outer_margin(egui::Margin { left: rgap as i8, right: rgap as i8, top: 0, bottom: rgap as i8 })
+                .corner_radius(egui::CornerRadius::same(rr));
+        }
         let panel = panel.frame(frame);
 
         let SidePanelShell { id, title, icon, pane_metrics, header_actions, footer, .. } = self;
@@ -206,9 +321,12 @@ impl<'a> SidePanelShell<'a> {
             // Wrap the header in a Frame filled with `t.header_surface()`
             // so the side panel's header band matches the chart pane
             // header above it — same fill, same visual weight.
-            let header_resp = egui::Frame::NONE
+            let header_resp = crate::ui_kit::widgets::OutlinedBox::new()
                 .fill(t.header_surface())
-                .show(ui, |ui| {
+                .borderless()
+                .square()
+                .padding(0.0)
+                .show(ui, t, |ui| {
                     let closed = render_header(ui, t, title, icon, pane_metrics, header_actions);
                     if closed { close_clicked = true; }
                 });
@@ -237,6 +355,8 @@ impl<'a> SidePanelShell<'a> {
             pane_metrics: None,
             header_actions: None,
             footer: None,
+            rail_slot: None,
+            on_tab_secondary: None,
         }
     }
 }
@@ -256,9 +376,22 @@ pub struct SidePanelShellTabs<'a, T: PartialEq + Copy> {
     pane_metrics: Option<(f32, f32)>,
     header_actions: Option<Box<dyn FnOnce(&mut Ui, &Theme) + 'a>>,
     footer: Option<Box<dyn FnOnce(&mut Ui, &Theme) + 'a>>,
+    rail_slot: Option<RailSlot>,
+    on_tab_secondary: Option<Box<dyn FnMut(&mut Ui, T) + 'a>>,
 }
 
 impl<'a, T: PartialEq + Copy + 'a> SidePanelShellTabs<'a, T> {
+    /// See [`SidePanelShell::rail_slot`].
+    pub(crate) fn rail_slot(mut self, slot: Option<RailSlot>) -> Self {
+        self.rail_slot = slot; self
+    }
+
+    /// Per-tab right-click handler, forwarded to [`PanelHeaderTabs::on_tab_secondary`].
+    /// Used to offer "open this tab as a new instance" in the rail.
+    pub(crate) fn on_tab_secondary(mut self, f: impl FnMut(&mut Ui, T) + 'a) -> Self {
+        self.on_tab_secondary = Some(Box::new(f)); self
+    }
+
     pub fn width(mut self, w: Width) -> Self { self.width = w; self }
     pub fn resizable(mut self, bounds: RangeInclusive<f32>) -> Self {
         self.width_bounds = Some(bounds); self
@@ -293,12 +426,47 @@ impl<'a, T: PartialEq + Copy + 'a> SidePanelShellTabs<'a, T> {
         t: &Theme,
         body: impl FnOnce(&mut Ui, &Theme, T),
     ) -> SidePanelShellResponse {
+        // Rail-slot mode: render the REAL tab header (with tab switching intact)
+        // + size control + active body into the assigned slot.
+        if let Some(slot) = self.rail_slot {
+            let SidePanelShellTabs { id, current, tabs, pane_metrics, header_actions, footer, on_tab_secondary, .. } = self;
+            let mut ui = rail_slot_ui(ctx, id, slot, t);
+            let mut close_clicked = false;
+            let stripped: Vec<(T, &str)> = tabs.iter().map(|(v, l, _)| (*v, *l)).collect();
+            let mut header = PanelHeaderTabs::new(current, &stripped).id_salt(id);
+            if let Some((h, f)) = pane_metrics { header = header.height(h).font_size(f); }
+            if let Some(cb) = on_tab_secondary { header = header.on_tab_secondary(cb); }
+            let mut actions = header_actions;
+            let header_resp = crate::ui_kit::widgets::OutlinedBox::new()
+                .fill(t.header_surface()).borderless().square().padding(0.0)
+                .show(&mut ui, t, |ui| {
+                    let closed = header.show_with(ui, t, |ui| {
+                        render_rail_size_control(ui, t, slot.height);
+                        if let Some(a) = actions.take() { a(ui, t); }
+                    });
+                    if closed { close_clicked = true; }
+                });
+            paint_header_underline_and_shadow(&mut ui, t, header_resp.response.rect, id);
+            let active = *current;
+            render_body_and_footer(&mut ui, t, move |ui, t| body(ui, t, active), footer);
+            return SidePanelShellResponse { close_clicked };
+        }
         let panel = build_side_panel(self.id, self.side, self.width, self.width_bounds.as_ref());
-        let frame = PanelFrame::new(t.panel_surface(), t.toolbar_border).theme(t).build();
+        let mut frame = PanelFrame::new(t.panel_surface(), t.toolbar_border).theme(t).build();
+        // Shell region: float the rail as a rounded card when the active style
+        // is tiled (Aperture/Glass). Gap on all sides separates it from the
+        // workspace (left) and window edge (right).
+        let rgap = crate::chart_renderer::ui::style::region_gap();
+        if rgap > 0.0 {
+            let rr = crate::chart_renderer::ui::style::current().region_radius as u8;
+            frame = frame
+                .outer_margin(egui::Margin { left: rgap as i8, right: rgap as i8, top: 0, bottom: rgap as i8 })
+                .corner_radius(egui::CornerRadius::same(rr));
+        }
         let panel = panel.frame(frame);
 
         let SidePanelShellTabs {
-            id, current, tabs, pane_metrics, header_actions, footer, ..
+            id, current, tabs, pane_metrics, header_actions, footer, on_tab_secondary, ..
         } = self;
 
         let mut close_clicked = false;
@@ -310,13 +478,17 @@ impl<'a, T: PartialEq + Copy + 'a> SidePanelShellTabs<'a, T> {
             if let Some((h, f)) = pane_metrics {
                 header = header.height(h).font_size(f);
             }
+            if let Some(cb) = on_tab_secondary { header = header.on_tab_secondary(cb); }
 
             let mut actions = header_actions;
             // Same header_surface wrap as the static-title variant for
             // visual parity with the chart pane header.
-            let header_resp = egui::Frame::NONE
+            let header_resp = crate::ui_kit::widgets::OutlinedBox::new()
                 .fill(t.header_surface())
-                .show(ui, |ui| {
+                .borderless()
+                .square()
+                .padding(0.0)
+                .show(ui, t, |ui| {
                     let closed = header.show_with(ui, t, |ui| {
                         if let Some(a) = actions.take() { a(ui, t); }
                     });
@@ -434,7 +606,25 @@ fn render_body_and_footer<'a>(
         // Reserve the footer at the bottom of the available area first.
         egui::TopBottomPanel::bottom(ui.id().with("side_panel_shell_footer"))
             .frame(egui::Frame::NONE)
-            .show_inside(ui, |ui| { f(ui, t); });
+            .show_inside(ui, |ui| {
+                // Pinned footer as an elevated rounded *card* (Aperture/Glass P&L
+                // block) vs flat band — driven by the panel_footer_card token.
+                let cst = crate::chart_renderer::ui::style::current();
+                if cst.panel_footer_card {
+                    let card = egui::Frame::NONE
+                        .fill(t.toolbar_bg)
+                        .corner_radius(egui::CornerRadius::same(cst.panel_footer_radius as u8))
+                        .stroke(egui::Stroke::new(
+                            stroke_thin(),
+                            crate::chart_renderer::ui::style::tint(t, Tone::Border, 60),
+                        ))
+                        .inner_margin(egui::Margin::same(gap_sm() as i8))
+                        .outer_margin(egui::Margin::same(gap_sm() as i8));
+                    card.show(ui, |ui| { f(ui, t); });
+                } else {
+                    f(ui, t);
+                }
+            });
         body_frame.show(ui, |ui| { body(ui, t); });
     } else {
         body_frame.show(ui, |ui| { body(ui, t); });

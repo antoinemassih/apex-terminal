@@ -16,6 +16,12 @@
 #![allow(dead_code, unused_imports)]
 
 pub mod top_nav;
+pub mod chart_controls;
+pub mod dropdowns;
+pub mod window_controls;
+pub mod ticker_strip;
+pub mod toolnav;
+pub mod alert_feed;
 
 use egui::{Color32, Response, RichText, Stroke, Ui, Widget};
 use super::super::style::*;

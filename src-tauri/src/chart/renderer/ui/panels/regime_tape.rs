@@ -13,6 +13,7 @@
 //! `live_state::get_regime_transitions()`.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 
 use crate::apex_data::live_state;
 use crate::apex_data::types::{Regime, RegimeAxis};
@@ -135,7 +136,7 @@ pub(crate) fn draw(ctx: &egui::Context, t: &Theme) {
             .fill(t.toolbar_bg)
             .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
             .stroke(egui::Stroke::new(stroke_thin(),
-                color_alpha(t.toolbar_border, alpha_dim()))))
+                tint(t, Tone::Border, alpha_dim()))))
         .show(ctx, |ui| {
             draw_inner(ui, frame_data.as_ref(), &transitions, t);
         });
@@ -197,7 +198,7 @@ fn cell_divider(ui: &mut egui::Ui, t: &Theme) {
     ui.painter().line_segment(
         [egui::pos2(rect.center().x, rect.top()),
          egui::pos2(rect.center().x, rect.bottom())],
-        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())));
+        egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_muted())));
 }
 
 fn draw_cell(

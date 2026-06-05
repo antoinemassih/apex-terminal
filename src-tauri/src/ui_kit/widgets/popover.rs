@@ -14,6 +14,7 @@ use egui::{Color32, Id, Key, Rect, Stroke, Ui, Vec2};
 use super::motion;
 use super::placement::{compute as compute_placement, Placement, Side};
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 
 use crate::ui_kit::tokens::{
     alpha_line, color_alpha, gap_sm, radius_sm, stroke_thin,
@@ -94,8 +95,8 @@ impl<'a> Popover<'a> {
         // Animation: scale + alpha (mirrors Modal motion::MED).
         let appear_t = motion::ease_bool(&ctx, id.with("anim"), true, motion::FAST);
 
-        let bg = theme.surface();
-        let border = color_alpha(theme.border(), alpha_line());
+        let bg = palette_ct(theme).base(Tone::Surface);
+        let border = color_alpha(palette_ct(theme).base(Tone::Border), alpha_line());
 
         // Position based on prior frame's measured size.
         let size_id = id.with("size");

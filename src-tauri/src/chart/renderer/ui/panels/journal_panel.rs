@@ -11,6 +11,7 @@
 //!     4-column layout — `PanelKeyValueRow` only handles 2 columns.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme, JournalEntry};
 use super::super::components::text::MonospaceCode;
@@ -59,10 +60,18 @@ pub(crate) fn draw_content(
 }
 
 /// Standalone sidebar panel.
+/// Rail registration — see [`super::right_rail`].
+pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
+    id: "journal",
+    is_open: |w| w.journal_panel_open,
+    render: |cx, slot| draw(cx.ctx, cx.watchlist, cx.t, Some(slot)),
+};
+
 pub(crate) fn draw(
     ctx: &egui::Context,
     watchlist: &mut Watchlist,
     t: &Theme,
+    slot: Option<super::side_panel_shell::RailSlot>,
 ) {
     if !watchlist.journal_panel_open { return; }
 
@@ -72,6 +81,7 @@ pub(crate) fn draw(
             crate::chart_renderer::gpu::pane_tabs_header_h(watchlist),
             watchlist.pane_header_size.title_font(),
         )
+        .rail_slot(slot)
         .show(ctx, t, |ui, t| {
             if watchlist.journal_entries.is_empty() {
                 ui.add_space(gap_3xl());
@@ -241,7 +251,7 @@ fn draw_insight_row(ui: &mut egui::Ui, label: &str, total: u32, wr: f32, pnl: f6
         let bar_w = 40.0;
         let (br, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
         let p = ui.painter();
-        p.rect_filled(br, radius_xs(), color_alpha(t.toolbar_border, alpha_faint()));
+        p.rect_filled(br, radius_xs(), tint(t, Tone::Border, alpha_faint()));
         p.rect_filled(egui::Rect::from_min_size(br.min, egui::vec2(bar_w * wr / 100.0, 8.0)),
             radius_xs(), color_alpha(col, alpha_dim()));
         ui.label(egui::RichText::new(format!("{:.0}%", wr)).monospace().size(font_xs()).color(col));

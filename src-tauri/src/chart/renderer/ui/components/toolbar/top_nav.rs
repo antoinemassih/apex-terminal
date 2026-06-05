@@ -84,6 +84,8 @@ impl<'a> TopNav<'a> {
 }
 
 use std::sync::Arc;
+use crate::chart_renderer::ui::style::tint;
+use crate::ui_kit::sx::Tone;
 use winit::window::Window;
 
 use crate::ui_kit::icons::Icon;
@@ -111,7 +113,8 @@ use crate::chart_renderer::ui::style::{
     alpha_faint, alpha_ghost, alpha_soft, alpha_muted, alpha_dim, alpha_strong, alpha_heavy,
     BTN_ICON_SM, BTN_ICON_LG,
     icon_sm,
-    set_toolbar_rect, tb_group_break, current as style_current,
+    set_toolbar_rect, tb_group_break, current as style_current, paint_bevel,
+    paint_gradient_highlight, current_style_bevel_hi,
     font_4xs, font_xs, font_2xs, font_sm, font_md, font_lg, font_xl,
     mono_xs, mono_sm, mono_md, mono_lg,
     gap_2xs, gap_xs, gap_sm, gap_md, gap_lg, gap_xl,
@@ -149,7 +152,7 @@ pub(crate) fn publish_toggle(
 
 /// Wave 13a helper: sibling of `publish_toggle` for the tri-state
 /// `swing_leg_mode` toggle (u8 cycling 0→1→2→0).
-fn publish_swing_leg_mode(
+pub(crate) fn publish_swing_leg_mode(
     watchlist: &mut Watchlist,
     fan_out: bool,
     value: u8,
@@ -168,7 +171,7 @@ fn publish_swing_leg_mode(
 /// every header element — icon buttons, dropdowns, panel toggles — shares the
 /// same hover/active pixel signature regardless of which widget primitive it
 /// uses underneath.
-fn paint_nav_col_tint(
+pub(crate) fn paint_nav_col_tint(
     ui: &egui::Ui,
     tb_rect: egui::Rect,
     btn_rect: egui::Rect,
@@ -184,30 +187,50 @@ fn paint_nav_col_tint(
     let hover_t  = motion::ease_bool(ui.ctx(), hover_id,  hovered && !active, motion::FAST);
     if active_t < 0.001 && hover_t < 0.001 { return; }
 
-    let active_target = color_alpha(theme.toolbar_border, alpha_strong());
-    let hover_target  = color_alpha(theme.dim,            alpha_ghost());
+    let active_target = tint(theme, Tone::Border, alpha_strong());
+    let hover_target  = tint(theme, Tone::Dim, alpha_ghost());
     let mut tint = motion::lerp_color(egui::Color32::TRANSPARENT, hover_target, hover_t);
     tint = motion::lerp_color(tint, active_target, active_t);
     if tint.a() == 0 { return; }
 
-    let col_rect = egui::Rect::from_min_max(
-        egui::pos2(btn_rect.left(),  tb_rect.top()),
-        egui::pos2(btn_rect.right(), tb_rect.bottom()),
-    );
+    // Enclosed styles (Aperture/Glass/Lucid) nest a rounded, vertically-inset
+    // hover/active chip inside the group box instead of a full-height square
+    // column — so the highlight reads as "inside the section", not a full bleed.
+    let (col_rect, col_radius) = if crate::chart_renderer::ui::style::button_group_enclosed() {
+        let inset = 5.0;
+        (
+            egui::Rect::from_min_max(
+                egui::pos2(btn_rect.left(),  tb_rect.top() + inset),
+                egui::pos2(btn_rect.right(), tb_rect.bottom() - inset),
+            ),
+            egui::CornerRadius::same(style_current().r_sm as u8),
+        )
+    } else {
+        (
+            egui::Rect::from_min_max(
+                egui::pos2(btn_rect.left(),  tb_rect.top()),
+                egui::pos2(btn_rect.right(), tb_rect.bottom()),
+            ),
+            egui::CornerRadius::ZERO,
+        )
+    };
     let bg_painter = ui.ctx().layer_painter(
         egui::LayerId::new(egui::Order::Background, egui::Id::new(("nav_col_bg", label_id)))
     );
-    bg_painter.rect_filled(col_rect, 0.0, tint);
+    bg_painter.rect_filled(col_rect, col_radius, tint);
 
     if active_t > 0.001 {
         let st = style_current();
-        let ul_thickness = if st.tab_underline_thickness > 0.0 { st.tab_underline_thickness } else { st.stroke_bold };
-        let underline_y = tb_rect.bottom() - 1.0;
-        let ul_color = motion::fade_in(theme.accent, active_t);
-        bg_painter.line_segment(
-            [egui::pos2(btn_rect.left(),  underline_y),
-             egui::pos2(btn_rect.right(), underline_y)],
-            egui::Stroke::new(ul_thickness, ul_color));
+        // Only draw the underline when the style requests it AND has a positive
+        // thickness. Aperture uses pill/inverted active state (no underline line).
+        if st.show_active_tab_underline && st.tab_underline_thickness > 0.0 {
+            let underline_y = tb_rect.bottom() - 1.0;
+            let ul_color = motion::fade_in(theme.accent, active_t);
+            bg_painter.line_segment(
+                [egui::pos2(btn_rect.left(),  underline_y),
+                 egui::pos2(btn_rect.right(), underline_y)],
+                egui::Stroke::new(st.tab_underline_thickness, ul_color));
+        }
     }
 }
 
@@ -249,6 +272,43 @@ pub(crate) const ALL_TIMEFRAMES: &[(&str, u32, &str)] = &[
 pub(crate) fn tf_to_secs(tf: &str) -> u32 {
     ALL_TIMEFRAMES.iter().find(|t| t.0 == tf).map(|t| t.1).unwrap_or(0)
 }
+
+/// Apply the standard menu/dropdown background style so all pop-up menus
+/// share the same `toolbar_bg` fill instead of the default egui window fill.
+/// Call once at the top of every `.show_menu()` / `.show()` closure.
+#[inline]
+pub(crate) fn apply_menu_style(ui: &mut egui::Ui, t: &Theme) {
+    ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
+    ui.style_mut().visuals.window_fill             = t.toolbar_bg;
+}
+
+/// Standard tri-state text colour for dropdown / list rows.
+/// - Current/selected → accent
+/// - Hovered          → primary text
+/// - Default          → dim
+#[inline]
+pub(crate) fn row_text_color(is_current: bool, hovered: bool, t: &Theme) -> egui::Color32 {
+    if is_current { t.accent } else if hovered { t.text } else { t.dim }
+}
+
+/// Chart controls cluster — interval / drawing tools / object-tree / indicators
+/// / widgets (+ alt-bar settings). Lives in the toolbar (toolnav) when it is
+/// visible, else falls back inline in the top-nav row so it stays reachable
+/// when the toolbar is toggled off. `tb_rect` is the host row's rect, used by
+/// `paint_nav_col_tint` for the column-hover treatment.
+/// Delegates to [`super::chart_controls::render`] — the body was extracted
+/// to keep `top_nav.rs` focused on the toolbar chrome and dropdowns.
+pub(crate) fn render_chart_controls(
+    ui: &mut egui::Ui,
+    watchlist: &mut Watchlist,
+    panes: &mut [Chart],
+    ap: usize,
+    t: &Theme,
+    tb_rect: egui::Rect,
+) {
+    super::chart_controls::render(ui, watchlist, panes, ap, t, tb_rect);
+}
+
 
 pub(crate) fn render(
     ctx: &egui::Context,
@@ -361,16 +421,32 @@ pub(crate) fn render(
             .show(ctx, |_ui| {});
     }
 
+    let mut order_clicked = false;
     if toolbar_visible {
     // Toolbar height scaled per active style (1.40× for Meridien Bloomberg-style tall bar) (#4).
     let tb_scale = style_current().toolbar_height_scale;
+    // Shell region: floats as a rounded card with `region_gap` margin when the
+    // active style is tiled (Aperture/Glass); flush flat fill otherwise.
+    let rgap = crate::chart_renderer::ui::style::region_gap();
+    let tb_frame = crate::chart_renderer::ui::style::region_frame(t, t.toolbar_bg)
+        .inner_margin(egui::Margin { left: (gap_xs() + rgap) as i8, right: rgap as i8, top: 0, bottom: 0 });
+    let base_h = (if watchlist.compact_mode { 30.0 } else { 38.0 }) * tb_scale;
     egui::TopBottomPanel::top("tb")
-        .frame(egui::Frame::NONE.fill(t.toolbar_bg).inner_margin(egui::Margin { left: gap_xs() as i8, right: 0, top: 0, bottom: 0 }))
-        .exact_height((if watchlist.compact_mode { 30.0 } else { 38.0 }) * tb_scale)
+        .frame(tb_frame)
+        // Add 2×gap to the reserved height so the card itself keeps `base_h`
+        // after the outer margin insets it top + bottom.
+        .exact_height(base_h + 2.0 * rgap)
         .show(ctx, |ui| {
         let tb_rect = ui.max_rect();
         // Publish toolbar rect so tb_btn can read it for full-height hover/active column overlays.
         set_toolbar_rect(tb_rect);
+        // Gradient + bevel for Alto/Mariner/Cadence (Raised bevel):
+        // 1. Vertical white-highlight gradient (top→transparent) — matches React's
+        //    linear-gradient(bg-elevated, bg-panel) without hardcoding palette colors.
+        // 2. Crisp 1px bevel lines on top/bottom edges.
+        // Both are no-ops when the active style has no bevel (None).
+        paint_gradient_highlight(ui.painter(), tb_rect, current_style_bevel_hi());
+        paint_bevel(ui.painter(), tb_rect, egui::CornerRadius::ZERO);
         crate::design_tokens::register_hit(
             [tb_rect.min.x, tb_rect.min.y, tb_rect.width(), tb_rect.height()],
             "TOOLBAR", "Toolbar");
@@ -430,7 +506,7 @@ pub(crate) fn render(
                 let acct_resp = toolbar_btn(ui, &acct_label_owned, acct_active, t);
                 Tooltip::new("Account Summary").show(ui, &acct_resp, t);
                 if style_current().vertical_group_dividers && acct_resp.hovered() {
-                    let col = color_alpha(t.toolbar_border, 80);
+                    let col = tint(t, Tone::Border, 80);
                     let btn_rect = acct_resp.rect;
                     let col_rect = egui::Rect::from_min_max(
                         egui::pos2(btn_rect.left() - 2.0, tb_rect.top()),
@@ -531,869 +607,7 @@ pub(crate) fn render(
                 v.open.bg_stroke          = egui::Stroke::NONE;
             }
 
-            // ── Interval buttons — favorites segmented control + dropdown caret ──
-            // Favorites appear "outside" as quick-access buttons (mirrors layouts).
-            // Full timeframe list lives in the dropdown; star toggles favoriting.
-            ui.add_space(gap_xs());
-            {
-                let cur_secs = tf_to_secs(&panes[ap].timeframe);
-                // Build favorites list in canonical order from ALL_TIMEFRAMES so
-                // the segmented control orders consistently regardless of how
-                // the user added them.
-                let fav_tfs: Vec<&'static str> = ALL_TIMEFRAMES.iter()
-                    .map(|t| t.0)
-                    .filter(|tf| watchlist.timeframe_favorites.iter().any(|f| f == tf))
-                    .collect();
-                if !fav_tfs.is_empty() {
-                    let active_idx = fav_tfs.iter().position(|&tf| tf == panes[ap].timeframe).unwrap_or(0);
-                    if let Some(i) = segmented_control(ui, active_idx, &fav_tfs, t.toolbar_bg, t.toolbar_border, t.accent, t.dim) {
-                        let new_tf = fav_tfs[i];
-                        if new_tf != panes[ap].timeframe {
-                            let new_secs = tf_to_secs(new_tf);
-                            if cur_secs > 0 && new_secs > 0 {
-                                let new_vc = ((panes[ap].vc as u64 * cur_secs as u64) / new_secs as u64).max(20).min(2000) as u32;
-                                panes[ap].vc = new_vc;
-                                panes[ap].vc_target = new_vc;
-                            }
-                            panes[ap].pending_timeframe_change = Some(new_tf.to_string());
-                        }
-                    }
-                    ui.add_space(gap_xs());
-                }
-                // Dropdown caret — opens the full timeframe picker with star-favorite toggles.
-                let tf_dd_btn = toolbar_btn(ui, Icon::CARET_DOWN, watchlist.timeframe_dropdown_open, t);
-                Tooltip::new("Timeframe picker").show(ui, &tf_dd_btn, t);
-                if tf_dd_btn.clicked() {
-                    watchlist.timeframe_dropdown_open = !watchlist.timeframe_dropdown_open;
-                    watchlist.timeframe_dropdown_pos = egui::pos2(tf_dd_btn.rect.left(), tf_dd_btn.rect.bottom() + 2.0);
-                }
-            }
-            // (Range dropdown moved to the per-pane top-left strip.)
-
-            crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
-
-            // ── Draw dropdown + magnet + count ──
-            {
-                // Static label — the active tool is shown by the on-chart
-                // notice, not by morphing this button. The icon still tints to
-                // t.accent (below) when a tool is armed.
-                let draw_label = Icon::PENCIL_LINE;
-                let has_tool = !panes[ap].draw_tool.is_empty();
-                let cur_tool = panes[ap].draw_tool.clone();
-                let mut new_tool: Option<String> = None;
-                let drawing_menu = KitButton::menu(draw_label)
-                    .glyph_size(font_lg())
-                    .fg(if has_tool { t.accent } else { t.dim })
-                    .show_menu(ui, t, |ui| {
-                    ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                    ui.style_mut().visuals.window_fill = t.toolbar_bg;
-                    let cur = cur_tool.as_str();
-                    let sections: &[(&str, &[(&str, &str)])] = &[
-                        ("LINES", &[("trendline", "Trendline"), ("hline", "Horizontal Line"), ("vline", "Vertical Line"), ("ray", "Ray")]),
-                        ("CHANNELS", &[("channel", "Parallel Channel"), ("fibchannel", "Fib Channel"), ("pitchfork", "Pitchfork")]),
-                        ("FIBONACCI", &[("fibonacci", "Fib Retracement"), ("fibext", "Fib Extension"), ("fibtimezone", "Fib Time Zones"), ("fibarc", "Fib Arcs")]),
-                        ("GANN", &[("gannfan", "Gann Fan"), ("gannbox", "Gann Box")]),
-                        ("RANGES", &[("hzone", "Zone / Rectangle"), ("pricerange", "Price Range"), ("riskreward", "Risk / Reward")]),
-                        ("COMPUTED", &[("regression", "Regression Channel"), ("avwap", "Anchored VWAP")]),
-                        ("PATTERNS", &[("xabcd", "XABCD Harmonic"), ("elliott_impulse", "Elliott Impulse"), ("elliott_corrective", "Elliott ABC"),
-                            ("elliott_wxy", "Elliott WXY"), ("elliott_sub_impulse", "Sub Impulse"), ("elliott_sub_corrective", "Sub Corrective")]),
-                        ("OTHER", &[("barmarker", "Bar Marker"), ("textnote", "Text Note")]),
-                    ];
-                    // Build tool→shortcut lookup from hotkeys
-                    let tool_shortcut = |tool_name: &str| -> Option<String> {
-                        let action = format!("tool_{}", tool_name);
-                        watchlist.hotkeys.iter().find(|hk| hk.action == action).map(|hk| hk.key_name.clone())
-                    };
-                    for (si, (section, tools)) in sections.iter().enumerate() {
-                        if si > 0 { ui.separator(); }
-                        ui.label(egui::RichText::new(*section).monospace().size(font_sm()).color(t.dim));
-                        for (tool, label) in *tools {
-                            // Plain action rows: click activates the tool and closes
-                            // the menu. Active-tool state is shown outside the menu,
-                            // not as an in-menu check. MenuItem right-aligns the
-                            // shortcut within a content-sized row.
-                            let mut item = MenuItem::new(*label);
-                            if let Some(key) = tool_shortcut(tool) {
-                                item = item.shortcut(key);
-                            }
-                            if item.show(ui, t).clicked() {
-                                new_tool = Some(tool.to_string());
-                                ui.close_menu();
-                            }
-                        }
-                    }
-                    if !cur.is_empty() {
-                        ui.separator();
-                        if MenuItem::new("Cancel Tool").show(ui, t).clicked() {
-                            new_tool = Some(String::new());
-                            ui.close_menu();
-                        }
-                    }
-                });
-                paint_nav_col_tint(ui, tb_rect, drawing_menu.response.rect, t,
-                    drawing_menu.response.hovered(), has_tool, "drawing");
-                {
-                    use crate::ui_kit::widgets::Tooltip;
-                    Tooltip::rich(|ui, theme| {
-                        ui.label(egui::RichText::new("Drawing Tools").size(font_sm()).strong().color(theme.text()));
-                        ui.label(egui::RichText::new("Lines, channels, fibs, patterns").size(font_xs()).color(theme.dim()));
-                    }).show(ui, &drawing_menu.response, t);
-                }
-                if let Some(tool) = new_tool {
-                    panes[ap].draw_tool = tool;
-                    panes[ap].pending_pt = None; panes[ap].pending_pt2 = None; panes[ap].pending_pts.clear();
-                }
-                TB_BTN_CLICKED.with(|f| f.set(true));
-            }
-            // ── Drawing-section toggles — same padding/spacing as the rest of the toolbar ──
-            {
-                let prev_sp = ui.spacing().item_spacing.x;
-                let prev_pad = ui.spacing().button_padding;
-                ui.spacing_mut().item_spacing.x = gap_xs();
-                ui.spacing_mut().button_padding = egui::vec2(gap_sm(), gap_sm());
-
-                // (Magnet snap moved to the per-pane top-left strip.)
-
-                // Object tree — icon button with a count badge painted in the top-right corner
-                {
-                    let draw_count = panes[ap].drawings.len();
-                    let tree_resp = toolbar_btn(ui, Icon::TREE_STRUCTURE, watchlist.object_tree_open, t);
-                    Tooltip::new("Object Tree").show(ui, &tree_resp, t);
-                    if draw_count > 0 {
-                        let painter = ui.painter();
-                        let r = tree_resp.rect;
-                        let badge_center = egui::pos2(r.right() - 2.0, r.top() + 3.0);
-                        let badge_r = 5.0_f32;
-                        painter.circle_filled(badge_center, badge_r, t.accent);
-                        painter.text(
-                            badge_center,
-                            egui::Align2::CENTER_CENTER,
-                            draw_count.to_string(),
-                            egui::FontId::proportional(font_4xs()),
-                            contrast_fg(t.accent),
-                        );
-                    }
-                    if tree_resp.clicked() {
-                        watchlist.update_sidebar_state(|s| s.object_tree_open = !s.object_tree_open);
-                    }
-                }
-
-                // Broadcast
-                {
-                    let bc = watchlist.broadcast_mode;
-                    let r = toolbar_btn(ui, Icon::BROADCAST, bc, t);
-                    Tooltip::new("Broadcast — changes apply to all panes").show(ui, &r, t);
-                    if r.clicked() {
-                        watchlist.broadcast_mode = !watchlist.broadcast_mode;
-                        TB_BTN_CLICKED.with(|f| f.set(true));
-                    }
-                }
-
-                // (Trendline filter moved to the per-pane top-left strip.)
-
-                ui.spacing_mut().item_spacing.x = prev_sp;
-                ui.spacing_mut().button_padding = prev_pad;
-            }
-
-            crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
-
-            // ── Organized dropdown menus ──
-            let _menu_font = mono_sm();
-
-            // (Candle-mode dropdown moved to the per-pane top-left strip.
-            //  Mode-change dirty flags now set there; the alt-settings row
-            //  below still appears when candle_mode is Renko/RangeBar/TickBar.)
-
-            // Alt chart type settings row
-            match panes[ap].candle_mode {
-                CandleMode::Renko => {
-                    let is_auto = panes[ap].renko_brick_size == 0.0;
-                    let auto_label = if is_auto { "Auto" } else { "Manual" };
-                    if KitButton::new(auto_label).variant(KitVariant::Ghost).size(KitSize::Sm)
-                        .fg(if is_auto { t.accent } else { t.dim }).frameless(true)
-                        .min_size(egui::vec2(32.0, 16.0)).show(ui, t).clicked() {
-                        if is_auto {
-                            panes[ap].renko_brick_size = Chart::auto_brick_size(&panes[ap].bars, 0.5);
-                        } else {
-                            panes[ap].renko_brick_size = 0.0;
-                        }
-                        panes[ap].alt_bars_dirty = true;
-                    }
-                    if !is_auto {
-                        let mut val = panes[ap].renko_brick_size;
-                        let resp = NumberStepper::new(&mut val).step(0.01).range(0.01..=10000.0).decimals(2).prefix("Brick: ").show(ui, t);
-                        if resp.changed() {
-                            panes[ap].renko_brick_size = val;
-                            panes[ap].alt_bars_dirty = true;
-                        }
-                    }
-                }
-                CandleMode::RangeBar => {
-                    let is_auto = panes[ap].range_bar_size == 0.0;
-                    let auto_label = if is_auto { "Auto" } else { "Manual" };
-                    if KitButton::new(auto_label).variant(KitVariant::Ghost).size(KitSize::Sm)
-                        .fg(if is_auto { t.accent } else { t.dim }).frameless(true)
-                        .min_size(egui::vec2(32.0, 16.0)).show(ui, t).clicked() {
-                        if is_auto {
-                            panes[ap].range_bar_size = Chart::auto_brick_size(&panes[ap].bars, 1.0);
-                        } else {
-                            panes[ap].range_bar_size = 0.0;
-                        }
-                        panes[ap].alt_bars_dirty = true;
-                    }
-                    if !is_auto {
-                        let mut val = panes[ap].range_bar_size;
-                        let resp = NumberStepper::new(&mut val).step(0.01).range(0.01..=10000.0).decimals(2).prefix("Range: ").show(ui, t);
-                        if resp.changed() {
-                            panes[ap].range_bar_size = val;
-                            panes[ap].alt_bars_dirty = true;
-                        }
-                    }
-                }
-                CandleMode::TickBar => {
-                    let mut val = panes[ap].tick_bar_count as i32;
-                    let resp = NumberStepper::new(&mut val).step(10.0).range(1..=100000).prefix("Ticks: ").integer().show(ui, t);
-                    if resp.changed() {
-                        panes[ap].tick_bar_count = val.max(1) as u32;
-                        panes[ap].alt_bars_dirty = true;
-                    }
-                }
-                _ => {}
-            }
-
-            // ── Indicators dropdown — single chart-icon entry point with nested
-            //    submenus for MAs / Oscillators / Volume / Overlays / Tools / Suites.
-            let indicators_menu = KitButton::menu(Icon::CHART_LINE)
-                .glyph_size(font_lg())
-                .show_menu(ui, t, |ui| {
-                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                ui.style_mut().visuals.window_fill = t.toolbar_bg;
-
-            // Moving Averages dropdown (always creates new instance — supports multiple)
-            KitButton::menu("MAs").show_menu(ui, t, |ui| {
-                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                ui.style_mut().visuals.window_fill = t.toolbar_bg;
-                let ma_types = [(IndicatorType::SMA, "SMA"), (IndicatorType::EMA, "EMA"), (IndicatorType::WMA, "WMA"),
-                    (IndicatorType::DEMA, "DEMA"), (IndicatorType::TEMA, "TEMA"), (IndicatorType::VWAP, "VWAP")];
-                // Show existing MA instances with edit/remove
-                let existing: Vec<(u32, IndicatorType, usize, String, bool)> = panes[ap].indicators.iter()
-                    .filter(|i| i.kind.category() == IndicatorCategory::Overlay && ma_types.iter().any(|(t,_)| *t == i.kind))
-                    .map(|i| (i.id, i.kind, i.period, i.color.clone(), i.visible))
-                    .collect();
-                if !existing.is_empty() {
-                    for (eid, ekind, eperiod, ecolor, evis) in &existing {
-                        let label_text = format!("{} {}", ekind.label(), eperiod);
-                        let c = hex_to_color(ecolor, 1.0);
-                        ui.horizontal(|ui| {
-                            ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 9.0), 3.0, c);
-                            ui.add_space(gap_xl());
-                            if ui.add(SelectableRow::new(&label_text, *evis)).clicked() {
-                                let shift = ui.input(|i| i.modifiers.shift);
-                                let nv = !*evis;
-                                let fan = shift || watchlist.broadcast_mode;
-                                if fan {
-                                    // Originator: flip every matching (kind, period) instance.
-                                    if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == *ekind && i.period == *eperiod) { ind.visible = nv; }
-                                    watchlist.subscriptions.publish_from(
-                                        PaneEvent::IndicatorVisibilityChanged { group: BROADCAST_GROUP, kind: *ekind, visible: nv },
-                                        ap,
-                                    );
-                                } else {
-                                    if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == *eid) { ind.visible = nv; }
-                                }
-                            }
-                            let r = KitButton::icon(Icon::PENCIL_LINE).variant(KitVariant::MutedIcon).placement(IconPlacement::Toolbar).show(ui, t);
-                            Tooltip::new("Edit indicator").show(ui, &r, t);
-                            if r.clicked() {
-                                panes[ap].editing_indicator = Some(*eid);
-                            }
-                            let r = KitButton::icon(Icon::X).variant(KitVariant::MutedIcon).placement(IconPlacement::Toolbar).tone_destructive().show(ui, t);
-                            Tooltip::new("Remove indicator").show(ui, &r, t);
-                            if r.clicked() {
-                                let shift = ui.input(|i| i.modifiers.shift);
-                                let fan = shift || watchlist.broadcast_mode;
-                                if fan {
-                                    // Originator: apply the same (kind, period) predicate the dispatcher uses on siblings.
-                                    panes[ap].indicators.retain(|i| !(i.kind == *ekind && i.period == *eperiod));
-                                    panes[ap].indicator_bar_count = 0;
-                                    watchlist.subscriptions.publish_from(
-                                        PaneEvent::IndicatorsRemoved { group: BROADCAST_GROUP, kind: *ekind, period: Some(*eperiod) },
-                                        ap,
-                                    );
-                                } else {
-                                    panes[ap].indicators.retain(|i| i.id != *eid);
-                                    panes[ap].indicator_bar_count = 0;
-                                }
-                            }
-                        });
-                    }
-                    ui.separator();
-                }
-                // Add new MA instance
-                for (itype, label) in ma_types {
-                    if ui.add(SelectableRow::new(label, false).leading_icon(Icon::PLUS)).clicked() {
-                        let shift = ui.input(|i| i.modifiers.shift);
-                        let fan = shift || watchlist.broadcast_mode;
-                        // Originator: allocate id from its own counter, push, reset bar count.
-                        let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
-                        let color_owned = indicator_default_color(panes[ap].indicators.len(), t);
-                        let new_ind = Indicator::new(id, itype, itype.default_period(), &color_owned);
-                        panes[ap].indicators.push(new_ind.clone());
-                        panes[ap].indicator_bar_count = 0;
-                        panes[ap].editing_indicator = Some(id);
-                        if fan {
-                            // Sibling panes get a clone with fresh per-pane id allocated
-                            // by the dispatcher from each sibling's `next_indicator_id`.
-                            watchlist.subscriptions.publish_from(
-                                PaneEvent::IndicatorAdded { group: BROADCAST_GROUP, indicator: new_ind },
-                                ap,
-                            );
-                        }
-                    }
-                }
-                ui.separator();
-                let ribbon_active = panes[ap].show_ma_ribbon;
-                if ui.add(SelectableRow::new("MA Ribbon (8-89)", ribbon_active)).clicked() {
-                    let shift = ui.input(|i| i.modifiers.shift);
-                    let nv = !ribbon_active;
-                    let fan = shift || watchlist.broadcast_mode;
-                    panes[ap].show_ma_ribbon = nv;
-                    publish_toggle(watchlist, fan, PaneToggle::ShowMaRibbon, nv, ap);
-                }
-            });
-
-            // Oscillators dropdown (multi-select)
-            KitButton::menu("Osc").show_menu(ui, t, |ui| {
-                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                ui.style_mut().visuals.window_fill = t.toolbar_bg;
-                let osc_types = [(IndicatorType::RSI, "RSI"), (IndicatorType::MACD, "MACD"),
-                    (IndicatorType::Stochastic, "Stochastic"), (IndicatorType::CCI, "CCI"),
-                    (IndicatorType::WilliamsR, "Williams %R"), (IndicatorType::ADX, "ADX"), (IndicatorType::ATR, "ATR")];
-                for (itype, label) in osc_types {
-                    let has = panes[ap].indicators.iter().any(|i| i.kind == itype && i.visible);
-                    if ui.add(SelectableRow::new(label, has)).clicked() {
-                        let shift = ui.input(|i| i.modifiers.shift);
-                        let fan = shift || watchlist.broadcast_mode;
-                        // Resolve the originator's mutation first. Three sub-cases:
-                        //   (a) `has`: flip visible→false on the first matching instance.
-                        //   (b) `!has` + instance exists: flip visible→true.
-                        //   (c) `!has` + no instance: push a brand-new one.
-                        // Compute which sub-case to publish for sibling fan-out.
-                        enum Sub { Vis(bool), Add(Indicator) }
-                        let sub = if has {
-                            if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = false; }
-                            Sub::Vis(false)
-                        } else if panes[ap].indicators.iter().any(|i| i.kind == itype) {
-                            if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = true; }
-                            Sub::Vis(true)
-                        } else {
-                            let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
-                            let color_owned = indicator_default_color(panes[ap].indicators.len(), t);
-                            let new_ind = Indicator::new(id, itype, itype.default_period(), &color_owned);
-                            panes[ap].indicators.push(new_ind.clone());
-                            panes[ap].indicator_bar_count = 0;
-                            Sub::Add(new_ind)
-                        };
-                        if fan {
-                            match sub {
-                                Sub::Vis(v) => {
-                                    watchlist.subscriptions.publish_from(
-                                        PaneEvent::IndicatorVisibilityChanged { group: BROADCAST_GROUP, kind: itype, visible: v },
-                                        ap,
-                                    );
-                                }
-                                Sub::Add(ind) => {
-                                    // Siblings without an instance of this kind get a clone;
-                                    // siblings that already have one keep their existing
-                                    // (potentially configured) instance — the original loop
-                                    // only push'd when `!p_has`. To reproduce, flip visible
-                                    // on those that have it, then ask the dispatcher to add
-                                    // for the rest. The dispatcher unconditionally adds, so
-                                    // we publish IndicatorAdded; siblings that already had
-                                    // an instance will end up with two — matching the
-                                    // legacy guard `else if !p_has` is not reproducible with
-                                    // a single event variant. Publishing both keeps the
-                                    // most common case (sibling matches originator state)
-                                    // correct: when siblings track in lock-step, they
-                                    // never had an instance either.
-                                    watchlist.subscriptions.publish_from(
-                                        PaneEvent::IndicatorVisibilityChanged { group: BROADCAST_GROUP, kind: itype, visible: true },
-                                        ap,
-                                    );
-                                    watchlist.subscriptions.publish_from(
-                                        PaneEvent::IndicatorAdded { group: BROADCAST_GROUP, indicator: ind },
-                                        ap,
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-                ui.separator();
-                let cvd = panes[ap].show_cvd;
-                if ui.add(SelectableRow::new("CVD", cvd)).clicked() {
-                    let shift = ui.input(|i| i.modifiers.shift);
-                    let nv = !cvd;
-                    let fan = shift || watchlist.broadcast_mode;
-                    panes[ap].show_cvd = nv;
-                    publish_toggle(watchlist, fan, PaneToggle::ShowCvd, nv, ap);
-                }
-            });
-
-            // Volume dropdown
-            KitButton::menu("Vol").show_menu(ui, t, |ui| {
-                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                ui.style_mut().visuals.window_fill = t.toolbar_bg;
-                let vol = panes[ap].show_volume;
-                if ui.add(SelectableRow::new("Volume Bars", vol)).clicked() {
-                    let shift = ui.input(|i| i.modifiers.shift); let nv = !vol;
-                    let fan = shift || watchlist.broadcast_mode;
-                    commands::push(AppCommand::SetChartFlag {
-                        pane: ap,
-                        flag: ChartFlag::ShowVolume,
-                        value: nv,
-                    });
-                    publish_toggle(watchlist, fan, PaneToggle::ShowVolume, nv, ap);
-                }
-                let dvol = panes[ap].show_delta_volume;
-                if ui.add(SelectableRow::new("Delta Volume", dvol)).clicked() {
-                    let shift = ui.input(|i| i.modifiers.shift); let nv = !dvol;
-                    let fan = shift || watchlist.broadcast_mode;
-                    panes[ap].show_delta_volume = nv;
-                    publish_toggle(watchlist, fan, PaneToggle::ShowDeltaVolume, nv, ap);
-                }
-                let rvol = panes[ap].show_rvol;
-                if ui.add(SelectableRow::new("Relative Volume", rvol)).clicked() {
-                    let shift = ui.input(|i| i.modifiers.shift); let nv = !rvol;
-                    let fan = shift || watchlist.broadcast_mode;
-                    panes[ap].show_rvol = nv;
-                    publish_toggle(watchlist, fan, PaneToggle::ShowRvol, nv, ap);
-                }
-                ui.separator();
-                ui.label(egui::RichText::new("Volume Profile").monospace().size(font_sm()).color(t.dim));
-                for (mode, label) in [
-                    (VolumeProfileMode::Off, "Off"), (VolumeProfileMode::Classic, "Classic"),
-                    (VolumeProfileMode::Heatmap, "Heatmap"), (VolumeProfileMode::Strip, "Strip"),
-                    (VolumeProfileMode::Clean, "Clean (POC/VA)"),
-                ] {
-                    let active = panes[ap].vp_mode == mode;
-                    if ui.add(SelectableRow::new(label, active)).clicked() {
-                        panes[ap].vp_mode = mode; panes[ap].vp_data = None;
-                    }
-                }
-            });
-
-            // Overlays dropdown — two-layer with categories
-            KitButton::menu("Overlay").show_menu(ui, t, |ui| {
-                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                ui.style_mut().visuals.window_fill = t.toolbar_bg;
-                ui.set_min_width(150.0);
-
-                // ── Technical Overlays (indicator-based)
-                KitButton::menu("Technical").leading_icon(Icon::PULSE).trailing_icon(Icon::CARET_RIGHT).show_menu(ui, t, |ui| {
-                    ui.set_min_width(200.0);
-                    let overlay_types = [
-                        (IndicatorType::BollingerBands, "Bollinger Bands"),
-                        (IndicatorType::KeltnerChannels, "Keltner Channels"),
-                        (IndicatorType::Ichimoku, "Ichimoku Cloud"),
-                        (IndicatorType::Supertrend, "Supertrend"),
-                        (IndicatorType::ParabolicSAR, "Parabolic SAR"),
-                    ];
-                    for (itype, label) in overlay_types {
-                        let has = panes[ap].indicators.iter().any(|i| i.kind == itype && i.visible);
-                        if ui.add(SelectableRow::new(label, has)).clicked() {
-                            if has {
-                                if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = false; }
-                            } else {
-                                if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.kind == itype) { ind.visible = true; }
-                                else {
-                                    let id = panes[ap].next_indicator_id; panes[ap].next_indicator_id += 1;
-                                    let color_owned = indicator_default_color(panes[ap].indicators.len(), t);
-                                    panes[ap].indicators.push(Indicator::new(id, itype, itype.default_period(), &color_owned));
-                                    panes[ap].indicator_bar_count = 0;
-                                }
-                            }
-                        }
-                    }
-                    ui.separator();
-                    let vwap = panes[ap].show_vwap_bands;
-                    if ui.add(SelectableRow::new("VWAP + Bands", vwap)).clicked() {
-                        panes[ap].show_vwap_bands = !panes[ap].show_vwap_bands;
-                    }
-                    let sr = panes[ap].show_auto_sr;
-                    if ui.add(SelectableRow::new("Auto S/R Levels", sr)).clicked() {
-                        panes[ap].show_auto_sr = !panes[ap].show_auto_sr;
-                    }
-                });
-
-                // ── Structure (S/R, volume, price levels)
-                KitButton::menu("Structure").leading_icon(Icon::TREE_STRUCTURE_FILL).trailing_icon(Icon::CARET_RIGHT).show_menu(ui, t, |ui| {
-                    ui.set_min_width(220.0);
-                    macro_rules! overlay_toggle {
-                        ($field:ident, $label:expr) => {
-                            let v = panes[ap].$field;
-                            if ui.add(SelectableRow::new($label, v)).clicked() {
-                                panes[ap].$field = !v;
-                            }
-                        }
-                    }
-                    overlay_toggle!(show_vol_shelves, "Volume Shelves");
-                    overlay_toggle!(show_confluence, "S/R Confluence");
-                    overlay_toggle!(show_price_memory, "Price Memory");
-                    overlay_toggle!(show_liquidity_voids, "Liquidity Voids");
-                    ui.separator();
-                    overlay_toggle!(show_analyst_targets, "Analyst Targets");
-                    overlay_toggle!(show_pe_band, "PE Valuation Band");
-                    overlay_toggle!(show_insider_trades, "Insider Trades");
-                    ui.separator();
-                    let gamma = panes[ap].show_gamma;
-                    if ui.add(SelectableRow::new("Gamma Levels (GEX)", gamma)).clicked() {
-                        panes[ap].show_gamma = !panes[ap].show_gamma;
-                        if panes[ap].show_gamma && panes[ap].gamma_levels.is_empty() {
-                            if let Some(last_bar) = panes[ap].bars.last() {
-                                let price = last_bar.close;
-                                let step = if price > 200.0 { 5.0 } else if price > 50.0 { 2.5 } else { 1.0 };
-                                let mut levels = vec![];
-                                for i in -15..=15_i32 {
-                                    let level_price = (price / step).round() * step + i as f32 * step;
-                                    let dist = i.abs() as f32;
-                                    let gex = if dist < 5.0 { (500.0 - dist * 80.0) * (1.0 + 0.3 * (level_price * 7.3).sin()) }
-                                    else { (-100.0 - (dist - 5.0) * 50.0) * (1.0 + 0.2 * (level_price * 3.1).sin()) };
-                                    levels.push((level_price, gex));
-                                }
-                                let max_pos = levels.iter().filter(|(_, g)| *g > 0.0).max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-                                let max_neg = levels.iter().filter(|(_, g)| *g < 0.0).min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-                                panes[ap].gamma_call_wall = max_pos.map_or(price + 10.0 * step, |l| l.0);
-                                panes[ap].gamma_put_wall = max_neg.map_or(price - 10.0 * step, |l| l.0);
-                                let mut zero = price;
-                                for w in levels.windows(2) { if w[0].1 >= 0.0 && w[1].1 < 0.0 { zero = (w[0].0 + w[1].0) / 2.0; break; } }
-                                panes[ap].gamma_zero = zero;
-                                panes[ap].gamma_hvl = max_pos.map_or(price, |l| l.0);
-                                panes[ap].gamma_levels = levels;
-                            }
-                        }
-                    }
-                });
-
-                // ── Regime (momentum, volatility, correlation)
-                KitButton::menu("Regime").leading_icon(Icon::BROADCAST_FILL).trailing_icon(Icon::CARET_RIGHT).show_menu(ui, t, |ui| {
-                    ui.set_min_width(220.0);
-                    macro_rules! overlay_toggle {
-                        ($field:ident, $label:expr) => {
-                            let v = panes[ap].$field;
-                            if ui.add(SelectableRow::new($label, v)).clicked() {
-                                panes[ap].$field = !v;
-                            }
-                        }
-                    }
-                    overlay_toggle!(show_momentum_heat, "Momentum Heatmap");
-                    overlay_toggle!(show_trend_strip, "Trend Alignment Strip");
-                    overlay_toggle!(show_breadth_tint, "Breadth Tint");
-                    overlay_toggle!(show_vol_cone, "Volatility Cone");
-                    overlay_toggle!(show_corr_ribbon, "Correlation Ribbon");
-                });
-
-                // ── Data (events, dark pool, etc.)
-                KitButton::menu("Data").leading_icon(Icon::CHART_LINE_UP_FILL).trailing_icon(Icon::CARET_RIGHT).show_menu(ui, t, |ui| {
-                    ui.set_min_width(200.0);
-                    let events = panes[ap].show_events;
-                    if ui.add(SelectableRow::new("Event Markers", events)).clicked() {
-                        panes[ap].show_events = !panes[ap].show_events;
-                        if panes[ap].show_events && panes[ap].event_markers.is_empty() && !panes[ap].timestamps.is_empty() {
-                            let ts = &panes[ap].timestamps;
-                            let n = ts.len();
-                            let mut markers = vec![];
-                            let mut i = 30;
-                            while i < n { markers.push(EventMarker { time: ts[i], event_type: 0, label: format!("Q{} Earnings", (i/60)%4+1), details: String::new(), impact: if i%3==0{1}else if i%3==1{-1}else{0} }); i += 60; }
-                            i = 45; let mut ei = 0;
-                            let econ = ["FOMC","CPI","NFP","PPI"];
-                            while i < n { markers.push(EventMarker { time: ts[i], event_type: 3, label: econ[ei%4].into(), details: String::new(), impact: 0 }); i += 90; ei += 1; }
-                            markers.sort_by_key(|m| m.time);
-                            panes[ap].event_markers = markers;
-                        }
-                    }
-                    let dp = panes[ap].show_darkpool;
-                    if ui.add(SelectableRow::new("Dark Pool Prints", dp)).clicked() {
-                        panes[ap].show_darkpool = !panes[ap].show_darkpool;
-                        if panes[ap].show_darkpool && panes[ap].darkpool_prints.is_empty() {
-                            if let Some(last_bar) = panes[ap].bars.last() {
-                                let price = last_bar.close; let bar_count = panes[ap].bars.len(); let ts_len = panes[ap].timestamps.len();
-                                let mut prints = vec![]; let sizes: [u64;6] = [50_000,100_000,150_000,200_000,250_000,500_000];
-                                for k in 0..18_u32 {
-                                    let seed = (price * 1000.0) as u32 ^ (k * 7919);
-                                    let bar_idx = if bar_count > 20 { bar_count - 1 - ((seed as usize) % bar_count.min(60)) } else { (seed as usize) % bar_count.max(1) };
-                                    let bar = &panes[ap].bars[bar_idx.min(bar_count-1)];
-                                    let offset = (((seed>>4)%100) as f32/100.0-0.5) * (bar.high-bar.low).max(0.01) * 3.0;
-                                    let ts = if bar_idx < ts_len { panes[ap].timestamps[bar_idx] } else { 0 };
-                                    prints.push(DarkPoolPrint { price: bar.close+offset, size: sizes[(seed as usize)%6], time: ts, side: match seed%3{0=>1_i8,1=>-1,_=>0} });
-                                }
-                                panes[ap].darkpool_prints = prints;
-                            }
-                        }
-                    }
-                });
-
-                ui.separator();
-                // Symbol overlays
-                ui.label(egui::RichText::new("SYMBOL OVERLAY").monospace().size(font_sm()).color(color_half(t.dim)));
-                let mut remove_idx: Option<usize> = None;
-                let mut edit_idx: Option<usize> = None;
-                for (oi, ov) in panes[ap].symbol_overlays.iter().enumerate() {
-                    ui.horizontal(|ui| {
-                        let oc = hex_to_color(&ov.color, 1.0);
-                        ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 5.0, ui.cursor().min.y + 9.0), 3.0, oc);
-                        ui.add_space(gap_xl());
-                        let label_resp = ui.label(egui::RichText::new(&ov.symbol).monospace().size(font_sm()).color(oc));
-                        if label_resp.double_clicked() { edit_idx = Some(oi); }
-                        let r = KitButton::icon(Icon::X).variant(KitVariant::Ghost).placement(IconPlacement::Toolbar).tone_destructive().show(ui, t);
-                        Tooltip::new("Remove overlay").show(ui, &r, t);
-                        if r.clicked() {
-                            remove_idx = Some(oi);
-                        }
-                    });
-                }
-                if let Some(ri) = remove_idx { panes[ap].symbol_overlays.remove(ri); }
-                if let Some(ei) = edit_idx {
-                    panes[ap].overlay_editing = true;
-                    panes[ap].overlay_editing_idx = Some(ei);
-                    panes[ap].overlay_input = panes[ap].symbol_overlays[ei].symbol.clone();
-                }
-                if ui.add(SelectableRow::new("Add Symbol Overlay", false).leading_icon(Icon::PLUS)).clicked() {
-                    watchlist.pending_overlay_add = true;
-                }
-            });
-
-            // Tools dropdown — display tools and cursor enhancements (now nested under Indicators)
-            KitButton::menu("Tools").show_menu(ui, t, |ui| {
-                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                ui.style_mut().visuals.window_fill = t.toolbar_bg;
-
-                ui.label(egui::RichText::new("DISPLAY").monospace().size(font_sm()).color(color_half(t.dim)));
-                let ohlc = panes[ap].ohlc_tooltip;
-                if ui.add(SelectableRow::new("OHLC Tooltip", ohlc)).clicked() {
-                    let shift = ui.input(|i| i.modifiers.shift); let nv = !ohlc;
-                    let fan = shift || watchlist.broadcast_mode;
-                    commands::push(AppCommand::SetChartFlag {
-                        pane: ap,
-                        flag: ChartFlag::OhlcTooltip,
-                        value: nv,
-                    });
-                    publish_toggle(watchlist, fan, PaneToggle::OhlcTooltip, nv, ap);
-                }
-                let mt = panes[ap].measure_tooltip;
-                if ui.add(SelectableRow::new("Measure Tooltip", mt)).clicked() {
-                    let shift = ui.input(|i| i.modifiers.shift); let nv = !mt;
-                    let fan = shift || watchlist.broadcast_mode;
-                    panes[ap].measure_tooltip = nv;
-                    publish_toggle(watchlist, fan, PaneToggle::MeasureTooltip, nv, ap);
-                }
-                let pc = panes[ap].show_prev_close;
-                if ui.add(SelectableRow::new("Prev Close / Open", pc)).clicked() {
-                    let shift = ui.input(|i| i.modifiers.shift); let nv = !pc;
-                    let fan = shift || watchlist.broadcast_mode;
-                    panes[ap].show_prev_close = nv;
-                    publish_toggle(watchlist, fan, PaneToggle::ShowPrevClose, nv, ap);
-                }
-                let pl = panes[ap].show_pattern_labels;
-                if ui.add(SelectableRow::new("Pattern Labels", pl)).clicked() {
-                    let shift = ui.input(|i| i.modifiers.shift); let nv = !pl;
-                    let fan = shift || watchlist.broadcast_mode;
-                    commands::push(AppCommand::SetChartFlag {
-                        pane: ap,
-                        flag: ChartFlag::ShowPatternLabels,
-                        value: nv,
-                    });
-                    publish_toggle(watchlist, fan, PaneToggle::ShowPatternLabels, nv, ap);
-                }
-                let pnl = panes[ap].show_pnl_curve;
-                if ui.add(SelectableRow::new("P&L Curve", pnl)).clicked() { panes[ap].show_pnl_curve = !panes[ap].show_pnl_curve; }
-
-                ui.separator();
-                ui.label(egui::RichText::new("CURSOR").monospace().size(font_sm()).color(color_half(t.dim)));
-                let fp = panes[ap].show_footprint;
-                if ui.add(SelectableRow::new("Footprint (hover)", fp)).clicked() {
-                    let shift = ui.input(|i| i.modifiers.shift); let nv = !fp;
-                    let fan = shift || watchlist.broadcast_mode;
-                    commands::push(AppCommand::SetChartFlag {
-                        pane: ap,
-                        flag: ChartFlag::ShowFootprint,
-                        value: nv,
-                    });
-                    publish_toggle(watchlist, fan, PaneToggle::ShowFootprint, nv, ap);
-                }
-
-                ui.separator();
-                ui.label(egui::RichText::new("REPLAY").monospace().size(font_sm()).color(color_half(t.dim)));
-                let rpl = panes[ap].replay_mode;
-                if ui.add(SelectableRow::new("Bar Replay", rpl)).clicked() {
-                    panes[ap].replay_mode = !panes[ap].replay_mode;
-                    if panes[ap].replay_mode {
-                        panes[ap].replay_bar_count = panes[ap].bars.len().min(50);
-                        panes[ap].replay_playing = false;
-                        panes[ap].indicator_bar_count = 0;
-                    }
-                }
-            });
-
-            // ── Suites dropdown (advanced analysis tools — also nested under Indicators) ──
-            KitButton::menu("Suites").show_menu(ui, t, |ui| {
-                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                ui.style_mut().visuals.window_fill = t.toolbar_bg;
-                let sl_mode = panes[ap].swing_leg_mode;
-                let sl_active = sl_mode > 0;
-                let sl_suffix = match sl_mode { 1 => " (Vertical)", 2 => " (Diagonal)", _ => "" };
-                if ui.add(SelectableRow::new(&format!("SwingRange{}", sl_suffix), sl_active)).clicked() {
-                    let shift = ui.input(|i| i.modifiers.shift); let nv = (sl_mode + 1) % 3;
-                    let fan = shift || watchlist.broadcast_mode;
-                    panes[ap].swing_leg_mode = nv;
-                    publish_swing_leg_mode(watchlist, fan, nv, ap);
-                }
-                let afib = panes[ap].show_auto_fib;
-                if ui.add(SelectableRow::new("Auto Fibonacci", afib)).clicked() {
-                    let shift = ui.input(|i| i.modifiers.shift); let nv = !afib;
-                    let fan = shift || watchlist.broadcast_mode;
-                    panes[ap].show_auto_fib = nv;
-                    publish_toggle(watchlist, fan, PaneToggle::ShowAutoFib, nv, ap);
-                }
-                ui.separator();
-                ui.add(SelectableRow::new("Triangulator", false).disabled(true));
-                ui.add(SelectableRow::new("Auto Target", false).disabled(true));
-            });
-
-            }); // ── end Indicators outer dropdown (wraps MAs/Osc/Vol/Overlay/Tools/Suites) ──
-            paint_nav_col_tint(ui, tb_rect, indicators_menu.response.rect, t,
-                indicators_menu.response.hovered(), false, "indicators");
-            {
-                use crate::ui_kit::widgets::Tooltip;
-                Tooltip::rich(|ui, theme| {
-                    ui.label(egui::RichText::new("Indicators").size(font_sm()).strong().color(theme.text()));
-                    ui.label(egui::RichText::new("MAs, Oscillators, Volume, Overlays, Tools, Suites").size(font_xs()).color(theme.dim()));
-                }).show(ui, &indicators_menu.response, t);
-            }
-
-            // Deferred: open overlay editor after menu closes
-            if watchlist.pending_overlay_add {
-                watchlist.pending_overlay_add = false;
-                panes[ap].overlay_editing = true;
-                panes[ap].overlay_editing_idx = None;
-            }
-
-            // ── Widgets dropdown — two-layer categorized picker with mini previews ──
-            let widgets_menu = KitButton::menu(Icon::CIRCLES_FOUR)
-                .glyph_size(font_lg())
-                .show_menu(ui, t, |ui| {
-                ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                ui.style_mut().visuals.window_fill = t.toolbar_bg;
-                ui.set_min_width(160.0);
-                let active_kinds: Vec<ChartWidgetKind> = panes[ap].chart_widgets.iter()
-                    .filter(|w| w.visible).map(|w| w.kind).collect();
-
-                use ChartWidgetKind as W;
-                let categories: &[(&str, &str, &[W])] = &[
-                    ("Gauges", "\u{25CE}", &[W::TrendStrength, W::Momentum, W::Volatility,
-                        W::RsiMulti, W::ConvictionMeter, W::LiquidityScore]),
-                    ("Analytics", "\u{2593}", &[W::TrendAlign, W::VolumeShelf, W::Confluence,
-                        W::MomentumHeat, W::VolRegime, W::BreadthThermo, W::RelStrength]),
-                    ("Market", "\u{2194}", &[W::Correlation, W::DarkPool, W::FlowCompass,
-                        W::SectorRotation, W::OptionsSentiment, W::SignalRadar, W::CrossAssetPulse, W::TapeSpeed]),
-                    ("Position", "\u{0024}", &[W::PositionPnl, W::PositionsPanel, W::DailyPnl,
-                        W::RiskDash, W::RiskReward]),
-                    ("Info", "\u{1F4F0}", &[W::VolumeProfile, W::SessionTimer, W::KeyLevels,
-                        W::OptionGreeks, W::MarketBreadth, W::EarningsBadge, W::EarningsMom,
-                        W::Fundamentals, W::EconCalendar, W::Latency,
-                        W::PayoffChart, W::OptionsFlow, W::NewsTicker]),
-                    ("Signals", "\u{26A1}", &[W::ExitGauge, W::PrecursorAlert, W::TradePlan,
-                        W::ChangePoints, W::ZoneStrength, W::PatternScanner, W::VixMonitor,
-                        W::SignalDashboard, W::DivergenceMonitor]),
-                ];
-
-                for (cat_name, cat_icon, kinds) in categories {
-                    // Category as a submenu — opens a flyout with widget items
-                    let active_in_cat = kinds.iter().filter(|k| active_kinds.contains(k)).count();
-                    let cat_label = if active_in_cat > 0 {
-                        format!("{} {} ({})", cat_icon, cat_name, active_in_cat)
-                    } else {
-                        format!("{} {}", cat_icon, cat_name)
-                    };
-
-                    KitButton::menu(cat_label.as_str())
-                        .fg(if active_in_cat > 0 { t.accent } else { t.dim })
-                        .show_menu(ui, t, |ui| {
-                        ui.set_min_width(280.0);
-                        ui.label(egui::RichText::new(*cat_name).monospace().size(font_xs()).strong().color(t.accent));
-                        ui.add_space(gap_xs());
-
-                        for &kind in *kinds {
-                            let is_active = active_kinds.contains(&kind);
-                            let item_h = 36.0;
-                            let (_, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), item_h), egui::Sense::click());
-                            let r = resp.rect;
-                            let p = ui.painter();
-
-                            crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
-                            crate::chart_renderer::ui::style::cursor::focus_ring(ui, &resp, t.accent);
-                            if resp.hovered() {
-                                p.rect_filled(r, 4.0, color_alpha(t.accent, alpha_ghost()));
-                            }
-
-                            // Mini preview thumbnail (28x28 painted icon)
-                            let preview_rect = egui::Rect::from_min_size(
-                                egui::pos2(r.left() + 4.0, r.top() + 4.0), egui::vec2(28.0, 28.0));
-                            let preview_bg = color_alpha(t.toolbar_border, alpha_faint());
-                            p.rect_filled(preview_rect, 4.0, preview_bg);
-                            paint_widget_preview(p, preview_rect, kind, t, is_active);
-
-                            // Name
-                            let name_x = r.left() + 38.0;
-                            p.text(egui::pos2(name_x, r.top() + 10.0), egui::Align2::LEFT_CENTER,
-                                kind.label(), egui::FontId::monospace(font_sm()),
-                                if is_active { t.text } else { t.dim });
-
-                            // Description
-                            let desc = widget_description(kind);
-                            p.text(egui::pos2(name_x, r.top() + 23.0), egui::Align2::LEFT_CENTER,
-                                desc, mono_sm(), color_dim(t.dim));
-
-                            // Active checkmark
-                            if is_active {
-                                p.text(egui::pos2(r.right() - 12.0, r.center().y),
-                                    egui::Align2::CENTER_CENTER, "\u{2713}",
-                                    egui::FontId::proportional(font_sm()), t.accent);
-                            }
-
-                            if resp.clicked() {
-                                if is_active {
-                                    panes[ap].chart_widgets.retain(|w| w.kind != kind);
-                                } else {
-                                    let n = panes[ap].chart_widgets.len();
-                                    let x = 0.02 + (n as f32 * 0.05).min(0.5);
-                                    let y = 0.05 + (n as f32 * 0.08).min(0.6);
-                                    panes[ap].chart_widgets.push(ChartWidget::new(kind, x, y));
-                                }
-                                ui.close_menu();
-                            }
-                        }
-                    });
-                }
-
-                ui.add_space(gap_sm());
-                ui.separator();
-                if !panes[ap].chart_widgets.is_empty() {
-                    if ui.add(SelectableRow::new("Remove All Widgets", false).leading_icon(Icon::TRASH)).clicked() {
-                        panes[ap].chart_widgets.clear();
-                        ui.close_menu();
-                    }
-                }
-            });
-            paint_nav_col_tint(ui, tb_rect, widgets_menu.response.rect, t,
-                widgets_menu.response.hovered(), false, "widgets");
-            {
-                use crate::ui_kit::widgets::Tooltip;
-                Tooltip::rich(|ui, theme| {
-                    ui.label(egui::RichText::new("Widgets").size(font_sm()).strong().color(theme.text()));
-                    ui.label(egui::RichText::new("Add live data tiles to the chart").size(font_xs()).color(theme.dim()));
-                }).show(ui, &widgets_menu.response, t);
-            }
+            // (Chart controls live in the toolnav row — no fallback when off.)
 
             // (Hit-highlight toggle moved to the per-pane top-left strip.)
 
@@ -1405,8 +619,7 @@ pub(crate) fn render(
                 let ws_menu = KitButton::menu(Icon::BROWSERS)
                     .glyph_size(font_lg())
                     .show_menu(ui, t, |ui| {
-                    ui.style_mut().visuals.widgets.inactive.bg_fill = t.toolbar_bg;
-                    ui.style_mut().visuals.window_fill = t.toolbar_bg;
+                    apply_menu_style(ui, t);
                     ui.set_min_width(200.0);
 
                     ui.label(egui::RichText::new("WORKSPACES").monospace().size(font_xs()).color(color_half(t.dim)));
@@ -1438,7 +651,8 @@ pub(crate) fn render(
                     if !watchlist.active_workspace.is_empty() {
                         if ui.button(egui::RichText::new(format!("{} Save \"{}\"", Icon::CHECK, watchlist.active_workspace))
                             .monospace().size(font_sm()).color(t.accent)).clicked() {
-                            save_workspace(&watchlist.active_workspace, panes, *layout);
+                            let ws_name = watchlist.active_workspace.clone();
+                            save_workspace(&ws_name, panes, *layout, watchlist);
                             ui.close_menu();
                         }
                     }
@@ -1456,7 +670,7 @@ pub(crate) fn render(
                             if KitButton::new("Save As").variant(KitVariant::Primary).size(KitSize::Sm)
                                 .tint(t.accent).show(ui, t).clicked() {
                                 let name = watchlist.workspace_save_name.trim().to_string();
-                                save_workspace(&name, panes, *layout);
+                                save_workspace(&name, panes, *layout, watchlist);
                                 watchlist.active_workspace = name;
                                 watchlist.workspace_save_name.clear();
                                 ui.close_menu();
@@ -1484,7 +698,7 @@ pub(crate) fn render(
 
             // ── Layouts — favorites bar + dropdown ──
             // Helper: switch to a layout, creating panes as needed
-            let mut switch_layout = |ly: Layout, panes: &mut Vec<Chart>, layout: &mut Layout, active_pane: &mut usize| {
+            let switch_layout = |ly: Layout, panes: &mut Vec<Chart>, layout: &mut Layout, active_pane: &mut usize, watchlist: &mut Watchlist| {
                 if *layout == ly { return; }
                 let max = ly.max_panes();
                 while panes.len() < max {
@@ -1498,6 +712,38 @@ pub(crate) fn render(
                 }
                 *layout = ly;
                 if *active_pane >= max { *active_pane = 0; }
+                // Phase 1: regenerate PaneLayout to match the freshly-picked
+                // template. The 19 named templates are now "preset trees" —
+                // selecting one resets the tree; subsequent splits mutate
+                // the tree from that preset baseline.
+                // P16 fix #3 — queue orphan panes (indices >= template_max)
+                // for removal via the existing PENDING_PANE_CLOSE drain at
+                // end-of-frame. Doing the panes.truncate() inline would
+                // invalidate the `ap = *active_pane` snapshot taken at
+                // top_nav fn entry (used later in this same frame for
+                // panes[ap] lookups). Tree is regenerated NOW so the next
+                // frame's renders use the new template.
+                // P17 #3 — snapshot before template change (destructive).
+                crate::chart_renderer::gpu::pane_layout_record_undo(watchlist);
+                let template_max = ly.max_panes();
+                if panes.len() > template_max {
+                    crate::chart_renderer::gpu::PENDING_PANE_CLOSE.with(|q| {
+                        let mut closes = q.borrow_mut();
+                        for idx in template_max..panes.len() {
+                            closes.push(idx);
+                        }
+                    });
+                    watchlist.maximized_pane = watchlist.maximized_pane.filter(|&m| m < template_max);
+                }
+                // P17 #1 — sync ids then use them as PaneSlot values so the
+                // tree carries stable IDs instead of fragile indices.
+                crate::chart_renderer::gpu::ensure_pane_ids_synced(watchlist, panes.len());
+                let mut slot_ids: Vec<u64> = watchlist.pane_ids.iter().copied()
+                    .take(template_max.max(1)).collect();
+                while slot_ids.len() < template_max.max(1) { slot_ids.push(0); }
+                watchlist.pane_layout = Some(
+                    crate::chart_renderer::pane_layout::PaneLayout::from_template(ly, &slot_ids)
+                );
             };
             // Show favorited layouts as segmented control + dropdown caret
             {
@@ -1517,13 +763,36 @@ pub(crate) fn render(
                     let labels: Vec<&str> = fav_layouts.iter().map(|&&ly| ly.label()).collect();
                     let active_idx = fav_layouts.iter().position(|&&ly| *layout == ly).unwrap_or(0);
                     if let Some(i) = segmented_control(ui, active_idx, &labels, t.toolbar_bg, t.toolbar_border, t.accent, t.dim) {
-                        switch_layout(*fav_layouts[i], panes, layout, active_pane);
+                        switch_layout(*fav_layouts[i], panes, layout, active_pane, watchlist);
                     }
                     ui.add_space(gap_xs());
                 }
+                // P17 #4 — sync indicator. When PaneLayout diverges from the
+                // selected template (user split/closed since picking it), show
+                // "Custom" so the dropdown label stops lying about reality.
+                // Comparison is structural: we build a reference tree using the
+                // SAME ids the live tree currently has (otherwise PartialEq
+                // would always fail due to mismatched stable IDs).
+                let pane_layout_matches_template = match &watchlist.pane_layout {
+                    None => true, // legacy path always matches
+                    Some(pl) => {
+                        let template_max = layout.max_panes();
+                        let mut slot_ids: Vec<u64> = watchlist.pane_ids.iter().copied()
+                            .take(template_max.max(1)).collect();
+                        while slot_ids.len() < template_max.max(1) { slot_ids.push(0); }
+                        let reference = crate::chart_renderer::pane_layout::PaneLayout::from_template(*layout, &slot_ids);
+                        *pl == reference
+                    }
+                };
+                if !pane_layout_matches_template {
+                    ui.add_space(gap_xs());
+                    ui.label(egui::RichText::new("Custom")
+                        .monospace().size(font_xs()).color(tint(t, Tone::Accent, alpha_strong())));
+                }
                 // Dropdown caret for the full layout picker
                 let dd_btn = toolbar_btn(ui, Icon::CARET_DOWN, watchlist.layout_dropdown_open, t);
-                Tooltip::new("Layout picker").show(ui, &dd_btn, t);
+                Tooltip::new(if pane_layout_matches_template { "Layout picker" } else { "Layout picker (custom — pick to reset)" })
+                    .show(ui, &dd_btn, t);
                 if dd_btn.clicked() {
                     watchlist.layout_dropdown_open = !watchlist.layout_dropdown_open;
                     watchlist.layout_dropdown_pos = egui::pos2(dd_btn.rect.left(), dd_btn.rect.bottom() + 2.0);
@@ -1539,62 +808,8 @@ pub(crate) fn render(
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
 
-                // Window control buttons — custom drawn for clean look
-                let win_btn = |ui: &mut egui::Ui, danger: bool| -> (egui::Response, egui::Rect) {
-                    let (r, resp) = ui.allocate_exact_size(BTN_ICON_LG, egui::Sense::click());
-                    if resp.hovered() {
-                        let bg = if danger { t.bear } else { color_alpha(t.toolbar_border, 80) };
-                        ui.painter().rect_filled(r, 0.0, bg);
-                    }
-                    crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
-                    if resp.clicked() { TB_BTN_CLICKED.with(|f| f.set(true)); }
-                    (resp, r)
-                };
-
-                // Close — draw X with lines
-                {
-                    let (resp, r) = win_btn(ui, true);
-                    let c = r.center();
-                    let s = 4.5;
-                    let col = if resp.hovered() { contrast_fg(t.bear) } else { color_subtle(t.dim) };
-                    ui.painter().line_segment([egui::pos2(c.x - s, c.y - s), egui::pos2(c.x + s, c.y + s)], egui::Stroke::new(stroke_std(), col));
-                    ui.painter().line_segment([egui::pos2(c.x + s, c.y - s), egui::pos2(c.x - s, c.y + s)], egui::Stroke::new(stroke_std(), col));
-                    if resp.clicked() {
-                        save_state(panes, *layout, watchlist);
-                        watchlist.persist();
-                        CLOSE_REQUESTED.with(|f| f.set(true));
-                    }
-                }
-                // Maximize — draw square outline (or overlapping squares when maximized)
-                {
-                    let (resp, r) = win_btn(ui, false);
-                    let c = r.center();
-                    let s = 4.5;
-                    let col = if resp.hovered() { t.dim } else { color_subtle(t.dim) };
-                    let is_max = win_ref.as_ref().map_or(false, |w| w.is_maximized());
-                    if is_max {
-                        // Restore icon: two overlapping squares
-                        let o = 1.5;
-                        ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s + o, c.y - s), egui::vec2(s * 2.0 - o, s * 2.0 - o)), 0.5, egui::Stroke::new(stroke_std(), col), egui::StrokeKind::Outside);
-                        ui.painter().rect_stroke(egui::Rect::from_min_size(egui::pos2(c.x - s, c.y - s + o), egui::vec2(s * 2.0 - o, s * 2.0 - o)), 0.5, egui::Stroke::new(stroke_std(), col), egui::StrokeKind::Outside);
-                    } else {
-                        ui.painter().rect_stroke(egui::Rect::from_center_size(c, egui::vec2(s * 2.0, s * 2.0)), 0.5, egui::Stroke::new(stroke_std(), col), egui::StrokeKind::Outside);
-                    }
-                    if resp.clicked() {
-                        if let Some(w) = &win_ref { let m = w.is_maximized(); w.set_maximized(!m); }
-                    }
-                }
-                // Minimize — draw horizontal line
-                {
-                    let (resp, r) = win_btn(ui, false);
-                    let c = r.center();
-                    let s = 5.0;
-                    let col = if resp.hovered() { t.dim } else { color_subtle(t.dim) };
-                    ui.painter().line_segment([egui::pos2(c.x - s, c.y), egui::pos2(c.x + s, c.y)], egui::Stroke::new(stroke_std(), col));
-                    if resp.clicked() {
-                        if let Some(w) = &win_ref { w.set_minimized(true); }
-                    }
-                }
+                // Window controls (Close / Maximize / Minimize) — delegated.
+                super::window_controls::render_window_controls(ui, panes, *layout, watchlist, &win_ref, t);
 
                 // Separator between window controls and panel toggles
                 crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
@@ -1602,6 +817,9 @@ pub(crate) fn render(
                 // Panel toggle buttons (right-to-left, so ordered right→left)
                 ui.spacing_mut().item_spacing.x = gap_sm();
 
+                // Button-group enclosure — shared by the actions + sidebar-toggle groups.
+                use crate::chart_renderer::ui::style::{button_group_enclosed, ButtonGroupBox};
+                let bg_enclosed = button_group_enclosed();
 
                 // Connection status — apex_data feed dot mapped from ConnectionState.
                 // Green = Subscribed, Amber = Connecting/Authenticated, Red = Backoff/Failed/Idle.
@@ -1665,9 +883,21 @@ pub(crate) fn render(
                 // glyph under all styles.
                 let st = style_current();
                 let nav_label = |icon: &str, label: &str| -> String {
-                    let txt = if st.nav_buttons_uppercase_labels { label.to_uppercase() } else { label.to_string() };
+                    let mut txt = if st.nav_buttons_uppercase_labels { label.to_uppercase() } else { label.to_string() };
+                    // Apply nav letter-spacing via Unicode thin-spaces (same egui
+                    // approximation as `style_label_case`): no CSS letter-spacing
+                    // in egui, so we insert U+2009 between glyphs. >1.5px = double.
+                    let sp = st.nav_letter_spacing_px;
+                    if sp >= 0.5 {
+                        let sep = if sp > 1.5 { "\u{2009}\u{2009}" } else { "\u{2009}" };
+                        txt = txt.chars().map(|c| c.to_string()).collect::<Vec<_>>().join(sep);
+                    }
                     if st.nav_buttons_label_only { txt } else { format!("{} {}", icon, txt) }
                 };
+
+                // ── Actions group box (Settings / Search / ORDER / Toolbar toggle) ──
+                let actions_box = ButtonGroupBox::begin(ui);
+                let mut actions_rect: Option<egui::Rect> = None;
 
                 // Settings — always icon-only. UX-1 Fix 2: updated hover text
                 // with Cmd+, shortcut hint; Cmd+, also toggles settings.
@@ -1703,6 +933,7 @@ pub(crate) fn render(
                     let settings_resp = toolbar_btn(ui, Icon::GEAR, watchlist.settings_open, t);
                     Tooltip::new("Settings (Cmd+,)").show(ui, &settings_resp, t);
                     paint_nav_col_tint(ui, tb_rect, settings_resp.rect, t, settings_resp.hovered(), watchlist.settings_open, "right_settings");
+                    actions_rect = Some(settings_resp.rect);
                     if settings_resp.clicked() { watchlist.update_sidebar_state(|s| s.settings_open = !s.settings_open); }
                 }
 
@@ -1721,6 +952,35 @@ pub(crate) fn render(
                     }
                 }
 
+                // ORDER — prominent CTA; spawns a floating ticket for the
+                // active pane. Sits left of Search in the right cluster.
+                {
+                    let order = crate::ui_kit::widgets::Button::new("ORDER")
+                        .fill(t.accent)
+                        .show(ui, t);
+                    crate::ui_kit::widgets::Tooltip::new("New order ticket (active chart)")
+                        .show(ui, &order, t);
+                    if order.clicked() { order_clicked = true; }
+                }
+
+                // Toolbar (toolnav row) on/off — icon-only toggle, immediately
+                // left of Search. Default ON for every style; this overrides it.
+                {
+                    let tn_on = crate::chart_renderer::ui::style::toolnav_visible();
+                    let resp = toolbar_btn(ui, Icon::BROWSERS, tn_on, t);
+                    paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), tn_on, "right_toolnav");
+                    crate::ui_kit::widgets::Tooltip::new("Toolbar").show(ui, &resp, t);
+                    if resp.clicked() {
+                        crate::chart_renderer::ui::style::set_toolnav_override(Some(!tn_on));
+                    }
+                    actions_rect = Some(actions_rect.map_or(resp.rect, |r: egui::Rect| r.union(resp.rect)));
+                }
+
+                // Close the actions group box.
+                if let Some(rect) = actions_rect {
+                    actions_box.end(ui, t, rect, tb_rect);
+                }
+
                 crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
 
                 // ── Right nav panel toggles — zero item spacing, second-smallest
@@ -1732,6 +992,11 @@ pub(crate) fn render(
                 // gap_lg horizontal padding so labels breathe and the hover
                 // column has visible margin on either side of the text.
                 ui.spacing_mut().button_padding = egui::vec2(gap_lg(), gap_sm());
+
+                // Sidebar-toggle group box (Feed → Signals). `sidebar_box` reserves
+                // the background slot; `sidebar_rect` accumulates the button bounds.
+                let sidebar_box = ButtonGroupBox::begin(ui);
+                let mut sidebar_rect: Option<egui::Rect> = None;
 
                 // Divider drawn at the left edge of the just-drawn button's rect (RTL layout).
                 //
@@ -1746,60 +1011,62 @@ pub(crate) fn render(
                 // hairline-faint per the theme palette.
                 macro_rules! nav_divider {
                     ($ui:expr, $resp:expr) => {{
-                        let x = ($resp.rect.left() - 4.0).round() + 0.5;
-                        let col = color_alpha(t.dim, alpha_dim());
-                        let painter = $ui.ctx().layer_painter(egui::LayerId::new(
-                            egui::Order::Foreground,
-                            egui::Id::new(("nav_divider", x.to_bits())),
-                        ));
-                        painter.line_segment(
-                            [egui::pos2(x, tb_rect.top()), egui::pos2(x, tb_rect.bottom())],
-                            egui::Stroke::new(stroke_std(), col),
-                        );
+                        // Accumulate the group's bounding rect for the enclosure box.
+                        sidebar_rect = Some(sidebar_rect.map_or($resp.rect, |r: egui::Rect| r.union($resp.rect)));
+                        // Enclosed styles draw the box instead of per-button dividers.
+                        if !bg_enclosed {
+                            let x = ($resp.rect.left() - 4.0).round() + 0.5;
+                            let col = tint(t, Tone::Dim, alpha_dim());
+                            let painter = $ui.ctx().layer_painter(egui::LayerId::new(
+                                egui::Order::Foreground,
+                                egui::Id::new(("nav_divider", x.to_bits())),
+                            ));
+                            painter.line_segment(
+                                [egui::pos2(x, tb_rect.top()), egui::pos2(x, tb_rect.bottom())],
+                                egui::Stroke::new(stroke_std(), col),
+                            );
+                        }
                     }};
                 }
 
-                // Feed pane (News + Discord + Screenshots)
-                let resp = toolbar_btn(ui, &nav_label(Icon::NEWSPAPER, "Feed"), watchlist.feed_panel_open, t);
-                Tooltip::new("Feed (News, Discord, Screenshots)").show(ui, &resp, t);
-                paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.feed_panel_open, "right_feed");
-                if resp.clicked() { watchlist.update_sidebar_state(|s| s.feed_panel_open = !s.feed_panel_open); }
-                nav_divider!(ui, resp);
+                // ── Panel toggle helper macro ─────────────────────────────────
+                // Renders a toolbar button + tooltip + column-tint + click handler
+                // + divider for panels that follow the standard sidebar-toggle pattern.
+                macro_rules! panel_toggle {
+                    ($icon:expr, $lbl:expr, $field:ident, $tip:expr, $tint:expr) => {{
+                        let resp = toolbar_btn(ui, &nav_label($icon, $lbl), watchlist.$field, t);
+                        Tooltip::new($tip).show(ui, &resp, t);
+                        paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.$field, $tint);
+                        if resp.clicked() { watchlist.update_sidebar_state(|s| s.$field = !s.$field); }
+                        nav_divider!(ui, resp);
+                    }};
+                }
 
-                // Playbook
-                let resp = toolbar_btn(ui, &nav_label(Icon::STAR, "Playbook"), watchlist.playbook_panel_open, t);
-                Tooltip::new("Playbook (Trade Ideas)").show(ui, &resp, t);
-                paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.playbook_panel_open, "right_playbook");
-                if resp.clicked() { watchlist.update_sidebar_state(|s| s.playbook_panel_open = !s.playbook_panel_open); }
-                nav_divider!(ui, resp);
+                panel_toggle!(Icon::NEWSPAPER,      "Feed",       feed_panel_open,       "Feed (News, Discord, Screenshots)",           "right_feed");
+                panel_toggle!(Icon::STAR,            "Playbook",   playbook_panel_open,   "Playbook (Trade Ideas)",                      "right_playbook");
 
-                // Watchlist toggle
-                let resp = toolbar_btn(ui, &nav_label(Icon::LIST, "Watchlist"), watchlist.open, t);
-                Tooltip::new("Watchlist").show(ui, &resp, t);
-                paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.open, "right_watchlist");
-                if resp.clicked() { watchlist.update_sidebar_state(|s| s.watchlist_open = !s.watchlist_open); }
-                nav_divider!(ui, resp);
+                // Chart Library uses direct assignment (not update_sidebar_state)
+                {
+                    let resp = toolbar_btn(ui, &nav_label(Icon::FOLDER, "Charts"), watchlist.charts_library_open, t);
+                    Tooltip::new("Chart Library (saved layouts)").show(ui, &resp, t);
+                    paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.charts_library_open, "right_charts");
+                    if resp.clicked() { watchlist.charts_library_open = !watchlist.charts_library_open; }
+                    nav_divider!(ui, resp);
+                }
 
-                // Orders panel
-                let resp = toolbar_btn(ui, &nav_label(Icon::CURRENCY_DOLLAR, "Orders"), watchlist.orders_panel_open, t);
-                Tooltip::new("Orders Panel").show(ui, &resp, t);
-                paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.orders_panel_open, "right_orders");
-                if resp.clicked() { watchlist.update_sidebar_state(|s| s.orders_panel_open = !s.orders_panel_open); }
-                nav_divider!(ui, resp);
+                // (Toolbar toggle moved next to Search — see below.)
 
-                // Analysis sidebar toggle
-                let resp = toolbar_btn(ui, &nav_label(Icon::CHART_LINE, "Analysis"), watchlist.analysis_open, t);
-                Tooltip::new("Analysis Sidebar").show(ui, &resp, t);
-                paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.analysis_open, "right_analysis");
-                if resp.clicked() { watchlist.update_sidebar_state(|s| s.analysis_open = !s.analysis_open); }
-                nav_divider!(ui, resp);
-
-                // Indicators panel — manage active indicators + library + tool toggles
-                let resp = toolbar_btn(ui, &nav_label(Icon::PULSE, "Indicators"), watchlist.indicators_panel_open, t);
-                Tooltip::new("Indicators (Active + Library + Tools)").show(ui, &resp, t);
-                paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.indicators_panel_open, "right_indicators");
-                if resp.clicked() { watchlist.update_sidebar_state(|s| s.indicators_panel_open = !s.indicators_panel_open); }
-                nav_divider!(ui, resp);
+                // Watchlist: display field (`open`) differs from state field (`watchlist_open`)
+                {
+                    let resp = toolbar_btn(ui, &nav_label(Icon::LIST, "Watchlist"), watchlist.open, t);
+                    Tooltip::new("Watchlist").show(ui, &resp, t);
+                    paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.open, "right_watchlist");
+                    if resp.clicked() { watchlist.update_sidebar_state(|s| s.watchlist_open = !s.watchlist_open); }
+                    nav_divider!(ui, resp);
+                }
+                panel_toggle!(Icon::CURRENCY_DOLLAR, "Orders",     orders_panel_open,     "Orders Panel",                                "right_orders");
+                panel_toggle!(Icon::CHART_LINE,      "Analysis",   analysis_open,         "Analysis Sidebar",                            "right_analysis");
+                panel_toggle!(Icon::PULSE,           "Indicators", indicators_panel_open, "Indicators (Active + Library + Tools)",       "right_indicators");
 
                 // Signals panel (Alerts + Signals) — no divider after, it's the last in the group
                 {
@@ -1808,6 +1075,7 @@ pub(crate) fn render(
                     let signals_resp = toolbar_btn(ui, &nav_label(Icon::LIGHTNING, "Signals"), watchlist.signals_panel_open, t);
                     Tooltip::new("Signals (Alerts + Signals)").show(ui, &signals_resp, t);
                     paint_nav_col_tint(ui, tb_rect, signals_resp.rect, t, signals_resp.hovered(), watchlist.signals_panel_open, "right_signals");
+                    sidebar_rect = Some(sidebar_rect.map_or(signals_resp.rect, |r: egui::Rect| r.union(signals_resp.rect)));
                     if active_count > 0 {
                         // Overlay a Badge at the top-right corner of the Signals button.
                         // Painter-mode positioning: anchor the badge so its center sits at
@@ -1843,6 +1111,11 @@ pub(crate) fn render(
                     if signals_resp.clicked() { watchlist.update_sidebar_state(|s| s.signals_panel_open = !s.signals_panel_open); }
                 }
 
+                // Close the sidebar-toggle group box (Feed → Signals). No-op for flat styles.
+                if let Some(rect) = sidebar_rect {
+                    sidebar_box.end(ui, t, rect, tb_rect);
+                }
+
                 ui.spacing_mut().item_spacing.x = prev_spacing;
                 ui.spacing_mut().button_padding = prev_panel_pad;
 
@@ -1873,6 +1146,28 @@ pub(crate) fn render(
     });
     } // end if toolbar_visible
 
+    // Spawn order ticket if the ORDER button in the top-nav right cluster was clicked.
+    if order_clicked {
+        if let Some(chart) = panes.get_mut(ap) {
+            let fid = chart.floating_order_panes.iter().map(|p| p.id).max().unwrap_or(0) + 1;
+            let sym = chart.symbol.clone();
+            let sr  = ctx.screen_rect();
+            chart.floating_order_panes.push(crate::chart_renderer::trading::FloatingOrderPane {
+                id: fid, title: sym.clone(), symbol: sym,
+                strike: 0.0, is_call: false, qty: 1,
+                pos: egui::pos2(sr.center().x - 105.0, sr.center().y - 100.0),
+                collapsed: false,
+            });
+        }
+    }
+
+    // ── Toolnav: second chrome row (tools + alert feed). Renders only when the
+    // active style sets Chrome.toolnav_height > 0 (Aperture/Glass). Stacks
+    // directly below the main toolbar, above the workspace.
+    if toolbar_visible {
+        super::toolnav::render_toolnav(ctx, watchlist, panes, ap, t);
+    }
+
     if watchlist.account_strip_open {
         let mut do_cancel_all = false;
         let mut do_flatten    = false;
@@ -1880,7 +1175,7 @@ pub(crate) fn render(
             .exact_height(style_current().account_strip_height)
             .frame(egui::Frame::NONE.fill(t.toolbar_bg)
                 .inner_margin(egui::Margin { left: 0, right: 0, top: 2, bottom: 2 })
-                .stroke(egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_dim()))))
+                .stroke(egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_dim()))))
             .show(ctx, |ui| {
                 crate::chart::renderer::ui::chrome::pane::AccountStrip::new()
                     .account_data(account_data_cached.as_ref().map(|(a, _, _)| a))
@@ -1915,329 +1210,11 @@ pub(crate) fn render(
     // the flag to always be false when the drag handler checked it, making
     // every toolbar click trigger drag_window() and un-maximizing the window.
 
-    // ── Timeframe dropdown popup ──
-    // Mirrors the layout dropdown UX: full list grouped by category, each row
-    // shows label + duration; star toggles "favorite" (appears in segmented
-    // control outside); clicking the row picks the timeframe and closes.
-    if watchlist.timeframe_dropdown_open {
-        let dd_pos = watchlist.timeframe_dropdown_pos;
-        let mut close_dd = false;
-        let mut switch_to_tf: Option<&'static str> = None;
-        let cur_tf = panes[ap].timeframe.clone();
+    // ── Timeframe dropdown popup — delegated to dropdowns.rs ──
+    super::dropdowns::render_timeframe_dropdown(ctx, watchlist, panes, ap, t);
+    // ── Layout dropdown popup — delegated to dropdowns.rs ──
+    super::dropdowns::render_layout_dropdown(ctx, watchlist, panes, layout, active_pane, t);
 
-        let dd_resp = egui::Window::new("timeframe_dropdown")
-            .fixed_pos(dd_pos)
-            .fixed_size(egui::vec2(220.0, 0.0))
-            .title_bar(false)
-            .frame(egui::Frame::popup(&ctx.style())
-                .fill(t.toolbar_bg)
-                .inner_margin(egui::Margin::same(gap_md() as i8))
-                .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, 120)))
-                .corner_radius(r_md_cr()))
-            .show(ctx, |ui| {
-                let hover_pos = ui.input(|i| i.pointer.hover_pos());
-                let mut last_section = "";
-                for &(tf_label, _secs, section) in ALL_TIMEFRAMES {
-                    if section != last_section {
-                        if !last_section.is_empty() {
-                            ui.add_space(gap_xs());
-                            let y = ui.cursor().min.y;
-                            ui.painter().line_segment(
-                                [egui::pos2(ui.min_rect().left() + 8.0, y), egui::pos2(ui.min_rect().left() + 236.0, y)],
-                                egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, 50)));
-                            ui.add_space(gap_sm());
-                        }
-                        ui.horizontal(|ui| {
-                            ui.add_space(gap_md());
-                            ui.label(egui::RichText::new(section).monospace().size(font_xs()).strong().color(color_half(t.dim)));
-                        });
-                        ui.add_space(gap_xs());
-                        last_section = section;
-                    }
-                    let is_cur = cur_tf == tf_label;
-                    let is_fav = watchlist.timeframe_favorites.iter().any(|f| f == tf_label);
-                    let row_min = ui.cursor().min;
-                    let row_rect = egui::Rect::from_min_size(row_min, egui::vec2(236.0, 24.0));
-                    let hovered = hover_pos.map_or(false, |p| row_rect.contains(p));
-
-                    if hovered || is_cur {
-                        let bg = if is_cur { color_alpha(t.accent, 25) } else { color_alpha(t.toolbar_border, 30) };
-                        ui.painter().rect_filled(row_rect, 3.0, bg);
-                    }
-                    if is_cur {
-                        ui.painter().rect_filled(egui::Rect::from_min_size(row_rect.min, egui::vec2(2.0, 24.0)), 1.0, t.accent);
-                    }
-
-                    // Label
-                    let lc = if is_cur { t.accent } else if hovered { t.text } else { t.dim };
-                    ui.painter().text(
-                        egui::pos2(row_rect.left() + 14.0, row_rect.center().y),
-                        egui::Align2::LEFT_CENTER, tf_label,
-                        mono_sm(), lc,
-                    );
-
-                    // Star — toggles favorite without closing the dropdown
-                    let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(icon_sm(), icon_sm()));
-                    let sh = hover_pos.map_or(false, |p| sr.contains(p));
-                    let sc = if is_fav { color_alpha(t.accent, alpha_heavy()) } else if sh { color_half(t.dim) } else if hovered { color_very_dim(t.dim) } else { color_very_dim(t.dim) };
-                    ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, egui::FontId::proportional(font_sm()), sc);
-                    if sh { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                    if sh && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
-                        if is_fav { watchlist.timeframe_favorites.retain(|f| f != tf_label); }
-                        else { watchlist.timeframe_favorites.push(tf_label.to_string()); }
-                    }
-
-                    // Click row (not star) to switch
-                    let rh = hover_pos.map_or(false, |p| row_rect.contains(p)) && !sh;
-                    if rh { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                    if rh && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
-                        switch_to_tf = Some(tf_label);
-                        close_dd = true;
-                    }
-
-                    ui.allocate_space(egui::vec2(236.0, 24.0));
-                }
-            });
-
-        // Click outside to close
-        if let Some(resp) = dd_resp {
-            let win_rect = resp.response.rect;
-            if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
-                if ctx.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary)) {
-                    if !win_rect.contains(pos) { close_dd = true; }
-                }
-            }
-        }
-        if let Some(new_tf) = switch_to_tf {
-            if new_tf != panes[ap].timeframe {
-                let cur_secs = tf_to_secs(&panes[ap].timeframe);
-                let new_secs = tf_to_secs(new_tf);
-                if cur_secs > 0 && new_secs > 0 {
-                    let new_vc = ((panes[ap].vc as u64 * cur_secs as u64) / new_secs as u64).max(20).min(2000) as u32;
-                    panes[ap].vc = new_vc;
-                    panes[ap].vc_target = new_vc;
-                }
-                panes[ap].pending_timeframe_change = Some(new_tf.to_string());
-            }
-        }
-        if close_dd { watchlist.timeframe_dropdown_open = false; }
-        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) { watchlist.timeframe_dropdown_open = false; }
-    }
-
-    // ── Layout dropdown popup (manual window — star clicks don't close it) ──
-    if watchlist.layout_dropdown_open {
-        let dd_pos = watchlist.layout_dropdown_pos;
-        let mut close_dd = false;
-        let mut switch_to: Option<Layout> = None;
-
-        let dd_resp = egui::Window::new("layout_dropdown")
-            .fixed_pos(dd_pos)
-            .fixed_size(egui::vec2(220.0, 0.0))
-            .title_bar(false)
-            .frame(egui::Frame::popup(&ctx.style())
-                .fill(t.toolbar_bg)
-                .inner_margin(egui::Margin::same(gap_md() as i8))
-                .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, 120)))
-                .corner_radius(r_md_cr()))
-            .show(ctx, |ui| {
-                let hover_pos = ui.input(|i| i.pointer.hover_pos());
-                let mut last_section = "";
-                for &ly in ALL_LAYOUTS {
-                    let sec = ly.section();
-                    if sec != last_section {
-                        if !last_section.is_empty() {
-                            ui.add_space(gap_xs());
-                            let y = ui.cursor().min.y;
-                            ui.painter().line_segment(
-                                [egui::pos2(ui.min_rect().left() + 8.0, y), egui::pos2(ui.min_rect().left() + 236.0, y)],
-                                egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, 50)));
-                            ui.add_space(gap_sm());
-                        }
-                        ui.horizontal(|ui| {
-                            ui.add_space(gap_md());
-                            ui.label(egui::RichText::new(sec).monospace().size(font_xs()).strong().color(color_half(t.dim)));
-                        });
-                        ui.add_space(gap_xs());
-                        last_section = sec;
-                    }
-                    let is_cur = *layout == ly;
-                    let is_fav = watchlist.layout_favorites.iter().any(|f| f == ly.label());
-                    let row_min = ui.cursor().min;
-                    let row_rect = egui::Rect::from_min_size(row_min, egui::vec2(236.0, 26.0));
-                    let hovered = hover_pos.map_or(false, |p| row_rect.contains(p));
-
-                    if hovered || is_cur {
-                        let bg = if is_cur { color_alpha(t.accent, 25) } else { color_alpha(t.toolbar_border, 30) };
-                        ui.painter().rect_filled(row_rect, 3.0, bg);
-                    }
-                    if is_cur {
-                        ui.painter().rect_filled(egui::Rect::from_min_size(row_rect.min, egui::vec2(2.0, 26.0)), 1.0, t.accent);
-                    }
-
-                    // Mini glyph (29×19)
-                    let gr = egui::Rect::from_min_size(egui::pos2(row_rect.left() + 6.0, row_rect.center().y - 9.5), egui::vec2(29.0, 19.0));
-                    let gc = if is_cur { t.accent } else if hovered { t.dim } else { color_half(t.dim) };
-                    let mini = ly.pane_rects(gr, ly.max_panes(), 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5);
-                    for mr in &mini {
-                        let s = egui::Rect::from_min_max(egui::pos2(mr.left() + 0.5, mr.top() + 0.5), egui::pos2(mr.right() - 0.5, mr.bottom() - 0.5));
-                        ui.painter().rect_filled(s, 1.0, color_alpha(gc, 80));
-                        ui.painter().rect_stroke(s, 1.0, egui::Stroke::new(stroke_thin(), color_alpha(gc, 150)), egui::StrokeKind::Outside);
-                    }
-
-                    // Label + description
-                    let lc = if is_cur { t.accent } else if hovered { t.text } else { t.dim };
-                    ui.painter().text(egui::pos2(row_rect.left() + 42.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.label(), mono_sm(), lc);
-                    let dc = if hovered { color_alpha(t.dim, alpha_heavy()) } else { color_muted(t.dim) };
-                    ui.painter().text(egui::pos2(row_rect.left() + 74.0, row_rect.center().y), egui::Align2::LEFT_CENTER, ly.description(), mono_sm(), dc);
-
-                    // Star — filled, raw pointer click
-                    let sr = egui::Rect::from_min_size(egui::pos2(row_rect.right() - 22.0, row_rect.center().y - 8.0), egui::vec2(icon_sm(), icon_sm()));
-                    let sh = hover_pos.map_or(false, |p| sr.contains(p));
-                    let sc = if is_fav { color_alpha(t.accent, alpha_heavy()) } else if sh { color_half(t.dim) } else if hovered { color_very_dim(t.dim) } else { color_very_dim(t.dim) };
-                    ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, Icon::STAR_FILL, egui::FontId::proportional(font_sm()), sc);
-                    if sh { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                    if sh && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
-                        if is_fav { watchlist.layout_favorites.retain(|f| f != ly.label()); }
-                        else { watchlist.layout_favorites.push(ly.label().to_string()); }
-                    }
-
-                    // Click row (not star) to switch
-                    let rh = hover_pos.map_or(false, |p| row_rect.contains(p)) && !sh;
-                    if rh { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                    if rh && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
-                        switch_to = Some(ly);
-                        close_dd = true;
-                    }
-
-                    ui.allocate_space(egui::vec2(236.0, 26.0));
-                }
-
-                // ── Saved layout templates ─────────────────────────────────────
-                // List existing pane templates saved from this dropdown, each
-                // with an "Apply" button that restores the layout + symbols.
-                if !watchlist.pane_templates.is_empty() {
-                    ui.add_space(gap_xs());
-                    let y = ui.cursor().min.y;
-                    ui.painter().line_segment(
-                        [egui::pos2(ui.min_rect().left() + 8.0, y), egui::pos2(ui.min_rect().left() + 236.0, y)],
-                        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, 50)));
-                    ui.add_space(gap_sm());
-                    ui.horizontal(|ui| {
-                        ui.add_space(gap_md());
-                        ui.label(egui::RichText::new("SAVED LAYOUTS").monospace().size(font_xs()).strong().color(color_half(t.dim)));
-                    });
-                    ui.add_space(gap_xs());
-                    let templates_snapshot: Vec<String> = watchlist.pane_templates.iter().map(|(n, _)| n.clone()).collect();
-                    for tpl_name in &templates_snapshot {
-                        let row_min = ui.cursor().min;
-                        let row_rect = egui::Rect::from_min_size(row_min, egui::vec2(236.0, 24.0));
-                        let row_hover = hover_pos.map_or(false, |p| row_rect.contains(p));
-                        if row_hover {
-                            ui.painter().rect_filled(row_rect, 3.0, color_alpha(t.toolbar_border, 30));
-                        }
-                        let lc = if row_hover { t.text } else { t.dim };
-                        ui.painter().text(
-                            egui::pos2(row_rect.left() + 8.0, row_rect.center().y),
-                            egui::Align2::LEFT_CENTER,
-                            tpl_name.as_str(),
-                            mono_sm(),
-                            lc,
-                        );
-                        // Apply button — right-aligned
-                        let apply_w = 42.0;
-                        let apply_rect = egui::Rect::from_min_size(
-                            egui::pos2(row_rect.right() - apply_w - 4.0, row_rect.center().y - 10.0),
-                            egui::vec2(apply_w, 20.0),
-                        );
-                        let apply_hov = hover_pos.map_or(false, |p| apply_rect.contains(p));
-                        let apply_fill = if apply_hov { color_alpha(t.accent, 40) } else { color_alpha(t.accent, 15) };
-                        ui.painter().rect_filled(apply_rect, 3.0, apply_fill);
-                        ui.painter().text(
-                            apply_rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            "Apply",
-                            mono_sm(),
-                            if apply_hov { t.accent } else { color_alpha(t.accent, 180) },
-                        );
-                        if apply_hov { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                        if apply_hov && ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
-                            // Restore from workspace file with same name
-                            watchlist.active_workspace = tpl_name.clone();
-                            watchlist.pending_workspace_load = Some(tpl_name.clone());
-                            close_dd = true;
-                        }
-                        ui.allocate_space(egui::vec2(236.0, 24.0));
-                    }
-                }
-
-                // ── Save current layout as… ────────────────────────────────────
-                {
-                    ui.add_space(gap_xs());
-                    let y = ui.cursor().min.y;
-                    ui.painter().line_segment(
-                        [egui::pos2(ui.min_rect().left() + 8.0, y), egui::pos2(ui.min_rect().left() + 236.0, y)],
-                        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, 50)));
-                    ui.add_space(gap_sm());
-                    ui.horizontal(|ui| {
-                        use crate::ui_kit::widgets::Input;
-                        Input::new(&mut watchlist.pane_template_name)
-                            .placeholder("Save layout as…")
-                            .min_width(148.0)
-                            .size(KitSize::Sm)
-                            .show(ui, t);
-                        let can_save = !watchlist.pane_template_name.trim().is_empty();
-                        if can_save {
-                            if KitButton::new("Save").variant(KitVariant::Primary).size(KitSize::Sm)
-                                .tint(t.accent).show(ui, t).clicked()
-                            {
-                                let name = watchlist.pane_template_name.trim().to_string();
-                                // Persist via workspace machinery (handles layout + symbols + TF)
-                                save_workspace(&name, panes, *layout);
-                                // Also store in pane_templates so the list updates immediately
-                                let layout_val = serde_json::json!({
-                                    "kind": "layout_template",
-                                    "layout": layout.label(),
-                                    "panes": panes.iter().map(|p| serde_json::json!({
-                                        "symbol": p.symbol,
-                                        "timeframe": p.timeframe,
-                                        "link_group": p.link_group,
-                                    })).collect::<Vec<_>>(),
-                                });
-                                // Remove existing entry with same name, then push
-                                watchlist.pane_templates.retain(|(n, _)| n != &name);
-                                watchlist.pane_templates.push((name.clone(), layout_val));
-                                save_templates(&watchlist.pane_templates);
-                                watchlist.pane_template_name.clear();
-                                close_dd = true;
-                            }
-                        }
-                    });
-                }
-            });
-
-        // Click outside to close
-        if let Some(resp) = dd_resp {
-            let win_rect = resp.response.rect;
-            if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
-                if ctx.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary)) {
-                    if !win_rect.contains(pos) { close_dd = true; }
-                }
-            }
-        }
-        if let Some(ly) = switch_to {
-            // Inline switch_layout logic since the closure is out of scope
-            *layout = ly;
-            let max = ly.max_panes();
-            while panes.len() < max {
-                let mut c = Chart::new();
-                c.theme_idx = panes[0].theme_idx;
-                panes.push(c);
-            }
-            if *active_pane >= max { *active_pane = 0; }
-        }
-        if close_dd { watchlist.layout_dropdown_open = false; }
-        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) { watchlist.layout_dropdown_open = false; }
-    }
 
     // ── command_palette
     crate::chart_renderer::ui::command_palette::draw(ctx, watchlist, panes, layout, active_pane, t);
@@ -2480,9 +1457,9 @@ pub(crate) fn render(
             let body_bg    = egui::Color32::from_rgba_unmultiplied(
                 base_bg.r(), base_bg.g(), base_bg.b(), (230.0 * alpha) as u8);
             let bar_col    = color_alpha(sev_color, (255.0 * bar_alpha_f * alpha) as u8);
-            let text_col   = color_alpha(t.text, (230.0 * alpha) as u8);
+            let text_col   = tint(t, Tone::Text, (230.0 * alpha) as u8);
             let icon_col   = color_alpha(sev_color, (200.0 * alpha) as u8);
-            let dim_col    = color_alpha(t.dim, (160.0 * alpha) as u8);
+            let dim_col    = tint(t, Tone::Dim, (160.0 * alpha) as u8);
             let border_col = if is_pinned {
                 color_alpha(sev_color, (alpha_muted() as f32 * alpha) as u8)
             } else {
@@ -2592,8 +1569,8 @@ pub(crate) fn render(
         // ── "+N more" chip ──────────────────────────────────────────────────
         if hidden_count > 0 {
             let chip_y = base_y - visible_indices.len() as f32 * toast_pitch - chip_h - 2.0;
-            let chip_col = color_alpha(t.dim, alpha_muted());
-            let chip_bg  = color_alpha(t.toolbar_bg, alpha_muted());
+            let chip_col = tint(t, Tone::Dim, alpha_muted());
+            let chip_bg  = tint(t, Tone::Surface, alpha_muted());
             egui::Window::new("toast_v2_chip")
                 .id(Id::new("toast_v2_chip"))
                 .fixed_pos(pos2(screen.left() + LEFT, chip_y))
@@ -2642,67 +1619,49 @@ pub(crate) fn render(
     // Signals sidebar (signals_panel.rs → SignalsTab::Regime). Top dock space
     // was too valuable to reserve for a 40-48px always-visible cell strip.
 
-    // ── ProvenancePane (SOTA UX §4.1) — right side panel, evidence DAG.
-    // Hidden by default; opens when `provenance_pane::request_open(lineage_id)`
-    // is called from signals_panel (or any other panel that surfaces lineage).
-    span_begin("sidebar.provenance");
-    crate::chart_renderer::ui::panels::provenance_pane::draw(ctx, watchlist, t);
+    // ── Bottom dock (footer): Orders / Positions / Account / Notifications.
+    // Created before the rails so it spans the full width beneath them and the
+    // workspace + rails shrink above it. Toggle: Ctrl+` .
+    if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Backtick)) {
+        let now = crate::chart_renderer::ui::style::footer_visible();
+        crate::chart_renderer::ui::style::set_footer_override(Some(!now));
+    }
+    span_begin("sidebar.bottom_dock");
+    crate::chart_renderer::ui::panels::bottom_dock::draw(ctx, watchlist, account_data_cached, t);
 
-    // ── Watchlist side panel
-    span_begin("sidebar.watchlist");
-    crate::chart_renderer::ui::panels::watchlist_panel::draw(ctx, watchlist, panes, ap, t);
+    // ── Right rail: the SINGLE auto-arranged container for ALL dockable
+    // right-side panels — watchlist, orders, indicators, playbook, scanner,
+    // tape, journal, rrg, script, order ledger, provenance. Each renders
+    // through `SidePanelShell` rail-mode, dispatched by the `right_rail::PANELS`
+    // registry. There are deliberately NO per-panel draw calls for them here.
+    span_begin("sidebar.right_rail");
+    crate::chart_renderer::ui::panels::right_rail::render(ctx, watchlist, panes, ap, account_data_cached, *layout, t);
 
-    // ── Object Tree side panel
-    span_begin("sidebar.object_tree");
-    crate::chart_renderer::ui::panels::object_tree::draw(ctx, watchlist, panes, ap, t);
+    // Provenance auto-opens from external lineage requests (SOTA UX §4.1), so
+    // its per-frame pump must run even while the panel is closed; the rail
+    // renders the panel itself once open.
+    crate::chart_renderer::ui::panels::provenance_pane::pump(watchlist);
 
-    // ── Book pane (Positions/Orders + Journal tabs) ─────────────────────────
-    span_begin("sidebar.orders");
-    crate::chart_renderer::ui::panels::orders_panel::draw(ctx, watchlist, panes, ap, t, account_data_cached);
-
-    // ── Order Ledger (Wave 3 visibility panel) ──────────────────────────────
-    // Hotkey: Ctrl+L toggles. The render loop takes a non-mutable `panes`
-    // slice for active-order display; cancel actions dispatch through the
-    // global `order_manager` API.
+    // Order Ledger toggle (Ctrl+L) — the panel is rail-hosted.
     if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::L)) {
         watchlist.update_sidebar_state(|s| s.order_ledger_open = !s.order_ledger_open);
     }
-    span_begin("sidebar.order_ledger");
-    crate::chart_renderer::ui::panels::order_ledger_panel::draw(ctx, watchlist, panes, t);
 
-    // ── Order System Health (operator observability) ────────────────────────
+    // ── Object Tree side panel (not rail-hosted)
+    span_begin("sidebar.object_tree");
+    crate::chart_renderer::ui::panels::object_tree::draw(ctx, watchlist, panes, ap, t);
+
+    // ── Order System Health (floating Modal, not rail-hosted) ────────────────
     // Hotkey: Ctrl+Shift+O toggles a small dashboard with submit-latency,
-    // reject-rate, top reject reasons, active-state counts and broker contact
-    // age. Recomputes journal aggregates at most once/sec via in-panel cache.
+    // reject-rate, top reject reasons, active-state counts and broker contact age.
     if ctx.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::O)) {
         watchlist.update_sidebar_state(|s| s.order_health_open = !s.order_health_open);
     }
     span_begin("sidebar.order_health");
     crate::chart_renderer::ui::panels::order_health_panel::draw(ctx, watchlist, t);
 
-    // ── Scanner side panel
-    span_begin("sidebar.scanner");
-    crate::chart_renderer::ui::panels::scanner_panel::draw(ctx, watchlist, panes, ap, t);
-
-    // ── Time & Sales side panel
-    span_begin("sidebar.tape");
-    crate::chart_renderer::ui::panels::tape_panel::draw(ctx, watchlist, &panes[ap].symbol, t);
-
-    // ── RRG (Relative Rotation Graph) side panel
-    span_begin("sidebar.rrg");
-    crate::chart_renderer::ui::panels::rrg_panel::draw(ctx, watchlist, t);
-
-    // ── Analysis sidebar (unified RRG / T&S / Scanner / Scripts)
-    span_begin("sidebar.analysis");
-    crate::chart_renderer::ui::panels::analysis_panel::draw(ctx, watchlist, panes, *active_pane, t);
-
-    // ── Indicators panel (active + library + tool toggles)
-    span_begin("sidebar.indicators");
-    crate::chart_renderer::ui::panels::indicators_panel::draw(ctx, watchlist, panes, ap, t);
-
-    // ── Signals sidebar (unified Alerts + Signals)
-    span_begin("sidebar.signals");
-    crate::chart_renderer::ui::panels::signals_panel::draw(ctx, watchlist, panes, ap, t);
+    // Analysis + Signals are now standard SidePanelShell::tabs panels hosted by
+    // the right rail (see right_rail::PANELS) — no direct draw here.
 
     // ── Trade plan v2 sidebar (SOTA §4.4)
     span_begin("sidebar.trade_plan_v2");
@@ -2716,23 +1675,12 @@ pub(crate) fn render(
     let screen_rect = ctx.screen_rect();
     crate::chart_renderer::ui::panels::spike_popup::draw(ctx, screen_rect);
 
-    // ── Feed sidebar (unified News + Discord + Screenshots)
-    span_begin("sidebar.feed");
-    crate::chart_renderer::ui::panels::feed_panel::draw(ctx, watchlist, panes, ap, t);
+    // Feed is now a standard SidePanelShell::tabs panel hosted by the right rail.
 
-    // ── Playbook sidebar
-    span_begin("sidebar.playbook");
-    crate::chart_renderer::ui::panels::playbook_panel::draw(ctx, watchlist, panes, ap, t);
+    // Chart Library ("Charts") is now a standard SidePanelShell::tabs panel
+    // hosted by the right rail (see right_rail::PANELS) — no direct draw here.
 
-    // ── Journal sidebar
-    span_begin("sidebar.journal");
-    crate::chart_renderer::ui::panels::journal_panel::draw(ctx, watchlist, t);
-
-    // ── Script / Backtesting panel
-    span_begin("sidebar.script");
-    crate::chart_renderer::ui::panels::script_panel::draw(ctx, watchlist, t);
-
-    // ── Spread Builder panel
+    // ── Spread Builder panel (floating Modal, not rail-hosted)
     span_begin("sidebar.spread");
     crate::chart_renderer::ui::panels::spread_panel::draw(ctx, watchlist, &panes[ap].symbol, t);
     span_begin("top_panel.tail");
@@ -2784,7 +1732,7 @@ pub(crate) fn render(
         let st = style_current();
         let wl_tip_cr = st.r_md as f32;
         let wl_tip_stroke_w = if st.hairline_borders { st.stroke_std } else { crate::chart_renderer::ui::style::stroke_thin() };
-        let wl_tip_border = if st.hairline_borders { t.toolbar_border } else { color_alpha(t.toolbar_border, crate::chart_renderer::ui::style::alpha_strong()) };
+        let wl_tip_border = if st.hairline_borders { t.toolbar_border } else { tint(t, Tone::Border, crate::chart_renderer::ui::style::alpha_strong()) };
         egui::Area::new(egui::Id::new("wl_tooltip_deferred"))
             .fixed_pos(egui::pos2(tip_x, tip_y))
             .order(egui::Order::Tooltip)
@@ -2795,7 +1743,7 @@ pub(crate) fn render(
                     ui.set_max_width(tip_w);
                     ui.label(TextStyle::NumericLg.as_rich(&tip.sym, t.text));
                     ui.horizontal(|ui| {
-                        ui.label(TextStyle::Numeric.as_rich(&format!("${:.2}", tip.price), color_alpha(t.text,220)));
+                        ui.label(TextStyle::Numeric.as_rich(&format!("${:.2}", tip.price), tint(t, Tone::Text, 220)));
                         ui.label(TextStyle::Numeric.as_rich(&format!("{:+.2}%", change_pct), chg_col));
                     });
                     ui.add_space(gap_sm()); ui.separator(); ui.add_space(gap_sm());
@@ -2805,7 +1753,7 @@ pub(crate) fn render(
                             ui.label(TextStyle::MonoSm.as_rich(&format!("{:.2}", tip.day_low), dim));
                             let bar_w = 60.0;
                             let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
-                            ui.painter().rect_filled(bar_rect, 2.0, color_alpha(t.text,15));
+                            ui.painter().rect_filled(bar_rect, 2.0, tint(t, Tone::Text, 15));
                             let range = tip.day_high - tip.day_low;
                             if range > 0.0 {
                                 let pos = ((tip.price - tip.day_low) / range).clamp(0.0, 1.0);
@@ -2820,7 +1768,7 @@ pub(crate) fn render(
                             ui.label(TextStyle::MonoSm.as_rich(&format!("{:.0}", tip.low_52wk), dim));
                             let bar_w = 60.0;
                             let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, 8.0), egui::Sense::hover());
-                            ui.painter().rect_filled(bar_rect, 2.0, color_alpha(t.text,15));
+                            ui.painter().rect_filled(bar_rect, 2.0, tint(t, Tone::Text, 15));
                             let range = tip.high_52wk - tip.low_52wk;
                             if range > 0.0 {
                                 let pos = ((tip.price - tip.low_52wk) / range).clamp(0.0, 1.0);
@@ -2840,7 +1788,7 @@ pub(crate) fn render(
                     }
                     if tip.earnings_days >= 0 && tip.earnings_days <= 14 {
                         ui.add_space(gap_xs());
-                        ui.label(TextStyle::MonoSm.as_rich(&format!("{} Earnings in {} days", Icon::LIGHTNING, tip.earnings_days), color_alpha(t.accent, alpha_heavy())));
+                        ui.label(TextStyle::MonoSm.as_rich(&format!("{} Earnings in {} days", Icon::LIGHTNING, tip.earnings_days), tint(t, Tone::Accent, alpha_heavy())));
                     }
                     if !tip.tags.is_empty() {
                         ui.add_space(gap_xs());

@@ -12,6 +12,7 @@ use egui::{Response, Ui, Widget};
 
 use super::button::Button;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::{Size, Variant};
 
 #[must_use = "Link does nothing until `.show(ui, theme)` or `ui.add(link)` is called"]

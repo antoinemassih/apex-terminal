@@ -20,6 +20,7 @@
 use egui::{CornerRadius, Response, RichText, Stroke, Ui};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::Button;
 use super::tokens::{Size, Variant};
 use crate::ui_kit::tokens as st;
@@ -58,7 +59,7 @@ impl<'a> FormSection<'a> {
                 .monospace()
                 .size(st::font_md())
                 .strong()
-                .color(theme.text()),
+                .color(palette_ct(theme).base(Tone::Text)),
         );
         if let Some(h) = self.helper {
             ui.label(
@@ -66,7 +67,7 @@ impl<'a> FormSection<'a> {
                     .monospace()
                     .size(st::font_xs())
                     .italics()
-                    .color(st::color_alpha(theme.dim(), st::alpha_dim())),
+                    .color(st::color_alpha(palette_ct(theme).base(Tone::Dim), st::alpha_dim())),
             );
         }
         ui.add_space(self.spacing);
@@ -105,7 +106,7 @@ impl<'a> FieldSet<'a> {
         theme: &dyn ComponentTheme,
         body: B,
     ) -> R {
-        let border_col = st::color_alpha(theme.border(), st::alpha_muted());
+        let border_col = st::color_alpha(palette_ct(theme).base(Tone::Border), st::alpha_muted());
         let frame = egui::Frame::NONE
             .stroke(Stroke::new(st::stroke_thin(), border_col))
             .corner_radius(CornerRadius::same(st::radius_sm() as u8))
@@ -118,7 +119,7 @@ impl<'a> FieldSet<'a> {
                         .monospace()
                         .size(st::font_sm())
                         .strong()
-                        .color(theme.text()),
+                        .color(palette_ct(theme).base(Tone::Text)),
                 );
                 ui.add_space(st::gap_sm());
             }

@@ -24,6 +24,7 @@
 use egui::{Align2, Color32, FontId, Id, Pos2, Response, RichText, Sense, Stroke, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::motion;
 
 use crate::ui_kit::widgets::frames::{BorderAlpha, PopupFrame};
@@ -50,6 +51,8 @@ pub struct MenuTheme {
 impl MenuTheme {
     pub fn from_component<T: ComponentTheme + ?Sized>(t: &T) -> Self {
         Self {
+            // NB: `t: &T` is `?Sized` here, so it can't coerce to palette_ct's
+            // `&dyn ComponentTheme` — these stay direct (byte-identical anyway).
             accent: t.accent(),
             dim: t.dim(),
             bg: t.bg(),

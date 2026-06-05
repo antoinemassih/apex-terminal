@@ -185,7 +185,6 @@ impl ColorScheme {
 
         let bg      = read_color_or(&pal, "bg",      "palette", fallback.bg);
         let surface = read_color_or(&pal, "surface",  "palette", fallback.surface);
-        let paper   = read_color_or(&pal, "paper",    "palette", fallback.paper);
         let text    = read_color_or(&pal, "text",     "palette", fallback.text);
         let dim     = read_color_or(&pal, "dim",      "palette", fallback.dim);
         let border  = read_color_or(&pal, "border",   "palette", fallback.border);
@@ -194,24 +193,6 @@ impl ColorScheme {
         let bear    = read_color_or(&pal, "bear",     "palette", fallback.bear);
         let warn    = read_color_or(&pal, "warn",     "palette", fallback.warn);
         let shadow  = read_color_or(&pal, "shadow",   "palette", fallback.shadow);
-
-        // accent_alts: optional array of hex strings (plain or DTCG-wrapped)
-        let accent_alts = pal
-            .get("accent_alts")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|item| {
-                        // Support both plain `"#hex"` and DTCG `{ "$type": "color", "$value": "#hex" }`
-                        if let Some(s) = item.as_str() {
-                            rgba::from_hex(s)
-                        } else {
-                            read_color(item, "palette.accent_alts[]").ok()
-                        }
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
 
         // ── Hand-authored extras — fall back to builtin_dark() defaults ───────
         // Sparse / partial DTCG files (e.g. design-tool exports) may omit these
@@ -229,8 +210,7 @@ impl ColorScheme {
         let hud_border       = read_color_or(&pal, "hud_border",       "palette", fallback.hud_border);
 
         Ok(ColorScheme {
-            meta, bg, surface, paper, text, dim, border, accent, bull, bear, warn, shadow,
-            accent_alts,
+            meta, bg, surface, text, dim, border, accent, bull, bear, warn, shadow,
             notification_red, gold, overlay_text,
             rrg_leading, rrg_improving, rrg_weakening, rrg_lagging,
             pinned_row_tint, text_muted, hud_bg, hud_border,
@@ -256,7 +236,6 @@ impl ColorScheme {
 
         pal.insert("bg".into(),      color_token!(bg));
         pal.insert("surface".into(), color_token!(surface));
-        pal.insert("paper".into(),   color_token!(paper));
         pal.insert("text".into(),    color_token!(text));
         pal.insert("dim".into(),     color_token!(dim));
         pal.insert("border".into(),  color_token!(border));
@@ -277,18 +256,6 @@ impl ColorScheme {
         pal.insert("text_muted".into(),       color_token!(text_muted));
         pal.insert("hud_bg".into(),           color_token!(hud_bg));
         pal.insert("hud_border".into(),       color_token!(hud_border));
-
-        if !self.accent_alts.is_empty() {
-            let alts: Vec<Value> = self
-                .accent_alts
-                .iter()
-                .map(|c| {
-                    let hex = rgba::to_hex(*c);
-                    serde_json::json!({ "$type": "color", "$value": hex })
-                })
-                .collect();
-            pal.insert("accent_alts".into(), Value::Array(alts));
-        }
 
         let root = serde_json::json!({
             "meta": {
@@ -330,6 +297,10 @@ impl StyleSystem {
             mono_sm: read_f32_or(&typ_sec, "mono_sm", "typography", d_typ.mono_sm),
             mono_md: read_f32_or(&typ_sec, "mono_md", "typography", d_typ.mono_md),
             mono_lg: read_f32_or(&typ_sec, "mono_lg", "typography", d_typ.mono_lg),
+            size_section_label: read_f32_or(&typ_sec, "size_section_label", "typography", d_typ.size_section_label),
+            label_tracking:   read_f32_or(&typ_sec, "label_tracking",   "typography", d_typ.label_tracking),
+            nav_tracking:     read_f32_or(&typ_sec, "nav_tracking",     "typography", d_typ.nav_tracking),
+            section_tracking: read_f32_or(&typ_sec, "section_tracking", "typography", d_typ.section_tracking),
         };
 
         let d_sp = Spacing::default();
@@ -344,6 +315,10 @@ impl StyleSystem {
             xxl:        read_f32_or(&sp_sec, "xxl",        "spacing", d_sp.xxl),
             gmd:        read_f32_or(&sp_sec, "gmd",        "spacing", d_sp.gmd),
             cta_height: read_f32_or(&sp_sec, "cta_height", "spacing", d_sp.cta_height),
+            cta_padding_x:    read_f32_or(&sp_sec, "cta_padding_x",    "spacing", d_sp.cta_padding_x),
+            button_height:    read_f32_or(&sp_sec, "button_height",    "spacing", d_sp.button_height),
+            button_padding_x: read_f32_or(&sp_sec, "button_padding_x", "spacing", d_sp.button_padding_x),
+            tab_height:       read_f32_or(&sp_sec, "tab_height",       "spacing", d_sp.tab_height),
         };
 
         let d_r = Radii::default();
@@ -355,6 +330,8 @@ impl StyleSystem {
             md:   read_f32_or(&r_sec, "md",   "radii", d_r.md),
             lg:   read_f32_or(&r_sec, "lg",   "radii", d_r.lg),
             full: read_f32_or(&r_sec, "full", "radii", d_r.full),
+            pill: read_f32_or(&r_sec, "pill", "radii", d_r.pill),
+            chip: read_f32_or(&r_sec, "chip", "radii", d_r.chip),
         };
 
         let d_st = Strokes::default();
@@ -385,6 +362,7 @@ impl StyleSystem {
             strong_u8: read_u8_or(&al_sec, "strong_u8", "alphas", d_al.strong_u8),
             active:    read_u8_or(&al_sec, "active",    "alphas", d_al.active),
             heavy_u8:  read_u8_or(&al_sec, "heavy_u8",  "alphas", d_al.heavy_u8),
+            scrim:     read_u8_or(&al_sec, "scrim",     "alphas", d_al.scrim),
             solid:     read_u8_or(&al_sec, "solid",     "alphas", d_al.solid),
             // f32 multipliers
             subtle:        read_f32_or(&al_sec, "subtle",        "alphas", d_al.subtle),
@@ -438,9 +416,35 @@ impl StyleSystem {
                     _         => FocusRingStyle::Outline,
                 })
                 .unwrap_or(d_tr.focus_ring),
+            // New fields — not yet in DTCG JSON, default them.
+            surface_bevel:         d_tr.surface_bevel,
+            bevel_highlight_alpha: d_tr.bevel_highlight_alpha,
+            bevel_shadow_alpha:    d_tr.bevel_shadow_alpha,
+            wl_row_side_margin:    d_tr.wl_row_side_margin,
+            wl_row_corner_radius:  d_tr.wl_row_corner_radius,
+            wl_row_divider_alpha:  d_tr.wl_row_divider_alpha,
+            section_header_mono:   d_tr.section_header_mono,
+            wl_symbol_mono:        d_tr.wl_symbol_mono,
+            panel_tab_treatment:   d_tr.panel_tab_treatment,
+            pane_active_fill_accent: d_tr.pane_active_fill_accent,
+            serif_headlines:       read_bool_or(&tr_sec, "serif_headlines", "treatments", d_tr.serif_headlines),
+            button_treatment:      d_tr.button_treatment,
+            invert_active_fill:    read_bool_or(&tr_sec, "invert_active_fill", "treatments", d_tr.invert_active_fill),
+            vertical_group_dividers: read_bool_or(&tr_sec, "vertical_group_dividers", "treatments", d_tr.vertical_group_dividers),
+            show_active_tab_underline: read_bool_or(&tr_sec, "show_active_tab_underline", "treatments", d_tr.show_active_tab_underline),
+            inactive_header_fill:  read_bool_or(&tr_sec, "inactive_header_fill", "treatments", d_tr.inactive_header_fill),
+            nav_buttons_label_only: read_bool_or(&tr_sec, "nav_buttons_label_only", "treatments", d_tr.nav_buttons_label_only),
+            nav_buttons_uppercase_labels: read_bool_or(&tr_sec, "nav_buttons_uppercase_labels", "treatments", d_tr.nav_buttons_uppercase_labels),
+            tab_underline_under_text: read_bool_or(&tr_sec, "tab_underline_under_text", "treatments", d_tr.tab_underline_under_text),
+            card_floating_shadow:  read_bool_or(&tr_sec, "card_floating_shadow", "treatments", d_tr.card_floating_shadow),
+            shadows_enabled:       read_bool_or(&tr_sec, "shadows_enabled", "treatments", d_tr.shadows_enabled),
+            animations_enabled:    read_bool_or(&tr_sec, "animations_enabled", "treatments", d_tr.animations_enabled),
         };
 
-        Ok(StyleSystem { meta, typography, spacing, radii, strokes, alphas, elevation, density, shadows, treatments })
+        // Chrome geometry is not yet round-tripped through DTCG — default it.
+        let chrome = crate::design_system::style_system::Chrome::default();
+
+        Ok(StyleSystem { meta, typography, spacing, radii, strokes, alphas, elevation, density, shadows, treatments, chrome })
     }
 }
 

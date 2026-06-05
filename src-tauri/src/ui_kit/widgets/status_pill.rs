@@ -36,13 +36,14 @@
 //!
 //! Sister widgets: [`Tag`], [`Badge`], [`Indicator`], [`Alert`].
 
-use egui::{Color32, CornerRadius, FontId, Pos2, Sense, Stroke, StrokeKind, Ui, Vec2};
+use egui::{FontId, Pos2, Sense, Ui, Vec2};
 
 use crate::ui_kit::tokens::{
-    alpha_hint, alpha_muted, color_alpha, font_xs, gap_2xs, gap_xs, radius_md, radius_sm,
+    alpha_hint, alpha_muted, color_alpha, font_xs, gap_2xs, gap_xs,
     stroke_thin,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
+use crate::ui_kit::sx::Sx;
 use crate::ui_kit::widgets::panel_section::Tone as PanelTone;
 use crate::ui_kit::widgets::tokens::Size;
 
@@ -89,9 +90,9 @@ impl<'a> StatusPill<'a> {
     pub fn show(self, ui: &mut Ui, t: &dyn ComponentTheme) {
         let tone_color = self.tone.color(t);
 
-        let (h, pad_x, cr) = match self.size {
-            Size::Xs => (14.0_f32, gap_2xs(), CornerRadius::same(radius_sm() as u8)),
-            _ => (18.0_f32, gap_xs(), CornerRadius::same(radius_md() as u8)),
+        let (h, pad_x) = match self.size {
+            Size::Xs => (14.0_f32, gap_2xs()),
+            _ => (18.0_f32, gap_xs()),
         };
 
         let font_size = font_xs();
@@ -117,15 +118,13 @@ impl<'a> StatusPill<'a> {
 
         let painter = ui.painter_at(rect);
 
-        // Fill: soft tint.
-        painter.rect_filled(rect, cr, color_alpha(tone_color, alpha_hint()));
-        // Border: hairline.
-        painter.rect_stroke(
-            rect,
-            cr,
-            Stroke::new(stroke_thin(), color_alpha(tone_color, alpha_muted())),
-            StrokeKind::Inside,
-        );
+        // DS#4: declare the pill — soft tinted fill + hairline border on the
+        // resolved tone color. Radius tracks size (Xs→sm, else→md).
+        let pill = Sx::new()
+            .bg_color(color_alpha(tone_color, alpha_hint()))
+            .border_color(color_alpha(tone_color, alpha_muted()), stroke_thin());
+        let pill = match self.size { Size::Xs => pill.rounded_sm(), _ => pill.rounded_md() };
+        pill.paint_box_at(&painter, rect, t);
 
         let cy = rect.center().y;
         let mut x = rect.left() + pad_x;

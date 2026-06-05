@@ -105,6 +105,7 @@ impl Icon {
     pub const MAGNET: &'static str = ph::MAGNET;
     pub const BROADCAST: &'static str = ph::BROADCAST;
     pub const TREE_STRUCTURE: &'static str = ph::TREE_STRUCTURE;
+    pub const STACK: &'static str = ph::STACK;
     pub const LOCK: &'static str = ph::LOCK;
     pub const LOCK_OPEN: &'static str = ph::LOCK_OPEN;
     pub const LIGHTNING: &'static str = ph::LIGHTNING;
@@ -230,6 +231,16 @@ pub fn init_fonts(ctx: &egui::Context, font_idx: usize) {
         std::sync::Arc::new(egui::FontData::from_static(include_bytes!("DMSans-Medium.ttf")).tweak(tweak_sans)));
     fonts.font_data.insert("geist".into(),
         std::sync::Arc::new(egui::FontData::from_static(include_bytes!("Geist-Medium.ttf")).tweak(tweak_sans)));
+    // IBM Plex Sans + Mono — the authentic Alto/Mariner UI font (ported from
+    // the React mockup's `--ds-font-ui: 'IBM Plex Sans'` / `--ds-font-mono: 'IBM Plex Mono'`).
+    fonts.font_data.insert("ibm_plex_sans".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("IBMPlexSans-Regular.ttf")).tweak(tweak_sans)));
+    fonts.font_data.insert("ibm_plex_sans_sb".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("IBMPlexSans-SemiBold.ttf")).tweak(tweak_sans)));
+    fonts.font_data.insert("ibm_plex_mono".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("IBMPlexMono-Regular.ttf")).tweak(tweak_mono)));
+    fonts.font_data.insert("ibm_plex_mono_bold".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("IBMPlexMono-Bold.ttf")).tweak(tweak_mono)));
 
     // Multi-weight Inter + JetBrains Mono Bold for real (non-faux) bold/semibold rendering.
     fonts.font_data.insert("inter_regular".into(),
@@ -266,8 +277,19 @@ pub fn init_fonts(ctx: &egui::Context, font_idx: usize) {
         3 => "space_grotesk",
         4 => "dm_sans",
         5 => "geist",
+        6 => "ibm_plex_sans",
         _ => "jetbrains_mono",
     };
+
+    // When IBM Plex is active, also slot IBM Plex Mono into the Monospace family
+    // for Alto/Mariner's instrument-panel character (source: `--ds-font-mono: 'IBM Plex Mono'`).
+    // NOTE: JetBrains Mono is still the fallback so tabular-digit alignment is preserved
+    // for financial data; IBM Plex Mono just leads the family for that theme.
+    if font_idx == 6 {
+        if let Some(mono_keys) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
+            mono_keys.insert(0, "ibm_plex_mono".into());
+        }
+    }
 
     // Proportional: picker font wins (user's choice for UI chrome).
     if let Some(prop_keys) = fonts.families.get_mut(&egui::FontFamily::Proportional) {

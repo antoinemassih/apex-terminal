@@ -58,6 +58,10 @@ pub struct RowShell<'a> {
     painter_mode: bool,
     painter_body: Option<Box<dyn FnOnce(&mut Ui, Rect) + 'a>>,
     painter_height: Option<f32>,
+    /// When > 0, the hover/selected overlay is inset by this many px on each
+    /// side and uses the `pill_radius` for rounding. Drives Aperture/Glass pill rows.
+    pill_inset: f32,
+    pill_radius: u8,
 }
 
 impl<'a> RowShell<'a> {
@@ -68,7 +72,14 @@ impl<'a> RowShell<'a> {
             state: InteractionState::default(), tokens: InteractionTokens::default(),
             show_divider: false,
             painter_mode: false, painter_body: None, painter_height: None,
+            pill_inset: 0.0, pill_radius: 0,
         }
+    }
+    /// Inset the hover/selected overlay rect + use `radius` for rounding.
+    /// Set from `current().wl_row_side_margin` / `wl_row_corner_radius` for
+    /// pill-row themes (Aperture: inset=6, radius=8; Glass: inset=4, radius=10).
+    pub fn pill(mut self, inset: f32, radius: u8) -> Self {
+        self.pill_inset = inset; self.pill_radius = radius; self
     }
     /// Switch the row to painter mode — the shell allocates an exact-size
     /// strip and runs `body(ui, rect)` instead of using slot closures.
@@ -118,12 +129,26 @@ impl<'a> RowShell<'a> {
                 .hovered(click.hovered())
                 .pressed(click.is_pointer_button_down_on())
                 .focused(click.has_focus());
-            let v = apply_interaction(rect, st, self.theme.accent, &self.tokens);
+            // Pill rows: inset + round the interaction overlay so hover/selected
+            // clips to the pill shape rather than the full row width.
+            let (overlay_rect, overlay_cr) = if self.pill_inset > 0.0 {
+                let inset = self.pill_inset;
+                (
+                    Rect::from_min_max(
+                        egui::pos2(rect.left() + inset, rect.top() + 1.0),
+                        egui::pos2(rect.right() - inset, rect.bottom() - 1.0),
+                    ),
+                    egui::CornerRadius::same(self.pill_radius),
+                )
+            } else {
+                (rect, Radius::Sm.corner())
+            };
+            let v = apply_interaction(overlay_rect, st, self.theme.accent, &self.tokens);
             if v.fill != Color32::TRANSPARENT {
-                ui.painter().rect_filled(rect, Radius::Sm.corner(), v.fill);
+                ui.painter().rect_filled(overlay_rect, overlay_cr, v.fill);
             }
             if v.stroke.width > 0.0 {
-                ui.painter().rect_stroke(rect, Radius::Sm.corner(), v.stroke, StrokeKind::Inside);
+                ui.painter().rect_stroke(overlay_rect, overlay_cr, v.stroke, StrokeKind::Inside);
             }
             if self.show_divider {
                 let y = rect.bottom();
@@ -138,10 +163,12 @@ impl<'a> RowShell<'a> {
             return click;
         }
 
-        let resp = egui::Frame::NONE
+        let resp = crate::ui_kit::widgets::OutlinedBox::new()
             .fill(base_fill)
-            .inner_margin(pad)
-            .show(ui, |ui| {
+            .borderless()
+            .square()
+            .padding_margin(pad)
+            .show(ui, self.theme, |ui| {
                 ui.horizontal(|ui| {
                     if let Some(leading) = self.leading { leading(ui); }
                     ui.label(TextStyle::Body.as_rich(self.primary, fg));

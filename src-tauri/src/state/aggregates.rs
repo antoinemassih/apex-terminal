@@ -566,6 +566,20 @@ pub struct SidebarState {
     #[serde(default)]
     pub order_health_open: bool,
 
+    /// Active tab in the bottom dock (0=Orders, 1=Positions, 2=Account, 3=Notifications).
+    /// Source: `Watchlist::bottom_dock_tab: u8`. (Footer *visibility* is a
+    /// style default + session override, not persisted here — see `footer_visible()`.)
+    #[serde(default)]
+    pub bottom_dock_tab: u8,
+
+    /// Persisted right-rail column width (px). Source: `Watchlist::rail_col_width`.
+    #[serde(default = "SidebarState::default_rail_col_width")]
+    pub rail_col_width: f32,
+
+    /// Persisted bottom-dock (footer) height (px). Source: `Watchlist::bottom_dock_height`.
+    #[serde(default = "SidebarState::default_bottom_dock_height")]
+    pub bottom_dock_height: f32,
+
     // ── Chart-adjacent panels ──────────────────────────────────────────────
 
     /// Account summary bar below the toolbar.
@@ -714,6 +728,8 @@ pub struct SidebarState {
 
 impl SidebarState {
     fn default_indicators_section_fracs() -> [f32; 3] { [0.18, 0.25, 0.57] }
+    fn default_rail_col_width() -> f32 { 400.0 }
+    fn default_bottom_dock_height() -> f32 { 240.0 }
 }
 
 impl Default for SidebarState {
@@ -727,6 +743,9 @@ impl Default for SidebarState {
             order_ledger_view: 0,
             order_ledger_filter: 0,
             order_health_open: false,
+            bottom_dock_tab: 0,
+            rail_col_width: 400.0,
+            bottom_dock_height: 240.0,
             account_strip_open: false,
             object_tree_open: false,
             trendline_filter_open: false,
@@ -887,6 +906,13 @@ pub struct LayoutState {
     #[serde(default = "LayoutState::default_split")]
     pub pane_split_v6: f32,
 
+    /// Phase 1 PaneGrid topology — recursive split tree. `None` means
+    /// "fall back to the legacy 8-fraction path above". When `Some` it is
+    /// the canonical source of pane geometry; the fractions are kept
+    /// alongside for older builds and emergency fallback.
+    #[serde(default)]
+    pub pane_layout: Option<crate::chart_renderer::pane_layout::PaneLayout>,
+
     // ── Favorites ─────────────────────────────────────────────────────────
 
     /// Layout preset names pinned to the toolbar (e.g. `["1", "2", "2H", "4"]`).
@@ -988,6 +1014,7 @@ impl Default for LayoutState {
             pane_split_v4: 0.5,
             pane_split_v5: 0.5,
             pane_split_v6: 0.5,
+            pane_layout: None,
             layout_favorites: Self::default_layout_favorites(),
             timeframe_favorites: Self::default_timeframe_favorites(),
             maximized_pane: None,
@@ -1749,6 +1776,9 @@ mod tests {
             order_ledger_view: 2,
             order_ledger_filter: 3,
             order_health_open: true,
+            bottom_dock_tab: 2,
+            rail_col_width: 420.0,
+            bottom_dock_height: 260.0,
             account_strip_open: true,
             object_tree_open: true,
             trendline_filter_open: true,
@@ -1815,6 +1845,7 @@ mod tests {
             pane_split_v4: 0.60,
             pane_split_v5: 0.45,
             pane_split_v6: 0.55,
+            pane_layout: None,
             layout_favorites: vec!["2H".into(), "4".into()],
             timeframe_favorites: vec!["5m".into(), "1h".into()],
             maximized_pane: Some(1),

@@ -11,6 +11,8 @@
 //!         "insufficient history (N samples)" line.
 
 use egui;
+use crate::chart_renderer::ui::style::tint;
+use crate::ui_kit::sx::Tone;
 use super::super::super::gpu::Theme;
 use super::super::style::{
     alpha_muted, color_alpha, gap_2xs, gap_xs, radius_xs, stroke_std,
@@ -102,7 +104,7 @@ fn draw_bar(ui: &mut egui::Ui, rank_0_100: f32, t: &Theme) {
     let painter = ui.painter_at(rect);
     let cr = egui::CornerRadius::same(radius_xs() as u8);
     // Background track — dim at muted alpha (~25% opacity).
-    painter.rect_filled(rect, cr, color_alpha(t.dim, alpha_muted()));
+    painter.rect_filled(rect, cr, tint(t, Tone::Dim, alpha_muted()));
     // Filled portion — semantic colour by rank zone.
     let fill_w = (rank_0_100 / 100.0) * rect.width();
     let fill_rect = egui::Rect::from_min_size(rect.min, egui::vec2(fill_w, rect.height()));

@@ -7,6 +7,7 @@
 //! from `(price - prev_close) / prev_close * 100` on each frame.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use super::super::components::headers_widget::PaneHeader;
@@ -98,7 +99,7 @@ pub(crate) fn render(
             egui::pos2(rect.left() + 8.0, rect.top() + header_h + extra_h),
             egui::pos2(rect.right() - 8.0, rect.top() + header_h + extra_h + BREADTH_STRIP_H),
         );
-        painter.rect_filled(strip_rect, 2.0, color_alpha(t.toolbar_bg, alpha_muted()));
+        painter.rect_filled(strip_rect, 2.0, tint(t, Tone::Surface, alpha_muted()));
         let txt = format!(
             "Adv {} / Dec {} · NH {} / NL {} · {:.0}% > SMA50 · {:.0}% > SMA200",
             b.advancers, b.decliners, b.new_highs, b.new_lows,

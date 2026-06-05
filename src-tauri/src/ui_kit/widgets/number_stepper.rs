@@ -24,6 +24,7 @@ use std::ops::RangeInclusive;
 use super::theme::ComponentTheme;
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::sx::{palette_ct, Tone};
 
 #[must_use = "NumberStepper does nothing until `.show(ui, theme)` is called"]
 pub struct NumberStepper<'a, T: egui::emath::Numeric> {
@@ -94,16 +95,17 @@ impl<'a, T: egui::emath::Numeric> NumberStepper<'a, T> {
             ui.style_mut().override_font_id = Some(font_id);
 
             // Style inactive/hover/active states to match Input appearance.
+            let pal = palette_ct(theme);
             let v = &mut ui.style_mut().visuals;
             let cr = egui::CornerRadius::same(st::radius_sm() as u8);
-            v.widgets.inactive.bg_fill    = theme.surface();
-            v.widgets.inactive.bg_stroke  = Stroke::new(st::stroke_thin(), theme.border());
+            v.widgets.inactive.bg_fill    = pal.base(Tone::Surface);
+            v.widgets.inactive.bg_stroke  = Stroke::new(st::stroke_thin(), pal.base(Tone::Border));
             v.widgets.inactive.corner_radius   = cr;
-            v.widgets.hovered.bg_fill     = theme.surface();
-            v.widgets.hovered.bg_stroke   = Stroke::new(st::stroke_std(), theme.dim());
+            v.widgets.hovered.bg_fill     = pal.base(Tone::Surface);
+            v.widgets.hovered.bg_stroke   = Stroke::new(st::stroke_std(), pal.base(Tone::Dim));
             v.widgets.hovered.corner_radius    = cr;
-            v.widgets.active.bg_fill      = theme.surface();
-            v.widgets.active.bg_stroke    = Stroke::new(st::stroke_std(), st::color_alpha(theme.accent(), st::alpha_active()));
+            v.widgets.active.bg_fill      = pal.base(Tone::Surface);
+            v.widgets.active.bg_stroke    = Stroke::new(st::stroke_std(), st::color_alpha(pal.base(Tone::Accent), st::alpha_active()));
             v.widgets.active.corner_radius     = cr;
 
             ui.add_enabled(!disabled, dv)

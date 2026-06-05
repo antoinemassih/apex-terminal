@@ -12,6 +12,7 @@
 #![allow(dead_code, unused_imports)]
 
 use egui::{Color32, Response, RichText, Stroke, Ui, Vec2};
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{FormRow, Tooltip};
@@ -56,14 +57,15 @@ impl<'a> FieldSet<'a> {
         body: impl FnOnce(&mut Ui) -> R,
     ) -> R {
         let s = current();
-        let stroke_w = if s.hairline_borders { s.stroke_std } else { stroke_thin() };
-        let border = color_alpha(t.toolbar_border, alpha_muted());
-        let frame = egui::Frame::NONE
-            .stroke(Stroke::new(stroke_w, border))
-            .corner_radius(r_sm_cr())
-            .inner_margin(egui::Margin::same(self.inner_margin as i8));
+        let border = tint(t, Tone::Border, alpha_muted());
+        let mut box_ = crate::ui_kit::widgets::OutlinedBox::new()
+            .fill(egui::Color32::TRANSPARENT)
+            .border(border)
+            .radius_sm()
+            .padding(self.inner_margin);
+        if !s.hairline_borders { box_ = box_.hairline(); }
 
-        let resp = frame.show(ui, |ui| {
+        let resp = box_.show(ui, t, |ui| {
             if let Some(title) = self.title {
                 ui.label(
                     RichText::new(title)
@@ -1105,7 +1107,8 @@ impl ApertureOrderTicket {
         use crate::ui_kit::widgets::InputGroup;
 
         let panel_w = if self.panel_w > 0.0 { self.panel_w } else { ui.available_width() };
-        let pad     = 8.0_f32;
+        // Section inset — tokenized to gap_sm() so density scaling works.
+        let pad     = gap_sm();
         let adv     = s.order_advanced;
         let last    = s.last_price;
         let spread  = s.spread;
@@ -1230,13 +1233,13 @@ impl ApertureOrderTicket {
                     }
                 });
 
-            // Vertical separator between qty and price columns.
+            // Vertical separator between qty and price columns. Was hand-rolled
+            // line_segment with a hardcoded 20px height + alpha-80 border;
+            // now goes through the kit's Separator with token-driven height.
             ui.add_space(gap_sm());
-            let cursor = ui.cursor().min;
-            ui.painter().line_segment(
-                [egui::pos2(cursor.x, cursor.y), egui::pos2(cursor.x, cursor.y + 20.0)],
-                Stroke::new(stroke_std(), color_alpha(self.toolbar_border, 80)));
-            ui.add_space(gap_md());
+            crate::ui_kit::widgets::Separator::vertical()
+                .spacing(gap_md())
+                .show(ui, &t_stub);
 
             // ── Price FormField (compact / non-advanced mode) ─────────────
             if !adv {
@@ -1352,17 +1355,35 @@ impl ApertureOrderTicket {
                     *s.order_bracket = !*s.order_bracket;
                 }
                 if *s.order_bracket {
+                    // TP / SL inline price inputs. Previously raw label+Input
+                    // pairs; now use FormField like the sibling Limit/Stop/Trail
+                    // fields above for consistent label gutter + helper slot.
                     ui.add_space(gap_sm());
-                    ui.label(egui::RichText::new("TP").monospace().size(font_sm()).color(self.bull));
-                    Input::new(s.order_tp_price)
-                        .placeholder("Take").width(52.0)
-                        .horizontal_align(egui::Align::RIGHT)
-                        .show(ui, &t_stub);
-                    ui.label(egui::RichText::new("SL").monospace().size(font_sm()).color(self.bear));
-                    Input::new(s.order_sl_price)
-                        .placeholder("Stop").width(52.0)
-                        .horizontal_align(egui::Align::RIGHT)
-                        .show(ui, &t_stub);
+                    FormField::new("TP")
+                        .helper("take profit")
+                        .show(ui, &t_stub, |ui| {
+                            InputGroup::new()
+                                .prefix("$")
+                                .show(ui, &t_stub, |ui| {
+                                    Input::new(s.order_tp_price)
+                                        .placeholder("Take").width(60.0)
+                                        .horizontal_align(egui::Align::RIGHT)
+                                        .show(ui, &t_stub);
+                                });
+                        });
+                    ui.add_space(gap_sm());
+                    FormField::new("SL")
+                        .helper("stop loss")
+                        .show(ui, &t_stub, |ui| {
+                            InputGroup::new()
+                                .prefix("$")
+                                .show(ui, &t_stub, |ui| {
+                                    Input::new(s.order_sl_price)
+                                        .placeholder("Stop").width(60.0)
+                                        .horizontal_align(egui::Align::RIGHT)
+                                        .show(ui, &t_stub);
+                                });
+                        });
                 }
             });
         }
@@ -1396,21 +1417,12 @@ impl ApertureOrderTicket {
         // so the bull/bear tints are preserved. This avoids an extra button
         // layer while using the same visual rhythm.
         {
-            ui.add_space(gap_md());
-            let avail = ui.available_width();
-            let (sep_rect, _) = ui.allocate_exact_size(
-                egui::Vec2::new(avail, stroke_thin()),
-                egui::Sense::hover(),
-            );
-            if ui.is_rect_visible(sep_rect) {
-                let sep_col = color_alpha(self.toolbar_border, alpha_dim());
-                ui.painter().hline(
-                    sep_rect.x_range(),
-                    sep_rect.center().y,
-                    Stroke::new(stroke_thin(), sep_col),
-                );
-            }
-            ui.add_space(gap_md());
+            // Action-bar separator above BUY/SELL. Was hand-rolled hline; now
+            // uses the kit's Separator::horizontal with token-driven color +
+            // spacing so it matches every other section divider in the app.
+            crate::ui_kit::widgets::Separator::horizontal()
+                .spacing(gap_md())
+                .show(ui, &t_stub);
 
             // Right-to-left layout: BUY is rightmost (primary), SELL is left.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1490,15 +1502,6 @@ fn aperture_stub_theme_full(
         text_muted:         Color32::from_rgb(180, 180, 195),
         hud_bg:             Color32::from_rgba_premultiplied(12, 12, 18, 230),
         hud_border:         Color32::from_rgb(50, 52, 64),
-        element_hover:      crate::chart_renderer::gpu::alpha(text, 12),
-        element_active:     crate::chart_renderer::gpu::alpha(text, 24),
-        element_selected:   crate::chart_renderer::gpu::alpha(accent, 24),
-        element_disabled:   crate::chart_renderer::gpu::alpha(dim, 80),
-        ghost_hover:        crate::chart_renderer::gpu::alpha(text, 6),
-        ghost_active:       crate::chart_renderer::gpu::alpha(text, 12),
-        icon:               text,
-        icon_muted:         crate::chart_renderer::gpu::alpha(text, 178),
-        icon_disabled:      crate::chart_renderer::gpu::alpha(text, 102),
-        icon_accent:        accent,
+        // P12: overlay fields removed — see theme_impl.rs for derivation.
     }
 }

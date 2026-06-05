@@ -35,9 +35,11 @@
 //!     Reconciling the two naming schemes (semantic vs tier) is a Phase 5
 //!     task tied to the `ComponentTheme` trait reshape — it touches
 //!     1400+ call sites.
-//!   - [`ThemeRegistry`] and [`ActiveTheme`] exist as a parallel design
-//!     waiting for that Phase 5 reshape; the runtime does NOT currently
-//!     read through them.
+//!   - [`ThemeRegistry`] is now exposed as a process-wide singleton via
+//!     [`live_registry()`] (P1.8). It owns the canonical {styles, schemes,
+//!     active pair} state. The chart-app's per-pane `theme_idx` path into
+//!     `gpu::LIVE_THEMES` remains the hot path for frame colour resolution.
+//!   - [`ActiveTheme`] is the snapshot type for resolving the active pair.
 //!
 //! ## Sub-modules
 //!
@@ -62,7 +64,9 @@
 //! - `gpu::CMD_PALETTE_DEFAULT` survives because the `#[cfg(test)]` THEMES
 //!   const still references it; will go away with THEMES.
 
-pub mod adapter;
+// P13: `adapter` (ColorScheme → gpu::Theme) moved into chart_renderer to sever
+// design_system's dependency on chart_renderer types. Re-imported via the
+// chart_renderer side at `chart_renderer::theme_adapter::color_scheme_to_theme`.
 pub mod baseline;
 pub mod builtin;
 pub mod color_scheme;
@@ -76,12 +80,15 @@ pub mod style_system;
 
 // ── Convenient top-level re-exports ──────────────────────────────────────────
 
-pub use adapter::color_scheme_to_theme;
+// `color_scheme_to_theme` lives in chart_renderer::theme_adapter (P13). The
+// design_system crate intentionally does not re-export it — callers should
+// import directly from chart_renderer, which keeps the dependency arrow
+// pointing the right way (chart_renderer → design_system, never reverse).
 pub use baseline::{baseline_color_scheme, baseline_style_system};
 pub use builtin::{builtin_color_schemes, builtin_registry, builtin_style_systems};
 pub use color_scheme::{ColorScheme, Meta, Rgba};
 pub use export::{export_builtin_themes, scan_theme_dir};
 pub use hot_reload::{active_override, start_theme_watcher, themes_dir};
-pub use registry::{ActiveTheme, ThemeRegistry};
+pub use registry::{ActiveTheme, ThemeRegistry, live_registry};
 pub use snapshot::{DesignSnapshot, DEFAULT_SNAPSHOT};
 pub use style_system::StyleSystem;

@@ -37,6 +37,7 @@ use super::motion;
 use super::theme::ComponentTheme;
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::icons::Icon;
 
 // ── Public types ───────────────────────────────────────────────────────────────
@@ -143,11 +144,12 @@ pub struct Tabs<'a> {
 }
 
 impl<'a> Tabs<'a> {
+    pub fn new_default_treatment(active: &'a mut usize, labels: &'a [&'a str]) -> Self { Self::new(active, labels) }
     pub fn new(active: &'a mut usize, labels: &'a [&'a str]) -> Self {
         Self {
             active,
             source: Source::Labels(labels),
-            treatment: TabTreatment::default(),
+            treatment: crate::ui_kit::style::style_tab_treatment(),
             size: Size::Md,
             closable: false,
             reorderable: false,
@@ -162,7 +164,9 @@ impl<'a> Tabs<'a> {
         Self {
             active,
             source: Source::Items(items),
-            treatment: TabTreatment::default(),
+            // Default treatment comes from the active style preset — callers that
+            // want a specific treatment chain `.treatment(...)` to override.
+            treatment: crate::ui_kit::style::style_tab_treatment(),
             size: Size::Md,
             closable: false,
             reorderable: false,
@@ -401,7 +405,7 @@ fn paint_tabs(
         ui.painter().rect_filled(
             total_rect,
             CornerRadius::same(st::radius_md() as u8),
-            st::color_alpha(theme.surface(), 200),
+            st::color_alpha(palette_ct(theme).base(Tone::Surface), 200),
         );
     }
 
@@ -468,7 +472,7 @@ fn paint_tabs(
                 let close_rect = Rect::from_center_size(close_center, Vec2::splat(CLOSE_HIT));
                 let close_resp = ui.interact(close_rect, tab_id.with("close_btn"), Sense::click());
                 if close_t > 0.01 {
-                    let base = if close_resp.hovered() { theme.text() } else { theme.dim() };
+                    let base = if close_resp.hovered() { palette_ct(theme).base(Tone::Text) } else { palette_ct(theme).base(Tone::Dim) };
                     let col = Color32::from_rgba_premultiplied(
                         base.r(), base.g(), base.b(),
                         (base.a() as f32 * close_t).round() as u8,
@@ -555,7 +559,7 @@ fn paint_tabs(
             plus_resp.hovered(), motion::FAST);
         let bg = motion::lerp_color(
             Color32::TRANSPARENT,
-            st::color_alpha(theme.surface(), 200),
+            st::color_alpha(palette_ct(theme).base(Tone::Surface), 200),
             hover_t,
         );
         ui.painter().rect_filled(plus_rect, CornerRadius::same(st::radius_sm() as u8), bg);
@@ -564,7 +568,7 @@ fn paint_tabs(
             Align2::CENTER_CENTER,
             Icon::PLUS,
             font_icon.clone(),
-            theme.dim(),
+            palette_ct(theme).base(Tone::Dim),
         );
         if plus_resp.clicked() {
             resp_out.add_clicked = true;
@@ -577,7 +581,7 @@ fn paint_tabs(
     // tab sits, so the active tab's "open bottom" merges with the content
     // panel below.
     if matches!(treatment, TabTreatment::Card) {
-        let sep_color = st::color_alpha(theme.border(), st::alpha_muted());
+        let sep_color = st::color_alpha(palette_ct(theme).base(Tone::Border), st::alpha_muted());
         let stroke = Stroke::new(st::stroke_thin(), sep_color);
         // Vertical separators between every adjacent tab pair.
         for i in 1..n {
@@ -629,7 +633,7 @@ fn paint_tabs(
     // ── Line treatment: 1px vertical hairline between adjacent tabs ──
     // Zed parity. Only between tabs (not before first / after last).
     if matches!(treatment, TabTreatment::Line) && n > 1 {
-        let sep_color = st::color_alpha(theme.dim(), 60);
+        let sep_color = st::color_alpha(palette_ct(theme).base(Tone::Dim), 60);
         let stroke = Stroke::new(st::stroke_std(), sep_color);
         for i in 1..n {
             let r = displaced_rects[i];
@@ -716,7 +720,7 @@ fn paint_tabs(
                     Pos2::new(slide_cx + slide_half, y + 1.0),
                 ),
                 CornerRadius::ZERO,
-                theme.accent(),
+                palette_ct(theme).base(Tone::Accent),
             );
         }
     }
@@ -830,6 +834,11 @@ fn paint_one_tab_painter(
         }
     };
 
+    // Active/hover fills source their base from the unified Sx palette (S500 ==
+    // theme base, byte-identical). Pane keeps color_dim() so it stays matched to
+    // chrome::painter_pane's tab strip.
+    let pal = palette_ct(theme);
+
     // Background per treatment.
     match treatment {
         TabTreatment::Line => {
@@ -841,12 +850,12 @@ fn paint_one_tab_painter(
         TabTreatment::Segmented => {
             if is_active {
                 let inset = rect.shrink2(Vec2::new(2.0, 2.0));
-                let bg = motion::fade_in(theme.bg(), active_t);
+                let bg = motion::fade_in(pal.base(Tone::Bg), active_t);
                 painter.rect_filled(inset, CornerRadius::same(st::radius_sm() as u8), alpha(bg));
             } else if hover_t > 0.01 {
                 let bg = motion::lerp_color(
                     Color32::TRANSPARENT,
-                    st::color_alpha(theme.bg(), 100),
+                    st::color_alpha(pal.base(Tone::Bg), 100),
                     hover_t,
                 );
                 painter.rect_filled(rect.shrink2(Vec2::new(2.0, 2.0)),
@@ -855,12 +864,12 @@ fn paint_one_tab_painter(
         }
         TabTreatment::Filled => {
             if is_active {
-                let bg = motion::fade_in(theme.surface(), active_t);
+                let bg = motion::fade_in(pal.base(Tone::Surface), active_t);
                 painter.rect_filled(rect, CornerRadius::same(st::radius_sm() as u8), alpha(bg));
             } else if hover_t > 0.01 {
                 let bg = motion::lerp_color(
                     Color32::TRANSPARENT,
-                    st::color_alpha(theme.surface(), 120),
+                    st::color_alpha(pal.base(Tone::Surface), 120),
                     hover_t,
                 );
                 painter.rect_filled(rect, CornerRadius::same(st::radius_sm() as u8), alpha(bg));
@@ -878,12 +887,12 @@ fn paint_one_tab_painter(
             let r_md = st::radius_md() as u8;
             let corners = CornerRadius { nw: r_md, ne: r_md, sw: 0, se: 0 };
             if is_active {
-                let bg = motion::fade_in(st::color_dim(theme.bg()), active_t);
+                let bg = motion::fade_in(st::color_dim(pal.base(Tone::Bg)), active_t);
                 painter.rect_filled(rect, corners, alpha(bg));
             } else if hover_t > 0.01 {
                 let bg = motion::lerp_color(
                     Color32::TRANSPARENT,
-                    st::color_alpha(theme.border(), 40),
+                    st::color_alpha(pal.base(Tone::Border), 40),
                     hover_t,
                 );
                 painter.rect_filled(rect, corners, alpha(bg));
@@ -897,9 +906,9 @@ fn paint_one_tab_painter(
             // separators + the full-width hairline below the strip are painted
             // post-loop in `paint_tabs`.
             if is_active {
-                let bg = motion::fade_in(st::color_alpha(theme.surface(), 220), active_t);
+                let bg = motion::fade_in(st::color_alpha(pal.base(Tone::Surface), 220), active_t);
                 painter.rect_filled(rect, CornerRadius::ZERO, alpha(bg));
-                let accent_col = motion::fade_in(theme.accent(), active_t);
+                let accent_col = motion::fade_in(pal.base(Tone::Accent), active_t);
                 painter.rect_filled(
                     Rect::from_min_size(
                         Pos2::new(rect.left(), rect.top()),
@@ -909,7 +918,7 @@ fn paint_one_tab_painter(
                     alpha(accent_col),
                 );
                 let border = motion::fade_in(
-                    st::color_alpha(theme.border(), st::alpha_strong()),
+                    st::color_alpha(pal.base(Tone::Border), st::alpha_strong()),
                     active_t,
                 );
                 let bs = Stroke::new(st::stroke_thin(), alpha(border));
@@ -934,7 +943,7 @@ fn paint_one_tab_painter(
             } else if hover_t > 0.01 {
                 let bg = motion::lerp_color(
                     Color32::TRANSPARENT,
-                    st::color_alpha(theme.surface(), 100),
+                    st::color_alpha(palette_ct(theme).base(Tone::Surface), 100),
                     hover_t,
                 );
                 painter.rect_filled(rect, CornerRadius::ZERO, alpha(bg));
@@ -946,13 +955,13 @@ fn paint_one_tab_painter(
     // Zed parity: for Line treatment, hover snaps (no fade). Other treatments
     // keep the existing eased lerp for visual continuity.
     let label_col = if item.disabled {
-        st::color_alpha(theme.dim(), 120)
+        st::color_alpha(palette_ct(theme).base(Tone::Dim), 120)
     } else if is_active {
-        theme.text()
+        palette_ct(theme).base(Tone::Text)
     } else if matches!(treatment, TabTreatment::Line) {
-        if hover_t > 0.5 { theme.text() } else { theme.dim() }
+        if hover_t > 0.5 { palette_ct(theme).base(Tone::Text) } else { palette_ct(theme).base(Tone::Dim) }
     } else {
-        motion::lerp_color(theme.dim(), theme.text(), hover_t)
+        motion::lerp_color(palette_ct(theme).base(Tone::Dim), palette_ct(theme).base(Tone::Text), hover_t)
     };
     let label_col = alpha(label_col);
 
@@ -977,7 +986,7 @@ fn paint_one_tab_painter(
             painter.circle_filled(
                 Pos2::new(cxd, cy),
                 ACTIVE_DOT_R,
-                alpha(theme.accent()),
+                alpha(palette_ct(theme).base(Tone::Accent)),
             );
         }
         cx += slot;
@@ -1014,9 +1023,9 @@ fn paint_one_tab_painter(
         let bw = (bg.rect.width() + 10.0).max(14.0);
         let bh = 14.0;
         let br = Rect::from_min_size(Pos2::new(cx, cy - bh * 0.5), Vec2::new(bw, bh));
-        painter.rect_filled(br, CornerRadius::same(7), alpha(theme.bear())); // TODO: off-token
+        painter.rect_filled(br, CornerRadius::same(7), alpha(palette_ct(theme).base(Tone::Bear))); // radius: full-round pill (intentional)
         painter.text(br.center(), Align2::CENTER_CENTER, &s,
-            FontId::monospace(st::font_xs_plus()), crate::ui_kit::tokens::contrast_fg(theme.bear()));
+            FontId::monospace(st::font_xs_plus()), crate::ui_kit::tokens::contrast_fg(palette_ct(theme).base(Tone::Bear)));
         cx += bw + inner_gap;
     }
 
@@ -1025,7 +1034,7 @@ fn paint_one_tab_painter(
         painter.circle_filled(
             Pos2::new(cx + MOD_DOT_R, cy),
             MOD_DOT_R,
-            alpha(theme.accent()),
+            alpha(palette_ct(theme).base(Tone::Accent)),
         );
         // close-button drawn separately by caller via interact()
     }
@@ -1035,7 +1044,7 @@ fn paint_one_tab_painter(
         painter.rect_stroke(
             rect,
             CornerRadius::same(st::radius_sm() as u8),
-            Stroke::new(st::stroke_std(), alpha(st::color_alpha(theme.border(), 180))),
+            Stroke::new(st::stroke_std(), alpha(st::color_alpha(palette_ct(theme).base(Tone::Border), 180))),
             StrokeKind::Inside,
         );
     }

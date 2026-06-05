@@ -37,6 +37,7 @@
 
 use egui::{Color32, Painter, Rect, Vec2};
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::sx::{palette_ct, Tone};
 
 /// Specification for a soft drop shadow.
 #[derive(Clone, Copy, Debug)]
@@ -250,8 +251,8 @@ pub fn show_shadow_gallery(
 
     let tile_size = Vec2::new(120.0, 80.0);
     let gap = 48.0;
-    let surface = theme.surface();
-    let text = theme.text();
+    let surface = palette_ct(theme).base(Tone::Surface);
+    let text = palette_ct(theme).base(Tone::Text);
 
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = gap;

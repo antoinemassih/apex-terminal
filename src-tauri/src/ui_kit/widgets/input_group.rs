@@ -33,6 +33,7 @@ use egui::{
 };
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::tokens as st;
 
 /// Prefix/suffix wrapper for any form control.
@@ -126,15 +127,15 @@ impl<'a> InputGroup<'a> {
         });
 
         let chip_col = if self.disabled {
-            st::color_alpha(theme.dim(), st::alpha_muted())
+            st::color_alpha(palette_ct(theme).base(Tone::Dim), st::alpha_muted())
         } else {
-            st::color_alpha(theme.dim(), st::alpha_strong())
+            st::color_alpha(palette_ct(theme).base(Tone::Dim), st::alpha_strong())
         };
 
         let border_col = if self.invalid {
-            theme.bear()
+            palette_ct(theme).base(Tone::Bear)
         } else {
-            st::color_alpha(theme.border(), st::alpha_strong())
+            st::color_alpha(palette_ct(theme).base(Tone::Border), st::alpha_strong())
         };
 
         // Use an egui Frame for the group border and background.
@@ -261,8 +262,8 @@ mod tests {
     fn invalid_uses_bear_color() {
         let src = include_str!("input_group.rs");
         assert!(
-            src.contains("theme.bear()"),
-            "InputGroup must use theme.bear() for invalid border tint"
+            src.contains("palette_ct(theme).base(Tone::Bear)"),
+            "InputGroup must use palette_ct(theme).base(Tone::Bear) for invalid border tint"
         );
     }
 

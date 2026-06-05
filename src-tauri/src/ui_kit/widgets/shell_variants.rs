@@ -14,6 +14,7 @@
 use egui::Color32;
 use crate::ui_kit::tokens::*;
 use crate::ui_kit::widgets::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 
 // ─── ButtonVariant ───────────────────────────────────────────────────────────
 
@@ -23,32 +24,32 @@ pub enum ButtonVariant { Primary, Secondary, Ghost, Destructive, Subtle, Brand }
 impl ButtonVariant {
     pub fn fill_color(self, t: &dyn ComponentTheme) -> Color32 {
         match self {
-            ButtonVariant::Primary     => color_alpha(t.accent(), alpha_muted()),
+            ButtonVariant::Primary     => color_alpha(palette_ct(t).base(Tone::Accent), alpha_muted()),
             ButtonVariant::Secondary   => color_alpha(t.surface_border(), alpha_soft()),
             ButtonVariant::Ghost       => Color32::TRANSPARENT,
-            ButtonVariant::Destructive => color_alpha(t.bear(), alpha_muted()),
+            ButtonVariant::Destructive => color_alpha(palette_ct(t).base(Tone::Bear), alpha_muted()),
             ButtonVariant::Subtle      => color_alpha(t.surface_border(), alpha_ghost()),
-            ButtonVariant::Brand       => t.accent(),
+            ButtonVariant::Brand       => palette_ct(t).base(Tone::Accent),
         }
     }
     pub fn fg_color(self, t: &dyn ComponentTheme) -> Color32 {
         match self {
-            ButtonVariant::Primary     => t.accent(),
-            ButtonVariant::Secondary   => t.text(),
-            ButtonVariant::Ghost       => t.dim(),
-            ButtonVariant::Destructive => t.bear(),
-            ButtonVariant::Subtle      => t.dim(),
-            ButtonVariant::Brand       => contrast_fg(t.accent()),
+            ButtonVariant::Primary     => palette_ct(t).base(Tone::Accent),
+            ButtonVariant::Secondary   => palette_ct(t).base(Tone::Text),
+            ButtonVariant::Ghost       => palette_ct(t).base(Tone::Dim),
+            ButtonVariant::Destructive => palette_ct(t).base(Tone::Bear),
+            ButtonVariant::Subtle      => palette_ct(t).base(Tone::Dim),
+            ButtonVariant::Brand       => contrast_fg(palette_ct(t).base(Tone::Accent)),
         }
     }
     pub fn border_color(self, t: &dyn ComponentTheme) -> Color32 {
         match self {
-            ButtonVariant::Primary     => color_alpha(t.accent(), alpha_active()),
+            ButtonVariant::Primary     => color_alpha(palette_ct(t).base(Tone::Accent), alpha_active()),
             ButtonVariant::Secondary   => color_alpha(t.surface_border(), alpha_dim()),
             ButtonVariant::Ghost       => Color32::TRANSPARENT,
-            ButtonVariant::Destructive => color_alpha(t.bear(), alpha_active()),
+            ButtonVariant::Destructive => color_alpha(palette_ct(t).base(Tone::Bear), alpha_active()),
             ButtonVariant::Subtle      => color_alpha(t.surface_border(), alpha_muted()),
-            ButtonVariant::Brand       => color_alpha(t.accent(), alpha_active()),
+            ButtonVariant::Brand       => color_alpha(palette_ct(t).base(Tone::Accent), alpha_active()),
         }
     }
 }
@@ -61,13 +62,13 @@ pub enum CardVariant { Bordered, Elevated, Ghost, Filled }
 impl CardVariant {
     pub fn fill_color(self, t: &dyn ComponentTheme) -> Color32 {
         match self {
-            CardVariant::Bordered => t.surface(),
-            CardVariant::Elevated => t.surface(),
+            CardVariant::Bordered => palette_ct(t).base(Tone::Surface),
+            CardVariant::Elevated => palette_ct(t).base(Tone::Surface),
             CardVariant::Ghost    => Color32::TRANSPARENT,
             CardVariant::Filled   => color_alpha(t.surface_border(), alpha_soft()),
         }
     }
-    pub fn fg_color(self, t: &dyn ComponentTheme) -> Color32 { t.text() }
+    pub fn fg_color(self, t: &dyn ComponentTheme) -> Color32 { palette_ct(t).base(Tone::Text) }
     pub fn border_color(self, t: &dyn ComponentTheme) -> Color32 {
         match self {
             CardVariant::Bordered => color_alpha(t.surface_border(), alpha_strong()),
@@ -86,25 +87,25 @@ pub enum ChipVariant { Solid, Outline, Subtle, Removable }
 impl ChipVariant {
     pub fn fill_color(self, t: &dyn ComponentTheme) -> Color32 {
         match self {
-            ChipVariant::Solid     => color_alpha(t.accent(), alpha_tint()),
+            ChipVariant::Solid     => color_alpha(palette_ct(t).base(Tone::Accent), alpha_tint()),
             ChipVariant::Outline   => Color32::TRANSPARENT,
             ChipVariant::Subtle    => color_alpha(t.surface_border(), alpha_ghost()),
-            ChipVariant::Removable => color_alpha(t.accent(), alpha_soft()),
+            ChipVariant::Removable => color_alpha(palette_ct(t).base(Tone::Accent), alpha_soft()),
         }
     }
     pub fn fg_color(self, t: &dyn ComponentTheme) -> Color32 {
         match self {
-            ChipVariant::Solid | ChipVariant::Removable => t.accent(),
-            ChipVariant::Outline => t.text(),
-            ChipVariant::Subtle  => t.dim(),
+            ChipVariant::Solid | ChipVariant::Removable => palette_ct(t).base(Tone::Accent),
+            ChipVariant::Outline => palette_ct(t).base(Tone::Text),
+            ChipVariant::Subtle  => palette_ct(t).base(Tone::Dim),
         }
     }
     pub fn border_color(self, t: &dyn ComponentTheme) -> Color32 {
         match self {
-            ChipVariant::Solid     => color_alpha(t.accent(), alpha_active()),
+            ChipVariant::Solid     => color_alpha(palette_ct(t).base(Tone::Accent), alpha_active()),
             ChipVariant::Outline   => color_alpha(t.surface_border(), alpha_dim()),
             ChipVariant::Subtle    => color_alpha(t.surface_border(), alpha_muted()),
-            ChipVariant::Removable => color_alpha(t.accent(), alpha_strong()),
+            ChipVariant::Removable => color_alpha(palette_ct(t).base(Tone::Accent), alpha_strong()),
         }
     }
 }
@@ -124,8 +125,8 @@ impl RowVariant {
     }
     pub fn fg_color(self, t: &dyn ComponentTheme) -> Color32 {
         match self {
-            RowVariant::Header | RowVariant::Subheader => t.dim(),
-            _                                          => t.text(),
+            RowVariant::Header | RowVariant::Subheader => palette_ct(t).base(Tone::Dim),
+            _                                          => palette_ct(t).base(Tone::Text),
         }
     }
     pub fn border_color(self, t: &dyn ComponentTheme) -> Color32 {
@@ -142,10 +143,10 @@ impl InputVariant {
     pub fn fill_color(self, t: &dyn ComponentTheme) -> Color32 {
         match self {
             InputVariant::Inline => Color32::TRANSPARENT,
-            _                    => color_alpha(t.bg(), alpha_active()),
+            _                    => color_alpha(palette_ct(t).base(Tone::Bg), alpha_active()),
         }
     }
-    pub fn fg_color(self, t: &dyn ComponentTheme) -> Color32 { t.text() }
+    pub fn fg_color(self, t: &dyn ComponentTheme) -> Color32 { palette_ct(t).base(Tone::Text) }
     pub fn border_color(self, t: &dyn ComponentTheme) -> Color32 {
         match self {
             InputVariant::Inline => Color32::TRANSPARENT,

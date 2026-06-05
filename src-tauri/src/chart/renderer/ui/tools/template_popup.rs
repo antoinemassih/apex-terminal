@@ -2,6 +2,7 @@
 //! Shows saved chart templates with apply + delete, and "Save Current" input.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::{self, Watchlist, Chart, Theme, CandleMode, INDICATOR_COLORS};
 use crate::ui_kit::icons::Icon;
@@ -16,47 +17,23 @@ pub(crate) fn draw(
     t: &Theme,
 ) {
     for pi in 0..panes.len() {
-        if !panes[pi].template_popup_open { continue; }
+        if !panes[pi].template_popup.open { continue; }
 
-        let pos = panes[pi].template_popup_pos;
+        let pos = panes[pi].template_popup.pos;
         let mut close_popup = false;
         let mut apply_idx: Option<usize> = None;
         let mut delete_idx: Option<usize> = None;
 
-        use super::super::chrome::modal::{Modal, Anchor, HeaderStyle, FrameKind};
-        let custom_frame = egui::Frame::popup(&ctx.style())
-            .fill(t.toolbar_bg)
-            .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())))
-            .inner_margin(egui::Margin::same(gap_lg() as i8))
-            .corner_radius(r_lg_cr())
-            .shadow(egui::epaint::Shadow {
-                offset: [0, 4], blur: 14, spread: 0,
-                color: shadow_color_alpha(t, 80),
-            });
-        let modal_resp = Modal::new("TEMPLATES")
-            .id(&format!("template_popup_{}", pi))
-            .ctx(ctx)
-            .theme(t)
-            .size(egui::vec2(220.0, 0.0))
-            .anchor(Anchor::Area { pos })
-            .header_style(HeaderStyle::None)
-            .frame_kind(FrameKind::Custom(custom_frame))
-            .close_on_click_outside(true)
-            .separator(false)
-            .show(|ui| {
-                ui.set_width(220.0);
-
-                // Header
-                use super::super::components::text::{BodyLabel, SectionLabel};
-                ui.horizontal(|ui| {
-                    ui.add(SectionLabel::new("TEMPLATES").lg().color(t.accent));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let r = KitButton::close().show(ui, t);
-                        Tooltip::new("Close").show(ui, &r, t);
-                        if r.clicked() { close_popup = true; }
-                    });
-                });
-                ui.add_space(gap_sm());
+        // Migrated to ToolPopover (2026-05-26).
+        let portable_t = crate::chart_renderer::theme_impl::theme_to_portable(t);
+        let popover_id = format!("template_popup_{}", pi);
+        let popover_resp = crate::ui_kit::widgets::ToolPopover::new()
+            .id(&popover_id)
+            .width(220.0)
+            .pos(pos)
+            .title("TEMPLATES")
+            .show(ctx, &portable_t, |ui| {
+                use super::super::components::text::BodyLabel;
 
                         // ── Pane Type selector ──
                         ui.add(super::super::components::text::SectionLabel::new("PANE TYPE").tiny().color(t.dim));
@@ -71,7 +48,7 @@ pub(crate) fn draw(
                             ] {
                                 let active = panes[pi].pane_type == ptype;
                                 let fg = if active { t.accent } else { color_half(t.dim) };
-                                let bg = if active { color_alpha(t.accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
+                                let bg = if active { tint(t, Tone::Accent, alpha_tint()) } else { egui::Color32::TRANSPARENT };
                                 let btn_label = format!("{} {}", icon, label);
                                 if KitButton::toggle(btn_label.as_str(), active)
                                     .size(KitSize::Xs).show(ui, t).clicked() {
@@ -80,7 +57,7 @@ pub(crate) fn draw(
                             }
                         });
                         ui.add_space(gap_sm());
-                        separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+                        separator(ui, tint(t, Tone::Border, alpha_muted()));
                         ui.add_space(gap_sm());
 
                         // Template list
@@ -142,7 +119,7 @@ pub(crate) fn draw(
                                         cursor::focus_ring(ui, &click_resp, t.accent);
                                         if click_resp.hovered() {
                                             ui.painter().rect_filled(row_rect, radius_sm(),
-                                                color_alpha(t.accent, alpha_faint()));
+                                                tint(t, Tone::Accent, alpha_faint()));
                                         }
                                         if click_resp.clicked() {
                                             apply_idx = Some(i);
@@ -153,21 +130,21 @@ pub(crate) fn draw(
                                 });
 
                             ui.add_space(gap_sm());
-                            separator(ui, color_alpha(t.toolbar_border, alpha_muted()));
+                            separator(ui, tint(t, Tone::Border, alpha_muted()));
                             ui.add_space(gap_sm());
                         }
 
                         // Save Current section
                         ui.horizontal(|ui| {
-                            Input::new(&mut panes[pi].template_save_name)
+                            Input::new(&mut panes[pi].template_popup.save_name)
                                 .placeholder("Template name…")
                                 .min_width(160.0)
                                 .size(KitSize::Sm)
                                 .show(ui, t);
-                            let can_save = !panes[pi].template_save_name.trim().is_empty();
+                            let can_save = !panes[pi].template_popup.save_name.trim().is_empty();
                             if can_save {
                                 if KitButton::small_action("Save").tint(t.accent).show(ui, t).clicked() {
-                                    let name = panes[pi].template_save_name.trim().to_string();
+                                    let name = panes[pi].template_popup.save_name.trim().to_string();
                                     let p = &panes[pi];
                                     let indicators: Vec<serde_json::Value> = p.indicators.iter().map(|ind| serde_json::json!({
                                         "kind": ind.kind.label(), "period": ind.period, "color": ind.color,
@@ -202,21 +179,21 @@ pub(crate) fn draw(
                                     });
                                     watchlist.pane_templates.retain(|(n, _)| n != &name);
                                     watchlist.pane_templates.push((name, tmpl));
-                                    panes[pi].template_save_name.clear();
+                                    panes[pi].template_popup.save_name.clear();
                                     gpu::save_templates(&watchlist.pane_templates);
                                 }
                             }
                         });
             });
-        if modal_resp.closed { close_popup = true; }
+        if popover_resp.dismissed { close_popup = true; }
 
-        if close_popup { panes[pi].template_popup_open = false; }
+        if close_popup { panes[pi].template_popup.open = false; }
 
         // Apply template to this pane
         if let Some(i) = apply_idx {
             let tmpl = watchlist.pane_templates[i].1.clone();
             apply_template_to_chart(&mut panes[pi], &tmpl);
-            panes[pi].template_popup_open = false;
+            panes[pi].template_popup.open = false;
         }
 
         // Delete template

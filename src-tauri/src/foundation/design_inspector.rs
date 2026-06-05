@@ -1500,7 +1500,6 @@ fn two_axis_color_editor(ui: &mut egui::Ui, c: &mut ColorScheme) {
     two_axis_section(ui, "Palette", hdr, |ui| {
         two_axis_rgba(ui, "bg",      &mut c.bg);
         two_axis_rgba(ui, "surface", &mut c.surface);
-        two_axis_rgba(ui, "paper",   &mut c.paper);
         two_axis_rgba(ui, "text",    &mut c.text);
         two_axis_rgba(ui, "dim",     &mut c.dim);
         two_axis_rgba(ui, "border",  &mut c.border);

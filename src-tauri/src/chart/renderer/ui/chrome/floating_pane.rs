@@ -22,6 +22,7 @@
 #![allow(dead_code, unused_imports)]
 
 use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2};
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use crate::ui_kit::widgets::{Button, Tooltip, tokens::Variant};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
@@ -107,8 +108,8 @@ impl<'a> FloatingPaneChrome<'a> {
             None => { _theme_owned = crate::chart_renderer::theme_impl::active_theme(ui.ctx()); &_theme_owned },
         };
         let bg       = theme.toolbar_bg;
-        let border_c = color_alpha(theme.toolbar_border, alpha_line());
-        let header_bg = color_alpha(theme.toolbar_border, alpha_subtle());
+        let border_c = tint(theme, Tone::Border, alpha_line());
+        let header_bg = tint(theme, Tone::Border, alpha_subtle());
         let dim      = theme.dim;
         let text     = theme.text;
         let accent   = theme.accent;
@@ -122,12 +123,12 @@ impl<'a> FloatingPaneChrome<'a> {
 
         // Outer frame: full-width fill + hairline border + square corners.
         let outer_rect_start = ui.cursor().min;
-        let frame = egui::Frame::NONE
+        let inner_resp = crate::ui_kit::widgets::OutlinedBox::new()
             .fill(bg)
-            .stroke(Stroke::new(stroke_std(), border_c))
-            .corner_radius(CornerRadius::ZERO);
-
-        let inner_resp = frame.show(ui, |ui| {
+            .border(border_c)
+            .square()
+            .padding(0.0)
+            .show(ui, &crate::chart_renderer::theme_impl::active_theme(ui.ctx()), |ui| {
             ui.set_min_width(self.width);
             // Use the frame's actual content rect so the header/hairlines
             // span edge-to-edge regardless of nested margins.

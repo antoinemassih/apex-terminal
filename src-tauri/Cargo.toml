@@ -1,6 +1,6 @@
 [package]
 name = "_scaffold"
-version = "0.9.7-MILESTONE2"
+version = "0.9.7-5"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"

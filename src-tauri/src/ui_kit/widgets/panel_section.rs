@@ -42,8 +42,8 @@
 //! any behavior.
 //!
 //! Visual spec (locked by design):
-//! - Title: `mono_xs` UPPERCASE strong, in `t.dim()` by default; pass
-//!   `.title_color(t.accent())` when this section is the "current" one.
+//! - Title: `mono_xs` UPPERCASE strong, in `palette_ct(t).base(SxTone::Dim)` by default; pass
+//!   `.title_color(palette_ct(t).base(SxTone::Accent))` when this section is the "current" one.
 //! - Count: numeric badge after title, mono_xs strong, tinted with title color.
 //! - Meta: muted right-aligned mono_xs (e.g. "12 total").
 //! - Action: trailing ghost button (`panel_action_btn` style), right-aligned
@@ -71,6 +71,7 @@ use crate::ui_kit::tokens::{
     color_alpha, font_sm, font_xs, gap_lg, gap_md, gap_sm, gap_xs, stroke_thin,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone as SxTone};
 
 /// Shared semantic tone for the panel body primitives. Resolves to a theme
 /// color via [`Tone::color`]. Defined here so the seven panel-body widgets
@@ -101,12 +102,12 @@ pub enum Tone {
 impl Tone {
     pub fn color(self, t: &dyn ComponentTheme) -> Color32 {
         match self {
-            Tone::Default => t.dim(),
-            Tone::Accent => t.accent(),
-            Tone::Bull | Tone::Success => t.bull(),
-            Tone::Bear | Tone::Danger => t.bear(),
-            Tone::Warn => t.warn(),
-            Tone::Text => t.text(),
+            Tone::Default => palette_ct(t).base(SxTone::Dim),
+            Tone::Accent => palette_ct(t).base(SxTone::Accent),
+            Tone::Bull | Tone::Success => palette_ct(t).base(SxTone::Bull),
+            Tone::Bear | Tone::Danger => palette_ct(t).base(SxTone::Bear),
+            Tone::Warn => palette_ct(t).base(SxTone::Warn),
+            Tone::Text => palette_ct(t).base(SxTone::Text),
         }
     }
 }
@@ -207,7 +208,7 @@ impl<'a> PanelSection<'a> {
         self
     }
 
-    /// Override the title color (default: `t.dim()`). Use `t.accent()` to mark
+    /// Override the title color (default: `palette_ct(t).base(SxTone::Dim)`). Use `palette_ct(t).base(SxTone::Accent)` to mark
     /// this as the "current" section. Per spec, this is the ONLY place
     /// accent should appear on a section title.
     pub fn title_color(mut self, c: Color32) -> Self {
@@ -234,7 +235,7 @@ impl<'a> PanelSection<'a> {
         t: &T,
         body: impl FnOnce(&mut Ui, &T) -> R,
     ) -> SectionResponse<R> {
-        let title_color = self.title_color.unwrap_or(t.dim());
+        let title_color = self.title_color.unwrap_or(palette_ct(t).base(SxTone::Dim));
         let mut action_clicked = false;
         let mut delete_clicked = false;
         let mut chevron_clicked = false;
@@ -330,7 +331,7 @@ impl<'a> PanelSection<'a> {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if show_delete {
-                            if section_delete_button(ui, color_alpha(t.dim(), 200)) {
+                            if section_delete_button(ui, color_alpha(palette_ct(t).base(SxTone::Dim), 200)) {
                                 delete_clicked = true;
                             }
                         } else if let Some((label, tone)) = &action {
@@ -346,7 +347,7 @@ impl<'a> PanelSection<'a> {
                                 RichText::new(m)
                                     .monospace()
                                     .size(font_xs())
-                                    .color(color_alpha(t.dim(), 160)),
+                                    .color(color_alpha(palette_ct(t).base(SxTone::Dim), 160)),
                             );
                         }
                     });
@@ -386,7 +387,7 @@ impl<'a> PanelSection<'a> {
         // below uses the up-to-date value.
         let is_expanded = expanded.as_deref().copied().unwrap_or(true);
         // Edge-to-edge top + bottom rules bracketing the recessed strip.
-        // Border color matches the chart pane header — t.text() @ 38 alpha.
+        // Border color matches the chart pane header — palette_ct(t).base(SxTone::Text) @ 38 alpha.
         let hr = header_resp.response.rect;
         let rule_col = t.header_border();
         ui.painter().line_segment(

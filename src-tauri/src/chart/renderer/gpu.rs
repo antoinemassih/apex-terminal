@@ -211,54 +211,12 @@ pub(crate) struct Theme {
     pub(crate) hud_bg: egui::Color32,
     /// LEGACY: use `t.toolbar_border`.
     pub(crate) hud_border: egui::Color32,
-    // ── Element state alpha overlays (Zed Phase 1) ──────────────────────────
-    // Pre-computed alpha overlays applied OVER an element's idle background
-    // to signal hover/active/selected/disabled. Single accent at multiple
-    // alphas — avoids cartoony hover treatments by NOT switching colors.
-    /// Subtle bg tint on hover (text @ alpha 12).
-    ///
-    /// Defined in all 15 themes but currently unreferenced by application code.
-    /// Candidate for deprecation in a future palette pruning pass.
-    pub(crate) element_hover: egui::Color32,
-    /// Pressed/active stronger (text @ alpha 24).
-    ///
-    /// Defined in all 15 themes but currently unreferenced by application code.
-    /// Candidate for deprecation in a future palette pruning pass.
-    pub(crate) element_active: egui::Color32,
-    /// Selection background (accent @ alpha 24).
-    ///
-    /// Defined in all 15 themes but currently unreferenced by application code.
-    /// Candidate for deprecation in a future palette pruning pass.
-    pub(crate) element_selected: egui::Color32,
-    /// Disabled wash on text (dim @ alpha 80).
-    pub(crate) element_disabled: egui::Color32,
-    /// Even subtler hover for ghost/nav buttons (text @ alpha 6).
-    ///
-    /// Defined in all 15 themes but currently unreferenced by application code.
-    /// Candidate for deprecation in a future palette pruning pass.
-    pub(crate) ghost_hover: egui::Color32,
-    /// Active state for ghost variant (text @ alpha 12).
-    ///
-    /// Defined in all 15 themes but currently unreferenced by application code.
-    /// Candidate for deprecation in a future palette pruning pass.
-    pub(crate) ghost_active: egui::Color32,
-    // ── Icon color ramp (Zed Phase 2) ───────────────────────────────────────
-    // Icons get their own ramp, decoupled from text hierarchy. Lets a row
-    // have full-strength label text next to muted icons (or vice versa).
-    /// Full strength icon, default (= text).
-    pub(crate) icon: egui::Color32,
-    /// Secondary icons (toolbar idle) — text @ ~70% alpha (178).
-    ///
-    /// Defined in all 15 themes but currently unreferenced by application code.
-    /// Candidate for deprecation in a future palette pruning pass.
-    pub(crate) icon_muted: egui::Color32,
-    /// Disabled icons — text @ ~40% alpha (102).
-    ///
-    /// Defined in all 15 themes but currently unreferenced by application code.
-    /// Candidate for deprecation in a future palette pruning pass.
-    pub(crate) icon_disabled: egui::Color32,
-    /// Accent-tinted icons (selected/highlight) (= accent).
-    pub(crate) icon_accent: egui::Color32,
+    // P12 (2026-05-25): The 10 Zed-style overlay fields (element_*, ghost_*,
+    // icon, icon_muted, icon_disabled, icon_accent) previously lived here as
+    // pre-computed Color32 values, copied through 15 theme initializers.
+    // Removed in favour of deriving in theme_impl.rs at the ComponentTheme
+    // trait boundary from the core 6-color palette (text, accent, dim).
+    // Single source of truth — palette overrides automatically affect overlays.
 }
 
 impl Theme {
@@ -310,9 +268,29 @@ pub(crate) const fn rgba_pre(r: u8, g: u8, b: u8, a: u8) -> egui::Color32 { egui
 /// alongside the theme as e.g. "GruvBox/Meridien". Actual visual differences
 /// will be wired later.
 pub(crate) const STYLE_NAMES: &[&str] = &[
-    "Meridien", "Aperture", "Octave", "Cadence", "Chord",
-    "Lattice",  "Tangent",  "Tempo",  "Contour", "Relay",
+    "Meridien", "Aperture", "Octave", "Cadence", "Alto",
+    "Mariner",  "Lucid",    "Relay",  "Glass",   "Contour",
 ];
+
+/// Per-theme preferred **proportional** font, ported from the React mockup's
+/// `--ds-font-ui` per `[data-ds]` block. Returns an index into the font table
+/// used by `init_fonts` (0=JetBrains, 1=Inter, 2=PlusJakarta, 3=SpaceGrotesk,
+/// 4=DM Sans, 5=Geist). `None` = no per-theme preference (use the user picker).
+///
+/// NOTE: monospace stays pinned to JetBrains Mono regardless (tabular-digit
+/// policy in `init_fonts`). Alto/Mariner specify IBM Plex Sans in React, which
+/// is NOT bundled here — they fall back to Geist (closest neutral technical
+/// face). Bundle IBM Plex Sans/Mono TTFs for true Alto/Mariner fidelity.
+pub(crate) fn style_preferred_font(style_id: u8) -> Option<usize> {
+    match style_id {
+        1 => Some(1), // Aperture → Inter (React: Inter Tight)
+        3 => Some(1), // Cadence  → Inter
+        4 => Some(6), // Alto     → IBM Plex Sans (React: --ds-font-ui: 'IBM Plex Sans')
+        5 => Some(6), // Mariner  → IBM Plex Sans (same family — instrument panel)
+        6 => Some(4), // Lucid    → DM Sans
+        _ => None,    // Meridien / Octave / unnamed → user font picker
+    }
+}
 
 /// Returns the style id for a watchlist's selected style.
 /// Any valid index within the live preset list is returned as-is.
@@ -335,6 +313,89 @@ pub(crate) fn pane_header_h(wl: &Watchlist) -> f32 {
     };
     // Multiply by current().header_height_scale so the design-mode slider has effect.
     (style_adj * super::ui::style::current().header_height_scale).max(12.0)
+}
+
+/// Paint rounded corner + border frames over each chart pane on the Foreground layer.
+/// Called after `draw_chart` inside the egui run closure so the frames sit on top of
+/// chart content. Only fires for styles with `r_md > 0` and `pane_gap > 0` (tiled
+/// card styles like Aperture and Glass).
+fn paint_pane_card_frames(ctx: &egui::Context, panes: &[Chart], layout: Layout, wl: &Watchlist) {
+    use crate::chart_renderer::ui::style::{current as style_current, color_alpha};
+    let st = style_current();
+    // Only paint when the style requests visible tiled cards (Aperture/Glass).
+    if st.pane_gap <= 0.0 || st.r_md == 0 { return; }
+    let gap = st.pane_gap;
+    let cr = egui::CornerRadius::same(st.r_md);
+    let border_alpha = 40u8; // subtle border matching React's --ds-border-dim (~rgba(255,255,255,0.06))
+
+    let layer = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("pane_card_frames"));
+    let painter = ctx.layer_painter(layer);
+    let t = crate::chart_renderer::theme_impl::active_theme(ctx);
+    let border_col = color_alpha(t.toolbar_border, border_alpha + 20);
+
+    // Compute pane rects (mirror of `pane_rects_for_layout`).
+    let screen = ctx.screen_rect();
+    // Approximate the chart area (below toolbar, above bottom bar).
+    // We use the full screen minus the toolbar height as a best-effort rect.
+    let toolbar_h = (if wl.compact_mode { 30.0 } else { 38.0 }) * st.toolbar_height_scale;
+    let chart_area = egui::Rect::from_min_max(
+        egui::pos2(screen.left(), screen.top() + toolbar_h),
+        screen.max,
+    );
+
+    let visible = panes.len().min(layout.max_panes());
+    if visible <= 1 { return; }
+
+    let rects = compute_pane_rects_for_frame(wl, layout, chart_area, visible, gap);
+    let bg_col = t.bg;
+    let r = st.r_md as f32;
+    for rect in rects.iter().take(visible) {
+        if !rect.is_finite() || rect.width() < 8.0 || rect.height() < 8.0 { continue; }
+
+        // ── Corner masks: paint bg-colored L-shaped patches over each corner ──
+        // This hides the chart content's square corners, approximating clip-to-radius.
+        // Each corner needs two rect fills forming an L at radius r.
+        let corners = [
+            (rect.left(), rect.top()),                     // top-left
+            (rect.right() - r, rect.top()),                // top-right
+            (rect.left(), rect.bottom() - r),              // bottom-left
+            (rect.right() - r, rect.bottom() - r),        // bottom-right
+        ];
+        let is_tl_or_tr = |i: usize| i < 2;
+        let is_left = |i: usize| i % 2 == 0;
+        for (i, (cx, cy)) in corners.iter().enumerate() {
+            // Horizontal strip (full width r, partial height r/2)
+            let h_rect = egui::Rect::from_min_size(
+                egui::pos2(*cx, *cy),
+                egui::vec2(r, r * 0.45),
+            );
+            // Vertical strip (partial width r/2, full height r)
+            let v_rect = egui::Rect::from_min_size(
+                egui::pos2(*cx, *cy),
+                egui::vec2(r * 0.45, r),
+            );
+            let _ = (is_tl_or_tr(i), is_left(i)); // suppress unused warnings
+            painter.rect_filled(h_rect, egui::CornerRadius::ZERO, bg_col);
+            painter.rect_filled(v_rect, egui::CornerRadius::ZERO, bg_col);
+        }
+
+        // ── Rounded border: defines the card edge on top of corner masks ──
+        painter.rect_stroke(
+            *rect, cr,
+            egui::Stroke::new(st.pane_border_width.max(1.0), border_col),
+            egui::StrokeKind::Inside,
+        );
+    }
+
+    // ── Toolbar card border (Aperture/Glass tiled look) ──────────────────────
+    // The toolbar is also a floating tile in Aperture. Paint its card border
+    // using the stored toolbar rect (set each frame by set_toolbar_rect).
+    let tb = super::ui::style::toolbar_rect();
+    if tb.is_finite() && tb.width() > 8.0 {
+        painter.rect_stroke(tb, cr,
+            egui::Stroke::new(st.pane_border_width.max(1.0), border_col),
+            egui::StrokeKind::Inside);
+    }
 }
 
 /// Style-aware tabs pane header height. Mirrors `PaneHeaderSize::tabs_header_h`.
@@ -409,24 +470,24 @@ pub(crate) const fn element_overlay(bg: egui::Color32, a: u8) -> egui::Color32 {
 /// `get_all_themes()` instead, which read the live store.
 #[cfg(test)]
 pub(crate) const THEMES: &[Theme] = &[
-    Theme { name: "Midnight",    bg: rgb(14,16,21),   bull: rgb(62,120,180),  bear: rgb(180,65,58),   dim: rgb(100,105,115), toolbar_bg: rgb(10,12,17),  toolbar_border: hairline_border(rgb(14,16,21)), border_variant: hairline_border_variant(rgb(14,16,21)),  accent: rgb(62,120,180),  text: rgb(220,220,230),  warn: rgb(255,191,  0), notification_red: rgb(231, 76, 60), gold: rgb(255,193, 37), shadow_color: rgb(0,0,0),       overlay_text: rgb(240,240,250), rrg_leading: rgb(56,203,137), rrg_improving: rgb(74,158,255), rrg_weakening: rgb(230,200,50), rrg_lagging: rgb(224,82,82), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(3,5,9,12), text_muted: rgb(180,180,195), hud_bg: rgba_pre(12,12,18,230), hud_border: rgb(50,52,64), element_hover: element_overlay(rgb(14,16,21),12), element_active: element_overlay(rgb(14,16,21),24), element_selected: alpha(rgb(62,120,180),24), element_disabled: alpha(rgb(100,105,115),80), ghost_hover: element_overlay(rgb(14,16,21),6), ghost_active: element_overlay(rgb(14,16,21),12), icon: rgb(220,220,230), icon_muted: alpha(rgb(220,220,230),178), icon_disabled: alpha(rgb(220,220,230),102), icon_accent: rgb(62,120,180) },
-    Theme { name: "Nord",        bg: rgb(38,44,56),   bull: rgb(163,190,140), bear: rgb(191,97,106),  dim: rgb(129,161,193), toolbar_bg: rgb(32,38,50),  toolbar_border: hairline_border(rgb(38,44,56)), border_variant: hairline_border_variant(rgb(38,44,56)),  accent: rgb(136,192,208), text: rgb(220,220,230),  warn: rgb(235,203,139), notification_red: rgb(191, 97,106), gold: rgb(235,203,139), shadow_color: rgb(0,0,0),       overlay_text: rgb(236,239,244), rrg_leading: rgb(163,190,140), rrg_improving: rgb(136,192,208), rrg_weakening: rgb(235,203,139), rrg_lagging: rgb(191,97,106), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(5,7,9,14), text_muted: rgb(175,180,190), hud_bg: rgba_pre(30,34,46,230), hud_border: rgb(60,66,80), element_hover: element_overlay(rgb(38,44,56),12), element_active: element_overlay(rgb(38,44,56),24), element_selected: alpha(rgb(136,192,208),24), element_disabled: alpha(rgb(129,161,193),80), ghost_hover: element_overlay(rgb(38,44,56),6), ghost_active: element_overlay(rgb(38,44,56),12), icon: rgb(220,220,230), icon_muted: alpha(rgb(220,220,230),178), icon_disabled: alpha(rgb(220,220,230),102), icon_accent: rgb(136,192,208) },
-    Theme { name: "Monokai",     bg: rgb(39,40,34),   bull: rgb(166,226,46),  bear: rgb(249,38,114),  dim: rgb(165,159,133), toolbar_bg: rgb(33,34,28),  toolbar_border: hairline_border(rgb(39,40,34)), border_variant: hairline_border_variant(rgb(39,40,34)),  accent: rgb(230,219,116), text: rgb(220,220,230),  warn: rgb(230,219,116), notification_red: rgb(249, 38,114), gold: rgb(255,193, 37), shadow_color: rgb(0,0,0),       overlay_text: rgb(248,248,240), rrg_leading: rgb(166,226, 46), rrg_improving: rgb(102,217,239), rrg_weakening: rgb(230,219,116), rrg_lagging: rgb(249,38,114), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(4,10,11,12), text_muted: rgb(180,178,160), hud_bg: rgba_pre(30,30,24,230), hud_border: rgb(55,54,44), element_hover: element_overlay(rgb(39,40,34),12), element_active: element_overlay(rgb(39,40,34),24), element_selected: alpha(rgb(230,219,116),24), element_disabled: alpha(rgb(165,159,133),80), ghost_hover: element_overlay(rgb(39,40,34),6), ghost_active: element_overlay(rgb(39,40,34),12), icon: rgb(220,220,230), icon_muted: alpha(rgb(220,220,230),178), icon_disabled: alpha(rgb(220,220,230),102), icon_accent: rgb(230,219,116) },
-    Theme { name: "Solarized",   bg: rgb(0,43,54),    bull: rgb(133,153,0),   bear: rgb(220,50,47),   dim: rgb(131,148,150), toolbar_bg: rgb(0,37,48),   toolbar_border: hairline_border(rgb(0,43,54)), border_variant: hairline_border_variant(rgb(0,43,54)),   accent: rgb(42,161,152),  text: rgb(220,220,230),  warn: rgb(181,137,  0), notification_red: rgb(220, 50, 47), gold: rgb(181,137,  0), shadow_color: rgb(0,0,0),       overlay_text: rgb(253,246,227), rrg_leading: rgb(133,153,  0), rrg_improving: rgb( 38,139,210), rrg_weakening: rgb(181,137,  0), rrg_lagging: rgb(220,50, 47), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(1,6,9,12), text_muted: rgb(156,172,175), hud_bg: rgba_pre(0,28,36,230), hud_border: rgb(7,54,66), element_hover: element_overlay(rgb(0,43,54),12), element_active: element_overlay(rgb(0,43,54),24), element_selected: alpha(rgb(42,161,152),24), element_disabled: alpha(rgb(131,148,150),80), ghost_hover: element_overlay(rgb(0,43,54),6), ghost_active: element_overlay(rgb(0,43,54),12), icon: rgb(220,220,230), icon_muted: alpha(rgb(220,220,230),178), icon_disabled: alpha(rgb(220,220,230),102), icon_accent: rgb(42,161,152) },
-    Theme { name: "Dracula",     bg: rgb(40,42,54),   bull: rgb(80,250,123),  bear: rgb(255,85,85),   dim: rgb(189,147,249), toolbar_bg: rgb(34,36,48),  toolbar_border: hairline_border(rgb(40,42,54)), border_variant: hairline_border_variant(rgb(40,42,54)),  accent: rgb(255,121,198), text: rgb(220,220,230),  warn: rgb(241,250,140), notification_red: rgb(255, 85, 85), gold: rgb(241,250,140), shadow_color: rgb(0,0,0),       overlay_text: rgb(248,248,242), rrg_leading: rgb( 80,250,123), rrg_improving: rgb(139,233,253), rrg_weakening: rgb(241,250,140), rrg_lagging: rgb(255,85, 85), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(6,10,11,12), text_muted: rgb(190,185,215), hud_bg: rgba_pre(30,32,44,230), hud_border: rgb(55,58,75), element_hover: element_overlay(rgb(40,42,54),12), element_active: element_overlay(rgb(40,42,54),24), element_selected: alpha(rgb(255,121,198),24), element_disabled: alpha(rgb(189,147,249),80), ghost_hover: element_overlay(rgb(40,42,54),6), ghost_active: element_overlay(rgb(40,42,54),12), icon: rgb(220,220,230), icon_muted: alpha(rgb(220,220,230),178), icon_disabled: alpha(rgb(220,220,230),102), icon_accent: rgb(255,121,198) },
-    Theme { name: "Gruvbox",     bg: rgb(40,40,40),   bull: rgb(184,187,38),  bear: rgb(251,73,52),   dim: rgb(213,196,161), toolbar_bg: rgb(34,34,34),  toolbar_border: hairline_border(rgb(40,40,40)), border_variant: hairline_border_variant(rgb(40,40,40)),  accent: rgb(254,128,25),  text: rgb(220,220,230),  warn: rgb(250,189, 47), notification_red: rgb(251, 73, 52), gold: rgb(250,189, 47), shadow_color: rgb(0,0,0),       overlay_text: rgb(235,219,178), rrg_leading: rgb(184,187, 38), rrg_improving: rgb(131,165,152), rrg_weakening: rgb(250,189, 47), rrg_lagging: rgb(251,73, 52), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(6,8,7,13), text_muted: rgb(185,178,160), hud_bg: rgba_pre(28,28,28,230), hud_border: rgb(60,56,50), element_hover: element_overlay(rgb(40,40,40),12), element_active: element_overlay(rgb(40,40,40),24), element_selected: alpha(rgb(254,128,25),24), element_disabled: alpha(rgb(213,196,161),80), ghost_hover: element_overlay(rgb(40,40,40),6), ghost_active: element_overlay(rgb(40,40,40),12), icon: rgb(220,220,230), icon_muted: alpha(rgb(220,220,230),178), icon_disabled: alpha(rgb(220,220,230),102), icon_accent: rgb(254,128,25) },
-    Theme { name: "Catppuccin",  bg: rgb(30,30,46),   bull: rgb(166,227,161), bear: rgb(243,139,168), dim: rgb(180,190,254), toolbar_bg: rgb(24,24,38),  toolbar_border: hairline_border(rgb(30,30,46)), border_variant: hairline_border_variant(rgb(30,30,46)),  accent: rgb(203,166,247), text: rgb(220,220,230),  warn: rgb(249,226,175), notification_red: rgb(243,139,168), gold: rgb(249,226,175), shadow_color: rgb(0,0,0),       overlay_text: rgb(205,214,244), rrg_leading: rgb(166,227,161), rrg_improving: rgb(137,220,235), rrg_weakening: rgb(249,226,175), rrg_lagging: rgb(243,139,168), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(6,8,11,12), text_muted: rgb(182,186,220), hud_bg: rgba_pre(20,20,36,230), hud_border: rgb(49,50,68), element_hover: element_overlay(rgb(30,30,46),12), element_active: element_overlay(rgb(30,30,46),24), element_selected: alpha(rgb(203,166,247),24), element_disabled: alpha(rgb(180,190,254),80), ghost_hover: element_overlay(rgb(30,30,46),6), ghost_active: element_overlay(rgb(30,30,46),12), icon: rgb(220,220,230), icon_muted: alpha(rgb(220,220,230),178), icon_disabled: alpha(rgb(220,220,230),102), icon_accent: rgb(203,166,247) },
-    Theme { name: "Tokyo Night", bg: rgb(26,27,38),   bull: rgb(158,206,106), bear: rgb(247,118,142), dim: rgb(122,162,247), toolbar_bg: rgb(21,22,32),  toolbar_border: hairline_border(rgb(26,27,38)), border_variant: hairline_border_variant(rgb(26,27,38)),  accent: rgb(125,207,255), text: rgb(220,220,230),  warn: rgb(224,175,104), notification_red: rgb(247,118,142), gold: rgb(224,175,104), shadow_color: rgb(0,0,0),       overlay_text: rgb(192,202,245), rrg_leading: rgb(158,206,106), rrg_improving: rgb(125,207,255), rrg_weakening: rgb(224,175,104), rrg_lagging: rgb(247,118,142), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(5,9,12,12), text_muted: rgb(172,178,220), hud_bg: rgba_pre(18,18,28,230), hud_border: rgb(40,44,62), element_hover: element_overlay(rgb(26,27,38),12), element_active: element_overlay(rgb(26,27,38),24), element_selected: alpha(rgb(125,207,255),24), element_disabled: alpha(rgb(122,162,247),80), ghost_hover: element_overlay(rgb(26,27,38),6), ghost_active: element_overlay(rgb(26,27,38),12), icon: rgb(220,220,230), icon_muted: alpha(rgb(220,220,230),178), icon_disabled: alpha(rgb(220,220,230),102), icon_accent: rgb(125,207,255) },
+    Theme { name: "Midnight",    bg: rgb(14,16,21),   bull: rgb(62,120,180),  bear: rgb(180,65,58),   dim: rgb(100,105,115), toolbar_bg: rgb(10,12,17),  toolbar_border: hairline_border(rgb(14,16,21)), border_variant: hairline_border_variant(rgb(14,16,21)),  accent: rgb(62,120,180),  text: rgb(220,220,230),  warn: rgb(255,191,  0), notification_red: rgb(231, 76, 60), gold: rgb(255,193, 37), shadow_color: rgb(0,0,0),       overlay_text: rgb(240,240,250), rrg_leading: rgb(56,203,137), rrg_improving: rgb(74,158,255), rrg_weakening: rgb(230,200,50), rrg_lagging: rgb(224,82,82), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(3,5,9,12), text_muted: rgb(180,180,195), hud_bg: rgba_pre(12,12,18,230), hud_border: rgb(50,52,64), },
+    Theme { name: "Nord",        bg: rgb(38,44,56),   bull: rgb(163,190,140), bear: rgb(191,97,106),  dim: rgb(129,161,193), toolbar_bg: rgb(32,38,50),  toolbar_border: hairline_border(rgb(38,44,56)), border_variant: hairline_border_variant(rgb(38,44,56)),  accent: rgb(136,192,208), text: rgb(220,220,230),  warn: rgb(235,203,139), notification_red: rgb(191, 97,106), gold: rgb(235,203,139), shadow_color: rgb(0,0,0),       overlay_text: rgb(236,239,244), rrg_leading: rgb(163,190,140), rrg_improving: rgb(136,192,208), rrg_weakening: rgb(235,203,139), rrg_lagging: rgb(191,97,106), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(5,7,9,14), text_muted: rgb(175,180,190), hud_bg: rgba_pre(30,34,46,230), hud_border: rgb(60,66,80), },
+    Theme { name: "Monokai",     bg: rgb(39,40,34),   bull: rgb(166,226,46),  bear: rgb(249,38,114),  dim: rgb(165,159,133), toolbar_bg: rgb(33,34,28),  toolbar_border: hairline_border(rgb(39,40,34)), border_variant: hairline_border_variant(rgb(39,40,34)),  accent: rgb(230,219,116), text: rgb(220,220,230),  warn: rgb(230,219,116), notification_red: rgb(249, 38,114), gold: rgb(255,193, 37), shadow_color: rgb(0,0,0),       overlay_text: rgb(248,248,240), rrg_leading: rgb(166,226, 46), rrg_improving: rgb(102,217,239), rrg_weakening: rgb(230,219,116), rrg_lagging: rgb(249,38,114), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(4,10,11,12), text_muted: rgb(180,178,160), hud_bg: rgba_pre(30,30,24,230), hud_border: rgb(55,54,44), },
+    Theme { name: "Solarized",   bg: rgb(0,43,54),    bull: rgb(133,153,0),   bear: rgb(220,50,47),   dim: rgb(131,148,150), toolbar_bg: rgb(0,37,48),   toolbar_border: hairline_border(rgb(0,43,54)), border_variant: hairline_border_variant(rgb(0,43,54)),   accent: rgb(42,161,152),  text: rgb(220,220,230),  warn: rgb(181,137,  0), notification_red: rgb(220, 50, 47), gold: rgb(181,137,  0), shadow_color: rgb(0,0,0),       overlay_text: rgb(253,246,227), rrg_leading: rgb(133,153,  0), rrg_improving: rgb( 38,139,210), rrg_weakening: rgb(181,137,  0), rrg_lagging: rgb(220,50, 47), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(1,6,9,12), text_muted: rgb(156,172,175), hud_bg: rgba_pre(0,28,36,230), hud_border: rgb(7,54,66), },
+    Theme { name: "Dracula",     bg: rgb(40,42,54),   bull: rgb(80,250,123),  bear: rgb(255,85,85),   dim: rgb(189,147,249), toolbar_bg: rgb(34,36,48),  toolbar_border: hairline_border(rgb(40,42,54)), border_variant: hairline_border_variant(rgb(40,42,54)),  accent: rgb(255,121,198), text: rgb(220,220,230),  warn: rgb(241,250,140), notification_red: rgb(255, 85, 85), gold: rgb(241,250,140), shadow_color: rgb(0,0,0),       overlay_text: rgb(248,248,242), rrg_leading: rgb( 80,250,123), rrg_improving: rgb(139,233,253), rrg_weakening: rgb(241,250,140), rrg_lagging: rgb(255,85, 85), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(6,10,11,12), text_muted: rgb(190,185,215), hud_bg: rgba_pre(30,32,44,230), hud_border: rgb(55,58,75), },
+    Theme { name: "Gruvbox",     bg: rgb(40,40,40),   bull: rgb(184,187,38),  bear: rgb(251,73,52),   dim: rgb(213,196,161), toolbar_bg: rgb(34,34,34),  toolbar_border: hairline_border(rgb(40,40,40)), border_variant: hairline_border_variant(rgb(40,40,40)),  accent: rgb(254,128,25),  text: rgb(220,220,230),  warn: rgb(250,189, 47), notification_red: rgb(251, 73, 52), gold: rgb(250,189, 47), shadow_color: rgb(0,0,0),       overlay_text: rgb(235,219,178), rrg_leading: rgb(184,187, 38), rrg_improving: rgb(131,165,152), rrg_weakening: rgb(250,189, 47), rrg_lagging: rgb(251,73, 52), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(6,8,7,13), text_muted: rgb(185,178,160), hud_bg: rgba_pre(28,28,28,230), hud_border: rgb(60,56,50), },
+    Theme { name: "Catppuccin",  bg: rgb(30,30,46),   bull: rgb(166,227,161), bear: rgb(243,139,168), dim: rgb(180,190,254), toolbar_bg: rgb(24,24,38),  toolbar_border: hairline_border(rgb(30,30,46)), border_variant: hairline_border_variant(rgb(30,30,46)),  accent: rgb(203,166,247), text: rgb(220,220,230),  warn: rgb(249,226,175), notification_red: rgb(243,139,168), gold: rgb(249,226,175), shadow_color: rgb(0,0,0),       overlay_text: rgb(205,214,244), rrg_leading: rgb(166,227,161), rrg_improving: rgb(137,220,235), rrg_weakening: rgb(249,226,175), rrg_lagging: rgb(243,139,168), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(6,8,11,12), text_muted: rgb(182,186,220), hud_bg: rgba_pre(20,20,36,230), hud_border: rgb(49,50,68), },
+    Theme { name: "Tokyo Night", bg: rgb(26,27,38),   bull: rgb(158,206,106), bear: rgb(247,118,142), dim: rgb(122,162,247), toolbar_bg: rgb(21,22,32),  toolbar_border: hairline_border(rgb(26,27,38)), border_variant: hairline_border_variant(rgb(26,27,38)),  accent: rgb(125,207,255), text: rgb(220,220,230),  warn: rgb(224,175,104), notification_red: rgb(247,118,142), gold: rgb(224,175,104), shadow_color: rgb(0,0,0),       overlay_text: rgb(192,202,245), rrg_leading: rgb(158,206,106), rrg_improving: rgb(125,207,255), rrg_weakening: rgb(224,175,104), rrg_lagging: rgb(247,118,142), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(5,9,12,12), text_muted: rgb(172,178,220), hud_bg: rgba_pre(18,18,28,230), hud_border: rgb(40,44,62), },
     // ── Additional themes ──
-    Theme { name: "Kanagawa",    bg: rgb(22,22,29),   bull: rgb(118,169,130), bear: rgb(195,64,67),   dim: rgb(84,88,104),   toolbar_bg: rgb(18,18,24),  toolbar_border: hairline_border(rgb(22,22,29)), border_variant: hairline_border_variant(rgb(22,22,29)),  accent: rgb(127,180,202), text: rgb(220,220,230),  warn: rgb(228,175, 69), notification_red: rgb(195, 64, 67), gold: rgb(228,175, 69), shadow_color: rgb(0,0,0),       overlay_text: rgb(220,215,186), rrg_leading: rgb(118,169,130), rrg_improving: rgb(127,180,202), rrg_weakening: rgb(228,175, 69), rrg_lagging: rgb(195,64, 67), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(5,8,9,12), text_muted: rgb(155,158,175), hud_bg: rgba_pre(14,14,20,230), hud_border: rgb(36,36,50), element_hover: element_overlay(rgb(22,22,29),12), element_active: element_overlay(rgb(22,22,29),24), element_selected: alpha(rgb(127,180,202),24), element_disabled: alpha(rgb(84,88,104),80), ghost_hover: element_overlay(rgb(22,22,29),6), ghost_active: element_overlay(rgb(22,22,29),12), icon: rgb(220,220,230), icon_muted: alpha(rgb(220,220,230),178), icon_disabled: alpha(rgb(220,220,230),102), icon_accent: rgb(127,180,202) },
-    Theme { name: "Everforest",  bg: rgb(39,46,38),   bull: rgb(167,192,128), bear: rgb(230,126,128), dim: rgb(157,169,140), toolbar_bg: rgb(33,40,32),  toolbar_border: hairline_border(rgb(39,46,38)), border_variant: hairline_border_variant(rgb(39,46,38)),  accent: rgb(131,165,152), text: rgb(220,220,230),  warn: rgb(223,199,118), notification_red: rgb(230,126,128), gold: rgb(223,199,118), shadow_color: rgb(0,0,0),       overlay_text: rgb(211,198,170), rrg_leading: rgb(167,192,128), rrg_improving: rgb(131,165,152), rrg_weakening: rgb(223,199,118), rrg_lagging: rgb(230,126,128), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(6,8,7,13), text_muted: rgb(175,178,162), hud_bg: rgba_pre(28,34,28,230), hud_border: rgb(52,60,50), element_hover: element_overlay(rgb(39,46,38),12), element_active: element_overlay(rgb(39,46,38),24), element_selected: alpha(rgb(131,165,152),24), element_disabled: alpha(rgb(157,169,140),80), ghost_hover: element_overlay(rgb(39,46,38),6), ghost_active: element_overlay(rgb(39,46,38),12), icon: rgb(220,220,230), icon_muted: alpha(rgb(220,220,230),178), icon_disabled: alpha(rgb(220,220,230),102), icon_accent: rgb(131,165,152) },
-    Theme { name: "Vesper",      bg: rgb(16,16,16),   bull: rgb(166,218,149), bear: rgb(238,130,98),  dim: rgb(120,120,120), toolbar_bg: rgb(11,11,11),  toolbar_border: hairline_border(rgb(16,16,16)), border_variant: hairline_border_variant(rgb(16,16,16)),  accent: rgb(255,199,119), text: rgb(220,220,230),  warn: rgb(255,199,119), notification_red: rgb(238,130, 98), gold: rgb(255,193, 37), shadow_color: rgb(0,0,0),       overlay_text: rgb(230,230,230), rrg_leading: rgb(166,218,149), rrg_improving: rgb( 74,158,255), rrg_weakening: rgb(255,199,119), rrg_lagging: rgb(238,130, 98), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(3,6,11,11), text_muted: rgb(170,170,180), hud_bg: rgba_pre(10,10,10,230), hud_border: rgb(42,42,42), element_hover: element_overlay(rgb(16,16,16),12), element_active: element_overlay(rgb(16,16,16),24), element_selected: alpha(rgb(255,199,119),24), element_disabled: alpha(rgb(120,120,120),80), ghost_hover: element_overlay(rgb(16,16,16),6), ghost_active: element_overlay(rgb(16,16,16),12), icon: rgb(220,220,230), icon_muted: alpha(rgb(220,220,230),178), icon_disabled: alpha(rgb(220,220,230),102), icon_accent: rgb(255,199,119) },
-    Theme { name: "Rosé Pine",   bg: rgb(25,23,36),   bull: rgb(156,207,216), bear: rgb(235,111,146), dim: rgb(110,106,134), toolbar_bg: rgb(20,18,30),  toolbar_border: hairline_border(rgb(25,23,36)), border_variant: hairline_border_variant(rgb(25,23,36)),  accent: rgb(196,167,231), text: rgb(220,220,230),  warn: rgb(246,193,119), notification_red: rgb(235,111,146), gold: rgb(246,193,119), shadow_color: rgb(0,0,0),       overlay_text: rgb(224,222,244), rrg_leading: rgb(156,207,216), rrg_improving: rgb(196,167,231), rrg_weakening: rgb(246,193,119), rrg_lagging: rgb(235,111,146), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(7,9,10,12), text_muted: rgb(167,162,187), hud_bg: rgba_pre(18,16,28,230), hud_border: rgb(44,40,58), element_hover: element_overlay(rgb(25,23,36),12), element_active: element_overlay(rgb(25,23,36),24), element_selected: alpha(rgb(196,167,231),24), element_disabled: alpha(rgb(110,106,134),80), ghost_hover: element_overlay(rgb(25,23,36),6), ghost_active: element_overlay(rgb(25,23,36),12), icon: rgb(220,220,230), icon_muted: alpha(rgb(220,220,230),178), icon_disabled: alpha(rgb(220,220,230),102), icon_accent: rgb(196,167,231) },
+    Theme { name: "Kanagawa",    bg: rgb(22,22,29),   bull: rgb(118,169,130), bear: rgb(195,64,67),   dim: rgb(84,88,104),   toolbar_bg: rgb(18,18,24),  toolbar_border: hairline_border(rgb(22,22,29)), border_variant: hairline_border_variant(rgb(22,22,29)),  accent: rgb(127,180,202), text: rgb(220,220,230),  warn: rgb(228,175, 69), notification_red: rgb(195, 64, 67), gold: rgb(228,175, 69), shadow_color: rgb(0,0,0),       overlay_text: rgb(220,215,186), rrg_leading: rgb(118,169,130), rrg_improving: rgb(127,180,202), rrg_weakening: rgb(228,175, 69), rrg_lagging: rgb(195,64, 67), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(5,8,9,12), text_muted: rgb(155,158,175), hud_bg: rgba_pre(14,14,20,230), hud_border: rgb(36,36,50), },
+    Theme { name: "Everforest",  bg: rgb(39,46,38),   bull: rgb(167,192,128), bear: rgb(230,126,128), dim: rgb(157,169,140), toolbar_bg: rgb(33,40,32),  toolbar_border: hairline_border(rgb(39,46,38)), border_variant: hairline_border_variant(rgb(39,46,38)),  accent: rgb(131,165,152), text: rgb(220,220,230),  warn: rgb(223,199,118), notification_red: rgb(230,126,128), gold: rgb(223,199,118), shadow_color: rgb(0,0,0),       overlay_text: rgb(211,198,170), rrg_leading: rgb(167,192,128), rrg_improving: rgb(131,165,152), rrg_weakening: rgb(223,199,118), rrg_lagging: rgb(230,126,128), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(6,8,7,13), text_muted: rgb(175,178,162), hud_bg: rgba_pre(28,34,28,230), hud_border: rgb(52,60,50), },
+    Theme { name: "Vesper",      bg: rgb(16,16,16),   bull: rgb(166,218,149), bear: rgb(238,130,98),  dim: rgb(120,120,120), toolbar_bg: rgb(11,11,11),  toolbar_border: hairline_border(rgb(16,16,16)), border_variant: hairline_border_variant(rgb(16,16,16)),  accent: rgb(255,199,119), text: rgb(220,220,230),  warn: rgb(255,199,119), notification_red: rgb(238,130, 98), gold: rgb(255,193, 37), shadow_color: rgb(0,0,0),       overlay_text: rgb(230,230,230), rrg_leading: rgb(166,218,149), rrg_improving: rgb( 74,158,255), rrg_weakening: rgb(255,199,119), rrg_lagging: rgb(238,130, 98), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(3,6,11,11), text_muted: rgb(170,170,180), hud_bg: rgba_pre(10,10,10,230), hud_border: rgb(42,42,42), },
+    Theme { name: "Rosé Pine",   bg: rgb(25,23,36),   bull: rgb(156,207,216), bear: rgb(235,111,146), dim: rgb(110,106,134), toolbar_bg: rgb(20,18,30),  toolbar_border: hairline_border(rgb(25,23,36)), border_variant: hairline_border_variant(rgb(25,23,36)),  accent: rgb(196,167,231), text: rgb(220,220,230),  warn: rgb(246,193,119), notification_red: rgb(235,111,146), gold: rgb(246,193,119), shadow_color: rgb(0,0,0),       overlay_text: rgb(224,222,244), rrg_leading: rgb(156,207,216), rrg_improving: rgb(196,167,231), rrg_weakening: rgb(246,193,119), rrg_lagging: rgb(235,111,146), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(7,9,10,12), text_muted: rgb(167,162,187), hud_bg: rgba_pre(18,16,28,230), hud_border: rgb(44,40,58), },
     // ── Light themes ──
-    Theme { name: "Bauhaus",     bg: rgb(242,242,238), bull: rgb(20,120,60),   bear: rgb(200,55,45),   dim: rgb(120,125,130), toolbar_bg: rgb(248,248,245), toolbar_border: hairline_border(rgb(242,242,238)), border_variant: hairline_border_variant(rgb(242,242,238)), accent: rgb(232,93,38),   text: rgb(22,22,24),   warn: rgb(204,120,  0), notification_red: rgb(200, 55, 45), gold: rgb(204,153,  0), shadow_color: rgb(40,40,40),    overlay_text: rgb( 20, 20, 22), rrg_leading: rgb( 20,120, 60), rrg_improving: rgb( 30,100,180), rrg_weakening: rgb(180,140,  0), rrg_lagging: rgb(200,55, 45), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(1,5,9,14), text_muted: rgb(100,102,110), hud_bg: rgba_pre(20,20,20,220), hud_border: rgb(80,82,88), element_hover: element_overlay(rgb(242,242,238),12), element_active: element_overlay(rgb(242,242,238),24), element_selected: alpha(rgb(232,93,38),24), element_disabled: alpha(rgb(120,125,130),80), ghost_hover: element_overlay(rgb(242,242,238),6), ghost_active: element_overlay(rgb(242,242,238),12), icon: rgb(22,22,24), icon_muted: alpha(rgb(22,22,24),178), icon_disabled: alpha(rgb(22,22,24),102), icon_accent: rgb(232,93,38) },
-    Theme { name: "Peach",       bg: rgb(243,241,238), bull: rgb(22,130,70),   bear: rgb(195,50,55),   dim: rgb(115,120,125), toolbar_bg: rgb(250,248,246), toolbar_border: hairline_border(rgb(243,241,238)), border_variant: hairline_border_variant(rgb(243,241,238)), accent: rgb(210,95,70),   text: rgb(20,20,22),   warn: rgb(200,130,  0), notification_red: rgb(195, 50, 55), gold: rgb(200,150,  0), shadow_color: rgb(40,40,40),    overlay_text: rgb( 20, 20, 22), rrg_leading: rgb( 22,130, 70), rrg_improving: rgb( 30,100,180), rrg_weakening: rgb(180,140,  0), rrg_lagging: rgb(195,50, 55), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(1,5,9,14), text_muted: rgb(98,100,108), hud_bg: rgba_pre(20,20,20,220), hud_border: rgb(82,80,78), element_hover: element_overlay(rgb(243,241,238),12), element_active: element_overlay(rgb(243,241,238),24), element_selected: alpha(rgb(210,95,70),24), element_disabled: alpha(rgb(115,120,125),80), ghost_hover: element_overlay(rgb(243,241,238),6), ghost_active: element_overlay(rgb(243,241,238),12), icon: rgb(20,20,22), icon_muted: alpha(rgb(20,20,22),178), icon_disabled: alpha(rgb(20,20,22),102), icon_accent: rgb(210,95,70) },
-    Theme { name: "Ivory",       bg: rgb(240,242,238), bull: rgb(80,160,50),   bear: rgb(210,60,50),   dim: rgb(118,122,128), toolbar_bg: rgb(248,250,246), toolbar_border: hairline_border(rgb(240,242,238)), border_variant: hairline_border_variant(rgb(240,242,238)), accent: rgb(160,190,40),  text: rgb(18,20,22),   warn: rgb(190,140,  0), notification_red: rgb(210, 60, 50), gold: rgb(190,150,  0), shadow_color: rgb(40,40,40),    overlay_text: rgb( 18, 20, 22), rrg_leading: rgb( 80,160, 50), rrg_improving: rgb( 30,100,180), rrg_weakening: rgb(180,140,  0), rrg_lagging: rgb(210,60, 50), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(1,5,9,14), text_muted: rgb(100,102,108), hud_bg: rgba_pre(18,20,18,220), hud_border: rgb(80,82,80), element_hover: element_overlay(rgb(240,242,238),12), element_active: element_overlay(rgb(240,242,238),24), element_selected: alpha(rgb(160,190,40),24), element_disabled: alpha(rgb(118,122,128),80), ghost_hover: element_overlay(rgb(240,242,238),6), ghost_active: element_overlay(rgb(240,242,238),12), icon: rgb(18,20,22), icon_muted: alpha(rgb(18,20,22),178), icon_disabled: alpha(rgb(18,20,22),102), icon_accent: rgb(160,190,40) },
-    Theme { name: "Newsprint",   bg: rgb(238,232,220), bull: rgb(34,94,56),    bear: rgb(168,52,52),   dim: rgb(120,116,104), toolbar_bg: rgb(238,232,220), toolbar_border: hairline_border(rgb(238,232,220)), border_variant: hairline_border_variant(rgb(238,232,220)), accent: rgb(34,94,56),    text: rgb(28,28,28),   warn: rgb(168,120,  0), notification_red: rgb(168, 52, 52), gold: rgb(168,130,  0), shadow_color: rgb(60,50,40),    overlay_text: rgb( 28, 28, 28), rrg_leading: rgb( 34, 94, 56), rrg_improving: rgb( 30, 90,160), rrg_weakening: rgb(160,120,  0), rrg_lagging: rgb(168,52, 52), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(1,4,8,13), text_muted: rgb(105,100,90), hud_bg: rgba_pre(28,24,18,220), hud_border: rgb(90,82,68), element_hover: element_overlay(rgb(238,232,220),12), element_active: element_overlay(rgb(238,232,220),24), element_selected: alpha(rgb(34,94,56),24), element_disabled: alpha(rgb(120,116,104),80), ghost_hover: element_overlay(rgb(238,232,220),6), ghost_active: element_overlay(rgb(238,232,220),12), icon: rgb(28,28,28), icon_muted: alpha(rgb(28,28,28),178), icon_disabled: alpha(rgb(28,28,28),102), icon_accent: rgb(34,94,56) },
+    Theme { name: "Bauhaus",     bg: rgb(242,242,238), bull: rgb(20,120,60),   bear: rgb(200,55,45),   dim: rgb(120,125,130), toolbar_bg: rgb(248,248,245), toolbar_border: hairline_border(rgb(242,242,238)), border_variant: hairline_border_variant(rgb(242,242,238)), accent: rgb(232,93,38),   text: rgb(22,22,24),   warn: rgb(204,120,  0), notification_red: rgb(200, 55, 45), gold: rgb(204,153,  0), shadow_color: rgb(40,40,40),    overlay_text: rgb( 20, 20, 22), rrg_leading: rgb( 20,120, 60), rrg_improving: rgb( 30,100,180), rrg_weakening: rgb(180,140,  0), rrg_lagging: rgb(200,55, 45), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(1,5,9,14), text_muted: rgb(100,102,110), hud_bg: rgba_pre(20,20,20,220), hud_border: rgb(80,82,88), },
+    Theme { name: "Peach",       bg: rgb(243,241,238), bull: rgb(22,130,70),   bear: rgb(195,50,55),   dim: rgb(115,120,125), toolbar_bg: rgb(250,248,246), toolbar_border: hairline_border(rgb(243,241,238)), border_variant: hairline_border_variant(rgb(243,241,238)), accent: rgb(210,95,70),   text: rgb(20,20,22),   warn: rgb(200,130,  0), notification_red: rgb(195, 50, 55), gold: rgb(200,150,  0), shadow_color: rgb(40,40,40),    overlay_text: rgb( 20, 20, 22), rrg_leading: rgb( 22,130, 70), rrg_improving: rgb( 30,100,180), rrg_weakening: rgb(180,140,  0), rrg_lagging: rgb(195,50, 55), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(1,5,9,14), text_muted: rgb(98,100,108), hud_bg: rgba_pre(20,20,20,220), hud_border: rgb(82,80,78), },
+    Theme { name: "Ivory",       bg: rgb(240,242,238), bull: rgb(80,160,50),   bear: rgb(210,60,50),   dim: rgb(118,122,128), toolbar_bg: rgb(248,250,246), toolbar_border: hairline_border(rgb(240,242,238)), border_variant: hairline_border_variant(rgb(240,242,238)), accent: rgb(160,190,40),  text: rgb(18,20,22),   warn: rgb(190,140,  0), notification_red: rgb(210, 60, 50), gold: rgb(190,150,  0), shadow_color: rgb(40,40,40),    overlay_text: rgb( 18, 20, 22), rrg_leading: rgb( 80,160, 50), rrg_improving: rgb( 30,100,180), rrg_weakening: rgb(180,140,  0), rrg_lagging: rgb(210,60, 50), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(1,5,9,14), text_muted: rgb(100,102,108), hud_bg: rgba_pre(18,20,18,220), hud_border: rgb(80,82,80), },
+    Theme { name: "Newsprint",   bg: rgb(238,232,220), bull: rgb(34,94,56),    bear: rgb(168,52,52),   dim: rgb(120,116,104), toolbar_bg: rgb(238,232,220), toolbar_border: hairline_border(rgb(238,232,220)), border_variant: hairline_border_variant(rgb(238,232,220)), accent: rgb(34,94,56),    text: rgb(28,28,28),   warn: rgb(168,120,  0), notification_red: rgb(168, 52, 52), gold: rgb(168,130,  0), shadow_color: rgb(60,50,40),    overlay_text: rgb( 28, 28, 28), rrg_leading: rgb( 34, 94, 56), rrg_improving: rgb( 30, 90,160), rrg_weakening: rgb(160,120,  0), rrg_lagging: rgb(168,52, 52), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(1,4,8,13), text_muted: rgb(105,100,90), hud_bg: rgba_pre(28,24,18,220), hud_border: rgb(90,82,68), },
 ];
 // └─ THEMES_END ────────────────────────────────────────────────────────────────
 
@@ -453,7 +514,7 @@ fn live_themes() -> &'static RwLock<Vec<Theme>> {
         // runtime source of truth (not dead scaffolding).
         let themes: Vec<Theme> = crate::design_system::builtin_color_schemes()
             .iter()
-            .map(crate::design_system::color_scheme_to_theme)
+            .map(crate::chart_renderer::theme_adapter::color_scheme_to_theme)
             .collect();
         debug_assert!(
             themes.len() >= 16,
@@ -489,6 +550,192 @@ pub(crate) fn live_theme_count() -> usize {
     live_themes().read().unwrap_or_else(|e| e.into_inner()).len()
 }
 
+// ─── Phase 1c — pending pane-close queue ─────────────────────────────────────
+//
+// Set by a pane's close-pane button click (per-pane loop), drained after the
+// loop completes so Vec<Chart> isn't mutated mid-iteration. Indices may
+// shift after a remove; the drain sorts descending so each remove is safe
+// against the indices that follow.
+thread_local! {
+    pub(crate) static PENDING_PANE_CLOSE: std::cell::RefCell<Vec<usize>> =
+        std::cell::RefCell::new(Vec::new());
+}
+
+// ─── P17 #3 — PaneLayout undo/redo helpers ────────────────────────────────
+const PANE_LAYOUT_UNDO_CAP: usize = 32;
+
+/// Snapshot the current pane_layout onto the undo stack BEFORE applying a
+/// destructive operation (split, close, template change). The redo stack is
+/// cleared because the user's just diverged from the previous history. Cap
+/// the undo stack at PANE_LAYOUT_UNDO_CAP entries (oldest evicted FIFO).
+pub(crate) fn pane_layout_record_undo(wl: &mut Watchlist) {
+    let snap = wl.pane_layout.clone();
+    wl.pane_layout_undo.push(snap);
+    if wl.pane_layout_undo.len() > PANE_LAYOUT_UNDO_CAP {
+        let drop_n = wl.pane_layout_undo.len() - PANE_LAYOUT_UNDO_CAP;
+        wl.pane_layout_undo.drain(..drop_n);
+    }
+    wl.pane_layout_redo.clear();
+}
+
+/// Pop the most recent undo snapshot; push the current state onto redo.
+/// Returns `true` if anything was undone.
+pub(crate) fn pane_layout_undo(wl: &mut Watchlist) -> bool {
+    if let Some(prev) = wl.pane_layout_undo.pop() {
+        let current = wl.pane_layout.clone();
+        wl.pane_layout_redo.push(current);
+        wl.pane_layout = prev;
+        true
+    } else {
+        false
+    }
+}
+
+/// Pop the most recent redo snapshot; push the current state onto undo.
+pub(crate) fn pane_layout_redo(wl: &mut Watchlist) -> bool {
+    if let Some(next) = wl.pane_layout_redo.pop() {
+        let current = wl.pane_layout.clone();
+        wl.pane_layout_undo.push(current);
+        wl.pane_layout = next;
+        true
+    } else {
+        false
+    }
+}
+
+// ─── P17 #1 — stable pane-ID helpers ───────────────────────────────────────
+//
+// `Watchlist::pane_ids` runs in lockstep with `panes: Vec<Chart>`. Each entry
+// is a fresh u64 minted from `next_pane_id`. PaneLayout's PaneSlot now carries
+// these IDs (not raw indices), so close/split mutations never invalidate other
+// panes' slot references. The chart_idx_for() helper resolves an ID to its
+// current position in `panes` for the per-frame render loop.
+
+/// Ensure `pane_ids` has exactly one fresh id per chart in `panes`. Called
+/// lazily at the top of the frame so workspaces loaded before P17 (no
+/// pane_ids field on disk) get migrated transparently; subsequent splits /
+/// closes maintain the invariant manually via push_chart / remove_chart_at.
+pub(crate) fn ensure_pane_ids_synced(wl: &mut Watchlist, n: usize) {
+    while wl.pane_ids.len() < n {
+        let id = wl.next_pane_id;
+        wl.next_pane_id += 1;
+        wl.pane_ids.push(id);
+    }
+    if wl.pane_ids.len() > n {
+        wl.pane_ids.truncate(n);
+    }
+}
+
+/// Look up the current Vec<Chart> index for a stable pane id. Returns None
+/// if the id is dead (chart was closed / not yet materialized).
+#[inline]
+pub(crate) fn chart_idx_for(wl: &Watchlist, id: u64) -> Option<usize> {
+    wl.pane_ids.iter().position(|&x| x == id)
+}
+
+/// Allocate a fresh id for a new chart. Caller is responsible for pushing the
+/// Chart into `panes` and the id into `wl.pane_ids` at matching positions.
+#[inline]
+pub(crate) fn alloc_pane_id(wl: &mut Watchlist) -> u64 {
+    let id = wl.next_pane_id;
+    wl.next_pane_id += 1;
+    id
+}
+
+/// Push a new chart + matching id in one step. Returns the new id.
+pub(crate) fn push_chart_with_id(panes: &mut Vec<Chart>, wl: &mut Watchlist, chart: Chart) -> u64 {
+    panes.push(chart);
+    let id = alloc_pane_id(wl);
+    wl.pane_ids.push(id);
+    id
+}
+
+/// Remove `panes[idx]` and the matching pane_ids entry. Returns the
+/// removed id so callers can update PaneLayout to drop the matching leaf.
+pub(crate) fn remove_chart_at(panes: &mut Vec<Chart>, wl: &mut Watchlist, idx: usize) -> Option<u64> {
+    if idx >= panes.len() { return None; }
+    panes.remove(idx);
+    if idx < wl.pane_ids.len() {
+        Some(wl.pane_ids.remove(idx))
+    } else {
+        None
+    }
+}
+
+/// Truncate panes + pane_ids to `len` together. For template-switch orphan
+/// removal. Returns the dropped ids (so callers can drop matching leaves).
+pub(crate) fn truncate_charts(panes: &mut Vec<Chart>, wl: &mut Watchlist, len: usize) -> Vec<u64> {
+    if panes.len() <= len { return Vec::new(); }
+    let dropped: Vec<u64> = wl.pane_ids.get(len..).map(|s| s.to_vec()).unwrap_or_default();
+    panes.truncate(len);
+    wl.pane_ids.truncate(len);
+    dropped
+}
+
+// ─── PaneLayout integration helpers (Phase 1 — PaneGrid migration) ──────────
+//
+// The chart-app's render loop calls into these to read pane rects + drive
+// dragger overlays from `Watchlist::pane_layout` when present, falling back
+// to the legacy `Layout` template + 8-fraction path when not. Keeping the
+// branching here means core.rs only needs surgical call-site changes.
+
+/// Lazy materialization: if `pane_layout` is `None`, build it from the
+/// current legacy `Layout` template + the current pane_ids list. Called
+/// once per frame from core.rs; cheap no-op when pane_layout is already
+/// populated. Old workspaces that never had PaneLayout get upgraded
+/// silently the first time this fires. Assumes ensure_pane_ids_synced
+/// has already run (so pane_ids.len() == pane_count).
+pub(crate) fn ensure_pane_layout(wl: &mut Watchlist, legacy: Layout, pane_count: usize) {
+    if wl.pane_layout.is_some() { return; }
+    // Collect stable IDs to use as PaneSlots, padding with sentinel 0 if
+    // the template asks for more leaves than charts exist (caller's
+    // template should match pane_count to avoid the padding path).
+    let mut slot_ids: Vec<u64> = wl.pane_ids.iter().copied().take(pane_count.max(1)).collect();
+    while slot_ids.len() < pane_count.max(1) { slot_ids.push(0); }
+    wl.pane_layout = Some(
+        crate::chart_renderer::pane_layout::PaneLayout::from_template(legacy, &slot_ids)
+    );
+}
+
+/// Compute pane rects for the current frame, indexed by chart_idx so the
+/// existing `pane_rects[i] = rect for chart i` contract is preserved.
+///
+/// - When `pane_layout` is set: walks the tree depth-first, then scatters
+///   each leaf's rect into the output at the position `chart_idx` points at.
+///   This means panes may render in any tree order while the lookup table
+///   stays index-aligned with the chart-storage Vec.
+/// - When `pane_layout` is unset: legacy `Layout::pane_rects` path (one
+///   rect per chart, ordered 0..visible_count).
+pub(crate) fn compute_pane_rects_for_frame(
+    wl: &Watchlist,
+    legacy: Layout,
+    full_rect: egui::Rect,
+    visible_count: usize,
+    gap: f32,
+) -> Vec<egui::Rect> {
+    if let Some(ref pl) = wl.pane_layout {
+        // P17 #1 — slots are stable IDs. Translate via pane_ids → current
+        // chart_idx, then scatter rects so pane_rects[i] is the rect for
+        // chart i (preserves legacy contract for downstream consumers).
+        let cap = visible_count.max(pl.pane_count()).max(wl.pane_ids.len());
+        let mut out = vec![full_rect; cap];
+        for (pane_id, rect) in pl.pane_rects(full_rect, gap) {
+            if let Some(idx) = chart_idx_for(wl, pane_id) {
+                if idx < out.len() {
+                    out[idx] = rect;
+                }
+            }
+        }
+        out
+    } else {
+        legacy.pane_rects(
+            full_rect, visible_count,
+            wl.pane_split_h, wl.pane_split_v, wl.pane_split_h2, wl.pane_split_v2,
+            wl.pane_split_v3, wl.pane_split_v4, wl.pane_split_v5, wl.pane_split_v6,
+        )
+    }
+}
+
 /// Append user-installed colour schemes (from disk) to the live theme list.
 ///
 /// Each scheme is converted via `color_scheme_to_theme` and appended only if
@@ -499,7 +746,7 @@ pub(crate) fn live_theme_count() -> usize {
 pub fn append_installed_themes(schemes: Vec<crate::design_system::ColorScheme>) {
     let mut guard = live_themes().write().unwrap_or_else(|e| e.into_inner());
     for scheme in schemes {
-        let candidate = crate::design_system::color_scheme_to_theme(&scheme);
+        let candidate = crate::chart_renderer::theme_adapter::color_scheme_to_theme(&scheme);
         let already_present = guard.iter().any(|t| t.name == candidate.name);
         if !already_present {
             guard.push(candidate);
@@ -515,7 +762,7 @@ pub fn append_installed_themes(schemes: Vec<crate::design_system::ColorScheme>) 
 pub fn upsert_installed_themes(schemes: Vec<crate::design_system::ColorScheme>) {
     let mut guard = live_themes().write().unwrap_or_else(|e| e.into_inner());
     for scheme in schemes {
-        let candidate = crate::design_system::color_scheme_to_theme(&scheme);
+        let candidate = crate::chart_renderer::theme_adapter::color_scheme_to_theme(&scheme);
         if let Some(slot) = guard.iter_mut().find(|t| t.name == candidate.name) {
             *slot = candidate;
         } else {
@@ -985,10 +1232,6 @@ impl IndicatorType {
         }
     }
     pub(crate) fn all() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::BollingerBands, Self::Ichimoku, Self::ParabolicSAR, Self::Supertrend, Self::KeltnerChannels, Self::RSI, Self::MACD, Self::Stochastic, Self::ADX, Self::CCI, Self::WilliamsR, Self::ATR] }
-    #[allow(dead_code)]
-    fn overlays() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::BollingerBands, Self::Ichimoku, Self::ParabolicSAR, Self::Supertrend, Self::KeltnerChannels] }
-    #[allow(dead_code)]
-    fn oscillators() -> &'static [Self] { &[Self::RSI, Self::MACD, Self::Stochastic, Self::ADX, Self::CCI, Self::WilliamsR, Self::ATR] }
     pub(crate) fn default_period(self) -> usize {
         match self {
             Self::SMA | Self::EMA | Self::WMA | Self::DEMA | Self::TEMA => 20,
@@ -1419,19 +1662,19 @@ pub(crate) fn render_order_entry_body(
     if super::ui::style::current().hairline_borders {
         let last_price = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
         let spread = (last_price * 0.0001).max(0.01);
-        let oe_qty_snapshot = chart.order_qty;
+        let oe_qty_snapshot = chart.order_panel.qty;
         let mut oe_state = super::ui::inputs::form::OrderTicketState {
             symbol:         &chart.symbol,
-            is_buy:         &mut chart.order_is_buy,
-            order_type_idx: &mut chart.order_type_idx,
-            order_tif_idx:  &mut chart.order_tif_idx,
-            order_qty:      &mut chart.order_qty,
-            order_market:   &mut chart.order_market,
-            limit_price:    &mut chart.order_limit_price,
-            stop_price:     &mut chart.order_stop_price,
-            tp_price:       &mut chart.order_tp_price,
-            sl_price:       &mut chart.order_sl_price,
-            bracket:        &mut chart.order_bracket,
+            is_buy:         &mut chart.order_panel.is_buy,
+            order_type_idx: &mut chart.order_panel.type_idx,
+            order_tif_idx:  &mut chart.order_panel.tif_idx,
+            order_qty:      &mut chart.order_panel.qty,
+            order_market:   &mut chart.order_panel.market,
+            limit_price:    &mut chart.order_panel.limit_price,
+            stop_price:     &mut chart.order_panel.stop_price,
+            tp_price:       &mut chart.order_panel.tp_price,
+            sl_price:       &mut chart.order_panel.sl_price,
+            bracket:        &mut chart.order_panel.bracket,
             bid:            (last_price - spread).max(0.0),
             last:           last_price,
             ask:            last_price + spread,
@@ -1445,17 +1688,17 @@ pub(crate) fn render_order_entry_body(
         if outcome.review_clicked {
             // Translate REVIEW click into a submit — same path as the existing BUY/SELL buttons.
             // Side is determined by order_is_buy that the widget just toggled.
-            let side = if chart.order_is_buy { "BUY" } else { "SELL" };
+            let side = if chart.order_panel.is_buy { "BUY" } else { "SELL" };
             let sym  = chart.symbol.clone();
-            let qty  = chart.order_qty;
-            let ot   = chart.order_type_idx;
-            let tif  = chart.order_tif_idx;
-            let price = if chart.order_market { last_price } else {
-                chart.order_limit_price.parse::<f32>().unwrap_or(last_price)
+            let qty  = chart.order_panel.qty;
+            let ot   = chart.order_panel.type_idx;
+            let tif  = chart.order_panel.tif_idx;
+            let price = if chart.order_panel.market { last_price } else {
+                chart.order_panel.limit_price.parse::<f32>().unwrap_or(last_price)
             };
-            let bracket = chart.order_bracket;
-            let tp = chart.order_tp_price.parse::<f32>().ok();
-            let sl = chart.order_sl_price.parse::<f32>().ok();
+            let bracket = chart.order_panel.bracket;
+            let tp = chart.order_panel.tp_price.parse::<f32>().ok();
+            let sl = chart.order_panel.sl_price.parse::<f32>().ok();
             std::thread::spawn(move || {
                 submit_ib_order(&sym, side, qty, ot, tif, price, bracket, tp, sl);
             });
@@ -1471,26 +1714,26 @@ pub(crate) fn render_order_entry_body(
     let mut oe_state = ApertureOrderState {
         last_price,
         spread,
-        order_advanced:        chart.order_advanced,
-        order_market:          &mut chart.order_market,
-        order_type_idx:        &mut chart.order_type_idx,
-        order_tif_idx:         &mut chart.order_tif_idx,
-        order_qty:             &mut chart.order_qty,
-        order_notional_mode:   &mut chart.order_notional_mode,
-        order_notional_amount: &mut chart.order_notional_amount,
-        order_limit_price:     &mut chart.order_limit_price,
-        order_stop_price:      &mut chart.order_stop_price,
-        order_trail_amt:       &mut chart.order_trail_amt,
-        order_bracket:         &mut chart.order_bracket,
-        order_tp_price:        &mut chart.order_tp_price,
-        order_sl_price:        &mut chart.order_sl_price,
-        order_outside_rth:     &mut chart.order_outside_rth,
+        order_advanced:        chart.order_panel.advanced,
+        order_market:          &mut chart.order_panel.market,
+        order_type_idx:        &mut chart.order_panel.type_idx,
+        order_tif_idx:         &mut chart.order_panel.tif_idx,
+        order_qty:             &mut chart.order_panel.qty,
+        order_notional_mode:   &mut chart.order_panel.notional_mode,
+        order_notional_amount: &mut chart.order_panel.notional_amount,
+        order_limit_price:     &mut chart.order_panel.limit_price,
+        order_stop_price:      &mut chart.order_panel.stop_price,
+        order_trail_amt:       &mut chart.order_panel.trail_amt,
+        order_bracket:         &mut chart.order_panel.bracket,
+        order_tp_price:        &mut chart.order_panel.tp_price,
+        order_sl_price:        &mut chart.order_panel.sl_price,
+        order_outside_rth:     &mut chart.order_panel.outside_rth,
         is_option:             chart.is_option,
         option_type:           &chart.option_type,
         armed:                 chart.armed,
     };
 
-    ui.add_space(4.0);
+    ui.add_space(crate::chart_renderer::ui::style::gap_xs());
     let outcome = ApertureOrderTicket::new()
         .variant(ApertureVariant::Aperture)
         .theme(t)
@@ -1499,19 +1742,19 @@ pub(crate) fn render_order_entry_body(
 
     // Handle the action returned by the widget — submission lives here because
     // submit_ib_order / submit_order are in this module.
-    let adv = chart.order_advanced;
+    let adv = chart.order_panel.advanced;
     match outcome.action {
         ApertureAction::TriggerBuy  => { chart.pending_und_order = Some(OrderSide::TriggerBuy); }
         ApertureAction::TriggerSell => { chart.pending_und_order = Some(OrderSide::TriggerSell); }
         ApertureAction::Buy { price } => {
             if chart.armed && adv {
                 let sym = chart.symbol.clone();
-                let qty = chart.order_qty;
-                let ot_idx = chart.order_type_idx;
-                let tif_idx = chart.order_tif_idx;
-                let bracket = chart.order_bracket;
-                let tp = chart.order_tp_price.parse::<f32>().ok();
-                let sl = chart.order_sl_price.parse::<f32>().ok();
+                let qty = chart.order_panel.qty;
+                let ot_idx = chart.order_panel.type_idx;
+                let tif_idx = chart.order_panel.tif_idx;
+                let bracket = chart.order_panel.bracket;
+                let tp = chart.order_panel.tp_price.parse::<f32>().ok();
+                let sl = chart.order_panel.sl_price.parse::<f32>().ok();
                 std::thread::spawn(move || {
                     submit_ib_order(&sym, "BUY", qty, ot_idx, tif_idx, price, bracket, tp, sl);
                 });
@@ -1519,17 +1762,17 @@ pub(crate) fn render_order_entry_body(
                 use super::trading::order_manager::*;
                 let intent = OrderIntent {
                     symbol: chart.symbol.clone(), side: OrderSide::Buy,
-                    order_type: ManagedOrderType::Limit, price, qty: chart.order_qty,
-                    source: OrderSource::OrderPanel, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: chart.order_tif_idx as u8, outside_rth: chart.order_outside_rth,
+                    order_type: ManagedOrderType::Limit, price, qty: chart.order_panel.qty,
+                    source: OrderSource::OrderPanel, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: chart.order_panel.tif_idx as u8, outside_rth: chart.order_panel.outside_rth,
                     strategy_id: None, override_warnings: false,
                 };
                 let result = submit_order(intent.clone());
                 match result {
                     OrderResult::Accepted(id) => {
-                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_panel.qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
                     }
                     OrderResult::NeedsConfirmation(id) => {
-                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_panel.qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
                         chart.pending_confirms.push((id as u32, std::time::Instant::now()));
                     }
                     OrderResult::NeedsApproval { reason, .. } => {
@@ -1548,12 +1791,12 @@ pub(crate) fn render_order_entry_body(
         ApertureAction::Sell { price } => {
             if chart.armed && adv {
                 let sym = chart.symbol.clone();
-                let qty = chart.order_qty;
-                let ot_idx = chart.order_type_idx;
-                let tif_idx = chart.order_tif_idx;
-                let bracket = chart.order_bracket;
-                let tp = chart.order_tp_price.parse::<f32>().ok();
-                let sl = chart.order_sl_price.parse::<f32>().ok();
+                let qty = chart.order_panel.qty;
+                let ot_idx = chart.order_panel.type_idx;
+                let tif_idx = chart.order_panel.tif_idx;
+                let bracket = chart.order_panel.bracket;
+                let tp = chart.order_panel.tp_price.parse::<f32>().ok();
+                let sl = chart.order_panel.sl_price.parse::<f32>().ok();
                 std::thread::spawn(move || {
                     submit_ib_order(&sym, "SELL", qty, ot_idx, tif_idx, price, bracket, tp, sl);
                 });
@@ -1561,17 +1804,17 @@ pub(crate) fn render_order_entry_body(
                 use super::trading::order_manager::*;
                 let intent = OrderIntent {
                     symbol: chart.symbol.clone(), side: OrderSide::Sell,
-                    order_type: ManagedOrderType::Limit, price, qty: chart.order_qty,
-                    source: OrderSource::OrderPanel, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: chart.order_tif_idx as u8, outside_rth: chart.order_outside_rth,
+                    order_type: ManagedOrderType::Limit, price, qty: chart.order_panel.qty,
+                    source: OrderSource::OrderPanel, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: chart.order_panel.tif_idx as u8, outside_rth: chart.order_panel.outside_rth,
                     strategy_id: None, override_warnings: false,
                 };
                 let result = submit_order(intent.clone());
                 match result {
                     OrderResult::Accepted(id) => {
-                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_panel.qty, status: OrderStatus::Placed, state: OrderState::Working, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
                     }
                     OrderResult::NeedsConfirmation(id) => {
-                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_panel.qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
                         chart.pending_confirms.push((id as u32, std::time::Instant::now()));
                     }
                     OrderResult::NeedsApproval { reason, .. } => {
@@ -1626,6 +1869,260 @@ pub(crate) enum PaneType {
 
 impl Default for PaneType { fn default() -> Self { Self::Chart } }
 
+// ─── Named value types (replace anonymous tuples) ────────────────────────────
+
+/// State for the alternative (non-time) chart bar types: Renko, Range, Tick.
+/// The computed bars live here and are rebuilt when `dirty` or the source
+/// bar count changes.
+#[derive(Clone)]
+pub(crate) struct AltBarsState {
+    /// Renko brick size; 0.0 = auto (ATR-based). (was `renko_brick_size`)
+    pub(crate) renko_brick: f32,
+    /// Range-bar size; 0.0 = auto. (was `range_bar_size`)
+    pub(crate) range_size:  f32,
+    /// Tick-bar count; default 500. (was `tick_bar_count`)
+    pub(crate) tick_count:  u32,
+    /// Recomputed non-time bars. (was `alt_bars`)
+    pub(crate) bars:        Vec<Bar>,
+    /// Timestamps for the alt bars. (was `alt_timestamps`)
+    pub(crate) timestamps:  Vec<i64>,
+    /// True when the alt bars need recomputation. (was `alt_bars_dirty`)
+    pub(crate) dirty:       bool,
+    /// Source bar count when `bars` was last computed. (was `alt_bars_source_len`)
+    pub(crate) source_len:  usize,
+}
+
+impl Default for AltBarsState {
+    fn default() -> Self {
+        Self {
+            renko_brick: 0.0, range_size: 0.0, tick_count: 500,
+            bars: vec![], timestamps: vec![], dirty: true, source_len: 0,
+        }
+    }
+}
+
+/// Symbol-search picker popup state (the `/`-triggered quick symbol switcher).
+/// Field names drop the old `picker_` prefix.
+#[derive(Default)]
+pub(crate) struct SymbolPickerState {
+    /// Popup is open. (was `picker_open`)
+    pub(crate) open:       bool,
+    /// Current query text. (was `picker_query`)
+    pub(crate) query:      String,
+    /// Results: `(symbol, name, exchange/type)`. (was `picker_results`)
+    pub(crate) results:    Vec<(String, String, String)>,
+    /// Last query searched — debounce guard. (was `picker_last_query`)
+    pub(crate) last_query: String,
+    /// Background search in flight. (was `picker_searching`)
+    pub(crate) searching:  bool,
+    /// Receiver for background search results. (was `picker_rx`)
+    pub(crate) rx:         Option<mpsc::Receiver<Vec<(String, String, String)>>>,
+    /// Anchor position for the popup. (was `picker_pos`)
+    pub(crate) pos:        egui::Pos2,
+}
+
+/// Volume-profile display state: the active mode plus the cached computed data
+/// and the view keys it was computed for (cache-invalidation).
+pub(crate) struct VolumeProfileState {
+    /// Display mode (Off / Classic / Heatmap / Strip / Clean). (was `vp_mode`)
+    pub(crate) mode:    VolumeProfileMode,
+    /// Cached computed profile. (was `vp_data`)
+    pub(crate) data:    Option<VolumeProfileData>,
+    /// View-start the cache was computed for; -1 = stale. (was `vp_last_vs`)
+    pub(crate) last_vs: f32,
+    /// View-count the cache was computed for. (was `vp_last_vc`)
+    pub(crate) last_vc: u32,
+}
+
+impl Default for VolumeProfileState {
+    fn default() -> Self {
+        Self { mode: VolumeProfileMode::Off, data: None, last_vs: -1.0, last_vc: 0 }
+    }
+}
+
+/// Drawing-tool picker popup state (2nd middle-click radial picker).
+#[derive(Default)]
+pub(crate) struct DrawPickerState {
+    pub(crate) open:        bool,            // was draw_picker_open
+    pub(crate) pos:         egui::Pos2,      // was draw_picker_pos
+    pub(crate) hover_cat:   Option<String>,  // was draw_picker_hover_cat
+    pub(crate) hover_cat_y: f32,             // was draw_picker_hover_cat_y
+}
+
+/// Template popup state (pane-header T button).
+#[derive(Default)]
+pub(crate) struct TemplatePopup {
+    pub(crate) open:      bool,        // was template_popup_open
+    pub(crate) pos:       egui::Pos2,  // was template_popup_pos
+    pub(crate) save_name: String,      // was template_save_name
+}
+
+/// Option quick-picker popup state (options-tab click).
+#[derive(Default)]
+pub(crate) struct OptionQuickPicker {
+    pub(crate) open:    bool,        // was option_quick_open
+    pub(crate) pos:     egui::Pos2,  // was option_quick_pos
+    pub(crate) dte_idx: usize,       // was option_quick_dte_idx
+}
+
+/// The per-pane order-ticket panel state (MeridienOrderTicket / ApertureOrderTicket).
+/// Field names drop the old `order_`/`order_panel_` prefix. NOTE: distinct from the
+/// `form::OrderTicketState`/`ApertureOrderState` adapters, which borrow these fields.
+pub(crate) struct OrderPanelState {
+    pub(crate) qty:             u32,        // was order_qty
+    pub(crate) is_buy:          bool,       // was order_is_buy
+    pub(crate) market:          bool,       // was order_market (true=market, false=limit)
+    pub(crate) limit_price:     String,     // was order_limit_price
+    pub(crate) type_idx:        usize,      // was order_type_idx (0=MKT,1=LMT,2=STP,3=STP-LMT,4=TRAIL)
+    pub(crate) tif_idx:         usize,      // was order_tif_idx (0=DAY,1=GTC,2=IOC)
+    pub(crate) outside_rth:     bool,       // was order_outside_rth
+    pub(crate) advanced:        bool,       // was order_advanced (expanded mode)
+    pub(crate) bracket:         bool,       // was order_bracket
+    pub(crate) stop_price:      String,     // was order_stop_price
+    pub(crate) trail_amt:       String,     // was order_trail_amt
+    pub(crate) tp_price:        String,     // was order_tp_price
+    pub(crate) sl_price:        String,     // was order_sl_price
+    pub(crate) pos:             egui::Pos2, // was order_panel_pos
+    pub(crate) dragging:        bool,       // was order_panel_dragging
+    pub(crate) collapsed:       bool,       // was order_collapsed
+    pub(crate) notional_mode:   bool,       // was order_notional_mode
+    pub(crate) notional_amount: String,     // was order_notional_amount
+}
+
+impl Default for OrderPanelState {
+    fn default() -> Self {
+        Self {
+            qty: 100, is_buy: true, market: true, limit_price: String::new(),
+            type_idx: 0, tif_idx: 0, outside_rth: false, advanced: false, bracket: false,
+            stop_price: String::new(), trail_amt: String::new(),
+            tp_price: String::new(), sl_price: String::new(),
+            pos: egui::pos2(8.0, -80.0), dragging: false, collapsed: false,
+            notional_mode: false, notional_amount: String::new(),
+        }
+    }
+}
+
+/// All state for the DOM (Depth-of-Market / Price Ladder) panel.
+#[derive(Clone)]
+pub(crate) struct DomPanelState {
+    /// Floating DOM window open.
+    pub(crate) open:           bool,
+    /// DOM built into the right side-rail of the pane (sidebar mode).
+    pub(crate) sidebar_open:   bool,
+    pub(crate) levels:         Vec<super::ui::panels::dom_panel::DomLevel>,
+    pub(crate) tick_size:      f32,
+    pub(crate) center_price:   f32,
+    pub(crate) width:          f32,
+    pub(crate) selected_price: Option<f32>,
+    pub(crate) order_type:     super::ui::panels::dom_panel::DomOrderType,
+    pub(crate) armed:          bool,
+    /// 0 = single-column, 1 = split bid/ask columns.
+    pub(crate) col_mode:       u8,
+    pub(crate) dragging:       Option<(u32, f32)>,
+    /// 0 = left edge of pane, 1 = right edge.
+    pub(crate) position:       u8,
+    /// DOM panel takes the full pane area; chart regions hidden.
+    pub(crate) fullscreen:     bool,
+}
+
+impl Default for DomPanelState {
+    fn default() -> Self {
+        Self {
+            open: false, sidebar_open: false,
+            levels: vec![], tick_size: 0.01, center_price: 0.0,
+            width: super::ui::panels::dom_panel::DOM_SIDEBAR_W,
+            selected_price: None,
+            order_type: super::ui::panels::dom_panel::DomOrderType::Market,
+            armed: false, col_mode: 1, dragging: None, position: 0, fullscreen: false,
+        }
+    }
+}
+
+/// `(bar_index, price)` coordinate used during in-progress drawing operations.
+/// A transparent alias over `(f32, f32)` — existing destructuring patterns
+/// (`if let Some((bar, price)) = …`) continue to work unchanged.
+pub(crate) type DrawCoord = (f32, f32);
+
+/// A detected change-point on the price series (from the change-point detection engine).
+#[derive(Debug, Clone)]
+pub(crate) struct ChangePoint {
+    pub(crate) time:       i64,
+    pub(crate) kind:       String,
+    pub(crate) confidence: f32,
+}
+
+/// An active trade plan anchored to a chart pane.
+#[derive(Debug, Clone)]
+pub(crate) struct TradePlan {
+    pub(crate) direction:  i8,
+    pub(crate) entry:      f32,
+    pub(crate) target:     f32,
+    pub(crate) stop:       f32,
+    pub(crate) contract:   String,
+    pub(crate) rr:         f32,
+    pub(crate) conviction: f32,
+}
+
+/// Measure-tool state (shift+drag distance measurement).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct MeasureState {
+    /// User is shift-dragging to measure (was `measuring`).
+    pub(crate) active: bool,
+    /// Start point in `(bar, price)` canvas coords (was `measure_start`).
+    pub(crate) start:  Option<(f32, f32)>,
+    /// Measure mode was activated via context menu (was `measure_active`).
+    pub(crate) mode:   bool,
+}
+
+/// A gamma-exposure level for the options gamma overlay.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct GammaLevel {
+    /// Strike price.
+    pub(crate) price:     f32,
+    /// Net gamma exposure (positive = stabilising, negative = accelerating).
+    pub(crate) exposure:  f32,
+}
+
+/// Watchlist item drag state.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct WatchlistDragState {
+    pub(crate) section_idx: usize,
+    pub(crate) item_idx:    usize,
+}
+
+/// A pending option-chart open request (deferred until next frame).
+#[derive(Debug, Clone)]
+pub(crate) struct PendingOptionChart {
+    pub(crate) symbol:  String,
+    pub(crate) strike:  f32,
+    pub(crate) is_call: bool,
+    pub(crate) expiry:  String,
+}
+
+/// A watchlist custom price-change filter.
+#[derive(Debug, Clone)]
+pub(crate) struct CustomFilter {
+    pub(crate) name:       String,
+    pub(crate) min_change: f32,
+    pub(crate) max_change: f32,
+}
+
+/// A multi-selected order reference (pane + broker order id).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SelectedOrder {
+    pub(crate) pane_idx: usize,
+    pub(crate) order_id: u32,
+}
+
+/// A fetched options chain (calls + puts).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct OptionChain {
+    pub(crate) calls: Vec<OptionRow>,
+    pub(crate) puts:  Vec<OptionRow>,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 pub(crate) struct Chart {
     pub(crate) pane_type: PaneType,
     pub(crate) symbol: String, pub(crate) timeframe: String,
@@ -1668,29 +2165,19 @@ pub(crate) struct Chart {
     pub(crate) auto_scroll: bool, pub(crate) last_input: std::time::Instant,
     pub(crate) draw_price_freeze: Option<(f32, f32)>, // locks y-range while drawing so new bars can't rescale
     // Template popup (opened from pane header T button)
-    pub(crate) template_popup_open: bool,
-    pub(crate) template_popup_pos: egui::Pos2,
-    pub(crate) template_save_name: String,
+    pub(crate) template_popup: TemplatePopup,
     // Option quick-picker popup (opened by clicking an options tab)
-    pub(crate) option_quick_open: bool,
-    pub(crate) option_quick_pos: egui::Pos2,
-    pub(crate) option_quick_dte_idx: usize,
+    pub(crate) option_quick: OptionQuickPicker,
     pub(crate) history_loading: bool, // true while fetching older bars
     pub(crate) history_exhausted: bool, // true if no more history available
     pub(crate) tick_counter: u64, pub(crate) last_candle_time: std::time::Instant, pub(crate) sim_price: f32, pub(crate) sim_seed: u64,
     pub(crate) theme_idx: usize,
     pub(crate) draw_tool: String, // "", "hline", "trendline", "hzone", "barmarker", "fibonacci", "channel"
     /// Drawing-tool picker (opened by 2nd middle-click while a tool is active).
-    pub(crate) draw_picker_open: bool,
-    pub(crate) draw_picker_pos: egui::Pos2,
-    /// Currently hovered category label in the picker (drives the flyout submenu).
-    pub(crate) draw_picker_hover_cat: Option<String>,
-    /// Top-Y of the hovered category row, in screen coords — used to align
-    /// the flyout to the row that spawned it (not the top of the menu).
-    pub(crate) draw_picker_hover_cat_y: f32,
-    pub(crate) pending_pt: Option<(f32,f32)>,  // first click (bar, price)
-    pub(crate) pending_pt2: Option<(f32,f32)>, // second click for channel (bar, price)
-    pub(crate) pending_pts: Vec<(f32,f32)>,    // multi-point: pitchfork(3), xabcd(5), elliott(3/5)
+    pub(crate) draw_picker: DrawPickerState,
+    pub(crate) pending_pt:  Option<DrawCoord>, // first click (bar, price)
+    pub(crate) pending_pt2: Option<DrawCoord>, // second click for channel (bar, price)
+    pub(crate) pending_pts: Vec<DrawCoord>,    // multi-point: pitchfork(3), xabcd(5), elliott(3/5)
     pub(crate) magnet: bool, // snap to OHLC when placing drawings
     pub(crate) selected_id: Option<String>,
     pub(crate) selected_ids: Vec<String>, // multi-select with shift
@@ -1713,8 +2200,8 @@ pub(crate) struct Chart {
     pub(crate) precursor_score: f32,
     pub(crate) precursor_direction: i8,
     pub(crate) precursor_description: String,
-    pub(crate) change_points: Vec<(i64, String, f32)>, // (time, type, confidence)
-    pub(crate) trade_plan: Option<(i8, f32, f32, f32, String, f32, f32)>, // (dir, entry, target, stop, contract, rr, conviction)
+    pub(crate) change_points: Vec<ChangePoint>,
+    pub(crate) trade_plan: Option<TradePlan>,
     pub(crate) divergence_markers: Vec<super::DivergenceMarker>,
     pub(crate) show_divergences: bool,
     pub(crate) signal_demo_toggle: bool, // set to true to toggle demo on/off
@@ -1740,8 +2227,6 @@ pub(crate) struct Chart {
     pub(crate) last_signal_fetch: std::time::Instant,
     pub(crate) hide_all_drawings: bool,
     pub(crate) hide_all_indicators: bool,
-    #[allow(dead_code)]
-    pub(crate) drawing_list_open: bool, // DEPRECATED: consolidated into object_tree
     pub(crate) ohlc_tooltip: bool, // show OHLC values at crosshair
     pub(crate) measure_tooltip: bool, // show big distance-only measurement at crosshair
     pub(crate) show_volume: bool,
@@ -1750,12 +2235,7 @@ pub(crate) struct Chart {
     pub(crate) zoom_selecting: bool, pub(crate) zoom_start: egui::Pos2,
     pub(crate) axis_drag_mode: u8, // 0=none, 1=xaxis, 2=yaxis
     // Symbol picker
-    pub(crate) picker_open: bool, pub(crate) picker_query: String,
-    pub(crate) picker_results: Vec<(String, String, String)>, // (symbol, name, exchange/type)
-    pub(crate) picker_last_query: String, // debounce: only search when query changes
-    pub(crate) picker_searching: bool, // true while background search is in flight
-    pub(crate) picker_rx: Option<mpsc::Receiver<Vec<(String, String, String)>>>, // receives search results from bg thread
-    pub(crate) picker_pos: egui::Pos2, // anchor position for the popup
+    pub(crate) picker: SymbolPickerState,
     pub(crate) recent_symbols: Vec<(String, String)>, // (symbol, name) — most recent first, max 20
     // Group management
     pub(crate) group_manager_open: bool,
@@ -1763,22 +2243,7 @@ pub(crate) struct Chart {
     // Orders
     pub(crate) orders: Vec<OrderLevel>,
     pub(crate) next_order_id: u32,
-    pub(crate) order_qty: u32,
-    pub(crate) order_is_buy: bool, // true=buy, false=sell (used by MeridienOrderTicket)
-    pub(crate) order_market: bool, // true=market, false=limit
-    pub(crate) order_limit_price: String, // limit price as editable text
-    pub(crate) order_type_idx: usize, // 0=MKT, 1=LMT, 2=STP, 3=STP-LMT, 4=TRAIL
-    pub(crate) order_tif_idx: usize, // 0=DAY, 1=GTC, 2=IOC
-    pub(crate) order_outside_rth: bool, // allow trading outside regular trading hours
-    pub(crate) order_advanced: bool, // expanded mode
-    pub(crate) order_bracket: bool, // bracket mode: entry + TP + SL
-    pub(crate) order_stop_price: String, // stop trigger price (for STP, STP-LMT)
-    pub(crate) order_trail_amt: String, // trailing amount (for TRAIL)
-    pub(crate) order_tp_price: String, // take profit price (bracket)
-    pub(crate) order_sl_price: String, // stop loss price (bracket)
-    pub(crate) order_panel_pos: egui::Pos2, // draggable position (relative to chart rect)
-    pub(crate) order_panel_dragging: bool,
-    pub(crate) order_collapsed: bool, // true = show as pill, double-click to expand
+    pub(crate) order_panel: OrderPanelState,
     pub(crate) dragging_order: Option<u32>, // order id being dragged
     pub(crate) dragging_alert: Option<u32>, // alert id being dragged (includes drafts)
     pub(crate) editing_order: Option<u32>,
@@ -1802,32 +2267,11 @@ pub(crate) struct Chart {
     pub(crate) dragging_play_line: Option<u32>,
     pub(crate) play_click_to_set: Option<super::PlayLineKind>, // click-on-chart fills price
     // Measure tool (shift+drag)
-    pub(crate) measuring: bool,
-    pub(crate) measure_start: Option<(f32, f32)>, // (bar, price) start point
-    pub(crate) measure_active: bool, // context menu activated measure mode
-    pub(crate) dom_open: bool, // DOM / Price Ladder floating window
-    // DOM full sidebar mode
-    pub(crate) dom_sidebar_open: bool,
-    pub(crate) dom_levels: Vec<super::ui::panels::dom_panel::DomLevel>,
-    pub(crate) dom_tick_size: f32,
-    pub(crate) dom_center_price: f32,
-    pub(crate) dom_width: f32,
-    pub(crate) dom_selected_price: Option<f32>,
-    pub(crate) dom_order_type: super::ui::panels::dom_panel::DomOrderType,
-    pub(crate) dom_armed: bool,
-    pub(crate) dom_col_mode: u8,
-    pub(crate) dom_dragging: Option<(u32, f32)>,
-    /// 0 = anchored to left edge of pane, 1 = anchored to right edge.
-    pub(crate) dom_position: u8,
-    /// When true the DOM panel takes the entire chart pane area; the
-    /// candle/indicator/oscillator regions are hidden until disabled.
-    pub(crate) dom_fullscreen: bool,
+    pub(crate) measure: MeasureState,
+    pub(crate) dom: DomPanelState,
     // Symbol/timeframe change request — signals the App to reload data
     pub(crate) pending_symbol_change: Option<String>,
     pub(crate) pending_timeframe_change: Option<String>,
-    // Cached formatted strings — updated only when data changes, not every frame
-    #[allow(dead_code)] cached_ohlc: String,
-    #[allow(dead_code)] cached_ohlc_bar_count: usize,
     // Undo/redo
     pub(crate) undo_stack: Vec<DrawingAction>,
     pub(crate) redo_stack: Vec<DrawingAction>,
@@ -1838,20 +2282,11 @@ pub(crate) struct Chart {
     // Reusable buffers to avoid per-frame allocations
     pub(crate) indicator_pts_buf: Vec<egui::Pos2>,
     pub(crate) fmt_buf: String, // reusable format buffer
-    pub(crate) vp_mode: VolumeProfileMode,
+    pub(crate) vp: VolumeProfileState,
     pub(crate) candle_mode: CandleMode,
     // Alternative chart types (Renko, Range, Tick)
-    pub(crate) renko_brick_size: f32,    // 0.0 = auto (ATR-based)
-    pub(crate) range_bar_size: f32,      // 0.0 = auto
-    pub(crate) tick_bar_count: u32,      // default 500
-    pub(crate) alt_bars: Vec<Bar>,       // recomputed non-time bars
-    pub(crate) alt_timestamps: Vec<i64>, // timestamps for alt bars
-    pub(crate) alt_bars_dirty: bool,     // true when alt bars need recomputation
-    pub(crate) alt_bars_source_len: usize, // source bar count when alt_bars was last computed
+    pub(crate) alt: AltBarsState,
     pub(crate) show_footprint: bool, // hover-activated volume footprint on individual bars
-    pub(crate) vp_data: Option<VolumeProfileData>,
-    pub(crate) vp_last_vs: f32,
-    pub(crate) vp_last_vc: u32,
     // Volume analytics
     pub(crate) show_vwap_bands: bool,
     pub(crate) show_cvd: bool,
@@ -1882,7 +2317,7 @@ pub(crate) struct Chart {
     /// unavailable). Renderer paints a "PLACEHOLDER" tag on the axis.
     pub(crate) overlay_chain_placeholder: bool,
     pub(crate) floating_order_panes: Vec<FloatingOrderPane>, // floating order entry windows
-    pub(crate) gamma_levels: Vec<(f32, f32)>, // (price, gamma_exposure) — positive = stabilizing, negative = accelerating
+    pub(crate) gamma_levels: Vec<GammaLevel>,
     pub(crate) gamma_call_wall: f32,
     pub(crate) gamma_put_wall: f32,
     pub(crate) gamma_zero: f32,
@@ -1927,8 +2362,7 @@ pub(crate) struct Chart {
     /// `ReplayOverlay` doc comment for the render contract.
     pub replay_overlay: Option<ReplayOverlay>,
     // Notional-based order entry
-    pub(crate) order_notional_mode: bool,
-    pub(crate) order_notional_amount: String,
+    // (order_notional_mode / order_notional_amount moved into `order_panel`.)
     // Bracket order templates
     pub(crate) bracket_templates: Vec<BracketTemplate>,
     pub(crate) new_bracket_name: String,
@@ -2051,18 +2485,18 @@ impl Chart {
             ],
             vs: 0.0, vc: 200, price_lock: None, log_scale: false, drag_zoom_active: false, drag_zoom_start: None,
             auto_scroll: true, draw_price_freeze: None,
-            template_popup_open: false, template_popup_pos: egui::Pos2::ZERO, template_save_name: String::new(),
-            option_quick_open: false, option_quick_pos: egui::Pos2::ZERO, option_quick_dte_idx: 0,
+            template_popup: TemplatePopup::default(),
+            option_quick: OptionQuickPicker::default(),
             history_loading: false, history_exhausted: false,
             last_input: std::time::Instant::now(), tick_counter: 0,
             last_candle_time: std::time::Instant::now(), sim_price: 0.0,
             sim_seed: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(42),
             theme_idx: 5, // Gruvbox
-            draw_tool: String::new(), draw_picker_open: false, draw_picker_pos: egui::Pos2::ZERO, draw_picker_hover_cat: None, draw_picker_hover_cat_y: 0.0, pending_pt: None, pending_pt2: None, pending_pts: vec![], magnet: true,
+            draw_tool: String::new(), draw_picker: DrawPickerState::default(), pending_pt: None, pending_pt2: None, pending_pts: vec![], magnet: true,
             selected_id: None, selected_ids: vec![], dragging_drawing: None,
             drag_start_price: 0.0, drag_start_bar: 0.0,
             groups: vec![DrawingGroup { id: "default".into(), name: "Temp".into(), color: None }],
-            hidden_groups: vec![], hide_all_drawings: false, hide_all_indicators: false, show_volume: true, show_oscillators: true, drawing_list_open: false, ohlc_tooltip: true, measure_tooltip: false,
+            hidden_groups: vec![], hide_all_drawings: false, hide_all_indicators: false, show_volume: true, show_oscillators: true, ohlc_tooltip: true, measure_tooltip: false,
             signal_drawings: vec![], hide_signal_drawings: false,
             pattern_labels: vec![], show_pattern_labels: true,
             trend_health_score: 0.0, trend_health_direction: 0, trend_health_regime: String::new(),
@@ -2081,32 +2515,22 @@ impl Chart {
             last_signal_fetch: std::time::Instant::now(), drawings_requested: false,
             draw_color: indicator_default_color(0, &get_theme(5)), group_manager_open: false, new_group_name: String::new(),
             zoom_selecting: false, zoom_start: egui::Pos2::ZERO, axis_drag_mode: 0,
-            picker_open: false, picker_query: String::new(), picker_results: vec![],
-            picker_last_query: String::new(), picker_searching: false, picker_rx: None, picker_pos: egui::Pos2::ZERO,
+            picker: SymbolPickerState::default(),
             recent_symbols: vec![("AAPL".into(), "Apple".into()), ("SPY".into(), "S&P 500 ETF".into()), ("TSLA".into(), "Tesla".into()), ("NVDA".into(), "Nvidia".into()), ("MSFT".into(), "Microsoft".into())],
-            orders: vec![], next_order_id: 1, order_qty: 100, order_is_buy: true, order_market: true, order_limit_price: String::new(),
-            order_type_idx: 0, order_tif_idx: 0, order_outside_rth: false, order_advanced: false, order_bracket: false,
-            order_stop_price: String::new(), order_trail_amt: String::new(),
-            order_tp_price: String::new(), order_sl_price: String::new(),
-            order_panel_pos: egui::pos2(8.0, -80.0), order_panel_dragging: false, order_collapsed: false,
+            orders: vec![], next_order_id: 1, order_panel: OrderPanelState::default(),
             dragging_order: None, dragging_alert: None, editing_order: None, edit_order_qty: String::new(), edit_order_price: String::new(),
             armed: false, pending_confirms: vec![],
             trigger_setup: TriggerSetup::default(), trigger_levels: vec![], next_trigger_id: 1, dragging_trigger: None, editing_trigger: None, pending_und_order: None,
             widget_cache_bar_count: 0, widget_cache: None,
             play_lines: vec![], next_play_line_id: 1, dragging_play_line: None, play_click_to_set: None,
-            measuring: false, measure_start: None, measure_active: false, dom_open: false,
-            dom_sidebar_open: false, dom_levels: vec![], dom_tick_size: 0.01, dom_center_price: 0.0, dom_width: super::ui::panels::dom_panel::DOM_SIDEBAR_W,
-            dom_selected_price: None, dom_order_type: super::ui::panels::dom_panel::DomOrderType::Market, dom_armed: false, dom_col_mode: 1, dom_dragging: None,
-            dom_position: 0, dom_fullscreen: false,
+            measure: MeasureState::default(), dom: DomPanelState::default(),
             pending_symbol_change: None, pending_timeframe_change: None,
-            cached_ohlc: String::new(), cached_ohlc_bar_count: 0,
             undo_stack: vec![], redo_stack: vec![], drag_drawing_snapshot: None,
             text_edit_id: None, text_edit_buf: String::new(),
             indicator_pts_buf: Vec::with_capacity(512), fmt_buf: String::with_capacity(256),
-            vp_mode: VolumeProfileMode::Off, candle_mode: CandleMode::Standard,
-            renko_brick_size: 0.0, range_bar_size: 0.0, tick_bar_count: 500,
-            alt_bars: vec![], alt_timestamps: vec![], alt_bars_dirty: true, alt_bars_source_len: 0,
-            show_footprint: false, vp_data: None, vp_last_vs: -1.0, vp_last_vc: 0,
+            vp: VolumeProfileState::default(), candle_mode: CandleMode::Standard,
+            alt: AltBarsState::default(),
+            show_footprint: false,
             show_vwap_bands: false, show_cvd: false, show_delta_volume: false, show_rvol: true,
             show_ma_ribbon: false, show_prev_close: true, show_auto_sr: false, show_auto_fib: false, swing_leg_mode: 0,
             symbol_overlays: vec![], overlay_editing: false, overlay_editing_idx: None, overlay_input: String::new(),
@@ -2124,7 +2548,6 @@ impl Chart {
             cvd_data: vec![], delta_data: vec![], rvol_data: vec![], vol_analytics_computed: 0,
             replay_mode: false, replay_bar_count: 0, replay_playing: false, replay_speed: 1.0, replay_last_step: None,
             replay_overlay: None,
-            order_notional_mode: false, order_notional_amount: String::new(),
             bracket_templates: vec![
                 BracketTemplate { name: "Tight".into(),  target_pct: 1.0, stop_pct: 0.5 },
                 BracketTemplate { name: "Normal".into(), target_pct: 2.0, stop_pct: 1.0 },
@@ -2456,7 +2879,7 @@ impl Chart {
             }
             ChartCommand::ChangePointMarker { symbol, time, change_type, confidence } => {
                 if symbol == self.symbol {
-                    self.change_points.push((time, change_type, confidence));
+                    self.change_points.push(ChangePoint { time, kind: change_type, confidence });
                     // Keep only last 20
                     if self.change_points.len() > 20 {
                         self.change_points.remove(0);
@@ -2465,7 +2888,10 @@ impl Chart {
             }
             ChartCommand::TradePlanUpdate { symbol, direction, entry_price, target_price, stop_price, contract_name, contract_entry: _, contract_target: _, risk_reward, conviction, summary } => {
                 if symbol == self.symbol {
-                    self.trade_plan = Some((direction, entry_price, target_price, stop_price, contract_name, risk_reward, conviction));
+                    self.trade_plan = Some(TradePlan {
+                        direction, entry: entry_price, target: target_price, stop: stop_price,
+                        contract: contract_name, rr: risk_reward, conviction,
+                    });
                     PENDING_TOASTS.with(|ts| ts.borrow_mut().push(
                         crate::chart_renderer::ui::tools::notification::Notification::new(summary, crate::chart_renderer::ui::tools::notification::NotificationSeverity::Info).with_value(conviction).with_source("trade_plan")
                     ));
@@ -2486,30 +2912,30 @@ impl Chart {
         }
         let (bars, ts) = match self.candle_mode {
             CandleMode::Renko => {
-                let brick = if self.renko_brick_size > 0.0 {
-                    self.renko_brick_size
+                let brick = if self.alt.renko_brick > 0.0 {
+                    self.alt.renko_brick
                 } else {
                     Self::auto_brick_size(&self.bars, 0.5)
                 };
                 Self::compute_renko_bars(&self.bars, &self.timestamps, brick)
             }
             CandleMode::RangeBar => {
-                let range = if self.range_bar_size > 0.0 {
-                    self.range_bar_size
+                let range = if self.alt.range_size > 0.0 {
+                    self.alt.range_size
                 } else {
                     Self::auto_brick_size(&self.bars, 1.0)
                 };
                 Self::compute_range_bars(&self.bars, &self.timestamps, range)
             }
             CandleMode::TickBar => {
-                Self::compute_tick_bars(&self.bars, &self.timestamps, self.tick_bar_count)
+                Self::compute_tick_bars(&self.bars, &self.timestamps, self.alt.tick_count)
             }
             _ => return,
         };
-        self.alt_bars = bars;
-        self.alt_timestamps = ts;
-        self.alt_bars_dirty = false;
-        self.alt_bars_source_len = self.bars.len();
+        self.alt.bars = bars;
+        self.alt.timestamps = ts;
+        self.alt.dirty = false;
+        self.alt.source_len = self.bars.len();
     }
 
     /// Auto-calculate brick/range size from ATR(14) * multiplier
@@ -2861,8 +3287,8 @@ impl Chart {
         // Freeze range while actively drawing so new bars don't rescale the Y-axis mid-draw
         if let Some(r) = self.draw_price_freeze { return r; }
         // Use alt_bars for alternative chart types
-        let bars_ref = if matches!(self.candle_mode, CandleMode::Renko | CandleMode::RangeBar | CandleMode::TickBar) && !self.alt_bars.is_empty() {
-            &self.alt_bars
+        let bars_ref = if matches!(self.candle_mode, CandleMode::Renko | CandleMode::RangeBar | CandleMode::TickBar) && !self.alt.bars.is_empty() {
+            &self.alt.bars
         } else {
             &self.bars
         };
@@ -3592,10 +4018,10 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                         }).collect()
                     };
                     if *dte == 0 {
-                        watchlist.chain_0dte = (to_rows(calls), to_rows(puts));
+                        watchlist.chain_0dte = OptionChain { calls: to_rows(calls), puts: to_rows(puts) };
                         watchlist.chain_0dte_placeholder = *placeholder;
                     } else {
-                        watchlist.chain_far = (to_rows(calls), to_rows(puts));
+                        watchlist.chain_far = OptionChain { calls: to_rows(calls), puts: to_rows(puts) };
                         watchlist.chain_far_placeholder = *placeholder;
                     }
                     watchlist.chain_loading = false;
@@ -3609,8 +4035,8 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                     }
                     if *underlying_price > 0.0 { watchlist.chain_underlying_price = *underlying_price; }
                     eprintln!("[chain] Loaded {} calls + {} puts for {} dte={} price={:.2}",
-                        if *dte == 0 { watchlist.chain_0dte.0.len() } else { watchlist.chain_far.0.len() },
-                        if *dte == 0 { watchlist.chain_0dte.1.len() } else { watchlist.chain_far.1.len() },
+                        if *dte == 0 { watchlist.chain_0dte.calls.len() } else { watchlist.chain_far.calls.len() },
+                        if *dte == 0 { watchlist.chain_0dte.puts.len()  } else { watchlist.chain_far.puts.len()  },
                         symbol, dte, underlying_price);
                 }
             }
@@ -3698,7 +4124,7 @@ pub(crate) fn update_simulation(panes: &mut [Chart]) {
     for chart in panes.iter_mut() {
         // Recompute alt bars if dirty or source bars changed
         if matches!(chart.candle_mode, CandleMode::Renko | CandleMode::RangeBar | CandleMode::TickBar) {
-            if chart.alt_bars_dirty || chart.alt_bars_source_len != chart.bars.len() {
+            if chart.alt.dirty || chart.alt.source_len != chart.bars.len() {
                 chart.recompute_alt_bars();
             }
         }
@@ -4485,7 +4911,7 @@ pub(crate) struct SavedOption {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum WatchlistTab { Stocks, Chain, Heat }
+pub(crate) enum WatchlistTab { Stocks, Chain, Heat, Scan }
 
 // ─── Scanner types ──────────────────────────────────────────────────────────
 
@@ -4560,8 +4986,6 @@ pub(crate) struct Watchlist {
     pub(crate) active_watchlist_idx: usize,
     pub(crate) watchlist_name_editing: bool,
     pub(crate) watchlist_name_buf: String,
-    #[allow(dead_code)]
-    pub(crate) watchlist_ctx_menu_idx: Option<usize>, // which watchlist index has context menu open
     pub(crate) search_query: String,
     pub(crate) search_results: Vec<(String, String)>,
     pub(crate) search_sel: i32, // -1 = none, 0+ = highlighted suggestion index
@@ -4572,18 +4996,14 @@ pub(crate) struct Watchlist {
     pub(crate) divider_y: f32, // screen Y of divider (set during render)
     pub(crate) divider_total_h: f32, // total available height for split calculation
     // Drag-and-drop state
-    pub(crate) dragging: Option<(usize, usize)>,       // (section_idx, item_idx) being dragged
-    pub(crate) drag_start_pos: Option<egui::Pos2>, // mouse position when drag started
-    pub(crate) drop_target: Option<(usize, usize)>,     // (section_idx, insert_before_item_idx)
-    pub(crate) drag_confirmed: bool, // true once mouse moved enough to confirm drag
+    pub(crate) dragging:       Option<WatchlistDragState>,
+    pub(crate) drag_start_pos: Option<egui::Pos2>,
+    pub(crate) drop_target:    Option<WatchlistDragState>,
+    pub(crate) drag_confirmed: bool,
     // Section editing
     pub(crate) renaming_section: Option<u32>, // section id being renamed
     pub(crate) rename_buf: String,
-    #[allow(dead_code)]
-    pub(crate) color_picking_section: Option<u32>, // section id picking color
     // Toolbar
-    #[allow(dead_code)] toolbar_scroll: f32,
-    #[allow(dead_code)] shortcuts_open: bool, // superseded by hotkey_editor_open
     pub(crate) hotkey_editor_open: bool,
     pub(crate) hotkey_editing_id: Option<u32>,
     pub(crate) settings_open: bool,
@@ -4622,6 +5042,13 @@ pub(crate) struct Watchlist {
     /// subsystem. Toggled via Ctrl+Shift+O. See
     /// `chart::renderer::ui::panels::order_health_panel`.
     pub(crate) order_health_open: bool,
+    /// Active bottom-dock tab: 0=Orders, 1=Positions, 2=Account, 3=Notifications.
+    /// (Footer *visibility* is a style default + session override — `footer_visible()`.)
+    pub(crate) bottom_dock_tab: u8,
+    /// Persisted right-rail column width (px). Driven by the rail's resize grip.
+    pub(crate) rail_col_width: f32,
+    /// Persisted bottom-dock (footer) height (px). Driven by the dock's resize grip.
+    pub(crate) bottom_dock_height: f32,
     pub(crate) trendline_filter_open: bool, // trendline filter dropdown
     pub(crate) account_strip_open: bool, // account summary bar below toolbar
     pub(crate) object_tree_open: bool, // object tree panel (drawings, indicators, overlays)
@@ -4652,7 +5079,7 @@ pub(crate) struct Watchlist {
     /// every `motion_*()` duration token. Off disables animation entirely
     /// — useful for accessibility, RDP, or distraction-free trading. P5.
     pub(crate) motion_speed_override: Option<crate::ui_kit::style::MotionSpeed>,
-    pub(crate) pending_opt_chart: Option<(String, f32, bool, String)>, // deferred option chart open
+    pub(crate) pending_opt_chart: Option<PendingOptionChart>, // deferred option chart open
     /// Optional OCC contract ticker for the pending open. When present, used as the
     /// fetch key so real bars come from ApexData; pane.symbol stays the display label.
     pub(crate) pending_opt_chart_contract: Option<String>,
@@ -4670,10 +5097,9 @@ pub(crate) struct Watchlist {
     pub(crate) wl_columns_open: bool, // settings popup
     pub(crate) filter_text: String,
     pub(crate) filter_preset: String,
-    pub(crate) custom_filters: Vec<(String, f32, f32)>, // (name, min_change%, max_change%)
+    pub(crate) custom_filters: Vec<CustomFilter>,
     pub(crate) filter_min_change: f32,
     pub(crate) filter_max_change: f32,
-    #[allow(dead_code)] filter_min_rvol: f32,  // reserved for RVOL filter when data is available
     // Heatmap
     pub(crate) heat_index: String,
     pub(crate) heat_collapsed: std::collections::HashSet<String>,
@@ -4682,7 +5108,7 @@ pub(crate) struct Watchlist {
     // Orders
     pub(crate) orders_panel_open: bool,
     pub(crate) order_entry_open: bool,
-    pub(crate) selected_order_ids: Vec<(usize, u32)>, // (pane_idx, order_id) for multi-select
+    pub(crate) selected_order_ids: Vec<SelectedOrder>,
     // Positions
     pub(crate) positions: Vec<Position>,
     // Alerts
@@ -4696,8 +5122,8 @@ pub(crate) struct Watchlist {
     pub(crate) chain_sym_input: String,
     pub(crate) chain_num_strikes: usize, // legacy fallback
     pub(crate) chain_far_dte: i32,
-    pub(crate) chain_0dte: (Vec<OptionRow>, Vec<OptionRow>), // (calls, puts) for 0DTE
-    pub(crate) chain_far: (Vec<OptionRow>, Vec<OptionRow>), // (calls, puts) for far DTE
+    pub(crate) chain_0dte: OptionChain,
+    pub(crate) chain_far:  OptionChain,
     /// True when chain_0dte / chain_far rows are locally-synthesized
     /// Black-Scholes placeholder data (real upstream unavailable).
     pub(crate) chain_0dte_placeholder: bool,
@@ -4737,6 +5163,33 @@ pub(crate) struct Watchlist {
     pub(crate) pane_split_v5: f32,
     pub(crate) pane_split_v6: f32,
     pub(crate) pane_divider_dragging: bool,
+    /// Phase-1 PaneGrid topology. `None` = legacy 19-template + 8-split path
+    /// (older workspaces). `Some` = recursive split tree drives layout.
+    /// Watchlist is persisted via a hand-rolled JSON path (not serde-derived);
+    /// the layout will be saved/restored alongside the other state fields.
+    pub(crate) pane_layout: Option<crate::chart_renderer::pane_layout::PaneLayout>,
+    /// Phase 1c — when the user clicks a pane header's Split button, store
+    /// the pane_idx here so the H/V picker popup renders anchored to it.
+    /// `None` = popup is closed. Cleared when an axis is picked, Escape is
+    /// pressed, or the user clicks outside.
+    pub(crate) pane_split_popup_for: Option<usize>,
+    /// P17 #3 — undo stack for destructive pane operations. Each entry is
+    /// a snapshot of `pane_layout` taken IMMEDIATELY BEFORE a split/close.
+    /// Cap at 32 entries; oldest evicted FIFO.
+    pub(crate) pane_layout_undo: Vec<Option<crate::chart_renderer::pane_layout::PaneLayout>>,
+    /// Companion redo stack — populated when undo pops + pushes onto here.
+    /// Cleared whenever a NEW destructive op happens (standard editor model).
+    pub(crate) pane_layout_redo: Vec<Option<crate::chart_renderer::pane_layout::PaneLayout>>,
+    /// P17 #1 — stable IDs for each Chart in `panes`. Parallel array; the
+    /// id at position `i` belongs to `panes[i]`. When a chart is removed,
+    /// this Vec is shortened in lockstep so id ordering stays consistent
+    /// with chart ordering. `PaneLayout::PaneSlot` carries these IDs rather
+    /// than raw indices, so closing pane N never shifts other panes' slot
+    /// references — the previous index-decrement fixup is no longer needed.
+    pub(crate) pane_ids: Vec<u64>,
+    /// Monotonic id counter. Never decremented; new charts always get a
+    /// fresh id. `0` is reserved (used as a sentinel for "uninitialized").
+    pub(crate) next_pane_id: u64,
     // Command palette
     pub(crate) cmd_palette_open: bool,
     pub(crate) cmd_palette_query: String,
@@ -4853,6 +5306,8 @@ pub(crate) struct Watchlist {
     // Screenshot library
     pub(crate) screenshot_open: bool,
     pub(crate) screenshot_entries: Vec<super::ui::panels::screenshot_panel::ScreenshotEntry>,
+    /// Chart Library sidepane open state (transient — not persisted).
+    pub(crate) charts_library_open: bool,
     // RRG (Relative Rotation Graph)
     pub(crate) rrg_open: bool,
     pub(crate) rrg_sectors: Vec<super::ui::panels::rrg_panel::RRGSector>,
@@ -4999,17 +5454,18 @@ impl Watchlist {
         Self { open: false, tab: WatchlistTab::Stocks, sections, next_section_id,
                link_groups,
                saved_watchlists, active_watchlist_idx: active_idx,
-               watchlist_name_editing: false, watchlist_name_buf: String::new(), watchlist_ctx_menu_idx: None,
+               watchlist_name_editing: false, watchlist_name_buf: String::new(),
                search_query: String::new(), search_results: vec![], search_sel: -1, search_refocus: false,
                options_visible: true, options_split: 0.6, divider_dragging: false, divider_y: 0.0, divider_total_h: 0.0,
                dragging: None, drag_start_pos: None, drop_target: None, drag_confirmed: false,
-               renaming_section: None, rename_buf: String::new(), color_picking_section: None,
-               toolbar_scroll: 0.0, shortcuts_open: false,
+               renaming_section: None, rename_buf: String::new(),
                hotkey_editor_open: false, hotkey_editing_id: None, hotkeys: default_hotkeys(),
                order_ledger_open: false, order_ledger_view: 0, order_ledger_filter: 0, order_ledger_search: String::new(),
                order_ledger_sym_expanded: std::collections::HashMap::new(),
                order_ledger_pending_bulk_cancel: None,
                order_health_open: false,
+               bottom_dock_tab: 0,
+               rail_col_width: 400.0, bottom_dock_height: 240.0,
                settings_open: false, font_scale: 1.6, native_dpi_scale: 1.0, font_idx: 0,
                default_stock_qty: 100, default_options_qty: 1, default_order_type: 0, default_tif: 0, default_outside_rth: false,
                compact_mode: false,
@@ -5028,10 +5484,10 @@ impl Watchlist {
                pending_opt_chart: None, pending_opt_chart_contract: None, apex_diag_open: false, replay_pane_open: false, widget_gallery_open: false,
                wl_columns: crate::chart::renderer::ui::lists::rows::watchlist_columns::default_columns(),
                wl_columns_open: false,
-               filter_open: false, filter_text: String::new(), filter_preset: "All".into(), filter_min_change: -999.0, filter_max_change: 999.0, filter_min_rvol: -1.0, custom_filters: vec![],
+               filter_open: false, filter_text: String::new(), filter_preset: "All".into(), filter_min_change: -999.0, filter_max_change: 999.0, custom_filters: vec![],
                orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(), alerts_panel_open: false,
                chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
-               chain_0dte: (vec![], vec![]), chain_far: (vec![], vec![]),
+               chain_0dte: OptionChain::default(), chain_far: OptionChain::default(),
                chain_select_mode: false, chain_loading: false, chain_last_fetch: None, chain_frozen: false, chain_center_offset: 0, chain_underlying_price: 0.0, chain_0dte_placeholder: false, chain_far_placeholder: false,
                chain_0_num_strikes: 10, chain_0_frozen: false, chain_0_offset: 0, chain_0_strike_mode: StrikeMode::Count, chain_0_nmf: 0,
                chain_far_num_strikes: 10, chain_far_frozen: false, chain_far_offset: 0, chain_far_strike_mode: StrikeMode::Count, chain_far_nmf: 0,
@@ -5041,6 +5497,15 @@ impl Watchlist {
                pane_split_h: 0.5, pane_split_v: 0.5, pane_split_h2: 0.5, pane_split_v2: 0.5,
                pane_split_v3: 0.5, pane_split_v4: 0.5, pane_split_v5: 0.5, pane_split_v6: 0.5,
                pane_divider_dragging: false,
+               // Phase 1 PaneGrid topology — None means "use legacy 8-fraction path".
+               // Migration happens on first user action that depends on the tree.
+               pane_layout: None,
+               pane_split_popup_for: None,
+               pane_layout_undo: Vec::new(),
+               pane_layout_redo: Vec::new(),
+               pane_ids: Vec::new(),
+               next_pane_id: 1, // 0 reserved as sentinel
+
                cmd_palette_open: false, cmd_palette_query: String::new(), cmd_palette_results: vec![], cmd_palette_sel: -1,
                cmd_palette_recent: vec![], cmd_palette_freq: std::collections::HashMap::new(),
                cmd_palette_ai_mode: false, cmd_palette_ai_input: String::new(),
@@ -5116,6 +5581,7 @@ impl Watchlist {
                script_backtest: None,
                screenshot_open: false,
                screenshot_entries: super::ui::panels::screenshot_panel::load_screenshots(),
+               charts_library_open: false,
                rrg_open: false, rrg_sectors: vec![], rrg_cycle_phase: String::new(),
                rrg_time_offset: 0.0, rrg_tail_length: 5,
                analysis_open: false,
@@ -5451,6 +5917,9 @@ impl Watchlist {
         let order_ledger_view = self.order_ledger_view;
         let order_ledger_filter = self.order_ledger_filter;
         let order_health_open = self.order_health_open;
+        let bottom_dock_tab = self.bottom_dock_tab;
+        let rail_col_width = self.rail_col_width;
+        let bottom_dock_height = self.bottom_dock_height;
         let account_strip_open = self.account_strip_open;
         let object_tree_open = self.object_tree_open;
         let trendline_filter_open = self.trendline_filter_open;
@@ -5486,6 +5955,9 @@ impl Watchlist {
             s.order_ledger_view = order_ledger_view;
             s.order_ledger_filter = order_ledger_filter;
             s.order_health_open = order_health_open;
+            s.bottom_dock_tab = bottom_dock_tab;
+            s.rail_col_width = rail_col_width;
+            s.bottom_dock_height = bottom_dock_height;
             s.account_strip_open = account_strip_open;
             s.object_tree_open = object_tree_open;
             s.trendline_filter_open = trendline_filter_open;
@@ -5527,6 +5999,9 @@ impl Watchlist {
         self.order_ledger_view = snap.order_ledger_view;
         self.order_ledger_filter = snap.order_ledger_filter;
         self.order_health_open = snap.order_health_open;
+        self.bottom_dock_tab = snap.bottom_dock_tab;
+        self.rail_col_width = snap.rail_col_width;
+        self.bottom_dock_height = snap.bottom_dock_height;
         self.account_strip_open = snap.account_strip_open;
         self.object_tree_open = snap.object_tree_open;
         self.trendline_filter_open = snap.trendline_filter_open;
@@ -5575,6 +6050,8 @@ impl Watchlist {
         let pane_split_v4 = self.pane_split_v4;
         let pane_split_v5 = self.pane_split_v5;
         let pane_split_v6 = self.pane_split_v6;
+        // P16 fix #1 — persist the PaneGrid tree if present.
+        let pane_layout_clone = self.pane_layout.clone();
         let layout_favorites = self.layout_favorites.clone();
         let timeframe_favorites = self.timeframe_favorites.clone();
         let maximized_pane = self.maximized_pane;
@@ -5596,6 +6073,7 @@ impl Watchlist {
             s.pane_split_v4 = pane_split_v4;
             s.pane_split_v5 = pane_split_v5;
             s.pane_split_v6 = pane_split_v6;
+            s.pane_layout = pane_layout_clone;
             s.layout_favorites = layout_favorites;
             s.timeframe_favorites = timeframe_favorites;
             s.maximized_pane = maximized_pane;
@@ -5628,6 +6106,10 @@ impl Watchlist {
         self.pane_split_v4 = snap.pane_split_v4;
         self.pane_split_v5 = snap.pane_split_v5;
         self.pane_split_v6 = snap.pane_split_v6;
+        // P16 fix #1 — restore the saved tree if present. Older workspaces
+        // omit pane_layout (#[serde(default)]) so loading them yields None,
+        // and ensure_pane_layout will materialize from the legacy template.
+        self.pane_layout = snap.pane_layout.clone();
         self.layout_favorites = snap.layout_favorites;
         self.timeframe_favorites = snap.timeframe_favorites;
         self.maximized_pane = snap.maximized_pane;
@@ -5936,11 +6418,6 @@ impl Watchlist {
         vec![]
     }
 
-    /// Get name of the active watchlist.
-    #[allow(dead_code)]
-    fn active_name(&self) -> &str {
-        self.saved_watchlists.get(self.active_watchlist_idx).map(|w| w.name.as_str()).unwrap_or("Default")
-    }
 }
 
 // Black-Scholes, strike_interval, atm_strike, get_iv, sim_oi — now in compute.rs
@@ -6124,11 +6601,20 @@ impl GpuCtx {
         // The real fix for the underlying variance requires profiling +
         // targeted work in the chart paint hot path (sacred core.rs, single-
         // owner pass). Until then, keep the original config.
-        let (present_mode, frame_latency) = if caps.present_modes.contains(&wgpu::PresentMode::Fifo) {
-            (wgpu::PresentMode::Fifo, 2u32)
-        } else {
-            (wgpu::PresentMode::AutoVsync, 2u32)
-        };
+        // User-reported drag lag (2026-05-26): the Fifo+lat=2 baseline added
+        // ~33ms of perceptible delay when panning the chart. Prefer Mailbox
+        // where available — same vsync pacing (no tearing) but drops stale
+        // frames instead of queuing them, so the GPU never falls behind
+        // user input. macOS Metal historically only advertised [Fifo,
+        // Immediate] so the Fifo fallback is preserved for that path.
+        let (present_mode, frame_latency) =
+            if caps.present_modes.contains(&wgpu::PresentMode::Mailbox) {
+                (wgpu::PresentMode::Mailbox, 1u32)
+            } else if caps.present_modes.contains(&wgpu::PresentMode::Fifo) {
+                (wgpu::PresentMode::Fifo, 2u32)
+            } else {
+                (wgpu::PresentMode::AutoVsync, 2u32)
+            };
         eprintln!("[native-chart] PresentMode::{:?}, frame latency {}", present_mode, frame_latency);
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT, format: fmt,
@@ -6199,10 +6685,25 @@ impl GpuCtx {
         // Bump shadow pipeline frame counter for texture pool recycling.
         crate::ui_kit::widgets::shadow_pipeline::next_frame();
 
-        // Mirror the user's font_idx into TextEngine so PolishedLabel
-        // (which passes Family::SansSerif as a sentinel) shapes with
-        // the matching primary font.
-        crate::ui_kit::widgets::text_engine::set_active_font_idx(watchlist.font_idx);
+        // Effective proportional font = per-theme preference (ported from the
+        // React `--ds-font-ui` blocks) falling back to the user's picker. The
+        // active style's font wins on themed presets (Aperture/Cadence/Alto/
+        // Mariner/Lucid); Meridien/Octave defer to the user picker. Monospace
+        // stays JetBrains regardless (tabular-digit policy in init_fonts).
+        let effective_font = style_preferred_font(style_id(watchlist))
+            .unwrap_or(watchlist.font_idx);
+        // Mirror into TextEngine so PolishedLabel (Family::SansSerif sentinel)
+        // shapes with the matching primary font.
+        crate::ui_kit::widgets::text_engine::set_active_font_idx(effective_font);
+        // Re-install egui fonts only when the effective font actually changes —
+        // `set_fonts` is a global, allocation-heavy call, never per-frame.
+        {
+            use std::sync::atomic::{AtomicUsize, Ordering};
+            static LAST_FONT: AtomicUsize = AtomicUsize::new(usize::MAX);
+            if LAST_FONT.swap(effective_font, Ordering::Relaxed) != effective_font {
+                crate::ui_kit::icons::init_fonts(&self.egui_ctx, effective_font);
+            }
+        }
 
         // Mirror the active pane's background luminance into TextEngine so
         // theme-aware gamma can adapt glyph rendering to light/dark themes.
@@ -6240,7 +6741,14 @@ impl GpuCtx {
         // genuinely quiet frames (no clicks, drags, key presses, scrolls).
         crate::foundation::frame_profiler::note_input_events(raw_input.events.len() as u32);
         let full_output = self.egui_ctx.run(raw_input, |ctx| {
+            // NOTE: the inter-region gaps show the GPU chart pipeline's surface
+            // clear (already the theme bg), so no egui canvas paint is needed.
+            // An opaque egui Background-layer rect here would composite OVER the
+            // GPU chart and blank the screen — do NOT add one.
             draw_chart(ctx, panes, active_pane, layout, watchlist, toasts, conn_panel_open, rx);
+            // Aperture/Glass tiled-card overlay: paint rounded corners + border on each pane
+            // AFTER draw_chart so it sits on top of the chart content. Uses Foreground layer.
+            paint_pane_card_frames(ctx, panes, *layout, watchlist);
             // Boss key: paint the TPS overlay on top of everything when active.
             // render_tps_overlay returns true when the user dismisses it
             // (Esc or the fake-Excel ✕ close button).
@@ -6842,10 +7350,10 @@ impl ApplicationHandler for App {
                                     }).collect()
                                 };
                                 if dte == 0 {
-                                    cw.watchlist.chain_0dte = (to_rows(calls), to_rows(puts));
+                                    cw.watchlist.chain_0dte = OptionChain { calls: to_rows(calls), puts: to_rows(puts) };
                                     cw.watchlist.chain_0dte_placeholder = placeholder;
                                 } else {
-                                    cw.watchlist.chain_far = (to_rows(calls), to_rows(puts));
+                                    cw.watchlist.chain_far = OptionChain { calls: to_rows(calls), puts: to_rows(puts) };
                                     cw.watchlist.chain_far_placeholder = placeholder;
                                 }
                                 cw.watchlist.chain_loading = false;
@@ -6999,11 +7507,11 @@ impl ApplicationHandler for App {
                     "rnk" => CandleMode::Renko, "rng" => CandleMode::RangeBar, "tck" => CandleMode::TickBar,
                                             _ => CandleMode::Standard,
                                         };
-                                        chart.renko_brick_size = p.get("renko_brick_size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                                        chart.range_bar_size = p.get("range_bar_size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                                        chart.tick_bar_count = p.get("tick_bar_count").and_then(|v| v.as_u64()).unwrap_or(500) as u32;
-                                        chart.alt_bars_dirty = true;
-                                        chart.vp_mode = match p.get("vp_mode").and_then(|v| v.as_str()).unwrap_or("off") {
+                                        chart.alt.renko_brick = p.get("renko_brick_size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                        chart.alt.range_size = p.get("range_bar_size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                        chart.alt.tick_count = p.get("tick_bar_count").and_then(|v| v.as_u64()).unwrap_or(500) as u32;
+                                        chart.alt.dirty = true;
+                                        chart.vp.mode = match p.get("vp_mode").and_then(|v| v.as_str()).unwrap_or("off") {
                                             "classic" => VolumeProfileMode::Classic, "heatmap" => VolumeProfileMode::Heatmap,
                                             "strip" => VolumeProfileMode::Strip, "clean" => VolumeProfileMode::Clean,
                                             _ => VolumeProfileMode::Off,
@@ -7066,6 +7574,29 @@ impl ApplicationHandler for App {
                             cw.panes = new_panes;
                             cw.layout = new_layout;
                             cw.active_pane = 0;
+                            // v4: restore pane geometry. v3 (and older) files omit
+                            // these keys, so loading them leaves the current
+                            // geometry untouched (back-compat). Drawings are NOT
+                            // restored here — they reload from Postgres via the
+                            // per-pane symbol-load triggered by pending_symbol_change.
+                            if let Some(splits) = json.get("splits") {
+                                let gf = |k: &str, def: f32| splits.get(k).and_then(|v| v.as_f64()).map(|f| f as f32).unwrap_or(def);
+                                cw.watchlist.pane_split_h  = gf("h",  0.5);
+                                cw.watchlist.pane_split_v  = gf("v",  0.5);
+                                cw.watchlist.pane_split_h2 = gf("h2", 0.5);
+                                cw.watchlist.pane_split_v2 = gf("v2", 0.5);
+                                cw.watchlist.pane_split_v3 = gf("v3", 0.5);
+                                cw.watchlist.pane_split_v4 = gf("v4", 0.5);
+                                cw.watchlist.pane_split_v5 = gf("v5", 0.5);
+                                cw.watchlist.pane_split_v6 = gf("v6", 0.5);
+                            }
+                            if let Some(pl) = json.get("pane_layout") {
+                                if !pl.is_null() {
+                                    if let Ok(tree) = serde_json::from_value::<Option<crate::chart_renderer::pane_layout::PaneLayout>>(pl.clone()) {
+                                        cw.watchlist.pane_layout = tree;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -7082,6 +7613,8 @@ impl ApplicationHandler for App {
                     use crate::chart_renderer::ui::tools::notification::Notification;
                     let new_toasts: Vec<Notification> = PENDING_TOASTS.with(|ts| ts.borrow_mut().drain(..).collect());
                     if !new_toasts.is_empty() {
+                        // Tee into the persistent history log (bottom dock's Notifications tab).
+                        crate::chart_renderer::ui::tools::notification::record_history(&new_toasts);
                         // Collect existing messages as owned Strings to release the borrow before pushing.
                         let existing: std::collections::HashSet<String> = cw.toasts.iter().map(|n: &Notification| n.message.clone()).collect();
                         let mut seen = std::collections::HashSet::<String>::new();
@@ -7341,31 +7874,47 @@ impl ApplicationHandler for App {
             let paired = cw.watchlist.subscriptions.drain();
             apply_pane_events(&mut cw.panes, &paired, group_count, true);
 
-            // Request redraw only when something actually needs to repaint.
-            // Egui tracks pending repaint requests internally (animations,
-            // input changes, explicit ctx.request_repaint() calls including
-            // wake_native_ui from background threads). Calling request_redraw
-            // unconditionally was previously what kept the app at 60 fps even
-            // when nothing was changing — burning ~5-10% CPU and battery.
+            // ── Unconditional 60 fps redraw (2026-05-26 — perf rev) ──────────
             //
-            // Now: only request a redraw if egui needs one or there's
-            // pending input we haven't drained yet.
-            let egui_wants_repaint = cw.gpu.egui_ctx.has_requested_repaint();
-            if egui_wants_repaint {
-                crate::foundation::frame_profiler::note_repaint(
-                    concat!(file!(), ":", line!(), " about_to_wait_tick"),
-                );
-                cw.win.request_redraw();
-            }
+            // Apex is a real-time trading chart. Reactive-only repaint
+            // (gated on `egui_ctx.has_requested_repaint()`) was added earlier
+            // as a battery optimisation, but it has two problems for this
+            // workload:
+            //
+            //  1. Live ticks arrive ~100 Hz on active symbols. If a tick
+            //     lands between vsync intervals and the reactive path hasn't
+            //     yet called request_repaint for it, the candle update can
+            //     be delayed by up to a frame. For a scalper that's
+            //     unacceptable.
+            //  2. Even small per-frame work spikes (motion animations on
+            //     toolbar widgets, theme rebuild) can push a frame over the
+            //     16 ms vsync budget. With reactive repaint + Fifo+lat=2,
+            //     the slipped frame stacks input into the queue — exactly
+            //     the "drag feels delayed" symptom the user reported.
+            //
+            // Unconditional request_redraw + vsync (Mailbox preferred,
+            // Fifo+lat=2 fallback) pins the app at the display refresh and
+            // keeps the swapchain perpetually fresh. The GPU work is
+            // throttled by vsync so we don't actually burn the CPU at
+            // 1000 fps — but every vsync we hand the compositor the latest
+            // chart state.
+            //
+            // Battery cost: ~5-10% CPU vs idle reactive mode. For a trading
+            // app the app is never actually idle (constant ticks) so this
+            // delta is small in practice. If a future use-case wants the
+            // battery-saver mode back, gate this behind a runtime flag.
+            crate::foundation::frame_profiler::note_repaint(
+                concat!(file!(), ":", line!(), " about_to_wait_tick"),
+            );
+            cw.win.request_redraw();
         }
 
-        // Frame-pacing control flow:
-        //   • Always Wait — the loop sleeps until winit wakes it for a real
-        //     event (RedrawRequested triggered by request_redraw, input, OS
-        //     events). request_redraw is now driven by egui's repaint flags,
-        //     not unconditional, so when truly idle we sleep at 0 fps until a
-        //     tick / interaction wakes us via wake_native_ui or input.
-        el.set_control_flow(winit::event_loop::ControlFlow::Wait);
+        // Frame-pacing: Poll so the loop wakes every iteration to keep the
+        // unconditional request_redraw above firing at vsync cadence.
+        // Vsync (Mailbox / Fifo) handles the actual 60 fps gating downstream,
+        // so Poll doesn't burn the CPU at 1000 fps — it just guarantees we
+        // never sit waiting for an external wake when a frame is due.
+        el.set_control_flow(winit::event_loop::ControlFlow::Poll);
     }
 }
 
@@ -7448,7 +7997,7 @@ fn workspace_dir() -> std::path::PathBuf {
     let mut p = state_path(); p.pop(); p.push("workspaces"); let _ = std::fs::create_dir_all(&p); p
 }
 
-fn workspace_to_json(panes: &[Chart], layout: Layout) -> String {
+fn workspace_to_json(panes: &[Chart], layout: Layout, wl: &Watchlist) -> String {
     let pane_data: Vec<serde_json::Value> = panes.iter().map(|p| {
         let indicators: Vec<serde_json::Value> = p.indicators.iter().map(|ind| serde_json::json!({
             "kind": ind.kind.label(), "period": ind.period, "color": ind.color,
@@ -7488,10 +8037,10 @@ fn workspace_to_json(panes: &[Chart], layout: Layout) -> String {
                 CandleMode::HeikinAshi => "ha", CandleMode::Line => "line", CandleMode::Area => "area",
                     CandleMode::Renko => "rnk", CandleMode::RangeBar => "rng", CandleMode::TickBar => "tck",
             },
-            "renko_brick_size": p.renko_brick_size,
-            "range_bar_size": p.range_bar_size,
-            "tick_bar_count": p.tick_bar_count,
-            "vp_mode": match p.vp_mode {
+            "renko_brick_size": p.alt.renko_brick,
+            "range_bar_size": p.alt.range_size,
+            "tick_bar_count": p.alt.tick_count,
+            "vp_mode": match p.vp.mode {
                 VolumeProfileMode::Off => "off", VolumeProfileMode::Classic => "classic",
                 VolumeProfileMode::Heatmap => "heatmap", VolumeProfileMode::Strip => "strip",
                 VolumeProfileMode::Clean => "clean",
@@ -7511,20 +8060,54 @@ fn workspace_to_json(panes: &[Chart], layout: Layout) -> String {
         })
     }).collect();
     let state = serde_json::json!({
-        "version": 3,
+        // v4: adds pane split ratios so a saved chart restores its exact pane
+        // geometry. Drawings are intentionally NOT serialized here — they live
+        // in their own per-symbol Postgres store and reload automatically when a
+        // restored pane's symbol loads (see drawing_db + fetch.rs symbol-load).
+        "version": 4,
         "layout": layout.label(),
         "theme_idx": panes.first().map(|p| p.theme_idx).unwrap_or(5),
         "panes": pane_data,
         "recent_symbols": panes.first().map(|p| &p.recent_symbols).cloned().unwrap_or_default(),
+        // Pane geometry: the authoritative recursive split tree (modern path)
+        // plus the legacy float ratios (fallback path). Restored together with
+        // the layout so split positions survive a save/load round-trip.
+        "pane_layout": serde_json::to_value(&wl.pane_layout).unwrap_or(serde_json::Value::Null),
+        "splits": {
+            "h":  wl.pane_split_h,  "v":  wl.pane_split_v,
+            "h2": wl.pane_split_h2, "v2": wl.pane_split_v2,
+            "v3": wl.pane_split_v3, "v4": wl.pane_split_v4,
+            "v5": wl.pane_split_v5, "v6": wl.pane_split_v6,
+        },
     });
     serde_json::to_string_pretty(&state).unwrap_or_default()
 }
 
-pub(crate) fn save_workspace(name: &str, panes: &[Chart], layout: Layout) {
-    let json = workspace_to_json(panes, layout);
-    let safe_name: String = name.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' }).collect();
-    let path = workspace_dir().join(format!("{}.json", safe_name));
+/// Filesystem-safe workspace file stem (shared by save/delete/rename so they
+/// always resolve to the same path for a given display name).
+fn sanitize_workspace_name(name: &str) -> String {
+    name.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' }).collect()
+}
+
+pub(crate) fn save_workspace(name: &str, panes: &[Chart], layout: Layout, wl: &Watchlist) {
+    let json = workspace_to_json(panes, layout, wl);
+    let path = workspace_dir().join(format!("{}.json", sanitize_workspace_name(name)));
     let _ = crate::state::persistence::atomic_write(&path, json.as_bytes());
+}
+
+/// Delete a saved workspace by display name. No-op if it doesn't exist.
+pub(crate) fn delete_workspace(name: &str) {
+    let path = workspace_dir().join(format!("{}.json", sanitize_workspace_name(name)));
+    let _ = std::fs::remove_file(path);
+}
+
+/// Rename a saved workspace file. No-op if `old` is missing or names collide.
+pub(crate) fn rename_workspace(old: &str, new: &str) {
+    let from = workspace_dir().join(format!("{}.json", sanitize_workspace_name(old)));
+    let to   = workspace_dir().join(format!("{}.json", sanitize_workspace_name(new)));
+    if from != to && from.exists() {
+        let _ = std::fs::rename(from, to);
+    }
 }
 
 pub(crate) fn list_workspaces() -> Vec<String> {
@@ -7608,10 +8191,10 @@ pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &mut Watchl
                 CandleMode::HeikinAshi => "ha", CandleMode::Line => "line", CandleMode::Area => "area",
                     CandleMode::Renko => "rnk", CandleMode::RangeBar => "rng", CandleMode::TickBar => "tck",
             },
-            "renko_brick_size": p.renko_brick_size,
-            "range_bar_size": p.range_bar_size,
-            "tick_bar_count": p.tick_bar_count,
-            "vp_mode": match p.vp_mode {
+            "renko_brick_size": p.alt.renko_brick,
+            "range_bar_size": p.alt.range_size,
+            "tick_bar_count": p.alt.tick_count,
+            "vp_mode": match p.vp.mode {
                 VolumeProfileMode::Off => "off", VolumeProfileMode::Classic => "classic",
                 VolumeProfileMode::Heatmap => "heatmap", VolumeProfileMode::Strip => "strip",
                 VolumeProfileMode::Clean => "clean",
@@ -7806,12 +8389,12 @@ fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
                     "rnk" => CandleMode::Renko, "rng" => CandleMode::RangeBar, "tck" => CandleMode::TickBar,
                 _ => CandleMode::Standard,
             };
-            chart.renko_brick_size = p.get("renko_brick_size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-            chart.range_bar_size = p.get("range_bar_size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-            chart.tick_bar_count = p.get("tick_bar_count").and_then(|v| v.as_u64()).unwrap_or(500) as u32;
-            chart.alt_bars_dirty = true; // force recompute on load
+            chart.alt.renko_brick = p.get("renko_brick_size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+            chart.alt.range_size = p.get("range_bar_size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+            chart.alt.tick_count = p.get("tick_bar_count").and_then(|v| v.as_u64()).unwrap_or(500) as u32;
+            chart.alt.dirty = true; // force recompute on load
             // Restore volume profile mode
-            chart.vp_mode = match p.get("vp_mode").and_then(|v| v.as_str()).unwrap_or("off") {
+            chart.vp.mode = match p.get("vp_mode").and_then(|v| v.as_str()).unwrap_or("off") {
                 "classic" => VolumeProfileMode::Classic, "heatmap" => VolumeProfileMode::Heatmap,
                 "strip" => VolumeProfileMode::Strip, "clean" => VolumeProfileMode::Clean,
                 _ => VolumeProfileMode::Off,

@@ -29,6 +29,7 @@ use super::motion;
 use super::placement::{Align as PAlign, Placement, Side};
 use super::popover::Popover;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
 use crate::ui_kit::icons::Icon;
@@ -417,22 +418,22 @@ fn paint_select<'a, T: 'a>(
     // Soft open state — the border barely lifts (idle → softened dim,
     // not full dim) and the background gets a faint tint. The text colour
     // also nudges slightly so it reads cleanly against the tinted fill.
-    let border_idle = theme.border();
-    let border_hover = theme.dim();
-    let border_open_soft = st::color_alpha(theme.dim(), 90); // softened focus ring
+    let border_idle = palette_ct(theme).base(Tone::Border);
+    let border_hover = palette_ct(theme).base(Tone::Dim);
+    let border_open_soft = st::color_alpha(palette_ct(theme).base(Tone::Dim), 90); // softened focus ring
     let mut border_col = motion::lerp_color(border_idle, border_hover, hover_t);
     border_col = motion::lerp_color(border_col, border_open_soft, open_t);
     if invalid {
-        border_col = theme.bear();
+        border_col = palette_ct(theme).base(Tone::Bear);
     }
     let surface_bg = if disabled {
-        st::color_alpha(theme.surface(), 128)
+        st::color_alpha(palette_ct(theme).base(Tone::Surface), 128)
     } else {
-        theme.surface()
+        palette_ct(theme).base(Tone::Surface)
     };
     // Background tint on open — light enough that the trigger doesn't pop
     // but visible enough to mark the control as active.
-    let open_tint = st::color_alpha(theme.text(), 14);
+    let open_tint = st::color_alpha(palette_ct(theme).base(Tone::Text), 14);
     let bg_fill = motion::lerp_color(surface_bg, open_tint, open_t);
 
     let radius = CornerRadius::same(st::radius_sm() as u8);
@@ -451,7 +452,7 @@ fn paint_select<'a, T: 'a>(
     // Down/up chevron — skipped in compact_trigger variant.
     let chev_size = font_size * 1.0;
     let chev_center = Pos2::new(right_edge - chev_size * 0.5, cy);
-    let chev_color = motion::lerp_color(theme.dim(), theme.accent(), open_t);
+    let chev_color = motion::lerp_color(palette_ct(theme).base(Tone::Dim), palette_ct(theme).base(Tone::Accent), open_t);
     if !compact_trigger {
         let painter = ui.painter_at(rect);
         let glyph = if open_t > 0.5 { "\u{25B2}" } else { "\u{25BC}" };
@@ -467,14 +468,14 @@ fn paint_select<'a, T: 'a>(
 
     // Render trigger label / multi tags / placeholder.
     let n = display.len();
-    let muted_ph = st::color_alpha(theme.dim(), 160);
+    let muted_ph = st::color_alpha(palette_ct(theme).base(Tone::Dim), 160);
     let text_col = if disabled {
-        st::color_alpha(theme.text(), 128)
+        st::color_alpha(palette_ct(theme).base(Tone::Text), 128)
     } else {
         // Text nudges toward accent on open so the label keeps clean
         // contrast against the tinted fill — soft enough to not read as
         // a state change, just a comfortable readability lift.
-        motion::lerp_color(theme.text(), theme.accent(), open_t * 0.35)
+        motion::lerp_color(palette_ct(theme).base(Tone::Text), palette_ct(theme).base(Tone::Accent), open_t * 0.35)
     };
 
     // Multi-mode chip removals: we collect indices to remove, then mutate after.
@@ -573,7 +574,7 @@ fn paint_select<'a, T: 'a>(
                         egui::Align2::LEFT_CENTER,
                         extra,
                         FontId::monospace(font_size - 1.0),
-                        theme.dim(),
+                        palette_ct(theme).base(Tone::Dim),
                     );
                 }
             }
@@ -649,7 +650,7 @@ fn paint_select<'a, T: 'a>(
 
     // Focus ring on the trigger — only the trigger rect, not the dropdown panel.
     // Wired through cursor::focus_ring so StyleSettings knobs apply uniformly.
-    st::cursor::focus_ring(ui, &response, theme.accent());
+    st::cursor::focus_ring(ui, &response, palette_ct(theme).base(Tone::Accent));
 
     save_mem(ui, id, mem);
 
@@ -676,7 +677,7 @@ fn chip_paint(
         f.layout_no_wrap(
             label.to_string(),
             FontId::monospace(font_size - 1.0),
-            theme.text(),
+            palette_ct(theme).base(Tone::Text),
         )
     });
     let label_w = galley.rect.width();
@@ -695,14 +696,14 @@ fn chip_paint(
     painter.rect_filled(
         chip_rect,
         CornerRadius::same(st::radius_sm() as u8),
-        st::color_alpha(theme.accent(), st::alpha_ghost() + 10),
+        st::color_alpha(palette_ct(theme).base(Tone::Accent), st::alpha_ghost() + 10),
     );
     painter.text(
         Pos2::new(chip_rect.left() + pad, cy),
         egui::Align2::LEFT_CENTER,
         label,
         FontId::monospace(font_size - 1.0),
-        theme.text(),
+        palette_ct(theme).base(Tone::Text),
     );
 
     let close_center = Pos2::new(chip_rect.right() - pad - close_size * 0.5, cy);
@@ -710,9 +711,9 @@ fn chip_paint(
     let close_resp = ui.interact(close_hit, chip_id, Sense::click());
     let col = if close_resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        theme.text()
+        palette_ct(theme).base(Tone::Text)
     } else {
-        theme.dim()
+        palette_ct(theme).base(Tone::Dim)
     };
     painter.text(
         close_center,
@@ -838,12 +839,12 @@ fn render_panel<'a, T>(
                 painter.rect_filled(
                     s_rect,
                     CornerRadius::same(st::radius_sm() as u8),
-                    st::color_alpha(theme.bg(), 200),
+                    st::color_alpha(palette_ct(theme).base(Tone::Bg), 200),
                 );
                 painter.rect_stroke(
                     s_rect,
                     CornerRadius::same(st::radius_sm() as u8),
-                    Stroke::new(st::stroke_std(), st::color_alpha(theme.border(), st::alpha_line())),
+                    Stroke::new(st::stroke_std(), st::color_alpha(palette_ct(theme).base(Tone::Border), st::alpha_line())),
                     StrokeKind::Inside,
                 );
                 let cy = s_rect.center().y;
@@ -853,7 +854,7 @@ fn render_panel<'a, T>(
                     egui::Align2::LEFT_CENTER,
                     Icon::MAGNIFYING_GLASS,
                     FontId::proportional(st::font_md()),
-                    theme.dim(),
+                    palette_ct(theme).base(Tone::Dim),
                 );
                 let edit_id = id.with("filter_edit");
                 let edit_left = s_rect.left() + pad + 16.0;
@@ -872,7 +873,7 @@ fn render_panel<'a, T>(
                     .desired_width(edit_rect.width())
                     .margin(egui::Margin::ZERO)
                     .frame(false)
-                    .text_color(theme.text())
+                    .text_color(palette_ct(theme).base(Tone::Text))
                     .font(egui::FontSelection::FontId(FontId::monospace(st::font_sm())));
                 let _ = child.add(te);
                 if s_resp.clicked() {
@@ -895,7 +896,7 @@ fn render_panel<'a, T>(
                         egui::RichText::new(empty_text)
                             .monospace()
                             .size(st::font_xs())
-                            .color(theme.dim()),
+                            .color(palette_ct(theme).base(Tone::Dim)),
                     );
                 });
                 ui.add_space(st::gap_xs());
@@ -942,7 +943,7 @@ fn render_panel<'a, T>(
                 let div_y = ui.cursor().min.y;
                 ui.painter().line_segment(
                     [Pos2::new(ui.min_rect().left(), div_y), Pos2::new(ui.min_rect().left() + width, div_y)],
-                    Stroke::new(st::stroke_std(), st::color_alpha(theme.border(), 120)),
+                    Stroke::new(st::stroke_std(), st::color_alpha(palette_ct(theme).base(Tone::Border), 120)),
                 );
                 ui.add_space(st::gap_2xs());
                 let selected = is_selected(mode, i);
@@ -994,8 +995,8 @@ fn render_row<'a, T>(
     let sel_t = motion::ease_bool(ui.ctx(), row_id.with("s"), selected, motion::FAST);
 
     let painter = ui.painter_at(rect);
-    let bg_hover = st::color_alpha(theme.text(), 18);
-    let bg_sel = st::color_alpha(theme.accent(), st::alpha_ghost());
+    let bg_hover = st::color_alpha(palette_ct(theme).base(Tone::Text), 18);
+    let bg_sel = st::color_alpha(palette_ct(theme).base(Tone::Accent), st::alpha_ghost());
     let mut bg = motion::lerp_color(Color32::TRANSPARENT, bg_hover, hover_t);
     bg = motion::lerp_color(bg, bg_sel, sel_t);
     painter.rect_filled(rect, CornerRadius::same(st::radius_sm() as u8), bg);
@@ -1009,8 +1010,8 @@ fn render_row<'a, T>(
     if matches!(mode, Mode::Multi(_)) {
         let bs = 12.0;
         let bx = Rect::from_min_size(Pos2::new(left_x, cy - bs * 0.5), Vec2::splat(bs));
-        let border = motion::lerp_color(theme.border(), theme.accent(), sel_t);
-        let fill = motion::lerp_color(Color32::TRANSPARENT, theme.accent(), sel_t);
+        let border = motion::lerp_color(palette_ct(theme).base(Tone::Border), palette_ct(theme).base(Tone::Accent), sel_t);
+        let fill = motion::lerp_color(Color32::TRANSPARENT, palette_ct(theme).base(Tone::Accent), sel_t);
         painter.rect_filled(bx, CornerRadius::same(st::radius_xs() as u8), fill);
         painter.rect_stroke(
             bx,
@@ -1022,7 +1023,7 @@ fn render_row<'a, T>(
             let p1 = Pos2::new(bx.center().x - bs * 0.25, bx.center().y + bs * 0.02);
             let p2 = Pos2::new(bx.center().x - bs * 0.05, bx.center().y + bs * 0.20);
             let p3 = Pos2::new(bx.center().x + bs * 0.28, bx.center().y - bs * 0.18);
-            let s = Stroke::new(1.4, st::contrast_fg(theme.accent())); // TODO: off-token (stroke width)
+            let s = Stroke::new(1.4, st::contrast_fg(palette_ct(theme).base(Tone::Accent))); // TODO: off-token (stroke width)
             painter.line_segment([p1, p2], s);
             painter.line_segment([p2, p3], s);
         }
@@ -1045,7 +1046,7 @@ fn render_row<'a, T>(
             egui::Align2::LEFT_CENTER,
             label,
             FontId::monospace(font_size),
-            theme.text(),
+            palette_ct(theme).base(Tone::Text),
         );
     }
 
@@ -1055,7 +1056,7 @@ fn render_row<'a, T>(
             egui::Align2::RIGHT_CENTER,
             Icon::CHECK,
             FontId::proportional(font_size * 1.1),
-            theme.accent(),
+            palette_ct(theme).base(Tone::Accent),
         );
     }
 

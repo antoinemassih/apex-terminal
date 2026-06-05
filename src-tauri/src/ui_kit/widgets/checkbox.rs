@@ -16,6 +16,7 @@ use egui::{Color32, CornerRadius, FontId, Pos2, Response, Sense, Stroke, StrokeK
 
 use super::motion;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
 
@@ -144,8 +145,8 @@ fn paint_checkbox(ui: &mut Ui, theme: &dyn ComponentTheme, mut cb: Checkbox<'_>)
     let box_min = Pos2::new(rect.left(), rect.center().y - bs * 0.5);
     let box_rect = egui::Rect::from_min_size(box_min, Vec2::splat(bs));
 
-    let accent = theme.accent();
-    let border = theme.border();
+    let accent = palette_ct(theme).base(Tone::Accent);
+    let border = palette_ct(theme).base(Tone::Border);
 
     // Compute fill / border.
     let off_bg = Color32::TRANSPARENT;
@@ -203,7 +204,7 @@ fn paint_checkbox(ui: &mut Ui, theme: &dyn ComponentTheme, mut cb: Checkbox<'_>)
     if let Some(s) = cb.label {
         let lx = box_rect.right() + gap;
         let ly = rect.center().y;
-        let mut text_color = theme.text();
+        let mut text_color = palette_ct(theme).base(Tone::Text);
         if cb.disabled { text_color = with_alpha_scale(text_color, 0.5); }
         painter.text(
             Pos2::new(lx, ly),
@@ -218,7 +219,7 @@ fn paint_checkbox(ui: &mut Ui, theme: &dyn ComponentTheme, mut cb: Checkbox<'_>)
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
 
-    st::cursor::focus_ring(ui, &response, theme.accent());
+    st::cursor::focus_ring(ui, &response, palette_ct(theme).base(Tone::Accent));
 
     response
 }

@@ -25,6 +25,7 @@
 use egui::{Color32, Context, Id, Pos2, Rect, Stroke, Ui, Vec2};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::motion;
 
 use crate::ui_kit::widgets::frames::{
@@ -213,13 +214,13 @@ impl<'a> Modal<'a> {
         self
     }
     /// Override the accent (title) color for `HeaderStyle::Panel`. Defaults
-    /// to `theme.accent()`.
+    /// to `palette_ct(theme).base(Tone::Accent)`.
     pub fn panel_accent(mut self, c: Color32) -> Self {
         self.panel_accent = Some(c);
         self
     }
     /// Override the dim (subtitle / close-button) color for `HeaderStyle::Panel`.
-    /// Defaults to `theme.dim()`.
+    /// Defaults to `palette_ct(theme).base(Tone::Dim)`.
     pub fn panel_dim(mut self, c: Color32) -> Self {
         self.panel_dim = Some(c);
         self
@@ -281,8 +282,8 @@ impl<'a> Modal<'a> {
         // elevation_3: modal is the deepest overlay layer (bg × 0.85).
         // Inlined from style::elevation_3 — ComponentTheme exposes bg() so we
         // don't need the concrete &Theme to replicate the gamma-multiply.
-        let bg = t.bg().gamma_multiply(0.85);
-        let border = t.border();
+        let bg = palette_ct(t).base(Tone::Bg).gamma_multiply(0.85);
+        let border = palette_ct(t).base(Tone::Border);
 
         let frame = match self.frame_kind {
             FrameKind::Popup => PopupFrame::new()
@@ -298,8 +299,8 @@ impl<'a> Modal<'a> {
         let title = self.title;
         let separator = self.separator;
         let toolbar_border = border;
-        let accent = t.accent();
-        let dim = t.dim();
+        let accent = palette_ct(t).base(Tone::Accent);
+        let dim = palette_ct(t).base(Tone::Dim);
         let header_painter = self.header_painter;
         let had_painter = header_painter.is_some();
         let draggable = self.draggable_header;
@@ -409,12 +410,12 @@ impl<'a> Modal<'a> {
                 if self.scrim {
                     let scrim_id = Id::new(("apex_modal_scrim", id));
                     let viewport  = ctx.screen_rect();
-                    // Theme-aware scrim: use the theme bg color at ~50% alpha
-                    // (alpha_strong = 80/255 ≈ 31 %). We use a slightly higher
-                    // base value (120/255 ≈ 47 %) so light themes also dim
-                    // noticeably. The color inherits from `t.bg()` which is
-                    // dark for dark themes and light for light themes.
-                    let scrim_base = color_alpha(t.bg(), 120);
+                    // Theme-aware scrim — base color inherits from palette_ct(t).base(Tone::Bg) (dark
+                    // for dark themes, light for light themes). Alpha sourced
+                    // from the `alpha_scrim` token (140/255 ≈ 55%) — between
+                    // heavy (120) and solid (200). Tokenized so a single
+                    // design-mode slider tunes scrim density app-wide.
+                    let scrim_base = color_alpha(palette_ct(t).base(Tone::Bg), crate::ui_kit::style::alpha_scrim());
                     let scrim_alpha = (scrim_base.a() as f32 * appear_t) as u8;
                     let scrim_color = Color32::from_rgba_unmultiplied(
                         scrim_base.r(), scrim_base.g(), scrim_base.b(), scrim_alpha,

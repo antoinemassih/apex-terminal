@@ -10,6 +10,7 @@
 //!     bespoke painting — no canonical primitive maps to them yet.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Chart, Theme};
 use super::super::components::text::{DimLabel, MonospaceCode};
@@ -66,12 +67,12 @@ pub(crate) fn draw_content(
             let chart_h = 140.0;
             let (chart_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, chart_h), egui::Sense::hover());
             let p = ui.painter();
-            p.rect_filled(chart_rect, radius_sm(), color_alpha(t.toolbar_border, alpha_faint()));
+            p.rect_filled(chart_rect, radius_sm(), tint(t, Tone::Border, alpha_faint()));
 
             let mid_y = chart_rect.center().y;
             p.line_segment(
                 [egui::pos2(chart_rect.left(), mid_y), egui::pos2(chart_rect.right(), mid_y)],
-                egui::Stroke::new(stroke_thin(), color_alpha(t.dim, alpha_muted())));
+                egui::Stroke::new(stroke_thin(), tint(t, Tone::Dim, alpha_muted())));
 
             let col_w = bar_w / 12.0;
             let scale = (chart_h * 0.4) / max_abs;
@@ -146,7 +147,7 @@ pub(crate) fn draw_content(
                         let bar_max = 60.0;
                         let (r, _) = ui.allocate_exact_size(egui::vec2(bar_max, 8.0), egui::Sense::hover());
                         let pp = ui.painter();
-                        pp.rect_filled(r, 2.0, color_alpha(t.toolbar_border, alpha_faint()));
+                        pp.rect_filled(r, 2.0, tint(t, Tone::Border, alpha_faint()));
                         pp.rect_filled(
                             egui::Rect::from_min_size(r.min, egui::vec2(bar_max * pct / 100.0, 8.0)),
                             2.0, color_alpha(col, alpha_dim()));

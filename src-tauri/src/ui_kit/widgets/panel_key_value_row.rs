@@ -9,7 +9,7 @@
 //!
 //! Visual spec (locked):
 //! - Two columns: label LEFT, value (and optional meta) RIGHT.
-//! - Label: `mono_xs` in `color_muted(t.dim())`.
+//! - Label: `mono_xs` in `color_muted(palette_ct(t).base(SxTone::Dim))`.
 //! - Value: `mono_sm` in `t.text` by default, or `tone.color(t)` when set.
 //! - Meta: optional very-muted `mono_xs` after the value (units, qualifier).
 //! - Row height: `gap_lg()` (16px).
@@ -33,6 +33,7 @@ use crate::ui_kit::tokens::{
     color_alpha, color_muted, font_sm, font_xs, gap_lg, gap_xs,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone as SxTone};
 
 #[must_use = "PanelKeyValueRow must be rendered with `.show(...)`"]
 pub struct PanelKeyValueRow<'a> {
@@ -70,7 +71,7 @@ impl<'a> PanelKeyValueRow<'a> {
         let painter = ui.painter_at(rect);
 
         // Label — left.
-        let label_color = color_muted(t.dim());
+        let label_color = color_muted(palette_ct(t).base(SxTone::Dim));
         let label_font = FontId::monospace(font_xs());
         painter.text(
             Pos2::new(rect.left(), rect.center().y),
@@ -82,7 +83,7 @@ impl<'a> PanelKeyValueRow<'a> {
 
         // Value (+ meta) — right.
         let value_color = match self.tone {
-            Tone::Default => t.text(),
+            Tone::Default => palette_ct(t).base(SxTone::Text),
             other => other.color(t),
         };
         let value_font = FontId::monospace(font_sm());
@@ -90,7 +91,7 @@ impl<'a> PanelKeyValueRow<'a> {
         // Lay out meta first (further right), then value to its left.
         let mut x_right = rect.right();
         if let Some(m) = &self.meta {
-            let meta_color = color_alpha(t.dim(), 140);
+            let meta_color = color_alpha(palette_ct(t).base(SxTone::Dim), 140);
             let meta_font = FontId::monospace(font_xs());
             let g = ui.fonts(|f| {
                 f.layout_no_wrap(m.clone(), meta_font.clone(), meta_color)

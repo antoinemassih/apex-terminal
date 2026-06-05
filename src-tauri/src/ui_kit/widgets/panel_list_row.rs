@@ -17,12 +17,12 @@
 //! ```
 //!
 //! Visual spec (LOCKED per user decision):
-//! - Hover: `color_alpha(t.text(), 8)` background, `radius_sm()` corners.
-//! - Selected: BOTH `color_alpha(t.accent(), 24)` background fill AND a 2px
+//! - Hover: `color_alpha(palette_ct(t).base(SxTone::Text), 8)` background, `radius_sm()` corners.
+//! - Selected: BOTH `color_alpha(palette_ct(t).base(SxTone::Accent), 24)` background fill AND a 2px
 //!   accent stripe on the LEFT edge. User explicitly chose "both" — loud is OK.
 //! - No stroke. No border. Just background and the stripe.
-//! - Primary text: `mono_sm` in `t.text()`.
-//! - Secondary text: `mono_xs` in `color_muted(t.dim())`, on a second line.
+//! - Primary text: `mono_sm` in `palette_ct(t).base(SxTone::Text)`.
+//! - Secondary text: `mono_xs` in `color_muted(palette_ct(t).base(SxTone::Dim))`, on a second line.
 //! - Row height: 22px default; 32px when `.dense(false)`.
 //! - LR padding: `gap_md`.
 //!
@@ -38,9 +38,9 @@
 //! ```ignore
 //! PanelListRow::new("print_123")
 //!     .columns(&[
-//!         Column::left("09:31:42.123").color(t.dim()),
-//!         Column::right("$145.32").color(t.bull()),
-//!         Column::right("250").color(t.text()),
+//!         Column::left("09:31:42.123").color(palette_ct(t).base(SxTone::Dim)),
+//!         Column::right("$145.32").color(palette_ct(t).base(SxTone::Bull)),
+//!         Column::right("250").color(palette_ct(t).base(SxTone::Text)),
 //!     ])
 //!     .show(ui, t);
 //! ```
@@ -106,6 +106,7 @@ use crate::ui_kit::tokens::{
     radius_sm,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone as SxTone};
 use crate::ui_kit::widgets::{motion, Tooltip};
 
 /// Horizontal alignment for a `Column` cell in `PanelListRow::columns` mode.
@@ -195,12 +196,12 @@ impl TrailingTone {
     #[inline]
     fn resolve<T: ComponentTheme>(self, t: &T) -> Color32 {
         match self {
-            TrailingTone::Default => t.text(),
-            TrailingTone::Accent => t.accent(),
-            TrailingTone::Bull => t.bull(),
-            TrailingTone::Bear => t.bear(),
-            TrailingTone::Warn => t.warn(),
-            TrailingTone::Muted => t.dim(),
+            TrailingTone::Default => palette_ct(t).base(SxTone::Text),
+            TrailingTone::Accent => palette_ct(t).base(SxTone::Accent),
+            TrailingTone::Bull => palette_ct(t).base(SxTone::Bull),
+            TrailingTone::Bear => palette_ct(t).base(SxTone::Bear),
+            TrailingTone::Warn => palette_ct(t).base(SxTone::Warn),
+            TrailingTone::Muted => palette_ct(t).base(SxTone::Dim),
         }
     }
 }
@@ -252,10 +253,10 @@ pub struct PanelListRowResponse {
 /// Width (in px) of the left accent stripe for the selected state.
 const SELECTED_STRIPE_W: f32 = 2.0;
 
-/// Hover background alpha (out of 255), applied to `t.text()`.
+/// Hover background alpha (out of 255), applied to `palette_ct(t).base(SxTone::Text)`.
 const HOVER_BG_ALPHA: u8 = 8;
 
-/// Selected background alpha (out of 255), applied to `t.accent()`.
+/// Selected background alpha (out of 255), applied to `palette_ct(t).base(SxTone::Accent)`.
 const SELECTED_BG_ALPHA: u8 = 24;
 
 #[must_use = "PanelListRow must be rendered with `.show(...)`"]
@@ -432,6 +433,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
     /// the body click signal **and** (when `.trailing_buttons(&[...])` was
     /// set) the index of the trailing button that fired this frame.
     pub fn show_full(self, ui: &mut Ui, t: &T) -> PanelListRowResponse {
+        let pal = palette_ct(t); // bind once: hottest widget (one per list row)
         let Self {
             id_salt,
             primary,
@@ -543,7 +545,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
                 motion::FAST,
             );
             if hover_t > 0.0 {
-                let bg = color_alpha(t.text(), (alpha_ghost() as f32 * hover_t).round() as u8);
+                let bg = color_alpha(pal.base(SxTone::Text), (alpha_ghost() as f32 * hover_t).round() as u8);
                 painter.rect_filled(rect, cr, bg);
             }
         }
@@ -557,7 +559,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
         );
         if selected_t > 0.0 {
             let sel_bg = color_alpha(
-                t.accent(),
+                pal.base(SxTone::Accent),
                 (SELECTED_BG_ALPHA as f32 * selected_t).round() as u8,
             );
             painter.rect_filled(rect, cr, sel_bg);
@@ -566,7 +568,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
         // Left accent stripe — eases with selected_t so it fades alongside the bg.
         if selected_t > 0.0 {
             let stripe_alpha = (255.0_f32 * selected_t).round() as u8;
-            let stripe_color = color_alpha(t.accent(), stripe_alpha);
+            let stripe_color = color_alpha(pal.base(SxTone::Accent), stripe_alpha);
             let stripe = Rect::from_min_max(
                 Pos2::new(rect.left(), rect.top()),
                 Pos2::new(rect.left() + SELECTED_STRIPE_W, rect.bottom()),
@@ -637,14 +639,14 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
                     if let Some(p) = primary {
                         let font = FontId::monospace(font_sm());
                         let galley = ui.fonts(|f| {
-                            f.layout_no_wrap(p.to_string(), font.clone(), t.text())
+                            f.layout_no_wrap(p.to_string(), font.clone(), pal.base(SxTone::Text))
                         });
                         let (r, _) = ui.allocate_exact_size(galley.size(), Sense::hover());
-                        ui.painter().galley(r.min, galley, t.text());
+                        ui.painter().galley(r.min, galley, pal.base(SxTone::Text));
                     }
                     if let Some(s) = secondary {
                         let font = FontId::monospace(font_xs());
-                        let col = color_muted(t.dim());
+                        let col = color_muted(pal.base(SxTone::Dim));
                         let galley = ui.fonts(|f| {
                             f.layout_no_wrap(s.to_string(), font.clone(), col)
                         });
@@ -699,12 +701,12 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
                 }
 
                 // Icon glyph. Hover snaps to full tone color; idle is
-                // tone-at-`t.dim()`-opacity so the icons sit visually quiet
+                // tone-at-`pal.base(SxTone::Dim)`-opacity so the icons sit visually quiet
                 // when the row is idle. Active state implies full color.
                 let glyph_color = if br.hovered() || btn.active {
                     tone_col
                 } else {
-                    color_alpha(tone_col, t.dim().a())
+                    color_alpha(tone_col, pal.base(SxTone::Dim).a())
                 };
                 painter.text(
                     r.center(),
@@ -726,7 +728,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
         // `Sense::click()` already handles Enter/Space → clicked() natively,
         // so the ring is the only missing piece for full keyboard support.
         if hoverable {
-            st::cursor::focus_ring(ui, &resp, t.accent());
+            st::cursor::focus_ring(ui, &resp, pal.base(SxTone::Accent));
         }
 
         PanelListRowResponse {
@@ -787,7 +789,7 @@ fn paint_columns<T: ComponentTheme>(ui: &mut Ui, rect: Rect, cols: &[Column<'_>]
         } else {
             FontId::proportional(font_sm())
         };
-        let color = if c.color == Color32::PLACEHOLDER { t.text() } else { c.color };
+        let color = if c.color == Color32::PLACEHOLDER { palette_ct(t).base(SxTone::Text) } else { c.color };
         let galley = ui.fonts(|f| f.layout_no_wrap(c.text.to_string(), font, color));
         let tw = galley.size().x;
         let th = galley.size().y;

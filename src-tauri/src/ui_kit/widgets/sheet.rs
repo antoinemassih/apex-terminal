@@ -33,6 +33,7 @@ use egui::{Color32, Id, Key, Rect, Sense, Stroke, StrokeKind, Ui, Vec2};
 
 use super::motion;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::{Button, Tooltip};
 use super::{PolishedLabel, PolishedFontWeight};
 use super::tokens::{Size as KitSize, Variant};
@@ -172,7 +173,10 @@ impl<'a> Sheet<'a> {
         // ---------------- Backdrop / scrim ----------------
         let mut backdrop_close = false;
         if self.modal {
-            let scrim_alpha = (120.0 * t) as u8;
+            // Scrim alpha sourced from the `alpha_scrim` token (140) — slightly
+            // stronger than the previous hardcoded 120 so the sheet reads as a
+            // clearer foreground layer. Animated by `t` (0→1 over MED).
+            let scrim_alpha = (crate::ui_kit::style::alpha_scrim() as f32 * t) as u8;
             // Scrim derives from theme shadow_color (light themes pick a gray
             // shadow, dark themes near-black) so the dimming overlay reads as
             // a thematic veil rather than a screen blackout on light/wild palettes.
@@ -226,8 +230,8 @@ impl<'a> Sheet<'a> {
         let panel_rect = Rect::from_min_size(translated_min, open_rect.size());
 
         // ---------------- Sheet content ----------------
-        let bg = theme.bg();
-        let border = theme.border();
+        let bg = palette_ct(theme).base(Tone::Bg);
+        let border = palette_ct(theme).base(Tone::Border);
         let title = self.title.clone();
         let side = self.side;
         let mut header_close = false;

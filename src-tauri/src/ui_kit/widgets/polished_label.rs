@@ -36,6 +36,7 @@ use egui::{Color32, Response, Ui};
 
 use super::label::Label;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 
 /// Font weight axis. Mapped to cosmic-text `Weight` in Phase 2; ignored
@@ -120,7 +121,7 @@ impl<'a> PolishedLabel<'a> {
         // (grayscale-at-atlas-boundary) documented there and in the
         // plan doc.
         let size_pt = self.size.font_size();
-        let color = self.color.unwrap_or_else(|| theme.text());
+        let color = self.color.unwrap_or_else(|| palette_ct(theme).base(Tone::Text));
         let family = cosmic_text::Family::SansSerif;
         let weight = self.weight.to_cosmic();
 

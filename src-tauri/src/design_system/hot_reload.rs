@@ -42,6 +42,37 @@ fn override_slot() -> &'static RwLock<Option<Arc<StyleSystem>>> {
     THEME_OVERRIDE.get_or_init(|| RwLock::new(None))
 }
 
+// ── Scheme-reload callback (P13 — sever design_system→chart_renderer dep) ────
+//
+// When live ColorSchemes are reloaded from disk, the design_system layer
+// can't depend directly on `chart_renderer::gpu::upsert_installed_themes`
+// without leaking the chart-app type into the would-be standalone crate.
+// Hosts (the chart-app's startup path) register a closure here; the watcher
+// invokes it from its background thread with the freshly-parsed schemes.
+//
+// Closure signature: `Fn(Vec<ColorScheme>) + Send + Sync + 'static`.
+
+type SchemeUpdateFn =
+    Box<dyn Fn(Vec<super::color_scheme::ColorScheme>) + Send + Sync + 'static>;
+
+static SCHEME_UPDATE_HOOK: OnceLock<RwLock<Option<SchemeUpdateFn>>> = OnceLock::new();
+
+fn scheme_update_hook() -> &'static RwLock<Option<SchemeUpdateFn>> {
+    SCHEME_UPDATE_HOOK.get_or_init(|| RwLock::new(None))
+}
+
+/// Register the closure invoked whenever the theme watcher reloads
+/// ColorSchemes from disk. The chart-app installs this at startup pointing
+/// at `gpu::upsert_installed_themes`. With no hook installed, scheme
+/// reloads are silently dropped (acceptable for a standalone ui_kit demo).
+pub fn set_scheme_update_hook<F>(f: F)
+where
+    F: Fn(Vec<super::color_scheme::ColorScheme>) + Send + Sync + 'static,
+{
+    let mut guard = scheme_update_hook().write().unwrap_or_else(|e| e.into_inner());
+    *guard = Some(Box::new(f));
+}
+
 /// Read the currently-installed style override.
 ///
 /// Returns `None` when no override is active (no hot-reload file was parsed
@@ -147,12 +178,22 @@ fn run_watcher(themes_dir: PathBuf) {
             }
             if !schemes.is_empty() {
                 let n = schemes.len();
-                // Upsert into LIVE_THEMES — replaces existing by name, appends new.
-                crate::chart_renderer::gpu::upsert_installed_themes(schemes);
-                eprintln!(
-                    "[theme-watcher] reloaded {n} ColorScheme(s) from {:?}",
-                    colorschemes_dir
-                );
+                // Dispatch through the host-registered hook (P13). The chart-
+                // app's startup wires this to gpu::upsert_installed_themes;
+                // a standalone ui_kit / playground can leave it unset.
+                let guard = scheme_update_hook().read().unwrap_or_else(|e| e.into_inner());
+                if let Some(ref hook) = *guard {
+                    hook(schemes);
+                    eprintln!(
+                        "[theme-watcher] reloaded {n} ColorScheme(s) from {:?}",
+                        colorschemes_dir
+                    );
+                } else {
+                    eprintln!(
+                        "[theme-watcher] parsed {n} ColorScheme(s) from {:?} but no scheme-update hook is registered — drop",
+                        colorschemes_dir
+                    );
+                }
             }
             last_scheme_mtimes = cur_schemes;
         }

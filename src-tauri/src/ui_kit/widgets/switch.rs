@@ -17,6 +17,7 @@ use super::motion;
 use super::theme::ComponentTheme;
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
+use crate::ui_kit::sx::{palette_ct, Tone};
 
 #[must_use = "Switch does nothing until `.show(ui, theme)` or `ui.add(switch)` is called"]
 pub struct Switch<'a> {
@@ -109,8 +110,9 @@ fn paint_switch(ui: &mut Ui, theme: &dyn ComponentTheme, sw: Switch<'_>) -> Resp
 
     // Animate track color (off -> on).
     let on_t = motion::ease_bool(ui.ctx(), id.with("sw_on"), on, motion::FAST);
-    let off_color = st::color_alpha(theme.dim(), 64);
-    let on_color = theme.accent();
+    let pal = palette_ct(theme);
+    let off_color = st::color_alpha(pal.base(Tone::Dim), 64);
+    let on_color = pal.base(Tone::Accent);
     let mut track_color = motion::lerp_color(off_color, on_color, on_t);
 
     // Thumb position — animated with ease_out_back for a satisfying
@@ -142,7 +144,7 @@ fn paint_switch(ui: &mut Ui, theme: &dyn ComponentTheme, sw: Switch<'_>) -> Resp
     if let Some(s) = label {
         let lx = track_rect.right() + gap;
         let ly = rect.center().y;
-        let mut text_color = theme.text();
+        let mut text_color = pal.base(Tone::Text);
         if disabled { text_color = with_alpha_scale(text_color, 0.5); }
         painter.text(
             Pos2::new(lx, ly),
@@ -157,7 +159,7 @@ fn paint_switch(ui: &mut Ui, theme: &dyn ComponentTheme, sw: Switch<'_>) -> Resp
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
 
-    st::cursor::focus_ring(ui, &response, theme.accent());
+    st::cursor::focus_ring(ui, &response, pal.base(Tone::Accent));
 
     response
 }

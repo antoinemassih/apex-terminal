@@ -22,6 +22,7 @@
 use egui::{Color32, FontId, Pos2, Response, Sense, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use super::{Switch, Tooltip};
 use crate::ui_kit::tokens as st;
@@ -111,14 +112,14 @@ fn paint_toggle_row<'a>(
     let desc_font = FontId::proportional(st::font_xs());
 
     let label_galley = ui.fonts(|f| {
-        f.layout_no_wrap(label.clone(), label_font.clone(), theme.text())
+        f.layout_no_wrap(label.clone(), label_font.clone(), palette_ct(theme).base(Tone::Text))
     });
     let label_h = label_galley.rect.height();
     let label_w = label_galley.rect.width();
 
     let desc_galley = description.as_ref().map(|s| {
         ui.fonts(|f| {
-            f.layout(s.clone(), desc_font.clone(), theme.dim(), left_max_w)
+            f.layout(s.clone(), desc_font.clone(), palette_ct(theme).base(Tone::Dim), left_max_w)
         })
     });
     let desc_h = desc_galley.as_ref().map(|g| g.rect.height()).unwrap_or(0.0);
@@ -147,7 +148,7 @@ fn paint_toggle_row<'a>(
     // Hover tint background — covers full row.
     if response.hovered() && !disabled {
         // TODO: switch to theme.element_hover() once the trait getter lands
-        let tint = st::color_alpha(theme.text(), 12);
+        let tint = st::color_alpha(palette_ct(theme).base(Tone::Text), 12);
         ui.painter().rect_filled(rect, 4.0, tint);
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
@@ -158,8 +159,8 @@ fn paint_toggle_row<'a>(
     let left_top = content_top + (content_h - left_h) * 0.5;
 
     let alpha = if disabled { 0.5 } else { 1.0 };
-    let label_color = scale_alpha(theme.text(), alpha);
-    let desc_color = scale_alpha(st::color_alpha(theme.dim(), 200), alpha);
+    let label_color = scale_alpha(palette_ct(theme).base(Tone::Text), alpha);
+    let desc_color = scale_alpha(st::color_alpha(palette_ct(theme).base(Tone::Dim), 200), alpha);
 
     let painter = ui.painter_at(rect);
 
@@ -172,7 +173,7 @@ fn paint_toggle_row<'a>(
         let info_size = st::font_sm();
         let info_x = rect.left() + label_w + gap_label_info + info_size * 0.5;
         let info_y = left_top + label_h * 0.5;
-        let info_color = scale_alpha(theme.dim(), alpha);
+        let info_color = scale_alpha(palette_ct(theme).base(Tone::Dim), alpha);
         painter.text(
             Pos2::new(info_x, info_y),
             egui::Align2::CENTER_CENTER,
@@ -216,7 +217,7 @@ fn paint_toggle_row<'a>(
         response.mark_changed();
     }
 
-    st::cursor::focus_ring(ui, &response, theme.accent());
+    st::cursor::focus_ring(ui, &response, palette_ct(theme).base(Tone::Accent));
 
     response
 }

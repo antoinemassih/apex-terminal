@@ -1,6 +1,7 @@
 //! Indicator Editor UI component.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::ui_kit::widgets::{Button, Tooltip};
@@ -37,71 +38,46 @@ if let Some(edit_id) = panes[ap].editing_indicator {
         _ => 250.0,
     };
 
-    let frame = PopupFrame::new()
-        .colors(t.toolbar_bg, t.toolbar_border)
-        .ctx(ctx)
-        .no_inner_margin()
-        .corner_radius(current().r_md as f32)
-        .build();
-
     let id_str = format!("ind_editor_{}", edit_id);
 
-    // Pre-compute header data so the painter closure doesn't need to
-    // borrow `panes` (the body closure borrows it mutably).
-    // WHITE is a never-rendered placeholder: the closing branch (no indicator
-    // found) sets close_editor = true and the dot is never painted.
+    // Pre-compute header data so the body closure can mutably borrow `panes`.
     let (hdr_color, hdr_name) = panes[ap].indicators.iter().find(|i| i.id == edit_id)
         .map(|i| (hex_to_color(&i.color, 1.0), i.display_name()))
         .unwrap_or((egui::Color32::WHITE, String::new()));
 
-    let modal_resp = Modal::new(&id_str)
-        .ctx(ctx)
-        .theme(t)
+    // P+ — switched from Modal + hand-rolled header_painter to ToolOverlay.
+    // Header chrome (color dot, title, close button, drag cursor, divider)
+    // is now centralised in ui_kit and shared with every other tool panel.
+    let portable_t = crate::chart_renderer::theme_impl::theme_to_portable(t);
+    let modal_resp = crate::ui_kit::widgets::ToolOverlay::new(&hdr_name)
         .id(&id_str)
-        .anchor(Anchor::Window { pos: Some(egui::pos2(200.0, 80.0)) })
-        .size(egui::vec2(panel_w, 0.0))
-        .frame_kind(FrameKind::Custom(frame))
-        .header_style(HeaderStyle::None)
-        .separator(false)
-        .draggable_header(true)
-        .header_painter(|ui| {
-            // Custom header strip — preserved byte-for-byte from the original.
-            let mut hdr_close = false;
-            let header_resp = ui.horizontal(|ui| {
-                ui.set_min_width(panel_w);
-                let hr = ui.max_rect();
-                let r_top = current().r_md;
-                ui.painter().rect_filled(
-                    egui::Rect::from_min_size(hr.min, egui::vec2(panel_w, 26.0)),
-                    egui::CornerRadius { nw: r_top, ne: r_top, sw: 0, se: 0 },
-                    color_alpha(t.toolbar_border, alpha_tint()));
-                ui.add_space(gap_sm());
-                // Color dot — uses the editing indicator's color (pre-fetched).
-                ui.painter().circle_filled(egui::pos2(ui.cursor().min.x + 4.0, ui.cursor().min.y + 10.0), 4.0, hdr_color);
-                ui.add_space(gap_md());
-                ui.label(egui::RichText::new(&hdr_name).monospace().size(font_sm()).strong().color(t.text));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add_space(gap_xs());
-                    let r = Button::icon(Icon::X)
-                        .variant(Variant::Ghost)
-                        .placement(IconPlacement::Modal)
-                        .show(ui, t);
-                    Tooltip::new("Close").show(ui, &r, t);
-                    if r.clicked() { hdr_close = true; }
-                });
-            });
-            // Make header draggable — interact for grab cursor; egui::Window
-            // movable(true) (set via Modal::draggable_header) handles motion.
-            let hdr_rect = header_resp.response.rect;
-            let drag_resp = ui.interact(hdr_rect, egui::Id::new(("ind_editor_drag", edit_id)), egui::Sense::drag());
-            crate::chart_renderer::ui::style::cursor::draggable(ui, &drag_resp);
-            hdr_close
-        })
-        .show(|ui| {
+        .width(panel_w)
+        .pos(egui::pos2(200.0, 80.0))
+        .accent_dot(hdr_color)
+        .show(ctx, &portable_t, |ui| {
             if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == edit_id) {
-                let m = 8.0;
+                // Redesigned body (2026-05-26):
+                //   • Single `BODY_PAD` constant for left/right padding.
+                //   • Single `LABEL_W` constant for FormRow gutter so every
+                //     row aligns its DragValue at the same x. Eliminates the
+                //     40/44/48 zigzag that made the modal look sloppy.
+                //   • Labels stripped of trailing-whitespace padding hacks.
+                //   • Body wrapped in a Frame so the existing per-row
+                //     `ui.add_space(m)` calls become natural padding.
+                const BODY_PAD: f32 = 14.0;
+                const LABEL_W:  f32 = 56.0;
+                let m = 0.0_f32; // legacy var kept zero; pad comes from frame
+                let _ = m;
 
-                ui.add_space(gap_sm());
+                egui::Frame::NONE
+                    .inner_margin(egui::Margin {
+                        left:   BODY_PAD as i8,
+                        right:  BODY_PAD as i8,
+                        top:    gap_sm() as i8,
+                        bottom: gap_sm() as i8,
+                    })
+                    .show(ui, |ui| {
+                ui.add_space(gap_xs());
 
                 // ── Per-type parameters ──
                 let is_ma = matches!(ind.kind, IndicatorType::SMA | IndicatorType::EMA | IndicatorType::WMA | IndicatorType::DEMA | IndicatorType::TEMA);
@@ -117,7 +93,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                             (IndicatorType::TEMA, "TEMA"),
                         ];
                         if SegmentedControl::new().options(MA_KINDS).connected_pills(true).compact(true)
-                            .height(22.0).theme(t).show(ui, &mut ind.kind) {
+                            .height(row_height_compact()).theme(t).show(ui, &mut ind.kind) {
                             needs_recompute = true;
                         }
                     });
@@ -134,7 +110,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                             (IndicatorType::KeltnerChannels, "KC"),
                         ];
                         if SegmentedControl::new().options(BAND_KINDS).connected_pills(true).compact(true)
-                            .height(22.0).theme(t).show(ui, &mut ind.kind) {
+                            .height(row_height_compact()).theme(t).show(ui, &mut ind.kind) {
                             needs_recompute = true;
                         }
                     });
@@ -174,14 +150,14 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 match ind.kind {
                     IndicatorType::MACD => {
                         // Slow period (param2, default 26)
-                        FormRow::new("Slow  ").leading_space(m).label_width(40.0).show(ui, t, |ui| {
+                        FormRow::new("Slow").leading_space(m).label_width(LABEL_W).show(ui, t, |ui| {
                             let mut v = if ind.param2 > 0.0 { ind.param2 } else { 26.0 };
                             if NumberStepper::new(&mut v).range(2.0..=200.0).step(0.5).integer().show(ui, t).changed() {
                                 ind.param2 = v; needs_recompute = true;
                             }
                         });
                         // Signal period (param3, default 9)
-                        FormRow::new("Signal").leading_space(m).label_width(40.0).show(ui, t, |ui| {
+                        FormRow::new("Signal").leading_space(m).label_width(LABEL_W).show(ui, t, |ui| {
                             let mut v = if ind.param3 > 0.0 { ind.param3 } else { 9.0 };
                             if NumberStepper::new(&mut v).range(1.0..=50.0).step(0.3).integer().show(ui, t).changed() {
                                 ind.param3 = v; needs_recompute = true;
@@ -189,7 +165,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         });
                     }
                     IndicatorType::Stochastic => {
-                        FormRow::new("%D    ").leading_space(m).label_width(40.0).show(ui, t, |ui| {
+                        FormRow::new("%D").leading_space(m).label_width(LABEL_W).show(ui, t, |ui| {
                             let mut v = if ind.param2 > 0.0 { ind.param2 } else { 3.0 };
                             if NumberStepper::new(&mut v).range(1.0..=20.0).step(0.3).integer().show(ui, t).changed() {
                                 ind.param2 = v; needs_recompute = true;
@@ -198,7 +174,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     }
                     IndicatorType::BollingerBands => {
                         const BB_STD_PRESETS: &[f32] = &[1.0, 1.5, 2.0, 2.5, 3.0];
-                        if IndicatorParamRowF::new("Std σ ", &mut ind.param2, 2.0)
+                        if IndicatorParamRowF::new("Std σ", &mut ind.param2, 2.0)
                             .indent(m).presets(BB_STD_PRESETS).range(0.5, 4.0).speed(0.05).decimals(1)
                             .theme(t).show(ui)
                         {
@@ -207,7 +183,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     }
                     IndicatorType::KeltnerChannels | IndicatorType::Supertrend => {
                         let def = if ind.kind == IndicatorType::Supertrend { 3.0 } else { 2.0 };
-                        FormRow::new("Mult  ").leading_space(m).label_width(40.0).show(ui, t, |ui| {
+                        FormRow::new("Mult").leading_space(m).label_width(LABEL_W).show(ui, t, |ui| {
                             let mut v = if ind.param2 > 0.0 { ind.param2 } else { def };
                             if NumberStepper::new(&mut v).range(0.5..=6.0).step(0.05).decimals(1).show(ui, t).changed() {
                                 ind.param2 = v; needs_recompute = true;
@@ -215,13 +191,13 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         });
                     }
                     IndicatorType::Ichimoku => {
-                        FormRow::new("Kijun ").leading_space(m).label_width(48.0).show(ui, t, |ui| {
+                        FormRow::new("Kijun").leading_space(m).label_width(LABEL_W).show(ui, t, |ui| {
                             let mut v = if ind.param2 > 0.0 { ind.param2 } else { 26.0 };
                             if NumberStepper::new(&mut v).range(1.0..=200.0).step(0.5).integer().show(ui, t).changed() {
                                 ind.param2 = v; needs_recompute = true;
                             }
                         });
-                        FormRow::new("Senkou").leading_space(m).label_width(48.0).show(ui, t, |ui| {
+                        FormRow::new("Senkou").leading_space(m).label_width(LABEL_W).show(ui, t, |ui| {
                             let mut v = if ind.param3 > 0.0 { ind.param3 } else { 52.0 };
                             if NumberStepper::new(&mut v).range(1.0..=200.0).step(0.5).integer().show(ui, t).changed() {
                                 ind.param3 = v; needs_recompute = true;
@@ -229,19 +205,19 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         });
                     }
                     IndicatorType::ParabolicSAR => {
-                        FormRow::new("Start ").leading_space(m).label_width(44.0).show(ui, t, |ui| {
+                        FormRow::new("Start").leading_space(m).label_width(LABEL_W).show(ui, t, |ui| {
                             let mut v = if ind.param4 > 0.0 { ind.param4 } else { 0.02 };
                             if NumberStepper::new(&mut v).range(0.001..=0.1).step(0.001).decimals(3).show(ui, t).changed() {
                                 ind.param4 = v; needs_recompute = true;
                             }
                         });
-                        FormRow::new("Step  ").leading_space(m).label_width(44.0).show(ui, t, |ui| {
+                        FormRow::new("Step").leading_space(m).label_width(LABEL_W).show(ui, t, |ui| {
                             let mut v = if ind.param2 > 0.0 { ind.param2 } else { 0.02 };
                             if NumberStepper::new(&mut v).range(0.001..=0.1).step(0.001).decimals(3).show(ui, t).changed() {
                                 ind.param2 = v; needs_recompute = true;
                             }
                         });
-                        FormRow::new("Max   ").leading_space(m).label_width(44.0).show(ui, t, |ui| {
+                        FormRow::new("Max").leading_space(m).label_width(LABEL_W).show(ui, t, |ui| {
                             let mut v = if ind.param3 > 0.0 { ind.param3 } else { 0.2 };
                             if NumberStepper::new(&mut v).range(0.05..=0.5).step(0.005).decimals(2).show(ui, t).changed() {
                                 ind.param3 = v; needs_recompute = true;
@@ -263,35 +239,24 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                             (0, "C"), (1, "O"), (2, "H"), (3, "L"), (4, "HL"), (5, "OHLC"),
                         ];
                         if SegmentedControl::new().options(SOURCES).connected_pills(true).compact(true)
-                            .height(20.0).theme(t).show(ui, &mut ind.source) {
+                            .height(row_height_compact()).theme(t).show(ui, &mut ind.source) {
                             needs_recompute = true;
                         }
                     });
                 }
 
-                // Timeframe source
+                // Timeframe source — Button::toggle handles its own rendering;
+                // the per-item `fg / bg / rounding / stroke_col` locals were
+                // dead (computed but never passed to Button::toggle).
                 ui.add_space(gap_xs());
                 ui.horizontal(|ui| {
                     ui.add_space(m);
                     ui.label(egui::RichText::new("TF    ").monospace().size(font_sm()).color(t.dim));
                     ui.add_space(gap_sm());
                     ui.spacing_mut().item_spacing.x = 0.0;
-                    let tfs = INDICATOR_TIMEFRAMES;
-                    let n = tfs.len();
-                    let r_sm = current().r_sm;
-                    for (i, &tf) in tfs.iter().enumerate() {
+                    for &tf in INDICATOR_TIMEFRAMES.iter() {
                         let label = if tf.is_empty() { "Chart" } else { tf };
                         let sel = ind.source_tf == tf;
-                        let fg = if sel { t.text } else { color_subtle(t.dim) };
-                        let bg = if sel { color_alpha(t.accent, alpha_dim()) } else { color_alpha(t.toolbar_border, alpha_subtle()) };
-                        let rounding = if i == 0 {
-                            egui::CornerRadius { nw: r_sm, sw: r_sm, ne: 0, se: 0 }
-                        } else if i == n - 1 {
-                            egui::CornerRadius { nw: 0, sw: 0, ne: r_sm, se: r_sm }
-                        } else {
-                            egui::CornerRadius::ZERO
-                        };
-                        let stroke_col = if sel { color_alpha(t.accent, alpha_heavy()) } else { color_alpha(t.toolbar_border, alpha_line()) };
                         if Button::toggle(label, sel).size(KitSize::Sm).show(ui, t)
                             .clicked() && !sel
                         {
@@ -305,7 +270,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 });
 
                 ui.add_space(gap_sm());
-                dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, alpha_muted()));
+                dialog_separator_shadow(ui, m, tint(t, Tone::Border, alpha_muted()));
                 ui.add_space(gap_sm());
 
                 // ── APPEARANCE ──
@@ -332,7 +297,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                         (LineStyle::Solid, "━"), (LineStyle::Dashed, "╌"), (LineStyle::Dotted, "┈"),
                     ];
                     SegmentedControl::new().options(LINE_STYLES).connected_pills(true).compact(true)
-                        .height(18.0).theme(t).show(ui, &mut ind.line_style);
+                        .height(row_height_compact()).theme(t).show(ui, &mut ind.line_style);
                 });
 
                 // ── BAND STYLING (BB / KC only) ──
@@ -381,36 +346,33 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                 }
 
                 ui.add_space(gap_sm());
-                dialog_separator_shadow(ui, m, color_alpha(t.toolbar_border, alpha_muted()));
+                dialog_separator_shadow(ui, m, tint(t, Tone::Border, alpha_muted()));
                 ui.add_space(gap_xs());
 
                 // ── Footer: visibility + delete ──
+                // Both buttons previously had 6+ overrides each (glyph_color, fill,
+                // corner_radius, stroke, min_size, frameless). Replaced with the
+                // semantic primitives: Toggle for vis, tone_destructive for delete.
                 ui.horizontal(|ui| {
                     ui.add_space(m);
                     let vis_icon = if ind.visible { Icon::EYE } else { Icon::EYE_SLASH };
-                    let vis_fg = if ind.visible { t.dim } else { color_dim(t.dim) };
-                    let vr = ui.add(Button::icon(vis_icon)
-                        .variant(Variant::Chrome)
-                        .glyph_color(vis_fg)
-                        .fill(if ind.visible { color_alpha(t.toolbar_border, alpha_soft()) } else { egui::Color32::TRANSPARENT })
-                        .corner_radius(current().r_sm as f32)
-                        .min_size(egui::vec2(24.0, row_height_default()))
-                        .frameless(true)
-                        .placement(IconPlacement::PanelHeader));
-                    Tooltip::new("Toggle Visibility").show(ui, &vr, t);
+                    let vr = Button::icon(vis_icon)
+                        .variant(Variant::Toggle)
+                        .active(ind.visible)
+                        .size(KitSize::Sm)
+                        .placement(IconPlacement::PanelHeader)
+                        .show(ui, t);
+                    Tooltip::new(if ind.visible { "Hide indicator" } else { "Show indicator" })
+                        .show(ui, &vr, t);
                     if vr.clicked() { ind.visible = !ind.visible; }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_space(m);
-                        let del_color = t.bear;
-                        let dr = ui.add(Button::icon(Icon::TRASH)
-                            .variant(Variant::Chrome)
-                            .glyph_color(del_color)
-                            .fill(color_alpha(del_color, alpha_ghost()))
-                            .corner_radius(current().r_sm as f32)
-                            .stroke(egui::Stroke::new(stroke_thin(), color_alpha(del_color, alpha_dim())))
-                            .min_size(egui::vec2(24.0, row_height_default()))
-                            .frameless(true)
-                            .placement(IconPlacement::PanelHeader).tone_destructive());
+                        let dr = Button::icon(Icon::TRASH)
+                            .variant(Variant::Ghost)
+                            .size(KitSize::Sm)
+                            .placement(IconPlacement::PanelHeader)
+                            .tone_destructive()
+                            .show(ui, t);
                         Tooltip::new("Delete Indicator").show(ui, &dr, t);
                         if dr.clicked() {
                             delete_id = Some(edit_id); close_editor = true;
@@ -418,6 +380,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
                     });
                 });
                 ui.add_space(gap_sm());
+                    }); // end body Frame
             } else {
                 close_editor = true;
             }

@@ -16,6 +16,10 @@ use super::label::Label;
 use super::theme::ComponentTheme;
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
+// The card chrome (border/selection) uses the ACTIVE theme via Sx; the swatch
+// it previews deliberately keeps raw `preview_theme.*` reads (it's showing a
+// *different* theme's colors, so it must not route through the active palette).
+use crate::ui_kit::sx::{palette_ct, Tone};
 
 const DEFAULT_SIZE: Vec2 = Vec2::new(132.0, 80.0);
 const BORDER_WIDTH: f32 = 2.0;
@@ -212,7 +216,7 @@ impl<'a> ThemePreviewCard<'a> {
 
         // Border — ALWAYS 2px, painted last so it overlays the card.
         // Color swaps on selection; width never changes (zero layout shift).
-        let border_color = if selected { theme.accent() } else { Color32::TRANSPARENT };
+        let border_color = if selected { palette_ct(theme).base(Tone::Accent) } else { Color32::TRANSPARENT };
         ui.painter().rect_stroke(
             card_rect,
             CornerRadius::same(CARD_RADIUS as u8),
@@ -238,7 +242,7 @@ impl<'a> ThemePreviewCard<'a> {
 
         // Focus ring for keyboard navigation — egui's Sense::click() already
         // fires clicked() on Enter/Space when the widget has keyboard focus.
-        st::cursor::focus_ring(ui, &response, theme.accent());
+        st::cursor::focus_ring(ui, &response, palette_ct(theme).base(Tone::Accent));
 
         response
     }

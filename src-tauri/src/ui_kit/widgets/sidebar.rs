@@ -19,6 +19,7 @@ use egui::{
 
 use super::motion;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::tokens as st;
 
 // ── Public types ───────────────────────────────────────────────────────────
@@ -177,11 +178,11 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
 
     // Outer frame.
     let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, CornerRadius::ZERO, theme.bg());
+    painter.rect_filled(rect, CornerRadius::ZERO, palette_ct(theme).base(Tone::Bg));
     painter.line_segment(
         [Pos2::new(rect.right() - 0.5, rect.top()),
          Pos2::new(rect.right() - 0.5, rect.bottom())],
-        Stroke::new(st::stroke_std(), theme.border()),
+        Stroke::new(st::stroke_std(), palette_ct(theme).base(Tone::Border)),
     );
 
     let pad_x = st::gap_sm();
@@ -212,7 +213,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
         ui.painter_at(rect).line_segment(
             [Pos2::new(rect.left() + pad_x, content_top),
              Pos2::new(rect.right() - pad_x, content_top)],
-            Stroke::new(st::stroke_std(), st::color_alpha(theme.border(), st::alpha_strong())),
+            Stroke::new(st::stroke_std(), st::color_alpha(palette_ct(theme).base(Tone::Border), st::alpha_strong())),
         );
         content_top += st::gap_xs();
     }
@@ -228,7 +229,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
             btn_resp.hovered(), motion::FAST);
         let bg = motion::lerp_color(
             Color32::TRANSPARENT,
-            st::color_alpha(theme.text(), st::alpha_ghost()),
+            st::color_alpha(palette_ct(theme).base(Tone::Text), st::alpha_ghost()),
             hov,
         );
         ui.painter().rect_filled(btn_rect, CornerRadius::same(st::radius_sm() as u8), bg);
@@ -242,7 +243,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
             Align2::CENTER_CENTER,
             glyph,
             FontId::proportional(st::font_sm()),
-            theme.dim(),
+            palette_ct(theme).base(Tone::Dim),
         );
         if btn_resp.clicked() {
             *state = !*state;
@@ -261,7 +262,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
         ui.painter_at(rect).line_segment(
             [Pos2::new(rect.left() + pad_x, ftr_rect.top() - st::gap_xs()),
              Pos2::new(rect.right() - pad_x, ftr_rect.top() - st::gap_xs())],
-            Stroke::new(st::stroke_std(), st::color_alpha(theme.border(), st::alpha_strong())),
+            Stroke::new(st::stroke_std(), st::color_alpha(palette_ct(theme).base(Tone::Border), st::alpha_strong())),
         );
         let mut child = ui.new_child(
             egui::UiBuilder::new()
@@ -297,7 +298,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
             Align2::LEFT_CENTER,
             title.to_uppercase(),
             FontId::proportional(st::font_xs()),
-            theme.dim(),
+            palette_ct(theme).base(Tone::Dim),
         );
         *y = title_rect.bottom() + st::gap_2xs();
     };
@@ -327,7 +328,7 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
         // Background.
         if is_active {
             let bg = motion::fade_in(
-                st::color_alpha(theme.accent(), st::alpha_ghost()),
+                st::color_alpha(palette_ct(theme).base(Tone::Accent), st::alpha_ghost()),
                 active_t,
             );
             p.rect_filled(row_rect, CornerRadius::same(st::radius_sm() as u8), bg);
@@ -336,11 +337,11 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
                 Pos2::new(row_rect.left(), row_rect.top() + 4.0),
                 Vec2::new(ACTIVE_STRIPE, row_rect.height() - 8.0),
             );
-            p.rect_filled(stripe, CornerRadius::same(1), theme.accent()); // TODO: off-token
+            p.rect_filled(stripe, CornerRadius::same(1), palette_ct(theme).base(Tone::Accent)); // TODO: off-token
         } else if hover_t > 0.01 {
             let bg = motion::lerp_color(
                 Color32::TRANSPARENT,
-                st::color_alpha(theme.text(), 18),
+                st::color_alpha(palette_ct(theme).base(Tone::Text), 18),
                 hover_t,
             );
             p.rect_filled(row_rect, CornerRadius::same(st::radius_sm() as u8), bg);
@@ -348,11 +349,11 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
 
         // Content layout.
         let label_color = if item.disabled {
-            st::color_alpha(theme.dim(), 120)
+            st::color_alpha(palette_ct(theme).base(Tone::Dim), 120)
         } else if is_active {
-            theme.text()
+            palette_ct(theme).base(Tone::Text)
         } else {
-            motion::lerp_color(theme.dim(), theme.text(), hover_t)
+            motion::lerp_color(palette_ct(theme).base(Tone::Dim), palette_ct(theme).base(Tone::Text), hover_t)
         };
 
         // Icon: fixed square at the left.
@@ -398,9 +399,9 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
                               row_rect.center().y - bh * 0.5),
                     Vec2::new(bw, bh),
                 );
-                p.rect_filled(br, CornerRadius::same(7), theme.bear()); // TODO: off-token
+                p.rect_filled(br, CornerRadius::same(7), palette_ct(theme).base(Tone::Bear)); // TODO: off-token
                 p.text(br.center(), Align2::CENTER_CENTER, &s,
-                    FontId::monospace(st::font_xs_plus()), st::contrast_fg(theme.bear()));
+                    FontId::monospace(st::font_xs_plus()), st::contrast_fg(palette_ct(theme).base(Tone::Bear)));
             }
         } else if let Some(n) = item.badge {
             // Rail mode: tiny dot-style badge in the top-right corner of the icon.
@@ -411,9 +412,9 @@ fn paint_sidebar(sb: Sidebar<'_>, ui: &mut Ui, theme: &dyn ComponentTheme) -> Re
                 Pos2::new(icon_center.x + 4.0, icon_center.y - ICON_SIZE * 0.5 - 2.0),
                 Vec2::new(bw, bh),
             );
-            p.rect_filled(br, CornerRadius::same(st::radius_md() as u8), theme.bear());
+            p.rect_filled(br, CornerRadius::same(st::radius_md() as u8), palette_ct(theme).base(Tone::Bear));
             p.text(br.center(), Align2::CENTER_CENTER, &s,
-                FontId::monospace(st::font_xs()), st::contrast_fg(theme.bear()));
+                FontId::monospace(st::font_xs()), st::contrast_fg(palette_ct(theme).base(Tone::Bear)));
         }
 
         if resp.clicked() && !item.disabled {

@@ -133,6 +133,27 @@ impl Default for ThemeRegistry {
     }
 }
 
+// ── Live runtime registry (P1.8) ──────────────────────────────────────────────
+//
+// Process-wide singleton populated lazily from `builtin_registry()` on first
+// access. The chart-app's per-pane `theme_idx` indexing into `gpu::LIVE_THEMES`
+// remains the hot path for resolving a frame's colours (no behavioural change
+// for rendering). This singleton is the **canonical answer** to "what schemes /
+// styles exist right now" for tooling, hot-reload, and the design inspector —
+// promoting `ThemeRegistry` from parallel scaffolding to a real runtime store.
+
+use std::sync::{OnceLock, RwLock};
+
+static LIVE_REGISTRY: OnceLock<RwLock<ThemeRegistry>> = OnceLock::new();
+
+/// Access the process-wide live `ThemeRegistry`. Lazily initialized on first
+/// call from `builtin_registry()` so any code path can call this without
+/// coordinating startup ordering. Holds a `RwLock` so registration and active-
+/// pair switching are thread-safe.
+pub fn live_registry() -> &'static RwLock<ThemeRegistry> {
+    LIVE_REGISTRY.get_or_init(|| RwLock::new(super::builtin::builtin_registry()))
+}
+
 // ── ActiveTheme ───────────────────────────────────────────────────────────────
 
 /// The resolved active theme pair — a snapshot of the registry's current

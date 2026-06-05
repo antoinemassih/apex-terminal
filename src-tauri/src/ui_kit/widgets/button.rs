@@ -20,6 +20,7 @@ use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Response, RichText, Sense,
 
 use super::motion;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::{Size, Variant};
 use super::Tooltip;
 use super::icon_placement::{IconPlacement, IconTone, IconState, icon_glyph_color, icon_hover_bg};
@@ -484,7 +485,7 @@ impl<'a> Button<'a> {
             Size::Lg => st::font_lg(),
             Size::Xl => st::font_lg(),
         };
-        let fg = self.fg_override.unwrap_or_else(|| theme.dim());
+        let fg = self.fg_override.unwrap_or_else(|| palette_ct(theme).base(Tone::Dim));
         let label_text = if self.icon_only && self.label.is_empty() {
             self.leading_icon.unwrap_or("").to_string()
         } else {
@@ -527,8 +528,8 @@ impl<'a> Button<'a> {
 impl<'a> Button<'a> {
     #[doc(hidden)]
     fn resolve_tint(&self, theme: &dyn ComponentTheme) -> Option<Color32> {
-        if self._marker_tint_bull { return Some(theme.bull()); }
-        if self._marker_tint_bear { return Some(theme.bear()); }
+        if self._marker_tint_bull { return Some(palette_ct(theme).base(Tone::Bull)); }
+        if self._marker_tint_bear { return Some(palette_ct(theme).base(Tone::Bear)); }
         self.tint
     }
 }
@@ -738,8 +739,8 @@ fn show_styled_impl<'a, S: ButtonStyle>(
         if is_status {
             idle_bg = Color32::TRANSPARENT;
             hover_bg = Color32::TRANSPARENT;
-            fg_idle = st::color_alpha(theme.text(), 178);
-            fg_hover = theme.text();
+            fg_idle = st::color_alpha(palette_ct(theme).base(Tone::Text), 178);
+            fg_hover = palette_ct(theme).base(Tone::Text);
         }
 
         // Placement overrides: when a placement is active, use icon_glyph_color
@@ -785,7 +786,7 @@ fn show_styled_impl<'a, S: ButtonStyle>(
         // Toggle variant: when active, fg snaps to accent (or the
         // resolved tint). Blends in alongside the bg/border active state.
         if matches!(variant, Variant::Toggle) && active_t > 0.001 {
-            let accent_fg = tint.unwrap_or_else(|| theme.accent());
+            let accent_fg = tint.unwrap_or_else(|| palette_ct(theme).base(Tone::Accent));
             fg = motion::lerp_color(fg, accent_fg, active_t);
         }
         // Placement active state: blend toward the active glyph color.
@@ -820,6 +821,9 @@ fn show_styled_impl<'a, S: ButtonStyle>(
         // Background.
         if !frameless && bg.a() > 0 {
             painter.rect_filled(rect, cr, bg);
+            // Surface bevel — reads the per-frame bevel token pushed by the
+            // chart-app's begin_frame(). No-op when bevel is None (default).
+            crate::ui_kit::style::paint_bevel_portable(&painter, rect, cr);
         }
         // Border (Secondary, Chrome stroke override, or active state).
         if !frameless {
@@ -853,8 +857,8 @@ fn show_styled_impl<'a, S: ButtonStyle>(
         let icon_fg = glyph_color_override.unwrap_or(fg);
         if stacked {
             // Stacked vertical: icon (top) → label (mid) → sublabel (bot).
-            let label_color = if active { theme.accent() } else { fg };
-            let sub_color = st::color_alpha(theme.dim(), 200);
+            let label_color = if active { palette_ct(theme).base(Tone::Accent) } else { fg };
+            let sub_color = st::color_alpha(palette_ct(theme).base(Tone::Dim), 200);
             let icon_h = stacked_icon_size;
             let lbl_h = st::font_xs();
             let sub_h = st::font_2xs();
@@ -938,7 +942,7 @@ fn show_styled_impl<'a, S: ButtonStyle>(
             }
             if let Some(kt) = kbd_text.as_ref() {
                 x += st::gap_md();
-                let kbd_color = st::color_alpha(theme.text(), 160);
+                let kbd_color = st::color_alpha(palette_ct(theme).base(Tone::Text), 160);
                 painter.text(
                     Pos2::new(x, cy),
                     egui::Align2::LEFT_CENTER,
@@ -963,7 +967,7 @@ fn show_styled_impl<'a, S: ButtonStyle>(
         // keyboard focus indicator is visible regardless of variant.
         // Delegates to cursor::focus_ring so focus_ring_width / focus_ring_alpha
         // StyleSettings knobs are respected and the ring tracks the design system.
-        st::cursor::focus_ring(ui, &response, theme.accent());
+        st::cursor::focus_ring(ui, &response, palette_ct(theme).base(Tone::Accent));
 
         // Cursor.
         if hovered {
@@ -991,11 +995,11 @@ fn paint_secondary_with_treatment(
     };
     use crate::ui_kit::widgets::tokens::ButtonTreatment;
 
-    // Pick the dominant color: explicit fg/fill overrides win, then tint, then theme.text().
+    // Pick the dominant color: explicit fg/fill overrides win, then tint, then the theme text tone.
     let color = btn.fg_override
         .or(btn.fill_override)
         .or_else(|| btn.resolve_tint(_theme))
-        .unwrap_or_else(|| _theme.text());
+        .unwrap_or_else(|| palette_ct(_theme).base(Tone::Text));
 
     // P5b: button_treatment now lives on TokenSnapshot — read once and cache.
     // r_md / r_xs come from frame_tokens() too (no more current() reach-in).
@@ -1096,11 +1100,11 @@ fn resolve_palette(
     tint: Option<Color32>,
 ) -> (Color32, Color32, Color32, Color32, Color32, Color32, Color32) {
     // Returns (idle_bg, hover_bg, active_bg, fg_idle, fg_hover, border_idle, border_active)
-    let accent = tint.unwrap_or_else(|| theme.accent());
-    let bear = tint.unwrap_or_else(|| theme.bear());
-    let surface = theme.surface();
-    let text = theme.text();
-    let border = theme.border();
+    let accent = tint.unwrap_or_else(|| palette_ct(theme).base(Tone::Accent));
+    let bear = tint.unwrap_or_else(|| palette_ct(theme).base(Tone::Bear));
+    let surface = palette_ct(theme).base(Tone::Surface);
+    let text = palette_ct(theme).base(Tone::Text);
+    let border = palette_ct(theme).base(Tone::Border);
     let transparent = Color32::TRANSPARENT;
 
     match variant {
@@ -1149,8 +1153,8 @@ fn resolve_palette(
             transparent,
             transparent,
             transparent,
-            theme.accent(),
-            lighten(theme.accent(), 0.15),
+            palette_ct(theme).base(Tone::Accent),
+            lighten(palette_ct(theme).base(Tone::Accent), 0.15),
             transparent,
             transparent,
         ),
@@ -1173,7 +1177,7 @@ fn resolve_palette(
             transparent,
             st::color_alpha(text, 18),
             st::color_alpha(accent, st::alpha_soft()),
-            st::color_muted(theme.dim()),
+            st::color_muted(palette_ct(theme).base(Tone::Dim)),
             text,
             transparent,
             st::color_alpha(accent, st::alpha_active()),
@@ -1183,7 +1187,7 @@ fn resolve_palette(
             transparent,
             transparent,
             transparent,
-            st::color_muted(theme.dim()),
+            st::color_muted(palette_ct(theme).base(Tone::Dim)),
             text,
             transparent,
             transparent,
@@ -1194,7 +1198,7 @@ fn resolve_palette(
             transparent,
             st::color_alpha(text, 18),
             transparent,
-            st::color_subtle(theme.dim()),
+            st::color_subtle(palette_ct(theme).base(Tone::Dim)),
             text,
             transparent,
             transparent,
@@ -1204,7 +1208,7 @@ fn resolve_palette(
             transparent,
             st::color_alpha(text, 18),
             st::color_alpha(accent, st::alpha_tint()),
-            st::color_half(theme.dim()),
+            st::color_half(palette_ct(theme).base(Tone::Dim)),
             text,
             transparent,
             transparent,
@@ -1214,11 +1218,11 @@ fn resolve_palette(
             // text alpha so it reads on any palette. P5b: was hardcoded gray
             // which made the button a foreign object on non-default palettes
             // (a gray island in a pink/lime/cyan theme).
-            st::color_alpha(theme.text(), 28),
-            st::color_alpha(theme.text(), 44),
-            st::color_alpha(theme.text(), 18),
-            st::contrast_fg(theme.surface()),
-            st::contrast_fg(theme.surface()),
+            st::color_alpha(palette_ct(theme).base(Tone::Text), 28),
+            st::color_alpha(palette_ct(theme).base(Tone::Text), 44),
+            st::color_alpha(palette_ct(theme).base(Tone::Text), 18),
+            st::contrast_fg(palette_ct(theme).base(Tone::Surface)),
+            st::contrast_fg(palette_ct(theme).base(Tone::Surface)),
             border,
             transparent,
         ),
@@ -1385,23 +1389,23 @@ pub fn show_button_gallery(ui: &mut Ui, theme: &dyn ComponentTheme) {
         // IconBtn parity: Ghost + glyph_color.
         let r = Button::icon(Icon::GEAR)
             .variant(Variant::Ghost)
-            .glyph_color(theme.accent())
+            .glyph_color(palette_ct(theme).base(Tone::Accent))
             .show(ui, theme);
         Tooltip::new("Settings").show(ui, &r, theme);
         // ChromeBtn parity: Chrome variant with explicit fill/stroke/min_size.
         let _ = Button::new("Connect")
             .variant(Variant::Chrome)
-            .fill(theme.surface())
-            .stroke(Stroke::new(st::stroke_std(), theme.border()))
+            .fill(palette_ct(theme).base(Tone::Surface))
+            .stroke(Stroke::new(st::stroke_std(), palette_ct(theme).base(Tone::Border)))
             .min_size(Vec2::new(80.0, 24.0))
             .corner_radius(st::radius_sm())
-            .fg(theme.text())
+            .fg(palette_ct(theme).base(Tone::Text))
             .show(ui, theme);
         // ChromeBtn::frameless parity.
         let _ = Button::new("Paper")
             .variant(Variant::Chrome)
             .frameless(true)
-            .fg(theme.text())
+            .fg(palette_ct(theme).base(Tone::Text))
             .show(ui, theme);
         // SimpleBtn parity: Secondary + simple_treatment.
         let _ = Button::new("Cancel")
@@ -1411,8 +1415,8 @@ pub fn show_button_gallery(ui: &mut Ui, theme: &dyn ComponentTheme) {
         // hover_fill override.
         let _ = Button::new("Custom Hover")
             .variant(Variant::Chrome)
-            .fill(theme.surface())
-            .hover_fill(theme.accent())
+            .fill(palette_ct(theme).base(Tone::Surface))
+            .hover_fill(palette_ct(theme).base(Tone::Accent))
             .show(ui, theme);
     });
 }

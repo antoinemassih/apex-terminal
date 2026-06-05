@@ -146,6 +146,8 @@ pub fn color_scheme_to_portable(cs: &ColorScheme) -> PortableTheme {
             blend_toward(border, Color32::BLACK, 0.10)
         },
         warn: rgba_to_c(cs.warn),
+        bull: rgba_to_c(cs.bull),
+        bear: rgba_to_c(cs.bear),
         bg: rgba_to_c(cs.bg),
         surface: rgba_to_c(cs.surface),
         // Hover/active/selected/disabled tints derived from text/accent.
@@ -400,7 +402,6 @@ fn render_palette_tab(
     let mut is_dark = state.scheme.meta.is_dark;
     color_row(ui, "bg",      &mut state.scheme.bg,      "App background", text, dim);
     color_row(ui, "surface", &mut state.scheme.surface, "Panel surface fills", text, dim);
-    color_row(ui, "paper",   &mut state.scheme.paper,   "Chart canvas background", text, dim);
     ui.add_space(6.0);
     color_row(ui, "text",    &mut state.scheme.text,    "Body text", text, dim);
     color_row(ui, "dim",     &mut state.scheme.dim,     "Secondary/dim text", text, dim);

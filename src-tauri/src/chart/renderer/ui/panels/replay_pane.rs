@@ -26,6 +26,7 @@
 //!   landed in this PR per scope guidance.
 
 use std::collections::VecDeque;
+use crate::ui_kit::sx::Tone;
 use std::sync::{mpsc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -267,7 +268,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
     let frame = egui::Frame::popup(&ctx.style())
         .fill(t.toolbar_bg)
         .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-        .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_heavy())))
+        .stroke(egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_heavy())))
         .corner_radius(r_lg_cr());
 
     let resp = Modal::new("REPLAY SCRUBBER")
@@ -412,7 +413,7 @@ fn draw_progress(ui: &mut egui::Ui, s: &ReplayPaneState, t: &Theme) {
     let h = 14.0;
     let (rect, _) = ui.allocate_exact_size(egui::vec2(total_w, h), egui::Sense::hover());
     // Track
-    ui.painter().rect_filled(rect, current().r_sm, color_alpha(t.toolbar_border, alpha_muted()));
+    ui.painter().rect_filled(rect, current().r_sm, tint(t, Tone::Border, alpha_muted()));
     // Fill
     let fill_w = total_w * progress;
     if fill_w > 0.0 {

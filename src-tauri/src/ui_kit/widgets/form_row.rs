@@ -36,6 +36,7 @@
 use egui::{Color32, RichText, Ui, Vec2};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::tokens as st;
 
 /// Controls which side of the gutter area the body aligns to.
@@ -170,7 +171,7 @@ impl<'a> FormRow<'a> {
         theme: &dyn ComponentTheme,
         body: B,
     ) -> R {
-        let label_col = self.label_color.unwrap_or_else(|| theme.dim());
+        let label_col = self.label_color.unwrap_or_else(|| palette_ct(theme).base(Tone::Dim));
         let cx = FormRowCx { password: self.password, hint: self.hint };
 
         let label_layout = if self.label_layout_left {
@@ -264,7 +265,7 @@ fn render_sub_text(
             let col = if is_error {
                 theme.danger()
             } else {
-                st::color_alpha(theme.dim(), st::alpha_dim())
+                st::color_alpha(palette_ct(theme).base(Tone::Dim), st::alpha_dim())
             };
             ui.label(
                 RichText::new(text)

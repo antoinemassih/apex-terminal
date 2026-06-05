@@ -49,6 +49,14 @@ use crate::ui_kit::icons::Icon;
 // Disambiguate APEXIB_URL (exists in both gpu and trading)
 use crate::chart_renderer::gpu::APEXIB_URL;
 
+// ── Pane-header popup anchoring ───────────────────────────────────────────────
+/// Vertical gap (px) between the pane-header bottom edge and a popup anchored
+/// below it (pane picker, template popup). Was a magic `+ 4.0` at 4 sites.
+const PANE_POPUP_GAP_Y: f32 = 4.0;
+/// Horizontal inset (px) from the header right edge for the right-anchored
+/// template popup. Was a magic `- 30.0`.
+const PANE_POPUP_RIGHT_INSET: f32 = 30.0;
+
 pub(crate) fn render_toolbar(
     ctx: &egui::Context,
     panes: &mut Vec<Chart>,
@@ -310,7 +318,7 @@ fn render_chart_pane(
     let show_header = true;
     if show_header {
         let _z_pane_header = crate::foundation::frame_profiler::profile_zone("pane_header");
-        use crate::chart_renderer::ui::widgets::painter_pane::PainterPaneHeader;
+        use crate::chart_renderer::ui::widgets::painter_pane::{PainterPaneHeader, PaneBtn};
 
         let header_rect = egui::Rect::from_min_size(pane_rect.min, egui::vec2(pane_rect.width(), pane_top_offset));
         crate::design_tokens::register_hit(
@@ -463,9 +471,11 @@ fn render_chart_pane(
             .can_go_fwd(can_go_fwd)
             .show_plus_tab(true)
             .show_overlay_btn(chart.overlay_editing || !chart.symbol_overlays.is_empty())
-            .show_drawing_btn(show_drawing_palette)
-            .show_order_btn(chart.floating_order_panes.iter().any(|p| p.strike == 0.0))
-            .show_dom_btn(chart.dom_sidebar_open);
+            // DRAW button removed — drawing tools live in the toolbar (toolnav).
+            // Layers button (object tree) added separately below.
+            // Order button moved to the toolbar (toolnav far-right) — no per-pane button.
+            .show_dom_btn(chart.dom.sidebar_open)
+            .show_layers_btn(watchlist.object_tree_open);
         if !chart.is_option {
             builder = builder.show_options_btn(chart.show_strikes_overlay);
         }
@@ -476,6 +486,23 @@ fn render_chart_pane(
             .active_tab(chart.tab_active)
             .hovered_tab(chart.tab_hovered)
             .show_expand_btn(watchlist.maximized_pane == Some(pane_idx));
+        // Phase 1c: split + close-pane controls are gated on PaneLayout
+        // being active. close-pane is only meaningful when there's more
+        // than one pane to close (single-pane close would empty the area).
+        // P16 fix #7 — pane-width guard. The right cluster already carries
+        // OVERLAY/DRAW/ORDER/DOM/OPTIONS + Expand; adding Split + ClosePane
+        // (~56 px combined) can overflow narrow panes. Hide both controls
+        // below 280 px wide — at that size the user should maximize or pick
+        // a smaller layout template anyway.
+        const SPLIT_CONTROLS_MIN_W: f32 = 280.0;
+        let pane_w_for_ctrls = pane_rects.get(pane_idx).map(|r| r.width()).unwrap_or(0.0);
+        if watchlist.pane_layout.is_some() && pane_w_for_ctrls >= SPLIT_CONTROLS_MIN_W {
+            let split_open = watchlist.pane_split_popup_for == Some(pane_idx);
+            builder = builder.show_split_btn(split_open);
+            if visible_count > 1 {
+                builder = builder.show_close_pane_btn();
+            }
+        }
 
         if has_tabs {
             builder = builder.tabs(&tab_refs);
@@ -638,12 +665,38 @@ fn render_chart_pane(
         // ── Wire response → chart mutations ───────────────────────────────
 
         // Expand / restore toggle
-        if hdr.clicked_expand {
+        if hdr.clicked(PaneBtn::Expand) {
             if watchlist.maximized_pane == Some(pane_idx) {
                 watchlist.maximized_pane = None;
             } else {
                 watchlist.maximized_pane = Some(pane_idx);
             }
+        }
+
+        // Phase 1c — Split-pane: toggle the popup anchored to this pane's
+        // split button. The popup is rendered after the pane render loop
+        // (inside the CentralPanel show, where pane_layout is reachable).
+        if hdr.clicked(PaneBtn::Split) {
+            watchlist.pane_split_popup_for = if watchlist.pane_split_popup_for == Some(pane_idx) {
+                None
+            } else {
+                Some(pane_idx)
+            };
+        }
+
+        // Phase 1c — Close-pane: queue this pane_idx for removal after the
+        // per-pane loop finishes (mutating Vec<Chart> mid-iteration would
+        // invalidate the loop's indices). P17 #1: close the leaf by its
+        // STABLE id so we don't depend on pane_idx being valid post-mutation.
+        if hdr.clicked(PaneBtn::ClosePanе) {
+            // P17 #3 — snapshot for undo BEFORE the destructive op.
+            crate::chart_renderer::gpu::pane_layout_record_undo(watchlist);
+            let close_id = watchlist.pane_ids.get(pane_idx).copied();
+            if let (Some(id), Some(pl)) = (close_id, watchlist.pane_layout.as_mut()) {
+                let _ = pl.close_pane(id);
+            }
+            crate::chart_renderer::gpu::PENDING_PANE_CLOSE.with(|q| q.borrow_mut().push(pane_idx));
+            watchlist.pane_split_popup_for = None;
         }
 
 
@@ -726,13 +779,13 @@ fn render_chart_pane(
             chart.pane_picker_option_mode = chart.is_option;
             let anchor_x = hdr.plus_tab_rect.map(|r| r.left())
                 .unwrap_or_else(|| header_rect.left());
-            chart.pane_picker_pos = egui::pos2(anchor_x, header_rect.bottom() + 4.0);
+            chart.pane_picker_pos = egui::pos2(anchor_x, header_rect.bottom() + PANE_POPUP_GAP_Y);
         }
 
         // Template button
-        if hdr.clicked_template {
-            chart.template_popup_open = !chart.template_popup_open;
-            chart.template_popup_pos = egui::pos2(header_rect.right() - 30.0, header_rect.bottom() + 4.0);
+        if hdr.clicked(PaneBtn::Template) {
+            chart.template_popup.open = !chart.template_popup.open;
+            chart.template_popup.pos = egui::pos2(header_rect.right() - PANE_POPUP_RIGHT_INSET, header_rect.bottom() + PANE_POPUP_GAP_Y);
         }
 
         // Symbol click (simple-label mode — opens pane picker)
@@ -744,7 +797,7 @@ fn render_chart_pane(
             if let Some(sr) = hdr.symbol_rect {
                 chart.pane_picker_pos = egui::pos2(sr.left(), sr.bottom() + 4.0);
             } else {
-                chart.pane_picker_pos = egui::pos2(header_rect.left() + 4.0, header_rect.bottom() + 4.0);
+                chart.pane_picker_pos = egui::pos2(header_rect.left() + PANE_POPUP_GAP_Y, header_rect.bottom() + PANE_POPUP_GAP_Y);
             }
         }
 
@@ -796,7 +849,7 @@ fn render_chart_pane(
                 chart.pane_picker_option_mode = chart.is_option;
                 let anchor_x = hdr.tab_rects.get(ci).map(|r| r.left())
                     .unwrap_or_else(|| header_rect.left());
-                chart.pane_picker_pos = egui::pos2(anchor_x, header_rect.bottom() + 4.0);
+                chart.pane_picker_pos = egui::pos2(anchor_x, header_rect.bottom() + PANE_POPUP_GAP_Y);
             }
         }
 
@@ -811,7 +864,7 @@ fn render_chart_pane(
         }
 
         // Order button — always spawns a new floating order pane for this chart's symbol
-        if hdr.clicked_order {
+        if hdr.clicked(PaneBtn::Order) {
             let fid = chart.floating_order_panes.iter().map(|p| p.id).max().unwrap_or(0) + 1;
             let sym = chart.symbol.clone();
             chart.floating_order_panes.push(FloatingOrderPane {
@@ -822,9 +875,9 @@ fn render_chart_pane(
             });
         }
         // DOM sidebar toggle
-        if hdr.clicked_dom { chart.dom_sidebar_open = !chart.dom_sidebar_open; }
+        if hdr.clicked(PaneBtn::Dom) { chart.dom.sidebar_open = !chart.dom.sidebar_open; }
         // Options strikes overlay toggle (moved from chart top-right circle button)
-        if hdr.clicked_options {
+        if hdr.clicked(PaneBtn::Options) {
             chart.show_strikes_overlay = !chart.show_strikes_overlay;
             if chart.show_strikes_overlay && !chart.overlay_chain_loading {
                 let needs_fetch = chart.overlay_chain_symbol != chart.symbol
@@ -837,14 +890,14 @@ fn render_chart_pane(
                 }
             }
         }
-        // Symbol-overlay editor toggle (moved out of the in-chart top-left strip).
-        if hdr.clicked_overlay {
+        // Symbol-overlay editor toggle.
+        if hdr.clicked(PaneBtn::Overlay) {
             chart.overlay_editing = !chart.overlay_editing;
             if chart.overlay_editing { chart.overlay_editing_idx = None; }
         }
-        // Drawing-palette show/hide toggle.
-        if hdr.clicked_drawing {
-            ctx.data_mut(|d| d.insert_temp(show_drawing_palette_id, !show_drawing_palette));
+        // Layers (object tree) — toggle for the active pane.
+        if hdr.clicked(PaneBtn::Layers) {
+            watchlist.update_sidebar_state(|s| s.object_tree_open = !s.object_tree_open);
         }
     }
 
@@ -979,12 +1032,12 @@ fn render_chart_pane(
                             );
                             if resp.changed()
                                 && !chart.pane_picker_query.is_empty()
-                                && chart.pane_picker_query != chart.picker_last_query
+                                && chart.pane_picker_query != chart.picker.last_query
                             {
                                 let q = chart.pane_picker_query.clone();
-                                chart.picker_last_query = q.clone();
-                                chart.picker_searching = true;
-                                chart.picker_results.clear();
+                                chart.picker.last_query = q.clone();
+                                chart.picker.searching = true;
+                                chart.picker.results.clear();
                                 fetch_search_background(q, format!("pane_picker_{}", pane_idx));
                             }
 
@@ -1006,7 +1059,7 @@ fn render_chart_pane(
                                     });
                                 }
                             } else {
-                                let results = chart.picker_results.clone();
+                                let results = chart.picker.results.clone();
                                 for (sym, name, _exch) in &results {
                                     ui.horizontal(|ui| {
                                         if ui.add(egui::Button::new(
@@ -1045,7 +1098,7 @@ fn render_chart_pane(
                                 chart.symbol.clone()
                             };
                             let spot = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
-                            let dte_idx = chart.option_quick_dte_idx.min(DTE_LIST.len() - 1);
+                            let dte_idx = chart.option_quick.dte_idx.min(DTE_LIST.len() - 1);
                             let current_dte = DTE_LIST[dte_idx];
 
                             // Underlying display + DTE nav
@@ -1064,7 +1117,7 @@ fn render_chart_pane(
                                     .size(crate::chart_renderer::ui::style::font_lg()).color(back_col))
                                     .fill(egui::Color32::TRANSPARENT)
                                 ).clicked() && can_back {
-                                    chart.option_quick_dte_idx = dte_idx - 1;
+                                    chart.option_quick.dte_idx = dte_idx - 1;
                                     let new_dte = DTE_LIST[dte_idx - 1];
                                     fetch_chain_background(underlying.clone(), 15, new_dte, spot);
                                 }
@@ -1076,7 +1129,7 @@ fn render_chart_pane(
                                     .size(crate::chart_renderer::ui::style::font_lg()).color(fwd_col))
                                     .fill(egui::Color32::TRANSPARENT)
                                 ).clicked() && can_fwd {
-                                    chart.option_quick_dte_idx = dte_idx + 1;
+                                    chart.option_quick.dte_idx = dte_idx + 1;
                                     let new_dte = DTE_LIST[dte_idx + 1];
                                     fetch_chain_background(underlying.clone(), 15, new_dte, spot);
                                 }
@@ -1090,7 +1143,7 @@ fn render_chart_pane(
 
                             // Chain table
                             let chain_ref = if current_dte == 0 { &watchlist.chain_0dte } else { &watchlist.chain_far };
-                            let (calls, puts) = (&chain_ref.0, &chain_ref.1);
+                            let (calls, puts) = (&chain_ref.calls, &chain_ref.puts);
                             let mut pending_load: Option<(f32, bool)> = None;
 
                             // Quick prev/next strike navigation — only meaningful when
@@ -1199,8 +1252,8 @@ fn render_chart_pane(
                             // Apply selected contract
                             if let Some((strike, is_call)) = pending_load {
                                 let rows = if current_dte == 0 {
-                                    if is_call { &watchlist.chain_0dte.0 } else { &watchlist.chain_0dte.1 }
-                                } else if is_call { &watchlist.chain_far.0 } else { &watchlist.chain_far.1 };
+                                    if is_call { &watchlist.chain_0dte.calls } else { &watchlist.chain_0dte.puts }
+                                } else if is_call { &watchlist.chain_far.calls } else { &watchlist.chain_far.puts };
                                 let occ = rows.iter()
                                     .find(|r| (r.strike - strike).abs() < 0.01)
                                     .map(|r| r.contract.clone())
@@ -1222,7 +1275,7 @@ fn render_chart_pane(
                                         fetch_option_bars_background(occ_final, opt_sym, tf, mark);
                                     }
                                 } else {
-                                    watchlist.pending_opt_chart = Some((underlying.clone(), strike, is_call, String::new()));
+                                    watchlist.pending_opt_chart = Some(PendingOptionChart { symbol: underlying.clone(), strike, is_call, expiry: String::new() });
                                     watchlist.pending_opt_chart_contract = Some(occ);
                                 }
                                 close_picker = true;
@@ -1300,17 +1353,17 @@ fn render_chart_pane(
     }
 
     // ── DOM Sidebar — left/right/fullscreen, controlled from the panel menu.
-    let dom_w = if chart.dom_sidebar_open {
-        if chart.dom_fullscreen { pane_rect.width() } else { chart.dom_width }
+    let dom_w = if chart.dom.sidebar_open {
+        if chart.dom.fullscreen { pane_rect.width() } else { chart.dom.width }
     } else { 0.0 };
     let full_rect = egui::Rect::from_min_size(
         egui::pos2(pane_rect.left(), pane_rect.top() + pane_top_offset),
         egui::vec2(pane_rect.width(), pane_rect.height() - pane_top_offset),
     );
-    if chart.dom_sidebar_open {
+    if chart.dom.sidebar_open {
         // Position: 0 = left edge, 1 = right edge. Fullscreen anchors to left
         // and consumes the full width regardless of position.
-        let dom_left = if chart.dom_fullscreen || chart.dom_position == 0 {
+        let dom_left = if chart.dom.fullscreen || chart.dom.position == 0 {
             full_rect.left()
         } else {
             full_rect.right() - dom_w
@@ -1322,19 +1375,19 @@ fn render_chart_pane(
         let current_price = chart.bars.last().map(|b| b.close).unwrap_or(100.0);
         // Auto-detect tick size based on symbol
         let is_index = chart.symbol == "SPX" || chart.symbol == "NDX" || chart.symbol == "DJI" || chart.symbol == "RUT";
-        if chart.dom_tick_size < 0.001 || (is_index && chart.dom_tick_size < 0.5) {
-            chart.dom_tick_size = if is_index { 1.0 } else { 0.01 };
+        if chart.dom.tick_size < 0.001 || (is_index && chart.dom.tick_size < 0.5) {
+            chart.dom.tick_size = if is_index { 1.0 } else { 0.01 };
         }
         // Auto-center on current price if center_price is 0 (first open)
-        if chart.dom_center_price == 0.0 {
-            chart.dom_center_price = (current_price / chart.dom_tick_size).round() * chart.dom_tick_size;
+        if chart.dom.center_price == 0.0 {
+            chart.dom.center_price = (current_price / chart.dom.tick_size).round() * chart.dom.tick_size;
         }
         // Generate mock levels if empty or stale
-        if chart.dom_levels.is_empty() || (chart.dom_levels.first().map(|l| (l.price - chart.dom_center_price).abs() > chart.dom_tick_size * 40.0).unwrap_or(true)) {
-            chart.dom_levels = crate::chart_renderer::ui::panels::dom_panel::generate_mock_levels(chart.dom_center_price, chart.dom_tick_size, 30);
+        if chart.dom.levels.is_empty() || (chart.dom.levels.first().map(|l| (l.price - chart.dom.center_price).abs() > chart.dom.tick_size * 40.0).unwrap_or(true)) {
+            chart.dom.levels = crate::chart_renderer::ui::panels::dom_panel::generate_mock_levels(chart.dom.center_price, chart.dom.tick_size, 30);
         }
         // Sync OrderManager armed state
-        crate::chart_renderer::trading::order_manager::set_armed(chart.dom_armed);
+        crate::chart_renderer::trading::order_manager::set_armed(chart.dom.armed);
         // Feed DOM with orders from both local chart.orders AND OrderManager
         let mgr_orders = crate::chart_renderer::trading::order_manager::active_orders_for(&chart.symbol);
         let mut combined_orders = chart.orders.clone();
@@ -1351,23 +1404,23 @@ fn render_chart_pane(
             let mut adapter = DomPaneAdapter {
                 dom_rect,
                 current_price,
-                levels: &chart.dom_levels,
-                tick_size: chart.dom_tick_size,
-                center_price: &mut chart.dom_center_price,
-                dom_width: &mut chart.dom_width,
+                levels: &chart.dom.levels,
+                tick_size: chart.dom.tick_size,
+                center_price: &mut chart.dom.center_price,
+                dom_width: &mut chart.dom.width,
                 orders: &combined_orders,
-                dom_selected_price: &mut chart.dom_selected_price,
-                dom_order_type: &mut chart.dom_order_type,
-                order_qty: &mut chart.order_qty,
+                dom_selected_price: &mut chart.dom.selected_price,
+                dom_order_type: &mut chart.dom.order_type,
+                order_qty: &mut chart.order_panel.qty,
                 new_order: &mut dom_new_order,
                 cancel_all: &mut dom_cancel_all,
                 cancel_order_id: &mut dom_cancel_order_id,
                 move_order: &mut dom_move_order,
-                dom_armed: &mut chart.dom_armed,
-                dom_col_mode: &mut chart.dom_col_mode,
-                dom_dragging: &mut chart.dom_dragging,
-                dom_position: &mut chart.dom_position,
-                dom_fullscreen: &mut chart.dom_fullscreen,
+                dom_armed: &mut chart.dom.armed,
+                dom_col_mode: &mut chart.dom.col_mode,
+                dom_dragging: &mut chart.dom.dragging,
+                dom_position: &mut chart.dom.position,
+                dom_fullscreen: &mut chart.dom.fullscreen,
             };
             // DomPaneAdapter does not read PaneContext::panes; we pass an
             // empty slice to avoid a second mutable borrow of `panes` while
@@ -1387,7 +1440,7 @@ fn render_chart_pane(
         // Process DOM order actions through OrderManager
         if let Some((side, price, qty)) = dom_new_order {
             use crate::chart_renderer::trading::order_manager::*;
-            let ot = if chart.dom_order_type == crate::chart_renderer::ui::panels::dom_panel::DomOrderType::Market {
+            let ot = if chart.dom.order_type == crate::chart_renderer::ui::panels::dom_panel::DomOrderType::Market {
                 ManagedOrderType::Market
             } else {
                 ManagedOrderType::Limit
@@ -1397,7 +1450,7 @@ fn render_chart_pane(
             let intent = OrderIntent {
                 symbol: chart.symbol.clone(), side, order_type: ot, price, qty,
                 source: OrderSource::DomLadder, pair_with: None,
-                option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: dom_last_price, tif: chart.order_tif_idx as u8, outside_rth: chart.order_outside_rth,
+                option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: dom_last_price, tif: chart.order_panel.tif_idx as u8, outside_rth: chart.order_panel.outside_rth,
                 strategy_id: None, override_warnings: false,
             };
             let result = submit_order(intent.clone());
@@ -1445,7 +1498,7 @@ fn render_chart_pane(
     // pane's left edge; when DOM is on the left, the chart shifts right by
     // dom_w. Fullscreen DOM consumes the whole pane so the chart shrinks to
     // zero width and the candle/indicator paths short-circuit on n==0.
-    let chart_left_offset = if chart.dom_sidebar_open && !chart.dom_fullscreen && chart.dom_position == 0 {
+    let chart_left_offset = if chart.dom.sidebar_open && !chart.dom.fullscreen && chart.dom.position == 0 {
         dom_w
     } else { 0.0 };
     let chart_w = (full_rect.width() - dom_w).max(0.0);
@@ -2020,18 +2073,18 @@ fn render_chart_pane(
 
     // Volume Profile — cache recompute + rendering (behind candles).
     // MARK_BARS_PROTOCOL: skip when in Mark mode (volume=0 → empty profile).
-    if chart.vp_mode != VolumeProfileMode::Off && !chart.bar_source_mark {
-        if chart.vp_data.is_none() || chart.vp_last_vs != chart.vs || chart.vp_last_vc != chart.vc {
+    if chart.vp.mode != VolumeProfileMode::Off && !chart.bar_source_mark {
+        if chart.vp.data.is_none() || chart.vp.last_vs != chart.vs || chart.vp.last_vc != chart.vc {
             let start = chart.vs.max(0.0) as usize;
             let end_vp = (start + chart.vc as usize + 8).min(chart.bars.len());
-            chart.vp_data = compute_volume_profile(&chart.bars, start, end_vp, 60);
-            chart.vp_last_vs = chart.vs;
-            chart.vp_last_vc = chart.vc;
+            chart.vp.data = compute_volume_profile(&chart.bars, start, end_vp, 60);
+            chart.vp.last_vs = chart.vs;
+            chart.vp.last_vc = chart.vc;
         }
     }
 
-    if chart.vp_mode == VolumeProfileMode::Classic {
-        if let Some(ref vp) = chart.vp_data {
+    if chart.vp.mode == VolumeProfileMode::Classic {
+        if let Some(ref vp) = chart.vp.data {
             let max_bar_width = cw * 0.25;
             for level in &vp.levels {
                 let y = py(level.price);
@@ -2054,8 +2107,8 @@ fn render_chart_pane(
         }
     }
 
-    if chart.vp_mode == VolumeProfileMode::Heatmap {
-        if let Some(ref vp) = chart.vp_data {
+    if chart.vp.mode == VolumeProfileMode::Heatmap {
+        if let Some(ref vp) = chart.vp.data {
             for level in &vp.levels {
                 let y_top = py(level.price + vp.price_step / 2.0);
                 let y_bot = py(level.price - vp.price_step / 2.0);
@@ -2084,8 +2137,8 @@ fn render_chart_pane(
         }
     }
 
-    if chart.vp_mode == VolumeProfileMode::Strip {
-        if let Some(ref vp) = chart.vp_data {
+    if chart.vp.mode == VolumeProfileMode::Strip {
+        if let Some(ref vp) = chart.vp.data {
             let strip_w = 50.0_f32;
             let strip_x = rect.left() + cw - strip_w;
             for level in &vp.levels {
@@ -2124,8 +2177,8 @@ fn render_chart_pane(
         }
     }
 
-    if chart.vp_mode == VolumeProfileMode::Clean {
-        if let Some(ref vp) = chart.vp_data {
+    if chart.vp.mode == VolumeProfileMode::Clean {
+        if let Some(ref vp) = chart.vp.data {
             let gold = egui::Color32::from_rgb(255, 193, 37);
             let vah_y = py(vp.vah); let val_y = py(vp.val);
             if vah_y.is_finite() && val_y.is_finite() {
@@ -2161,8 +2214,8 @@ fn render_chart_pane(
 
     // ── Alternative chart types (Renko, Range, Tick) — rendered from alt_bars ──
     let is_alt_mode = matches!(chart.candle_mode, CandleMode::Renko | CandleMode::RangeBar | CandleMode::TickBar);
-    if is_alt_mode && !chart.alt_bars.is_empty() {
-        let alt_n = chart.alt_bars.len();
+    if is_alt_mode && !chart.alt.bars.is_empty() {
+        let alt_n = chart.alt.bars.len();
         let alt_vs = chart.vs.min(alt_n as f32 - 1.0).max(0.0);
         let alt_end = ((alt_vs as u32) + chart.vc + dynamic_pad).min(alt_n as u32);
 
@@ -2172,7 +2225,7 @@ fn render_chart_pane(
         alt_wick_mesh.texture_id = egui::TextureId::default();
 
         for i in (alt_vs as u32)..alt_end {
-            if let Some(b) = chart.alt_bars.get(i as usize) {
+            if let Some(b) = chart.alt.bars.get(i as usize) {
                 let x = bx(i as f32);
                 let is_bull = b.close >= b.open;
                 let c = if is_bull { t.bull } else { t.bear };
@@ -2786,7 +2839,7 @@ fn render_chart_pane(
     // ── Auto Support/Resistance ───────────────────────────────────────────
     // ── Gamma Levels Overlay (GEX) ────────────────────────────────────────
     if chart.show_gamma && !chart.gamma_levels.is_empty() {
-        let max_gex = chart.gamma_levels.iter().map(|(_, g)| g.abs()).fold(0.0_f32, f32::max).max(1.0);
+        let max_gex = chart.gamma_levels.iter().map(|l| l.exposure.abs()).fold(0.0_f32, f32::max).max(1.0);
         let max_bar_w = cw * 0.12; // max band width as fraction of chart width
 
         let last_price = chart.bars.last().map_or(0.0, |b| b.close);
@@ -2819,7 +2872,8 @@ fn render_chart_pane(
         }
 
         // Gamma bands at each level
-        for &(price, gex) in &chart.gamma_levels {
+        for l in &chart.gamma_levels {
+            let (price, gex) = (l.price, l.exposure);
             let y = py(price);
             if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
             let norm = gex.abs() / max_gex;
@@ -3385,7 +3439,7 @@ fn render_chart_pane(
                     if let Some(pos) = hover_pos {
                         if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
                             if chart_btn_rect.contains(pos) {
-                                watchlist.pending_opt_chart = Some((chart.symbol.clone(), si.strike, si.is_call, String::new()));
+                                watchlist.pending_opt_chart = Some(PendingOptionChart { symbol: chart.symbol.clone(), strike: si.strike, is_call: si.is_call, expiry: String::new() });
                                 watchlist.pending_opt_chart_contract = Some(si.contract.clone());
                             } else if pill_rect.contains(pos) {
                                 // Open floating order pane
@@ -3448,7 +3502,7 @@ fn render_chart_pane(
         let mut close_ids: Vec<u32> = Vec::new();
 
         for pane in &mut floating_panes {
-            let adv = chart.order_advanced;
+            let adv = chart.order_panel.advanced;
             let fp_panel_w = if adv { 340.0 } else { 300.0 };
 
             egui::Window::new(format!("float_order_{}_{}", pane_idx, pane.id))
@@ -3477,7 +3531,7 @@ fn render_chart_pane(
 
                     let mut buy_clicked  = false;
                     let mut sell_clicked = false;
-                    let is_buy           = chart.order_is_buy;
+                    let is_buy           = chart.order_panel.is_buy;
                     let chrome_title     = chart.symbol.clone();
                     let last_px          = chart.bars.last().map(|b| b.close).unwrap_or(0.0);
                     let first_px         = chart.bars.first().map(|b| b.close).unwrap_or(last_px);
@@ -3525,8 +3579,8 @@ fn render_chart_pane(
                         chart.pane_picker_open = true;
                         chart.pane_picker_pos  = egui::pos2(pane.pos.x, pane.pos.y + 30.0);
                     }
-                    if buy_clicked               { chart.order_is_buy = true;  }
-                    if sell_clicked              { chart.order_is_buy = false; }
+                    if buy_clicked               { chart.order_panel.is_buy = true;  }
+                    if sell_clicked              { chart.order_panel.is_buy = false; }
                     if cr.drag_delta != egui::Vec2::ZERO {
                         pane.pos.x += cr.drag_delta.x;
                         pane.pos.y += cr.drag_delta.y;
@@ -6431,8 +6485,8 @@ fn render_chart_pane(
 
     // ── Candlestick pattern labels (from ApexSignals) ────────────────────
     if chart.show_pattern_labels && !chart.pattern_labels.is_empty() {
-        let bars_ref = if chart.candle_mode == CandleMode::Standard { &chart.bars } else { &chart.alt_bars };
-        let ts_ref = if chart.candle_mode == CandleMode::Standard { &chart.timestamps } else { &chart.alt_timestamps };
+        let bars_ref = if chart.candle_mode == CandleMode::Standard { &chart.bars } else { &chart.alt.bars };
+        let ts_ref = if chart.candle_mode == CandleMode::Standard { &chart.timestamps } else { &chart.alt.timestamps };
         for pl in &chart.pattern_labels {
             let bar_f = SignalDrawing::time_to_bar(pl.time, ts_ref);
             let x = bx(bar_f);
@@ -6496,11 +6550,15 @@ fn render_chart_pane(
                     crate::chart_renderer::SignalZone { zone_type: "fvg".into(), price_high: price * 0.995, price_low: price * 0.991, start_time: 0, strength: 5.0, touches: 0, fresh: true },
                 ];
                 // Demo trade plan
-                chart.trade_plan = Some((1, price, price * 1.02, price * 0.985, format!("{} {}C 5DTE", chart.symbol, (price / 5.0).round() * 5.0), 2.8, 85.0));
+                chart.trade_plan = Some(crate::chart_renderer::gpu::TradePlan {
+                    direction: 1, entry: price, target: price * 1.02, stop: price * 0.985,
+                    contract: format!("{} {}C 5DTE", chart.symbol, (price / 5.0).round() * 5.0),
+                    rr: 2.8, conviction: 85.0,
+                });
                 // Demo change points
                 if chart.timestamps.len() > 20 {
-                    chart.change_points.push((chart.timestamps[chart.timestamps.len() - 15], "directional".into(), 0.85));
-                    chart.change_points.push((chart.timestamps[chart.timestamps.len() - 8], "volume".into(), 0.72));
+                    chart.change_points.push(ChangePoint { time: chart.timestamps[chart.timestamps.len() - 15], kind: "directional".into(), confidence: 0.85 });
+                    chart.change_points.push(ChangePoint { time: chart.timestamps[chart.timestamps.len() - 8], kind: "volume".into(), confidence: 0.72 });
                 }
                 // Demo VIX expiry alert
                 chart.vix_expiry_active = true;
@@ -6579,9 +6637,10 @@ fn render_chart_pane(
 
     // ── Change-point markers — small diamonds on the time axis ───────────
     if chart.show_change_points {
-        let ts_ref = if chart.candle_mode == CandleMode::Standard { &chart.timestamps } else { &chart.alt_timestamps };
-        let bars_ref = if chart.candle_mode == CandleMode::Standard { &chart.bars } else { &chart.alt_bars };
-        for (cp_time, cp_type, cp_conf) in &chart.change_points {
+        let ts_ref = if chart.candle_mode == CandleMode::Standard { &chart.timestamps } else { &chart.alt.timestamps };
+        let bars_ref = if chart.candle_mode == CandleMode::Standard { &chart.bars } else { &chart.alt.bars };
+        for cp in &chart.change_points {
+            let (cp_time, cp_type, cp_conf) = (&cp.time, &cp.kind, &cp.confidence);
             let bar_f = SignalDrawing::time_to_bar(*cp_time, ts_ref);
             let x = bx(bar_f);
             if x < rect.left() || x > rect.left() + cw { continue; }
@@ -6620,7 +6679,9 @@ fn render_chart_pane(
 
     // ── Trade plan — floating card + subtle chart lines ──────────────────
     if chart.show_trade_plan {
-    if let Some((dir, entry, target, stop, ref contract, rr, conviction)) = chart.trade_plan {
+    if let Some(tp) = &chart.trade_plan {
+        let (dir, entry, target, stop, contract, rr, conviction) =
+            (tp.direction, tp.entry, tp.target, tp.stop, &tp.contract, tp.rr, tp.conviction);
         let entry_y = py(entry);
         let target_y = py(target);
         let stop_y = py(stop);
@@ -7973,16 +8034,16 @@ fn render_chart_pane(
     //   2nd click (a tool already active) → open the favorites picker at cursor
     //   Click while picker is open → close it
     if ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Middle)) && pointer_in_pane {
-        if chart.draw_picker_open {
-            chart.draw_picker_open = false;
+        if chart.draw_picker.open {
+            chart.draw_picker.open = false;
         } else if chart.draw_tool.is_empty() {
             chart.draw_tool = "trendline".to_string();
             chart.pending_pt = None; chart.pending_pt2 = None; chart.pending_pts.clear();
         } else {
             // Open picker at the cursor position
             if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
-                chart.draw_picker_pos = pos;
-                chart.draw_picker_open = true;
+                chart.draw_picker.pos = pos;
+                chart.draw_picker.open = true;
             }
         }
     }
@@ -8002,11 +8063,11 @@ fn render_chart_pane(
         i.key_pressed(egui::Key::D) && !i.modifiers.command && !i.modifiers.ctrl
     });
     if (alt_click || d_pressed) && pointer_in_pane {
-        if chart.draw_picker_open {
-            chart.draw_picker_open = false;
+        if chart.draw_picker.open {
+            chart.draw_picker.open = false;
         } else if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
-            chart.draw_picker_pos = pos;
-            chart.draw_picker_open = true;
+            chart.draw_picker.pos = pos;
+            chart.draw_picker.open = true;
             // Opt+click drag-starts a new drawing on the underlying pointer
             // press — clear pending-state so the picker click doesn't begin
             // a phantom line.
@@ -8188,7 +8249,7 @@ fn render_chart_pane(
                 }
 
                 // OHLC tooltip (togglable — hidden when footprint is active)
-                if chart.ohlc_tooltip && !chart.show_footprint && !chart.draw_picker_open {
+                if chart.ohlc_tooltip && !chart.show_footprint && !chart.draw_picker.open {
                     if let Some(bar_data) = chart.bars.get(bar_idx) {
                         let tooltip_x = pos.x + 15.0;
                         let tooltip_y = pos.y - 5.0;
@@ -9009,26 +9070,8 @@ fn render_chart_pane(
                             }
                         });
                 }
-                // Magnet snap — moved from the top toolbar.
-                {
-                    let r = ToolBarButton::icon(Icon::MAGNET)
-                        .active(cur_magnet)
-                        .show(ui, t);
-                    if r.clicked() {
-                        new_magnet = Some(!cur_magnet);
-                    }
-                }
-                // Hit-alert toggle (trendline/swing hit detection flash) —
-                // moved from the top toolbar; Shift fans out via publish_toggle.
-                {
-                    let r = ToolBarButton::icon(Icon::LINE_SEGMENT)
-                        .active(cur_hit)
-                        .show(ui, t);
-                    if r.clicked() {
-                        let shift = ui.input(|i| i.modifiers.shift);
-                        new_hit = Some((!cur_hit, shift || cur_broadcast));
-                    }
-                }
+                // (Magnet snap + hit-alert toggle relocated to the toolbar /
+                //  toolnav — see top_nav::render_chart_controls.)
                 // Trendline filter — moved from the top toolbar.
                 {
                     let r = ToolBarButton::icon(Icon::FUNNEL)
@@ -9063,7 +9106,7 @@ fn render_chart_pane(
         if let Some(mode) = new_candle {
             if mode != chart.candle_mode {
                 chart.candle_mode = mode;
-                chart.alt_bars_dirty = true;
+                chart.alt.dirty = true;
                 chart.indicator_bar_count = 0;
             }
         }
@@ -9509,7 +9552,7 @@ fn render_chart_pane(
             }
             chart.dragging_drawing = None;
         }
-        if chart.measuring { chart.measuring = false; chart.measure_start = None; chart.measure_active = false; }
+        if chart.measure.active { chart.measure.active = false; chart.measure.start = None; chart.measure.mode = false; }
     }
 
     // ── PRIORITY 0: Alert badge PLACE/X click handling (overlay on top of everything) ──
@@ -9850,7 +9893,7 @@ fn render_chart_pane(
     // ── PRIORITY 2: Modal tools ─────────────────────────────────────────
 
     // 2a: Measure tool (shift+drag or context menu)
-    if !event_consumed && (shift_held || chart.measure_active) && chart.draw_tool.is_empty() {
+    if !event_consumed && (shift_held || chart.measure.mode) && chart.draw_tool.is_empty() {
         // Set cursor unconditionally whenever measure is armed — even if pointer hasn't entered pane yet
         crate::chart_renderer::ui::style::cursor::modal(ui, egui::CursorIcon::Crosshair);
         if let Some(pos) = hover_pos {
@@ -9858,13 +9901,13 @@ fn render_chart_pane(
             let price_f = pos_to_price(pos);
 
             if ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary)) && in_chart_body {
-                chart.measure_start = Some((bar_f, price_f));
-                chart.measuring = true;
+                chart.measure.start = Some((bar_f, price_f));
+                chart.measure.active = true;
             }
 
-            if chart.measuring {
+            if chart.measure.active {
                 event_consumed = true;
-                if let Some((sb, sp)) = chart.measure_start {
+                if let Some((sb, sp)) = chart.measure.start {
                     let start_pos = egui::pos2(bx(sb), py(sp));
                     let end_pos = egui::pos2(bx(bar_f), py(price_f));
 
@@ -9919,9 +9962,9 @@ fn render_chart_pane(
                 }
 
                 if ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary)) {
-                    chart.measuring = false;
-                    chart.measure_start = None;
-                    chart.measure_active = false;
+                    chart.measure.active = false;
+                    chart.measure.start = None;
+                    chart.measure.mode = false;
                 }
             }
         }
@@ -10574,8 +10617,8 @@ fn render_chart_pane(
             } else if zone == Zone::YAxis && !chart.floating_order_panes.is_empty() {
                 // ── Click-on-price: set limit order price from Y-axis click ──
                 let clicked_price = py_inv(pos.y);
-                chart.order_limit_price = format!("{:.2}", clicked_price);
-                chart.order_market = false;
+                chart.order_panel.limit_price = format!("{:.2}", clicked_price);
+                chart.order_panel.market = false;
             }
         }
     }
@@ -10713,7 +10756,7 @@ fn render_chart_pane(
 
     // ── PRIORITY 7: Hover cursors (uses cached hover_hit / hover_order) ──
     if !event_consumed && pointer_in_pane && chart.draw_tool.is_empty()
-        && !chart.measure_active && !chart.zoom_selecting {
+        && !chart.measure.mode && !chart.zoom_selecting {
         if in_xaxis {
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
         } else if in_yaxis {
@@ -10747,10 +10790,10 @@ fn render_chart_pane(
     // winit on Windows doesn't support ZoomIn cursor (falls back to arrow) and Crosshair
     // is just a hairline +. We hide the system cursor and paint a phosphor icon at the
     // pointer position for a proper visual signal of the active tool.
-    if chart.measure_active || chart.measuring || chart.zoom_selecting {
+    if chart.measure.mode || chart.measure.active || chart.zoom_selecting {
         ui.ctx().set_cursor_icon(egui::CursorIcon::None);
         if let Some(p) = hover_pos {
-            if in_chart_body || chart.measure_active || chart.zoom_selecting {
+            if in_chart_body || chart.measure.mode || chart.zoom_selecting {
                 let (icon, icon_color) = if chart.zoom_selecting {
                     (Icon::MAGNIFYING_GLASS_PLUS, t.accent)
                 } else {
@@ -11084,8 +11127,8 @@ fn render_chart_pane(
     }
 
     // ── Drawing-tool picker (opened by 2nd middle-click) ────────────────────
-    if chart.draw_picker_open {
-        let pos = chart.draw_picker_pos;
+    if chart.draw_picker.open {
+        let pos = chart.draw_picker.pos;
         let picker_out = crate::chart_renderer::ui::widgets::drawing::show_drawing_tool_picker(
             ctx, t, chart, watchlist, pane_idx, pos,
         );
@@ -11097,7 +11140,7 @@ fn render_chart_pane(
                 watchlist.draw_favorites.push(tool);
             }
         }
-        if picker_out.close { chart.draw_picker_open = false; }
+        if picker_out.close { chart.draw_picker.open = false; }
     }
 
     span_end(); // interaction
@@ -11172,7 +11215,7 @@ fn drawing_label(tool: &str) -> &'static str {
 fn drawing_is_active(tool: &str, chart: &Chart) -> bool {
     match tool {
         "magnifier" => chart.zoom_selecting,
-        "measure" => chart.measure_active,
+        "measure" => chart.measure.mode,
         _ => false,
     }
 }
@@ -11187,7 +11230,7 @@ fn apply_draw_tool(tool: &str, chart: &mut Chart) {
             chart.draw_tool.clear();
         }
         "measure" => {
-            chart.measure_active = !chart.measure_active;
+            chart.measure.mode = !chart.measure.mode;
             chart.draw_tool.clear();
         }
         _ => { chart.draw_tool = tool.to_string(); }
@@ -11401,8 +11444,8 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                             strike, last, bid, ask, volume: vol, oi, iv, itm, contract,
                         }).collect()
                     };
-                    watchlist.chain_0dte = (to_rows(c0), to_rows(p0));
-                    watchlist.chain_far  = (to_rows(cf), to_rows(pf));
+                    watchlist.chain_0dte = crate::chart_renderer::gpu::OptionChain { calls: to_rows(c0), puts: to_rows(p0) };
+                    watchlist.chain_far  = crate::chart_renderer::gpu::OptionChain { calls: to_rows(cf), puts: to_rows(pf) };
                     // Throttled log: emit only when the summary changes or
                     // ≥5s elapsed. Was firing every frame at 60+ Hz.
                     {
@@ -11411,15 +11454,15 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                         let m = LAST.get_or_init(|| Mutex::new((String::new(), std::time::Instant::now() - std::time::Duration::from_secs(60))));
                         let key = format!("{}:{}c/{}p:{}c/{}p:{:.2}:{}",
                             sym,
-                            watchlist.chain_0dte.0.len(), watchlist.chain_0dte.1.len(),
-                            watchlist.chain_far.0.len(), watchlist.chain_far.1.len(),
+                            watchlist.chain_0dte.calls.len(), watchlist.chain_0dte.puts.len(),
+                            watchlist.chain_far.calls.len(), watchlist.chain_far.puts.len(),
                             spot0, cached.len());
                         let mut g = m.lock().unwrap();
                         if g.0 != key || g.1.elapsed() >= std::time::Duration::from_secs(5) {
                             crate::apex_log!("chain.refresh",
                                 "{}: 0DTE={}c/{}p, far(dte={})={}c/{}p, spot={:.2}, cache={} rows",
-                                sym, watchlist.chain_0dte.0.len(), watchlist.chain_0dte.1.len(),
-                                far_dte, watchlist.chain_far.0.len(), watchlist.chain_far.1.len(),
+                                sym, watchlist.chain_0dte.calls.len(), watchlist.chain_0dte.puts.len(),
+                                far_dte, watchlist.chain_far.calls.len(), watchlist.chain_far.puts.len(),
                                 spot0, cached.len());
                             g.0 = key; g.1 = std::time::Instant::now();
                         }
@@ -11443,8 +11486,8 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
             }
             if p.symbol.is_empty() { continue; }
             let spot = watchlist.chain_underlying_price;
-            let calls = if !watchlist.chain_0dte.0.is_empty() { &watchlist.chain_0dte.0 }
-                        else { &watchlist.chain_far.0 };
+            let calls = if !watchlist.chain_0dte.calls.is_empty() { &watchlist.chain_0dte.calls }
+                        else { &watchlist.chain_far.calls };
             if let Some(atm) = calls.iter()
                 .min_by(|a, b| (a.strike - spot).abs()
                     .partial_cmp(&((b.strike - spot).abs()))
@@ -11561,18 +11604,55 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
     #[cfg(not(feature = "gpu_chart_v2"))]
     let central_frame = egui::Frame::NONE.fill(t.bg);
     egui::CentralPanel::default().frame(central_frame).show(ctx, |ui| {
-        let full_rect = ui.available_rect_before_wrap();
-        let actual_count = layout.max_panes().min(panes.len());
+        // Shell region (floating-card chrome): when the active style sets
+        // region_gap > 0 (Aperture/Glass), inset the whole workspace by that
+        // gap so it floats as a single card separated from the toolbar and side
+        // rail. Panes INSIDE stay contiguous (pane_gap is 0 for those styles).
+        // Surgical: a 4-line inset + one border paint; the rest of the workspace
+        // layout is unchanged. (Minimal sanctioned core.rs touch.)
+        let full_rect = {
+            let raw = ui.available_rect_before_wrap();
+            let rg = crate::chart_renderer::ui::style::region_gap();
+            if rg > 0.0 {
+                let inset = raw.shrink(rg);
+                crate::chart_renderer::ui::style::paint_region_card(ui.painter(), inset, t);
+                inset
+            } else {
+                raw
+            }
+        };
+        // P17 #1 — ensure pane_ids tracks panes Vec (lazy migration for
+        // workspaces that loaded before P17). MUST run before pane_layout
+        // materialization so the initial tree can use stable IDs.
+        crate::chart_renderer::gpu::ensure_pane_ids_synced(watchlist, panes.len());
+        // Phase 1: lazily materialize PaneLayout from the current legacy
+        // template on first frame after load. Once set, the tree becomes the
+        // canonical source of pane geometry; legacy fractions remain in the
+        // struct for backwards-compat / fallback only.
+        let legacy_count = layout.max_panes().min(panes.len());
+        crate::chart_renderer::gpu::ensure_pane_layout(watchlist, *layout, legacy_count);
+        // `actual_count` reflects the LIVE pane count. When PaneLayout is in
+        // play it can exceed `Layout::max_panes()` (e.g. user picked "1"
+        // then split twice → 3 panes). Without this, visible_count stayed
+        // at 1 and the divider overlays were silently skipped.
+        let actual_count = if let Some(ref pl) = watchlist.pane_layout {
+            pl.pane_count()
+        } else {
+            legacy_count
+        };
+        let gap = crate::chart_renderer::ui::style::current().pane_gap;
         let (visible_count, pane_rects) = if let Some(max_idx) = watchlist.maximized_pane {
             if max_idx < actual_count {
                 // Maximized: show only one pane fullscreen
                 (1, vec![full_rect])
             } else {
                 watchlist.maximized_pane = None;
-                (actual_count, layout.pane_rects(full_rect, actual_count, watchlist.pane_split_h, watchlist.pane_split_v, watchlist.pane_split_h2, watchlist.pane_split_v2, watchlist.pane_split_v3, watchlist.pane_split_v4, watchlist.pane_split_v5, watchlist.pane_split_v6))
+                (actual_count, crate::chart_renderer::gpu::compute_pane_rects_for_frame(
+                    watchlist, *layout, full_rect, actual_count, gap))
             }
         } else {
-            (actual_count, layout.pane_rects(full_rect, actual_count, watchlist.pane_split_h, watchlist.pane_split_v, watchlist.pane_split_h2, watchlist.pane_split_v2, watchlist.pane_split_v3, watchlist.pane_split_v4, watchlist.pane_split_v5, watchlist.pane_split_v6))
+            (actual_count, crate::chart_renderer::gpu::compute_pane_rects_for_frame(
+                watchlist, *layout, full_rect, actual_count, gap))
         };
 
         // Compute max pane header height (tabs make headers taller)
@@ -11593,8 +11673,10 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
             }
         }
 
-        // ── Pane divider drag handles (geometry-based, works for all layouts) ──
-        if visible_count > 1 {
+        // ── Legacy pane divider drag handles (geometry-based) ────────────
+        // Active only when pane_layout is None (older workspaces that haven't
+        // been materialized yet, or future paths that opt out of the tree).
+        if visible_count > 1 && watchlist.pane_layout.is_none() {
             // Find unique vertical divider X positions (between side-by-side panes)
             let mut v_dividers: Vec<f32> = Vec::new();
             // Find unique horizontal divider Y positions (between stacked panes)
@@ -11766,13 +11848,197 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
             }
         }
 
-        for render_i in 0..visible_count {
-        // When maximized, render the maximized pane using rect index 0
-        let pane_idx = if let Some(max_idx) = watchlist.maximized_pane { max_idx } else { render_i };
-        // All pane types go through render_chart_pane which renders the header/tabs first,
-        // then dispatches to the type-specific content
-        render_chart_pane(ui, ctx, panes, pane_idx, active_pane, visible_count, &pane_rects, theme_idx, watchlist, &account_data_cached);
+        // Phase 1c: when PaneLayout is active, the leaf chart-indices may be
+        // sparse (a split appends a new chart to Vec<Chart> so indices can
+        // grow beyond visible_count). Iterate the actual leaf slots instead
+        // of 0..visible_count. Legacy path is dense, so 0..visible_count
+        // there. Maximized pane still wins for both paths.
+        // P17 #6 — defensive prune. PaneSlot is now a stable u64 id; a slot
+        // whose id isn't in pane_ids means the chart was removed without the
+        // tree being told. Close those leaves so the tree self-heals.
+        if watchlist.pane_layout.is_some() {
+            let dead: Vec<u64> = {
+                let pl = watchlist.pane_layout.as_ref().unwrap();
+                let live_ids: std::collections::HashSet<u64> = watchlist.pane_ids.iter().copied().collect();
+                pl.iter_slots()
+                    .filter_map(|(_id, slot)| if !live_ids.contains(&slot) { Some(slot) } else { None })
+                    .collect()
+            };
+            if !dead.is_empty() {
+                let pl = watchlist.pane_layout.as_mut().unwrap();
+                for slot in dead { let _ = pl.close_pane(slot); }
+            }
+        }
+        // Render order: maximize > pane_layout (id→idx translation) > legacy.
+        let render_indices: Vec<usize> = if let Some(max_idx) = watchlist.maximized_pane {
+            vec![max_idx]
+        } else if let Some(ref pl) = watchlist.pane_layout {
+            pl.iter_slots()
+                .filter_map(|(_id, slot)| crate::chart_renderer::gpu::chart_idx_for(watchlist, slot))
+                .collect()
+        } else {
+            (0..visible_count).collect()
+        };
+        for &pane_idx in &render_indices {
+            if pane_idx >= panes.len() { continue; }
+            // All pane types go through render_chart_pane which renders the header/tabs first,
+            // then dispatches to the type-specific content
+            render_chart_pane(ui, ctx, panes, pane_idx, active_pane, visible_count, &pane_rects, theme_idx, watchlist, &account_data_cached);
         } // end for pane_idx
+
+        // ── PaneLayout divider drag overlays (Phase 1) ───────────────────
+        // Painted AFTER per-pane render so the highlight sits on top of the
+        // pane content and egui's hit-test gives the divider input priority
+        // (egui processes interactions in reverse paint order).
+        if visible_count > 1 && watchlist.pane_layout.is_some() {
+            let pl_t = crate::chart_renderer::theme_impl::theme_to_portable(t);
+            let _changed = {
+                let pl = watchlist.pane_layout.as_mut().expect("checked some");
+                let gap_overlay = crate::chart_renderer::ui::style::current().pane_gap;
+                pl.show_overlays(ui, full_rect, gap_overlay, &pl_t)
+            };
+        }
+
+        // ── P17 #3 + #10 — pane-layout undo/redo keyboard shortcuts ─────
+        // Ctrl+Shift+Alt+Z undo, Ctrl+Shift+Alt+Y redo — namespaced so they
+        // don't fight with text-field undo or the chart's drawing-undo
+        // (Ctrl+Z) shortcuts. The triple modifier makes it discoverable
+        // without being accidentally hit while typing.
+        let kb = ctx.input(|i| {
+            let m = i.modifiers;
+            let undo = m.command && m.shift && m.alt && i.key_pressed(egui::Key::Z);
+            let redo = m.command && m.shift && m.alt && i.key_pressed(egui::Key::Y);
+            (undo, redo)
+        });
+        if kb.0 { let _ = crate::chart_renderer::gpu::pane_layout_undo(watchlist); }
+        if kb.1 { let _ = crate::chart_renderer::gpu::pane_layout_redo(watchlist); }
+
+        // ── Phase 1c: split popup + close-pane queue ─────────────────────
+        // Render the H/V picker popup if the user clicked any pane's split
+        // button this/last frame. Anchor it just below the active pane's
+        // top-right corner (the split button's natural neighbourhood).
+        if let Some(popup_pane_idx) = watchlist.pane_split_popup_for {
+            if popup_pane_idx < pane_rects.len() {
+                let anchor_rect = pane_rects[popup_pane_idx];
+                let popup_pos = egui::pos2(anchor_rect.right() - 140.0, anchor_rect.top() + 28.0);
+                let portable_t = crate::chart_renderer::theme_impl::theme_to_portable(t);
+                let mut chose_axis: Option<crate::ui_kit::widgets::pane_grid::Axis> = None;
+                let mut close_popup = false;
+                let area_resp = egui::Area::new(egui::Id::new(("pane_split_popup", popup_pane_idx)))
+                    .fixed_pos(popup_pos)
+                    .order(egui::Order::Foreground)
+                    .show(ctx, |ui| {
+                        crate::ui_kit::widgets::OutlinedBox::new()
+                            .fill(t.toolbar_bg)
+                            .border(crate::chart_renderer::ui::style::color_alpha(
+                                t.toolbar_border, crate::chart_renderer::ui::style::alpha_strong()))
+                            .radius_sm()
+                            .padding(crate::chart_renderer::ui::style::gap_sm())
+                            .show(ui, &portable_t, |ui| {
+                                ui.set_min_width(132.0);
+                                let h_resp = crate::ui_kit::widgets::Button::new("Split Horizontal")
+                                    .variant(crate::ui_kit::widgets::tokens::Variant::Ghost)
+                                    .size(crate::ui_kit::widgets::tokens::Size::Sm)
+                                    .full_width(true)
+                                    .show(ui, &portable_t);
+                                if h_resp.clicked() {
+                                    chose_axis = Some(crate::ui_kit::widgets::pane_grid::Axis::Horizontal);
+                                }
+                                let v_resp = crate::ui_kit::widgets::Button::new("Split Vertical")
+                                    .variant(crate::ui_kit::widgets::tokens::Variant::Ghost)
+                                    .size(crate::ui_kit::widgets::tokens::Size::Sm)
+                                    .full_width(true)
+                                    .show(ui, &portable_t);
+                                if v_resp.clicked() {
+                                    chose_axis = Some(crate::ui_kit::widgets::pane_grid::Axis::Vertical);
+                                }
+                            });
+                    });
+                // Click-outside or Escape closes the popup.
+                let popup_rect = area_resp.response.rect;
+                if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    close_popup = true;
+                }
+                if ctx.input(|i| i.pointer.any_pressed()) {
+                    if let Some(p) = ctx.input(|i| i.pointer.interact_pos()) {
+                        if !popup_rect.contains(p) {
+                            close_popup = true;
+                        }
+                    }
+                }
+                if let Some(axis) = chose_axis {
+                    // P17 #14 — global pane limit. Refuse split if it would
+                    // push the count past the cap.
+                    const MAX_TOTAL_PANES: usize = 16;
+                    if panes.len() >= MAX_TOTAL_PANES {
+                        watchlist.pane_split_popup_for = None;
+                    } else {
+                        crate::chart_renderer::gpu::pane_layout_record_undo(watchlist);
+                        let source_theme = panes[popup_pane_idx].theme_idx;
+                        let source_id = watchlist.pane_ids.get(popup_pane_idx).copied();
+                        // P17 #1 — push_chart_with_id keeps panes & pane_ids
+                        // in lockstep and returns the freshly minted ID to
+                        // use as the new leaf's PaneSlot.
+                        let mut new_chart = crate::chart_renderer::gpu::Chart::new();
+                        new_chart.theme_idx = source_theme;
+                        let new_id = crate::chart_renderer::gpu::push_chart_with_id(
+                            panes, watchlist, new_chart);
+                        if let (Some(src_id), Some(pl)) = (source_id, watchlist.pane_layout.as_mut()) {
+                            let _ = pl.split_pane(src_id, axis, new_id);
+                        }
+                        watchlist.pane_split_popup_for = None;
+                    }
+                } else if close_popup {
+                    watchlist.pane_split_popup_for = None;
+                }
+            } else {
+                // Stale pane_idx (pane was closed since the popup opened).
+                watchlist.pane_split_popup_for = None;
+            }
+        }
+
+        // Drain queued pane-close requests. Remove in descending order so
+        // earlier indices stay valid as later ones are removed. If the
+        // active pane was closed, snap active_pane to a valid index.
+        crate::chart_renderer::gpu::PENDING_PANE_CLOSE.with(|q| {
+            let mut closes = q.borrow_mut();
+            if !closes.is_empty() {
+                closes.sort_unstable_by(|a, b| b.cmp(a)); // descending
+                for &idx in closes.iter() {
+                    if idx < panes.len() && panes.len() > 1 {
+                        // P17 #1 — remove_chart_at keeps pane_ids in lockstep
+                        // and returns the dead id so we can drop the matching
+                        // leaf from PaneLayout (which the close-button handler
+                        // usually already did, but template-truncation queues
+                        // raw indices without touching the tree first).
+                        let dead_id = crate::chart_renderer::gpu::remove_chart_at(panes, watchlist, idx);
+                        if let (Some(id), Some(pl)) = (dead_id, watchlist.pane_layout.as_mut()) {
+                            let _ = pl.close_pane(id);
+                        }
+                        // P16 fix #4 — maximize_pane is still a chart_idx
+                        // (display-time index, not stable id), so it still
+                        // needs the legacy shift fixup.
+                        if let Some(max_idx) = watchlist.maximized_pane {
+                            if max_idx == idx {
+                                watchlist.maximized_pane = None;
+                            } else if max_idx > idx {
+                                watchlist.maximized_pane = Some(max_idx - 1);
+                            }
+                        }
+                        // P16 fix #8 — active_pane is also a chart_idx.
+                        if *active_pane == idx {
+                            *active_pane = 0; // pick first remaining
+                        } else if *active_pane > idx {
+                            *active_pane -= 1;
+                        }
+                        if *active_pane >= panes.len() && !panes.is_empty() {
+                            *active_pane = panes.len() - 1;
+                        }
+                    }
+                }
+                closes.clear();
+            }
+        });
 
         // ── Cross-pane tab drag: ghost rendering + drop handling ──
         if let Some(drag) = watchlist.dragging_tab.clone() {
@@ -12081,6 +12347,30 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
         let mut open = PERF_HUD_OPEN.load(Ordering::Relaxed);
         crate::chart_renderer::ui::widgets::perf_hud::show(ctx, &mut open);
         PERF_HUD_OPEN.store(open, Ordering::Relaxed);
+    }
+
+    // ── Perf stderr logger (set APEX_PERF_LOG=1) ────────────────────────────
+    // Dumps frame time + top subsystem spans every ~120 frames so frame cost
+    // (and where it goes) can be measured from the terminal without the HUD.
+    if std::env::var_os("APEX_PERF_LOG").is_some() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static FRAME_CNT: AtomicU32 = AtomicU32::new(0);
+        let c = FRAME_CNT.fetch_add(1, Ordering::Relaxed) + 1;
+        if c % 120 == 0 {
+            let snap = crate::monitoring::current_snapshot();
+            let mut spans = snap.subsystems.spans.clone();
+            spans.sort_by(|a, b| b.1.cmp(&a.1)); // by avg_us desc
+            let top: Vec<String> = spans.iter().take(8)
+                .map(|(n, avg, _max, _last)| format!("{}={:.2}ms", n, *avg as f64 / 1000.0))
+                .collect();
+            eprintln!(
+                "[PERF] frame avg {:.2}ms ({:.0} fps) last {:.2}ms | {}",
+                snap.frames.avg_frame_us as f64 / 1000.0,
+                snap.frames.fps,
+                snap.frames.last_frame_us as f64 / 1000.0,
+                top.join("  "),
+            );
+        }
     }
 
     // ── Widget Gallery (Ctrl+Shift+G) — developer-only visual QA panel ──────

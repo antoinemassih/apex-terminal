@@ -16,6 +16,7 @@ use egui::{CornerRadius, FontId, Margin, Response, Sense, Stroke, StrokeKind, Ui
 
 use super::motion;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
 
@@ -103,7 +104,7 @@ fn paint_text_area<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, ta: TextArea<'a>
                 egui::RichText::new(lbl)
                     .monospace()
                     .size(st::font_xs())
-                    .color(theme.dim()),
+                    .color(palette_ct(theme).base(Tone::Dim)),
             );
             ui.add_space(st::gap_2xs() * 0.5);
         }
@@ -140,21 +141,21 @@ fn paint_text_area<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, ta: TextArea<'a>
         let hover_t = motion::ease_bool(ui.ctx(), id.with("hover"), hovered, motion::FAST);
         let focus_t = motion::ease_bool(ui.ctx(), id.with("focus"), focused, motion::FAST);
 
-        let border_idle = theme.border();
-        let border_hover = theme.dim();
-        let border_focus = theme.accent();
+        let border_idle = palette_ct(theme).base(Tone::Border);
+        let border_hover = palette_ct(theme).base(Tone::Dim);
+        let border_focus = palette_ct(theme).base(Tone::Accent);
 
         let mut border_col = motion::lerp_color(border_idle, border_hover, hover_t);
         border_col = motion::lerp_color(border_col, border_focus, focus_t);
 
         if invalid {
-            border_col = st::color_alpha(theme.bear(), st::alpha_active());
+            border_col = st::color_alpha(palette_ct(theme).base(Tone::Bear), st::alpha_active());
         }
 
         // ── Background + border ──
         if ui.is_rect_visible(border_rect) {
             let painter = ui.painter_at(border_rect);
-            let bg_fill = theme.surface();
+            let bg_fill = palette_ct(theme).base(Tone::Surface);
             let bg = if disabled { st::color_alpha(bg_fill, 128) } else { bg_fill };
             painter.rect_filled(border_rect, radius, bg);
             painter.rect_stroke(
@@ -174,9 +175,9 @@ fn paint_text_area<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, ta: TextArea<'a>
         }
 
         let text_col = if disabled {
-            st::color_alpha(theme.text(), 128)
+            st::color_alpha(palette_ct(theme).base(Tone::Text), 128)
         } else {
-            theme.text()
+            palette_ct(theme).base(Tone::Text)
         };
 
         // ── Inner child UI for the editor ──
@@ -218,7 +219,7 @@ fn paint_text_area<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, ta: TextArea<'a>
                 egui::Align2::LEFT_TOP,
                 placeholder,
                 FontId::proportional(font_size),
-                st::color_alpha(theme.dim(), 160),
+                st::color_alpha(palette_ct(theme).base(Tone::Dim), 160),
             );
         }
 
@@ -243,7 +244,7 @@ fn paint_text_area<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, ta: TextArea<'a>
         };
 
         if let Some(h) = helper_str {
-            let color = if invalid { theme.bear() } else { theme.dim() };
+            let color = if invalid { palette_ct(theme).base(Tone::Bear) } else { palette_ct(theme).base(Tone::Dim) };
             ui.add_space(st::gap_2xs() * 0.5);
             ui.label(
                 egui::RichText::new(h)

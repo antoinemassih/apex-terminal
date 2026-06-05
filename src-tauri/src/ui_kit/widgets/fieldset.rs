@@ -29,6 +29,7 @@
 use egui::{RichText, Sense, Stroke, Ui, Vec2};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use crate::ui_kit::tokens as st;
 
 /// Collapsible form field group with optional heading and subtitle.
@@ -91,7 +92,7 @@ impl<'a> Fieldset<'a> {
                 ui.label(
                     RichText::new(caret)
                         .size(st::font_xs())
-                        .color(st::color_alpha(theme.dim(), st::alpha_strong())),
+                        .color(st::color_alpha(palette_ct(theme).base(Tone::Dim), st::alpha_strong())),
                 );
                 ui.add_space(st::gap_xs());
             }
@@ -101,7 +102,7 @@ impl<'a> Fieldset<'a> {
                 RichText::new(self.title.to_uppercase())
                     .monospace()
                     .size(st::font_sm())
-                    .color(st::color_alpha(theme.dim(), st::alpha_strong())),
+                    .color(st::color_alpha(palette_ct(theme).base(Tone::Dim), st::alpha_strong())),
             );
         });
 
@@ -130,7 +131,7 @@ impl<'a> Fieldset<'a> {
                 Sense::hover(),
             );
             if ui.is_rect_visible(rect) {
-                let rule_col = st::color_alpha(theme.border(), st::alpha_muted());
+                let rule_col = st::color_alpha(palette_ct(theme).base(Tone::Border), st::alpha_muted());
                 ui.painter().hline(
                     rect.x_range(),
                     rect.center().y,
@@ -153,7 +154,7 @@ impl<'a> Fieldset<'a> {
                     .monospace()
                     .size(st::font_xs())
                     .italics()
-                    .color(st::color_alpha(theme.dim(), st::alpha_dim())),
+                    .color(st::color_alpha(palette_ct(theme).base(Tone::Dim), st::alpha_dim())),
             );
             ui.add_space(st::gap_xs());
         }

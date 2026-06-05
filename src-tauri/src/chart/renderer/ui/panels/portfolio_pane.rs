@@ -1,6 +1,7 @@
 //! Portfolio pane — positions table, sector breakdown, risk analytics.
 
 use egui;
+use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::chart_renderer::trading::{AccountSummary, Position};
@@ -128,7 +129,7 @@ pub(crate) fn render(
     // horizontal divider in an absolute-positioned context.
     ui.painter_at(rect).line_segment(
         [egui::pos2(inner.left(), sep_y), egui::pos2(inner.right(), sep_y)],
-        egui::Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())));
+        egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_muted())));
 
     // ── Positions table ────────────────────────────────────────────────────────
     // Hand-rolled: 7-column absolute-positioned table with per-cell colours.
@@ -175,7 +176,7 @@ pub(crate) fn render(
         if ri % 2 == 1 {
             painter.rect_filled(egui::Rect::from_min_size(
                 egui::pos2(inner.left() - 4.0, y), egui::vec2(inner.width() + 8.0, row_h)),
-                0.0, color_alpha(t.toolbar_border, alpha_faint()));
+                0.0, tint(t, Tone::Border, alpha_faint()));
         }
 
         let mut cx = inner.left();
@@ -365,9 +366,9 @@ pub(crate) fn render(
                     // Colours route through theme (bear = positive correlation,
                     // accent = negative) — no raw RGB.
                     let cell_col = if corr > 0.0 {
-                        color_alpha(t.bear, (intensity * alpha_intense() as f32) as u8)
+                        tint(t, Tone::Bear, (intensity * alpha_intense() as f32) as u8)
                     } else {
-                        color_alpha(t.accent, (intensity * alpha_intense() as f32) as u8)
+                        tint(t, Tone::Accent, (intensity * alpha_intense() as f32) as u8)
                     };
                     let cell_rect = egui::Rect::from_min_size(egui::pos2(cx, cy_pos), egui::vec2(cell_sz - 1.0, cell_sz - 1.0));
                     painter.rect_filled(cell_rect, radius_xs(), cell_col);

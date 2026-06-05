@@ -73,6 +73,9 @@ pub struct TokenSnapshot {
     pub alpha_strong: u8,
     pub alpha_active: u8,
     pub alpha_heavy:  u8,
+    /// Scrim alpha (140). Between heavy (120) and solid (200) — for
+    /// command-palette / modal-backdrop scrims (dim but don't blank).
+    pub alpha_scrim:  u8,
     pub alpha_solid:  u8,
     // Shadows.
     pub shadow_offset: f32,
@@ -88,6 +91,22 @@ pub struct TokenSnapshot {
     pub focus_ring_width: f32,   // input focus ring stroke width (px)
     pub toast_bg_alpha:   u8,    // toast bg fill alpha (glassmorphic toast)
     pub button_treatment: super::widgets::tokens::ButtonTreatment, // legacy simple_btn variant
+    /// Watchlist / list row side margin (px). 0 = flush; >0 = pill-float inset.
+    pub wl_row_side_margin: f32,
+    /// Watchlist / list row corner radius (px). 0 = no rounding; 99 = pill.
+    pub wl_row_corner_radius: u8,
+    /// Watchlist / list row hairline divider alpha. 0 = no divider.
+    pub wl_row_divider_alpha: u8,
+
+    /// Default tab treatment for ui-kit Tabs widgets (0=Line, 1=Segmented,
+    /// 2=Filled, 3=Card, 4=Pane). Populated by begin_frame from StyleSettings.
+    pub panel_tab_treatment: u8,
+    // Surface bevel — ported from the React ApexTerminalThemes mockup's
+    // inset box-shadow faces (Alto/Mariner raised, Cadence elevated cards).
+    // Populated by chart-side begin_frame() from StyleSettings.surface_bevel.
+    pub surface_bevel: crate::design_system::style_system::BevelStyle,
+    pub bevel_highlight_alpha: u8, // white inner top-edge alpha (0 = no highlight)
+    pub bevel_shadow_alpha:    u8, // black inner bottom-edge alpha (0 = no shadow)
 }
 
 /// Compile-time defaults — match every token fn's non-design-mode constant
@@ -107,7 +126,7 @@ pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
     // Alphas.
     alpha_faint: 10, alpha_ghost: 15, alpha_soft: 20, alpha_subtle: 40,
     alpha_tint: 48, alpha_muted: 60, alpha_dim: 60, alpha_line: 80,
-    alpha_strong: 80, alpha_active: 100, alpha_heavy: 120, alpha_solid: 200,
+    alpha_strong: 80, alpha_active: 100, alpha_heavy: 120, alpha_scrim: 140, alpha_solid: 200,
     // Shadows.
     shadow_offset: 2.0, shadow_alpha: 60, shadow_spread: 4.0,
     // Style-preset knobs (P5b): defaults match Aperture (the default preset).
@@ -116,6 +135,12 @@ pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
     focus_ring_width: 1.5,
     toast_bg_alpha:   235,
     button_treatment: crate::ui_kit::widgets::tokens::ButtonTreatment::SoftPill,
+    wl_row_side_margin: 0.0, wl_row_corner_radius: 0, wl_row_divider_alpha: 0,
+    panel_tab_treatment: 0, // Line
+    // Bevel defaults: flat/none (no bevel until the chart-app pushes a themed preset).
+    surface_bevel:         crate::design_system::style_system::BevelStyle::None,
+    bevel_highlight_alpha: 0,
+    bevel_shadow_alpha:    0,
 };
 
 thread_local! {
@@ -171,6 +196,7 @@ pub fn frame_tokens() -> TokenSnapshot {
 #[inline] pub fn alpha_strong()  -> u8 { frame_tokens().alpha_strong }
 #[inline] pub fn alpha_active()  -> u8 { frame_tokens().alpha_active }
 #[inline] pub fn alpha_heavy()   -> u8 { frame_tokens().alpha_heavy }
+#[inline] pub fn alpha_scrim()   -> u8 { frame_tokens().alpha_scrim }
 #[inline] pub fn alpha_solid()   -> u8 { frame_tokens().alpha_solid }
 
 // ─── Monospace font helpers ──────────────────────────────────────────────────
@@ -700,6 +726,61 @@ pub fn color_alpha_mul(c: Color32, factor: f32) -> Color32 {
 #[inline] pub fn color_dim(c: Color32) -> Color32 { c.gamma_multiply(0.4) }
 /// 0.3× — barely visible (decorative chart rules, watermarks).
 #[inline] pub fn color_very_dim(c: Color32) -> Color32 { c.gamma_multiply(0.3) }
+
+// ─── Style-driven tab treatment ──────────────────────────────────────────────
+
+/// Returns the default `TabTreatment` for the active style preset, read from
+/// the per-frame `TokenSnapshot`. Call sites that DON'T chain `.treatment()`
+/// will pick this up automatically when constructors use it as their default.
+/// Falls back to `TabTreatment::Line` if the frame hasn't been initialized.
+#[inline]
+pub fn style_tab_treatment() -> crate::ui_kit::widgets::TabTreatment {
+    use crate::ui_kit::widgets::TabTreatment;
+    match frame_tokens().panel_tab_treatment {
+        1 => TabTreatment::Segmented,
+        2 => TabTreatment::Filled,
+        3 => TabTreatment::Card,
+        4 => TabTreatment::Pane,
+        _ => TabTreatment::Line,
+    }
+}
+
+// ─── Surface bevel (portable) ────────────────────────────────────────────────
+//
+// Portable analogue of the React ApexTerminalThemes `box-shadow: inset …`
+// faces used by Alto/Mariner/Cadence. Reads from the per-frame TokenSnapshot
+// so the chart-app's themed `surface_bevel` knob drives it — no chart-side
+// import required. Guards against degenerate rects (NaN / sub-pixel) so it
+// is safe to call unconditionally at every button/header paint site.
+
+/// Paint a 1px inner highlight on the top edge + 1px inner shadow on the
+/// bottom edge of `rect`. No-op when the active style's bevel is `None`, or
+/// the rect is degenerate. Tints are palette-independent (white/black with
+/// theme-tuned alphas), matching the React `rgba(255…)/rgba(0…)` CSS values.
+pub fn paint_bevel_portable(painter: &egui::Painter, rect: egui::Rect, radius: egui::CornerRadius) {
+    use crate::design_system::style_system::BevelStyle;
+    let snap = frame_tokens();
+    let hi = Color32::from_rgba_unmultiplied(255, 255, 255, snap.bevel_highlight_alpha);
+    let sh = Color32::from_rgba_unmultiplied(0,   0,   0,   snap.bevel_shadow_alpha);
+    let (top_col, bot_col) = match snap.surface_bevel {
+        BevelStyle::None  => return,
+        BevelStyle::Raised => (hi, sh),
+        BevelStyle::Inset  => (sh, hi),
+    };
+    if !rect.is_finite() || rect.width() < 1.0 || rect.height() < 1.0 { return; }
+    let r = radius.nw.max(radius.ne).max(radius.sw).max(radius.se) as f32;
+    let inset = (r * 0.5).clamp(0.0, 3.0);
+    let y_top = rect.top() + 0.5;
+    let y_bot = rect.bottom() - 0.5;
+    painter.line_segment(
+        [egui::pos2(rect.left() + inset, y_top), egui::pos2(rect.right() - inset, y_top)],
+        egui::Stroke::new(1.0, top_col),
+    );
+    painter.line_segment(
+        [egui::pos2(rect.left() + inset, y_bot), egui::pos2(rect.right() - inset, y_bot)],
+        egui::Stroke::new(1.0, bot_col),
+    );
+}
 
 // ─── User token-scale overrides (P5) ─────────────────────────────────────────
 //

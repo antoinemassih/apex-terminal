@@ -26,6 +26,8 @@
 #![allow(dead_code)]
 
 use std::collections::{HashSet, VecDeque};
+use crate::chart_renderer::ui::style::tint;
+use crate::ui_kit::sx::Tone;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -231,8 +233,8 @@ pub fn draw(ctx: &egui::Context, screen_rect: egui::Rect) {
                 let t = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
                 ui.set_min_size(egui::vec2(TOAST_W, TOAST_H));
                 egui::Frame::popup(ui.style())
-                    .fill(color_alpha(t.toolbar_bg, alpha_solid()))
-                    .stroke(egui::Stroke::new(stroke_std(), color_alpha(t.toolbar_border, alpha_muted())))
+                    .fill(tint(&t, Tone::Surface, alpha_solid()))
+                    .stroke(egui::Stroke::new(stroke_std(), tint(&t, Tone::Border, alpha_muted())))
                     .corner_radius(radius_sm())
                     .shadow(shadow_tooltip_themed(&t))
                     .inner_margin(8.0)

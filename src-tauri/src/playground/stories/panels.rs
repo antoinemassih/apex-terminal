@@ -8,7 +8,7 @@
 //!   PanelListRow + selected / hover states (2)
 
 use _scaffold_lib::ui_kit::widgets::{
-    PanelCard, PanelKeyValueRow, PanelListRow, PanelSection,
+    OutlinedBox, PanelCard, PanelKeyValueRow, PanelListRow, PanelSection,
     PanelTone,
     theme::ComponentTheme,
 };
@@ -151,6 +151,61 @@ pub fn show<T: ComponentTheme>(ui: &mut Ui, theme: &T) {
             .tone(PanelTone::Accent)
             .show(ui, theme);
     });
+
+    ui.add_space(8.0);
+
+    // ── OutlinedBox (P6.4) ─────────────────────────────────────────────────
+    rule(ui, theme);
+    story_heading(ui, theme, "OutlinedBox");
+    ui.add_space(6.0);
+
+    // Default — theme.bg fill, theme.border at stroke_std
+    OutlinedBox::new().show(ui, theme, |ui| {
+        ui.label(egui::RichText::new("Default OutlinedBox").color(theme.text()).size(11.0));
+    });
+    ui.add_space(6.0);
+
+    // .hairline() — thinner stroke for low-emphasis cards
+    OutlinedBox::new().hairline().show(ui, theme, |ui| {
+        ui.label(egui::RichText::new(".hairline() — thin stroke").color(theme.text()).size(11.0));
+    });
+    ui.add_space(6.0);
+
+    // .bold_border() — stroke_bold for high-emphasis cards
+    OutlinedBox::new().bold_border().show(ui, theme, |ui| {
+        ui.label(egui::RichText::new(".bold_border() — stroke_bold").color(theme.text()).size(11.0));
+    });
+    ui.add_space(6.0);
+
+    // .borderless() — fill-only band for header surfaces
+    OutlinedBox::new()
+        .fill(theme.header_surface())
+        .borderless()
+        .show(ui, theme, |ui| {
+            ui.label(egui::RichText::new(".borderless() + fill(header_surface)").color(theme.text()).size(11.0));
+        });
+    ui.add_space(6.0);
+
+    // .square() — no corner radius (FloatingPaneChrome / stepper aesthetic)
+    OutlinedBox::new().square().show(ui, theme, |ui| {
+        ui.label(egui::RichText::new(".square() — hard corners").color(theme.text()).size(11.0));
+    });
+    ui.add_space(6.0);
+
+    // .radius_lg() — pronounced rounding
+    OutlinedBox::new().radius_lg().padding(12.0).show(ui, theme, |ui| {
+        ui.label(egui::RichText::new(".radius_lg().padding(12.0)").color(theme.text()).size(11.0));
+    });
+    ui.add_space(6.0);
+
+    // Tinted border via .border(custom_color)
+    OutlinedBox::new()
+        .border(theme.accent())
+        .bold_border()
+        .show(ui, theme, |ui| {
+            ui.label(egui::RichText::new(".border(theme.accent()).bold_border()")
+                .color(theme.accent()).size(11.0));
+        });
 
     ui.add_space(8.0);
 }

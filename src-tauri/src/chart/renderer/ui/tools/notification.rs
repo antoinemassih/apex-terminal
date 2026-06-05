@@ -12,7 +12,33 @@
 //! so repeated pushes from multiple panes in one frame surface as a single
 //! notification.
 
+use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::time::Instant;
+
+/// Capped history of notifications, newest at the back. Fed from the single
+/// toast-drain site (`gpu.rs`) so the bottom dock's Notifications tab can show
+/// a persistent log of everything that flashed as a transient toast. Lives on
+/// the render thread (same as `PENDING_TOASTS`), so a `thread_local` suffices.
+const HISTORY_CAP: usize = 300;
+thread_local! {
+    static HISTORY: RefCell<VecDeque<Notification>> = const { RefCell::new(VecDeque::new()) };
+}
+
+/// Append freshly-drained notifications to the history log (oldest trimmed).
+pub fn record_history(items: &[Notification]) {
+    if items.is_empty() { return; }
+    HISTORY.with(|h| {
+        let mut q = h.borrow_mut();
+        for n in items { q.push_back(n.clone()); }
+        while q.len() > HISTORY_CAP { q.pop_front(); }
+    });
+}
+
+/// Snapshot the notification history, newest first.
+pub fn history_snapshot() -> Vec<Notification> {
+    HISTORY.with(|h| h.borrow().iter().rev().cloned().collect())
+}
 
 /// Severity level for a `Notification`.  Maps to a `Theme` colour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

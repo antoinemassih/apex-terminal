@@ -41,15 +41,46 @@
 #![allow(dead_code, unused_imports)]
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2, pos2};
+use crate::chart_renderer::ui::style::tint;
+use crate::ui_kit::sx::Tone;
 
 use super::super::style::{
     alpha_active, alpha_ghost, alpha_line, alpha_muted, alpha_solid, alpha_subtle, alpha_tint,
     color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, contrast_fg, current, drawing_palette, font_md, font_md_plus, font_sm, gap_md, gap_sm, gap_xs,
+    paint_bevel, paint_gradient_highlight, current_style_bevel_hi,
     radius_sm, radius_md, stroke_hair, stroke_std, stroke_thin,
 };
 use crate::ui_kit::icons::Icon;
 
 type Theme = super::super::super::gpu::Theme;
+
+// ─── Button-state primitives ─────────────────────────────────────────────────
+
+/// Collapsed show+active pair for each toggleable pane-header button.
+/// Replaces the previous 10× `show_X: bool` + `X_active: bool` flat fields.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ButtonState {
+    pub(crate) show:   bool,
+    pub(crate) active: bool,
+}
+
+/// Index into the `PainterPaneHeader::buttons` array. Also the discriminant of
+/// `PainterPaneHeaderResponse::clicked_button`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(usize)]
+pub enum PaneBtn {
+    Template  = 0,
+    Order     = 1,
+    Dom       = 2,
+    Options   = 3,
+    Overlay   = 4,
+    Drawing   = 5, // kept for compatibility; never shown by default
+    Layers    = 6,
+    Expand    = 7,
+    Split     = 8,
+    ClosePanе = 9,
+}
+const PANE_BTN_COUNT: usize = 10;
 
 // ─── Sizing constants ────────────────────────────────────────────────────────
 // Promoted from inline magic numbers. Grouped here so visual tuning lands in one place.
@@ -75,6 +106,8 @@ const ICON_BTN_W_DOM: f32 = 52.0;
 const ICON_BTN_W_OPTIONS: f32 = 68.0;
 const ICON_BTN_W_OV: f32 = 80.0;
 const ICON_BTN_W_DRAWING: f32 = 60.0;
+/// Width for the LAYERS (object-tree) button.
+const ICON_BTN_W_LAYERS: f32 = 60.0;
 /// Maximum height for option side / DTE badges.
 const BADGE_HEIGHT_MAX: f32 = 16.0;
 /// Vertical inset reserved around badges (top + bottom combined).
@@ -109,29 +142,33 @@ fn badge_fg(theme: &Theme) -> Color32 {
 /// Tri-state color tuple used by every painter-mode button in the header.
 /// Returns `(bg, fg, border)`. Inactive / hovered / active resolve to the same
 /// alpha tiers across +Tab, ORDER, DOM, etc. — so a style-knob change propagates.
-fn painter_btn_colors(t: &Theme, hovered: bool, active: bool) -> (Color32, Color32, Color32) {
+///
+/// `pub(crate)` so other chrome modules can reuse the same button-color logic.
+pub(crate) fn painter_btn_colors(t: &Theme, hovered: bool, active: bool) -> (Color32, Color32, Color32) {
     if active {
-        (color_alpha(t.accent, alpha_tint()),
+        (tint(t, Tone::Accent, alpha_tint()),
          t.accent,
-         color_alpha(t.accent, alpha_active()))
+         tint(t, Tone::Accent, alpha_active()))
     } else if hovered {
-        (color_alpha(t.toolbar_border, alpha_subtle()),
+        (tint(t, Tone::Border, alpha_subtle()),
          t.text,
-         color_alpha(t.accent, alpha_line()))
+         tint(t, Tone::Accent, alpha_line()))
     } else {
-        (color_alpha(t.toolbar_border, alpha_ghost()),
+        (tint(t, Tone::Border, alpha_ghost()),
          color_subtle(t.dim),
-         color_alpha(t.toolbar_border, alpha_muted()))
+         tint(t, Tone::Border, alpha_muted()))
     }
 }
 
 /// Paint the close `×` glyph inside `rect`, with the standard hover treatment
 /// (bear color + tinted background). Used by the per-tab close, the indicator
 /// chip remove-X, and the pane-level close button.
-fn paint_close_glyph(painter: &egui::Painter, rect: Rect, hovered: bool, theme: &Theme, font_size_offset: f32) {
+///
+/// `pub(crate)` so other chrome modules can reuse the same close-glyph style.
+pub(crate) fn paint_close_glyph(painter: &egui::Painter, rect: Rect, hovered: bool, theme: &Theme, font_size_offset: f32) {
     let col = if hovered { theme.bear } else { color_subtle(theme.dim) };
     if hovered {
-        painter.rect_filled(rect, radius_sm(), color_alpha(theme.bear, alpha_tint()));
+        painter.rect_filled(rect, radius_sm(), tint(theme, Tone::Bear, alpha_tint()));
     }
     painter.text(
         rect.center(), Align2::CENTER_CENTER,
@@ -144,7 +181,9 @@ fn paint_close_glyph(painter: &egui::Painter, rect: Rect, hovered: bool, theme: 
 /// cursor). `h_avail` is the available header height used to size the badge.
 ///
 /// Paints nothing if both side and expiry are empty/unrecognised.
-fn paint_option_badges(
+///
+/// `pub(crate)` for reuse by other pane-chrome renderers.
+pub(crate) fn paint_option_badges(
     painter: &egui::Painter,
     cx: f32,
     center_y: f32,
@@ -177,7 +216,7 @@ fn paint_option_badges(
         let g = painter.layout_no_wrap(lbl.clone(), badge_font.clone(), dark_fg);
         let bw = g.size().x + 6.0;
         let r = Rect::from_min_size(pos2(cx + consumed, by), Vec2::new(bw, bh));
-        painter.rect_filled(r, radius_sm(), color_alpha(theme.accent, alpha_solid()));
+        painter.rect_filled(r, radius_sm(), tint(theme, Tone::Accent, alpha_solid()));
         painter.text(r.center(), Align2::CENTER_CENTER, &lbl, badge_font, dark_fg);
         consumed += bw + 6.0;
     }
@@ -223,17 +262,24 @@ fn paint_icon_label_btn(
 /// AND `inactive_header_fill` is on) get the recessed `inactive_header_fill_multiply`.
 fn header_fill(painter: &egui::Painter, rect: Rect, theme: &Theme, is_active: bool, visible_count: usize) {
     let st = current();
-    if visible_count <= 1 {
-        return;
+    // Background fill (multi-pane only): active panes brighter, inactive recessed.
+    if visible_count > 1 {
+        let mul = if is_active {
+            Some(st.active_header_fill_multiply)
+        } else if st.inactive_header_fill {
+            Some(st.inactive_header_fill_multiply)
+        } else {
+            None
+        };
+        if let Some(mul) = mul {
+            painter.rect_filled(rect, 0.0, theme.bg.gamma_multiply(mul));
+        }
     }
-    let mul = if is_active {
-        st.active_header_fill_multiply
-    } else if st.inactive_header_fill {
-        st.inactive_header_fill_multiply
-    } else {
-        return;
-    };
-    painter.rect_filled(rect, 0.0, theme.bg.gamma_multiply(mul));
+    // Gradient highlight + crisp bevel lines — both no-ops when bevel is None.
+    // Gradient: soft white-to-transparent fade matching React's linear-gradient.
+    // Bevel: 1px highlight top + 1px shadow bottom.
+    paint_gradient_highlight(painter, rect, current_style_bevel_hi());
+    paint_bevel(painter, rect, egui::CornerRadius::ZERO);
 }
 
 /// Paint a vertical hairline divider at `cx` inside the header rect. Used
@@ -243,7 +289,7 @@ fn header_fill(painter: &egui::Painter, rect: Rect, theme: &Theme, is_active: bo
 fn header_divider(painter: &egui::Painter, cx: f32, rect: Rect, theme: &Theme) {
     if !current().vertical_group_dividers { return; }
     let alpha = current().header_divider_alpha;
-    let col = color_alpha(theme.toolbar_border, alpha);
+    let col = tint(theme, Tone::Border, alpha);
     painter.line_segment(
         [pos2(cx, rect.top() + 4.0), pos2(cx, rect.bottom() - 4.0)],
         Stroke::new(stroke_hair(), col),
@@ -254,7 +300,7 @@ fn header_divider(painter: &egui::Painter, cx: f32, rect: Rect, theme: &Theme) {
 /// toggle — used between adjacent buttons that visually need a separator
 /// regardless of style preset (e.g. ORDER ↔ DOM).
 fn header_divider_inline(painter: &egui::Painter, cx: f32, rect: Rect, theme: &Theme) {
-    let col = color_alpha(theme.toolbar_border, current().header_divider_alpha);
+    let col = tint(theme, Tone::Border, current().header_divider_alpha);
     painter.line_segment(
         [pos2(cx, rect.top() + 3.0), pos2(cx, rect.bottom() - 3.0)],
         Stroke::new(stroke_hair(), col),
@@ -312,36 +358,17 @@ pub struct PainterPaneHeader<'a> {
     // ── New knobs ──────────────────────────────────────────────────────────
     /// Option badges: `(side, expiry_str)` — paints C/P pill + DTE countdown badge.
     option_badges: Option<(&'a str, &'a str)>,
-    /// Whether to show the star/template button after symbol/tabs.
-    show_template_btn: bool,
-    /// Whether the template button is currently active (popup open).
-    template_btn_active: bool,
-    /// Show Order-entry toggle button (top-right cluster).
-    show_order_btn: bool,
-    /// Whether the order entry panel is currently open (button lit).
-    order_btn_active: bool,
-    /// Show DOM sidebar toggle button (top-right cluster).
-    show_dom_btn: bool,
-    show_options_btn: bool,
-    options_btn_active: bool,
-    /// Show symbol-overlay toggle button (left of ORDER in the right cluster).
-    show_overlay_btn: bool,
-    /// Whether overlay editing is active or overlays are present (button lit).
-    overlay_btn_active: bool,
-    /// Show drawing-palette toggle button (immediately left of ORDER).
-    show_drawing_btn: bool,
-    /// Whether the per-pane drawing palette is currently visible (button lit).
-    drawing_btn_active: bool,
-    /// Whether the DOM sidebar is currently open (button lit).
-    dom_btn_active: bool,
+    /// All toggleable icon buttons keyed by [`PaneBtn`].
+    /// Replaces 10 × (show_X, X_active) bool pairs.
+    buttons: [ButtonState; PANE_BTN_COUNT],
     /// Sense for tab strip interactions — use `Sense::click_and_drag()` for cross-pane drag.
     tab_sense: Option<Sense>,
     /// Pane index — used to build unique egui Ids for tab interactions.
     pane_index: usize,
-    /// Show expand/collapse button in the right cluster.
-    show_expand_btn: bool,
-    /// Whether the pane is currently maximized (button lit).
+    /// Whether the pane is currently maximized (drives Expand button colour).
     is_maximized: bool,
+    /// Whether the split popup is currently open (drives Split button colour).
+    split_btn_active: bool,
 }
 
 impl<'a> PainterPaneHeader<'a> {
@@ -371,22 +398,11 @@ impl<'a> PainterPaneHeader<'a> {
             hovered_tab: None,
             title_font_size: font_md(),
             option_badges: None,
-            show_template_btn: false,
-            template_btn_active: false,
-            show_order_btn: false,
-            order_btn_active: false,
-            show_dom_btn: false,
-            dom_btn_active: false,
-            show_options_btn: false,
-            options_btn_active: false,
-            show_overlay_btn: false,
-            overlay_btn_active: false,
-            show_drawing_btn: false,
-            drawing_btn_active: false,
+            buttons: [ButtonState::default(); PANE_BTN_COUNT],
             tab_sense: None,
             pane_index: 0,
-            show_expand_btn: false,
             is_maximized: false,
+            split_btn_active: false,
         }
     }
 
@@ -427,28 +443,30 @@ impl<'a> PainterPaneHeader<'a> {
     }
     /// Show star/template button. `active` = popup is already open.
     pub fn show_template_btn(mut self, active: bool) -> Self {
-        self.show_template_btn = true; self.template_btn_active = active; self
+        self.buttons[PaneBtn::Template as usize] = ButtonState { show: true, active }; self
     }
     /// Show order-entry toggle button. `active` = order entry is currently open.
     pub fn show_order_btn(mut self, active: bool) -> Self {
-        self.show_order_btn = true; self.order_btn_active = active; self
+        self.buttons[PaneBtn::Order as usize] = ButtonState { show: true, active }; self
     }
     /// Show DOM sidebar toggle button. `active` = DOM sidebar is currently open.
     pub fn show_dom_btn(mut self, active: bool) -> Self {
-        self.show_dom_btn = true; self.dom_btn_active = active; self
+        self.buttons[PaneBtn::Dom as usize] = ButtonState { show: true, active }; self
     }
     pub fn show_options_btn(mut self, active: bool) -> Self {
-        self.show_options_btn = true; self.options_btn_active = active; self
+        self.buttons[PaneBtn::Options as usize] = ButtonState { show: true, active }; self
     }
-    /// Show symbol-overlay toggle button (rendered LEFT of the ORDER button).
-    /// `active` = overlay editing is on or symbol overlays are present.
+    /// Show symbol-overlay toggle button. `active` = overlay editing is on or overlays present.
     pub fn show_overlay_btn(mut self, active: bool) -> Self {
-        self.show_overlay_btn = true; self.overlay_btn_active = active; self
+        self.buttons[PaneBtn::Overlay as usize] = ButtonState { show: true, active }; self
     }
-    /// Show drawing-palette toggle button (rendered IMMEDIATELY LEFT of ORDER,
-    /// right of the OVERLAY button). `active` = palette is currently visible.
+    /// Show drawing-palette toggle button (kept for compatibility; not shown by default).
     pub fn show_drawing_btn(mut self, active: bool) -> Self {
-        self.show_drawing_btn = true; self.drawing_btn_active = active; self
+        self.buttons[PaneBtn::Drawing as usize] = ButtonState { show: true, active }; self
+    }
+    /// Show layers (object-tree) button. `active` = object tree panel is open.
+    pub fn show_layers_btn(mut self, active: bool) -> Self {
+        self.buttons[PaneBtn::Layers as usize] = ButtonState { show: true, active }; self
     }
     /// Override tab `Sense` — use `Sense::click_and_drag()` for cross-pane drag support.
     pub fn tab_sense(mut self, s: Sense) -> Self { self.tab_sense = Some(s); self }
@@ -456,7 +474,17 @@ impl<'a> PainterPaneHeader<'a> {
     pub fn pane_index(mut self, i: usize) -> Self { self.pane_index = i; self }
     /// Show expand button. `maximized` = pane is currently maximized (button lit).
     pub fn show_expand_btn(mut self, maximized: bool) -> Self {
-        self.show_expand_btn = true; self.is_maximized = maximized; self
+        self.buttons[PaneBtn::Expand as usize] = ButtonState { show: true, active: false };
+        self.is_maximized = maximized; self
+    }
+    /// Show the split-pane button. `popup_open` = H/V dropdown is showing (button lit).
+    pub fn show_split_btn(mut self, popup_open: bool) -> Self {
+        self.buttons[PaneBtn::Split as usize] = ButtonState { show: true, active: false };
+        self.split_btn_active = popup_open; self
+    }
+    /// Show the close-pane button (distinct from the per-tab close).
+    pub fn show_close_pane_btn(mut self) -> Self {
+        self.buttons[PaneBtn::ClosePanе as usize] = ButtonState { show: true, active: false }; self
     }
 
     pub fn show(self, ui: &mut Ui) -> PainterPaneHeaderResponse {
@@ -483,10 +511,64 @@ impl<'a> PainterPaneHeader<'a> {
         // The standalone bottom hairline previously painted here is removed —
         // the outer border's bottom edge now does that job.
 
-        // 1. Active-pane bg darken (only meaningful with >1 pane).
-        if self.visible_count > 1 && self.is_active {
-            let active_bg = color_subtle(t.bg);
-            painter.rect_filled(rect, 0.0, active_bg);
+        // 1. Active-pane header treatment (only meaningful with >1 pane).
+        //
+        // Three modes driven by StyleSettings:
+        //   pane_active_fill_accent=true (Aperture) → fill with accent color (orange bar).
+        //   pane_active_indicator & 2 (header fill, default) → direction-aware bg fill:
+        //     dark themes: slight darken (content-blending); light themes: slight lift.
+        //   pane_active_indicator & 1 (top stripe) → accent-colored 2px top edge.
+        {
+            let st = current();
+            if self.visible_count > 1 {
+                // ── Background fill ──────────────────────────────────────────
+                if self.is_active {
+                    if st.pane_active_fill_accent {
+                        // Aperture: solid accent fill (orange bar).
+                        painter.rect_filled(rect, 0.0, t.accent);
+                    } else if st.pane_active_indicator & 2 != 0 {
+                        // Standard fill: direction-aware so light themes lift
+                        // instead of darken. Mirror `color_layer_up` logic.
+                        let is_dark = (t.bg.r() as i16 + t.bg.g() as i16 + t.bg.b() as i16) < 384;
+                        let active_bg = if is_dark {
+                            // Dark theme: slightly darker = focused/immersive.
+                            color_subtle(t.bg)
+                        } else {
+                            // Light theme: slightly lighter = lifted/elevated.
+                            let ch = |c: i16| -> u8 { c.clamp(0, 255) as u8 };
+                            Color32::from_rgb(
+                                ch(t.bg.r() as i16 + 12),
+                                ch(t.bg.g() as i16 + 10),
+                                ch(t.bg.b() as i16 +  8),
+                            )
+                        };
+                        painter.rect_filled(rect, 0.0, active_bg);
+                    }
+                } else if st.inactive_header_fill {
+                    let is_dark = (t.bg.r() as i16 + t.bg.g() as i16 + t.bg.b() as i16) < 384;
+                    let inactive_bg = if is_dark {
+                        t.bg.gamma_multiply(st.inactive_header_fill_multiply)
+                    } else {
+                        // Light theme: slightly darker for inactive = recessed.
+                        let ch = |c: i16| -> u8 { c.clamp(0, 255) as u8 };
+                        Color32::from_rgb(
+                            ch(t.bg.r() as i16 - 10),
+                            ch(t.bg.g() as i16 - 10),
+                            ch(t.bg.b() as i16 - 10),
+                        )
+                    };
+                    painter.rect_filled(rect, 0.0, inactive_bg);
+                }
+            }
+            // ── Top accent stripe (Mariner "instrument needle", Meridien) ───
+            // pane_active_indicator bit 1: 2px accent-colored top edge on the
+            // active pane header. Signals focus without filling the whole bar.
+            if self.is_active && st.pane_active_indicator & 1 != 0 {
+                painter.line_segment(
+                    [pos2(rect.left(), rect.top() + 1.0), pos2(rect.right(), rect.top() + 1.0)],
+                    Stroke::new(2.0, t.accent),
+                );
+            }
         }
 
         // 2. Outer perimeter hairline — text-derived color so it stays visible
@@ -496,9 +578,23 @@ impl<'a> PainterPaneHeader<'a> {
         //    `header_outer_border_alpha` so per-style design tokens drive the
         //    look rather than a hardcoded value here.
         let st = current();
+        // Pre-compute accent-header flag and derived text colors. Must be before
+        // the outer border paint (which reads accent_header) and all color sites below.
+        let accent_header = current().pane_active_fill_accent
+            && self.is_active
+            && self.visible_count > 1;
+        let h_text   = if accent_header { contrast_fg(t.accent) } else { t.text };
+        let h_dim    = if accent_header { color_subtle(contrast_fg(t.accent)) } else { t.dim };
+        let h_accent = if accent_header { contrast_fg(t.accent) } else { t.accent };
+
         painter.rect_stroke(
             rect, 0.0,
-            Stroke::new(st.header_outer_border_width, color_alpha(t.text, st.header_outer_border_alpha)),
+            // On accent-filled header (Aperture), suppress the outer border —
+            // the vibrant fill is the focus indicator; a border would double it.
+            Stroke::new(
+                if accent_header { 0.0 } else { st.header_outer_border_width },
+                tint(t, Tone::Text, st.header_outer_border_alpha),
+            ),
             StrokeKind::Inside,
         );
 
@@ -511,20 +607,15 @@ impl<'a> PainterPaneHeader<'a> {
             clicked_indicator_remove: None,
             clicked_tab: None,
             hover_pos: None,
-            clicked_template: false,
+            clicked_button: None,
             tab_drag_started: None,
             tab_drag_pos: None,
             tab_drag_released: None,
             symbol_rect: None,
             clicked_symbol: false,
-            clicked_order: false,
-            clicked_dom: false,
-            clicked_options: false,
-            clicked_overlay: false,
-            clicked_drawing: false,
             tab_rects: Vec::new(),
             plus_tab_rect: None,
-            clicked_expand: false,
+            split_btn_rect: None,
             link_dot_rect: None,
         };
         out.hover_pos = ui.ctx().pointer_hover_pos().filter(|p| rect.contains(*p));
@@ -591,7 +682,7 @@ impl<'a> PainterPaneHeader<'a> {
 
             for (ti, (sym, price_text, _chg)) in self.tabs.iter().enumerate() {
                 let is_active_tab = ti == self.active_tab;
-                let sym_galley = painter.layout_no_wrap(sym.to_string(), title_font.clone(), t.dim);
+                let sym_galley = painter.layout_no_wrap(sym.to_string(), title_font.clone(), h_dim);
                 let price_font = FontId::monospace((self.title_font_size - 1.0).max(font_sm()));
                 let price_galley = painter.layout_no_wrap(
                     price_text.to_string(), price_font.clone(), t.dim);
@@ -629,18 +720,24 @@ impl<'a> PainterPaneHeader<'a> {
                 let active_t = motion::ease_bool(ui.ctx(), active_id, is_active_tab, motion::MED);
                 let hover_t  = motion::ease_bool(ui.ctx(), hover_id,  tab_resp.hovered() && !is_active_tab, motion::FAST);
                 let idle_bg   = Color32::TRANSPARENT;
-                let hover_bg  = color_alpha(t.toolbar_border, style_st.tab_hover_bg_alpha);
-                // Active tab: noticeably darker than the (now lighter) inactive
-                // pane header so the contrast reads clearly.
-                let active_bg = color_dim(t.bg);
+                let hover_bg  = tint(t, Tone::Border, style_st.tab_hover_bg_alpha);
+                // Aperture: active tab on orange header = dark pill ("cream pill, orange text")
+                // Normal: active tab = darkened bg.
+                let active_bg = if accent_header {
+                    color_alpha(h_text, 200) // ~dark semi-opaque fill
+                } else {
+                    color_dim(t.bg)
+                };
                 let mut tab_bg = motion::lerp_color(idle_bg, hover_bg, hover_t);
                 tab_bg = motion::lerp_color(tab_bg, active_bg, active_t);
+                // Tab corner radius: pill for accent_header (Aperture), top-rounded otherwise.
                 let r_md = radius_md() as u8;
-                painter.rect_filled(
-                    tab_rect,
-                    egui::CornerRadius { nw: r_md, ne: r_md, sw: 0, se: 0 },
-                    tab_bg,
-                );
+                let tab_cr = if accent_header {
+                    egui::CornerRadius::same(style_st.r_pill.min(r_md + 4))
+                } else {
+                    egui::CornerRadius { nw: r_md, ne: r_md, sw: 0, se: 0 }
+                };
+                painter.rect_filled(tab_rect, tab_cr, tab_bg);
                 // Per Zed pattern: no accent top stripe, no top/left/right
                 // hairline borders on the active tab. Active signal lives in
                 // the active-tab-dot + bottom-edge accent line, both owned by
@@ -661,9 +758,11 @@ impl<'a> PainterPaneHeader<'a> {
 
                 // tab_inactive_alpha dims inactive tab text
                 let sym_col = if is_active_tab {
-                    if self.is_active && self.visible_count > 1 { t.accent } else { t.text }
+                    // On accent-filled header: active tab = dark contrasting text.
+                    // On normal header: active tab = accent color (usual).
+                    if self.is_active && self.visible_count > 1 { h_accent } else { t.text }
                 } else {
-                    t.dim.gamma_multiply(style_st.tab_inactive_alpha)
+                    if accent_header { color_subtle(h_text) } else { t.dim.gamma_multiply(style_st.tab_inactive_alpha) }
                 };
                 painter.text(
                     pos2(tab_rect.left() + tab_pad, tab_rect.center().y),
@@ -677,13 +776,18 @@ impl<'a> PainterPaneHeader<'a> {
                         side, expiry, t,
                     );
                 }
-                let price_color = self.price_color.unwrap_or(t.dim);
+                // On accent header (Aperture orange bar), use h_dim for price/change text.
+                let price_color = if accent_header && is_active_tab {
+                    h_dim
+                } else {
+                    self.price_color.unwrap_or(t.dim)
+                };
                 painter.text(
                     pos2(price_x, tab_rect.center().y),
                     Align2::LEFT_CENTER, price_text, price_font, price_color,
                 );
 
-                // Close × on hover or active
+                // Close × on hover or active — use h_dim on accent header.
                 let show_close_x = self.tabs.len() > 1
                     && (self.hovered_tab == Some(ti) || is_active_tab);
                 if show_close_x {
@@ -693,7 +797,15 @@ impl<'a> PainterPaneHeader<'a> {
                     );
                     let resp = ui.allocate_rect(close_rect, Sense::click());
                     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                    paint_close_glyph(&painter, close_rect, resp.hovered(), t, 2.0);
+                    // On orange header the theme has t.text = cream which would show wrong;
+                    // temporarily swap the close glyph color using a custom paint.
+                    if accent_header {
+                        let col = if resp.hovered() { h_text } else { h_dim };
+                        painter.text(close_rect.center(), egui::Align2::CENTER_CENTER,
+                            "×", FontId::proportional(10.0), col);
+                    } else {
+                        paint_close_glyph(&painter, close_rect, resp.hovered(), t, 2.0);
+                    }
                     if resp.clicked() {
                         out.clicked_close = true;
                         out.clicked_tab = Some(ti);
@@ -711,7 +823,7 @@ impl<'a> PainterPaneHeader<'a> {
             // so the pane-title reads as the primary header (vs axis labels /
             // chip text). Keep the tab-strip path on title_font so dense tab
             // rows don't grow.
-            let label_color = if self.is_active { t.bull } else { t.text };
+            let label_color = if accent_header { h_text } else if self.is_active { t.bull } else { t.text };
             let sym_font = FontId::monospace(crate::chart_renderer::ui::style::font_lg());
             let sym_galley = painter.layout_no_wrap(sym.to_string(), sym_font.clone(), label_color);
             // Allocate a click rect for the symbol label so callers can anchor pickers.
@@ -748,9 +860,9 @@ impl<'a> PainterPaneHeader<'a> {
 
             if let Some(tf) = self.timeframe {
                 let tf_font = FontId::monospace(font_sm());
-                let g = painter.layout_no_wrap(tf.to_string(), tf_font.clone(), t.dim);
+                let g = painter.layout_no_wrap(tf.to_string(), tf_font.clone(), h_dim);
                 painter.text(pos2(cx, rect.center().y), Align2::LEFT_CENTER, tf,
-                    tf_font, t.dim);
+                    tf_font, h_dim);
                 cx += g.size().x + gap_md();
             }
 
@@ -774,7 +886,7 @@ impl<'a> PainterPaneHeader<'a> {
         const CHIP_X_W: f32 = 12.0;
         for (i, ind) in self.indicators.iter().enumerate() {
             let chip_font = FontId::monospace(font_sm());
-            let g = painter.layout_no_wrap(ind.to_string(), chip_font.clone(), t.dim);
+            let g = painter.layout_no_wrap(ind.to_string(), chip_font.clone(), h_dim);
             let chip_pad = gap_md();
             let chip_w = chip_pad + g.size().x + gap_sm() + CHIP_X_W + chip_pad;
             let chip_h = (h - BADGE_INSET_V).min(CHIP_HEIGHT_MAX);
@@ -784,12 +896,12 @@ impl<'a> PainterPaneHeader<'a> {
             );
             painter.rect_stroke(
                 chip_rect, radius_sm(),
-                Stroke::new(stroke_thin(), color_alpha(t.toolbar_border, alpha_muted())),
+                Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_muted())),
                 StrokeKind::Inside,
             );
             painter.text(
                 pos2(chip_rect.left() + chip_pad, chip_rect.center().y),
-                Align2::LEFT_CENTER, ind, chip_font, t.dim,
+                Align2::LEFT_CENTER, ind, chip_font, h_dim,
             );
             let x_rect = Rect::from_center_size(
                 pos2(chip_rect.right() - chip_pad - CHIP_X_W / 2.0, chip_rect.center().y),
@@ -837,152 +949,160 @@ impl<'a> PainterPaneHeader<'a> {
             cx += PLUS_TAB_W + gap_sm();
         }
 
-        // ── Right cluster: [Expand] [OVERLAY] [DRAW] [ORDER] [DOM] [OPTIONS] [Close] (right-anchored) ──
-        // Layout walks right-to-left for sizing, then left-to-right for painting.
+        // ── Right cluster: [OVERLAY] [LAYERS] [DOM] [OPTIONS] | [ClosePane] [Split] [Expand] | [×] ──
+        // Pane-action controls (close/split/expand) sit at far-right, just left of
+        // the close-tab button. Icon buttons (OVERLAY, LAYERS, etc.) sit to their left.
         const EXPAND_BTN_W: f32 = 28.0;
-        let expand_total = if self.show_expand_btn { EXPAND_BTN_W } else { 0.0 };
-        let close_total = if self.show_close { gap_md() + CLOSE_BTN_SIZE + gap_md() } else { gap_sm() };
+        const SPLIT_BTN_W:  f32 = 28.0;
+        const CLOSE_PANE_BTN_W: f32 = 28.0;
+        let expand_total      = if self.buttons[PaneBtn::Expand as usize].show     { EXPAND_BTN_W     } else { 0.0 };
+        let split_total       = if self.buttons[PaneBtn::Split as usize].show      { SPLIT_BTN_W      } else { 0.0 };
+        let close_pane_total  = if self.buttons[PaneBtn::ClosePanе as usize].show { CLOSE_PANE_BTN_W } else { 0.0 };
+        let close_total       = if self.show_close          { gap_md() + CLOSE_BTN_SIZE + gap_md() } else { gap_sm() };
+        // Pane-action controls are at the far right (left of close-tab button).
+        let pane_ctrls_total  = close_pane_total + split_total + expand_total;
         let order_dom_total = {
             let mut w = 0.0f32;
-            if self.show_overlay_btn { w += ICON_BTN_W_OV; }
-            if self.show_drawing_btn { w += ICON_BTN_W_DRAWING; }
-            if self.show_order_btn   { w += ICON_BTN_W; }
-            if self.show_dom_btn     { w += ICON_BTN_W_DOM; }
-            if self.show_options_btn { w += ICON_BTN_W_OPTIONS; }
+            if self.buttons[PaneBtn::Overlay as usize].show { w += ICON_BTN_W_OV; }
+            if self.buttons[PaneBtn::Layers as usize].show  { w += ICON_BTN_W_LAYERS; }
+            if self.buttons[PaneBtn::Order as usize].show   { w += ICON_BTN_W; }
+            if self.buttons[PaneBtn::Dom as usize].show     { w += ICON_BTN_W_DOM; }
+            if self.buttons[PaneBtn::Options as usize].show { w += ICON_BTN_W_OPTIONS; }
             w
         };
 
-        // Strong divider before right icon cluster.
-        if order_dom_total > 0.0 || expand_total > 0.0 || self.show_close {
+        // Strong divider at the left edge of the entire right cluster.
+        if order_dom_total > 0.0 || pane_ctrls_total > 0.0 || self.show_close {
             header_divider_strong(
                 &painter,
-                rect.right() - close_total - order_dom_total - expand_total,
+                rect.right() - close_total - pane_ctrls_total - order_dom_total,
                 rect, t,
             );
         }
 
-        // ── Expand button (leftmost in right cluster) ─────────────────────────
-        if self.show_expand_btn {
+        // ── Icon button cluster (OVERLAY / LAYERS / ORDER / DOM / OPTIONS) ────
+        // Table-driven: one entry per button; each renders identically.
+        // Only visible buttons are rendered; dividers appear between them.
+        {
+            use crate::ui_kit::widgets::Button;
+
+            // (btn_enum, label, icon, width)
+            const BTN_TABLE: &[(PaneBtn, &str, &str, f32)] = &[
+                (PaneBtn::Overlay, "OVERLAY", Icon::EYE,            ICON_BTN_W_OV),
+                (PaneBtn::Layers,  "LAYERS",  Icon::STACK,           ICON_BTN_W_LAYERS),
+                (PaneBtn::Order,   "ORDER",   Icon::CURRENCY_DOLLAR, ICON_BTN_W),
+                (PaneBtn::Dom,     "DOM",     Icon::LADDER,          ICON_BTN_W_DOM),
+                (PaneBtn::Options, "OPTIONS", Icon::CIRCLE,          ICON_BTN_W_OPTIONS),
+            ];
+
+            let visible: Vec<(PaneBtn, &str, &str, f32)> = BTN_TABLE.iter()
+                .filter(|(btn, ..)| self.buttons[*btn as usize].show)
+                .copied()
+                .collect();
+
             let icon_h = h - ICON_BTN_INSET_V;
-            let expand_rect = Rect::from_min_size(
-                pos2(rect.right() - close_total - order_dom_total - EXPAND_BTN_W,
-                     rect.center().y - icon_h / 2.0),
-                Vec2::new(EXPAND_BTN_W, icon_h),
-            );
-            let resp = ui.allocate_rect(expand_rect, Sense::click());
-            if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-            let col = if self.is_maximized {
-                t.accent
-            } else if resp.hovered() {
-                t.text
-            } else {
-                color_subtle(t.dim)
-            };
-            if resp.hovered() || self.is_maximized {
-                painter.rect_filled(expand_rect, radius_sm(), color_alpha(
-                    if self.is_maximized { t.accent } else { t.toolbar_border },
-                    if self.is_maximized { alpha_tint() } else { alpha_subtle() },
-                ));
+            let mut rx  = rect.right() - close_total - pane_ctrls_total - order_dom_total;
+            let mut clicked_btn: Option<PaneBtn> = None;
+
+            for (pos, &(btn, label, icon, width)) in visible.iter().enumerate() {
+                let r = Rect::from_min_size(
+                    pos2(rx, rect.center().y - icon_h / 2.0),
+                    Vec2::new(width, icon_h),
+                );
+                let resp = Button::new(label)
+                    .leading_icon(icon)
+                    .status(true)
+                    .active(self.buttons[btn as usize].active)
+                    .show_at(ui, &painter, r, t);
+                if resp.clicked() { clicked_btn = Some(btn); }
+                rx += width;
+                if pos + 1 < visible.len() {
+                    header_divider_strong(&painter, rx, rect, t);
+                }
             }
-            painter.text(
-                expand_rect.center(), Align2::CENTER_CENTER,
-                Icon::ARROWS_OUT_SIMPLE,
-                FontId::proportional(font_md_plus()), col,
-            );
-            if resp.clicked() { out.clicked_expand = true; }
-            // Divider between expand and ORDER/DOM cluster
-            if order_dom_total > 0.0 {
-                header_divider_strong(&painter, rect.right() - close_total - order_dom_total, rect, t);
+
+            // Record which icon-cluster button was clicked (if any).
+            if clicked_btn.is_some() { out.clicked_button = clicked_btn; }
+
+            // Divider between icon-button cluster and pane-action controls.
+            if pane_ctrls_total > 0.0 && order_dom_total > 0.0 {
+                header_divider_strong(&painter, rx, rect, t);
             }
         }
 
-        // ── OV + Order + DOM + Options icon buttons ───────────────────────────
+        // ── Pane-action controls: [ClosePane] [Split] [Expand] (far-right) ────
         {
-            use crate::ui_kit::widgets::Button;
-            let icon_h = h - ICON_BTN_INSET_V;
-            let mut rx = rect.right() - close_total - order_dom_total;
+            let icon_h  = h - ICON_BTN_INSET_V;
+            let pc_left = rect.right() - close_total - pane_ctrls_total;
+            let mut px  = pc_left;
 
-            if self.show_overlay_btn {
-                let r = Rect::from_min_size(
-                    pos2(rx, rect.center().y - icon_h / 2.0),
-                    Vec2::new(ICON_BTN_W_OV, icon_h),
+            if self.buttons[PaneBtn::ClosePanе as usize].show {
+                let cp_rect = Rect::from_min_size(
+                    pos2(px, rect.center().y - icon_h / 2.0),
+                    Vec2::new(CLOSE_PANE_BTN_W, icon_h),
                 );
-                let resp = Button::new("OVERLAY")
-                    .leading_icon(Icon::EYE)
-                    .status(true)
-                    .active(self.overlay_btn_active)
-                    .show_at(ui, &painter, r, t);
-                if resp.clicked() { out.clicked_overlay = true; }
-                rx += ICON_BTN_W_OV;
-                if self.show_drawing_btn || self.show_order_btn || self.show_dom_btn || self.show_options_btn {
-                    header_divider_strong(&painter, rx, rect, t);
+                let resp = ui.allocate_rect(cp_rect, Sense::click());
+                if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                let col = if resp.hovered() { t.bear } else { color_subtle(t.dim) };
+                if resp.hovered() {
+                    painter.rect_filled(cp_rect, radius_sm(), tint(t, Tone::Bear, alpha_subtle()));
                 }
-            }
-            if self.show_drawing_btn {
-                let r = Rect::from_min_size(
-                    pos2(rx, rect.center().y - icon_h / 2.0),
-                    Vec2::new(ICON_BTN_W_DRAWING, icon_h),
+                painter.text(
+                    cp_rect.center(), Align2::CENTER_CENTER,
+                    Icon::X, FontId::proportional(font_md_plus()), col,
                 );
-                let resp = Button::new("DRAW")
-                    .leading_icon(Icon::PENCIL_LINE)
-                    .status(true)
-                    .active(self.drawing_btn_active)
-                    .show_at(ui, &painter, r, t);
-                if resp.clicked() { out.clicked_drawing = true; }
-                rx += ICON_BTN_W_DRAWING;
-                if self.show_order_btn || self.show_dom_btn || self.show_options_btn {
-                    header_divider_strong(&painter, rx, rect, t);
-                }
+                if resp.clicked() { out.clicked_button = Some(PaneBtn::ClosePanе); }
+                px += CLOSE_PANE_BTN_W;
             }
-            if self.show_order_btn {
-                let r = Rect::from_min_size(
-                    pos2(rx, rect.center().y - icon_h / 2.0),
-                    Vec2::new(ICON_BTN_W, icon_h),
+
+            if self.buttons[PaneBtn::Split as usize].show {
+                let split_rect = Rect::from_min_size(
+                    pos2(px, rect.center().y - icon_h / 2.0),
+                    Vec2::new(SPLIT_BTN_W, icon_h),
                 );
-                let resp = Button::new("ORDER")
-                    .leading_icon(Icon::CURRENCY_DOLLAR)
-                    .status(true)
-                    .active(self.order_btn_active)
-                    .show_at(ui, &painter, r, t);
-                if resp.clicked() { out.clicked_order = true; }
-                rx += ICON_BTN_W;
-                if self.show_dom_btn {
-                    header_divider_strong(&painter, rx, rect, t);
+                let resp = ui.allocate_rect(split_rect, Sense::click());
+                if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                let col = if self.split_btn_active { t.accent }
+                    else if resp.hovered() { t.text }
+                    else { color_subtle(t.dim) };
+                if resp.hovered() || self.split_btn_active {
+                    painter.rect_filled(split_rect, radius_sm(), color_alpha(
+                        if self.split_btn_active { t.accent } else { t.toolbar_border },
+                        if self.split_btn_active { alpha_tint() } else { alpha_subtle() },
+                    ));
                 }
-            }
-            if self.show_dom_btn {
-                let r = Rect::from_min_size(
-                    pos2(rx, rect.center().y - icon_h / 2.0),
-                    Vec2::new(ICON_BTN_W_DOM, icon_h),
+                painter.text(
+                    split_rect.center(), Align2::CENTER_CENTER,
+                    Icon::BROWSERS, FontId::proportional(font_md_plus()), col,
                 );
-                let resp = Button::new("DOM")
-                    .leading_icon(Icon::LADDER)
-                    .status(true)
-                    .active(self.dom_btn_active)
-                    .show_at(ui, &painter, r, t);
-                if resp.clicked() { out.clicked_dom = true; }
-                rx += ICON_BTN_W_DOM;
-                if self.show_options_btn || self.show_close {
-                    header_divider_strong(&painter, rx, rect, t);
-                }
+                if resp.clicked() { out.clicked_button = Some(PaneBtn::Split); }
+                out.split_btn_rect = Some(split_rect);
+                px += SPLIT_BTN_W;
             }
-            if self.show_options_btn {
-                let r = Rect::from_min_size(
-                    pos2(rx, rect.center().y - icon_h / 2.0),
-                    Vec2::new(ICON_BTN_W_OPTIONS, icon_h),
+
+            if self.buttons[PaneBtn::Expand as usize].show {
+                let expand_rect = Rect::from_min_size(
+                    pos2(px, rect.center().y - icon_h / 2.0),
+                    Vec2::new(EXPAND_BTN_W, icon_h),
                 );
-                let resp = Button::new("OPTIONS")
-                    .leading_icon(Icon::CIRCLE)
-                    .status(true)
-                    .active(self.options_btn_active)
-                    .show_at(ui, &painter, r, t);
-                if resp.clicked() { out.clicked_options = true; }
-                rx += ICON_BTN_W_OPTIONS;
-                if self.show_close {
-                    header_divider_strong(&painter, rx, rect, t);
+                let resp = ui.allocate_rect(expand_rect, Sense::click());
+                if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                let col = if self.is_maximized { t.accent }
+                    else if resp.hovered() { t.text }
+                    else { color_subtle(t.dim) };
+                if resp.hovered() || self.is_maximized {
+                    painter.rect_filled(expand_rect, radius_sm(), color_alpha(
+                        if self.is_maximized { t.accent } else { t.toolbar_border },
+                        if self.is_maximized { alpha_tint() } else { alpha_subtle() },
+                    ));
                 }
+                painter.text(
+                    expand_rect.center(), Align2::CENTER_CENTER,
+                    Icon::ARROWS_OUT_SIMPLE, FontId::proportional(font_md_plus()), col,
+                );
+                if resp.clicked() { out.clicked_button = Some(PaneBtn::Expand); }
             }
-            let _ = rx;
+            let _ = px;
         }
 
         // ── Close button (right-anchored) ──
@@ -1020,8 +1140,11 @@ pub struct PainterPaneHeaderResponse {
     pub hover_pos: Option<egui::Pos2>,
 
     // ── New response fields ────────────────────────────────────────────────
-    /// Star/template button was clicked.
-    pub clicked_template: bool,
+    /// Which toggle/action button in the right cluster was clicked this frame
+    /// (Template / Order / Dom / Options / Overlay / Drawing / Layers / Expand /
+    /// Split / ClosePane). At most one per frame. Replaces the previous explosion
+    /// of `clicked_X: bool` fields — match on the [`PaneBtn`] variant instead.
+    pub clicked_button: Option<PaneBtn>,
     /// Index of the tab whose drag just started (first frame of drag).
     pub tab_drag_started: Option<usize>,
     /// Pointer position reported during drag, per dragging tab index.
@@ -1032,25 +1155,24 @@ pub struct PainterPaneHeaderResponse {
     pub symbol_rect: Option<Rect>,
     /// Symbol label was clicked (simple-label mode only).
     pub clicked_symbol: bool,
-    /// Order-entry toggle button was clicked.
-    pub clicked_order: bool,
-    pub clicked_options: bool,
-    /// Symbol-overlay toggle button was clicked.
-    pub clicked_overlay: bool,
-    /// Drawing-palette toggle button was clicked.
-    pub clicked_drawing: bool,
-    /// DOM sidebar toggle button was clicked.
-    pub clicked_dom: bool,
     /// Per-tab screen rects (in tab-strip mode). Empty in simple-symbol mode.
     /// Use these to anchor popups (the pane picker, etc.) to a specific tab.
     pub tab_rects: Vec<Rect>,
     /// Screen rect of the +Tab button when shown — for anchoring pickers
     /// triggered by the plus-tab click.
     pub plus_tab_rect: Option<Rect>,
-    /// Expand/collapse button was clicked.
-    pub clicked_expand: bool,
+    /// Phase 1c — screen rect of the split button, for anchoring the popup.
+    pub split_btn_rect: Option<Rect>,
     /// Screen rect of the link-group dot — for anchoring the group picker popup.
     pub link_dot_rect: Option<Rect>,
+}
+
+impl PainterPaneHeaderResponse {
+    /// Convenience: was the given right-cluster button clicked this frame?
+    #[inline]
+    pub fn clicked(&self, btn: PaneBtn) -> bool {
+        self.clicked_button == Some(btn)
+    }
 }
 
 // ─── Local helpers ──────────────────────────────────────────────────────────
@@ -1060,7 +1182,7 @@ fn nav_colors(enabled: bool, hovered: bool, t: &Theme, ui: &mut Ui) -> (Color32,
     if enabled {
         if hovered {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            (color_alpha(t.toolbar_border, alpha_dim()), t.text)
+            (tint(t, Tone::Border, alpha_dim()), t.text)
         } else {
             (Color32::TRANSPARENT, color_subtle(t.dim))
         }

@@ -24,6 +24,7 @@ use egui::{Response, Ui};
 use super::Button;
 use super::tokens::Size;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 
 #[must_use = "ToolBarButton must be shown with `.show(ui, theme)` to render"]
 pub struct ToolBarButton<'a> {
@@ -59,7 +60,7 @@ impl<'a> ToolBarButton<'a> {
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
         let mut btn = self.inner;
         if self.active {
-            btn = btn.fg(theme.accent());
+            btn = btn.fg(palette_ct(theme).base(Tone::Accent));
         }
         let resp = btn.show(ui, theme);
         crate::ui_kit::cursor::clickable(ui, &resp);

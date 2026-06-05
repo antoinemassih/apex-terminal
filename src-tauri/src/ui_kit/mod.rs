@@ -10,6 +10,8 @@ pub mod symbols;
 pub mod tokens;
 pub mod style;
 pub mod cursor;
+#[allow(dead_code)]
+pub mod sx;
 
 /// Line-style enum — used by drawing widgets and renderers. Portable
 /// primitive (no theme/state coupling); lives here so `ui_kit` doesn't have

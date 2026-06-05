@@ -18,6 +18,7 @@ use egui::{Color32, CornerRadius, Pos2, Response, Sense, Stroke, Ui, Vec2, Widge
 
 use super::motion;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::{Size, Variant};
 use crate::ui_kit::tokens as st;
 
@@ -74,9 +75,9 @@ impl<'a, T: egui::emath::Numeric> Widget for Slider<'a, T> {
 
 fn variant_color(variant: Variant, theme: &dyn ComponentTheme) -> Color32 {
     match variant {
-        Variant::Primary => theme.accent(),
-        Variant::Danger => theme.bear(),
-        _ => theme.accent(),
+        Variant::Primary => palette_ct(theme).base(Tone::Accent),
+        Variant::Danger => palette_ct(theme).base(Tone::Bear),
+        _ => palette_ct(theme).base(Tone::Accent),
     }
 }
 
@@ -104,7 +105,7 @@ fn paint_slider<T: egui::emath::Numeric>(
                 egui::Align2::LEFT_TOP,
                 text,
                 egui::FontId::proportional(label_font),
-                st::color_alpha(theme.text(), 180),
+                st::color_alpha(palette_ct(theme).base(Tone::Text), 180),
             );
             // Allocate the label space.
             // layout-only: only `.rect.width()/.height()` is read.
@@ -169,7 +170,7 @@ fn paint_slider<T: egui::emath::Numeric>(
 
             // Track background.
             let dim_mul = if disabled { 0.5 } else { 1.0 };
-            let track_bg = st::color_alpha(theme.dim(), 64).gamma_multiply(dim_mul);
+            let track_bg = st::color_alpha(palette_ct(theme).base(Tone::Dim), 64).gamma_multiply(dim_mul);
             let cr = CornerRadius::same((track_h * 0.5) as u8);
             painter.rect_filled(track_rect, cr, track_bg);
 
@@ -188,7 +189,7 @@ fn paint_slider<T: egui::emath::Numeric>(
                 let ty = track_rect.bottom() + 2.0;
                 painter.line_segment(
                     [Pos2::new(tx, ty), Pos2::new(tx, ty + 4.0)],
-                    Stroke::new(st::stroke_std(), st::color_alpha(theme.dim(), 100)),
+                    Stroke::new(st::stroke_std(), st::color_alpha(palette_ct(theme).base(Tone::Dim), 100)),
                 );
             }
 
@@ -196,7 +197,7 @@ fn paint_slider<T: egui::emath::Numeric>(
             let active = !disabled && (response.hovered() || response.dragged());
             let scale_t = motion::ease_bool(ui.ctx(), id.with("sl_hov"), active, motion::FAST);
             let d = thumb_d + scale_t * hover_extra;
-            let thumb_bg = theme.bg().gamma_multiply(dim_mul);
+            let thumb_bg = palette_ct(theme).base(Tone::Bg).gamma_multiply(dim_mul);
             painter.circle_filled(thumb_center, d * 0.5, thumb_bg);
             painter.circle_stroke(thumb_center, d * 0.5, Stroke::new(st::stroke_thick(), fill_color));
 
@@ -213,7 +214,7 @@ fn paint_slider<T: egui::emath::Numeric>(
                     egui::Align2::LEFT_CENTER,
                     formatted,
                     if size == Size::Sm || size == Size::Xs { st::mono_xs() } else { st::mono_sm() },
-                    theme.text(),
+                    palette_ct(theme).base(Tone::Text),
                 );
                 ui.allocate_exact_size(Vec2::new(value_label_w, total_h), Sense::hover());
             }

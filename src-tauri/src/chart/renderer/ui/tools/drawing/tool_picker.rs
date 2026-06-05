@@ -124,7 +124,7 @@ fn drawing_label(tool: &str) -> &'static str {
 fn drawing_is_active(tool: &str, chart: &Chart) -> bool {
     match tool {
         "magnifier" => chart.zoom_selecting,
-        "measure" => chart.measure_active,
+        "measure" => chart.measure.mode,
         _ => false,
     }
 }
@@ -214,7 +214,7 @@ pub fn show_drawing_tool_picker(
                         .monospace().size(font_sm()).color(t.dim));
                     ui.add_space(gap_xs());
                     for &(cat, _tools) in DRAW_CATEGORIES {
-                        let is_hovered_cat = chart.draw_picker_hover_cat.as_deref() == Some(cat);
+                        let is_hovered_cat = chart.draw_picker.hover_cat.as_deref() == Some(cat);
                         let (row_rect, resp) = ui.allocate_exact_size(
                             egui::vec2(ui.available_width(), 20.0),
                             egui::Sense::hover(),
@@ -239,8 +239,8 @@ pub fn show_drawing_tool_picker(
                             t.dim,
                         );
                         if resp.hovered() {
-                            chart.draw_picker_hover_cat = Some(cat.to_string());
-                            chart.draw_picker_hover_cat_y = row_rect.top();
+                            chart.draw_picker.hover_cat = Some(cat.to_string());
+                            chart.draw_picker.hover_cat_y = row_rect.top();
                         }
                     }
                 });
@@ -248,11 +248,11 @@ pub fn show_drawing_tool_picker(
 
     // Flyout submenu
     let mut flyout_rect = egui::Rect::NOTHING;
-    if let Some(cat) = chart.draw_picker_hover_cat.clone() {
+    if let Some(cat) = chart.draw_picker.hover_cat.clone() {
         if let Some(&(_, tools)) = DRAW_CATEGORIES.iter().find(|&&(c, _)| c == cat) {
             let fpos = egui::pos2(
                 area_resp.response.rect.right() + 2.0,
-                chart.draw_picker_hover_cat_y - 6.0,
+                chart.draw_picker.hover_cat_y - 6.0,
             );
             let flyout_id = egui::Id::new(("draw_picker_flyout", pane_idx));
             let flyout_size_id = flyout_id.with("apex_size");
@@ -342,7 +342,7 @@ pub fn show_drawing_tool_picker(
         let in_main = main_expanded.contains(p);
         let in_fly = flyout_rect != egui::Rect::NOTHING && flyout_rect.contains(p);
         if !in_main && !in_fly {
-            chart.draw_picker_hover_cat = None;
+            chart.draw_picker.hover_cat = None;
         }
     }
 

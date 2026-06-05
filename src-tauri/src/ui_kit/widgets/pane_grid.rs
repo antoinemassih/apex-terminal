@@ -42,6 +42,7 @@ use egui::{
 use serde::{Deserialize, Serialize};
 
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 // ContextMenu / MenuItem / DangerMenuItem are available for future enhancement
 // (Tier B: themed context menus). For now we use egui's built-in context_menu
 // with plain Button rows — removes a borrow-conflict between the closure's &mut Ui
@@ -74,10 +75,11 @@ pub enum Axis {
 
 // ─── Layout tree ─────────────────────────────────────────────────────────────
 
-/// Internal node — either a leaf pane or a binary split.
+/// Layout-tree node — either a leaf pane or a binary split. Public so hosts
+/// can construct preset templates (see chart-app `PaneLayout::from_template`).
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(bound = "T: Serialize + for<'de2> Deserialize<'de2>")]
-pub(crate) enum Node<T> {
+pub enum Node<T> {
     Leaf { id: PaneId, content: T },
     Split {
         id:    SplitId,
@@ -90,6 +92,19 @@ pub(crate) enum Node<T> {
 }
 
 impl<T> Node<T> {
+    // ── Constructors (for host preset templates) ─────────────────────────────
+
+    /// Build a leaf node. Hosts pass these into `Self::split_node` to compose
+    /// preset trees, then hand the root to `PaneState::replace_root`.
+    pub fn leaf(id: PaneId, content: T) -> Self {
+        Node::Leaf { id, content }
+    }
+
+    /// Build a split node from two children. Ratio is clamped at render time.
+    pub fn split_node(id: SplitId, axis: Axis, ratio: f32, a: Node<T>, b: Node<T>) -> Self {
+        Node::Split { id, axis, ratio, a: Box::new(a), b: Box::new(b) }
+    }
+
     // ── Counting ────────────────────────────────────────────────────────────
 
     fn pane_count(&self) -> usize {
@@ -291,8 +306,14 @@ impl<T> PaneState<T> {
     }
 
     /// Split `pane` along `axis`, inserting `new_content` as the new sibling.
-    /// Returns the new pane's `PaneId`, or `None` if `pane` was not found.
+    /// Returns the new pane's `PaneId`, or `None` if `pane` was not found OR
+    /// if splitting it would push the tree past `MAX_SPLIT_DEPTH` (8 levels),
+    /// at which point further splits produce panes too small to use.
     pub fn split(&mut self, pane: PaneId, axis: Axis, new_content: T) -> Option<PaneId> {
+        const MAX_SPLIT_DEPTH: usize = 8;
+        if depth_of(&self.layout, pane, 0) >= MAX_SPLIT_DEPTH {
+            return None;
+        }
         let new_pane_id  = PaneId(self.next_pane);
         let new_split_id = SplitId(self.next_split);
         match self.layout.do_split(pane, axis, new_content, new_pane_id, new_split_id) {
@@ -382,6 +403,177 @@ impl<T> PaneState<T> {
     /// Number of leaf panes.
     pub fn pane_count(&self) -> usize {
         self.layout.pane_count()
+    }
+
+    /// Walk the layout tree and yield `(PaneId, &T, Rect)` for each leaf,
+    /// with rects computed from `full_rect` divided according to every
+    /// `Split { axis, ratio }` along the path. Includes a `gap` between
+    /// sibling panes (carved out of the split boundary).
+    ///
+    /// Hosts that drive their own per-pane render loop (rather than passing
+    /// a closure to `PaneGrid::show`) use this to align legacy iteration
+    /// with the new tree topology — see chart-app `PaneLayout::pane_rects`.
+    pub fn iter_panes_with_rects(
+        &self,
+        full_rect: egui::Rect,
+        gap: f32,
+    ) -> Vec<(PaneId, &T, egui::Rect)> {
+        let mut out = Vec::new();
+        collect_with_rects(&self.layout, full_rect, gap, &mut out);
+        out
+    }
+
+    /// Same as `iter_panes_with_rects` but yields mutable references.
+    pub fn iter_panes_with_rects_mut(
+        &mut self,
+        full_rect: egui::Rect,
+        gap: f32,
+    ) -> Vec<(PaneId, &mut T, egui::Rect)> {
+        let mut out = Vec::new();
+        collect_with_rects_mut(&mut self.layout, full_rect, gap, &mut out);
+        out
+    }
+
+    /// Walk the tree yielding `(SplitId, axis, ratio, parent_rect)` for each
+    /// Split node, with rects computed from `full_rect` and `gap`. Hosts use
+    /// this to attach drag-handle hit-bands at each interior split — see the
+    /// chart-app `PaneLayout::show_overlays`.
+    pub fn iter_splits_with_rects(
+        &self,
+        full_rect: egui::Rect,
+        gap: f32,
+    ) -> Vec<(SplitId, Axis, f32, egui::Rect)> {
+        let mut out = Vec::new();
+        collect_split_rects(&self.layout, full_rect, gap, &mut out);
+        out
+    }
+
+    /// Replace the entire layout tree with a new one. Used by hosts to swap
+    /// from one preset template to another (e.g. "2×2 grid" → "1 + 2 below")
+    /// without having to drop and rebuild `PaneState`.
+    ///
+    /// Resets `focus` to the first pane in the new tree. ID counters
+    /// continue from the high-water mark so subsequent splits keep producing
+    /// fresh IDs.
+    pub fn replace_root(&mut self, new_root: Node<T>) {
+        let mut ids = Vec::new();
+        new_root.collect_ids(&mut ids);
+        let max_pane  = ids.iter().filter_map(|n| if let NodeId::Pane(p)  = n { Some(p.0) } else { None }).max().unwrap_or(0);
+        let max_split = ids.iter().filter_map(|n| if let NodeId::Split(s) = n { Some(s.0) } else { None }).max().unwrap_or(0);
+        self.layout    = new_root;
+        self.next_pane  = self.next_pane.max(max_pane + 1);
+        self.next_split = self.next_split.max(max_split + 1);
+        let mut first = Vec::new();
+        self.layout.collect_panes(&mut first);
+        self.focus = first.first().map(|(id, _)| *id);
+    }
+}
+
+/// Helper enum for `replace_root`'s ID accounting.
+enum NodeId { Pane(PaneId), Split(SplitId) }
+
+impl<T> Node<T> {
+    fn collect_ids(&self, out: &mut Vec<NodeId>) {
+        match self {
+            Node::Leaf { id, .. } => out.push(NodeId::Pane(*id)),
+            Node::Split { id, a, b, .. } => {
+                out.push(NodeId::Split(*id));
+                a.collect_ids(out);
+                b.collect_ids(out);
+            }
+        }
+    }
+}
+
+fn collect_split_rects<T>(
+    node: &Node<T>,
+    rect: egui::Rect,
+    gap: f32,
+    out: &mut Vec<(SplitId, Axis, f32, egui::Rect)>,
+) {
+    if let Node::Split { id, axis, ratio, a, b } = node {
+        out.push((*id, *axis, *ratio, rect));
+        let (ra, rb) = split_rect(rect, *axis, *ratio, gap);
+        collect_split_rects(a, ra, gap, out);
+        collect_split_rects(b, rb, gap, out);
+    }
+}
+
+fn collect_with_rects<'s, T>(
+    node: &'s Node<T>,
+    rect: egui::Rect,
+    gap: f32,
+    out: &mut Vec<(PaneId, &'s T, egui::Rect)>,
+) {
+    match node {
+        Node::Leaf { id, content } => out.push((*id, content, rect)),
+        Node::Split { axis, ratio, a, b, .. } => {
+            let (ra, rb) = split_rect(rect, *axis, *ratio, gap);
+            collect_with_rects(a, ra, gap, out);
+            collect_with_rects(b, rb, gap, out);
+        }
+    }
+}
+
+fn collect_with_rects_mut<'s, T>(
+    node: &'s mut Node<T>,
+    rect: egui::Rect,
+    gap: f32,
+    out: &mut Vec<(PaneId, &'s mut T, egui::Rect)>,
+) {
+    match node {
+        Node::Leaf { id, content } => out.push((*id, content, rect)),
+        Node::Split { axis, ratio, a, b, .. } => {
+            let (ra, rb) = split_rect(rect, *axis, *ratio, gap);
+            collect_with_rects_mut(a, ra, gap, out);
+            collect_with_rects_mut(b, rb, gap, out);
+        }
+    }
+}
+
+/// Divide `rect` into two children along `axis`. `ratio` is the fraction
+/// of `rect`'s primary dimension given to child `a`. `gap` is reserved
+/// between the two children as a gutter (carved evenly from the split line).
+pub fn split_rect(rect: egui::Rect, axis: Axis, ratio: f32, gap: f32) -> (egui::Rect, egui::Rect) {
+    let r = ratio.clamp(0.1, 0.9);
+    match axis {
+        Axis::Horizontal => {
+            let avail = (rect.width() - gap).max(0.0);
+            let aw = avail * r;
+            let bw = avail - aw;
+            let ar = egui::Rect::from_min_size(rect.min, egui::vec2(aw, rect.height()));
+            let br = egui::Rect::from_min_size(
+                egui::pos2(rect.min.x + aw + gap, rect.min.y),
+                egui::vec2(bw, rect.height()),
+            );
+            (ar, br)
+        }
+        Axis::Vertical => {
+            let avail = (rect.height() - gap).max(0.0);
+            let ah = avail * r;
+            let bh = avail - ah;
+            let ar = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), ah));
+            let br = egui::Rect::from_min_size(
+                egui::pos2(rect.min.x, rect.min.y + ah + gap),
+                egui::vec2(rect.width(), bh),
+            );
+            (ar, br)
+        }
+    }
+}
+
+/// P17 #7 — compute the depth of `target` in `node` (root = 0). Returns
+/// `usize::MAX` if target isn't in the tree, so the depth check in
+/// `PaneState::split` becomes a no-op (target not found → split returns
+/// None for a different reason anyway).
+fn depth_of<T>(node: &Node<T>, target: PaneId, current: usize) -> usize {
+    match node {
+        Node::Leaf { id, .. } => if *id == target { current } else { usize::MAX },
+        Node::Split { a, b, .. } => {
+            let da = depth_of(a, target, current + 1);
+            if da != usize::MAX { return da; }
+            depth_of(b, target, current + 1)
+        }
     }
 }
 
@@ -484,7 +676,7 @@ where
             on_close,
         } = self;
 
-        let splitter_color = splitter_color.unwrap_or_else(|| theme.border());
+        let splitter_color = splitter_color.unwrap_or_else(|| palette_ct(theme).base(Tone::Border));
 
         let mut pending: Vec<PendingAction> = Vec::new();
 
@@ -608,7 +800,7 @@ fn paint_node<T, R>(
                 motion::FAST,
             );
             let idle_c   = st::color_alpha(splitter_color, st::alpha_strong());
-            let hot_c    = st::color_alpha(theme.accent(), st::alpha_heavy());
+            let hot_c    = st::color_alpha(palette_ct(theme).base(Tone::Accent), st::alpha_heavy());
             let line_col = motion::lerp_color(idle_c, hot_c, hover_t);
             ui.painter().rect_filled(rect_div, CornerRadius::ZERO, line_col);
         }
@@ -711,9 +903,9 @@ fn draw_pane_chrome(
 
     // Outer border.
     let border_color = if focused {
-        st::color_alpha(theme.accent(), st::alpha_subtle())
+        st::color_alpha(palette_ct(theme).base(Tone::Accent), st::alpha_subtle())
     } else {
-        st::color_alpha(theme.border(), st::alpha_subtle())
+        st::color_alpha(palette_ct(theme).base(Tone::Border), st::alpha_subtle())
     };
     ui.painter().rect_stroke(
         rect,
@@ -727,7 +919,7 @@ fn draw_pane_chrome(
     ui.painter().rect_filled(
         header_rect,
         CornerRadius::ZERO,
-        st::color_alpha(theme.surface(), st::alpha_subtle()),
+        st::color_alpha(palette_ct(theme).base(Tone::Surface), st::alpha_subtle()),
     );
 
     // Title label.
@@ -737,7 +929,7 @@ fn draw_pane_chrome(
         egui::Align2::LEFT_CENTER,
         format!("Pane {}", id.0),
         egui::FontId::proportional(st::font_xs()),
-        st::color_alpha(theme.dim(), st::alpha_strong()),
+        st::color_alpha(palette_ct(theme).base(Tone::Dim), st::alpha_strong()),
     );
 
     // Close "×" button — icon-sized square in the right side of header.
@@ -756,7 +948,7 @@ fn draw_pane_chrome(
     let glyph_color = if close_resp.hovered() {
         theme.danger()
     } else {
-        st::color_alpha(theme.dim(), st::alpha_strong())
+        st::color_alpha(palette_ct(theme).base(Tone::Dim), st::alpha_strong())
     };
     ui.painter().text(
         close_rect.center(),

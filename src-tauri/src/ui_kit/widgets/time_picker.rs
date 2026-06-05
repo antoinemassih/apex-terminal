@@ -19,6 +19,7 @@ use egui::{
 
 use super::motion;
 use super::theme::ComponentTheme;
+use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
 use crate::ui_kit::icons::Icon;
@@ -130,22 +131,22 @@ fn paint_time_picker<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, tp: TimePicker
     let hover_t = motion::ease_bool(ui.ctx(), id.with("hover"), hovered, motion::FAST);
     let focus_t = motion::ease_bool(ui.ctx(), id.with("focus"), open, motion::FAST);
 
-    let mut border_col = motion::lerp_color(theme.border(), theme.dim(), hover_t);
-    border_col = motion::lerp_color(border_col, theme.accent(), focus_t);
+    let mut border_col = motion::lerp_color(palette_ct(theme).base(Tone::Border), palette_ct(theme).base(Tone::Dim), hover_t);
+    border_col = motion::lerp_color(border_col, palette_ct(theme).base(Tone::Accent), focus_t);
 
     let radius = CornerRadius::same(st::radius_sm() as u8);
 
     if ui.is_rect_visible(rect) {
         let painter = ui.painter_at(rect);
         let bg = if disabled {
-            st::color_alpha(theme.surface(), 128)
+            st::color_alpha(palette_ct(theme).base(Tone::Surface), 128)
         } else {
-            theme.surface()
+            palette_ct(theme).base(Tone::Surface)
         };
         painter.rect_filled(rect, radius, bg);
         painter.rect_stroke(rect, radius, Stroke::new(st::stroke_std(), border_col), StrokeKind::Inside);
 
-        let icon_color = motion::lerp_color(theme.dim(), theme.accent(), focus_t);
+        let icon_color = motion::lerp_color(palette_ct(theme).base(Tone::Dim), palette_ct(theme).base(Tone::Accent), focus_t);
         let cy = rect.center().y;
 
         // Leading clock icon.
@@ -160,11 +161,11 @@ fn paint_time_picker<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, tp: TimePicker
 
         let text_x = icon_x + font_size * 1.1 + icon_gap;
         let text_col = if disabled {
-            st::color_alpha(theme.dim(), 128)
+            st::color_alpha(palette_ct(theme).base(Tone::Dim), 128)
         } else if is_placeholder {
-            st::color_alpha(theme.dim(), 160)
+            st::color_alpha(palette_ct(theme).base(Tone::Dim), 160)
         } else {
-            theme.text()
+            palette_ct(theme).base(Tone::Text)
         };
         painter.text(
             Pos2::new(text_x, cy),
@@ -209,8 +210,8 @@ fn paint_time_picker<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, tp: TimePicker
             .order(Order::Foreground)
             .fixed_pos(popup_pos)
             .show(ui.ctx(), |ui| {
-                let bg = theme.surface();
-                let border = theme.border();
+                let bg = palette_ct(theme).base(Tone::Surface);
+                let border = palette_ct(theme).base(Tone::Border);
                 let col_w: f32 = 52.0;
                 let num_cols = if show_seconds { 3 } else { 2 };
                 let popup_w = col_w * num_cols as f32 + st::gap_xs() * (num_cols - 1) as f32 + st::gap_sm() * 2.0 + 8.0;
@@ -248,7 +249,7 @@ fn paint_time_picker<'a>(ui: &mut Ui, theme: &dyn ComponentTheme, tp: TimePicker
                         // ── "Now" button ──
                         let now_resp = super::Button::new("Now")
                             .variant(super::tokens::Variant::Secondary)
-                            .tint(theme.accent())
+                            .tint(palette_ct(theme).base(Tone::Accent))
                             .min_size(Vec2::new(popup_w - st::gap_sm() * 2.0, size.height() * 0.85))
                             .show(ui, theme);
                         if now_resp.clicked() {
@@ -336,7 +337,7 @@ fn render_scroll_column(
             egui::RichText::new(label)
                 .monospace()
                 .size(font_size - 1.0)
-                .color(theme.dim()),
+                .color(palette_ct(theme).base(Tone::Dim)),
         );
         ui.add_space(2.0);
 
@@ -347,9 +348,9 @@ fn render_scroll_column(
                 ui.set_min_width(col_w);
                 for i in start..start + count {
                     let is_sel = *selected == i;
-                    let text_col = if is_sel { theme.accent() } else { theme.text() };
+                    let text_col = if is_sel { palette_ct(theme).base(Tone::Accent) } else { palette_ct(theme).base(Tone::Text) };
                     let bg = if is_sel {
-                        st::color_alpha(theme.accent(), 30)
+                        st::color_alpha(palette_ct(theme).base(Tone::Accent), 30)
                     } else {
                         egui::Color32::TRANSPARENT
                     };
@@ -366,7 +367,7 @@ fn render_scroll_column(
                                 item_rect,
                                 CornerRadius::same(st::radius_sm() as u8),
                                 if item_resp.hovered() && !is_sel {
-                                    st::color_alpha(theme.dim(), 20)
+                                    st::color_alpha(palette_ct(theme).base(Tone::Dim), 20)
                                 } else {
                                     bg
                                 },
