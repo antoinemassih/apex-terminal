@@ -101,6 +101,27 @@ pub(crate) fn bars(
     }
 }
 
+/// **Coloured bars** — like [`bars`] but each bar is `(height_frac 0..1, colour)`
+/// drawn at its explicit fraction of the rect height (no auto-normalisation), so
+/// callers control both height and colour (e.g. intensity-gradient volume bars).
+pub(crate) fn bars_colored(
+    p: &egui::Painter, rect: egui::Rect, bars: &[(f32, Color32)], st: &ChartStyle, t: &Theme,
+) {
+    if bars.is_empty() { return; }
+    let n = bars.len();
+    let gap = st.gap.min(rect.width() / (n as f32 * 2.0));
+    let bw = (rect.width() - gap * (n as f32 - 1.0)) / n as f32;
+    let base = rect.bottom();
+    p.hline(rect.x_range(), base, Stroke::new(st.line_thin, tint(t, Tone::Border, st.track_alpha)));
+    for (i, &(frac, col)) in bars.iter().enumerate() {
+        let x = rect.left() + i as f32 * (bw + gap);
+        let h = frac.clamp(0.0, 1.0) * rect.height();
+        let r = egui::Rect::from_min_size(egui::pos2(x, base - h), egui::vec2(bw, h));
+        let cr = egui::CornerRadius { nw: st.corner as u8, ne: st.corner as u8, sw: 0, se: 0 };
+        p.rect_filled(r, cr, col);
+    }
+}
+
 // ── Histogram ─────────────────────────────────────────────────────────────────
 
 /// **Histogram** — contiguous distribution bars (no inter-bar gap), value-shaded

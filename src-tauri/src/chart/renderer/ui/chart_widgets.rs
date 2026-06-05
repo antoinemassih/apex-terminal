@@ -20,7 +20,9 @@ use super::overlays::kit::{
     overlay_card_frame, overlay_card_header, overlay_header_ctx_rect, progress_bar,
 };
 use super::overlays::registry::OverlayWidget;
-use super::overlays::viz::charts::{heatmap_signed, multiring_colored, multiring_radius, multiring_thickness};
+use super::overlays::viz::charts::{
+    bars_colored, heatmap_signed, multiring_colored, multiring_radius, multiring_thickness,
+};
 use super::overlays::viz::style::ChartStyle;
 use super::super::gpu::*;
 use crate::chart_renderer::{ChartWidgetKind, WidgetDisplayMode, WidgetDock};
@@ -2565,31 +2567,17 @@ fn draw_dark_pool(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Them
         &format!("{:.0}%", ratio_pct), ratio_col);
     sub_label(p, egui::pos2(body.center().x, body.top() + 36.0), "DARK POOL", t.dim);
 
-    // Volume spike bars
-    let bar_y = body.top() + 50.0;
-    let bar_w = (right - left) / 8.0 - 2.0;
-    let bar_max_h = body.bottom() - bar_y - 16.0;
-
-    for i in 0..8 {
-        let x = left + i as f32 * (bar_w + 2.0);
-        let h = bar_max_h * wd.dark_pool_bars[i].max(0.02);
-
-        // Gradient: low=dim, high=purple
+    // Volume spike bars — kit primitive, per-bar intensity gradient (dim→purple).
+    let st = ChartStyle::resolve(t);
+    let purple = Color32::from_rgb(160, 80, 220);
+    let grid = egui::Rect::from_min_max(
+        egui::pos2(left, body.top() + 50.0),
+        egui::pos2(right, body.bottom() - 16.0));
+    let bars_data: Vec<(f32, Color32)> = (0..8).map(|i| {
         let intensity = wd.dark_pool_bars[i];
-        let color = lerp_color(
-            tint(t, Tone::Dim, alpha_muted()),
-            Color32::from_rgb(160, 80, 220), // purple
-            intensity);
-        let bar_rect = egui::Rect::from_min_size(
-            egui::pos2(x, bar_y + bar_max_h - h), egui::vec2(bar_w, h));
-        p.rect_filled(bar_rect, 2.0, color);
-
-        // Glow on largest bar
-        if intensity > 0.9 {
-            p.rect_filled(bar_rect.expand(1.0), 3.0,
-                Color32::from_rgba_unmultiplied(160, 80, 220, 20));
-        }
-    }
+        (intensity.max(0.02), lerp_color(tint(t, Tone::Dim, alpha_muted()), purple, intensity))
+    }).collect();
+    bars_colored(p, grid, &bars_data, &st, t);
 
     // "Unusual" label if high ratio
     if ratio_pct > 30.0 {
