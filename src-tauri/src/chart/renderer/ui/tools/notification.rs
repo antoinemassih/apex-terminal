@@ -116,8 +116,33 @@ thread_local! {
 
 // ── Pending-toast façade (replaces PENDING_TOASTS) ───────────────────────────
 
-/// Push a notification into the pending queue for the current frame.
+/// Map a notification's `source` (+ severity) to a badge kind, or `None` for
+/// app-action notifications (undo / screenshot / resume, etc.) that belong in a
+/// toast but should not clutter the persistent toolbar badge feed. Any `Error`
+/// also badges even without a source — failures are worth surfacing.
+fn badge_kind_for(source: Option<&'static str>, sev: NotificationSeverity) -> Option<AlertKind> {
+    match source {
+        Some("orders") => Some(match sev {
+            NotificationSeverity::Success => AlertKind::OrderFilled,
+            NotificationSeverity::Error   => AlertKind::OrderRejected,
+            _                             => AlertKind::OrderPending,
+        }),
+        Some("alerts") | Some("price_alert")              => Some(AlertKind::PriceAlert),
+        Some("precursor") | Some("trade_plan") | Some("feed") => Some(AlertKind::Signal),
+        _ if sev == NotificationSeverity::Error           => Some(AlertKind::Error),
+        _                                                 => None,
+    }
+}
+
+/// Push a notification into the pending queue for the current frame. Market-
+/// relevant sources (orders / alerts / signals / errors) ALSO fan out to the
+/// toolbar badge feed so real fills, alerts and signals appear there — not just
+/// the seed placeholders.
 pub fn push_pending(n: Notification) {
+    if let Some(kind) = badge_kind_for(n.source, n.severity) {
+        // Separate manager borrow, fully released before the pending push below.
+        push_badge(kind, None, n.message.clone());
+    }
     MANAGER.with(|m| m.borrow_mut().pending.push_back(n));
 }
 
