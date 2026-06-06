@@ -323,6 +323,11 @@ pub(crate) fn render(
     conn_panel_open: &mut bool,
     toasts: &[crate::chart_renderer::ui::tools::notification::Notification],
 ) {
+    // Sync notification routing prefs (toolbar vs toasts, per-category) from the
+    // persisted user settings each frame so pushes route correctly.
+    crate::chart_renderer::ui::tools::notification::set_routing(
+        crate::chart_renderer::ui::tools::notification::routing_from_ctx(ctx),
+    );
     {
         use std::sync::Once;
         static SHORTCUTS_REGISTERED: Once = Once::new();
@@ -1327,7 +1332,7 @@ pub(crate) fn render(
     // time hash. Pinning is session-only (egui memory is not persisted).
     //
     // "Expand" state (N more chip click) is stored in egui temp memory.
-    if !toasts.is_empty() {
+    if crate::chart_renderer::ui::tools::notification::routing().toasts_enabled && !toasts.is_empty() {
         use egui::{Id, pos2, vec2, Rect, CornerRadius, Stroke};
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};

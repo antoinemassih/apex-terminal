@@ -145,6 +145,8 @@ fn seed_placeholders() {
 /// a stable box (frozen — incoming alerts don't move it) showing the full
 /// content. Clicking a badge dismisses it; clicking the bell opens history.
 pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
+    // Hidden entirely when the user disables toolbar notifications.
+    if !notification::routing().toolbar_enabled { return; }
     seed_placeholders();
     use std::collections::{HashMap, HashSet};
     use egui::{Id, Rect, Align2, CornerRadius, Stroke, StrokeKind, LayerId, pos2, vec2};

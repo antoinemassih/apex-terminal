@@ -639,6 +639,42 @@ fn draw_trading(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
         ui.add(SectionLabel::new(label).tiny().color(color));
     });
 
+    // ── NOTIFICATIONS (toolbar ticker vs toasts + per-category routing) ──
+    PanelSection::new("NOTIFICATIONS").show(ui, t, |ui, t| {
+        use crate::chart_renderer::ui::tools::notification as notif;
+        let mut p = notif::routing_from_ctx(ui.ctx());
+        let before = (p.toolbar_enabled, p.toasts_enabled,
+            p.orders.to_u8(), p.signals.to_u8(), p.alerts.to_u8(), p.system.to_u8());
+
+        setting_toggle_described(ui, "Toolbar ticker",
+            Some("Show notifications in the toolbar ticker strip."), t, &mut p.toolbar_enabled);
+        setting_toggle_described(ui, "Toasts (bottom-left)",
+            Some("Show pop-up toasts above the footer."), t, &mut p.toasts_enabled);
+
+        ui.add_space(gap_xs());
+        ui.add(SectionLabel::new("ROUTE BY TYPE").tiny().color(tint(t, Tone::Dim, 200)));
+
+        const DEST: &[(usize, &str)] = &[(0, "Off"), (1, "Toolbar"), (2, "Toast"), (3, "Both")];
+        let mut route_row = |ui: &mut egui::Ui, label: &str, d: &mut notif::NotifDest| {
+            setting_form_row(label, t).show(ui, t, |ui| {
+                let mut v = d.to_u8() as usize;
+                SegmentedControl::new(&mut v, DEST).show(ui, t);
+                *d = notif::NotifDest::from_u8(v as u8);
+            });
+        };
+        route_row(ui, "Orders", &mut p.orders);
+        route_row(ui, "Signals", &mut p.signals);
+        route_row(ui, "Price alerts", &mut p.alerts);
+        route_row(ui, "System / Connection", &mut p.system);
+
+        let after = (p.toolbar_enabled, p.toasts_enabled,
+            p.orders.to_u8(), p.signals.to_u8(), p.alerts.to_u8(), p.system.to_u8());
+        if after != before {
+            notif::routing_to_ctx(ui.ctx(), p);
+            notif::set_routing(p);
+        }
+    });
+
     // ── ORDER DEFAULTS ──
     // Wave 2 (state): flat fields are mutated in-place for SegmentedControl
     // compatibility; push_to_trading_defaults_store() propagates every change

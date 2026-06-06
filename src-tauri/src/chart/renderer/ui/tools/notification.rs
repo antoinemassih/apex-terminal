@@ -116,34 +116,142 @@ thread_local! {
 
 // ── Pending-toast façade (replaces PENDING_TOASTS) ───────────────────────────
 
-/// Map a notification's `source` (+ severity) to a badge kind, or `None` for
-/// app-action notifications (undo / screenshot / resume, etc.) that belong in a
-/// toast but should not clutter the persistent toolbar badge feed. Any `Error`
-/// also badges even without a source — failures are worth surfacing.
-fn badge_kind_for(source: Option<&'static str>, sev: NotificationSeverity) -> Option<AlertKind> {
-    match source {
-        Some("orders") => Some(match sev {
-            NotificationSeverity::Success => AlertKind::OrderFilled,
-            NotificationSeverity::Error   => AlertKind::OrderRejected,
-            _                             => AlertKind::OrderPending,
-        }),
-        Some("alerts") | Some("price_alert")              => Some(AlertKind::PriceAlert),
-        Some("precursor") | Some("trade_plan") | Some("feed") => Some(AlertKind::Signal),
-        _ if sev == NotificationSeverity::Error           => Some(AlertKind::Error),
-        _                                                 => None,
+// ── Routing: which surface (toolbar ticker / toasts) gets each notification ──
+
+/// Coarse notification category used for user-configurable routing.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum NotifCategory { Orders, Signals, Alerts, System }
+
+/// Where a category's notifications are delivered.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum NotifDest { Off, Toolbar, Toast, Both }
+
+impl NotifDest {
+    pub fn to_u8(self) -> u8 {
+        match self { NotifDest::Off => 0, NotifDest::Toolbar => 1, NotifDest::Toast => 2, NotifDest::Both => 3 }
+    }
+    pub fn from_u8(v: u8) -> Self {
+        match v { 1 => NotifDest::Toolbar, 2 => NotifDest::Toast, 3 => NotifDest::Both, _ => NotifDest::Off }
+    }
+    fn to_toolbar(self) -> bool { matches!(self, NotifDest::Toolbar | NotifDest::Both) }
+    fn to_toast(self)   -> bool { matches!(self, NotifDest::Toast | NotifDest::Both) }
+}
+
+/// Master enable flags + per-category destinations.
+#[derive(Clone, Copy)]
+pub struct RoutingPrefs {
+    pub toolbar_enabled: bool,
+    pub toasts_enabled:  bool,
+    pub orders:  NotifDest,
+    pub signals: NotifDest,
+    pub alerts:  NotifDest,
+    pub system:  NotifDest,
+}
+
+impl Default for RoutingPrefs {
+    fn default() -> Self {
+        Self {
+            toolbar_enabled: true,
+            toasts_enabled:  true,
+            // Trading events → toolbar ticker; system/connection → toasts.
+            orders:  NotifDest::Toolbar,
+            signals: NotifDest::Toolbar,
+            alerts:  NotifDest::Toolbar,
+            system:  NotifDest::Toast,
+        }
     }
 }
 
-/// Push a notification into the pending queue for the current frame. Market-
-/// relevant sources (orders / alerts / signals / errors) ALSO fan out to the
-/// toolbar badge feed so real fills, alerts and signals appear there — not just
-/// the seed placeholders.
-pub fn push_pending(n: Notification) {
-    if let Some(kind) = badge_kind_for(n.source, n.severity) {
-        // Separate manager borrow, fully released before the pending push below.
-        push_badge(kind, None, n.message.clone());
+impl RoutingPrefs {
+    pub fn dest(&self, cat: NotifCategory) -> NotifDest {
+        match cat {
+            NotifCategory::Orders  => self.orders,
+            NotifCategory::Signals => self.signals,
+            NotifCategory::Alerts  => self.alerts,
+            NotifCategory::System  => self.system,
+        }
     }
-    MANAGER.with(|m| m.borrow_mut().pending.push_back(n));
+}
+
+thread_local! {
+    static ROUTING: std::cell::Cell<RoutingPrefs> = std::cell::Cell::new(RoutingPrefs::default());
+}
+
+/// Update the live routing prefs (called once per frame from the render with the
+/// persisted user settings).
+pub fn set_routing(p: RoutingPrefs) { ROUTING.with(|r| r.set(p)); }
+/// Current routing prefs (read by `push_pending` and the surface renderers).
+pub fn routing() -> RoutingPrefs { ROUTING.with(|r| r.get()) }
+
+/// Classify a notification by source for routing.
+fn category_for(source: Option<&'static str>) -> NotifCategory {
+    match source {
+        Some("orders")                                        => NotifCategory::Orders,
+        Some("alerts") | Some("price_alert")                  => NotifCategory::Alerts,
+        Some("precursor") | Some("trade_plan") | Some("feed") => NotifCategory::Signals,
+        _                                                     => NotifCategory::System,
+    }
+}
+
+/// Toolbar badge kind for a category + severity.
+fn kind_for_category(cat: NotifCategory, sev: NotificationSeverity) -> AlertKind {
+    match cat {
+        NotifCategory::Orders => match sev {
+            NotificationSeverity::Success => AlertKind::OrderFilled,
+            NotificationSeverity::Error   => AlertKind::OrderRejected,
+            _                             => AlertKind::OrderPending,
+        },
+        NotifCategory::Signals => AlertKind::Signal,
+        NotifCategory::Alerts  => AlertKind::PriceAlert,
+        NotifCategory::System  => match sev {
+            NotificationSeverity::Error => AlertKind::Error,
+            _                           => AlertKind::Warning,
+        },
+    }
+}
+
+/// Read the persisted routing prefs out of egui memory (with defaults).
+pub fn routing_from_ctx(ctx: &egui::Context) -> RoutingPrefs {
+    use egui::Id;
+    let gb = |k: &str, d: bool| ctx.data_mut(|dd| dd.get_persisted::<bool>(Id::new(k))).unwrap_or(d);
+    let gd = |k: &str, d: NotifDest|
+        NotifDest::from_u8(ctx.data_mut(|dd| dd.get_persisted::<u8>(Id::new(k))).unwrap_or(d.to_u8()));
+    RoutingPrefs {
+        toolbar_enabled: gb("notif_toolbar_enabled", true),
+        toasts_enabled:  gb("notif_toasts_enabled",  true),
+        orders:  gd("notif_route_orders",  NotifDest::Toolbar),
+        signals: gd("notif_route_signals", NotifDest::Toolbar),
+        alerts:  gd("notif_route_alerts",  NotifDest::Toolbar),
+        system:  gd("notif_route_system",  NotifDest::Toast),
+    }
+}
+
+/// Persist routing prefs into egui memory (survives restart).
+pub fn routing_to_ctx(ctx: &egui::Context, p: RoutingPrefs) {
+    use egui::Id;
+    ctx.data_mut(|dd| {
+        dd.insert_persisted(Id::new("notif_toolbar_enabled"), p.toolbar_enabled);
+        dd.insert_persisted(Id::new("notif_toasts_enabled"),  p.toasts_enabled);
+        dd.insert_persisted(Id::new("notif_route_orders"),  p.orders.to_u8());
+        dd.insert_persisted(Id::new("notif_route_signals"), p.signals.to_u8());
+        dd.insert_persisted(Id::new("notif_route_alerts"),  p.alerts.to_u8());
+        dd.insert_persisted(Id::new("notif_route_system"),  p.system.to_u8());
+    });
+}
+
+/// Push a notification, routing it to the toolbar ticker and/or the toast stack
+/// per the user's routing prefs (master enables + per-category destination).
+pub fn push_pending(n: Notification) {
+    let r = routing();
+    let cat = category_for(n.source);
+    let dest = r.dest(cat);
+    if r.toolbar_enabled && dest.to_toolbar() {
+        // Separate manager borrow, fully released before the pending push below.
+        push_badge(kind_for_category(cat, n.severity), None, n.message.clone());
+    }
+    if r.toasts_enabled && dest.to_toast() {
+        MANAGER.with(|m| m.borrow_mut().pending.push_back(n));
+    }
 }
 
 /// Drain all pending notifications, returning them as a `Vec`.
