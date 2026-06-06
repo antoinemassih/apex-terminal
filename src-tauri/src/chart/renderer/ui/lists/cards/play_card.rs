@@ -16,6 +16,7 @@ use super::super::super::style::*;
 use crate::chart_renderer::{Play, PlayDirection, PlayStatus, PlayType};
 use crate::chart_renderer::gpu::Theme;
 use crate::ui_kit::icons::Icon;
+use crate::ui_kit::widgets::CardVariant;
 
 /// Result of rendering a `PlayCard`. Action booleans are surfaced for the
 /// caller to wire into mutation/state — no callbacks, keeps borrows clean.
@@ -54,31 +55,25 @@ impl<'a> PlayCard<'a> {
         let (card_rect, resp) = ui.allocate_exact_size(egui::vec2(card_w, card_h), egui::Sense::click());
         let p = ui.painter();
 
-        // Shadow — hand-painted two-layer tint stack (resting card depth).
-        // Alphas come from the semantic alpha-tier tokens to keep softness in
-        // lockstep with the rest of the card chrome.
+        // ── Card shell — same chrome source as the migrated info cards
+        //    (`CardShell` / `CardVariant::Elevated`): drop shadow + surface fill +
+        //    dim border, with a subtle accent hover lift. Replaces the old
+        //    per-channel `saturating_add` math so it tracks the theme like the rest. ──
         p.rect_filled(card_rect.translate(egui::vec2(0.0, 2.0)).expand(1.0), RADIUS_LG, color_alpha(t.shadow_color, alpha_soft()));
         p.rect_filled(card_rect.translate(egui::vec2(0.0, 1.0)), RADIUS_LG, color_alpha(t.shadow_color, alpha_ghost()));
 
-        // TODO(design-system): channel-math hover/rest tints derived from theme; consider a
-        // `tint_brighter(c, n)` token helper or `hover_tint()` overlay.
         crate::chart_renderer::ui::style::cursor::clickable(ui, &resp);
-        let bg = if resp.hovered() {
-            egui::Color32::from_rgba_unmultiplied(
-                t.toolbar_border.r().saturating_add(15), t.toolbar_border.g().saturating_add(15),
-                t.toolbar_border.b().saturating_add(15), 255)
-        } else {
-            egui::Color32::from_rgb(t.toolbar_bg.r().saturating_add(8), t.toolbar_bg.g().saturating_add(8), t.toolbar_bg.b().saturating_add(8))
-        };
-        p.rect_filled(card_rect, RADIUS_LG, bg);
+        p.rect_filled(card_rect, RADIUS_LG, CardVariant::Elevated.fill_color(t));
+        if resp.hovered() {
+            p.rect_filled(card_rect, RADIUS_LG, color_alpha(t.accent, alpha_ghost()));
+        }
 
-        // Top bevel highlight
+        // Top bevel highlight (token-driven on both light + dark).
         p.rect_filled(egui::Rect::from_min_max(card_rect.min, egui::pos2(card_rect.right(), card_rect.top() + 1.0)),
             egui::CornerRadius { nw: RADIUS_LG as u8, ne: RADIUS_LG as u8, sw: 0, se: 0 },
-            // TODO(design-system): theme-aware bevel highlight; 40 ≈ alpha_subtle(), 8 is custom.
-            egui::Color32::from_rgba_unmultiplied(255, 255, 255, if t.is_light() { alpha_subtle() } else { 8 }));
+            egui::Color32::from_rgba_unmultiplied(255, 255, 255, if t.is_light() { alpha_subtle() } else { alpha_ghost() }));
 
-        p.rect_stroke(card_rect, RADIUS_LG, egui::Stroke::new(stroke_thin(), tint(t, Tone::Border, alpha_strong())), egui::StrokeKind::Outside);
+        p.rect_stroke(card_rect, RADIUS_LG, egui::Stroke::new(stroke_thin(), CardVariant::Elevated.border_color(t)), egui::StrokeKind::Outside);
 
         // Accent stripe
         p.rect_filled(egui::Rect::from_min_max(
