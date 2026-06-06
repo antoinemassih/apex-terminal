@@ -196,7 +196,11 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
     // ── Fit: how many fit compactly before the count chip takes over? ──
     let feed_rect  = ui.available_rect_before_wrap();
     let viewport_w = feed_rect.width().max(0.0);
-    let total: f32 = measured.iter().map(|m| m.compact_w).sum::<f32>()
+    // Clamp a single badge's resting width so one long alert can't eat the whole
+    // (often narrow) feed — keeps room for siblings and the "+N" count chip.
+    let max_compact = (viewport_w * 0.62).max(120.0);
+    let compact_of = |m: &M| m.compact_w.min(max_compact);
+    let total: f32 = measured.iter().map(|m| compact_of(m)).sum::<f32>()
         + gapx * measured.len().saturating_sub(1) as f32;
     let had_overflow = total > viewport_w;
     let visible_count = if overflow_expanded || !had_overflow {
@@ -206,7 +210,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         let mut used = 0.0_f32;
         let mut k = 0usize;
         for m in &measured {
-            let add = if k == 0 { m.compact_w } else { gapx + m.compact_w };
+            let add = if k == 0 { compact_of(m) } else { gapx + compact_of(m) };
             if used + add > viewport_w - reserve { break; }
             used += add;
             k += 1;
@@ -252,10 +256,12 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
                     let t_exp = ui.ctx().animate_bool_with_time(Id::new(("alert_badge_exp", id)), was_hovered, EXPAND_DUR);
                     if t_exp > 0.0 && t_exp < 1.0 { animating = true; }
 
-                    // Cap the expanded width to the feed viewport so the
-                    // in-place reveal never runs offscreen.
-                    let exp_w  = m.expanded_w.min((viewport_w - 4.0).max(m.compact_w));
-                    let w      = m.compact_w + (exp_w - m.compact_w) * t_exp;
+                    // Resting width is clamped (see max_compact); expanded width
+                    // is capped to the viewport so the in-place reveal never runs
+                    // offscreen.
+                    let compact_w = m.compact_w.min(max_compact);
+                    let exp_w  = m.expanded_w.min((viewport_w - 4.0).max(compact_w));
+                    let w      = compact_w + (exp_w - compact_w) * t_exp;
                     let draw_w = (w * app_e).max(2.0);
                     let (rect, resp) = ui.allocate_exact_size(vec2(draw_w, BADGE_H), Sense::click());
                     let hovered_now = resp.hovered();
