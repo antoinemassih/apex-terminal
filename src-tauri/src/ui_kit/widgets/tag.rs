@@ -194,3 +194,37 @@ impl<'a> Widget for Tag<'a> {
         self.show(ui, &theme).response
     }
 }
+
+// ─── paint_pill — painter-level pill for absolute-rect callers ───────────────
+
+/// Fill treatment for [`paint_pill`].
+#[derive(Clone, Copy, PartialEq)]
+pub enum PillStyle {
+    /// Soft tinted fill — the default chip look (matches [`Tag`]).
+    Soft,
+    /// Fainter tinted fill — secondary / status pills.
+    Subtle,
+    /// Solid fill with contrast text — strong emphasis (matches [`Badge`]).
+    Solid,
+    /// Border only, transparent fill.
+    Outline,
+}
+
+/// **Painter-level pill** — draws a labelled, fully-rounded pill into an absolute
+/// `rect` with no `Ui`, for chart overlays + painter-driven cards that can't use
+/// the `Ui`-based [`Tag`] / [`Badge`]. `color` is the tone; it shares the Sx box
+/// renderer so it matches the chip widgets, and the label is centred in `font`.
+pub fn paint_pill(
+    p: &egui::Painter, rect: egui::Rect, label: &str, color: Color32,
+    style: PillStyle, font: FontId, t: &dyn ComponentTheme,
+) {
+    let r = rect.height() * 0.5;
+    match style {
+        PillStyle::Soft    => Sx::new().rounded(r).bg_color(st::color_alpha(color, 32)).paint_box_at(p, rect, t),
+        PillStyle::Subtle  => Sx::new().rounded(r).bg_color(st::color_alpha(color, 20)).paint_box_at(p, rect, t),
+        PillStyle::Solid   => Sx::new().rounded(r).bg_color(color).paint_box_at(p, rect, t),
+        PillStyle::Outline => Sx::new().rounded(r).border_color(color, st::stroke_std()).paint_box_at(p, rect, t),
+    }
+    let text_col = if style == PillStyle::Solid { st::contrast_fg(color) } else { color };
+    p.text(rect.center(), egui::Align2::CENTER_CENTER, label, font, text_col);
+}

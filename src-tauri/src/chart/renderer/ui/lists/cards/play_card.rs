@@ -16,7 +16,7 @@ use super::super::super::style::*;
 use crate::chart_renderer::{Play, PlayDirection, PlayStatus, PlayType};
 use crate::chart_renderer::gpu::Theme;
 use crate::ui_kit::icons::Icon;
-use crate::ui_kit::widgets::CardVariant;
+use crate::ui_kit::widgets::{CardVariant, paint_pill, PillStyle};
 
 /// Result of rendering a `PlayCard`. Action booleans are surfaced for the
 /// caller to wire into mutation/state — no callbacks, keeps borrows clean.
@@ -88,9 +88,7 @@ impl<'a> PlayCard<'a> {
         {
             let pill_w = 42.0;
             let pill_rect = egui::Rect::from_min_size(egui::pos2(cx, cy - 1.0), egui::vec2(pill_w, 16.0));
-            p.rect_filled(pill_rect, 3.0, color_alpha(dir_color, alpha_tint()));
-            p.rect_stroke(pill_rect, 3.0, egui::Stroke::new(stroke_thin(), color_alpha(dir_color, alpha_dim())), egui::StrokeKind::Outside);
-            p.text(pill_rect.center(), egui::Align2::CENTER_CENTER, play.direction.label(), mono_xs(), dir_color);
+            paint_pill(p, pill_rect, play.direction.label(), dir_color, PillStyle::Soft, mono_xs(), t);
 
             p.text(egui::pos2(cx + pill_w + 6.0, cy + 6.0), egui::Align2::LEFT_CENTER,
                 play.play_type.icon(), egui::FontId::proportional(font_sm()), color_half(t.dim));
@@ -104,8 +102,7 @@ impl<'a> PlayCard<'a> {
             };
             let status_x = card_rect.right() - 60.0;
             let sr = egui::Rect::from_min_size(egui::pos2(status_x, cy - 1.0), egui::vec2(48.0, 16.0));
-            p.rect_filled(sr, 3.0, color_alpha(status_color, alpha_subtle()));
-            p.text(sr.center(), egui::Align2::CENTER_CENTER, play.status.label(), mono_sm(), status_color);
+            paint_pill(p, sr, play.status.label(), status_color, PillStyle::Subtle, mono_sm(), t);
 
             if play.risk_reward > 0.0 {
                 p.text(egui::pos2(status_x - 8.0, cy + 6.0), egui::Align2::RIGHT_CENTER,
