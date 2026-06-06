@@ -102,12 +102,6 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
         .duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
     refresh_from_projector(watchlist, active_symbol, now_ms);
 
-    let frame = egui::Frame::popup(&ctx.style())
-        .fill(t.toolbar_bg)
-        .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-        .stroke(egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_heavy())))
-        .corner_radius(r_lg_cr());
-
     let filter_active = watchlist.news_filter_symbol;
     let filter_label = if filter_active { active_symbol } else { "All" };
     let mut toggle_filter = false;
@@ -128,7 +122,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
         .theme(t)
         .size(egui::vec2(320.0, 440.0))
         .anchor(Anchor::Window { pos: Some(egui::pos2(300.0, 100.0)) })
-        .frame_kind(FrameKind::Custom(frame))
+        .frame_kind(FrameKind::DialogWindow)
         .draggable_header(true)
         .header_style(HeaderStyle::panel())
         .panel_title_actions(|ui| {
@@ -149,7 +143,6 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
                 cycle_sentiment = true;
             }
         })
-        .header_style(HeaderStyle::Dialog)
         .separator(false)
         .show(|ui| {
             ui.add_space(gap_xs());

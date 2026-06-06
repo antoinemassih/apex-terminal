@@ -25,7 +25,7 @@ use super::super::style::*;
 use super::super::super::gpu::{Watchlist, Theme};
 use crate::ui_kit::widgets::{
     PanelKeyValueRow, PanelListRow, PanelSection, PanelTone,
-    modal::{Modal, Anchor, HeaderStyle},
+    modal::{Modal, Anchor, HeaderStyle, FrameKind},
 };
 use crate::ui_kit::widgets::panel_list_row::Column;
 use super::super::components::text::MonospaceCode;
@@ -170,18 +170,13 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
 
     let metrics = cached_metrics();
 
-    let frame = super::super::components::frames_widget::PopupFrame::new()
-        .colors(t.toolbar_bg, t.toolbar_border)
-        .ctx(ctx)
-        .build();
-
     let resp = Modal::new("ORDER SYSTEM HEALTH")
         .id("order_system_health")
         .ctx(ctx)
         .theme(t)
         .size(egui::vec2(320.0, 480.0))
         .anchor(Anchor::Window { pos: None })
-        .frame(frame)
+        .frame_kind(FrameKind::DialogWindow)
         .header_style(HeaderStyle::Dialog)
         .separator(true)
         .show(|ui| {

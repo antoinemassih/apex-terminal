@@ -265,19 +265,13 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
     let w = 560.0_f32;
     let h = (screen.height() * 0.80).min(640.0);
 
-    let frame = egui::Frame::popup(&ctx.style())
-        .fill(t.toolbar_bg)
-        .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-        .stroke(egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_heavy())))
-        .corner_radius(r_lg_cr());
-
     let resp = Modal::new("REPLAY SCRUBBER")
         .id("replay_scrubber")
         .ctx(ctx)
         .theme(t)
         .size(egui::vec2(w, h))
         .anchor(Anchor::Window { pos: Some(egui::pos2(screen.center().x - w / 2.0, 80.0)) })
-        .frame_kind(FrameKind::Custom(frame))
+        .frame_kind(FrameKind::DialogWindow)
         .draggable_header(true)
         .header_style(HeaderStyle::Panel {
             title_size:      SectionLabelSize::Md,

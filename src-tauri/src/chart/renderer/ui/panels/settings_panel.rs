@@ -66,8 +66,6 @@ let screen = ctx.screen_rect();
 let dialog_w = 580.0_f32;
 let dialog_h = (screen.height() * 0.82).min(780.0).max(400.0);
 let dialog_pos = egui::pos2(screen.center().x - dialog_w / 2.0, screen.center().y - dialog_h / 2.0);
-let frame = super::super::components::frames_widget::PopupFrame::new().theme(t).ctx(ctx).build()
-    .inner_margin(0.0).outer_margin(0.0);
 let modal_resp = Modal::new("SETTINGS")
     .id("settings_panel")
     .ctx(ctx)
@@ -75,7 +73,7 @@ let modal_resp = Modal::new("SETTINGS")
     .size(egui::vec2(dialog_w, dialog_h))
     .anchor(Anchor::Window { pos: Some(dialog_pos) })
     .header_style(HeaderStyle::Dialog)
-    .frame_kind(FrameKind::Custom(frame))
+    .frame_kind(FrameKind::DialogWindow)
     .separator(false)
     .show(|ui| {
 

@@ -21,11 +21,6 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
     let w = 620.0_f32;
     let h = (screen.height() * 0.85).min(720.0);
 
-    let frame = super::super::components::frames_widget::PopupFrame::new()
-        .colors(t.toolbar_bg, t.toolbar_border)
-        .ctx(ctx)
-        .build();
-
     let mut reset_breaker = false;
 
     let resp = Modal::new("APEX DATA DIAGNOSTICS")
@@ -34,7 +29,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
         .theme(t)
         .size(egui::vec2(w, h))
         .anchor(Anchor::Window { pos: Some(egui::pos2(screen.center().x - w / 2.0, 60.0)) })
-        .frame_kind(FrameKind::Custom(frame))
+        .frame_kind(FrameKind::DialogWindow)
         .header_style(HeaderStyle::Dialog)
         .separator(false)
         .show(|ui| {

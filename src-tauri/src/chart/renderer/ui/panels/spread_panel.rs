@@ -233,19 +233,13 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, active_symbol
     let mut add_leg = false;
     let mut do_submit = false;
 
-    let frame = egui::Frame::popup(&ctx.style())
-        .fill(t.toolbar_bg)
-        .inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })
-        .stroke(egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_heavy())))
-        .corner_radius(r_lg_cr());
-
     let resp = Modal::new("SPREAD BUILDER")
         .id("spread_builder")
         .ctx(ctx)
         .theme(t)
         .size(egui::vec2(340.0, 520.0))
         .anchor(Anchor::Window { pos: Some(egui::pos2(400.0, 100.0)) })
-        .frame_kind(FrameKind::Custom(frame))
+        .frame_kind(FrameKind::DialogWindow)
         .draggable_header(true)
         .header_style(HeaderStyle::Panel {
             title_size:      SectionLabelSize::Sm,

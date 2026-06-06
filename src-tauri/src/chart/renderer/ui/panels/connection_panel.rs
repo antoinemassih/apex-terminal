@@ -59,12 +59,6 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
 
     use super::super::chrome::modal::{Modal, Anchor, HeaderStyle, FrameKind};
     let screen = _ctx.screen_rect();
-    let custom_frame = egui::Frame::popup(&_ctx.style())
-        .fill(t.toolbar_bg)
-        .inner_margin(0.0)
-        .stroke(egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_active())))
-        .corner_radius(r_lg_cr());
-
     // Wave 12d: ApexData status now derives from the push-based snapshot
     // populated by `connection_state_snapshot::spawn_state_listeners()` at
     // startup. The snapshot is updated synchronously from the broadcast
@@ -108,7 +102,7 @@ pub(crate) fn draw(_ctx: &egui::Context, _watchlist: &mut Watchlist, _panes: &mu
         .size(egui::vec2(260.0, 0.0))
         .anchor(Anchor::Window { pos: Some(egui::pos2(screen.right() - 280.0, 40.0)) })
         .header_style(HeaderStyle::Dialog)
-        .frame_kind(FrameKind::Custom(custom_frame))
+        .frame_kind(FrameKind::DialogWindow)
         .separator(false)
         .show(|ui| {
             ui.add_space(gap_sm());
