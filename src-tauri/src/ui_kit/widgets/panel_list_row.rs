@@ -282,6 +282,10 @@ pub struct PanelListRow<'a, T: ComponentTheme = crate::ui_kit::widgets::theme::P
     /// library, accordion children). Leave off for selected-row lists
     /// where the selected-row stripe + tint already carries the divide.
     divided: bool,
+    /// When `true`, suppresses the bottom hairline even if `divided` is set.
+    /// Set by `.divided_except_last(is_last)` so loop callers can skip the
+    /// divider on the final row without an extra `if` at every call site.
+    suppress_divider: bool,
     /// Optional explicit row height override (px). When `None`, the row uses
     /// the dense (22) / non-dense (32) default. Streaming-data panels (tape
     /// T&S) that historically used a tighter 14-px row pass this to preserve
@@ -312,6 +316,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
             selected: false,
             dense: true,
             divided: false,
+            suppress_divider: false,
             height_override: None,
             hoverable: true,
             row_tint: None,
@@ -353,6 +358,29 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
     /// as distinct entries instead of blurring together.
     pub fn divided(mut self, on: bool) -> Self {
         self.divided = on;
+        self
+    }
+
+    /// Variant of `.divided(true)` for use inside loops: enables the bottom
+    /// hairline for all rows **except** the last one. Pass `is_last = true`
+    /// for the final row and the hairline is suppressed; all other rows get
+    /// the normal divider line.
+    ///
+    /// ```ignore
+    /// for (i, item) in items.iter().enumerate() {
+    ///     PanelListRow::new(&item.id)
+    ///         .primary(&item.label)
+    ///         .divided_except_last(i + 1 == items.len())
+    ///         .show(ui, t);
+    /// }
+    /// ```
+    ///
+    /// Default behavior of the existing `.divided(bool)` is **100% unchanged**
+    /// — this is purely additive. Do NOT call both; if you do, `suppress_divider`
+    /// wins (last row's hairline is suppressed regardless of `.divided()`).
+    pub fn divided_except_last(mut self, is_last: bool) -> Self {
+        self.divided = true;
+        self.suppress_divider = is_last;
         self
     }
 
@@ -445,6 +473,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
             selected,
             dense,
             divided,
+            suppress_divider,
             height_override,
             hoverable,
             row_tint,
@@ -581,7 +610,9 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
         // together (indicator library, settings rows). Painted at the
         // toolbar_border color so it reads against both panel surface
         // and recessed sub-section header strips above/below.
-        if divided {
+        // `suppress_divider` is set by `.divided_except_last(true)` to
+        // skip the line on the final row without changing the default path.
+        if divided && !suppress_divider {
             let y = rect.bottom() - 0.5;
             painter.line_segment(
                 [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
