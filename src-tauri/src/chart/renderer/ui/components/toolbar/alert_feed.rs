@@ -79,6 +79,17 @@ fn ease_out(x: f32) -> f32 {
     1.0 - (1.0 - x) * (1.0 - x)
 }
 
+/// Cubic ease-in-out (0..1) — gentle accelerate/decelerate for the ticker slide.
+fn ease_in_out(x: f32) -> f32 {
+    let x = x.clamp(0.0, 1.0);
+    if x < 0.5 {
+        4.0 * x * x * x
+    } else {
+        let f = -2.0 * x + 2.0;
+        1.0 - f * f * f / 2.0
+    }
+}
+
 /// Split a one-line `summary` into the VITAL leading clause (always shown in the
 /// compact badge) and a flag for whether extra detail follows (revealed when the
 /// badge expands on rollover). Vital = text before the first strong delimiter,
@@ -134,19 +145,20 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
     const PAD_L:       f32   = 8.0;
     const PAD_R:       f32   = 6.0;
     const DISMISS_W:   f32   = 14.0;
-    const MAX_INLINE:  usize = 6;       // cap on inline badges (also fit-to-width)
-    const MAX_BADGE_W: f32   = 240.0;   // a single badge never dominates the strip
+    const SLOT_W:      f32   = 184.0;   // fixed badge width — uniform ticker slots
+    const AREA_SLOTS:  f32   = 4.5;     // visible window = 4½ badges
+    const FULL_SLOTS:  usize = 4;       // fully-visible count (rest → bell)
+    const RENDER_EXTRA:usize = 2;       // extra rendered so out-goers slide out
     const FULL_CAP:    usize = 220;     // ceiling on the expanded message
     const PILL_TINT_A: u8    = 18;
     const MSG_A:       u8    = 220;
-    const APPEAR_DUR:  f64   = 0.22;
-    const SLIDE_DUR:   f32   = 0.18;    // ticker-tape slide as items shift
-    const EXPAND_DUR:  f32   = 0.14;    // pill → box morph
+    const APPEAR_DUR:  f64   = 0.30;    // entrance fade/settle
+    const SLIDE_DUR:   f64   = 0.34;    // eased ticker-tape slide
+    const EXPAND_DUR:  f32   = 0.16;    // pill → box morph
     const BELL_W:      f32   = 30.0;
-    const BOX_W:       f32   = 320.0;   // expanded box width
+    const BOX_W:       f32   = 320.0;
     const HEADER_H:    f32   = 16.0;
     const PAD_V:       f32   = 6.0;
-    const MEASURE_CAP: usize = 16;
 
     let alerts: Vec<AlertItem> = notification::badges_snapshot();
     if alerts.is_empty() {
@@ -180,71 +192,37 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
     let prev_box: Rect               = ui.memory(|m| m.data.get_temp(boxrect_id).unwrap_or(Rect::NOTHING));
     let exp_start_prev: f64          = ui.memory(|m| m.data.get_temp(expstart_id).unwrap_or(now));
 
-    // ── Per-badge compact width (vital crop), measured up front. ──
-    let mut wmap: HashMap<u64, f32> = HashMap::new();
-    for &a in items.iter().take(MEASURE_CAP) {
-        let accent  = kind_color(a.kind, t);
-        let tag     = kind_tag(a.kind);
-        let sym     = a.symbol.as_deref().filter(|s| !s.is_empty());
-        let summary = summarize(&a.message);
-        let (vital, more) = vital_part(&summary);
-        let type_w  = text_w(ui, tag, &font, accent);
-        let sym_w   = sym.map(|s| text_w(ui, s, &font, t.text)).unwrap_or(0.0);
-        let vital_w = text_w(ui, &vital, &font, t.text);
-        let ell_w   = if more { text_w(ui, "…", &font, t.text) + 4.0 } else { 0.0 };
-        let sym_blk = if sym.is_some() { gapx + sym_w } else { 0.0 };
-        let w = (ACCENT_W + PAD_L + type_w + sym_blk + gapx + vital_w + ell_w + gapx + DISMISS_W + PAD_R).min(MAX_BADGE_W);
-        wmap.insert(a.id, w);
-    }
-    let wof = |id: u64| wmap.get(&id).copied().unwrap_or(150.0);
+    let slide_id = Id::new("alert_feed_slide");
+    let mut slide_state: HashMap<u64, (f32, f32, f64)> =
+        ui.memory(|m| m.data.get_temp(slide_id).unwrap_or_default());
 
-    // ── Fixed frame: claim the whole remaining width once (stable rect). ──
+    // ── Fixed frame + a fixed 4½-slot window pinned just left of the bell. ──
     let avail = ui.available_width().max(BELL_W + 8.0);
     let (frame_rect, _) = ui.allocate_exact_size(vec2(avail, BADGE_H), Sense::hover());
     let bell_rect = Rect::from_min_size(pos2(frame_rect.right() - BELL_W, frame_rect.top()), vec2(BELL_W, BADGE_H));
-    let area_left  = frame_rect.left();
+    let slot_pitch = SLOT_W + gapx;
     let area_right = bell_rect.left() - gapx;
-    let area_w = (area_right - area_left).max(0.0);
+    let area_w = (AREA_SLOTS * slot_pitch - gapx).min((avail - BELL_W - gapx).max(slot_pitch));
+    let area_left = (area_right - area_w).max(frame_rect.left());
     let badge_clip = Rect::from_min_max(pos2(area_left, frame_rect.top() - 2.0), pos2(area_right, frame_rect.bottom() + 2.0));
 
     // Freeze the running order while a badge is expanded so nothing shifts.
     let freeze = active_prev.map_or(false, |id| by_id.contains_key(&id));
 
-    // ── How many fully fit (left-anchored)? The newest always lands in the
-    //    fixed first slot; older ones slide rightward and out past the bell. ──
-    let mut fit_count = 0usize;
-    {
-        let mut used = 0.0_f32;
-        for &a in items.iter().take(MAX_INLINE) {
-            let w = wof(a.id);
-            let add = if fit_count == 0 { w } else { gapx + w };
-            if used + add > area_w { break; }
-            used += add;
-            fit_count += 1;
-        }
-        if fit_count == 0 { fit_count = 1; }
-    }
-    let overflow = alerts.len().saturating_sub(fit_count);
+    let overflow = alerts.len().saturating_sub(FULL_SLOTS);
 
-    // Render a couple extra past the fit so out-going badges visibly slide out
-    // (clipped) on the right rather than vanishing.
-    let render_count = (fit_count + 2).min(items.len());
+    // Render the newest few (full slots + a couple that slide out, clipped).
+    let render_count = (FULL_SLOTS + RENDER_EXTRA).min(items.len());
     let order: Vec<u64> = if freeze {
         frozen_order.iter().copied().filter(|id| by_id.contains_key(id)).collect()
     } else {
         items.iter().take(render_count).map(|a| a.id).collect()
     };
 
-    // ── Left-anchored target slots: order[0] (newest) at the fixed first slot
-    //    (area_left); each subsequent badge sits to its right. New arrivals push
-    //    everyone right; the frame's left edge and the bell stay put. ──
+    // Left-anchored fixed slots: order[0] (newest) lands in the fixed first slot.
     let mut target_left: HashMap<u64, f32> = HashMap::new();
-    {
-        let mut x = area_left;
-        for &id in &order {
-            target_left.insert(id, x);
-            x += wof(id) + gapx;
-        }
+    for (k, &id) in order.iter().enumerate() {
+        target_left.insert(id, area_left + k as f32 * slot_pitch);
     }
 
     let mut to_dismiss: Option<u64> = None;
@@ -255,18 +233,31 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
     // ── Render badges at animated positions, clipped to the stable frame. ──
     for &id in &order {
         let a = match by_id.get(&id) { Some(a) => *a, None => continue };
-        let w = wof(id);
+        let w = SLOT_W;
         let tgt = target_left[&id];
-        // Slide toward the target slot (ticker-tape shift).
-        let cur_left = ctx.animate_value_with_time(Id::new(("alert_x", id)), tgt, SLIDE_DUR);
-        if (cur_left - tgt).abs() > 0.5 { animating = true; }
+        // Eased slide: when the slot changes, retarget from the current eased
+        // position so motion stays continuous (no snapping / jumpiness).
+        let (from, start) = match slide_state.get(&id).copied() {
+            Some((to_p, from_p, start_p)) if (to_p - tgt).abs() < 0.5 => (from_p, start_p),
+            Some((to_p, from_p, start_p)) => {
+                let tt = ease_in_out(((now - start_p) / SLIDE_DUR) as f32);
+                (from_p + (to_p - from_p) * tt, now)
+            }
+            None => (tgt, now),
+        };
+        let st = (((now - start) / SLIDE_DUR) as f32).clamp(0.0, 1.0);
+        let cur_left = from + (tgt - from) * ease_in_out(st);
+        slide_state.insert(id, (tgt, from, start));
+        if st < 1.0 { animating = true; }
 
         let spawn_t = *spawn.entry(id).or_insert(now);
         let appear  = (((now - spawn_t) / APPEAR_DUR) as f32).clamp(0.0, 1.0);
         let app_e   = ease_out(appear);
         if appear < 1.0 { animating = true; }
 
-        let rect = Rect::from_min_size(pos2(cur_left, frame_rect.top()), vec2(w, BADGE_H));
+        // Gentle entrance: fade + a small downward settle.
+        let settle = (1.0 - app_e) * 5.0;
+        let rect = Rect::from_min_size(pos2(cur_left, frame_rect.top() + settle), vec2(w, BADGE_H));
         rects.insert(id, rect);
 
         let resp = ui.interact(rect, Id::new(("alert_badge", id)), Sense::click());
@@ -457,8 +448,10 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
     // ── Persist memory + apply actions. ──
     let live: HashSet<u64> = alerts.iter().map(|a| a.id).collect();
     spawn.retain(|k, _| live.contains(k));
+    slide_state.retain(|k, _| live.contains(k));
     ui.memory_mut(|m| {
         m.data.insert_temp(spawn_id, spawn);
+        m.data.insert_temp(slide_id, slide_state);
         m.data.insert_temp(frozen_id, order);
         m.data.insert_temp(active_id, active_now);
         m.data.insert_temp(boxrect_id, box_rect);
