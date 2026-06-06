@@ -19,7 +19,7 @@ use crate::ui_kit::icons::Icon;
 use super::super::components::text::{SectionLabel, MonospaceCode};
 use crate::ui_kit::widgets::FormRow;
 use super::super::widgets::rows::WatchlistRow;
-use crate::ui_kit::widgets::{Button, Input, NumberStepper, Skeleton, Spinner, PanelCard, PanelEmpty, Tooltip};
+use crate::ui_kit::widgets::{Button, Input, NumberStepper, Skeleton, Spinner, PanelCard, PanelEmpty, Tooltip, PanelSubSection};
 use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
@@ -324,26 +324,23 @@ pub(crate) fn draw_content(
             for scanner_idx in 0..num_scanners {
                 let def = &watchlist.scanner_defs[scanner_idx];
                 let results = apply_scanner(def, &pool);
-                let collapsed = def.collapsed;
+                let result_count = results.len();
+                // Bridge collapse state: copy → pass &mut local → write back.
+                let mut expanded = !def.collapsed;
                 let scanner_name = def.name.clone();
                 let is_preset = def.preset.is_some();
+                let filter_active = def.min_change > -999.0
+                    || def.max_change < 999.0
+                    || def.min_volume > 0;
 
-                let header_resp = ui.horizontal(|ui| {
-                    let caret = if collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
-                    Button::icon(caret)
-                        .variant(Variant::Ghost)
-                        .placement(IconPlacement::PanelHeader)
-                        .show(ui, t);
+                // id_salt must be unique per section; use the scanner index.
+                let id_salt = format!("scanner_section_{}", scanner_idx);
 
-                    let color = if is_preset { t.accent } else { t.dim };
-                    let label_resp = ui.add(egui::Label::new(
-                        egui::RichText::new(format!("{} ({})", &scanner_name, results.len()))
-                            .monospace().size(font_xs()).strong().color(color))
-                        .sense(egui::Sense::click()));
-                    crate::chart_renderer::ui::style::cursor::clickable(ui, &label_resp);
-                    if label_resp.clicked() {}
-
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                PanelSubSection::new(&id_salt, &scanner_name)
+                    .count(result_count)
+                    .expanded(&mut expanded)
+                    .header_trailing(|ui, t| {
+                        // RTL slot: delete (custom only) + save-as-watchlist.
                         if !is_preset {
                             let r = Button::icon(Icon::X)
                                 .variant(Variant::Ghost)
@@ -363,65 +360,54 @@ pub(crate) fn draw_content(
                         if r.clicked() {
                             save_as_watchlist = Some((scanner_name.clone(), results.clone()));
                         }
-                    });
-                });
+                    })
+                    .show(ui, t, |ui, _t| {
+                        ui.horizontal(|ui| {
+                            ui.add_space(gap_xs());
+                            let cw = (panel_w - 16.0) / 3.0;
+                            let hdr_color = color_dim(t.dim);
+                            col_header(ui, "SYMBOL", cw, hdr_color, false);
+                            col_header(ui, "PRICE",  cw, hdr_color, true);
+                            col_header(ui, "CHG%",   cw, hdr_color, true);
+                        });
 
-                if header_resp.response.clicked() {
-                    watchlist.scanner_defs[scanner_idx].collapsed = !collapsed;
-                }
-
-                if !collapsed {
-                    ui.horizontal(|ui| {
-                        ui.add_space(gap_xs());
-                        let cw = (panel_w - 16.0) / 3.0;
-                        let hdr_color = color_dim(t.dim);
-                        col_header(ui, "SYMBOL", cw, hdr_color, false);
-                        col_header(ui, "PRICE",  cw, hdr_color, true);
-                        col_header(ui, "CHG%",   cw, hdr_color, true);
-                    });
-
-                    for r in &results {
-                        let price_str = if r.price >= 1.0 {
-                            format!("{:.2}", r.price)
-                        } else {
-                            format!("{:.4}", r.price)
-                        };
-                        let resp = WatchlistRow::new(&r.symbol, r.price, r.change_pct)
-                            .height(16.0)
-                            .theme(t)
-                            .price_string(price_str)
-                            .price_right_inset(4.0)
-                            .sym_layout(0.0, 0.0, 4.0)
-                            .sym_font(mono_sm())
-                            .chg_font(mono_sm())
-                            .price_font(mono_sm())
-                            .fg(t.text)
-                            .hover_overlay(tint(t, Tone::Accent, alpha_ghost()))
-                            .show(ui);
-                        Tooltip::new(format!("Vol: {}", fmt_volume(r.volume)))
-                            .show(ui, &resp.response, t);
-                        if resp.response.clicked() {
-                            *pending_symbol = Some(r.symbol.clone());
+                        for r in &results {
+                            let price_str = if r.price >= 1.0 {
+                                format!("{:.2}", r.price)
+                            } else {
+                                format!("{:.4}", r.price)
+                            };
+                            let resp = WatchlistRow::new(&r.symbol, r.price, r.change_pct)
+                                .height(16.0)
+                                .theme(t)
+                                .price_string(price_str)
+                                .price_right_inset(4.0)
+                                .sym_layout(0.0, 0.0, 4.0)
+                                .sym_font(mono_sm())
+                                .chg_font(mono_sm())
+                                .price_font(mono_sm())
+                                .fg(t.text)
+                                .hover_overlay(tint(t, Tone::Accent, alpha_ghost()))
+                                .show(ui);
+                            Tooltip::new(format!("Vol: {}", fmt_volume(r.volume)))
+                                .show(ui, &resp.response, t);
+                            if resp.response.clicked() {
+                                *pending_symbol = Some(r.symbol.clone());
+                            }
                         }
-                    }
 
-                    if results.is_empty() {
-                        let def = &watchlist.scanner_defs[scanner_idx];
-                        let filter_active = def.min_change > -999.0
-                            || def.max_change < 999.0
-                            || def.min_volume > 0;
-                        let hint = if filter_active {
-                            "Try widening the filter"
-                        } else {
-                            "Run a scan to see results"
-                        };
-                        PanelEmpty::new("No matches").hint(hint).show(ui, t);
-                    }
-                }
+                        if results.is_empty() {
+                            let hint = if filter_active {
+                                "Try widening the filter"
+                            } else {
+                                "Run a scan to see results"
+                            };
+                            PanelEmpty::new("No matches").hint(hint).show(ui, t);
+                        }
+                    });
 
-                ui.add_space(gap_xs());
-                separator(ui, tint(t, Tone::Border, alpha_dim()));
-                ui.add_space(gap_xs());
+                // Write back the (possibly toggled) expanded state.
+                watchlist.scanner_defs[scanner_idx].collapsed = !expanded;
             }
 
             ui.add_space(gap_xs());

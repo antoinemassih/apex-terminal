@@ -18,7 +18,7 @@
 use egui;
 use crate::ui_kit::sx::Tone;
 use super::super::style::*;
-use crate::ui_kit::widgets::{Button, PanelEmpty, PanelListRow, PanelSection, PanelSectionGroup, Tooltip};
+use crate::ui_kit::widgets::{Button, PanelEmpty, PanelListRow, PanelSection, PanelSectionGroup, PanelSubSection, Tooltip};
 use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 use crate::ui_kit::widgets::tokens::Size as KitSize;
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
@@ -855,88 +855,37 @@ fn draw_library_section(
     let query = watchlist.indicators_panel_search.trim().to_lowercase();
     let force_open = !query.is_empty();
 
-    // Count visible sections first (needed to decide where to draw dividers)
-    // without allocating any intermediate Vec. We do two passes but both are
-    // O(#sections × #items) over a static array — no heap pressure.
-    let visible_count = LIB_SECTIONS.iter()
-        .filter(|sec| sec.items.iter().any(|item| matches_query(*item, &query)))
-        .count();
-    let mut visible_rendered = 0usize;
-
     for (sec_idx, sec) in LIB_SECTIONS.iter().enumerate() {
         // Check if any items in this section match the query (no Vec allocation).
         let match_count = sec.items.iter().filter(|item| matches_query(**item, &query)).count();
         if match_count == 0 { continue; }
 
-        // Use sec.title (&'static str) directly for the collapsed-set lookup —
-        // HashSet<String> supports &str queries via Borrow<str>.
-        let collapsed = !force_open && watchlist.indicators_lib_collapsed.contains(sec.title as &str);
+        // Bridge collapse state: derive a plain bool (no borrow into watchlist)
+        // so the body closure can mutably borrow watchlist + chart freely.
+        // After the closure returns, write the final expanded value back.
+        let mut expanded = force_open || !watchlist.indicators_lib_collapsed.contains(sec.title as &str);
 
-        // ── Clickable category header (caret + title + count chip) ──
-        let header_h = 24.0;
-        let (h_rect, h_resp) = ui.allocate_exact_size(
-            egui::vec2(ui.available_width(), header_h),
-            egui::Sense::click(),
-        );
-        let hovered = h_resp.hovered();
-        if hovered {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            ui.painter().rect_filled(h_rect, 3.0, tint(t, Tone::Border, alpha_subtle()));
-        }
-        let painter = ui.painter_at(h_rect);
-        let cy = h_rect.center().y;
-        let caret = if collapsed { Icon::CARET_RIGHT } else { Icon::CARET_DOWN };
-        painter.text(
-            egui::pos2(h_rect.left() + 8.0, cy),
-            egui::Align2::LEFT_CENTER,
-            caret,
-            mono_sm(),
-            t.dim,
-        );
-        painter.text(
-            egui::pos2(h_rect.left() + 22.0, cy),
-            egui::Align2::LEFT_CENTER,
-            sec.title,
-            mono_sm(),
-            if hovered { t.text } else { color_subtle(t.text) },
-        );
-        // P6 migration — was 4 inline painter calls (rect_filled + text +
-        // hand-computed chip_w with magic 10px padding + magic 7px radius).
-        // Now uses `CountChip::paint_at` — token-driven pill (radius_sm,
-        // gap_xs padding, stroke_thin border, theme.dim tone). Painter-mode
-        // CountChip API designed exactly for this section-header pattern.
-        crate::ui_kit::widgets::CountChip::new(match_count as u32)
-            .paint_at(&painter, egui::pos2(h_rect.right() - 6.0, cy), t);
+        PanelSubSection::new(sec.title, sec.title)
+            .count(match_count)
+            .expanded(&mut expanded)
+            .show(ui, t, |ui, t| {
+                for item in sec.items.iter().filter(|item| matches_query(**item, &query)) {
+                    lib_row(ui, t, *item, chart, sec_idx, ap);
+                }
+            });
 
-        cursor::focus_ring(ui, &h_resp, t.accent);
-        if h_resp.clicked() && !force_open {
-            // Create the owned key only on click (rare), not every frame.
+        // Write state back: PanelSubSection may have toggled `expanded` on
+        // click. Only persist when not force-open (search active) so the
+        // collapsed set isn't mutated while a query is active.
+        if !force_open {
             let key = sec.title.to_string();
-            if collapsed { watchlist.indicators_lib_collapsed.remove(&key); }
-            else { watchlist.indicators_lib_collapsed.insert(key); }
-        }
-
-        // ── Body — rows via PanelListRow (selected state encodes "on") ──
-        if !collapsed {
-            for item in sec.items.iter().filter(|item| matches_query(**item, &query)) {
-                lib_row(ui, t, *item, chart, sec_idx, ap);
+            if expanded {
+                watchlist.indicators_lib_collapsed.remove(&key);
+            } else {
+                watchlist.indicators_lib_collapsed.insert(key);
             }
         }
 
-        visible_rendered += 1;
-
-        // ── Inset hairline divider between visible category sections ──
-        if visible_rendered < visible_count {
-            ui.add_space(gap_xs());
-            let (div_rect, _) = ui.allocate_exact_size(
-                egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
-            ui.painter().line_segment(
-                [egui::pos2(div_rect.left() + 8.0, div_rect.center().y),
-                 egui::pos2(div_rect.right() - 8.0, div_rect.center().y)],
-                egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_muted())),
-            );
-            ui.add_space(gap_xs());
-        }
     }
 }
 
