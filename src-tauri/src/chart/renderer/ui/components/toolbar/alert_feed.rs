@@ -210,32 +210,40 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
     // Freeze the running order while a badge is expanded so nothing shifts.
     let freeze = active_prev.map_or(false, |id| by_id.contains_key(&id));
 
-    // ── Displayed order (newest-first = rightmost-first). ──
-    let order: Vec<u64> = if freeze {
-        frozen_order.iter().copied().filter(|id| by_id.contains_key(id)).collect()
-    } else {
-        let mut o = Vec::new();
+    // ── How many fully fit (left-anchored)? The newest always lands in the
+    //    fixed first slot; older ones slide rightward and out past the bell. ──
+    let mut fit_count = 0usize;
+    {
         let mut used = 0.0_f32;
         for &a in items.iter().take(MAX_INLINE) {
             let w = wof(a.id);
-            let add = if o.is_empty() { w } else { gapx + w };
+            let add = if fit_count == 0 { w } else { gapx + w };
             if used + add > area_w { break; }
             used += add;
-            o.push(a.id);
+            fit_count += 1;
         }
-        if o.is_empty() { o.push(items[0].id); }
-        o
-    };
-    let overflow = alerts.len().saturating_sub(order.len());
+        if fit_count == 0 { fit_count = 1; }
+    }
+    let overflow = alerts.len().saturating_sub(fit_count);
 
-    // ── Right-aligned target slots (rightmost = newest = order[0]). ──
+    // Render a couple extra past the fit so out-going badges visibly slide out
+    // (clipped) on the right rather than vanishing.
+    let render_count = (fit_count + 2).min(items.len());
+    let order: Vec<u64> = if freeze {
+        frozen_order.iter().copied().filter(|id| by_id.contains_key(id)).collect()
+    } else {
+        items.iter().take(render_count).map(|a| a.id).collect()
+    };
+
+    // ── Left-anchored target slots: order[0] (newest) at the fixed first slot
+    //    (area_left); each subsequent badge sits to its right. New arrivals push
+    //    everyone right; the frame's left edge and the bell stay put. ──
     let mut target_left: HashMap<u64, f32> = HashMap::new();
     {
-        let mut x = area_right;
+        let mut x = area_left;
         for &id in &order {
-            let w = wof(id);
-            target_left.insert(id, x - w);
-            x = x - w - gapx;
+            target_left.insert(id, x);
+            x += wof(id) + gapx;
         }
     }
 
@@ -331,8 +339,10 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
 
         let box_w = pill.width() + (BOX_W - pill.width()) * app;
         let box_h = BADGE_H + (target_h - BADGE_H) * app;
-        let right = pill.right();
-        let box_left = (right - box_w).max(4.0);
+        // Anchor at the pill's left and grow right + down (newest badges sit on
+        // the left now). Clamp so the box never spills off the screen edge.
+        let screen_r = ctx.screen_rect().right();
+        let box_left = pill.left().min((screen_r - 8.0 - box_w).max(4.0)).max(4.0);
         box_rect = Rect::from_min_size(pos2(box_left, pill.top()), vec2(box_w, box_h));
 
         let fp = ctx.layer_painter(LayerId::new(egui::Order::Foreground, Id::new(("alert_box_layer", id))));
