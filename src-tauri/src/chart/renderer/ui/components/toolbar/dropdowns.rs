@@ -48,11 +48,13 @@ pub(crate) fn render_timeframe_dropdown(
         .fixed_pos(dd_pos)
         .fixed_size(egui::vec2(220.0, 0.0))
         .title_bar(false)
-        .frame(egui::Frame::popup(&ctx.style())
-            .fill(t.toolbar_bg)
-            .inner_margin(egui::Margin::same(gap_md() as i8))
-            .stroke(egui::Stroke::new(stroke_std(), tint(t, Tone::Border, 120)))
-            .corner_radius(r_md_cr()))
+        .frame(
+            crate::chart_renderer::ui::components::frames_widget::PopupFrame::new()
+                .theme(t)
+                .ctx(ctx)
+                .build()
+                .inner_margin(egui::Margin::same(gap_md() as i8))
+        )
         .show(ctx, |ui| {
             let hover_pos = ui.input(|i| i.pointer.hover_pos());
             let mut last_section = "";
@@ -162,11 +164,13 @@ pub(crate) fn render_layout_dropdown(
         .fixed_pos(dd_pos)
         .fixed_size(egui::vec2(220.0, 0.0))
         .title_bar(false)
-        .frame(egui::Frame::popup(&ctx.style())
-            .fill(t.toolbar_bg)
-            .inner_margin(egui::Margin::same(gap_md() as i8))
-            .stroke(egui::Stroke::new(stroke_std(), tint(t, Tone::Border, 120)))
-            .corner_radius(r_md_cr()))
+        .frame(
+            crate::chart_renderer::ui::components::frames_widget::PopupFrame::new()
+                .theme(t)
+                .ctx(ctx)
+                .build()
+                .inner_margin(egui::Margin::same(gap_md() as i8))
+        )
         .show(ctx, |ui| {
             let hover_pos = ui.input(|i| i.pointer.hover_pos());
             let mut last_section = "";
