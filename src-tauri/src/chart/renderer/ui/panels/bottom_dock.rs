@@ -69,6 +69,20 @@ thread_local! {
     static BOTTOM_SLOTS: std::cell::RefCell<Vec<Tab>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
+/// Total docked height (px) the footer occupies at the bottom of the screen:
+/// the collapsed tab strip, or the expanded content height, plus the region gap.
+/// The toast stack uses this to sit just above the footer instead of covering
+/// its header — and to ride up automatically when the footer expands.
+pub(crate) fn current_height(watchlist: &Watchlist) -> f32 {
+    let rgap = region_gap();
+    let content_h = if style::footer_visible() {
+        watchlist.bottom_dock_height.clamp(DOCK_MIN_H, DOCK_MAX_H)
+    } else {
+        DOCK_STRIP_H
+    };
+    content_h + rgap
+}
+
 /// Render the bottom dock. Reads `account` (the same cached IB tuple the rail's
 /// Orders/Positions panels use). No-op when closed.
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, account: &AccountData, t: &Theme) {

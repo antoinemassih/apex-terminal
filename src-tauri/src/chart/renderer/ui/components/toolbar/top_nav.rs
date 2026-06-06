@@ -1402,7 +1402,10 @@ pub(crate) fn render(
         // next toast up — use a min pitch of 68px (icon+2 lines comfortable).
         // The actual positions are calculated after we know the count.
         let toast_pitch: f32 = 72.0; // estimated height per toast + gap
-        let base_y = screen.bottom() - TOAST_MARGIN - chip_h - chip_gap;
+        // Sit 8px above the footer (bottom dock) so toasts never cover its
+        // header; this rides up automatically as the footer expands.
+        let footer_h = crate::chart_renderer::ui::panels::bottom_dock::current_height(watchlist);
+        let base_y = screen.bottom() - footer_h - 8.0 - chip_h - chip_gap;
 
         // ── Render visible toasts ───────────────────────────────────────────
         let now_time = ctx.input(|i| i.time);
