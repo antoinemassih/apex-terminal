@@ -23,7 +23,7 @@ use egui;
 use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::*;
-use crate::ui_kit::widgets::{Button, PanelCard, PanelEmpty, PanelKeyValueRow, PanelSection, PanelTone, RiskRewardBar, Tooltip};
+use crate::ui_kit::widgets::{paint_pill, Button, PanelCard, PanelEmpty, PanelKeyValueRow, PanelSection, PanelTone, PillStyle, RiskRewardBar, Tooltip};
 use crate::ui_kit::widgets::tokens::{Variant, Size};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::widgets::Input;
@@ -686,13 +686,10 @@ fn render_play_card(
             let mut activate_clicked = false;
 
             ui.horizontal(|ui| {
-                // Direction pill — custom painter badge (no ui_kit pill primitive yet).
+                // Direction pill.
                 let pill_size = egui::vec2(42.0, 16.0);
                 let (pill_rect, _) = ui.allocate_exact_size(pill_size, egui::Sense::hover());
-                let p = ui.painter();
-                p.rect_filled(pill_rect, 3.0, color_alpha(dir_color, alpha_tint()));
-                p.rect_stroke(pill_rect, 3.0, egui::Stroke::new(stroke_thin(), color_alpha(dir_color, alpha_dim())), egui::StrokeKind::Outside);
-                p.text(pill_rect.center(), egui::Align2::CENTER_CENTER, play.direction.label(), mono_xs(), dir_color);
+                paint_pill(ui.painter(), pill_rect, play.direction.label(), dir_color, PillStyle::Soft, mono_xs(), t);
 
                 // Type icon + symbol.
                 ui.add_space(gap_xs());
@@ -714,7 +711,7 @@ fn render_play_card(
                             .monospace().size(font_sm()).color(t.accent));
                     }
 
-                    // Status pill — custom painter badge (no ui_kit equivalent).
+                    // Status pill.
                     let status_color = match play.status {
                         PlayStatus::Draft     => t.dim,
                         PlayStatus::Published => t.accent,
@@ -725,9 +722,7 @@ fn render_play_card(
                     };
                     let pill_size = egui::vec2(48.0, 16.0);
                     let (sr, _) = ui.allocate_exact_size(pill_size, egui::Sense::hover());
-                    let p = ui.painter();
-                    p.rect_filled(sr, 3.0, color_alpha(status_color, alpha_subtle()));
-                    p.text(sr.center(), egui::Align2::CENTER_CENTER, play.status.label(), mono_sm(), status_color);
+                    paint_pill(ui.painter(), sr, play.status.label(), status_color, PillStyle::Subtle, mono_sm(), t);
                 });
             });
 

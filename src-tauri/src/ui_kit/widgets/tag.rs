@@ -228,3 +228,53 @@ pub fn paint_pill(
     let text_col = if style == PillStyle::Solid { st::contrast_fg(color) } else { color };
     p.text(rect.center(), egui::Align2::CENTER_CENTER, label, font, text_col);
 }
+
+// ─── paint_badge — notification badge: pill + left accent bar ────────────────
+
+/// Notification badge — a pill with a 3 px left severity accent bar plus a
+/// soft-tinted fill and a left-aligned label. Visually matches the hand-drawn
+/// badges in `alert_feed` but reusable anywhere a painter rect is available.
+///
+/// The caller is responsible for any dismiss / interactive controls drawn on
+/// top of `rect`; `paint_badge` only fills the visual background.
+///
+/// * `color`  — tone colour (accent bar + tint source); rendered at full alpha
+///              for the bar and at ~7 % (`α = 18`) for the pill fill.
+/// * `font`   — monospace xs recommended (matches the toolbar badge strip).
+/// * `t`      — theme reference used for the label text colour (`t.text()`).
+pub fn paint_badge(
+    p: &egui::Painter,
+    rect: egui::Rect,
+    label: &str,
+    color: Color32,
+    font: FontId,
+    t: &dyn ComponentTheme,
+) {
+    const ACCENT_W: f32 = 3.0;
+    const TINT_ALPHA: u8 = 18;
+    const LABEL_GAP: f32 = 4.0; // gap between accent bar right-edge and text
+
+    let r = rect.height() * 0.5;
+    let cr = egui::CornerRadius::same(r as u8);
+
+    // Soft-tinted pill background
+    Sx::new().rounded(r).bg_color(st::color_alpha(color, TINT_ALPHA)).paint_box_at(p, rect, t);
+
+    // Left accent bar — same height as the pill, clipped to the left edge.
+    // Use a small corner radius equal to the pill's so the left corners match.
+    let bar_rect = egui::Rect::from_min_size(
+        rect.min,
+        egui::vec2(ACCENT_W, rect.height()),
+    );
+    p.rect_filled(bar_rect, cr, color);
+
+    // Label — left-aligned, offset past the accent bar.
+    let text_x = rect.left() + ACCENT_W + LABEL_GAP;
+    p.text(
+        egui::pos2(text_x, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        label,
+        font,
+        t.text(),
+    );
+}

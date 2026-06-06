@@ -204,7 +204,7 @@ pub use spinner::Spinner;
 pub use skeleton::Skeleton;
 pub use indicator::{Indicator, IndicatorStyle, IndicatorTone};
 pub use badge::Badge;
-pub use tag::{Tag, TagTone, TagResponse, paint_pill, PillStyle};
+pub use tag::{Tag, TagTone, TagResponse, paint_pill, PillStyle, paint_badge};
 pub use kbd::Kbd;
 pub use separator::Separator;
 pub use label::Label;

@@ -7,6 +7,7 @@
 use std::collections::VecDeque;
 use crate::chart_renderer::ui::style::tint;
 use crate::ui_kit::sx::Tone;
+use crate::ui_kit::widgets::paint_badge;
 use std::sync::{Mutex, OnceLock};
 use std::sync::atomic::{AtomicU64, Ordering};
 use egui::{Color32, FontId, Sense};
@@ -115,10 +116,8 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
     seed_placeholders();
     use crate::chart_renderer::ui::style::{
         font_xs, font_sm, gap_xs, gap_sm,
-        color_alpha,
         BADGE_HEIGHT, BADGE_MIN_WIDTH, BADGE_ACCENT_WIDTH,
         BADGE_DISMISS_WIDTH, BADGE_DISMISS_PADDING,
-        BADGE_CORNER_RADIUS, BADGE_TINT_ALPHA,
         ALPHA_SECONDARY_TEXT, ALPHA_INTERACTIVE,
     };
 
@@ -159,24 +158,10 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
 
                     if ui.is_rect_visible(rect) {
                         let p = ui.painter();
-                        let cr = egui::CornerRadius::same(BADGE_CORNER_RADIUS);
 
-                        // Tinted pill background
-                        p.rect_filled(rect, cr, color_alpha(accent, BADGE_TINT_ALPHA));
-                        // Left accent bar
-                        p.rect_filled(
-                            egui::Rect::from_min_size(rect.min, egui::vec2(BADGE_ACCENT_WIDTH, rect.height())),
-                            cr,
-                            accent,
-                        );
-                        // Badge text
-                        p.text(
-                            egui::pos2(rect.left() + BADGE_ACCENT_WIDTH + gap_xs(), rect.center().y),
-                            egui::Align2::LEFT_CENTER,
-                            &text,
-                            FontId::monospace(font_xs()),
-                            t.text,
-                        );
+                        // Tinted pill background + left accent bar + label text
+                        paint_badge(p, rect, &text, accent, FontId::monospace(font_xs()), t as &dyn crate::ui_kit::widgets::theme::ComponentTheme);
+
                         // Dismiss ×
                         p.text(
                             egui::pos2(rect.right() - BADGE_DISMISS_PADDING, rect.center().y),
