@@ -302,17 +302,13 @@ fn draw_drawings_section(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &s
                 .map(|c| hex_to_color(c, 1.0));
             let is_hidden = chart.hidden_groups.contains(group_id);
 
-            // Persistent collapse state for this group, exposed to PanelSubSection.
             let collapse_key = format!("grp_{}", group_id);
-            let mut expanded = !read_persisted_bool(ui, &collapse_key, false);
-            let prev_expanded = expanded;
-
             let group_id_for_sub = group_id.clone();
             let sub_title = group_name.to_uppercase();
 
             PanelSubSection::new(&collapse_key, &sub_title)
                 .count(group_draws.len())
-                .expanded(&mut expanded)
+                .persist_key(&collapse_key)
                 .show(ui, t, |ui, t| {
                     // ── Group-level controls row (color dot + visibility + opacity) ──
                     ui.horizontal(|ui| {
@@ -515,10 +511,6 @@ fn draw_drawings_section(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &s
                     }
                 });
 
-            // Persist collapse state if it changed.
-            if expanded != prev_expanded {
-                write_persisted_bool(ui, &collapse_key, !expanded);
-            }
         }
     });
 

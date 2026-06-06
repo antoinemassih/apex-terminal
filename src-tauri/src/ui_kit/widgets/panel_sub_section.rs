@@ -79,6 +79,12 @@ pub struct PanelSubSection<'a, T: ComponentTheme = crate::ui_kit::widgets::theme
     title: &'a str,
     count: Option<usize>,
     expanded: Option<&'a mut bool>,
+    /// Auto-persist expand/collapse state in egui memory. When set (and
+    /// `expanded` is `None`), the widget reads and writes its open state
+    /// under `ui.make_persistent_id(("panel_sub_section", key))`. Default
+    /// open state is `true`. If both `expanded` and `persist_key` are set,
+    /// `expanded` wins (explicit caller state takes precedence).
+    persist_key: Option<&'a str>,
     /// Optional RTL slot painted at the right edge of the header row.
     /// Used for group-level controls (visibility toggle, opacity picker)
     /// that conceptually belong to the category as a whole. Click events
@@ -94,6 +100,7 @@ impl<'a, T: ComponentTheme> PanelSubSection<'a, T> {
             title,
             count: None,
             expanded: None,
+            persist_key: None,
             header_trailing: None,
         }
     }
@@ -134,17 +141,36 @@ impl<'a, T: ComponentTheme> PanelSubSection<'a, T> {
         self
     }
 
+    /// Auto-persist expand/collapse state in egui memory, keyed by `key`.
+    /// The state is stored under `ui.make_persistent_id(("panel_sub_section", key))`
+    /// and defaults to `true` (expanded) on first use. This is an alternative
+    /// to `.expanded(&mut bool)` for callers that do not want to manage the
+    /// bool themselves. If `.expanded()` is also called, the explicit ref wins.
+    pub fn persist_key(mut self, key: &'a str) -> Self {
+        self.persist_key = Some(key);
+        self
+    }
+
     pub fn show<R>(
         self,
         ui: &mut Ui,
         t: &T,
         body: impl FnOnce(&mut Ui, &T) -> R,
     ) -> Option<R> {
-        let Self { id_salt, title, count, expanded, header_trailing } = self;
+        let Self { id_salt, title, count, expanded, persist_key, header_trailing } = self;
 
-        // Resolve current open state. If no state was bound, treat as
-        // always-open so the widget still renders something useful.
-        let is_open = expanded.as_ref().map(|b| **b).unwrap_or(true);
+        // Resolve current open state:
+        //   1. Explicit `expanded` ref → always used if present (highest priority).
+        //   2. `persist_key` → read from egui persisted memory (default: true).
+        //   3. Neither → always-open fallback.
+        let persist_id = persist_key.map(|k| ui.make_persistent_id(("panel_sub_section", k)));
+        let is_open = if expanded.is_some() {
+            expanded.as_ref().map(|b| **b).unwrap_or(true)
+        } else if let Some(pid) = persist_id {
+            ui.data_mut(|d| d.get_persisted::<bool>(pid).unwrap_or(true))
+        } else {
+            true
+        };
 
         let avail_w = ui.available_width();
         // (Top + bottom rules are now painted on the header rect itself
@@ -190,13 +216,22 @@ impl<'a, T: ComponentTheme> PanelSubSection<'a, T> {
         );
         let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
 
-        // Toggle on click if state was bound.
+        // Toggle on click — three cases mirroring the state resolution above:
+        //   1. Explicit `expanded` ref → toggle the ref and re-read.
+        //   2. `persist_key` → toggle the persisted value and re-read.
+        //   3. Neither → no-op (always-open).
         let mut is_open = is_open;
         if let Some(state) = expanded {
             if resp.clicked() {
                 *state = !*state;
             }
             is_open = *state;
+        } else if let Some(pid) = persist_id {
+            if resp.clicked() {
+                let new_val = !is_open;
+                ui.data_mut(|d| d.insert_persisted(pid, new_val));
+                is_open = new_val;
+            }
         }
 
         if ui.is_rect_visible(rect) {
