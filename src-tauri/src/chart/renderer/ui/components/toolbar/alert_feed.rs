@@ -51,6 +51,21 @@ fn kind_tag(kind: AlertKind) -> &'static str {
     }
 }
 
+/// Glyph that identifies the alert kind in the compact ticker (replaces the
+/// word to save space). Severity colour still distinguishes good/bad.
+fn kind_icon(kind: AlertKind) -> &'static str {
+    use crate::ui_kit::icons::Icon;
+    match kind {
+        AlertKind::OrderFilled   => Icon::CHECK_CIRCLE,
+        AlertKind::OrderRejected => Icon::X_CIRCLE,
+        AlertKind::OrderPending  => Icon::CLOCK,
+        AlertKind::PriceAlert    => Icon::CURRENCY_DOLLAR,
+        AlertKind::Signal        => Icon::PULSE,
+        AlertKind::Error         => Icon::SHIELD_WARNING,
+        AlertKind::Warning       => Icon::WARNING,
+    }
+}
+
 /// Collapse newlines and runs of whitespace into single spaces so the compact
 /// ticker shows a one-line summary regardless of how the raw message is formatted.
 fn summarize(msg: &str) -> String {
@@ -145,7 +160,8 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
     const PAD_L:       f32   = 8.0;
     const PAD_R:       f32   = 6.0;
     const DISMISS_W:   f32   = 14.0;
-    const SLOT_W:      f32   = 184.0;   // fixed badge width — uniform ticker slots
+    const SLOT_W:      f32   = 150.0;   // fixed badge width — uniform ticker slots
+    const ICON_W:      f32   = 16.0;    // kind-icon column width
     const AREA_SLOTS:  f32   = 4.5;     // visible window = 4½ badges
     const FULL_SLOTS:  usize = 4;       // fully-visible count (rest → bell)
     const RENDER_EXTRA:usize = 2;       // extra rendered so out-goers slide out
@@ -229,21 +245,26 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
     let mut hovered_now: Option<u64> = None;
     let mut rects: HashMap<u64, Rect> = HashMap::new();
     let mut animating = false;
+    // Whether the ticker was already populated last frame — gates the slide-in
+    // entrance so the very first paint doesn't slide everything in at once.
+    let had_state = !slide_state.is_empty();
 
     // ── Render badges at animated positions, clipped to the stable frame. ──
-    for &id in &order {
+    for (k, &id) in order.iter().enumerate() {
         let a = match by_id.get(&id) { Some(a) => *a, None => continue };
         let w = SLOT_W;
         let tgt = target_left[&id];
         // Eased slide: when the slot changes, retarget from the current eased
-        // position so motion stays continuous (no snapping / jumpiness).
+        // position so motion stays continuous (no snapping / jumpiness). A brand
+        // new newest badge slides in from one slot to the left, keeping perfect
+        // spacing with the badge it's pushing right (no overlap glitch).
         let (from, start) = match slide_state.get(&id).copied() {
             Some((to_p, from_p, start_p)) if (to_p - tgt).abs() < 0.5 => (from_p, start_p),
             Some((to_p, from_p, start_p)) => {
                 let tt = ease_in_out(((now - start_p) / SLIDE_DUR) as f32);
                 (from_p + (to_p - from_p) * tt, now)
             }
-            None => (tgt, now),
+            None => if had_state && k == 0 { (tgt - slot_pitch, now) } else { (tgt, now) },
         };
         let st = (((now - start) / SLIDE_DUR) as f32).clamp(0.0, 1.0);
         let cur_left = from + (tgt - from) * ease_in_out(st);
@@ -255,9 +276,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         let app_e   = ease_out(appear);
         if appear < 1.0 { animating = true; }
 
-        // Gentle entrance: fade + a small downward settle.
-        let settle = (1.0 - app_e) * 5.0;
-        let rect = Rect::from_min_size(pos2(cur_left, frame_rect.top() + settle), vec2(w, BADGE_H));
+        let rect = Rect::from_min_size(pos2(cur_left, frame_rect.top()), vec2(w, BADGE_H));
         rects.insert(id, rect);
 
         let resp = ui.interact(rect, Id::new(("alert_badge", id)), Sense::click());
@@ -266,7 +285,6 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
 
         // Paint the pill (clipped to the frame so off-edge badges are cut, not moved).
         let accent  = kind_color(a.kind, t);
-        let tag     = kind_tag(a.kind);
         let sym     = a.symbol.as_deref().filter(|s| !s.is_empty());
         let summary = summarize(&a.message);
         let (_, more) = vital_part(&summary);
@@ -278,9 +296,10 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         let bar = Rect::from_min_size(rect.min, vec2(ACCENT_W, rect.height()));
         p.rect_filled(bar, CornerRadius { nw: r, sw: r, ne: 0, se: 0 }, accent.gamma_multiply(app_e));
         let cx0 = rect.left() + ACCENT_W + PAD_L;
-        let type_w = text_w(ui, tag, &font, accent);
-        p.text(pos2(cx0, cy), Align2::LEFT_CENTER, tag, font.clone(), accent.gamma_multiply(app_e));
-        let mut x = cx0 + type_w + gapx;
+        // Kind icon (replaces the type word to save space).
+        p.text(pos2(cx0 + ICON_W * 0.5, cy), Align2::CENTER_CENTER, kind_icon(a.kind),
+            FontId::proportional(font_md()), accent.gamma_multiply(app_e));
+        let mut x = cx0 + ICON_W + gapx;
         if let Some(s) = sym {
             p.text(pos2(x, cy), Align2::LEFT_CENTER, s, font.clone(), t.text.gamma_multiply(app_e));
             x += text_w(ui, s, &font, t.text) + gapx;
@@ -347,11 +366,14 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         fp.rect_filled(Rect::from_min_size(box_rect.min, vec2(ACCENT_W, box_rect.height())),
             CornerRadius { nw: r, sw: r, ne: 0, se: 0 }, accent.gamma_multiply(app));
 
-        // Header: type + symbol.
+        // Header: icon + type word + symbol (room here, so keep the label).
         let hx = box_rect.left() + ACCENT_W + PAD_L;
         let hy = box_rect.top() + PAD_V + HEADER_H * 0.5;
-        fp.text(pos2(hx, hy), Align2::LEFT_CENTER, tag, font.clone(), accent.gamma_multiply(app));
-        let mut hxx = hx + text_w(ui, tag, &font, accent) + gapx;
+        fp.text(pos2(hx + ICON_W * 0.5, hy), Align2::CENTER_CENTER, kind_icon(a.kind),
+            FontId::proportional(font_md()), accent.gamma_multiply(app));
+        let mut hxx = hx + ICON_W + gapx;
+        fp.text(pos2(hxx, hy), Align2::LEFT_CENTER, tag, font.clone(), accent.gamma_multiply(app));
+        hxx += text_w(ui, tag, &font, accent) + gapx;
         if let Some(s) = sym {
             fp.text(pos2(hxx, hy), Align2::LEFT_CENTER, s, font.clone(), t.text.gamma_multiply(app));
             hxx += text_w(ui, s, &font, t.text) + gapx;
@@ -426,6 +448,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
                             let msg    = summarize(&a.message);
                             ui.horizontal_wrapped(|ui| {
                                 ui.spacing_mut().item_spacing.x = gap_xs();
+                                ui.label(egui::RichText::new(kind_icon(a.kind)).size(font_md()).color(accent));
                                 ui.label(egui::RichText::new(tag).monospace().size(font_sm()).strong().color(accent));
                                 if let Some(s) = a.symbol.as_deref().filter(|s| !s.is_empty()) {
                                     ui.label(egui::RichText::new(s).monospace().size(font_sm()).color(t.text));
