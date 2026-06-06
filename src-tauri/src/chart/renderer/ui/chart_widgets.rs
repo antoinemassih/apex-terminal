@@ -29,6 +29,7 @@ use super::super::gpu::*;
 use crate::chart_renderer::{ChartWidgetKind, WidgetDisplayMode, WidgetDock};
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::Variant;
+use crate::ui_kit::widgets::{paint_pill, PillStyle};
 use std::f32::consts::PI;
 
 // ─── Docking tuning ──────────────────────────────────────────────────────────
@@ -2380,10 +2381,13 @@ fn draw_positions_panel(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t:
         p.text(egui::pos2(left, y + row_h * 0.75), egui::Align2::LEFT_CENTER,
             &mv_str, egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
 
-        // Qty with direction color
+        // Qty with direction color — pill indicator
         let qty_label = format!("{}{}", if pos.qty > 0 { "+" } else { "" }, pos.qty);
-        p.text(egui::pos2(left + 70.0, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
-            &qty_label, egui::FontId::monospace(FONT_XS), dir_col);
+        let qty_pill_w = (qty_label.len() as f32 * 6.5 + 10.0).max(30.0);
+        let qty_pill_rect = egui::Rect::from_center_size(
+            egui::pos2(left + 70.0 + qty_pill_w * 0.5, y + row_h * 0.5),
+            egui::vec2(qty_pill_w, 13.0));
+        paint_pill(p, qty_pill_rect, &qty_label, dir_col, PillStyle::Soft, mono_xs(), t);
 
         // P&L value + pct
         let pnl_str = format!("{:+.0}", pos.unrealized_pnl);
@@ -2558,8 +2562,11 @@ fn draw_position_pnl(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
 
     // Direction + qty pill
     let pill_text = format!("{} {}x", dir, wd.position_qty.abs());
-    p.text(egui::pos2(cx, body.top() + 8.0), egui::Align2::CENTER_CENTER,
-        &pill_text, egui::FontId::monospace(FONT_XS), dir_col);
+    let pill_w = (pill_text.len() as f32 * 6.5 + 12.0).max(48.0);
+    let pill_rect = egui::Rect::from_center_size(
+        egui::pos2(cx, body.top() + 8.0),
+        egui::vec2(pill_w, 14.0));
+    paint_pill(p, pill_rect, &pill_text, dir_col, PillStyle::Soft, mono_xs(), t);
 
     // Hero P&L
     let pnl_sign = if wd.position_pnl >= 0.0 { "+" } else { "" };

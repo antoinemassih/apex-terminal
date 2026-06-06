@@ -10,6 +10,7 @@
 
 use egui::{Response, Ui};
 use super::theme::ComponentTheme;
+use super::CardVariant;
 use crate::ui_kit::tokens as st;
 use crate::ui_kit::sx::{palette_ct, Tone};
 
@@ -60,13 +61,13 @@ impl<'a> TradeCard<'a> {
         let pnl_col = if is_win { pal.base(Tone::Bull) } else { pal.base(Tone::Bear) };
         let dir_col = if entry.side == "Long" { pal.base(Tone::Bull) } else { pal.base(Tone::Bear) };
 
-        let bg = if resp.hovered() {
+        if resp.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            color_alpha(pal.base(Tone::Border), alpha_subtle())
+            p.rect_filled(card_rect, radius_sm(), color_alpha(CardVariant::Elevated.fill_color(theme), alpha_subtle()));
         } else {
-            color_alpha(pal.base(Tone::Border), 8)
-        };
-        p.rect_filled(card_rect, radius_sm(), bg);
+            p.rect_filled(card_rect, radius_sm(), CardVariant::Elevated.fill_color(theme));
+        }
+        p.rect_stroke(card_rect, radius_sm(), egui::Stroke::new(st::stroke_thin(), CardVariant::Elevated.border_color(theme)), egui::StrokeKind::Outside);
 
         // Left P&L accent stripe
         p.rect_filled(
