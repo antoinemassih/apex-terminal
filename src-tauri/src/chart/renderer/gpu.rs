@@ -90,7 +90,6 @@ std::thread_local! {
     pub(crate) static CURRENT_WINDOW: std::cell::RefCell<Option<Arc<Window>>> = const { std::cell::RefCell::new(None) };
     pub(crate) static CLOSE_REQUESTED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static PENDING_ALERT: std::cell::RefCell<Option<(String, f32, bool)>> = const { std::cell::RefCell::new(None) };
-    pub(crate) static PENDING_TOASTS: std::cell::RefCell<Vec<crate::chart_renderer::ui::tools::notification::Notification>> = const { std::cell::RefCell::new(Vec::new()) };
     pub(crate) static TB_BTN_CLICKED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static CONN_PANEL_OPEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     pub(crate) static CROSSHAIR_SYNC_TIME: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
@@ -2800,9 +2799,9 @@ impl Chart {
             }
             ChartCommand::AlertTriggered { symbol: _, alert_id: _, price, message } => {
                 // Push a toast notification regardless of active symbol — alerts are always relevant
-                PENDING_TOASTS.with(|ts| ts.borrow_mut().push(
+                crate::chart_renderer::ui::tools::notification::push_pending(
                     crate::chart_renderer::ui::tools::notification::Notification::new(message, crate::chart_renderer::ui::tools::notification::NotificationSeverity::Warning).with_value(price).with_source("alerts")
-                ));
+                );
             }
             ChartCommand::AutoTrendlines { symbol, drawings_json } => {
                 // Same parsing as SignalDrawings — replaces signal_drawings for this symbol
@@ -2872,9 +2871,9 @@ impl Chart {
                     self.precursor_direction = direction;
                     self.precursor_description = description;
                     // Auto-toast
-                    PENDING_TOASTS.with(|ts| ts.borrow_mut().push(
+                    crate::chart_renderer::ui::tools::notification::push_pending(
                         crate::chart_renderer::ui::tools::notification::Notification::new(format!("PRECURSOR: {}", self.precursor_description), crate::chart_renderer::ui::tools::notification::NotificationSeverity::Warning).with_value(lead_minutes).with_source("precursor")
-                    ));
+                    );
                 }
             }
             ChartCommand::ChangePointMarker { symbol, time, change_type, confidence } => {
@@ -2892,9 +2891,9 @@ impl Chart {
                         direction, entry: entry_price, target: target_price, stop: stop_price,
                         contract: contract_name, rr: risk_reward, conviction,
                     });
-                    PENDING_TOASTS.with(|ts| ts.borrow_mut().push(
+                    crate::chart_renderer::ui::tools::notification::push_pending(
                         crate::chart_renderer::ui::tools::notification::Notification::new(summary, crate::chart_renderer::ui::tools::notification::NotificationSeverity::Info).with_value(conviction).with_source("trade_plan")
-                    ));
+                    );
                 }
             }
             ChartCommand::DivergenceOverlay { symbol, timeframe, divergences } => {
@@ -3752,9 +3751,9 @@ fn tick_simulation(chart: &mut Chart) {
                 let dir = if alert.above { "above" } else { "below" };
                 let msg = format!("{} alert: price {} {:.2}", chart.symbol, dir, alert.price);
                 eprintln!("[ALERT TRIGGERED] {} -- sound notification placeholder", msg);
-                PENDING_TOASTS.with(|ts| ts.borrow_mut().push(
+                crate::chart_renderer::ui::tools::notification::push_pending(
                     crate::chart_renderer::ui::tools::notification::Notification::new(msg, crate::chart_renderer::ui::tools::notification::NotificationSeverity::Warning).with_value(alert.price).with_source("price_alert")
-                ));
+                );
             }
         }
     }
@@ -4445,34 +4444,24 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
     // toasts: the same broker payload was reconciled both by the poller
     // and the frame loop, and any transient state mismatch could re-fire
     // the toast. The poller is the single canonical caller now.
-    // Drain order manager toasts (fills, rejections, cancellations) into PENDING_TOASTS
+    // Drain order manager toasts (fills, rejections, cancellations) into pending.
     {
-        use crate::chart_renderer::ui::tools::notification::{Notification, NotificationSeverity, severity_for_order_msg};
+        use crate::chart_renderer::ui::tools::notification::{Notification, severity_for_order_msg, push_pending};
         let order_toasts = super::trading::order_manager::drain_order_toasts();
-        if !order_toasts.is_empty() {
-            PENDING_TOASTS.with(|ts| {
-                let mut v = ts.borrow_mut();
-                for msg in order_toasts {
-                    let sev = severity_for_order_msg(&msg);
-                    v.push(Notification::new(msg, sev).with_source("orders"));
-                }
-            });
+        for msg in order_toasts {
+            let sev = severity_for_order_msg(&msg);
+            push_pending(Notification::new(msg, sev).with_source("orders"));
         }
     }
-    // Drain ApexData toasts (sub_rejected, feed errors) into PENDING_TOASTS.
+    // Drain ApexData toasts (sub_rejected, feed errors) into pending.
     // Messages may carry a leading control-byte severity prefix — decoded into
     // NotificationSeverity by decode_apex_message.
     {
-        use crate::chart_renderer::ui::tools::notification::{Notification, decode_apex_message};
+        use crate::chart_renderer::ui::tools::notification::{Notification, decode_apex_message, push_pending};
         let apex_toasts = crate::apex_data::live_state::drain_toasts();
-        if !apex_toasts.is_empty() {
-            PENDING_TOASTS.with(|ts| {
-                let mut v = ts.borrow_mut();
-                for msg in apex_toasts {
-                    let (text, sev) = decode_apex_message(&msg);
-                    v.push(Notification::new(text, sev).with_source("feed"));
-                }
-            });
+        for msg in apex_toasts {
+            let (text, sev) = decode_apex_message(&msg);
+            push_pending(Notification::new(text, sev).with_source("feed"));
         }
     }
     // T4: Detect trading mode from APEX_TRADING_MODE env var, read once at
@@ -7611,7 +7600,7 @@ impl ApplicationHandler for App {
                 // Drain and dedup pending notifications (collapse identical messages in the same frame).
                 {
                     use crate::chart_renderer::ui::tools::notification::Notification;
-                    let new_toasts: Vec<Notification> = PENDING_TOASTS.with(|ts| ts.borrow_mut().drain(..).collect());
+                    let new_toasts: Vec<Notification> = crate::chart_renderer::ui::tools::notification::drain_pending();
                     if !new_toasts.is_empty() {
                         // Tee into the persistent history log (bottom dock's Notifications tab).
                         crate::chart_renderer::ui::tools::notification::record_history(&new_toasts);

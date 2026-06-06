@@ -159,12 +159,12 @@ pub(super) fn handle_keyboard_shortcuts(
             };
             if chart.redo_stack.len() >= 50 { chart.redo_stack.remove(0); }
             chart.redo_stack.push(redo_action);
-            PENDING_TOASTS.with(|ts| ts.borrow_mut().push(
+            crate::chart_renderer::ui::tools::notification::push_pending(
                 crate::chart_renderer::ui::tools::notification::Notification::new(
                     toast_desc,
                     crate::chart_renderer::ui::tools::notification::NotificationSeverity::Info,
                 ).with_source("undo")
-            ));
+            );
         }
     }
     // Ctrl+Shift+Z or Ctrl+Y: Redo
@@ -199,12 +199,12 @@ pub(super) fn handle_keyboard_shortcuts(
             };
             if chart.undo_stack.len() >= 50 { chart.undo_stack.remove(0); }
             chart.undo_stack.push(undo_action);
-            PENDING_TOASTS.with(|ts| ts.borrow_mut().push(
+            crate::chart_renderer::ui::tools::notification::push_pending(
                 crate::chart_renderer::ui::tools::notification::Notification::new(
                     toast_desc,
                     crate::chart_renderer::ui::tools::notification::NotificationSeverity::Info,
                 ).with_source("redo")
-            ));
+            );
         }
     }
     // Ctrl+D: Duplicate selected drawing
@@ -249,12 +249,12 @@ pub(super) fn handle_keyboard_shortcuts(
         let ss_entry = crate::chart_renderer::ui::panels::screenshot_panel::save_screenshot(&chart.symbol, &chart.timeframe, chart.vs, chart.vc);
         watchlist.screenshot_entries.insert(0, ss_entry);
         watchlist.screenshot_entries.truncate(200);
-        PENDING_TOASTS.with(|ts| ts.borrow_mut().push(
+        crate::chart_renderer::ui::tools::notification::push_pending(
             crate::chart_renderer::ui::tools::notification::Notification::new(
                 "Screenshot saved",
                 crate::chart_renderer::ui::tools::notification::NotificationSeverity::Success,
             ).with_source("screenshot")
-        ));
+        );
         #[cfg(target_os = "windows")]
         {
             use std::os::windows::process::CommandExt;
@@ -406,22 +406,22 @@ pub(super) fn handle_keyboard_shortcuts(
             crate::chart_renderer::trading::order_manager::kill_switch();
             let _ = crate::chart_renderer::trading::order_manager::halt_trading();
             chart.orders.clear();
-            PENDING_TOASTS.with(|ts| ts.borrow_mut().push(
+            crate::chart_renderer::ui::tools::notification::push_pending(
                 crate::chart_renderer::ui::tools::notification::Notification::new(
                     "KILL SWITCH — orders cancelled, trading halted",
                     crate::chart_renderer::ui::tools::notification::NotificationSeverity::Error,
                 ).with_source("trading")
-            ));
+            );
         }
         // Ctrl+Shift+R: Resume trading
         if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::R)) {
             let _ = crate::chart_renderer::trading::order_manager::resume_trading();
-            PENDING_TOASTS.with(|ts| ts.borrow_mut().push(
+            crate::chart_renderer::ui::tools::notification::push_pending(
                 crate::chart_renderer::ui::tools::notification::Notification::new(
                     "Trading RESUMED",
                     crate::chart_renderer::ui::tools::notification::NotificationSeverity::Success,
                 ).with_source("trading")
-            ));
+            );
         }
     }
 }

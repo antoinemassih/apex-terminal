@@ -3,98 +3,37 @@
 //!
 //! Push alerts from anywhere via [`push`]. Click a badge to dismiss it.
 //! Eventually this replaces the toast system for all trading-related events.
+//!
+//! ## Storage
+//! The badge store has been merged into `NotificationManager` (notification.rs).
+//! All writes/reads delegate to `notification::push_badge` / `badges_snapshot` /
+//! `dismiss_badge`.  `AlertKind` and `AlertItem` now live in `notification.rs`
+//! and are re-exported here so that existing `use super::alert_feed::AlertKind`
+//! call-sites continue to compile unchanged.
 
-use std::collections::VecDeque;
+pub use crate::chart_renderer::ui::tools::notification::{AlertKind, AlertItem};
+
+use crate::chart_renderer::ui::tools::notification as notification;
 use crate::chart_renderer::ui::style::tint;
 use crate::ui_kit::sx::Tone;
 use crate::ui_kit::widgets::paint_badge;
-use std::sync::{Mutex, OnceLock};
-use std::sync::atomic::{AtomicU64, Ordering};
 use egui::{Color32, FontId, Sense};
 
 type Theme = crate::chart_renderer::gpu::Theme;
 
-static NEXT_ID: AtomicU64 = AtomicU64::new(1);
-static ALERTS: OnceLock<Mutex<VecDeque<AlertItem>>> = OnceLock::new();
-
-fn store() -> &'static Mutex<VecDeque<AlertItem>> {
-    ALERTS.get_or_init(|| Mutex::new(VecDeque::new()))
-}
-
-const MAX_ALERTS: usize = 50;
-
-/// Severity / source of the alert — controls badge colour.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum AlertKind {
-    /// Order fully filled.
-    OrderFilled,
-    /// Order rejected or cancelled.
-    OrderRejected,
-    /// Order submitted, awaiting fill.
-    OrderPending,
-    /// A price-level alert triggered.
-    PriceAlert,
-    /// A signal fired on a chart.
-    Signal,
-    /// Hard error (connection loss, broker rejection, etc.).
-    Error,
-    /// Soft warning.
-    Warning,
-}
-
-#[derive(Debug, Clone)]
-pub struct AlertItem {
-    pub id: u64,
-    pub kind: AlertKind,
-    /// Optional ticker the alert relates to.
-    pub symbol: Option<String>,
-    /// Short human-readable description.
-    pub message: String,
-}
-
 /// Push a new alert onto the feed. Oldest entry is dropped when the cap is reached.
 pub fn push(kind: AlertKind, symbol: Option<String>, message: impl Into<String>) {
-    let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-    let mut q = store().lock().unwrap();
-    if q.len() >= MAX_ALERTS { q.pop_front(); }
-    q.push_back(AlertItem { id, kind, symbol, message: message.into() });
+    notification::push_badge(kind, symbol, message);
 }
 
 /// Dismiss (remove) a single alert by id.
 pub fn dismiss(id: u64) {
-    store().lock().unwrap().retain(|a| a.id != id);
+    notification::dismiss_badge(id);
 }
 
 /// Remove all alerts from the feed.
 pub fn clear_all() {
-    store().lock().unwrap().clear();
-}
-
-impl AlertKind {
-    /// Map this kind to the canonical `NotificationSeverity` so badge colours
-    /// and icons flow from the single shared severity model rather than being
-    /// maintained twice.
-    ///
-    /// | Kind           | Severity | Colour |
-    /// |----------------|----------|--------|
-    /// | OrderFilled    | Success  | bull / green |
-    /// | OrderRejected  | Error    | bear / red   |
-    /// | Error          | Error    | bear / red   |
-    /// | Warning        | Warning  | warn / amber |
-    /// | OrderPending   | Info     | accent       |
-    /// | PriceAlert     | Info     | accent       |
-    /// | Signal         | Info     | accent       |
-    pub fn severity(self) -> crate::chart_renderer::ui::tools::notification::NotificationSeverity {
-        use crate::chart_renderer::ui::tools::notification::NotificationSeverity;
-        match self {
-            AlertKind::OrderFilled                      => NotificationSeverity::Success,
-            AlertKind::OrderRejected | AlertKind::Error => NotificationSeverity::Error,
-            AlertKind::Warning                          => NotificationSeverity::Warning,
-            AlertKind::OrderPending
-            | AlertKind::PriceAlert
-            | AlertKind::Signal                         => NotificationSeverity::Info,
-        }
-    }
+    notification::clear_all_badges();
 }
 
 fn kind_color(kind: AlertKind, t: &Theme) -> Color32 {
@@ -144,7 +83,7 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         ALPHA_SECONDARY_TEXT, ALPHA_INTERACTIVE,
     };
 
-    let alerts: Vec<AlertItem> = store().lock().unwrap().iter().cloned().collect();
+    let alerts: Vec<AlertItem> = notification::badges_snapshot();
 
     if alerts.is_empty() {
         ui.label(

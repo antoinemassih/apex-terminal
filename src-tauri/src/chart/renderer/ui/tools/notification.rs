@@ -11,33 +11,165 @@
 //! call first deduplicates the pending queue by message before returning it,
 //! so repeated pushes from multiple panes in one frame surface as a single
 //! notification.
+//!
+//! ## NotificationManager
+//! All three stores (pending toasts, history, badge feed) are unified into a
+//! single `NotificationManager` held in a render-thread `thread_local`.  Public
+//! façade functions preserve the original call-site names so callers outside
+//! this module do not change.
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::time::Instant;
 
-/// Capped history of notifications, newest at the back. Fed from the single
-/// toast-drain site (`gpu.rs`) so the bottom dock's Notifications tab can show
-/// a persistent log of everything that flashed as a transient toast. Lives on
-/// the render thread (same as `PENDING_TOASTS`), so a `thread_local` suffices.
-const HISTORY_CAP: usize = 300;
-thread_local! {
-    static HISTORY: RefCell<VecDeque<Notification>> = const { RefCell::new(VecDeque::new()) };
+// ── Caps ──────────────────────────────────────────────────────────────────────
+const HISTORY_CAP:  usize = 300;
+const BADGE_CAP:    usize = 50;
+
+// ── AlertKind / AlertItem (moved here from alert_feed.rs) ─────────────────────
+
+/// Severity / source of the alert — controls badge colour.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AlertKind {
+    /// Order fully filled.
+    OrderFilled,
+    /// Order rejected or cancelled.
+    OrderRejected,
+    /// Order submitted, awaiting fill.
+    OrderPending,
+    /// A price-level alert triggered.
+    PriceAlert,
+    /// A signal fired on a chart.
+    Signal,
+    /// Hard error (connection loss, broker rejection, etc.).
+    Error,
+    /// Soft warning.
+    Warning,
 }
+
+impl AlertKind {
+    /// Map this kind to the canonical `NotificationSeverity` so badge colours
+    /// and icons flow from the single shared severity model rather than being
+    /// maintained twice.
+    ///
+    /// | Kind           | Severity | Colour |
+    /// |----------------|----------|--------|
+    /// | OrderFilled    | Success  | bull / green |
+    /// | OrderRejected  | Error    | bear / red   |
+    /// | Error          | Error    | bear / red   |
+    /// | Warning        | Warning  | warn / amber |
+    /// | OrderPending   | Info     | accent       |
+    /// | PriceAlert     | Info     | accent       |
+    /// | Signal         | Info     | accent       |
+    pub fn severity(self) -> NotificationSeverity {
+        match self {
+            AlertKind::OrderFilled                      => NotificationSeverity::Success,
+            AlertKind::OrderRejected | AlertKind::Error => NotificationSeverity::Error,
+            AlertKind::Warning                          => NotificationSeverity::Warning,
+            AlertKind::OrderPending
+            | AlertKind::PriceAlert
+            | AlertKind::Signal                         => NotificationSeverity::Info,
+        }
+    }
+}
+
+/// A single entry in the badge feed.
+#[derive(Debug, Clone)]
+pub struct AlertItem {
+    pub id: u64,
+    pub kind: AlertKind,
+    /// Optional ticker the alert relates to.
+    pub symbol: Option<String>,
+    /// Short human-readable description.
+    pub message: String,
+}
+
+// ── NotificationManager ───────────────────────────────────────────────────────
+
+/// Single backing store for all three notification surfaces:
+///   - `pending`  — toasts queued for the current frame's drain
+///   - `history`  — persistent log fed from each drain (cap 300, newest-last)
+///   - `badges`   — badge feed items (cap 50, FIFO)
+///
+/// Lives in a render-thread `thread_local`; no cross-thread access needed.
+pub struct NotificationManager {
+    pending:        VecDeque<Notification>,
+    history:        VecDeque<Notification>,
+    badges:         VecDeque<AlertItem>,
+    next_badge_id:  u64,
+}
+
+impl NotificationManager {
+    const fn new() -> Self {
+        Self {
+            pending:       VecDeque::new(),
+            history:       VecDeque::new(),
+            badges:        VecDeque::new(),
+            next_badge_id: 1,
+        }
+    }
+}
+
+thread_local! {
+    static MANAGER: RefCell<NotificationManager> = const { RefCell::new(NotificationManager::new()) };
+}
+
+// ── Pending-toast façade (replaces PENDING_TOASTS) ───────────────────────────
+
+/// Push a notification into the pending queue for the current frame.
+pub fn push_pending(n: Notification) {
+    MANAGER.with(|m| m.borrow_mut().pending.push_back(n));
+}
+
+/// Drain all pending notifications, returning them as a `Vec`.
+/// Called once per frame at the toast-drain site in `gpu.rs`.
+pub fn drain_pending() -> Vec<Notification> {
+    MANAGER.with(|m| m.borrow_mut().pending.drain(..).collect())
+}
+
+// ── History façade (same signatures as before) ───────────────────────────────
 
 /// Append freshly-drained notifications to the history log (oldest trimmed).
 pub fn record_history(items: &[Notification]) {
     if items.is_empty() { return; }
-    HISTORY.with(|h| {
-        let mut q = h.borrow_mut();
-        for n in items { q.push_back(n.clone()); }
-        while q.len() > HISTORY_CAP { q.pop_front(); }
+    MANAGER.with(|m| {
+        let mut mgr = m.borrow_mut();
+        for n in items { mgr.history.push_back(n.clone()); }
+        while mgr.history.len() > HISTORY_CAP { mgr.history.pop_front(); }
     });
 }
 
 /// Snapshot the notification history, newest first.
 pub fn history_snapshot() -> Vec<Notification> {
-    HISTORY.with(|h| h.borrow().iter().rev().cloned().collect())
+    MANAGER.with(|m| m.borrow().history.iter().rev().cloned().collect())
+}
+
+// ── Badge-feed façade (replaces alert_feed::ALERTS) ──────────────────────────
+
+/// Push a new badge onto the feed. Oldest entry is dropped when the cap is reached.
+pub fn push_badge(kind: AlertKind, symbol: Option<String>, message: impl Into<String>) {
+    MANAGER.with(|m| {
+        let mut mgr = m.borrow_mut();
+        let id = mgr.next_badge_id;
+        mgr.next_badge_id += 1;
+        if mgr.badges.len() >= BADGE_CAP { mgr.badges.pop_front(); }
+        mgr.badges.push_back(AlertItem { id, kind, symbol, message: message.into() });
+    });
+}
+
+/// Snapshot all current badge-feed items (cloned, in push order).
+pub fn badges_snapshot() -> Vec<AlertItem> {
+    MANAGER.with(|m| m.borrow().badges.iter().cloned().collect())
+}
+
+/// Dismiss (remove) a single badge by id.
+pub fn dismiss_badge(id: u64) {
+    MANAGER.with(|m| m.borrow_mut().badges.retain(|a| a.id != id));
+}
+
+/// Remove all badges from the feed.
+pub fn clear_all_badges() {
+    MANAGER.with(|m| m.borrow_mut().badges.clear());
 }
 
 /// Severity level for a `Notification`.  Maps to a `Theme` colour.

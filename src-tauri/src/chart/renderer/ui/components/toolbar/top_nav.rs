@@ -93,7 +93,7 @@ use crate::ui_kit::widgets::{Button as KitButton, MenuItem, NumberStepper, Selec
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::chart_renderer::gpu::{
     Chart, Layout, Watchlist, Theme,
-    CURRENT_WINDOW, CLOSE_REQUESTED, TB_BTN_CLICKED, PENDING_TOASTS, PENDING_WL_TOOLTIP,
+    CURRENT_WINDOW, CLOSE_REQUESTED, TB_BTN_CLICKED, PENDING_WL_TOOLTIP,
     WlTooltipData,
     ALL_LAYOUTS,
     APEXIB_URL,
@@ -1714,9 +1714,9 @@ pub(crate) fn render(
                 let dir = if above { "above" } else { "below" };
                 let msg = format!("ALERT: {} {} {:.2}", symbol, dir, price);
                 eprintln!("[ALERT TRIGGERED] {} -- sound notification placeholder", msg);
-                PENDING_TOASTS.with(|ts| ts.borrow_mut().push(
+                crate::chart_renderer::ui::tools::notification::push_pending(
                     crate::chart_renderer::ui::tools::notification::Notification::new(msg, crate::chart_renderer::ui::tools::notification::NotificationSeverity::Warning).with_value(price).with_source("alerts")
-                ));
+                );
             }
         }
     }
