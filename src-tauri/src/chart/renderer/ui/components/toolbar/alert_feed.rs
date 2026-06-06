@@ -73,6 +73,33 @@ fn text_w(ui: &egui::Ui, s: &str, font: &FontId, col: Color32) -> f32 {
     ui.fonts(|f| f.layout_no_wrap(s.to_string(), font.clone(), col).rect.width())
 }
 
+/// Smooth ease-out (0..1) for the appear / grow-in animation.
+fn ease_out(x: f32) -> f32 {
+    let x = x.clamp(0.0, 1.0);
+    1.0 - (1.0 - x) * (1.0 - x)
+}
+
+/// Split a one-line `summary` into the VITAL leading clause (always shown in the
+/// compact badge) and a flag for whether extra detail follows (revealed when the
+/// badge expands on rollover). Vital = text before the first strong delimiter,
+/// else a hard character cap. Keeps the resting ticker terse.
+fn vital_part(summary: &str) -> (String, bool) {
+    const VITAL_MAX: usize = 16;
+    for delim in [" — ", " – ", " - ", " · ", ": ", ". ", ", "] {
+        if let Some(idx) = summary.find(delim) {
+            let head = summary[..idx].trim();
+            if !head.is_empty() && head.chars().count() <= 26 {
+                return (head.to_string(), true);
+            }
+        }
+    }
+    if summary.chars().count() > VITAL_MAX {
+        (summary.chars().take(VITAL_MAX).collect(), true)
+    } else {
+        (summary.to_string(), false)
+    }
+}
+
 /// Seed two placeholder alerts so the feed is non-empty on first render.
 /// Remove this once real alerts are wired in from the broker / signal pipeline.
 fn seed_placeholders() {
@@ -85,26 +112,33 @@ fn seed_placeholders() {
     });
 }
 
-/// Render all pending alerts as horizontal dismissible badges.
+/// Render the alert ticker — newest-first dismissible badges that grow in on
+/// arrival, expand in place on rollover (instead of a tooltip), and collapse
+/// the overflow into a stacked "+N" count chip so nothing runs offscreen.
 ///
-/// Call from within a left-to-right horizontal layout; consumes all remaining
-/// available width via an inner `ScrollArea`. Clicking a badge dismisses it.
+/// Call from within a left-to-right horizontal layout; occupies the remaining
+/// width. Clicking a badge dismisses it; clicking the count chip expands all.
 pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
     seed_placeholders();
+    use std::collections::{HashMap, HashSet};
+    use egui::{Id, Rect, Align2, CornerRadius, pos2, vec2};
     use crate::chart_renderer::ui::style::{
         font_sm, gap_sm, color_alpha,
         ALPHA_SECONDARY_TEXT, ALPHA_INTERACTIVE,
     };
 
-    // ── Ticker sizing — taller + larger font than the old 20px/xs strip. ──
-    const BADGE_H:        f32   = 26.0;
-    const ACCENT_W:       f32   = 3.0;   // left severity bar
-    const PAD_L:          f32   = 8.0;   // pad between accent bar and type label
-    const PAD_R:          f32   = 6.0;   // pad right of the dismiss glyph
-    const DISMISS_W:      f32   = 14.0;
-    const MAX_MSG_CHARS:  usize = 38;    // per-badge message cap
-    const PILL_TINT_A:    u8    = 18;    // background fill alpha
-    const MSG_A:          u8    = 220;   // message text dim alpha
+    // ── Sizing / timing ──
+    const BADGE_H:     f32   = 26.0;
+    const ACCENT_W:    f32   = 3.0;    // left severity bar
+    const PAD_L:       f32   = 8.0;    // pad between accent bar and type label
+    const PAD_R:       f32   = 6.0;    // pad right of the dismiss glyph
+    const DISMISS_W:   f32   = 14.0;
+    const FULL_CAP:    usize = 110;    // hard ceiling on the expanded message
+    const PILL_TINT_A: u8    = 18;     // background fill alpha
+    const MSG_A:       u8    = 220;    // message text dim alpha
+    const APPEAR_DUR:  f64   = 0.22;   // grow-in seconds
+    const EXPAND_DUR:  f32   = 0.13;   // hover expand seconds
+    const STACK_OFF:   f32   = 8.0;    // peek width of the stacked count chip
 
     let alerts: Vec<AlertItem> = notification::badges_snapshot();
 
@@ -117,15 +151,72 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
         return;
     }
 
-    let font = FontId::monospace(font_sm());
+    // Newest first — new alerts enter at the left and push older ones right.
+    let items: Vec<&AlertItem> = alerts.iter().rev().collect();
 
-    // ── Mouse-wheel horizontal scroll ──
-    // A horizontal `ScrollArea` only consumes horizontal wheel delta; translate
-    // the (far more common) vertical wheel into horizontal scroll while the
-    // pointer is over the feed, so the strip scrolls with a normal wheel.
-    let feed_rect = ui.available_rect_before_wrap();
-    let hovering_feed = ui
-        .ctx()
+    let font  = FontId::monospace(font_sm());
+    let gapx  = gap_sm();
+    let now   = ui.ctx().input(|i| i.time);
+    let ell_w = text_w(ui, "…", &font, t.text);
+
+    // ── Per-feed memory: appear-time map + overflow-expanded toggle. ──
+    let spawn_id = Id::new("alert_feed_spawn");
+    let exp_id   = Id::new("alert_feed_overflow_expanded");
+    let mut spawn: HashMap<u64, f64> = ui.memory(|m| m.data.get_temp(spawn_id).unwrap_or_default());
+    let mut overflow_expanded: bool  = ui.memory(|m| m.data.get_temp(exp_id).unwrap_or(false));
+
+    // ── Measure every badge once (compact + expanded widths). ──
+    struct M<'a> {
+        a: &'a AlertItem, accent: Color32, tag: &'static str,
+        type_w: f32, sym: Option<&'a str>, sym_w: f32,
+        full: String, more: bool, compact_w: f32, expanded_w: f32,
+    }
+    let measured: Vec<M> = items.iter().map(|&a| {
+        let accent  = kind_color(a.kind, t);
+        let tag     = kind_tag(a.kind);
+        let sym     = a.symbol.as_deref().filter(|s| !s.is_empty());
+        let summary = summarize(&a.message);
+        let (vital, more) = vital_part(&summary);
+        let full    = truncate_ellipsis(&summary, FULL_CAP);
+        let type_w  = text_w(ui, tag, &font, accent);
+        let sym_w   = sym.map(|s| text_w(ui, s, &font, t.text)).unwrap_or(0.0);
+        let vital_w = text_w(ui, &vital, &font, t.text);
+        let full_w  = text_w(ui, &full,  &font, t.text);
+        let sym_blk = if sym.is_some() { gapx + sym_w } else { 0.0 };
+        let base    = ACCENT_W + PAD_L + type_w + sym_blk + gapx;
+        let tail    = gapx + DISMISS_W + PAD_R;
+        let more_w  = if more { ell_w + 4.0 } else { 0.0 };
+        M {
+            a, accent, tag, type_w, sym, sym_w, full, more,
+            compact_w:  base + vital_w + more_w + tail,
+            expanded_w: base + full_w + tail,
+        }
+    }).collect();
+
+    // ── Fit: how many fit compactly before the count chip takes over? ──
+    let feed_rect  = ui.available_rect_before_wrap();
+    let viewport_w = feed_rect.width().max(0.0);
+    let total: f32 = measured.iter().map(|m| m.compact_w).sum::<f32>()
+        + gapx * measured.len().saturating_sub(1) as f32;
+    let had_overflow = total > viewport_w;
+    let visible_count = if overflow_expanded || !had_overflow {
+        measured.len()
+    } else {
+        let reserve = STACK_OFF + 40.0 + gapx; // room for the "+N" chip
+        let mut used = 0.0_f32;
+        let mut k = 0usize;
+        for m in &measured {
+            let add = if k == 0 { m.compact_w } else { gapx + m.compact_w };
+            if used + add > viewport_w - reserve { break; }
+            used += add;
+            k += 1;
+        }
+        k.max(1)
+    };
+    let overflow = measured.len().saturating_sub(visible_count);
+
+    // ── Mouse-wheel horizontal scroll (vertical wheel → horizontal). ──
+    let hovering_feed = ui.ctx()
         .input(|i| i.pointer.hover_pos().is_some_and(|p| feed_rect.contains(p)));
     if hovering_feed {
         ui.ctx().input_mut(|i| {
@@ -137,88 +228,123 @@ pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
     }
 
     let mut to_dismiss: Option<u64> = None;
+    let mut toggle_overflow = false;
 
     egui::ScrollArea::horizontal()
         .id_source("alert_feed_scroll")
         .show(ui, |ui| {
             ui.horizontal_centered(|ui| {
-                ui.spacing_mut().item_spacing.x = gap_sm();
+                ui.spacing_mut().item_spacing.x = gapx;
+                let mut animating = false;
 
-                for alert in &alerts {
-                    let accent     = kind_color(alert.kind, t);
-                    let type_label = kind_tag(alert.kind);
-                    let sym        = alert.symbol.as_deref().filter(|s| !s.is_empty());
-                    let summary    = summarize(&alert.message);
-                    let msg        = truncate_ellipsis(&summary, MAX_MSG_CHARS);
+                for m in measured.iter().take(visible_count) {
+                    let id = m.a.id;
 
-                    // ── Measure each piece up front (before any painter borrow). ──
-                    let type_w = text_w(ui, type_label, &font, accent);
-                    let sym_tw = sym.map(|s| text_w(ui, s, &font, t.text));
-                    let msg_tw = if msg.is_empty() { 0.0 } else { text_w(ui, &msg, &font, t.text) };
+                    // Appear: grow-in + fade over APPEAR_DUR from first-seen.
+                    let spawn_t = *spawn.entry(id).or_insert(now);
+                    let appear  = (((now - spawn_t) / APPEAR_DUR) as f32).clamp(0.0, 1.0);
+                    let app_e   = ease_out(appear);
+                    if appear < 1.0 { animating = true; }
 
-                    let sym_block = sym_tw.map(|w| w + gap_sm()).unwrap_or(0.0);
-                    let msg_block = if msg.is_empty() { 0.0 } else { msg_tw + gap_sm() };
-                    let badge_w = ACCENT_W + PAD_L + type_w + sym_block + msg_block
-                        + gap_sm() + DISMISS_W + PAD_R;
+                    // Hover-expand: drive width from last frame's hover (1-frame lag).
+                    let hov_id = Id::new(("alert_badge_hov", id));
+                    let was_hovered: bool = ui.memory(|mm| mm.data.get_temp(hov_id).unwrap_or(false));
+                    let t_exp = ui.ctx().animate_bool_with_time(Id::new(("alert_badge_exp", id)), was_hovered, EXPAND_DUR);
+                    if t_exp > 0.0 && t_exp < 1.0 { animating = true; }
 
-                    let (rect, resp) =
-                        ui.allocate_exact_size(egui::vec2(badge_w, BADGE_H), Sense::click());
+                    // Cap the expanded width to the feed viewport so the
+                    // in-place reveal never runs offscreen.
+                    let exp_w  = m.expanded_w.min((viewport_w - 4.0).max(m.compact_w));
+                    let w      = m.compact_w + (exp_w - m.compact_w) * t_exp;
+                    let draw_w = (w * app_e).max(2.0);
+                    let (rect, resp) = ui.allocate_exact_size(vec2(draw_w, BADGE_H), Sense::click());
+                    let hovered_now = resp.hovered();
+                    ui.memory_mut(|mm| mm.data.insert_temp(hov_id, hovered_now));
 
                     if ui.is_rect_visible(rect) {
-                        let p = ui.painter();
-                        let r = (rect.height() * 0.5) as u8;
-
-                        // Soft tinted pill background.
-                        p.rect_filled(rect, egui::CornerRadius::same(r), color_alpha(accent, PILL_TINT_A));
-                        // Left severity accent bar (square inner corners).
-                        let bar = egui::Rect::from_min_size(rect.min, egui::vec2(ACCENT_W, rect.height()));
-                        p.rect_filled(bar, egui::CornerRadius { nw: r, sw: r, ne: 0, se: 0 }, accent);
-
+                        let p  = ui.painter_at(rect);
+                        let r  = (BADGE_H * 0.5) as u8;
                         let cy = rect.center().y;
-                        let mut x = rect.left() + ACCENT_W + PAD_L;
 
-                        // Type — colored, the "kind" split out from the message.
-                        p.text(egui::pos2(x, cy), egui::Align2::LEFT_CENTER, type_label, font.clone(), accent);
-                        x += type_w + gap_sm();
+                        // Pill bg + left accent bar (alpha tracks appear).
+                        p.rect_filled(rect, CornerRadius::same(r), color_alpha(m.accent, PILL_TINT_A).gamma_multiply(app_e));
+                        let bar = Rect::from_min_size(rect.min, vec2(ACCENT_W, rect.height()));
+                        p.rect_filled(bar, CornerRadius { nw: r, sw: r, ne: 0, se: 0 }, m.accent.gamma_multiply(app_e));
 
+                        let cx0 = rect.left() + ACCENT_W + PAD_L;
+                        // Type — severity colour.
+                        p.text(pos2(cx0, cy), Align2::LEFT_CENTER, m.tag, font.clone(), m.accent.gamma_multiply(app_e));
+                        let mut x = cx0 + m.type_w + gapx;
                         // Symbol — bright.
-                        if let (Some(s), Some(w)) = (sym, sym_tw) {
-                            p.text(egui::pos2(x, cy), egui::Align2::LEFT_CENTER, s, font.clone(), t.text);
-                            x += w + gap_sm();
+                        if let Some(s) = m.sym {
+                            p.text(pos2(x, cy), Align2::LEFT_CENTER, s, font.clone(), t.text.gamma_multiply(app_e));
+                            x += m.sym_w + gapx;
                         }
-
-                        // Message — dim, summarized + capped.
-                        if !msg.is_empty() {
-                            p.text(egui::pos2(x, cy), egui::Align2::LEFT_CENTER, &msg, font.clone(), tint(t, Tone::Dim, MSG_A));
+                        // Message — dim, clipped to the (animating) box so it reveals as it expands.
+                        let tail = gapx + DISMISS_W + PAD_R;
+                        let reserve_more = if m.more { (ell_w + 4.0) * (1.0 - t_exp) } else { 0.0 };
+                        let clip_right = rect.right() - tail - reserve_more;
+                        if clip_right > x {
+                            let pm = ui.painter_at(Rect::from_min_max(pos2(x, rect.top()), pos2(clip_right, rect.bottom())));
+                            pm.text(pos2(x, cy), Align2::LEFT_CENTER, &m.full, font.clone(), tint(t, Tone::Dim, MSG_A).gamma_multiply(app_e));
                         }
-
+                        // "more" hint while compact.
+                        if m.more && t_exp < 0.85 {
+                            p.text(pos2(rect.right() - tail, cy), Align2::RIGHT_CENTER, "…", font.clone(),
+                                tint(t, Tone::Dim, ALPHA_INTERACTIVE).gamma_multiply((1.0 - t_exp) * app_e));
+                        }
                         // Dismiss ×.
-                        p.text(
-                            egui::pos2(rect.right() - PAD_R - DISMISS_W * 0.5, cy),
-                            egui::Align2::CENTER_CENTER,
-                            "×",
-                            FontId::proportional(font_sm() + 1.0),
-                            tint(t, Tone::Dim, ALPHA_INTERACTIVE),
-                        );
+                        p.text(pos2(rect.right() - PAD_R - DISMISS_W * 0.5, cy), Align2::CENTER_CENTER, "×",
+                            FontId::proportional(font_sm() + 1.0), tint(t, Tone::Dim, ALPHA_INTERACTIVE).gamma_multiply(app_e));
                     }
 
-                    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-
-                    // Rollover — show the full, untruncated content (type + symbol + raw message).
-                    let resp = resp.on_hover_ui(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(type_label).monospace().size(font_sm()).strong().color(accent));
-                            if let Some(s) = sym {
-                                ui.label(egui::RichText::new(s).monospace().size(font_sm()).strong().color(t.text));
-                            }
-                        });
-                        ui.label(egui::RichText::new(alert.message.as_str()).monospace().size(font_sm()).color(t.text));
-                    });
-
-                    if resp.clicked() { to_dismiss = Some(alert.id); }
+                    if hovered_now { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    if resp.clicked() { to_dismiss = Some(id); }
                 }
+
+                // ── Overflow: stacked "+N" count chip (collapsed) / "‹" (expanded). ──
+                if overflow > 0 && !overflow_expanded {
+                    let label = format!("+{overflow}");
+                    let lw = text_w(ui, &label, &font, t.text);
+                    let chip_w = lw + 18.0 + STACK_OFF;
+                    let (rect, resp) = ui.allocate_exact_size(vec2(chip_w, BADGE_H), Sense::click());
+                    if ui.is_rect_visible(rect) {
+                        let p = ui.painter();
+                        let r = (BADGE_H * 0.5) as u8;
+                        let cr = CornerRadius::same(r);
+                        // Two cards peeking behind to imply a stack.
+                        p.rect_filled(Rect::from_min_size(rect.min + vec2(STACK_OFF, 4.0), vec2(rect.width() - STACK_OFF, rect.height() - 8.0)), cr, tint(t, Tone::Dim, 34));
+                        p.rect_filled(Rect::from_min_size(rect.min + vec2(STACK_OFF * 0.5, 2.0), vec2(rect.width() - STACK_OFF, rect.height() - 4.0)), cr, tint(t, Tone::Dim, 64));
+                        let front = Rect::from_min_size(rect.min, vec2(rect.width() - STACK_OFF, rect.height()));
+                        p.rect_filled(front, cr, color_alpha(t.text, 22));
+                        p.text(front.center(), Align2::CENTER_CENTER, &label, font.clone(), t.text);
+                    }
+                    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    let resp = resp.on_hover_text(format!("{overflow} more — click to expand"));
+                    if resp.clicked() { toggle_overflow = true; }
+                } else if overflow_expanded && had_overflow {
+                    let (rect, resp) = ui.allocate_exact_size(vec2(26.0, BADGE_H), Sense::click());
+                    if ui.is_rect_visible(rect) {
+                        let p = ui.painter();
+                        let r = (BADGE_H * 0.5) as u8;
+                        p.rect_filled(rect, CornerRadius::same(r), color_alpha(t.text, 18));
+                        p.text(rect.center(), Align2::CENTER_CENTER, "‹", FontId::proportional(font_sm() + 2.0), t.text);
+                    }
+                    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    let resp = resp.on_hover_text("Collapse");
+                    if resp.clicked() { toggle_overflow = true; }
+                }
+
+                if animating { ui.ctx().request_repaint(); }
             });
         });
+
+    // ── Persist memory (prune appear-times to live ids) + apply actions. ──
+    let live: HashSet<u64> = items.iter().map(|a| a.id).collect();
+    spawn.retain(|k, _| live.contains(k));
+    ui.memory_mut(|m| m.data.insert_temp(spawn_id, spawn));
+    if toggle_overflow { overflow_expanded = !overflow_expanded; }
+    ui.memory_mut(|m| m.data.insert_temp(exp_id, overflow_expanded));
 
     if let Some(id) = to_dismiss { dismiss(id); }
 }
