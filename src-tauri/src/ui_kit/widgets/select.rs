@@ -92,6 +92,9 @@ pub struct Select<'a, T> {
     /// When true, the last option is pinned below the scroll area with a
     /// top divider. Useful for a "+ New …" footer that must stay visible.
     sticky_last: bool,
+    /// Optional per-row right-click context menu. The closure receives the
+    /// option's index and the menu `Ui`.
+    item_context_menu: Option<Box<dyn Fn(usize, &mut Ui) + 'a>>,
 }
 
 pub struct SelectResponse {
@@ -119,6 +122,7 @@ impl<'a> Select<'a, &'a str> {
             compact_trigger: false,
             trigger_render: None,
             sticky_last: false,
+            item_context_menu: None,
         }
     }
 
@@ -138,6 +142,7 @@ impl<'a> Select<'a, &'a str> {
             compact_trigger: false,
             trigger_render: None,
             sticky_last: false,
+            item_context_menu: None,
         }
     }
 }
@@ -165,6 +170,7 @@ impl<'a, T: 'a> Select<'a, T> {
             compact_trigger: false,
             trigger_render: None,
             sticky_last: false,
+            item_context_menu: None,
         }
     }
 
@@ -190,6 +196,7 @@ impl<'a, T: 'a> Select<'a, T> {
             compact_trigger: false,
             trigger_render: None,
             sticky_last: false,
+            item_context_menu: None,
         }
     }
 
@@ -255,6 +262,12 @@ impl<'a, T: 'a> Select<'a, T> {
     /// for a static "+ New …" footer that should always remain visible.
     pub fn sticky_last(mut self, v: bool) -> Self {
         self.sticky_last = v;
+        self
+    }
+    /// Attach a right-click context menu to each option row. The closure
+    /// receives the option's index and the menu `Ui`.
+    pub fn item_context_menu(mut self, f: impl Fn(usize, &mut Ui) + 'a) -> Self {
+        self.item_context_menu = Some(Box::new(f));
         self
     }
 
@@ -353,6 +366,7 @@ fn paint_select<'a, T: 'a>(
         compact_trigger,
         trigger_render,
         sticky_last,
+        item_context_menu,
     } = sel;
 
     let h = size.height();
@@ -615,6 +629,7 @@ fn paint_select<'a, T: 'a>(
             empty_state.as_deref(),
             &mut mem,
             sticky_last,
+            &item_context_menu,
         );
     }
 
@@ -808,6 +823,7 @@ fn render_panel<'a, T>(
     empty_state: Option<&str>,
     mem: &mut SelectMem,
     sticky_last: bool,
+    item_context_menu: &Option<Box<dyn Fn(usize, &mut Ui) + 'a>>,
 ) -> Option<usize> {
     let placement = Placement {
         side: Side::Bottom,
@@ -932,6 +948,7 @@ fn render_panel<'a, T>(
                             mode,
                             item_render,
                             width,
+                            item_context_menu,
                         ) {
                             clicked = Some(i);
                         }
@@ -959,6 +976,7 @@ fn render_panel<'a, T>(
                     mode,
                     item_render,
                     width,
+                    item_context_menu,
                 ) {
                     clicked = Some(i);
                 }
@@ -981,6 +999,7 @@ fn render_row<'a, T>(
     mode: &Mode<'a>,
     item_render: &Option<ItemRenderFn<'a, T>>,
     width: f32,
+    item_context_menu: &Option<Box<dyn Fn(usize, &mut Ui) + 'a>>,
 ) -> bool {
     let h = 28.0;
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(width, h), Sense::click());
@@ -1064,7 +1083,11 @@ fn render_row<'a, T>(
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
 
-    resp.clicked()
+    let clicked = resp.clicked();
+    if let Some(ctx_fn) = item_context_menu {
+        resp.context_menu(|ui| ctx_fn(idx, ui));
+    }
+    clicked
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────

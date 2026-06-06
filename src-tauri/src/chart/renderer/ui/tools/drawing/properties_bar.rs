@@ -204,36 +204,32 @@ pub fn show_drawing_properties_bar_ui(
 
         ui.add(egui::Separator::default().spacing(gap_xs()));
 
-        // Group dropdown
-        let group_label = chart.groups.iter().find(|g| g.id == sel_draw.group_id).map_or("default".to_string(), |g| g.name.clone());
-        egui::ComboBox::from_id_salt(format!("group_{}", pane_idx))
-            .selected_text(egui::RichText::new(&group_label).monospace().size(font_sm()))
+        // Group dropdown — unified DropdownOwned. The trailing sentinel
+        // "__new_group__" option acts as the "+ New Group…" action footer.
+        const NEW_GROUP_SENTINEL: &str = "__new_group__";
+        let mut grp_opts: Vec<(String, String)> = vec![("default".to_string(), "default".to_string())];
+        for g in &chart.groups {
+            if g.id != "default" {
+                grp_opts.push((g.id.clone(), g.name.clone()));
+            }
+        }
+        grp_opts.push((NEW_GROUP_SENTINEL.to_string(), format!("{} New Group...", Icon::PLUS)));
+        let mut grp_sel = sel_draw.group_id.clone();
+        if crate::chart_renderer::ui::inputs::select::DropdownOwned::new(&format!("group_{pane_idx}"))
+            .options(grp_opts)
             .width(80.0)
-            .show_ui(ui, |ui| {
-                if ui.selectable_label(sel_draw.group_id == "default", egui::RichText::new("default").monospace().size(font_sm())).clicked() {
-                    if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
-                        chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
-                        chart.redo_stack.clear();
-                        d.group_id = "default".into();
-                        crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
-                    }
-                }
-                for g in &chart.groups.clone() {
-                    if g.id == "default" { continue; }
-                    if ui.selectable_label(sel_draw.group_id == g.id, egui::RichText::new(&g.name).monospace().size(font_sm())).clicked() {
-                        if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
-                            chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
-                            chart.redo_stack.clear();
-                            d.group_id = g.id.clone();
-                            crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
-                        }
-                    }
-                }
-                ui.separator();
-                if ui.selectable_label(false, egui::RichText::new(format!("{} New Group...", Icon::PLUS)).monospace().size(font_sm()).color(t.accent)).clicked() {
-                    open_group_manager = true;
-                }
-            });
+            .theme(t)
+            .show(ui, &mut grp_sel)
+        {
+            if grp_sel == NEW_GROUP_SENTINEL {
+                open_group_manager = true;
+            } else if let Some(d) = chart.drawings.iter_mut().find(|d| d.id == sel_id) {
+                chart.undo_stack.push(DrawingAction::Modify(d.id.clone(), d.clone()));
+                chart.redo_stack.clear();
+                d.group_id = grp_sel.clone();
+                crate::drawing_db::save(&drawing_to_db(d, &sym, &tf));
+            }
+        }
 
         ui.add(egui::Separator::default().spacing(gap_xs()));
 

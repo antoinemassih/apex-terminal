@@ -69,42 +69,22 @@ impl<'a, T: PartialEq + Copy> Dropdown<'a, T> {
     }
 
     pub fn show(self, ui: &mut Ui, current: &mut T) -> bool {
-        let accent = self.accent.unwrap_or(ambient(ui.ctx()).accent);
         let dim = self.dim.unwrap_or(ambient(ui.ctx()).dim);
-        let width = self.width.unwrap_or(140.0);
-        let mut changed = false;
 
         if let Some(l) = self.label {
             ui.label(RichText::new(l).monospace().size(font_sm()).color(dim));
         }
 
-        let selected_label = self
-            .options
-            .iter()
-            .find(|(v, _)| v == current)
-            .map(|(_, s)| *s)
-            .unwrap_or("");
-
-        egui::ComboBox::from_id_salt(self.id_salt)
-            .selected_text(
-                RichText::new(selected_label).monospace().size(font_sm()).color(accent),
-            )
-            .width(width)
-            .show_ui(ui, |ui| {
-                for (val, label) in self.options.iter() {
-                    let is_active = val == current;
-                    let color = if is_active { accent } else { dim };
-                    let resp = ui.selectable_label(
-                        is_active,
-                        RichText::new(*label).monospace().size(font_sm()).color(color),
-                    );
-                    if resp.clicked() && !is_active {
-                        *current = *val;
-                        changed = true;
-                    }
-                }
-            });
-
+        // Build label list + locate current index.
+        let labels: Vec<&str> = self.options.iter().map(|(_, s)| *s).collect();
+        let mut idx: usize = self.options.iter().position(|(v, _)| v == current).unwrap_or(0);
+        let prev = idx;
+        let ct = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+        let mut sel = crate::ui_kit::widgets::Select::new(&mut idx, &labels);
+        if let Some(w) = self.width { sel = sel.min_width(w); }
+        let resp = sel.show(ui, &ct);
+        let changed = resp.changed && idx != prev && idx < self.options.len();
+        if changed { *current = self.options[idx].0; }
         changed
     }
 }
@@ -417,45 +397,36 @@ impl<'a, T: Clone + PartialEq> DropdownOwned<'a, T> {
 
     /// Show the dropdown. Returns `(changed, combo_response)`.
     pub fn show_resp(mut self, ui: &mut Ui, current: &mut T) -> (bool, Response) {
-        let accent = self.accent.unwrap_or(ambient(ui.ctx()).accent);
         let dim = self.dim.unwrap_or(ambient(ui.ctx()).dim);
-        let width = self.width.unwrap_or(140.0);
-        let fs = self.font_size.unwrap_or_else(font_sm);
-        let mut changed = false;
 
         if let Some(l) = self.label {
             ui.label(RichText::new(l).monospace().size(font_sm()).color(dim));
         }
 
-        let header = self.selected_text.clone().unwrap_or_else(|| {
-            self.options.iter()
-                .find(|(v, _)| v == current)
-                .map(|(_, s)| s.clone())
-                .unwrap_or_default()
-        });
-
-        let inner = egui::ComboBox::from_id_salt(self.id_salt)
-            .selected_text(RichText::new(&header).monospace().size(fs).color(accent))
-            .width(width)
-            .show_ui(ui, |ui| {
-                for (val, label) in self.options.iter() {
-                    let is_active = val == current;
-                    let color = if is_active { accent } else { dim };
-                    let row_resp = ui.selectable_label(
-                        is_active,
-                        RichText::new(label).monospace().size(fs).color(color),
-                    );
-                    if row_resp.clicked() && !is_active {
-                        *current = val.clone();
-                        changed = true;
-                    }
-                    if let Some(ref mut ctx_fn) = self.item_context_menu {
-                        row_resp.context_menu(|ui| ctx_fn(val, ui));
-                    }
-                }
+        let labels: Vec<String> = self.options.iter().map(|(_, s)| s.clone()).collect();
+        let label_refs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
+        let mut idx: usize = self.options.iter().position(|(v, _)| v == current).unwrap_or(0);
+        let prev = idx;
+        let ct = crate::ui_kit::widgets::theme::active_theme(ui.ctx());
+        let mut sel = crate::ui_kit::widgets::Select::new(&mut idx, &label_refs);
+        if let Some(w) = self.width { sel = sel.min_width(w); }
+        // Wire per-item context menu against the owned option values.
+        // Clone option values into an owned Vec so the closure can be `move`
+        // without conflicting with the post-show borrow of self.options.
+        if let Some(ctx_fn) = self.item_context_menu.take() {
+            let menu_vals: Vec<T> = self.options.iter().map(|(v, _)| v.clone()).collect();
+            // `DropdownOwned`'s menu closure is `FnMut`, but `Select` stores a
+            // `Fn`; a `RefCell` lets the outer `Fn` closure call the inner
+            // `FnMut` (borrowed mutably only for the synchronous invocation).
+            let ctx_fn = std::cell::RefCell::new(ctx_fn);
+            sel = sel.item_context_menu(move |i, ui| {
+                if let Some(v) = menu_vals.get(i) { (ctx_fn.borrow_mut())(v, ui); }
             });
-
-        (changed, inner.response)
+        }
+        let resp = sel.show(ui, &ct);
+        let changed = resp.changed && idx != prev && idx < self.options.len();
+        if changed { *current = self.options[idx].0.clone(); }
+        (changed, resp.response)
     }
 }
 

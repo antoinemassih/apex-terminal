@@ -954,15 +954,18 @@ fn render_chart_pane(
                         let cur_template: String = chart.pane_template_name.clone().unwrap_or_else(|| "None".to_string());
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new("Template:").size(crate::chart_renderer::ui::style::font_sm()).color(t.dim));
-                            egui::ComboBox::from_id_salt(("pane_picker_template", pane_idx))
-                                .selected_text(cur_template.as_str())
-                                .show_ui(ui, |ui| {
-                                    for name in &template_names {
-                                        if ui.selectable_label(cur_template.as_str() == name.as_str(), name.as_str()).clicked() {
-                                            chart.pane_template_name = if name == "None" { None } else { Some(name.clone()) };
-                                        }
-                                    }
-                                });
+                            let tpl_id = format!("pane_picker_template_{pane_idx}");
+                            let tpl_opts: Vec<(String, String)> =
+                                template_names.iter().map(|n| (n.clone(), n.clone())).collect();
+                            let mut tpl_sel = cur_template.clone();
+                            if crate::chart_renderer::ui::inputs::select::DropdownOwned::new(&tpl_id)
+                                .options(tpl_opts)
+                                .width(140.0)
+                                .theme(t)
+                                .show(ui, &mut tpl_sel)
+                            {
+                                chart.pane_template_name = if tpl_sel == "None" { None } else { Some(tpl_sel) };
+                            }
                             // Stock | Option toggle — switches the body below between
                             // ticker search and option-chain selector.
                             let stock_active = !chart.pane_picker_option_mode;
@@ -1299,15 +1302,18 @@ fn render_chart_pane(
                         let mut do_save = false;
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new("Template:").size(crate::chart_renderer::ui::style::font_sm()).color(t.dim));
-                            egui::ComboBox::from_id_salt((id_salt, pane_idx))
-                                .selected_text(cur.as_str())
-                                .show_ui(ui, |ui| {
-                                    for name in &templates_snapshot {
-                                        if ui.selectable_label(cur.as_str() == name.as_str(), name.as_str()).clicked() {
-                                            newly_selected = Some(name.clone());
-                                        }
-                                    }
-                                });
+                            let tpl_id = format!("{id_salt}_{pane_idx}");
+                            let tpl_opts: Vec<(String, String)> =
+                                templates_snapshot.iter().map(|n| (n.clone(), n.clone())).collect();
+                            let mut tpl_sel = cur.clone();
+                            if crate::chart_renderer::ui::inputs::select::DropdownOwned::new(&tpl_id)
+                                .options(tpl_opts)
+                                .width(140.0)
+                                .theme(t)
+                                .show(ui, &mut tpl_sel)
+                            {
+                                newly_selected = Some(tpl_sel);
+                            }
                             ui.add(egui::TextEdit::singleline(&mut chart.pane_picker_save_name)
                                 .hint_text("Name…").desired_width(110.0));
                             let can_save = !chart.pane_picker_save_name.trim().is_empty();
