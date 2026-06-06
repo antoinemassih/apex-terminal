@@ -70,12 +70,35 @@ pub fn clear_all() {
     store().lock().unwrap().clear();
 }
 
-fn kind_color(kind: AlertKind, t: &Theme) -> Color32 {
-    match kind {
-        AlertKind::OrderFilled                       => t.bull,
-        AlertKind::OrderRejected | AlertKind::Error  => t.bear,
-        _                                            => t.accent,
+impl AlertKind {
+    /// Map this kind to the canonical `NotificationSeverity` so badge colours
+    /// and icons flow from the single shared severity model rather than being
+    /// maintained twice.
+    ///
+    /// | Kind           | Severity | Colour |
+    /// |----------------|----------|--------|
+    /// | OrderFilled    | Success  | bull / green |
+    /// | OrderRejected  | Error    | bear / red   |
+    /// | Error          | Error    | bear / red   |
+    /// | Warning        | Warning  | warn / amber |
+    /// | OrderPending   | Info     | accent       |
+    /// | PriceAlert     | Info     | accent       |
+    /// | Signal         | Info     | accent       |
+    pub fn severity(self) -> crate::chart_renderer::ui::tools::notification::NotificationSeverity {
+        use crate::chart_renderer::ui::tools::notification::NotificationSeverity;
+        match self {
+            AlertKind::OrderFilled                      => NotificationSeverity::Success,
+            AlertKind::OrderRejected | AlertKind::Error => NotificationSeverity::Error,
+            AlertKind::Warning                          => NotificationSeverity::Warning,
+            AlertKind::OrderPending
+            | AlertKind::PriceAlert
+            | AlertKind::Signal                         => NotificationSeverity::Info,
+        }
     }
+}
+
+fn kind_color(kind: AlertKind, t: &Theme) -> Color32 {
+    kind.severity().color(t)
 }
 
 fn kind_tag(kind: AlertKind) -> &'static str {

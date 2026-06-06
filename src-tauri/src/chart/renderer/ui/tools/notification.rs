@@ -53,6 +53,15 @@ pub enum NotificationSeverity {
     Error,
 }
 
+/// Alpha value applied to the severity accent colour when filling a notification
+/// chrome background (e.g. toast pill, badge tint). Keeps the background subtle
+/// so text legibility is preserved against dark panel backgrounds.
+pub const NOTIF_TINT_ALPHA: u8 = 24;
+
+/// Alpha value for a notification border/accent bar drawn at full perceptual
+/// weight — visible enough to be instantly recognisable without being overpowering.
+pub const NOTIF_BORDER_ALPHA: u8 = 200;
+
 impl NotificationSeverity {
     /// Resolve to the appropriate theme colour.
     pub fn color(self, t: &crate::chart_renderer::gpu::Theme) -> egui::Color32 {
@@ -61,6 +70,21 @@ impl NotificationSeverity {
             NotificationSeverity::Success => t.bull,
             NotificationSeverity::Warning => t.warn,
             NotificationSeverity::Error   => t.bear,
+        }
+    }
+
+    /// Canonical Phosphor icon glyph for this severity level.
+    ///
+    /// Matches the icons already used by the toast overlay in `top_nav.rs` so
+    /// every surface that renders a notification (toasts, badge feed, history
+    /// dock) displays a consistent icon without duplicating the mapping.
+    pub fn icon(self) -> &'static str {
+        use crate::ui_kit::icons::Icon;
+        match self {
+            NotificationSeverity::Info    => Icon::INFO,
+            NotificationSeverity::Success => Icon::CHECK_CIRCLE,
+            NotificationSeverity::Warning => Icon::WARNING,
+            NotificationSeverity::Error   => Icon::SHIELD_WARNING_FILL,
         }
     }
 }
