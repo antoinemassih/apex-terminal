@@ -228,5 +228,27 @@ fn boomerang_pts(scale: f32, origin: Pos2) -> Vec<Pos2> {
     // Closing curve back to start
     for i in 0..=n { pts.push(cb([13.1263,3.99895],[13.2793,3.78238],[13.4519,3.57531],[13.6456,3.38161], i as f32/n as f32)); }
 
-    pts
+    // Resample to uniform arc-length so the travelling worm moves at constant
+    // speed and doesn't jump across the two long diagonal edges above.
+    resample_loop_uniform(&pts, 96)
+}
+
+/// Resample a closed polyline to `out_n` points evenly spaced by arc length.
+fn resample_loop_uniform(pts: &[Pos2], out_n: usize) -> Vec<Pos2> {
+    if pts.len() < 2 || out_n < 2 { return pts.to_vec(); }
+    let mut cum = Vec::with_capacity(pts.len());
+    cum.push(0.0f32);
+    for i in 1..pts.len() { cum.push(cum[i - 1] + pts[i - 1].distance(pts[i])); }
+    let total = *cum.last().unwrap();
+    if total <= 1e-4 { return pts.to_vec(); }
+    let mut out = Vec::with_capacity(out_n);
+    let mut seg = 0usize;
+    for j in 0..out_n {
+        let target = total * j as f32 / out_n as f32;
+        while seg + 1 < pts.len() && cum[seg + 1] < target { seg += 1; }
+        let seg_len = cum[seg + 1] - cum[seg];
+        let local = if seg_len > 1e-6 { (target - cum[seg]) / seg_len } else { 0.0 };
+        out.push(pts[seg] + (pts[seg + 1] - pts[seg]) * local);
+    }
+    out
 }

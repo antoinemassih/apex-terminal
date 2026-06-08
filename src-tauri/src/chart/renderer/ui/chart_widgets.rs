@@ -2754,7 +2754,33 @@ fn spinner_boomerang(scale: f32, origin: egui::Pos2) -> Vec<egui::Pos2> {
     for i in 0..n { pts.push(cb([3.51134,20.5387],[1.59935,18.6267],[1.59935,15.526],[3.51134,13.614], i as f32/n as f32)); }
     pts.push(s(13.1263,3.99895));
     for i in 0..=n { pts.push(cb([13.1263,3.99895],[13.2793,3.78238],[13.4519,3.57531],[13.6456,3.38161], i as f32/n as f32)); }
-    pts
+    // The raw path mixes dense bezier samples with a couple of long straight
+    // diagonals (the boomerang's two concave edges). Travelling by index over
+    // that makes the worm leap across the diagonals — resample to uniform
+    // arc-length so it moves at constant speed with no jumps.
+    resample_loop_uniform(&pts, 96)
+}
+
+/// Resample a closed polyline to `out_n` points evenly spaced by arc length.
+/// Keeps it a loop (no duplicated start/end) so a travelling segment indexed
+/// with `% out_n` advances at constant visual speed.
+fn resample_loop_uniform(pts: &[egui::Pos2], out_n: usize) -> Vec<egui::Pos2> {
+    if pts.len() < 2 || out_n < 2 { return pts.to_vec(); }
+    let mut cum = Vec::with_capacity(pts.len());
+    cum.push(0.0f32);
+    for i in 1..pts.len() { cum.push(cum[i - 1] + pts[i - 1].distance(pts[i])); }
+    let total = *cum.last().unwrap();
+    if total <= 1e-4 { return pts.to_vec(); }
+    let mut out = Vec::with_capacity(out_n);
+    let mut seg = 0usize;
+    for j in 0..out_n {
+        let target = total * j as f32 / out_n as f32; // [0, total) → even loop spacing
+        while seg + 1 < pts.len() && cum[seg + 1] < target { seg += 1; }
+        let seg_len = cum[seg + 1] - cum[seg];
+        let local = if seg_len > 1e-6 { (target - cum[seg]) / seg_len } else { 0.0 };
+        out.push(pts[seg] + (pts[seg + 1] - pts[seg]) * local);
+    }
+    out
 }
 
 /// Compute aggregate conviction from all signal sources (0-100).

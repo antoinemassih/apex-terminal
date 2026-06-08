@@ -78,6 +78,11 @@ windows-sys = { version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_UI_Wi
 # Windows: NVML FFI for GPU monitoring (loads nvml.dll at runtime).
 libloading = "0.8"
 
+# Windows: embed the app icon + manifest into the .exe at build time (replaces
+# the icon embedding tauri-build used to do).
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
 # macOS-only — setting the dock icon at runtime requires AppKit FFI.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
