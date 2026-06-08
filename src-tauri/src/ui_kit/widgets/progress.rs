@@ -11,7 +11,7 @@
 //!   ui.add(Progress::circular(0.5).size(Size::Lg));
 //!   ui.add(Progress::circular_indeterminate());
 
-use egui::{Color32, CornerRadius, Pos2, Response, Sense, Stroke, Ui, Vec2, Widget};
+use egui::{Color32, CornerRadius, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, Widget};
 
 use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};
@@ -110,27 +110,21 @@ fn paint_linear(ui: &mut Ui, theme: &dyn ComponentTheme, p: Progress) -> Respons
 
 fn paint_circular(ui: &mut Ui, theme: &dyn ComponentTheme, p: Progress) -> Response {
     let diameter = match p.size { Size::Xs => 16.0, Size::Sm => 22.0, Size::Md => 28.0, Size::Lg | Size::Xl => 34.0 };
-    let stroke_w = match p.size { Size::Xs | Size::Sm => 2.0, Size::Md => 3.0, Size::Lg | Size::Xl => 4.0 };
+    let stroke_w = match p.size { Size::Xs | Size::Sm => 1.5, Size::Md => 2.0, Size::Lg | Size::Xl => 2.5 };
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(diameter), Sense::hover());
     if !ui.is_rect_visible(rect) { return response; }
 
     let painter = ui.painter_at(rect);
-    let center = rect.center();
-    let radius = diameter * 0.5 - stroke_w * 0.5;
-
-    // Track full circle.
-    painter.circle_stroke(center, radius, Stroke::new(stroke_w, st::color_alpha(palette_ct(theme).base(Tone::Dim), 64)));
-
     let color = variant_color(p.variant, theme);
 
     if p.indeterminate {
-        // 1 rev/sec from wall-clock.
         let time = ui.input(|i| i.time);
-        let phase = (time % 1.0) as f32;
-        let start_deg = phase * 360.0 - 90.0;
-        draw_arc(&painter, center, radius, start_deg, 90.0, stroke_w, color);
+        paint_worm2(&painter, rect, stroke_w, color, time);
         ui.ctx().request_repaint();
     } else {
+        let center = rect.center();
+        let radius = diameter * 0.5 - stroke_w * 0.5;
+        painter.circle_stroke(center, radius, Stroke::new(stroke_w, st::color_alpha(palette_ct(theme).base(Tone::Dim), 64)));
         let span = p.t * 360.0;
         if span > 0.0 {
             draw_arc(&painter, center, radius, -90.0, span, stroke_w, color);
@@ -162,4 +156,77 @@ fn draw_arc(
         ));
     }
     painter.add(egui::Shape::line(points, Stroke::new(stroke_w, color)));
+}
+
+// Worm 2: ghost outlines of the three logo shapes with traveling segments.
+// Logo lives in a 24×24 viewBox; rect is the actual pixel square.
+fn paint_worm2(painter: &egui::Painter, rect: Rect, stroke_w: f32, color: Color32, time: f64) {
+    let scale = rect.width() / 24.0;
+    let ghost = Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 36);
+    let to_s = |x: f32, y: f32| Pos2::new(rect.min.x + x * scale, rect.min.y + y * scale);
+
+    // --- Dot: small circle top-left (cx 6.159, cy 6.290, r 3.564) ---
+    let dot_c = to_s(6.15852, 6.28967);
+    let dot_r = (3.5638 * scale - stroke_w * 0.5).max(1.0);
+    painter.circle_stroke(dot_c, dot_r, Stroke::new(stroke_w, ghost));
+    {
+        let phase = ((time / 1.1) % 1.0) as f32;
+        draw_arc(painter, dot_c, dot_r, phase * 360.0 - 90.0, 198.0, stroke_w, color);
+    }
+
+    // --- Ring: large circle bottom-right (cx 15.577, cy 15.708, r 5.855) ---
+    let ring_c = to_s(15.577, 15.7082);
+    let ring_r = (5.85481 * scale - stroke_w * 0.5).max(1.0);
+    painter.circle_stroke(ring_c, ring_r, Stroke::new(stroke_w, ghost));
+    {
+        let phase = ((time / 2.6) % 1.0) as f32;
+        draw_arc(painter, ring_c, ring_r, phase * 360.0 - 90.0, 136.8, stroke_w, color);
+    }
+
+    // --- Boomerang arc: sampled bezier path ---
+    let arc_pts = boomerang_pts(scale, rect.min);
+    painter.add(egui::Shape::line(arc_pts.clone(), Stroke::new(stroke_w, ghost)));
+    {
+        let n = arc_pts.len();
+        let worm_len = ((n as f32 * 0.42) as usize).max(2);
+        let phase = ((time / 1.7) % 1.0) as f32;
+        let i0 = (phase * n as f32) as usize % n;
+        let pts: Vec<Pos2> = (0..=worm_len).map(|k| arc_pts[(i0 + k) % n]).collect();
+        if pts.len() >= 2 {
+            painter.add(egui::Shape::line(pts, Stroke::new(stroke_w, color)));
+        }
+    }
+}
+
+// Sample the closed boomerang SVG path into a polyline (24×24 viewBox coords scaled to pixels).
+fn boomerang_pts(scale: f32, origin: Pos2) -> Vec<Pos2> {
+    let s = |x: f32, y: f32| Pos2::new(origin.x + x * scale, origin.y + y * scale);
+    let cb = |p0: [f32; 2], p1: [f32; 2], p2: [f32; 2], p3: [f32; 2], t: f32| -> Pos2 {
+        let u = 1.0 - t;
+        s(
+            u*u*u*p0[0] + 3.0*u*u*t*p1[0] + 3.0*u*t*t*p2[0] + t*t*t*p3[0],
+            u*u*u*p0[1] + 3.0*u*u*t*p1[1] + 3.0*u*t*t*p2[1] + t*t*t*p3[1],
+        )
+    };
+    let n = 7usize; // samples per bezier curve
+    let mut pts: Vec<Pos2> = Vec::with_capacity(64);
+
+    // Top-right rounded end
+    for i in 0..n { pts.push(cb([13.6456,3.38161],[15.5131,1.51417],[18.5651,1.53812],[20.4625,3.43547], i as f32/n as f32)); }
+    // Right outer curve
+    for i in 0..n { pts.push(cb([20.4625,3.43547],[22.3595,5.33285],[22.3837,8.385],[20.5163,10.2525], i as f32/n as f32)); }
+    // Short corner transition + long diagonal to bottom-left
+    pts.push(s(20.3209, 10.4355));
+    pts.push(s(20.4293, 10.5439));
+    pts.push(s(10.4567, 20.5166));
+    // Bottom-left rounded end
+    for i in 0..n { pts.push(cb([10.4353,20.538],[8.52338,22.45],[5.42336,22.4505],[3.51134,20.5387], i as f32/n as f32)); }
+    // Left outer curve
+    for i in 0..n { pts.push(cb([3.51134,20.5387],[1.59935,18.6267],[1.59935,15.526],[3.51134,13.614], i as f32/n as f32)); }
+    // Long diagonal back to top-right
+    pts.push(s(13.1263, 3.99895));
+    // Closing curve back to start
+    for i in 0..=n { pts.push(cb([13.1263,3.99895],[13.2793,3.78238],[13.4519,3.57531],[13.6456,3.38161], i as f32/n as f32)); }
+
+    pts
 }

@@ -483,14 +483,8 @@ pub(crate) fn render(
             // ── Logo (with left edge margin so the glyph doesn't kiss the
             //         window border) ──
             ui.add_space(gap_sm());
-            let (logo_rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
-            let lp = ui.painter_at(logo_rect);
-            let lc = logo_rect.center();
-            lp.add(egui::Shape::line(vec![
-                egui::pos2(lc.x, lc.y - 6.0), egui::pos2(lc.x + 6.0, lc.y + 5.0),
-                egui::pos2(lc.x - 6.0, lc.y + 5.0), egui::pos2(lc.x, lc.y - 6.0),
-            ], egui::Stroke::new(stroke_std(), t.accent)));
-            lp.line_segment([egui::pos2(lc.x - 3.5, lc.y + 1.0), egui::pos2(lc.x + 3.5, lc.y + 1.0)], egui::Stroke::new(stroke_std(), t.accent));
+            let (logo_rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+            draw_xolio_logo(ui.painter_at(logo_rect), logo_rect, t.accent);
 
             ui.add_space(gap_sm());
             ui.spacing_mut().item_spacing.x = gap_xs();
@@ -1827,4 +1821,44 @@ pub(crate) fn render(
     }
 
     span_end(); // top_panel
+}
+
+/// Draw the three-element Xolio logo mark (dot + boomerang arc + ring) into `rect`.
+fn draw_xolio_logo(p: egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let sc = rect.width() / 24.0;
+    let sw = (rect.width() * 0.065).max(1.0);
+    let to_s = |x: f32, y: f32| egui::pos2(rect.min.x + x * sc, rect.min.y + y * sc);
+
+    // Dot — small circle, top-left
+    let dot_c = to_s(6.15852, 6.28967);
+    let dot_r = (3.5638 * sc - sw * 0.5).max(0.8);
+    p.circle_stroke(dot_c, dot_r, egui::Stroke::new(sw, color));
+
+    // Ring — large circle, bottom-right
+    let ring_c = to_s(15.577, 15.7082);
+    let ring_r = (5.85481 * sc - sw * 0.5).max(0.8);
+    p.circle_stroke(ring_c, ring_r, egui::Stroke::new(sw, color));
+
+    // Boomerang — closed bezier path sampled as polyline
+    let n = 6usize;
+    let cb = |p0: [f32; 2], p1: [f32; 2], p2: [f32; 2], p3: [f32; 2]| -> Vec<egui::Pos2> {
+        (0..n).map(|i| {
+            let t = i as f32 / n as f32;
+            let u = 1.0 - t;
+            to_s(
+                u*u*u*p0[0]+3.0*u*u*t*p1[0]+3.0*u*t*t*p2[0]+t*t*t*p3[0],
+                u*u*u*p0[1]+3.0*u*u*t*p1[1]+3.0*u*t*t*p2[1]+t*t*t*p3[1],
+            )
+        }).collect()
+    };
+    let mut bpts: Vec<egui::Pos2> = Vec::with_capacity(50);
+    bpts.extend(cb([13.6456,3.38161],[15.5131,1.51417],[18.5651,1.53812],[20.4625,3.43547]));
+    bpts.extend(cb([20.4625,3.43547],[22.3595,5.33285],[22.3837,8.385],[20.5163,10.2525]));
+    bpts.push(to_s(20.4293,10.5439)); bpts.push(to_s(10.4567,20.5166));
+    bpts.extend(cb([10.4353,20.538],[8.52338,22.45],[5.42336,22.4505],[3.51134,20.5387]));
+    bpts.extend(cb([3.51134,20.5387],[1.59935,18.6267],[1.59935,15.526],[3.51134,13.614]));
+    bpts.push(to_s(13.1263,3.99895));
+    bpts.extend(cb([13.1263,3.99895],[13.2793,3.78238],[13.4519,3.57531],[13.6456,3.38161]));
+    bpts.push(bpts[0]); // close path
+    p.add(egui::Shape::line(bpts, egui::Stroke::new(sw, color)));
 }

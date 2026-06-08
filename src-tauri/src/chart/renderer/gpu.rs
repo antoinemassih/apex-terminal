@@ -3352,27 +3352,64 @@ pub(crate) fn drawing_kind_short(kind: &DrawingKind) -> &'static str {
     }
 }
 
-/// Generate a 32x32 RGBA window icon — Apex triangle in orange on transparent bg.
+fn draw_circle_rgba(buf: &mut Vec<u8>, size: u32, cx: f32, cy: f32, r: f32, sw: f32, color: [u8; 4]) {
+    let inner_sq = (r - sw * 0.5).max(0.0).powi(2);
+    let outer_sq = (r + sw * 0.5).powi(2);
+    let x0 = ((cx - r - sw) as i32).max(0) as u32;
+    let x1 = ((cx + r + sw) as i32 + 1).min(size as i32) as u32;
+    let y0 = ((cy - r - sw) as i32).max(0) as u32;
+    let y1 = ((cy + r + sw) as i32 + 1).min(size as i32) as u32;
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let dist_sq = (x as f32 - cx).powi(2) + (y as f32 - cy).powi(2);
+            if dist_sq >= inner_sq && dist_sq <= outer_sq {
+                let idx = ((y * size + x) * 4) as usize;
+                if idx + 4 <= buf.len() {
+                    buf[idx..idx + 4].copy_from_slice(&color);
+                }
+            }
+        }
+    }
+}
+
+fn draw_logo_icon(buf: &mut Vec<u8>, size: u32, color: [u8; 4]) {
+    let sc = size as f32 / 24.0;
+    let sw = (size as f32 * 0.055).max(1.0);
+
+    draw_circle_rgba(buf, size, 6.15852 * sc, 6.28967 * sc, (3.5638 * sc - sw * 0.5).max(1.0), sw, color);
+    draw_circle_rgba(buf, size, 15.577  * sc, 15.7082 * sc, (5.85481 * sc - sw * 0.5).max(1.0), sw, color);
+
+    let n = 8usize;
+    let cb = |p0: [f32; 2], p1: [f32; 2], p2: [f32; 2], p3: [f32; 2]| -> Vec<(f32, f32)> {
+        (0..=n).map(|i| {
+            let t = i as f32 / n as f32;
+            let u = 1.0 - t;
+            (
+                (u*u*u*p0[0]+3.0*u*u*t*p1[0]+3.0*u*t*t*p2[0]+t*t*t*p3[0]) * sc,
+                (u*u*u*p0[1]+3.0*u*u*t*p1[1]+3.0*u*t*t*p2[1]+t*t*t*p3[1]) * sc,
+            )
+        }).collect()
+    };
+    let mut bpts: Vec<(f32, f32)> = Vec::with_capacity(80);
+    bpts.extend(cb([13.6456,3.38161],[15.5131,1.51417],[18.5651,1.53812],[20.4625,3.43547]));
+    bpts.extend(cb([20.4625,3.43547],[22.3595,5.33285],[22.3837,8.385],[20.5163,10.2525]));
+    bpts.push((20.3209*sc, 10.4355*sc));
+    bpts.push((20.4293*sc, 10.5439*sc));
+    bpts.push((10.4567*sc, 20.5166*sc));
+    bpts.extend(cb([10.4353,20.538],[8.52338,22.45],[5.42336,22.4505],[3.51134,20.5387]));
+    bpts.extend(cb([3.51134,20.5387],[1.59935,18.6267],[1.59935,15.526],[3.51134,13.614]));
+    bpts.push((13.1263*sc, 3.99895*sc));
+    bpts.extend(cb([13.1263,3.99895],[13.2793,3.78238],[13.4519,3.57531],[13.6456,3.38161]));
+    for w in bpts.windows(2) {
+        draw_line_rgba(buf, size, w[0].0, w[0].1, w[1].0, w[1].1, sw, color);
+    }
+}
+
+/// Generate a 32x32 RGBA window icon — Xolio logo in orange on transparent bg.
 fn make_window_icon() -> Option<winit::window::Icon> {
     let s: u32 = 32;
     let mut rgba = vec![0u8; (s * s * 4) as usize];
-    let color = [254u8, 128, 25, 255]; // Gruvbox accent orange
-
-    // Draw triangle outline: top-center to bottom-left to bottom-right
-    let m = 3.0_f32; // margin
-    let cx = s as f32 / 2.0;
-    let top = (cx, m);
-    let bl = (m, s as f32 - m);
-    let br = (s as f32 - m, s as f32 - m);
-
-    // Triangle sides
-    draw_line_rgba(&mut rgba, s, top.0, top.1, bl.0, bl.1, 1.0, color);
-    draw_line_rgba(&mut rgba, s, bl.0, bl.1, br.0, br.1, 1.0, color);
-    draw_line_rgba(&mut rgba, s, br.0, br.1, top.0, top.1, 1.0, color);
-    // Horizontal bar
-    let bar_y = cx + 2.0;
-    draw_line_rgba(&mut rgba, s, cx - 7.0, bar_y, cx + 7.0, bar_y, 1.0, color);
-
+    draw_logo_icon(&mut rgba, s, [254u8, 128, 25, 255]);
     winit::window::Icon::from_rgba(rgba, s, s).ok()
 }
 
@@ -3415,14 +3452,7 @@ fn make_window_icon_hicon() -> Option<isize> {
     let s: i32 = 32;
     // Build BGRA pixel data (pre-multiplied alpha)
     let mut bgra = vec![0u8; (s * s * 4) as usize];
-    let color_bgra = [25u8, 128, 254, 255]; // BGRA for orange #FE8019
-
-    let m = 3.0_f32;
-    let cx = s as f32 / 2.0;
-    draw_line_rgba(&mut bgra, s as u32, cx, m, m, s as f32 - m, 1.0, color_bgra);
-    draw_line_rgba(&mut bgra, s as u32, m, s as f32 - m, s as f32 - m, s as f32 - m, 1.0, color_bgra);
-    draw_line_rgba(&mut bgra, s as u32, s as f32 - m, s as f32 - m, cx, m, 1.0, color_bgra);
-    draw_line_rgba(&mut bgra, s as u32, cx - 7.0, cx + 2.0, cx + 7.0, cx + 2.0, 1.0, color_bgra);
+    draw_logo_icon(&mut bgra, s as u32, [25u8, 128, 254, 255]); // BGRA for orange #FE8019
 
     unsafe {
         // Create a DIB section for the color bitmap
