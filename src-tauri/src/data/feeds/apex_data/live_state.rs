@@ -167,6 +167,13 @@ pub fn start_pollers() {
                             }
                         }
                         Err(ApiError::CircuitOpen) => {}
+                        // Route not exposed on this deployment (e.g. per-symbol
+                        // `/api/snap/*` is missing — bulk snapshot + chain still
+                        // work). A polled 404 is a standing condition, not a
+                        // per-symbol-per-second user toast, so skip it silently
+                        // like CircuitOpen. Real errors (5xx/timeout/parse) below
+                        // still surface.
+                        Err(ApiError::Http { status: 404, .. }) => {}
                         Err(e) => {
                             report(ErrorLevel::Warn, "apex_data.rest", "snapshot_poll",
                                 format!("{sym}: {e}"));
@@ -256,6 +263,9 @@ pub fn start_pollers() {
                             }
                         }
                         Err(ApiError::CircuitOpen) => {}
+                        // Missing route on this deployment — skip silently (see
+                        // the snapshot poller note) rather than toast every 2s.
+                        Err(ApiError::Http { status: 404, .. }) => {}
                         Err(e) => {
                             report(ErrorLevel::Warn, "apex_data.rest", "greeks_poll",
                                 format!("{contract}: {e}"));

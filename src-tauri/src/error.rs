@@ -1,18 +1,16 @@
-//! Typed error returned from `#[tauri::command]` functions.
+//! Typed error returned from the data/IO operations.
 //!
-//! Tauri serializes the `Err` variant of a command's `Result` into the JSON
-//! payload received by the WebView. Returning a free-form `String` forces the
-//! frontend to pattern-match on prose ("DB not initialized" vs "permission
-//! denied" vs "file not found") which is brittle and locale-sensitive.
+//! Returning a free-form `String` forces callers to pattern-match on prose
+//! ("DB not initialized" vs "permission denied" vs "file not found") which is
+//! brittle and locale-sensitive.
 //!
 //! `AppError` serializes to a structured object:
 //! ```json
 //! { "code": "db_uninitialized", "message": "Database not initialized" }
 //! ```
-//! so callers can `if (err.code === "auth_expired") { ... }` without scraping
-//! the message text.
+//! so callers can branch on `code` without scraping the message text.
 
-/// Structured error payload returned across the Tauri IPC boundary.
+/// Structured, serializable error payload.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct AppError {

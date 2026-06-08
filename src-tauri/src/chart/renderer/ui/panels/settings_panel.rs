@@ -1,4 +1,4 @@
-//! Settings panel — organized into Appearance, Chart, Trading, Shortcuts tabs.
+//! Settings panel — organized into Appearance, Chart, Trading, Notifications, Shortcuts tabs.
 //!
 //! Modal + HeaderStyle::Dialog chrome is canonical (per Agent O). This pass
 //! fixes the BODY: kills the per-section `m = 10.0` margin literal in favor
@@ -57,7 +57,7 @@ fn write_persisted_bool(ui: &egui::Ui, id_salt: &str, value: bool) {
 
 /// Settings tab selector.
 #[derive(Clone, Copy, PartialEq)]
-enum SettingsTab { Appearance, Chart, Trading, Shortcuts }
+enum SettingsTab { Appearance, Chart, Trading, Notifications, Shortcuts }
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, chart: &mut Chart, t: &Theme, ap: usize) {
 if !watchlist.settings_open { return; }
@@ -82,9 +82,10 @@ let modal_resp = Modal::new("SETTINGS")
             SettingsTab::Appearance,
             SettingsTab::Chart,
             SettingsTab::Trading,
+            SettingsTab::Notifications,
             SettingsTab::Shortcuts,
         ];
-        const TAB_LABELS: &[&str] = &["Appearance", "Chart", "Trading", "Shortcuts"];
+        const TAB_LABELS: &[&str] = &["Appearance", "Chart", "Trading", "Notifications", "Shortcuts"];
         let tab_id = egui::Id::new("settings_active_tab");
         let mut tab: SettingsTab = ui.data_mut(|d| *d.get_temp_mut_or(tab_id, SettingsTab::Appearance));
         let mut idx = TAB_VARIANTS.iter().position(|v| *v == tab).unwrap_or(0);
@@ -113,6 +114,7 @@ let modal_resp = Modal::new("SETTINGS")
                         SettingsTab::Appearance => draw_appearance(ui, watchlist, chart, t, ap),
                         SettingsTab::Chart      => draw_chart(ui, watchlist, chart, t),
                         SettingsTab::Trading    => draw_trading(ui, watchlist, t),
+                        SettingsTab::Notifications => draw_notifications(ui, t),
                         SettingsTab::Shortcuts  => draw_shortcuts(ui, watchlist, t),
                     }
                 });
@@ -609,37 +611,10 @@ fn draw_chart(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Chart, t
 }
 
 // ═══════════════════════════════════════════════════════════════
-// TRADING TAB
+// NOTIFICATIONS TAB
 // ═══════════════════════════════════════════════════════════════
-fn draw_trading(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
-    // ── MODE (Paper / Live) ──
-    PanelSection::new("MODE").show(ui, t, |ui, t| {
-        let was_paper = crate::chart_renderer::trading::order_manager::is_paper_mode();
-        let mut paper = was_paper;
-        setting_toggle_described(ui, "Paper Trading",
-            Some("Route orders to the simulated account instead of the live broker."),
-            t, &mut paper);
-        if paper != was_paper {
-            if let Err(reason) = crate::chart_renderer::trading::order_manager::set_paper_mode(paper) {
-                // Blocked (live orders active) — revert the toggle so the UI
-                // stays consistent with the manager's actual state.
-                let _ = paper; // suppress unused; the toggle will re-read is_paper_mode() below.
-                crate::data::connectivity::errors_sink::report(
-                    crate::data::connectivity::errors_sink::ErrorLevel::Warn,
-                    "trading", "paper_mode_toggle_blocked", reason,
-                );
-            }
-        }
-        let paper = crate::chart_renderer::trading::order_manager::is_paper_mode();
-        let (label, color) = if paper {
-            ("Paper mode — orders go to simulated account", t.bull)
-        } else {
-            ("LIVE mode — real money at risk", t.bear)
-        };
-        ui.add(SectionLabel::new(label).tiny().color(color));
-    });
-
-    // ── NOTIFICATIONS (toolbar ticker vs toasts + per-category routing) ──
+fn draw_notifications(ui: &mut egui::Ui, t: &Theme) {
+    // Master toggles + per-category routing (toolbar ticker vs toasts).
     PanelSection::new("NOTIFICATIONS").show(ui, t, |ui, t| {
         use crate::chart_renderer::ui::tools::notification as notif;
         let mut p = notif::routing_from_ctx(ui.ctx());
@@ -673,6 +648,38 @@ fn draw_trading(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
             notif::routing_to_ctx(ui.ctx(), p);
             notif::set_routing(p);
         }
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TRADING TAB
+// ═══════════════════════════════════════════════════════════════
+fn draw_trading(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
+    // ── MODE (Paper / Live) ──
+    PanelSection::new("MODE").show(ui, t, |ui, t| {
+        let was_paper = crate::chart_renderer::trading::order_manager::is_paper_mode();
+        let mut paper = was_paper;
+        setting_toggle_described(ui, "Paper Trading",
+            Some("Route orders to the simulated account instead of the live broker."),
+            t, &mut paper);
+        if paper != was_paper {
+            if let Err(reason) = crate::chart_renderer::trading::order_manager::set_paper_mode(paper) {
+                // Blocked (live orders active) — revert the toggle so the UI
+                // stays consistent with the manager's actual state.
+                let _ = paper; // suppress unused; the toggle will re-read is_paper_mode() below.
+                crate::data::connectivity::errors_sink::report(
+                    crate::data::connectivity::errors_sink::ErrorLevel::Warn,
+                    "trading", "paper_mode_toggle_blocked", reason,
+                );
+            }
+        }
+        let paper = crate::chart_renderer::trading::order_manager::is_paper_mode();
+        let (label, color) = if paper {
+            ("Paper mode — orders go to simulated account", t.bull)
+        } else {
+            ("LIVE mode — real money at risk", t.bear)
+        };
+        ui.add(SectionLabel::new(label).tiny().color(color));
     });
 
     // ── ORDER DEFAULTS ──

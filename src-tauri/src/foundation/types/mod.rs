@@ -91,7 +91,6 @@ pub struct OptionsChain {
     pub puts: Vec<OptionContract>,
 }
 
-#[tauri::command]
 pub async fn get_bars(
     symbol: String,
     interval: String,
@@ -196,7 +195,6 @@ pub fn parse_yahoo_v8(json: &serde_json::Value) -> Option<Vec<Bar>> {
     if bars.is_empty() { None } else { Some(bars) }
 }
 
-#[tauri::command]
 pub async fn get_options_chain(
     symbol: String,
     date: Option<String>,

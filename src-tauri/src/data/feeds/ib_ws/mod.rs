@@ -175,7 +175,6 @@ fn now_ms() -> i64 {
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
-use tauri::{AppHandle, Emitter, async_runtime};
 use tokio::{
     sync::{mpsc, Mutex},
 };
@@ -194,7 +193,7 @@ pub enum Cmd {
     Shutdown,
 }
 
-// ── Public handle (managed by Tauri state) ───────────────────────────────────
+// ── Public handle ─────────────────────────────────────────────────────────────
 
 pub struct IbWsHandle {
     pub tx: mpsc::Sender<Cmd>,
@@ -206,13 +205,29 @@ pub struct IbWsHandle {
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
-pub fn spawn(app: AppHandle) -> IbWsHandle {
+/// Dedicated tokio runtime owning the IB WS connection. Created once and
+/// reused, so `spawn()` is callable from a plain sync context (e.g. the native
+/// app's `main`) without an ambient runtime. Mirrors the pattern in
+/// `crypto_feed`/`apex_data::ws`.
+static RT: std::sync::OnceLock<tokio::runtime::Runtime> = std::sync::OnceLock::new();
+
+fn runtime() -> &'static tokio::runtime::Runtime {
+    RT.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .expect("ib_ws tokio runtime")
+    })
+}
+
+pub fn spawn() -> IbWsHandle {
     let (tx, rx) = mpsc::channel::<Cmd>(512);
     let subscribed: Arc<Mutex<HashSet<i64>>> = Default::default();
     let shutdown = Arc::new(AtomicBool::new(false));
-    async_runtime::spawn(ws_loop(app, rx, subscribed.clone(), shutdown.clone()));
+    runtime().spawn(ws_loop(rx, subscribed.clone(), shutdown.clone()));
     // Wave 7E: tick-age watchdog — flips FORCE_RECONNECT when silent past STALE_TIMEOUT_MS.
-    async_runtime::spawn(run_watchdog());
+    runtime().spawn(run_watchdog());
     let handle = IbWsHandle { tx: tx.clone(), subscribed, shutdown: shutdown.clone() };
     connectivity::register("ib_ws", Arc::new(IbWsShutdown { tx, shutdown }));
     handle
@@ -239,7 +254,6 @@ impl connectivity::Shutdown for IbWsShutdown {
 // ── Background task ───────────────────────────────────────────────────────────
 
 async fn ws_loop(
-    app: AppHandle,
     mut rx: mpsc::Receiver<Cmd>,
     subscribed: Arc<Mutex<HashSet<i64>>>,
     shutdown: Arc<AtomicBool>,
@@ -259,7 +273,6 @@ async fn ws_loop(
         match connect_async(WS_URL).await {
             Ok((stream, _)) => {
                 backoff.reset();
-                let _ = app.emit("ib-connected", ());
                 publish_state(ConnectionState::Authenticated);
                 {
                     let n = subscribed.lock().await.len();
@@ -487,7 +500,6 @@ async fn ws_loop(
                                             }
                                         }
                                     }
-                                    let _ = app.emit("ib-tick", val);
                                 }
                             }
                             // Ping/pong/text — refresh liveness so the watchdog
@@ -515,7 +527,6 @@ async fn ws_loop(
                 if clean_shutdown {
                     return;
                 }
-                let _ = app.emit("ib-disconnected", ());
             }
             Err(e) => {
                 report(ErrorLevel::Warn, "ib_ws", "connect_failed", e.to_string());
@@ -580,10 +591,9 @@ async fn run_watchdog() {
 
 /// Forward any WS message to ibserver. Also tracks subscribe/unsubscribe
 /// conIds in `subscribed` so they can be restored after reconnect.
-#[tauri::command]
 pub async fn ib_ws_send(
     msg: Value,
-    state: tauri::State<'_, IbWsHandle>,
+    state: &IbWsHandle,
 ) -> Result<(), crate::error::AppError> {
     use crate::error::AppError;
     // Wave 8c/9b: IB subscribes by numeric conId, not by (symbol, timeframe).

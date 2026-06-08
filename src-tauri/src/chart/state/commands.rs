@@ -1,7 +1,7 @@
-//! Tauri commands for XOL Export / Import.
+//! XOL Export / Import operations.
 //!
-//! The FE shows a file picker, then either passes the chosen target path
-//! (export) or the file's bytes (import) to these commands. We do the heavy
+//! The UI shows a file picker, then either passes the chosen target path
+//! (export) or the file's bytes (import) to these functions. We do the heavy
 //! lifting against the live PostgreSQL pool.
 
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,6 @@ pub struct ImportResult {
 
 /// Export a chart by UUID as XOL bytes. Returns the raw zip — FE picks where
 /// to save it and writes via the file dialog.
-#[tauri::command]
 pub async fn export_chart_xol(chart_id: String) -> Result<Vec<u8>, AppError> {
     let pool = crate::drawing_db::get_pool().ok_or_else(AppError::db_uninitialized)?;
     let id = Uuid::parse_str(&chart_id)
@@ -35,7 +34,6 @@ pub async fn export_chart_xol(chart_id: String) -> Result<Vec<u8>, AppError> {
 /// Import an XOL file into the database. Caller passes the raw bytes from the
 /// file picker. Returns the newly inserted chart's UUID plus any warnings
 /// (missing indicators, unknown drawing kinds, etc.).
-#[tauri::command]
 pub async fn import_chart_xol(bytes: Vec<u8>) -> Result<ImportResult, AppError> {
     let pool = crate::drawing_db::get_pool().ok_or_else(AppError::db_uninitialized)?;
     let (state, warnings) = xol::read(&bytes).map_err(|e| AppError::parse_error(e))?;
@@ -50,7 +48,6 @@ pub async fn import_chart_xol(bytes: Vec<u8>) -> Result<ImportResult, AppError> 
 
 /// Save a chart to a user-chosen `.xol` file via the system Save dialog.
 /// Returns the chosen path as a string, or empty string if cancelled.
-#[tauri::command]
 pub async fn save_chart_to_file(chart_id: String) -> Result<String, AppError> {
     let pool = crate::drawing_db::get_pool().ok_or_else(AppError::db_uninitialized)?;
     let id = Uuid::parse_str(&chart_id)
@@ -75,7 +72,6 @@ pub async fn save_chart_to_file(chart_id: String) -> Result<String, AppError> {
 /// Show an Open dialog, load the selected `.xol` file, save it as a new
 /// chart in the DB. Returns the new chart UUID + warnings, or
 /// `chart_id == ""` if the user cancelled the dialog.
-#[tauri::command]
 pub async fn load_chart_from_file() -> Result<ImportResult, AppError> {
     let pool = crate::drawing_db::get_pool().ok_or_else(AppError::db_uninitialized)?;
     let result = tokio::task::spawn_blocking(file_io::open_chart_dialog)

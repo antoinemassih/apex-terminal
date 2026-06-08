@@ -434,6 +434,7 @@ impl<'a> MeridienOrderTicket<'a> {
     /// - **EST. COST** card with embedded CTA on the right
     pub fn show(self, ui: &mut Ui, s: &mut OrderTicketState<'_>) -> OrderTicketOutcome {
         use crate::ui_kit::widgets::Button;
+        use crate::ui_kit::widgets::MenuItem;
         use crate::ui_kit::widgets::tokens::Variant;
         use super::stepper::NumericStepper;
 
@@ -714,10 +715,12 @@ impl<'a> MeridienOrderTicket<'a> {
                         egui::PopupCloseBehavior::CloseOnClickOutside,
                         |ui| {
                             ui.set_min_width(80.0);
+                            // Canonical MenuItem rows (matches the design-system
+                            // menus elsewhere) instead of a raw selectable_label.
+                            let mt = ambient_theme(ui.ctx());
                             for (i, lbl) in options.iter().skip(1) {
                                 let active = *state == *i;
-                                if ui.selectable_label(active,
-                                    RichText::new(*lbl).monospace().size(font_sm())).clicked() {
+                                if MenuItem::new(*lbl).selected(active).show(ui, &mt).clicked() {
                                     *state = *i;
                                     ui.memory_mut(|m| m.close_popup());
                                 }

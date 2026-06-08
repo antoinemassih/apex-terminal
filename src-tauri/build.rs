@@ -1,6 +1,4 @@
 fn main() {
-    tauri_build::build();
-
     // Embed the short git SHA so perf_log can stamp every jank event and
     // session summary with the exact build that produced the data.
     let sha = std::process::Command::new("git")

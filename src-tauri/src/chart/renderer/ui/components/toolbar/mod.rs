@@ -22,6 +22,7 @@ pub mod window_controls;
 pub mod ticker_strip;
 pub mod toolnav;
 pub mod alert_feed;
+pub mod workspace_rail;
 
 use egui::{Color32, Response, RichText, Stroke, Ui, Widget};
 use super::super::style::*;

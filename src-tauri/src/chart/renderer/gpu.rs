@@ -5141,6 +5141,19 @@ pub(crate) struct Watchlist {
     pub(crate) active_workspace: String,
     pub(crate) workspace_save_name: String,
     pub(crate) pending_workspace_load: Option<String>,
+    /// Workspace nav rail: true = expanded (named menu), false = collapsed
+    /// (initials column). Toggled from the top toolbar. Session-scoped.
+    pub(crate) workspace_nav_expanded: bool,
+    /// Set by the workspace rail's "new" action; the frame loop resets the
+    /// live panes to a blank single-pane "Untitled" workspace at a safe point.
+    pub(crate) pending_new_blank: bool,
+    /// Inline-rename target (the workspace name being edited) + its edit buffer.
+    pub(crate) workspace_rename_target: Option<String>,
+    pub(crate) workspace_rename_buf: String,
+    /// Active (focused) pane index, mirrored from the render loop each frame so
+    /// `workspace_to_json` can persist it without threading `active_pane`
+    /// through every `save_workspace` call site.
+    pub(crate) active_pane_idx: usize,
     // Pane split ratios (for resizable panes)
     pub(crate) pane_split_h: f32, // primary vertical divider ratio
     pub(crate) pane_split_v: f32, // primary horizontal divider ratio
@@ -5483,6 +5496,9 @@ impl Watchlist {
                saved_options: vec![], dte_filter: -1,
                heat_index: "Watchlist".into(), heat_collapsed: std::collections::HashSet::new(), heat_cols: 2, heat_sort: 0,
                active_workspace: "Default".into(), pending_workspace_load: None, workspace_save_name: String::new(),
+               workspace_nav_expanded: false, pending_new_blank: false,
+               workspace_rename_target: None, workspace_rename_buf: String::new(),
+               active_pane_idx: 0,
                pane_split_h: 0.5, pane_split_v: 0.5, pane_split_h2: 0.5, pane_split_v2: 0.5,
                pane_split_v3: 0.5, pane_split_v4: 0.5, pane_split_v5: 0.5, pane_split_v6: 0.5,
                pane_divider_dragging: false,
@@ -6491,7 +6507,6 @@ struct SpawnRequest {
 
 /// Top-level app managing multiple chart windows on a single EventLoop.
 struct App {
-    app_handle: Option<tauri::AppHandle>,
     iw: u32, ih: u32,
     windows: Vec<ChartWindow>,
     /// Design-mode F12 inspector as a separate OS window (multi-monitor
@@ -7427,6 +7442,22 @@ impl ApplicationHandler for App {
                         cw.last_save = Some(now);
                     }
                 }
+                // Process pending "new blank workspace" — reset the live panes to
+                // a single default pane and switch to a fresh untitled name
+                // (unsaved until the user saves it from the workspace rail).
+                if cw.watchlist.pending_new_blank {
+                    cw.watchlist.pending_new_blank = false;
+                    let mut chart = Chart::new();
+                    // Trigger the initial bar fetch + drawing load for the fresh
+                    // pane (mirrors the per-pane load path), so the blank
+                    // workspace shows a populated default chart instead of empty.
+                    chart.pending_symbol_change = Some(chart.symbol.clone());
+                    cw.panes = vec![chart];
+                    cw.layout = Layout::One;
+                    cw.active_pane = 0;
+                    cw.watchlist.pane_layout = None; // re-materialize from Layout::One
+                    cw.watchlist.active_workspace = next_untitled_workspace_name();
+                }
                 // Process pending workspace load
                 if let Some(ws_name) = cw.watchlist.pending_workspace_load.take() {
                     let path = workspace_dir().join(format!("{}.json", ws_name));
@@ -7553,6 +7584,9 @@ impl ApplicationHandler for App {
                                         chart.underlying      = p.get("underlying").and_then(|v| v.as_str()).unwrap_or("").to_string();
                                         // v3 parity: bar source — absent in v2 files, defaults to "last"
                                         chart.bar_source_mark = p.get("bar_source").and_then(|v| v.as_str()).unwrap_or("last") == "mark";
+                                        // v4: per-pane DOM panel state.
+                                        chart.dom.open = gb("dom_open", false);
+                                        chart.dom.sidebar_open = gb("dom_sidebar_open", false);
                                         panes.push(chart);
                                     }
                                 }
@@ -7579,12 +7613,32 @@ impl ApplicationHandler for App {
                                 cw.watchlist.pane_split_v5 = gf("v5", 0.5);
                                 cw.watchlist.pane_split_v6 = gf("v6", 0.5);
                             }
-                            if let Some(pl) = json.get("pane_layout") {
-                                if !pl.is_null() {
-                                    if let Ok(tree) = serde_json::from_value::<Option<crate::chart_renderer::pane_layout::PaneLayout>>(pl.clone()) {
-                                        cw.watchlist.pane_layout = tree;
-                                    }
-                                }
+                            // Restore the saved pane-geometry tree ONLY if it is
+                            // consistent with the restored pane count. A stale tree
+                            // (e.g. a single leaf saved for a multi-pane workspace
+                            // by older builds) is discarded so `ensure_pane_layout`
+                            // rebuilds the correct geometry from the `layout` enum;
+                            // a matching tree is kept so custom split ratios survive
+                            // the round-trip.
+                            cw.watchlist.pane_layout = json.get("pane_layout")
+                                .filter(|pl| !pl.is_null())
+                                .and_then(|pl| serde_json::from_value::<Option<crate::chart_renderer::pane_layout::PaneLayout>>(pl.clone()).ok())
+                                .flatten()
+                                .filter(|tree| tree.pane_count() == cw.panes.len());
+
+                            // Restore per-workspace UI state (side panels, focused
+                            // pane, rail expand). Absent in pre-v4 files → panels
+                            // keep their current state.
+                            if let Some(ui) = json.get("ui") {
+                                let gb = |k: &str, def: bool| ui.get(k).and_then(|v| v.as_bool()).unwrap_or(def);
+                                cw.watchlist.workspace_nav_expanded = gb("rail_expanded", cw.watchlist.workspace_nav_expanded);
+                                cw.watchlist.object_tree_open   = gb("object_tree_open", false);
+                                cw.watchlist.open               = gb("watchlist_open", false);
+                                cw.watchlist.signals_panel_open = gb("signals_panel_open", false);
+                                cw.watchlist.account_strip_open = gb("account_strip_open", false);
+                                let ap = ui.get("active_pane").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                                cw.active_pane = ap.min(cw.panes.len().saturating_sub(1));
+                                cw.watchlist.active_pane_idx = cw.active_pane;
                             }
                         }
                     }
@@ -7789,13 +7843,6 @@ impl ApplicationHandler for App {
                     pane.history_exhausted = false;
                     pane.sim_price = 0.0;
                     pane.last_candle_time = std::time::Instant::now();
-
-                    if let Some(handle) = &self.app_handle {
-                        use tauri::Emitter;
-                        let _ = handle.emit("native-chart-load", serde_json::json!({
-                            "symbol": sym, "timeframe": tf,
-                        }));
-                    }
 
                     if pane.is_option && !pane.option_contract.is_empty() {
                         fetch_option_bars_background(pane.option_contract.clone(), sym.clone(), tf.clone(), pane.bar_source_mark);
@@ -8046,6 +8093,9 @@ fn workspace_to_json(panes: &[Chart], layout: Layout, wl: &Watchlist) -> String 
             "underlying": p.underlying,
             // v3 parity: bar source (Last vs Mark)
             "bar_source": if p.bar_source_mark { "mark" } else { "last" },
+            // v4: per-pane DOM panel open state (floating + sidebar mode).
+            "dom_open": p.dom.open,
+            "dom_sidebar_open": p.dom.sidebar_open,
         })
     }).collect();
     let state = serde_json::json!({
@@ -8067,6 +8117,17 @@ fn workspace_to_json(panes: &[Chart], layout: Layout, wl: &Watchlist) -> String 
             "h2": wl.pane_split_h2, "v2": wl.pane_split_v2,
             "v3": wl.pane_split_v3, "v4": wl.pane_split_v4,
             "v5": wl.pane_split_v5, "v6": wl.pane_split_v6,
+        },
+        // v4: per-workspace UI state — which side panels are open, the focused
+        // pane, and the workspace-rail expand state. Restored on load so a
+        // workspace remembers its full view, not just the chart panes.
+        "ui": {
+            "active_pane":        wl.active_pane_idx,
+            "rail_expanded":      wl.workspace_nav_expanded,
+            "object_tree_open":   wl.object_tree_open,
+            "watchlist_open":     wl.open,
+            "signals_panel_open": wl.signals_panel_open,
+            "account_strip_open": wl.account_strip_open,
         },
     });
     serde_json::to_string_pretty(&state).unwrap_or_default()
@@ -8109,6 +8170,18 @@ pub(crate) fn list_workspaces() -> Vec<String> {
     }).unwrap_or_default();
     names.sort();
     names
+}
+
+/// Pick a fresh "Untitled" workspace name that doesn't collide with an existing
+/// saved workspace. Returns "Untitled", then "Untitled 2", "Untitled 3", …
+pub(crate) fn next_untitled_workspace_name() -> String {
+    let existing: std::collections::HashSet<String> = list_workspaces().into_iter().collect();
+    if !existing.contains("Untitled") { return "Untitled".to_string(); }
+    for n in 2..1000 {
+        let candidate = format!("Untitled {n}");
+        if !existing.contains(&candidate) { return candidate; }
+    }
+    "Untitled".to_string()
 }
 
 pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &mut Watchlist) {
@@ -8858,9 +8931,9 @@ fn default_watchlists() -> (Vec<SavedWatchlist>, usize) {
 /// Global sender for spawning new windows on the persistent render thread.
 static SPAWN_TX: std::sync::OnceLock<Mutex<Option<mpsc::Sender<SpawnRequest>>>> = std::sync::OnceLock::new();
 
-/// Called from Tauri command thread to open a new native chart window.
+/// Open a new native chart window.
 /// First call starts the render thread; subsequent calls send spawn requests.
-pub fn open_window(rx: mpsc::Receiver<ChartCommand>, initial_cmd: ChartCommand, app_handle: Option<tauri::AppHandle>) {
+pub fn open_window(rx: mpsc::Receiver<ChartCommand>, initial_cmd: ChartCommand) {
     let spawn_tx_lock = SPAWN_TX.get_or_init(|| Mutex::new(None));
     let mut guard = spawn_tx_lock.lock().unwrap();
 
@@ -8878,7 +8951,6 @@ pub fn open_window(rx: mpsc::Receiver<ChartCommand>, initial_cmd: ChartCommand, 
     let _ = spawn_tx.send(req);
     *guard = Some(spawn_tx);
 
-    let handle = app_handle.clone();
     std::thread::spawn(move || {
         #[cfg(target_os = "windows")]
         let el = {
@@ -8893,7 +8965,7 @@ pub fn open_window(rx: mpsc::Receiver<ChartCommand>, initial_cmd: ChartCommand, 
         let store_registry = crate::state::StoreRegistry::new();
         let persist_supervisor = crate::state::spawn_persist_supervisor(store_registry.clone());
         let mut app = App {
-            app_handle: handle, iw: 1920, ih: 1080,
+            iw: 1920, ih: 1080,
             windows: Vec::new(),
             #[cfg(feature = "design-mode")]
             inspector_window: None,
@@ -8911,7 +8983,7 @@ pub fn open_window(rx: mpsc::Receiver<ChartCommand>, initial_cmd: ChartCommand, 
 /// macOS requires the winit event loop on the main thread.
 /// Call this from `main()` instead of `open_window`; it blocks until all windows close.
 #[cfg(target_os = "macos")]
-pub fn open_window_blocking(rx: mpsc::Receiver<ChartCommand>, initial_cmd: ChartCommand, app_handle: Option<tauri::AppHandle>) {
+pub fn open_window_blocking(rx: mpsc::Receiver<ChartCommand>, initial_cmd: ChartCommand) {
     use winit::platform::macos::EventLoopBuilderExtMacOS;
 
     let spawn_tx_lock = SPAWN_TX.get_or_init(|| Mutex::new(None));
@@ -8927,7 +8999,7 @@ pub fn open_window_blocking(rx: mpsc::Receiver<ChartCommand>, initial_cmd: Chart
     let store_registry = crate::state::StoreRegistry::new();
     let persist_supervisor = crate::state::spawn_persist_supervisor(store_registry.clone());
     let mut app = App {
-        app_handle, iw: 1920, ih: 1080,
+        iw: 1920, ih: 1080,
         windows: Vec::new(),
         #[cfg(feature = "design-mode")]
         inspector_window: None,

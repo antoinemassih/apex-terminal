@@ -36,6 +36,22 @@ fn main() {
     eprintln!("║  Apex Terminal — Native GPU Edition   ║");
     eprintln!("╚══════════════════════════════════════╝");
 
+    // Initialize tracing FIRST so feed/connectivity diagnostics — every
+    // `errors_sink::report(...)` (WS connect/reconnect, IB status, server
+    // errors) plus `apex_data=debug` — surface on stderr and persist to
+    // <app-data>/apex-terminal/logs/apex.log. The WorkerGuard MUST outlive the
+    // program; bind it for the lifetime of `main`, which blocks on the event
+    // loop below. This is the de-Tauri replacement for the tracing init that
+    // used to live in `_scaffold_lib::run`.
+    let _tracing_guard = {
+        let log_dir = dirs::data_local_dir()
+            .map(|p| p.join("apex-terminal").join("logs"))
+            .unwrap_or_else(|| std::env::temp_dir().join("apex-terminal-logs"));
+        let g = _scaffold_lib::data::connectivity::init_tracing(&log_dir);
+        tracing::info!(target: "apex", log_dir = %log_dir.display(), "tracing initialized");
+        g
+    };
+
     // Set the dock icon early so macOS picks it up before the first frame.
     #[cfg(target_os = "macos")]
     set_macos_dock_icon();
@@ -178,6 +194,13 @@ fn main() {
         global.lock().unwrap().push(tx);
     }
 
+    // Start the live market-data feeds (ApexData WS + pollers, IB WS,
+    // connection-state listeners) and wire them into the chart. This is the
+    // de-Tauri replacement for the old `tauri::Builder::setup` feed wiring.
+    // Done after the chart sender is registered so the first frames have a
+    // live receiver.
+    _scaffold_lib::init_live_feeds();
+
     // Fetch initial data in background
     _scaffold_lib::chart_renderer::gpu::fetch_bars_background_pub("SPY".into(), "5m".into());
 
@@ -185,11 +208,11 @@ fn main() {
     // On other platforms open_window spawns a render thread and returns immediately,
     // so we sleep-poll until all windows are closed.
     #[cfg(target_os = "macos")]
-    _scaffold_lib::chart_renderer::gpu::open_window_blocking(rx, initial, None);
+    _scaffold_lib::chart_renderer::gpu::open_window_blocking(rx, initial);
 
     #[cfg(not(target_os = "macos"))]
     {
-        _scaffold_lib::chart_renderer::gpu::open_window(rx, initial, None);
+        _scaffold_lib::chart_renderer::gpu::open_window(rx, initial);
         loop {
             std::thread::sleep(std::time::Duration::from_millis(500));
             let has_senders = _scaffold_lib::NATIVE_CHART_TXS.get()

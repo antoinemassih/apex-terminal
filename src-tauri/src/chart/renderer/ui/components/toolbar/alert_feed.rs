@@ -126,18 +126,6 @@ fn vital_part(summary: &str) -> (String, bool) {
     }
 }
 
-/// Seed two placeholder alerts so the feed is non-empty on first render.
-/// Remove this once real alerts are wired in from the broker / signal pipeline.
-fn seed_placeholders() {
-    use std::sync::Once;
-    static SEEDED: Once = Once::new();
-    SEEDED.call_once(|| {
-        push(AlertKind::OrderFilled,   Some("AAPL".into()), "100 @ 213.45");
-        push(AlertKind::Signal,        Some("SPY".into()),  "Bull cross 5m EMA 9/21");
-        push(AlertKind::PriceAlert,    Some("NVDA".into()), "crossed above 920.00 resistance — volume surge 3.2x, breaking the 20-day range high");
-    });
-}
-
 /// Render the alert ticker — a *stable ticker-tape frame*: the left edge and the
 /// right-pinned bell never move. Badges are right-aligned and painted at
 /// animated positions, so new alerts slide in within the fixed frame instead of
@@ -147,7 +135,6 @@ fn seed_placeholders() {
 pub fn render_badge_feed(ui: &mut egui::Ui, t: &Theme) {
     // Hidden entirely when the user disables toolbar notifications.
     if !notification::routing().toolbar_enabled { return; }
-    seed_placeholders();
     use std::collections::{HashMap, HashSet};
     use egui::{Id, Rect, Align2, CornerRadius, Stroke, StrokeKind, LayerId, pos2, vec2};
     use crate::chart_renderer::ui::style::{

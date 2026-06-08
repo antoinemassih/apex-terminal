@@ -525,6 +525,23 @@ pub(crate) fn render(
                 }
             }
 
+            // ── Workspace rail expand/collapse toggle (left of the $ toggle) ──
+            {
+                let ws_expanded = watchlist.workspace_nav_expanded;
+                let resp = KitButton::icon(Icon::SIDEBAR)
+                    .variant(KitVariant::Ghost).size(KitSize::Sm)
+                    .active(ws_expanded)
+                    .fg(if ws_expanded { t.accent } else { t.text })
+                    .glyph_size(font_lg())
+                    .min_size(egui::vec2(28.0, row_height_default()))
+                    .show(ui, t);
+                Tooltip::new(if ws_expanded { "Collapse workspaces" } else { "Expand workspaces" })
+                    .show(ui, &resp, t);
+                if resp.clicked() {
+                    watchlist.workspace_nav_expanded = !watchlist.workspace_nav_expanded;
+                }
+            }
+
             // ── Paper / Live — bigger badge $-button. ──
             // LIVE  → solid green fill + dark `$` glyph (very visible "this is real money")
             // PAPER → transparent fill + warn-colored `$` glyph (visible but neutral)
@@ -1138,7 +1155,7 @@ pub(crate) fn render(
                         let global = crate::NATIVE_CHART_TXS.get_or_init(|| std::sync::Mutex::new(Vec::new()));
                         global.lock().unwrap().push(tx);
                     }
-                    crate::chart_renderer::gpu::open_window(rx, initial, None);
+                    crate::chart_renderer::gpu::open_window(rx, initial);
                     crate::chart_renderer::gpu::fetch_bars_background(
                         panes[ap].symbol.clone(), panes[ap].timeframe.clone());
                 }

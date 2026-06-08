@@ -11595,7 +11595,16 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
     let _t_owned = get_theme(theme_idx);
     let t = &_t_owned;
 
+    // Mirror the focused pane into the watchlist so workspace saves capture it
+    // without threading `active_pane` through every `save_workspace` call site.
+    watchlist.active_pane_idx = (*active_pane).min(panes.len().saturating_sub(1));
+
     render_toolbar(ctx, panes, active_pane, layout, watchlist, t, theme_idx, &account_data_cached, win_ref, conn_panel_open, toasts);
+
+    // Persistent left workspace rail (collapsible). Registered AFTER the toolbar
+    // and BEFORE the CentralPanel so egui reserves the left strip for it.
+    crate::chart_renderer::ui::components::toolbar::workspace_rail::render_workspace_rail(
+        ctx, panes, *layout, watchlist, t);
 
     span_begin("chart_panes");
     CROSSHAIR_SYNC_TIME.with(|t| t.set(0));

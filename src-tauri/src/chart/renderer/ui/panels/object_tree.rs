@@ -586,13 +586,30 @@ fn draw_bulk_actions(ui: &mut egui::Ui, chart: &mut Chart, sym: &str, tf: &str, 
         let sel_ids = chart.selected_ids.clone();
         let sym2 = sym.to_string(); let tf2 = tf.to_string();
         let mut bulk_assign_gid: Option<String> = None;
-        egui::ComboBox::from_id_salt("otree_bulk_grp")
-            .selected_text(egui::RichText::new(Icon::FOLDER).size(font_lg()))
-            .width(60.0)
-            .show_ui(ui, |ui| {
+        // Canonical icon-button trigger + MenuItem popup (was a raw egui::ComboBox
+        // + selectable_label) — group-assign is a stateless action, so a menu
+        // popup fits better than a Select with a persistent selected index.
+        let grp_btn = ui.add(
+            Button::icon(Icon::FOLDER)
+                .variant(Variant::Chrome)
+                .glyph_size(font_lg())
+                .min_size(egui::vec2(60.0, 22.0)));
+        Tooltip::new("Move selection to group").show(ui, &grp_btn, t);
+        let grp_popup_id = ui.make_persistent_id("otree_bulk_grp");
+        if grp_btn.clicked() {
+            ui.memory_mut(|m| m.toggle_popup(grp_popup_id));
+        }
+        egui::popup::popup_below_widget(
+            ui,
+            grp_popup_id,
+            &grp_btn,
+            egui::PopupCloseBehavior::CloseOnClickOutside,
+            |ui| {
+                ui.set_min_width(120.0);
                 for (gid, gname) in &groups_snap {
-                    if ui.selectable_label(false, egui::RichText::new(gname).monospace().size(font_sm())).clicked() {
+                    if MenuItem::new(gname.as_str()).icon(Icon::FOLDER).show(ui, t).clicked() {
                         bulk_assign_gid = Some(gid.clone());
+                        ui.memory_mut(|m| m.close_popup());
                     }
                 }
             });
