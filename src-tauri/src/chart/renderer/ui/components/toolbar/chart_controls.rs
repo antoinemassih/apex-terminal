@@ -547,7 +547,19 @@ pub(crate) fn render(
                     if ui.add(SelectableRow::new("Gamma Levels (GEX)", gamma)).clicked() {
                         panes[ap].show_gamma = !panes[ap].show_gamma;
                         if panes[ap].show_gamma && panes[ap].gamma_levels.is_empty() {
-                            if let Some(last_bar) = panes[ap].bars.last() {
+                            // Real gamma/regime feed (gamma_feed_service / ApexSignals).
+                            let gamma_sym = panes[ap].symbol.clone();
+                            if let Some((levels, zero, cw, pw, _regime)) =
+                                crate::chart_renderer::gpu::fetch_gamma_from_feed(&gamma_sym)
+                            {
+                                panes[ap].gamma_levels = levels;
+                                panes[ap].gamma_zero = zero;
+                                panes[ap].gamma_call_wall = cw;
+                                panes[ap].gamma_put_wall = pw;
+                                if let Some(last_bar) = panes[ap].bars.last() {
+                                    panes[ap].gamma_hvl = last_bar.close;
+                                }
+                            } else if let Some(last_bar) = panes[ap].bars.last() {
                                 let price = last_bar.close;
                                 let step = if price > 200.0 { 5.0 } else if price > 50.0 { 2.5 } else { 1.0 };
                                 let mut levels: Vec<GammaLevel> = vec![];

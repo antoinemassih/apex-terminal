@@ -6504,7 +6504,7 @@ pub(crate) use super::io::fetch::{
     fetch_indicator_source, submit_ib_order, fetch_option_history_background,
     fetch_history_background, fetch_drawings_background,
     synthesize_occ, fetch_option_bars_background, fetch_bars_background,
-    fetch_overlay_bars_background,
+    fetch_overlay_bars_background, fetch_gamma_from_feed,
 };
 
 

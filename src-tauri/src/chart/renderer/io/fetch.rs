@@ -89,6 +89,38 @@ fn apexib_curl(path: &str) -> Option<serde_json::Value> {
     } else { None }
 }
 
+/// Fetch the live gamma/regime bundle from the local gamma-feed service
+/// (gamma_feed_service.py on :8412) and parse it into the chart's existing
+/// gamma overlay fields. Returns (levels, flip/zero, call_wall, put_wall,
+/// regime). None if the feed is unreachable — caller falls back to the mock.
+pub fn fetch_gamma_from_feed(
+    symbol: &str,
+) -> Option<(Vec<crate::chart_renderer::gpu::GammaLevel>, f32, f32, f32, String)> {
+    use crate::chart_renderer::gpu::GammaLevel;
+    let url = format!("http://127.0.0.1:8412/gamma/{}", symbol.to_uppercase());
+    let v: serde_json::Value = apexib_client().get(&url).send().ok()?.json().ok()?;
+    let g = v.get("gamma")?;
+    let levels: Vec<GammaLevel> = g
+        .get("by_strike")?
+        .as_array()?
+        .iter()
+        .filter_map(|s| {
+            Some(GammaLevel {
+                price: s.get("strike")?.as_f64()? as f32,
+                exposure: s.get("net_gex")?.as_f64()? as f32,
+            })
+        })
+        .collect();
+    if levels.is_empty() {
+        return None;
+    }
+    let zero = g.get("flip_level").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
+    let cw = g.get("call_wall").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
+    let pw = g.get("put_wall").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
+    let regime = g.get("regime").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    Some((levels, zero, cw, pw, regime))
+}
+
 /// Compute the "active" 0DTE expiry date based on US/Eastern wall clock:
 ///   • Sat → Fri, Sun → Fri
 ///   • Weekday before 4am ET → previous trading day (Mon<4am → Fri)
