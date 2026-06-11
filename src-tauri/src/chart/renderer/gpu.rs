@@ -6528,6 +6528,7 @@ pub(crate) use super::io::fetch::{
     synthesize_occ, fetch_option_bars_background, fetch_bars_background,
     fetch_overlay_bars_background, fetch_gamma_from_feed, refresh_gamma_feeds,
     GammaSnapshot, fetch_corp_actions, ticker_detail_cached,
+    options_analytics_cached, OptionsAnalytics,
 };
 
 

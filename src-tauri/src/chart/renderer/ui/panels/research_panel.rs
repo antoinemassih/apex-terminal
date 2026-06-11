@@ -89,6 +89,48 @@ pub(crate) fn draw_content(
             }
         });
 
+    // ── Options Analytics (ApexData derived endpoints) ──
+    // Cached + TTL-refreshed; only drawn when the underlying actually has
+    // options data (404s on non-optionable symbols leave every field None).
+    if let Some(oa) = crate::chart_renderer::gpu::options_analytics_cached(&chart.symbol) {
+        if oa.any() {
+            PanelSection::new("OPTIONS ANALYTICS")
+                .title_color(t.accent)
+                .show(ui, t, |ui, t| {
+                    if let Some(em) = &oa.expected_move {
+                        let exp = if em.expiry.is_empty() { String::new() } else { format!("  exp {}", em.expiry) };
+                        PanelKeyValueRow::new(
+                            "Expected Move",
+                            format!("\u{00B1}${:.2} ({:.2}%){}", em.expected_move_dollars, em.expected_move_pct, exp),
+                        ).show(ui, t);
+                    }
+                    if let Some(iv) = &oa.iv_rank {
+                        PanelKeyValueRow::new("IV Rank", format!("{:.0}", iv.iv_rank))
+                            .tone(if iv.iv_rank >= 50.0 { PanelTone::Bear } else { PanelTone::Bull })
+                            .show(ui, t);
+                        PanelKeyValueRow::new("IV Percentile", format!("{:.0}", iv.iv_percentile)).show(ui, t);
+                    }
+                    if let Some(p) = &oa.pcr {
+                        PanelKeyValueRow::new("Put/Call (OI)", format!("{:.2}", p.pcr_oi))
+                            .tone(if p.pcr_oi > 1.0 { PanelTone::Bear } else { PanelTone::Bull })
+                            .show(ui, t);
+                        PanelKeyValueRow::new("Put/Call (Vol)", format!("{:.2}", p.pcr_volume))
+                            .tone(if p.pcr_volume > 1.0 { PanelTone::Bear } else { PanelTone::Bull })
+                            .show(ui, t);
+                    }
+                    if let Some(g) = &oa.gex {
+                        let nb = g.net_gex / 1e9;
+                        PanelKeyValueRow::new("Net GEX", format!("${:.2}B", nb))
+                            .tone(if g.net_gex >= 0.0 { PanelTone::Bull } else { PanelTone::Bear })
+                            .show(ui, t);
+                        if g.flip_strike > 0.0 {
+                            PanelKeyValueRow::new("Gamma Flip", format!("{:.0}", g.flip_strike)).show(ui, t);
+                        }
+                    }
+                });
+        }
+    }
+
     // ── Financials ──
     PanelSection::new("FINANCIALS")
         .show(ui, t, |ui, t| {

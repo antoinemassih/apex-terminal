@@ -784,6 +784,79 @@ pub(crate) fn fetch_search_background(query: String, source: String) {
     });
 }
 
+// ── Options analytics bundle (cached, TTL-refreshed, non-blocking) ─────────
+
+/// Live-ish per-underlying options analytics, pulled together from the
+/// ApexData derived endpoints. Any field may be `None` (endpoint 404 / no
+/// options for the symbol / not fetched yet).
+#[derive(Clone, Default)]
+pub(crate) struct OptionsAnalytics {
+    pub expected_move: Option<crate::apex_data::rest::ExpectedMove>,
+    pub pcr: Option<crate::apex_data::rest::PutCallRatio>,
+    pub iv_rank: Option<crate::apex_data::rest::IvRank>,
+    pub gex: Option<crate::apex_data::rest::GexReading>,
+}
+
+impl OptionsAnalytics {
+    pub fn any(&self) -> bool {
+        self.expected_move.is_some() || self.pcr.is_some()
+            || self.iv_rank.is_some() || self.gex.is_some()
+    }
+}
+
+fn opt_analytics_cache()
+    -> &'static std::sync::Mutex<std::collections::HashMap<String, (OptionsAnalytics, std::time::Instant)>> {
+    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (OptionsAnalytics, std::time::Instant)>>> = std::sync::OnceLock::new();
+    C.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+fn opt_analytics_inflight() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    static I: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
+    I.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
+}
+
+const OPT_ANALYTICS_TTL_SECS: u64 = 30;
+
+/// Return the cached options-analytics bundle for `underlying`, spawning a
+/// background refresh when the cache is missing or older than the TTL. Returns
+/// the last known bundle (possibly stale) while the refresh runs; `None` until
+/// the first fetch completes. Non-blocking — the 4 REST GETs run off-thread.
+pub(crate) fn options_analytics_cached(underlying: &str) -> Option<OptionsAnalytics> {
+    let sym = underlying.to_uppercase();
+    let (cached, stale) = {
+        match opt_analytics_cache().lock() {
+            Ok(c) => match c.get(&sym) {
+                Some((b, at)) => (Some(b.clone()), at.elapsed().as_secs() >= OPT_ANALYTICS_TTL_SECS),
+                None => (None, true),
+            },
+            Err(_) => (None, true),
+        }
+    };
+    if stale && is_stock_symbol(&sym) {
+        let spawn = {
+            let mut inf = match opt_analytics_inflight().lock() { Ok(g) => g, Err(e) => e.into_inner() };
+            if inf.contains(&sym) { false } else { inf.insert(sym.clone()); true }
+        };
+        if spawn {
+            let s2 = sym.clone();
+            std::thread::spawn(move || {
+                use crate::apex_data::rest;
+                let bundle = OptionsAnalytics {
+                    expected_move: rest::expected_move(&s2),
+                    pcr: rest::pcr(&s2),
+                    iv_rank: rest::iv_rank(&s2),
+                    gex: rest::gex(&s2),
+                };
+                if let Ok(mut c) = opt_analytics_cache().lock() {
+                    c.insert(s2.clone(), (bundle, std::time::Instant::now()));
+                }
+                if let Ok(mut inf) = opt_analytics_inflight().lock() { inf.remove(&s2); }
+                crate::wake_native_ui();
+            });
+        }
+    }
+    cached
+}
+
 // ── Ticker reference detail (cached, non-blocking) ─────────────────────────
 
 fn ticker_detail_cache()
