@@ -503,6 +503,38 @@ pub fn snap_bulk(tickers: &[String]) -> Option<Vec<StockSnapshot>> {
     get(&format!("/api/stocks/snap/bulk?tickers={encoded}")).ok()
 }
 
+/// One symbol-search hit from `GET /api/search?q=`. Polygon ticker-reference
+/// shaped; only the fields the terminal's search box needs are parsed.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct SearchHit {
+    pub ticker: String,
+    #[serde(default)] pub name: String,
+    /// "stocks", "crypto", "fx", "indices", "otc" — per Polygon.
+    #[serde(default)] pub market: String,
+    /// "CS", "ETF", "ADRC", … (instrument type). May be absent.
+    #[serde(default, rename = "type")] pub kind: String,
+    #[serde(default)] pub primary_exchange: String,
+    #[serde(default = "default_true")] pub active: bool,
+}
+
+fn default_true() -> bool { true }
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct SearchResponse {
+    #[serde(default)] pub results: Vec<SearchHit>,
+}
+
+/// `GET /api/search?q=<query>` — Polygon-backed symbol search (stocks, ETFs,
+/// indices, crypto). Prefix + fuzzy match. This is the stock-capable search
+/// that replaces the (options-only, frequently-down) ApexIB `/search/` path.
+pub fn search(query: &str) -> Option<Vec<SearchHit>> {
+    let q = query.trim();
+    if q.is_empty() { return Some(Vec::new()); }
+    let encoded = urlencoding::encode(q);
+    let resp: SearchResponse = get(&format!("/api/search?q={encoded}")).ok()?;
+    Some(resp.results)
+}
+
 /// `GET /api/stocks/movers?direction=gainers|losers` — Polygon top-20 movers.
 /// `direction` must be "gainers" or "losers"; anything else is rejected by
 /// the backend (and short-circuited here to `None`).

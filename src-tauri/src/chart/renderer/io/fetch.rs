@@ -734,23 +734,38 @@ pub(crate) fn fetch_overlay_chain_background(symbol: String, underlying_price: f
     });
 }
 
-/// Fetch symbol search results from ApexIB in background.
+/// Fetch symbol search results in the background.
+///
+/// Primary source is ApexData `/api/search?q=` (Polygon-backed — covers
+/// stocks, ETFs, indices, crypto). ApexIB `/search/` is kept only as a
+/// fallback for when ApexData returns nothing (or is unreachable); ApexIB is
+/// options-centric and has been intermittently down, so it is no longer the
+/// primary path.
 pub(crate) fn fetch_search_background(query: String, source: String) {
     std::thread::spawn(move || {
-        let client = apexib_client();
-
-        // URL-encode the user-supplied query to prevent injection.
-        let url = format!("{}/search/{}", APEXIB_URL, urlencoding::encode(&query));
         let mut results: Vec<(String, String)> = Vec::new();
 
-        if let Ok(resp) = client.get(&url).send() {
-            if resp.status().is_success() {
-                if let Ok(json) = resp.json::<serde_json::Value>() {
-                    if let Some(arr) = json.as_array() {
-                        for item in arr.iter().take(16) {
-                            if let Some(sym) = item.get("symbol").and_then(|v| v.as_str()) {
-                                let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                                results.push((sym.to_string(), name));
+        // ── Primary: ApexData symbol search (stock-capable) ──────────────
+        if let Some(hits) = crate::apex_data::rest::search(&query) {
+            for h in hits.into_iter().filter(|h| h.active).take(16) {
+                results.push((h.ticker, h.name));
+            }
+        }
+
+        // ── Fallback: ApexIB search (options/legacy) ─────────────────────
+        if results.is_empty() {
+            let client = apexib_client();
+            // URL-encode the user-supplied query to prevent injection.
+            let url = format!("{}/search/{}", APEXIB_URL, urlencoding::encode(&query));
+            if let Ok(resp) = client.get(&url).send() {
+                if resp.status().is_success() {
+                    if let Ok(json) = resp.json::<serde_json::Value>() {
+                        if let Some(arr) = json.as_array() {
+                            for item in arr.iter().take(16) {
+                                if let Some(sym) = item.get("symbol").and_then(|v| v.as_str()) {
+                                    let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                    results.push((sym.to_string(), name));
+                                }
                             }
                         }
                     }
