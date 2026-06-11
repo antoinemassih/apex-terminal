@@ -11438,10 +11438,15 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
         crate::apex_data::live_state::set_watched_symbols(watched_list.clone());
 
         // Push snapshot data into watchlist items so rows render live prices.
+        // NOTE: only update the live price here. The L1 snapshot has no
+        // previous-close field (only day_open), so we must NOT touch
+        // prev_close — fetch_watchlist_prices() sets it from the bulk snapshot's
+        // prevDay.close, which is the correct % baseline. Writing day_open here
+        // made the watchlist show change-from-open (tiny) instead of
+        // change-from-prev-close.
         for sym in &watched_list {
             if let Some(snap) = crate::apex_data::live_state::get_snapshot(sym) {
                 watchlist.set_price(sym, snap.last as f32);
-                watchlist.set_prev_close(sym, snap.day_open as f32);
             }
         }
 

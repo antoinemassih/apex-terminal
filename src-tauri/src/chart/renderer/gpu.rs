@@ -4126,6 +4126,24 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                             watchlist.search_results.push((sym.clone(), name.clone()));
                         }
                     }
+                } else if let Some(idx_str) = source.strip_prefix("pane_picker_") {
+                    // In-pane ticker picker (core.rs ~1044). Route results to that
+                    // pane's picker, but only if the user is still typing the same
+                    // query (avoids a stale async response clobbering newer input).
+                    if let Ok(idx) = idx_str.parse::<usize>() {
+                        if let Some(p) = panes.get_mut(idx) {
+                            if !query.is_empty()
+                                && p.picker.last_query.to_lowercase().starts_with(&query.to_lowercase())
+                            {
+                                p.picker.searching = false;
+                                for (sym, name) in results {
+                                    if !p.picker.results.iter().any(|(s, _, _)| s == sym) {
+                                        p.picker.results.push((sym.clone(), name.clone(), String::new()));
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             // Overlay bars: route to all panes that have this overlay symbol

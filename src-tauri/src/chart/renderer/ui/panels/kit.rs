@@ -400,15 +400,25 @@ impl<'a, T: PartialEq + Copy + 'a> PanelHeaderTabs<'a, T> {
         let active_idx = self.tabs.iter().position(|(v, _)| *v == *self.current).unwrap_or(0);
         let mut new_active = active_idx;
 
+        // Tabs that don't fit get collected here and surfaced in a "»" overflow
+        // menu instead of being silently clipped (which hid RESEARCH/SEASONALITY).
+        // Reserve room for the overflow button so the menu itself never clips.
+        let mut hidden_idx: Vec<usize> = Vec::new();
+        let overflow_reserved = HEADER_CLOSE_SIZE + gap_sm() * 2.0;
+
         for (ti, (tab_val, label)) in self.tabs.iter().enumerate() {
             let is_active = ti == active_idx;
             let label_galley = painter.layout_no_wrap(
                 label.to_string(), title_font.clone(), t.dim,
             );
             let tab_w = tab_pad + label_galley.size().x + tab_pad;
-            // Clamp last tab so it doesn't overlap the close button.
-            let max_right = rect.right() - close_w_reserved;
-            if cx + tab_w > max_right { break; }
+            // Clamp so tabs don't overlap the close + overflow buttons. Once one
+            // tab doesn't fit, all remaining go to the overflow menu.
+            let max_right = rect.right() - close_w_reserved - overflow_reserved;
+            if cx + tab_w > max_right {
+                hidden_idx.extend(ti..self.tabs.len());
+                break;
+            }
 
             let tab_rect = Rect::from_min_size(Pos2::new(cx, tab_y), Vec2::new(tab_w, tab_h));
             let tab_resp = ui.interact(
@@ -492,6 +502,27 @@ impl<'a, T: PartialEq + Copy + 'a> PanelHeaderTabs<'a, T> {
                 closed = true;
             }
             child.add_space(HEADER_CLOSE_SIZE + gap_sm());
+        }
+        // Overflow menu for tabs that didn't fit (placed left of the close btn).
+        if !hidden_idx.is_empty() {
+            let hidden_items: Vec<(String, _)> = hidden_idx.iter()
+                .map(|&i| (self.tabs[i].1.to_string(), self.tabs[i].0))
+                .collect();
+            let active_hidden = hidden_idx.iter().any(|&i| i == active_idx);
+            // If the active tab is one of the hidden ones, name it on the button
+            // so the selection is still visible; otherwise show the count.
+            let btn_label = if active_hidden {
+                format!("\u{00BB} {}", self.tabs[active_idx].1)
+            } else {
+                format!("\u{00BB} {}", hidden_idx.len())
+            };
+            let mut picked = None;
+            child.menu_button(btn_label, |ui| {
+                for (lbl, v) in &hidden_items {
+                    if ui.button(lbl).clicked() { picked = Some(*v); ui.close_menu(); }
+                }
+            });
+            if let Some(v) = picked { *self.current = v; }
         }
         actions(&mut child);
         closed
