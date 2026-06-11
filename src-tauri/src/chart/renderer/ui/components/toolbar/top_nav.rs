@@ -567,6 +567,29 @@ pub(crate) fn render(
             }
 
 
+            // ── Market session chip (authoritative, from ApexData) ──────────
+            // OPEN = green, pre/after/extended = amber, CLOSED = dim. Read-only.
+            // Gates nothing by itself — the order ticket reads the same source.
+            if let Some(ms) = crate::apex_data::live_state::market_status() {
+                let label = ms.label();
+                let fg = if ms.is_rth() {
+                    t.bull
+                } else if ms.is_tradeable() {
+                    t.warn
+                } else {
+                    tint(t, Tone::Text, 130)
+                };
+                let resp = KitButton::new(label).variant(KitVariant::Ghost).size(KitSize::Sm)
+                    .fg(fg).min_size(egui::vec2(58.0, row_height_default()))
+                    .show(ui, t);
+                let tip = if ms.server_time.is_empty() {
+                    format!("Market: {}", ms.market)
+                } else {
+                    format!("Market: {}\nServer time: {}", ms.market, ms.server_time)
+                };
+                Tooltip::new(tip).show(ui, &resp, t);
+            }
+
             crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
 
             // ── TPS Reports boss-key button (~70px) ────────────────────────

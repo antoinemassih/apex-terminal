@@ -40,6 +40,9 @@ struct State {
     connected: Mutex<bool>,
     health: Mutex<Option<HealthReady>>,
     feeds:  Mutex<Option<FeedsResponse>>,
+    /// Authoritative session state from `/api/market_status` (open / closed /
+    /// pre / after). Drives the header chip + order-entry gating.
+    market_status: Mutex<Option<super::rest::MarketStatus>>,
     // ── SOTA UX state (Agent A) ────────────────────────────────────────────
     /// Latest full 4-axis regime frame from `Signal::Regime` (§4.3).
     /// `RwLock` not available here without a new dep — the existing module
@@ -97,6 +100,7 @@ fn state() -> &'static State {
         connected: Mutex::new(false),
         health: Mutex::new(None),
         feeds:  Mutex::new(None),
+        market_status: Mutex::new(None),
         latest_regime: Mutex::new(None),
         latest_combined: Mutex::new(HashMap::new()),
         regime_transitions: Mutex::new(VecDeque::with_capacity(20)),
@@ -122,6 +126,7 @@ pub fn start_pollers() {
             use crate::data::connectivity::errors_sink::{report, ErrorLevel};
             use crate::data::connectivity::error::ApiError;
             let mut last_feeds = Instant::now() - Duration::from_secs(10);
+            let mut last_mkt = Instant::now() - Duration::from_secs(60);
             loop {
                 match super::rest::get_health_ready() {
                     Ok(h) => { if let Ok(mut g) = state().health.lock() { *g = Some(h); } }
@@ -130,6 +135,13 @@ pub fn start_pollers() {
                     Err(e) => {
                         report(ErrorLevel::Warn, "apex_data.rest", "health_poll", e.to_string());
                     }
+                }
+                // Market session state — changes slowly, poll every ~20s.
+                if last_mkt.elapsed() >= Duration::from_secs(20) {
+                    if let Some(ms) = super::rest::market_status() {
+                        set_market_status(ms);
+                    }
+                    last_mkt = Instant::now();
                 }
                 if last_feeds.elapsed() >= Duration::from_secs(5) {
                     match super::rest::get_feeds() {
@@ -340,6 +352,15 @@ pub fn push_trade(t: Trade) {
 
 pub fn set_connected(on: bool) {
     if let Ok(mut g) = state().connected.lock() { *g = on; }
+}
+
+pub fn set_market_status(ms: super::rest::MarketStatus) {
+    if let Ok(mut g) = state().market_status.lock() { *g = Some(ms); }
+}
+
+/// Latest authoritative market session state, if polled yet.
+pub fn market_status() -> Option<super::rest::MarketStatus> {
+    state().market_status.lock().ok().and_then(|g| g.clone())
 }
 
 // ── Readers ────────────────────────────────────────────────────────────────
