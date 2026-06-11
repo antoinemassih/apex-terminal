@@ -32,12 +32,12 @@ const ROW_H: f32 = 18.0;
 pub(crate) enum DomOrderType { Market, Limit }
 
 #[derive(Clone, Debug)]
-pub(crate) struct DomLevel {
-    pub(crate) price: f32,
-    pub(crate) bid_size: u32,
-    pub(crate) ask_size: u32,
-    pub(crate) volume: u64,
-    pub(crate) delta: i64,
+pub struct DomLevel {
+    pub price: f32,
+    pub bid_size: u32,
+    pub ask_size: u32,
+    pub volume: u64,
+    pub delta: i64,
 }
 
 // TODO(real-dom): replace with a live L2/depth-of-market feed.

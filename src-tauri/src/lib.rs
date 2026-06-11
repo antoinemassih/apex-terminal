@@ -20,6 +20,7 @@ pub use foundation::design_inspector;
 pub use data::bar_cache;
 pub use data::apex_data;
 pub use data::crypto_feed;
+pub use data::dom_feed;
 pub use data::signals_feed;
 pub use data::discord;
 pub use persistence::drawing_db;

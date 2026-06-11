@@ -974,6 +974,12 @@ pub enum ChartCommand {
         symbol: String,
         labels: Vec<PatternLabel>,
     },
+    /// Live DOM (L2 depth) ladder from apex-data `/ws/dom`, already merged into
+    /// price-keyed levels sorted high → low. Replaces the mock generator.
+    DomLevels {
+        symbol: String,
+        levels: Vec<crate::chart_renderer::ui::panels::dom_panel::DomLevel>,
+    },
     /// Alert triggered notification from ApexSignals
     AlertTriggered {
         symbol: String,

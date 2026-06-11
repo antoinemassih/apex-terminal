@@ -1388,8 +1388,15 @@ fn render_chart_pane(
         if chart.dom.center_price == 0.0 {
             chart.dom.center_price = (current_price / chart.dom.tick_size).round() * chart.dom.tick_size;
         }
-        // Generate mock levels if empty or stale
-        if chart.dom.levels.is_empty() || (chart.dom.levels.first().map(|l| (l.price - chart.dom.center_price).abs() > chart.dom.tick_size * 40.0).unwrap_or(true)) {
+        // Generate mock levels only when no live DOM feed is flowing. A live
+        // `DomLevels` frame within the last 2s suppresses the mock entirely;
+        // otherwise fall back to the deterministic mock when empty or stale.
+        let dom_is_live = chart.dom.last_live_ms != 0
+            && crate::data::dom_feed::now_ms() - chart.dom.last_live_ms < 2_000;
+        if !dom_is_live
+            && (chart.dom.levels.is_empty()
+                || chart.dom.levels.first().map(|l| (l.price - chart.dom.center_price).abs() > chart.dom.tick_size * 40.0).unwrap_or(true))
+        {
             chart.dom.levels = crate::chart_renderer::ui::panels::dom_panel::generate_mock_levels(chart.dom.center_price, chart.dom.tick_size, 30);
         }
         // Sync OrderManager armed state
@@ -11533,6 +11540,23 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                     };
                     watchlist.chain_0dte = crate::chart_renderer::gpu::OptionChain { calls: to_rows(c0), puts: to_rows(p0) };
                     watchlist.chain_far  = crate::chart_renderer::gpu::OptionChain { calls: to_rows(cf), puts: to_rows(pf) };
+                    // Live NBBO overlay: the REST/delta cache only refreshes
+                    // every ~6s, but the per-contract `quotes` WS pushes bid/ask
+                    // sub-second. Overlay the freshest live quote onto each row so
+                    // the displayed bid/ask tick in real time (OI/IV/greeks stay
+                    // from the cache). Runs every frame — as live as the repaint.
+                    let overlay_live = |rows: &mut Vec<crate::chart_renderer::gpu::OptionRow>| {
+                        for r in rows.iter_mut() {
+                            if let Some(q) = crate::apex_data::live_state::get_quote(&r.contract) {
+                                if q.bid > 0.0 { r.bid = q.bid as f32; }
+                                if q.ask > 0.0 { r.ask = q.ask as f32; }
+                            }
+                        }
+                    };
+                    overlay_live(&mut watchlist.chain_0dte.calls);
+                    overlay_live(&mut watchlist.chain_0dte.puts);
+                    overlay_live(&mut watchlist.chain_far.calls);
+                    overlay_live(&mut watchlist.chain_far.puts);
                     // Throttled log: emit only when the summary changes or
                     // ≥5s elapsed. Was firing every frame at 60+ Hz.
                     {
@@ -11630,6 +11654,20 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
         let mut quote_set: std::collections::HashSet<String> = watched_list.iter()
             .filter(|s| !crate::data::is_crypto(s))
             .cloned().collect();
+        // Live NBBO for the displayed options-chain grid. Subscribe the
+        // near-the-money strikes (within ~8% of spot to bound the count) so the
+        // chain's bid/ask tick sub-second off the quotes WS instead of waiting
+        // for the ~6s REST re-seed. The grid render overlays these per row.
+        {
+            let spot_hint = watchlist.chain_underlying_price;
+            for ch in [&watchlist.chain_0dte, &watchlist.chain_far] {
+                for r in ch.calls.iter().chain(ch.puts.iter()) {
+                    if !r.contract.starts_with("O:") { continue; }
+                    if spot_hint > 0.0 && (r.strike - spot_hint).abs() > spot_hint * 0.08 { continue; }
+                    quote_set.insert(r.contract.clone());
+                }
+            }
+        }
         for p in panes.iter() {
             if p.is_option && !p.option_contract.is_empty() {
                 quote_set.insert(p.option_contract.clone());

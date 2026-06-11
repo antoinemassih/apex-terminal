@@ -9,6 +9,7 @@ pub use crate::foundation::data_types::*;
 // Re-export sub-feeds at crate::data level for backward compat
 pub use feeds::apex_data;
 pub use feeds::crypto_feed;
+pub use feeds::dom_feed;
 pub use feeds::signals_feed;
 pub use feeds::discord;
 

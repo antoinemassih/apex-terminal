@@ -2033,6 +2033,9 @@ pub(crate) struct DomPanelState {
     pub(crate) position:       u8,
     /// DOM panel takes the full pane area; chart regions hidden.
     pub(crate) fullscreen:     bool,
+    /// Epoch ms of the last live `DomLevels` frame. `0` = never. Used by the
+    /// renderer to suppress the mock generator while a live feed is flowing.
+    pub(crate) last_live_ms:   i64,
 }
 
 impl Default for DomPanelState {
@@ -2044,6 +2047,7 @@ impl Default for DomPanelState {
             selected_price: None,
             order_type: super::ui::panels::dom_panel::DomOrderType::Market,
             armed: false, col_mode: 1, dragging: None, position: 0, fullscreen: false,
+            last_live_ms: 0,
         }
     }
 }
@@ -2650,6 +2654,9 @@ impl Chart {
                 self.price_range_animated = None; // reset — no slide animation on symbol/tf change
                 // Drawings: fetch asynchronously via single worker thread
                 if is_new_symbol {
+                    // Re-point the DOM (L2 depth) feed at the new symbol.
+                    crate::data::dom_feed::set_symbol(&self.symbol);
+                    self.dom.last_live_ms = 0; // drop stale live flag until first frame
                     self.drawings_requested = false; self.drawings.clear();
                     self.fundamentals = generate_placeholder_fundamentals(&self.symbol, &self.bars);
                     self.econ_calendar = generate_placeholder_econ();
@@ -2846,6 +2853,12 @@ impl Chart {
             ChartCommand::PatternLabels { symbol, labels } => {
                 if symbol == self.symbol {
                     self.pattern_labels = labels;
+                }
+            }
+            ChartCommand::DomLevels { symbol, levels } => {
+                if symbol == self.symbol {
+                    self.dom.levels = levels;
+                    self.dom.last_live_ms = crate::data::dom_feed::now_ms();
                 }
             }
             ChartCommand::AlertTriggered { symbol: _, alert_id: _, price, message } => {
