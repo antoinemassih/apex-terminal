@@ -359,10 +359,19 @@ where
 /// `source=last` is the default (trade-print bars). `source=mark` returns NBBO-mid bars
 /// (volume=0). Stock callers should always pass `BarSource::Last`.
 pub fn get_bars(class: AssetClass, symbol: &str, tf: &str, source: BarSource) -> Result<Vec<ChartBar>, ApiError> {
-    // Omit ?source=last to keep URLs identical to pre-MARK behavior (back-compat).
+    // Stocks: request split/dividend-adjusted history explicitly (FE brief).
+    // It's Polygon's default, but being explicit guards multi-day charts that
+    // span a corporate action. Options are never adjusted.
+    let adj = if matches!(class, AssetClass::Stock) { "&adjusted=true" } else { "" };
     match source {
-        BarSource::Last => get(&format!("/api/bars/{}/{}/{}", class.path(), symbol, tf)),
-        BarSource::Mark => get(&format!("/api/bars/{}/{}/{}?source=mark", class.path(), symbol, tf)),
+        // `?source=last` is the documented default; keep it explicit now that we
+        // append the adjusted flag (a bare `?adjusted=true` reads the same server-side).
+        BarSource::Last if adj.is_empty() =>
+            get(&format!("/api/bars/{}/{}/{}", class.path(), symbol, tf)),
+        BarSource::Last =>
+            get(&format!("/api/bars/{}/{}/{}?source=last{adj}", class.path(), symbol, tf)),
+        BarSource::Mark =>
+            get(&format!("/api/bars/{}/{}/{}?source=mark{adj}", class.path(), symbol, tf)),
     }
 }
 
@@ -533,6 +542,200 @@ pub fn search(query: &str) -> Option<Vec<SearchHit>> {
     let encoded = urlencoding::encode(q);
     let resp: SearchResponse = get(&format!("/api/search?q={encoded}")).ok()?;
     Some(resp.results)
+}
+
+// ── Market status (FE brief: gate order-entry / "live" badges) ─────────────
+
+/// `GET /api/market_status` — authoritative session state. `market` is one of
+/// `open` / `closed` / `extended-hours`. `early_hours`/`after_hours` flag the
+/// pre/post sessions. Gate live badges + order-entry on this instead of a
+/// local clock guess.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct MarketStatus {
+    #[serde(default)] pub market: String,
+    #[serde(default, rename = "earlyHours")] pub early_hours: bool,
+    #[serde(default, rename = "afterHours")] pub after_hours: bool,
+    #[serde(default, rename = "serverTime")] pub server_time: String,
+    #[serde(default)] pub exchanges: std::collections::HashMap<String, String>,
+}
+
+impl MarketStatus {
+    /// Regular trading hours (exchanges open for continuous trading).
+    pub fn is_rth(&self) -> bool { self.market.eq_ignore_ascii_case("open") }
+    /// Any tradeable session — RTH or pre/after-hours.
+    pub fn is_tradeable(&self) -> bool {
+        self.is_rth() || self.early_hours || self.after_hours
+            || self.market.eq_ignore_ascii_case("extended-hours")
+    }
+    /// Short label for a header chip.
+    pub fn label(&self) -> &'static str {
+        if self.is_rth() { "OPEN" }
+        else if self.early_hours { "PRE-MKT" }
+        else if self.after_hours { "AFTER-HRS" }
+        else if self.market.eq_ignore_ascii_case("extended-hours") { "EXT-HRS" }
+        else { "CLOSED" }
+    }
+}
+
+pub fn market_status() -> Option<MarketStatus> { get("/api/market_status").ok() }
+
+/// One upcoming market holiday / early-close from `/api/market_status/upcoming`.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct MarketHoliday {
+    #[serde(default)] pub date: String,
+    #[serde(default)] pub name: String,
+    #[serde(default)] pub exchange: String,
+    #[serde(default)] pub status: String,
+    #[serde(default)] pub open: Option<String>,
+    #[serde(default)] pub close: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct UpcomingEvents { #[serde(default)] events: Vec<MarketHoliday> }
+
+/// `GET /api/market_status/upcoming` — holidays + early-closes.
+pub fn market_status_upcoming() -> Option<Vec<MarketHoliday>> {
+    get::<UpcomingEvents>("/api/market_status/upcoming").ok().map(|u| u.events)
+}
+
+// ── Ticker reference detail (name, market cap, sector, logo/branding) ──────
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct TickerBranding {
+    #[serde(default)] pub icon_url: String,
+    #[serde(default)] pub logo_url: String,
+}
+
+/// `GET /api/ticker/{SYM}` — Polygon ticker-reference details.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct TickerDetail {
+    #[serde(default)] pub ticker: String,
+    #[serde(default)] pub name: String,
+    #[serde(default)] pub description: String,
+    #[serde(default)] pub market: String,
+    #[serde(default, rename = "type")] pub kind: String,
+    #[serde(default)] pub primary_exchange: String,
+    #[serde(default)] pub market_cap: f64,
+    #[serde(default)] pub homepage_url: String,
+    #[serde(default)] pub total_employees: i64,
+    #[serde(default)] pub list_date: String,
+    #[serde(default)] pub sic_description: String,
+    #[serde(default)] pub share_class_shares_outstanding: i64,
+    #[serde(default)] pub branding: TickerBranding,
+}
+
+pub fn ticker_detail(sym: &str) -> Option<TickerDetail> {
+    get(&format!("/api/ticker/{sym}")).ok()
+}
+
+// ── Options derived analytics (per underlying) ─────────────────────────────
+
+/// `GET /api/expected_move/{UL}` — ATM straddle-implied 1-σ move.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct ExpectedMove {
+    #[serde(default)] pub spot: f64,
+    #[serde(default)] pub atm_strike: f64,
+    #[serde(default)] pub atm_iv: f64,
+    #[serde(default)] pub atm_call_mid: f64,
+    #[serde(default)] pub atm_put_mid: f64,
+    #[serde(default)] pub expected_move_dollars: f64,
+    #[serde(default)] pub expected_move_pct: f64,
+    #[serde(default)] pub days_to_expiry: i64,
+    #[serde(default)] pub expiry: String,
+}
+pub fn expected_move(ul: &str) -> Option<ExpectedMove> { get(&format!("/api/expected_move/{ul}")).ok() }
+
+/// `GET /api/pcr/{UL}` — put/call ratios (OI + volume).
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct PutCallRatio {
+    #[serde(default)] pub underlying: String,
+    #[serde(default)] pub pcr_oi: f64,
+    #[serde(default)] pub pcr_volume: f64,
+    #[serde(default)] pub call_oi: f64,
+    #[serde(default)] pub put_oi: f64,
+    #[serde(default)] pub call_volume: f64,
+    #[serde(default)] pub put_volume: f64,
+    #[serde(default)] pub total_volume: f64,
+}
+pub fn pcr(ul: &str) -> Option<PutCallRatio> { get(&format!("/api/pcr/{ul}")).ok() }
+
+/// `GET /api/gex/{UL}` — native gamma exposure: flip strike + per-strike net.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct GexStrike {
+    #[serde(default)] pub strike: f64,
+    #[serde(default)] pub net: f64,
+    #[serde(default)] pub call_gamma_oi: f64,
+    #[serde(default)] pub put_gamma_oi: f64,
+}
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct GexReading {
+    #[serde(default)] pub flip_strike: f64,
+    #[serde(default)] pub net_gex: f64,
+    #[serde(default)] pub per_strike: Vec<GexStrike>,
+}
+pub fn gex(ul: &str) -> Option<GexReading> { get(&format!("/api/gex/{ul}")).ok() }
+
+/// `GET /api/iv_rank/{UL}` — IV rank + percentile over a trailing window.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct IvRank {
+    #[serde(default)] pub underlying: String,
+    #[serde(default)] pub current_iv: f64,
+    #[serde(default)] pub iv_rank: f64,
+    #[serde(default)] pub iv_percentile: f64,
+    #[serde(default)] pub window_days: i64,
+    #[serde(default)] pub days_available: i64,
+}
+pub fn iv_rank(ul: &str) -> Option<IvRank> { get(&format!("/api/iv_rank/{ul}")).ok() }
+
+/// `GET /api/vol_by_strike/{UL}` — call/put volume bucketed by strike.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct VolStrikeBucket {
+    #[serde(default)] pub strike: f64,
+    #[serde(default)] pub call_volume: f64,
+    #[serde(default)] pub put_volume: f64,
+    #[serde(default)] pub total: f64,
+}
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct VolByStrikeResp { #[serde(default)] buckets: Vec<VolStrikeBucket> }
+pub fn vol_by_strike(ul: &str) -> Option<Vec<VolStrikeBucket>> {
+    get::<VolByStrikeResp>(&format!("/api/vol_by_strike/{ul}")).ok().map(|v| v.buckets)
+}
+
+/// `GET /api/uoa/{UL}` — unusual options activity. Shape is still evolving
+/// upstream (currently sparse), so this returns the raw JSON for now; a typed
+/// struct lands once the contract stabilizes.
+pub fn uoa(ul: &str) -> Option<serde_json::Value> { get(&format!("/api/uoa/{ul}")).ok() }
+
+// ── Corporate actions (splits / dividends) ─────────────────────────────────
+
+/// One split row. Polygon shape: `execution_date` + `split_from`/`split_to`
+/// (e.g. 10-for-1 = from 1, to 10).
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct StockSplit {
+    #[serde(default)] pub execution_date: String,
+    #[serde(default)] pub split_from: f64,
+    #[serde(default)] pub split_to: f64,
+}
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct SplitsResp { #[serde(default)] splits: Vec<StockSplit> }
+/// `GET /api/stocks/splits/{SYM}`.
+pub fn stock_splits(sym: &str) -> Option<Vec<StockSplit>> {
+    get::<SplitsResp>(&format!("/api/stocks/splits/{sym}")).ok().map(|r| r.splits)
+}
+
+/// One dividend row.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct StockDividend {
+    #[serde(default)] pub cash_amount: f64,
+    #[serde(default)] pub ex_date: String,
+    #[serde(default)] pub pay_date: String,
+    #[serde(default)] pub frequency: i64,
+}
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct DividendsResp { #[serde(default)] dividends: Vec<StockDividend> }
+/// `GET /api/stocks/dividends/{SYM}`.
+pub fn stock_dividends(sym: &str) -> Option<Vec<StockDividend>> {
+    get::<DividendsResp>(&format!("/api/stocks/dividends/{sym}")).ok().map(|r| r.dividends)
 }
 
 /// `GET /api/stocks/movers?direction=gainers|losers` — Polygon top-20 movers.
