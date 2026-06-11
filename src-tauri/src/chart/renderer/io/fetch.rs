@@ -784,6 +784,44 @@ pub(crate) fn fetch_search_background(query: String, source: String) {
     });
 }
 
+/// Parse a `YYYY-MM-DD` date to epoch seconds at 00:00 UTC — aligns with
+/// ApexData daily bars (their `time` is the session date at midnight UTC).
+fn ymd_to_epoch(s: &str) -> Option<i64> {
+    let d = chrono::NaiveDate::parse_from_str(s.trim(), "%Y-%m-%d").ok()?;
+    Some(d.and_hms_opt(0, 0, 0)?.and_utc().timestamp())
+}
+
+/// Blocking fetch of dividends + splits for `symbol` from ApexData, mapped to
+/// chart `CorpAction` markers. Called inline when the user enables the overlay
+/// (cheap, one-off — same pattern as the gamma toggle). Non-stocks → empty.
+pub(crate) fn fetch_corp_actions(symbol: &str) -> Vec<crate::chart_renderer::gpu::CorpAction> {
+    use crate::chart_renderer::gpu::CorpAction;
+    if !is_stock_symbol(symbol) { return vec![]; }
+    let mut out: Vec<CorpAction> = vec![];
+    if let Some(divs) = crate::apex_data::rest::stock_dividends(symbol) {
+        for d in divs {
+            if let Some(date) = ymd_to_epoch(&d.ex_date) {
+                out.push(CorpAction {
+                    date, is_split: false, amount: d.cash_amount as f32,
+                    label: format!("${:.2}", d.cash_amount),
+                });
+            }
+        }
+    }
+    if let Some(splits) = crate::apex_data::rest::stock_splits(symbol) {
+        for s in splits {
+            if let Some(date) = ymd_to_epoch(&s.execution_date) {
+                let (to, from) = (s.split_to as i64, s.split_from.max(1.0) as i64);
+                out.push(CorpAction {
+                    date, is_split: true, amount: 0.0,
+                    label: format!("{to}:{from}"),
+                });
+            }
+        }
+    }
+    out
+}
+
 /// Returns true if a symbol is a stock ticker (not crypto, not options).
 /// Used to filter the watchlist before bulk-snapshot fetches.
 pub(crate) fn is_stock_symbol(s: &str) -> bool {

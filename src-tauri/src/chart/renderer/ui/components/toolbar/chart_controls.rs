@@ -542,6 +542,19 @@ pub(crate) fn render(
                     overlay_toggle!(show_analyst_targets, "Analyst Targets");
                     overlay_toggle!(show_pe_band, "PE Valuation Band");
                     overlay_toggle!(show_insider_trades, "Insider Trades");
+                    // Dividends & splits (ApexData corporate actions). Fetched
+                    // inline on enable, like the gamma overlay below.
+                    {
+                        let on = panes[ap].show_corp_actions;
+                        if ui.add(SelectableRow::new("Dividends & Splits", on)).clicked() {
+                            panes[ap].show_corp_actions = !on;
+                            if panes[ap].show_corp_actions && panes[ap].corp_actions.is_empty() {
+                                let sym = panes[ap].symbol.clone();
+                                panes[ap].corp_actions =
+                                    crate::chart_renderer::gpu::fetch_corp_actions(&sym);
+                            }
+                        }
+                    }
                     ui.separator();
                     let gamma = panes[ap].show_gamma;
                     if ui.add(SelectableRow::new("Gamma Levels (GEX)", gamma)).clicked() {

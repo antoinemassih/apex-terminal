@@ -7333,6 +7333,32 @@ fn render_chart_pane(
         }
     }
 
+    // ── Corporate actions (dividends / splits) — bottom-axis markers ────────
+    if chart.show_corp_actions && !chart.corp_actions.is_empty() && !chart.timestamps.is_empty() {
+        let y_base = rect.top() + pt + ch - 2.0;
+        for ca in &chart.corp_actions {
+            let bar_idx = chart.timestamps.partition_point(|&ts| ts < ca.date);
+            if bar_idx >= chart.bars.len() { continue; }
+            let x = rect.left() + (bar_idx as f32 - chart.vs) * bs;
+            if x < rect.left() || x > rect.left() + cw { continue; }
+            // Dividend = accent "D" tag; split = warn "S" tag. Dashed riser so
+            // it reads as an event marker, not a price level.
+            let col = if ca.is_split { t.warn } else { t.accent };
+            let tag = if ca.is_split { "S" } else { "D" };
+            let top = y_base - 14.0;
+            dashed_line(&painter, egui::pos2(x, y_base), egui::pos2(x, top),
+                egui::Stroke::new(1.0, color_alpha(col, 150)), LineStyle::Dashed);
+            // Small filled chip with the tag glyph.
+            let chip = egui::Rect::from_center_size(egui::pos2(x, top - 4.0), egui::vec2(11.0, 11.0));
+            painter.rect_filled(chip, 2.0, color_alpha(col, 220));
+            painter.text(chip.center(), egui::Align2::CENTER_CENTER, tag, mono_4xs(),
+                crate::chart_renderer::ui::style::contrast_fg(col));
+            // Value label above the chip (e.g. "$0.25" / "10:1").
+            painter.text(egui::pos2(x, top - 11.0), egui::Align2::CENTER_BOTTOM,
+                &ca.label, mono_4xs(), color_alpha(col, 200));
+        }
+    }
+
     // ── OCO/Trigger bracket bands with connectors & R:R ─────────────────
     {
         let active_orders: Vec<&OrderLevel> = chart.orders.iter().filter(|o| o.status != OrderStatus::Cancelled && o.status != OrderStatus::Executed).collect();

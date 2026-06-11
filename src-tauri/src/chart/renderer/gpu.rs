@@ -1493,6 +1493,17 @@ pub(crate) struct InsiderTrade {
     pub value: f64,
 }
 
+/// A corporate action (dividend ex-date or stock split) for the chart's symbol,
+/// from ApexData `/api/stocks/dividends` + `/splits`. Rendered as a marker on
+/// the bottom time axis at the matching bar.
+#[derive(Clone)]
+pub(crate) struct CorpAction {
+    pub date: i64,        // epoch seconds (ex-date / execution date, midnight UTC)
+    pub is_split: bool,   // false = dividend, true = split
+    pub amount: f32,      // dividend cash amount (0 for splits)
+    pub label: String,    // "$0.25" (dividend) or "10:1" (split)
+}
+
 /// A completed trade for the journal.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct JournalEntry {
@@ -2346,6 +2357,8 @@ pub(crate) struct Chart {
     pub(crate) show_pe_band: bool,
     pub(crate) show_insider_trades: bool,
     pub(crate) insider_trades: Vec<InsiderTrade>,
+    pub(crate) show_corp_actions: bool,
+    pub(crate) corp_actions: Vec<CorpAction>,
     pub(crate) econ_calendar: Vec<EconEvent>,
     pub(crate) show_darkpool: bool,
     pub(crate) darkpool_prints: Vec<DarkPoolPrint>,
@@ -2546,6 +2559,7 @@ impl Chart {
             show_strikes_overlay: false, overlay_calls: vec![], overlay_puts: vec![], overlay_chain_symbol: String::new(), overlay_chain_loading: false, overlay_chain_placeholder: false, floating_order_panes: vec![], gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0, gamma_ppe: None, gamma_iv_rising: None, gamma_flow_active: false, gamma_posture: String::new(),
             fundamentals: FundamentalData::default(), show_analyst_targets: false,
             show_pe_band: false, show_insider_trades: false, insider_trades: vec![],
+            show_corp_actions: false, corp_actions: vec![],
             econ_calendar: vec![],
             show_vol_shelves: false, show_confluence: false,
             show_momentum_heat: false, show_trend_strip: false, show_breadth_tint: false,
@@ -6513,7 +6527,7 @@ pub(crate) use super::io::fetch::{
     fetch_history_background, fetch_drawings_background,
     synthesize_occ, fetch_option_bars_background, fetch_bars_background,
     fetch_overlay_bars_background, fetch_gamma_from_feed, refresh_gamma_feeds,
-    GammaSnapshot,
+    GammaSnapshot, fetch_corp_actions,
 };
 
 
