@@ -97,7 +97,11 @@ pub fn fetch_gamma_from_feed(
     symbol: &str,
 ) -> Option<(Vec<crate::chart_renderer::gpu::GammaLevel>, f32, f32, f32, String)> {
     use crate::chart_renderer::gpu::GammaLevel;
-    let url = format!("http://127.0.0.1:8412/gamma/{}", symbol.to_uppercase());
+    // #5 — only query the feed for symbols it actually serves; anything else
+    // returns None so the caller cleanly falls back to the synthetic levels.
+    if !gamma_feed_supports(symbol) { return None; }
+    // #4 — configurable feed base URL (APEX_GAMMA_FEED_URL), default :8412.
+    let url = format!("{}/gamma/{}", gamma_feed_url(), symbol.to_uppercase());
     let v: serde_json::Value = apexib_client().get(&url).send().ok()?.json().ok()?;
     let g = v.get("gamma")?;
     let levels: Vec<GammaLevel> = g
@@ -119,6 +123,97 @@ pub fn fetch_gamma_from_feed(
     let pw = g.get("put_wall").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
     let regime = g.get("regime").and_then(|x| x.as_str()).unwrap_or("").to_string();
     Some((levels, zero, cw, pw, regime))
+}
+
+// ── Gamma feed: config (#4), symbol guard (#5), auto-refresh (#2) ────────────
+
+/// Base URL of the gamma feed. Override with `APEX_GAMMA_FEED_URL`
+/// (e.g. `http://gamma.xllio.com` or the ApexSignals prod endpoint). No
+/// trailing slash.
+fn gamma_feed_url() -> String {
+    std::env::var("APEX_GAMMA_FEED_URL")
+        .ok()
+        .map(|s| s.trim_end_matches('/').to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "http://127.0.0.1:8412".to_string())
+}
+
+/// Whether the gamma feed serves this symbol. Defaults to QQQ/SPY; override
+/// with `APEX_GAMMA_FEED_SYMBOLS="QQQ,SPY,SPX"`. Unsupported symbols fall back
+/// to the synthetic levels instead of spamming the feed with 404s.
+fn gamma_feed_supports(symbol: &str) -> bool {
+    static SET: std::sync::OnceLock<std::collections::HashSet<String>> = std::sync::OnceLock::new();
+    let set = SET.get_or_init(|| {
+        std::env::var("APEX_GAMMA_FEED_SYMBOLS")
+            .unwrap_or_else(|_| "QQQ,SPY".to_string())
+            .split(',')
+            .map(|s| s.trim().to_uppercase())
+            .filter(|s| !s.is_empty())
+            .collect()
+    });
+    set.contains(&symbol.to_uppercase())
+}
+
+type GammaBundle = (Vec<crate::chart_renderer::gpu::GammaLevel>, f32, f32, f32, String);
+
+fn gamma_cache() -> &'static std::sync::Mutex<std::collections::HashMap<String, (GammaBundle, std::time::Instant)>> {
+    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (GammaBundle, std::time::Instant)>>> = std::sync::OnceLock::new();
+    C.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+fn gamma_inflight() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    static I: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
+    I.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
+}
+
+/// How stale a cached gamma bundle may get before a refetch is spawned.
+const GAMMA_REFRESH_SECS: u64 = 20;
+
+/// Spawn a one-shot background fetch of `symbol` into the gamma cache. Deduped
+/// (one in-flight request per symbol) and non-blocking — the blocking HTTP GET
+/// runs on its own thread, never the render thread.
+fn spawn_gamma_fetch(symbol: String) {
+    let sym = symbol.to_uppercase();
+    {
+        let mut inf = match gamma_inflight().lock() { Ok(g) => g, Err(e) => e.into_inner() };
+        if inf.contains(&sym) { return; }
+        inf.insert(sym.clone());
+    }
+    std::thread::spawn(move || {
+        if let Some(bundle) = fetch_gamma_from_feed(&sym) {
+            if let Ok(mut c) = gamma_cache().lock() {
+                c.insert(sym.clone(), (bundle, std::time::Instant::now()));
+            }
+            crate::wake_native_ui();
+        }
+        if let Ok(mut inf) = gamma_inflight().lock() { inf.remove(&sym); }
+    });
+}
+
+/// #2 — keep gamma overlays fresh. Called once per render frame: for every pane
+/// showing gamma, apply the latest cached bundle and (re)spawn a background
+/// fetch when the cache is missing or older than `GAMMA_REFRESH_SECS`. So the
+/// flip/regime/walls track price without the user re-toggling. Non-blocking.
+pub(crate) fn refresh_gamma_feeds(panes: &mut [crate::chart_renderer::gpu::Chart]) {
+    for p in panes.iter_mut() {
+        if !p.show_gamma { continue; }
+        let sym = p.symbol.to_uppercase();
+        // Unsupported symbol → leave whatever's there (the synthetic levels).
+        if !gamma_feed_supports(&sym) { continue; }
+
+        let mut fresh = false;
+        if let Ok(c) = gamma_cache().lock() {
+            if let Some(((levels, zero, cw, pw, _regime), at)) = c.get(&sym) {
+                // Apply the latest real bundle to the pane's overlay fields.
+                p.gamma_levels = levels.clone();
+                p.gamma_zero = *zero;
+                p.gamma_call_wall = *cw;
+                p.gamma_put_wall = *pw;
+                fresh = at.elapsed().as_secs() < GAMMA_REFRESH_SECS;
+            }
+        }
+        if !fresh { spawn_gamma_fetch(sym); }
+    }
 }
 
 /// Compute the "active" 0DTE expiry date based on US/Eastern wall clock:

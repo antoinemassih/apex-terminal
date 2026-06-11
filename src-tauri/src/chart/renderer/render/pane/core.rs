@@ -11591,6 +11591,10 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
 
     update_simulation(panes);
 
+    // Auto-refresh gamma/GEX overlays for panes that show them (non-blocking:
+    // applies the cached bundle and spawns a background refetch when stale).
+    crate::chart_renderer::gpu::refresh_gamma_feeds(panes);
+
     let (theme_idx, account_data_cached, win_ref) = setup_theme(ctx, panes, *active_pane, watchlist);
     let _t_owned = get_theme(theme_idx);
     let t = &_t_owned;
