@@ -298,7 +298,9 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         symbol: bar.symbol.clone(),
                         timeframe: bar.timeframe.clone(),
                         bar: tick_bar,
+                        timestamp: time_sec,
                         mark: false,
+                        cumulative: false, // incremental tick model (unchanged)
                     });
                 }
                 chart_updates += 1;

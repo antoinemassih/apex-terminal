@@ -2711,32 +2711,61 @@ impl Chart {
                 if self.is_option && mark != self.bar_source_mark { return; }
                 // Only append if both symbol AND timeframe match this pane
                 if symbol == self.symbol && timeframe == self.timeframe {
-                    self.bars.push(bar); self.timestamps.push(timestamp);
-                    // Cap live bar growth to avoid unbounded memory accumulation.
-                    const MAX_LIVE_BARS: usize = 50_000;
-                    if self.bars.len() > MAX_LIVE_BARS {
-                        let excess = self.bars.len() - MAX_LIVE_BARS;
-                        self.bars.drain(..excess);
-                        self.timestamps.drain(..excess);
+                    // Dedupe: a cumulative feed (ApexData) may already have
+                    // created this minute's bar via UpdateLastBar. If the last
+                    // bar is the same minute, finalize it in place instead of
+                    // pushing a duplicate.
+                    if self.timestamps.last() == Some(&timestamp) {
+                        if let Some(l) = self.bars.last_mut() { *l = bar; }
+                        self.sim_price = bar.close;
+                    } else {
+                        self.bars.push(bar); self.timestamps.push(timestamp);
+                        // Cap live bar growth to avoid unbounded memory accumulation.
+                        const MAX_LIVE_BARS: usize = 50_000;
+                        if self.bars.len() > MAX_LIVE_BARS {
+                            let excess = self.bars.len() - MAX_LIVE_BARS;
+                            self.bars.drain(..excess);
+                            self.timestamps.drain(..excess);
+                        }
+                        // Smooth advance: increment vs by 1 instead of snapping, so if auto_scroll
+                        // re-engages from a slight offset, the view continues from that position
+                        if self.auto_scroll { self.vs += 1.0; }
                     }
-                    // Smooth advance: increment vs by 1 instead of snapping, so if auto_scroll
-                    // re-engages from a slight offset, the view continues from that position
-                    if self.auto_scroll { self.vs += 1.0; }
                 }
             }
-            ChartCommand::UpdateLastBar { symbol, timeframe, bar, mark } => {
+            ChartCommand::UpdateLastBar { symbol, timeframe, bar, timestamp, mark, cumulative } => {
                 if self.is_option && mark != self.bar_source_mark { return; }
-                // Only update if both symbol AND timeframe match
-                if symbol == self.symbol && (timeframe.is_empty() || timeframe == self.timeframe) {
-                    if let Some(l) = self.bars.last_mut() {
-                        // Properly update candle — don't replace open
+                if symbol != self.symbol || !(timeframe.is_empty() || timeframe == self.timeframe) {
+                    // not for this pane
+                } else if cumulative {
+                    // ApexData: `bar` is the full current-minute aggregate. Upsert
+                    // by minute timestamp so the building candle is its OWN bar
+                    // with the server's true high/low and cumulative volume —
+                    // not folded into the previous (closed) bar.
+                    let new_minute = self.timestamps.last().map_or(true, |&lt| timestamp > lt);
+                    if new_minute {
+                        self.bars.push(bar); self.timestamps.push(timestamp);
+                        const MAX_LIVE_BARS: usize = 50_000;
+                        if self.bars.len() > MAX_LIVE_BARS {
+                            let excess = self.bars.len() - MAX_LIVE_BARS;
+                            self.bars.drain(..excess);
+                            self.timestamps.drain(..excess);
+                        }
+                        if self.auto_scroll { self.vs += 1.0; }
+                    } else if let Some(l) = self.bars.last_mut() {
+                        l.high = l.high.max(bar.high);
+                        l.low = l.low.min(bar.low);
                         l.close = bar.close;
-                        l.high = l.high.max(bar.close);
-                        l.low = l.low.min(bar.close);
-                        l.volume += bar.volume;
-                        // Keep sim in sync with real ticks
-                        self.sim_price = bar.close;
+                        l.volume = bar.volume; // cumulative — replace, don't add
                     }
+                    self.sim_price = bar.close;
+                } else if let Some(l) = self.bars.last_mut() {
+                    // IB / crypto: incremental tick — fold into the last bar.
+                    l.close = bar.close;
+                    l.high = l.high.max(bar.close);
+                    l.low = l.low.min(bar.close);
+                    l.volume += bar.volume;
+                    self.sim_price = bar.close;
                 }
             }
             ChartCommand::SetDrawing(d) => { self.drawings.retain(|x| x.id != d.id); self.drawings.push(d); }

@@ -119,7 +119,8 @@ pub fn init_live_feeds() {
                     chart_renderer::ChartCommand::UpdateLastBar {
                         symbol: upd.bar.symbol.clone(),
                         timeframe: upd.bar.timeframe.clone(),
-                        bar: gb, mark,
+                        // ApexData sends the full current-minute aggregate.
+                        bar: gb, timestamp: ts_sec, mark, cumulative: true,
                     }
                 };
                 send_to_native_chart(cmd);

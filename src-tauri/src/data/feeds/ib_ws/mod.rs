@@ -469,7 +469,9 @@ async fn ws_loop(
                                                     bar: crate::chart_renderer::Bar {
                                                         open: p, high: p, low: p, close: p, volume: v, _pad: 0.0,
                                                     },
+                                                    timestamp: 0, // unused for incremental ticks
                                                     mark: false,
+                                                    cumulative: false, // incremental tick model (unchanged)
                                                 });
                                             }
                                             let trade = Trade {

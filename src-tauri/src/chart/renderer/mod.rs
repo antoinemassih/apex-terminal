@@ -840,12 +840,23 @@ pub enum ChartCommand {
         timestamp: i64,
         mark: bool,
     },
-    /// Update the last bar (tick). See `AppendBar` for `mark` semantics.
+    /// Update the building bar. See `AppendBar` for `mark` semantics.
+    ///
+    /// `cumulative` distinguishes the two feed models that share this command:
+    ///   • `true`  (ApexData): `bar` is the FULL current-minute aggregate
+    ///     (real high/low, cumulative volume). The handler upserts by
+    ///     `timestamp` — replacing the matching bar or appending a new minute.
+    ///   • `false` (IB / crypto ticks): `bar` is an incremental tick; the
+    ///     handler folds it into the last bar (`volume +=`, high/low via close).
+    /// `timestamp` (epoch seconds, minute-aligned) is only used when
+    /// `cumulative` is true.
     UpdateLastBar {
         symbol: String,
         timeframe: String,
         bar: Bar,
+        timestamp: i64,
         mark: bool,
+        cumulative: bool,
     },
     /// Set viewport (from pan/zoom in WebView)
     SetViewport {
