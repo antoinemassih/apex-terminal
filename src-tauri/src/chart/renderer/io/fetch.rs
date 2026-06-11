@@ -784,6 +784,44 @@ pub(crate) fn fetch_search_background(query: String, source: String) {
     });
 }
 
+// ── Ticker reference detail (cached, non-blocking) ─────────────────────────
+
+fn ticker_detail_cache()
+    -> &'static std::sync::Mutex<std::collections::HashMap<String, Option<crate::apex_data::rest::TickerDetail>>> {
+    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, Option<crate::apex_data::rest::TickerDetail>>>> = std::sync::OnceLock::new();
+    C.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+fn ticker_detail_inflight() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    static I: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
+    I.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
+}
+
+/// Return cached ApexData `/api/ticker/{SYM}` detail for `symbol`, spawning a
+/// one-shot background fetch on first miss. Non-blocking — returns `None` until
+/// the fetch lands (then `wake_native_ui` repaints). Cached for the session
+/// (incl. a cached `None` for symbols the endpoint has no data for, so we don't
+/// refetch). Only stock symbols are queried.
+pub(crate) fn ticker_detail_cached(symbol: &str) -> Option<crate::apex_data::rest::TickerDetail> {
+    let sym = symbol.to_uppercase();
+    if let Ok(c) = ticker_detail_cache().lock() {
+        if let Some(v) = c.get(&sym) { return v.clone(); }
+    }
+    if !is_stock_symbol(&sym) { return None; }
+    {
+        let mut inf = match ticker_detail_inflight().lock() { Ok(g) => g, Err(e) => e.into_inner() };
+        if inf.contains(&sym) { return None; }
+        inf.insert(sym.clone());
+    }
+    let s2 = sym.clone();
+    std::thread::spawn(move || {
+        let d = crate::apex_data::rest::ticker_detail(&s2);
+        if let Ok(mut c) = ticker_detail_cache().lock() { c.insert(s2.clone(), d); }
+        if let Ok(mut inf) = ticker_detail_inflight().lock() { inf.remove(&s2); }
+        crate::wake_native_ui();
+    });
+    None
+}
+
 /// Parse a `YYYY-MM-DD` date to epoch seconds at 00:00 UTC — aligns with
 /// ApexData daily bars (their `time` is the session date at midnight UTC).
 fn ymd_to_epoch(s: &str) -> Option<i64> {

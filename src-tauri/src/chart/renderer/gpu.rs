@@ -6527,7 +6527,7 @@ pub(crate) use super::io::fetch::{
     fetch_history_background, fetch_drawings_background,
     synthesize_occ, fetch_option_bars_background, fetch_bars_background,
     fetch_overlay_bars_background, fetch_gamma_from_feed, refresh_gamma_feeds,
-    GammaSnapshot, fetch_corp_actions,
+    GammaSnapshot, fetch_corp_actions, ticker_detail_cached,
 };
 
 

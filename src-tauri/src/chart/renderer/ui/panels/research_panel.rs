@@ -32,6 +32,47 @@ pub(crate) fn draw_content(
     let chart = &panes[ap];
     let f = &chart.fundamentals;
 
+    // ── Company (ApexData /api/ticker reference detail) ──
+    // Lazy, cached, non-blocking: first frame spawns the fetch and repaints
+    // when it lands. Only populated for stock symbols.
+    if let Some(td) = crate::chart_renderer::gpu::ticker_detail_cached(&chart.symbol) {
+        PanelSection::new("COMPANY")
+            .title_color(t.accent)
+            .show(ui, t, |ui, t| {
+                if !td.name.is_empty() {
+                    ui.horizontal(|ui| {
+                        ui.add_space(gap_sm());
+                        ui.add(MonospaceCode::new(&td.name).xs().color(t.text));
+                    });
+                    ui.add_space(gap_xs());
+                }
+                let mcap = if td.market_cap >= 1e12 {
+                    format!("${:.2}T", td.market_cap / 1e12)
+                } else if td.market_cap >= 1e9 {
+                    format!("${:.1}B", td.market_cap / 1e9)
+                } else if td.market_cap > 0.0 {
+                    format!("${:.0}M", td.market_cap / 1e6)
+                } else { "—".to_string() };
+                let mut rows: Vec<(&str, String)> = vec![
+                    ("Exchange", if td.primary_exchange.is_empty() { "—".into() } else { td.primary_exchange.clone() }),
+                    ("Type",     if td.kind.is_empty() { "—".into() } else { td.kind.clone() }),
+                    ("Market Cap", mcap),
+                ];
+                if !td.sic_description.is_empty() {
+                    rows.push(("Sector", td.sic_description.clone()));
+                }
+                if td.total_employees > 0 {
+                    rows.push(("Employees", format!("{}", td.total_employees)));
+                }
+                if !td.list_date.is_empty() {
+                    rows.push(("Listed", td.list_date.clone()));
+                }
+                for (label, value) in rows {
+                    PanelKeyValueRow::new(label, value).show(ui, t);
+                }
+            });
+    }
+
     // ── Valuation ──
     PanelSection::new(&format!("VALUATION — {}", chart.symbol))
         .title_color(t.accent)
