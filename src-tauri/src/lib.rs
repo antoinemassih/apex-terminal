@@ -172,7 +172,11 @@ pub fn init_live_feeds() {
                 }
             }
             Frame::Resync { reason } => {
+                // Server rebuilt its subscription state — re-declare ours so
+                // live bars/quotes/tape/chain keep flowing (per ApexData FE
+                // brief: "Resubscribe on resync").
                 report(ErrorLevel::Warn, "apex_data", "resync", reason.to_string());
+                apex_data::ws::resubscribe();
             }
             Frame::Connection(connected) => {
                 apex_data::live_state::set_connected(*connected);

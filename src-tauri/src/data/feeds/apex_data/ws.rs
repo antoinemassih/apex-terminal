@@ -287,6 +287,14 @@ pub fn set_chain(underlyings: &[String]) {
     push_subs();
 }
 
+/// Re-send the full current subscription set to the server. Call this when the
+/// server emits a `resync` frame (it has dropped/rebuilt its subscription state
+/// and expects clients to re-declare what they want). Cheap — just replays the
+/// existing `SubState`, no local subscription is lost.
+pub fn resubscribe() {
+    push_subs();
+}
+
 fn with_subs(f: impl FnOnce(&mut SubState)) {
     if let Ok(mut g) = manager().subs.lock() { f(&mut g); }
 }
