@@ -549,13 +549,17 @@ pub(crate) fn render(
                         if panes[ap].show_gamma && panes[ap].gamma_levels.is_empty() {
                             // Real gamma/regime feed (gamma_feed_service / ApexSignals).
                             let gamma_sym = panes[ap].symbol.clone();
-                            if let Some((levels, zero, cw, pw, _regime)) =
+                            if let Some(snap) =
                                 crate::chart_renderer::gpu::fetch_gamma_from_feed(&gamma_sym)
                             {
-                                panes[ap].gamma_levels = levels;
-                                panes[ap].gamma_zero = zero;
-                                panes[ap].gamma_call_wall = cw;
-                                panes[ap].gamma_put_wall = pw;
+                                panes[ap].gamma_levels = snap.levels;
+                                panes[ap].gamma_zero = snap.flip;
+                                panes[ap].gamma_call_wall = snap.call_wall;
+                                panes[ap].gamma_put_wall = snap.put_wall;
+                                panes[ap].gamma_ppe = snap.ppe;
+                                panes[ap].gamma_iv_rising = snap.iv_rising;
+                                panes[ap].gamma_flow_active = snap.flow_active;
+                                panes[ap].gamma_posture = snap.posture;
                                 if let Some(last_bar) = panes[ap].bars.last() {
                                     panes[ap].gamma_hvl = last_bar.close;
                                 }

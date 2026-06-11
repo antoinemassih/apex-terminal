@@ -2321,6 +2321,14 @@ pub(crate) struct Chart {
     pub(crate) gamma_put_wall: f32,
     pub(crate) gamma_zero: f32,
     pub(crate) gamma_hvl: f32,
+    /// Flow layer (PPE) from the gamma feed — populated only during market
+    /// hours (feed reports `flow.active=false` off-hours). `None` PPE = no
+    /// live flow reading right now.
+    pub(crate) gamma_ppe: Option<f32>,
+    pub(crate) gamma_iv_rising: Option<bool>,
+    pub(crate) gamma_flow_active: bool,
+    /// `short_posture.posture` string (e.g. `hold_press`). Empty when absent.
+    pub(crate) gamma_posture: String,
     // Analytics overlays
     pub(crate) show_vol_shelves: bool,
     pub(crate) show_confluence: bool,
@@ -2535,7 +2543,7 @@ impl Chart {
             symbol_overlays: vec![], overlay_editing: false, overlay_editing_idx: None, overlay_input: String::new(),
             show_gamma: false, hit_highlight: false, hit_highlights: vec![], hit_cooldowns: vec![],
             show_events: false, event_markers: vec![],
-            show_strikes_overlay: false, overlay_calls: vec![], overlay_puts: vec![], overlay_chain_symbol: String::new(), overlay_chain_loading: false, overlay_chain_placeholder: false, floating_order_panes: vec![], gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0,
+            show_strikes_overlay: false, overlay_calls: vec![], overlay_puts: vec![], overlay_chain_symbol: String::new(), overlay_chain_loading: false, overlay_chain_placeholder: false, floating_order_panes: vec![], gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0, gamma_ppe: None, gamma_iv_rising: None, gamma_flow_active: false, gamma_posture: String::new(),
             fundamentals: FundamentalData::default(), show_analyst_targets: false,
             show_pe_band: false, show_insider_trades: false, insider_trades: vec![],
             econ_calendar: vec![],
@@ -6505,6 +6513,7 @@ pub(crate) use super::io::fetch::{
     fetch_history_background, fetch_drawings_background,
     synthesize_occ, fetch_option_bars_background, fetch_bars_background,
     fetch_overlay_bars_background, fetch_gamma_from_feed, refresh_gamma_feeds,
+    GammaSnapshot,
 };
 
 

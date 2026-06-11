@@ -2875,6 +2875,45 @@ fn render_chart_pane(
                 egui::pos2(lx - 5.0, ly - 3.0), galley.size() + egui::vec2(10.0, 6.0)),
                 4.0, egui::Stroke::new(0.5, color_alpha(col, 60)), egui::StrokeKind::Outside);
             painter.text(egui::pos2(lx, ly + galley.size().y / 2.0), egui::Align2::LEFT_CENTER, &info, font, col);
+
+            // ── Flow layer (PPE) — second badge under the regime badge ───────
+            // Live only during market hours; off-hours the feed sets
+            // flow.active=false and we draw nothing.
+            if chart.gamma_flow_active {
+                if let Some(ppe) = chart.gamma_ppe {
+                    // PPE > 1.20 = real put selling (bullish-for-floor), cyan.
+                    // PPE < 0.85 = fake/thin selling (no floor), amber.
+                    let ppe_col = if ppe >= 1.20 {
+                        egui::Color32::from_rgb(40, 200, 230)
+                    } else if ppe <= 0.85 {
+                        egui::Color32::from_rgb(240, 160, 40)
+                    } else {
+                        egui::Color32::from_rgb(170, 170, 180)
+                    };
+                    let iv = match chart.gamma_iv_rising {
+                        Some(true) => "  \u{2191}IV",
+                        Some(false) => "  \u{2193}IV",
+                        None => "",
+                    };
+                    let posture = if chart.gamma_posture.is_empty() {
+                        String::new()
+                    } else {
+                        format!("  \u{00B7} {}", chart.gamma_posture.replace('_', " "))
+                    };
+                    let flow_info = format!("PPE {:.2}{}{}", ppe, iv, posture);
+                    let ffont = mono_xs_plus();
+                    let fg = painter.layout_no_wrap(flow_info.clone(), ffont.clone(), ppe_col);
+                    // Place directly beneath the regime badge.
+                    let fy = ly + galley.size().y + 12.0;
+                    painter.rect_filled(egui::Rect::from_min_size(
+                        egui::pos2(lx - 5.0, fy - 3.0), fg.size() + egui::vec2(10.0, 6.0)),
+                        4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
+                    painter.rect_stroke(egui::Rect::from_min_size(
+                        egui::pos2(lx - 5.0, fy - 3.0), fg.size() + egui::vec2(10.0, 6.0)),
+                        4.0, egui::Stroke::new(0.5, color_alpha(ppe_col, 60)), egui::StrokeKind::Outside);
+                    painter.text(egui::pos2(lx, fy + fg.size().y / 2.0), egui::Align2::LEFT_CENTER, &flow_info, ffont, ppe_col);
+                }
+            }
         }
 
         // Gamma bands at each level

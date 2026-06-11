@@ -89,13 +89,29 @@ fn apexib_curl(path: &str) -> Option<serde_json::Value> {
     } else { None }
 }
 
-/// Fetch the live gamma/regime bundle from the local gamma-feed service
-/// (gamma_feed_service.py on :8412) and parse it into the chart's existing
-/// gamma overlay fields. Returns (levels, flip/zero, call_wall, put_wall,
-/// regime). None if the feed is unreachable — caller falls back to the mock.
-pub fn fetch_gamma_from_feed(
-    symbol: &str,
-) -> Option<(Vec<crate::chart_renderer::gpu::GammaLevel>, f32, f32, f32, String)> {
+/// Parsed gamma/regime/flow bundle from the feed. The `flow.*` fields (PPE,
+/// IV-rising) are populated only during market hours — the feed reports
+/// `flow.active=false` off-hours, in which case `ppe`/`iv_rising` stay `None`.
+#[derive(Clone)]
+pub(crate) struct GammaSnapshot {
+    pub(crate) levels: Vec<crate::chart_renderer::gpu::GammaLevel>,
+    pub(crate) flip: f32,
+    pub(crate) call_wall: f32,
+    pub(crate) put_wall: f32,
+    pub(crate) regime: String,
+    /// Put Premium Efficiency (flow layer). `Some` only when `flow_active`.
+    pub(crate) ppe: Option<f32>,
+    pub(crate) iv_rising: Option<bool>,
+    pub(crate) flow_active: bool,
+    /// `short_posture.posture` (e.g. `hold_press`, `cover_into_target`).
+    pub(crate) posture: String,
+}
+
+/// Fetch the live gamma/regime/flow bundle from the gamma feed (see
+/// `APEX_GAMMA_FEED_URL`, default `gamma_feed_service.py` on :8412) and parse
+/// it. `None` if the feed is unreachable / symbol unsupported — caller falls
+/// back to the synthetic levels.
+pub(crate) fn fetch_gamma_from_feed(symbol: &str) -> Option<GammaSnapshot> {
     use crate::chart_renderer::gpu::GammaLevel;
     // #5 — only query the feed for symbols it actually serves; anything else
     // returns None so the caller cleanly falls back to the synthetic levels.
@@ -118,11 +134,18 @@ pub fn fetch_gamma_from_feed(
     if levels.is_empty() {
         return None;
     }
-    let zero = g.get("flip_level").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
-    let cw = g.get("call_wall").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
-    let pw = g.get("put_wall").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
+    let flip = g.get("flip_level").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
+    let call_wall = g.get("call_wall").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
+    let put_wall = g.get("put_wall").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
     let regime = g.get("regime").and_then(|x| x.as_str()).unwrap_or("").to_string();
-    Some((levels, zero, cw, pw, regime))
+    // Flow layer (PPE) — present only during market hours.
+    let flow = v.get("flow");
+    let flow_active = flow.and_then(|f| f.get("active")).and_then(|x| x.as_bool()).unwrap_or(false);
+    let ppe = flow.and_then(|f| f.get("ppe")).and_then(|x| x.as_f64()).map(|x| x as f32);
+    let iv_rising = flow.and_then(|f| f.get("iv_rising")).and_then(|x| x.as_bool());
+    let posture = v.get("short_posture").and_then(|sp| sp.get("posture"))
+        .and_then(|x| x.as_str()).unwrap_or("").to_string();
+    Some(GammaSnapshot { levels, flip, call_wall, put_wall, regime, ppe, iv_rising, flow_active, posture })
 }
 
 // ── Gamma feed: config (#4), symbol guard (#5), auto-refresh (#2) ────────────
@@ -154,10 +177,8 @@ fn gamma_feed_supports(symbol: &str) -> bool {
     set.contains(&symbol.to_uppercase())
 }
 
-type GammaBundle = (Vec<crate::chart_renderer::gpu::GammaLevel>, f32, f32, f32, String);
-
-fn gamma_cache() -> &'static std::sync::Mutex<std::collections::HashMap<String, (GammaBundle, std::time::Instant)>> {
-    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (GammaBundle, std::time::Instant)>>> = std::sync::OnceLock::new();
+fn gamma_cache() -> &'static std::sync::Mutex<std::collections::HashMap<String, (GammaSnapshot, std::time::Instant)>> {
+    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (GammaSnapshot, std::time::Instant)>>> = std::sync::OnceLock::new();
     C.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
 
@@ -203,12 +224,17 @@ pub(crate) fn refresh_gamma_feeds(panes: &mut [crate::chart_renderer::gpu::Chart
 
         let mut fresh = false;
         if let Ok(c) = gamma_cache().lock() {
-            if let Some(((levels, zero, cw, pw, _regime), at)) = c.get(&sym) {
+            if let Some((snap, at)) = c.get(&sym) {
                 // Apply the latest real bundle to the pane's overlay fields.
-                p.gamma_levels = levels.clone();
-                p.gamma_zero = *zero;
-                p.gamma_call_wall = *cw;
-                p.gamma_put_wall = *pw;
+                p.gamma_levels = snap.levels.clone();
+                p.gamma_zero = snap.flip;
+                p.gamma_call_wall = snap.call_wall;
+                p.gamma_put_wall = snap.put_wall;
+                // Flow layer (PPE) — only meaningful during market hours.
+                p.gamma_ppe = snap.ppe;
+                p.gamma_iv_rising = snap.iv_rising;
+                p.gamma_flow_active = snap.flow_active;
+                p.gamma_posture = snap.posture.clone();
                 fresh = at.elapsed().as_secs() < GAMMA_REFRESH_SECS;
             }
         }
