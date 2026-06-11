@@ -875,7 +875,10 @@ fn dispatch(mgr: &Arc<Manager>, env: InEnvelope) {
             let time_ms = env.data.get("time_ms").and_then(|v| v.as_i64()).unwrap_or(0);
             Frame::Fmv { symbol, fmv, time_ms }
         }
-        "chain_delta" => match serde_json::from_value::<ChainDelta>(env.data) {
+        // ApexData emits the type as "chaindelta" (no underscore — see FE brief
+        // frame list); accept both spellings so live chain updates aren't dropped
+        // as unknown_frame.
+        "chaindelta" | "chain_delta" => match serde_json::from_value::<ChainDelta>(env.data) {
             Ok(d) => Frame::ChainDelta(d),
             Err(e) => { report(ErrorLevel::Warn, "apex_data.ws", "parse_chain_delta", e.to_string()); return; }
         },
