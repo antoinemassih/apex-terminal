@@ -11476,22 +11476,33 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
         {
             let sym = watchlist.chain_symbol.clone();
             if !sym.is_empty() {
-                // If cache is empty for the selected chain symbol, kick off a fetch
-                // (debounced via chain_last_fetch). Covers SPX/SPXW/NDX/etc. that
-                // weren't pre-fetched at startup.
                 let cached = crate::apex_data::live_state::get_chain(&sym);
-                if cached.is_empty() {
-                    let stale = watchlist.chain_last_fetch
-                        .map(|t| t.elapsed() > std::time::Duration::from_secs(3))
-                        .unwrap_or(true);
-                    if stale {
-                        watchlist.chain_last_fetch = Some(std::time::Instant::now());
+                // Keep the chain live. ApexData's chaindelta frames are sparse
+                // (observed every ~3 min, and they can stall), so "REST once, WS
+                // merge forever" leaves bid/ask/IV stale between deltas. Instead
+                // re-fetch the REST chain on a short cadence (~6s) — fresh quotes
+                // for every strike regardless of delta timing — and the WS merges
+                // still fill the gaps. Debounced via chain_last_fetch; also covers
+                // the initial bootstrap and SPX/NDX symbols not pre-fetched.
+                let due = watchlist.chain_last_fetch
+                    .map(|t| t.elapsed() > std::time::Duration::from_secs(6))
+                    .unwrap_or(true);
+                if due {
+                    watchlist.chain_last_fetch = Some(std::time::Instant::now());
+                    if cached.is_empty() {
+                        // Bootstrap: full path (REST + 0DTE backfill + fallbacks).
                         watchlist.chain_loading = true;
-                        let dte = 0;
-                        let hint = crate::apex_data::live_state::get_snapshot(&sym)
-                            .map(|s| s.last as f32).unwrap_or(0.0);
-                        crate::apex_log!("chain.refresh", "{}: cache empty — kicking fetch", sym);
-                        fetch_chain_background(sym.clone(), watchlist.chain_num_strikes, dte, hint);
+                        let hint = if watchlist.chain_underlying_price > 0.0 {
+                            watchlist.chain_underlying_price
+                        } else {
+                            crate::apex_data::live_state::get_snapshot(&sym)
+                                .map(|s| s.last as f32).unwrap_or(0.0)
+                        };
+                        fetch_chain_background(sym.clone(), watchlist.chain_num_strikes, 0, hint);
+                    } else {
+                        // Ongoing: lightweight REST re-seed for fresh quotes
+                        // (fetch_chain_background would short-circuit on the cache).
+                        crate::chart_renderer::gpu::refresh_chain_rest(sym.clone());
                     }
                 }
                 if !cached.is_empty() {

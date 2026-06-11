@@ -6567,7 +6567,7 @@ pub(crate) fn default_hotkeys() -> Vec<HotKey> {
 // ─── Fetch / IO helpers (moved to io/fetch.rs) ────────────────────────────────
 pub use super::io::fetch::fetch_bars_background_pub;
 pub(crate) use super::io::fetch::{
-    fetch_chain_background, fetch_overlay_chain_background,
+    fetch_chain_background, refresh_chain_rest, fetch_overlay_chain_background,
     fetch_search_background, fetch_watchlist_prices, fetch_scanner_prices,
     SCANNER_UNIVERSE, active_zero_dte_date, apex_data_chain_to_tuples,
     fetch_indicator_source, submit_ib_order, fetch_option_history_background,
