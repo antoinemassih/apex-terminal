@@ -504,6 +504,14 @@ if is_spawn || watchlist.open {
                         // Pre-uppercase the filter text once per frame so the per-row
                         // filter check only needs to uppercase the symbol (not both).
                         let filter_text_upper = watchlist.filter_text.to_uppercase();
+                        // Market session, read once per frame. Drives whether the
+                        // Change % column shows today's live move (RTH) or the last
+                        // completed session's close-to-close (closed / pre-open), and
+                        // whether the Ext-Hours column is shown (pre/after-market).
+                        let mkt = crate::apex_data::live_state::market_status();
+                        let mkt_rth = mkt.as_ref().map(|m| m.is_rth()).unwrap_or(false);
+                        let mkt_ext = mkt.as_ref().map(|m| m.early_hours || m.after_hours
+                            || m.market.eq_ignore_ascii_case("extended-hours")).unwrap_or(false);
 
                         // Section color presets for the color picker
                         let color_presets = ["#4a9eff","#e74c3c","#2ecc71","#f39c12","#9b59b6","#1abc9c","#e67e22","#3498db","#e91e63","#00bcd4","#8bc34a","#ff5722","#607d8b","#795548","#cddc39","#ff9800"];
@@ -848,7 +856,26 @@ if is_spawn || watchlist.open {
                                         }
                                     } else {
                                         // ── Stock item rendering — migrated to WatchlistRow widget ──
-                                        let change_pct = if item_prev_close > 0.0 { ((item_price - item_prev_close) / item_prev_close) * 100.0 } else { 0.0 };
+                                        // Live move vs the prior regular close (today's move
+                                        // during RTH, or the pre/post-market move otherwise).
+                                        let live_chg = if item_prev_close > 0.0 {
+                                            ((item_price - item_prev_close) / item_prev_close) * 100.0
+                                        } else { 0.0 };
+                                        // Main Change %: during RTH show the live (today's) move;
+                                        // when closed / not open yet show the last completed
+                                        // session's close-to-close (cached daily fetch) so the
+                                        // column isn't 0 pre-market.
+                                        let change_pct = if mkt_rth {
+                                            live_chg
+                                        } else {
+                                            crate::chart_renderer::gpu::prev_session_change_cached(item_sym)
+                                                .unwrap_or(live_chg)
+                                        };
+                                        // Ext-Hours column: the live pre/post-market move, only
+                                        // while in extended hours and we have a baseline.
+                                        let ext_change = if mkt_ext && item_prev_close > 0.0 {
+                                            Some(live_chg)
+                                        } else { None };
                                         let price_str = if item_price > 0.0 { format!("{:.2}", item_price) } else { "---".into() };
                                         let row_h = if item_pinned { 34.0 } else { 28.0 };
                                         let font_sz = if item_pinned { 15.0 } else { 14.0 };
@@ -905,6 +932,7 @@ if is_spawn || watchlist.open {
                                             // seed is a neutral 1.0, which is misleading to show.
                                             // Pass None so the column hides until real RVOL exists.
                                             .rvol(None)
+                                            .ext_change(ext_change)
                                             .columns(&watchlist.wl_columns)
                                             .extreme_move_tint(if item_prev_close > 0.0 { Some(item_avg_daily_range) } else { None })
                                             .icon_set(icons)
@@ -938,9 +966,10 @@ if is_spawn || watchlist.open {
                                             // simplest: leave the widget to paint formatted change_pct (0.00%).
                                             // Visual delta: pre-load shows "+0.00%" briefly. Acceptable.
                                         }
-                                        if item_price_history.len() > 3 {
-                                            row_b = row_b.spark(item_price_history);
-                                        }
+                                        // Sparkline removed per design — the Ext-Hours column
+                                        // takes its slot. (item_price_history still feeds the
+                                        // price-flash tint.)
+                                        let _ = item_price_history;
                                         if item_day_high > item_day_low {
                                             row_b = row_b.day_range(item_day_low, item_day_high, item_price);
                                         }

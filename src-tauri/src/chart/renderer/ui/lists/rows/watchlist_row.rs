@@ -112,6 +112,7 @@ pub struct WatchlistRow<'a> {
 
     // New rich-row fields.
     rvol: Option<f32>,
+    ext_change: Option<f32>,
     drag_handle: bool,
     pin_state: PinState,
     show_star_on_hover: bool,
@@ -166,6 +167,7 @@ impl<'a> WatchlistRow<'a> {
             theme_bg: None, theme_border: None, theme_accent: None,
             theme_bull: None, theme_bear: None, theme_dim: None, theme_fg: None,
             rvol: None,
+            ext_change: None,
             drag_handle: false,
             pin_state: PinState::NotPinned,
             show_star_on_hover: false,
@@ -220,6 +222,7 @@ impl<'a> WatchlistRow<'a> {
 
     // ── Rich-row builders ────────────────────────────────────────────────
     pub fn rvol(mut self, v: Option<f32>) -> Self { self.rvol = v; self }
+    pub fn ext_change(mut self, v: Option<f32>) -> Self { self.ext_change = v; self }
     pub fn drag_handle(mut self, v: bool) -> Self { self.drag_handle = v; self }
     pub fn pin_state(mut self, v: PinState) -> Self { self.pin_state = v; self }
     pub fn show_star_on_hover(mut self, v: bool) -> Self { self.show_star_on_hover = v; self }
@@ -299,6 +302,7 @@ impl<'a> WatchlistRow<'a> {
         let font_sz = self.font_size_override.unwrap_or(if self.compact { 15.0 } else { 14.0 });
 
         let rvol = self.rvol;
+        let ext_change = self.ext_change;
         let drag_handle = self.drag_handle;
         let pin_state = self.pin_state;
         let show_star_on_hover = self.show_star_on_hover;
@@ -555,6 +559,7 @@ impl<'a> WatchlistRow<'a> {
                     price,
                     change_pct,
                     spark,
+                    ext_change,
                     rvol,
                     range_today,
                     week52,
@@ -591,14 +596,10 @@ impl<'a> WatchlistRow<'a> {
                         // the legacy renderer; override by re-painting here so
                         // proportional/monospace font is honored.
                         if matches!(cid, WatchlistColumnId::ChangePct) {
-                            let chg_str = format!("{:+.2}%", change_pct);
-                            painter.text(
-                                egui::pos2(col_rect.left(), col_rect.center().y),
-                                egui::Align2::LEFT_CENTER,
-                                &chg_str,
-                                chg_font_id.clone(),
-                                chg_col,
-                            );
+                            // Filled red/green chip covering the whole figure.
+                            let fsz = chg_font_id.size;
+                            super::watchlist_columns::paint_change_chip(
+                                painter, col_rect, change_pct, fsz, bull, bear);
                         } else {
                             (s.render)(&mut cctx);
                         }
