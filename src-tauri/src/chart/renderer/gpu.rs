@@ -6355,6 +6355,17 @@ impl Watchlist {
         }
     }
 
+    /// Set the real intraday high/low from a live snapshot. Zero-guarded so an
+    /// off-hours/empty snapshot doesn't clobber a previously-good range.
+    pub(crate) fn set_day_range(&mut self, sym: &str, high: f32, low: f32) {
+        for sec in &mut self.sections {
+            if let Some(item) = sec.items.iter_mut().find(|i| i.symbol == sym) {
+                if high > 0.0 { item.day_high = high; }
+                if low > 0.0 { item.day_low = low; }
+            }
+        }
+    }
+
     pub(crate) fn set_prev_close(&mut self, sym: &str, prev_close: f32) {
         for sec in &mut self.sections {
             if let Some(item) = sec.items.iter_mut().find(|i| i.symbol == sym) {

@@ -182,6 +182,7 @@ pub(crate) fn draw(
         enum DomMenuItem {
             Compact, Normal, Expanded,
             Move, Fullscreen,
+            PinFollow, PinEs, PinNq,
         }
         // Items are dynamic — only one of "Send to left" / "Send to right"
         // is shown depending on where the panel currently lives. The label
@@ -192,9 +193,17 @@ pub(crate) fn draw(
             DomMenuItem::Expanded,
             DomMenuItem::Move,
             DomMenuItem::Fullscreen,
+            DomMenuItem::PinFollow,
+            DomMenuItem::PinEs,
+            DomMenuItem::PinNq,
         ];
         let dom_on_left = *dom_position == 0;
         let move_label: &str = if dom_on_left { "Send to right" } else { "Send to left" };
+        // Pin state → a check mark on the active "follow chart / ES / NQ" item.
+        let pin = crate::data::dom_feed::pinned();
+        let follow_label = if pin.is_none() { "\u{2713} Follow chart" } else { "Follow chart" };
+        let es_label = if pin.as_deref() == Some("ES") { "\u{2713} Pin ES" } else { "Pin ES" };
+        let nq_label = if pin.as_deref() == Some("NQ") { "\u{2713} Pin NQ" } else { "Pin NQ" };
         // Selected index reflects display-mode only. Action items act on
         // click without changing the persistent selection.
         let mut sel: usize = (mode as usize).min(2);
@@ -207,6 +216,9 @@ pub(crate) fn draw(
                     DomMenuItem::Expanded => "Expanded".into(),
                     DomMenuItem::Move => move_label.into(),
                     DomMenuItem::Fullscreen => "Fullscreen".into(),
+                    DomMenuItem::PinFollow => follow_label.into(),
+                    DomMenuItem::PinEs => es_label.into(),
+                    DomMenuItem::PinNq => nq_label.into(),
                 })
                 .size(KitSize::Sm)
                 .compact_trigger(true)
@@ -233,6 +245,9 @@ pub(crate) fn draw(
                     *dom_fullscreen = false;
                 }
                 DomMenuItem::Fullscreen => { *dom_fullscreen = !*dom_fullscreen; }
+                DomMenuItem::PinFollow => crate::data::dom_feed::pin_symbol(None),
+                DomMenuItem::PinEs => crate::data::dom_feed::pin_symbol(Some("ES")),
+                DomMenuItem::PinNq => crate::data::dom_feed::pin_symbol(Some("NQ")),
             }
         }
     }

@@ -1383,7 +1383,7 @@ fn render_chart_pane(
             egui::pos2(dom_left, full_rect.top()),
             egui::vec2(dom_w, full_rect.height()),
         );
-        let current_price = chart.bars.last().map(|b| b.close).unwrap_or(100.0);
+        let mut current_price = chart.bars.last().map(|b| b.close).unwrap_or(100.0);
         // Auto-detect tick size based on symbol
         let is_index = chart.symbol == "SPX" || chart.symbol == "NDX" || chart.symbol == "DJI" || chart.symbol == "RUT";
         if chart.dom.tick_size < 0.001 || (is_index && chart.dom.tick_size < 0.5) {
@@ -1403,6 +1403,33 @@ fn render_chart_pane(
                 || chart.dom.levels.first().map(|l| (l.price - chart.dom.center_price).abs() > chart.dom.tick_size * 40.0).unwrap_or(true))
         {
             chart.dom.levels = crate::chart_renderer::ui::panels::dom_panel::generate_mock_levels(chart.dom.center_price, chart.dom.tick_size, 30);
+        }
+        // DOM pinned to a symbol other than the chart (e.g. watch ES while
+        // charting a stock): the chart-derived price/tick/center are wrong for
+        // the pinned instrument, so derive them from the live ladder itself.
+        if crate::data::dom_feed::pinned().is_some() && dom_is_live && !chart.dom.levels.is_empty() {
+            let lv = &chart.dom.levels;
+            // Infer tick from the smallest nonzero adjacent price gap.
+            let mut tick = f32::MAX;
+            for w in lv.windows(2) {
+                let d = (w[0].price - w[1].price).abs();
+                if d > 1e-6 && d < tick { tick = d; }
+            }
+            if tick.is_finite() && tick > 0.0 { chart.dom.tick_size = tick; }
+            // Mid from best bid/ask; fall back to the ladder's median row.
+            let best_bid = lv.iter().filter(|l| l.bid_size > 0).map(|l| l.price).fold(f32::MIN, f32::max);
+            let best_ask = lv.iter().filter(|l| l.ask_size > 0).map(|l| l.price).fold(f32::MAX, f32::min);
+            let mid = if best_bid > f32::MIN && best_ask < f32::MAX {
+                (best_bid + best_ask) * 0.5
+            } else {
+                lv[lv.len() / 2].price
+            };
+            current_price = mid;
+            // Re-center only when the ladder is off-screen vs the current center,
+            // so manual scroll still works once we're near the market.
+            if (chart.dom.center_price - mid).abs() > chart.dom.tick_size * 40.0 {
+                chart.dom.center_price = (mid / chart.dom.tick_size).round() * chart.dom.tick_size;
+            }
         }
         // Sync OrderManager armed state
         crate::chart_renderer::trading::order_manager::set_armed(chart.dom.armed);
@@ -11460,6 +11487,28 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
         for sym in &watched_list {
             if let Some(snap) = crate::apex_data::live_state::get_snapshot(sym) {
                 watchlist.set_price(sym, snap.last as f32);
+                // Real intraday range from the snapshot (replaces the synthetic
+                // price±0.8% placeholder). Guarded >0 so off-hours zeros don't
+                // wipe a previously-good value.
+                watchlist.set_day_range(sym, snap.day_high as f32, snap.day_low as f32);
+            }
+        }
+
+        // Periodic bulk refresh: keeps price + prev_close (→ change%) live for
+        // every watchlist symbol even if a per-symbol snapshot is missing, and
+        // re-establishes prev_close (the snapshot has none). Throttled ~5s.
+        {
+            use std::sync::{OnceLock, Mutex};
+            static LAST_WL_FETCH: OnceLock<Mutex<std::time::Instant>> = OnceLock::new();
+            let m = LAST_WL_FETCH.get_or_init(|| Mutex::new(
+                std::time::Instant::now() - std::time::Duration::from_secs(60)));
+            if let Ok(mut g) = m.lock() {
+                if g.elapsed() >= std::time::Duration::from_secs(5) && !watched_list.is_empty() {
+                    *g = std::time::Instant::now();
+                    // fetch_watchlist_prices filters to stock symbols internally
+                    // (drops options/crypto), so passing the full set is safe.
+                    crate::chart_renderer::gpu::fetch_watchlist_prices(watched_list.clone());
+                }
             }
         }
 

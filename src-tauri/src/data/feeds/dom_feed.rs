@@ -19,6 +19,14 @@ static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 static ACTIVE_SYMBOL: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static RECONNECT: OnceLock<Arc<AtomicBool>> = OnceLock::new();
 static STARTED: OnceLock<()> = OnceLock::new();
+/// Pin override: when `Some`, the DOM follows this symbol regardless of the
+/// chart symbol (e.g. watch the ES futures ladder while charting a stock).
+static PINNED: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+/// Last chart symbol seen via `set_symbol`, so clearing the pin can revert.
+static LAST_CHART: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
+fn pinned_cell() -> &'static Mutex<Option<String>> { PINNED.get_or_init(|| Mutex::new(None)) }
+fn last_chart_cell() -> &'static Mutex<Option<String>> { LAST_CHART.get_or_init(|| Mutex::new(None)) }
 
 fn rt() -> &'static tokio::runtime::Runtime {
     RT.get_or_init(|| {
@@ -46,16 +54,48 @@ pub fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-/// Point the DOM feed at `symbol`. Idempotent — a no-op if already active.
-/// Tripping the reconnect flag makes the connect loop drop the current socket
-/// and re-dial the new symbol's `/ws/dom` endpoint.
-pub fn set_symbol(symbol: &str) {
+/// Internal: set the symbol the connect loop dials, tripping a reconnect only
+/// if it actually changed.
+fn set_active(symbol: &str) {
     let mut g = active().lock();
     if g.as_deref() == Some(symbol) {
         return;
     }
     *g = Some(symbol.to_string());
     reconnect_flag().store(true, Ordering::SeqCst);
+}
+
+/// Chart-driven symbol. Always recorded as the "follow" target, but only drives
+/// the DOM when no pin is set — a pin (see [`pin_symbol`]) overrides the chart.
+pub fn set_symbol(symbol: &str) {
+    *last_chart_cell().lock() = Some(symbol.to_string());
+    if pinned_cell().lock().is_some() {
+        return; // pin wins over the chart symbol
+    }
+    set_active(symbol);
+}
+
+/// Pin the DOM ladder to a fixed symbol (e.g. `"ES"`, `"NQ"`), independent of
+/// the chart symbol. Pass `None` to clear the pin and revert to following the
+/// chart. Used by the DOM panel's gear menu.
+pub fn pin_symbol(symbol: Option<&str>) {
+    match symbol {
+        Some(s) => {
+            *pinned_cell().lock() = Some(s.to_string());
+            set_active(s);
+        }
+        None => {
+            *pinned_cell().lock() = None;
+            if let Some(chart) = last_chart_cell().lock().clone() {
+                set_active(&chart);
+            }
+        }
+    }
+}
+
+/// The current pin, if any (drives the DOM panel menu's checked state).
+pub fn pinned() -> Option<String> {
+    pinned_cell().lock().clone()
 }
 
 /// Build the `/ws/dom` URL from the shared apex-data base. `apex_ws_url()`

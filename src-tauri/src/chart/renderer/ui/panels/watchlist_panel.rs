@@ -337,7 +337,13 @@ if is_spawn || watchlist.open {
                                     watchlist.persist();
                                 }
                                 if resp.hovered() {
-                                    watchlist.search_sel = i as i32;
+                                    // Only let hover claim the selection when the mouse is
+                                    // actually moving — otherwise a stationary cursor sitting
+                                    // over the list overwrites keyboard (arrow) navigation
+                                    // every frame, so Up/Down never appears to move.
+                                    if ui.input(|inp| inp.pointer.is_moving()) {
+                                        watchlist.search_sel = i as i32;
+                                    }
                                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                 }
                             }
@@ -716,8 +722,12 @@ if is_spawn || watchlist.open {
                                     // Populate range data from price if not set
                                     let item_high_52wk = if item.high_52wk > 0.0 { item.high_52wk } else { item.price * 1.15 };
                                     let item_low_52wk = if item.low_52wk > 0.0 { item.low_52wk } else { item.price * 0.70 };
-                                    let item_day_high = if item.day_high > 0.0 { item.day_high } else { item.price * 1.008 };
-                                    let item_day_low = if item.day_low > 0.0 { item.day_low } else { item.price * 0.992 };
+                                    // Real intraday range only (set from the live snapshot via
+                                    // set_day_range). No synthetic price±0.8% fallback — a
+                                    // fabricated range is worse than none; the Day Range column
+                                    // hides itself when high<=low (off-hours / not yet loaded).
+                                    let item_day_high = item.day_high;
+                                    let item_day_low = item.day_low;
                                     let item_avg_daily_range = item.avg_daily_range;
                                     let item_earnings_days = item.earnings_days;
                                     let item_alert_triggered = item.alert_triggered;
@@ -753,10 +763,12 @@ if is_spawn || watchlist.open {
                                                 let chg = (item_price / item_prev_close - 1.0) * 100.0;
                                                 if watchlist.filter_min_change > -999.0 && chg < watchlist.filter_min_change { continue; }
                                                 if watchlist.filter_max_change < 999.0 && chg > watchlist.filter_max_change { continue; }
-                                            } else {
-                                                // price not loaded yet — only skip if a strict filter is active
-                                                if watchlist.filter_min_change > -999.0 || watchlist.filter_max_change < 999.0 { continue; }
                                             }
+                                            // else: prev_close not loaded yet (e.g. a symbol the
+                                            // user JUST added). Keep it visible — a change-% filter
+                                            // can't be evaluated without a baseline, and hiding it
+                                            // makes "add" look like it silently did nothing until
+                                            // the first price arrives.
                                         }
                                     }
 
@@ -889,7 +901,10 @@ if is_spawn || watchlist.open {
                                             .pin_state(pin_state)
                                             .show_star_on_hover(true)
                                             .alert_indicator(item_alert_triggered)
-                                            .rvol(if item_rvol > 0.0 { Some(item_rvol) } else { None })
+                                            // RVOL has no real data source wired yet — the item
+                                            // seed is a neutral 1.0, which is misleading to show.
+                                            // Pass None so the column hides until real RVOL exists.
+                                            .rvol(None)
                                             .columns(&watchlist.wl_columns)
                                             .extreme_move_tint(if item_prev_close > 0.0 { Some(item_avg_daily_range) } else { None })
                                             .icon_set(icons)
