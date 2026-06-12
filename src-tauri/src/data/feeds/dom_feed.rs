@@ -68,7 +68,41 @@ fn dom_ws_url(symbol: &str) -> String {
         .next()
         .filter(|s| !s.is_empty())
         .unwrap_or("wss://apex-data-dev.xllio.com");
-    format!("{host}/ws/dom?symbol={symbol}&rows=30")
+    // rows is clamped 1..20 server-side; ask for the max.
+    format!("{host}/ws/dom?symbol={symbol}&rows=20")
+}
+
+type DomWsStream = tokio_tungstenite::WebSocketStream<
+    tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+/// Connect to `url`, honouring the same LAN-IP override the main apex_data WS
+/// uses. When `APEX_DATA_LAN_IP` is set, public DNS resolves the apex-data host
+/// to a non-routable IP on the LAN, so dial the homelab Traefik IP directly
+/// (plain ws) and hand the socket to `client_async` with the original
+/// Host-bearing request — keeping Traefik ingress routing intact. Without this
+/// the DOM socket silently fails to connect from inside the LAN.
+async fn connect_lan_aware(url: &str)
+    -> Result<DomWsStream, Box<dyn std::error::Error + Send + Sync>>
+{
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+    use tokio_tungstenite::{client_async, connect_async, MaybeTlsStream};
+    use tokio::net::TcpStream;
+    use crate::data::feeds::apex_data::config;
+
+    let req = url.into_client_request()?;
+    let lan = match (config::apex_lan_ip(), config::apex_host_port()) {
+        (Some(ip), Some((_h, port))) => Some((ip, port)),
+        _ => None,
+    };
+    if let Some((ip, port)) = lan {
+        tracing::info!(target: "dom_feed", "lan_override dial {ip}:{port}");
+        let stream = TcpStream::connect((ip.as_str(), port)).await?;
+        let (ws, _) = client_async(req, MaybeTlsStream::Plain(stream)).await?;
+        Ok(ws)
+    } else {
+        let (ws, _) = connect_async(req).await?;
+        Ok(ws)
+    }
 }
 
 /// Spawn the feed thread. Idempotent — safe to call once at startup.
@@ -101,11 +135,10 @@ async fn run_one(
     reconnect: &AtomicBool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use futures_util::StreamExt;
-    use tokio_tungstenite::connect_async;
 
     let url = dom_ws_url(symbol);
     tracing::info!(target: "dom_feed", "connecting {url}");
-    let (ws, _) = connect_async(&url).await?;
+    let ws = connect_lan_aware(&url).await?;
     let (_w, mut read) = ws.split();
 
     // 250ms tick lets us notice a symbol switch promptly even on a quiet book.
@@ -160,7 +193,9 @@ fn parse_dom(v: &serde_json::Value) -> Vec<DomLevel> {
 
     for lvl in read_side("bids") {
         let p = lvl.get("price").and_then(|x| x.as_f64()).unwrap_or(0.0);
-        let s = lvl.get("size").and_then(|x| x.as_u64()).unwrap_or(0) as u32;
+        // Sizes arrive as JSON floats (e.g. `12.0`); as_u64() returns None on
+        // those, so read as f64 and round.
+        let s = lvl.get("size").and_then(|x| x.as_f64()).unwrap_or(0.0).round() as u32;
         let e = book.entry((p * 1000.0) as i64).or_insert(DomLevel {
             price: p as f32, bid_size: 0, ask_size: 0, volume: 0, delta: 0,
         });
@@ -168,7 +203,9 @@ fn parse_dom(v: &serde_json::Value) -> Vec<DomLevel> {
     }
     for lvl in read_side("asks") {
         let p = lvl.get("price").and_then(|x| x.as_f64()).unwrap_or(0.0);
-        let s = lvl.get("size").and_then(|x| x.as_u64()).unwrap_or(0) as u32;
+        // Sizes arrive as JSON floats (e.g. `12.0`); as_u64() returns None on
+        // those, so read as f64 and round.
+        let s = lvl.get("size").and_then(|x| x.as_f64()).unwrap_or(0.0).round() as u32;
         let e = book.entry((p * 1000.0) as i64).or_insert(DomLevel {
             price: p as f32, bid_size: 0, ask_size: 0, volume: 0, delta: 0,
         });

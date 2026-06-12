@@ -1367,6 +1367,11 @@ fn render_chart_pane(
         egui::vec2(pane_rect.width(), pane_rect.height() - pane_top_offset),
     );
     if chart.dom.sidebar_open {
+        // Ensure the live DOM feed is pointed at this symbol whenever the panel
+        // is open (idempotent — no-op if unchanged). This is the reliable
+        // trigger: the on-symbol-load call can be missed on workspace restore,
+        // and the brief wants the /ws/dom socket open while the panel is shown.
+        crate::data::dom_feed::set_symbol(&chart.symbol);
         // Position: 0 = left edge, 1 = right edge. Fullscreen anchors to left
         // and consumes the full width regardless of position.
         let dom_left = if chart.dom.fullscreen || chart.dom.position == 0 {
@@ -1434,6 +1439,7 @@ fn render_chart_pane(
                 dom_dragging: &mut chart.dom.dragging,
                 dom_position: &mut chart.dom.position,
                 dom_fullscreen: &mut chart.dom.fullscreen,
+                is_live: dom_is_live,
             };
             // DomPaneAdapter does not read PaneContext::panes; we pass an
             // empty slice to avoid a second mutable borrow of `panes` while

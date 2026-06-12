@@ -75,6 +75,7 @@ pub(crate) fn draw(
     dom_armed: &mut bool, dom_col_mode: &mut u8,
     dom_dragging: &mut Option<(u32, f32)>, // (order_id, current_y) while dragging
     dom_position: &mut u8, dom_fullscreen: &mut bool,
+    is_live: bool,
     t: &Theme,
 ) {
     let painter = ui.painter_at(dom_rect);
@@ -245,17 +246,20 @@ pub(crate) fn draw(
         egui::Stroke::new(stroke_std(), tint(t, Tone::Border, alpha_strong())),
     );
 
-    // ── SIMULATED data badge ──────────────────────────────────────────────────
-    // The DOM ladder is populated from `generate_mock_levels` (fabricated data).
-    // Paint a visible "SIMULATED" badge centred on the header strip so a trader
-    // is never misled that this depth-of-market reflects a real live feed.
+    // ── LIVE / SIMULATED data badge ───────────────────────────────────────────
+    // When a live `/ws/dom` frame arrived recently (`is_live`), the ladder is
+    // real depth — show a green LIVE badge. Otherwise it's `generate_mock_levels`
+    // (fabricated) — show a warn SIMULATED badge so a trader is never misled.
     {
         let badge_font = egui::FontId::monospace(font_sm());
-        let badge_fg   = t.warn;
-        let badge_bg   = tint(t, Tone::Warn, 28);
+        let (badge_text, badge_fg, badge_bg) = if is_live {
+            ("LIVE", t.bull, tint(t, Tone::Bull, 28))
+        } else {
+            ("SIMULATED", t.warn, tint(t, Tone::Warn, 28))
+        };
         let badge_pad_x = gap_xs();
         let badge_pad_y = 2.0_f32;
-        let galley = painter.layout_no_wrap("SIMULATED".to_string(), badge_font, badge_fg);
+        let galley = painter.layout_no_wrap(badge_text.to_string(), badge_font, badge_fg);
         let bw = galley.size().x + badge_pad_x * 2.0;
         let bh = galley.size().y + badge_pad_y * 2.0;
         // Centred horizontally in the header, vertically centred in the header strip.
