@@ -337,20 +337,21 @@ fn normalize_underlying(sym: &str) -> String {
     }
 }
 
-/// Lightweight periodic REST re-seed of the chain cache. Unlike
+/// Lightweight periodic REST refresh of the chain cache. Unlike
 /// `fetch_chain_background`, this does NOT short-circuit on a cache hit — it
-/// always pulls a fresh full chain from REST and `seed_chain`s it (which
-/// replaces the cached rows with live bid/ask/IV/greeks). Used by the chain
-/// panel's ~6s refresh tick so quotes stay live between the (sparse) WS
-/// chaindelta frames. Non-blocking; silently no-ops on error so the last good
-/// cache stays shown.
+/// always pulls a fresh chain from REST and MERGES (upserts) it into the cache
+/// so live bid/ask/IV/greeks stay fresh between the (sparse) WS chaindelta
+/// frames. It must merge, not `seed_chain` (clear+replace): the forward-only
+/// dte_max query omits the 0DTE-backfill rows that `fetch_chain_background`
+/// seeds off-hours/weekends, so replacing would empty the 0DTE grid and leave
+/// the panel stuck on "Loading chain…". Non-blocking; no-ops on error.
 pub(crate) fn refresh_chain_rest(symbol: String) {
     std::thread::spawn(move || {
         use crate::apex_data::types::ChainQuery;
         let q = ChainQuery { dte_max: Some(14), strike_window_pct: Some(10.0), ..Default::default() };
         if let Ok(chain) = crate::apex_data::rest::get_chain_with(&symbol, &q) {
             if !chain.rows.is_empty() {
-                crate::apex_data::live_state::seed_chain(&symbol, &chain.rows);
+                crate::apex_data::live_state::merge_chain_delta(&symbol, &chain.rows);
                 crate::wake_native_ui();
             }
         }
