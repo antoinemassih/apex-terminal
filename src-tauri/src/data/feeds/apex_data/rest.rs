@@ -363,6 +363,7 @@ pub fn get_bars(class: AssetClass, symbol: &str, tf: &str, source: BarSource) ->
     // It's Polygon's default, but being explicit guards multi-day charts that
     // span a corporate action. Options are never adjusted.
     let adj = if matches!(class, AssetClass::Stock) { "&adjusted=true" } else { "" };
+    let symbol = AssetClass::url_symbol(symbol); // strip the F: futures tag
     match source {
         // `?source=last` is the documented default; keep it explicit now that we
         // append the adjusted flag (a bare `?adjusted=true` reads the same server-side).
@@ -381,12 +382,14 @@ pub fn get_replay(class: AssetClass, symbol: &str, tf: &str, from_ms: i64, to_ms
     if let Some(c) = cursor { q.push_str(&format!("&cursor={c}")); }
     if let Some(l) = limit  { q.push_str(&format!("&limit={l}")); }
     if matches!(source, BarSource::Mark) { q.push_str("&source=mark"); }
+    let symbol = AssetClass::url_symbol(symbol);
     get(&format!("/api/replay/{}/{}/{}?{q}", class.path(), symbol, tf))
 }
 
 // ── §5.2 snapshot / quote / price ──────────────────────────────────────────
 
 pub fn get_snapshot(class: AssetClass, symbol: &str) -> Result<Snapshot, ApiError> {
+    let symbol = AssetClass::url_symbol(symbol);
     get(&format!("/api/snap/{}/{}", class.path(), symbol))
 }
 
@@ -431,6 +434,7 @@ pub fn get_greeks(contract: &str) -> Result<GreeksRow, ApiError> {
 }
 
 pub fn get_indicators(class: AssetClass, symbol: &str, tf: &str) -> Result<IndicatorsResponse, ApiError> {
+    let symbol = AssetClass::url_symbol(symbol);
     get(&format!("/api/indicators/{}/{}/{}", class.path(), symbol, tf))
 }
 

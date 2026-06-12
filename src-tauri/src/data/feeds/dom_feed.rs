@@ -108,6 +108,8 @@ fn dom_ws_url(symbol: &str) -> String {
         .next()
         .filter(|s| !s.is_empty())
         .unwrap_or("wss://apex-data-dev.xllio.com");
+    // Strip the F: futures class tag → backend wants the bare root (F:ES → ES).
+    let symbol = symbol.strip_prefix("F:").unwrap_or(symbol);
     // rows is clamped 1..20 server-side; ask for the max.
     format!("{host}/ws/dom?symbol={symbol}&rows=20")
 }

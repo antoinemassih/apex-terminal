@@ -67,7 +67,9 @@ impl<'a> Widget for PaneSymbolBadge<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = gap_xs();
-            ui.label(RichText::new(self.symbol).monospace().size(font_lg()).strong().color(self.accent));
+            // Strip the `F:` futures class tag for display (F:ES → ES).
+            let disp_sym = self.symbol.strip_prefix("F:").unwrap_or(self.symbol);
+            ui.label(RichText::new(disp_sym).monospace().size(font_lg()).strong().color(self.accent));
             if let Some(ex) = self.exchange {
                 ui.label(
                     RichText::new(ex)

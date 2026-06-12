@@ -6600,6 +6600,7 @@ pub(crate) use super::io::fetch::{
     fetch_overlay_bars_background, fetch_gamma_from_feed, refresh_gamma_feeds,
     GammaSnapshot, fetch_corp_actions, ticker_detail_cached,
     options_analytics_cached, OptionsAnalytics, prev_session_change_cached,
+    daily_stats_cached,
 };
 
 

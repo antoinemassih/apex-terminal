@@ -934,10 +934,18 @@ if is_spawn || watchlist.open {
                                             .pin_state(pin_state)
                                             .show_star_on_hover(true)
                                             .alert_indicator(item_alert_triggered)
-                                            // RVOL has no real data source wired yet — the item
-                                            // seed is a neutral 1.0, which is misleading to show.
-                                            // Pass None so the column hides until real RVOL exists.
-                                            .rvol(None)
+                                            // Real RVOL = today's cumulative volume ÷ trailing
+                                            // average daily volume (from the cached daily-bars
+                                            // fetch). Both come from data ApexData already serves.
+                                            // None until the daily stats land or if there's no
+                                            // volume yet, so the column hides rather than faking.
+                                            .rvol({
+                                                let today_vol = crate::apex_data::live_state::get_snapshot(item_sym)
+                                                    .map(|s| s.day_volume).unwrap_or(0.0);
+                                                crate::chart_renderer::gpu::daily_stats_cached(item_sym)
+                                                    .filter(|d| d.avg_volume > 0.0 && today_vol > 0.0)
+                                                    .map(|d| (today_vol / d.avg_volume) as f32)
+                                            })
                                             .ext_change(ext_change)
                                             .columns(&watchlist.wl_columns)
                                             .extreme_move_tint(if item_prev_close > 0.0 { Some(item_avg_daily_range) } else { None })

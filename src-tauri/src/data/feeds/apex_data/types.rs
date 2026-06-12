@@ -19,12 +19,35 @@ fn de_i64_or_zero<'de, D: Deserializer<'de>>(d: D) -> Result<i64, D::Error> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum AssetClass { Stock, Option }
+pub enum AssetClass { Stock, Option, Future }
 
 impl AssetClass {
-    pub fn path(self) -> &'static str { match self { Self::Stock => "stocks", Self::Option => "options" } }
+    pub fn path(self) -> &'static str {
+        match self {
+            Self::Stock => "stocks",
+            Self::Option => "options",
+            Self::Future => "futures",
+        }
+    }
+    /// Classify from the canonical symbol string. Mirrors the existing `O:`
+    /// options convention: `O:` → option, `F:` → future (e.g. `F:ES`), else
+    /// stock. The `F:` tag is required because futures roots collide with
+    /// stocks (ES = E-mini *and* Eversource), so the class can't be inferred
+    /// from the bare root — it's stamped on at search-selection time.
     pub fn from_symbol(sym: &str) -> Self {
-        if sym.starts_with("O:") { Self::Option } else { Self::Stock }
+        if sym.starts_with("O:") {
+            Self::Option
+        } else if sym.starts_with("F:") {
+            Self::Future
+        } else {
+            Self::Stock
+        }
+    }
+    /// The bare symbol for REST/URL use — strips the `F:` class tag so the
+    /// backend receives the plain root (`F:ES` → `ES`). Options keep their
+    /// `O:` OCC prefix (the backend expects it).
+    pub fn url_symbol(sym: &str) -> &str {
+        sym.strip_prefix("F:").unwrap_or(sym)
     }
 }
 

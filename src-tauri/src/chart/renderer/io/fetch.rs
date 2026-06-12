@@ -769,7 +769,15 @@ pub(crate) fn fetch_search_background(query: String, source: String) {
         // ── Primary: ApexData symbol search (stock-capable) ──────────────
         if let Some(hits) = crate::apex_data::rest::search(&query) {
             for h in hits.into_iter().filter(|h| h.active).take(16) {
-                results.push((h.ticker, h.name));
+                // Stamp the `F:` class tag onto futures hits so selection carries
+                // the asset class downstream (ES the future vs ES the stock).
+                // Mirrors the `O:` options convention; stripped for display/URLs.
+                let ticker = if h.market == "futures" || h.kind == "FUT" {
+                    format!("F:{}", h.ticker)
+                } else {
+                    h.ticker
+                };
+                results.push((ticker, h.name));
             }
         }
 
@@ -878,51 +886,79 @@ pub(crate) fn options_analytics_cached(underlying: &str) -> Option<OptionsAnalyt
     cached
 }
 
-// ── Prior-session close-to-close change (cached, non-blocking) ─────────────
+// ── Daily-bar stats (cached, non-blocking): prev-session change + avg vol ──
 
-fn prev_session_change_cache()
-    -> &'static std::sync::Mutex<std::collections::HashMap<String, Option<f32>>> {
-    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, Option<f32>>>> = std::sync::OnceLock::new();
+/// Per-symbol stats derived from one daily-bars fetch. Cached for the session
+/// (daily history doesn't move intraday).
+#[derive(Clone, Copy)]
+pub(crate) struct DailyStats {
+    /// Last completed session's close-to-close % change.
+    pub prev_change_pct: f32,
+    /// Average daily volume over the trailing window (for RVOL).
+    pub avg_volume: f64,
+}
+
+fn daily_stats_cache()
+    -> &'static std::sync::Mutex<std::collections::HashMap<String, Option<DailyStats>>> {
+    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, Option<DailyStats>>>> = std::sync::OnceLock::new();
     C.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
-fn prev_session_change_inflight() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+fn daily_stats_inflight() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
     static I: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
     I.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
 }
 
-/// The last completed session's close-to-close % change for `symbol`
-/// (= (last daily close − prior daily close) / prior close × 100). Cached for
-/// the session — daily closes don't move intraday — and fetched in the
-/// background on first miss (returns `None` until it lands, then repaints).
-/// Used as the watchlist "Change %" when the regular market is closed / not
-/// open yet, so the column shows yesterday's move instead of 0.
-pub(crate) fn prev_session_change_cached(symbol: &str) -> Option<f32> {
+/// Trailing window for the average-volume (RVOL denominator).
+const RVOL_WINDOW: usize = 20;
+
+/// Daily stats for `symbol` (prev-session change + avg volume), from one daily-
+/// bars fetch. Cached for the session; fetched in the background on first miss
+/// (`None` until it lands, then repaints). Backs the watchlist's last-session
+/// Change % and real RVOL — both from data ApexData already serves, no new
+/// endpoint needed.
+pub(crate) fn daily_stats_cached(symbol: &str) -> Option<DailyStats> {
     let sym = symbol.to_uppercase();
-    if let Ok(c) = prev_session_change_cache().lock() {
+    if let Ok(c) = daily_stats_cache().lock() {
         if let Some(v) = c.get(&sym) { return *v; }
     }
     if !is_stock_symbol(&sym) { return None; }
     {
-        let mut inf = match prev_session_change_inflight().lock() { Ok(g) => g, Err(e) => e.into_inner() };
+        let mut inf = match daily_stats_inflight().lock() { Ok(g) => g, Err(e) => e.into_inner() };
         if inf.contains(&sym) { return None; }
         inf.insert(sym.clone());
     }
     let s2 = sym.clone();
     std::thread::spawn(move || {
-        let pct = crate::apex_data::rest::get_bars(
+        let stats = crate::apex_data::rest::get_bars(
             crate::apex_data::types::AssetClass::Stock, &s2, "1d", crate::apex_data::BarSource::Last,
         ).ok().and_then(|bars| {
             let closes: Vec<f32> = bars.iter().map(|b| b.close as f32).filter(|c| *c > 0.0).collect();
-            if closes.len() >= 2 {
-                let (c1, c0) = (closes[closes.len() - 1], closes[closes.len() - 2]);
-                if c0 > 0.0 { Some((c1 - c0) / c0 * 100.0) } else { None }
-            } else { None }
+            if closes.len() < 2 { return None; }
+            let (c1, c0) = (closes[closes.len() - 1], closes[closes.len() - 2]);
+            let prev_change_pct = if c0 > 0.0 { (c1 - c0) / c0 * 100.0 } else { 0.0 };
+            // Average volume over the trailing window, EXCLUDING the most recent
+            // bar (which may be today's still-building session) so the RVOL
+            // denominator is a clean baseline of completed days.
+            let vols: Vec<f64> = bars.iter().map(|b| b.volume as f64).filter(|v| *v > 0.0).collect();
+            let avg_volume = if vols.len() >= 2 {
+                let end = vols.len() - 1; // drop the last (possibly in-progress) day
+                let start = end.saturating_sub(RVOL_WINDOW);
+                let win = &vols[start..end];
+                if win.is_empty() { 0.0 } else { win.iter().sum::<f64>() / win.len() as f64 }
+            } else { 0.0 };
+            Some(DailyStats { prev_change_pct, avg_volume })
         });
-        if let Ok(mut c) = prev_session_change_cache().lock() { c.insert(s2.clone(), pct); }
-        if let Ok(mut inf) = prev_session_change_inflight().lock() { inf.remove(&s2); }
+        if let Ok(mut c) = daily_stats_cache().lock() { c.insert(s2.clone(), stats); }
+        if let Ok(mut inf) = daily_stats_inflight().lock() { inf.remove(&s2); }
         crate::wake_native_ui();
     });
     None
+}
+
+/// Last completed session's close-to-close % change (thin wrapper over
+/// `daily_stats_cached`).
+pub(crate) fn prev_session_change_cached(symbol: &str) -> Option<f32> {
+    daily_stats_cached(symbol).map(|s| s.prev_change_pct)
 }
 
 // ── Ticker reference detail (cached, non-blocking) ─────────────────────────
