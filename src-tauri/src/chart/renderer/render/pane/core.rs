@@ -11529,8 +11529,19 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                     // are "active" — today during/after pre-market on a weekday, else
                     // the previous trading day (Sat→Fri, Sun→Fri, weekday<4amET→prev).
                     let zero_dte_str = active_zero_dte_date().format("%Y-%m-%d").to_string();
-                    let cached_today: Vec<_> = cached.iter()
+                    let mut cached_today: Vec<_> = cached.iter()
                         .filter(|r| r.expiry == zero_dte_str).cloned().collect();
+                    // The computed 0DTE date can have no contracts — overnight /
+                    // post-expiry the prior session's expiry is gone from the
+                    // chain. Fall back to the nearest available expiry so the
+                    // front grid isn't stuck empty on "Loading chain…".
+                    if cached_today.is_empty() {
+                        if let Some(nearest) = cached.iter().map(|r| r.expiry.clone())
+                            .filter(|e| !e.is_empty()).min() {
+                            cached_today = cached.iter()
+                                .filter(|r| r.expiry == nearest).cloned().collect();
+                        }
+                    }
                     let (c0, p0, spot0) = apex_data_chain_to_tuples(&cached_today, 0, ns, hint);
                     let (cf, pf, _)     = apex_data_chain_to_tuples(&cached, far_dte, ns, hint);
                     let to_rows = |tuples: Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)>| -> Vec<OptionRow> {
