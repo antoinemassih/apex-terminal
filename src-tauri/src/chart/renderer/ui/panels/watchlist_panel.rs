@@ -871,9 +871,15 @@ if is_spawn || watchlist.open {
                                             crate::chart_renderer::gpu::prev_session_change_cached(item_sym)
                                                 .unwrap_or(live_chg)
                                         };
-                                        // Ext-Hours column: the live pre/post-market move, only
-                                        // while in extended hours and we have a baseline.
-                                        let ext_change = if mkt_ext && item_prev_close > 0.0 {
+                                        // Ext-Hours column: the live pre/post-market move vs the
+                                        // prior close. Shown whenever we're NOT in the regular
+                                        // session and there's an actual move — robust to a missing
+                                        // market_status (mkt_ext flags can be unset) and naturally
+                                        // hides when fully closed (no trades → live_chg ~ 0).
+                                        let _ = mkt_ext;
+                                        let ext_change = if !mkt_rth && item_prev_close > 0.0
+                                            && live_chg.abs() > 0.01
+                                        {
                                             Some(live_chg)
                                         } else { None };
                                         let price_str = if item_price > 0.0 { format!("{:.2}", item_price) } else { "---".into() };

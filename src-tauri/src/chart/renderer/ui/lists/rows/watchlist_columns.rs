@@ -104,7 +104,7 @@ pub(crate) fn paint_change_chip(
     let txt = format!("{:+.2}%", pct);
     let font = egui::FontId::proportional(font_size);
     let galley = painter.layout_no_wrap(txt, font.clone(), base);
-    let pad = egui::vec2(5.0, 2.0);
+    let pad = egui::vec2(3.0, 2.0);
     let chip = Rect::from_min_size(
         egui::pos2(rect.left(), rect.center().y - galley.size().y * 0.5 - pad.y),
         galley.size() + pad * 2.0,
@@ -245,9 +245,9 @@ fn has_atr(d: &WatchlistItemData) -> bool { d.atr.map_or(false, |v| v > 0.0) }
 fn has_market_cap(d: &WatchlistItemData) -> bool { d.market_cap.map_or(false, |v| v > 0.0) }
 
 pub static BUILTIN: &[WatchlistColumnSpec] = &[
-    WatchlistColumnSpec { id: WatchlistColumnId::ChangePct,   label: "Change %",   default_width: 70.0, applicable: always,         render: render_change_pct },
+    WatchlistColumnSpec { id: WatchlistColumnId::ChangePct,   label: "Change %",   default_width: 50.0, applicable: always,         render: render_change_pct },
     WatchlistColumnSpec { id: WatchlistColumnId::Sparkline,   label: "Sparkline",  default_width: 38.0, applicable: has_spark,      render: render_sparkline },
-    WatchlistColumnSpec { id: WatchlistColumnId::ExtHours,    label: "Ext Hours",  default_width: 58.0, applicable: has_ext_hours,  render: render_ext_hours },
+    WatchlistColumnSpec { id: WatchlistColumnId::ExtHours,    label: "Ext Hours",  default_width: 50.0, applicable: has_ext_hours,  render: render_ext_hours },
     WatchlistColumnSpec { id: WatchlistColumnId::RvolBadge,   label: "RVOL",       default_width: 26.0, applicable: has_rvol,       render: render_rvol_badge },
     WatchlistColumnSpec { id: WatchlistColumnId::DayRange,    label: "Day Range",  default_width: 30.0, applicable: has_day_range,  render: render_day_range },
     WatchlistColumnSpec { id: WatchlistColumnId::Week52Range, label: "52W Range",  default_width: 30.0, applicable: has_week52,     render: render_week52 },
@@ -262,9 +262,11 @@ pub fn spec(id: WatchlistColumnId) -> &'static WatchlistColumnSpec {
 
 /// Default order shown to new users.
 pub fn default_columns() -> Vec<WatchlistColumnId> {
+    // Change% chip + Ext-Hours only by default. (Day Range — whose little
+    // green/red position dot was the "weird dot" — and the others remain
+    // available via the column picker but don't crowd the narrow sidebar.)
     vec![
         WatchlistColumnId::ChangePct,
         WatchlistColumnId::ExtHours,
-        WatchlistColumnId::DayRange,
     ]
 }

@@ -571,10 +571,14 @@ impl<'a> WatchlistRow<'a> {
                     // Middle area starts after the indicator strip; for legacy
                     // visual parity with the old hand-tuned mid_x = 45% layout,
                     // start at max(ind_x + gap, rect.left()+45%).
-                    let middle_left = (rect.left() + rect.width() * 0.45).max(ind_x + 4.0);
-                    let middle_right = rect.right() - price_right_inset - 60.0;
+                    // Columns sit between the symbol/indicator strip and the price.
+                    // Start right after the indicators (small 0.32·w floor instead
+                    // of 0.45) and reserve less on the right, so Change% + Ext-Hours
+                    // both fit on a narrow sidebar instead of clipping.
+                    let middle_left = (rect.left() + rect.width() * 0.32).max(ind_x + 4.0);
+                    let middle_right = rect.right() - price_right_inset - 40.0;
                     let mut x = middle_left;
-                    let gap = 6.0;
+                    let gap = 5.0;
                     for cid in col_buf[..col_len].iter().copied() {
                         let s = col_spec(cid);
                         if !(s.applicable)(&item_data) { continue; }
