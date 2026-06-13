@@ -287,6 +287,7 @@ const LIB_SECTIONS: &[LibSection] = &[
     LibSection { title: "Volume & Volatility", items: &[
         LibItem::Ind(IndicatorType::VWAP),
         LibItem::Ind(IndicatorType::ATR),
+        LibItem::Ind(IndicatorType::OBV),
         LibItem::Bool(Tg::VolumeBars),
         LibItem::Bool(Tg::DeltaVolume),
         LibItem::Bool(Tg::Rvol),
@@ -329,6 +330,7 @@ fn is_single_instance(k: IndicatorType) -> bool {
             | IndicatorType::Supertrend
             | IndicatorType::ADX
             | IndicatorType::ATR
+            | IndicatorType::OBV
     )
 }
 
@@ -352,6 +354,7 @@ fn type_long_name(k: IndicatorType) -> &'static str {
         IndicatorType::CCI => "Commodity Channel Index",
         IndicatorType::WilliamsR => "Williams %R",
         IndicatorType::ATR => "Average True Range",
+        IndicatorType::OBV => "On-Balance Volume",
     }
 }
 

@@ -17,6 +17,17 @@ fn de_i64_or_zero<'de, D: Deserializer<'de>>(d: D) -> Result<i64, D::Error> {
     Ok(Option::<i64>::deserialize(d)?.unwrap_or(0))
 }
 
+/// `f32` variant — `null`/missing → 0.0.
+fn de_f32_or_zero<'de, D: Deserializer<'de>>(d: D) -> Result<f32, D::Error> {
+    Ok(Option::<f32>::deserialize(d)?.unwrap_or(0.0))
+}
+
+/// `u64` that tolerates a JSON *float* (Polygon sends volume as `34922239.0`)
+/// and `null`. Parses as f64 first, clamps negatives to 0, then casts.
+fn de_u64_or_zero<'de, D: Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
+    Ok(Option::<f64>::deserialize(d)?.map(|v| v.max(0.0) as u64).unwrap_or(0))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AssetClass { Stock, Option, Future }
@@ -996,10 +1007,10 @@ impl MoverKind {
 /// the projector enriches with RVOL + market-cap when available.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct MoverRow {
-    pub symbol: String,
-    #[serde(default)] pub last: f64,
-    #[serde(default)] pub change_pct: f32,
-    #[serde(default)] pub volume: u64,
+    #[serde(default, alias = "ticker")] pub symbol: String,
+    #[serde(default, deserialize_with = "de_f64_or_zero", alias = "price")] pub last: f64,
+    #[serde(default, deserialize_with = "de_f32_or_zero")] pub change_pct: f32,
+    #[serde(default, deserialize_with = "de_u64_or_zero")] pub volume: u64,
     #[serde(default)] pub rvol: Option<f32>,
     #[serde(default)] pub market_cap: Option<f64>,
     #[serde(default)] pub gap_pct: Option<f32>,
@@ -1011,6 +1022,43 @@ pub struct MoversReading {
     #[serde(default)] pub kind: String,
     #[serde(default)] pub rows: Vec<MoverRow>,
     #[serde(default)] pub updated_at_ms: i64,
+}
+
+/// Unified `GET /api/stocks/movers` response — all five buckets in one payload
+/// (each `null` when the projector has no rows, e.g. off-session). This is the
+/// shape the deployed endpoint actually returns; the per-`:kind` path form 404s,
+/// so we read this once and fan it out into the per-kind cache.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct MoversAll {
+    #[serde(default)] pub gainers: Option<Vec<MoverRow>>,
+    #[serde(default)] pub losers: Option<Vec<MoverRow>>,
+    #[serde(default)] pub active: Option<Vec<MoverRow>>,
+    #[serde(default)] pub rvol_leaders: Option<Vec<MoverRow>>,
+    #[serde(default)] pub gappers: Option<Vec<MoverRow>>,
+    #[serde(default)] pub updated_at_ms: i64,
+}
+
+impl MoversAll {
+    /// Rows for one bucket (empty when the bucket is `null`).
+    pub fn rows_for(&self, kind: MoverKind) -> Vec<MoverRow> {
+        let b = match kind {
+            MoverKind::Gainers => &self.gainers,
+            MoverKind::Losers => &self.losers,
+            MoverKind::Active => &self.active,
+            MoverKind::RvolLeaders => &self.rvol_leaders,
+            MoverKind::Gappers => &self.gappers,
+        };
+        b.clone().unwrap_or_default()
+    }
+
+    /// Build a per-kind `MoversReading` for the cache.
+    pub fn to_reading(&self, kind: MoverKind) -> MoversReading {
+        MoversReading {
+            kind: kind.as_str().to_string(),
+            rows: self.rows_for(kind),
+            updated_at_ms: self.updated_at_ms,
+        }
+    }
 }
 
 /// Halt kind for `Frame::Halt`. Matches the projector's classification:

@@ -177,15 +177,25 @@ fn gamma_feed_supports(symbol: &str) -> bool {
     set.contains(&symbol.to_uppercase())
 }
 
-fn gamma_cache() -> &'static std::sync::Mutex<std::collections::HashMap<String, (GammaSnapshot, std::time::Instant)>> {
-    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (GammaSnapshot, std::time::Instant)>>> = std::sync::OnceLock::new();
-    C.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+/// Generates the boilerplate `*_cache()` (string-keyed value map) and
+/// `*_inflight()` (string set) static accessors shared by every non-blocking
+/// REST cache below. The per-cache semantics (TTL, eligibility, fetch, stale
+/// handling) stay in each `*_cached` fn — only the identical static plumbing is
+/// deduplicated here, so behaviour is unchanged.
+macro_rules! str_keyed_cache {
+    ($cache_fn:ident, $inflight_fn:ident, $val:ty) => {
+        fn $cache_fn() -> &'static std::sync::Mutex<std::collections::HashMap<String, $val>> {
+            static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, $val>>> = std::sync::OnceLock::new();
+            C.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+        }
+        fn $inflight_fn() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+            static I: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
+            I.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
+        }
+    };
 }
 
-fn gamma_inflight() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
-    static I: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
-    I.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
-}
+str_keyed_cache!(gamma_cache, gamma_inflight, (GammaSnapshot, std::time::Instant));
 
 /// How stale a cached gamma bundle may get before a refetch is spawned.
 const GAMMA_REFRESH_SECS: u64 = 20;
@@ -833,15 +843,7 @@ impl OptionsAnalytics {
     }
 }
 
-fn opt_analytics_cache()
-    -> &'static std::sync::Mutex<std::collections::HashMap<String, (OptionsAnalytics, std::time::Instant)>> {
-    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (OptionsAnalytics, std::time::Instant)>>> = std::sync::OnceLock::new();
-    C.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
-}
-fn opt_analytics_inflight() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
-    static I: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
-    I.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
-}
+str_keyed_cache!(opt_analytics_cache, opt_analytics_inflight, (OptionsAnalytics, std::time::Instant));
 
 const OPT_ANALYTICS_TTL_SECS: u64 = 30;
 
@@ -898,20 +900,12 @@ pub(crate) struct DailyStats {
     pub avg_volume: f64,
 }
 
-fn daily_stats_cache()
-    -> &'static std::sync::Mutex<std::collections::HashMap<String, (Option<DailyStats>, std::time::Instant)>> {
-    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (Option<DailyStats>, std::time::Instant)>>> = std::sync::OnceLock::new();
-    C.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
-}
+str_keyed_cache!(daily_stats_cache, daily_stats_inflight, (Option<DailyStats>, std::time::Instant));
 /// How long a FAILED daily-stats fetch is remembered before retrying. Success
 /// is cached for the whole session (daily history doesn't move intraday); a
 /// failure (e.g. the daily-bars endpoint timed out — it's slow/large) must NOT
 /// stick forever or the Change % is wedged at 0.
 const DAILY_STATS_RETRY_SECS: u64 = 30;
-fn daily_stats_inflight() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
-    static I: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
-    I.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
-}
 
 /// Trailing window for the average-volume (RVOL denominator).
 const RVOL_WINDOW: usize = 20;
@@ -977,15 +971,7 @@ pub(crate) fn prev_session_change_cached(symbol: &str) -> Option<f32> {
 
 // ── Futures last price (TTL-cached) ────────────────────────────────────────
 
-fn futures_price_cache()
-    -> &'static std::sync::Mutex<std::collections::HashMap<String, (Option<f32>, std::time::Instant)>> {
-    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (Option<f32>, std::time::Instant)>>> = std::sync::OnceLock::new();
-    C.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
-}
-fn futures_price_inflight() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
-    static I: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
-    I.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
-}
+str_keyed_cache!(futures_price_cache, futures_price_inflight, (Option<f32>, std::time::Instant));
 const FUTURES_PRICE_TTL_SECS: u64 = 3;
 
 /// Last price for a futures symbol (`F:ES`) via `/api/price/F:ES` (IB, last).
@@ -1023,15 +1009,7 @@ pub(crate) fn futures_price_cached(symbol: &str) -> Option<f32> {
 
 // ── Volume-at-price (VAP) for real Volume Profile (TTL-cached) ─────────────
 
-fn vap_cache()
-    -> &'static std::sync::Mutex<std::collections::HashMap<String, (Option<crate::apex_data::rest::VapResponse>, std::time::Instant)>> {
-    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (Option<crate::apex_data::rest::VapResponse>, std::time::Instant)>>> = std::sync::OnceLock::new();
-    C.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
-}
-fn vap_inflight() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
-    static I: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
-    I.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
-}
+str_keyed_cache!(vap_cache, vap_inflight, (Option<crate::apex_data::rest::VapResponse>, std::time::Instant));
 const VAP_TTL_SECS: u64 = 120;
 
 /// Real volume-at-price for the most-recent session, `/api/stocks/vap`.
@@ -1070,15 +1048,7 @@ pub(crate) fn vap_cached(symbol: &str) -> Option<crate::apex_data::rest::VapResp
 
 // ── RVOL (server endpoint, TTL-cached) ─────────────────────────────────────
 
-fn rvol_cache()
-    -> &'static std::sync::Mutex<std::collections::HashMap<String, (Option<f32>, std::time::Instant)>> {
-    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (Option<f32>, std::time::Instant)>>> = std::sync::OnceLock::new();
-    C.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
-}
-fn rvol_inflight() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
-    static I: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
-    I.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
-}
+str_keyed_cache!(rvol_cache, rvol_inflight, (Option<f32>, std::time::Instant));
 const RVOL_TTL_SECS: u64 = 90;
 
 /// Relative volume for `symbol` from `/api/stocks/rvol` (server-computed:
@@ -1116,15 +1086,7 @@ pub(crate) fn rvol_cached(symbol: &str) -> Option<f32> {
 
 // ── Ticker reference detail (cached, non-blocking) ─────────────────────────
 
-fn ticker_detail_cache()
-    -> &'static std::sync::Mutex<std::collections::HashMap<String, Option<crate::apex_data::rest::TickerDetail>>> {
-    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, Option<crate::apex_data::rest::TickerDetail>>>> = std::sync::OnceLock::new();
-    C.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
-}
-fn ticker_detail_inflight() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
-    static I: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
-    I.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
-}
+str_keyed_cache!(ticker_detail_cache, ticker_detail_inflight, Option<crate::apex_data::rest::TickerDetail>);
 
 /// Return cached ApexData `/api/ticker/{SYM}` detail for `symbol`, spawning a
 /// one-shot background fetch on first miss. Non-blocking — returns `None` until

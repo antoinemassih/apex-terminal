@@ -819,11 +819,18 @@ pub fn get_breadth(index: &str) -> Option<BreadthReading> {
     get(&format!("/api/stocks/breadth/{idx}")).ok()
 }
 
-/// `GET /api/stocks/movers/:kind` — Wave 10 projector. Distinct from the
-/// legacy `/api/stocks/movers?direction=` endpoint which only supports
-/// gainers/losers; this one covers gainers/losers/active/rvol_leaders/gappers.
+/// `GET /api/stocks/movers` — unified Wave 10 projector. Returns all five
+/// buckets (gainers/losers/active/rvol_leaders/gappers) in one payload. This
+/// is the form the deployed router actually serves; the per-`:kind` path form
+/// (`/api/stocks/movers/gainers`) currently 404s.
+pub fn get_all_movers() -> Option<MoversAll> {
+    get("/api/stocks/movers").ok()
+}
+
+/// Per-kind view, served from the unified endpoint above (the `:kind` path
+/// route 404s on the live deployment). Kept for any direct callers.
 pub fn get_movers(kind: MoverKind) -> Option<MoversReading> {
-    get(&format!("/api/stocks/movers/{}", kind.as_str())).ok()
+    get_all_movers().map(|all| all.to_reading(kind))
 }
 
 // ── Wave 10 projector REST endpoints ─────────────────────────────────────

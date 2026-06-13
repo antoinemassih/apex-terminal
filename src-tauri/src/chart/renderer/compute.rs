@@ -87,6 +87,23 @@ pub fn compute_tema(closes: &[f32], period: usize) -> Vec<f32> {
         .collect()
 }
 
+/// On-Balance Volume — running sum of signed volume: add the bar's volume when
+/// the close rises, subtract it when the close falls, hold flat on no change.
+/// The absolute level is arbitrary (it's a cumulative momentum-of-flow line),
+/// so the oscillator pane auto-ranges it.
+pub fn compute_obv(closes: &[f32], volumes: &[f32]) -> Vec<f32> {
+    let n = closes.len();
+    let mut out = vec![0.0_f32; n];
+    let mut acc = 0.0_f32;
+    for i in 1..n {
+        let v = volumes.get(i).copied().unwrap_or(0.0);
+        if closes[i] > closes[i - 1] { acc += v; }
+        else if closes[i] < closes[i - 1] { acc -= v; }
+        out[i] = acc;
+    }
+    out
+}
+
 // ─── Volatility / Trend Overlays ─────────────────────────────────────────────
 
 pub fn compute_atr(highs: &[f32], lows: &[f32], closes: &[f32], period: usize) -> Vec<f32> {

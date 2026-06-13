@@ -793,7 +793,7 @@ use super::ui::style::{
 };
 use super::ui::style as style;
 use super::ui::foundation::text_style::TextStyle;
-use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner, compute_adx, compute_cci, compute_williams_r};
+use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner, compute_adx, compute_cci, compute_williams_r, compute_obv};
 
 // compute_sma, compute_ema — now in compute.rs
 
@@ -1212,7 +1212,7 @@ pub(crate) const ALL_LAYOUTS: &[Layout] = &[
 // ─── Indicators ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum IndicatorType { SMA, EMA, WMA, DEMA, TEMA, VWAP, BollingerBands, Ichimoku, ParabolicSAR, Supertrend, KeltnerChannels, RSI, MACD, Stochastic, ADX, CCI, WilliamsR, ATR }
+pub(crate) enum IndicatorType { SMA, EMA, WMA, DEMA, TEMA, VWAP, BollingerBands, Ichimoku, ParabolicSAR, Supertrend, KeltnerChannels, RSI, MACD, Stochastic, ADX, CCI, WilliamsR, ATR, OBV }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum IndicatorCategory { Overlay, Oscillator }
@@ -1227,10 +1227,10 @@ impl IndicatorType {
             Self::KeltnerChannels => "KC",
             Self::RSI => "RSI", Self::MACD => "MACD", Self::Stochastic => "STOCH",
             Self::ADX => "ADX", Self::CCI => "CCI", Self::WilliamsR => "%R",
-            Self::ATR => "ATR",
+            Self::ATR => "ATR", Self::OBV => "OBV",
         }
     }
-    pub(crate) fn all() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::BollingerBands, Self::Ichimoku, Self::ParabolicSAR, Self::Supertrend, Self::KeltnerChannels, Self::RSI, Self::MACD, Self::Stochastic, Self::ADX, Self::CCI, Self::WilliamsR, Self::ATR] }
+    pub(crate) fn all() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::BollingerBands, Self::Ichimoku, Self::ParabolicSAR, Self::Supertrend, Self::KeltnerChannels, Self::RSI, Self::MACD, Self::Stochastic, Self::ADX, Self::CCI, Self::WilliamsR, Self::ATR, Self::OBV] }
     pub(crate) fn default_period(self) -> usize {
         match self {
             Self::SMA | Self::EMA | Self::WMA | Self::DEMA | Self::TEMA => 20,
@@ -1238,10 +1238,11 @@ impl IndicatorType {
             Self::MACD => 12, Self::VWAP => 1,
             Self::BollingerBands | Self::KeltnerChannels => 20,
             Self::Ichimoku => 9, Self::ParabolicSAR => 1, Self::Supertrend => 10,
+            Self::OBV => 1, // cumulative — no period
         }
     }
     pub(crate) fn category(self) -> IndicatorCategory {
-        match self { Self::RSI | Self::MACD | Self::Stochastic | Self::ADX | Self::CCI | Self::WilliamsR | Self::ATR => IndicatorCategory::Oscillator, _ => IndicatorCategory::Overlay }
+        match self { Self::RSI | Self::MACD | Self::Stochastic | Self::ADX | Self::CCI | Self::WilliamsR | Self::ATR | Self::OBV => IndicatorCategory::Oscillator, _ => IndicatorCategory::Overlay }
     }
 
     fn compute(self, closes: &[f32], period: usize) -> Vec<f32> {
@@ -1256,7 +1257,7 @@ impl IndicatorType {
             Self::RSI => compute_rsi(closes, period),
             Self::MACD => compute_ema(closes, period),
             Self::Stochastic => vec![f32::NAN; closes.len()],
-            Self::ADX | Self::CCI | Self::WilliamsR | Self::ATR => vec![f32::NAN; closes.len()],
+            Self::ADX | Self::CCI | Self::WilliamsR | Self::ATR | Self::OBV => vec![f32::NAN; closes.len()], // need OHLCV — computed in recompute_indicators
         }
     }
 }
@@ -1587,13 +1588,15 @@ pub(crate) fn bar_to_time(bar: f32, timestamps: &[i64]) -> i64 {
 /// open — the /ws feed only pushes on the next bar close, so without this the
 /// chart is blank until then. The live stream keeps it updated afterward.
 /// Base URL via `APEX_SIGNALS_HTTP` (default http://localhost:8100).
-pub(crate) fn fetch_apexsignals_drawings(symbol: String) {
+pub(crate) fn fetch_apexsignals_drawings(symbol: String, timeframe: String) {
     let txs: Vec<std::sync::mpsc::Sender<super::ChartCommand>> = crate::NATIVE_CHART_TXS
         .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
     if txs.is_empty() { return; }
     std::thread::spawn(move || {
         let base = std::env::var("APEX_SIGNALS_HTTP").unwrap_or_else(|_| "http://localhost:8100".to_string());
-        let url = format!("{base}/signals/drawings/{symbol}");
+        // Pass the chart's timeframe so the engine computes/serves that tf
+        // (and computes from history on cache-miss — closed-market paint).
+        let url = format!("{base}/signals/drawings/{symbol}?timeframe={timeframe}");
         let client = reqwest::blocking::Client::builder().user_agent("apex-native").build().unwrap_or_else(|_| reqwest::blocking::Client::new());
         if let Ok(resp) = client.get(&url).timeout(std::time::Duration::from_secs(3)).send() {
             if let Ok(json) = resp.json::<serde_json::Value>() {
@@ -1725,7 +1728,9 @@ pub(crate) fn render_order_entry_body(
             last:           last_price,
             ask:            last_price + spread,
             notional:       last_price * oe_qty_snapshot as f32,
-            buying_power:   0.0, // TODO: thread real buying_power from account data
+            buying_power:   crate::chart_renderer::trading::read_account_data()
+                                .map(|(s, _, _)| s.buying_power as f32)
+                                .unwrap_or(0.0),
             slippage_bps:   0.0,
         };
         let outcome = super::ui::inputs::form::MeridienOrderTicket::new()
@@ -2722,7 +2727,7 @@ impl Chart {
                 self.signal_drawings.clear();
                 self.last_signal_fetch = std::time::Instant::now();
                 fetch_signal_drawings(self.symbol.clone());
-                fetch_apexsignals_drawings(self.symbol.clone()); // initial auto-chart paint
+                fetch_apexsignals_drawings(self.symbol.clone(), self.timeframe.clone()); // initial auto-chart paint
 
                 // Reload cross-timeframe indicator sources for new symbol
                 for ind in &mut self.indicators {
@@ -3337,6 +3342,13 @@ impl Chart {
                 }
                 IndicatorType::ATR => {
                     ind.values = compute_atr(&chart_highs, &chart_lows, closes, ind.period);
+                    ind.values2 = vec![]; ind.values3 = vec![]; ind.values4 = vec![]; ind.values5 = vec![];
+                    ind.histogram = vec![];
+                }
+                IndicatorType::OBV => {
+                    // OBV needs aligned close+volume — always from the chart bars
+                    // (cross-TF volume isn't materialised here), so use chart_closes.
+                    ind.values = compute_obv(&chart_closes, &chart_volumes);
                     ind.values2 = vec![]; ind.values3 = vec![]; ind.values4 = vec![]; ind.values5 = vec![];
                     ind.histogram = vec![];
                 }

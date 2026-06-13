@@ -167,6 +167,32 @@ impl Position {
 // Shared account data — written by background worker, read by render thread
 pub(crate) static ACCOUNT_DATA: OnceLock<Mutex<Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>>> = OnceLock::new();
 
+// Session P&L samples — `(unix_ms, daily_pnl)`. Appended once per account-poll
+// cycle so the chart's P&L overlay can draw a real equity curve instead of a
+// single static number. Capped to a session's worth of samples.
+pub(crate) static PNL_HISTORY: OnceLock<Mutex<Vec<(i64, f32)>>> = OnceLock::new();
+
+/// Append a daily-P&L sample. Deduped: skipped if <1s since the last sample and
+/// the value is unchanged, so a fast poll loop doesn't bloat the buffer.
+pub(crate) fn push_pnl_sample(daily_pnl: f32) {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
+    let buf = PNL_HISTORY.get_or_init(|| Mutex::new(Vec::new()));
+    if let Ok(mut v) = buf.lock() {
+        if let Some(&(last_ms, last_v)) = v.last() {
+            if now_ms - last_ms < 1000 && (daily_pnl - last_v).abs() < f32::EPSILON { return; }
+        }
+        v.push((now_ms, daily_pnl));
+        let len = v.len();
+        if len > 6000 { v.drain(0..len - 6000); } // ~8h at 5s cadence
+    }
+}
+
+/// Snapshot of the accumulated session P&L samples for rendering.
+pub(crate) fn pnl_history() -> Vec<(i64, f32)> {
+    PNL_HISTORY.get().and_then(|m| m.lock().ok()).map(|v| v.clone()).unwrap_or_default()
+}
+
 /// Exponential backoff for the blocking poll loops.
 ///
 /// Wraps the canonical `connectivity::Backoff` so the two background poll
@@ -361,6 +387,7 @@ pub(crate) fn start_account_poller() {
                 if let Some(data) = ACCOUNT_DATA.get() {
                     if let Ok(mut d) = data.lock() {
                         let prev_orders = d.as_ref().map(|(_, _, o)| o.clone()).unwrap_or_default();
+                        push_pnl_sample(summary.daily_pnl as f32);
                         *d = Some((summary, positions, prev_orders));
                     }
                 }
