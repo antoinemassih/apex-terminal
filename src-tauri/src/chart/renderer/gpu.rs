@@ -1597,11 +1597,17 @@ pub(crate) fn fetch_apexsignals_drawings(symbol: String) {
         let client = reqwest::blocking::Client::builder().user_agent("apex-native").build().unwrap_or_else(|_| reqwest::blocking::Client::new());
         if let Ok(resp) = client.get(&url).timeout(std::time::Duration::from_secs(3)).send() {
             if let Ok(json) = resp.json::<serde_json::Value>() {
-                let drawings_json = json.get("drawings").map(|d| d.to_string()).unwrap_or_else(|| "[]".to_string());
-                let source = json.get("source").and_then(|s| s.as_str()).unwrap_or("trendlines").to_string();
-                let cmd = super::ChartCommand::AutoTrendlines { symbol, drawings_json, source };
-                for tx in &txs { let _ = tx.send(cmd.clone()); }
-                crate::wake_native_ui();
+                // One frame per source (trendlines / chart_patterns); apply each
+                // so per-source replacement stays intact. Empty sources omitted.
+                if let Some(frames) = json.get("frames").and_then(|f| f.as_array()) {
+                    for frame in frames {
+                        let drawings_json = frame.get("drawings").map(|d| d.to_string()).unwrap_or_else(|| "[]".to_string());
+                        let source = frame.get("source").and_then(|s| s.as_str()).unwrap_or("trendlines").to_string();
+                        let cmd = super::ChartCommand::AutoTrendlines { symbol: symbol.clone(), drawings_json, source };
+                        for tx in &txs { let _ = tx.send(cmd.clone()); }
+                    }
+                    crate::wake_native_ui();
+                }
             }
         }
     });
