@@ -1008,10 +1008,13 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             pill: 99.0, chip: 0.0,
         },
         strokes: Strokes {
-            hair:   0.3,  // sub-pixel hairline
-            thin:   0.5,  // stroke_hair = 0.5
-            medium: 0.8,  // mid-weight default
-            std:    1.0,  // stroke_thin = 1.0
+            // Direct tier mapping to StyleSettings stroke fields (field-exact with legacy).
+            // hair → stroke_hair, thin → stroke_thin, std → stroke_std,
+            // bold → stroke_bold, thick → stroke_thick.
+            hair:   0.5,  // stroke_hair = 0.5
+            thin:   1.0,  // stroke_thin = 1.0
+            medium: 0.8,  // mid-weight (unused by adapter)
+            std:    1.5,  // stroke_std = 1.5
             bold:   1.5,  // stroke_bold = 1.5
             thick:  2.0,  // stroke_thick = 2.0
             md:     1.5,  // legacy alias
@@ -1129,10 +1132,13 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             pill: 99.0, chip: 0.0,
         },
         strokes: Strokes {
-            hair:   0.3,  // sub-pixel hairline
-            thin:   0.4,  // stroke_hair = 0.4
-            medium: 0.7,  // scaled mid-weight for compact style
-            std:    0.6,  // stroke_thin = 0.6
+            // Direct tier mapping to StyleSettings stroke fields (field-exact with legacy).
+            // hair → stroke_hair, thin → stroke_thin, std → stroke_std,
+            // bold → stroke_bold, thick → stroke_thick.
+            hair:   0.4,  // stroke_hair = 0.4
+            thin:   0.6,  // stroke_thin = 0.6
+            medium: 0.7,  // scaled mid-weight (unused by adapter)
+            std:    1.0,  // stroke_std = 1.0
             bold:   1.0,  // stroke_bold = 1.0
             thick:  1.4,  // stroke_thick = 1.4
             md:     1.0,  // legacy alias

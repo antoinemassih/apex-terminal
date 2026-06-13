@@ -594,7 +594,7 @@ pub(crate) mod equivalence {
 
         for i in 0..3usize {
             let ss  = &systems[i];
-            let adapted  = style_system_to_style_settings(ss, i as u8);
+            let adapted  = style_system_to_style_settings(ss);
             let expected = style_defaults_pub(i as u8);
             let name     = &ss.meta.name;
 
