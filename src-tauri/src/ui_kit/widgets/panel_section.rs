@@ -66,12 +66,12 @@ use egui::{Color32, CursorIcon, FontId, Pos2, Rect, Response, RichText, Sense, S
 
 use super::super::icons::Icon;
 use super::tooltip::Tooltip;
-use super::theme::active_theme;
+use super::theme::{active_theme, get_ambient_recipes};
 use crate::ui_kit::tokens::{
     color_alpha, font_sm, font_xs, gap_lg, gap_md, gap_sm, gap_xs, stroke_thin,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
-use crate::ui_kit::sx::{palette_ct, Tone as SxTone};
+use crate::ui_kit::sx::{palette_ct, Sx, StyleState, Tone as SxTone};
 
 /// Shared semantic tone for the panel body primitives. Resolves to a theme
 /// color via [`Tone::color`]. Defined here so the seven panel-body widgets
@@ -272,6 +272,31 @@ impl<'a> PanelSection<'a> {
         // the section rect spans the full panel chrome width. The
         // inner_margin only applies to the title text and trailing
         // actions; the FILL + rules cover the full strip width.
+
+        // ── Recipe adoption (section.header) ────────────────────────────────
+        // Default Sx: solid fill from t.section_header_surface() — the
+        // historical value. When the ambient RecipeSet is empty, resolve
+        // returns the default Sx unchanged — zero visual change.
+        let recipes = get_ambient_recipes(ui.ctx());
+        let default_header_sx = Sx::new()
+            .bg_color(t.section_header_surface());
+        let header_sx = recipes.resolve("section.header", default_header_sx, t);
+        let header_delta = header_sx.resolved(StyleState::Normal);
+        // Resolve the fill Color32 from the Sx delta (falls back to section_header_surface).
+        let resolved_header_fill = header_delta.fill
+            .map(|fill| {
+                let pal = palette_ct(t);
+                match fill {
+                    crate::ui_kit::sx::Fill::Solid(c) => c,
+                    crate::ui_kit::sx::Fill::Shade(tone, shade) => pal.shade(tone, shade),
+                    crate::ui_kit::sx::Fill::Alpha(tone, a) => {
+                        let b = pal.base(tone);
+                        Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+                    }
+                }
+            })
+            .unwrap_or_else(|| t.section_header_surface());
+
         let prev_pad = ui.spacing().item_spacing;
         let header_resp = egui::Frame::NONE
             .inner_margin(egui::Margin {
@@ -280,7 +305,7 @@ impl<'a> PanelSection<'a> {
                 top: gap_xs() as i8,
                 bottom: gap_xs() as i8,
             })
-            .fill(t.section_header_surface())
+            .fill(resolved_header_fill)
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     // Leading caret (collapsible mode only). Matches the
@@ -946,6 +971,75 @@ mod tests {
 
         assert!(chevron_clicked_cell.get(), "chevron_clicked must be true on toggle frame");
         assert!(!*expanded.borrow(), "expanded should have flipped true → false");
+    }
+}
+
+// ── Recipe adoption tests ──────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod recipe_tests {
+    use crate::design_system::recipes::RecipeSet;
+    use crate::ui_kit::sx::{
+        recipe_spec::{ColorSpec, RecipeDelta, RecipeSpec, ToneRef},
+        style::{Sx, StyleState},
+    };
+    use crate::ui_kit::widgets::theme::{ComponentTheme, PortableTheme};
+
+    fn mock_theme() -> PortableTheme { PortableTheme::dark() }
+
+    /// S5 adoption proof — section.header: a non-empty RecipeSet overriding
+    /// the `section.header` key changes the resolved header fill vs the default.
+    #[test]
+    fn s5_section_header_recipe_overrides_fill_vs_default() {
+        let t = mock_theme();
+
+        let mut set = RecipeSet::new();
+        // Override: accent alpha tint (not the default section_header_surface).
+        set.insert("section.header", RecipeSpec {
+            base: RecipeDelta {
+                fill: Some(ColorSpec::Alpha { tone: ToneRef::Accent, alpha: 40 }),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+
+        // Default Sx: the historical section_header_surface fill.
+        // Use explicit trait dispatch — PortableTheme implements the default method
+        // through ComponentTheme.
+        let default_fill = ComponentTheme::section_header_surface(&t);
+        let default_sx = Sx::new().bg_color(default_fill);
+
+        let result = set.resolve("section.header", default_sx, &t);
+        let delta = result.resolved(StyleState::Normal);
+        assert!(delta.fill.is_some(), "recipe should set fill");
+
+        // Resolve and compare to default.
+        let pal = crate::ui_kit::sx::palette_ct(&t);
+        let resolved_color = match delta.fill.unwrap() {
+            crate::ui_kit::sx::style::Fill::Solid(c) => c,
+            crate::ui_kit::sx::style::Fill::Shade(tone, shade) => pal.shade(tone, shade),
+            crate::ui_kit::sx::style::Fill::Alpha(tone, a) => {
+                let b = pal.base(tone);
+                egui::Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+            }
+        };
+        assert_ne!(resolved_color, default_fill,
+            "recipe fill (Accent alpha40) must differ from default section_header_surface");
+
+        // Empty set: fill unchanged.
+        let empty = RecipeSet::new();
+        let result_empty = empty.resolve("section.header", default_sx, &t);
+        let delta_empty = result_empty.resolved(StyleState::Normal);
+        let empty_color = match delta_empty.fill.unwrap() {
+            crate::ui_kit::sx::style::Fill::Solid(c) => c,
+            crate::ui_kit::sx::style::Fill::Shade(tone, shade) => pal.shade(tone, shade),
+            crate::ui_kit::sx::style::Fill::Alpha(tone, a) => {
+                let b = pal.base(tone);
+                egui::Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+            }
+        };
+        assert_eq!(empty_color, default_fill,
+            "empty RecipeSet must leave section.header fill unchanged");
     }
 }
 

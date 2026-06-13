@@ -34,10 +34,10 @@ use egui::{
 };
 
 use super::motion;
-use super::theme::ComponentTheme;
+use super::theme::{ComponentTheme, get_ambient_recipes};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
-use crate::ui_kit::sx::{palette_ct, Tone};
+use crate::ui_kit::sx::{palette_ct, Sx, StyleState, Tone};
 use crate::ui_kit::icons::Icon;
 
 // ── Public types ───────────────────────────────────────────────────────────────
@@ -258,6 +258,42 @@ fn paint_tabs(
         reordered: None,
     };
 
+    // ── Recipe adoption ────────────────────────────────────────────────────────
+    // Resolve recipe keys once per tab-strip render. When the ambient RecipeSet
+    // is empty (the default), resolve returns the default Sx unchanged — zero
+    // visual change.
+    //
+    // Keys adopted:
+    //   `tab.line.active`  — active-tab underline indicator color + thickness.
+    //   `tab.pill`         — Segmented/Filled treatment corner radius + fill.
+    let recipes = get_ambient_recipes(ui.ctx());
+
+    // tab.line.active: default = 2px accent underline bar (the historical value).
+    let default_line_active_sx = Sx::new()
+        .bg(Tone::Accent)    // fill encodes underline color
+        .rounded(0.0);       // no rounding on the underline bar
+    let line_active_sx = recipes.resolve("tab.line.active", default_line_active_sx, theme);
+    let line_active_delta = line_active_sx.resolved(StyleState::Active);
+    // Resolve the underline color: falls back to palette accent.
+    let pal_ref = palette_ct(theme);
+    let underline_color = line_active_delta.fill
+        .map(|fill| match fill {
+            crate::ui_kit::sx::Fill::Solid(c) => c,
+            crate::ui_kit::sx::Fill::Shade(tone, shade) => pal_ref.shade(tone, shade),
+            crate::ui_kit::sx::Fill::Alpha(tone, a) => {
+                let b = pal_ref.base(tone);
+                egui::Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+            }
+        })
+        .unwrap_or_else(|| pal_ref.base(Tone::Accent));
+
+    // tab.pill: default = radius_sm (the historical Segmented/Filled value).
+    let default_pill_sx = Sx::new().rounded_sm();
+    let pill_sx = recipes.resolve("tab.pill", default_pill_sx, theme);
+    let pill_delta = pill_sx.resolved(StyleState::Normal);
+    let pill_radius = pill_delta.radius.unwrap_or_else(st::radius_sm);
+    let pill_cr = egui::CornerRadius::same(pill_radius.clamp(0.0, 255.0).round() as u8);
+
     let n = source.len();
     let snapshot = source.snapshot();
 
@@ -409,11 +445,15 @@ fn paint_tabs(
         .collect();
 
     // Treatment-level wrapper background (Segmented).
+    // Uses pill_cr (resolved from tab.pill recipe; default = radius_md for the wrapper).
     if matches!(treatment, TabTreatment::Segmented) && n > 0 {
         let total_rect = Rect::from_min_max(
             base_rects[0].min,
             base_rects[base_rects.len() - 1].max,
         );
+        // Wrapper uses radius_md (one size up from tabs inside); pill_cr is for
+        // the inner tabs. Use radius_md directly for the container so it wraps
+        // the rounded inner tabs — recipe overrides the *inner* tab radius.
         ui.painter().rect_filled(
             total_rect,
             CornerRadius::same(st::radius_md() as u8),
@@ -463,7 +503,7 @@ fn paint_tabs(
         if !is_dragging {
             paint_one_tab(
                 ui, theme, treatment, rect, item, is_active, hover_t, active_t,
-                &font_label, &font_icon, inner_gap, pad_x,
+                &font_label, &font_icon, inner_gap, pad_x, pill_cr,
             );
 
             // Close button hit-test.
@@ -527,7 +567,7 @@ fn paint_tabs(
             // Semi-transparent overlay
             paint_one_tab_painter(
                 &painter, theme, treatment, rect, item, true, 1.0, 1.0,
-                &font_label, &font_icon, inner_gap, pad_x, 70,
+                &font_label, &font_icon, inner_gap, pad_x, 70, pill_cr,
             );
         }
     }
@@ -732,7 +772,7 @@ fn paint_tabs(
                     Pos2::new(slide_cx + slide_half, y + 1.0),
                 ),
                 CornerRadius::ZERO,
-                palette_ct(theme).base(Tone::Accent),
+                underline_color,  // resolved from tab.line.active recipe (default: Accent)
             );
         }
     }
@@ -805,6 +845,7 @@ fn paint_one_tab(
     font_icon: &FontId,
     inner_gap: f32,
     pad_x: f32,
+    pill_cr: CornerRadius,
 ) {
     paint_one_tab_painter(
         &ui.painter().clone(),
@@ -820,6 +861,7 @@ fn paint_one_tab(
         inner_gap,
         pad_x,
         255,
+        pill_cr,
     );
 }
 
@@ -838,6 +880,7 @@ fn paint_one_tab_painter(
     inner_gap: f32,
     pad_x: f32,
     alpha_mul: u8,
+    pill_cr: CornerRadius,
 ) {
     let alpha = |c: Color32| -> Color32 {
         if alpha_mul == 255 { c } else {
@@ -860,31 +903,32 @@ fn paint_one_tab_painter(
             // intentionally left untouched for the strip's hairline baseline.
         }
         TabTreatment::Segmented => {
+            // pill_cr resolved from tab.pill recipe (default = radius_sm).
             if is_active {
                 let inset = rect.shrink2(Vec2::new(2.0, 2.0));
                 let bg = motion::fade_in(pal.base(Tone::Bg), active_t);
-                painter.rect_filled(inset, CornerRadius::same(st::radius_sm() as u8), alpha(bg));
+                painter.rect_filled(inset, pill_cr, alpha(bg));
             } else if hover_t > 0.01 {
                 let bg = motion::lerp_color(
                     Color32::TRANSPARENT,
                     st::color_alpha(pal.base(Tone::Bg), 100),
                     hover_t,
                 );
-                painter.rect_filled(rect.shrink2(Vec2::new(2.0, 2.0)),
-                    CornerRadius::same(st::radius_sm() as u8), alpha(bg));
+                painter.rect_filled(rect.shrink2(Vec2::new(2.0, 2.0)), pill_cr, alpha(bg));
             }
         }
         TabTreatment::Filled => {
+            // pill_cr resolved from tab.pill recipe (default = radius_sm).
             if is_active {
                 let bg = motion::fade_in(pal.base(Tone::Surface), active_t);
-                painter.rect_filled(rect, CornerRadius::same(st::radius_sm() as u8), alpha(bg));
+                painter.rect_filled(rect, pill_cr, alpha(bg));
             } else if hover_t > 0.01 {
                 let bg = motion::lerp_color(
                     Color32::TRANSPARENT,
                     st::color_alpha(pal.base(Tone::Surface), 120),
                     hover_t,
                 );
-                painter.rect_filled(rect, CornerRadius::same(st::radius_sm() as u8), alpha(bg));
+                painter.rect_filled(rect, pill_cr, alpha(bg));
             }
         }
         TabTreatment::Pane => {
@@ -1052,10 +1096,11 @@ fn paint_one_tab_painter(
     }
 
     // Outline for active in Filled treatment? Match shadcn: subtle border.
+    // pill_cr resolved from tab.pill recipe (default = radius_sm).
     if matches!(treatment, TabTreatment::Filled) && is_active {
         painter.rect_stroke(
             rect,
-            CornerRadius::same(st::radius_sm() as u8),
+            pill_cr,
             Stroke::new(st::stroke_std(), alpha(st::color_alpha(palette_ct(theme).base(Tone::Border), 180))),
             StrokeKind::Inside,
         );
@@ -1132,5 +1177,95 @@ mod tests {
         // Both halves are above the 0.5 paint threshold used in paint_tabs.
         assert!(prev_half > 0.5, "prev half must pass the paint threshold");
         assert!(cur_half  > 0.5, "cur  half must pass the paint threshold");
+    }
+
+    // ── S5 recipe adoption tests ───────────────────────────────────────────────
+
+    use crate::design_system::recipes::RecipeSet;
+    use crate::ui_kit::sx::{
+        recipe_spec::{ColorSpec, RadiusTier, RecipeDelta, RecipeSpec, ToneRef},
+        style::{Sx, StyleState},
+    };
+    use crate::ui_kit::widgets::theme::PortableTheme;
+
+    fn mock_theme() -> PortableTheme { PortableTheme::dark() }
+
+    /// S5 adoption proof — tab.line.active: a non-empty RecipeSet overriding
+    /// the `tab.line.active` key changes the resolved underline color vs default.
+    #[test]
+    fn s5_tab_line_active_recipe_overrides_color_vs_default() {
+        let t = mock_theme();
+        let mut set = RecipeSet::new();
+        // Override: bull tone fill instead of the default accent.
+        set.insert("tab.line.active", RecipeSpec {
+            base: RecipeDelta {
+                fill: Some(ColorSpec::Tone { tone: ToneRef::Bull, shade: None }),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+
+        // Default: Accent base fill (the historical underline color).
+        let default_sx = Sx::new().bg(crate::ui_kit::sx::Tone::Accent).rounded(0.0);
+        let result = set.resolve("tab.line.active", default_sx, &t);
+        let delta = result.resolved(StyleState::Active);
+        assert!(delta.fill.is_some(), "recipe should set fill");
+
+        // Resolve colors to compare.
+        let pal = crate::ui_kit::sx::palette_ct(&t);
+        let resolved = match delta.fill.unwrap() {
+            crate::ui_kit::sx::style::Fill::Solid(c) => c,
+            crate::ui_kit::sx::style::Fill::Shade(tone, shade) => pal.shade(tone, shade),
+            crate::ui_kit::sx::style::Fill::Alpha(tone, a) => {
+                let b = pal.base(tone); egui::Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+            }
+        };
+        let default_color = pal.base(crate::ui_kit::sx::Tone::Accent);
+        assert_ne!(resolved, default_color,
+            "recipe fill (Bull) must differ from default (Accent)");
+
+        // Empty set: color unchanged.
+        let empty = RecipeSet::new();
+        let result_empty = empty.resolve("tab.line.active", default_sx, &t);
+        let delta_empty = result_empty.resolved(StyleState::Active);
+        assert!(delta_empty.fill.is_some());
+        let empty_color = match delta_empty.fill.unwrap() {
+            crate::ui_kit::sx::style::Fill::Solid(c) => c,
+            crate::ui_kit::sx::style::Fill::Shade(tone, shade) => pal.shade(tone, shade),
+            crate::ui_kit::sx::style::Fill::Alpha(tone, a) => {
+                let b = pal.base(tone); egui::Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+            }
+        };
+        assert_eq!(empty_color, default_color,
+            "empty RecipeSet must leave tab.line.active color unchanged");
+    }
+
+    /// S5 adoption proof — tab.pill: a non-empty RecipeSet overriding
+    /// the `tab.pill` key changes the resolved pill radius vs default.
+    #[test]
+    fn s5_tab_pill_recipe_overrides_radius_vs_default() {
+        let t = mock_theme();
+        let mut set = RecipeSet::new();
+        // Override: pill radius (max rounding).
+        set.insert("tab.pill", RecipeSpec {
+            base: RecipeDelta {
+                radius: Some(RadiusTier::Pill),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+
+        let default_sx = Sx::new().rounded_sm(); // historical radius_sm
+        let result = set.resolve("tab.pill", default_sx, &t);
+        let delta = result.resolved(StyleState::Normal);
+        assert_eq!(delta.radius, Some(999.0),
+            "recipe should override radius to pill (999)");
+
+        // Empty set: radius unchanged.
+        let empty = RecipeSet::new();
+        let result_empty = empty.resolve("tab.pill", default_sx, &t);
+        let delta_empty = result_empty.resolved(StyleState::Normal);
+        assert_eq!(delta_empty.radius, default_sx.resolved(StyleState::Normal).radius,
+            "empty RecipeSet must leave tab.pill radius unchanged");
     }
 }

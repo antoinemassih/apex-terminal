@@ -11,10 +11,10 @@
 
 use egui::{Color32, CornerRadius, FontId, Pos2, Response, Sense, Stroke, StrokeKind, Ui, Vec2, Widget};
 
-use super::theme::ComponentTheme;
+use super::theme::{ComponentTheme, get_ambient_recipes};
 use super::tokens::Size;
 use crate::ui_kit::tokens as st;
-use crate::ui_kit::sx::Sx;
+use crate::ui_kit::sx::{Sx, StyleState};
 use crate::ui_kit::icons::Icon;
 
 /// Tone palette for Tag/Badge — each tone maps to one color in the
@@ -135,12 +135,57 @@ impl<'a> Tag<'a> {
 
         if ui.is_rect_visible(rect) {
             let painter = ui.painter_at(rect);
-            // DS#4: declare the chip box — outline (border-only) or soft fill.
-            let chip = Sx::new().rounded(h * 0.5);
-            if self.outline {
-                chip.border_color(tone_col, st::stroke_std()).paint_box_at(&painter, rect, theme);
+
+            // ── Recipe adoption (tag) ────────────────────────────────────────
+            // Default Sx encodes the historical pill shape + soft fill (or
+            // outline). When the ambient RecipeSet is empty (the default) resolve
+            // returns the default Sx unchanged — zero visual change.
+            let recipes = get_ambient_recipes(ui.ctx());
+            let default_fill_alpha: u8 = 32;
+            let default_chip_sx = if self.outline {
+                Sx::new().rounded(h * 0.5).border_color(tone_col, st::stroke_std())
             } else {
-                chip.bg_color(st::color_alpha(tone_col, 32)).paint_box_at(&painter, rect, theme);
+                Sx::new().rounded(h * 0.5).bg_color(st::color_alpha(tone_col, default_fill_alpha))
+            };
+            let chip_sx = recipes.resolve("tag", default_chip_sx, theme);
+            let chip_delta = chip_sx.resolved(StyleState::Normal);
+
+            // Extract resolved radius for the chip box (falls back to pill if unset).
+            let chip_cr = egui::CornerRadius::same(
+                chip_delta.radius.map(|r| r.clamp(0.0, 255.0).round() as u8)
+                    .unwrap_or_else(|| { (h * 0.5).clamp(0.0, 255.0).round() as u8 })
+            );
+
+            // Paint fill or border using the resolved Sx.
+            if let Some(fill) = chip_delta.fill {
+                let fill_color = match fill {
+                    crate::ui_kit::sx::Fill::Solid(c) => c,
+                    crate::ui_kit::sx::Fill::Shade(tone, shade) => {
+                        crate::ui_kit::sx::palette_ct(theme).shade(tone, shade)
+                    }
+                    crate::ui_kit::sx::Fill::Alpha(tone, a) => {
+                        let b = crate::ui_kit::sx::palette_ct(theme).base(tone);
+                        egui::Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+                    }
+                };
+                painter.rect_filled(rect, chip_cr, fill_color);
+            }
+            if let Some(border) = chip_delta.border {
+                let border_color = match border.color {
+                    crate::ui_kit::sx::Fill::Solid(c) => c,
+                    crate::ui_kit::sx::Fill::Shade(tone, shade) => {
+                        crate::ui_kit::sx::palette_ct(theme).shade(tone, shade)
+                    }
+                    crate::ui_kit::sx::Fill::Alpha(tone, a) => {
+                        let b = crate::ui_kit::sx::palette_ct(theme).base(tone);
+                        egui::Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+                    }
+                };
+                painter.rect_stroke(
+                    rect, chip_cr,
+                    egui::Stroke::new(border.width, border_color),
+                    egui::StrokeKind::Inside,
+                );
             }
 
             let cy = rect.center().y;
@@ -277,4 +322,103 @@ pub fn paint_badge(
         font,
         t.text(),
     );
+}
+
+// ── Tests ──────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use crate::design_system::recipes::RecipeSet;
+    use crate::ui_kit::sx::{
+        recipe_spec::{ColorSpec, RadiusTier, RecipeDelta, RecipeSpec, ToneRef},
+        style::{Sx, StyleState},
+    };
+    use crate::ui_kit::widgets::theme::{ComponentTheme, PortableTheme};
+
+    fn mock_theme() -> PortableTheme { PortableTheme::dark() }
+
+    /// S5 adoption proof — tag: a non-empty RecipeSet overriding the `tag` key
+    /// changes the resolved box vs the default.
+    #[test]
+    fn s5_tag_recipe_overrides_radius_vs_default() {
+        let mut set = RecipeSet::new();
+        // Override: square corners (no rounding).
+        set.insert("tag", RecipeSpec {
+            base: RecipeDelta {
+                radius: Some(RadiusTier::None),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        let t = mock_theme();
+        // Default: pill (h*0.5 ≈ 8.0 for a 16px tag).
+        let default_sx = Sx::new().rounded(8.0);
+        let result = set.resolve("tag", default_sx, &t);
+        let delta = result.resolved(StyleState::Normal);
+        assert_eq!(delta.radius, Some(0.0),
+            "recipe should override radius to 0 (square)");
+
+        // Empty set: radius unchanged.
+        let empty = RecipeSet::new();
+        let result_empty = empty.resolve("tag", default_sx, &t);
+        let delta_empty = result_empty.resolved(StyleState::Normal);
+        assert_eq!(delta_empty.radius, default_sx.resolved(StyleState::Normal).radius,
+            "empty RecipeSet must leave tag radius unchanged");
+    }
+
+    /// S5 adoption proof — tag fill: a non-empty RecipeSet overriding fill
+    /// changes the resolved fill vs the default.
+    #[test]
+    fn s5_tag_recipe_overrides_fill_vs_default() {
+        let mut set = RecipeSet::new();
+        // Override: solid accent base fill.
+        set.insert("tag", RecipeSpec {
+            base: RecipeDelta {
+                fill: Some(ColorSpec::Tone {
+                    tone: ToneRef::Accent,
+                    shade: None,
+                }),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        let t = mock_theme();
+        // Default: dim at alpha 32 (soft fill).
+        let dim_col = ComponentTheme::dim(&t);
+        let default_sx = Sx::new().rounded(8.0)
+            .bg_color(crate::ui_kit::tokens::color_alpha(dim_col, 32));
+        let result = set.resolve("tag", default_sx, &t);
+        let delta = result.resolved(StyleState::Normal);
+        assert!(delta.fill.is_some(), "recipe should set a fill");
+
+        // The resolved fill must differ from the default dim-at-32 fill.
+        let pal = crate::ui_kit::sx::palette_ct(&t);
+        let resolved_color = match delta.fill.unwrap() {
+            crate::ui_kit::sx::style::Fill::Solid(c) => c,
+            crate::ui_kit::sx::style::Fill::Shade(tone, shade) => pal.shade(tone, shade),
+            crate::ui_kit::sx::style::Fill::Alpha(tone, a) => {
+                let b = pal.base(tone);
+                egui::Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+            }
+        };
+        let default_fill = crate::ui_kit::tokens::color_alpha(dim_col, 32);
+        assert_ne!(resolved_color, default_fill,
+            "recipe fill (Accent solid) should differ from default (Dim alpha 32)");
+
+        // Empty set: fill unchanged.
+        let empty = RecipeSet::new();
+        let result_empty = empty.resolve("tag", default_sx, &t);
+        let delta_empty = result_empty.resolved(StyleState::Normal);
+        assert!(delta_empty.fill.is_some(), "empty set must preserve default fill");
+        let empty_color = match delta_empty.fill.unwrap() {
+            crate::ui_kit::sx::style::Fill::Solid(c) => c,
+            crate::ui_kit::sx::style::Fill::Shade(tone, shade) => pal.shade(tone, shade),
+            crate::ui_kit::sx::style::Fill::Alpha(tone, a) => {
+                let b = pal.base(tone);
+                egui::Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+            }
+        };
+        assert_eq!(empty_color, default_fill,
+            "empty RecipeSet must leave tag fill unchanged");
+    }
 }

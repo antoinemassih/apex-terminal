@@ -81,6 +81,12 @@ These keys correspond to the RECIPE-CANDIDATE(S4) fields in
 | `toast.danger` | Error toast | Bear-tinted fill |
 | `toast.warn` | Warning toast | Warn-tinted fill |
 
+### Tags / Chips
+
+| Key | Component | Notes |
+|-----|-----------|-------|
+| `tag` | `ui_kit::Tag` | Pill radius, soft fill alpha, border style |
+
 ### Keyboard / Badges
 
 | Key | Component | Notes |
