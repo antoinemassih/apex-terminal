@@ -462,7 +462,41 @@ pub(crate) fn render(
         let drag_resp = ui.interact(tb_rect, egui::Id::new("tb_window_drag"), egui::Sense::click_and_drag());
         if drag_resp.drag_started() {
             let win_ref: Option<Arc<Window>> = CURRENT_WINDOW.with(|w| w.borrow().clone());
-            if let Some(w) = &win_ref { let _ = w.drag_window(); }
+            if let Some(w) = &win_ref {
+                // A *borderless* window (we draw our own chrome) that is currently
+                // maximized cannot be dragged across monitors via the OS move-loop:
+                // Windows can't auto-restore it without a real caption, so it jumps
+                // around, resizes, and the drag aborts. Fix: restore it ourselves and
+                // place it under the cursor first, *then* begin the native drag — same
+                // behaviour as a normal title bar.
+                if w.is_maximized() {
+                    let scale = w.scale_factor();
+                    // Pointer position (logical, window-relative) → physical fraction
+                    // across the current (maximized) width so the cursor stays over
+                    // the same spot of the title bar after we shrink the window.
+                    let ptr = ui.ctx().pointer_interact_pos();
+                    let max_w = w.inner_size().width.max(1) as f64;
+                    let frac_x = ptr
+                        .map(|p| ((p.x as f64 * scale) / max_w).clamp(0.05, 0.95))
+                        .unwrap_or(0.5);
+                    // Global cursor position (physical) = window origin + local pointer.
+                    let cursor_phys = w.outer_position().ok().zip(ptr).map(|(o, p)| {
+                        (o.x as f64 + p.x as f64 * scale, o.y as f64 + p.y as f64 * scale)
+                    });
+                    // winit's set_maximized → SW_RESTORE is synchronous on Windows, so
+                    // inner_size() below reflects the restored size.
+                    w.set_maximized(false);
+                    if let Some((cx, cy)) = cursor_phys {
+                        let restored_w = w.inner_size().width.max(1) as f64;
+                        let new_x = cx - frac_x * restored_w;
+                        let new_y = cy - 12.0 * scale; // keep cursor ~12px into the bar
+                        let _ = w.set_outer_position(
+                            winit::dpi::PhysicalPosition::new(new_x, new_y),
+                        );
+                    }
+                }
+                let _ = w.drag_window();
+            }
         }
         if drag_resp.double_clicked() {
             let win_ref: Option<Arc<Window>> = CURRENT_WINDOW.with(|w| w.borrow().clone());
