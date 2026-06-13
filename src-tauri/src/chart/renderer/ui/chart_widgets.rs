@@ -1776,60 +1776,16 @@ fn draw_breadth_thermo(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: 
 
 /// Sector Rotation — 2x2 quadrant radar
 fn draw_sector_rotation(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &Theme) {
-    let cx = body.center().x;
-    let cy = body.center().y - 4.0;
-    let hw = body.width() * 0.38;
-    let hh = body.height() * 0.36;
-
-    // Quadrant labels
-    p.text(egui::pos2(cx + hw * 0.5, cy - hh - 4.0), egui::Align2::CENTER_CENTER, "LEADING", mono_4xs(), color_muted(t.bull));
-    p.text(egui::pos2(cx - hw * 0.5, cy - hh - 4.0), egui::Align2::CENTER_CENTER, "IMPROVING", mono_4xs(), color_muted(t.accent));
-    p.text(egui::pos2(cx - hw * 0.5, cy + hh + 6.0), egui::Align2::CENTER_CENTER, "LAGGING", mono_4xs(), color_muted(t.bear));
-    p.text(egui::pos2(cx + hw * 0.5, cy + hh + 6.0), egui::Align2::CENTER_CENTER, "WEAKENING", mono_4xs(), color_half(t.dim));
-
-    // Sector dots (placeholder positions): (rs, mom) ∈ [-1,1].
-    let sectors = [("XLK", 0.6, 0.3), ("XLF", 0.3, -0.2), ("XLE", -0.4, 0.5),
-                   ("XLV", -0.2, -0.3), ("XLI", 0.4, -0.1), ("XLU", -0.5, -0.4),
-                   ("XLC", 0.1, 0.4), ("XLRE", -0.3, 0.1)];
-    let quad_col = |rs: f32, mom: f32| if rs > 0.0 && mom > 0.0 { t.bull }
-        else if rs < 0.0 && mom < 0.0 { t.bear } else { t.dim };
-
-    // Kit primitive: quadrant cross + sector dots.
-    let st = ChartStyle::resolve(t);
-    let scatter_rect = egui::Rect::from_center_size(egui::pos2(cx, cy), egui::vec2(hw * 2.0, hh * 2.0));
-    let points: Vec<(f32, f32, Color32)> = sectors.iter()
-        .map(|(_, rs, mom)| (*rs, *mom, quad_col(*rs, *mom))).collect();
-    scatter_quadrant(p, scatter_rect, &points, 4.0, &st, t);
-
-    // Sector labels above each dot.
-    for (label, rs, mom) in sectors {
-        let sx = cx + rs * hw;
-        let sy = cy - mom * hh;
-        p.text(egui::pos2(sx, sy - 7.0), egui::Align2::CENTER_CENTER, label,
-            mono_4xs(), color_subtle(quad_col(rs, mom)));
-    }
+    // No live sector-rotation feed yet (/api/stocks/sector_rotation → 404 as of 2026-06-13).
+    // Show an honest empty state rather than fabricated quadrant positions.
+    draw_widget_no_feed(p, body, t, "Sector rotation feed", "not connected");
 }
 
 /// Options Sentiment — donut gauge composite
 fn draw_options_sentiment(p: &egui::Painter, body: egui::Rect, _wd: &WidgetData, t: &Theme) {
-    let cx = body.center().x;
-    let cy = body.center().y - 8.0;
-    let r = (body.width().min(body.height()) * 0.32).min(55.0);
-
-    // Placeholder sentiment: 62% bullish
-    let sentiment = 62.0f32;
-    let color = if sentiment > 60.0 { t.bull } else if sentiment < 40.0 { t.bear } else { t.warn };
-
-    radial_gauge_stacked(p, egui::pos2(cx, cy), r, sentiment / 100.0,
-        &format!("{:.0}%", sentiment), "BULLISH", color, t);
-
-    // Metrics below
-    let my = cy + r + 16.0;
-    for (i, (label, val)) in [("P/C", "0.82"), ("Skew", "-1.2"), ("GEX", "+$1.2B")].iter().enumerate() {
-        let x = body.left() + 10.0 + i as f32 * 55.0;
-        p.text(egui::pos2(x, my), egui::Align2::LEFT_CENTER, label, mono_4xs(), color_dim(t.dim));
-        p.text(egui::pos2(x, my + 10.0), egui::Align2::LEFT_CENTER, val, egui::FontId::monospace(FONT_XS), t.text);
-    }
+    // No live options-sentiment feed yet (/api/options_sentiment not implemented;
+    // only /api/pcr is live). Don't fabricate a bullish %, P/C, skew or GEX.
+    draw_widget_no_feed(p, body, t, "Options sentiment feed", "not connected");
 }
 
 /// Relative Strength Radar — concentric rings for RS rank
@@ -2121,9 +2077,10 @@ fn draw_fundamentals(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
 
 /// Economic Calendar — upcoming events countdown (chart8 lollipop + color block style)
 fn draw_econ_calendar(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
+    // No live economic-calendar feed yet (/api/economic_calendar not implemented).
+    // Only render real pushed events (wd.econ_*); never fabricate a FOMC/CPI list.
     if wd.econ_count == 0 {
-        p.text(body.center(), egui::Align2::CENTER_CENTER, "NO EVENTS",
-            egui::FontId::monospace(FONT_SM), color_dim(t.dim));
+        draw_widget_no_feed(p, body, t, "Economic calendar feed", "not connected");
         return;
     }
 
@@ -2136,67 +2093,30 @@ fn draw_econ_calendar(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &
         p.text(egui::pos2(body.left() + 55.0, body.top() + 20.0), egui::Align2::LEFT_CENTER,
             &wd.econ_next_name, egui::FontId::monospace(FONT_SM), t.text);
     }
-
-    // Event list below
-    let list_top = body.top() + 48.0;
-    let row_h = 16.0;
-    let events_placeholder = [
-        ("FOMC", 2, 3u8), ("CPI", 5, 2), ("NFP", 8, 3),
-        ("PPI", 12, 1), ("Retail", 15, 2), ("GDP", 20, 3),
-    ];
-    for (i, (name, days, importance)) in events_placeholder.iter().enumerate() {
-        let y = list_top + i as f32 * row_h;
-        if y + row_h > body.bottom() { break; }
-
-        let imp_color = match importance {
-            3 => t.bear, 2 => t.warn, _ => t.dim
-        };
-        // Importance dot
-        p.circle_filled(egui::pos2(body.left() + 10.0, y + row_h * 0.5), 2.5, imp_color);
-        // Name
-        p.text(egui::pos2(body.left() + 18.0, y + row_h * 0.5), egui::Align2::LEFT_CENTER,
-            name, egui::FontId::monospace(FONT_XS), t.text);
-        // Days
-        p.text(egui::pos2(body.right() - 8.0, y + row_h * 0.5), egui::Align2::RIGHT_CENTER,
-            &format!("{}d", days), egui::FontId::monospace(FONT_XS), t.dim);
-    }
 }
 
 /// Latency widget — frame time + data feed status
 fn draw_latency(p: &egui::Painter, body: egui::Rect, t: &Theme) {
     let cx = body.center().x;
 
-    // Frame time (approximate from 60fps target)
-    let frame_ms = 16.7f32; // placeholder — 60fps
+    // Frame time — real, measured from egui's last-frame delta.
+    let frame_ms = (p.ctx().input(|i| i.stable_dt) * 1000.0).clamp(0.0, 999.0);
     let frame_col = if frame_ms < 8.0 { t.bull } else if frame_ms < 20.0 { t.warn } else { t.bear };
 
     p.text(egui::pos2(body.left() + 8.0, body.top() + 6.0), egui::Align2::LEFT_CENTER,
         "RENDER", egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
     p.text(egui::pos2(body.left() + 8.0, body.top() + 22.0), egui::Align2::LEFT_CENTER,
         &format!("{:.1}ms", frame_ms), egui::FontId::proportional(font_lg()), frame_col);
+    let fps = if frame_ms > 0.0 { 1000.0 / frame_ms } else { 0.0 };
     p.text(egui::pos2(body.left() + 75.0, body.top() + 22.0), egui::Align2::LEFT_CENTER,
-        "60fps", egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
+        &format!("{:.0}fps", fps), egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
 
-    // Data feed latency
-    let data_ms = 45.0f32; // placeholder
-    let data_col = if data_ms < 50.0 { t.bull } else if data_ms < 200.0 { t.warn } else { t.bear };
-
+    // Data feed latency — no client-side measurement source yet; show unknown
+    // rather than a fabricated "45ms".
     p.text(egui::pos2(body.left() + 8.0, body.top() + 40.0), egui::Align2::LEFT_CENTER,
         "DATA FEED", egui::FontId::monospace(FONT_2XS), color_dim(t.dim));
     p.text(egui::pos2(body.left() + 8.0, body.top() + 56.0), egui::Align2::LEFT_CENTER,
-        &format!("{:.0}ms", data_ms), egui::FontId::proportional(font_lg()), data_col);
-
-    // Service dots
-    let dot_y = body.top() + 74.0;
-    let services = [("GPU", true), ("IB", false), ("Redis", false), ("Yahoo", true)];
-    let mut dx = body.left() + 8.0;
-    for (name, ok) in services {
-        let col = if ok { t.bull } else { color_very_dim(t.dim) };
-        p.circle_filled(egui::pos2(dx + 3.0, dot_y), 2.5, col);
-        p.text(egui::pos2(dx + 9.0, dot_y), egui::Align2::LEFT_CENTER,
-            name, mono_4xs(), color_half(t.dim));
-        dx += name.len() as f32 * 5.0 + 16.0;
-    }
+        "-- ms", egui::FontId::proportional(font_lg()), color_dim(t.dim));
 }
 
 /// Options Payoff Chart — P&L curve for a position
@@ -2673,6 +2593,16 @@ fn draw_loading_skeleton(p: &egui::Painter, body: egui::Rect, t: &Theme) {
     draw_refined_spinner(p, center, radius, t.accent);
     p.text(egui::pos2(center.x, center.y + radius + 14.0), egui::Align2::CENTER_CENTER,
         "Loading\u{2026}", egui::FontId::monospace(FONT_XS), color_dim(t.dim));
+}
+
+/// Honest empty state for a widget whose backing feed isn't wired/populated yet.
+/// Used instead of rendering fabricated numbers.
+fn draw_widget_no_feed(p: &egui::Painter, body: egui::Rect, t: &Theme, line1: &str, line2: &str) {
+    let cy = body.center().y - 6.0;
+    p.text(egui::pos2(body.center().x, cy), egui::Align2::CENTER_CENTER,
+        line1, egui::FontId::monospace(FONT_SM), color_muted(t.dim));
+    p.text(egui::pos2(body.center().x, cy + FONT_SM + 4.0), egui::Align2::CENTER_CENTER,
+        line2, egui::FontId::monospace(FONT_XS), color_dim(t.dim));
 }
 
 /// Worm 2 logo animation — three logo shapes (dot, boomerang, ring) with ghost

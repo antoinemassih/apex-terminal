@@ -2664,9 +2664,14 @@ impl Chart {
                     crate::data::dom_feed::set_symbol(&self.symbol);
                     self.dom.last_live_ms = 0; // drop stale live flag until first frame
                     self.drawings_requested = false; self.drawings.clear();
-                    self.fundamentals = generate_placeholder_fundamentals(&self.symbol, &self.bars);
-                    self.econ_calendar = generate_placeholder_econ();
-                    self.insider_trades = generate_placeholder_insiders(&self.symbol);
+                    // No synthetic fundamentals / econ-calendar / insider trades —
+                    // these have no live feed yet (see FRONTEND_REQUEST_DATA_GAPS),
+                    // so leave them empty and let the panels show honest "no data"
+                    // states instead of fabricated numbers. The COMPANY section
+                    // (name/market-cap/sector) is real via /api/ticker.
+                    self.fundamentals = FundamentalData::default();
+                    self.econ_calendar = Vec::new();
+                    self.insider_trades = Vec::new();
                 }
                 // Futures live-bars feed (/ws/futures): re-target on any symbol
                 // OR timeframe load (futures bars are tf-specific, and tf changes

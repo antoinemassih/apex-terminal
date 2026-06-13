@@ -73,21 +73,34 @@ pub(crate) fn draw_content(
             });
     }
 
+    // Fundamentals have no live feed yet — only render the financial sections
+    // when real data is present (market cap / P/E populated), otherwise show one
+    // honest "not connected" note instead of a wall of zeros.
+    let have_fund = f.market_cap > 0.0 || f.pe_ratio > 0.0;
+
     // ── Valuation ──
-    PanelSection::new(&format!("VALUATION — {}", chart.symbol))
-        .title_color(t.accent)
-        .show(ui, t, |ui, t| {
-            for (label, value) in [
-                ("P/E (TTM)",  format!("{:.1}",   f.pe_ratio)),
-                ("Forward P/E",format!("{:.1}",   f.forward_pe)),
-                ("EPS (TTM)",  format!("${:.2}",  f.eps_ttm)),
-                ("Market Cap", format!("${:.0}B", f.market_cap)),
-                ("Div Yield",  format!("{:.2}%",  f.dividend_yield)),
-                ("Beta",       format!("{:.2}",   f.beta)),
-            ] {
-                PanelKeyValueRow::new(label, value).show(ui, t);
-            }
-        });
+    if have_fund {
+        PanelSection::new(&format!("VALUATION — {}", chart.symbol))
+            .title_color(t.accent)
+            .show(ui, t, |ui, t| {
+                for (label, value) in [
+                    ("P/E (TTM)",  format!("{:.1}",   f.pe_ratio)),
+                    ("Forward P/E",format!("{:.1}",   f.forward_pe)),
+                    ("EPS (TTM)",  format!("${:.2}",  f.eps_ttm)),
+                    ("Market Cap", format!("${:.0}B", f.market_cap)),
+                    ("Div Yield",  format!("{:.2}%",  f.dividend_yield)),
+                    ("Beta",       format!("{:.2}",   f.beta)),
+                ] {
+                    PanelKeyValueRow::new(label, value).show(ui, t);
+                }
+            });
+    } else {
+        PanelSection::new(&format!("FUNDAMENTALS — {}", chart.symbol))
+            .title_color(t.accent)
+            .show(ui, t, |ui, t| {
+                PanelEmpty::new("Fundamentals feed not connected").show(ui, t);
+            });
+    }
 
     // ── Options Analytics (ApexData derived endpoints) ──
     // Cached + TTL-refreshed; only drawn when the underlying actually has
@@ -132,7 +145,8 @@ pub(crate) fn draw_content(
     }
 
     // ── Financials ──
-    PanelSection::new("FINANCIALS")
+    if have_fund {
+        PanelSection::new("FINANCIALS")
         .show(ui, t, |ui, t| {
             let rows = [
                 ("Revenue Growth", format!("{:+.1}%", f.revenue_growth),
@@ -146,9 +160,11 @@ pub(crate) fn draw_content(
                 PanelKeyValueRow::new(label, value).tone(tone).show(ui, t);
             }
         });
+    }
 
     // ── Ownership ──
-    PanelSection::new("OWNERSHIP")
+    if have_fund {
+        PanelSection::new("OWNERSHIP")
         .show(ui, t, |ui, t| {
             for (label, value) in [
                 ("Institutional",  format!("{:.1}%", f.institutional_pct)),
@@ -159,6 +175,7 @@ pub(crate) fn draw_content(
                 PanelKeyValueRow::new(label, value).show(ui, t);
             }
         });
+    }
 
     // ── Analyst Consensus ──
     PanelSection::new("ANALYST CONSENSUS")

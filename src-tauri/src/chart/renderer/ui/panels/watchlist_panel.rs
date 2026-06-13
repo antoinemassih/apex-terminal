@@ -729,8 +729,11 @@ if is_spawn || watchlist.open {
                                     let item_rvol = item.rvol;
                                     let item_atr = item.atr;
                                     // Populate range data from price if not set
-                                    let item_high_52wk = if item.high_52wk > 0.0 { item.high_52wk } else { item.price * 1.15 };
-                                    let item_low_52wk = if item.low_52wk > 0.0 { item.low_52wk } else { item.price * 0.70 };
+                                    // Real 52-week range only (no synthetic price±%). 0 when no
+                                    // feed yet → the 52wk readout/tooltip shows nothing rather
+                                    // than a fabricated range.
+                                    let item_high_52wk = item.high_52wk;
+                                    let item_low_52wk = item.low_52wk;
                                     // Real intraday range only (set from the live snapshot via
                                     // set_day_range). No synthetic price±0.8% fallback — a
                                     // fabricated range is worse than none; the Day Range column
