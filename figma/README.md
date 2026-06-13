@@ -5,7 +5,8 @@ design system instead of interpreted. Three name-matched layers:
 
 | Layer | File | Maps to code |
 |---|---|---|
-| **Tokens** (color/dim/type/shadow) | `aperture.tokens.json` | Sx `Tone`, token tiers, `ComponentTheme` fields, Effect styles |
+| **Tokens — COMPLETE** (color/dim/type/shadow/chrome/treatments) | `apex.tokens.json` | All DTCG schema fields — 339 tokens, round-trip ready |
+| **Tokens — legacy partial** | `aperture.tokens.json` | Original Aperture-only subset (kept for reference) |
 | **Components + variants** | `component-inventory.md` | `ui_kit/widgets/*` + their recipe enums |
 | **Frames** | `component-inventory.md` | chart-side layout regions (`top_nav`, `bottom_dock`, …) |
 
@@ -13,22 +14,54 @@ design system instead of interpreted. Three name-matched layers:
 
 ## 1. Import the tokens (→ Figma Variables)
 
+Use **`apex.tokens.json`** — the complete, engine-matched inventory. `aperture.tokens.json` is
+an older partial file kept for reference only; do not import it for new work.
+
 1. In Figma, install the **Tokens Studio (Figma Tokens)** plugin.
-2. Plugin → Import → paste / upload `aperture.tokens.json`.
-3. Plugin → **Export to Figma Variables**. You now have variable collections:
-   `color`, `radius`, `spacing`, `stroke`, `fontSize`, plus `typography` text styles and
-   `shadow` effect styles.
-4. Strip the `_comment` / `_about` keys if the importer complains (they're docs only).
+2. Plugin → Import → paste / upload `apex.tokens.json`.
+3. Plugin → **Export to Figma Variables**. The importer will create variable collections per
+   top-level group. Recommended collection mapping:
+   - `color` → collection **"ColorScheme"** (Aperture values as the primary mode)
+   - `typography`, `spacing`, `radii`, `strokes`, `alphas`, `elevation`, `density`, `shadows`,
+     `treatments`, `chrome` → collection **"StyleSystem"** (Aperture values as the primary mode)
+   - `cmdPalette` → collection **"CmdPalette"** (single mode; rarely changes)
+   - `textStyle` → Figma **Text Styles** (use "Publish as text styles" in Tokens Studio)
+   - `effectStyle` → Figma **Effect Styles** (use "Publish as effect styles")
+4. Strip the `_comment` / `_about` / `_modes` / `_u8_comment` / `_f32_comment` /
+   `_semantics` keys if the importer complains (they are doc-only meta keys, not tokens).
 
 ## 2. Wire the two axes to **Modes** (this is the whole point)
 
-- On the **color** collection: rename its mode to **`Aperture`**. → *a Figma mode = a `ColorScheme` in code.*
-  To add **MERIDIAN**: duplicate the mode, swap only the `color.*` / `colorExtended.*` values
-  (Black bg, Vulcan `#11141D` surface, Emerald bull, etc.).
-- On **radius/spacing/stroke/fontSize** (the dimension side): the mode = a **`StyleSystem`** preset
-  (`Aperture`, `Meridien`, `Glass`, …). Duplicate + retune numbers per style.
+The engine has two independent theme axes. Each maps to a Figma Variable collection with modes:
+
+### Color axis → `ColorScheme`
+- Collection **"ColorScheme"**, primary mode name **`Aperture`**.
+  → *a Figma mode = a `ColorScheme` in code.*
+- To add **Meridien**: duplicate the mode in Figma and copy values from the `colorMeridien`
+  group in `apex.tokens.json` (indigo accent, Emerald bull, near-black bg, etc.).
+- Additional built-in palettes in `builtin.rs` (Nord, Dracula, Catppuccin, Gruvbox, etc.)
+  can each become additional modes of this collection.
+
+### Dimension axis → `StyleSystem`
+- Collection **"StyleSystem"**, primary mode name **`Aperture`**.
+  → *a Figma mode = a `StyleSystem` preset in code.*
+- To add **Meridien**: duplicate the mode and copy values from `spacingMeridien`,
+  `radiiMeridien`, `strokesMeridien`, `typographyMeridien`, `densityMeridien`,
+  `shadowsMeridien`, `treatmentsMeridien`, `chromeMeridien`.
+- Meridien key signature: sharp corners (radii.xs=2), hairline borders, tall toolbar,
+  no floating-card chrome, single-row, uppercase labels, serif hero.
+- Aperture key signature: large soft radii (xs=8/sm=10/md=14/lg=20), pill nav clusters,
+  2-row chrome, 8px pane gaps, orange accent fills on active headers.
 
 > Switching a Figma mode == switching a theme axis in the running app, with the **same names and values**.
+
+### Round-trip guarantee
+Every token group name and every leaf key in `apex.tokens.json` matches the DTCG schema field
+names (`colorscheme.schema.json` and `stylesystem.schema.json`) exactly. A design hand-off
+that specifies `spacing.cta_height = 40` maps to `StyleSystem.spacing.cta_height = 40.0` in
+Rust with zero translation. The schema enforces: `typography.*`, `spacing.*`, `radii.*`,
+`strokes.*`, `alphas.*`, `elevation.*`, `density.*`, `shadows.*.*`, `treatments.*`,
+`chrome.*` on the dimension axis; and all `color.*` fields on the color axis.
 
 ## 3. Build components against the variables
 

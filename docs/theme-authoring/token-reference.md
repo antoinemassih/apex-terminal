@@ -92,9 +92,10 @@ When absent in a loaded file, they fall back to `builtin_dark()` equivalents.
 
 ### Command palette badge colors
 
-`cmd_palette` is a fixed-length array of 11 RGBA colors. Not yet round-tripped
-through DTCG — always defaults to `CMD_PALETTE_DEFAULT` in the current loader.
-Per-theme overrides can be applied by setting a different array in Rust.
+`cmd_palette` is a fixed-length array of 11 RGBA colors. It round-trips through
+DTCG (emitted as a `cmd_palette` array of color tokens; missing/absent slots fall
+back to `CMD_PALETTE_DEFAULT` per slot). Per-theme overrides can be set in the
+pack JSON or in Rust.
 
 ---
 
@@ -255,19 +256,20 @@ All fields are DTCG boolean tokens except `focus_ring` (string token).
 | `shadows_enabled`           | boolean | true      |                  | Master toggle for drop shadows |
 | `animations_enabled`        | boolean | true      |                  | false = snap all animations instant (reduce-motion) |
 
-**Treatments not yet DTCG round-tripped** (default-only via from_dtcg):
-`surface_bevel`, `bevel_highlight_alpha`, `bevel_shadow_alpha`,
+**All Treatments now round-trip through DTCG** (as of the DTCG-completion stream),
+including `surface_bevel`, `bevel_highlight_alpha`, `bevel_shadow_alpha`,
 `wl_row_side_margin`, `wl_row_corner_radius`, `wl_row_divider_alpha`,
 `section_header_mono`, `wl_symbol_mono`, `panel_tab_treatment`,
-`pane_active_fill_accent`, `button_treatment`. These are authored via the
-internal Rust API or will be added to the DTCG spec in a future stream.
+`pane_active_fill_accent`, `button_treatment`. Typed enums serialize as stable
+strings (e.g. `surface_bevel`: "none"/"raised"/"inset").
 
 ### Chrome section
 
-`chrome` is not yet round-tripped through the DTCG file format. It is always
-defaulted by `StyleSystem::from_dtcg`. Chrome values can only be set via the
-internal Rust API (e.g. `StyleSystem::meridien()` or a custom built-in). A
-future stream will add a `chrome` DTCG section.
+`chrome` round-trips through DTCG (a full `chrome` section, all fields emitted by
+`to_dtcg` and parsed by `from_dtcg`; missing keys fall back to `Chrome::default()`).
+`pane_active_indicator` serializes as a stable string
+("none"/"top_stripe"/"header_fill"/"both"). Verified by a full
+`assert_eq!(parsed, original)` round-trip test covering a custom chrome + enums.
 
 Notable chrome fields for theme authors:
 
