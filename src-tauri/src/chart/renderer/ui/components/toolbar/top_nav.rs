@@ -1263,6 +1263,8 @@ pub(crate) fn render(
 
     // ── Settings panel
     crate::chart_renderer::ui::panels::settings_panel::draw(ctx, watchlist, &mut panes[ap], t, ap);
+    // ── Theme Studio overlay (full-screen; drawn after settings so it renders on top)
+    crate::chart_renderer::ui::theme_studio::draw_theme_studio(ctx, t);
     crate::chart_renderer::ui::panels::apex_diagnostics::draw(ctx, watchlist, t);
     crate::chart_renderer::ui::panels::replay_pane::draw(ctx, watchlist, t);
 

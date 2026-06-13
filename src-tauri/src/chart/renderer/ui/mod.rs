@@ -18,6 +18,7 @@ pub mod toolbar;
 pub mod tps_overlay;
 pub mod pane;
 pub mod welcome;
+pub mod theme_studio;
 
 // Backward-compat: keep widgets and components_extra declared so old import paths
 // that still exist in gpu.rs and others continue to resolve.

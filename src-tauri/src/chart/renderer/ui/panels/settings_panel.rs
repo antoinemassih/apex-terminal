@@ -498,6 +498,28 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
     // ── THEMES — ThemePack install / activate / uninstall ──────────────────
     draw_themes_section(ui, chart, t, ap);
 
+    // ── THEME STUDIO — full-screen theme authoring overlay ─────────────────
+    PanelSection::new("THEME STUDIO").show(ui, t, |ui, t| {
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new("Visual component storybook and live theme editor.")
+                    .size(font_xs())
+                    .color(t.dim),
+            );
+        });
+        ui.add_space(gap_xs());
+        if Button::new("Open Theme Studio")
+            .variant(crate::ui_kit::widgets::tokens::Variant::Secondary)
+            .size(crate::ui_kit::widgets::tokens::Size::Sm)
+            .show(ui, t)
+            .clicked()
+        {
+            crate::chart_renderer::ui::theme_studio::open(ui.ctx());
+            // Close settings panel so studio fills the screen without overlap.
+            watchlist.update_sidebar_state(|s| s.settings_open = false);
+        }
+    });
+
     // ── ONBOARDING ──
     PanelSection::new("ONBOARDING").show(ui, t, |ui, t| {
         setting_form_row("Welcome wizard", t).show(ui, t, |ui| {
