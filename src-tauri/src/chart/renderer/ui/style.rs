@@ -3231,3 +3231,73 @@ mod ds_impl_3_tests {
             "elevation_2 should be >= elevation_3 in luminance");
     }
 }
+
+/// End-to-end proof of the data-driven styling path (Stream S2 milestone).
+///
+/// Demonstrates that a brand-new style and palette, defined purely as DATA
+/// (authored, serialized to DTCG JSON, then re-parsed as if loaded from a
+/// theme-pack file), flow through the SAME adapter + resolver the live app
+/// uses — with the custom values surviving end to end. No Rust edits or
+/// recompilation introduce the new style: the value path is data only.
+#[cfg(test)]
+mod data_driven_proof {
+    use super::style_system_to_style_settings;
+    use crate::design_system::{
+        builtin_style_systems, builtin_color_schemes, StyleSystem, ColorScheme,
+    };
+    use crate::design_system::snapshot::snapshot;
+
+    #[test]
+    fn new_style_from_json_flows_through_with_zero_rust_edits() {
+        // 1. Author a brand-new StyleSystem as DATA: start from a builtin and
+        //    give it distinctive dimensions no builtin uses, then rename it.
+        let mut custom = builtin_style_systems()[0].clone();
+        custom.meta.id = "proof_custom".to_string();
+        custom.meta.name = "Proof Custom".to_string();
+        custom.radii.lg = 17.0;      // distinctive
+        custom.strokes.thick = 4.25; // distinctive
+        custom.spacing.md = 9.5;     // distinctive
+
+        // 2. Serialize to DTCG JSON (the on-disk theme-pack form) and re-parse,
+        //    simulating a style loaded from a file rather than written in Rust.
+        let json = custom.to_dtcg();
+        let loaded = StyleSystem::from_dtcg(&json)
+            .expect("custom style JSON should parse");
+
+        // 3. The JSON round-trip preserved the custom dimension values.
+        assert!((loaded.radii.lg - 17.0).abs() < 1e-4, "radii.lg lost in JSON round-trip");
+        assert!((loaded.strokes.thick - 4.25).abs() < 1e-4, "strokes.thick lost in JSON round-trip");
+        assert!((loaded.spacing.md - 9.5).abs() < 1e-4, "spacing.md lost in JSON round-trip");
+
+        // 4. Run the loaded style through the SAME adapter the app uses to build
+        //    the legacy StyleSettings consumed by the render path. No special
+        //    casing for "proof_custom" exists anywhere — it is pure data.
+        let settings = style_system_to_style_settings(&loaded);
+        assert_eq!(settings.r_lg, 17, "custom radius did not reach StyleSettings");
+        assert!((settings.stroke_thick - 4.25).abs() < 1e-4, "custom stroke did not reach StyleSettings");
+
+        // 5. Run through the per-frame resolver (snapshot) exactly as begin_frame does.
+        let scheme = builtin_color_schemes()[0].clone();
+        let snap = snapshot(&loaded, &scheme);
+        assert!((snap.radius_lg - 17.0).abs() < 1e-4, "custom radius did not reach DesignSnapshot");
+    }
+
+    #[test]
+    fn widened_palette_from_json_resolves_custom_semantics() {
+        // A palette authored as DATA with explicit info/success (the widened
+        // semantic axis), danger left unset to prove the bull/bear alias fallback.
+        let mut cs = builtin_color_schemes()[0].clone();
+        cs.meta.id = "proof_palette".to_string();
+        cs.info = Some([10, 20, 30, 255]);
+        cs.success = Some([1, 2, 3, 255]);
+
+        let json = cs.to_dtcg();
+        let loaded = ColorScheme::from_dtcg(&json)
+            .expect("custom palette JSON should parse");
+
+        assert_eq!(loaded.resolved_info(), [10, 20, 30, 255], "explicit info lost in round-trip");
+        assert_eq!(loaded.resolved_success(), [1, 2, 3, 255], "explicit success lost in round-trip");
+        // danger was never set -> resolver must fall back to the bear trading alias.
+        assert_eq!(loaded.resolved_danger(), loaded.bear, "unset danger should alias bear");
+    }
+}
