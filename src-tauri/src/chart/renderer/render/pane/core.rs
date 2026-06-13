@@ -6876,6 +6876,7 @@ fn render_chart_pane(
     if chart.last_signal_fetch.elapsed().as_secs() >= 30 {
         chart.last_signal_fetch = std::time::Instant::now();
         fetch_signal_drawings(chart.symbol.clone());
+        fetch_apexsignals_drawings(chart.symbol.clone()); // refresh cached auto-chart lines
     }
 
     // ── Position overlay — open IB positions on chart ─────────────────────

@@ -1583,6 +1583,30 @@ pub(crate) fn bar_to_time(bar: f32, timestamps: &[i64]) -> i64 {
     t0 + ((t1 - t0) as f32 * frac) as i64
 }
 
+/// Fetch cached auto-chart drawings from ApexSignals for initial paint on chart
+/// open — the /ws feed only pushes on the next bar close, so without this the
+/// chart is blank until then. The live stream keeps it updated afterward.
+/// Base URL via `APEX_SIGNALS_HTTP` (default http://localhost:8100).
+pub(crate) fn fetch_apexsignals_drawings(symbol: String) {
+    let txs: Vec<std::sync::mpsc::Sender<super::ChartCommand>> = crate::NATIVE_CHART_TXS
+        .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
+    if txs.is_empty() { return; }
+    std::thread::spawn(move || {
+        let base = std::env::var("APEX_SIGNALS_HTTP").unwrap_or_else(|_| "http://localhost:8100".to_string());
+        let url = format!("{base}/signals/drawings/{symbol}");
+        let client = reqwest::blocking::Client::builder().user_agent("apex-native").build().unwrap_or_else(|_| reqwest::blocking::Client::new());
+        if let Ok(resp) = client.get(&url).timeout(std::time::Duration::from_secs(3)).send() {
+            if let Ok(json) = resp.json::<serde_json::Value>() {
+                let drawings_json = json.get("drawings").map(|d| d.to_string()).unwrap_or_else(|| "[]".to_string());
+                let source = json.get("source").and_then(|s| s.as_str()).unwrap_or("trendlines").to_string();
+                let cmd = super::ChartCommand::AutoTrendlines { symbol, drawings_json, source };
+                for tx in &txs { let _ = tx.send(cmd.clone()); }
+                crate::wake_native_ui();
+            }
+        }
+    });
+}
+
 /// Fetch signal annotations from OCOCO API for a symbol.
 pub(crate) fn fetch_signal_drawings(symbol: String) {
     let txs: Vec<std::sync::mpsc::Sender<super::ChartCommand>> = crate::NATIVE_CHART_TXS
@@ -2692,6 +2716,7 @@ impl Chart {
                 self.signal_drawings.clear();
                 self.last_signal_fetch = std::time::Instant::now();
                 fetch_signal_drawings(self.symbol.clone());
+                fetch_apexsignals_drawings(self.symbol.clone()); // initial auto-chart paint
 
                 // Reload cross-timeframe indicator sources for new symbol
                 for ind in &mut self.indicators {
