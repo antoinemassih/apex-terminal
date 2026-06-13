@@ -25,7 +25,7 @@ use super::{
     builtin::{builtin_color_schemes, builtin_style_systems},
     color_scheme::ColorScheme,
     loader::LoadError,
-    style_system::{FocusRingStyle, StyleSystem},
+    style_system::{BevelStyle, FocusRingStyle, GroupEnclosure, PaneActiveIndicator, StyleSystem},
 };
 
 // ── StyleSystem::to_dtcg ─────────────────────────────────────────────────────
@@ -47,6 +47,22 @@ impl StyleSystem {
             };
         }
 
+        macro_rules! num {
+            ($v:expr) => {
+                json!({ "$type": "number", "$value": $v })
+            };
+        }
+        macro_rules! int_tok {
+            ($v:expr) => {
+                json!({ "$type": "integer", "$value": $v })
+            };
+        }
+        macro_rules! str_tok {
+            ($v:expr) => {
+                json!({ "$type": "string", "$value": $v })
+            };
+        }
+
         let typ = &self.typography;
         let sp  = &self.spacing;
         let r   = &self.radii;
@@ -56,11 +72,32 @@ impl StyleSystem {
         let den = &self.density;
         let sh  = &self.shadows;
         let tr  = &self.treatments;
+        let ch  = &self.chrome;
 
         let focus_ring_str = match tr.focus_ring {
             FocusRingStyle::None    => "none",
             FocusRingStyle::Outline => "outline",
             FocusRingStyle::Glow    => "glow",
+        };
+
+        let bevel_str = match tr.surface_bevel {
+            BevelStyle::None   => "none",
+            BevelStyle::Raised => "raised",
+            BevelStyle::Inset  => "inset",
+        };
+
+        let pane_indicator_str = match PaneActiveIndicator::from_u8(ch.pane_active_indicator) {
+            PaneActiveIndicator::None       => "none",
+            PaneActiveIndicator::TopStripe  => "top_stripe",
+            PaneActiveIndicator::HeaderFill => "header_fill",
+            PaneActiveIndicator::Both       => "both",
+        };
+
+        let group_enclosure_str = match ch.button_group {
+            GroupEnclosure::None     => "none",
+            GroupEnclosure::Bordered => "bordered",
+            GroupEnclosure::Frosted  => "frosted",
+            GroupEnclosure::Sharp    => "sharp",
         };
 
         let shadow_obj = |s: &super::style_system::ShadowSpec| -> Value {
@@ -88,17 +125,28 @@ impl StyleSystem {
                 "mono_sm": dim!(typ.mono_sm),
                 "mono_md": dim!(typ.mono_md),
                 "mono_lg": dim!(typ.mono_lg),
+                "size_section_label": dim!(typ.size_section_label),
+                "label_tracking": num!(typ.label_tracking),
+                "nav_tracking":   num!(typ.nav_tracking),
+                "section_tracking": num!(typ.section_tracking),
+                "family_ui":      str_tok!(&typ.family_ui),
+                "family_mono":    str_tok!(&typ.family_mono),
+                "family_display": str_tok!(&typ.family_display),
             },
             "spacing": {
-                "xs":         dim!(sp.xs),
-                "sm":         dim!(sp.sm),
-                "xs_mid":     dim!(sp.xs_mid),
-                "md":         dim!(sp.md),
-                "lg":         dim!(sp.lg),
-                "xl":         dim!(sp.xl),
-                "xxl":        dim!(sp.xxl),
-                "gmd":        dim!(sp.gmd),
-                "cta_height": dim!(sp.cta_height),
+                "xs":              dim!(sp.xs),
+                "sm":              dim!(sp.sm),
+                "xs_mid":          dim!(sp.xs_mid),
+                "md":              dim!(sp.md),
+                "lg":              dim!(sp.lg),
+                "xl":              dim!(sp.xl),
+                "xxl":             dim!(sp.xxl),
+                "gmd":             dim!(sp.gmd),
+                "cta_height":      dim!(sp.cta_height),
+                "cta_padding_x":   dim!(sp.cta_padding_x),
+                "button_height":   dim!(sp.button_height),
+                "button_padding_x":dim!(sp.button_padding_x),
+                "tab_height":      dim!(sp.tab_height),
             },
             "radii": {
                 "none": dim!(r.none),
@@ -107,6 +155,8 @@ impl StyleSystem {
                 "md":   dim!(r.md),
                 "lg":   dim!(r.lg),
                 "full": dim!(r.full),
+                "pill": dim!(r.pill),
+                "chip": dim!(r.chip),
             },
             "strokes": {
                 "hair":   dim!(st.hair),
@@ -120,36 +170,37 @@ impl StyleSystem {
             },
             "alphas": {
                 // u8 tiers
-                "faint":     { "$type": "integer", "$value": al.faint },
-                "ghost":     { "$type": "integer", "$value": al.ghost },
-                "soft_u8":   { "$type": "integer", "$value": al.soft_u8 },
-                "subtle_u8": { "$type": "integer", "$value": al.subtle_u8 },
-                "tint":      { "$type": "integer", "$value": al.tint },
-                "muted_u8":  { "$type": "integer", "$value": al.muted_u8 },
-                "dim":       { "$type": "integer", "$value": al.dim },
-                "line":      { "$type": "integer", "$value": al.line },
-                "strong_u8": { "$type": "integer", "$value": al.strong_u8 },
-                "active":    { "$type": "integer", "$value": al.active },
-                "heavy_u8":  { "$type": "integer", "$value": al.heavy_u8 },
-                "solid":     { "$type": "integer", "$value": al.solid },
+                "faint":     int_tok!(al.faint),
+                "ghost":     int_tok!(al.ghost),
+                "soft_u8":   int_tok!(al.soft_u8),
+                "subtle_u8": int_tok!(al.subtle_u8),
+                "tint":      int_tok!(al.tint),
+                "muted_u8":  int_tok!(al.muted_u8),
+                "dim":       int_tok!(al.dim),
+                "line":      int_tok!(al.line),
+                "strong_u8": int_tok!(al.strong_u8),
+                "active":    int_tok!(al.active),
+                "heavy_u8":  int_tok!(al.heavy_u8),
+                "scrim":     int_tok!(al.scrim),
+                "solid":     int_tok!(al.solid),
                 // f32 multipliers
-                "subtle":        { "$type": "number", "$value": al.subtle },
-                "soft":          { "$type": "number", "$value": al.soft },
-                "muted":         { "$type": "number", "$value": al.muted },
-                "mid":           { "$type": "number", "$value": al.mid },
-                "strong":        { "$type": "number", "$value": al.strong },
-                "opaque":        { "$type": "number", "$value": al.opaque },
-                "header_border": { "$type": "number", "$value": al.header_border },
+                "subtle":        num!(al.subtle),
+                "soft":          num!(al.soft),
+                "muted":         num!(al.muted),
+                "mid":           num!(al.mid),
+                "strong":        num!(al.strong),
+                "opaque":        num!(al.opaque),
+                "header_border": num!(al.header_border),
             },
             "elevation": {
-                "l1": { "$type": "number", "$value": el.l1 },
-                "l2": { "$type": "number", "$value": el.l2 },
-                "l3": { "$type": "number", "$value": el.l3 },
+                "l1": num!(el.l1),
+                "l2": num!(el.l2),
+                "l3": num!(el.l3),
             },
             "density": {
-                "factor":                   { "$type": "number", "$value": den.factor },
-                "row_height_dense":         dim!(den.row_height_dense),
-                "row_height_comfortable":   dim!(den.row_height_comfortable),
+                "factor":                 num!(den.factor),
+                "row_height_dense":       dim!(den.row_height_dense),
+                "row_height_comfortable": dim!(den.row_height_comfortable),
             },
             "shadows": {
                 "card":     shadow_obj(&sh.card),
@@ -158,11 +209,79 @@ impl StyleSystem {
                 "dropdown": shadow_obj(&sh.dropdown),
             },
             "treatments": {
-                "solid_active_fills":       bool_tok!(tr.solid_active_fills),
-                "hairline_borders":         bool_tok!(tr.hairline_borders),
-                "uppercase_section_labels": bool_tok!(tr.uppercase_section_labels),
-                "segmented_filled_idle":    bool_tok!(tr.segmented_filled_idle),
-                "focus_ring": { "$type": "string", "$value": focus_ring_str },
+                "solid_active_fills":         bool_tok!(tr.solid_active_fills),
+                "hairline_borders":           bool_tok!(tr.hairline_borders),
+                "uppercase_section_labels":   bool_tok!(tr.uppercase_section_labels),
+                "segmented_filled_idle":      bool_tok!(tr.segmented_filled_idle),
+                "focus_ring":                 str_tok!(focus_ring_str),
+                // Previously-defaulted fields — now fully round-tripped
+                "surface_bevel":              str_tok!(bevel_str),
+                "bevel_highlight_alpha":      int_tok!(tr.bevel_highlight_alpha),
+                "bevel_shadow_alpha":         int_tok!(tr.bevel_shadow_alpha),
+                "wl_row_side_margin":         dim!(tr.wl_row_side_margin),
+                "wl_row_corner_radius":       int_tok!(tr.wl_row_corner_radius),
+                "wl_row_divider_alpha":       int_tok!(tr.wl_row_divider_alpha),
+                "section_header_mono":        bool_tok!(tr.section_header_mono),
+                "wl_symbol_mono":             bool_tok!(tr.wl_symbol_mono),
+                "panel_tab_treatment":        int_tok!(tr.panel_tab_treatment),
+                "pane_active_fill_accent":    bool_tok!(tr.pane_active_fill_accent),
+                "serif_headlines":            bool_tok!(tr.serif_headlines),
+                "button_treatment":           int_tok!(tr.button_treatment),
+                "invert_active_fill":         bool_tok!(tr.invert_active_fill),
+                "vertical_group_dividers":    bool_tok!(tr.vertical_group_dividers),
+                "show_active_tab_underline":  bool_tok!(tr.show_active_tab_underline),
+                "inactive_header_fill":       bool_tok!(tr.inactive_header_fill),
+                "nav_buttons_label_only":     bool_tok!(tr.nav_buttons_label_only),
+                "nav_buttons_uppercase_labels": bool_tok!(tr.nav_buttons_uppercase_labels),
+                "tab_underline_under_text":   bool_tok!(tr.tab_underline_under_text),
+                "card_floating_shadow":       bool_tok!(tr.card_floating_shadow),
+                "shadows_enabled":            bool_tok!(tr.shadows_enabled),
+                "animations_enabled":         bool_tok!(tr.animations_enabled),
+            },
+            "chrome": {
+                "toolbar_height_scale":          num!(ch.toolbar_height_scale),
+                "header_height_scale":           num!(ch.header_height_scale),
+                "account_strip_height":          dim!(ch.account_strip_height),
+                "pane_border_width":             dim!(ch.pane_border_width),
+                "pane_gap":                      dim!(ch.pane_gap),
+                "pane_gap_alpha":                int_tok!(ch.pane_gap_alpha),
+                "pane_active_indicator":         str_tok!(pane_indicator_str),
+                "active_header_fill_multiply":   num!(ch.active_header_fill_multiply),
+                "inactive_header_fill_multiply": num!(ch.inactive_header_fill_multiply),
+                "header_outer_border_alpha":     int_tok!(ch.header_outer_border_alpha),
+                "header_outer_border_width":     dim!(ch.header_outer_border_width),
+                "header_divider_alpha":          int_tok!(ch.header_divider_alpha),
+                "nav_active_col_alpha":          int_tok!(ch.nav_active_col_alpha),
+                "dialog_backdrop_alpha":         int_tok!(ch.dialog_backdrop_alpha),
+                "tab_inactive_alpha":            num!(ch.tab_inactive_alpha),
+                "tab_hover_bg_alpha":            int_tok!(ch.tab_hover_bg_alpha),
+                "tab_underline_thickness":       dim!(ch.tab_underline_thickness),
+                "section_label_padding_top":     dim!(ch.section_label_padding_top),
+                "section_label_padding_bottom":  dim!(ch.section_label_padding_bottom),
+                "drag_handle_alpha":             num!(ch.drag_handle_alpha),
+                "drag_handle_dot_scale":         num!(ch.drag_handle_dot_scale),
+                "toast_bg_alpha":                int_tok!(ch.toast_bg_alpha),
+                "card_stripe_alpha":             int_tok!(ch.card_stripe_alpha),
+                "card_floating_shadow_alpha":    int_tok!(ch.card_floating_shadow_alpha),
+                "accent_emphasis":               num!(ch.accent_emphasis),
+                "disabled_opacity":              num!(ch.disabled_opacity),
+                "focus_ring_width":              dim!(ch.focus_ring_width),
+                "focus_ring_alpha":              int_tok!(ch.focus_ring_alpha),
+                "hover_bg_alpha":                int_tok!(ch.hover_bg_alpha),
+                "active_bg_alpha":               int_tok!(ch.active_bg_alpha),
+                "region_gap":                    dim!(ch.region_gap),
+                "region_radius":                 dim!(ch.region_radius),
+                "region_border_alpha":           int_tok!(ch.region_border_alpha),
+                "nav_cluster_radius":            dim!(ch.nav_cluster_radius),
+                "nav_cluster_fill_alpha":        int_tok!(ch.nav_cluster_fill_alpha),
+                "nav_cluster_padding":           dim!(ch.nav_cluster_padding),
+                "button_group":                  str_tok!(group_enclosure_str),
+                "toolnav_height":                dim!(ch.toolnav_height),
+                "footer_default_open":           bool_tok!(ch.footer_default_open),
+                "panel_header_treatment":        int_tok!(ch.panel_header_treatment),
+                "panel_section_fill_alpha":      int_tok!(ch.panel_section_fill_alpha),
+                "panel_footer_card":             bool_tok!(ch.panel_footer_card),
+                "panel_footer_radius":           dim!(ch.panel_footer_radius),
             },
         });
 

@@ -5,16 +5,16 @@
 //! white, and higher shades mix toward black — mirroring Tailwind's palette.
 //!
 //! **Performance:** ramps are derived once per theme and cached in a
-//! thread-local keyed by `theme.name` (a `&'static str`). Per-frame lookups are
-//! an O(1) array index into a `Copy` [`Palette`] — no color math, no allocation,
-//! no lock. The whole `Palette` is ~400 bytes and copied by value.
+//! thread-local keyed on a `(accent, bg, text)` color identity — unique per
+//! theme in practice, and a collision would only return a near-identical
+//! palette. Per-frame lookups are an O(1) array index into a `Copy` [`Palette`]
+//! — no color math, no allocation, no lock. The whole `Palette` is ~400 bytes
+//! and copied by value.
 
 use std::cell::RefCell;
 use egui::Color32;
 
 use crate::ui_kit::widgets::theme::ComponentTheme;
-
-type Theme = crate::chart_renderer::gpu::Theme;
 
 /// Semantic color slot — maps to a `Theme` base color.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -38,21 +38,6 @@ impl Tone {
         Tone::Accent, Tone::Bull, Tone::Bear, Tone::Warn, Tone::Text,
         Tone::Dim, Tone::Border, Tone::Surface, Tone::Bg,
     ];
-
-    #[inline]
-    fn base(self, t: &Theme) -> Color32 {
-        match self {
-            Tone::Accent  => t.accent,
-            Tone::Bull    => t.bull,
-            Tone::Bear    => t.bear,
-            Tone::Warn    => t.warn,
-            Tone::Text    => t.text,
-            Tone::Dim     => t.dim,
-            Tone::Border  => t.toolbar_border,
-            Tone::Surface => t.toolbar_bg,
-            Tone::Bg      => t.bg,
-        }
-    }
 
     /// Base color from the portable [`ComponentTheme`] abstraction — the theme
     /// surface the `ui_kit` widget layer speaks. Lets widgets resolve Sx ramps
@@ -152,19 +137,15 @@ pub struct Palette {
 }
 
 impl Palette {
-    /// Build a palette from any per-tone base-color resolver. Both the
-    /// `gpu::Theme` and `ComponentTheme` paths funnel through here so the ramp
-    /// math lives in exactly one place.
+    /// Build a palette from any per-tone base-color resolver. The
+    /// `ComponentTheme` path funnels through here so the ramp math lives in
+    /// exactly one place.
     fn from_fn(base: impl Fn(Tone) -> Color32) -> Self {
         let mut ramps = [Ramp([Color32::TRANSPARENT; 11]); 9];
         for tone in Tone::ALL {
             ramps[tone.idx()] = Ramp::from_base(base(tone));
         }
         Palette { ramps }
-    }
-
-    fn from_theme(t: &Theme) -> Self {
-        Self::from_fn(|tone| tone.base(t))
     }
 
     fn from_component_theme(t: &dyn ComponentTheme) -> Self {
@@ -185,10 +166,6 @@ impl Palette {
 }
 
 thread_local! {
-    /// Per-theme palette cache. Small (≤ ~12 themes), keyed by the theme's
-    /// `&'static str` name so lookups never allocate after warmup.
-    static PALETTE_CACHE: RefCell<Vec<(&'static str, Palette)>> = const { RefCell::new(Vec::new()) };
-
     /// Palette cache for the `ComponentTheme` path. `ComponentTheme` has no
     /// stable name, so we key on a `(accent, bg, text)` color identity — unique
     /// per theme in practice, and a collision would only return a near-identical
@@ -196,27 +173,14 @@ thread_local! {
     static PALETTE_CACHE_CT: RefCell<Vec<((Color32, Color32, Color32), Palette)>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Get the cached [`Palette`] for `t`, building it on first use. Returns by
-/// value (a cheap `Copy`) so the borrow on the cache is not held across the
-/// caller's render — and there is no per-frame color math or allocation.
-pub fn palette(t: &Theme) -> Palette {
-    PALETTE_CACHE.with(|c| {
-        let mut cache = c.borrow_mut();
-        if let Some((_, p)) = cache.iter().find(|(name, _)| *name == t.name) {
-            return *p;
-        }
-        let p = Palette::from_theme(t);
-        cache.push((t.name, p));
-        p
-    })
-}
-
-/// [`palette`] for the `ui_kit` widget layer, which speaks the portable
-/// [`ComponentTheme`] trait instead of `chart_renderer::gpu::Theme`. This is
-/// the bridge that lets any widget resolve Sx ramps/tones. Byte-identical to a
-/// widget's existing colors: `Tone::base_ct` reads the same `ComponentTheme`
-/// methods widgets already paint with, and `S500`/alpha overlays reproduce
-/// today's `color_alpha(theme.method(), α)` exactly.
+/// Get the cached [`Palette`] for `t` via the portable [`ComponentTheme`] API,
+/// building it on first use. Returns by value (a cheap `Copy`) so the borrow
+/// on the cache is not held across the caller's render — and there is no
+/// per-frame color math or allocation.
+///
+/// This is the canonical entry point for all code — both `ui_kit/` widgets and
+/// `chart/renderer/ui/` call sites that pass a `&gpu::Theme` (which auto-coerces
+/// to `&dyn ComponentTheme` since `Theme: ComponentTheme`).
 pub fn palette_ct(t: &dyn ComponentTheme) -> Palette {
     let key = (t.accent(), t.bg(), t.text());
     PALETTE_CACHE_CT.with(|c| {

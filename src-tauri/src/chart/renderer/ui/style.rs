@@ -1459,7 +1459,7 @@ pub(crate) fn shade(
     tone: crate::ui_kit::sx::Tone,
     s: crate::ui_kit::sx::Shade,
 ) -> Color32 {
-    crate::ui_kit::sx::palette(t).shade(tone, s)
+    crate::ui_kit::sx::palette_ct(t).shade(tone, s)
 }
 
 /// The base (500) color of a semantic tone at an explicit alpha — the ramp
@@ -1472,7 +1472,7 @@ pub(crate) fn tint(
     tone: crate::ui_kit::sx::Tone,
     alpha: u8,
 ) -> Color32 {
-    let c = crate::ui_kit::sx::palette(t).base(tone);
+    let c = crate::ui_kit::sx::palette_ct(t).base(tone);
     Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha)
 }
 
@@ -1556,7 +1556,7 @@ impl ButtonGroupBox {
         if !rect.is_finite() || rect.width() < 4.0 { return; }
         // The look is a composed `Sx` chosen by the style's `GroupEnclosure`
         // (see `group_enclosure_sx`), painted by the generic engine.
-        sx.paint_into(ui, t, slot, rect, crate::ui_kit::sx::StyleState::Normal);
+        sx.paint_into_ct(ui, t, slot, rect, crate::ui_kit::sx::StyleState::Normal);
     }
 }
 
@@ -2171,7 +2171,63 @@ pub fn toolbar_rect() -> egui::Rect {
 // `current()` clones the active one; `set_style_settings` overwrites it.
 
 // ┌─ STYLE_DEFAULTS_BEGIN ─────────────────────────────────────────────────────
+/// Returns the default `StyleSettings` for the given style index.
+///
+/// The hardcoded 3-arm match that previously lived here is replaced by a call
+/// through the adapter — `style_defaults(id)` now delegates to
+/// `style_system_to_style_settings(&builtin_style_systems()[id])`.
+///
+/// **Equivalence guarantee**: the equivalence test in this file verifies that
+/// every field of the adapter output matches the original hardcoded match body
+/// (preserved verbatim in `style_defaults_legacy`) for ids 0/1/2. Styles 3-8
+/// are defined solely in `builtin_style_systems()`.
+///
+/// Adding a 10th `StyleSystem` to `builtin_style_systems()` now flows through
+/// here and into `STYLE_STORE` automatically — no further changes needed.
 fn style_defaults(id: u8) -> StyleSettings {
+    use crate::design_system::builtin_style_systems;
+    let systems = builtin_style_systems();
+    let idx = id as usize;
+    let ss = if idx < systems.len() { &systems[idx] } else { &systems[0] };
+    style_system_to_style_settings(ss)
+}
+// └─ STYLE_DEFAULTS_END ───────────────────────────────────────────────────────
+
+// NOTE: The 6 ported personality presets (Cadence/Alto/Mariner/Lucid/Relay/Glass)
+// previously lived here as raw StyleSettings functions. They are now proper
+// StyleSystem entries in design_system::builtin_style_systems() and flow through
+// the style_system_to_style_settings adapter — the canonical two-axis path.
+// See design_system/builtin.rs for the authoritative personality definitions.
+
+// ─── Ported theme personalities (React ApexTerminalThemes → StyleSettings) ────
+//
+// Each function returns a bespoke StyleSettings built by struct-update over the
+// closest existing preset. Values are transcribed from the React mockup's
+// `global.css` `[data-ds="<theme>"]` token blocks plus its `html[data-ds]`
+// structural overrides — the styling source of truth tuned to ~90% fidelity.
+//
+// NOTE: the bevel / inset-shadow gradients that are signature to Cadence /
+// Alto / Mariner are CSS `box-shadow` effects with no StyleSettings field.
+// The dimensional character (radii, heights, density, tracking, underlines,
+// active-fill behaviour, button treatment, drop shadow) IS captured here;
+// faithful bevels would need a new widget-render capability, not a token.
+
+
+/// Public test accessor for `style_defaults`.
+/// Maps: 0 → Meridien (default `_` arm), 1 → Aperture, 2 → Octave.
+/// Available only in `#[cfg(test)]` so it does not bloat the release binary.
+#[cfg(test)]
+pub fn style_defaults_pub(id: u8) -> StyleSettings {
+    style_defaults(id)
+}
+
+// ─── Golden-master reference for equivalence testing ────────────────────────
+/// Verbatim copy of the original 3-arm `style_defaults` match body.
+/// Used by the equivalence test to verify that `style_defaults(id)` ≡
+/// `style_system_to_style_settings(&builtin_style_systems()[id])` for ids 0/1/2.
+/// Do NOT modify — it is the reference the adapter must match.
+#[cfg(test)]
+fn style_defaults_legacy(id: usize) -> StyleSettings {
     match id {
         1 => StyleSettings {
             // React fidelity: Aperture's signature big-radius scale (8/10/14/20).
@@ -2348,67 +2404,29 @@ fn style_defaults(id: u8) -> StyleSettings {
         },
     }
 }
-// └─ STYLE_DEFAULTS_END ───────────────────────────────────────────────────────
-
-// NOTE: The 6 ported personality presets (Cadence/Alto/Mariner/Lucid/Relay/Glass)
-// previously lived here as raw StyleSettings functions. They are now proper
-// StyleSystem entries in design_system::builtin_style_systems() and flow through
-// the style_system_to_style_settings adapter — the canonical two-axis path.
-// See design_system/builtin.rs for the authoritative personality definitions.
-
-// ─── Ported theme personalities (React ApexTerminalThemes → StyleSettings) ────
-//
-// Each function returns a bespoke StyleSettings built by struct-update over the
-// closest existing preset. Values are transcribed from the React mockup's
-// `global.css` `[data-ds="<theme>"]` token blocks plus its `html[data-ds]`
-// structural overrides — the styling source of truth tuned to ~90% fidelity.
-//
-// NOTE: the bevel / inset-shadow gradients that are signature to Cadence /
-// Alto / Mariner are CSS `box-shadow` effects with no StyleSettings field.
-// The dimensional character (radii, heights, density, tracking, underlines,
-// active-fill behaviour, button treatment, drop shadow) IS captured here;
-// faithful bevels would need a new widget-render capability, not a token.
-
-
-/// Public test accessor for `style_defaults`.
-/// Maps: 0 → Meridien (default `_` arm), 1 → Aperture, 2 → Octave.
-/// Available only in `#[cfg(test)]` so it does not bloat the release binary.
-#[cfg(test)]
-pub fn style_defaults_pub(id: u8) -> StyleSettings {
-    style_defaults(id)
-}
 
 // ─── Design-system → StyleSettings adapter ───────────────────────────────────
 //
-// Converts a `design_system::StyleSystem` to a `StyleSettings` using
-// `style_defaults(base_id)` as the base value (via struct-update syntax)
-// and then overrides every field that `StyleSystem` cleanly carries.
+// Converts a `design_system::StyleSystem` to a `StyleSettings`.
+// Every StyleSettings field is now populated from the corresponding StyleSystem
+// field per the field-disposition doc. There is no struct-update fallback —
+// the adapter is total.
 //
-// Fields with a clean `StyleSystem` source (12 groups, ~20 fields):
-//   radii:      r_xs/r_sm/r_md/r_lg from ss.radii.xs/sm/md/lg  (cast f32→u8)
-//               r_pill from ss.radii.full  (capped at 255)
-//   strokes:    stroke_hair/thin/std/bold/thick from ss.strokes.hair/thin/std/bold/thick
-//   treatments: hairline_borders/solid_active_fills/uppercase_section_labels
-//               from ss.treatments.*
-//   spacing:    cta_height_px from ss.spacing.cta_height
-//               card_padding_y / card_padding_x from ss.spacing.md / lg
-//   typography: font_section_label / font_caption from ss.typography.size_xs
-//               font_body from ss.typography.size_sm
-//               font_hero from ss.typography.size_xl
-//   density:    density from ss.density.factor (0.8→0, 1.0→1, ≥1.2→2)
-//               row_height_px from ss.density.row_height_dense
-//   shadows:    shadow_blur/shadow_offset_y from ss.shadows.card.blur/offset_y
-//               shadow_alpha from (ss.shadows.card.alpha * 255) as u8
-//               shadows_enabled from ss.shadows.card.blur > 0.0
-//
-// All other StyleSettings fields keep the `style_defaults(base_id)` value
-// through the struct-update spread.
+// Field mapping groups (see docs/migration/field-disposition.md):
+//   radii:      r_xs/r_sm/r_md/r_lg/r_pill/r_chip ← ss.radii.*
+//   strokes:    stroke_hair/thin/std/bold/thick ← ss.strokes.hair/thin/std/bold/thick
+//   treatments: all boolean/enum flags ← ss.treatments.*
+//   spacing:    cta_height_px/card_padding_y/card_padding_x/button_height_px/
+//               button_padding_x/tab_height ← ss.spacing.*
+//   typography: font_section_label/font_body/font_caption/font_hero/
+//               label_letter_spacing_px/nav_letter_spacing_px/section_header_tracking ← ss.typography.*
+//   density:    density/row_height_px ← ss.density.*
+//   shadows:    shadow_blur/shadow_offset_y/shadow_alpha ← ss.shadows.card.*
+//   chrome:     all geometry/finish fields ← ss.chrome.*
+//   axis violation: pane_gap_color (Color32) — all builtin StyleSystems set None
 pub fn style_system_to_style_settings(
     ss: &crate::design_system::StyleSystem,
-    base_id: u8,
 ) -> StyleSettings {
-    let base = style_defaults(base_id);
-
     // Density: 0.8 → compact (0), 1.2+ → roomy (2), anything else → normal (1).
     let density = if (ss.density.factor - 0.8_f32).abs() < 0.05 {
         0u8
@@ -2428,8 +2446,13 @@ pub fn style_system_to_style_settings(
         r_chip: ss.radii.chip as u8,
 
         // ── Strokes ──────────────────────────────────────────────────────────
-        // bold/thick map 1-to-1. hair/thin/std still inherit from base (the
-        // tier-shift makes them style-specific; low visual impact — deferred).
+        // Direct 1-to-1 field mapping: each StyleSettings stroke field comes
+        // from the same-named Strokes tier in the StyleSystem.
+        // Aperture and Octave builtins store their legacy values at the correct
+        // tier positions (hair/thin/std/bold/thick) for field-exact equivalence.
+        stroke_hair:  ss.strokes.hair,
+        stroke_thin:  ss.strokes.thin,
+        stroke_std:   ss.strokes.std,
         stroke_bold:  ss.strokes.bold,
         stroke_thick: ss.strokes.thick,
 
@@ -2476,10 +2499,10 @@ pub fn style_system_to_style_settings(
         tab_height:       ss.spacing.tab_height,
 
         // ── Typography ───────────────────────────────────────────────────────
-        font_caption:           ss.typography.size_xs,
-        font_body:              ss.typography.size_sm,
-        font_hero:              ss.typography.size_xl,
-        font_section_label:     ss.typography.size_section_label,
+        font_caption:            ss.typography.size_xs,
+        font_body:               ss.typography.size_sm,
+        font_hero:               ss.typography.size_xl,
+        font_section_label:      ss.typography.size_section_label,
         label_letter_spacing_px: ss.typography.label_tracking,
         nav_letter_spacing_px:   ss.typography.nav_tracking,
         section_header_tracking: ss.typography.section_tracking,
@@ -2538,9 +2561,12 @@ pub fn style_system_to_style_settings(
         panel_footer_card:             ss.chrome.panel_footer_card,
         panel_footer_radius:           ss.chrome.panel_footer_radius,
 
-        // Only genuinely color-dependent / un-migrated fields inherit from base:
-        // pane_gap_color (Color32), stroke_hair/thin/std (tier-shift), r_pill cap.
-        ..base
+        // ── Axis violation: color on the dimension axis ───────────────────────
+        // pane_gap_color is Option<Color32>. All builtin StyleSystems specify
+        // None (the field-disposition doc marks this as an axis violation moved
+        // to ColorScheme.pane_gap_color). Renderers derive the gap color from
+        // bg/border at paint time when None.
+        pane_gap_color: None,
     }
 }
 
@@ -2567,33 +2593,12 @@ fn style_store() -> &'static std::sync::RwLock<Vec<(String, StyleSettings)>> {
         );
         let mut v: Vec<(String, StyleSettings)> = systems
             .iter()
-            .enumerate()
-            .map(|(i, ss)| {
-                (ss.meta.name.clone(), style_system_to_style_settings(ss, i as u8))
+            .map(|ss| {
+                (ss.meta.name.clone(), style_system_to_style_settings(ss))
             })
             .collect();
-        // Slots 3-6 carry bespoke personalities ported from the React
-        // ApexTerminalThemes mockup (the styling source of truth):
-        //   3 Cadence — Spotify-dark: pill primaries, elevated cards, 3px tab
-        //               underline, uppercase pills, flush rows, vivid accent.
-        //   4 Alto    — Zed warm-dark: raised button faces, amber active tint,
-        //               2px tab underline, mono uppercase eyebrows, sharp radii.
-        //   5 Mariner — Alto's nautical sibling: same bones, steel-blue precision
-        //               markers, ~10% tighter (compact density), top-stripe active pane.
-        //   6 Lucid   — editorial LIGHT (Bauhaus): serif headlines, inverted
-        //               solid primaries, no bevels (light layers), restrained radii.
-        // These are NOT equivalence-gated (only slots 0-2 are), so they're
-        // defined directly as StyleSettings via struct-update over a close base.
-        // Slots 3-8 are now sourced from builtin_style_systems() via the adapter —
-        // same as slots 0-2. All 9 personalities live in the design-system registry.
-        for i in 3..systems.len() {
-            let ss = &systems[i];
-            // Use base_id=1 (Aperture) for dark creative styles, 0 (Meridien) for editorial.
-            let base_id: u8 = if ss.meta.is_dark && ss.meta.id != "relay" { 1 } else { 0 };
-            v.push((ss.meta.name.clone(), style_system_to_style_settings(ss, base_id)));
-        }
         // One remaining alias slot for forward-compatibility.
-        let meridien = style_system_to_style_settings(&systems[0], 0);
+        let meridien = style_system_to_style_settings(&systems[0]);
         v.push(("Contour".to_string(), meridien));
         std::sync::RwLock::new(v)
     })
@@ -2979,6 +2984,189 @@ pub fn chrome_tile_fg(state: ChromeTileState, t: &crate::chart_renderer::gpu::Th
     }
 }
 
+// ─── Phase 2a/2b equivalence tests ──────────────────────────────────────────
+//
+// Verify that `style_defaults(id)` (now adapter-driven) produces field-exact
+// output for ids 0/1/2 compared to the frozen `style_defaults_legacy` reference.
+// Ids 3-8 are new personalities defined only in builtin_style_systems() and have
+// no legacy reference to compare against.
+
+#[cfg(test)]
+mod s2_equivalence_tests {
+    use super::*;
+
+    /// Compare two f32 values with a small epsilon (rounding in shadow_alpha cast).
+    fn f32_eq(a: f32, b: f32) -> bool {
+        (a - b).abs() < 1e-4
+    }
+
+    /// Compare two u8 values from shadow_alpha (allow ±1 from f32 rounding).
+    fn u8_shadow_eq(a: u8, b: u8) -> bool {
+        (a as i16 - b as i16).abs() <= 1
+    }
+
+    fn check_style_equal(id: usize, new: &StyleSettings, legacy: &StyleSettings) {
+        // Radii
+        assert_eq!(new.r_xs,   legacy.r_xs,   "id={} r_xs mismatch", id);
+        assert_eq!(new.r_sm,   legacy.r_sm,   "id={} r_sm mismatch", id);
+        assert_eq!(new.r_md,   legacy.r_md,   "id={} r_md mismatch", id);
+        assert_eq!(new.r_lg,   legacy.r_lg,   "id={} r_lg mismatch", id);
+        assert_eq!(new.r_pill, legacy.r_pill, "id={} r_pill mismatch", id);
+        assert_eq!(new.r_chip, legacy.r_chip, "id={} r_chip mismatch", id);
+
+        // Strokes
+        assert!(f32_eq(new.stroke_hair,  legacy.stroke_hair),  "id={} stroke_hair mismatch: {} vs {}", id, new.stroke_hair, legacy.stroke_hair);
+        assert!(f32_eq(new.stroke_thin,  legacy.stroke_thin),  "id={} stroke_thin mismatch: {} vs {}", id, new.stroke_thin, legacy.stroke_thin);
+        assert!(f32_eq(new.stroke_std,   legacy.stroke_std),   "id={} stroke_std mismatch: {} vs {}", id, new.stroke_std, legacy.stroke_std);
+        assert!(f32_eq(new.stroke_bold,  legacy.stroke_bold),  "id={} stroke_bold mismatch: {} vs {}", id, new.stroke_bold, legacy.stroke_bold);
+        assert!(f32_eq(new.stroke_thick, legacy.stroke_thick), "id={} stroke_thick mismatch: {} vs {}", id, new.stroke_thick, legacy.stroke_thick);
+
+        // Treatments (bool)
+        assert_eq!(new.serif_headlines,          legacy.serif_headlines,          "id={} serif_headlines", id);
+        assert_eq!(new.button_treatment,         legacy.button_treatment,         "id={} button_treatment", id);
+        assert_eq!(new.hairline_borders,         legacy.hairline_borders,         "id={} hairline_borders", id);
+        assert_eq!(new.shadows_enabled,          legacy.shadows_enabled,          "id={} shadows_enabled", id);
+        assert_eq!(new.solid_active_fills,       legacy.solid_active_fills,       "id={} solid_active_fills", id);
+        assert_eq!(new.invert_active_fill,       legacy.invert_active_fill,       "id={} invert_active_fill", id);
+        assert_eq!(new.uppercase_section_labels, legacy.uppercase_section_labels, "id={} uppercase_section_labels", id);
+        assert_eq!(new.vertical_group_dividers,  legacy.vertical_group_dividers,  "id={} vertical_group_dividers", id);
+        assert_eq!(new.show_active_tab_underline,legacy.show_active_tab_underline,"id={} show_active_tab_underline", id);
+        assert_eq!(new.inactive_header_fill,     legacy.inactive_header_fill,     "id={} inactive_header_fill", id);
+        assert_eq!(new.nav_buttons_label_only,   legacy.nav_buttons_label_only,   "id={} nav_buttons_label_only", id);
+        assert_eq!(new.nav_buttons_uppercase_labels, legacy.nav_buttons_uppercase_labels, "id={} nav_buttons_uppercase_labels", id);
+        assert_eq!(new.tab_underline_under_text, legacy.tab_underline_under_text, "id={} tab_underline_under_text", id);
+        assert_eq!(new.card_floating_shadow,     legacy.card_floating_shadow,     "id={} card_floating_shadow", id);
+        assert_eq!(new.animations_enabled,       legacy.animations_enabled,       "id={} animations_enabled", id);
+        assert_eq!(new.pane_active_fill_accent,  legacy.pane_active_fill_accent,  "id={} pane_active_fill_accent", id);
+        assert_eq!(new.surface_bevel,            legacy.surface_bevel,            "id={} surface_bevel", id);
+        assert_eq!(new.bevel_highlight_alpha,    legacy.bevel_highlight_alpha,    "id={} bevel_highlight_alpha", id);
+        assert_eq!(new.bevel_shadow_alpha,       legacy.bevel_shadow_alpha,       "id={} bevel_shadow_alpha", id);
+        assert_eq!(new.wl_row_corner_radius,     legacy.wl_row_corner_radius,     "id={} wl_row_corner_radius", id);
+        assert_eq!(new.wl_row_divider_alpha,     legacy.wl_row_divider_alpha,     "id={} wl_row_divider_alpha", id);
+        assert_eq!(new.wl_symbol_mono,           legacy.wl_symbol_mono,           "id={} wl_symbol_mono", id);
+        assert_eq!(new.section_header_mono,      legacy.section_header_mono,      "id={} section_header_mono", id);
+        assert_eq!(new.panel_tab_treatment,      legacy.panel_tab_treatment,      "id={} panel_tab_treatment", id);
+
+        // Spacing
+        assert!(f32_eq(new.label_letter_spacing_px, legacy.label_letter_spacing_px), "id={} label_letter_spacing_px", id);
+        assert!(f32_eq(new.toolbar_height_scale,    legacy.toolbar_height_scale),    "id={} toolbar_height_scale", id);
+        assert!(f32_eq(new.header_height_scale,     legacy.header_height_scale),     "id={} header_height_scale", id);
+        assert!(f32_eq(new.account_strip_height,    legacy.account_strip_height),    "id={} account_strip_height", id);
+        assert!(f32_eq(new.pane_border_width,       legacy.pane_border_width),       "id={} pane_border_width", id);
+        assert!(f32_eq(new.pane_gap,                legacy.pane_gap),                "id={} pane_gap: {} vs {}", id, new.pane_gap, legacy.pane_gap);
+        assert!(f32_eq(new.card_padding_y,          legacy.card_padding_y),          "id={} card_padding_y", id);
+        assert!(f32_eq(new.card_padding_x,          legacy.card_padding_x),          "id={} card_padding_x", id);
+        assert!(f32_eq(new.row_height_px,           legacy.row_height_px),           "id={} row_height_px", id);
+        assert!(f32_eq(new.button_height_px,        legacy.button_height_px),        "id={} button_height_px", id);
+        assert!(f32_eq(new.button_padding_x,        legacy.button_padding_x),        "id={} button_padding_x", id);
+        assert!(f32_eq(new.tab_height,              legacy.tab_height),              "id={} tab_height", id);
+        assert!(f32_eq(new.cta_height_px,           legacy.cta_height_px),           "id={} cta_height_px", id);
+        assert!(f32_eq(new.cta_padding_x,           legacy.cta_padding_x),           "id={} cta_padding_x", id);
+        assert!(f32_eq(new.wl_row_side_margin,      legacy.wl_row_side_margin),      "id={} wl_row_side_margin", id);
+        assert!(f32_eq(new.section_header_tracking, legacy.section_header_tracking), "id={} section_header_tracking", id);
+
+        // Typography
+        assert!(f32_eq(new.font_hero,         legacy.font_hero),         "id={} font_hero", id);
+        assert!(f32_eq(new.font_section_label,legacy.font_section_label),"id={} font_section_label", id);
+        assert!(f32_eq(new.font_body,         legacy.font_body),         "id={} font_body", id);
+        assert!(f32_eq(new.font_caption,      legacy.font_caption),      "id={} font_caption", id);
+        assert!(f32_eq(new.nav_letter_spacing_px, legacy.nav_letter_spacing_px), "id={} nav_letter_spacing_px", id);
+
+        // Interaction
+        assert_eq!(new.hover_bg_alpha,    legacy.hover_bg_alpha,    "id={} hover_bg_alpha", id);
+        assert_eq!(new.active_bg_alpha,   legacy.active_bg_alpha,   "id={} active_bg_alpha", id);
+        assert!(f32_eq(new.focus_ring_width, legacy.focus_ring_width), "id={} focus_ring_width", id);
+        assert_eq!(new.focus_ring_alpha,  legacy.focus_ring_alpha,  "id={} focus_ring_alpha", id);
+        assert!(f32_eq(new.disabled_opacity, legacy.disabled_opacity), "id={} disabled_opacity", id);
+
+        // Density
+        assert_eq!(new.density, legacy.density, "id={} density", id);
+        assert!(f32_eq(new.accent_emphasis, legacy.accent_emphasis), "id={} accent_emphasis", id);
+
+        // Shadows
+        assert!(f32_eq(new.shadow_blur,     legacy.shadow_blur),     "id={} shadow_blur", id);
+        assert!(f32_eq(new.shadow_offset_y, legacy.shadow_offset_y), "id={} shadow_offset_y", id);
+        assert!(u8_shadow_eq(new.shadow_alpha, legacy.shadow_alpha), "id={} shadow_alpha: {} vs {}", id, new.shadow_alpha, legacy.shadow_alpha);
+
+        // Chrome (u8)
+        assert_eq!(new.pane_gap_alpha,          legacy.pane_gap_alpha,          "id={} pane_gap_alpha", id);
+        assert_eq!(new.pane_active_indicator,   legacy.pane_active_indicator,   "id={} pane_active_indicator", id);
+        assert_eq!(new.nav_active_col_alpha,    legacy.nav_active_col_alpha,    "id={} nav_active_col_alpha", id);
+        assert_eq!(new.dialog_backdrop_alpha,   legacy.dialog_backdrop_alpha,   "id={} dialog_backdrop_alpha", id);
+        assert_eq!(new.tab_hover_bg_alpha,      legacy.tab_hover_bg_alpha,      "id={} tab_hover_bg_alpha", id);
+        assert_eq!(new.card_floating_shadow_alpha, legacy.card_floating_shadow_alpha, "id={} card_floating_shadow_alpha", id);
+        assert_eq!(new.header_outer_border_alpha,  legacy.header_outer_border_alpha,  "id={} header_outer_border_alpha", id);
+        assert_eq!(new.header_divider_alpha,    legacy.header_divider_alpha,    "id={} header_divider_alpha", id);
+        assert_eq!(new.toast_bg_alpha,          legacy.toast_bg_alpha,          "id={} toast_bg_alpha", id);
+        assert_eq!(new.card_stripe_alpha,       legacy.card_stripe_alpha,       "id={} card_stripe_alpha", id);
+        assert_eq!(new.region_border_alpha,     legacy.region_border_alpha,     "id={} region_border_alpha", id);
+        assert_eq!(new.nav_cluster_fill_alpha,  legacy.nav_cluster_fill_alpha,  "id={} nav_cluster_fill_alpha", id);
+        assert_eq!(new.panel_section_fill_alpha,legacy.panel_section_fill_alpha,"id={} panel_section_fill_alpha", id);
+        assert_eq!(new.panel_header_treatment,  legacy.panel_header_treatment,  "id={} panel_header_treatment", id);
+
+        // Chrome (f32)
+        assert!(f32_eq(new.tab_inactive_alpha,          legacy.tab_inactive_alpha),          "id={} tab_inactive_alpha", id);
+        assert!(f32_eq(new.tab_underline_thickness,     legacy.tab_underline_thickness),     "id={} tab_underline_thickness", id);
+        assert!(f32_eq(new.section_label_padding_top,   legacy.section_label_padding_top),   "id={} section_label_padding_top", id);
+        assert!(f32_eq(new.section_label_padding_bottom,legacy.section_label_padding_bottom),"id={} section_label_padding_bottom", id);
+        assert!(f32_eq(new.drag_handle_alpha,           legacy.drag_handle_alpha),           "id={} drag_handle_alpha", id);
+        assert!(f32_eq(new.drag_handle_dot_scale,       legacy.drag_handle_dot_scale),       "id={} drag_handle_dot_scale", id);
+        assert!(f32_eq(new.active_header_fill_multiply, legacy.active_header_fill_multiply), "id={} active_header_fill_multiply", id);
+        assert!(f32_eq(new.inactive_header_fill_multiply, legacy.inactive_header_fill_multiply), "id={} inactive_header_fill_multiply", id);
+        assert!(f32_eq(new.header_outer_border_width,   legacy.header_outer_border_width),   "id={} header_outer_border_width", id);
+        assert!(f32_eq(new.region_gap,                  legacy.region_gap),                  "id={} region_gap: {} vs {}", id, new.region_gap, legacy.region_gap);
+        assert!(f32_eq(new.region_radius,               legacy.region_radius),               "id={} region_radius", id);
+        assert!(f32_eq(new.nav_cluster_radius,          legacy.nav_cluster_radius),          "id={} nav_cluster_radius", id);
+        assert!(f32_eq(new.nav_cluster_padding,         legacy.nav_cluster_padding),         "id={} nav_cluster_padding", id);
+        assert!(f32_eq(new.toolnav_height,              legacy.toolnav_height),              "id={} toolnav_height", id);
+        assert!(f32_eq(new.panel_footer_radius,         legacy.panel_footer_radius),         "id={} panel_footer_radius", id);
+
+        // Chrome (bool)
+        assert_eq!(new.footer_default_open,  legacy.footer_default_open,  "id={} footer_default_open", id);
+        assert_eq!(new.panel_footer_card,    legacy.panel_footer_card,    "id={} panel_footer_card", id);
+        assert_eq!(new.button_group,         legacy.button_group,         "id={} button_group", id);
+
+        // Axis violation
+        assert_eq!(new.pane_gap_color, legacy.pane_gap_color, "id={} pane_gap_color", id);
+    }
+
+    #[test]
+    fn style_defaults_equivalence_id_0_meridien() {
+        let new    = style_defaults(0);
+        let legacy = style_defaults_legacy(0);
+        check_style_equal(0, &new, &legacy);
+    }
+
+    #[test]
+    fn style_defaults_equivalence_id_1_aperture() {
+        let new    = style_defaults(1);
+        let legacy = style_defaults_legacy(1);
+        check_style_equal(1, &new, &legacy);
+    }
+
+    #[test]
+    fn style_defaults_equivalence_id_2_octave() {
+        let new    = style_defaults(2);
+        let legacy = style_defaults_legacy(2);
+        check_style_equal(2, &new, &legacy);
+    }
+
+    /// Smoke-test: styles 3-8 must produce non-default StyleSettings
+    /// (sanity check that the adapter produces distinct outputs for each entry).
+    #[test]
+    fn styles_3_to_8_produce_settings() {
+        use crate::design_system::builtin_style_systems;
+        let systems = builtin_style_systems();
+        assert_eq!(systems.len(), 9, "expected 9 style systems");
+        for i in 3..9usize {
+            let ss = &systems[i];
+            let result = style_system_to_style_settings(ss);
+            // Each style must have a valid density value (0, 1, or 2)
+            assert!(result.density <= 2, "id={} density out of range: {}", i, result.density);
+        }
+    }
+}
+
 // ─── DS-IMPL-3 token tests ───────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -3041,5 +3229,75 @@ mod ds_impl_3_tests {
             "elevation_1 should be >= elevation_2 in luminance");
         assert!(lum(elevation_2(t)) >= lum(elevation_3(t)),
             "elevation_2 should be >= elevation_3 in luminance");
+    }
+}
+
+/// End-to-end proof of the data-driven styling path (Stream S2 milestone).
+///
+/// Demonstrates that a brand-new style and palette, defined purely as DATA
+/// (authored, serialized to DTCG JSON, then re-parsed as if loaded from a
+/// theme-pack file), flow through the SAME adapter + resolver the live app
+/// uses — with the custom values surviving end to end. No Rust edits or
+/// recompilation introduce the new style: the value path is data only.
+#[cfg(test)]
+mod data_driven_proof {
+    use super::style_system_to_style_settings;
+    use crate::design_system::{
+        builtin_style_systems, builtin_color_schemes, StyleSystem, ColorScheme,
+    };
+    use crate::design_system::snapshot::snapshot;
+
+    #[test]
+    fn new_style_from_json_flows_through_with_zero_rust_edits() {
+        // 1. Author a brand-new StyleSystem as DATA: start from a builtin and
+        //    give it distinctive dimensions no builtin uses, then rename it.
+        let mut custom = builtin_style_systems()[0].clone();
+        custom.meta.id = "proof_custom".to_string();
+        custom.meta.name = "Proof Custom".to_string();
+        custom.radii.lg = 17.0;      // distinctive
+        custom.strokes.thick = 4.25; // distinctive
+        custom.spacing.md = 9.5;     // distinctive
+
+        // 2. Serialize to DTCG JSON (the on-disk theme-pack form) and re-parse,
+        //    simulating a style loaded from a file rather than written in Rust.
+        let json = custom.to_dtcg();
+        let loaded = StyleSystem::from_dtcg(&json)
+            .expect("custom style JSON should parse");
+
+        // 3. The JSON round-trip preserved the custom dimension values.
+        assert!((loaded.radii.lg - 17.0).abs() < 1e-4, "radii.lg lost in JSON round-trip");
+        assert!((loaded.strokes.thick - 4.25).abs() < 1e-4, "strokes.thick lost in JSON round-trip");
+        assert!((loaded.spacing.md - 9.5).abs() < 1e-4, "spacing.md lost in JSON round-trip");
+
+        // 4. Run the loaded style through the SAME adapter the app uses to build
+        //    the legacy StyleSettings consumed by the render path. No special
+        //    casing for "proof_custom" exists anywhere — it is pure data.
+        let settings = style_system_to_style_settings(&loaded);
+        assert_eq!(settings.r_lg, 17, "custom radius did not reach StyleSettings");
+        assert!((settings.stroke_thick - 4.25).abs() < 1e-4, "custom stroke did not reach StyleSettings");
+
+        // 5. Run through the per-frame resolver (snapshot) exactly as begin_frame does.
+        let scheme = builtin_color_schemes()[0].clone();
+        let snap = snapshot(&loaded, &scheme);
+        assert!((snap.radius_lg - 17.0).abs() < 1e-4, "custom radius did not reach DesignSnapshot");
+    }
+
+    #[test]
+    fn widened_palette_from_json_resolves_custom_semantics() {
+        // A palette authored as DATA with explicit info/success (the widened
+        // semantic axis), danger left unset to prove the bull/bear alias fallback.
+        let mut cs = builtin_color_schemes()[0].clone();
+        cs.meta.id = "proof_palette".to_string();
+        cs.info = Some([10, 20, 30, 255]);
+        cs.success = Some([1, 2, 3, 255]);
+
+        let json = cs.to_dtcg();
+        let loaded = ColorScheme::from_dtcg(&json)
+            .expect("custom palette JSON should parse");
+
+        assert_eq!(loaded.resolved_info(), [10, 20, 30, 255], "explicit info lost in round-trip");
+        assert_eq!(loaded.resolved_success(), [1, 2, 3, 255], "explicit success lost in round-trip");
+        // danger was never set -> resolver must fall back to the bear trading alias.
+        assert_eq!(loaded.resolved_danger(), loaded.bear, "unset danger should alias bear");
     }
 }

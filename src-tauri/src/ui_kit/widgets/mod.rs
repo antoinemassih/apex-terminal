@@ -112,9 +112,12 @@ pub mod menu_item;
 pub mod toolbar_button;
 pub mod frames;
 pub mod pane_grid;
+// S5: StyleCtx — threaded style context (see ctx.rs).
+pub mod ctx;
 
 // ─── Foundation ──────────────────────────────────────────────────────
 pub use tokens::{Size, Variant};
+pub use ctx::StyleCtx;
 pub use shell_variants::{ButtonVariant, CardVariant, ChipVariant, RowVariant, InputVariant};
 pub use shadow::{ShadowSpec, paint as paint_shadow, paint_gpu as paint_shadow_gpu};
 pub use placement::{Align, Placement, Side};

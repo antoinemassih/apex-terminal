@@ -507,6 +507,69 @@ pub(crate) mod equivalence {
         );
     }
 
+    // ── PALETTE-DEPTH: optional semantic field tests ──────────────────────────
+
+    /// Verifies the PALETTE-DEPTH decision:
+    ///   1. All 21 built-in ColorSchemes have `None` for the optional semantic
+    ///      fields — so fallback logic kicks in rather than returning junk.
+    ///   2. The resolver methods fall back to the expected base colours.
+    ///   3. A round-trip (to_dtcg → from_dtcg) with explicit values preserves them.
+    #[test]
+    fn palette_depth_optional_fields() {
+        use crate::design_system::color_scheme::{builtin_dark, ColorScheme};
+
+        let schemes = builtin_color_schemes();
+
+        // 1. All built-ins must have None for optional semantic fields.
+        let mut failures: Vec<String> = Vec::new();
+        for s in &schemes {
+            let n = &s.meta.name;
+            if s.success.is_some()       { failures.push(format!("{n}: success != None")); }
+            if s.danger.is_some()        { failures.push(format!("{n}: danger != None")); }
+            if s.warning.is_some()       { failures.push(format!("{n}: warning != None")); }
+            if s.info.is_some()          { failures.push(format!("{n}: info != None")); }
+            if s.pane_gap_color.is_some() { failures.push(format!("{n}: pane_gap_color != None")); }
+        }
+        assert!(failures.is_empty(), "built-in optional fields not None: {:?}", failures);
+
+        // 2. Resolver methods fall back correctly on the dark baseline.
+        let d = builtin_dark();
+        assert_eq!(d.resolved_success(), d.bull,  "resolved_success must fall back to bull");
+        assert_eq!(d.resolved_danger(),  d.bear,  "resolved_danger must fall back to bear");
+        assert_eq!(d.resolved_warning(), d.warn,  "resolved_warning must fall back to warn");
+        // resolved_info: no base field, just verify it returns something non-zero.
+        let info_colour = d.resolved_info();
+        assert!(info_colour[3] > 0, "resolved_info must return a non-transparent colour");
+
+        // 3. DTCG round-trip preserves explicit optional values.
+        use crate::design_system::color_scheme::rgba;
+        let mut src = builtin_dark();
+        let red   = rgba::rgb(200, 50, 50);
+        let green = rgba::rgb(50, 200, 50);
+        let yellow = rgba::rgb(200, 200, 50);
+        let blue   = rgba::rgb(50, 100, 200);
+        let gray   = rgba::rgb(80, 80, 80);
+        src.success       = Some(green);
+        src.danger        = Some(red);
+        src.warning       = Some(yellow);
+        src.info          = Some(blue);
+        src.pane_gap_color = Some(gray);
+
+        let json   = src.to_dtcg();
+        let parsed = ColorScheme::from_dtcg(&json).expect("round-trip parse failed");
+        assert_eq!(parsed.success,        Some(green),  "success survives round-trip");
+        assert_eq!(parsed.danger,         Some(red),    "danger survives round-trip");
+        assert_eq!(parsed.warning,        Some(yellow), "warning survives round-trip");
+        assert_eq!(parsed.info,           Some(blue),   "info survives round-trip");
+        assert_eq!(parsed.pane_gap_color, Some(gray),   "pane_gap_color survives round-trip");
+
+        // Resolver uses explicit value when set.
+        assert_eq!(parsed.resolved_success(), green,  "resolved_success returns explicit value");
+        assert_eq!(parsed.resolved_danger(),  red,    "resolved_danger returns explicit value");
+        assert_eq!(parsed.resolved_warning(), yellow, "resolved_warning returns explicit value");
+        assert_eq!(parsed.resolved_info(),    blue,   "resolved_info returns explicit value");
+    }
+
     // ── Style adapter losslessness ────────────────────────────────────────────
 
     /// Proves that `style_system_to_style_settings(&builtin_style_systems()[i], i as u8)`
@@ -531,7 +594,7 @@ pub(crate) mod equivalence {
 
         for i in 0..3usize {
             let ss  = &systems[i];
-            let adapted  = style_system_to_style_settings(ss, i as u8);
+            let adapted  = style_system_to_style_settings(ss);
             let expected = style_defaults_pub(i as u8);
             let name     = &ss.meta.name;
 
@@ -657,5 +720,132 @@ pub(crate) mod equivalence {
             "{} style-adapter mismatch(es) — see DELTA REPORT above",
             deltas.len()
         );
+    }
+
+    // ── S1 dimension additions — typed enums and font-family fields ───────────
+
+    /// Verifies that the `PaneActiveIndicator` and `PanelHeaderTreatment` typed
+    /// enums (S3/S11 blockers defined in S1) round-trip correctly through their
+    /// `as_u8` / `from_u8` helpers, and that all 9 built-in style systems carry
+    /// the expected `u8` values for `pane_active_indicator` and
+    /// `panel_header_treatment` in their `Chrome` sub-struct.
+    ///
+    /// Also verifies that all 9 built-in style systems have non-empty font-family
+    /// fields (S7 blocker), defaulting to "Inter" / "JetBrains Mono".
+    #[test]
+    fn s1_typed_enums_and_font_family_fields() {
+        use crate::design_system::style_system::{PaneActiveIndicator, PanelHeaderTreatment};
+
+        // ── Enum round-trip ───────────────────────────────────────────────────
+        for v in 0u8..=3 {
+            let enc = PaneActiveIndicator::from_u8(v);
+            assert_eq!(enc.as_u8(), v, "PaneActiveIndicator round-trip failed for u8={v}");
+        }
+        // Out-of-range falls back to HeaderFill (2)
+        assert_eq!(PaneActiveIndicator::from_u8(99).as_u8(), 2);
+
+        for v in 0u8..=4 {
+            let enc = PanelHeaderTreatment::from_u8(v);
+            assert_eq!(enc.as_u8(), v, "PanelHeaderTreatment round-trip failed for u8={v}");
+        }
+        // Out-of-range falls back to Line (0)
+        assert_eq!(PanelHeaderTreatment::from_u8(99).as_u8(), 0);
+
+        // ── Check default conversions ─────────────────────────────────────────
+        assert_eq!(PaneActiveIndicator::default().as_u8(), 1, "Default must be TopStripe (1)");
+        assert_eq!(PanelHeaderTreatment::default().as_u8(), 0, "Default must be Line (0)");
+
+        // ── All 9 built-in styles have expected Chrome u8 values ─────────────
+        let styles = builtin_style_systems();
+        assert_eq!(styles.len(), 9, "expected 9 built-in styles");
+
+        // Expected pane_active_indicator values per style (from builtin.rs / style_defaults)
+        // Meridien=1(TopStripe), Aperture=2(HeaderFill), Octave=3(Both),
+        // Cadence=2, Alto=2, Mariner=1, Lucid=1, Relay=1, Glass=2
+        let expected_pai: &[u8] = &[1, 2, 3, 2, 2, 1, 1, 1, 2];
+        for (i, (style, &expected)) in styles.iter().zip(expected_pai.iter()).enumerate() {
+            let actual = style.chrome.pane_active_indicator;
+            assert_eq!(
+                actual, expected,
+                "[{}][{}] pane_active_indicator: got {} expected {}",
+                i, style.meta.id, actual, expected
+            );
+            // Verify the typed enum converts back to the same u8
+            let as_enum = PaneActiveIndicator::from_u8(actual);
+            assert_eq!(
+                as_enum.as_u8(), actual,
+                "[{}][{}] PaneActiveIndicator::from_u8({}).as_u8() != {}",
+                i, style.meta.id, actual, actual
+            );
+        }
+
+        // Expected panel_header_treatment values per style
+        // Meridien=0(Line), Aperture=2(Filled), Octave=0, Cadence=0, Alto=0,
+        // Mariner=0, Lucid=0, Relay=0, Glass=2
+        let expected_pht: &[u8] = &[0, 2, 0, 0, 0, 0, 0, 0, 2];
+        for (i, (style, &expected)) in styles.iter().zip(expected_pht.iter()).enumerate() {
+            let actual = style.chrome.panel_header_treatment;
+            assert_eq!(
+                actual, expected,
+                "[{}][{}] panel_header_treatment: got {} expected {}",
+                i, style.meta.id, actual, expected
+            );
+            let as_enum = PanelHeaderTreatment::from_u8(actual);
+            assert_eq!(
+                as_enum.as_u8(), actual,
+                "[{}][{}] PanelHeaderTreatment::from_u8({}).as_u8() != {}",
+                i, style.meta.id, actual, actual
+            );
+        }
+
+        // ── Font-family field sanity (S7 blocker) ─────────────────────────────
+        for style in &styles {
+            let t = &style.typography;
+            assert!(
+                !t.family_ui.is_empty(),
+                "[{}] family_ui must not be empty", style.meta.id
+            );
+            assert!(
+                !t.family_mono.is_empty(),
+                "[{}] family_mono must not be empty", style.meta.id
+            );
+            assert!(
+                !t.family_display.is_empty(),
+                "[{}] family_display must not be empty", style.meta.id
+            );
+        }
+
+        // ── Default values match the compiled-in font loader ──────────────────
+        let default_style = crate::design_system::style_system::StyleSystem::default();
+        assert_eq!(default_style.typography.family_ui,      "Inter",          "family_ui default must be Inter");
+        assert_eq!(default_style.typography.family_mono,    "JetBrains Mono", "family_mono default must be JetBrains Mono");
+        assert_eq!(default_style.typography.family_display, "Inter",          "family_display default must be Inter");
+    }
+
+    /// Verifies that the font-family fields round-trip through the DTCG
+    /// serialization path (export → parse → compare).
+    #[test]
+    fn s1_font_family_dtcg_round_trip() {
+        use crate::design_system::style_system::StyleSystem;
+
+        let styles = builtin_style_systems();
+        for original in &styles {
+            let json = original.to_dtcg();
+            let parsed = StyleSystem::from_dtcg(&json)
+                .unwrap_or_else(|e| panic!("DTCG round-trip failed for '{}': {e}", original.meta.id));
+
+            assert_eq!(
+                parsed.typography.family_ui, original.typography.family_ui,
+                "[{}] family_ui must survive DTCG round-trip", original.meta.id
+            );
+            assert_eq!(
+                parsed.typography.family_mono, original.typography.family_mono,
+                "[{}] family_mono must survive DTCG round-trip", original.meta.id
+            );
+            assert_eq!(
+                parsed.typography.family_display, original.typography.family_display,
+                "[{}] family_display must survive DTCG round-trip", original.meta.id
+            );
+        }
     }
 }

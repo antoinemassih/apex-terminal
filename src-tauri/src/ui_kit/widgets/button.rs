@@ -435,11 +435,32 @@ impl<'a> Button<'a> {
     /// Render with an explicit [`ComponentTheme`]. This is the original,
     /// idiomatic entry point — unchanged for all existing callers.
     ///
-    /// Internally constructs a [`DefaultButtonStyle`] adapter and delegates
-    /// to [`Button::show_styled`], so both paths share the same paint logic.
+    /// Internally constructs a [`StyleCtx`] from the theme (reading the
+    /// current frame's `TokenSnapshot`) and delegates to
+    /// [`Button::show_ctx`], so all paint logic is shared.
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
-        let style = DefaultButtonStyle::new(theme);
-        show_styled_impl(ui, theme, self, &style, None)
+        let ctx = super::ctx::StyleCtx::from_theme(theme);
+        self.show_ctx(ui, &ctx)
+    }
+
+    /// S5 opt-in entry point: render with a full [`StyleCtx`].
+    ///
+    /// Call this when you need per-call-site dimension overrides, a custom
+    /// [`TokenSnapshot`], or an explicit [`RecipeSet`].  All existing
+    /// `show(ui, theme)` callers are unaffected — `show` now builds a
+    /// `StyleCtx::from_theme(theme)` and delegates here.
+    ///
+    /// Split-brain fix: dimensions that were previously read from the global
+    /// `frame_tokens()` thread-local (e.g. via `size.height()`,
+    /// `st::gap_xs()`) now receive their values from `ctx.tokens` when the
+    /// widget explicitly reads them via `ctx.gap_xs()` etc.  The paint path
+    /// below still uses `size.height()` / `st::*` helpers (which themselves
+    /// read `frame_tokens()`) — this is safe because in practice `ctx.tokens`
+    /// **is** `frame_tokens()` for the default shim path.  Full token
+    /// threading into the paint helpers is a follow-up adoption step.
+    pub fn show_ctx(self, ui: &mut Ui, ctx: &super::ctx::StyleCtx<'_>) -> Response {
+        let style = DefaultButtonStyle::new(ctx.theme());
+        show_styled_impl(ui, ctx.theme(), self, &style, None)
     }
 
     /// Opt-in entry point: render with a custom [`ButtonStyle`] implementor.

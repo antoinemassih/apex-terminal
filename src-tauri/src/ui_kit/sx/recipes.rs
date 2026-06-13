@@ -9,8 +9,7 @@ use std::sync::LazyLock;
 use egui::{Response, RichText, Sense, Ui};
 
 use super::{Recipe, Shade, StyleState, Sx, SxDelta, Tone};
-
-type Theme = crate::chart_renderer::gpu::Theme;
+use crate::ui_kit::widgets::theme::ComponentTheme;
 
 /// `button` recipe — `intent` (primary/ghost/danger/success) × `size` (sm/md/lg).
 /// Hover adds a composable accent ring that works regardless of intent fill.
@@ -37,11 +36,11 @@ pub static BUTTON: LazyLock<Recipe> = LazyLock::new(|| {
 /// ```ignore
 /// if button(ui, t, "Buy", &[("intent","success"),("size","sm")]).clicked() { … }
 /// ```
-pub fn button(ui: &mut Ui, t: &Theme, label: &str, variants: &[(&str, &str)]) -> Response {
+pub fn button(ui: &mut Ui, t: &dyn ComponentTheme, label: &str, variants: &[(&str, &str)]) -> Response {
     let sx = BUTTON.resolve(variants);
     let size = sx.resolved(StyleState::Normal).text_size.unwrap_or(13.0);
     let txt = RichText::new(label).size(size); // color comes from sx's text override
-    let (resp, _) = sx.show(ui, t, Sense::click(), |ui| {
+    let (resp, _) = sx.show_ct(ui, t, Sense::click(), |ui| {
         ui.add(egui::Label::new(txt).selectable(false));
     });
     resp

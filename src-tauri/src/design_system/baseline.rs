@@ -117,6 +117,10 @@ pub fn baseline_style_system() -> StyleSystem {
             mono_lg: 16.0,
             size_section_label: 8.0,
             label_tracking: 0.0, nav_tracking: 0.0, section_tracking: 0.0,
+            // Font family identifiers — Meridien uses the compiled-in defaults.
+            family_ui: "Inter".to_owned(),
+            family_mono: "JetBrains Mono".to_owned(),
+            family_display: "Inter".to_owned(),
         },
 
         spacing: Spacing {
@@ -333,6 +337,9 @@ pub fn baseline_color_scheme() -> ColorScheme {
         // hud_bg = rgba_pre(28,28,28,230) — premultiplied bytes stored as-is
         hud_bg:           [28, 28, 28, 230],
         hud_border:       rgb( 60,  56,  50),
+        // Extended semantic palette — None falls back to bull/bear/warn at render time.
+        success: None, danger: None, warning: None, info: None,
+        pane_gap_color: None,
         cmd_palette:      crate::design_system::color_scheme::CMD_PALETTE_DEFAULT,
     }
 }

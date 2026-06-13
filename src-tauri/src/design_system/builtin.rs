@@ -143,6 +143,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(180, 180, 195),
                 hud_bg:           pre_rgba(12, 12, 18, 230),
                 hud_border:       rgb( 50,  52,  64),
+            // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
@@ -173,6 +176,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(175, 180, 190),
                 hud_bg:           pre_rgba(30, 34, 46, 230),
                 hud_border:       rgb( 60,  66,  80),
+            // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
@@ -203,6 +209,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(180, 178, 160),
                 hud_bg:           pre_rgba(30, 30, 24, 230),
                 hud_border:       rgb( 55,  54,  44),
+            // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
@@ -233,6 +242,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(156, 172, 175),
                 hud_bg:           pre_rgba(0, 28, 36, 230),
                 hud_border:       rgb(  7,  54,  66),
+            // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
@@ -263,6 +275,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(190, 185, 215),
                 hud_bg:           pre_rgba(30, 32, 44, 230),
                 hud_border:       rgb( 55,  58,  75),
+            // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
@@ -293,6 +308,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(185, 178, 160),
                 hud_bg:           pre_rgba(28, 28, 28, 230),
                 hud_border:       rgb( 60,  56,  50),
+            // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
@@ -323,6 +341,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(182, 186, 220),
                 hud_bg:           pre_rgba(20, 20, 36, 230),
                 hud_border:       rgb( 49,  50,  68),
+            // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
@@ -353,6 +374,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(172, 178, 220),
                 hud_bg:           pre_rgba(18, 18, 28, 230),
                 hud_border:       rgb( 40,  44,  62),
+            // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
@@ -383,6 +407,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(155, 158, 175),
                 hud_bg:           pre_rgba(14, 14, 20, 230),
                 hud_border:       rgb( 36,  36,  50),
+            // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
@@ -413,6 +440,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(175, 178, 162),
                 hud_bg:           pre_rgba(28, 34, 28, 230),
                 hud_border:       rgb( 52,  60,  50),
+            // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
@@ -443,6 +473,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(170, 170, 180),
                 hud_bg:           pre_rgba(10, 10, 10, 230),
                 hud_border:       rgb( 42,  42,  42),
+            // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
@@ -474,6 +507,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(167, 162, 187),
                 hud_bg:           pre_rgba(18, 16, 28, 230),
                 hud_border:       rgb( 44,  40,  58),
+            // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
@@ -504,6 +540,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(100, 102, 110),
                 hud_bg:           pre_rgba(20, 20, 20, 220),
                 hud_border:       rgb( 80,  82,  88),
+            // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
@@ -534,6 +573,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb( 98, 100, 108),
                 hud_bg:           pre_rgba(20, 20, 20, 220),
                 hud_border:       rgb( 82,  80,  78),
+            // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
@@ -564,6 +606,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(100, 102, 108),
                 hud_bg:           pre_rgba(18, 20, 18, 220),
                 hud_border:       rgb( 80,  82,  80),
+            // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
@@ -594,6 +639,9 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(105, 100,  90),
                 hud_bg:           pre_rgba(28, 24, 18, 220),
                 hud_border:       rgb( 90,  82,  68),
+            // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
             cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
@@ -630,7 +678,10 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(118, 112,  95), // #76705f
                 hud_bg:           pre_rgba( 20, 19, 17, 230),
                 hud_border:       rgb( 50,  47,  40),
-                cmd_palette:      CMD_PALETTE_DEFAULT,
+                // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
 
@@ -660,7 +711,10 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(122, 122, 122), // #7a7a7a
                 hud_bg:           pre_rgba(18, 18, 18, 230),
                 hud_border:       c(255, 255, 255, 25),
-                cmd_palette:      CMD_PALETTE_DEFAULT,
+                // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
 
@@ -690,7 +744,10 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(107,  99,  88), // #6b6358
                 hud_bg:           pre_rgba(21, 18, 14, 230),
                 hud_border:       rgb( 61,  52,  43),
-                cmd_palette:      CMD_PALETTE_DEFAULT,
+                // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
 
@@ -720,7 +777,10 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(107,  99,  88),
                 hud_bg:           pre_rgba(21, 18, 14, 230),
                 hud_border:       rgb( 61,  52,  43),
-                cmd_palette:      CMD_PALETTE_DEFAULT,
+                // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
 
@@ -750,7 +810,10 @@ pub fn builtin_color_schemes() -> Vec<ColorScheme> {
                 text_muted:       rgb(179, 173, 156), // #b3ad9c
                 hud_bg:           pre_rgba(241, 237, 228, 230),
                 hud_border:       rgb(191, 181, 154),
-                cmd_palette:      CMD_PALETTE_DEFAULT,
+                // Extended semantic palette — None falls back to bull/bear/warn at render time.
+            success: None, danger: None, warning: None, info: None,
+            pane_gap_color: None,
+            cmd_palette:      CMD_PALETTE_DEFAULT,
             }
         },
     ]
@@ -793,6 +856,10 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             mono_lg: 15.0,
             size_section_label: 8.0, // font_section_label = 8
             label_tracking: 0.0, nav_tracking: 0.0, section_tracking: 0.0,
+            // Font family identifiers — Meridien uses the compiled-in defaults.
+            family_ui: "Inter".to_owned(),
+            family_mono: "JetBrains Mono".to_owned(),
+            family_display: "Inter".to_owned(),
         },
         spacing: Spacing {
             xs: 2.0,
@@ -912,6 +979,10 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             mono_lg: 15.0,
             size_section_label: 10.0, // font_section_label = 10
             label_tracking: 0.8, nav_tracking: 0.0, section_tracking: 0.8,
+            // Font family identifiers — Aperture uses the compiled-in defaults.
+            family_ui: "Inter".to_owned(),
+            family_mono: "JetBrains Mono".to_owned(),
+            family_display: "Inter".to_owned(),
         },
         spacing: Spacing {
             xs: 2.0,
@@ -937,10 +1008,13 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             pill: 99.0, chip: 0.0,
         },
         strokes: Strokes {
-            hair:   0.3,  // sub-pixel hairline
-            thin:   0.5,  // stroke_hair = 0.5
-            medium: 0.8,  // mid-weight default
-            std:    1.0,  // stroke_thin = 1.0
+            // Direct tier mapping to StyleSettings stroke fields (field-exact with legacy).
+            // hair → stroke_hair, thin → stroke_thin, std → stroke_std,
+            // bold → stroke_bold, thick → stroke_thick.
+            hair:   0.5,  // stroke_hair = 0.5
+            thin:   1.0,  // stroke_thin = 1.0
+            medium: 0.8,  // mid-weight (unused by adapter)
+            std:    1.5,  // stroke_std = 1.5
             bold:   1.5,  // stroke_bold = 1.5
             thick:  2.0,  // stroke_thick = 2.0
             md:     1.5,  // legacy alias
@@ -1031,6 +1105,10 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             mono_lg: 15.0,
             size_section_label: 8.0,
             label_tracking: 0.0, nav_tracking: 0.0, section_tracking: 0.0,
+            // Font family identifiers — Octave uses the compiled-in defaults.
+            family_ui: "Inter".to_owned(),
+            family_mono: "JetBrains Mono".to_owned(),
+            family_display: "Inter".to_owned(),
         },
         spacing: Spacing {
             xs: 2.0,
@@ -1054,10 +1132,13 @@ pub fn builtin_style_systems() -> Vec<StyleSystem> {
             pill: 99.0, chip: 0.0,
         },
         strokes: Strokes {
-            hair:   0.3,  // sub-pixel hairline
-            thin:   0.4,  // stroke_hair = 0.4
-            medium: 0.7,  // scaled mid-weight for compact style
-            std:    0.6,  // stroke_thin = 0.6
+            // Direct tier mapping to StyleSettings stroke fields (field-exact with legacy).
+            // hair → stroke_hair, thin → stroke_thin, std → stroke_std,
+            // bold → stroke_bold, thick → stroke_thick.
+            hair:   0.4,  // stroke_hair = 0.4
+            thin:   0.6,  // stroke_thin = 0.6
+            medium: 0.7,  // scaled mid-weight (unused by adapter)
+            std:    1.0,  // stroke_std = 1.0
             bold:   1.0,  // stroke_bold = 1.0
             thick:  1.4,  // stroke_thick = 1.4
             md:     1.0,  // legacy alias

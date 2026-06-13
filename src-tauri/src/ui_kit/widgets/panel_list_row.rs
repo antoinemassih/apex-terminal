@@ -105,8 +105,8 @@ use crate::ui_kit::tokens::{
     self as st, alpha_ghost, color_alpha, color_muted, font_sm, font_xs, gap_lg, gap_md, gap_xs,
     radius_sm,
 };
-use crate::ui_kit::widgets::theme::ComponentTheme;
-use crate::ui_kit::sx::{palette_ct, Tone as SxTone};
+use crate::ui_kit::widgets::theme::{ComponentTheme, get_ambient_recipes};
+use crate::ui_kit::sx::{palette_ct, Fill, Sx, StyleState, Tone as SxTone};
 use crate::ui_kit::widgets::{motion, Tooltip};
 
 /// Horizontal alignment for a `Column` cell in `PanelListRow::columns` mode.
@@ -549,7 +549,51 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
         }
 
         let painter = ui.painter_at(rect);
-        let cr = CornerRadius::same(radius_sm() as u8);
+
+        // ── Recipe adoption (Stream S5) ──────────────────────────────────────
+        // Resolve `row.list` to allow theme-pack overrides of corner radius.
+        // When the ambient RecipeSet is empty (the default), `resolve` returns
+        // the built-in default Sx unchanged — zero visual change.
+        //
+        // Default Sx: rounded_sm (matches the pre-recipe `radius_sm()` path).
+        let recipes = get_ambient_recipes(ui.ctx());
+        let row_sx  = recipes.resolve(
+            "row.list",
+            Sx::new().rounded_sm(),
+            t,
+        );
+        // Extract the resolved corner radius for use in rect_filled calls.
+        // Falls back to `radius_sm()` when the recipe sets no radius.
+        let row_delta = row_sx.resolved(StyleState::Normal);
+        let recipe_cr = CornerRadius::same(
+            row_delta.radius.unwrap_or_else(radius_sm) as u8
+        );
+
+        // Resolve `row.list.selected` for the selected-background fill color.
+        // Default: Accent at SELECTED_BG_ALPHA (the historical constant).
+        // Recipe can override to any tone/alpha.
+        let default_selected_color =
+            color_alpha(pal.base(SxTone::Accent), SELECTED_BG_ALPHA);
+        let sel_sx = recipes.resolve(
+            "row.list.selected",
+            Sx::new().bg_color(default_selected_color),
+            t,
+        );
+        let sel_delta = sel_sx.resolved(StyleState::Active);
+        // Use the recipe fill when set; otherwise fall back to the pre-recipe
+        // default color.
+        let resolved_selected_color = sel_delta.fill
+            .map(|fill| match fill {
+                Fill::Solid(c) => c,
+                Fill::Shade(tone, shade) => pal.shade(tone, shade),
+                Fill::Alpha(tone, a) => {
+                    let b = pal.base(tone);
+                    Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+                }
+            })
+            .unwrap_or(default_selected_color);
+
+        let cr = recipe_cr;
 
         // Stable per-row animation id — same key used by ui.interact below,
         // so it is stable across frames as long as id_salt is stable.
@@ -579,7 +623,7 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
             }
         }
 
-        // Selected background — eased in/out.
+        // Selected background — eased in/out, color sourced from recipe resolution.
         let selected_t = motion::ease_bool(
             ui.ctx(),
             row_id.with("sel"),
@@ -587,10 +631,11 @@ impl<'a, T: ComponentTheme> PanelListRow<'a, T> {
             motion::FAST,
         );
         if selected_t > 0.0 {
-            let sel_bg = color_alpha(
-                pal.base(SxTone::Accent),
-                (SELECTED_BG_ALPHA as f32 * selected_t).round() as u8,
-            );
+            // Animate alpha: the resolved color carries the target alpha; we scale it
+            // by the easing factor so the fade still works correctly.
+            let base = resolved_selected_color;
+            let animated_alpha = ((base.a() as f32) * selected_t).round() as u8;
+            let sel_bg = Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), animated_alpha);
             painter.rect_filled(rect, cr, sel_bg);
         }
 

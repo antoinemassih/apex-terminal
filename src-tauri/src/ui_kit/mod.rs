@@ -13,6 +13,12 @@ pub mod cursor;
 #[allow(dead_code)]
 pub mod sx;
 
+// S7: Themable assets — fonts, icons, imagery
+#[allow(dead_code)]
+pub mod fonts;
+#[allow(dead_code)]
+pub mod assets;
+
 /// Line-style enum — used by drawing widgets and renderers. Portable
 /// primitive (no theme/state coupling); lives here so `ui_kit` doesn't have
 /// to import it back from `chart_renderer`. The chart-app re-exports this

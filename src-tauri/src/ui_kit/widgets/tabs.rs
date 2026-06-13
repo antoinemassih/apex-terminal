@@ -186,8 +186,20 @@ impl<'a> Tabs<'a> {
     pub fn align(mut self, a: TabAlign) -> Self { self.align = a; self }
     pub fn id_salt(mut self, s: &'a str) -> Self { self.id_salt = Some(s); self }
 
+    /// Render with an explicit [`ComponentTheme`]. Unchanged entry point —
+    /// builds a `StyleCtx::from_theme(theme)` and delegates to `show_ctx`.
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> TabsResponse {
-        paint_tabs(self, ui, theme)
+        let ctx = super::ctx::StyleCtx::from_theme(theme);
+        self.show_ctx(ui, &ctx)
+    }
+
+    /// S5 opt-in entry point: render with a full [`StyleCtx`].
+    ///
+    /// Callers that need per-call-site dimension overrides construct a
+    /// `StyleCtx` directly.  All existing `show(ui, theme)` callers are
+    /// unaffected — `show` delegates here via `StyleCtx::from_theme`.
+    pub fn show_ctx(self, ui: &mut Ui, ctx: &super::ctx::StyleCtx<'_>) -> TabsResponse {
+        paint_tabs(self, ui, ctx.theme())
     }
 }
 

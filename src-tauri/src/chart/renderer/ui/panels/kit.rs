@@ -554,7 +554,7 @@ impl Tone {
     pub fn color(self, t: &Theme) -> Color32 {
         // Resolve through the unified Sx palette (kit's local Tone is the gallery's
         // own intent enum; SxTone is the shared color vocabulary).
-        let p = crate::ui_kit::sx::palette(t);
+        let p = crate::ui_kit::sx::palette_ct(t);
         match self {
             Tone::Default => p.base(SxTone::Dim),
             Tone::Accent  => p.base(SxTone::Accent),

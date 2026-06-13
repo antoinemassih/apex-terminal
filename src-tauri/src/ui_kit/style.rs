@@ -100,7 +100,22 @@ pub struct TokenSnapshot {
 
     /// Default tab treatment for ui-kit Tabs widgets (0=Line, 1=Segmented,
     /// 2=Filled, 3=Card, 4=Pane). Populated by begin_frame from StyleSettings.
+    /// Kept as u8 so the chart-side `begin_frame` struct literal needs no change.
+    /// Read via the typed accessor `panel_tab_treatment_typed()` in new ui_kit code,
+    /// or via `style_panel_header_treatment()` for the design_system enum form.
     pub panel_tab_treatment: u8,
+
+    // ── S3: `pane_active_indicator` and `panel_header_treatment` ─────────────
+    // These two fields are intentionally NOT added to this struct yet because
+    // the chart-side `begin_frame()` constructs `TokenSnapshot` as a full
+    // struct literal — adding required fields here would break it without a
+    // simultaneous chart/ edit (which is out of scope for S3). Instead, the
+    // typed accessors `style_pane_active_indicator()` /
+    // `style_panel_header_treatment()` are provided below, currently returning
+    // the enum Defaults. Chart/ will populate the new fields in the next round
+    // that covers begin_frame changes (can use `..DEFAULT_TOKEN_SNAPSHOT` struct
+    // update syntax to add fields one-by-one without breaking the literal).
+
     // Surface bevel — ported from the React ApexTerminalThemes mockup's
     // inset box-shadow faces (Alto/Mariner raised, Cadence elevated cards).
     // Populated by chart-side begin_frame() from StyleSettings.surface_bevel.
@@ -136,7 +151,7 @@ pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
     toast_bg_alpha:   235,
     button_treatment: crate::ui_kit::widgets::tokens::ButtonTreatment::SoftPill,
     wl_row_side_margin: 0.0, wl_row_corner_radius: 0, wl_row_divider_alpha: 0,
-    panel_tab_treatment: 0, // Line
+    panel_tab_treatment: 0, // Line (PanelHeaderTreatment::Line)
     // Bevel defaults: flat/none (no bevel until the chart-app pushes a themed preset).
     surface_bevel:         crate::design_system::style_system::BevelStyle::None,
     bevel_highlight_alpha: 0,
@@ -743,6 +758,48 @@ pub fn style_tab_treatment() -> crate::ui_kit::widgets::TabTreatment {
         4 => TabTreatment::Pane,
         _ => TabTreatment::Line,
     }
+}
+
+/// Returns the active-pane indicator style.
+///
+/// **S3 status**: the `TokenSnapshot` does not yet carry a `pane_active_indicator`
+/// field because adding a required field would break the chart-side `begin_frame`
+/// struct literal (out of scope for S3). This accessor returns the typed enum
+/// Default (`PaneActiveIndicator::TopStripe`) until a later round adds the field
+/// and wires `begin_frame` to populate it.
+///
+/// Once the field is added, this body becomes:
+/// ```ignore
+/// PaneActiveIndicator::from_u8(frame_tokens().pane_active_indicator)
+/// ```
+#[inline]
+pub fn style_pane_active_indicator() -> crate::design_system::style_system::PaneActiveIndicator {
+    crate::design_system::style_system::PaneActiveIndicator::default()
+}
+
+/// Returns the panel-header treatment.
+///
+/// **S3 status**: the `TokenSnapshot` does not yet carry a `panel_header_treatment`
+/// field (same reason as `style_pane_active_indicator`). Returns the typed enum
+/// Default (`PanelHeaderTreatment::Line`) until the field is wired in a later
+/// round. For the tab-treatment value (which IS in the snapshot via
+/// `panel_tab_treatment: u8`), use `panel_tab_treatment_typed()` instead.
+#[inline]
+pub fn style_panel_header_treatment() -> crate::design_system::style_system::PanelHeaderTreatment {
+    crate::design_system::style_system::PanelHeaderTreatment::default()
+}
+
+/// Typed accessor for `panel_tab_treatment` — converts the snapshot's u8 field
+/// to the `design_system` enum. Equivalent to `style_tab_treatment()` but
+/// returns `PanelHeaderTreatment` instead of `TabTreatment`.
+///
+/// This is the production-ready typed path: `panel_tab_treatment: u8` is
+/// already in `TokenSnapshot` and populated by chart-side `begin_frame`.
+#[inline]
+pub fn panel_tab_treatment_typed() -> crate::design_system::style_system::PanelHeaderTreatment {
+    crate::design_system::style_system::PanelHeaderTreatment::from_u8(
+        frame_tokens().panel_tab_treatment,
+    )
 }
 
 // ─── Surface bevel (portable) ────────────────────────────────────────────────

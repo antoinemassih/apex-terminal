@@ -4524,6 +4524,27 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
         ctx,
         crate::chart_renderer::theme_impl::theme_to_portable(t),
     );
+    // Stream S5 — ADOPTION: stash the active RecipeSet so ui_kit widgets built
+    // via `StyleCtx::from_ctx` pick up theme-pack overrides automatically.
+    // S8 update: only fall back to the empty set when no ThemePack has stashed
+    // a real RecipeSet — if a pack was activated, its recipes are already in
+    // egui memory and we must not overwrite them with the empty placeholder.
+    {
+        let has_pack_recipes = ctx.data(|d| {
+            d.get_temp::<std::sync::Arc<crate::design_system::recipes::RecipeSet>>(
+                egui::Id::new("apex_ambient_recipes"),
+            ).is_some()
+        });
+        if !has_pack_recipes {
+            crate::ui_kit::widgets::theme::set_ambient_recipes(
+                ctx,
+                crate::ui_kit::widgets::theme::empty_recipe_arc(),
+            );
+        }
+    }
+
+    // S8 — apply the persisted ThemePack on the very first frame (once).
+    crate::chart_renderer::theme_pack_bridge::apply_startup_active_pack(ctx);
     {
         let mut style = (*ctx.style()).clone();
         style.visuals.panel_fill = t.toolbar_bg;
@@ -6914,7 +6935,9 @@ impl GpuCtx {
             use std::sync::atomic::{AtomicUsize, Ordering};
             static LAST_FONT: AtomicUsize = AtomicUsize::new(usize::MAX);
             if LAST_FONT.swap(effective_font, Ordering::Relaxed) != effective_font {
-                crate::ui_kit::icons::init_fonts(&self.egui_ctx, effective_font);
+                // S7: route through FontRegistry path so active StyleSystem's
+                // Typography families drive font loading.
+                crate::ui_kit::icons::init_fonts_for_idx(&self.egui_ctx, effective_font);
             }
         }
 
@@ -7261,8 +7284,9 @@ impl App {
         // Apply persisted global settings
         wl.font_scale = loaded_settings.font_scale;
         wl.font_idx = loaded_settings.font_idx;
-        // Re-init fonts if the loaded font differs from default
-        if wl.font_idx != 0 { crate::ui_kit::icons::init_fonts(&gpu.egui_ctx, wl.font_idx); }
+        // Re-init fonts if the loaded font differs from default.
+        // S7: route through FontRegistry path so Typography families drive loading.
+        if wl.font_idx != 0 { crate::ui_kit::icons::init_fonts_for_idx(&gpu.egui_ctx, wl.font_idx); }
         wl.compact_mode = loaded_settings.compact_mode;
         wl.pane_header_size = loaded_settings.pane_header_size;
         wl.toolbar_auto_hide = loaded_settings.toolbar_auto_hide;

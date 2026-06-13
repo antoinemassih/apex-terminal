@@ -371,6 +371,61 @@ pub fn get_ambient_theme<T: ComponentTheme + Clone + Send + Sync + 'static>(
     ctx.data(|d| d.get_temp::<T>(egui::Id::new(AMBIENT_KEY)))
 }
 
+// ── Ambient RecipeSet (Stream S5 — ADOPTION) ─────────────────────────────────
+//
+// Hosts stash an `Arc<RecipeSet>` once per frame (next to `set_ambient_theme`)
+// so widgets that call `StyleCtx::from_theme` get the active recipe overrides
+// automatically. The `Arc` wrapper means clone is O(1) — every `StyleCtx` built
+// from the ambient set pays only a refcount bump, not a full map copy.
+//
+// When no host has set one (unit tests, standalone ui_kit embedders) the
+// get function returns an empty static set — zero-cost, zero visual change.
+
+const AMBIENT_RECIPES_KEY: &str = "apex_ambient_recipes";
+
+/// Stash the active [`RecipeSet`] in egui memory so [`StyleCtx::from_theme`]
+/// picks it up automatically. Call once per frame next to [`set_ambient_theme`].
+///
+/// The set is wrapped in `Arc` so the clone stored in egui memory is O(1) and
+/// subsequent reads via [`get_ambient_recipes`] are also O(1) refcount bumps.
+///
+/// When no recipes are loaded (the common case during development) pass
+/// `Arc::new(RecipeSet::new())` — all widgets fall through to their built-in
+/// defaults and nothing changes visually.
+pub fn set_ambient_recipes(
+    ctx: &egui::Context,
+    recipes: std::sync::Arc<crate::design_system::recipes::RecipeSet>,
+) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new(AMBIENT_RECIPES_KEY), recipes));
+}
+
+/// Read the ambient [`RecipeSet`] set by [`set_ambient_recipes`].
+///
+/// Returns an `Arc` so the caller can hold a cheap reference without
+/// re-entering egui's data lock on every widget call. Falls back to an empty
+/// static set when no host has set one this frame.
+pub fn get_ambient_recipes(
+    ctx: &egui::Context,
+) -> std::sync::Arc<crate::design_system::recipes::RecipeSet> {
+    ctx.data(|d| {
+        d.get_temp::<std::sync::Arc<crate::design_system::recipes::RecipeSet>>(
+            egui::Id::new(AMBIENT_RECIPES_KEY)
+        )
+    })
+    .unwrap_or_else(empty_recipe_arc)
+}
+
+/// Returns the static empty-`RecipeSet` `Arc`. Returned by [`get_ambient_recipes`]
+/// when no host has called [`set_ambient_recipes`]. Also used directly by
+/// `ctx::StyleCtx::from_theme` and the host wiring in `gpu.rs`. The `Arc` is
+/// created once (via `OnceLock`) and cloned on subsequent calls — no heap
+/// allocation per widget, no egui-memory lock.
+pub fn empty_recipe_arc() -> std::sync::Arc<crate::design_system::recipes::RecipeSet> {
+    use std::sync::{Arc, OnceLock};
+    static EMPTY: OnceLock<Arc<crate::design_system::recipes::RecipeSet>> = OnceLock::new();
+    Arc::clone(EMPTY.get_or_init(|| Arc::new(crate::design_system::recipes::RecipeSet::new())))
+}
+
 impl<T: ComponentTheme + ?Sized> ComponentTheme for &T {
     fn accent(&self) -> Color32 { (**self).accent() }
     fn bull(&self) -> Color32 { (**self).bull() }

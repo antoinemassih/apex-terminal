@@ -27,10 +27,11 @@ use serde_json::Value;
 use std::fmt;
 
 use super::{
-    color_scheme::{rgba, ColorScheme, Meta, Rgba},
+    color_scheme::{rgba, ColorScheme, Meta, Rgba, CMD_PALETTE_DEFAULT},
     style_system::{
-        Alphas, Density, Elevation, FocusRingStyle, Radii, Shadows, ShadowSpec, Spacing, Strokes,
-        StyleSystem, Treatments, Typography,
+        Alphas, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, GroupEnclosure,
+        PaneActiveIndicator, Radii, Shadows, ShadowSpec, Spacing, Strokes, StyleSystem, Treatments,
+        Typography,
     },
 };
 
@@ -130,6 +131,16 @@ fn read_bool_or(obj: &Value, key: &str, ctx: &str, default: bool) -> bool {
         .unwrap_or(default)
 }
 
+/// Read a `String` from a DTCG string token (`$value` is a JSON string).
+/// Falls back to `default` if the key is absent or the value is not a string.
+fn read_string_or(obj: &Value, key: &str, _ctx: &str, default: &str) -> String {
+    obj.get(key)
+        .and_then(|n| n.get("$value"))
+        .and_then(|v| v.as_str())
+        .map(str::to_owned)
+        .unwrap_or_else(|| default.to_owned())
+}
+
 /// Read an `Rgba` from a DTCG color token (`$value` is `"#rrggbb"` or `"#rrggbbaa"`).
 fn read_color(node: &Value, path: &str) -> Result<Rgba, LoadError> {
     let v = dtcg_value(node, path)?;
@@ -148,6 +159,13 @@ fn read_color_or(obj: &Value, key: &str, ctx: &str, default: Rgba) -> Rgba {
     obj.get(key)
         .and_then(|n| read_color(n, &path).ok())
         .unwrap_or(default)
+}
+
+/// Read an optional `Rgba` from a DTCG color token — returns `None` if the
+/// key is absent or malformed (not an error; these fields are truly optional).
+fn read_color_opt(obj: &Value, key: &str, ctx: &str) -> Option<Rgba> {
+    let path = format!("{ctx}.{key}");
+    obj.get(key).and_then(|n| read_color(n, &path).ok())
 }
 
 /// Parse a `Meta` object from the root of a DTCG file.
@@ -209,15 +227,37 @@ impl ColorScheme {
         let hud_bg           = read_color_or(&pal, "hud_bg",           "palette", fallback.hud_bg);
         let hud_border       = read_color_or(&pal, "hud_border",       "palette", fallback.hud_border);
 
+        // ── Extended semantic palette (PALETTE-DEPTH) — all optional ─────────
+        // None means "fall back to bull/bear/warn at render time" (zero visual
+        // change for themes that don't set them explicitly).
+        let success      = read_color_opt(&pal, "success",       "palette");
+        let danger       = read_color_opt(&pal, "danger",        "palette");
+        let warning      = read_color_opt(&pal, "warning",       "palette");
+        let info         = read_color_opt(&pal, "info",          "palette");
+        let pane_gap_color = read_color_opt(&pal, "pane_gap_color", "palette");
+
+        // cmd_palette — optional 11-element array of color tokens.
+        // Missing or malformed entries in the array fall back to CMD_PALETTE_DEFAULT slots.
+        let cmd_palette = if let Some(arr) = pal.get("cmd_palette").and_then(|v| v.as_array()) {
+            let mut out = CMD_PALETTE_DEFAULT;
+            for (i, tok) in arr.iter().enumerate().take(11) {
+                if let Ok(c) = read_color(tok, &format!("palette.cmd_palette[{i}]")) {
+                    out[i] = c;
+                }
+            }
+            out
+        } else {
+            CMD_PALETTE_DEFAULT
+        };
+
         Ok(ColorScheme {
             meta, bg, surface, text, dim, border, accent, bull, bear, warn, shadow,
             notification_red, gold, overlay_text,
             rrg_leading, rrg_improving, rrg_weakening, rrg_lagging,
             pinned_row_tint, text_muted, hud_bg, hud_border,
-            // cmd_palette: DTCG round-trip carries the default for now.
-            // When per-theme overrides are added, read the optional
-            // `palette.cmd_palette` array here (see CMD_PALETTE_DEFAULT).
-            cmd_palette: crate::design_system::color_scheme::CMD_PALETTE_DEFAULT,
+            // Extended semantic palette — None if absent in DTCG file.
+            success, danger, warning, info, pane_gap_color,
+            cmd_palette,
         })
     }
 
@@ -256,6 +296,28 @@ impl ColorScheme {
         pal.insert("text_muted".into(),       color_token!(text_muted));
         pal.insert("hud_bg".into(),           color_token!(hud_bg));
         pal.insert("hud_border".into(),       color_token!(hud_border));
+        // Extended semantic palette — only emit when set (None = inherit from bull/bear/warn).
+        macro_rules! opt_color_token {
+            ($field:ident, $key:expr) => {
+                if let Some(c) = self.$field {
+                    let hex = rgba::to_hex(c);
+                    pal.insert($key.into(), serde_json::json!({ "$type": "color", "$value": hex }));
+                }
+            };
+        }
+        opt_color_token!(success,       "success");
+        opt_color_token!(danger,        "danger");
+        opt_color_token!(warning,       "warning");
+        opt_color_token!(info,          "info");
+        opt_color_token!(pane_gap_color, "pane_gap_color");
+
+        // cmd_palette — emit all 11 slots as an array of color tokens.
+        let cmd_arr: serde_json::Value = self.cmd_palette
+            .iter()
+            .map(|&c| serde_json::json!({ "$type": "color", "$value": rgba::to_hex(c) }))
+            .collect::<Vec<_>>()
+            .into();
+        pal.insert("cmd_palette".into(), cmd_arr);
 
         let root = serde_json::json!({
             "meta": {
@@ -301,6 +363,10 @@ impl StyleSystem {
             label_tracking:   read_f32_or(&typ_sec, "label_tracking",   "typography", d_typ.label_tracking),
             nav_tracking:     read_f32_or(&typ_sec, "nav_tracking",     "typography", d_typ.nav_tracking),
             section_tracking: read_f32_or(&typ_sec, "section_tracking", "typography", d_typ.section_tracking),
+            // Font family identifiers (S7 blocker) — gracefully absent in legacy JSON.
+            family_ui:      read_string_or(&typ_sec, "family_ui",      "typography", &d_typ.family_ui),
+            family_mono:    read_string_or(&typ_sec, "family_mono",    "typography", &d_typ.family_mono),
+            family_display: read_string_or(&typ_sec, "family_display", "typography", &d_typ.family_display),
         };
 
         let d_sp = Spacing::default();
@@ -411,38 +477,115 @@ impl StyleSystem {
                 .and_then(|n| dtcg_value(n, "treatments.focus_ring").ok())
                 .and_then(|v| v.as_str())
                 .map(|s| match s {
-                    "none"    => FocusRingStyle::None,
-                    "glow"    => FocusRingStyle::Glow,
-                    _         => FocusRingStyle::Outline,
+                    "none" => FocusRingStyle::None,
+                    "glow" => FocusRingStyle::Glow,
+                    _      => FocusRingStyle::Outline,
                 })
                 .unwrap_or(d_tr.focus_ring),
-            // New fields — not yet in DTCG JSON, default them.
-            surface_bevel:         d_tr.surface_bevel,
-            bevel_highlight_alpha: d_tr.bevel_highlight_alpha,
-            bevel_shadow_alpha:    d_tr.bevel_shadow_alpha,
-            wl_row_side_margin:    d_tr.wl_row_side_margin,
-            wl_row_corner_radius:  d_tr.wl_row_corner_radius,
-            wl_row_divider_alpha:  d_tr.wl_row_divider_alpha,
-            section_header_mono:   d_tr.section_header_mono,
-            wl_symbol_mono:        d_tr.wl_symbol_mono,
-            panel_tab_treatment:   d_tr.panel_tab_treatment,
-            pane_active_fill_accent: d_tr.pane_active_fill_accent,
-            serif_headlines:       read_bool_or(&tr_sec, "serif_headlines", "treatments", d_tr.serif_headlines),
-            button_treatment:      d_tr.button_treatment,
-            invert_active_fill:    read_bool_or(&tr_sec, "invert_active_fill", "treatments", d_tr.invert_active_fill),
+            surface_bevel: tr_sec
+                .get("surface_bevel")
+                .and_then(|n| dtcg_value(n, "treatments.surface_bevel").ok())
+                .and_then(|v| v.as_str())
+                .map(|s| match s {
+                    "raised" => BevelStyle::Raised,
+                    "inset"  => BevelStyle::Inset,
+                    _        => BevelStyle::None,
+                })
+                .unwrap_or(d_tr.surface_bevel),
+            bevel_highlight_alpha: read_u8_or(&tr_sec, "bevel_highlight_alpha", "treatments", d_tr.bevel_highlight_alpha),
+            bevel_shadow_alpha:    read_u8_or(&tr_sec, "bevel_shadow_alpha",    "treatments", d_tr.bevel_shadow_alpha),
+            wl_row_side_margin:    read_f32_or(&tr_sec, "wl_row_side_margin",   "treatments", d_tr.wl_row_side_margin),
+            wl_row_corner_radius:  read_u8_or(&tr_sec, "wl_row_corner_radius",  "treatments", d_tr.wl_row_corner_radius),
+            wl_row_divider_alpha:  read_u8_or(&tr_sec, "wl_row_divider_alpha",  "treatments", d_tr.wl_row_divider_alpha),
+            section_header_mono:   read_bool_or(&tr_sec, "section_header_mono", "treatments", d_tr.section_header_mono),
+            wl_symbol_mono:        read_bool_or(&tr_sec, "wl_symbol_mono",      "treatments", d_tr.wl_symbol_mono),
+            panel_tab_treatment:   read_u8_or(&tr_sec, "panel_tab_treatment",   "treatments", d_tr.panel_tab_treatment),
+            pane_active_fill_accent: read_bool_or(&tr_sec, "pane_active_fill_accent", "treatments", d_tr.pane_active_fill_accent),
+            serif_headlines:       read_bool_or(&tr_sec, "serif_headlines",       "treatments", d_tr.serif_headlines),
+            button_treatment:      read_u8_or(&tr_sec, "button_treatment",        "treatments", d_tr.button_treatment),
+            invert_active_fill:    read_bool_or(&tr_sec, "invert_active_fill",    "treatments", d_tr.invert_active_fill),
             vertical_group_dividers: read_bool_or(&tr_sec, "vertical_group_dividers", "treatments", d_tr.vertical_group_dividers),
             show_active_tab_underline: read_bool_or(&tr_sec, "show_active_tab_underline", "treatments", d_tr.show_active_tab_underline),
-            inactive_header_fill:  read_bool_or(&tr_sec, "inactive_header_fill", "treatments", d_tr.inactive_header_fill),
+            inactive_header_fill:  read_bool_or(&tr_sec, "inactive_header_fill",  "treatments", d_tr.inactive_header_fill),
             nav_buttons_label_only: read_bool_or(&tr_sec, "nav_buttons_label_only", "treatments", d_tr.nav_buttons_label_only),
             nav_buttons_uppercase_labels: read_bool_or(&tr_sec, "nav_buttons_uppercase_labels", "treatments", d_tr.nav_buttons_uppercase_labels),
             tab_underline_under_text: read_bool_or(&tr_sec, "tab_underline_under_text", "treatments", d_tr.tab_underline_under_text),
-            card_floating_shadow:  read_bool_or(&tr_sec, "card_floating_shadow", "treatments", d_tr.card_floating_shadow),
-            shadows_enabled:       read_bool_or(&tr_sec, "shadows_enabled", "treatments", d_tr.shadows_enabled),
-            animations_enabled:    read_bool_or(&tr_sec, "animations_enabled", "treatments", d_tr.animations_enabled),
+            card_floating_shadow:  read_bool_or(&tr_sec, "card_floating_shadow",  "treatments", d_tr.card_floating_shadow),
+            shadows_enabled:       read_bool_or(&tr_sec, "shadows_enabled",       "treatments", d_tr.shadows_enabled),
+            animations_enabled:    read_bool_or(&tr_sec, "animations_enabled",    "treatments", d_tr.animations_enabled),
         };
 
-        // Chrome geometry is not yet round-tripped through DTCG — default it.
-        let chrome = crate::design_system::style_system::Chrome::default();
+        // Chrome — fully round-tripped now.
+        let d_ch = Chrome::default();
+        let ch_sec = section("chrome");
+        let chrome = Chrome {
+            toolbar_height_scale:          read_f32_or(&ch_sec, "toolbar_height_scale",          "chrome", d_ch.toolbar_height_scale),
+            header_height_scale:           read_f32_or(&ch_sec, "header_height_scale",           "chrome", d_ch.header_height_scale),
+            account_strip_height:          read_f32_or(&ch_sec, "account_strip_height",          "chrome", d_ch.account_strip_height),
+            pane_border_width:             read_f32_or(&ch_sec, "pane_border_width",             "chrome", d_ch.pane_border_width),
+            pane_gap:                      read_f32_or(&ch_sec, "pane_gap",                      "chrome", d_ch.pane_gap),
+            pane_gap_alpha:                read_u8_or(&ch_sec,  "pane_gap_alpha",                "chrome", d_ch.pane_gap_alpha),
+            pane_active_indicator: {
+                let indicator = ch_sec
+                    .get("pane_active_indicator")
+                    .and_then(|n| dtcg_value(n, "chrome.pane_active_indicator").ok())
+                    .and_then(|v| v.as_str())
+                    .map(|s| match s {
+                        "none"        => PaneActiveIndicator::None,
+                        "top_stripe"  => PaneActiveIndicator::TopStripe,
+                        "both"        => PaneActiveIndicator::Both,
+                        _             => PaneActiveIndicator::HeaderFill,
+                    })
+                    .unwrap_or(PaneActiveIndicator::from_u8(d_ch.pane_active_indicator));
+                indicator.as_u8()
+            },
+            active_header_fill_multiply:   read_f32_or(&ch_sec, "active_header_fill_multiply",   "chrome", d_ch.active_header_fill_multiply),
+            inactive_header_fill_multiply: read_f32_or(&ch_sec, "inactive_header_fill_multiply", "chrome", d_ch.inactive_header_fill_multiply),
+            header_outer_border_alpha:     read_u8_or(&ch_sec,  "header_outer_border_alpha",     "chrome", d_ch.header_outer_border_alpha),
+            header_outer_border_width:     read_f32_or(&ch_sec, "header_outer_border_width",     "chrome", d_ch.header_outer_border_width),
+            header_divider_alpha:          read_u8_or(&ch_sec,  "header_divider_alpha",          "chrome", d_ch.header_divider_alpha),
+            nav_active_col_alpha:          read_u8_or(&ch_sec,  "nav_active_col_alpha",          "chrome", d_ch.nav_active_col_alpha),
+            dialog_backdrop_alpha:         read_u8_or(&ch_sec,  "dialog_backdrop_alpha",         "chrome", d_ch.dialog_backdrop_alpha),
+            tab_inactive_alpha:            read_f32_or(&ch_sec, "tab_inactive_alpha",            "chrome", d_ch.tab_inactive_alpha),
+            tab_hover_bg_alpha:            read_u8_or(&ch_sec,  "tab_hover_bg_alpha",            "chrome", d_ch.tab_hover_bg_alpha),
+            tab_underline_thickness:       read_f32_or(&ch_sec, "tab_underline_thickness",       "chrome", d_ch.tab_underline_thickness),
+            section_label_padding_top:     read_f32_or(&ch_sec, "section_label_padding_top",     "chrome", d_ch.section_label_padding_top),
+            section_label_padding_bottom:  read_f32_or(&ch_sec, "section_label_padding_bottom",  "chrome", d_ch.section_label_padding_bottom),
+            drag_handle_alpha:             read_f32_or(&ch_sec, "drag_handle_alpha",             "chrome", d_ch.drag_handle_alpha),
+            drag_handle_dot_scale:         read_f32_or(&ch_sec, "drag_handle_dot_scale",         "chrome", d_ch.drag_handle_dot_scale),
+            toast_bg_alpha:                read_u8_or(&ch_sec,  "toast_bg_alpha",                "chrome", d_ch.toast_bg_alpha),
+            card_stripe_alpha:             read_u8_or(&ch_sec,  "card_stripe_alpha",             "chrome", d_ch.card_stripe_alpha),
+            card_floating_shadow_alpha:    read_u8_or(&ch_sec,  "card_floating_shadow_alpha",    "chrome", d_ch.card_floating_shadow_alpha),
+            accent_emphasis:               read_f32_or(&ch_sec, "accent_emphasis",               "chrome", d_ch.accent_emphasis),
+            disabled_opacity:              read_f32_or(&ch_sec, "disabled_opacity",              "chrome", d_ch.disabled_opacity),
+            focus_ring_width:              read_f32_or(&ch_sec, "focus_ring_width",              "chrome", d_ch.focus_ring_width),
+            focus_ring_alpha:              read_u8_or(&ch_sec,  "focus_ring_alpha",              "chrome", d_ch.focus_ring_alpha),
+            hover_bg_alpha:                read_u8_or(&ch_sec,  "hover_bg_alpha",                "chrome", d_ch.hover_bg_alpha),
+            active_bg_alpha:               read_u8_or(&ch_sec,  "active_bg_alpha",               "chrome", d_ch.active_bg_alpha),
+            region_gap:                    read_f32_or(&ch_sec, "region_gap",                    "chrome", d_ch.region_gap),
+            region_radius:                 read_f32_or(&ch_sec, "region_radius",                 "chrome", d_ch.region_radius),
+            region_border_alpha:           read_u8_or(&ch_sec,  "region_border_alpha",           "chrome", d_ch.region_border_alpha),
+            nav_cluster_radius:            read_f32_or(&ch_sec, "nav_cluster_radius",            "chrome", d_ch.nav_cluster_radius),
+            nav_cluster_fill_alpha:        read_u8_or(&ch_sec,  "nav_cluster_fill_alpha",        "chrome", d_ch.nav_cluster_fill_alpha),
+            nav_cluster_padding:           read_f32_or(&ch_sec, "nav_cluster_padding",           "chrome", d_ch.nav_cluster_padding),
+            button_group: ch_sec
+                .get("button_group")
+                .and_then(|n| dtcg_value(n, "chrome.button_group").ok())
+                .and_then(|v| v.as_str())
+                .map(|s| match s {
+                    "bordered" => GroupEnclosure::Bordered,
+                    "frosted"  => GroupEnclosure::Frosted,
+                    "sharp"    => GroupEnclosure::Sharp,
+                    _          => GroupEnclosure::None,
+                })
+                .unwrap_or(d_ch.button_group),
+            toolnav_height:                read_f32_or(&ch_sec, "toolnav_height",                "chrome", d_ch.toolnav_height),
+            footer_default_open:           read_bool_or(&ch_sec, "footer_default_open",          "chrome", d_ch.footer_default_open),
+            panel_header_treatment:        read_u8_or(&ch_sec,  "panel_header_treatment",        "chrome", d_ch.panel_header_treatment),
+            panel_section_fill_alpha:      read_u8_or(&ch_sec,  "panel_section_fill_alpha",      "chrome", d_ch.panel_section_fill_alpha),
+            panel_footer_card:             read_bool_or(&ch_sec, "panel_footer_card",            "chrome", d_ch.panel_footer_card),
+            panel_footer_radius:           read_f32_or(&ch_sec, "panel_footer_radius",           "chrome", d_ch.panel_footer_radius),
+        };
 
         Ok(StyleSystem { meta, typography, spacing, radii, strokes, alphas, elevation, density, shadows, treatments, chrome })
     }
@@ -546,5 +689,261 @@ mod tests {
         let json = r#"{ "typography": {} }"#;
         let result = StyleSystem::from_dtcg(json);
         assert!(result.is_err(), "expected error for missing meta");
+    }
+
+    // ── Full round-trip: StyleSystem with distinctive values in every section ──
+
+    #[test]
+    fn style_system_full_round_trip_with_custom_chrome_and_treatments() {
+        use crate::design_system::{
+            color_scheme::Meta,
+            style_system::{
+                Alphas, BevelStyle, Chrome, Density, Elevation, FocusRingStyle, GroupEnclosure,
+                PaneActiveIndicator, Radii, Shadows, ShadowSpec, Spacing, Strokes, StyleSystem,
+                Treatments, Typography,
+            },
+        };
+
+        let original = StyleSystem {
+            meta: Meta::new("test-full", "Test Full", false),
+            typography: Typography {
+                size_xs: 7.5, size_sm: 10.0, size_md: 12.5, size_lg: 14.0, size_xl: 20.0,
+                mono_sm: 9.5, mono_md: 11.5, mono_lg: 14.5,
+                size_section_label: 8.0,
+                label_tracking: 0.5, nav_tracking: 1.0, section_tracking: 1.5,
+                family_ui: "Roboto".into(),
+                family_mono: "Fira Code".into(),
+                family_display: "Playfair Display".into(),
+            },
+            spacing: Spacing {
+                xs: 3.0, sm: 6.0, xs_mid: 5.0, md: 10.0, lg: 14.0, xl: 18.0, xxl: 22.0,
+                gmd: 7.0, cta_height: 30.0, cta_padding_x: 14.0,
+                button_height: 26.0, button_padding_x: 11.0, tab_height: 30.0,
+            },
+            radii: Radii { none: 0.0, xs: 3.0, sm: 5.0, md: 8.0, lg: 14.0, full: 9999.0, pill: 50.0, chip: 3.0 },
+            strokes: Strokes { hair: 0.25, thin: 0.4, medium: 0.7, std: 0.9, bold: 1.3, thick: 1.8, md: 1.3, heavy: 1.8 },
+            alphas: Alphas {
+                faint: 8, ghost: 12, soft_u8: 18, subtle_u8: 35, tint: 45, muted_u8: 55,
+                dim: 55, line: 75, strong_u8: 75, active: 95, heavy_u8: 115, scrim: 130, solid: 190,
+                subtle: 0.03, soft: 0.10, muted: 0.22, mid: 0.45, strong: 0.70, opaque: 0.99, header_border: 0.15,
+            },
+            elevation: Elevation { l1: 1.08, l2: 0.92, l3: 0.85 },
+            density: Density { factor: 0.9, row_height_dense: 20.0, row_height_comfortable: 30.0 },
+            shadows: Shadows {
+                card:     ShadowSpec { blur: 6.0,  spread: 1.0, offset_x: 1.0, offset_y: 3.0, alpha: 0.25 },
+                modal:    ShadowSpec { blur: 20.0, spread: 2.0, offset_x: 0.0, offset_y: 6.0, alpha: 0.45 },
+                tooltip:  ShadowSpec { blur: 5.0,  spread: 0.0, offset_x: 0.0, offset_y: 1.5, alpha: 0.35 },
+                dropdown: ShadowSpec { blur: 10.0, spread: 0.0, offset_x: 0.0, offset_y: 3.0, alpha: 0.38 },
+            },
+            treatments: Treatments {
+                solid_active_fills: true,
+                hairline_borders: true,
+                uppercase_section_labels: true,
+                segmented_filled_idle: true,
+                focus_ring: FocusRingStyle::Glow,
+                surface_bevel: BevelStyle::Raised,
+                bevel_highlight_alpha: 42,
+                bevel_shadow_alpha: 38,
+                wl_row_side_margin: 6.0,
+                wl_row_corner_radius: 8,
+                wl_row_divider_alpha: 25,
+                section_header_mono: true,
+                wl_symbol_mono: true,
+                panel_tab_treatment: 2,
+                pane_active_fill_accent: true,
+                serif_headlines: true,
+                button_treatment: 3,
+                invert_active_fill: true,
+                vertical_group_dividers: true,
+                show_active_tab_underline: false,
+                inactive_header_fill: false,
+                nav_buttons_label_only: true,
+                nav_buttons_uppercase_labels: true,
+                tab_underline_under_text: true,
+                card_floating_shadow: true,
+                shadows_enabled: false,
+                animations_enabled: false,
+            },
+            chrome: Chrome {
+                toolbar_height_scale: 1.3,
+                header_height_scale: 1.2,
+                account_strip_height: 30.0,
+                pane_border_width: 2.0,
+                pane_gap: 8.0,
+                pane_gap_alpha: 80,
+                pane_active_indicator: PaneActiveIndicator::Both.as_u8(),
+                active_header_fill_multiply: 0.6,
+                inactive_header_fill_multiply: 1.12,
+                header_outer_border_alpha: 50,
+                header_outer_border_width: 1.0,
+                header_divider_alpha: 60,
+                nav_active_col_alpha: 30,
+                dialog_backdrop_alpha: 120,
+                tab_inactive_alpha: 0.45,
+                tab_hover_bg_alpha: 25,
+                tab_underline_thickness: 3.0,
+                section_label_padding_top: 6.0,
+                section_label_padding_bottom: 3.0,
+                drag_handle_alpha: 0.5,
+                drag_handle_dot_scale: 1.2,
+                toast_bg_alpha: 200,
+                card_stripe_alpha: 200,
+                card_floating_shadow_alpha: 40,
+                accent_emphasis: 1.2,
+                disabled_opacity: 0.4,
+                focus_ring_width: 2.0,
+                focus_ring_alpha: 140,
+                hover_bg_alpha: 22,
+                active_bg_alpha: 38,
+                region_gap: 8.0,
+                region_radius: 10.0,
+                region_border_alpha: 55,
+                nav_cluster_radius: 6.0,
+                nav_cluster_fill_alpha: 30,
+                nav_cluster_padding: 8.0,
+                button_group: GroupEnclosure::Bordered,
+                toolnav_height: 30.0,
+                footer_default_open: true,
+                panel_header_treatment: 2,
+                panel_section_fill_alpha: 18,
+                panel_footer_card: true,
+                panel_footer_radius: 8.0,
+            },
+        };
+
+        let json = original.to_dtcg();
+        assert!(!json.is_empty(), "to_dtcg produced empty string");
+
+        let parsed = StyleSystem::from_dtcg(&json)
+            .expect("full round-trip parse failed");
+
+        // Meta
+        assert_eq!(parsed.meta.id, original.meta.id);
+        assert_eq!(parsed.meta.is_dark, original.meta.is_dark);
+
+        // Typography
+        assert_eq!(parsed.typography.size_sm, original.typography.size_sm);
+        assert_eq!(parsed.typography.family_ui, original.typography.family_ui);
+        assert_eq!(parsed.typography.family_mono, original.typography.family_mono);
+        assert_eq!(parsed.typography.family_display, original.typography.family_display);
+        assert_eq!(parsed.typography.label_tracking, original.typography.label_tracking);
+
+        // Spacing (including new fields)
+        assert_eq!(parsed.spacing.cta_padding_x, original.spacing.cta_padding_x);
+        assert_eq!(parsed.spacing.button_height, original.spacing.button_height);
+        assert_eq!(parsed.spacing.button_padding_x, original.spacing.button_padding_x);
+        assert_eq!(parsed.spacing.tab_height, original.spacing.tab_height);
+
+        // Radii (including new fields)
+        assert_eq!(parsed.radii.pill, original.radii.pill);
+        assert_eq!(parsed.radii.chip, original.radii.chip);
+        assert_eq!(parsed.radii.sm, original.radii.sm);
+
+        // Alphas (including scrim)
+        assert_eq!(parsed.alphas.scrim, original.alphas.scrim);
+        assert_eq!(parsed.alphas.faint, original.alphas.faint);
+        assert_eq!(parsed.alphas.header_border, original.alphas.header_border);
+
+        // Treatments — previously defaulted fields
+        assert_eq!(parsed.treatments.focus_ring, FocusRingStyle::Glow);
+        assert_eq!(parsed.treatments.surface_bevel, BevelStyle::Raised);
+        assert_eq!(parsed.treatments.bevel_highlight_alpha, 42);
+        assert_eq!(parsed.treatments.bevel_shadow_alpha, 38);
+        assert_eq!(parsed.treatments.wl_row_side_margin, 6.0);
+        assert_eq!(parsed.treatments.wl_row_corner_radius, 8);
+        assert_eq!(parsed.treatments.wl_row_divider_alpha, 25);
+        assert_eq!(parsed.treatments.section_header_mono, true);
+        assert_eq!(parsed.treatments.wl_symbol_mono, true);
+        assert_eq!(parsed.treatments.panel_tab_treatment, 2);
+        assert_eq!(parsed.treatments.pane_active_fill_accent, true);
+        assert_eq!(parsed.treatments.serif_headlines, true);
+        assert_eq!(parsed.treatments.button_treatment, 3);
+        assert_eq!(parsed.treatments.invert_active_fill, true);
+        assert_eq!(parsed.treatments.shadows_enabled, false);
+        assert_eq!(parsed.treatments.animations_enabled, false);
+        assert_eq!(parsed.treatments.show_active_tab_underline, false);
+        assert_eq!(parsed.treatments.inactive_header_fill, false);
+
+        // Chrome — complete
+        assert_eq!(parsed.chrome.toolbar_height_scale, original.chrome.toolbar_height_scale);
+        assert_eq!(parsed.chrome.pane_gap, original.chrome.pane_gap);
+        assert_eq!(parsed.chrome.pane_gap_alpha, original.chrome.pane_gap_alpha);
+        assert_eq!(parsed.chrome.pane_active_indicator, PaneActiveIndicator::Both.as_u8(),
+            "pane_active_indicator round-trip failed (expected Both=3)");
+        assert_eq!(parsed.chrome.active_header_fill_multiply, original.chrome.active_header_fill_multiply);
+        assert_eq!(parsed.chrome.header_outer_border_alpha, original.chrome.header_outer_border_alpha);
+        assert_eq!(parsed.chrome.dialog_backdrop_alpha, original.chrome.dialog_backdrop_alpha);
+        assert_eq!(parsed.chrome.tab_inactive_alpha, original.chrome.tab_inactive_alpha);
+        assert_eq!(parsed.chrome.drag_handle_alpha, original.chrome.drag_handle_alpha);
+        assert_eq!(parsed.chrome.toast_bg_alpha, original.chrome.toast_bg_alpha);
+        assert_eq!(parsed.chrome.accent_emphasis, original.chrome.accent_emphasis);
+        assert_eq!(parsed.chrome.disabled_opacity, original.chrome.disabled_opacity);
+        assert_eq!(parsed.chrome.focus_ring_width, original.chrome.focus_ring_width);
+        assert_eq!(parsed.chrome.focus_ring_alpha, original.chrome.focus_ring_alpha);
+        assert_eq!(parsed.chrome.hover_bg_alpha, original.chrome.hover_bg_alpha);
+        assert_eq!(parsed.chrome.active_bg_alpha, original.chrome.active_bg_alpha);
+        assert_eq!(parsed.chrome.region_gap, original.chrome.region_gap);
+        assert_eq!(parsed.chrome.region_radius, original.chrome.region_radius);
+        assert_eq!(parsed.chrome.region_border_alpha, original.chrome.region_border_alpha);
+        assert_eq!(parsed.chrome.nav_cluster_radius, original.chrome.nav_cluster_radius);
+        assert_eq!(parsed.chrome.nav_cluster_fill_alpha, original.chrome.nav_cluster_fill_alpha);
+        assert_eq!(parsed.chrome.nav_cluster_padding, original.chrome.nav_cluster_padding);
+        assert_eq!(parsed.chrome.button_group, GroupEnclosure::Bordered,
+            "button_group round-trip failed (expected Bordered)");
+        assert_eq!(parsed.chrome.toolnav_height, original.chrome.toolnav_height);
+        assert_eq!(parsed.chrome.footer_default_open, original.chrome.footer_default_open);
+        assert_eq!(parsed.chrome.panel_header_treatment, original.chrome.panel_header_treatment);
+        assert_eq!(parsed.chrome.panel_section_fill_alpha, original.chrome.panel_section_fill_alpha);
+        assert_eq!(parsed.chrome.panel_footer_card, original.chrome.panel_footer_card);
+        assert_eq!(parsed.chrome.panel_footer_radius, original.chrome.panel_footer_radius);
+
+        // Full structural equality
+        assert_eq!(parsed, original, "full StyleSystem round-trip equality failed");
+    }
+
+    // ── ColorScheme cmd_palette round-trip ────────────────────────────────────
+
+    #[test]
+    fn color_scheme_cmd_palette_round_trip() {
+        use crate::design_system::color_scheme::{rgba, builtin_dark, CMD_PALETTE_DEFAULT};
+
+        // Custom palette — differs from CMD_PALETTE_DEFAULT in every slot.
+        let custom_palette: [_; 11] = [
+            rgba::rgb(255,   0,   0),
+            rgba::rgb(  0, 255,   0),
+            rgba::rgb(  0,   0, 255),
+            rgba::rgb(255, 255,   0),
+            rgba::rgb(  0, 255, 255),
+            rgba::rgb(255,   0, 255),
+            rgba::rgb(128, 128,   0),
+            rgba::rgb(  0, 128, 128),
+            rgba::rgb(128,   0, 128),
+            rgba::rgb(200, 100,  50),
+            rgba::rgb( 50, 100, 200),
+        ];
+        // Sanity: custom differs from default.
+        assert_ne!(custom_palette, CMD_PALETTE_DEFAULT);
+
+        let mut scheme = builtin_dark();
+        scheme.cmd_palette = custom_palette;
+
+        let json = scheme.to_dtcg();
+        let parsed = ColorScheme::from_dtcg(&json).expect("cmd_palette round-trip parse failed");
+
+        assert_eq!(parsed.cmd_palette, custom_palette,
+            "cmd_palette was not preserved through DTCG round-trip");
+
+        // Also verify the default is preserved when cmd_palette is absent from JSON.
+        let json_no_palette = r##"{
+            "meta": { "id": "test-no-cp", "name": "Test", "is_dark": true },
+            "palette": {
+                "bg":     { "$type": "color", "$value": "#121212ff" },
+                "accent": { "$type": "color", "$value": "#6366f1ff" }
+            }
+        }"##;
+        let parsed_no_cp = ColorScheme::from_dtcg(json_no_palette)
+            .expect("parse without cmd_palette failed");
+        assert_eq!(parsed_no_cp.cmd_palette, CMD_PALETTE_DEFAULT,
+            "missing cmd_palette should fall back to CMD_PALETTE_DEFAULT");
     }
 }

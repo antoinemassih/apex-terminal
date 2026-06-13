@@ -146,6 +146,37 @@ pub struct ColorScheme {
     /// Warning / caution state.
     pub warn: Rgba,
 
+    // ── Extended semantic palette (PALETTE-DEPTH decision) ─────────────────
+    // Independent semantic slots distinct from the trading-specific bull/bear.
+    // Defaults to bull/bear/warn so existing themes are visually unchanged.
+    // New themes may set these independently for richer UI states.
+
+    /// General success / positive state (not price-specific).
+    /// Defaults to `bull` at render time when `None`.
+    #[serde(default)]
+    pub success: Option<Rgba>,
+    /// General danger / error / destructive action state.
+    /// Defaults to `bear` at render time when `None`.
+    #[serde(default)]
+    pub danger: Option<Rgba>,
+    /// General warning / caution state (semantic alias over `warn`).
+    /// Defaults to `warn` at render time when `None`.
+    #[serde(default)]
+    pub warning: Option<Rgba>,
+    /// Informational / neutral highlight (help text, info badges, links).
+    /// No direct legacy equivalent; defaults to a generic muted blue at render time.
+    #[serde(default)]
+    pub info: Option<Rgba>,
+
+    // ── Axis-violation fix: pane gap color ────────────────────────────────
+    // Previously `StyleSettings.pane_gap_color: Option<Color32>` lived on the
+    // dimension axis — a color field in a dimension struct. Moved here where it
+    // belongs. None = renderers derive gap color from bg/border at paint time.
+    /// Override colour for the gutter between adjacent panes.
+    /// `None` = derive from `bg`/`border` at paint time (most themes leave this `None`).
+    #[serde(default)]
+    pub pane_gap_color: Option<Rgba>,
+
     // ── Shadow ─────────────────────────────────────────────────────────────
     /// Shadow tint colour (used by elevation helpers). Typically near-black
     /// for dark themes, near-neutral for light themes.
@@ -203,6 +234,12 @@ impl ColorScheme {
             bull:    rgba::rgb(52,  211, 153),
             bear:    rgba::rgb(248, 113, 113),
             warn:    rgba::rgb(251, 191,  36),
+            // Extended semantic palette: None → fallback to bull/bear/warn at render time.
+            success: None,
+            danger:  None,
+            warning: None,
+            info:    None,
+            pane_gap_color: None,
             shadow:  rgba::rgba(0, 0, 0, 180),
             // extras: sensible generic defaults
             notification_red: rgba::rgb(231,  76,  60),
@@ -218,6 +255,36 @@ impl ColorScheme {
             hud_border:       rgba::rgb( 50,  50,  60),
             cmd_palette:      CMD_PALETTE_DEFAULT,
         }
+    }
+
+    // ── Resolved semantic palette accessors ────────────────────────────────
+    // These fall back to the legacy bull/bear/warn fields when the extended
+    // semantic slots are unset, preserving the existing visual for all themes
+    // that were defined before the PALETTE-DEPTH decision.
+
+    /// Resolved success colour: `success` if set, otherwise `bull`.
+    #[inline]
+    pub fn resolved_success(&self) -> Rgba { self.success.unwrap_or(self.bull) }
+
+    /// Resolved danger colour: `danger` if set, otherwise `bear`.
+    #[inline]
+    pub fn resolved_danger(&self) -> Rgba { self.danger.unwrap_or(self.bear) }
+
+    /// Resolved warning colour: `warning` if set, otherwise `warn`.
+    #[inline]
+    pub fn resolved_warning(&self) -> Rgba { self.warning.unwrap_or(self.warn) }
+
+    /// Resolved info colour: `info` if set, otherwise a neutral blue
+    /// appropriate for the dark/light context.
+    #[inline]
+    pub fn resolved_info(&self) -> Rgba {
+        self.info.unwrap_or_else(|| {
+            if self.meta.is_dark {
+                rgba::rgb(100, 160, 220) // muted blue for dark themes
+            } else {
+                rgba::rgb(30, 100, 180)  // deeper blue for light themes
+            }
+        })
     }
 }
 
@@ -236,6 +303,12 @@ pub fn builtin_dark() -> ColorScheme {
         bull:    rgba::rgb(52,  211, 153),
         bear:    rgba::rgb(248, 113, 113),
         warn:    rgba::rgb(251, 191,  36),
+        // Extended semantic palette: None = fallback to bull/bear/warn at render time.
+        success: None,
+        danger:  None,
+        warning: None,
+        info:    None,
+        pane_gap_color: None,
         shadow:  rgba::rgba(0, 0, 0, 180),
         notification_red: rgba::rgb(231,  76,  60),
         gold:             rgba::rgb(255, 193,  37),
@@ -265,6 +338,12 @@ pub fn builtin_light() -> ColorScheme {
         bull:    rgba::rgb(22, 163,  74),
         bear:    rgba::rgb(220,  38,  38),
         warn:    rgba::rgb(202, 138,   4),
+        // Extended semantic palette: None = fallback to bull/bear/warn at render time.
+        success: None,
+        danger:  None,
+        warning: None,
+        info:    None,
+        pane_gap_color: None,
         shadow:  rgba::rgba(0, 0, 0, 80),
         notification_red: rgba::rgb(220,  38,  38),
         gold:             rgba::rgb(202, 138,   4),

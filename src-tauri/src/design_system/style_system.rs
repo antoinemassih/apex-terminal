@@ -11,11 +11,104 @@
 use serde::{Deserialize, Serialize};
 use super::color_scheme::Meta;
 
+// ── Typed enums (S3/S11 blockers — defined here in S1) ───────────────────────
+
+/// How the active pane is visually indicated. Replaces `Chrome.pane_active_indicator: u8`.
+///
+/// S3 will update `TokenSnapshot` and `Chrome` to use this typed form.
+/// Until then, `Chrome.pane_active_indicator` remains `u8` for binary compatibility;
+/// use `PaneActiveIndicator::from_u8` / `as_u8` at conversion boundaries.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum PaneActiveIndicator {
+    /// No visual indicator — pane focus is implicit.
+    None,
+    /// Thin accent stripe along the top edge of the active pane header.
+    #[default]
+    TopStripe,
+    /// Active pane header is filled with a lightened/darkened surface colour.
+    HeaderFill,
+    /// Both top stripe and header fill.
+    Both,
+}
+
+impl PaneActiveIndicator {
+    /// Convert from the legacy `u8` index used in `StyleSettings.pane_active_indicator`.
+    pub fn from_u8(v: u8) -> Self {
+        match v {
+            0 => Self::None,
+            1 => Self::TopStripe,
+            2 => Self::HeaderFill,
+            3 => Self::Both,
+            _ => Self::HeaderFill,
+        }
+    }
+
+    /// Convert back to the legacy `u8` index.
+    pub fn as_u8(self) -> u8 {
+        match self {
+            Self::None       => 0,
+            Self::TopStripe  => 1,
+            Self::HeaderFill => 2,
+            Self::Both       => 3,
+        }
+    }
+}
+
+/// How the side-panel header strip is rendered. Replaces `Chrome.panel_header_treatment: u8`.
+///
+/// S3 will update `TokenSnapshot` and `Chrome` to use this typed form.
+/// Until then, `Chrome.panel_header_treatment` remains `u8` for binary compatibility;
+/// use `PanelHeaderTreatment::from_u8` / `as_u8` at conversion boundaries.
+///
+/// RECIPE-CANDIDATE(S4)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum PanelHeaderTreatment {
+    /// Underline-style tab strip — accent hairline under the active tab.
+    #[default]
+    Line,
+    /// Segmented control — pill background on the active segment.
+    Segmented,
+    /// Filled tab — solid fill on the active tab.
+    Filled,
+    /// Card-style — the active tab is a slightly elevated card.
+    Card,
+    /// Pane-style — header strip matches the pane header aesthetic.
+    Pane,
+}
+
+impl PanelHeaderTreatment {
+    /// Convert from the legacy `u8` index used in `StyleSettings.panel_header_treatment`.
+    pub fn from_u8(v: u8) -> Self {
+        match v {
+            0 => Self::Line,
+            1 => Self::Segmented,
+            2 => Self::Filled,
+            3 => Self::Card,
+            4 => Self::Pane,
+            _ => Self::Line,
+        }
+    }
+
+    /// Convert back to the legacy `u8` index.
+    pub fn as_u8(self) -> u8 {
+        match self {
+            Self::Line      => 0,
+            Self::Segmented => 1,
+            Self::Filled    => 2,
+            Self::Card      => 3,
+            Self::Pane      => 4,
+        }
+    }
+}
+
 // ── Typography ───────────────────────────────────────────────────────────────
 
-/// Font size scale (pixels / points as `f32`).
+/// Font size scale (pixels / points as `f32`) and font-family identifiers.
 ///
 /// Matches the token names exposed by `style.rs` (`font_xs`, `font_sm`, …).
+/// Font-family fields are plain `String` names resolved by the font loader at
+/// startup — Stream S7 depends on `family_ui`, `family_mono`, `family_display`
+/// existing here.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Typography {
     /// Extra-small label / annotation text.
@@ -49,10 +142,29 @@ pub struct Typography {
     /// Letter-spacing (px) specifically for section/eyebrow headers (`section_header_tracking`).
     #[serde(default)]
     pub section_tracking: f32,
+
+    // ── Font family identifiers (S7 blocker) ─────────────────────────────────
+    /// UI / proportional family name — used for all body text, labels, and
+    /// headings that are not explicitly mono or display.
+    /// Default: `"Inter"` (matches the current compiled-in egui font loader).
+    #[serde(default = "Typography::default_family_ui")]
+    pub family_ui: String,
+    /// Monospace family name — used for prices, code, and timestamps.
+    /// Default: `"JetBrains Mono"` (matches the current compiled-in egui mono font).
+    #[serde(default = "Typography::default_family_mono")]
+    pub family_mono: String,
+    /// Display / hero family name — used for `size_xl` hero numerics and big
+    /// headings when `Treatments.serif_headlines` is true.
+    /// Default: `"Inter"` (fallback to UI family when no separate display font is loaded).
+    #[serde(default = "Typography::default_family_display")]
+    pub family_display: String,
 }
 
 impl Typography {
     fn default_section_label() -> f32 { 9.0 }
+    fn default_family_ui()      -> String { "Inter".to_owned() }
+    fn default_family_mono()    -> String { "JetBrains Mono".to_owned() }
+    fn default_family_display() -> String { "Inter".to_owned() }
 }
 
 impl Default for Typography {
@@ -73,6 +185,9 @@ impl Default for Typography {
             label_tracking: 0.0,
             nav_tracking:   0.0,
             section_tracking: 0.0,
+            family_ui:      "Inter".to_owned(),
+            family_mono:    "JetBrains Mono".to_owned(),
+            family_display: "Inter".to_owned(),
         }
     }
 }
