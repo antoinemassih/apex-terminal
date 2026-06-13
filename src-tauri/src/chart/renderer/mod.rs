@@ -992,10 +992,12 @@ pub enum ChartCommand {
         price: f32,
         message: String,
     },
-    /// Auto trendlines pushed from ApexSignals (replaces signal_drawings for this symbol)
+    /// Auto trendlines / chart patterns pushed from ApexSignals. Replaces only
+    /// the `source`'s existing drawings, so independent producers coexist.
     AutoTrendlines {
         symbol: String,
         drawings_json: String, // same JSON format as SignalDrawings
+        source: String,        // "trendlines" / "chart_patterns"
     },
     /// Significance score update for a drawing from ApexSignals
     SignificanceUpdate {

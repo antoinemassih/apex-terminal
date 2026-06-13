@@ -79,6 +79,32 @@ if watchlist.trendline_filter_open {
                 chart.hide_all_drawings = !chart.hide_all_drawings;
             }
 
+            // Per-detection-method filters — auto-charting emits a line per method
+            // (wick / ransac / kalman / hough / kde / cusum / pca / bayesian / …),
+            // each tagged so it can be shown or hidden independently.
+            let methods: Vec<(String, usize)> = {
+                let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+                for sd in &chart.signal_drawings {
+                    if sd.detection_method.is_empty() { continue; }
+                    *counts.entry(sd.detection_method.clone()).or_insert(0) += 1;
+                }
+                counts.into_iter().collect()
+            };
+            if !methods.is_empty() {
+                ui.add_space(gap_sm());
+                dialog_separator_shadow(ui, m, tint(t, Tone::Border, alpha_line()));
+                ui.add_space(gap_sm());
+                dialog_section(ui, "BY METHOD", m, color_half(t.dim));
+                for (method, count) in &methods {
+                    let hidden = chart.hidden_signal_methods.iter().any(|x| x == method);
+                    // Toggle on the raw method string; display a human label.
+                    if vis_btn(ui, hidden, &method_label(method), *count) {
+                        if hidden { chart.hidden_signal_methods.retain(|x| x != method); }
+                        else { chart.hidden_signal_methods.push(method.clone()); }
+                    }
+                }
+            }
+
             // Groups
             if !chart.groups.is_empty() {
                 ui.add_space(gap_sm());
@@ -316,4 +342,52 @@ span_end();
 // Old global style_bar removed — unified into per-pane draw_props bar
 
 
+}
+
+/// Human-readable label for an auto-chart `detection_method` string (the engine
+/// emits machine names like `kde_level`, `wavelet_L1`, `pattern:HeadAndShoulders`).
+fn method_label(m: &str) -> String {
+    match m {
+        "wick" => "Wick Trendline".into(),
+        "body" => "Body Trendline".into(),
+        "inner" => "Inner Trendline".into(),
+        "anchored" => "Anchored".into(),
+        "volume_weighted" => "Volume-Weighted".into(),
+        "regression" => "Regression".into(),
+        "kalman" => "Kalman".into(),
+        "kde_level" => "KDE Level".into(),
+        "cusum" => "CUSUM".into(),
+        "pca" => "PCA".into(),
+        "tls" => "Total Least Squares".into(),
+        "svd" => "SVD".into(),
+        "hough" => "Hough".into(),
+        "ransac" => "RANSAC".into(),
+        "bayesian_cp" => "Bayesian Change-Pt".into(),
+        "bayesian_lr" => "Bayesian Regression".into(),
+        other => {
+            if let Some(n) = other.strip_prefix("wavelet_L") {
+                format!("Wavelet L{n}")
+            } else if let Some(r) = other.strip_prefix("fib_fan_") {
+                format!("Fib Fan {r}")
+            } else if let Some(r) = other.strip_prefix("speed_") {
+                format!("Speed {r}")
+            } else if let Some(p) = other.strip_prefix("pattern:") {
+                prettify_camel(p)
+            } else {
+                other.to_string()
+            }
+        }
+    }
+}
+
+/// "HeadAndShoulders" → "Head And Shoulders" for pattern labels.
+fn prettify_camel(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 4);
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && c.is_uppercase() {
+            out.push(' ');
+        }
+        out.push(c);
+    }
+    out
 }

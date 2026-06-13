@@ -793,7 +793,7 @@ use super::ui::style::{
 };
 use super::ui::style as style;
 use super::ui::foundation::text_style::TextStyle;
-use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner, compute_adx, compute_cci, compute_williams_r};
+use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner, compute_adx, compute_cci, compute_williams_r, compute_obv};
 
 // compute_sma, compute_ema — now in compute.rs
 
@@ -1212,7 +1212,7 @@ pub(crate) const ALL_LAYOUTS: &[Layout] = &[
 // ─── Indicators ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum IndicatorType { SMA, EMA, WMA, DEMA, TEMA, VWAP, BollingerBands, Ichimoku, ParabolicSAR, Supertrend, KeltnerChannels, RSI, MACD, Stochastic, ADX, CCI, WilliamsR, ATR }
+pub(crate) enum IndicatorType { SMA, EMA, WMA, DEMA, TEMA, VWAP, BollingerBands, Ichimoku, ParabolicSAR, Supertrend, KeltnerChannels, RSI, MACD, Stochastic, ADX, CCI, WilliamsR, ATR, OBV }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum IndicatorCategory { Overlay, Oscillator }
@@ -1227,10 +1227,10 @@ impl IndicatorType {
             Self::KeltnerChannels => "KC",
             Self::RSI => "RSI", Self::MACD => "MACD", Self::Stochastic => "STOCH",
             Self::ADX => "ADX", Self::CCI => "CCI", Self::WilliamsR => "%R",
-            Self::ATR => "ATR",
+            Self::ATR => "ATR", Self::OBV => "OBV",
         }
     }
-    pub(crate) fn all() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::BollingerBands, Self::Ichimoku, Self::ParabolicSAR, Self::Supertrend, Self::KeltnerChannels, Self::RSI, Self::MACD, Self::Stochastic, Self::ADX, Self::CCI, Self::WilliamsR, Self::ATR] }
+    pub(crate) fn all() -> &'static [Self] { &[Self::SMA, Self::EMA, Self::WMA, Self::DEMA, Self::TEMA, Self::VWAP, Self::BollingerBands, Self::Ichimoku, Self::ParabolicSAR, Self::Supertrend, Self::KeltnerChannels, Self::RSI, Self::MACD, Self::Stochastic, Self::ADX, Self::CCI, Self::WilliamsR, Self::ATR, Self::OBV] }
     pub(crate) fn default_period(self) -> usize {
         match self {
             Self::SMA | Self::EMA | Self::WMA | Self::DEMA | Self::TEMA => 20,
@@ -1238,10 +1238,11 @@ impl IndicatorType {
             Self::MACD => 12, Self::VWAP => 1,
             Self::BollingerBands | Self::KeltnerChannels => 20,
             Self::Ichimoku => 9, Self::ParabolicSAR => 1, Self::Supertrend => 10,
+            Self::OBV => 1, // cumulative — no period
         }
     }
     pub(crate) fn category(self) -> IndicatorCategory {
-        match self { Self::RSI | Self::MACD | Self::Stochastic | Self::ADX | Self::CCI | Self::WilliamsR | Self::ATR => IndicatorCategory::Oscillator, _ => IndicatorCategory::Overlay }
+        match self { Self::RSI | Self::MACD | Self::Stochastic | Self::ADX | Self::CCI | Self::WilliamsR | Self::ATR | Self::OBV => IndicatorCategory::Oscillator, _ => IndicatorCategory::Overlay }
     }
 
     fn compute(self, closes: &[f32], period: usize) -> Vec<f32> {
@@ -1256,7 +1257,7 @@ impl IndicatorType {
             Self::RSI => compute_rsi(closes, period),
             Self::MACD => compute_ema(closes, period),
             Self::Stochastic => vec![f32::NAN; closes.len()],
-            Self::ADX | Self::CCI | Self::WilliamsR | Self::ATR => vec![f32::NAN; closes.len()],
+            Self::ADX | Self::CCI | Self::WilliamsR | Self::ATR | Self::OBV => vec![f32::NAN; closes.len()], // need OHLCV — computed in recompute_indicators
         }
     }
 }
@@ -1397,6 +1398,8 @@ pub(crate) struct SignalDrawing {
     pub(crate) line_style: LineStyle,
     pub(crate) strength: f32, // 0.0-1.0, how confident the analysis is
     pub(crate) timeframe: String,
+    pub(crate) detection_method: String, // wick/ransac/kalman/hough/kde/… — for by-method filtering
+    pub(crate) source: String, // producer: "trendlines" / "chart_patterns" / "signal" — scopes replacement
 }
 
 impl SignalDrawing {
@@ -1581,6 +1584,38 @@ pub(crate) fn bar_to_time(bar: f32, timestamps: &[i64]) -> i64 {
     t0 + ((t1 - t0) as f32 * frac) as i64
 }
 
+/// Fetch cached auto-chart drawings from ApexSignals for initial paint on chart
+/// open — the /ws feed only pushes on the next bar close, so without this the
+/// chart is blank until then. The live stream keeps it updated afterward.
+/// Base URL via `APEX_SIGNALS_HTTP` (default http://localhost:8100).
+pub(crate) fn fetch_apexsignals_drawings(symbol: String, timeframe: String) {
+    let txs: Vec<std::sync::mpsc::Sender<super::ChartCommand>> = crate::NATIVE_CHART_TXS
+        .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
+    if txs.is_empty() { return; }
+    std::thread::spawn(move || {
+        let base = std::env::var("APEX_SIGNALS_HTTP").unwrap_or_else(|_| "http://localhost:8100".to_string());
+        // Pass the chart's timeframe so the engine computes/serves that tf
+        // (and computes from history on cache-miss — closed-market paint).
+        let url = format!("{base}/signals/drawings/{symbol}?timeframe={timeframe}");
+        let client = reqwest::blocking::Client::builder().user_agent("apex-native").build().unwrap_or_else(|_| reqwest::blocking::Client::new());
+        if let Ok(resp) = client.get(&url).timeout(std::time::Duration::from_secs(3)).send() {
+            if let Ok(json) = resp.json::<serde_json::Value>() {
+                // One frame per source (trendlines / chart_patterns); apply each
+                // so per-source replacement stays intact. Empty sources omitted.
+                if let Some(frames) = json.get("frames").and_then(|f| f.as_array()) {
+                    for frame in frames {
+                        let drawings_json = frame.get("drawings").map(|d| d.to_string()).unwrap_or_else(|| "[]".to_string());
+                        let source = frame.get("source").and_then(|s| s.as_str()).unwrap_or("trendlines").to_string();
+                        let cmd = super::ChartCommand::AutoTrendlines { symbol: symbol.clone(), drawings_json, source };
+                        for tx in &txs { let _ = tx.send(cmd.clone()); }
+                    }
+                    crate::wake_native_ui();
+                }
+            }
+        }
+    });
+}
+
 /// Fetch signal annotations from OCOCO API for a symbol.
 pub(crate) fn fetch_signal_drawings(symbol: String) {
     let txs: Vec<std::sync::mpsc::Sender<super::ChartCommand>> = crate::NATIVE_CHART_TXS
@@ -1606,7 +1641,8 @@ pub(crate) fn fetch_signal_drawings(symbol: String) {
                     let line_style = match ls_str { "solid" => LineStyle::Solid, "dotted" => LineStyle::Dotted, _ => LineStyle::Dashed };
                     let strength = a.get("strength").and_then(|s| s.as_f64()).unwrap_or(0.5) as f32;
                     let timeframe = a.get("timeframe").and_then(|t| t.as_str()).unwrap_or("5m").to_string();
-                    Some(SignalDrawing { id, symbol: sym, drawing_type: dtype, points, color, opacity, thickness, line_style, strength, timeframe })
+                    let detection_method = a.get("detection_method").and_then(|m| m.as_str()).unwrap_or("").to_string();
+                    Some(SignalDrawing { id, symbol: sym, drawing_type: dtype, points, color, opacity, thickness, line_style, strength, timeframe, detection_method, source: "signal".to_string() })
                 }).collect();
 
                 if !drawings.is_empty() {
@@ -1692,7 +1728,9 @@ pub(crate) fn render_order_entry_body(
             last:           last_price,
             ask:            last_price + spread,
             notional:       last_price * oe_qty_snapshot as f32,
-            buying_power:   0.0, // TODO: thread real buying_power from account data
+            buying_power:   crate::chart_renderer::trading::read_account_data()
+                                .map(|(s, _, _)| s.buying_power as f32)
+                                .unwrap_or(0.0),
             slippage_bps:   0.0,
         };
         let outcome = super::ui::inputs::form::MeridienOrderTicket::new()
@@ -2204,6 +2242,7 @@ pub(crate) struct Chart {
     pub(crate) hidden_groups: Vec<String>,
     pub(crate) signal_drawings: Vec<SignalDrawing>, // auto-generated trendlines from server
     pub(crate) hide_signal_drawings: bool,
+    pub(crate) hidden_signal_methods: Vec<String>, // detection_methods toggled off in the filter
     pub(crate) pattern_labels: Vec<PatternLabel>,   // candlestick pattern labels from ApexSignals
     pub(crate) show_pattern_labels: bool,
     // ── Signal engine state ──────────────────────────────────────────────────
@@ -2524,7 +2563,7 @@ impl Chart {
             drag_start_price: 0.0, drag_start_bar: 0.0,
             groups: vec![DrawingGroup { id: "default".into(), name: "Temp".into(), color: None }],
             hidden_groups: vec![], hide_all_drawings: false, hide_all_indicators: false, show_volume: true, show_oscillators: true, ohlc_tooltip: true, measure_tooltip: false,
-            signal_drawings: vec![], hide_signal_drawings: false,
+            signal_drawings: vec![], hide_signal_drawings: false, hidden_signal_methods: vec![],
             pattern_labels: vec![], show_pattern_labels: true,
             trend_health_score: 0.0, trend_health_direction: 0, trend_health_regime: String::new(),
             exit_gauge_score: 0.0, exit_gauge_urgency: String::new(),
@@ -2688,6 +2727,7 @@ impl Chart {
                 self.signal_drawings.clear();
                 self.last_signal_fetch = std::time::Instant::now();
                 fetch_signal_drawings(self.symbol.clone());
+                fetch_apexsignals_drawings(self.symbol.clone(), self.timeframe.clone()); // initial auto-chart paint
 
                 // Reload cross-timeframe indicator sources for new symbol
                 for ind in &mut self.indicators {
@@ -2811,7 +2851,8 @@ impl Chart {
                 if symbol == self.symbol {
                     // Parse signal drawings from JSON
                     if let Ok(annotations) = serde_json::from_str::<Vec<serde_json::Value>>(&drawings_json) {
-                        self.signal_drawings.clear();
+                        let source = "signal".to_string();
+                        self.signal_drawings.retain(|d| d.source != source);
                         for a in &annotations {
                             let id = a.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
                             let dtype = a.get("type").and_then(|v| v.as_str()).unwrap_or("trendline").to_string();
@@ -2827,7 +2868,8 @@ impl Chart {
                             };
                             let strength = a.get("strength").and_then(|s| s.as_f64()).unwrap_or(0.5) as f32;
                             let tf = a.get("timeframe").and_then(|t| t.as_str()).unwrap_or("5m").to_string();
-                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf });
+                            let detection_method = a.get("detection_method").and_then(|m| m.as_str()).unwrap_or("").to_string();
+                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf, detection_method, source: source.clone() });
                         }
                     }
                 }
@@ -2884,11 +2926,12 @@ impl Chart {
                     crate::chart_renderer::ui::tools::notification::Notification::new(message, crate::chart_renderer::ui::tools::notification::NotificationSeverity::Warning).with_value(price).with_source("alerts")
                 );
             }
-            ChartCommand::AutoTrendlines { symbol, drawings_json } => {
-                // Same parsing as SignalDrawings — replaces signal_drawings for this symbol
+            ChartCommand::AutoTrendlines { symbol, drawings_json, source } => {
+                // Replaces only this source's drawings, so trendlines and chart
+                // patterns (separate producers) coexist instead of clobbering.
                 if symbol == self.symbol {
                     if let Ok(annotations) = serde_json::from_str::<Vec<serde_json::Value>>(&drawings_json) {
-                        self.signal_drawings.clear();
+                        self.signal_drawings.retain(|d| d.source != source);
                         for a in &annotations {
                             let id = a.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
                             let dtype = a.get("type").and_then(|v| v.as_str()).unwrap_or("trendline").to_string();
@@ -2904,7 +2947,8 @@ impl Chart {
                             };
                             let strength = a.get("strength").and_then(|s| s.as_f64()).unwrap_or(0.5) as f32;
                             let tf = a.get("timeframe").and_then(|t| t.as_str()).unwrap_or("5m").to_string();
-                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf });
+                            let detection_method = a.get("detection_method").and_then(|m| m.as_str()).unwrap_or("").to_string();
+                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf, detection_method, source: source.clone() });
                         }
                         // Reset the HTTP polling timer so it doesn't immediately overwrite push data
                         self.last_signal_fetch = std::time::Instant::now();
@@ -3301,6 +3345,13 @@ impl Chart {
                     ind.values2 = vec![]; ind.values3 = vec![]; ind.values4 = vec![]; ind.values5 = vec![];
                     ind.histogram = vec![];
                 }
+                IndicatorType::OBV => {
+                    // OBV needs aligned close+volume — always from the chart bars
+                    // (cross-TF volume isn't materialised here), so use chart_closes.
+                    ind.values = compute_obv(&chart_closes, &chart_volumes);
+                    ind.values2 = vec![]; ind.values3 = vec![]; ind.values4 = vec![]; ind.values5 = vec![];
+                    ind.histogram = vec![];
+                }
                 _ => {
                     ind.values = ind.kind.compute(closes, ind.period);
                     ind.values2 = vec![];
@@ -3384,6 +3435,59 @@ impl Chart {
 
 /// Run one tick of price simulation for a single pane.
 pub(crate) fn new_uuid() -> String { uuid::Uuid::new_v4().to_string() }
+
+/// Promote the currently-visible auto signal-drawings into persistent, editable
+/// drawings — saved to the drawings DB and undoable, exactly like hand-drawn
+/// lines. Respects the BY-METHOD / signals visibility filters so only what you
+/// see gets pinned. Pinned drawings land in the `auto-chart` group, labelled by
+/// detection method. Returns how many were pinned.
+pub(crate) fn pin_signal_drawings(chart: &mut Chart) -> usize {
+    if chart.hide_signal_drawings {
+        return 0;
+    }
+    // Collect geometry first so we don't hold an immutable borrow while mutating.
+    let prepared: Vec<(DrawingKind, String, String)> = chart
+        .signal_drawings
+        .iter()
+        .filter(|sd| !chart.hidden_signal_methods.iter().any(|m| m == &sd.detection_method))
+        .filter_map(|sd| {
+            let kind = match sd.drawing_type.as_str() {
+                "trendline" if sd.points.len() >= 2 => DrawingKind::TrendLine {
+                    price0: sd.points[0].1,
+                    time0: sd.points[0].0,
+                    price1: sd.points[1].1,
+                    time1: sd.points[1].0,
+                },
+                "hline" if !sd.points.is_empty() => DrawingKind::HLine { price: sd.points[0].1 },
+                _ => return None,
+            };
+            Some((kind, sd.color.clone(), sd.detection_method.clone()))
+        })
+        .collect();
+
+    let sym = chart.symbol.clone();
+    let tf = chart.timeframe.clone();
+    let mut pinned = 0;
+    for (kind, color, method) in prepared {
+        let mut d = Drawing::new(new_uuid(), kind);
+        d.color = color;
+        d.group_id = "auto-chart".into();
+        if !method.is_empty() {
+            d.label = Some(method);
+        }
+        crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+        if chart.undo_stack.len() >= 50 {
+            chart.undo_stack.remove(0);
+        }
+        chart.undo_stack.push(DrawingAction::Add(d.clone()));
+        chart.drawings.push(d);
+        pinned += 1;
+    }
+    if pinned > 0 {
+        chart.redo_stack.clear();
+    }
+    pinned
+}
 
 /// Undo/redo action for drawing operations.
 #[derive(Clone)]

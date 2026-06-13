@@ -6003,12 +6003,12 @@ fn render_chart_pane(
                     let pad = (hi - lo) * 0.1;
                     (lo - pad, hi + pad)
                 }
-                IndicatorType::CCI | IndicatorType::ATR => {
+                IndicatorType::CCI | IndicatorType::ATR | IndicatorType::OBV => {
                     let mut lo = f32::MAX; let mut hi = f32::MIN;
                     for i in (vs as u32)..end {
                         if let Some(&v) = ind.values.get(i as usize) { if !v.is_nan() { lo = lo.min(v); hi = hi.max(v); } }
                     }
-                    if lo >= hi { lo = if ind.kind == IndicatorType::ATR { 0.0 } else { -200.0 }; hi = hi.max(lo + 1.0); }
+                    if lo >= hi { lo = if ind.kind == IndicatorType::CCI { -200.0 } else { 0.0 }; hi = hi.max(lo + 1.0); }
                     let pad = (hi - lo) * 0.1;
                     (lo - pad, hi + pad)
                 }
@@ -6468,6 +6468,8 @@ fn render_chart_pane(
     // ── Signal drawings (auto-generated trendlines from server) ──────────
     if !chart.hide_signal_drawings && !chart.signal_drawings.is_empty() {
         for sd in &chart.signal_drawings {
+            // Per-method filter: skip lines whose detection_method is toggled off.
+            if chart.hidden_signal_methods.iter().any(|m| m == &sd.detection_method) { continue; }
             let color = hex_to_color(&sd.color, sd.opacity);
             let stroke = egui::Stroke::new(sd.thickness, color);
             match sd.drawing_type.as_str() {
@@ -6874,6 +6876,7 @@ fn render_chart_pane(
     if chart.last_signal_fetch.elapsed().as_secs() >= 30 {
         chart.last_signal_fetch = std::time::Instant::now();
         fetch_signal_drawings(chart.symbol.clone());
+        fetch_apexsignals_drawings(chart.symbol.clone(), chart.timeframe.clone()); // refresh cached auto-chart lines
     }
 
     // ── Position overlay — open IB positions on chart ─────────────────────
@@ -8823,8 +8826,25 @@ fn render_chart_pane(
             [egui::pos2(rect.left(), pnl_top), egui::pos2(rect.left() + cw, pnl_top)],
             egui::Stroke::new(style::stroke_thin(), t.dim.gamma_multiply(0.3)));
 
-        // TODO: accumulate P&L snapshots over session for a real curve
-        // For now show unrealized P&L as a single value label from account_data_cached
+        // Real session equity curve from accumulated daily-P&L samples
+        // (populated by the account poller). Scaled symmetrically around zero so
+        // the mid-line reads as break-even.
+        let pnl_hist = crate::chart_renderer::trading::pnl_history();
+        if pnl_hist.len() >= 2 {
+            let mag = pnl_hist.iter().map(|&(_, v)| v.abs()).fold(1.0_f32, f32::max);
+            let span = 2.0 * mag;
+            let n = pnl_hist.len();
+            let last_v = pnl_hist.last().map(|&(_, v)| v).unwrap_or(0.0);
+            let line_col = if last_v >= 0.0 { t.bull } else { t.bear };
+            let pts: Vec<egui::Pos2> = pnl_hist.iter().enumerate().map(|(i, &(_, v))| {
+                let x = rect.left() + cw * (i as f32 / (n - 1) as f32);
+                let y = pnl_top + pnl_h * (1.0 - (v + mag) / span);
+                egui::pos2(x, y.clamp(pnl_top, pnl_bottom))
+            }).collect();
+            painter.add(egui::Shape::line(pts, egui::Stroke::new(style::stroke_thin(), line_col)));
+        }
+
+        // Value labels (Day / Unrealized) from the latest account snapshot.
         if let Some((ref acct, _, _)) = account_data_cached {
             let daily = acct.daily_pnl;
             let unr = acct.unrealized_pnl;

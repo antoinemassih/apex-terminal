@@ -46,7 +46,12 @@ fn now_ms() -> i64 {
 use crate::chart_renderer::{ChartCommand, PatternLabel};
 use crate::data::connectivity::{self, errors_sink::{report, ErrorLevel}, Backoff, ConnectionState};
 
-const APEX_SIGNALS_WS: &str = "ws://localhost:8200/ws";
+/// ApexSignals WebSocket URL. ApexSignals binds REST + WS on one port
+/// (`SIGNALS_API_PORT`, default 8100). Override here with `APEX_SIGNALS_WS`
+/// when the engine runs elsewhere (e.g. K3s service DNS).
+fn apex_signals_ws() -> String {
+    std::env::var("APEX_SIGNALS_WS").unwrap_or_else(|_| "ws://localhost:8100/ws".to_string())
+}
 
 static FEED_RUNNING: OnceLock<Mutex<bool>> = OnceLock::new();
 static SHUTDOWN: OnceLock<Arc<AtomicBool>> = OnceLock::new();
@@ -137,8 +142,9 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use futures_util::{StreamExt, SinkExt};
     use tokio_tungstenite::connect_async;
 
-    report(ErrorLevel::Info, "signals_feed", "connecting", APEX_SIGNALS_WS);
-    let (ws, _) = connect_async(APEX_SIGNALS_WS).await?;
+    let ws_url = apex_signals_ws();
+    report(ErrorLevel::Info, "signals_feed", "connecting", &ws_url);
+    let (ws, _) = connect_async(&ws_url).await?;
     let (mut write, mut read) = ws.split();
 
     // Wave 7E: trigger gap-fill on every reconnect (skip initial connect).
@@ -161,7 +167,7 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Subscribe to all signal channels
     let sub_msg = serde_json::json!({
-        "subscribe": ["patterns", "alerts", "trendlines", "significance"]
+        "subscribe": ["patterns", "alerts", "trendlines", "chart_patterns", "significance"]
     });
     write.send(tokio_tungstenite::tungstenite::Message::Text(
         sub_msg.to_string().into()
@@ -251,11 +257,14 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 let message = json.get("message").and_then(|m| m.as_str()).unwrap_or("Alert triggered").to_string();
                 send_to_charts(ChartCommand::AlertTriggered { symbol, alert_id, price, message });
             }
-            "trendlines" => {
+            "trendlines" | "chart_patterns" => {
                 let drawings_json = json.get("drawings")
                     .map(|d| d.to_string())
                     .unwrap_or_else(|| "[]".to_string());
-                send_to_charts(ChartCommand::AutoTrendlines { symbol, drawings_json });
+                // `source` scopes replacement so trendlines and chart patterns
+                // don't wipe each other; fall back to the channel name.
+                let source = json.get("source").and_then(|s| s.as_str()).unwrap_or(channel).to_string();
+                send_to_charts(ChartCommand::AutoTrendlines { symbol, drawings_json, source });
             }
             "significance" => {
                 let drawing_id = json.get("drawing_id").and_then(|d| d.as_str()).unwrap_or("").to_string();

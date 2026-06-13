@@ -481,11 +481,20 @@ pub(crate) fn draw_widgets(
     if let Some(action) = widget_btn_action {
         match action {
             WidgetBtnAction::CloseAllPositions => {
-                // TODO: wire to actual position close via trading module
-                // For now this is a visual placeholder
+                // Flatten every real position (wd.all_positions is real account
+                // data — empty when no broker is connected, so this no-ops safely).
+                for p in &wd.all_positions {
+                    if p.qty != 0 {
+                        crate::chart_renderer::trading::order_manager::flatten_position(&p.symbol, p.qty);
+                    }
+                }
             }
-            WidgetBtnAction::ClosePosition(_idx) => {
-                // TODO: wire to close specific position
+            WidgetBtnAction::ClosePosition(idx) => {
+                if let Some(p) = wd.all_positions.get(idx) {
+                    if p.qty != 0 {
+                        crate::chart_renderer::trading::order_manager::flatten_position(&p.symbol, p.qty);
+                    }
+                }
             }
         }
     }
@@ -1009,18 +1018,10 @@ impl WidgetData {
                         Some((rows, summary.daily_pnl as f32))
                     }
                 });
-            live.unwrap_or_else(|| {
-                // Placeholder positions when no account connected
-                let rows = vec![
-                    PositionRow { symbol: "AAPL".into(),  qty: 100,  market_value: 21_450.0, unrealized_pnl: 325.0,  pnl_pct: 1.54 },
-                    PositionRow { symbol: "NVDA".into(),  qty: 50,   market_value: 5_680.0,  unrealized_pnl: -142.0, pnl_pct: -2.44 },
-                    PositionRow { symbol: "TSLA".into(),  qty: -30,  market_value: 7_920.0,  unrealized_pnl: 418.0,  pnl_pct: 5.57 },
-                    PositionRow { symbol: "SPY".into(),   qty: 200,  market_value: 110_400.0,unrealized_pnl: -89.0,  pnl_pct: -0.08 },
-                    PositionRow { symbol: "MSFT".into(),  qty: 75,   market_value: 31_500.0, unrealized_pnl: 210.0,  pnl_pct: 0.67 },
-                ];
-                let total: f32 = rows.iter().map(|r| r.unrealized_pnl).sum();
-                (rows, total)
-            })
+            // No account connected (or flat) → honest empty list, not fake
+            // AAPL/NVDA/TSLA placeholders. The PositionsPanel widget renders a
+            // "No positions" state for an empty vec.
+            live.unwrap_or_else(|| (Vec::new(), 0.0))
         };
 
         let greeks_row = crate::apex_data::live_state::get_greeks_for_underlying(&chart.symbol);
@@ -1828,7 +1829,12 @@ fn draw_rel_strength(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &T
 fn draw_risk_dash(p: &egui::Painter, body: egui::Rect, wd: &WidgetData, t: &Theme) {
     let left = body.left() + 8.0;
     let mut y = body.top() + 4.0;
-    let account = 100_000.0f32; // placeholder
+    // Real account equity (NAV) when a broker is connected; fall back to a
+    // $100k default for the position-sizing what-if when it isn't.
+    let account = crate::chart_renderer::trading::read_account_data()
+        .map(|(s, _, _)| s.nav as f32)
+        .filter(|v| *v > 0.0)
+        .unwrap_or(100_000.0f32);
     let risk_pct = 1.0; // 1% risk
     let dollar_risk = account * risk_pct / 100.0;
     let stop_dist = wd.atr; // use ATR as stop distance

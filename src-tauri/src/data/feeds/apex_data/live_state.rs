@@ -242,10 +242,12 @@ pub fn start_pollers() {
         std::thread::Builder::new().name("apex-projectors".into()).spawn(|| {
             let mut last_rotation = Instant::now() - Duration::from_secs(60);
             loop {
-                // Movers — one bucket per tick, round-robin to spread load.
-                for kind in super::types::MoverKind::all() {
-                    if let Some(m) = super::rest::get_movers(kind) {
-                        set_movers(kind, m);
+                // Movers — one unified GET, fanned out into the per-kind cache.
+                // (The per-`:kind` path route 404s; the bare endpoint returns
+                // all five buckets at once, so one call refreshes everything.)
+                if let Some(all) = super::rest::get_all_movers() {
+                    for kind in super::types::MoverKind::all() {
+                        set_movers(kind, all.to_reading(kind));
                     }
                 }
                 // Breadth — fetch the default index (`us`); panels that need a

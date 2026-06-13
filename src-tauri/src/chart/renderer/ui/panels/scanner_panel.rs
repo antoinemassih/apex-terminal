@@ -200,16 +200,13 @@ pub(crate) fn draw_content(
                 }
             }
             Some(_) => {
-                ui.add(MonospaceCode::new("(empty bucket — projector returned no rows)").size_px(font_2xs()).color(t.dim).gamma(0.3));
+                ui.add(MonospaceCode::new("no movers right now (market closed)").size_px(font_2xs()).color(t.dim).gamma(0.3));
             }
             None => {
                 ui.horizontal(|ui| {
                     Spinner::new().size(KitSize::Sm).show(ui, t);
                     ui.add(MonospaceCode::new(&format!("loading {}…", kind.label())).size_px(font_xs()).color(t.dim));
                 });
-                ui.add(MonospaceCode::new(
-                    "// TODO(wire-route): /api/stocks/movers/:kind not reachable yet"
-                ).size_px(font_2xs()).color(t.dim).gamma(0.3));
             }
         }
         if watchlist.scanner_filter_popup_open {
