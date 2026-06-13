@@ -167,7 +167,7 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Subscribe to all signal channels
     let sub_msg = serde_json::json!({
-        "subscribe": ["patterns", "alerts", "trendlines", "significance"]
+        "subscribe": ["patterns", "alerts", "trendlines", "chart_patterns", "significance"]
     });
     write.send(tokio_tungstenite::tungstenite::Message::Text(
         sub_msg.to_string().into()
@@ -257,11 +257,14 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 let message = json.get("message").and_then(|m| m.as_str()).unwrap_or("Alert triggered").to_string();
                 send_to_charts(ChartCommand::AlertTriggered { symbol, alert_id, price, message });
             }
-            "trendlines" => {
+            "trendlines" | "chart_patterns" => {
                 let drawings_json = json.get("drawings")
                     .map(|d| d.to_string())
                     .unwrap_or_else(|| "[]".to_string());
-                send_to_charts(ChartCommand::AutoTrendlines { symbol, drawings_json });
+                // `source` scopes replacement so trendlines and chart patterns
+                // don't wipe each other; fall back to the channel name.
+                let source = json.get("source").and_then(|s| s.as_str()).unwrap_or(channel).to_string();
+                send_to_charts(ChartCommand::AutoTrendlines { symbol, drawings_json, source });
             }
             "significance" => {
                 let drawing_id = json.get("drawing_id").and_then(|d| d.as_str()).unwrap_or("").to_string();

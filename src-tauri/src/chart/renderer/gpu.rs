@@ -1398,6 +1398,7 @@ pub(crate) struct SignalDrawing {
     pub(crate) strength: f32, // 0.0-1.0, how confident the analysis is
     pub(crate) timeframe: String,
     pub(crate) detection_method: String, // wick/ransac/kalman/hough/kde/… — for by-method filtering
+    pub(crate) source: String, // producer: "trendlines" / "chart_patterns" / "signal" — scopes replacement
 }
 
 impl SignalDrawing {
@@ -1608,7 +1609,7 @@ pub(crate) fn fetch_signal_drawings(symbol: String) {
                     let strength = a.get("strength").and_then(|s| s.as_f64()).unwrap_or(0.5) as f32;
                     let timeframe = a.get("timeframe").and_then(|t| t.as_str()).unwrap_or("5m").to_string();
                     let detection_method = a.get("detection_method").and_then(|m| m.as_str()).unwrap_or("").to_string();
-                    Some(SignalDrawing { id, symbol: sym, drawing_type: dtype, points, color, opacity, thickness, line_style, strength, timeframe, detection_method })
+                    Some(SignalDrawing { id, symbol: sym, drawing_type: dtype, points, color, opacity, thickness, line_style, strength, timeframe, detection_method, source: "signal".to_string() })
                 }).collect();
 
                 if !drawings.is_empty() {
@@ -2814,7 +2815,8 @@ impl Chart {
                 if symbol == self.symbol {
                     // Parse signal drawings from JSON
                     if let Ok(annotations) = serde_json::from_str::<Vec<serde_json::Value>>(&drawings_json) {
-                        self.signal_drawings.clear();
+                        let source = "signal".to_string();
+                        self.signal_drawings.retain(|d| d.source != source);
                         for a in &annotations {
                             let id = a.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
                             let dtype = a.get("type").and_then(|v| v.as_str()).unwrap_or("trendline").to_string();
@@ -2831,7 +2833,7 @@ impl Chart {
                             let strength = a.get("strength").and_then(|s| s.as_f64()).unwrap_or(0.5) as f32;
                             let tf = a.get("timeframe").and_then(|t| t.as_str()).unwrap_or("5m").to_string();
                             let detection_method = a.get("detection_method").and_then(|m| m.as_str()).unwrap_or("").to_string();
-                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf, detection_method });
+                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf, detection_method, source: source.clone() });
                         }
                     }
                 }
@@ -2888,11 +2890,12 @@ impl Chart {
                     crate::chart_renderer::ui::tools::notification::Notification::new(message, crate::chart_renderer::ui::tools::notification::NotificationSeverity::Warning).with_value(price).with_source("alerts")
                 );
             }
-            ChartCommand::AutoTrendlines { symbol, drawings_json } => {
-                // Same parsing as SignalDrawings — replaces signal_drawings for this symbol
+            ChartCommand::AutoTrendlines { symbol, drawings_json, source } => {
+                // Replaces only this source's drawings, so trendlines and chart
+                // patterns (separate producers) coexist instead of clobbering.
                 if symbol == self.symbol {
                     if let Ok(annotations) = serde_json::from_str::<Vec<serde_json::Value>>(&drawings_json) {
-                        self.signal_drawings.clear();
+                        self.signal_drawings.retain(|d| d.source != source);
                         for a in &annotations {
                             let id = a.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
                             let dtype = a.get("type").and_then(|v| v.as_str()).unwrap_or("trendline").to_string();
@@ -2909,7 +2912,7 @@ impl Chart {
                             let strength = a.get("strength").and_then(|s| s.as_f64()).unwrap_or(0.5) as f32;
                             let tf = a.get("timeframe").and_then(|t| t.as_str()).unwrap_or("5m").to_string();
                             let detection_method = a.get("detection_method").and_then(|m| m.as_str()).unwrap_or("").to_string();
-                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf, detection_method });
+                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf, detection_method, source: source.clone() });
                         }
                         // Reset the HTTP polling timer so it doesn't immediately overwrite push data
                         self.last_signal_fetch = std::time::Instant::now();
