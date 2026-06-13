@@ -2151,6 +2151,16 @@ fn render_chart_pane(
                     0.0, egui::Color32::from_rgba_unmultiplied(231, 76, 60, 40));
                 painter.rect_filled(egui::Rect::from_min_size(egui::pos2(rect.left() + sell_w, y - h/2.0), egui::vec2(buy_w, h)),
                     0.0, egui::Color32::from_rgba_unmultiplied(46, 204, 113, 40));
+                // Dark-pool overlay: purple sub-bar from the left edge sized to
+                // the off-exchange (FINRA TRF) share of this level's volume, so
+                // you can see how much of each price node traded off-exchange.
+                // Only present on the real VAP profile (0 on the bar-derived one).
+                if level.off_exchange > 0.0 && vp.max_vol > 0.0 {
+                    let dp_w = (level.off_exchange / vp.max_vol) * max_bar_width;
+                    painter.rect_filled(
+                        egui::Rect::from_min_size(egui::pos2(rect.left(), y - h/2.0), egui::vec2(dp_w, h)),
+                        0.0, egui::Color32::from_rgba_unmultiplied(155, 89, 182, 95));
+                }
             }
             let poc_y = py(vp.poc_price);
             if poc_y.is_finite() {

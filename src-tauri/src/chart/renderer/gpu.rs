@@ -1647,6 +1647,9 @@ pub(crate) struct VolumeLevel {
     pub(crate) total_vol: f32,
     pub(crate) buy_vol: f32,
     pub(crate) sell_vol: f32,
+    /// Off-exchange (FINRA TRF / dark-pool) volume at this price, from VAP.
+    /// `0` for the bar-derived profile (no off-exchange breakdown).
+    pub(crate) off_exchange: f32,
 }
 
 pub(crate) struct VolumeProfileData {
@@ -3878,6 +3881,7 @@ pub(crate) fn volume_profile_from_vap(v: &crate::apex_data::rest::VapResponse) -
         total_vol: l.volume as f32,
         buy_vol: l.buy_volume as f32,
         sell_vol: l.sell_volume as f32,
+        off_exchange: l.off_exchange_volume as f32,
     }).collect();
     let max_vol = levels.iter().map(|l| l.total_vol).fold(0.0_f32, f32::max);
     if max_vol <= 0.0 { return None; }
@@ -3910,6 +3914,7 @@ pub(crate) fn compute_volume_profile(bars: &[Bar], start: usize, end: usize, num
     let price_step = (max_price - min_price) / num_levels as f32;
     let mut levels: Vec<VolumeLevel> = (0..num_levels).map(|i| VolumeLevel {
         price: min_price + (i as f32 + 0.5) * price_step, total_vol: 0.0, buy_vol: 0.0, sell_vol: 0.0,
+        off_exchange: 0.0, // bar-derived profile has no off-exchange breakdown
     }).collect();
     for b in &bars[start..end] {
         let bar_range = b.high - b.low;
