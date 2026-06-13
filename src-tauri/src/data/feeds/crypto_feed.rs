@@ -268,6 +268,7 @@ async fn run_feed() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     symbol: bar.symbol.clone(),
                     price: bar.close as f32,
                     prev_close: bar.open as f32,
+                    day_close: 0.0, // crypto: no regular-session close concept
                 };
                 send_to_charts(price_cmd);
                 price_updates += 1;

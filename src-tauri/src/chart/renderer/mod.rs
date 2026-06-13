@@ -894,6 +894,10 @@ pub enum ChartCommand {
         symbol: String,
         price: f32,
         prev_close: f32,
+        /// Today's regular-session close (`day.c`) from the bulk snapshot.
+        /// 0 while the session is live / pre-open; set after close (and over
+        /// weekends). Used for last-close-to-close + ext-hours change.
+        day_close: f32,
     },
     /// Time & Sales tape entry
     TapeEntry {

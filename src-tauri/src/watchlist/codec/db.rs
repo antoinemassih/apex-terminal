@@ -181,6 +181,7 @@ pub async fn load_watchlists(
                     symbol,
                     price: 0.0,
                     prev_close: 0.0,
+                    day_close: 0.0,
                     loaded: false,
                     is_option,
                     underlying,

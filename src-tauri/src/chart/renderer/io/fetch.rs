@@ -899,10 +899,15 @@ pub(crate) struct DailyStats {
 }
 
 fn daily_stats_cache()
-    -> &'static std::sync::Mutex<std::collections::HashMap<String, Option<DailyStats>>> {
-    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, Option<DailyStats>>>> = std::sync::OnceLock::new();
+    -> &'static std::sync::Mutex<std::collections::HashMap<String, (Option<DailyStats>, std::time::Instant)>> {
+    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (Option<DailyStats>, std::time::Instant)>>> = std::sync::OnceLock::new();
     C.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
+/// How long a FAILED daily-stats fetch is remembered before retrying. Success
+/// is cached for the whole session (daily history doesn't move intraday); a
+/// failure (e.g. the daily-bars endpoint timed out — it's slow/large) must NOT
+/// stick forever or the Change % is wedged at 0.
+const DAILY_STATS_RETRY_SECS: u64 = 30;
 fn daily_stats_inflight() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
     static I: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
     I.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
@@ -918,9 +923,18 @@ const RVOL_WINDOW: usize = 20;
 /// endpoint needed.
 pub(crate) fn daily_stats_cached(symbol: &str) -> Option<DailyStats> {
     let sym = symbol.to_uppercase();
-    if let Ok(c) = daily_stats_cache().lock() {
-        if let Some(v) = c.get(&sym) { return *v; }
-    }
+    // Success → return forever. Failure (None) → return None but allow a retry
+    // once it's older than DAILY_STATS_RETRY_SECS (so a transient timeout at
+    // startup doesn't wedge Change % at 0 for the whole session).
+    let needs_fetch = match daily_stats_cache().lock() {
+        Ok(c) => match c.get(&sym) {
+            Some((Some(s), _)) => return Some(*s),
+            Some((None, at)) => at.elapsed().as_secs() >= DAILY_STATS_RETRY_SECS,
+            None => true,
+        },
+        Err(_) => true,
+    };
+    if !needs_fetch { return None; }
     if !is_stock_symbol(&sym) { return None; }
     {
         let mut inf = match daily_stats_inflight().lock() { Ok(g) => g, Err(e) => e.into_inner() };
@@ -948,7 +962,7 @@ pub(crate) fn daily_stats_cached(symbol: &str) -> Option<DailyStats> {
             } else { 0.0 };
             Some(DailyStats { prev_change_pct, avg_volume })
         });
-        if let Ok(mut c) = daily_stats_cache().lock() { c.insert(s2.clone(), stats); }
+        if let Ok(mut c) = daily_stats_cache().lock() { c.insert(s2.clone(), (stats, std::time::Instant::now())); }
         if let Ok(mut inf) = daily_stats_inflight().lock() { inf.remove(&s2); }
         crate::wake_native_ui();
     });
@@ -1202,10 +1216,11 @@ pub(crate) fn is_stock_symbol(s: &str) -> bool {
 /// stubbing the REST layer.
 pub(crate) fn watchlist_price_from_snapshot(
     s: &crate::apex_data::StockSnapshot,
-) -> (f32, f32) {
+) -> (f32, f32, f32) {
     let price = s.current_price() as f32;
     let prev = s.prev_day.close as f32;
-    (price, prev)
+    let day_close = s.day.close as f32; // today's regular close (0 while live)
+    (price, prev, day_close)
 }
 
 /// Fetch daily price + prev_close for all watchlist symbols (background
@@ -1251,9 +1266,9 @@ pub(crate) fn fetch_watchlist_prices(symbols: Vec<String>) {
     std::thread::spawn(move || {
         let snaps = crate::apex_data::rest::snap_bulk(&symbols).unwrap_or_default();
         for snap in &snaps {
-            let (price, prev_close) = watchlist_price_from_snapshot(snap);
+            let (price, prev_close, day_close) = watchlist_price_from_snapshot(snap);
             crate::send_to_native_chart(ChartCommand::WatchlistPrice {
-                symbol: snap.ticker.clone(), price, prev_close,
+                symbol: snap.ticker.clone(), price, prev_close, day_close,
             });
         }
     });
@@ -1946,7 +1961,7 @@ mod tests {
     #[test]
     fn watchlist_maps_snapshot_to_price_and_prev_close() {
         let s = snap("AAPL", 195.50, 192.00, 50_000_000.0);
-        let (price, prev) = watchlist_price_from_snapshot(&s);
+        let (price, prev, _) = watchlist_price_from_snapshot(&s);
         assert!((price - 195.50).abs() < 0.001);
         assert!((prev - 192.00).abs() < 0.001);
     }
@@ -1956,7 +1971,7 @@ mod tests {
         let mut s = snap("MSFT", 0.0, 410.0, 0.0);
         s.last_trade.price = 412.5;
         s.day.close = 411.0;
-        let (price, prev) = watchlist_price_from_snapshot(&s);
+        let (price, prev, _) = watchlist_price_from_snapshot(&s);
         assert!((price - 412.5).abs() < 0.001);
         assert!((prev - 410.0).abs() < 0.001);
     }
@@ -1967,7 +1982,7 @@ mod tests {
         s.last_trade.price = 0.0;
         s.day.close = 0.0;
         s.min = Some(MinAgg { close: 885.0, accumulated_volume: 1234.0, ..Default::default() });
-        let (price, prev) = watchlist_price_from_snapshot(&s);
+        let (price, prev, _) = watchlist_price_from_snapshot(&s);
         assert!((price - 885.0).abs() < 0.001);
         assert!((prev - 880.0).abs() < 0.001);
     }

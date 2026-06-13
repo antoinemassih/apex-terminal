@@ -717,6 +717,7 @@ if is_spawn || watchlist.open {
                                     // ── Read non-String fields by value (no allocation) ──────────
                                     let item_price = item.price;
                                     let item_prev_close = item.prev_close;
+                                    let item_day_close = item.day_close; // today's regular close (0 while live)
                                     let item_loaded = item.loaded;
                                     let item_is_option = item.is_option;
                                     let item_strike = item.strike;
@@ -863,26 +864,31 @@ if is_spawn || watchlist.open {
                                         let live_chg = if item_prev_close > 0.0 {
                                             ((item_price - item_prev_close) / item_prev_close) * 100.0
                                         } else { 0.0 };
-                                        // Main Change %: during RTH show the live (today's) move;
-                                        // when closed / not open yet show the last completed
-                                        // session's close-to-close (cached daily fetch) so the
-                                        // column isn't 0 pre-market.
+                                        // Main Change %:
+                                        //  • RTH                → today's live move (price vs prev close)
+                                        //  • closed, day.c set  → last close-to-close (today's
+                                        //    regular close vs prior close) — straight from the
+                                        //    bulk snapshot, no slow daily-bars fetch
+                                        //  • pre-open (day.c==0) → prior session's close-to-close
+                                        //    via the cached daily-bars fallback
+                                        let close_to_close = if item_day_close > 0.0 && item_prev_close > 0.0 {
+                                            Some(((item_day_close - item_prev_close) / item_prev_close) * 100.0)
+                                        } else { None };
                                         let change_pct = if mkt_rth {
                                             live_chg
                                         } else {
-                                            crate::chart_renderer::gpu::prev_session_change_cached(item_sym)
+                                            close_to_close.or_else(||
+                                                crate::chart_renderer::gpu::prev_session_change_cached(item_sym))
                                                 .unwrap_or(live_chg)
                                         };
-                                        // Ext-Hours column: the live pre/post-market move vs the
-                                        // prior close. Shown whenever we're NOT in the regular
-                                        // session and there's an actual move — robust to a missing
-                                        // market_status (mkt_ext flags can be unset) and naturally
-                                        // hides when fully closed (no trades → live_chg ~ 0).
+                                        // Ext-Hours column = session close → latest price. Reference
+                                        // is today's regular close after the close (day.c), else the
+                                        // prior close pre-open. Shown only outside RTH with a real move.
                                         let _ = mkt_ext;
-                                        let ext_change = if !mkt_rth && item_prev_close > 0.0
-                                            && live_chg.abs() > 0.01
-                                        {
-                                            Some(live_chg)
+                                        let ext_ref = if item_day_close > 0.0 { item_day_close } else { item_prev_close };
+                                        let ext_change = if !mkt_rth && ext_ref > 0.0 {
+                                            let e = ((item_price - ext_ref) / ext_ref) * 100.0;
+                                            if e.abs() > 0.01 { Some(e) } else { None }
                                         } else { None };
                                         let price_str = if item_price > 0.0 { format!("{:.2}", item_price) } else { "---".into() };
                                         let row_h = if item_pinned { 34.0 } else { 28.0 };
