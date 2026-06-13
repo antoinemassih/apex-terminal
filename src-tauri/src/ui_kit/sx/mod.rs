@@ -12,8 +12,10 @@
 pub mod color;
 pub mod style;
 pub mod recipe;
+pub mod recipe_spec;
 pub mod recipes;
 
 pub use color::{palette, palette_ct, Palette, Shade, Tone};
 pub use style::{BorderSpec, Fill, Sx, SxDelta, StyleState};
 pub use recipe::Recipe;
+pub use recipe_spec::{RecipeDelta, RecipeKey, RecipeSpec};
