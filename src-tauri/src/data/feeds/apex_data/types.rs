@@ -151,6 +151,13 @@ pub struct Trade {
     pub price: f64,
     pub qty: f64,
     #[serde(default)] pub time: i64,
+    /// Aggressor side from the server-side Lee-Ready classification:
+    /// `"buy"` / `"sell"` / `"unknown"` (~11% unknown = midpoint/no prior print).
+    #[serde(default)] pub side: Option<String>,
+    /// `true` = FINRA TRF print (off-exchange / dark-pool / internalized).
+    #[serde(default)] pub off_exchange: bool,
+    /// Polygon reporting-exchange id.
+    #[serde(default)] pub exchange: Option<i64>,
 }
 
 /// §4.7 + §5.4.d — ChainRow. Greeks nullable; OI/volume included post-v1.

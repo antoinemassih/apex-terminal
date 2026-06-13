@@ -21,6 +21,7 @@ pub use data::bar_cache;
 pub use data::apex_data;
 pub use data::crypto_feed;
 pub use data::dom_feed;
+pub use data::futures_feed;
 pub use data::signals_feed;
 pub use data::discord;
 pub use persistence::drawing_db;
@@ -129,14 +130,16 @@ pub fn init_live_feeds() {
             Frame::Quote(q)  => { apex_data::live_state::push_quote(q.clone()); }
             Frame::Trade(t)  => {
                 apex_data::live_state::push_trade(t.clone());
-                // Also push into the chart tape panel. ApexData trades don't carry
-                // a buy/sell flag (NBBO-only feed per spec §12), so mark `is_buy`
-                // based on whether price is at/above mid via the cached quote.
-                let is_buy = apex_data::live_state::get_quote(&t.symbol)
-                    .map(|q| {
-                        let mid = (q.bid + q.ask) * 0.5;
-                        t.price >= mid
-                    }).unwrap_or(true);
+                // Tape buy/sell: use the server-side Lee-Ready aggressor `side`
+                // (real now). Only the ~11% "unknown" prints fall back to the
+                // at/above-mid heuristic against the cached quote.
+                let is_buy = match t.side.as_deref() {
+                    Some("buy")  => true,
+                    Some("sell") => false,
+                    _ => apex_data::live_state::get_quote(&t.symbol)
+                        .map(|q| t.price >= (q.bid + q.ask) * 0.5)
+                        .unwrap_or(true),
+                };
                 send_to_native_chart(chart_renderer::ChartCommand::TapeEntry {
                     symbol: t.symbol.clone(), price: t.price as f32,
                     qty: t.qty as f32, time: t.time, is_buy,

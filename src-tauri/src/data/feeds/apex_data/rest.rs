@@ -742,6 +742,19 @@ pub fn stock_dividends(sym: &str) -> Option<Vec<StockDividend>> {
     get::<DividendsResp>(&format!("/api/stocks/dividends/{sym}")).ok().map(|r| r.dividends)
 }
 
+/// `GET /api/stocks/rvol/{sym}` — server-computed relative volume
+/// (today's volume ÷ trailing-20d average). Replaces the client-side
+/// daily-bars computation.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct RvolReading {
+    #[serde(default)] pub rvol: f64,
+    #[serde(default)] pub avg_volume_20d: f64,
+    #[serde(default)] pub today_volume: f64,
+}
+pub fn stock_rvol(sym: &str) -> Option<RvolReading> {
+    get(&format!("/api/stocks/rvol/{sym}")).ok()
+}
+
 /// `GET /api/stocks/movers?direction=gainers|losers` — Polygon top-20 movers.
 /// `direction` must be "gainers" or "losers"; anything else is rejected by
 /// the backend (and short-circuited here to `None`).

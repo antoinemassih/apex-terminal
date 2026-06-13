@@ -1,0 +1,294 @@
+diff --git a/src-tauri/src/ui_kit/style.rs b/src-tauri/src/ui_kit/style.rs
+index 1235485f..31dfd13c 100644
+--- a/src-tauri/src/ui_kit/style.rs
++++ b/src-tauri/src/ui_kit/style.rs
+@@ -100,7 +100,22 @@ pub struct TokenSnapshot {
+ 
+     /// Default tab treatment for ui-kit Tabs widgets (0=Line, 1=Segmented,
+     /// 2=Filled, 3=Card, 4=Pane). Populated by begin_frame from StyleSettings.
++    /// Kept as u8 so the chart-side `begin_frame` struct literal needs no change.
++    /// Read via the typed accessor `panel_tab_treatment_typed()` in new ui_kit code,
++    /// or via `style_panel_header_treatment()` for the design_system enum form.
+     pub panel_tab_treatment: u8,
++
++    // ── S3: `pane_active_indicator` and `panel_header_treatment` ─────────────
++    // These two fields are intentionally NOT added to this struct yet because
++    // the chart-side `begin_frame()` constructs `TokenSnapshot` as a full
++    // struct literal — adding required fields here would break it without a
++    // simultaneous chart/ edit (which is out of scope for S3). Instead, the
++    // typed accessors `style_pane_active_indicator()` /
++    // `style_panel_header_treatment()` are provided below, currently returning
++    // the enum Defaults. Chart/ will populate the new fields in the next round
++    // that covers begin_frame changes (can use `..DEFAULT_TOKEN_SNAPSHOT` struct
++    // update syntax to add fields one-by-one without breaking the literal).
++
+     // Surface bevel — ported from the React ApexTerminalThemes mockup's
+     // inset box-shadow faces (Alto/Mariner raised, Cadence elevated cards).
+     // Populated by chart-side begin_frame() from StyleSettings.surface_bevel.
+@@ -136,7 +151,7 @@ pub const DEFAULT_TOKEN_SNAPSHOT: TokenSnapshot = TokenSnapshot {
+     toast_bg_alpha:   235,
+     button_treatment: crate::ui_kit::widgets::tokens::ButtonTreatment::SoftPill,
+     wl_row_side_margin: 0.0, wl_row_corner_radius: 0, wl_row_divider_alpha: 0,
+-    panel_tab_treatment: 0, // Line
++    panel_tab_treatment: 0, // Line (PanelHeaderTreatment::Line)
+     // Bevel defaults: flat/none (no bevel until the chart-app pushes a themed preset).
+     surface_bevel:         crate::design_system::style_system::BevelStyle::None,
+     bevel_highlight_alpha: 0,
+@@ -745,6 +760,48 @@ pub fn style_tab_treatment() -> crate::ui_kit::widgets::TabTreatment {
+     }
+ }
+ 
++/// Returns the active-pane indicator style.
++///
++/// **S3 status**: the `TokenSnapshot` does not yet carry a `pane_active_indicator`
++/// field because adding a required field would break the chart-side `begin_frame`
++/// struct literal (out of scope for S3). This accessor returns the typed enum
++/// Default (`PaneActiveIndicator::TopStripe`) until a later round adds the field
++/// and wires `begin_frame` to populate it.
++///
++/// Once the field is added, this body becomes:
++/// ```ignore
++/// PaneActiveIndicator::from_u8(frame_tokens().pane_active_indicator)
++/// ```
++#[inline]
++pub fn style_pane_active_indicator() -> crate::design_system::style_system::PaneActiveIndicator {
++    crate::design_system::style_system::PaneActiveIndicator::default()
++}
++
++/// Returns the panel-header treatment.
++///
++/// **S3 status**: the `TokenSnapshot` does not yet carry a `panel_header_treatment`
++/// field (same reason as `style_pane_active_indicator`). Returns the typed enum
++/// Default (`PanelHeaderTreatment::Line`) until the field is wired in a later
++/// round. For the tab-treatment value (which IS in the snapshot via
++/// `panel_tab_treatment: u8`), use `panel_tab_treatment_typed()` instead.
++#[inline]
++pub fn style_panel_header_treatment() -> crate::design_system::style_system::PanelHeaderTreatment {
++    crate::design_system::style_system::PanelHeaderTreatment::default()
++}
++
++/// Typed accessor for `panel_tab_treatment` — converts the snapshot's u8 field
++/// to the `design_system` enum. Equivalent to `style_tab_treatment()` but
++/// returns `PanelHeaderTreatment` instead of `TabTreatment`.
++///
++/// This is the production-ready typed path: `panel_tab_treatment: u8` is
++/// already in `TokenSnapshot` and populated by chart-side `begin_frame`.
++#[inline]
++pub fn panel_tab_treatment_typed() -> crate::design_system::style_system::PanelHeaderTreatment {
++    crate::design_system::style_system::PanelHeaderTreatment::from_u8(
++        frame_tokens().panel_tab_treatment,
++    )
++}
++
+ // ─── Surface bevel (portable) ────────────────────────────────────────────────
+ //
+ // Portable analogue of the React ApexTerminalThemes `box-shadow: inset …`
+diff --git a/src-tauri/src/ui_kit/sx/style.rs b/src-tauri/src/ui_kit/sx/style.rs
+index 25a133c3..aeb2a2c4 100644
+--- a/src-tauri/src/ui_kit/sx/style.rs
++++ b/src-tauri/src/ui_kit/sx/style.rs
+@@ -8,12 +8,23 @@
+ //! allocation, no lock, no color math on the hot path.
+ 
+ use egui::{Color32, CornerRadius, Response, Sense, Stroke, StrokeKind, Ui};
+-use super::color::{palette, palette_ct, Palette, Shade, Tone};
++use super::color::{palette_ct, Palette, Shade, Tone};
+ use crate::ui_kit::widgets::theme::ComponentTheme;
+ use crate::ui_kit::tokens as st;
+ 
+ type Theme = crate::chart_renderer::gpu::Theme;
+ 
++/// Convert an `f32` radius to `u8` for `CornerRadius::same`.
++///
++/// The naïve `value as u8` cast wraps on values above 255 (pill radius 999
++/// becomes 231) and truncates sub-pixel values below 1.0 to 0. This helper
++/// clamps faithfully: values ≥ 255 become 255 (egui's u8 API maximum), values
++/// in 0..255 round to the nearest integer, and negatives clamp to 0.
++#[inline(always)]
++fn radius_to_u8(r: f32) -> u8 {
++    r.clamp(0.0, 255.0).round() as u8
++}
++
+ #[inline]
+ fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
+     let t = t.clamp(0.0, 1.0);
+@@ -266,7 +277,7 @@ impl Sx {
+     /// Paint the box for an explicit state behind `rect` into a reserved slot.
+     fn paint(&self, ui: &Ui, slot: egui::layers::ShapeIdx, rect: egui::Rect, st: StyleState, pal: &Palette) {
+         let d = self.resolved(st);
+-        let cr = CornerRadius::same(d.radius.unwrap_or(0.0) as u8);
++        let cr = CornerRadius::same(radius_to_u8(d.radius.unwrap_or(0.0)));
+         if let Some(fill) = d.fill {
+             ui.painter().set(slot, egui::Shape::rect_filled(rect, cr, fill.resolve(pal)));
+         }
+@@ -290,7 +301,7 @@ impl Sx {
+         let base = self.resolved(StyleState::Normal);
+         let hov  = self.resolved(StyleState::Hover);
+         let act  = self.resolved(StyleState::Active);
+-        let cr = CornerRadius::same(base.radius.unwrap_or(0.0) as u8);
++        let cr = CornerRadius::same(radius_to_u8(base.radius.unwrap_or(0.0)));
+ 
+         // Fill: lerp Normal→Hover→Active. A missing fill is treated as transparent.
+         let fill_of = |d: &SxDelta| d.fill.map(|f| f.resolve(pal)).unwrap_or(Color32::TRANSPARENT);
+@@ -330,7 +341,7 @@ impl Sx {
+     pub fn paint_box_at(&self, painter: &egui::Painter, rect: egui::Rect, t: &dyn ComponentTheme) {
+         let pal = palette_ct(t);
+         let d = self.resolved(StyleState::Normal);
+-        let cr = CornerRadius::same(d.radius.unwrap_or(0.0) as u8);
++        let cr = CornerRadius::same(radius_to_u8(d.radius.unwrap_or(0.0)));
+         if let Some(fill) = d.fill {
+             painter.rect_filled(rect, cr, fill.resolve(&pal));
+         }
+@@ -343,34 +354,21 @@ impl Sx {
+         }
+     }
+ 
+-    /// Paint this style's box at an explicit `rect` into a caller-reserved slot.
+-    /// For decorations whose geometry the caller already knows (e.g. a
+-    /// button-group enclosure spanning measured button bounds). The slot must
+-    /// have been reserved *before* the content was emitted so the box renders
+-    /// behind it.
+-    pub fn paint_into(
+-        &self,
+-        ui: &Ui,
+-        t: &Theme,
+-        slot: egui::layers::ShapeIdx,
+-        rect: egui::Rect,
+-        state: StyleState,
+-    ) {
+-        let pal = palette(t);
+-        self.paint(ui, slot, rect, state, &pal);
+-    }
++    // ── ComponentTheme-based core implementations ────────────────────────────
++    // These are the canonical entry points for new code and the real
++    // implementation for the `&Theme`-shim methods below.
+ 
+-    /// Interactive box: lays out `body` with this style's padding, auto-detects
+-    /// hover/active from the pointer, and paints the resolved background behind
+-    /// it. Returns the box `Response` (so callers can read `.clicked()` etc).
+-    pub fn show<R>(
++    /// Interactive box using the portable [`ComponentTheme`] API.
++    /// Prefer this over [`show`] in new code — `t` can be any `&dyn ComponentTheme`
++    /// (including `&gpu::Theme` which already implements the trait).
++    pub fn show_ct<R>(
+         self,
+         ui: &mut Ui,
+-        t: &Theme,
++        t: &dyn ComponentTheme,
+         sense: Sense,
+         body: impl FnOnce(&mut Ui) -> R,
+     ) -> (Response, R) {
+-        let pal = palette(t);
++        let pal = palette_ct(t);
+         let slot = ui.painter().add(egui::Shape::Noop);
+         let pad = egui::Margin::symmetric(
+             self.base.px.unwrap_or(0.0) as i8,
+@@ -384,25 +382,22 @@ impl Sx {
+         let rect = ir.response.rect;
+         let id = ui.id().with(("sx", rect.min.x.to_bits(), rect.min.y.to_bits()));
+         let resp = ui.interact(rect, id, sense);
+-        // Motion-eased state blend (egui's built-in animation; no extra deps).
+         let hover_t = ui.ctx().animate_bool(id.with("h"), resp.hovered());
+         let active_t = ui.ctx().animate_bool(id.with("a"), resp.is_pointer_button_down_on());
+         self.paint_eased(ui, slot, rect, hover_t, active_t, &pal);
+         (resp, ir.inner)
+     }
+ 
+-    /// Non-interactive decoration: reserve the slot first, run `body`, then fill
+-    /// the slot with the box behind the content using `state`. Use for static
+-    /// enclosures (e.g. a button-group box) that must not steal inner clicks.
+-    /// Returns `(content_rect, body_result)`.
+-    pub fn decorate<R>(
++    /// Non-interactive decoration using the portable [`ComponentTheme`] API.
++    /// Prefer this over [`decorate`] in new code.
++    pub fn decorate_ct<R>(
+         self,
+         ui: &mut Ui,
+-        t: &Theme,
++        t: &dyn ComponentTheme,
+         state: StyleState,
+         body: impl FnOnce(&mut Ui) -> R,
+     ) -> (egui::Rect, R) {
+-        let pal = palette(t);
++        let pal = palette_ct(t);
+         let slot = ui.painter().add(egui::Shape::Noop);
+         let pad = egui::Margin::symmetric(
+             self.base.px.unwrap_or(0.0) as i8,
+@@ -413,4 +408,77 @@ impl Sx {
+         self.paint(ui, slot, rect, state, &pal);
+         (rect, ir.inner)
+     }
++
++    /// Paint into a reserved slot using the portable [`ComponentTheme`] API.
++    /// Prefer this over [`paint_into`] in new code.
++    pub fn paint_into_ct(
++        &self,
++        ui: &Ui,
++        t: &dyn ComponentTheme,
++        slot: egui::layers::ShapeIdx,
++        rect: egui::Rect,
++        state: StyleState,
++    ) {
++        let pal = palette_ct(t);
++        self.paint(ui, slot, rect, state, &pal);
++    }
++
++    // ── Legacy `&Theme` shims — kept for chart/ call-site compat ─────────────
++    // Call sites in chart/ pass a concrete `&chart_renderer::gpu::Theme`.
++    // Signature change would break ~100 chart/ callers; deferred to a later
++    // focused sweep. The implementation delegates to the `_ct` variants above —
++    // the only code here is a `palette(t)` → `palette_ct(t)` bridge.
++    //
++    // LATER ROUND (chart/ migration):
++    //   chart/ call sites that do `sx.show(ui, t, ...)`, `sx.decorate(ui, t, ...)`
++    //   or `sx.paint_into(ui, t, ...)` can each be migrated by changing the
++    //   second argument from `t` to `t as &dyn ComponentTheme` (or just `t`,
++    //   since `Theme: ComponentTheme` makes the coercion implicit for
++    //   `&dyn ComponentTheme` parameters). Once all chart/ callers are updated,
++    //   the `type Theme` alias and these three methods can be deleted, leaving
++    //   only the `_ct` variants.
++
++    /// Paint this style's box at an explicit `rect` into a caller-reserved slot.
++    /// For decorations whose geometry the caller already knows (e.g. a
++    /// button-group enclosure spanning measured button bounds). The slot must
++    /// have been reserved *before* the content was emitted so the box renders
++    /// behind it.
++    pub fn paint_into(
++        &self,
++        ui: &Ui,
++        t: &Theme,
++        slot: egui::layers::ShapeIdx,
++        rect: egui::Rect,
++        state: StyleState,
++    ) {
++        self.paint_into_ct(ui, t, slot, rect, state);
++    }
++
++    /// Interactive box: lays out `body` with this style's padding, auto-detects
++    /// hover/active from the pointer, and paints the resolved background behind
++    /// it. Returns the box `Response` (so callers can read `.clicked()` etc).
++    pub fn show<R>(
++        self,
++        ui: &mut Ui,
++        t: &Theme,
++        sense: Sense,
++        body: impl FnOnce(&mut Ui) -> R,
++    ) -> (Response, R) {
++        self.show_ct(ui, t, sense, body)
++    }
++
++    /// Non-interactive decoration: reserve the slot first, run `body`, then fill
++    /// the slot with the box behind the content using `state`. Use for static
++    /// enclosures (e.g. a button-group box) that must not steal inner clicks.
++    /// Returns `(content_rect, body_result)`.
++    pub fn decorate<R>(
++        self,
++        ui: &mut Ui,
++        t: &Theme,
++        state: StyleState,
++        body: impl FnOnce(&mut Ui) -> R,
++    ) -> (egui::Rect, R) {
++        self.decorate_ct(ui, t, state, body)
++    }
++
+ }

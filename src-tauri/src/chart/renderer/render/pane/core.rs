@@ -1404,10 +1404,10 @@ fn render_chart_pane(
         {
             chart.dom.levels = crate::chart_renderer::ui::panels::dom_panel::generate_mock_levels(chart.dom.center_price, chart.dom.tick_size, 30);
         }
-        // DOM pinned to a symbol other than the chart (e.g. watch ES while
-        // charting a stock): the chart-derived price/tick/center are wrong for
-        // the pinned instrument, so derive them from the live ladder itself.
-        if crate::data::dom_feed::pinned().is_some() && dom_is_live && !chart.dom.levels.is_empty() {
+        // Futures: the chart-derived tick (0.01 default) and center are wrong
+        // for an instrument like ES (0.25 tick, ~7400), so derive them from the
+        // live ladder itself when a live book is flowing.
+        if chart.symbol.starts_with("F:") && dom_is_live && !chart.dom.levels.is_empty() {
             let lv = &chart.dom.levels;
             // Infer tick from the smallest nonzero adjacent price gap.
             let mut tick = f32::MAX;
@@ -11485,7 +11485,12 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
         // made the watchlist show change-from-open (tiny) instead of
         // change-from-prev-close.
         for sym in &watched_list {
-            if let Some(snap) = crate::apex_data::live_state::get_snapshot(sym) {
+            if sym.starts_with("F:") {
+                // Futures have no L1 snapshot — price comes from /api/price/F:…
+                if let Some(p) = crate::chart_renderer::gpu::futures_price_cached(sym) {
+                    watchlist.set_price(sym, p);
+                }
+            } else if let Some(snap) = crate::apex_data::live_state::get_snapshot(sym) {
                 watchlist.set_price(sym, snap.last as f32);
                 // Real intraday range from the snapshot (replaces the synthetic
                 // price±0.8% placeholder). Guarded >0 so off-hours zeros don't

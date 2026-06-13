@@ -2645,6 +2645,9 @@ impl Chart {
                     self.symbol_meta = crate::foundation::types::symbol_or_guess(&self.symbol);
                 }
                 self.timeframe = timeframe;
+                // Futures live-bar feed follows the chart's symbol + timeframe
+                // (no-op / deactivates for non-futures symbols).
+                crate::data::futures_feed::set_target(&self.symbol, &self.timeframe);
                 self.bars = bars; self.timestamps = timestamps;
                 self.vs = (self.bars.len() as f32 - self.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
                 self.sim_price = 0.0;
@@ -2661,6 +2664,12 @@ impl Chart {
                     self.fundamentals = generate_placeholder_fundamentals(&self.symbol, &self.bars);
                     self.econ_calendar = generate_placeholder_econ();
                     self.insider_trades = generate_placeholder_insiders(&self.symbol);
+                }
+                // Futures live-bars feed (/ws/futures): re-target on any symbol
+                // OR timeframe load (futures bars are tf-specific, and tf changes
+                // don't trip is_new_symbol). Idempotent — no-op if unchanged.
+                if self.symbol.starts_with("F:") {
+                    crate::data::futures_feed::set_target(&self.symbol, &self.timeframe);
                 }
                 if !self.drawings_requested {
                     self.drawings_requested = true;
@@ -6600,7 +6609,7 @@ pub(crate) use super::io::fetch::{
     fetch_overlay_bars_background, fetch_gamma_from_feed, refresh_gamma_feeds,
     GammaSnapshot, fetch_corp_actions, ticker_detail_cached,
     options_analytics_cached, OptionsAnalytics, prev_session_change_cached,
-    daily_stats_cached,
+    daily_stats_cached, rvol_cached, futures_price_cached,
 };
 
 

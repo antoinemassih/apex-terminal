@@ -1,0 +1,165 @@
+diff --git a/src-tauri/src/ui_kit/icons.rs b/src-tauri/src/ui_kit/icons.rs
+index 29600e90..b4ceba98 100644
+--- a/src-tauri/src/ui_kit/icons.rs
++++ b/src-tauri/src/ui_kit/icons.rs
+@@ -175,6 +175,143 @@ impl Icon {
+     }
+ }
+ 
++// ── IconSet — pluggable glyph resolution ─────────────────────────────────────
++
++/// A mapping from [`Icon`] name constants to glyph strings (typically
++/// single-character Unicode from the active icon font).
++///
++/// ## Design
++///
++/// The `Icon::*` constant names (e.g. `Icon::TRASH`, `Icon::EYE`) remain the
++/// stable lookup keys used at every call site — they don't change. What changes
++/// is *which glyph* those names map to. A theme can supply an `IconSet` that
++/// maps the same keys to different codepoints from a different icon font.
++///
++/// ## Built-in set
++///
++/// [`IconSet::builtin`] returns the current Phosphor Bold/Fill mapping — the
++/// same glyphs used today. A theme that supplies no icon set gets the built-in
++/// (zero visual change, consistent with the "no regressions by default" rule).
++///
++/// ## Usage
++///
++/// Widgets that currently write `Icon::TRASH` (a `&'static str`) can continue
++/// to do so — those are the built-in glyphs. To support theme-overridable icons
++/// the widget should instead call `icon_set.glyph(Icon::TRASH)`, which
++/// falls back to the built-in constant when the set has no override entry.
++///
++/// The active set is accessed via the process-wide ambient accessor
++/// [`active_icon_set`]. It starts as the built-in and can be replaced by the
++/// theme-pack loader.
++pub struct IconSet {
++    /// Map from glyph key string to replacement glyph string.
++    /// Keys are the `&'static str` values of the `Icon::*` constants
++    /// (i.e. the Phosphor codepoints used as the default).
++    overrides: std::collections::HashMap<&'static str, String>,
++}
++
++impl IconSet {
++    /// The built-in Phosphor icon set — zero overrides, all glyphs resolve to
++    /// the `Icon::*` constants directly. Calling `glyph(Icon::TRASH)` on this
++    /// returns `Icon::TRASH` unchanged.
++    pub fn builtin() -> Self {
++        Self { overrides: std::collections::HashMap::new() }
++    }
++
++    /// Build an icon set from a map of `(Icon::CONSTANT, replacement_glyph)`.
++    ///
++    /// Example:
++    /// ```
++    /// let set = IconSet::from_overrides(&[
++    ///     (Icon::TRASH,   "\u{F1C0}"),  // custom trash codepoint
++    ///     (Icon::EYE,     "\u{F0D1}"),
++    /// ]);
++    /// ```
++    pub fn from_overrides(pairs: &[(&'static str, &str)]) -> Self {
++        let overrides = pairs.iter()
++            .map(|(key, glyph)| (*key, (*glyph).to_owned()))
++            .collect();
++        Self { overrides }
++    }
++
++    /// Resolve an icon constant to its active glyph string.
++    ///
++    /// If this set has no override for `icon_const`, the constant itself is
++    /// returned (the Phosphor codepoint — the current built-in behavior).
++    pub fn glyph<'s>(&'s self, icon_const: &'static str) -> &'s str {
++        self.overrides
++            .get(icon_const)
++            .map(|s| s.as_str())
++            .unwrap_or(icon_const)
++    }
++
++    /// Returns `true` if this set has an override for the given icon constant.
++    pub fn has_override(&self, icon_const: &'static str) -> bool {
++        self.overrides.contains_key(icon_const)
++    }
++
++    /// Returns the number of override entries in this set.
++    pub fn override_count(&self) -> usize {
++        self.overrides.len()
++    }
++}
++
++// ── Process-wide ambient icon set ─────────────────────────────────────────────
++
++use std::sync::{Arc, RwLock};
++
++static AMBIENT_ICON_SET: std::sync::OnceLock<RwLock<Arc<IconSet>>> =
++    std::sync::OnceLock::new();
++
++fn ambient_lock() -> &'static RwLock<Arc<IconSet>> {
++    AMBIENT_ICON_SET.get_or_init(|| RwLock::new(Arc::new(IconSet::builtin())))
++}
++
++/// Get the process-wide active [`IconSet`].
++///
++/// Returns the built-in set until a theme pack replaces it via
++/// [`set_active_icon_set`].  This is an `Arc` clone — cheap to call per frame.
++pub fn active_icon_set() -> Arc<IconSet> {
++    ambient_lock().read().unwrap().clone()
++}
++
++/// Replace the process-wide active [`IconSet`].
++///
++/// Called by the theme-pack loader when a pack with a custom icon set is
++/// activated, or when reverting to the built-in.  Takes effect on the next
++/// frame — no restart required.
++pub fn set_active_icon_set(set: IconSet) {
++    *ambient_lock().write().unwrap() = Arc::new(set);
++}
++
++/// Reset the process-wide icon set to the built-in Phosphor set.
++pub fn reset_icon_set() {
++    set_active_icon_set(IconSet::builtin());
++}
++
++// ─── Tests ───────────────────────────────────────────────────────────────────
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn builtin_set_passthrough() {
++        let set = IconSet::builtin();
++        // The built-in set must return the constant unchanged (zero visual change).
++        assert_eq!(set.glyph(Icon::TRASH), Icon::TRASH);
++        assert_eq!(set.glyph(Icon::EYE),   Icon::EYE);
++        assert_eq!(set.override_count(), 0);
++    }
++
++    #[test]
++    fn override_set_replaces_known_and_falls_back() {
++        let set = IconSet::from_overrides(&[(Icon::TRASH, "\u{1F5D1}")]);
++        assert_eq!(set.glyph(Icon::TRASH), "\u{1F5D1}"); // overridden
++        assert_eq!(set.glyph(Icon::EYE),   Icon::EYE);   // falls back to built-in constant
++    }
++}
++
+ /// Initialize fonts + Phosphor icons. Call once during app setup.
+ pub const FONT_NAMES: &[&str] = &[
+     "JetBrains Mono",   // 0 — monospace, default
+diff --git a/src-tauri/src/ui_kit/mod.rs b/src-tauri/src/ui_kit/mod.rs
+index 2c8f16b3..605e3632 100644
+--- a/src-tauri/src/ui_kit/mod.rs
++++ b/src-tauri/src/ui_kit/mod.rs
+@@ -13,6 +13,12 @@ pub mod cursor;
+ #[allow(dead_code)]
+ pub mod sx;
+ 
++// S7: Themable assets — fonts, icons, imagery
++#[allow(dead_code)]
++pub mod fonts;
++#[allow(dead_code)]
++pub mod assets;
++
+ /// Line-style enum — used by drawing widgets and renderers. Portable
+ /// primitive (no theme/state coupling); lives here so `ui_kit` doesn't have
+ /// to import it back from `chart_renderer`. The chart-app re-exports this

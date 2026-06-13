@@ -961,6 +961,98 @@ pub(crate) fn prev_session_change_cached(symbol: &str) -> Option<f32> {
     daily_stats_cached(symbol).map(|s| s.prev_change_pct)
 }
 
+// ── Futures last price (TTL-cached) ────────────────────────────────────────
+
+fn futures_price_cache()
+    -> &'static std::sync::Mutex<std::collections::HashMap<String, (Option<f32>, std::time::Instant)>> {
+    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (Option<f32>, std::time::Instant)>>> = std::sync::OnceLock::new();
+    C.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+fn futures_price_inflight() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    static I: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
+    I.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
+}
+const FUTURES_PRICE_TTL_SECS: u64 = 3;
+
+/// Last price for a futures symbol (`F:ES`) via `/api/price/F:ES` (IB, last).
+/// TTL-cached + non-blocking. Futures have no `/api/quote`, so the watchlist
+/// gets its price here; the chart gets it from the futures bars feed.
+pub(crate) fn futures_price_cached(symbol: &str) -> Option<f32> {
+    let sym = symbol.to_uppercase();
+    if !sym.starts_with("F:") { return None; }
+    let (cached, stale) = match futures_price_cache().lock() {
+        Ok(c) => match c.get(&sym) {
+            Some((v, at)) => (*v, at.elapsed().as_secs() >= FUTURES_PRICE_TTL_SECS),
+            None => (None, true),
+        },
+        Err(_) => (None, true),
+    };
+    if stale {
+        let spawn = {
+            let mut inf = match futures_price_inflight().lock() { Ok(g) => g, Err(e) => e.into_inner() };
+            if inf.contains(&sym) { false } else { inf.insert(sym.clone()); true }
+        };
+        if spawn {
+            let s2 = sym.clone();
+            std::thread::spawn(move || {
+                // get_price does NOT strip F: — the price endpoint wants the
+                // F:-tagged symbol so it resolves the future, not the equity.
+                let v = crate::apex_data::rest::get_price(&s2).ok().map(|p| p.price as f32);
+                if let Ok(mut c) = futures_price_cache().lock() { c.insert(s2.clone(), (v, std::time::Instant::now())); }
+                if let Ok(mut inf) = futures_price_inflight().lock() { inf.remove(&s2); }
+                crate::wake_native_ui();
+            });
+        }
+    }
+    cached
+}
+
+// ── RVOL (server endpoint, TTL-cached) ─────────────────────────────────────
+
+fn rvol_cache()
+    -> &'static std::sync::Mutex<std::collections::HashMap<String, (Option<f32>, std::time::Instant)>> {
+    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (Option<f32>, std::time::Instant)>>> = std::sync::OnceLock::new();
+    C.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+fn rvol_inflight() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    static I: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
+    I.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
+}
+const RVOL_TTL_SECS: u64 = 90;
+
+/// Relative volume for `symbol` from `/api/stocks/rvol` (server-computed:
+/// today_volume ÷ avg_volume_20d). TTL-refreshed (~90s — it builds intraday),
+/// non-blocking. Returns the last value while refreshing; `None` until first
+/// fetch / for non-stocks.
+pub(crate) fn rvol_cached(symbol: &str) -> Option<f32> {
+    let sym = symbol.to_uppercase();
+    let (cached, stale) = match rvol_cache().lock() {
+        Ok(c) => match c.get(&sym) {
+            Some((v, at)) => (*v, at.elapsed().as_secs() >= RVOL_TTL_SECS),
+            None => (None, true),
+        },
+        Err(_) => (None, true),
+    };
+    if stale && is_stock_symbol(&sym) {
+        let spawn = {
+            let mut inf = match rvol_inflight().lock() { Ok(g) => g, Err(e) => e.into_inner() };
+            if inf.contains(&sym) { false } else { inf.insert(sym.clone()); true }
+        };
+        if spawn {
+            let s2 = sym.clone();
+            std::thread::spawn(move || {
+                let v = crate::apex_data::rest::stock_rvol(&s2)
+                    .filter(|r| r.rvol > 0.0)
+                    .map(|r| r.rvol as f32);
+                if let Ok(mut c) = rvol_cache().lock() { c.insert(s2.clone(), (v, std::time::Instant::now())); }
+                if let Ok(mut inf) = rvol_inflight().lock() { inf.remove(&s2); }
+                crate::wake_native_ui();
+            });
+        }
+    }
+    cached
+}
+
 // ── Ticker reference detail (cached, non-blocking) ─────────────────────────
 
 fn ticker_detail_cache()
@@ -1043,6 +1135,7 @@ pub(crate) fn is_stock_symbol(s: &str) -> bool {
     let s_upper = s.to_uppercase();
     if crate::data::is_crypto(s) { return false; }
     if s_upper.starts_with("O:") { return false; }
+    if s_upper.starts_with("F:") { return false; } // futures: priced via /api/price/F:…
     // Option display label heuristic: "UND STRIKE C/P EXPIRY".
     let parts: Vec<&str> = s.split_whitespace().collect();
     if parts.len() >= 2 {

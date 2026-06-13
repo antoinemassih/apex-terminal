@@ -818,7 +818,9 @@ if is_spawn || watchlist.open {
                                             ui.add_space(gap_xs());
                                             // Full option name (e.g. "SPY 560C 0DTE")
                                             let sym_color = if is_active { t.text } else { t.dim };
-                                            ui.add(MonospaceCode::new(&item_sym).size_px(font_sm()).strong(true).color(sym_color));
+                                            // Strip the F: futures class tag for display (F:ES → ES).
+                                            let disp_sym = item_sym.strip_prefix("F:").unwrap_or(item_sym);
+                                            ui.add(MonospaceCode::new(disp_sym).size_px(font_sm()).strong(true).color(sym_color));
                                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                                 // X button
                                                 let r = ui.add(Button::icon(Icon::X).variant(Variant::TextOnly).glyph_color(color_very_dim(t.dim)).size(Size::Sm).placement(IconPlacement::ListRow));
@@ -926,7 +928,8 @@ if is_spawn || watchlist.open {
                                             x: Icon::X,
                                             alert: Icon::LIGHTNING,
                                         };
-                                        let mut row_b = WatchlistRow::new(&item_sym, item_price, change_pct)
+                                        let row_disp_sym = item_sym.strip_prefix("F:").unwrap_or(item_sym);
+                                        let mut row_b = WatchlistRow::new(row_disp_sym, item_price, change_pct)
                                             .theme(t)
                                             .height(row_h)
                                             .active(is_active)
@@ -934,18 +937,11 @@ if is_spawn || watchlist.open {
                                             .pin_state(pin_state)
                                             .show_star_on_hover(true)
                                             .alert_indicator(item_alert_triggered)
-                                            // Real RVOL = today's cumulative volume ÷ trailing
-                                            // average daily volume (from the cached daily-bars
-                                            // fetch). Both come from data ApexData already serves.
-                                            // None until the daily stats land or if there's no
-                                            // volume yet, so the column hides rather than faking.
-                                            .rvol({
-                                                let today_vol = crate::apex_data::live_state::get_snapshot(item_sym)
-                                                    .map(|s| s.day_volume).unwrap_or(0.0);
-                                                crate::chart_renderer::gpu::daily_stats_cached(item_sym)
-                                                    .filter(|d| d.avg_volume > 0.0 && today_vol > 0.0)
-                                                    .map(|d| (today_vol / d.avg_volume) as f32)
-                                            })
+                                            // Real RVOL from the server endpoint
+                                            // (/api/stocks/rvol = today_volume ÷ avg_volume_20d),
+                                            // TTL-cached. None until it lands → column hides
+                                            // rather than faking.
+                                            .rvol(crate::chart_renderer::gpu::rvol_cached(item_sym))
                                             .ext_change(ext_change)
                                             .columns(&watchlist.wl_columns)
                                             .extreme_move_tint(if item_prev_close > 0.0 { Some(item_avg_daily_range) } else { None })

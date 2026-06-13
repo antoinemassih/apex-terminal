@@ -480,6 +480,7 @@ async fn ws_loop(
                                                 price: p as f64,
                                                 qty: v as f64,
                                                 time: ts_ms,
+                                                side: None, off_exchange: false, exchange: None,
                                             };
                                             hub_fanout(trade_hub(), &sym, trade);
                                             // Quote fanout only when bid/ask actually present.
@@ -737,6 +738,7 @@ mod hub_tests {
         hub_fanout(trade_hub(), sym, Trade {
             symbol: sym.into(), asset_class: AssetClass::Stock,
             price: 800.0, qty: 10.0, time: 1,
+            side: None, off_exchange: false, exchange: None,
         });
         hub_fanout(quote_hub(), sym, Quote {
             symbol: sym.into(), asset_class: AssetClass::Stock,

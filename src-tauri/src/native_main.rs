@@ -180,6 +180,9 @@ fn main() {
     // DOM (L2 depth) feed — connects to apex-data /ws/dom for the active symbol
     _scaffold_lib::dom_feed::start();
 
+    // Futures live-bar feed — connects to apex-data /ws/futures (IB 5s bars)
+    _scaffold_lib::futures_feed::start();
+
     eprintln!("[apex-native] Opening chart window...");
 
     // Create a channel and open the first window
