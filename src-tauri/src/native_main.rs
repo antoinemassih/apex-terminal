@@ -151,6 +151,12 @@ fn main() {
             |schemes| _scaffold_lib::chart_renderer::gpu::upsert_installed_themes(schemes),
         );
 
+        // Initialise the ThemePack registry (S8 — pack install/activate/persist).
+        // Opens <themes_dir>/pack-registry/ and reads the persisted active id.
+        // The actual pack activation happens on the first UI frame via
+        // `theme_pack_bridge::apply_startup_active_pack(ctx)` (called from gpu.rs).
+        _scaffold_lib::chart_renderer::theme_pack_bridge::open_registry(&themes_dir);
+
         // Start the background watcher — ZERO per-frame main-thread cost.
         _scaffold_lib::design_system::start_theme_watcher(themes_dir);
     }

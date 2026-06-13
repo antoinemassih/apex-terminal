@@ -495,6 +495,9 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
         });
     });
 
+    // ── THEMES — ThemePack install / activate / uninstall ──────────────────
+    draw_themes_section(ui, chart, t, ap);
+
     // ── ONBOARDING ──
     PanelSection::new("ONBOARDING").show(ui, t, |ui, t| {
         setting_form_row("Welcome wizard", t).show(ui, t, |ui| {
@@ -855,6 +858,166 @@ fn draw_shortcuts(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
 
 fn setting_toggle(ui: &mut egui::Ui, label: &str, t: &Theme, val: &mut bool) {
     setting_toggle_described(ui, label, None, t, val);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// THEMES SECTION (inside Appearance tab)
+// ═══════════════════════════════════════════════════════════════
+//
+// Lists all registered ThemePacks (built-in + installed) in a scrollable
+// section. Each row shows:
+//  - pack name + author (installed) or "Built-in" label
+//  - an active indicator dot
+//  - clicking the row activates the pack via `theme_pack_bridge::activate_by_id`
+//  - an "×" trailing button uninstalls installed packs
+//
+// An "Install…" button at the bottom of the section opens an rfd file dialog
+// for a `.apextheme` bundle, calls `install_pack`, and refreshes the list.
+// Any install/validation error is shown in a one-line error message below.
+//
+// Persistence: `set_active` writes to `PackRegistry`'s `index.json`.
+// On startup `init_registry` re-applies the persisted active pack.
+//
+// Light-theme note: all colours are derived from the threaded `t: &Theme`
+// (accent, dim, bull, bear). No hardcoded RGB.
+
+fn draw_themes_section(
+    ui: &mut egui::Ui,
+    chart: &mut Chart,
+    t: &Theme,
+    _ap: usize,
+) {
+    use crate::chart_renderer::theme_pack_bridge;
+    use crate::ui_kit::widgets::{PanelListRow, TrailingBtn, TrailingTone, PanelTone};
+    use crate::ui_kit::icons::Icon;
+
+    // ── Persistent error string stored in egui memory ─────────────────────────
+    let err_id  = ui.make_persistent_id("themes_install_err");
+    let mut err = ui.data_mut(|d| d.get_temp::<String>(err_id).unwrap_or_default());
+
+    // We need `action_clicked` from the section response, but the closure
+    // captures `err` by mutable reference so we collect click events in a
+    // `Cell` trampoline and process them after the section closes.
+    let activate_id: std::cell::Cell<Option<String>> = std::cell::Cell::new(None);
+    let uninstall_id: std::cell::Cell<Option<String>> = std::cell::Cell::new(None);
+
+    let resp = PanelSection::new("THEMES")
+        .action("Install…", PanelTone::Accent)
+        .show(ui, t, |ui, t| {
+            let packs      = theme_pack_bridge::list_pack_manifests();
+            let active     = theme_pack_bridge::active_pack_id();
+            let all_themes = crate::chart_renderer::gpu::get_all_themes();
+
+            // ── List all packs ────────────────────────────────────────────────
+            for pack in &packs {
+                let is_active_pack = active.as_deref() == Some(pack.id.as_str());
+                // Also consider "active" if this color-scheme name matches the
+                // currently selected chart theme (covers built-in selection).
+                let theme_name_match = all_themes
+                    .get(chart.theme_idx)
+                    .map(|th| th.name == pack.name.as_str())
+                    .unwrap_or(false);
+                let active_indicator = is_active_pack || theme_name_match;
+
+                let author_str: String = if pack.author.is_empty() {
+                    "Built-in".to_string()
+                } else {
+                    pack.author.clone()
+                };
+                let is_installed = !theme_pack_bridge::is_builtin(&pack.id);
+                let pack_id = pack.id.clone();
+
+                // ── Active dot closure ────────────────────────────────────────
+                // Type is inferred as &Theme from the PanelSection::show generic.
+                let dot_col = if active_indicator {
+                    t.accent
+                } else {
+                    tint(t, crate::ui_kit::sx::Tone::Border, alpha_muted())
+                };
+                let dot = move |ui: &mut egui::Ui, _t: &Theme| {
+                    let (r, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
+                    ui.painter().circle_filled(r.center(), 3.5, dot_col);
+                };
+
+                let row_resp = if is_installed {
+                    PanelListRow::new(pack_id.as_str())
+                        .primary(pack.name.as_str())
+                        .secondary(author_str.as_str())
+                        .leading(dot)
+                        .trailing_buttons(&[
+                            TrailingBtn::icon(Icon::X)
+                                .tone(TrailingTone::Bear)
+                                .tooltip("Uninstall"),
+                        ])
+                        .show_full(ui, t)
+                } else {
+                    PanelListRow::new(pack_id.as_str())
+                        .primary(pack.name.as_str())
+                        .secondary("Built-in")
+                        .leading(dot)
+                        .show_full(ui, t)
+                };
+
+                // Row body click → activate (via Cell trampoline).
+                if row_resp.clicked {
+                    activate_id.set(Some(pack.id.clone()));
+                }
+                // Trailing X → uninstall.
+                if row_resp.trailing_clicked_idx == Some(0) {
+                    uninstall_id.set(Some(pack.id.clone()));
+                }
+            }
+
+            // ── Error message (inside section) ────────────────────────────────
+            if !err.is_empty() {
+                ui.add_space(gap_xs());
+                ui.label(
+                    egui::RichText::new(err.as_str())
+                        .size(font_xs())
+                        .color(t.bear),
+                );
+            }
+        });
+
+    // ── Process deferred actions ──────────────────────────────────────────────
+    if let Some(id) = activate_id.take() {
+        let ctx = ui.ctx().clone();
+        match theme_pack_bridge::activate_by_id(&ctx, &id) {
+            Ok(_)  => { err.clear(); }
+            Err(e) => { err = format!("Activate failed: {e}"); }
+        }
+        ui.data_mut(|d| d.insert_temp(err_id, err.clone()));
+    }
+    if let Some(id) = uninstall_id.take() {
+        match theme_pack_bridge::uninstall_pack(&id) {
+            Ok(_)  => { err.clear(); }
+            Err(e) => { err = format!("Uninstall failed: {e}"); }
+        }
+        ui.data_mut(|d| d.insert_temp(err_id, err.clone()));
+    }
+
+    // ── "Install…" action button ──────────────────────────────────────────────
+    if resp.action_clicked {
+        // rfd::FileDialog is synchronous on Windows / macOS.
+        let picked = rfd::FileDialog::new()
+            .set_title("Install Theme Pack")
+            .add_filter("Apex Theme Pack", &["apextheme"])
+            .pick_file();
+
+        if let Some(path) = picked {
+            match theme_pack_bridge::install_pack(&path) {
+                Ok(manifest) => {
+                    let ctx = ui.ctx().clone();
+                    match theme_pack_bridge::activate_by_id(&ctx, &manifest.id) {
+                        Ok(_)  => { err.clear(); }
+                        Err(e) => { err = format!("Installed but activate failed: {e}"); }
+                    }
+                }
+                Err(e) => { err = format!("Install failed: {e}"); }
+            }
+            ui.data_mut(|d| d.insert_temp(err_id, err.clone()));
+        }
+    }
 }
 
 /// ToggleRow wrapper with optional description. No per-row indent: the

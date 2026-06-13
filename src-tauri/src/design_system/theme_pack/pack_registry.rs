@@ -326,6 +326,25 @@ impl PackRegistry {
         Some(ThemePack::read_bundle(&path).map_err(RegistryError::Bundle))
     }
 
+    /// Load the full `ThemePack` for the given `id`, if it is an installed
+    /// (non-builtin) pack.  Returns `None` for built-in ids.
+    ///
+    /// Unlike [`active_pack`] this does not require `id` to be the currently
+    /// active pack — callers use it to load any installed pack for activation.
+    pub fn load_pack(&self, id: &str) -> Option<Result<ThemePack, RegistryError>> {
+        let entry = self.entries.get(id)?;
+        if entry.is_builtin {
+            return None;
+        }
+        let path = self.pack_path(id);
+        Some(ThemePack::read_bundle(&path).map_err(RegistryError::Bundle))
+    }
+
+    /// Returns `true` if `id` is registered as a built-in (read-only) theme.
+    pub fn is_builtin(&self, id: &str) -> bool {
+        self.entries.get(id).map(|e| e.is_builtin).unwrap_or(false)
+    }
+
     // ── Internal helpers ──────────────────────────────────────────────────────
 
     fn pack_path(&self, id: &str) -> PathBuf {

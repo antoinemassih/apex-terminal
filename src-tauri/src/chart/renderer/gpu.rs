@@ -4457,13 +4457,25 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
     );
     // Stream S5 — ADOPTION: stash the active RecipeSet so ui_kit widgets built
     // via `StyleCtx::from_ctx` pick up theme-pack overrides automatically.
-    // Currently sourced from an empty default (a later stream wires the active
-    // ThemePack's recipes here). Zero visual change — empty set → widgets use
-    // their built-in defaults exactly as before.
-    crate::ui_kit::widgets::theme::set_ambient_recipes(
-        ctx,
-        crate::ui_kit::widgets::theme::empty_recipe_arc(),
-    );
+    // S8 update: only fall back to the empty set when no ThemePack has stashed
+    // a real RecipeSet — if a pack was activated, its recipes are already in
+    // egui memory and we must not overwrite them with the empty placeholder.
+    {
+        let has_pack_recipes = ctx.data(|d| {
+            d.get_temp::<std::sync::Arc<crate::design_system::recipes::RecipeSet>>(
+                egui::Id::new("apex_ambient_recipes"),
+            ).is_some()
+        });
+        if !has_pack_recipes {
+            crate::ui_kit::widgets::theme::set_ambient_recipes(
+                ctx,
+                crate::ui_kit::widgets::theme::empty_recipe_arc(),
+            );
+        }
+    }
+
+    // S8 — apply the persisted ThemePack on the very first frame (once).
+    crate::chart_renderer::theme_pack_bridge::apply_startup_active_pack(ctx);
     {
         let mut style = (*ctx.style()).clone();
         style.visuals.panel_fill = t.toolbar_bg;
