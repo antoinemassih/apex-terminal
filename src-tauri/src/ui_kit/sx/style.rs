@@ -8,11 +8,22 @@
 //! allocation, no lock, no color math on the hot path.
 
 use egui::{Color32, CornerRadius, Response, Sense, Stroke, StrokeKind, Ui};
-use super::color::{palette, palette_ct, Palette, Shade, Tone};
+use super::color::{palette_ct, Palette, Shade, Tone};
 use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::ui_kit::tokens as st;
 
 type Theme = crate::chart_renderer::gpu::Theme;
+
+/// Convert an `f32` radius to `u8` for `CornerRadius::same`.
+///
+/// The naïve `value as u8` cast wraps on values above 255 (pill radius 999
+/// becomes 231) and truncates sub-pixel values below 1.0 to 0. This helper
+/// clamps faithfully: values ≥ 255 become 255 (egui's u8 API maximum), values
+/// in 0..255 round to the nearest integer, and negatives clamp to 0.
+#[inline(always)]
+fn radius_to_u8(r: f32) -> u8 {
+    r.clamp(0.0, 255.0).round() as u8
+}
 
 #[inline]
 fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
@@ -266,7 +277,7 @@ impl Sx {
     /// Paint the box for an explicit state behind `rect` into a reserved slot.
     fn paint(&self, ui: &Ui, slot: egui::layers::ShapeIdx, rect: egui::Rect, st: StyleState, pal: &Palette) {
         let d = self.resolved(st);
-        let cr = CornerRadius::same(d.radius.unwrap_or(0.0) as u8);
+        let cr = CornerRadius::same(radius_to_u8(d.radius.unwrap_or(0.0)));
         if let Some(fill) = d.fill {
             ui.painter().set(slot, egui::Shape::rect_filled(rect, cr, fill.resolve(pal)));
         }
@@ -290,7 +301,7 @@ impl Sx {
         let base = self.resolved(StyleState::Normal);
         let hov  = self.resolved(StyleState::Hover);
         let act  = self.resolved(StyleState::Active);
-        let cr = CornerRadius::same(base.radius.unwrap_or(0.0) as u8);
+        let cr = CornerRadius::same(radius_to_u8(base.radius.unwrap_or(0.0)));
 
         // Fill: lerp Normal→Hover→Active. A missing fill is treated as transparent.
         let fill_of = |d: &SxDelta| d.fill.map(|f| f.resolve(pal)).unwrap_or(Color32::TRANSPARENT);
@@ -330,7 +341,7 @@ impl Sx {
     pub fn paint_box_at(&self, painter: &egui::Painter, rect: egui::Rect, t: &dyn ComponentTheme) {
         let pal = palette_ct(t);
         let d = self.resolved(StyleState::Normal);
-        let cr = CornerRadius::same(d.radius.unwrap_or(0.0) as u8);
+        let cr = CornerRadius::same(radius_to_u8(d.radius.unwrap_or(0.0)));
         if let Some(fill) = d.fill {
             painter.rect_filled(rect, cr, fill.resolve(&pal));
         }
@@ -342,6 +353,90 @@ impl Sx {
             );
         }
     }
+
+    // ── ComponentTheme-based core implementations ────────────────────────────
+    // These are the canonical entry points for new code and the real
+    // implementation for the `&Theme`-shim methods below.
+
+    /// Interactive box using the portable [`ComponentTheme`] API.
+    /// Prefer this over [`show`] in new code — `t` can be any `&dyn ComponentTheme`
+    /// (including `&gpu::Theme` which already implements the trait).
+    pub fn show_ct<R>(
+        self,
+        ui: &mut Ui,
+        t: &dyn ComponentTheme,
+        sense: Sense,
+        body: impl FnOnce(&mut Ui) -> R,
+    ) -> (Response, R) {
+        let pal = palette_ct(t);
+        let slot = ui.painter().add(egui::Shape::Noop);
+        let pad = egui::Margin::symmetric(
+            self.base.px.unwrap_or(0.0) as i8,
+            self.base.py.unwrap_or(0.0) as i8,
+        );
+        let ir = egui::Frame::NONE.inner_margin(pad).show(ui, |ui| {
+            if let Some(g) = self.base.gap { ui.spacing_mut().item_spacing.x = g; }
+            if let Some(col) = self.base.text_color(&pal) { ui.style_mut().visuals.override_text_color = Some(col); }
+            body(ui)
+        });
+        let rect = ir.response.rect;
+        let id = ui.id().with(("sx", rect.min.x.to_bits(), rect.min.y.to_bits()));
+        let resp = ui.interact(rect, id, sense);
+        let hover_t = ui.ctx().animate_bool(id.with("h"), resp.hovered());
+        let active_t = ui.ctx().animate_bool(id.with("a"), resp.is_pointer_button_down_on());
+        self.paint_eased(ui, slot, rect, hover_t, active_t, &pal);
+        (resp, ir.inner)
+    }
+
+    /// Non-interactive decoration using the portable [`ComponentTheme`] API.
+    /// Prefer this over [`decorate`] in new code.
+    pub fn decorate_ct<R>(
+        self,
+        ui: &mut Ui,
+        t: &dyn ComponentTheme,
+        state: StyleState,
+        body: impl FnOnce(&mut Ui) -> R,
+    ) -> (egui::Rect, R) {
+        let pal = palette_ct(t);
+        let slot = ui.painter().add(egui::Shape::Noop);
+        let pad = egui::Margin::symmetric(
+            self.base.px.unwrap_or(0.0) as i8,
+            self.base.py.unwrap_or(0.0) as i8,
+        );
+        let ir = egui::Frame::NONE.inner_margin(pad).show(ui, |ui| body(ui));
+        let rect = ir.response.rect;
+        self.paint(ui, slot, rect, state, &pal);
+        (rect, ir.inner)
+    }
+
+    /// Paint into a reserved slot using the portable [`ComponentTheme`] API.
+    /// Prefer this over [`paint_into`] in new code.
+    pub fn paint_into_ct(
+        &self,
+        ui: &Ui,
+        t: &dyn ComponentTheme,
+        slot: egui::layers::ShapeIdx,
+        rect: egui::Rect,
+        state: StyleState,
+    ) {
+        let pal = palette_ct(t);
+        self.paint(ui, slot, rect, state, &pal);
+    }
+
+    // ── Legacy `&Theme` shims — kept for chart/ call-site compat ─────────────
+    // Call sites in chart/ pass a concrete `&chart_renderer::gpu::Theme`.
+    // Signature change would break ~100 chart/ callers; deferred to a later
+    // focused sweep. The implementation delegates to the `_ct` variants above —
+    // the only code here is a `palette(t)` → `palette_ct(t)` bridge.
+    //
+    // LATER ROUND (chart/ migration):
+    //   chart/ call sites that do `sx.show(ui, t, ...)`, `sx.decorate(ui, t, ...)`
+    //   or `sx.paint_into(ui, t, ...)` can each be migrated by changing the
+    //   second argument from `t` to `t as &dyn ComponentTheme` (or just `t`,
+    //   since `Theme: ComponentTheme` makes the coercion implicit for
+    //   `&dyn ComponentTheme` parameters). Once all chart/ callers are updated,
+    //   the `type Theme` alias and these three methods can be deleted, leaving
+    //   only the `_ct` variants.
 
     /// Paint this style's box at an explicit `rect` into a caller-reserved slot.
     /// For decorations whose geometry the caller already knows (e.g. a
@@ -356,8 +451,7 @@ impl Sx {
         rect: egui::Rect,
         state: StyleState,
     ) {
-        let pal = palette(t);
-        self.paint(ui, slot, rect, state, &pal);
+        self.paint_into_ct(ui, t, slot, rect, state);
     }
 
     /// Interactive box: lays out `body` with this style's padding, auto-detects
@@ -370,25 +464,7 @@ impl Sx {
         sense: Sense,
         body: impl FnOnce(&mut Ui) -> R,
     ) -> (Response, R) {
-        let pal = palette(t);
-        let slot = ui.painter().add(egui::Shape::Noop);
-        let pad = egui::Margin::symmetric(
-            self.base.px.unwrap_or(0.0) as i8,
-            self.base.py.unwrap_or(0.0) as i8,
-        );
-        let ir = egui::Frame::NONE.inner_margin(pad).show(ui, |ui| {
-            if let Some(g) = self.base.gap { ui.spacing_mut().item_spacing.x = g; }
-            if let Some(col) = self.base.text_color(&pal) { ui.style_mut().visuals.override_text_color = Some(col); }
-            body(ui)
-        });
-        let rect = ir.response.rect;
-        let id = ui.id().with(("sx", rect.min.x.to_bits(), rect.min.y.to_bits()));
-        let resp = ui.interact(rect, id, sense);
-        // Motion-eased state blend (egui's built-in animation; no extra deps).
-        let hover_t = ui.ctx().animate_bool(id.with("h"), resp.hovered());
-        let active_t = ui.ctx().animate_bool(id.with("a"), resp.is_pointer_button_down_on());
-        self.paint_eased(ui, slot, rect, hover_t, active_t, &pal);
-        (resp, ir.inner)
+        self.show_ct(ui, t, sense, body)
     }
 
     /// Non-interactive decoration: reserve the slot first, run `body`, then fill
@@ -402,15 +478,7 @@ impl Sx {
         state: StyleState,
         body: impl FnOnce(&mut Ui) -> R,
     ) -> (egui::Rect, R) {
-        let pal = palette(t);
-        let slot = ui.painter().add(egui::Shape::Noop);
-        let pad = egui::Margin::symmetric(
-            self.base.px.unwrap_or(0.0) as i8,
-            self.base.py.unwrap_or(0.0) as i8,
-        );
-        let ir = egui::Frame::NONE.inner_margin(pad).show(ui, |ui| body(ui));
-        let rect = ir.response.rect;
-        self.paint(ui, slot, rect, state, &pal);
-        (rect, ir.inner)
+        self.decorate_ct(ui, t, state, body)
     }
+
 }

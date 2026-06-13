@@ -1,0 +1,83 @@
+# docs/migration/baselines.toml
+# Style-migration ratchet baselines — captured 2026-06-13 on branch sidebar-nav.
+#
+# Each value is the COUNT of the corresponding pattern found in the live tree at
+# the time Stream S0 (Guardrails & CI lints) landed.  The lint script
+# (scripts/style-mig-lint.sh) asserts that live counts are <= these values.
+#
+# HOW TO LOWER A BASELINE
+#   After a migration stream removes occurrences of a pattern, recount, edit
+#   this file, and commit it alongside the removals.  The CI lint will then
+#   enforce the new, lower ceiling.  See docs/migration/README.md for the
+#   full workflow.
+#
+# HOW TO HARD-BAN A PATTERN
+#   When a pattern is fully eradicated (count reaches 0), set the value to 0.
+#   The lint will then fail on the very first new occurrence — it becomes a
+#   hard ban rather than a ratchet.  Update the comment in the lint script
+#   for that check to say "hard-ban" and remove the <= language.
+
+# ── Check 1 ───────────────────────────────────────────────────────────────────
+# Number of `pub <field>:` lines inside the `StyleSettings` struct in
+# src-tauri/src/chart/renderer/ui/style.rs.
+# Ratchet direction: DOWN (remove deprecated fields, never add new ones).
+#
+# Captured field list (99 fields):
+#   r_xs, r_sm, r_md, r_lg, r_pill, serif_headlines, button_treatment,
+#   hairline_borders, stroke_hair, stroke_thin, stroke_std, stroke_bold,
+#   stroke_thick, shadows_enabled, solid_active_fills, invert_active_fill,
+#   uppercase_section_labels, label_letter_spacing_px, toolbar_height_scale,
+#   header_height_scale, font_hero, vertical_group_dividers,
+#   show_active_tab_underline, active_header_fill_multiply,
+#   inactive_header_fill_multiply, inactive_header_fill,
+#   header_outer_border_alpha, header_outer_border_width, header_divider_alpha,
+#   account_strip_height, pane_border_width, pane_gap, card_padding_y,
+#   card_padding_x, row_height_px, button_height_px, button_padding_x,
+#   tab_height, font_section_label, font_body, font_caption, hover_bg_alpha,
+#   active_bg_alpha, focus_ring_width, focus_ring_alpha, disabled_opacity,
+#   shadow_blur, shadow_offset_y, shadow_alpha, density, accent_emphasis,
+#   nav_letter_spacing_px, nav_buttons_label_only, nav_buttons_uppercase_labels,
+#   tab_underline_thickness, tab_underline_under_text, card_floating_shadow,
+#   card_floating_shadow_alpha, cta_height_px, cta_padding_x, pane_gap_alpha,
+#   pane_active_indicator, nav_active_col_alpha, dialog_backdrop_alpha,
+#   tab_inactive_alpha, tab_hover_bg_alpha, section_label_padding_top,
+#   section_label_padding_bottom, pane_active_fill_accent, pane_gap_color,
+#   drag_handle_alpha, drag_handle_dot_scale, toast_bg_alpha, card_stripe_alpha,
+#   r_chip, wl_row_side_margin, wl_row_corner_radius, wl_row_divider_alpha,
+#   wl_symbol_mono, section_header_mono, section_header_tracking,
+#   panel_tab_treatment, animations_enabled, surface_bevel,
+#   bevel_highlight_alpha, bevel_shadow_alpha, region_gap, region_radius,
+#   region_border_alpha, nav_cluster_radius, nav_cluster_fill_alpha,
+#   nav_cluster_padding, button_group, toolnav_height, footer_default_open,
+#   panel_header_treatment, panel_section_fill_alpha, panel_footer_card,
+#   panel_footer_radius
+style_settings_pub_fields = 99
+
+# ── Check 2 ───────────────────────────────────────────────────────────────────
+# Number of `crate::chart_renderer` or `crate::chart::renderer` references
+# found anywhere under src-tauri/src/ui_kit/.
+# Ratchet direction: DOWN (ui_kit should become fully self-contained).
+# When this reaches 0 it becomes a hard ban.
+chart_renderer_refs_in_ui_kit = 13
+
+# ── Check 3 ───────────────────────────────────────────────────────────────────
+# Number of `&THEMES[0]` occurrences in src-tauri/src/ that are NOT
+# comment-only references (i.e., appear in actual code paths).
+# Baseline is 0 — all 4 grep hits in the tree at capture time are inline
+# comments warning against the anti-pattern (not code).
+# This check is effectively a HARD BAN from day one.
+# Known allowed comment hits (not counted):
+#   src/chart/renderer/ui/chrome/pane.rs:26   (// comment)
+#   src/chart/renderer/ui/inputs/form.rs:25   (// comment)
+#   src/chart/renderer/ui/inputs/form.rs:401  (// comment)
+#   src/chart/renderer/ui/inputs/nmf_toggle.rs:28 (// comment)
+themes_zero_code_refs = 0
+
+# ── Check 4 ───────────────────────────────────────────────────────────────────
+# Number of `Color32::from_rgba_unmultiplied(0, 0, 0,` occurrences in
+# src-tauri/src/ (literal-black shadow pattern that breaks light themes).
+# Ratchet direction: DOWN (migrate call sites to shadow_*_themed() helpers).
+# Known hits at capture time:
+#   src/chart/renderer/ui/style.rs:1647  (bevel_shadow_alpha — internal token fn)
+#   src/chart/renderer/ui/style.rs:1712  (doc comment explaining the anti-pattern)
+literal_black_shadow_refs = 2
