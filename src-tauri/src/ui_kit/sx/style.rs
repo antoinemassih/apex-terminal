@@ -12,8 +12,6 @@ use super::color::{palette_ct, Palette, Shade, Tone};
 use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::ui_kit::tokens as st;
 
-type Theme = crate::chart_renderer::gpu::Theme;
-
 /// Convert an `f32` radius to `u8` for `CornerRadius::same`.
 ///
 /// The naïve `value as u8` cast wraps on values above 255 (pill radius 999
@@ -421,64 +419,6 @@ impl Sx {
     ) {
         let pal = palette_ct(t);
         self.paint(ui, slot, rect, state, &pal);
-    }
-
-    // ── Legacy `&Theme` shims — kept for chart/ call-site compat ─────────────
-    // Call sites in chart/ pass a concrete `&chart_renderer::gpu::Theme`.
-    // Signature change would break ~100 chart/ callers; deferred to a later
-    // focused sweep. The implementation delegates to the `_ct` variants above —
-    // the only code here is a `palette(t)` → `palette_ct(t)` bridge.
-    //
-    // LATER ROUND (chart/ migration):
-    //   chart/ call sites that do `sx.show(ui, t, ...)`, `sx.decorate(ui, t, ...)`
-    //   or `sx.paint_into(ui, t, ...)` can each be migrated by changing the
-    //   second argument from `t` to `t as &dyn ComponentTheme` (or just `t`,
-    //   since `Theme: ComponentTheme` makes the coercion implicit for
-    //   `&dyn ComponentTheme` parameters). Once all chart/ callers are updated,
-    //   the `type Theme` alias and these three methods can be deleted, leaving
-    //   only the `_ct` variants.
-
-    /// Paint this style's box at an explicit `rect` into a caller-reserved slot.
-    /// For decorations whose geometry the caller already knows (e.g. a
-    /// button-group enclosure spanning measured button bounds). The slot must
-    /// have been reserved *before* the content was emitted so the box renders
-    /// behind it.
-    pub fn paint_into(
-        &self,
-        ui: &Ui,
-        t: &Theme,
-        slot: egui::layers::ShapeIdx,
-        rect: egui::Rect,
-        state: StyleState,
-    ) {
-        self.paint_into_ct(ui, t, slot, rect, state);
-    }
-
-    /// Interactive box: lays out `body` with this style's padding, auto-detects
-    /// hover/active from the pointer, and paints the resolved background behind
-    /// it. Returns the box `Response` (so callers can read `.clicked()` etc).
-    pub fn show<R>(
-        self,
-        ui: &mut Ui,
-        t: &Theme,
-        sense: Sense,
-        body: impl FnOnce(&mut Ui) -> R,
-    ) -> (Response, R) {
-        self.show_ct(ui, t, sense, body)
-    }
-
-    /// Non-interactive decoration: reserve the slot first, run `body`, then fill
-    /// the slot with the box behind the content using `state`. Use for static
-    /// enclosures (e.g. a button-group box) that must not steal inner clicks.
-    /// Returns `(content_rect, body_result)`.
-    pub fn decorate<R>(
-        self,
-        ui: &mut Ui,
-        t: &Theme,
-        state: StyleState,
-        body: impl FnOnce(&mut Ui) -> R,
-    ) -> (egui::Rect, R) {
-        self.decorate_ct(ui, t, state, body)
     }
 
 }

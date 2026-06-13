@@ -1459,7 +1459,7 @@ pub(crate) fn shade(
     tone: crate::ui_kit::sx::Tone,
     s: crate::ui_kit::sx::Shade,
 ) -> Color32 {
-    crate::ui_kit::sx::palette(t).shade(tone, s)
+    crate::ui_kit::sx::palette_ct(t).shade(tone, s)
 }
 
 /// The base (500) color of a semantic tone at an explicit alpha — the ramp
@@ -1472,7 +1472,7 @@ pub(crate) fn tint(
     tone: crate::ui_kit::sx::Tone,
     alpha: u8,
 ) -> Color32 {
-    let c = crate::ui_kit::sx::palette(t).base(tone);
+    let c = crate::ui_kit::sx::palette_ct(t).base(tone);
     Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha)
 }
 
@@ -1556,7 +1556,7 @@ impl ButtonGroupBox {
         if !rect.is_finite() || rect.width() < 4.0 { return; }
         // The look is a composed `Sx` chosen by the style's `GroupEnclosure`
         // (see `group_enclosure_sx`), painted by the generic engine.
-        sx.paint_into(ui, t, slot, rect, crate::ui_kit::sx::StyleState::Normal);
+        sx.paint_into_ct(ui, t, slot, rect, crate::ui_kit::sx::StyleState::Normal);
     }
 }
 
