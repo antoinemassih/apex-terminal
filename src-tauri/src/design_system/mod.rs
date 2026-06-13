@@ -78,6 +78,7 @@ pub mod recipes;
 pub mod registry;
 pub mod snapshot;
 pub mod style_system;
+pub mod theme_pack;
 
 // ── Convenient top-level re-exports ──────────────────────────────────────────
 
