@@ -617,6 +617,11 @@ pub(super) fn pane_context_menu<F>(
             // Signals
             ui.label(egui::RichText::new("SIGNALS").small().color(t.dim));
             if !chart.signal_drawings.is_empty() {
+                // Pin: promote the visible auto-lines into saved, editable drawings.
+                if MenuItem::new(format!("Pin auto-lines to chart ({})", chart.signal_drawings.len())).icon(Icon::PUSH_PIN).show(ui, t).clicked() {
+                    crate::chart_renderer::gpu::pin_signal_drawings(chart);
+                    ui.close_menu();
+                }
                 if MenuItem::new(format!("Signal Drawings ({})", chart.signal_drawings.len())).icon(Icon::TRASH).tint(red).show(ui, t).clicked() {
                     chart.signal_drawings.clear();
                     ui.close_menu();

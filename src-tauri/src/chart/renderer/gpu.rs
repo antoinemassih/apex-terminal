@@ -3436,6 +3436,59 @@ impl Chart {
 /// Run one tick of price simulation for a single pane.
 pub(crate) fn new_uuid() -> String { uuid::Uuid::new_v4().to_string() }
 
+/// Promote the currently-visible auto signal-drawings into persistent, editable
+/// drawings — saved to the drawings DB and undoable, exactly like hand-drawn
+/// lines. Respects the BY-METHOD / signals visibility filters so only what you
+/// see gets pinned. Pinned drawings land in the `auto-chart` group, labelled by
+/// detection method. Returns how many were pinned.
+pub(crate) fn pin_signal_drawings(chart: &mut Chart) -> usize {
+    if chart.hide_signal_drawings {
+        return 0;
+    }
+    // Collect geometry first so we don't hold an immutable borrow while mutating.
+    let prepared: Vec<(DrawingKind, String, String)> = chart
+        .signal_drawings
+        .iter()
+        .filter(|sd| !chart.hidden_signal_methods.iter().any(|m| m == &sd.detection_method))
+        .filter_map(|sd| {
+            let kind = match sd.drawing_type.as_str() {
+                "trendline" if sd.points.len() >= 2 => DrawingKind::TrendLine {
+                    price0: sd.points[0].1,
+                    time0: sd.points[0].0,
+                    price1: sd.points[1].1,
+                    time1: sd.points[1].0,
+                },
+                "hline" if !sd.points.is_empty() => DrawingKind::HLine { price: sd.points[0].1 },
+                _ => return None,
+            };
+            Some((kind, sd.color.clone(), sd.detection_method.clone()))
+        })
+        .collect();
+
+    let sym = chart.symbol.clone();
+    let tf = chart.timeframe.clone();
+    let mut pinned = 0;
+    for (kind, color, method) in prepared {
+        let mut d = Drawing::new(new_uuid(), kind);
+        d.color = color;
+        d.group_id = "auto-chart".into();
+        if !method.is_empty() {
+            d.label = Some(method);
+        }
+        crate::drawing_db::save(&drawing_to_db(&d, &sym, &tf));
+        if chart.undo_stack.len() >= 50 {
+            chart.undo_stack.remove(0);
+        }
+        chart.undo_stack.push(DrawingAction::Add(d.clone()));
+        chart.drawings.push(d);
+        pinned += 1;
+    }
+    if pinned > 0 {
+        chart.redo_stack.clear();
+    }
+    pinned
+}
+
 /// Undo/redo action for drawing operations.
 #[derive(Clone)]
 pub(crate) enum DrawingAction {
