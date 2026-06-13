@@ -2121,6 +2121,7 @@ fn render_chart_pane(
     // MARK_BARS_PROTOCOL: skip when in Mark mode (volume=0 → empty profile).
     if chart.vp.mode != VolumeProfileMode::Off && !chart.bar_source_mark {
         if chart.vp.data.is_none() || chart.vp.last_vs != chart.vs || chart.vp.last_vc != chart.vc {
+            let _vp_z = crate::foundation::frame_profiler::profile_zone("vp_compute");
             // Prefer REAL volume-at-price (ApexData VAP) for the session profile;
             // fall back to the bar-spread approximation over the visible window
             // when VAP isn't backfilled yet for this symbol/date.
@@ -2137,6 +2138,7 @@ fn render_chart_pane(
     }
 
     if chart.vp.mode == VolumeProfileMode::Classic {
+        let _vp_z = crate::foundation::frame_profiler::profile_zone("vp_paint");
         if let Some(ref vp) = chart.vp.data {
             let max_bar_width = cw * 0.25;
             for level in &vp.levels {
@@ -2171,6 +2173,7 @@ fn render_chart_pane(
     }
 
     if chart.vp.mode == VolumeProfileMode::Heatmap {
+        let _vp_z = crate::foundation::frame_profiler::profile_zone("vp_paint");
         if let Some(ref vp) = chart.vp.data {
             for level in &vp.levels {
                 let y_top = py(level.price + vp.price_step / 2.0);
@@ -2201,6 +2204,7 @@ fn render_chart_pane(
     }
 
     if chart.vp.mode == VolumeProfileMode::Strip {
+        let _vp_z = crate::foundation::frame_profiler::profile_zone("vp_paint");
         if let Some(ref vp) = chart.vp.data {
             let strip_w = 50.0_f32;
             let strip_x = rect.left() + cw - strip_w;
@@ -2241,6 +2245,7 @@ fn render_chart_pane(
     }
 
     if chart.vp.mode == VolumeProfileMode::Clean {
+        let _vp_z = crate::foundation::frame_profiler::profile_zone("vp_paint");
         if let Some(ref vp) = chart.vp.data {
             let gold = egui::Color32::from_rgb(255, 193, 37);
             let vah_y = py(vp.vah); let val_y = py(vp.val);
@@ -12607,14 +12612,25 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
             let mut spans = snap.subsystems.spans.clone();
             spans.sort_by(|a, b| b.1.cmp(&a.1)); // by avg_us desc
             let top: Vec<String> = spans.iter().take(8)
-                .map(|(n, avg, _max, _last)| format!("{}={:.2}ms", n, *avg as f64 / 1000.0))
+                .map(|(n, avg, max, _last)| format!("{}={:.2}/{:.2}ms", n, *avg as f64 / 1000.0, *max as f64 / 1000.0))
+                .collect();
+            // Also surface frame-profiler zones (e.g. vp_compute / vp_paint) — these
+            // live in a separate nestable profiler, NOT in monitoring spans. depth==0
+            // only (no double-counting), top 6 by last-frame duration.
+            let mut zones: Vec<crate::foundation::frame_profiler::ZoneSample> =
+                crate::foundation::frame_profiler::last_frame_zones()
+                    .into_iter().filter(|z| z.depth == 0).collect();
+            zones.sort_by(|a, b| b.duration_us.cmp(&a.duration_us));
+            let ztop: Vec<String> = zones.iter().take(6)
+                .map(|z| format!("{}={:.2}ms", z.name, z.duration_us as f64 / 1000.0))
                 .collect();
             eprintln!(
-                "[PERF] frame avg {:.2}ms ({:.0} fps) last {:.2}ms | {}",
+                "[PERF] frame avg {:.2}ms ({:.0} fps) last {:.2}ms | spans(avg/max): {} | zones: {}",
                 snap.frames.avg_frame_us as f64 / 1000.0,
                 snap.frames.fps,
                 snap.frames.last_frame_us as f64 / 1000.0,
                 top.join("  "),
+                ztop.join("  "),
             );
         }
     }
