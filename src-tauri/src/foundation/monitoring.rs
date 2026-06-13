@@ -284,6 +284,16 @@ fn start_time() -> &'static Instant {
     START_TIME.get_or_init(Instant::now)
 }
 
+// ─── Collection-size gauges (leak/growth diagnostics, temporary) ─────────────
+static COLLECTION_SIZES: OnceLock<Mutex<std::collections::HashMap<&'static str, u64>>> = OnceLock::new();
+fn collection_sizes() -> &'static Mutex<std::collections::HashMap<&'static str, u64>> {
+    COLLECTION_SIZES.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+/// Record the current element count of a named collection (perf leak diagnostics).
+pub fn set_collection_size(name: &'static str, n: u64) {
+    if let Ok(mut m) = collection_sizes().lock() { m.insert(name, n); }
+}
+
 /// Call at the start of each render frame.
 pub fn frame_begin() {
     // Reset per-frame allocation counters
@@ -870,6 +880,16 @@ fn format_prometheus(snap: &Snapshot) -> String {
     metric!("apex_process_virtual_bytes", "Private bytes", "gauge", snap.process.virt);
     metric!("apex_process_cpu_percent", "Process CPU usage", "gauge", format!("{:.2}", snap.process.cpu_percent));
     metric!("apex_process_handles", "Open handles", "gauge", snap.process.handle_count);
+
+    // Collection-size gauges (leak/growth diagnostics)
+    if let Ok(m) = collection_sizes().lock() {
+        if !m.is_empty() {
+            o.push_str("# HELP apex_collection_size Tracked collection element count\n# TYPE apex_collection_size gauge\n");
+            for (name, n) in m.iter() {
+                o.push_str(&format!("apex_collection_size{{name=\"{}\"}} {}\n", name, n));
+            }
+        }
+    }
 
     // System
     metric!("apex_system_memory_total_bytes", "Total physical RAM", "gauge", snap.system.total_memory);

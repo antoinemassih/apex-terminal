@@ -2117,6 +2117,12 @@ fn render_chart_pane(
         }
     }
 
+    // Perf leak diagnostics (temporary): report suspect per-frame collection sizes.
+    crate::monitoring::set_collection_size("signal_drawings", chart.signal_drawings.len() as u64);
+    crate::monitoring::set_collection_size("drawings", chart.drawings.len() as u64);
+    crate::monitoring::set_collection_size("change_points", chart.change_points.len() as u64);
+    crate::monitoring::set_collection_size("pattern_labels", chart.pattern_labels.len() as u64);
+
     // Volume Profile — cache recompute + rendering (behind candles).
     // MARK_BARS_PROTOCOL: skip when in Mark mode (volume=0 → empty profile).
     if chart.vp.mode != VolumeProfileMode::Off && !chart.bar_source_mark {
