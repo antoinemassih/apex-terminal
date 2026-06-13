@@ -4455,6 +4455,15 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
         ctx,
         crate::chart_renderer::theme_impl::theme_to_portable(t),
     );
+    // Stream S5 — ADOPTION: stash the active RecipeSet so ui_kit widgets built
+    // via `StyleCtx::from_ctx` pick up theme-pack overrides automatically.
+    // Currently sourced from an empty default (a later stream wires the active
+    // ThemePack's recipes here). Zero visual change — empty set → widgets use
+    // their built-in defaults exactly as before.
+    crate::ui_kit::widgets::theme::set_ambient_recipes(
+        ctx,
+        crate::ui_kit::widgets::theme::empty_recipe_arc(),
+    );
     {
         let mut style = (*ctx.style()).clone();
         style.visuals.panel_fill = t.toolbar_bg;

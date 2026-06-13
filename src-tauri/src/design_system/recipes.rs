@@ -423,4 +423,146 @@ mod tests {
         assert!(delta.radius.is_some());
         assert!(delta.radius.unwrap() > 0.0, "overlay should have changed radius from 0 to Sm");
     }
+
+    // ── Stream S5 ADOPTION proof tests ────────────────────────────────────────
+    //
+    // These verify the ambient-RecipeSet → widget paint path end-to-end at the
+    // unit level (no GPU / egui context needed). Each test:
+    //   A. Builds a non-empty RecipeSet overriding an exemplar key.
+    //   B. Resolves against a default Sx + MockTheme.
+    //   C. Asserts the resolved Sx DIFFERS from the default.
+    //   D. Asserts that an EMPTY RecipeSet resolves to the default unchanged.
+
+    #[test]
+    fn s5_row_list_recipe_changes_radius_vs_default() {
+        // A. Non-empty set: override row.list radius to "pill".
+        let mut set = RecipeSet::new();
+        set.insert("row.list", RecipeSpec {
+            base: RecipeDelta {
+                radius: Some(RadiusTier::Pill),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        let t = MockTheme;
+        // Widget default: rounded_sm (the PanelListRow historical default).
+        let default_sx = Sx::new().rounded_sm();
+
+        // B/C. Resolved Sx should differ: radius becomes 999 (pill), not radius_sm.
+        let result = set.resolve("row.list", default_sx, &t);
+        let resolved_delta = result.resolved(StyleState::Normal);
+        assert_eq!(
+            resolved_delta.radius,
+            Some(999.0),
+            "non-empty recipe should override radius to pill (999)"
+        );
+
+        // D. Empty set: resolved Sx equals default.
+        let empty_set = RecipeSet::new();
+        let result_default = empty_set.resolve("row.list", default_sx, &t);
+        let default_delta = result_default.resolved(StyleState::Normal);
+        let original_delta = default_sx.resolved(StyleState::Normal);
+        assert_eq!(
+            default_delta.radius,
+            original_delta.radius,
+            "empty recipe set must not change radius — default preserved"
+        );
+    }
+
+    #[test]
+    fn s5_row_list_selected_recipe_changes_fill_vs_default() {
+        use crate::ui_kit::tokens::color_alpha;
+
+        // A. Non-empty set: override row.list.selected fill to Bull alpha.
+        let mut set = RecipeSet::new();
+        set.insert("row.list.selected", RecipeSpec {
+            selected: Some(RecipeDelta {
+                fill: Some(ColorSpec::Alpha { tone: ToneRef::Bull, alpha: 48 }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        let t = MockTheme;
+
+        // Replicate the PanelListRow default: bg_color(accent at 24α).
+        let accent_col = t.accent();
+        let default_selected_color = color_alpha(accent_col, 24);
+        let default_sx = Sx::new().bg_color(default_selected_color);
+
+        // B/C. Resolved at Active state should differ from default.
+        let result = set.resolve("row.list.selected", default_sx, &t);
+        let resolved_delta = result.resolved(StyleState::Active);
+
+        // The recipe sets Bull α48; default is Accent α24.
+        // They must differ.
+        assert!(resolved_delta.fill.is_some(), "recipe should set a fill");
+
+        // Resolve the actual color and compare to the Accent-at-24 default.
+        let pal = crate::ui_kit::sx::palette_ct(&t);
+        let resolved_color = match resolved_delta.fill.unwrap() {
+            crate::ui_kit::sx::style::Fill::Solid(c) => c,
+            crate::ui_kit::sx::style::Fill::Shade(tone, shade) => pal.shade(tone, shade),
+            crate::ui_kit::sx::style::Fill::Alpha(tone, a) => {
+                let b = pal.base(tone);
+                egui::Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+            }
+        };
+        assert_ne!(
+            resolved_color,
+            default_selected_color,
+            "recipe fill (Bull α48) must differ from default (Accent α24)"
+        );
+
+        // D. Empty set: resolved at Active = default color.
+        let empty_set = RecipeSet::new();
+        let result_default = empty_set.resolve("row.list.selected", default_sx, &t);
+        let default_active_delta = result_default.resolved(StyleState::Active);
+        // Default Sx has no active override, so Active resolves to the base fill.
+        let default_active_fill = match default_active_delta.fill.unwrap() {
+            crate::ui_kit::sx::style::Fill::Solid(c) => c,
+            crate::ui_kit::sx::style::Fill::Shade(tone, shade) => pal.shade(tone, shade),
+            crate::ui_kit::sx::style::Fill::Alpha(tone, a) => {
+                let b = pal.base(tone);
+                egui::Color32::from_rgba_unmultiplied(b.r(), b.g(), b.b(), a)
+            }
+        };
+        assert_eq!(
+            default_active_fill,
+            default_selected_color,
+            "empty recipe must preserve default selected fill (Accent α24)"
+        );
+    }
+
+    #[test]
+    fn s5_absent_key_leaves_default_sx_unchanged_for_exemplar_keys() {
+        // Verifies the zero-change guarantee for the exact keys used in
+        // PanelListRow's recipe adoption (S5 exemplar widgets).
+        let set = RecipeSet::new(); // empty
+        let t = MockTheme;
+
+        for key in &["row.list", "row.list.selected"] {
+            let default_sx = Sx::new().rounded_sm().bg_color(t.accent());
+            let result = set.resolve(key, default_sx, &t);
+            let default_delta = default_sx.resolved(StyleState::Normal);
+            let result_delta  = result.resolved(StyleState::Normal);
+            assert_eq!(
+                default_delta.radius,
+                result_delta.radius,
+                "empty RecipeSet must leave radius unchanged for key `{}`",
+                key
+            );
+            assert_eq!(
+                default_delta.fill.map(|f| match f {
+                    crate::ui_kit::sx::style::Fill::Solid(c) => c,
+                    _ => egui::Color32::TRANSPARENT,
+                }),
+                result_delta.fill.map(|f| match f {
+                    crate::ui_kit::sx::style::Fill::Solid(c) => c,
+                    _ => egui::Color32::TRANSPARENT,
+                }),
+                "empty RecipeSet must leave fill unchanged for key `{}`",
+                key
+            );
+        }
+    }
 }

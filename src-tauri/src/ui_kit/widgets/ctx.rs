@@ -15,12 +15,19 @@
 //!
 //! 1. `StyleCtx::from_theme(theme)` is the zero-cost shim constructor.
 //!    It reads the current frame's `TokenSnapshot` and carries an empty
-//!    `RecipeSet` reference.  The existing `widget.show(ui, theme)` entry
-//!    point builds one of these internally and calls `show_ctx` — so every
-//!    existing caller keeps compiling unchanged.
+//!    `RecipeSet` (via a static `Arc`).  The existing `widget.show(ui, theme)`
+//!    entry point builds one of these internally and calls `show_ctx` — so
+//!    every existing caller keeps compiling unchanged.
 //!
-//! 2. Call sites that want per-call-site overrides construct
-//!    `StyleCtx::new(theme, tokens, recipes)` and call `widget.show_ctx(ui, &ctx)`.
+//! 2. `StyleCtx::from_ctx(theme, egui_ctx)` is the ambient-aware constructor.
+//!    It pulls the `RecipeSet` that the host stashed via
+//!    `set_ambient_recipes(ctx, ...)` so widgets automatically pick up active
+//!    theme-pack overrides.  The `show(ui, theme)` path should be upgraded to
+//!    this form once widgets are ready to adopt recipes.
+//!
+//! 3. Call sites that want per-call-site overrides construct
+//!    `StyleCtx::new(theme, tokens, Arc::new(recipes))` and call
+//!    `widget.show_ctx(ui, &ctx)`.
 //!
 //! # Example
 //!
@@ -28,70 +35,92 @@
 //! // Existing call (unchanged):
 //! Button::new("Save").show(ui, &theme);
 //!
-//! // New opt-in path with custom tokens:
-//! let ctx = StyleCtx::new(&theme, compact_tokens, &recipes);
+//! // Ambient-aware path (picks up set_ambient_recipes automatically):
+//! let ctx = StyleCtx::from_ctx(&theme, ui.ctx());
+//! Button::new("Save").show_ctx(ui, &ctx);
+//!
+//! // Explicit override with custom tokens + recipe set:
+//! let ctx = StyleCtx::new(&theme, compact_tokens, Arc::new(recipes));
 //! Button::new("Save").show_ctx(ui, &ctx);
 //!
 //! // Two independent contexts in one frame — gallery proof:
-//! let ctx_a = StyleCtx::new(&theme_a, tokens_a, &recipes_a);
-//! let ctx_b = StyleCtx::new(&theme_b, tokens_b, &recipes_b);
+//! let ctx_a = StyleCtx::from_ctx(&theme_a, ui.ctx());
+//! let ctx_b = StyleCtx::new(&theme_b, tokens_b, Arc::new(recipes_b));
 //! // Both can coexist because ctx carries everything; no global mutation.
 //! ```
+
+use std::sync::Arc;
 
 use crate::design_system::recipes::RecipeSet;
 use crate::ui_kit::style::{frame_tokens, TokenSnapshot};
 use super::theme::ComponentTheme;
-
-// ── Static empty RecipeSet ────────────────────────────────────────────────────
-//
-// `StyleCtx::from_theme` needs to return a `StyleCtx<'static>` recipe
-// reference without heap-allocating each call.  A `static` empty set is
-// `Default`-constructed once and never mutated.
-
-static EMPTY_RECIPE_SET: std::sync::OnceLock<RecipeSet> = std::sync::OnceLock::new();
-
-fn empty_recipes() -> &'static RecipeSet {
-    EMPTY_RECIPE_SET.get_or_init(RecipeSet::new)
-}
 
 // ── StyleCtx ─────────────────────────────────────────────────────────────────
 
 /// Threaded style context — bundles colour theme, dimension tokens, and
 /// component recipes so they all travel together through a widget call.
 ///
-/// Construct via [`StyleCtx::from_theme`] (the shim used inside
-/// `show` wrappers) or [`StyleCtx::new`] for explicit control.
+/// Construct via:
+/// - [`StyleCtx::from_theme`] — shim for `show(ui, theme)` call sites; empty
+///   RecipeSet (no visual change).
+/// - [`StyleCtx::from_ctx`] — ambient-aware; pulls the `RecipeSet` stashed by
+///   the host via [`super::theme::set_ambient_recipes`].
+/// - [`StyleCtx::new`] — explicit control over all three components.
 ///
-/// Lifetime `'a` is tied to the borrow of the `ComponentTheme` and
-/// `RecipeSet` so this type is zero-allocation and suitable for stack use.
+/// Lifetime `'a` is tied only to the `ComponentTheme` borrow. The `RecipeSet`
+/// is ref-counted (`Arc`) so the context is cheap to build — no recipe-map copy.
 pub struct StyleCtx<'a> {
     theme:   &'a dyn ComponentTheme,
     tokens:  TokenSnapshot,
-    recipes: &'a RecipeSet,
+    /// The active `RecipeSet`. Wrapped in `Arc` so `from_ctx` can clone the
+    /// ambient arc in O(1) without copying the map. `from_theme` uses a static
+    /// empty arc — effectively free.
+    recipes: Arc<RecipeSet>,
 }
 
 impl<'a> StyleCtx<'a> {
     /// Explicit constructor — caller supplies all three components.
-    /// Use this when you need per-call-site token overrides or
-    /// a non-default `RecipeSet`.
+    ///
+    /// Use this when you need per-call-site token overrides or an explicit
+    /// `RecipeSet` (e.g. a preview widget rendering against a non-ambient set).
     pub fn new(
         theme:   &'a dyn ComponentTheme,
         tokens:  TokenSnapshot,
-        recipes: &'a RecipeSet,
+        recipes: Arc<RecipeSet>,
     ) -> Self {
         Self { theme, tokens, recipes }
     }
 
-    /// Shim constructor — builds a `StyleCtx` from a theme reference
-    /// using the current frame's `TokenSnapshot` and an empty `RecipeSet`.
+    /// Ambient-aware constructor — pulls the active [`RecipeSet`] that the host
+    /// stashed via [`super::theme::set_ambient_recipes`].
     ///
-    /// This is the constructor used inside `show(ui, theme)` wrappers so
-    /// existing callers are never touched.
+    /// This is the preferred upgrade path for `show(ui, theme)` wrappers that
+    /// want their widget to adopt recipe overrides without the caller having to
+    /// thread a `RecipeSet` explicitly. Falls back to an empty static set when
+    /// no host has called `set_ambient_recipes` this frame (unit tests, etc.) —
+    /// zero visual change.
+    pub fn from_ctx(theme: &'a dyn ComponentTheme, ctx: &egui::Context) -> Self {
+        Self {
+            theme,
+            tokens: frame_tokens(),
+            recipes: super::theme::get_ambient_recipes(ctx),
+        }
+    }
+
+    /// Shim constructor — builds a `StyleCtx` from a theme reference using the
+    /// current frame's `TokenSnapshot` and a static empty `RecipeSet`.
+    ///
+    /// This is the constructor used inside `show(ui, theme)` wrappers that have
+    /// not yet been upgraded to `from_ctx`. Existing callers are never touched.
+    ///
+    /// **Upgrade path:** replace `StyleCtx::from_theme(theme)` with
+    /// `StyleCtx::from_ctx(theme, ui.ctx())` in `show` wrappers once the widget
+    /// is ready to participate in recipe-driven restyling.
     pub fn from_theme(theme: &'a dyn ComponentTheme) -> Self {
         Self {
             theme,
             tokens: frame_tokens(),
-            recipes: empty_recipes(),
+            recipes: super::theme::empty_recipe_arc(),
         }
     }
 
@@ -102,7 +131,7 @@ impl<'a> StyleCtx<'a> {
     #[inline] pub fn theme(&self) -> &dyn ComponentTheme { self.theme }
 
     /// The full `RecipeSet` (for widgets that need to resolve recipe keys).
-    #[inline] pub fn recipes(&self) -> &RecipeSet { self.recipes }
+    #[inline] pub fn recipes(&self) -> &RecipeSet { &self.recipes }
 
     /// The raw `TokenSnapshot` (for widgets that need direct field access).
     #[inline] pub fn tokens(&self) -> &TokenSnapshot { &self.tokens }
