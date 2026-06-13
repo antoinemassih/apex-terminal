@@ -130,6 +130,16 @@ fn read_bool_or(obj: &Value, key: &str, ctx: &str, default: bool) -> bool {
         .unwrap_or(default)
 }
 
+/// Read a `String` from a DTCG string token (`$value` is a JSON string).
+/// Falls back to `default` if the key is absent or the value is not a string.
+fn read_string_or(obj: &Value, key: &str, _ctx: &str, default: &str) -> String {
+    obj.get(key)
+        .and_then(|n| n.get("$value"))
+        .and_then(|v| v.as_str())
+        .map(str::to_owned)
+        .unwrap_or_else(|| default.to_owned())
+}
+
 /// Read an `Rgba` from a DTCG color token (`$value` is `"#rrggbb"` or `"#rrggbbaa"`).
 fn read_color(node: &Value, path: &str) -> Result<Rgba, LoadError> {
     let v = dtcg_value(node, path)?;
@@ -148,6 +158,13 @@ fn read_color_or(obj: &Value, key: &str, ctx: &str, default: Rgba) -> Rgba {
     obj.get(key)
         .and_then(|n| read_color(n, &path).ok())
         .unwrap_or(default)
+}
+
+/// Read an optional `Rgba` from a DTCG color token — returns `None` if the
+/// key is absent or malformed (not an error; these fields are truly optional).
+fn read_color_opt(obj: &Value, key: &str, ctx: &str) -> Option<Rgba> {
+    let path = format!("{ctx}.{key}");
+    obj.get(key).and_then(|n| read_color(n, &path).ok())
 }
 
 /// Parse a `Meta` object from the root of a DTCG file.
@@ -209,11 +226,22 @@ impl ColorScheme {
         let hud_bg           = read_color_or(&pal, "hud_bg",           "palette", fallback.hud_bg);
         let hud_border       = read_color_or(&pal, "hud_border",       "palette", fallback.hud_border);
 
+        // ── Extended semantic palette (PALETTE-DEPTH) — all optional ─────────
+        // None means "fall back to bull/bear/warn at render time" (zero visual
+        // change for themes that don't set them explicitly).
+        let success      = read_color_opt(&pal, "success",       "palette");
+        let danger       = read_color_opt(&pal, "danger",        "palette");
+        let warning      = read_color_opt(&pal, "warning",       "palette");
+        let info         = read_color_opt(&pal, "info",          "palette");
+        let pane_gap_color = read_color_opt(&pal, "pane_gap_color", "palette");
+
         Ok(ColorScheme {
             meta, bg, surface, text, dim, border, accent, bull, bear, warn, shadow,
             notification_red, gold, overlay_text,
             rrg_leading, rrg_improving, rrg_weakening, rrg_lagging,
             pinned_row_tint, text_muted, hud_bg, hud_border,
+            // Extended semantic palette — None if absent in DTCG file.
+            success, danger, warning, info, pane_gap_color,
             // cmd_palette: DTCG round-trip carries the default for now.
             // When per-theme overrides are added, read the optional
             // `palette.cmd_palette` array here (see CMD_PALETTE_DEFAULT).
@@ -256,6 +284,20 @@ impl ColorScheme {
         pal.insert("text_muted".into(),       color_token!(text_muted));
         pal.insert("hud_bg".into(),           color_token!(hud_bg));
         pal.insert("hud_border".into(),       color_token!(hud_border));
+        // Extended semantic palette — only emit when set (None = inherit from bull/bear/warn).
+        macro_rules! opt_color_token {
+            ($field:ident, $key:expr) => {
+                if let Some(c) = self.$field {
+                    let hex = rgba::to_hex(c);
+                    pal.insert($key.into(), serde_json::json!({ "$type": "color", "$value": hex }));
+                }
+            };
+        }
+        opt_color_token!(success,       "success");
+        opt_color_token!(danger,        "danger");
+        opt_color_token!(warning,       "warning");
+        opt_color_token!(info,          "info");
+        opt_color_token!(pane_gap_color, "pane_gap_color");
 
         let root = serde_json::json!({
             "meta": {
@@ -301,6 +343,10 @@ impl StyleSystem {
             label_tracking:   read_f32_or(&typ_sec, "label_tracking",   "typography", d_typ.label_tracking),
             nav_tracking:     read_f32_or(&typ_sec, "nav_tracking",     "typography", d_typ.nav_tracking),
             section_tracking: read_f32_or(&typ_sec, "section_tracking", "typography", d_typ.section_tracking),
+            // Font family identifiers (S7 blocker) — gracefully absent in legacy JSON.
+            family_ui:      read_string_or(&typ_sec, "family_ui",      "typography", &d_typ.family_ui),
+            family_mono:    read_string_or(&typ_sec, "family_mono",    "typography", &d_typ.family_mono),
+            family_display: read_string_or(&typ_sec, "family_display", "typography", &d_typ.family_display),
         };
 
         let d_sp = Spacing::default();

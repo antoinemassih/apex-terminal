@@ -88,6 +88,13 @@ impl StyleSystem {
                 "mono_sm": dim!(typ.mono_sm),
                 "mono_md": dim!(typ.mono_md),
                 "mono_lg": dim!(typ.mono_lg),
+                "size_section_label": dim!(typ.size_section_label),
+                "label_tracking": { "$type": "number", "$value": typ.label_tracking },
+                "nav_tracking":   { "$type": "number", "$value": typ.nav_tracking },
+                "section_tracking": { "$type": "number", "$value": typ.section_tracking },
+                "family_ui":      { "$type": "string", "$value": &typ.family_ui },
+                "family_mono":    { "$type": "string", "$value": &typ.family_mono },
+                "family_display": { "$type": "string", "$value": &typ.family_display },
             },
             "spacing": {
                 "xs":         dim!(sp.xs),
