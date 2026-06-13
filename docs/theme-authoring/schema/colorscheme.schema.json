@@ -166,6 +166,15 @@
         "pane_gap_color": {
           "$ref": "#/$defs/ColorToken",
           "description": "Override color for the gutter between adjacent panes. When absent, renderers derive the gap color from bg/border at paint time. Most themes leave this absent."
+        },
+        "cmd_palette": {
+          "type": "array",
+          "description": "11-color command-palette category badge palette. Each element is a DTCG color token ($type: \"color\", $value: \"#rrggbbaa\"). Slot order: [symbol, widget, overlay, theme, timeframe, layout, play, alert, ai, dynamic, calc]. When absent or partially present, missing slots fall back to CMD_PALETTE_DEFAULT. Themes that want custom badge colors can set all 11 slots here.",
+          "minItems": 1,
+          "maxItems": 11,
+          "items": {
+            "$ref": "#/$defs/ColorToken"
+          }
         }
       },
       "additionalProperties": false
