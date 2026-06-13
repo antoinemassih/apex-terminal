@@ -1397,6 +1397,7 @@ pub(crate) struct SignalDrawing {
     pub(crate) line_style: LineStyle,
     pub(crate) strength: f32, // 0.0-1.0, how confident the analysis is
     pub(crate) timeframe: String,
+    pub(crate) detection_method: String, // wick/ransac/kalman/hough/kde/… — for by-method filtering
 }
 
 impl SignalDrawing {
@@ -1606,7 +1607,8 @@ pub(crate) fn fetch_signal_drawings(symbol: String) {
                     let line_style = match ls_str { "solid" => LineStyle::Solid, "dotted" => LineStyle::Dotted, _ => LineStyle::Dashed };
                     let strength = a.get("strength").and_then(|s| s.as_f64()).unwrap_or(0.5) as f32;
                     let timeframe = a.get("timeframe").and_then(|t| t.as_str()).unwrap_or("5m").to_string();
-                    Some(SignalDrawing { id, symbol: sym, drawing_type: dtype, points, color, opacity, thickness, line_style, strength, timeframe })
+                    let detection_method = a.get("detection_method").and_then(|m| m.as_str()).unwrap_or("").to_string();
+                    Some(SignalDrawing { id, symbol: sym, drawing_type: dtype, points, color, opacity, thickness, line_style, strength, timeframe, detection_method })
                 }).collect();
 
                 if !drawings.is_empty() {
@@ -2204,6 +2206,7 @@ pub(crate) struct Chart {
     pub(crate) hidden_groups: Vec<String>,
     pub(crate) signal_drawings: Vec<SignalDrawing>, // auto-generated trendlines from server
     pub(crate) hide_signal_drawings: bool,
+    pub(crate) hidden_signal_methods: Vec<String>, // detection_methods toggled off in the filter
     pub(crate) pattern_labels: Vec<PatternLabel>,   // candlestick pattern labels from ApexSignals
     pub(crate) show_pattern_labels: bool,
     // ── Signal engine state ──────────────────────────────────────────────────
@@ -2524,7 +2527,7 @@ impl Chart {
             drag_start_price: 0.0, drag_start_bar: 0.0,
             groups: vec![DrawingGroup { id: "default".into(), name: "Temp".into(), color: None }],
             hidden_groups: vec![], hide_all_drawings: false, hide_all_indicators: false, show_volume: true, show_oscillators: true, ohlc_tooltip: true, measure_tooltip: false,
-            signal_drawings: vec![], hide_signal_drawings: false,
+            signal_drawings: vec![], hide_signal_drawings: false, hidden_signal_methods: vec![],
             pattern_labels: vec![], show_pattern_labels: true,
             trend_health_score: 0.0, trend_health_direction: 0, trend_health_regime: String::new(),
             exit_gauge_score: 0.0, exit_gauge_urgency: String::new(),
@@ -2827,7 +2830,8 @@ impl Chart {
                             };
                             let strength = a.get("strength").and_then(|s| s.as_f64()).unwrap_or(0.5) as f32;
                             let tf = a.get("timeframe").and_then(|t| t.as_str()).unwrap_or("5m").to_string();
-                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf });
+                            let detection_method = a.get("detection_method").and_then(|m| m.as_str()).unwrap_or("").to_string();
+                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf, detection_method });
                         }
                     }
                 }
@@ -2904,7 +2908,8 @@ impl Chart {
                             };
                             let strength = a.get("strength").and_then(|s| s.as_f64()).unwrap_or(0.5) as f32;
                             let tf = a.get("timeframe").and_then(|t| t.as_str()).unwrap_or("5m").to_string();
-                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf });
+                            let detection_method = a.get("detection_method").and_then(|m| m.as_str()).unwrap_or("").to_string();
+                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf, detection_method });
                         }
                         // Reset the HTTP polling timer so it doesn't immediately overwrite push data
                         self.last_signal_fetch = std::time::Instant::now();

@@ -79,6 +79,31 @@ if watchlist.trendline_filter_open {
                 chart.hide_all_drawings = !chart.hide_all_drawings;
             }
 
+            // Per-detection-method filters — auto-charting emits a line per method
+            // (wick / ransac / kalman / hough / kde / cusum / pca / bayesian / …),
+            // each tagged so it can be shown or hidden independently.
+            let methods: Vec<(String, usize)> = {
+                let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+                for sd in &chart.signal_drawings {
+                    if sd.detection_method.is_empty() { continue; }
+                    *counts.entry(sd.detection_method.clone()).or_insert(0) += 1;
+                }
+                counts.into_iter().collect()
+            };
+            if !methods.is_empty() {
+                ui.add_space(gap_sm());
+                dialog_separator_shadow(ui, m, tint(t, Tone::Border, alpha_line()));
+                ui.add_space(gap_sm());
+                dialog_section(ui, "BY METHOD", m, color_half(t.dim));
+                for (method, count) in &methods {
+                    let hidden = chart.hidden_signal_methods.iter().any(|x| x == method);
+                    if vis_btn(ui, hidden, method, *count) {
+                        if hidden { chart.hidden_signal_methods.retain(|x| x != method); }
+                        else { chart.hidden_signal_methods.push(method.clone()); }
+                    }
+                }
+            }
+
             // Groups
             if !chart.groups.is_empty() {
                 ui.add_space(gap_sm());
