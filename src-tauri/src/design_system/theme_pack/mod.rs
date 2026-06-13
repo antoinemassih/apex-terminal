@@ -38,6 +38,7 @@ pub mod bundle;
 pub mod manifest;
 pub mod migrate;
 pub mod pack_registry;
+pub mod validate;
 
 use crate::design_system::{
     color_scheme::ColorScheme,
@@ -50,6 +51,11 @@ pub use manifest::{
     AssetInventoryEntry, PackCapabilities, ThemeManifest, CURRENT_SCHEMA_VERSION,
 };
 pub use pack_registry::{PackRegistry, RegistryError};
+pub use validate::{
+    AccessibilityMode, Finding, Severity, ValidationReport,
+    contrast_ratio, relative_luminance, validate,
+    MAX_ASSETS, MAX_ASSET_BYTES, MAX_TOTAL_ASSET_BYTES,
+};
 
 // ── BundleError ───────────────────────────────────────────────────────────────
 

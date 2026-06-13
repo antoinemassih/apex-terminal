@@ -154,6 +154,13 @@ impl RecipeSet {
         self.specs.is_empty()
     }
 
+    /// Iterate over all registered recipe keys.
+    ///
+    /// Used by Stream S9 validation to check key formatting.
+    pub fn keys(&self) -> impl Iterator<Item = &str> {
+        self.specs.keys().map(|k| k.as_str())
+    }
+
     /// Merge another `RecipeSet` on top of this one. Keys in `other` replace
     /// matching keys in `self`; keys absent from `other` are kept. Used when
     /// layering a per-pane recipe override on top of a global set.

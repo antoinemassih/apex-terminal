@@ -37,6 +37,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use super::{BundleError, ThemePack};
+use super::validate::{ValidationReport, validate, AccessibilityMode};
 use crate::design_system::theme_pack::manifest::ThemeManifest;
 
 // ── RegistryError ─────────────────────────────────────────────────────────────
@@ -54,16 +55,25 @@ pub enum RegistryError {
     NotFound(String),
     /// Attempted to uninstall a built-in (read-only) theme.
     IsBuiltin(String),
+    /// Pack failed structural / accessibility / sandbox validation.
+    ///
+    /// The embedded report contains every finding that caused the rejection.
+    ValidationFailed(ValidationReport),
 }
 
 impl std::fmt::Display for RegistryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RegistryError::Io(e)          => write!(f, "I/O error: {e}"),
-            RegistryError::Bundle(e)      => write!(f, "bundle error: {e}"),
-            RegistryError::Json(e)        => write!(f, "JSON error: {e}"),
-            RegistryError::NotFound(id)   => write!(f, "theme not found: {id}"),
-            RegistryError::IsBuiltin(id)  => write!(f, "cannot uninstall built-in theme: {id}"),
+            RegistryError::Io(e)              => write!(f, "I/O error: {e}"),
+            RegistryError::Bundle(e)          => write!(f, "bundle error: {e}"),
+            RegistryError::Json(e)            => write!(f, "JSON error: {e}"),
+            RegistryError::NotFound(id)       => write!(f, "theme not found: {id}"),
+            RegistryError::IsBuiltin(id)      => write!(f, "cannot uninstall built-in theme: {id}"),
+            RegistryError::ValidationFailed(r) => write!(
+                f,
+                "pack validation failed: {} error(s), {} warning(s)",
+                r.errors.len(), r.warnings.len(),
+            ),
         }
     }
 }
@@ -174,14 +184,44 @@ impl PackRegistry {
 
     /// Install a pack from a `.apextheme` bundle file.
     ///
-    /// The bundle is read, verified, and copied into
+    /// The bundle is read, validated, and copied into
     /// `<themes_dir>/packs/<id>.apextheme`.  If a pack with the same id is
     /// already installed it is replaced.
+    ///
+    /// ## Validation gate
+    ///
+    /// Every pack is validated by [`validate`] before it is written to disk.
+    /// Packs with one or more [`Severity::Error`] findings are rejected with
+    /// [`RegistryError::ValidationFailed`].  Packs with only warnings are
+    /// installed; the caller may inspect the `ValidationReport` by re-running
+    /// `validate(&pack, …)` separately if it needs the warning list.
     ///
     /// Returns the manifest of the installed pack.
     pub fn install(&mut self, bundle_path: &Path) -> Result<ThemeManifest, RegistryError> {
         let pack = ThemePack::read_bundle(bundle_path)?;
-        let id   = pack.manifest.id.clone();
+
+        // ── Validation gate ───────────────────────────────────────────────────
+        // Run in Standard mode: low-contrast produces warnings, not errors.
+        // Callers that want stricter checking can call validate() themselves
+        // before calling install(), or use install_strict() when it ships.
+        let report = validate(&pack, AccessibilityMode::Standard);
+        if !report.is_installable() {
+            return Err(RegistryError::ValidationFailed(report));
+        }
+        // Warnings are surfaced only in debug builds to avoid log spam in prod.
+        #[cfg(debug_assertions)]
+        if !report.warnings.is_empty() {
+            eprintln!(
+                "[pack_registry] pack '{}' installed with {} warning(s):",
+                pack.manifest.id,
+                report.warnings.len(),
+            );
+            for w in &report.warnings {
+                eprintln!("  {w}");
+            }
+        }
+
+        let id = pack.manifest.id.clone();
 
         // Write to the packs directory.
         let dest = self.pack_path(&id);
