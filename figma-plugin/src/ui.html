@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { font: 12px -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 12px; color: #222; }
+      h1 { font-size: 13px; margin: 0 0 8px; }
+      p.sub { margin: 0 0 12px; color: #666; }
+      button { display: block; width: 100%; margin: 6px 0; padding: 8px; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; font-size: 12px; }
+      button.primary { background: #ef5b3b; color: #fff; border-color: #ef5b3b; font-weight: 600; }
+      button:hover { filter: brightness(0.97); }
+      .row { display: flex; gap: 6px; }
+      .row button { margin: 6px 0; }
+      #log { margin-top: 10px; padding: 8px; background: #f6f6f6; border-radius: 6px; height: 110px; overflow: auto; white-space: pre-wrap; font-family: monospace; font-size: 11px; color: #333; }
+    </style>
+  </head>
+  <body>
+    <h1>Apex Terminal — Theme Scaffold</h1>
+    <p class="sub">Generates variables (Aperture/Meridien modes), text + effect styles, a recipe-keyed component library, and layout frames from apex.tokens.json.</p>
+
+    <button class="primary" id="all">Generate everything</button>
+    <div class="row">
+      <button data-part="variables">Variables</button>
+      <button data-part="styles">Styles</button>
+    </div>
+    <div class="row">
+      <button data-part="components">Components</button>
+      <button data-part="frames">Frames</button>
+    </div>
+
+    <button id="export" style="border-color:#4ec07a;color:#2a7a4a;font-weight:600;">⤓ Export this file → JSON (for the app)</button>
+
+    <div id="log"></div>
+
+    <script>
+      const log = document.getElementById("log");
+      function append(line) { log.textContent += line + "\n"; log.scrollTop = log.scrollHeight; }
+
+      document.getElementById("all").onclick = () => {
+        log.textContent = "Generating…\n";
+        parent.postMessage({ pluginMessage: { type: "run", parts: ["all"] } }, "*");
+      };
+      for (const b of document.querySelectorAll("button[data-part]")) {
+        b.onclick = () => {
+          log.textContent = "Generating " + b.dataset.part + "…\n";
+          parent.postMessage({ pluginMessage: { type: "run", parts: [b.dataset.part] } }, "*");
+        };
+      }
+      document.getElementById("export").onclick = () => {
+        log.textContent = "Reading variables + components…\n";
+        parent.postMessage({ pluginMessage: { type: "export-json" } }, "*");
+      };
+
+      function download(json) {
+        const blob = new Blob([json], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "apex-theme.figma.json";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      onmessage = (e) => {
+        const msg = e.data.pluginMessage;
+        if (!msg) return;
+        if (msg.type === "log") append("• " + msg.line);
+        else if (msg.type === "done") append("✓ done");
+        else if (msg.type === "export-ready") { download(msg.json); append("✓ exported apex-theme.figma.json"); }
+        else if (msg.type === "error") append("✗ " + msg.message);
+      };
+    </script>
+  </body>
+</html>

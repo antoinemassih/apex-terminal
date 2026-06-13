@@ -73,6 +73,7 @@ pub mod color_scheme;
 pub mod equivalence_tests;
 pub mod export;
 pub mod hot_reload;
+pub mod import;
 pub mod loader;
 pub mod recipes;
 pub mod registry;

@@ -1,0 +1,16 @@
+{
+  "name": "apex-terminal-theme-scaffold",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Figma plugin that scaffolds an apex-terminal design system (variables + component library + layout frames) from apex.tokens.json. The PUSH half of the bidirectional Figma <-> apex-terminal theme sync tool.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "esbuild src/code.ts --bundle --outfile=dist/code.js --target=es2017 --loader:.json=json",
+    "watch": "npm run build -- --watch"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.100.0",
+    "esbuild": "^0.23.0",
+    "typescript": "^5.5.0"
+  }
+}

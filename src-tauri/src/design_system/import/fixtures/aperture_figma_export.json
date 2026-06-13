@@ -1,0 +1,2126 @@
+{
+  "schema": 1,
+  "generator": "apex-figma-sync v1 (design_system::import)",
+  "colorCollection": {
+    "name": "ColorScheme",
+    "defaultMode": "Aperture",
+    "modes": [
+      "Aperture",
+      "Meridien"
+    ],
+    "meta": {
+      "Aperture": {
+        "id": "aperture",
+        "name": "Aperture",
+        "is_dark": true
+      },
+      "Meridien": {
+        "id": "meridien",
+        "name": "Meridien",
+        "is_dark": true
+      }
+    }
+  },
+  "styleCollection": {
+    "name": "StyleSystem",
+    "defaultMode": "Aperture",
+    "modes": [
+      "Aperture",
+      "Meridien"
+    ],
+    "meta": {
+      "Aperture": {
+        "id": "aperture",
+        "name": "Aperture",
+        "is_dark": true
+      },
+      "Meridien": {
+        "id": "meridien",
+        "name": "Meridien",
+        "is_dark": true
+      }
+    }
+  },
+  "variables": [
+    {
+      "collection": "ColorScheme",
+      "name": "accent",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.9372549019607843,
+          "g": 0.3568627450980392,
+          "b": 0.23137254901960785,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.38823529411764707,
+          "g": 0.4,
+          "b": 0.9450980392156862,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "bear",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.8470588235294118,
+          "g": 0.3137254901960784,
+          "b": 0.24313725490196078,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.9725490196078431,
+          "g": 0.44313725490196076,
+          "b": 0.44313725490196076,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "bg",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.0,
+          "g": 0.0,
+          "b": 0.0,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.07058823529411765,
+          "g": 0.07058823529411765,
+          "b": 0.07058823529411765,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "border",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 1.0,
+          "g": 1.0,
+          "b": 1.0,
+          "a": 0.12156862745098039
+        },
+        "Meridien": {
+          "r": 0.21568627450980393,
+          "g": 0.21568627450980393,
+          "b": 0.21568627450980393,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "bull",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.3058823529411765,
+          "g": 0.7529411764705882,
+          "b": 0.47843137254901963,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.20392156862745098,
+          "g": 0.8274509803921568,
+          "b": 0.6,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "cmd_palette/symbol",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.47058823529411764,
+          "g": 0.7058823529411765,
+          "b": 1.0,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.47058823529411764,
+          "g": 0.7058823529411765,
+          "b": 1.0,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "cmd_palette/widget",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.7058823529411765,
+          "g": 0.5490196078431373,
+          "b": 0.9411764705882353,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.7058823529411765,
+          "g": 0.5490196078431373,
+          "b": 0.9411764705882353,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "cmd_palette/overlay",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.6274509803921569,
+          "g": 0.7843137254901961,
+          "b": 0.5490196078431373,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.6274509803921569,
+          "g": 0.7843137254901961,
+          "b": 0.5490196078431373,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "cmd_palette/theme",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.9411764705882353,
+          "g": 0.7058823529411765,
+          "b": 0.5490196078431373,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.9411764705882353,
+          "g": 0.7058823529411765,
+          "b": 0.5490196078431373,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "cmd_palette/timeframe",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.5490196078431373,
+          "g": 0.8627450980392157,
+          "b": 0.7843137254901961,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.5490196078431373,
+          "g": 0.8627450980392157,
+          "b": 0.7843137254901961,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "cmd_palette/layout",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.8627450980392157,
+          "g": 0.7843137254901961,
+          "b": 0.47058823529411764,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.8627450980392157,
+          "g": 0.7843137254901961,
+          "b": 0.47058823529411764,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "cmd_palette/play",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.9411764705882353,
+          "g": 0.5490196078431373,
+          "b": 0.7058823529411765,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.9411764705882353,
+          "g": 0.5490196078431373,
+          "b": 0.7058823529411765,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "cmd_palette/alert",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.9411764705882353,
+          "g": 0.47058823529411764,
+          "b": 0.47058823529411764,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.9411764705882353,
+          "g": 0.47058823529411764,
+          "b": 0.47058823529411764,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "cmd_palette/ai",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 1.0,
+          "g": 0.47058823529411764,
+          "b": 0.7843137254901961,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 1.0,
+          "g": 0.47058823529411764,
+          "b": 0.7843137254901961,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "cmd_palette/dynamic",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 1.0,
+          "g": 0.7058823529411765,
+          "b": 0.3137254901960784,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 1.0,
+          "g": 0.7058823529411765,
+          "b": 0.3137254901960784,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "cmd_palette/calc",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.5490196078431373,
+          "g": 0.9411764705882353,
+          "b": 0.7843137254901961,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.5490196078431373,
+          "g": 0.9411764705882353,
+          "b": 0.7843137254901961,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "dim",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.7137254901960784,
+          "g": 0.6784313725490196,
+          "b": 0.615686274509804,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.47058823529411764,
+          "g": 0.47058823529411764,
+          "b": 0.47058823529411764,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "gold",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.9372549019607843,
+          "g": 0.3568627450980392,
+          "b": 0.23137254901960785,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 1.0,
+          "g": 0.7568627450980392,
+          "b": 0.1450980392156863,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "hud_bg",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.0784313725490196,
+          "g": 0.07450980392156863,
+          "b": 0.06666666666666667,
+          "a": 0.9019607843137255
+        },
+        "Meridien": {
+          "r": 0.0,
+          "g": 0.0,
+          "b": 0.0,
+          "a": 0.9019607843137255
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "hud_border",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.19607843137254902,
+          "g": 0.1843137254901961,
+          "b": 0.1568627450980392,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.19607843137254902,
+          "g": 0.19607843137254902,
+          "b": 0.23529411764705882,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "notification_red",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.8470588235294118,
+          "g": 0.3137254901960784,
+          "b": 0.24313725490196078,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.9058823529411765,
+          "g": 0.2980392156862745,
+          "b": 0.23529411764705882,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "overlay_text",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.9568627450980393,
+          "g": 0.9254901960784314,
+          "b": 0.8784313725490196,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.9411764705882353,
+          "g": 0.9411764705882353,
+          "b": 0.9411764705882353,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "pinned_row_tint",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.9372549019607843,
+          "g": 0.3568627450980392,
+          "b": 0.23137254901960785,
+          "a": 0.054901960784313725
+        },
+        "Meridien": {
+          "r": 0.0,
+          "g": 0.0,
+          "b": 0.0,
+          "a": 0.047058823529411764
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "rrg_improving",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.9372549019607843,
+          "g": 0.5882352941176471,
+          "b": 0.35294117647058826,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.38823529411764707,
+          "g": 0.4,
+          "b": 0.9450980392156862,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "rrg_lagging",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.8470588235294118,
+          "g": 0.3137254901960784,
+          "b": 0.24313725490196078,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.9725490196078431,
+          "g": 0.44313725490196076,
+          "b": 0.44313725490196076,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "rrg_leading",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.3058823529411765,
+          "g": 0.7529411764705882,
+          "b": 0.47843137254901963,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.20392156862745098,
+          "g": 0.8274509803921568,
+          "b": 0.6,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "rrg_weakening",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 1.0,
+          "g": 0.7843137254901961,
+          "b": 0.3137254901960784,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.984313725490196,
+          "g": 0.7490196078431373,
+          "b": 0.1411764705882353,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "shadow",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.0,
+          "g": 0.0,
+          "b": 0.0,
+          "a": 0.7058823529411765
+        },
+        "Meridien": {
+          "r": 0.0,
+          "g": 0.0,
+          "b": 0.0,
+          "a": 0.7058823529411765
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "surface",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.0784313725490196,
+          "g": 0.07450980392156863,
+          "b": 0.06666666666666667,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.10980392156862745,
+          "g": 0.10980392156862745,
+          "b": 0.10980392156862745,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "text",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.9568627450980393,
+          "g": 0.9254901960784314,
+          "b": 0.8784313725490196,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.8627450980392157,
+          "g": 0.8627450980392157,
+          "b": 0.8627450980392157,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "text_muted",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 0.4627450980392157,
+          "g": 0.4392156862745098,
+          "b": 0.37254901960784315,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.6666666666666666,
+          "g": 0.6666666666666666,
+          "b": 0.7058823529411765,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "warn",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Aperture": {
+          "r": 1.0,
+          "g": 0.5411764705882353,
+          "b": 0.2980392156862745,
+          "a": 1.0
+        },
+        "Meridien": {
+          "r": 0.984313725490196,
+          "g": 0.7490196078431373,
+          "b": 0.1411764705882353,
+          "a": 1.0
+        }
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "alphas/active",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 100.0,
+        "Meridien": 100.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "alphas/dim",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 60.0,
+        "Meridien": 60.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "alphas/faint",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 10.0,
+        "Meridien": 10.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "alphas/ghost",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 15.0,
+        "Meridien": 15.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "alphas/header_border",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.14901961386203766,
+        "Meridien": 0.18000000715255737
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "alphas/heavy_u8",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 120.0,
+        "Meridien": 120.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "alphas/line",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 80.0,
+        "Meridien": 80.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "alphas/mid",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.47999998927116394,
+        "Meridien": 0.47999998927116394
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "alphas/muted",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.23999999463558197,
+        "Meridien": 0.23999999463558197
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "alphas/muted_u8",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 60.0,
+        "Meridien": 60.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "alphas/opaque",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 1.0,
+        "Meridien": 1.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "alphas/scrim",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 140.0,
+        "Meridien": 140.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "alphas/soft",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.10000000149011612,
+        "Meridien": 0.119999997317791
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "alphas/soft_u8",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 20.0,
+        "Meridien": 20.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "alphas/solid",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 200.0,
+        "Meridien": 200.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "alphas/strong",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.7200000286102295,
+        "Meridien": 0.7200000286102295
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "alphas/strong_u8",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 80.0,
+        "Meridien": 80.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "alphas/subtle",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.05999999865889549,
+        "Meridien": 0.03999999910593033
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "alphas/subtle_u8",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 40.0,
+        "Meridien": 40.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "alphas/tint",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 48.0,
+        "Meridien": 48.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/accent_emphasis",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 1.100000023841858,
+        "Meridien": 1.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/account_strip_height",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 26.0,
+        "Meridien": 26.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/active_bg_alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 25.0,
+        "Meridien": 30.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/active_header_fill_multiply",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.699999988079071,
+        "Meridien": 0.699999988079071
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/button_group",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 1.0,
+        "Meridien": 0.0
+      },
+      "description": "enum button_group: 0=none 1=bordered 2=frosted 3=sharp"
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/card_floating_shadow_alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/card_stripe_alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 255.0,
+        "Meridien": 255.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/dialog_backdrop_alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/disabled_opacity",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.5,
+        "Meridien": 0.5
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/drag_handle_alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.699999988079071,
+        "Meridien": 0.6000000238418579
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/drag_handle_dot_scale",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 1.0,
+        "Meridien": 1.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/focus_ring_alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 90.0,
+        "Meridien": 110.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/focus_ring_width",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 2.0,
+        "Meridien": 1.5
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/footer_default_open",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": true,
+        "Meridien": false
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/header_divider_alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 50.0,
+        "Meridien": 50.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/header_height_scale",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 1.0,
+        "Meridien": 1.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/header_outer_border_alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 38.0,
+        "Meridien": 38.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/header_outer_border_width",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.5,
+        "Meridien": 0.5
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/hover_bg_alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 15.0,
+        "Meridien": 18.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/inactive_header_fill_multiply",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 1.0800000429153442,
+        "Meridien": 1.0800000429153442
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/nav_active_col_alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/nav_cluster_fill_alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/nav_cluster_padding",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 8.0,
+        "Meridien": 6.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/nav_cluster_radius",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 99.0,
+        "Meridien": 8.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/pane_active_indicator",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 2.0,
+        "Meridien": 2.0
+      },
+      "description": "enum pane_active_indicator: 0=none 1=top_stripe 2=header_fill 3=both"
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/pane_border_width",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 1.0,
+        "Meridien": 1.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/pane_gap",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 8.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/pane_gap_alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/panel_footer_card",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": true,
+        "Meridien": false
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/panel_footer_radius",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 10.0,
+        "Meridien": 10.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/panel_header_treatment",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 2.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/panel_section_fill_alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/region_border_alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 40.0,
+        "Meridien": 40.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/region_gap",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 8.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/region_radius",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 12.0,
+        "Meridien": 12.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/section_label_padding_bottom",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 2.0,
+        "Meridien": 2.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/section_label_padding_top",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 6.0,
+        "Meridien": 4.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/tab_hover_bg_alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 18.0,
+        "Meridien": 18.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/tab_inactive_alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.550000011920929,
+        "Meridien": 0.550000011920929
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/tab_underline_thickness",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 2.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/toast_bg_alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 200.0,
+        "Meridien": 220.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/toolbar_height_scale",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 1.0,
+        "Meridien": 1.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "chrome/toolnav_height",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 30.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "density/factor",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 1.2000000476837158,
+        "Meridien": 1.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "density/row_height_comfortable",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 34.0,
+        "Meridien": 32.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "density/row_height_dense",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 26.0,
+        "Meridien": 22.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "elevation/l1",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 1.0499999523162842,
+        "Meridien": 1.0499999523162842
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "elevation/l2",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.949999988079071,
+        "Meridien": 0.949999988079071
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "elevation/l3",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.8799999952316284,
+        "Meridien": 0.8799999952316284
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "radii/chip",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "radii/full",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 9999.0,
+        "Meridien": 9999.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "radii/lg",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 20.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "radii/md",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 14.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "radii/none",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "radii/pill",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 99.0,
+        "Meridien": 99.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "radii/sm",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 10.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "radii/xs",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 8.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shadows/card/alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.1568627506494522,
+        "Meridien": 0.30000001192092896
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shadows/card/blur",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 24.0,
+        "Meridien": 8.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shadows/card/offset_x",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shadows/card/offset_y",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 8.0,
+        "Meridien": 2.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shadows/card/spread",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shadows/dropdown/alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.1568627506494522,
+        "Meridien": 0.4000000059604645
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shadows/dropdown/blur",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 24.0,
+        "Meridien": 12.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shadows/dropdown/offset_x",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shadows/dropdown/offset_y",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 8.0,
+        "Meridien": 4.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shadows/dropdown/spread",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shadows/modal/alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.1568627506494522,
+        "Meridien": 0.5
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shadows/modal/blur",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 36.0,
+        "Meridien": 24.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shadows/modal/offset_x",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shadows/modal/offset_y",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 12.0,
+        "Meridien": 8.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shadows/modal/spread",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shadows/tooltip/alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.1568627506494522,
+        "Meridien": 0.4000000059604645
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shadows/tooltip/blur",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 12.0,
+        "Meridien": 6.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shadows/tooltip/offset_x",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shadows/tooltip/offset_y",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 4.0,
+        "Meridien": 2.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "shadows/tooltip/spread",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "spacing/button_height",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 28.0,
+        "Meridien": 24.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "spacing/button_padding_x",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 14.0,
+        "Meridien": 10.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "spacing/cta_height",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 40.0,
+        "Meridien": 28.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "spacing/cta_padding_x",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 12.0,
+        "Meridien": 12.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "spacing/gmd",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 8.0,
+        "Meridien": 8.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "spacing/lg",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 14.0,
+        "Meridien": 16.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "spacing/md",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 12.0,
+        "Meridien": 12.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "spacing/sm",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 4.0,
+        "Meridien": 8.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "spacing/tab_height",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 32.0,
+        "Meridien": 28.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "spacing/xl",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 16.0,
+        "Meridien": 20.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "spacing/xs",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 2.0,
+        "Meridien": 4.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "spacing/xs_mid",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 6.0,
+        "Meridien": 6.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "spacing/xxl",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 24.0,
+        "Meridien": 24.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "strokes/bold",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 1.5,
+        "Meridien": 1.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "strokes/hair",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.5,
+        "Meridien": 0.30000001192092896
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "strokes/heavy",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 2.0,
+        "Meridien": 1.5
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "strokes/md",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 1.5,
+        "Meridien": 1.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "strokes/medium",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.800000011920929,
+        "Meridien": 0.800000011920929
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "strokes/std",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 1.5,
+        "Meridien": 0.5
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "strokes/thick",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 2.0,
+        "Meridien": 1.5
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "strokes/thin",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 1.0,
+        "Meridien": 0.5
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/animations_enabled",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": true,
+        "Meridien": true
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/bevel_highlight_alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/bevel_shadow_alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/button_treatment",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 4.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/card_floating_shadow",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": false,
+        "Meridien": false
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/focus_ring",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 2.0,
+        "Meridien": 1.0
+      },
+      "description": "enum focus_ring: 0=none 1=outline 2=glow"
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/hairline_borders",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": false,
+        "Meridien": true
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/inactive_header_fill",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": true,
+        "Meridien": true
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/invert_active_fill",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": false,
+        "Meridien": false
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/nav_buttons_label_only",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": false,
+        "Meridien": false
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/nav_buttons_uppercase_labels",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": false,
+        "Meridien": false
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/pane_active_fill_accent",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": true,
+        "Meridien": false
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/panel_tab_treatment",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 2.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/section_header_mono",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": false,
+        "Meridien": false
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/segmented_filled_idle",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": true,
+        "Meridien": false
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/serif_headlines",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": false,
+        "Meridien": false
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/shadows_enabled",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": true,
+        "Meridien": true
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/show_active_tab_underline",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": true,
+        "Meridien": true
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/solid_active_fills",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": false,
+        "Meridien": true
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/surface_bevel",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 0.0
+      },
+      "description": "enum surface_bevel: 0=none 1=raised 2=inset"
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/tab_underline_under_text",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": false,
+        "Meridien": false
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/uppercase_section_labels",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": false,
+        "Meridien": true
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/vertical_group_dividers",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": false,
+        "Meridien": false
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/wl_row_corner_radius",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 8.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/wl_row_divider_alpha",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 30.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/wl_row_side_margin",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 6.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "treatments/wl_symbol_mono",
+      "type": "BOOLEAN",
+      "valuesByMode": {
+        "Aperture": true,
+        "Meridien": false
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/family_display",
+      "type": "STRING",
+      "valuesByMode": {
+        "Aperture": "Inter",
+        "Meridien": "Inter"
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/family_mono",
+      "type": "STRING",
+      "valuesByMode": {
+        "Aperture": "JetBrains Mono",
+        "Meridien": "JetBrains Mono"
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/family_ui",
+      "type": "STRING",
+      "valuesByMode": {
+        "Aperture": "Inter",
+        "Meridien": "Inter"
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/label_tracking",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.800000011920929,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/mono_lg",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 15.0,
+        "Meridien": 16.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/mono_md",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 13.0,
+        "Meridien": 13.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/mono_sm",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 11.0,
+        "Meridien": 11.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/nav_tracking",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.0,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/section_tracking",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 0.800000011920929,
+        "Meridien": 0.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/size_lg",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 15.0,
+        "Meridien": 16.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/size_md",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 13.0,
+        "Meridien": 13.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/size_section_label",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 10.0,
+        "Meridien": 9.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/size_sm",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 11.0,
+        "Meridien": 11.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/size_xl",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 22.0,
+        "Meridien": 22.0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/size_xs",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Aperture": 9.0,
+        "Meridien": 9.0
+      }
+    }
+  ],
+  "components": {
+    "row.list": {
+      "py": "xs",
+      "radius": "none",
+      "selected": {
+        "fill": {
+          "alpha": 24,
+          "kind": "alpha",
+          "tone": "accent"
+        }
+      }
+    },
+    "tab.line.active": {
+      "fill": {
+        "kind": "tone",
+        "shade": "s500",
+        "tone": "accent"
+      }
+    },
+    "tag": {
+      "fill": {
+        "alpha": 32,
+        "kind": "alpha",
+        "tone": "accent"
+      },
+      "radius": "pill"
+    }
+  }
+}

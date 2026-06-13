@@ -37,8 +37,14 @@
 
 #![allow(clippy::too_many_arguments)]
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use egui::{Color32, Context, Id, ScrollArea, Ui};
+
+use crate::design_system::import::{
+    figma_export_to_pack, theme_to_figma_export, FigmaMapping, FigmaThemeExport, ImportOptions,
+};
+use crate::ui_kit::sx::recipe_spec::RecipeSpec;
 
 use crate::{
     chart_renderer::{
@@ -239,6 +245,34 @@ fn draw_studio_content(ui: &mut Ui, ctx: &Context, t: &Theme, total_w: f32) {
                         .clicked()
                     {
                         if let Some(imported) = do_import() {
+                            pack = imported;
+                        }
+                    }
+
+                    ui.add_space(gap_xs());
+
+                    // Export to Figma — emit the FigmaThemeExport JSON the PUSH
+                    // plugin (figma-plugin/) consumes to scaffold a Figma file.
+                    if Button::new("Export to Figma")
+                        .variant(Variant::Ghost)
+                        .size(Size::Sm)
+                        .show(ui, t)
+                        .clicked()
+                    {
+                        do_export_figma(&pack);
+                    }
+
+                    ui.add_space(gap_xs());
+
+                    // Import from Figma — run the PULL transformer on a
+                    // FigmaThemeExport JSON (plugin output / get_figma_data pull).
+                    if Button::new("Import from Figma")
+                        .variant(Variant::Ghost)
+                        .size(Size::Sm)
+                        .show(ui, t)
+                        .clicked()
+                    {
+                        if let Some(imported) = do_import_figma() {
                             pack = imported;
                         }
                     }
@@ -672,6 +706,78 @@ fn do_import() -> Option<WorkingPack> {
         }),
         Err(e) => {
             eprintln!("[theme-studio] import error: {e}");
+            None
+        }
+    }
+}
+
+/// Export the working pack as a Figma-variables JSON (`FigmaThemeExport`) — the
+/// shared contract the PUSH plugin (`figma-plugin/`) turns into Figma variables.
+/// Single-mode export named after the working scheme/style.
+fn do_export_figma(pack: &WorkingPack) {
+    let path_opt = rfd::FileDialog::new()
+        .set_file_name(format!("{}.figma.json", pack.manifest.id))
+        .add_filter("Figma Theme Export", &["json"])
+        .save_file();
+
+    if let Some(path) = path_opt {
+        let color_mode = pack.color_scheme.meta.name.clone();
+        let style_mode = pack.style_system.meta.name.clone();
+        let export = theme_to_figma_export(
+            &[(color_mode, pack.color_scheme.clone())],
+            &[(style_mode, pack.style_system.clone())],
+            &BTreeMap::<String, RecipeSpec>::new(),
+        );
+        match serde_json::to_string_pretty(&export) {
+            Ok(json) => {
+                if let Err(e) = std::fs::write(&path, json) {
+                    eprintln!("[theme-studio] figma export write error: {e}");
+                }
+            }
+            Err(e) => eprintln!("[theme-studio] figma export serialise error: {e}"),
+        }
+    }
+}
+
+/// Import a Figma-variables JSON (`FigmaThemeExport`) produced by the plugin (or
+/// a `get_figma_data` pull) by running the PULL transformer into a WorkingPack.
+/// Validation findings are logged; the pack still loads so the author can edit.
+fn do_import_figma() -> Option<WorkingPack> {
+    let path = rfd::FileDialog::new()
+        .add_filter("Figma Theme Export", &["json"])
+        .pick_file()?;
+
+    let json = match std::fs::read_to_string(&path) {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("[theme-studio] figma import read error: {e}");
+            return None;
+        }
+    };
+    let export: FigmaThemeExport = match serde_json::from_str(&json) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("[theme-studio] figma import parse error: {e}");
+            return None;
+        }
+    };
+    match figma_export_to_pack(&export, &ImportOptions::default(), &FigmaMapping::identity()) {
+        Ok(tp) => {
+            let report = validate(&tp, AccessibilityMode::Standard);
+            if !report.is_installable() {
+                eprintln!(
+                    "[theme-studio] figma import validation: {report}; errors: {:?}",
+                    report.errors
+                );
+            }
+            Some(WorkingPack {
+                manifest:     tp.manifest,
+                color_scheme: tp.color_scheme,
+                style_system: tp.style_system,
+            })
+        }
+        Err(e) => {
+            eprintln!("[theme-studio] figma import transform error: {e}");
             None
         }
     }

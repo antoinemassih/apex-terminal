@@ -1,0 +1,664 @@
+{
+  "_about": "apex-terminal complete design token inventory. Names match the engine DTCG schemas (colorscheme.schema.json + stylesystem.schema.json) for round-trip fidelity. Import with Tokens Studio → Export to Figma Variables. Two color modes (Aperture / Meridien) and two dimension modes (Aperture / Meridien) demonstrate the two-axis theme system.",
+
+  "_modes": {
+    "_comment": "Two-axis system. Color axis = ColorScheme (palette only). Dimension axis = StyleSystem (sizes, spacing, behaviors). In Tokens Studio: put 'color.*' and 'colorExtended.*' in one collection named 'ColorScheme' with modes 'Aperture' and 'Meridien'. Put all other groups in a second collection named 'StyleSystem' with modes 'Aperture' and 'Meridien'. Switching a Figma mode == switching a theme axis in the running app."
+  },
+
+  "color": {
+    "_comment": "ColorScheme palette — DTCG key names match colorscheme.schema.json. Primary Aperture values. Meridien values listed in the 'colorMeridien' group below for mode-switching reference.",
+
+    "bg": {
+      "value": "#000000",
+      "type": "color",
+      "description": "Deepest background — window/canvas floor. Aperture: pure black canvas. DTCG key: bg"
+    },
+    "surface": {
+      "value": "#14130B",
+      "type": "color",
+      "description": "Elevated surface — panels, cards, toolbars. Aperture: warm near-black. DTCG key: surface"
+    },
+    "text": {
+      "value": "#F4ECE0",
+      "type": "color",
+      "description": "Primary text / foreground. Aperture: warm cream. DTCG key: text"
+    },
+    "dim": {
+      "value": "#B6AD9D",
+      "type": "color",
+      "description": "Muted / secondary text, disabled labels, placeholders. DTCG key: dim"
+    },
+    "border": {
+      "value": "rgba(255,255,255,0.12)",
+      "type": "color",
+      "description": "Borders, dividers, hairlines. Aperture: translucent white. DTCG key: border"
+    },
+    "accent": {
+      "value": "#EF5B3B",
+      "type": "color",
+      "description": "Brand / interactive accent — buttons, focus rings, links. Aperture: Flamingo orange. DTCG key: accent"
+    },
+    "bull": {
+      "value": "#4EC07A",
+      "type": "color",
+      "description": "Upward / positive price movement. Also fallback for resolved_success(). DTCG key: bull"
+    },
+    "bear": {
+      "value": "#D8503E",
+      "type": "color",
+      "description": "Downward / negative price movement. Also fallback for resolved_danger(). DTCG key: bear"
+    },
+    "warn": {
+      "value": "#FF8A4C",
+      "type": "color",
+      "description": "Warning / caution state. Aperture: muted orange (accent-sub). Also fallback for resolved_warning(). DTCG key: warn"
+    },
+    "shadow": {
+      "value": "rgba(0,0,0,0.706)",
+      "type": "color",
+      "description": "Shadow tint color used by elevation helpers. Aperture: near-black alpha 180/255. DTCG key: shadow"
+    },
+    "text_muted": {
+      "value": "#76705F",
+      "type": "color",
+      "description": "Muted text variant — secondary body copy distinct from dim. DTCG key: text_muted"
+    },
+    "overlay_text": {
+      "value": "#F4ECE0",
+      "type": "color",
+      "description": "Overlay / HUD foreground text color. DTCG key: overlay_text"
+    },
+    "hud_bg": {
+      "value": "rgba(20,19,17,0.902)",
+      "type": "color",
+      "description": "HUD / floating overlay background (premultiplied alpha). DTCG key: hud_bg"
+    },
+    "hud_border": {
+      "value": "#32302A",
+      "type": "color",
+      "description": "HUD / floating overlay border color. DTCG key: hud_border"
+    },
+    "notification_red": {
+      "value": "#D8503E",
+      "type": "color",
+      "description": "Alert / notification badge color. DTCG key: notification_red"
+    },
+    "gold": {
+      "value": "#EF5B3B",
+      "type": "color",
+      "description": "Gold accent — warm yellow used for highlights. Aperture uses orange-gold. DTCG key: gold"
+    },
+    "pinned_row_tint": {
+      "value": "rgba(239,91,59,0.055)",
+      "type": "color",
+      "description": "Subtle tint behind pinned rows (premultiplied alpha). Aperture: accent-tinted. DTCG key: pinned_row_tint"
+    },
+    "pane_gap_color": {
+      "value": "#000000",
+      "type": "color",
+      "description": "Override color for gutter between adjacent panes. Optional — most themes omit this and derive from bg/border. Set here to pure black for Aperture. DTCG key: pane_gap_color"
+    },
+
+    "_comment_semantics": "Extended semantic palette (S1). Optional — when absent, resolved_*() falls back to bull/bear/warn.",
+    "success": {
+      "value": "#4EC07A",
+      "type": "color",
+      "description": "General success state (not price-specific). When absent, falls back to bull. Set same as bull for Aperture — override per theme for richer UI. DTCG key: success"
+    },
+    "danger": {
+      "value": "#D8503E",
+      "type": "color",
+      "description": "General danger / error / destructive action. When absent, falls back to bear. DTCG key: danger"
+    },
+    "warning": {
+      "value": "#FF8A4C",
+      "type": "color",
+      "description": "General warning / caution (semantic alias over warn). When absent, falls back to warn. DTCG key: warning"
+    },
+    "info": {
+      "value": "#64A0DC",
+      "type": "color",
+      "description": "Informational / neutral highlight — help text, info badges, links. No legacy equivalent. Dark default: #64a0dcff. DTCG key: info"
+    },
+
+    "_comment_rrg": "RRG quadrant colors — hand-authored per theme.",
+    "rrg_leading": {
+      "value": "#4EC07A",
+      "type": "color",
+      "description": "RRG leading quadrant (strong bull). DTCG key: rrg_leading"
+    },
+    "rrg_improving": {
+      "value": "#EF965A",
+      "type": "color",
+      "description": "RRG improving quadrant (trending up). Aperture: warm orange-yellow. DTCG key: rrg_improving"
+    },
+    "rrg_weakening": {
+      "value": "#FFC850",
+      "type": "color",
+      "description": "RRG weakening quadrant (warning, trending down). DTCG key: rrg_weakening"
+    },
+    "rrg_lagging": {
+      "value": "#D8503E",
+      "type": "color",
+      "description": "RRG lagging quadrant (strong bear). DTCG key: rrg_lagging"
+    }
+  },
+
+  "colorMeridien": {
+    "_comment": "Meridien ColorScheme values — duplicate the 'color' Figma collection mode and swap these. Names identical so round-trip works. Uses builtin_dark() defaults (the generic dark palette).",
+    "bg":               { "value": "#121212", "type": "color", "description": "Meridien bg — deep dark. DTCG key: bg" },
+    "surface":          { "value": "#1C1C1C", "type": "color", "description": "Meridien surface. DTCG key: surface" },
+    "text":             { "value": "#DCDCDC", "type": "color", "description": "Meridien primary text. DTCG key: text" },
+    "dim":              { "value": "#787878", "type": "color", "description": "Meridien dim text. DTCG key: dim" },
+    "border":           { "value": "#373737", "type": "color", "description": "Meridien border. DTCG key: border" },
+    "accent":           { "value": "#6366F1", "type": "color", "description": "Meridien accent — indigo. DTCG key: accent" },
+    "bull":             { "value": "#34D399", "type": "color", "description": "Meridien bull — Emerald. DTCG key: bull" },
+    "bear":             { "value": "#F87171", "type": "color", "description": "Meridien bear. DTCG key: bear" },
+    "warn":             { "value": "#FBBF24", "type": "color", "description": "Meridien warn. DTCG key: warn" },
+    "shadow":           { "value": "rgba(0,0,0,0.706)", "type": "color", "description": "Meridien shadow tint. DTCG key: shadow" },
+    "text_muted":       { "value": "#AAAAB4", "type": "color", "description": "Meridien text_muted. DTCG key: text_muted" },
+    "overlay_text":     { "value": "#F0F0F0", "type": "color", "description": "Meridien overlay_text. DTCG key: overlay_text" },
+    "hud_bg":           { "value": "rgba(0,0,0,0.902)", "type": "color", "description": "Meridien hud_bg. DTCG key: hud_bg" },
+    "hud_border":       { "value": "#32323C", "type": "color", "description": "Meridien hud_border. DTCG key: hud_border" },
+    "notification_red": { "value": "#E74C3C", "type": "color", "description": "Meridien notification_red. DTCG key: notification_red" },
+    "gold":             { "value": "#FFC125", "type": "color", "description": "Meridien gold. DTCG key: gold" },
+    "pinned_row_tint":  { "value": "rgba(0,0,0,0.047)", "type": "color", "description": "Meridien pinned_row_tint. DTCG key: pinned_row_tint" },
+    "success":          { "value": "#34D399", "type": "color", "description": "Meridien success (= bull). DTCG key: success" },
+    "danger":           { "value": "#F87171", "type": "color", "description": "Meridien danger (= bear). DTCG key: danger" },
+    "warning":          { "value": "#FBBF24", "type": "color", "description": "Meridien warning (= warn). DTCG key: warning" },
+    "info":             { "value": "#64A0DC", "type": "color", "description": "Meridien info. DTCG key: info" },
+    "rrg_leading":      { "value": "#34D399", "type": "color", "description": "Meridien rrg_leading. DTCG key: rrg_leading" },
+    "rrg_improving":    { "value": "#6366F1", "type": "color", "description": "Meridien rrg_improving. DTCG key: rrg_improving" },
+    "rrg_weakening":    { "value": "#FBBF24", "type": "color", "description": "Meridien rrg_weakening. DTCG key: rrg_weakening" },
+    "rrg_lagging":      { "value": "#F87171", "type": "color", "description": "Meridien rrg_lagging. DTCG key: rrg_lagging" }
+  },
+
+  "cmdPalette": {
+    "_comment": "11-slot command-palette category badge colors. Slot order: symbol/widget/overlay/theme/timeframe/layout/play/alert/ai/dynamic/calc. Not yet DTCG round-tripped by the loader — always seeded from CMD_PALETTE_DEFAULT. Override in Rust via ColorScheme.cmd_palette. Listed here so designers can see and propose adjustments.",
+    "symbol":    { "value": "#78B4FF", "type": "color", "description": "cmd_palette[0]: symbol badge" },
+    "widget":    { "value": "#B48CF0", "type": "color", "description": "cmd_palette[1]: widget badge" },
+    "overlay":   { "value": "#A0C88C", "type": "color", "description": "cmd_palette[2]: overlay badge" },
+    "theme":     { "value": "#F0B48C", "type": "color", "description": "cmd_palette[3]: theme badge" },
+    "timeframe": { "value": "#8CDCC8", "type": "color", "description": "cmd_palette[4]: timeframe badge" },
+    "layout":    { "value": "#DCC878", "type": "color", "description": "cmd_palette[5]: layout badge" },
+    "play":      { "value": "#F08CB4", "type": "color", "description": "cmd_palette[6]: play badge" },
+    "alert":     { "value": "#F07878", "type": "color", "description": "cmd_palette[7]: alert badge" },
+    "ai":        { "value": "#FF78C8", "type": "color", "description": "cmd_palette[8]: ai badge" },
+    "dynamic":   { "value": "#FFB450", "type": "color", "description": "cmd_palette[9]: dynamic badge" },
+    "calc":      { "value": "#8CF0C8", "type": "color", "description": "cmd_palette[10]: calc badge" }
+  },
+
+  "typography": {
+    "_comment": "StyleSystem › typography section. DTCG keys match TypographySection in stylesystem.schema.json. Aperture values primary; Meridien values listed in typographyMeridien.",
+
+    "size_xs": {
+      "value": "9",
+      "type": "fontSizes",
+      "description": "Extra-small label / annotation text. Backs font_xs(). Aperture: 9px. DTCG key: typography.size_xs"
+    },
+    "size_sm": {
+      "value": "11",
+      "type": "fontSizes",
+      "description": "Small body / table cell text. Backs font_sm(). Aperture: 11px. DTCG key: typography.size_sm"
+    },
+    "size_md": {
+      "value": "13",
+      "type": "fontSizes",
+      "description": "Medium body — primary reading size. Backs font_md(). DTCG key: typography.size_md"
+    },
+    "size_lg": {
+      "value": "15",
+      "type": "fontSizes",
+      "description": "Large heading. Backs font_lg(). DTCG key: typography.size_lg"
+    },
+    "size_xl": {
+      "value": "22",
+      "type": "fontSizes",
+      "description": "Extra-large display / hero heading. Backs font_xl(). DTCG key: typography.size_xl"
+    },
+    "mono_sm": {
+      "value": "11",
+      "type": "fontSizes",
+      "description": "Monospace small — code, numbers, timestamps. Backs mono_sm(). DTCG key: typography.mono_sm"
+    },
+    "mono_md": {
+      "value": "13",
+      "type": "fontSizes",
+      "description": "Monospace medium. Backs mono_md(). DTCG key: typography.mono_md"
+    },
+    "mono_lg": {
+      "value": "15",
+      "type": "fontSizes",
+      "description": "Monospace large — e.g. price display. Backs mono_lg(). DTCG key: typography.mono_lg"
+    },
+    "size_section_label": {
+      "value": "10",
+      "type": "fontSizes",
+      "description": "Section / eyebrow label font size. Distinct from size_xs. Aperture: 10px. DTCG key: typography.size_section_label"
+    },
+    "label_tracking": {
+      "value": "0.8",
+      "type": "letterSpacing",
+      "description": "Letter-spacing (px) for general tracked-out labels. Aperture: 0.8px. DTCG key: typography.label_tracking"
+    },
+    "nav_tracking": {
+      "value": "0",
+      "type": "letterSpacing",
+      "description": "Letter-spacing (px) for toolbar nav button text. DTCG key: typography.nav_tracking"
+    },
+    "section_tracking": {
+      "value": "0.8",
+      "type": "letterSpacing",
+      "description": "Letter-spacing (px) for section/eyebrow headers. Aperture: 0.8px. DTCG key: typography.section_tracking"
+    },
+    "family_ui": {
+      "value": "Inter",
+      "type": "fontFamilies",
+      "description": "UI / proportional family — body text, labels, headings. Must match a loaded font asset. DTCG key: typography.family_ui"
+    },
+    "family_mono": {
+      "value": "JetBrains Mono",
+      "type": "fontFamilies",
+      "description": "Monospace family — prices, code, timestamps. DTCG key: typography.family_mono"
+    },
+    "family_display": {
+      "value": "Inter",
+      "type": "fontFamilies",
+      "description": "Display / hero family for size_xl headings. Falls back to family_ui. DTCG key: typography.family_display"
+    }
+  },
+
+  "typographyMeridien": {
+    "_comment": "Meridien StyleSystem › typography overrides. Only fields that differ from Aperture are listed; others inherit defaults.",
+    "size_xs":            { "value": "8",    "type": "fontSizes",     "description": "Meridien size_xs. DTCG key: typography.size_xs" },
+    "size_sm":            { "value": "10",   "type": "fontSizes",     "description": "Meridien size_sm. DTCG key: typography.size_sm" },
+    "size_xl":            { "value": "36",   "type": "fontSizes",     "description": "Meridien size_xl — larger hero. DTCG key: typography.size_xl" },
+    "size_section_label": { "value": "8",    "type": "fontSizes",     "description": "Meridien size_section_label. DTCG key: typography.size_section_label" },
+    "label_tracking":     { "value": "0",    "type": "letterSpacing", "description": "Meridien label_tracking. DTCG key: typography.label_tracking" },
+    "section_tracking":   { "value": "0",    "type": "letterSpacing", "description": "Meridien section_tracking. DTCG key: typography.section_tracking" }
+  },
+
+  "spacing": {
+    "_comment": "StyleSystem › spacing section. DTCG keys match SpacingSection. Aperture values.",
+    "xs":              { "value": "2",  "type": "spacing", "description": "Tightest gap. Backs gap_xs(). DTCG key: spacing.xs" },
+    "sm":              { "value": "4",  "type": "spacing", "description": "Small gap. Backs gap_sm(). DTCG key: spacing.sm" },
+    "xs_mid":          { "value": "6",  "type": "spacing", "description": "Micro-gap between xs and sm. Backs gap_xs_mid(). DTCG key: spacing.xs_mid" },
+    "md":              { "value": "12", "type": "spacing", "description": "Medium gap. Backs gap_md(). Aperture: 12px (card_padding_y). DTCG key: spacing.md" },
+    "lg":              { "value": "14", "type": "spacing", "description": "Large gap. Backs gap_lg(). Aperture: 14px (card_padding_x). DTCG key: spacing.lg" },
+    "xl":              { "value": "16", "type": "spacing", "description": "Extra-large gap. Backs gap_xl(). DTCG key: spacing.xl" },
+    "xxl":             { "value": "24", "type": "spacing", "description": "Double-extra-large gap. Backs gap_2xl(). DTCG key: spacing.xxl" },
+    "gmd":             { "value": "8",  "type": "spacing", "description": "Named alias for legacy gap_md() token. DTCG key: spacing.gmd" },
+    "cta_height":      { "value": "40", "type": "spacing", "description": "Standard CTA / control height (px). Aperture: 40px. DTCG key: spacing.cta_height" },
+    "cta_padding_x":   { "value": "12", "type": "spacing", "description": "Primary CTA button horizontal padding. DTCG key: spacing.cta_padding_x" },
+    "button_height":   { "value": "28", "type": "spacing", "description": "Standard button height. RECIPE-CANDIDATE. Aperture: 28px. DTCG key: spacing.button_height" },
+    "button_padding_x":{ "value": "14", "type": "spacing", "description": "Standard button horizontal padding. RECIPE-CANDIDATE. Aperture: 14px. DTCG key: spacing.button_padding_x" },
+    "tab_height":      { "value": "32", "type": "spacing", "description": "Tab strip height. RECIPE-CANDIDATE. Aperture: 32px. DTCG key: spacing.tab_height" }
+  },
+
+  "spacingMeridien": {
+    "_comment": "Meridien spacing overrides. Meridien is more compact.",
+    "xs":               { "value": "2",  "type": "spacing", "description": "Meridien xs. DTCG key: spacing.xs" },
+    "sm":               { "value": "4",  "type": "spacing", "description": "Meridien sm. DTCG key: spacing.sm" },
+    "xs_mid":           { "value": "6",  "type": "spacing", "description": "Meridien xs_mid. DTCG key: spacing.xs_mid" },
+    "md":               { "value": "8",  "type": "spacing", "description": "Meridien md (card_padding_y). DTCG key: spacing.md" },
+    "lg":               { "value": "10", "type": "spacing", "description": "Meridien lg (card_padding_x). DTCG key: spacing.lg" },
+    "xl":               { "value": "16", "type": "spacing", "description": "Meridien xl. DTCG key: spacing.xl" },
+    "xxl":              { "value": "24", "type": "spacing", "description": "Meridien xxl. DTCG key: spacing.xxl" },
+    "gmd":              { "value": "8",  "type": "spacing", "description": "Meridien gmd. DTCG key: spacing.gmd" },
+    "cta_height":       { "value": "36", "type": "spacing", "description": "Meridien cta_height. DTCG key: spacing.cta_height" },
+    "cta_padding_x":    { "value": "16", "type": "spacing", "description": "Meridien cta_padding_x. DTCG key: spacing.cta_padding_x" },
+    "button_height":    { "value": "24", "type": "spacing", "description": "Meridien button_height. DTCG key: spacing.button_height" },
+    "button_padding_x": { "value": "10", "type": "spacing", "description": "Meridien button_padding_x. DTCG key: spacing.button_padding_x" },
+    "tab_height":       { "value": "28", "type": "spacing", "description": "Meridien tab_height. DTCG key: spacing.tab_height" }
+  },
+
+  "radii": {
+    "_comment": "StyleSystem › radii section. DTCG keys match RadiiSection. Aperture values: large soft radii (8/10/14/20). Tokens Studio type 'borderRadius'.",
+    "none": { "value": "0",    "type": "borderRadius", "description": "No rounding — sharp corners. Used by Meridien aesthetic. DTCG key: radii.none" },
+    "xs":   { "value": "8",    "type": "borderRadius", "description": "Minimal rounding. Backs radius_xs(). Aperture: 8px. DTCG key: radii.xs" },
+    "sm":   { "value": "10",   "type": "borderRadius", "description": "Small rounding. Backs radius_sm(). Aperture: 10px. DTCG key: radii.sm" },
+    "md":   { "value": "14",   "type": "borderRadius", "description": "Medium rounding. Backs radius_md(). Aperture: 14px. DTCG key: radii.md" },
+    "lg":   { "value": "20",   "type": "borderRadius", "description": "Large rounding. Backs radius_lg(). Aperture: 20px (panels, footer). DTCG key: radii.lg" },
+    "full": { "value": "9999", "type": "borderRadius", "description": "Full pill / circular — conceptual maximum. DTCG key: radii.full" },
+    "pill": { "value": "99",   "type": "borderRadius", "description": "Pill radius runtime value. Aperture/Glass: 99 (rounded). Meridien: 0 (sharp). Backs r_pill(). DTCG key: radii.pill" },
+    "chip": { "value": "0",    "type": "borderRadius", "description": "Chip/badge corner radius. 0 = use sm. RECIPE-CANDIDATE. DTCG key: radii.chip" }
+  },
+
+  "radiiMeridien": {
+    "_comment": "Meridien radii — graduated small scale.",
+    "none": { "value": "0",    "type": "borderRadius", "description": "Meridien none. DTCG key: radii.none" },
+    "xs":   { "value": "2",    "type": "borderRadius", "description": "Meridien xs. DTCG key: radii.xs" },
+    "sm":   { "value": "4",    "type": "borderRadius", "description": "Meridien sm. DTCG key: radii.sm" },
+    "md":   { "value": "6",    "type": "borderRadius", "description": "Meridien md. DTCG key: radii.md" },
+    "lg":   { "value": "12",   "type": "borderRadius", "description": "Meridien lg. DTCG key: radii.lg" },
+    "full": { "value": "9999", "type": "borderRadius", "description": "Meridien full. DTCG key: radii.full" },
+    "pill": { "value": "0",    "type": "borderRadius", "description": "Meridien pill: sharp (0). DTCG key: radii.pill" },
+    "chip": { "value": "0",    "type": "borderRadius", "description": "Meridien chip. DTCG key: radii.chip" }
+  },
+
+  "strokes": {
+    "_comment": "StyleSystem › strokes section. DTCG keys match StrokesSection. Aperture values. Tokens Studio type 'borderWidth'.",
+    "hair":   { "value": "0.5", "type": "borderWidth", "description": "Sub-pixel hairline. Backs stroke_hair(). Aperture: 0.5px. DTCG key: strokes.hair" },
+    "thin":   { "value": "1",   "type": "borderWidth", "description": "Sub-pixel thin border. Backs stroke_thin(). Aperture: 1.0px. DTCG key: strokes.thin" },
+    "medium": { "value": "0.8", "type": "borderWidth", "description": "Mid-weight border between thin and std. Backs stroke_medium(). DTCG key: strokes.medium" },
+    "std":    { "value": "1.5", "type": "borderWidth", "description": "Standard border. Backs stroke_std(). Aperture: 1.5px. DTCG key: strokes.std" },
+    "bold":   { "value": "1.5", "type": "borderWidth", "description": "Bold emphasis stroke. Backs stroke_bold(). DTCG key: strokes.bold" },
+    "thick":  { "value": "2",   "type": "borderWidth", "description": "Thick stroke. Backs stroke_thick(). DTCG key: strokes.thick" },
+    "md":     { "value": "1.5", "type": "borderWidth", "description": "Legacy alias for bold (1.5px). Prefer strokes.bold in new work. DTCG key: strokes.md" },
+    "heavy":  { "value": "2",   "type": "borderWidth", "description": "Legacy alias for thick (2px). Prefer strokes.thick in new work. DTCG key: strokes.heavy" }
+  },
+
+  "strokesMeridien": {
+    "_comment": "Meridien strokes — sub-pixel scale (0.3/0.5/0.8/1.0/1.5/2.0).",
+    "hair":   { "value": "0.3", "type": "borderWidth", "description": "Meridien hair. DTCG key: strokes.hair" },
+    "thin":   { "value": "0.5", "type": "borderWidth", "description": "Meridien thin. DTCG key: strokes.thin" },
+    "medium": { "value": "0.8", "type": "borderWidth", "description": "Meridien medium. DTCG key: strokes.medium" },
+    "std":    { "value": "1",   "type": "borderWidth", "description": "Meridien std. DTCG key: strokes.std" },
+    "bold":   { "value": "1.5", "type": "borderWidth", "description": "Meridien bold. DTCG key: strokes.bold" },
+    "thick":  { "value": "2",   "type": "borderWidth", "description": "Meridien thick. DTCG key: strokes.thick" },
+    "md":     { "value": "1.5", "type": "borderWidth", "description": "Meridien md (legacy alias). DTCG key: strokes.md" },
+    "heavy":  { "value": "2",   "type": "borderWidth", "description": "Meridien heavy (legacy alias). DTCG key: strokes.heavy" }
+  },
+
+  "alphas": {
+    "_comment": "StyleSystem › alphas section. Two sub-groups: u8 tiers (0-255, type 'number') and f32 multipliers (0.0-1.0, type 'number'). Aperture values. DTCG key prefix: alphas.*",
+
+    "_u8_comment": "u8 tiers (0-255). These back alpha_faint()..alpha_solid() token functions. Used by the engine to compose RGBA colors.",
+    "faint":     { "value": "10",  "type": "number", "description": "u8/255: Near-invisible overlay (hover shimmer). Backs alpha_faint(). DTCG key: alphas.faint" },
+    "ghost":     { "value": "15",  "type": "number", "description": "u8/255: Ghost — barely visible. Backs alpha_ghost(). DTCG key: alphas.ghost" },
+    "soft_u8":   { "value": "20",  "type": "number", "description": "u8/255: Soft muted overlay (disabled states). Backs alpha_soft(). DTCG key: alphas.soft_u8" },
+    "subtle_u8": { "value": "40",  "type": "number", "description": "u8/255: Subtle low-emphasis overlay. Backs alpha_subtle(). DTCG key: alphas.subtle_u8" },
+    "tint":      { "value": "48",  "type": "number", "description": "u8/255: Icon/chip accent tint. Backs alpha_tint(). DTCG key: alphas.tint" },
+    "muted_u8":  { "value": "60",  "type": "number", "description": "u8/255: Primary dimming value. Backs alpha_muted(). DTCG key: alphas.muted_u8" },
+    "dim":       { "value": "60",  "type": "number", "description": "u8/255: Border/line dimming. Backs alpha_dim(). DTCG key: alphas.dim" },
+    "line":      { "value": "80",  "type": "number", "description": "u8/255: Structural line alpha. Backs alpha_line(). DTCG key: alphas.line" },
+    "strong_u8": { "value": "80",  "type": "number", "description": "u8/255: Selected row fill. Backs alpha_strong(). DTCG key: alphas.strong_u8" },
+    "active":    { "value": "100", "type": "number", "description": "u8/255: Interactive element alpha. Backs alpha_active(). DTCG key: alphas.active" },
+    "heavy_u8":  { "value": "120", "type": "number", "description": "u8/255: Near-opaque overlay. Backs alpha_heavy(). DTCG key: alphas.heavy_u8" },
+    "scrim":     { "value": "140", "type": "number", "description": "u8/255: Modal-backdrop / cmd-palette dimming. Backs alpha_scrim(). DTCG key: alphas.scrim" },
+    "solid":     { "value": "200", "type": "number", "description": "u8/255: High-opacity element. Backs alpha_solid(). DTCG key: alphas.solid" },
+
+    "_f32_comment": "f32 multipliers (0.0-1.0). Used by resolver composites as gamma/opacity multipliers.",
+    "subtle":        { "value": "0.06", "type": "number", "description": "f32: Near-invisible hover shimmer multiplier. Aperture: 0.06. DTCG key: alphas.subtle" },
+    "soft":          { "value": "0.10", "type": "number", "description": "f32: Soft muted overlay multiplier. Aperture: 0.10. DTCG key: alphas.soft" },
+    "muted":         { "value": "0.24", "type": "number", "description": "f32: Primary dimming multiplier. DTCG key: alphas.muted" },
+    "mid":           { "value": "0.48", "type": "number", "description": "f32: Mid-opacity multiplier (ghost fills, inactive tabs). DTCG key: alphas.mid" },
+    "strong":        { "value": "0.72", "type": "number", "description": "f32: Strong multiplier (selected row fill, active chip). DTCG key: alphas.strong" },
+    "opaque":        { "value": "1.0",  "type": "number", "description": "f32: Opaque override — no transparency. DTCG key: alphas.opaque" },
+    "header_border": { "value": "0.149","type": "number", "description": "f32: Header outer border alpha (38/255 ≈ 0.149). DTCG key: alphas.header_border" }
+  },
+
+  "elevation": {
+    "_comment": "StyleSystem › elevation section. Gamma / luminance factors for elevation-derived surface colors. Values same for Aperture and Meridien. DTCG key prefix: elevation.*",
+    "l1": { "value": "1.05", "type": "number", "description": "Level 1: slightly raised (toolbar, column header). >1 brightens in dark themes. DTCG key: elevation.l1" },
+    "l2": { "value": "0.95", "type": "number", "description": "Level 2: moderately raised (card, popover). DTCG key: elevation.l2" },
+    "l3": { "value": "0.88", "type": "number", "description": "Level 3: prominently raised (modal, tooltip). DTCG key: elevation.l3" }
+  },
+
+  "density": {
+    "_comment": "StyleSystem › density section. Aperture values (roomy: factor=1.2). DTCG key prefix: density.*",
+    "factor":                 { "value": "1.2", "type": "number", "description": "Scale factor for row heights and vertical gaps. Aperture: 1.2 (roomy). 0.8=compact, 1.0=normal. DTCG key: density.factor" },
+    "row_height_dense":       { "value": "26",  "type": "number", "description": "Row height in compact list views (watchlist, scanner). Aperture: 26px. DTCG key: density.row_height_dense" },
+    "row_height_comfortable": { "value": "34",  "type": "number", "description": "Row height in comfortable list views. Aperture: 34px. DTCG key: density.row_height_comfortable" }
+  },
+
+  "densityMeridien": {
+    "_comment": "Meridien density — normal (factor=1.0).",
+    "factor":                 { "value": "1.0", "type": "number", "description": "Meridien density factor — normal. DTCG key: density.factor" },
+    "row_height_dense":       { "value": "22",  "type": "number", "description": "Meridien dense row height. DTCG key: density.row_height_dense" },
+    "row_height_comfortable": { "value": "28",  "type": "number", "description": "Meridien comfortable row height. DTCG key: density.row_height_comfortable" }
+  },
+
+  "shadows": {
+    "_comment": "StyleSystem › shadows section — geometry only. Color comes from color.shadow at render time. Each role has 5 sub-tokens. Aperture values (generous shadows). DTCG key prefix: shadows.*",
+    "card": {
+      "_comment": "Subtle card lift. Aperture: blur=24, offset_y=8, alpha≈0.157.",
+      "blur":     { "value": "24", "type": "number", "description": "Card shadow blur radius (px). DTCG key: shadows.card.blur" },
+      "spread":   { "value": "0",  "type": "number", "description": "Card shadow spread (px). DTCG key: shadows.card.spread" },
+      "offset_x": { "value": "0",  "type": "number", "description": "Card shadow X offset (px). DTCG key: shadows.card.offset_x" },
+      "offset_y": { "value": "8",  "type": "number", "description": "Card shadow Y offset (px). DTCG key: shadows.card.offset_y" },
+      "alpha":    { "value": "0.157", "type": "number", "description": "Card shadow alpha multiplier over color.shadow. Aperture: 40/255≈0.157. DTCG key: shadows.card.alpha" }
+    },
+    "modal": {
+      "_comment": "Floating panel / dropdown. Aperture: blur=36, offset_y=12, alpha≈0.157.",
+      "blur":     { "value": "36",   "type": "number", "description": "Modal shadow blur (px). DTCG key: shadows.modal.blur" },
+      "spread":   { "value": "0",    "type": "number", "description": "Modal shadow spread (px). DTCG key: shadows.modal.spread" },
+      "offset_x": { "value": "0",    "type": "number", "description": "Modal shadow X offset (px). DTCG key: shadows.modal.offset_x" },
+      "offset_y": { "value": "12",   "type": "number", "description": "Modal shadow Y offset (px). DTCG key: shadows.modal.offset_y" },
+      "alpha":    { "value": "0.157","type": "number", "description": "Modal shadow alpha multiplier. DTCG key: shadows.modal.alpha" }
+    },
+    "tooltip": {
+      "_comment": "Tooltip shadow. Aperture: blur=12, offset_y=4, alpha≈0.157.",
+      "blur":     { "value": "12",   "type": "number", "description": "Tooltip shadow blur (px). DTCG key: shadows.tooltip.blur" },
+      "spread":   { "value": "0",    "type": "number", "description": "Tooltip shadow spread (px). DTCG key: shadows.tooltip.spread" },
+      "offset_x": { "value": "0",    "type": "number", "description": "Tooltip shadow X offset (px). DTCG key: shadows.tooltip.offset_x" },
+      "offset_y": { "value": "4",    "type": "number", "description": "Tooltip shadow Y offset (px). DTCG key: shadows.tooltip.offset_y" },
+      "alpha":    { "value": "0.157","type": "number", "description": "Tooltip shadow alpha multiplier. DTCG key: shadows.tooltip.alpha" }
+    },
+    "dropdown": {
+      "_comment": "Dropdown menu shadow. Aperture: blur=24, offset_y=8, alpha≈0.157.",
+      "blur":     { "value": "24",   "type": "number", "description": "Dropdown shadow blur (px). DTCG key: shadows.dropdown.blur" },
+      "spread":   { "value": "0",    "type": "number", "description": "Dropdown shadow spread (px). DTCG key: shadows.dropdown.spread" },
+      "offset_x": { "value": "0",    "type": "number", "description": "Dropdown shadow X offset (px). DTCG key: shadows.dropdown.offset_x" },
+      "offset_y": { "value": "8",    "type": "number", "description": "Dropdown shadow Y offset (px). DTCG key: shadows.dropdown.offset_y" },
+      "alpha":    { "value": "0.157","type": "number", "description": "Dropdown shadow alpha multiplier. DTCG key: shadows.dropdown.alpha" }
+    }
+  },
+
+  "shadowsMeridien": {
+    "_comment": "Meridien has shadows disabled (all zeroes). Shown for completeness.",
+    "card":     { "blur": { "value": "0", "type": "number" }, "spread": { "value": "0", "type": "number" }, "offset_x": { "value": "0", "type": "number" }, "offset_y": { "value": "0", "type": "number" }, "alpha": { "value": "0", "type": "number" } },
+    "modal":    { "blur": { "value": "0", "type": "number" }, "spread": { "value": "0", "type": "number" }, "offset_x": { "value": "0", "type": "number" }, "offset_y": { "value": "0", "type": "number" }, "alpha": { "value": "0", "type": "number" } },
+    "tooltip":  { "blur": { "value": "0", "type": "number" }, "spread": { "value": "0", "type": "number" }, "offset_x": { "value": "0", "type": "number" }, "offset_y": { "value": "0", "type": "number" }, "alpha": { "value": "0", "type": "number" } },
+    "dropdown": { "blur": { "value": "0", "type": "number" }, "spread": { "value": "0", "type": "number" }, "offset_x": { "value": "0", "type": "number" }, "offset_y": { "value": "0", "type": "number" }, "alpha": { "value": "0", "type": "number" } }
+  },
+
+  "treatments": {
+    "_comment": "StyleSystem › treatments section. Boolean / string / number behavioral flags. Aperture values. DTCG key prefix: treatments.*",
+    "solid_active_fills":          { "value": "false",   "type": "boolean", "description": "Active/selected controls use solid fill (text-on-bg inversion). Aperture: false (soft tint only). DTCG key: treatments.solid_active_fills" },
+    "hairline_borders":            { "value": "false",   "type": "boolean", "description": "Borders at strokes.thin instead of strokes.std. Aperture: false. DTCG key: treatments.hairline_borders" },
+    "uppercase_section_labels":    { "value": "false",   "type": "boolean", "description": "Section/group labels in uppercase. Aperture: false. DTCG key: treatments.uppercase_section_labels" },
+    "segmented_filled_idle":       { "value": "true",    "type": "boolean", "description": "Segmented control idle state uses filled background. Aperture: true. DTCG key: treatments.segmented_filled_idle" },
+    "focus_ring":                  { "value": "glow",    "type": "string",  "description": "Focus ring style: 'none' | 'outline' | 'glow'. Aperture: glow. DTCG key: treatments.focus_ring" },
+    "surface_bevel":               { "value": "none",    "type": "string",  "description": "Surface bevel treatment: 'none' | 'raised' | 'inset'. Aperture: none. DTCG key: treatments.surface_bevel" },
+    "bevel_highlight_alpha":       { "value": "0",       "type": "number",  "description": "u8: Bevel top inner-highlight alpha. Aperture: 0. DTCG key: treatments.bevel_highlight_alpha" },
+    "bevel_shadow_alpha":          { "value": "0",       "type": "number",  "description": "u8: Bevel bottom inner-shadow alpha. Aperture: 0. DTCG key: treatments.bevel_shadow_alpha" },
+    "wl_row_side_margin":          { "value": "6",       "type": "number",  "description": "Horizontal inset each side of a watchlist row (px). Aperture: 6px (pill rows). DTCG key: treatments.wl_row_side_margin" },
+    "wl_row_corner_radius":        { "value": "8",       "type": "number",  "description": "u8: Corner radius for list rows. Aperture: 8px. DTCG key: treatments.wl_row_corner_radius" },
+    "wl_row_divider_alpha":        { "value": "0",       "type": "number",  "description": "u8: Alpha of per-row hairline divider. Aperture: 0 (no divider). DTCG key: treatments.wl_row_divider_alpha" },
+    "section_header_mono":         { "value": "false",   "type": "boolean", "description": "Section headers use monospace family. Aperture: false. DTCG key: treatments.section_header_mono" },
+    "wl_symbol_mono":              { "value": "true",    "type": "boolean", "description": "Symbol text in list rows uses monospace family. Aperture: true. DTCG key: treatments.wl_symbol_mono" },
+    "panel_tab_treatment":         { "value": "2",       "type": "number",  "description": "u8: Default tab treatment index (0=Line, 1=Segmented, 2=Filled, 3=Card, 4=Pane). Aperture: 2 (Filled). DTCG key: treatments.panel_tab_treatment" },
+    "pane_active_fill_accent":     { "value": "true",    "type": "boolean", "description": "Active pane header fills with accent color. Aperture signature: true. DTCG key: treatments.pane_active_fill_accent" },
+    "serif_headlines":             { "value": "false",   "type": "boolean", "description": "Serif family for hero numerics / display headings. Aperture: false. DTCG key: treatments.serif_headlines" },
+    "button_treatment":            { "value": "4",       "type": "number",  "description": "u8: Active-state button treatment (0=SoftPill, 1=OutlineAccent, 2=UnderlineActive, 3=RaisedActive, 4=BlackFillActive). Aperture: 4. DTCG key: treatments.button_treatment" },
+    "invert_active_fill":          { "value": "false",   "type": "boolean", "description": "Invert palette on active elements. Aperture: false. DTCG key: treatments.invert_active_fill" },
+    "vertical_group_dividers":     { "value": "false",   "type": "boolean", "description": "Full-height vertical dividers between toolbar button clusters. Aperture: false. DTCG key: treatments.vertical_group_dividers" },
+    "show_active_tab_underline":   { "value": "true",    "type": "boolean", "description": "Accent underline shown in tab bars. RECIPE-CANDIDATE. DTCG key: treatments.show_active_tab_underline" },
+    "inactive_header_fill":        { "value": "true",    "type": "boolean", "description": "Distinct recessed fill behind inactive pane headers. DTCG key: treatments.inactive_header_fill" },
+    "nav_buttons_label_only":      { "value": "false",   "type": "boolean", "description": "Drop icon glyphs from right-side toolbar nav buttons. Aperture: false. DTCG key: treatments.nav_buttons_label_only" },
+    "nav_buttons_uppercase_labels":{ "value": "false",   "type": "boolean", "description": "Toolbar nav button labels in ALL CAPS. Aperture: false. DTCG key: treatments.nav_buttons_uppercase_labels" },
+    "tab_underline_under_text":    { "value": "false",   "type": "boolean", "description": "Tab underline appears directly under active tab text. Aperture: false. DTCG key: treatments.tab_underline_under_text" },
+    "card_floating_shadow":        { "value": "false",   "type": "boolean", "description": "Floating card shadow even when shadows_enabled=false. Aperture: false. DTCG key: treatments.card_floating_shadow" },
+    "shadows_enabled":             { "value": "true",    "type": "boolean", "description": "Master toggle for drop shadows. DTCG key: treatments.shadows_enabled" },
+    "animations_enabled":          { "value": "true",    "type": "boolean", "description": "false = snaps all animations instant (reduce-motion). DTCG key: treatments.animations_enabled" }
+  },
+
+  "treatmentsMeridien": {
+    "_comment": "Meridien treatment overrides — the key differences from Aperture.",
+    "solid_active_fills":          { "value": "true",  "type": "boolean", "description": "Meridien: solid active fills." },
+    "hairline_borders":            { "value": "true",  "type": "boolean", "description": "Meridien: hairline borders." },
+    "uppercase_section_labels":    { "value": "true",  "type": "boolean", "description": "Meridien: uppercase section labels." },
+    "segmented_filled_idle":       { "value": "false", "type": "boolean", "description": "Meridien: outline segmented idle." },
+    "focus_ring":                  { "value": "outline","type": "string",  "description": "Meridien: outline focus ring." },
+    "pane_active_fill_accent":     { "value": "false", "type": "boolean", "description": "Meridien: no accent fill on pane header." },
+    "wl_row_side_margin":          { "value": "0",     "type": "number",  "description": "Meridien: flush rows (no margin)." },
+    "wl_row_corner_radius":        { "value": "0",     "type": "number",  "description": "Meridien: square rows." },
+    "serif_headlines":             { "value": "true",  "type": "boolean", "description": "Meridien: serif hero headlines." },
+    "button_treatment":            { "value": "2",     "type": "number",  "description": "Meridien: UnderlineActive (2)." },
+    "invert_active_fill":          { "value": "true",  "type": "boolean", "description": "Meridien: invert active fill." },
+    "vertical_group_dividers":     { "value": "true",  "type": "boolean", "description": "Meridien: vertical group dividers." },
+    "nav_buttons_label_only":      { "value": "true",  "type": "boolean", "description": "Meridien: nav buttons label only." },
+    "nav_buttons_uppercase_labels":{ "value": "true",  "type": "boolean", "description": "Meridien: uppercase nav labels." },
+    "tab_underline_under_text":    { "value": "true",  "type": "boolean", "description": "Meridien: underline under text." },
+    "card_floating_shadow":        { "value": "true",  "type": "boolean", "description": "Meridien: floating card shadow." },
+    "shadows_enabled":             { "value": "true",  "type": "boolean", "description": "Meridien: shadows enabled." }
+  },
+
+  "chrome": {
+    "_comment": "StyleSystem › chrome section. Geometry + finish tokens — toolbar/pane heights, divider alphas, indicator styles, focus-ring dimensions, shell regions, nav clusters, button groups. Color comes from ColorScheme at render time. Aperture values. DTCG key prefix: chrome.*",
+    "toolbar_height_scale":          { "value": "1.0",   "type": "number",  "description": "Multiplier on toolbar height. 1.0=baseline, 1.4=Meridien tall. Aperture: 1.0. DTCG key: chrome.toolbar_height_scale" },
+    "header_height_scale":           { "value": "1.0",   "type": "number",  "description": "Multiplier on pane-header height. DTCG key: chrome.header_height_scale" },
+    "account_strip_height":          { "value": "26",    "type": "number",  "description": "Account strip panel height (px). DTCG key: chrome.account_strip_height" },
+    "pane_border_width":             { "value": "1",     "type": "number",  "description": "Pane outline thickness (px). DTCG key: chrome.pane_border_width" },
+    "pane_gap":                      { "value": "8",     "type": "number",  "description": "Gap between adjacent panes (px). >0 = tiled card layout. Aperture: 8px. DTCG key: chrome.pane_gap" },
+    "pane_gap_alpha":                { "value": "0",     "type": "number",  "description": "u8: Pane gap fill alpha. Aperture: 0 (transparent gutters). DTCG key: chrome.pane_gap_alpha" },
+    "pane_active_indicator":         { "value": "2",     "type": "number",  "description": "Active pane indicator style enum (0=none, 1=top_stripe, 2=header_fill, 3=both). Aperture: 2 (header_fill). DTCG key: chrome.pane_active_indicator" },
+    "active_header_fill_multiply":   { "value": "0.7",   "type": "number",  "description": "Active pane header fill gamma multiplier over bg. DTCG key: chrome.active_header_fill_multiply" },
+    "inactive_header_fill_multiply": { "value": "1.08",  "type": "number",  "description": "Inactive pane header fill gamma multiplier. DTCG key: chrome.inactive_header_fill_multiply" },
+    "header_outer_border_alpha":     { "value": "38",    "type": "number",  "description": "u8: Alpha of hairline outer border around pane headers. DTCG key: chrome.header_outer_border_alpha" },
+    "header_outer_border_width":     { "value": "0.5",   "type": "number",  "description": "Stroke width of pane-header outer border (px). DTCG key: chrome.header_outer_border_width" },
+    "header_divider_alpha":          { "value": "50",    "type": "number",  "description": "u8: Alpha of inter-section vertical dividers inside pane header. DTCG key: chrome.header_divider_alpha" },
+    "nav_active_col_alpha":          { "value": "0",     "type": "number",  "description": "u8: Toolbar nav active-column tint alpha. Aperture: 0. DTCG key: chrome.nav_active_col_alpha" },
+    "dialog_backdrop_alpha":         { "value": "0",     "type": "number",  "description": "u8: Dialog/popup backdrop overlay alpha. Aperture: 0 (no backdrop). DTCG key: chrome.dialog_backdrop_alpha" },
+    "tab_inactive_alpha":            { "value": "0.55",  "type": "number",  "description": "f32: Inactive tab text alpha multiplier. Aperture: 0.55. DTCG key: chrome.tab_inactive_alpha" },
+    "tab_hover_bg_alpha":            { "value": "18",    "type": "number",  "description": "u8: Inactive-tab hover background alpha. DTCG key: chrome.tab_hover_bg_alpha" },
+    "tab_underline_thickness":       { "value": "0",     "type": "number",  "description": "Active-tab underline thickness (px). 0=no underline. Aperture: 0 (uses header_fill instead). DTCG key: chrome.tab_underline_thickness" },
+    "section_label_padding_top":     { "value": "6",     "type": "number",  "description": "Section label top padding (px). Aperture: 6px. DTCG key: chrome.section_label_padding_top" },
+    "section_label_padding_bottom":  { "value": "2",     "type": "number",  "description": "Section label bottom padding (px). DTCG key: chrome.section_label_padding_bottom" },
+    "drag_handle_alpha":             { "value": "0.7",   "type": "number",  "description": "f32: Drag handle (split divider) alpha multiplier. Aperture: 0.7. DTCG key: chrome.drag_handle_alpha" },
+    "drag_handle_dot_scale":         { "value": "1.0",   "type": "number",  "description": "Drag handle dot size multiplier. DTCG key: chrome.drag_handle_dot_scale" },
+    "toast_bg_alpha":                { "value": "200",   "type": "number",  "description": "u8: Toast / status-bar background alpha. Aperture: 200. DTCG key: chrome.toast_bg_alpha" },
+    "card_stripe_alpha":             { "value": "255",   "type": "number",  "description": "u8: Stripe/accent-banner fill alpha for order/alert cards. DTCG key: chrome.card_stripe_alpha" },
+    "card_floating_shadow_alpha":    { "value": "0",     "type": "number",  "description": "u8: Alpha for floating card shadow when enabled. Aperture: 0. DTCG key: chrome.card_floating_shadow_alpha" },
+    "accent_emphasis":               { "value": "1.1",   "type": "number",  "description": "f32: Saturation/brightness multiplier for accent on active elements. Aperture: 1.1. DTCG key: chrome.accent_emphasis" },
+    "disabled_opacity":              { "value": "0.5",   "type": "number",  "description": "f32: Opacity multiplier for disabled widgets. DTCG key: chrome.disabled_opacity" },
+    "focus_ring_width":              { "value": "2.0",   "type": "number",  "description": "Focus ring stroke width (px). Aperture: 2.0 (Glow style). DTCG key: chrome.focus_ring_width" },
+    "focus_ring_alpha":              { "value": "90",    "type": "number",  "description": "u8: Focus ring alpha. Aperture: 90. DTCG key: chrome.focus_ring_alpha" },
+    "hover_bg_alpha":                { "value": "15",    "type": "number",  "description": "u8: Hover overlay alpha. Aperture: 15. DTCG key: chrome.hover_bg_alpha" },
+    "active_bg_alpha":               { "value": "25",    "type": "number",  "description": "u8: Active/pressed overlay alpha. Aperture: 25. DTCG key: chrome.active_bg_alpha" },
+    "region_gap":                    { "value": "8",     "type": "number",  "description": "Gap between major shell regions (px). Aperture: 8px (floating cards). DTCG key: chrome.region_gap" },
+    "region_radius":                 { "value": "12",    "type": "number",  "description": "Corner radius of each shell region card (px). Aperture: 12px. DTCG key: chrome.region_radius" },
+    "region_border_alpha":           { "value": "40",    "type": "number",  "description": "u8: Border alpha around each shell region card. DTCG key: chrome.region_border_alpha" },
+    "nav_cluster_radius":            { "value": "99",    "type": "number",  "description": "Corner radius of nav cluster background pill (px). Aperture: 99 (fully round). DTCG key: chrome.nav_cluster_radius" },
+    "nav_cluster_fill_alpha":        { "value": "0",     "type": "number",  "description": "u8: Fill alpha of nav cluster background. Aperture: 0 (transparent). DTCG key: chrome.nav_cluster_fill_alpha" },
+    "nav_cluster_padding":           { "value": "8",     "type": "number",  "description": "Horizontal inner padding inside a nav cluster (px). Aperture: 8px. DTCG key: chrome.nav_cluster_padding" },
+    "button_group":                  { "value": "bordered","type": "string", "description": "Toolbar button-group enclosure style: 'none' | 'bordered' | 'frosted' | 'sharp'. Aperture: bordered (enclosed rounded-rect). DTCG key: chrome.button_group" },
+    "toolnav_height":                { "value": "30",    "type": "number",  "description": "Height of second toolbar row (px). Aperture: 30px (2-row chrome). DTCG key: chrome.toolnav_height" },
+    "footer_default_open":           { "value": "true",  "type": "boolean", "description": "Bottom dock open by default. Aperture: true. DTCG key: chrome.footer_default_open" },
+    "panel_header_treatment":        { "value": "2",     "type": "number",  "description": "u8: Header toggle treatment for side panels (0=Line, 1=Segmented, 2=Filled, 3=Card, 4=Pane). Aperture: 2. DTCG key: chrome.panel_header_treatment" },
+    "panel_section_fill_alpha":      { "value": "0",     "type": "number",  "description": "u8: Fill alpha of PanelSection body band over panel surface. DTCG key: chrome.panel_section_fill_alpha" },
+    "panel_footer_card":             { "value": "true",  "type": "boolean", "description": "Pinned panel footer renders as elevated rounded card. Aperture signature. DTCG key: chrome.panel_footer_card" },
+    "panel_footer_radius":           { "value": "10",    "type": "number",  "description": "Corner radius of pinned footer card (px). Aperture: 10px. DTCG key: chrome.panel_footer_radius" }
+  },
+
+  "chromeMeridien": {
+    "_comment": "Meridien chrome overrides — tall toolbar, sharp edges, flush contiguous chrome, single row.",
+    "toolbar_height_scale":    { "value": "1.40", "type": "number",  "description": "Meridien: tall toolbar (1.4x)." },
+    "header_height_scale":     { "value": "1.10", "type": "number",  "description": "Meridien: tall pane header (1.1x)." },
+    "account_strip_height":    { "value": "36",   "type": "number",  "description": "Meridien account strip height." },
+    "pane_gap":                { "value": "0",    "type": "number",  "description": "Meridien: flush contiguous chrome (0px gap)." },
+    "pane_active_indicator":   { "value": "1",    "type": "number",  "description": "Meridien: top_stripe active indicator." },
+    "tab_inactive_alpha":      { "value": "0.6",  "type": "number",  "description": "Meridien tab inactive alpha." },
+    "tab_hover_bg_alpha":      { "value": "12",   "type": "number",  "description": "Meridien tab hover bg alpha." },
+    "tab_underline_thickness": { "value": "2",    "type": "number",  "description": "Meridien: 2px underline." },
+    "section_label_padding_top": { "value": "4",  "type": "number",  "description": "Meridien section label padding top." },
+    "drag_handle_alpha":       { "value": "0.5",  "type": "number",  "description": "Meridien drag handle alpha." },
+    "toast_bg_alpha":          { "value": "230",  "type": "number",  "description": "Meridien toast bg alpha." },
+    "card_floating_shadow_alpha": { "value": "25","type": "number",  "description": "Meridien floating shadow alpha." },
+    "accent_emphasis":         { "value": "1.0",  "type": "number",  "description": "Meridien accent emphasis (baseline)." },
+    "disabled_opacity":        { "value": "0.4",  "type": "number",  "description": "Meridien disabled opacity." },
+    "focus_ring_width":        { "value": "1.0",  "type": "number",  "description": "Meridien focus ring width (outline)." },
+    "focus_ring_alpha":        { "value": "120",  "type": "number",  "description": "Meridien focus ring alpha." },
+    "hover_bg_alpha":          { "value": "20",   "type": "number",  "description": "Meridien hover bg alpha." },
+    "active_bg_alpha":         { "value": "35",   "type": "number",  "description": "Meridien active bg alpha." },
+    "region_gap":              { "value": "0",    "type": "number",  "description": "Meridien: flush regions (0px gap)." },
+    "region_radius":           { "value": "0",    "type": "number",  "description": "Meridien: square region cards." },
+    "nav_cluster_radius":      { "value": "0",    "type": "number",  "description": "Meridien: square nav clusters." },
+    "nav_cluster_padding":     { "value": "6",    "type": "number",  "description": "Meridien nav cluster padding." },
+    "button_group":            { "value": "none", "type": "string",  "description": "Meridien: no button group enclosure (flat)." },
+    "toolnav_height":          { "value": "0",    "type": "number",  "description": "Meridien: single-row chrome." },
+    "footer_default_open":     { "value": "false","type": "boolean", "description": "Meridien: footer closed by default." },
+    "panel_header_treatment":  { "value": "0",    "type": "number",  "description": "Meridien: Line tab treatment." },
+    "panel_footer_card":       { "value": "false","type": "boolean", "description": "Meridien: no footer card elevation." },
+    "panel_footer_radius":     { "value": "0",    "type": "number",  "description": "Meridien: square footer." }
+  },
+
+  "textStyle": {
+    "_comment": "Composite TEXT STYLES (Figma text styles — not variables). Bind layer text to these composites. Tokens Studio 'typography' type. Aperture values.",
+    "body": {
+      "value": { "fontFamily": "Inter", "fontWeight": "Regular", "fontSize": "11", "lineHeight": "AUTO", "letterSpacing": "0" },
+      "type": "typography",
+      "description": "Default body copy. Uses typography.size_sm."
+    },
+    "label": {
+      "value": { "fontFamily": "Inter", "fontWeight": "SemiBold", "fontSize": "13", "lineHeight": "AUTO", "letterSpacing": "0" },
+      "type": "typography",
+      "description": "Tab labels, nav labels. Uses typography.size_md."
+    },
+    "label_tracked": {
+      "value": { "fontFamily": "Inter", "fontWeight": "SemiBold", "fontSize": "10", "lineHeight": "AUTO", "letterSpacing": "0.8" },
+      "type": "typography",
+      "description": "Tracked section / eyebrow label. Uses size_section_label + label_tracking."
+    },
+    "eyebrow_upper": {
+      "value": { "fontFamily": "Inter", "fontWeight": "Bold", "fontSize": "10", "lineHeight": "AUTO", "letterSpacing": "0.8", "textCase": "uppercase" },
+      "type": "typography",
+      "description": "Uppercase eyebrow / section header."
+    },
+    "data": {
+      "value": { "fontFamily": "JetBrains Mono", "fontWeight": "Bold", "fontSize": "11", "lineHeight": "AUTO", "letterSpacing": "0" },
+      "type": "typography",
+      "description": "Price / data cells. Uses mono_sm."
+    },
+    "data_md": {
+      "value": { "fontFamily": "JetBrains Mono", "fontWeight": "Bold", "fontSize": "13", "lineHeight": "AUTO", "letterSpacing": "0" },
+      "type": "typography",
+      "description": "Medium data values. Uses mono_md."
+    },
+    "cell_upper": {
+      "value": { "fontFamily": "JetBrains Mono", "fontWeight": "Bold", "fontSize": "9", "lineHeight": "AUTO", "letterSpacing": "10%", "textCase": "uppercase" },
+      "type": "typography",
+      "description": "Table column headers — mono uppercase tracked."
+    },
+    "display_sm": {
+      "value": { "fontFamily": "Inter", "fontWeight": "Medium", "fontSize": "22", "lineHeight": "AUTO", "letterSpacing": "-3%" },
+      "type": "typography",
+      "description": "Small display / card hero value. Uses size_xl."
+    },
+    "display_lg": {
+      "value": { "fontFamily": "Inter", "fontWeight": "Medium", "fontSize": "79", "lineHeight": "83.6", "letterSpacing": "-5.5%" },
+      "type": "typography",
+      "description": "Large display hero price — tight negative tracking."
+    },
+    "caption": {
+      "value": { "fontFamily": "Inter", "fontWeight": "Regular", "fontSize": "9", "lineHeight": "AUTO", "letterSpacing": "0" },
+      "type": "typography",
+      "description": "Annotation / caption text. Uses size_xs."
+    }
+  },
+
+  "effectStyle": {
+    "_comment": "EFFECT STYLES (Figma effect styles — not variables). Bind layer effects to these. Shadow color resolves from color.shadow at render time. Tokens Studio 'boxShadow' type.",
+    "card": {
+      "value": { "x": "0", "y": "8", "blur": "24", "spread": "0", "color": "rgba(0,0,0,0.157)", "type": "dropShadow" },
+      "type": "boxShadow",
+      "description": "Subtle card lift — use on elevated panel/card layers."
+    },
+    "modal": {
+      "value": { "x": "0", "y": "12", "blur": "36", "spread": "0", "color": "rgba(0,0,0,0.157)", "type": "dropShadow" },
+      "type": "boxShadow",
+      "description": "Floating overlay / modal shadow."
+    },
+    "tooltip": {
+      "value": { "x": "0", "y": "4", "blur": "12", "spread": "0", "color": "rgba(0,0,0,0.157)", "type": "dropShadow" },
+      "type": "boxShadow",
+      "description": "Tooltip shadow."
+    },
+    "dropdown": {
+      "value": { "x": "0", "y": "8", "blur": "24", "spread": "0", "color": "rgba(0,0,0,0.157)", "type": "dropShadow" },
+      "type": "boxShadow",
+      "description": "Dropdown menu shadow."
+    }
+  }
+}

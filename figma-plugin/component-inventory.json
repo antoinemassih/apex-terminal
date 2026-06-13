@@ -1,0 +1,85 @@
+{
+  "_about": "Machine-readable distillation of figma/component-inventory.md for the PUSH plugin. Covers the recipe-bearing components plus the core kit. Each entry drives a Figma component set whose variants are named so the variant maps back to its recipe key (see recipeByVariant). Fills/corners bind to the variables the plugin creates (never raw values). Extend this list to grow component coverage.",
+  "components": [
+    {
+      "name": "Button",
+      "props": { "Variant": ["Primary", "Secondary", "Ghost", "Danger"], "Size": ["Sm", "Md", "Lg"] },
+      "recipeByVariant": { "Primary": "button.primary", "Secondary": "button.secondary", "Ghost": "button.ghost", "Danger": "button.danger" },
+      "fillByVariant": { "Primary": "accent", "Secondary": null, "Ghost": null, "Danger": "bear" },
+      "textByVariant": { "Primary": "bg", "Secondary": "text", "Ghost": "text", "Danger": "text" },
+      "cornerVar": "radii/sm",
+      "heightVar": "spacing/button_height"
+    },
+    {
+      "name": "Tag",
+      "props": { "Tone": ["Neutral", "Accent", "Bull", "Bear", "Warn"], "Size": ["Xs", "Sm"] },
+      "recipeByVariant": { "Neutral": "tag", "Accent": "tag", "Bull": "tag", "Bear": "tag", "Warn": "tag" },
+      "fillByVariant": { "Neutral": "dim", "Accent": "accent", "Bull": "bull", "Bear": "bear", "Warn": "warn" },
+      "fillAlpha": 32,
+      "textByVariant": { "Neutral": "dim", "Accent": "accent", "Bull": "bull", "Bear": "bear", "Warn": "warn" },
+      "cornerVar": "radii/pill"
+    },
+    {
+      "name": "StatusPill",
+      "props": { "Tone": ["Default", "Accent", "Bull", "Bear", "Warn", "Danger", "Success"], "Size": ["Xs", "Sm"] },
+      "fillByVariant": { "Default": "dim", "Accent": "accent", "Bull": "bull", "Bear": "bear", "Warn": "warn", "Danger": "danger", "Success": "success" },
+      "fillAlpha": 28,
+      "textByVariant": { "Default": "text", "Accent": "accent", "Bull": "bull", "Bear": "bear", "Warn": "warn", "Danger": "danger", "Success": "success" },
+      "cornerVar": "radii/sm"
+    },
+    {
+      "name": "Badge",
+      "props": { "Kind": ["Count", "Dot", "Text"], "Tone": ["Neutral", "Accent", "Bull", "Bear", "Warn"] },
+      "fillByVariant": { "Neutral": "dim", "Accent": "accent", "Bull": "bull", "Bear": "bear", "Warn": "warn" },
+      "cornerVar": "radii/pill"
+    },
+    {
+      "name": "Tabs",
+      "props": { "Treatment": ["Line", "Segmented", "Filled", "Card", "Pane"], "State": ["Default", "Active"] },
+      "recipeByVariant": { "Line": "tab.line.active", "Segmented": "tab.pill", "Filled": "tab.pill" },
+      "fillByVariant": { "Default": null, "Active": "accent" },
+      "fillAlpha": 48,
+      "textByVariant": { "Default": "dim", "Active": "accent" },
+      "cornerVar": "radii/sm"
+    },
+    {
+      "name": "PanelListRow",
+      "props": { "State": ["Default", "Hover", "Selected"] },
+      "recipeByVariant": { "Default": "row.list", "Selected": "row.list.selected", "Hover": "row.list.hover" },
+      "fillByVariant": { "Default": null, "Hover": "text", "Selected": "accent" },
+      "fillAlpha": 24,
+      "cornerVar": "radii/none"
+    },
+    {
+      "name": "PanelSection",
+      "props": { "Tone": ["Default", "Accent", "Bull", "Bear", "Warn"] },
+      "recipeByVariant": { "Default": "section.header", "Accent": "section.header", "Bull": "section.header", "Bear": "section.header", "Warn": "section.header" },
+      "fillByVariant": { "Default": "surface", "Accent": "accent", "Bull": "bull", "Bear": "bear", "Warn": "warn" },
+      "fillAlpha": 20,
+      "cornerVar": "radii/sm"
+    },
+    {
+      "name": "Input",
+      "props": { "State": ["Default", "Hover", "Focus", "Disabled", "Error"], "Size": ["Sm", "Md", "Lg"] },
+      "fillByVariant": { "Default": "surface", "Hover": "surface", "Focus": "surface", "Disabled": "surface", "Error": "surface" },
+      "strokeByVariant": { "Default": "border", "Hover": "accent", "Focus": "accent", "Disabled": "border", "Error": "bear" },
+      "cornerVar": "radii/sm"
+    },
+    {
+      "name": "Alert",
+      "props": { "Variant": ["Info", "Success", "Warning", "Error"] },
+      "fillByVariant": { "Info": "accent", "Success": "bull", "Warning": "warn", "Error": "bear" },
+      "fillAlpha": 32,
+      "textByVariant": { "Info": "accent", "Success": "bull", "Warning": "warn", "Error": "bear" },
+      "cornerVar": "radii/md"
+    },
+    {
+      "name": "Toast",
+      "props": { "Variant": ["Info", "Success", "Warning", "Danger"] },
+      "recipeByVariant": { "Info": "toast", "Success": "toast.success", "Warning": "toast.warn", "Danger": "toast.danger" },
+      "fillByVariant": { "Info": "surface", "Success": "surface", "Warning": "surface", "Danger": "surface" },
+      "stripeByVariant": { "Info": "accent", "Success": "bull", "Warning": "warn", "Danger": "bear" },
+      "cornerVar": "radii/md"
+    }
+  ]
+}
