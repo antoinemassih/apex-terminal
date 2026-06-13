@@ -27,6 +27,11 @@ struct State {
     quotes: Mutex<HashMap<String, Quote>>,         // keyed by symbol
     tape:   Mutex<VecDeque<Trade>>,                // global ring buffer (200 max)
     tape_by_symbol: Mutex<HashMap<String, VecDeque<Trade>>>, // per-symbol (100 max each)
+    /// Per-symbol realized order-flow delta, bucketed by minute (epoch ms,
+    /// minute-aligned). Accrued from live `trade` frames using the server-side
+    /// aggressor `side` (buy +qty, sell −qty, unknown skipped). Backs real
+    /// per-bar Delta / CVD for the current session; capped per symbol.
+    realized_delta: Mutex<HashMap<String, std::collections::BTreeMap<i64, f32>>>,
     snapshots: Mutex<HashMap<String, (Snapshot, Instant)>>, // per-symbol with fetch time
     snap_watch: Mutex<HashSet<String>>,            // symbols the poller should keep fresh
     greeks: Mutex<HashMap<String, (GreeksRow, Instant)>>,   // per-contract (OCC ticker)
@@ -89,6 +94,7 @@ fn state() -> &'static State {
         quotes: Mutex::new(HashMap::new()),
         tape:   Mutex::new(VecDeque::with_capacity(200)),
         tape_by_symbol: Mutex::new(HashMap::new()),
+        realized_delta: Mutex::new(HashMap::new()),
         snapshots: Mutex::new(HashMap::new()),
         snap_watch: Mutex::new(HashSet::new()),
         greeks: Mutex::new(HashMap::new()),
@@ -339,6 +345,25 @@ pub fn push_quote(q: Quote) {
 }
 
 pub fn push_trade(t: Trade) {
+    // Accrue real order-flow delta from the aggressor side before the tape
+    // ring drops old prints. buy → +qty, sell → −qty, unknown → no signal.
+    let signed = match t.side.as_deref() {
+        Some("buy") => t.qty as f32,
+        Some("sell") => -(t.qty as f32),
+        _ => 0.0,
+    };
+    if signed != 0.0 && t.time > 0 {
+        let bucket = (t.time / 60_000) * 60_000; // minute-aligned epoch ms
+        if let Ok(mut g) = state().realized_delta.lock() {
+            let m = g.entry(t.symbol.clone()).or_default();
+            *m.entry(bucket).or_insert(0.0) += signed;
+            // Cap ~1500 minute-buckets per symbol (~a full session) to bound mem.
+            while m.len() > 1500 {
+                let k = *m.keys().next().unwrap();
+                m.remove(&k);
+            }
+        }
+    }
     if let Ok(mut g) = state().tape.lock() {
         g.push_back(t.clone());
         while g.len() > 200 { g.pop_front(); }
@@ -348,6 +373,18 @@ pub fn push_trade(t: Trade) {
         entry.push_back(t);
         while entry.len() > 100 { entry.pop_front(); }
     }
+}
+
+/// Sum of realized order-flow delta for `symbol` over `[from_ms, to_ms)`.
+/// `None` if no live trades were recorded in that span (caller falls back to
+/// the bar close-position heuristic for historical bars).
+pub fn realized_delta_in(symbol: &str, from_ms: i64, to_ms: i64) -> Option<f32> {
+    let g = state().realized_delta.lock().ok()?;
+    let m = g.get(symbol)?;
+    let mut sum = 0.0_f32;
+    let mut any = false;
+    for (_, v) in m.range(from_ms..to_ms) { sum += *v; any = true; }
+    if any { Some(sum) } else { None }
 }
 
 pub fn set_connected(on: bool) {

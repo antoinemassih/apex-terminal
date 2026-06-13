@@ -3863,6 +3863,44 @@ fn tick_simulation(chart: &mut Chart) {
 }
 
 
+/// Build a `VolumeProfileData` from real volume-at-price (ApexData VAP) instead
+/// of the bar-spread approximation. Levels carry true per-price volume; POC/VA
+/// are computed the same way. `buy_vol`/`sell_vol` come straight from VAP (0
+/// until the backend adds the per-level split). `off_exchange` per level is
+/// summed into the profile total for an (optional) dark-pool readout.
+pub(crate) fn volume_profile_from_vap(v: &crate::apex_data::rest::VapResponse) -> Option<VolumeProfileData> {
+    if v.levels.len() < 2 { return None; }
+    let mut lv: Vec<&crate::apex_data::rest::VapLevel> = v.levels.iter().collect();
+    lv.sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap_or(std::cmp::Ordering::Equal));
+    let price_step = if lv.len() >= 2 { (lv[1].price - lv[0].price) as f32 } else { 0.01 };
+    let levels: Vec<VolumeLevel> = lv.iter().map(|l| VolumeLevel {
+        price: l.price as f32,
+        total_vol: l.volume as f32,
+        buy_vol: l.buy_volume as f32,
+        sell_vol: l.sell_volume as f32,
+    }).collect();
+    let max_vol = levels.iter().map(|l| l.total_vol).fold(0.0_f32, f32::max);
+    if max_vol <= 0.0 { return None; }
+    let poc_idx = levels.iter().enumerate()
+        .max_by(|a, b| a.1.total_vol.partial_cmp(&b.1.total_vol).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(i, _)| i).unwrap_or(0);
+    let poc_price = levels[poc_idx].price;
+    let total_vol: f32 = levels.iter().map(|l| l.total_vol).sum();
+    let va_target = total_vol * 0.70;
+    let mut va_vol = levels[poc_idx].total_vol;
+    let (mut va_lo, mut va_hi) = (poc_idx, poc_idx);
+    while va_vol < va_target && (va_lo > 0 || va_hi < levels.len() - 1) {
+        let lo_vol = if va_lo > 0 { levels[va_lo - 1].total_vol } else { 0.0 };
+        let hi_vol = if va_hi < levels.len() - 1 { levels[va_hi + 1].total_vol } else { 0.0 };
+        if lo_vol >= hi_vol && va_lo > 0 { va_lo -= 1; va_vol += levels[va_lo].total_vol; }
+        else if va_hi < levels.len() - 1 { va_hi += 1; va_vol += levels[va_hi].total_vol; }
+        else { break; }
+    }
+    let val = levels[va_lo].price - price_step / 2.0;
+    let vah = levels[va_hi].price + price_step / 2.0;
+    Some(VolumeProfileData { levels, poc_price, vah, val, max_vol, price_step })
+}
+
 pub(crate) fn compute_volume_profile(bars: &[Bar], start: usize, end: usize, num_levels: usize) -> Option<VolumeProfileData> {
     if start >= end || end > bars.len() || num_levels < 2 { return None; }
     let mut min_price = f32::MAX;
@@ -3977,16 +4015,27 @@ pub(crate) fn compute_volume_analytics(chart: &mut Chart) {
     chart.delta_data.resize(n, 0.0);
     chart.rvol_data.resize(n, 1.0);
 
-    // Per-bar delta (buy - sell heuristic via close position in range)
+    // Per-bar delta. Prefer REAL order-flow delta from the live trade stream
+    // (server-side aggressor `side`, accrued per minute in live_state) for any
+    // bar the session has streamed; fall back to the close-position heuristic
+    // for historical bars (no per-trade history) and futures (no side feed).
     for i in 0..n {
         let b = &chart.bars[i];
-        let range = b.high - b.low;
-        if range > 0.0 {
-            let buy_ratio = (b.close - b.low) / range;
-            chart.delta_data[i] = b.volume * buy_ratio - b.volume * (1.0 - buy_ratio);
-        } else {
-            chart.delta_data[i] = 0.0;
-        }
+        let bar_from = chart.timestamps.get(i).copied().unwrap_or(0);
+        let bar_to = chart.timestamps.get(i + 1).copied().unwrap_or(bar_from + 60_000);
+        let real = if bar_from > 0 {
+            crate::apex_data::live_state::realized_delta_in(&chart.symbol, bar_from, bar_to)
+        } else { None };
+        chart.delta_data[i] = match real {
+            Some(d) => d,
+            None => {
+                let range = b.high - b.low;
+                if range > 0.0 {
+                    let buy_ratio = (b.close - b.low) / range;
+                    b.volume * buy_ratio - b.volume * (1.0 - buy_ratio)
+                } else { 0.0 }
+            }
+        };
     }
 
     // CVD — cumulative sum of delta
@@ -6609,7 +6658,7 @@ pub(crate) use super::io::fetch::{
     fetch_overlay_bars_background, fetch_gamma_from_feed, refresh_gamma_feeds,
     GammaSnapshot, fetch_corp_actions, ticker_detail_cached,
     options_analytics_cached, OptionsAnalytics, prev_session_change_cached,
-    daily_stats_cached, rvol_cached, futures_price_cached,
+    daily_stats_cached, rvol_cached, futures_price_cached, vap_cached,
 };
 
 

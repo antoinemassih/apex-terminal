@@ -2121,9 +2121,16 @@ fn render_chart_pane(
     // MARK_BARS_PROTOCOL: skip when in Mark mode (volume=0 → empty profile).
     if chart.vp.mode != VolumeProfileMode::Off && !chart.bar_source_mark {
         if chart.vp.data.is_none() || chart.vp.last_vs != chart.vs || chart.vp.last_vc != chart.vc {
-            let start = chart.vs.max(0.0) as usize;
-            let end_vp = (start + chart.vc as usize + 8).min(chart.bars.len());
-            chart.vp.data = compute_volume_profile(&chart.bars, start, end_vp, 60);
+            // Prefer REAL volume-at-price (ApexData VAP) for the session profile;
+            // fall back to the bar-spread approximation over the visible window
+            // when VAP isn't backfilled yet for this symbol/date.
+            chart.vp.data = crate::chart_renderer::gpu::vap_cached(&chart.symbol)
+                .and_then(|v| crate::chart_renderer::gpu::volume_profile_from_vap(&v))
+                .or_else(|| {
+                    let start = chart.vs.max(0.0) as usize;
+                    let end_vp = (start + chart.vc as usize + 8).min(chart.bars.len());
+                    compute_volume_profile(&chart.bars, start, end_vp, 60)
+                });
             chart.vp.last_vs = chart.vs;
             chart.vp.last_vc = chart.vc;
         }

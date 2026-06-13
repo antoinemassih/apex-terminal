@@ -755,6 +755,31 @@ pub fn stock_rvol(sym: &str) -> Option<RvolReading> {
     get(&format!("/api/stocks/rvol/{sym}")).ok()
 }
 
+/// One price-bucket of the volume-at-price profile.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct VapLevel {
+    #[serde(default)] pub price: f64,
+    #[serde(default)] pub volume: f64,
+    #[serde(default)] pub off_exchange_volume: f64,
+    #[serde(default)] pub buy_volume: f64,
+    #[serde(default)] pub sell_volume: f64,
+}
+
+/// `GET /api/stocks/vap/{sym}?date=YYYY-MM-DD&bucket=…` — real volume-at-price.
+/// Note: the trade store is backfilling; `levels` is empty / `total_volume==0`
+/// for dates not yet populated — callers must fall back to the bar-derived
+/// profile in that case.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct VapResponse {
+    #[serde(default)] pub total_volume: f64,
+    #[serde(default)] pub off_exchange_volume: f64,
+    #[serde(default)] pub dark_pool_pct: f64,
+    #[serde(default)] pub levels: Vec<VapLevel>,
+}
+pub fn stock_vap(sym: &str, date: &str, bucket: f64) -> Option<VapResponse> {
+    get(&format!("/api/stocks/vap/{sym}?date={date}&bucket={bucket}")).ok()
+}
+
 /// `GET /api/stocks/movers?direction=gainers|losers` — Polygon top-20 movers.
 /// `direction` must be "gainers" or "losers"; anything else is rejected by
 /// the backend (and short-circuited here to `None`).

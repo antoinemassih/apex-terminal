@@ -1007,6 +1007,53 @@ pub(crate) fn futures_price_cached(symbol: &str) -> Option<f32> {
     cached
 }
 
+// ── Volume-at-price (VAP) for real Volume Profile (TTL-cached) ─────────────
+
+fn vap_cache()
+    -> &'static std::sync::Mutex<std::collections::HashMap<String, (Option<crate::apex_data::rest::VapResponse>, std::time::Instant)>> {
+    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (Option<crate::apex_data::rest::VapResponse>, std::time::Instant)>>> = std::sync::OnceLock::new();
+    C.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+fn vap_inflight() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    static I: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
+    I.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
+}
+const VAP_TTL_SECS: u64 = 120;
+
+/// Real volume-at-price for the most-recent session, `/api/stocks/vap`.
+/// TTL-cached, non-blocking. Returns `None` (→ caller falls back to the
+/// bar-derived profile) when the date isn't backfilled yet (`total_volume==0`
+/// / empty levels) — the trade store is being populated, live Monday.
+pub(crate) fn vap_cached(symbol: &str) -> Option<crate::apex_data::rest::VapResponse> {
+    if !is_stock_symbol(symbol) { return None; }
+    let sym = symbol.to_uppercase();
+    let (cached, stale) = match vap_cache().lock() {
+        Ok(c) => match c.get(&sym) {
+            Some((v, at)) => (v.clone(), at.elapsed().as_secs() >= VAP_TTL_SECS),
+            None => (None, true),
+        },
+        Err(_) => (None, true),
+    };
+    if stale {
+        let spawn = {
+            let mut inf = match vap_inflight().lock() { Ok(g) => g, Err(e) => e.into_inner() };
+            if inf.contains(&sym) { false } else { inf.insert(sym.clone()); true }
+        };
+        if spawn {
+            let s2 = sym.clone();
+            std::thread::spawn(move || {
+                let date = active_zero_dte_date().format("%Y-%m-%d").to_string();
+                let v = crate::apex_data::rest::stock_vap(&s2, &date, 0.25)
+                    .filter(|r| r.total_volume > 0.0 && !r.levels.is_empty());
+                if let Ok(mut c) = vap_cache().lock() { c.insert(s2.clone(), (v, std::time::Instant::now())); }
+                if let Ok(mut inf) = vap_inflight().lock() { inf.remove(&s2); }
+                crate::wake_native_ui();
+            });
+        }
+    }
+    cached
+}
+
 // ── RVOL (server endpoint, TTL-cached) ─────────────────────────────────────
 
 fn rvol_cache()
