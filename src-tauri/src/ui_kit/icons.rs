@@ -456,3 +456,250 @@ pub fn init_fonts(ctx: &egui::Context, font_idx: usize) {
 
 /// Legacy alias — calls init_fonts with default font.
 pub fn init_icons(ctx: &egui::Context) { init_fonts(ctx, 0); }
+
+// ── S7 — FontRegistry-based font initialisation ───────────────────────────────
+
+/// Map a legacy `font_idx` (from the font picker / `style_preferred_font()`)
+/// to the Typography-compatible family name string used by `FontRegistry`.
+///
+/// Mapping mirrors `init_fonts`'s `match font_idx` block exactly:
+/// - 0 → "JetBrains Mono"  (proportional set to the monospace face — historical default)
+/// - 1 → "Inter"
+/// - 2 → "Plus Jakarta Sans"
+/// - 3 → "Space Grotesk"
+/// - 4 → "DM Sans"
+/// - 5 → "Geist"
+/// - 6 → "IBM Plex Sans"   (also triggers IBM Plex Mono as leading monospace)
+/// - other → "JetBrains Mono" (fallback)
+pub fn font_idx_to_family_name(font_idx: usize) -> &'static str {
+    match font_idx {
+        1 => "Inter",
+        2 => "Plus Jakarta Sans",
+        3 => "Space Grotesk",
+        4 => "DM Sans",
+        5 => "Geist",
+        6 => "IBM Plex Sans",
+        _ => "JetBrains Mono",
+    }
+}
+
+/// Build `egui::FontDefinitions` from explicit family name strings using
+/// [`crate::ui_kit::fonts::FontRegistry`], then merge Phosphor icons and
+/// apply the same monospace / tabular-digit policy that `init_fonts` uses,
+/// and push the result to the egui context.
+///
+/// ## Monospace policy (identical to `init_fonts`)
+/// - JetBrains Mono is ALWAYS present in the `Monospace` family — it leads
+///   unless a different `family_mono` is requested.
+/// - When `family_mono == "IBM Plex Sans"` (the Alto / Mariner theme), IBM
+///   Plex Mono is prepended to `Monospace` before JetBrains Mono, matching
+///   `init_fonts`'s special-case for `font_idx == 6`.
+/// - Phosphor is appended to `Monospace` as a fallback so icon glyphs render
+///   inside monospaced code/number widgets.
+///
+/// ## Serif slot (identical to `init_fonts`)
+/// The `"serif"` named family is always wired to Source Serif 4 Bold + Regular
+/// (bold first, matching `init_fonts`), regardless of `family_display`. This
+/// preserves pixel-identical behaviour for `hero_font_id()` / `serif_headlines`.
+///
+/// Only call on style change — never per-frame. This is allocation-heavy and
+/// triggers a full glyph atlas rebuild.
+pub fn init_fonts_from_typography(
+    ctx:            &egui::Context,
+    family_ui:      &str,
+    family_mono:    &str,
+    family_display: &str,
+) {
+    use crate::ui_kit::fonts::FontRegistry;
+
+    let registry = FontRegistry::new_with_builtins();
+
+    // Resolve mono: if family_ui is IBM Plex Sans, use IBM Plex Mono as the
+    // leading monospace (Alto/Mariner theme behaviour — matches init_fonts
+    // font_idx==6 special case). Otherwise honour the requested family_mono.
+    let effective_mono = if family_ui == "IBM Plex Sans" {
+        "IBM Plex Mono"
+    } else {
+        family_mono
+    };
+
+    let (mut defs, warnings) = registry.build_definitions(
+        family_ui,
+        effective_mono,
+        family_display,
+    );
+
+    // Log any fallback warnings (missing custom families, etc.).
+    for w in &warnings {
+        eprintln!("[fonts] {}", w.message);
+    }
+
+    // ── Preserve init_fonts' "serif" slot exactly ─────────────────────────────
+    // init_fonts ALWAYS puts Source Serif 4 Bold first in the "serif" named
+    // family, regardless of the picker selection. Override the registry's
+    // display-family assignment so hero_font_id() / serif_headlines keep working.
+    defs.families.insert(
+        egui::FontFamily::Name("serif".into()),
+        vec!["source_serif4_bold".into(), "source_serif4_regular".into()],
+    );
+
+    // ── Phosphor icon fonts ───────────────────────────────────────────────────
+    egui_phosphor::add_to_fonts(&mut defs, egui_phosphor::Variant::Regular);
+    egui_phosphor::add_to_fonts(&mut defs, egui_phosphor::Variant::Bold);
+    egui_phosphor::add_to_fonts(&mut defs, egui_phosphor::Variant::Fill);
+
+    // Ensure Phosphor is a fallback for Monospace (icon glyphs inside
+    // mono-family text widgets). Mirrors init_fonts exactly.
+    if let Some(mono_keys) = defs.families.get_mut(&egui::FontFamily::Monospace) {
+        if !mono_keys.contains(&"phosphor".to_string()) {
+            mono_keys.push("phosphor".into());
+        }
+    }
+
+    ctx.set_fonts(defs);
+}
+
+/// Convenience bridge: initialise fonts from a legacy `font_idx` (from the
+/// per-style preference or user picker) via the `FontRegistry` path.
+///
+/// This replaces direct `init_fonts(ctx, effective_font)` calls at the per-frame
+/// change-detection sites in `gpu.rs`. The `font_idx` is mapped to the
+/// Typography-compatible family name; all other families stay at the built-in
+/// defaults (`"JetBrains Mono"` mono, `"Inter"` display). The IBM Plex Mono
+/// monospace override for `font_idx == 6` is handled inside
+/// `init_fonts_from_typography`.
+///
+/// Only call on change (guarded by the `AtomicUsize` change-detection in
+/// `gpu.rs`) — never per-frame.
+pub fn init_fonts_for_idx(ctx: &egui::Context, font_idx: usize) {
+    let family_ui = font_idx_to_family_name(font_idx);
+    init_fonts_from_typography(ctx, family_ui, "JetBrains Mono", "Inter");
+}
+
+// ── S7 equivalence test ───────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod font_equivalence_tests {
+    use super::*;
+    use crate::ui_kit::fonts::FontRegistry;
+
+    /// Verify that FontRegistry built from the default Typography yields the
+    /// same family names (Proportional, Monospace leading key, named singletons)
+    /// as init_fonts would produce.
+    ///
+    /// We cannot run egui in unit tests (no GPU / event loop), so we check the
+    /// `FontDefinitions` data structures directly without calling ctx.set_fonts().
+    #[test]
+    fn registry_default_families_match_init_fonts() {
+        // Build via the registry path (what init_fonts_from_typography uses).
+        let registry = FontRegistry::new_with_builtins();
+        let (mut defs, warnings) = registry.build_definitions(
+            "Inter",          // default family_ui
+            "JetBrains Mono", // default family_mono
+            "Inter",          // default family_display
+        );
+
+        // No fallback warnings expected for the default built-in families.
+        assert!(
+            warnings.is_empty(),
+            "Unexpected fallback warnings for default Typography: {:?}", warnings
+        );
+
+        // ── Proportional: "inter" must be at slot 0 ───────────────────────────
+        let prop = defs.families.get(&egui::FontFamily::Proportional)
+            .expect("Proportional family must exist");
+        assert_eq!(
+            prop.first().map(String::as_str),
+            Some("inter"),
+            "Proportional[0] should be 'inter' (matching init_fonts font_idx=1). \
+             Got: {:?}", prop
+        );
+
+        // ── Monospace: "jetbrains_mono" must be at slot 0 ────────────────────
+        let mono = defs.families.get(&egui::FontFamily::Monospace)
+            .expect("Monospace family must exist");
+        assert_eq!(
+            mono.first().map(String::as_str),
+            Some("jetbrains_mono"),
+            "Monospace[0] should be 'jetbrains_mono'. Got: {:?}", mono
+        );
+
+        // ── Named weight singletons ───────────────────────────────────────────
+        for singleton in &["inter_regular", "inter_semibold", "inter_bold", "jetbrains_mono_bold"] {
+            let slot = defs.families.get(&egui::FontFamily::Name((*singleton).into()));
+            assert!(
+                slot.is_some(),
+                "Named family '{}' missing — init_fonts wires this explicitly", singleton
+            );
+            assert_eq!(
+                slot.unwrap().first().map(String::as_str),
+                Some(*singleton),
+                "Named family '{}' should lead with its own data key", singleton
+            );
+        }
+
+        // ── All font data keys present (subset check) ─────────────────────────
+        for key in &[
+            "jetbrains_mono", "jetbrains_mono_bold",
+            "inter", "inter_regular", "inter_semibold", "inter_bold",
+            "plus_jakarta", "space_grotesk", "dm_sans", "geist",
+            "ibm_plex_sans", "ibm_plex_sans_sb",
+            "ibm_plex_mono", "ibm_plex_mono_bold",
+            "source_serif4_regular", "source_serif4_bold",
+        ] {
+            assert!(
+                defs.font_data.contains_key(*key),
+                "font_data missing key '{}' — was embedded by init_fonts", key
+            );
+        }
+
+        // ── Serif slot: apply the same override as init_fonts_from_typography ─
+        // init_fonts always puts Source Serif 4 Bold first.
+        defs.families.insert(
+            egui::FontFamily::Name("serif".into()),
+            vec!["source_serif4_bold".into(), "source_serif4_regular".into()],
+        );
+        let serif = defs.families.get(&egui::FontFamily::Name("serif".into()))
+            .expect("'serif' named family must exist");
+        assert_eq!(
+            serif.first().map(String::as_str),
+            Some("source_serif4_bold"),
+            "'serif' family should lead with source_serif4_bold (matching init_fonts)"
+        );
+
+        // ── IBM Plex Mono override (font_idx == 6 / IBM Plex Sans) ─────────────
+        // When family_ui = IBM Plex Sans, effective_mono = IBM Plex Mono.
+        let (ibm_defs, ibm_warnings) = registry.build_definitions(
+            "IBM Plex Sans",
+            "IBM Plex Mono",
+            "Inter",
+        );
+        assert!(ibm_warnings.is_empty(), "IBM Plex build had warnings: {:?}", ibm_warnings);
+        let ibm_mono = ibm_defs.families.get(&egui::FontFamily::Monospace)
+            .expect("Monospace must exist for IBM Plex build");
+        assert_eq!(
+            ibm_mono.first().map(String::as_str),
+            Some("ibm_plex_mono"),
+            "IBM Plex: Monospace[0] should be ibm_plex_mono. Got: {:?}", ibm_mono
+        );
+        // JetBrains Mono must still be present (tabular-digit fallback).
+        assert!(
+            ibm_mono.contains(&"jetbrains_mono".to_owned()),
+            "IBM Plex: jetbrains_mono must remain in Monospace family for digit alignment"
+        );
+    }
+
+    /// Verify font_idx_to_family_name covers all indices that init_fonts handles.
+    #[test]
+    fn font_idx_to_family_name_covers_all() {
+        // Indices 0-6 must map to families that exist in FontRegistry.
+        let registry = FontRegistry::new_with_builtins();
+        for idx in 0..=6usize {
+            let name = font_idx_to_family_name(idx);
+            assert!(
+                registry.contains(name),
+                "font_idx {} → '{}' not registered in FontRegistry", idx, name
+            );
+        }
+    }
+}

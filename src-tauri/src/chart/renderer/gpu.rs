@@ -6840,7 +6840,9 @@ impl GpuCtx {
             use std::sync::atomic::{AtomicUsize, Ordering};
             static LAST_FONT: AtomicUsize = AtomicUsize::new(usize::MAX);
             if LAST_FONT.swap(effective_font, Ordering::Relaxed) != effective_font {
-                crate::ui_kit::icons::init_fonts(&self.egui_ctx, effective_font);
+                // S7: route through FontRegistry path so active StyleSystem's
+                // Typography families drive font loading.
+                crate::ui_kit::icons::init_fonts_for_idx(&self.egui_ctx, effective_font);
             }
         }
 
@@ -7187,8 +7189,9 @@ impl App {
         // Apply persisted global settings
         wl.font_scale = loaded_settings.font_scale;
         wl.font_idx = loaded_settings.font_idx;
-        // Re-init fonts if the loaded font differs from default
-        if wl.font_idx != 0 { crate::ui_kit::icons::init_fonts(&gpu.egui_ctx, wl.font_idx); }
+        // Re-init fonts if the loaded font differs from default.
+        // S7: route through FontRegistry path so Typography families drive loading.
+        if wl.font_idx != 0 { crate::ui_kit::icons::init_fonts_for_idx(&gpu.egui_ctx, wl.font_idx); }
         wl.compact_mode = loaded_settings.compact_mode;
         wl.pane_header_size = loaded_settings.pane_header_size;
         wl.toolbar_auto_hide = loaded_settings.toolbar_auto_hide;
