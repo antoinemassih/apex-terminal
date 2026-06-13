@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apex-terminal/schemas/theme-authoring/colorscheme.schema.json",
+  "title": "ColorScheme DTCG",
+  "description": "W3C DTCG-format palette-axis file (colorscheme.<id>.json). Stored as colorscheme.json inside the .apextheme zip. Parsed by ColorScheme::from_dtcg in src-tauri/src/design_system/loader.rs. Every palette entry is a DTCG token: { \"$type\": \"color\", \"$value\": \"#rrggbb\" }. Missing entries fall back to builtin_dark() equivalents so partial/override files work without specifying every color.",
+  "type": "object",
+  "required": ["meta", "palette"],
+  "properties": {
+    "meta": {
+      "$ref": "#/$defs/Meta"
+    },
+    "palette": {
+      "$ref": "#/$defs/Palette"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "Meta": {
+      "title": "Meta",
+      "description": "Identity and dark/light flag — parsed directly (not as DTCG tokens).",
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable machine identifier, e.g. \"dracula\" or \"meridien\".",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable display name. Falls back to id when absent.",
+          "minLength": 1
+        },
+        "is_dark": {
+          "type": "boolean",
+          "description": "true for dark palettes, false for light ones. Defaults to true when absent.",
+          "default": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "ColorToken": {
+      "title": "ColorToken",
+      "description": "A DTCG color token. $value must be #rrggbb or #rrggbbaa hex string.",
+      "type": "object",
+      "required": ["$type", "$value"],
+      "properties": {
+        "$type": {
+          "type": "string",
+          "const": "color"
+        },
+        "$value": {
+          "type": "string",
+          "description": "Hex color string. #rrggbb for fully opaque, #rrggbbaa for explicit alpha.",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "examples": ["#282a36", "#bd93f9", "#00000080"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Palette": {
+      "title": "Palette",
+      "description": "All palette fields. Required fields must be present; optional fields (extended semantic palette + pane_gap_color) are omitted when None. Field defaults come from builtin_dark().",
+      "type": "object",
+      "properties": {
+        "bg": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "Deepest background — window/canvas floor. Default: #121212ff."
+        },
+        "surface": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "Elevated surface — panels, cards, toolbars. Default: #1c1c1cff."
+        },
+        "text": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "Primary text / foreground. Default: #dcdcdcff."
+        },
+        "dim": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "Muted / secondary text, disabled labels, placeholders. Default: #787878ff."
+        },
+        "border": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "Borders, dividers, hairlines. Default: #373737ff."
+        },
+        "accent": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "Brand / interactive accent — buttons, focus rings, links. Default: #6366f1ff."
+        },
+        "bull": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "Upward / positive price movement. Also the fallback for resolved_success() when success is None. Default: #34d399ff."
+        },
+        "bear": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "Downward / negative price movement. Also the fallback for resolved_danger() when danger is None. Default: #f87171ff."
+        },
+        "warn": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "Warning / caution state. Also the fallback for resolved_warning() when warning is None. Default: #fbbf24ff."
+        },
+        "shadow": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "Shadow tint color (used by elevation helpers). Typically near-black for dark themes, near-neutral for light. Default: #000000b4."
+        },
+        "notification_red": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "Alert / notification badge color. Default: #e74c3cff."
+        },
+        "gold": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "Gold accent — warm yellow used for highlights. Default: #ffc125ff."
+        },
+        "overlay_text": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "Overlay / HUD foreground text color. Default: #f0f0f0ff."
+        },
+        "rrg_leading": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "RRG leading quadrant color (strong bull). Default: #34d399ff."
+        },
+        "rrg_improving": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "RRG improving quadrant color (trending up). Default: #6366f1ff."
+        },
+        "rrg_weakening": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "RRG weakening quadrant color (warning, trending down). Default: #fbbf24ff."
+        },
+        "rrg_lagging": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "RRG lagging quadrant color (strong bear). Default: #f87171ff."
+        },
+        "pinned_row_tint": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "Subtle tint behind pinned rows (premultiplied alpha). Default: #0000000c."
+        },
+        "text_muted": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "Muted text variant — secondary body copy. Default: #aaaab4ff."
+        },
+        "hud_bg": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "HUD / floating overlay background (premultiplied alpha). Default: #000000e6."
+        },
+        "hud_border": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "HUD / floating overlay border color. Default: #32323cff."
+        },
+        "success": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "EXTENDED SEMANTIC (S1): General success / positive state — not price-specific. When absent, resolved_success() falls back to bull. Set independently for richer UI states (e.g. a muted green vs. a vivid bull color)."
+        },
+        "danger": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "EXTENDED SEMANTIC (S1): General danger / error / destructive action state. When absent, resolved_danger() falls back to bear."
+        },
+        "warning": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "EXTENDED SEMANTIC (S1): General warning / caution state (semantic alias over warn). When absent, resolved_warning() falls back to warn."
+        },
+        "info": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "EXTENDED SEMANTIC (S1): Informational / neutral highlight — help text, info badges, links. No direct legacy equivalent. When absent, resolved_info() defaults to a muted blue (#64a0dcff for dark, #1e64b4ff for light)."
+        },
+        "pane_gap_color": {
+          "$ref": "#/$defs/ColorToken",
+          "description": "Override color for the gutter between adjacent panes. When absent, renderers derive the gap color from bg/border at paint time. Most themes leave this absent."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

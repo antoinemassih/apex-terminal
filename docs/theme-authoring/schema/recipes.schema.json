@@ -1,0 +1,247 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apex-terminal/schemas/theme-authoring/recipes.schema.json",
+  "title": "RecipeSet",
+  "description": "Per-component style overrides stored as recipes.json inside the .apextheme zip. Parsed into a RecipeSet (HashMap<String, RecipeSpec>) by the bundle reader. Keys are recipe keys from the canonical registry (docs/migration/recipe-keys.md). Unknown keys are silently ignored for forward compatibility. Derived from src-tauri/src/ui_kit/sx/recipe_spec.rs.",
+  "type": "object",
+  "propertyNames": {
+    "description": "Recipe key in dot-separated namespaced format, e.g. \"button.primary\", \"row.list.selected\". See docs/migration/recipe-keys.md for the canonical registry.",
+    "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+  },
+  "additionalProperties": {
+    "$ref": "#/$defs/RecipeSpec"
+  },
+  "examples": [
+    {
+      "button.primary": {
+        "radius": "pill",
+        "fill": { "kind": "tone", "tone": "accent", "shade": "s500" },
+        "px": "lg",
+        "py": "sm",
+        "hover": {
+          "fill": { "kind": "tone", "tone": "accent", "shade": "s400" }
+        }
+      },
+      "row.list": {
+        "radius": "none",
+        "py": "xs"
+      },
+      "row.list.selected": {
+        "fill": { "kind": "alpha", "tone": "accent", "alpha": 28 }
+      }
+    }
+  ],
+  "$defs": {
+    "RecipeSpec": {
+      "title": "RecipeSpec",
+      "description": "A fully serializable style specification for a named component recipe. Mirrors SxDelta (base style) plus four per-interaction-state overrides. All colors are ColorSpec (semantic tone references or literal hex). All sizes are tier enums. Missing fields preserve the widget's built-in default. A missing key in the RecipeSet leaves the widget entirely unchanged.",
+      "type": "object",
+      "properties": {
+        "radius":      { "$ref": "#/$defs/RadiusTier",      "description": "Corner radius override." },
+        "px":          { "$ref": "#/$defs/PadTier",         "description": "Horizontal padding (both sides)." },
+        "py":          { "$ref": "#/$defs/PadTier",         "description": "Vertical padding (both sides)." },
+        "fill":        { "$ref": "#/$defs/ColorSpec",       "description": "Background fill." },
+        "border":      { "$ref": "#/$defs/BorderSpecRef",   "description": "Border color + width tier." },
+        "text":        { "$ref": "#/$defs/TextSpec",        "description": "Text color tone." },
+        "text_size":   { "$ref": "#/$defs/TextSizeTier",    "description": "Text size tier." },
+        "opacity":     {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Overall opacity for the component (0.0–1.0). Typically used for disabled state."
+        },
+        "hover": {
+          "$ref": "#/$defs/RecipeDelta",
+          "description": "Override applied when the pointer hovers the component."
+        },
+        "active": {
+          "$ref": "#/$defs/RecipeDelta",
+          "description": "Override applied while the component is pointer-pressed."
+        },
+        "disabled": {
+          "$ref": "#/$defs/RecipeDelta",
+          "description": "Override applied when the component is in a disabled state."
+        },
+        "selected": {
+          "$ref": "#/$defs/RecipeDelta",
+          "description": "Override applied when the component is in a selected/checked state (active tab, selected list row, toggled button). Maps to the active StyleState slot in Sx."
+        }
+      },
+      "additionalProperties": false
+    },
+    "RecipeDelta": {
+      "title": "RecipeDelta",
+      "description": "A flat set of overridable style properties used for both the base style and per-state overrides. All fields are optional. Missing fields leave the widget default intact.",
+      "type": "object",
+      "properties": {
+        "radius":    { "$ref": "#/$defs/RadiusTier" },
+        "px":        { "$ref": "#/$defs/PadTier" },
+        "py":        { "$ref": "#/$defs/PadTier" },
+        "fill":      { "$ref": "#/$defs/ColorSpec" },
+        "border":    { "$ref": "#/$defs/BorderSpecRef" },
+        "text":      { "$ref": "#/$defs/TextSpec" },
+        "text_size": { "$ref": "#/$defs/TextSizeTier" },
+        "opacity":   { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+      },
+      "additionalProperties": false
+    },
+    "ColorSpec": {
+      "title": "ColorSpec",
+      "description": "A serializable color specification. Three forms distinguished by the 'kind' field (internal tag): tone, alpha, or literal. All colors in RecipeSpec must use ColorSpec — raw RGB values are not accepted.",
+      "oneOf": [
+        {
+          "title": "Tone",
+          "description": "Resolved via the active palette ramp. shade defaults to s500 when omitted.",
+          "type": "object",
+          "required": ["kind", "tone"],
+          "properties": {
+            "kind":  { "type": "string", "const": "tone" },
+            "tone":  { "$ref": "#/$defs/ToneRef" },
+            "shade": { "$ref": "#/$defs/ShadeRef" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "title": "Alpha",
+          "description": "The tone's S500 base color at a fixed alpha (0–255). Useful for tinted fills.",
+          "type": "object",
+          "required": ["kind", "tone", "alpha"],
+          "properties": {
+            "kind":  { "type": "string", "const": "alpha" },
+            "tone":  { "$ref": "#/$defs/ToneRef" },
+            "alpha": { "type": "integer", "minimum": 0, "maximum": 255 }
+          },
+          "additionalProperties": false
+        },
+        {
+          "title": "Literal",
+          "description": "Hex literal escape hatch — for one-off colors not expressible via tones. Accepts #rrggbb or #rrggbbaa.",
+          "type": "object",
+          "required": ["kind", "hex"],
+          "properties": {
+            "kind": { "type": "string", "const": "literal" },
+            "hex":  {
+              "type": "string",
+              "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ToneRef": {
+      "title": "ToneRef",
+      "description": "Semantic tone reference — the palette field names from ColorScheme. snake_case as serialized.",
+      "type": "string",
+      "enum": ["accent", "bull", "bear", "warn", "text", "dim", "border", "surface", "bg"]
+    },
+    "ShadeRef": {
+      "title": "ShadeRef",
+      "description": "Shade step within a tone ramp — from lightest (s50) to darkest (s950). s500 is the base/default shade.",
+      "type": "string",
+      "enum": ["s50", "s100", "s200", "s300", "s400", "s500", "s600", "s700", "s800", "s900", "s950"]
+    },
+    "RadiusTier": {
+      "title": "RadiusTier",
+      "description": "Corner radius tier enum or literal pixel value.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": ["none", "xs", "sm", "md", "lg", "pill"],
+          "description": "none=0px, xs=radius_xs(), sm=radius_sm(), md=radius_md(), lg=radius_lg(), pill=999px"
+        },
+        {
+          "type": "object",
+          "description": "Literal pixel value escape hatch.",
+          "required": ["px"],
+          "properties": {
+            "px": { "type": "number", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "PadTier": {
+      "title": "PadTier",
+      "description": "Padding tier enum or literal pixel value.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": ["none", "xs", "sm", "md", "lg"],
+          "description": "none=0, xs=gap_xs(), sm=gap_sm(), md=gap_md(), lg=gap_lg()"
+        },
+        {
+          "type": "object",
+          "description": "Literal pixel value escape hatch.",
+          "required": ["px"],
+          "properties": {
+            "px": { "type": "number", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "TextSizeTier": {
+      "title": "TextSizeTier",
+      "description": "Font size tier enum or literal pixel value.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": ["xs", "sm", "md", "lg"],
+          "description": "xs=font_xs(), sm=font_sm(), md=font_md(), lg=font_lg()"
+        },
+        {
+          "type": "object",
+          "description": "Literal pixel value escape hatch.",
+          "required": ["px"],
+          "properties": {
+            "px": { "type": "number", "minimum": 1 }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "BorderWidthTier": {
+      "title": "BorderWidthTier",
+      "description": "Border width tier enum or literal pixel value.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": ["none", "hair", "thin", "std"],
+          "description": "none=0, hair=stroke_hair(), thin=stroke_thin(), std=stroke_std()"
+        },
+        {
+          "type": "object",
+          "description": "Literal pixel value escape hatch.",
+          "required": ["px"],
+          "properties": {
+            "px": { "type": "number", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "TextSpec": {
+      "title": "TextSpec",
+      "description": "Text color — tone reference plus optional shade.",
+      "type": "object",
+      "required": ["tone"],
+      "properties": {
+        "tone":  { "$ref": "#/$defs/ToneRef" },
+        "shade": { "$ref": "#/$defs/ShadeRef" }
+      },
+      "additionalProperties": false
+    },
+    "BorderSpecRef": {
+      "title": "BorderSpecRef",
+      "description": "Serializable border — color (tone/alpha/literal) plus optional width tier.",
+      "type": "object",
+      "required": ["color"],
+      "properties": {
+        "color": { "$ref": "#/$defs/ColorSpec" },
+        "width": { "$ref": "#/$defs/BorderWidthTier" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

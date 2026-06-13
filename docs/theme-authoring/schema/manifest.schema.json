@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apex-terminal/schemas/theme-authoring/manifest.schema.json",
+  "title": "ThemeManifest",
+  "description": "Metadata header stored as manifest.json at the root of a .apextheme zip bundle. Derived from src-tauri/src/design_system/theme_pack/manifest.rs.",
+  "type": "object",
+  "required": ["id", "name", "app_schema_version"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable machine-readable identifier (slug). Used as primary key for install/uninstall/set-active. Example: \"dracula\".",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "minLength": 1
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable display name shown in the theme picker. Example: \"Dracula\".",
+      "minLength": 1
+    },
+    "author": {
+      "type": "string",
+      "description": "Theme author name or handle. Defaults to empty string when absent.",
+      "default": ""
+    },
+    "version": {
+      "type": "string",
+      "description": "Semver version string. No parse validation is done — stored and displayed as-is.",
+      "default": "1.0.0",
+      "examples": ["1.0.0", "2.3.1"]
+    },
+    "app_schema_version": {
+      "type": "integer",
+      "description": "Bundle format version this pack was authored against. Current version is 1. Packs with a version GREATER than the reader's version are rejected. Packs with equal or older versions are accepted; missing fields fall back to defaults.",
+      "minimum": 1,
+      "maximum": 1
+    },
+    "is_dark": {
+      "type": "boolean",
+      "description": "true if the pack's color scheme is a dark-mode palette; false for light. Used for theme-picker filtering and media-query matching.",
+      "default": true
+    },
+    "capabilities": {
+      "$ref": "#/$defs/PackCapabilities"
+    },
+    "asset_inventory": {
+      "type": "array",
+      "description": "Inventory of all assets bundled under assets/<key> in the zip. Informational at read time — the actual bytes live in the zip entries. Missing entries do not cause an error.",
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/AssetInventoryEntry"
+      }
+    },
+    "checksum": {
+      "type": "string",
+      "description": "Optional SHA-256 hex checksum over the non-manifest zip entries. Stored as informational field; not verified by the current reader (verification deferred to S9).",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "PackCapabilities": {
+      "title": "PackCapabilities",
+      "description": "High-level capability flags declared in the manifest. Derived from the asset inventory during write_bundle; stored so readers can gate features without inspecting all assets.",
+      "type": "object",
+      "properties": {
+        "uses_fonts": {
+          "type": "boolean",
+          "description": "Pack supplies one or more custom font families (assets/ contains FontFace or FontFaceMono entries).",
+          "default": false
+        },
+        "uses_icons": {
+          "type": "boolean",
+          "description": "Pack supplies a custom icon glyph font (assets/ contains an IconFont entry).",
+          "default": false
+        },
+        "uses_imagery": {
+          "type": "boolean",
+          "description": "Pack supplies background textures or logo images. STUB — not wired in the current release.",
+          "default": false
+        },
+        "uses_shell_profile": {
+          "type": "boolean",
+          "description": "Pack contains a shellprofile.json section. STUB — ShellProfile is design-only; the blob is stored verbatim and ignored by the current reader.",
+          "default": false
+        }
+      },
+      "additionalProperties": false,
+      "default": {
+        "uses_fonts": false,
+        "uses_icons": false,
+        "uses_imagery": false,
+        "uses_shell_profile": false
+      }
+    },
+    "AssetInventoryEntry": {
+      "title": "AssetInventoryEntry",
+      "description": "One entry in the manifest's asset inventory. Lists assets bundled under assets/<key> in the zip.",
+      "type": "object",
+      "required": ["key", "kind"],
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "Asset key — matches the path assets/<key> inside the zip.",
+          "minLength": 1,
+          "examples": ["font/dracula-mono", "icon/custom-glyphs"]
+        },
+        "kind": {
+          "$ref": "#/$defs/AssetKind"
+        },
+        "mime": {
+          "type": "string",
+          "description": "Optional MIME / format hint.",
+          "examples": ["font/ttf", "font/otf", "image/png"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "AssetKind": {
+      "title": "AssetKind",
+      "description": "The kind of asset bundled in the zip. Mirrors ui_kit::assets::AssetKind.",
+      "type": "string",
+      "enum": [
+        "FontFace",
+        "FontFaceMono",
+        "FontFaceDisplay",
+        "IconFont",
+        "Texture"
+      ]
+    }
+  }
+}
