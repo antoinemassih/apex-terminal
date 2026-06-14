@@ -7,10 +7,14 @@
 
 use std::sync::{RwLock, OnceLock};
 
-// Dev deployment is live at apex-data-dev.xllio.com (K3s ingress). Prod URL
-// (`http://apex-data.xllio.com`) is documented in the spec but not yet up.
-// Override at runtime via Settings → Trading → APEX DATA or `APEX_DATA_URL` env.
-const DEFAULT_URL: &str = "http://apex-data-dev.xllio.com";
+// Cut over to the ApexDatav2 parallel stack (2026-06-14): apex-data-v2-dev
+// serves the same shared QuestDB/Redis via the v2 gateway (full apex-data
+// binary) PLUS the unified /ws/v2, /api/instrument, /api/replay and
+// /api/health/data surfaces. The host-match ingress routes every path
+// (/ws, /ws/dom, /ws/futures, /api/bars, /api/chain, …) to the gateway.
+// Revert to `http://apex-data-dev.xllio.com` via Settings → Trading → APEX DATA
+// or the `APEX_DATA_URL` env if you need the legacy stack.
+const DEFAULT_URL: &str = "http://apex-data-v2-dev.xllio.com";
 
 /// LAN IP of the K3s Traefik ingress. When set, reqwest resolves the
 /// apex-data hostname to this IP directly, bypassing public DNS (which
