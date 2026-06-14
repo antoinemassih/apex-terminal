@@ -303,7 +303,11 @@ impl<'a> Modal<'a> {
         let dim = palette_ct(t).base(Tone::Dim);
         let header_painter = self.header_painter;
         let had_painter = header_painter.is_some();
-        let draggable = self.draggable_header;
+        // DialogWindow-framed modals are draggable by default so every dialog
+        // (settings, connections, news, spread, diagnostics, replay, order
+        // health, welcome, …) can be moved by grabbing it — one consistent,
+        // movable shell. Popup/Custom frames keep the explicit opt-in.
+        let draggable = self.draggable_header || matches!(self.frame_kind, FrameKind::DialogWindow);
         let header_subtitle = self.header_subtitle;
         let panel_accent = self.panel_accent;
         let panel_dim = self.panel_dim;
@@ -441,18 +445,29 @@ impl<'a> Modal<'a> {
                 // stays in the fast CPU stacked-rect path, is visually
                 // indistinguishable from the prior CPU-only behaviour, and does
                 // not double up on the GPU compositor.
-                if !draggable && self.size.x > 0.0 && self.size.y > 0.0 {
-                    let shadow_rect = Rect::from_min_size(win_pos, self.size);
+                // Drop shadow. For a fixed modal the rect is known; for a
+                // DRAGGABLE one we paint at the window's tracked last-frame rect
+                // so the shadow follows it as it moves (previously the shadow was
+                // disabled entirely while draggable).
+                let win_rect_id = Id::new(("apex_modal_win_rect", id));
+                let shadow_rect = if draggable {
+                    ctx.memory(|m| m.data.get_temp::<Rect>(win_rect_id))
+                } else if self.size.x > 0.0 && self.size.y > 0.0 {
+                    Some(Rect::from_min_size(win_pos, self.size))
+                } else {
+                    None
+                };
+                if let Some(sr) = shadow_rect {
                     let shadow_id = Id::new(("apex_modal_shadow", id));
                     let _ = egui::Area::new(shadow_id)
                         .order(egui::Order::Middle)
-                        .fixed_pos(win_pos)
+                        .fixed_pos(sr.min)
                         .interactable(false)
                         .show(ctx, |ui| {
                             ui.set_opacity(appear_t);
                             super::paint_shadow_gpu(
                                 ui.painter(),
-                                shadow_rect,
+                                sr,
                                 super::ShadowSpec::md_themed(t),
                             );
                         });
@@ -469,7 +484,7 @@ impl<'a> Modal<'a> {
                 };
 
                 let render_cell = std::cell::Cell::new(Some(render));
-                win.show(ctx, |ui| {
+                let win_resp = win.show(ctx, |ui| {
                     // Apply fade alpha so the Window content fades in/out.
                     ui.set_opacity(appear_t);
                     if let Some(r) = render_cell.take() {
@@ -485,6 +500,13 @@ impl<'a> Modal<'a> {
                         inner = Some(val);
                     }
                 });
+                // Track the live window rect so next frame's shadow follows a
+                // dragged window.
+                if draggable {
+                    if let Some(ir) = win_resp {
+                        ctx.memory_mut(|m| m.data.insert_temp(win_rect_id, ir.response.rect));
+                    }
+                }
             }
             Anchor::Area { pos } => {
                 let render_cell = std::cell::Cell::new(Some(render));

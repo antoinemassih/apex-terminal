@@ -30,8 +30,14 @@ pub(crate) fn render_window_controls(
     t: &Theme,
 ) {
     // Shared button shell: hover fill (bear for danger/close), click flag.
+    // Sense::click_AND_drag (not click) is deliberate: the full-toolbar window-drag
+    // region underneath also senses drag, so with click-only egui routes any
+    // micro-movement during a press to that drag region (firing a window drag /
+    // un-maximize) instead of the button click — which broke the maximize button.
+    // Sensing drag here makes egui assign the press to the button; we just ignore
+    // the drag, so a clean click always toggles and a stray wiggle is a no-op.
     let win_btn = |ui: &mut egui::Ui, danger: bool| -> (egui::Response, egui::Rect) {
-        let (r, resp) = ui.allocate_exact_size(BTN_ICON_LG, egui::Sense::click());
+        let (r, resp) = ui.allocate_exact_size(BTN_ICON_LG, egui::Sense::click_and_drag());
         if resp.hovered() {
             let bg = if danger { t.bear } else { tint(t, Tone::Border, 80) };
             ui.painter().rect_filled(r, 0.0, bg);

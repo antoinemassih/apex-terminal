@@ -186,7 +186,7 @@ pub(crate) fn render(
     // dragged, so it never fights manual resizing.
     let target_w = if closing { 0.0 } else { col_w * ncols + gap * (ncols - 1.0) };
     let total_w = crate::ui_kit::widgets::motion::ease_value(
-        ctx, egui::Id::new("right_rail_anim_w"), target_w, crate::ui_kit::widgets::motion::MED);
+        ctx, egui::Id::new("right_rail_anim_w"), target_w, crate::ui_kit::widgets::motion::FAST);
     if closing && total_w < 1.0 { return false; }
 
     // ── Resize handle ── a top-layer (Foreground) overlay straddling the rail's
