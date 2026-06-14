@@ -6524,6 +6524,22 @@ fn render_chart_pane(
                     painter.line_segment([egui::pos2(rect.left(), y0), egui::pos2(rect.left()+cw, y0)], stroke);
                     painter.line_segment([egui::pos2(rect.left(), y1), egui::pos2(rect.left()+cw, y1)], stroke);
                 }
+                // Candlestick markers: a small triangle at the bar (up = bullish
+                // below the candle, down = bearish above it).
+                "marker_up" | "marker_down" if !sd.points.is_empty() => {
+                    let up = sd.drawing_type == "marker_up";
+                    let bx_pos = bx(SignalDrawing::time_to_bar(sd.points[0].0, &chart.timestamps));
+                    let y = py(sd.points[0].1);
+                    let s = 5.0_f32;
+                    let off = if up { 8.0 } else { -8.0 };
+                    let tip = egui::pos2(bx_pos, y + off);
+                    let (a, b) = if up {
+                        (egui::pos2(bx_pos - s, y + off + s), egui::pos2(bx_pos + s, y + off + s))
+                    } else {
+                        (egui::pos2(bx_pos - s, y + off - s), egui::pos2(bx_pos + s, y + off - s))
+                    };
+                    painter.add(egui::Shape::convex_polygon(vec![tip, a, b], color, egui::Stroke::NONE));
+                }
                 _ => {}
             }
         }
