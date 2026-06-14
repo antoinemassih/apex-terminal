@@ -237,7 +237,21 @@ impl<'a> ToolOverlay<'a> {
         let text_color  = palette_ct(theme).base(Tone::Text);
         let border_col  = border;
 
-        win.show(ctx, |ui| {
+        // Drop shadow — match dialog elevation. Painted at last frame's window
+        // rect (Order::Middle, behind the window) so floating tools sit on the
+        // same depth plane as Modal dialogs (ToolOverlay had no shadow before).
+        let shadow_mem_id = egui::Id::new(("tool_overlay_shadow_rect", self.id));
+        if let Some(r) = ctx.memory(|m| m.data.get_temp::<Rect>(shadow_mem_id)) {
+            let _ = egui::Area::new(egui::Id::new(("tool_overlay_shadow", self.id)))
+                .order(egui::Order::Middle)
+                .fixed_pos(r.min)
+                .interactable(false)
+                .show(ctx, |ui| {
+                    super::paint_shadow_gpu(ui.painter(), r, super::ShadowSpec::md_themed(theme));
+                });
+        }
+
+        let tool_resp = win.show(ctx, |ui| {
             ui.set_min_width(self.width);
 
             // ── Header strip ──────────────────────────────────────────────
@@ -387,6 +401,12 @@ impl<'a> ToolOverlay<'a> {
 
             let _ = dim;
         });
+
+        // Track the live window rect so next frame's shadow follows it (incl.
+        // while it's being dragged).
+        if let Some(ir) = tool_resp {
+            ctx.memory_mut(|m| m.data.insert_temp(shadow_mem_id, ir.response.rect));
+        }
 
         response
     }
