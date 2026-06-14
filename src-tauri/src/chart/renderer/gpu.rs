@@ -4859,13 +4859,13 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
         // Crisp text rendering
         style.visuals.text_cursor.on_duration = 0.5;
 
-        ctx.set_style(style);
-    }
-    // Apply per-style egui visuals overrides (Meridien denser spacing, flat borders, no shadows).
-    // Must run AFTER the rich visual block above so Meridien tweaks override where needed (#3).
-    {
+        // Per-style egui overrides (Meridien/density/shadows/scrollbar) merged
+        // into the SAME style object — ONE clone + ONE set_style per frame instead
+        // of two (halves the per-frame Style allocation). Must run AFTER the rich
+        // visual block so per-style tweaks win (#3).
         let st = super::ui::style::current();
-        super::ui::style::apply_ui_style(ctx, &st, t.toolbar_border, t.toolbar_bg, t.accent);
+        super::ui::style::apply_ui_style(&mut style, &st, t.toolbar_border, t.toolbar_bg, t.accent);
+        ctx.set_style(style);
     }
     // native_dpi_scale is the floor (never render below display resolution).
     // font_scale is the user zoom on top; on a 1x display it wins if > 1.0,

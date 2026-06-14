@@ -2801,8 +2801,7 @@ pub fn hero_text(text: &str, color: egui::Color32) -> egui::RichText {
 /// This is intentionally a *supplement* to the rich visual block already
 /// applied in `setup_theme`; it only overrides the fields that differ
 /// between styles so that non-Meridien themes remain visually unchanged.
-pub fn apply_ui_style(ctx: &egui::Context, settings: &StyleSettings, toolbar_border: egui::Color32, toolbar_bg: egui::Color32, accent: egui::Color32) {
-    let mut style = (*ctx.style()).clone();
+pub fn apply_ui_style(style: &mut egui::Style, settings: &StyleSettings, toolbar_border: egui::Color32, toolbar_bg: egui::Color32, accent: egui::Color32) {
     let is_meridien = settings.hairline_borders && settings.serif_headlines;
 
     if is_meridien {
@@ -2903,7 +2902,6 @@ pub fn apply_ui_style(ctx: &egui::Context, settings: &StyleSettings, toolbar_bor
     // input_focus_color: derived from accent (§3.2 — no per-style override).
     style.visuals.selection.stroke = egui::Stroke::new(settings.focus_ring_width, accent);
 
-    ctx.set_style(style);
     let _ = (toolbar_bg,); // may be used in future for popup fill overrides
 }
 
