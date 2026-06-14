@@ -189,6 +189,25 @@ impl<'a> ToolOverlay<'a> {
         body: impl FnOnce(&mut Ui),
     ) -> ToolOverlayResponse {
         let mut response = ToolOverlayResponse::default();
+
+        // Entrance fade: ease 0→1 on a FRESH open. The caller gates rendering on
+        // its own open flag (so there's no "closing" frame to animate an exit),
+        // but we can still give a clean fade-IN with no API change: a >100ms gap
+        // since the last frame this overlay was shown means it was just opened, so
+        // we snap the animation to 0 and let it ease up. During a continuous
+        // session the gap is one frame (~16ms) → no re-trigger.
+        let appear = {
+            let now = ctx.input(|i| i.time);
+            let seen_id = egui::Id::new(("tool_overlay_seen", self.id));
+            let last: Option<f64> = ctx.memory(|m| m.data.get_temp(seen_id));
+            let fresh = last.map_or(true, |l| now - l > 0.1);
+            ctx.memory_mut(|m| m.data.insert_temp(seen_id, now));
+            let appear_id = egui::Id::new(("tool_overlay_appear", self.id));
+            if fresh { ctx.animate_bool_with_time(appear_id, false, 0.0); }
+            crate::ui_kit::widgets::motion::ease_bool(
+                ctx, appear_id, true, crate::ui_kit::widgets::motion::FAST)
+        };
+
         let radius = st::r_md_cr();
         let bg = palette_ct(theme).base(Tone::Surface);
         let border = palette_ct(theme).base(Tone::Border);
@@ -247,11 +266,13 @@ impl<'a> ToolOverlay<'a> {
                 .fixed_pos(r.min)
                 .interactable(false)
                 .show(ctx, |ui| {
+                    ui.set_opacity(appear);
                     super::paint_shadow_gpu(ui.painter(), r, super::ShadowSpec::md_themed(theme));
                 });
         }
 
         let tool_resp = win.show(ctx, |ui| {
+            ui.set_opacity(appear);
             ui.set_min_width(self.width);
 
             // ── Header strip ──────────────────────────────────────────────
