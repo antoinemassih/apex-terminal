@@ -48,6 +48,7 @@ if watchlist.trendline_filter_open {
                     ui.add_space(m);
                     ui.checkbox(&mut cfg.levels, "Levels");
                     ui.checkbox(&mut cfg.patterns, "Patterns");
+                    ui.checkbox(&mut cfg.candles, "Candles");
                 });
                 ui.horizontal(|ui| {
                     ui.add_space(m);

@@ -1675,7 +1675,7 @@ pub(crate) fn fetch_apexsignals_drawings(symbol: String, timeframe: String) {
     if txs.is_empty() { return; }
     let cfg = auto_draw_config();
     std::thread::spawn(move || {
-        const SOURCES: [&str; 2] = ["trendlines", "chart_patterns"];
+        const SOURCES: [&str; 3] = ["trendlines", "chart_patterns", "candles"];
         let mut by_source: std::collections::HashMap<String, String> = std::collections::HashMap::new();
         if cfg.enabled {
             let base = std::env::var("APEX_SIGNALS_HTTP").unwrap_or_else(|_| "http://localhost:8100".to_string());
