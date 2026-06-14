@@ -164,7 +164,10 @@ pub(crate) fn render(
     let nbase = open.len();
     let spawn_heights: Vec<RailHeight> =
         SPAWNS.with(|s| s.borrow().iter().map(|sp| sp.height).collect());
-    if nbase == 0 && spawn_heights.is_empty() { return false; }
+    // `closing` = no panel wants the rail this frame. We do NOT early-return:
+    // instead we ease the width to 0 so the rail (and the chart reflow) slides
+    // out smoothly, then release the rail once it has fully collapsed.
+    let closing = nbase == 0 && spawn_heights.is_empty();
 
     // Instances = base panels (0..nbase) then duplicate spawns (nbase..).
     let mut heights: Vec<RailHeight> = open.iter().map(|p| height_of(p.id)).collect();
@@ -177,11 +180,20 @@ pub(crate) fn render(
     // shares the width; total grows with column count.
     let ncols = pack_columns(&heights).len().max(1) as f32;
     let col_w = watchlist.rail_col_width.clamp(RAIL_COL_MIN, RAIL_COL_MAX);
-    let total_w = col_w * ncols + gap * (ncols - 1.0);
+    // Animate the rail width so opening/closing a panel SLIDES the chart edge
+    // instead of shoving it sideways in a single frame (the loudest layout jank).
+    // ease_value returns the target instantly while the resize grip is being
+    // dragged, so it never fights manual resizing.
+    let target_w = if closing { 0.0 } else { col_w * ncols + gap * (ncols - 1.0) };
+    let total_w = crate::ui_kit::widgets::motion::ease_value(
+        ctx, egui::Id::new("right_rail_anim_w"), target_w, crate::ui_kit::widgets::motion::MED);
+    if closing && total_w < 1.0 { return false; }
 
     // ── Resize handle ── a top-layer (Foreground) overlay straddling the rail's
     // left seam, so the GPU chart underneath can't intercept the drag (the
-    // failure mode of an in-panel grip at the edge).
+    // failure mode of an in-panel grip at the edge). Hidden while the rail is
+    // sliding out — there's nothing to resize mid-collapse.
+    if !closing {
     let avail = ctx.available_rect();
     let seam_x = avail.right() - total_w;
     let handle = egui::Rect::from_min_size(
@@ -211,6 +223,7 @@ pub(crate) fn render(
         let w = watchlist.rail_col_width;
         watchlist.update_sidebar_state(|s| s.rail_col_width = w);
     }
+    } // end `if !closing` (resize handle)
 
     let mut cx = RailCtx { ctx, t, watchlist, panes, active_pane, account_data, symbol, layout };
     let mut cycled: Option<&'static str> = None;   // base panel split toggled
