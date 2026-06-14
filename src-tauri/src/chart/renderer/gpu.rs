@@ -1611,6 +1611,12 @@ pub(crate) struct AutoDrawConfig {
     pub sensitivity: f64,
     pub lookback: usize,
     pub swing_window: usize,
+    /// How many bars back the engine loads/scans (the "window of operation").
+    /// Larger = older, more valuable lines reach further back.
+    pub window: usize,
+    /// Drop lines whose endpoints don't sit on an actual candle (kills
+    /// "middle of nowhere" floating starts from fitted methods).
+    pub anchored_only: bool,
 }
 impl Default for AutoDrawConfig {
     fn default() -> Self {
@@ -1620,6 +1626,7 @@ impl Default for AutoDrawConfig {
             atr_k: 2.0, pct: 0.015, min_touches: 3, touch_pct: 0.004, max_lines: 12,
             methods: vec![], extend: "none".into(),
             sensitivity: 0.003, lookback: 200, swing_window: 5,
+            window: 500, anchored_only: true,
         }
     }
 }
@@ -1635,10 +1642,11 @@ impl AutoDrawConfig {
     }
     fn query(&self) -> String {
         format!(
-            "&types={}&pivot_mode={}&atr_k={}&pct={}&min_touches={}&touch_pct={}&max_lines={}&methods={}&extend={}&sensitivity={}&lookback={}&swing_window={}",
+            "&types={}&pivot_mode={}&atr_k={}&pct={}&min_touches={}&touch_pct={}&max_lines={}&methods={}&extend={}&sensitivity={}&lookback={}&swing_window={}&window={}&anchored_only={}",
             self.types_csv(), self.pivot_mode, self.atr_k, self.pct,
             self.min_touches, self.touch_pct, self.max_lines,
             self.methods.join(","), self.extend, self.sensitivity, self.lookback, self.swing_window,
+            self.window, self.anchored_only,
         )
     }
 }

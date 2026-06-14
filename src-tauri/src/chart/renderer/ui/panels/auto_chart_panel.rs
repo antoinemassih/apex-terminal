@@ -55,6 +55,10 @@ pub(crate) fn draw(
             ui.checkbox(&mut cfg.enabled, "Auto-charting ON");
             ui.separator();
             if cfg.enabled {
+                ui.label("Window of operation");
+                ui.add(egui::Slider::new(&mut cfg.window, 100..=2000).text("bars back"));
+                ui.checkbox(&mut cfg.anchored_only, "Anchored only (no floating starts)");
+                ui.separator();
                 ui.label("Layers");
                 ui.checkbox(&mut cfg.trendlines, "Trendlines");
                 ui.checkbox(&mut cfg.channels, "Channels");
