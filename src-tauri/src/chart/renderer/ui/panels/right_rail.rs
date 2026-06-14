@@ -82,6 +82,7 @@ pub(crate) static PANELS: &[RailPanelDef] = &[
     super::provenance_pane::RAIL,
     super::signals_panel::RAIL,
     super::analysis_panel::RAIL,
+    super::auto_chart_panel::RAIL,
     super::feed_panel::RAIL,
     super::chart_library_panel::RAIL,
 ];

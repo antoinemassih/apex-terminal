@@ -9,6 +9,7 @@ pub mod split_tabs;
 pub mod alerts_panel;
 pub mod bottom_dock;
 pub mod analysis_panel;
+pub mod auto_chart_panel;
 pub mod apex_diagnostics;
 pub mod connection_panel;
 pub mod connection_state_snapshot;

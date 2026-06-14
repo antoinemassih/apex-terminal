@@ -5715,6 +5715,7 @@ pub(crate) struct Watchlist {
     pub(crate) rrg_tail_length: usize, // how many tail points to show
     // Analysis sidebar — subdivided sections (each has its own tab)
     pub(crate) analysis_open: bool,
+    pub(crate) auto_chart_open: bool, // Auto-Charting side panel
     pub(crate) analysis_tab: crate::chart_renderer::AnalysisTab, // default tab for new sections
     pub(crate) analysis_splits: Vec<SplitSection<crate::chart_renderer::AnalysisTab>>,
     // Signals sidebar — subdivided sections
@@ -5987,6 +5988,7 @@ impl Watchlist {
                rrg_open: false, rrg_sectors: vec![], rrg_cycle_phase: String::new(),
                rrg_time_offset: 0.0, rrg_tail_length: 5,
                analysis_open: false,
+               auto_chart_open: false,
                analysis_tab: crate::chart_renderer::AnalysisTab::Rrg,
                analysis_splits: vec![SplitSection::new(crate::chart_renderer::AnalysisTab::Rrg, 1.0)],
                signals_panel_open: false,
@@ -6339,6 +6341,7 @@ impl Watchlist {
         let screenshot_open = self.screenshot_open;
         let rrg_open = self.rrg_open;
         let analysis_open = self.analysis_open;
+        let auto_chart_open = self.auto_chart_open;
         let signals_panel_open = self.signals_panel_open;
         let indicators_panel_open = self.indicators_panel_open;
         let indicators_section_fracs = self.indicators_section_fracs;
@@ -6377,6 +6380,7 @@ impl Watchlist {
             s.screenshot_open = screenshot_open;
             s.rrg_open = rrg_open;
             s.analysis_open = analysis_open;
+            s.auto_chart_open = auto_chart_open;
             s.signals_panel_open = signals_panel_open;
             s.indicators_panel_open = indicators_panel_open;
             s.indicators_section_fracs = indicators_section_fracs;
@@ -6421,6 +6425,7 @@ impl Watchlist {
         self.screenshot_open = snap.screenshot_open;
         self.rrg_open = snap.rrg_open;
         self.analysis_open = snap.analysis_open;
+        self.auto_chart_open = snap.auto_chart_open;
         self.signals_panel_open = snap.signals_panel_open;
         self.indicators_panel_open = snap.indicators_panel_open;
         self.indicators_section_fracs = snap.indicators_section_fracs;
