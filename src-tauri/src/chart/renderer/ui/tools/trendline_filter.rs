@@ -30,6 +30,48 @@ if watchlist.trendline_filter_open {
                 .theme(t)
                 .show(ui, |ui| {
             let m = 8.0;
+
+            // ── Auto-charting (engine-side detection control) ──────────────────
+            // Drives what ApexSignals computes (sent as query params) + re-fetch.
+            dialog_section(ui, "AUTO-CHARTING", m, color_half(t.dim));
+            let mut cfg = auto_draw_config();
+            let before = cfg.clone();
+            let (sym, tf) = { let c = &panes[ap]; (c.symbol.clone(), c.timeframe.clone()) };
+            ui.horizontal(|ui| { ui.add_space(m); ui.checkbox(&mut cfg.enabled, "On"); });
+            if cfg.enabled {
+                ui.horizontal(|ui| {
+                    ui.add_space(m);
+                    ui.checkbox(&mut cfg.trendlines, "Trendlines");
+                    ui.checkbox(&mut cfg.channels, "Channels");
+                });
+                ui.horizontal(|ui| {
+                    ui.add_space(m);
+                    ui.checkbox(&mut cfg.levels, "Levels");
+                    ui.checkbox(&mut cfg.patterns, "Patterns");
+                    ui.checkbox(&mut cfg.candles, "Candles");
+                });
+                ui.horizontal(|ui| {
+                    ui.add_space(m);
+                    ui.label("Pivots:");
+                    for mode in ["hybrid", "atr", "percent"] {
+                        if ui.selectable_label(cfg.pivot_mode == mode, mode).clicked() {
+                            cfg.pivot_mode = mode.to_string();
+                        }
+                    }
+                });
+                ui.horizontal(|ui| { ui.add_space(m); ui.add(egui::Slider::new(&mut cfg.atr_k, 0.5..=6.0).text("atr_k")); });
+                ui.horizontal(|ui| { ui.add_space(m); ui.add(egui::Slider::new(&mut cfg.pct, 0.0..=0.05).text("pct")); });
+                ui.horizontal(|ui| { ui.add_space(m); ui.add(egui::Slider::new(&mut cfg.min_touches, 2..=6).text("min touches")); });
+                ui.horizontal(|ui| { ui.add_space(m); ui.add(egui::Slider::new(&mut cfg.max_lines, 4..=30).text("max lines")); });
+            }
+            if cfg != before {
+                set_auto_draw_config(cfg);
+                fetch_apexsignals_drawings(sym, tf);
+            }
+            ui.add_space(gap_sm());
+            dialog_separator_shadow(ui, m, tint(t, Tone::Border, alpha_line()));
+            ui.add_space(gap_sm());
+
             let chart = &mut panes[ap];
 
             // Per-type visibility toggles

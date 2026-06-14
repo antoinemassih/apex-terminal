@@ -1584,35 +1584,123 @@ pub(crate) fn bar_to_time(bar: f32, timestamps: &[i64]) -> i64 {
     t0 + ((t1 - t0) as f32 * frac) as i64
 }
 
-/// Fetch cached auto-chart drawings from ApexSignals for initial paint on chart
-/// open — the /ws feed only pushes on the next bar close, so without this the
-/// chart is blank until then. The live stream keeps it updated afterward.
-/// Base URL via `APEX_SIGNALS_HTTP` (default http://localhost:8100).
+/// Global, persisted config for the auto-drawing control panel. Drives what the
+/// engine computes (sent as query params) and which layers render.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub(crate) struct AutoDrawConfig {
+    pub enabled: bool,    // master on/off
+    pub trendlines: bool,
+    pub levels: bool,
+    pub channels: bool,
+    pub patterns: bool,
+    pub candles: bool,
+    pub pivot_mode: String, // "hybrid" | "atr" | "percent"
+    pub atr_k: f64,
+    pub pct: f64,
+    pub min_touches: u32,
+    pub touch_pct: f64,
+    pub max_lines: usize,
+}
+impl Default for AutoDrawConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true, trendlines: true, levels: true, channels: true,
+            patterns: true, candles: false, pivot_mode: "hybrid".into(),
+            atr_k: 2.0, pct: 0.015, min_touches: 3, touch_pct: 0.004, max_lines: 12,
+        }
+    }
+}
+impl AutoDrawConfig {
+    fn types_csv(&self) -> String {
+        let mut v = vec![];
+        if self.trendlines { v.push("trendlines"); }
+        if self.levels { v.push("levels"); }
+        if self.channels { v.push("channels"); }
+        if self.patterns { v.push("patterns"); }
+        if self.candles { v.push("candles"); }
+        v.join(",")
+    }
+    fn query(&self) -> String {
+        format!(
+            "&types={}&pivot_mode={}&atr_k={}&pct={}&min_touches={}&touch_pct={}&max_lines={}",
+            self.types_csv(), self.pivot_mode, self.atr_k, self.pct,
+            self.min_touches, self.touch_pct, self.max_lines,
+        )
+    }
+}
+
+impl crate::state::persistence::Persistable for AutoDrawConfig {
+    const KEY: &'static str = "auto_draw_config";
+    const VERSION: u32 = 1;
+}
+
+fn auto_draw_path() -> std::path::PathBuf {
+    let mut p = dirs::data_local_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    p.push("apex-terminal");
+    let _ = std::fs::create_dir_all(&p);
+    p.push("auto-draw-config.json");
+    p
+}
+
+static AUTO_DRAW: std::sync::OnceLock<std::sync::Mutex<AutoDrawConfig>> = std::sync::OnceLock::new();
+
+/// Current auto-draw config (loads from disk on first access).
+pub(crate) fn auto_draw_config() -> AutoDrawConfig {
+    AUTO_DRAW
+        .get_or_init(|| {
+            let cfg = crate::state::persistence::load::<AutoDrawConfig>(&auto_draw_path())
+                .unwrap_or_default();
+            std::sync::Mutex::new(cfg)
+        })
+        .lock()
+        .map(|g| g.clone())
+        .unwrap_or_default()
+}
+
+/// Update + persist the auto-draw config (global, applies to all charts).
+pub(crate) fn set_auto_draw_config(cfg: AutoDrawConfig) {
+    let cell = AUTO_DRAW.get_or_init(|| std::sync::Mutex::new(AutoDrawConfig::default()));
+    if let Ok(mut g) = cell.lock() { *g = cfg.clone(); }
+    let _ = crate::state::persistence::save(&auto_draw_path(), &cfg);
+}
+
+/// Fetch auto-chart drawings from ApexSignals using the current panel config.
+/// Sends an AutoTrendlines command for *every* known source (empty if the engine
+/// returned none) so unchecked layers and master-off actually clear. The engine
+/// computes per the config query params. Base via `APEX_SIGNALS_HTTP` (:8100).
 pub(crate) fn fetch_apexsignals_drawings(symbol: String, timeframe: String) {
     let txs: Vec<std::sync::mpsc::Sender<super::ChartCommand>> = crate::NATIVE_CHART_TXS
         .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
     if txs.is_empty() { return; }
+    let cfg = auto_draw_config();
     std::thread::spawn(move || {
-        let base = std::env::var("APEX_SIGNALS_HTTP").unwrap_or_else(|_| "http://localhost:8100".to_string());
-        // Pass the chart's timeframe so the engine computes/serves that tf
-        // (and computes from history on cache-miss — closed-market paint).
-        let url = format!("{base}/signals/drawings/{symbol}?timeframe={timeframe}");
-        let client = reqwest::blocking::Client::builder().user_agent("apex-native").build().unwrap_or_else(|_| reqwest::blocking::Client::new());
-        if let Ok(resp) = client.get(&url).timeout(std::time::Duration::from_secs(3)).send() {
-            if let Ok(json) = resp.json::<serde_json::Value>() {
-                // One frame per source (trendlines / chart_patterns); apply each
-                // so per-source replacement stays intact. Empty sources omitted.
-                if let Some(frames) = json.get("frames").and_then(|f| f.as_array()) {
-                    for frame in frames {
-                        let drawings_json = frame.get("drawings").map(|d| d.to_string()).unwrap_or_else(|| "[]".to_string());
-                        let source = frame.get("source").and_then(|s| s.as_str()).unwrap_or("trendlines").to_string();
-                        let cmd = super::ChartCommand::AutoTrendlines { symbol: symbol.clone(), drawings_json, source };
-                        for tx in &txs { let _ = tx.send(cmd.clone()); }
+        const SOURCES: [&str; 3] = ["trendlines", "chart_patterns", "candles"];
+        let mut by_source: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        if cfg.enabled {
+            let base = std::env::var("APEX_SIGNALS_HTTP").unwrap_or_else(|_| "http://localhost:8100".to_string());
+            let url = format!("{base}/signals/drawings/{symbol}?timeframe={timeframe}{}", cfg.query());
+            let client = reqwest::blocking::Client::builder().user_agent("apex-native").build().unwrap_or_else(|_| reqwest::blocking::Client::new());
+            if let Ok(resp) = client.get(&url).timeout(std::time::Duration::from_secs(4)).send() {
+                if let Ok(json) = resp.json::<serde_json::Value>() {
+                    if let Some(frames) = json.get("frames").and_then(|f| f.as_array()) {
+                        for frame in frames {
+                            if let Some(src) = frame.get("source").and_then(|s| s.as_str()) {
+                                let dj = frame.get("drawings").map(|d| d.to_string()).unwrap_or_else(|| "[]".to_string());
+                                by_source.insert(src.to_string(), dj);
+                            }
+                        }
                     }
-                    crate::wake_native_ui();
                 }
             }
         }
+        // Replace every known source (empty clears) — handles toggles + master-off.
+        for src in SOURCES {
+            let drawings_json = by_source.get(src).cloned().unwrap_or_else(|| "[]".to_string());
+            let cmd = super::ChartCommand::AutoTrendlines { symbol: symbol.clone(), drawings_json, source: src.to_string() };
+            for tx in &txs { let _ = tx.send(cmd.clone()); }
+        }
+        crate::wake_native_ui();
     });
 }
 
@@ -7635,6 +7723,17 @@ impl ApplicationHandler for App {
                     eprintln!("[state] final flush failed for '{key}': {e}");
                 }
                 self.windows.retain(|w| w.id != wid);
+                // When the LAST chart window closes, clear the global command-sender
+                // registry that native_main's poll loop watches. Without this the
+                // closed window's Sender lingers in NATIVE_CHART_TXS, the poll loop
+                // never sees "no senders", main never returns, and the process keeps
+                // running headless — a zombie that holds the GPU + :9091 and stacks
+                // up on every relaunch (root cause of the acquire-stall / fps decay).
+                if self.windows.is_empty() {
+                    if let Some(m) = crate::NATIVE_CHART_TXS.get() {
+                        if let Ok(mut v) = m.lock() { v.clear(); }
+                    }
+                }
             }
             WindowEvent::Resized(s) => {
                 if s.width>0&&s.height>0 {
