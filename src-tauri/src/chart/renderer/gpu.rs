@@ -314,6 +314,46 @@ pub(crate) fn pane_header_h(wl: &Watchlist) -> f32 {
     (style_adj * super::ui::style::current().header_height_scale).max(12.0)
 }
 
+/// Borderless-window edge resize. We draw our own chrome (`with_decorations(false)`),
+/// which on Windows strips the OS sizing border — so without this, window edges
+/// aren't grabbable and resize cursors never appear. This adds INVISIBLE grab bands
+/// at the left/right/bottom edges + bottom corners that show the resize cursor and
+/// start a native OS resize via `drag_resize_window`, WITHOUT adding any Windows
+/// frame (the window stays fully custom). The TOP edge is intentionally left to the
+/// titlebar (window move) to avoid fighting the toolbar drag handler. No-op while
+/// maximized. Runs inside the egui frame so the cursor is applied via egui output.
+fn window_resize_borders(ctx: &egui::Context, window: &Window) {
+    use winit::window::ResizeDirection as RD;
+    use egui::CursorIcon as CI;
+    if window.is_maximized() { return; }
+    let s = ctx.screen_rect();
+    let b = 6.0_f32;   // edge band thickness
+    let c = 14.0_f32;  // corner square (takes priority over the straight edges)
+    let zones: [(egui::Rect, RD, CI, &str); 5] = [
+        // bottom corners first (drawn last → on top → win the hit test)
+        (egui::Rect::from_min_max(egui::pos2(s.left(), s.bottom()-c), egui::pos2(s.left()+c, s.bottom())), RD::SouthWest, CI::ResizeNeSw, "sw"),
+        (egui::Rect::from_min_max(egui::pos2(s.right()-c, s.bottom()-c), s.right_bottom()), RD::SouthEast, CI::ResizeNwSe, "se"),
+        // straight edges (inset by the corner size so corners stay distinct)
+        (egui::Rect::from_min_max(egui::pos2(s.left()+c, s.bottom()-b), egui::pos2(s.right()-c, s.bottom())), RD::South, CI::ResizeVertical, "so"),
+        (egui::Rect::from_min_max(egui::pos2(s.left(), s.top()+c), egui::pos2(s.left()+b, s.bottom()-c)), RD::West, CI::ResizeHorizontal, "we"),
+        (egui::Rect::from_min_max(egui::pos2(s.right()-b, s.top()+c), egui::pos2(s.right(), s.bottom()-c)), RD::East, CI::ResizeHorizontal, "ea"),
+    ];
+    // Edges first, then corners last so corners win where they overlap.
+    for (rect, dir, cursor, sfx) in [zones[2], zones[3], zones[4], zones[0], zones[1]] {
+        let resp = egui::Area::new(egui::Id::new(("winrsz", sfx)))
+            .order(egui::Order::Foreground)
+            .fixed_pos(rect.min)
+            .interactable(true)
+            .show(ctx, |ui| {
+                ui.set_min_size(rect.size());
+                ui.allocate_rect(rect, egui::Sense::drag())
+            })
+            .inner;
+        if resp.hovered() || resp.dragged() { ctx.set_cursor_icon(cursor); }
+        if resp.drag_started() { let _ = window.drag_resize_window(dir); }
+    }
+}
+
 /// Paint rounded corner + border frames over each chart pane on the Foreground layer.
 /// Called after `draw_chart` inside the egui run closure so the frames sit on top of
 /// chart content. Only fires for styles with `r_md > 0` and `pane_gap > 0` (tiled
@@ -4840,13 +4880,13 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
         // Crisp text rendering
         style.visuals.text_cursor.on_duration = 0.5;
 
-        ctx.set_style(style);
-    }
-    // Apply per-style egui visuals overrides (Meridien denser spacing, flat borders, no shadows).
-    // Must run AFTER the rich visual block above so Meridien tweaks override where needed (#3).
-    {
+        // Per-style egui overrides (Meridien/density/shadows/scrollbar) merged
+        // into the SAME style object — ONE clone + ONE set_style per frame instead
+        // of two (halves the per-frame Style allocation). Must run AFTER the rich
+        // visual block so per-style tweaks win (#3).
         let st = super::ui::style::current();
-        super::ui::style::apply_ui_style(ctx, &st, t.toolbar_border, t.toolbar_bg, t.accent);
+        super::ui::style::apply_ui_style(&mut style, &st, t.toolbar_border, t.toolbar_bg, t.accent);
+        ctx.set_style(style);
     }
     // native_dpi_scale is the floor (never render below display resolution).
     // font_scale is the user zoom on top; on a 1x display it wins if > 1.0,
@@ -7178,7 +7218,7 @@ impl GpuCtx {
         // Phase 1: Acquire surface texture
         let t0 = std::time::Instant::now();
         let output = match self.surface.get_current_texture() {
-            Ok(t) => t, Err(_) => { self.surface.configure(&self.device, &self.config); return; }
+            Ok(t) => t, Err(_) => { self.surface.configure(&self.device, &self.config); window.request_redraw(); return; }
         };
         let view = output.texture.create_view(&Default::default());
         let acquire_us = t0.elapsed().as_micros() as u64;
@@ -7210,6 +7250,9 @@ impl GpuCtx {
                 && crate::chart_renderer::ui::tps_overlay::render_tps_overlay(ctx) {
                 watchlist.boss_key_active = false;
             }
+            // Borderless-window edge-resize grab bands (custom chrome, no OS frame).
+            // Last so the resize cursor overrides the chart crosshair at the edges.
+            window_resize_borders(ctx, window);
         });
         self.egui_state.handle_platform_output(window, full_output.platform_output);
         let layout_us = t1.elapsed().as_micros() as u64;
@@ -7765,12 +7808,17 @@ impl ApplicationHandler for App {
                 if s.width>0&&s.height>0 {
                     cw.gpu.config.width=s.width; cw.gpu.config.height=s.height;
                     cw.gpu.surface.configure(&cw.gpu.device, &cw.gpu.config);
-                    // User-driven (window resize) — must be immediate so the
-                    // surface reconfigure is reflected before the next paint.
                     crate::foundation::frame_profiler::note_repaint(
                         concat!(file!(), ":", line!(), " resize"),
                     );
-                    cw.win.request_redraw();
+                    // Paint SYNCHRONOUSLY here rather than only request_redraw():
+                    // the Windows modal resize loop owns the thread and does NOT
+                    // service RedrawRequested, so a deferred redraw leaves the old
+                    // frame stretched by DWM until the drag ends (the rubber-band
+                    // jank). Rendering inline tracks the new size live on every
+                    // step. Same render path as RedrawRequested — this changes only
+                    // WHEN the existing render runs, never the chart GPU pipeline.
+                    cw.gpu.render(&cw.win, &mut cw.panes, &mut cw.active_pane, &mut cw.layout, &mut cw.watchlist, &cw.toasts, &mut cw.conn_panel_open, &cw.rx);
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -8146,11 +8194,20 @@ impl ApplicationHandler for App {
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 cw.watchlist.native_dpi_scale = scale_factor as f32;
-                // OS-driven (DPI change) — must be immediate.
+                // Reconfigure the surface to the new physical size so the frame
+                // isn't mis-scaled/stretched for a beat when crossing monitors of
+                // different DPI (a Resized may not follow, especially mid titlebar
+                // move-loop). Then paint inline (the move-loop won't service a
+                // deferred redraw).
+                let new = cw.win.inner_size();
+                if new.width>0 && new.height>0 {
+                    cw.gpu.config.width=new.width; cw.gpu.config.height=new.height;
+                    cw.gpu.surface.configure(&cw.gpu.device, &cw.gpu.config);
+                }
                 crate::foundation::frame_profiler::note_repaint(
                     concat!(file!(), ":", line!(), " dpi_change"),
                 );
-                cw.win.request_redraw();
+                cw.gpu.render(&cw.win, &mut cw.panes, &mut cw.active_pane, &mut cw.layout, &mut cw.watchlist, &cw.toasts, &mut cw.conn_panel_open, &cw.rx);
             }
             _ => {}
         }

@@ -95,6 +95,10 @@ pub struct ToolOverlay<'a> {
     header_leading:  Option<Box<dyn FnOnce(&mut Ui) + 'a>>,
     header_trailing: Option<Box<dyn FnOnce(&mut Ui) + 'a>>,
     footer:          Option<Box<dyn FnOnce(&mut Ui) + 'a>>,
+    /// Caller's open flag. When false the overlay animates OUT and stops
+    /// rendering once hidden. Default true. Pass via `.open()` and call
+    /// `.show()` every frame (don't gate on the flag) to get an exit animation.
+    open: bool,
 }
 
 impl<'a> ToolOverlay<'a> {
@@ -114,6 +118,7 @@ impl<'a> ToolOverlay<'a> {
             header_leading: None,
             header_trailing: None,
             footer: None,
+            open: true,
         }
     }
 
@@ -168,6 +173,12 @@ impl<'a> ToolOverlay<'a> {
     /// Allow / disallow window drag via header. Default: draggable.
     pub fn draggable(mut self, on: bool) -> Self { self.draggable = on; self }
 
+    /// Drive the show/hide animation from the caller's open flag. Pass your
+    /// `*_open` bool and call `.show()` EVERY frame (do NOT gate on the flag):
+    /// the overlay fades in when true, fades out when false, and stops
+    /// rendering once fully hidden. Default true (always shown when called).
+    pub fn open(mut self, open: bool) -> Self { self.open = open; self }
+
     /// Override body padding. Defaults: 14 horizontal, 8 vertical.
     pub fn body_padding(mut self, x: f32, y: f32) -> Self {
         self.body_pad_x = x; self.body_pad_y = y; self
@@ -189,6 +200,34 @@ impl<'a> ToolOverlay<'a> {
         body: impl FnOnce(&mut Ui),
     ) -> ToolOverlayResponse {
         let mut response = ToolOverlayResponse::default();
+
+        // Entrance fade: ease 0→1 on a FRESH open. The caller gates rendering on
+        // its own open flag (so there's no "closing" frame to animate an exit),
+        // but we can still give a clean fade-IN with no API change: a >100ms gap
+        // since the last frame this overlay was shown means it was just opened, so
+        // we snap the animation to 0 and let it ease up. During a continuous
+        // session the gap is one frame (~16ms) → no re-trigger.
+        let appear = {
+            let now = ctx.input(|i| i.time);
+            let seen_id = egui::Id::new(("tool_overlay_seen", self.id));
+            let last: Option<f64> = ctx.memory(|m| m.data.get_temp(seen_id));
+            let fresh = last.map_or(true, |l| now - l > 0.1);
+            ctx.memory_mut(|m| m.data.insert_temp(seen_id, now));
+            let appear_id = egui::Id::new(("tool_overlay_appear", self.id));
+            if fresh { ctx.animate_bool_with_time(appear_id, false, 0.0); }
+            // Driven by the caller's open flag: eases up when open, down when the
+            // caller flips it false (the caller must keep calling show() to play
+            // the fade-out). Gated callers leave open=true and rely on the
+            // fresh-open snap above for their entrance.
+            crate::ui_kit::widgets::motion::ease_bool(
+                ctx, appear_id, self.open, crate::ui_kit::widgets::motion::FAST)
+        };
+        // Fully hidden — the caller set open=false and the fade-out finished.
+        // Stop rendering (and don't run the body) so it fully disappears.
+        if !self.open && appear < 0.01 {
+            return response;
+        }
+
         let radius = st::r_md_cr();
         let bg = palette_ct(theme).base(Tone::Surface);
         let border = palette_ct(theme).base(Tone::Border);
@@ -237,7 +276,23 @@ impl<'a> ToolOverlay<'a> {
         let text_color  = palette_ct(theme).base(Tone::Text);
         let border_col  = border;
 
-        win.show(ctx, |ui| {
+        // Drop shadow — match dialog elevation. Painted at last frame's window
+        // rect (Order::Middle, behind the window) so floating tools sit on the
+        // same depth plane as Modal dialogs (ToolOverlay had no shadow before).
+        let shadow_mem_id = egui::Id::new(("tool_overlay_shadow_rect", self.id));
+        if let Some(r) = ctx.memory(|m| m.data.get_temp::<Rect>(shadow_mem_id)) {
+            let _ = egui::Area::new(egui::Id::new(("tool_overlay_shadow", self.id)))
+                .order(egui::Order::Middle)
+                .fixed_pos(r.min)
+                .interactable(false)
+                .show(ctx, |ui| {
+                    ui.set_opacity(appear);
+                    super::paint_shadow_gpu(ui.painter(), r, super::ShadowSpec::md_themed(theme));
+                });
+        }
+
+        let tool_resp = win.show(ctx, |ui| {
+            ui.set_opacity(appear);
             ui.set_min_width(self.width);
 
             // ── Header strip ──────────────────────────────────────────────
@@ -387,6 +442,12 @@ impl<'a> ToolOverlay<'a> {
 
             let _ = dim;
         });
+
+        // Track the live window rect so next frame's shadow follows it (incl.
+        // while it's being dragged).
+        if let Some(ir) = tool_resp {
+            ctx.memory_mut(|m| m.data.insert_temp(shadow_mem_id, ir.response.rect));
+        }
 
         response
     }

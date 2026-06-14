@@ -1315,12 +1315,24 @@ pub(crate) fn render(
     crate::chart_renderer::ui::tools::overlay_manager::draw(ctx, watchlist, panes, ap, t);
 
     // ── Group manager popup ────────────────────────────────────────────────────
+    // Migrated from the raw `dialog_window_themed` factory to the canonical Modal
+    // shell so it gets the same scrim + entry/exit animation + draggable header +
+    // drop shadow as every other dialog. Modal renders the title + close X and
+    // defers `closed` until its exit anim finishes, so the `if open` gate plays
+    // the fade-out correctly.
     if panes[ap].group_manager_open {
         let mut close_gm = false;
-        dialog_window_themed(ctx, "group_manager", egui::pos2(200.0, 100.0), 250.0, t.toolbar_bg, t.toolbar_border, None)
-            .show(ctx, |ui| {
-                if crate::ui_kit::widgets::Header::dialog("NEW GROUP").closable(true).show(ui, t).close_clicked { close_gm = true; }
-                ui.add_space(gap_xl());
+        let gm_resp = crate::ui_kit::widgets::modal::Modal::new("NEW GROUP")
+            .id("group_manager")
+            .ctx(ctx)
+            .theme(t)
+            .size(egui::vec2(250.0, 0.0))
+            .anchor(crate::ui_kit::widgets::modal::Anchor::Window { pos: None })
+            .frame_kind(crate::ui_kit::widgets::modal::FrameKind::DialogWindow)
+            .header_style(crate::ui_kit::widgets::modal::HeaderStyle::Dialog)
+            .separator(true)
+            .show(|ui| {
+                ui.add_space(gap_md());
                 let m = 10.0;
                 ui.horizontal(|ui| {
                     ui.add_space(m);
@@ -1347,6 +1359,7 @@ pub(crate) fn render(
                 });
                 ui.add_space(gap_lg());
             });
+        if gm_resp.closed { close_gm = true; }
         if close_gm { panes[ap].group_manager_open = false; }
     }
 
