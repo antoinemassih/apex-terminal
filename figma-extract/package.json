@@ -1,0 +1,12 @@
+{
+  "name": "apex-figma-extract",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone CLI that reads an existing Figma file via the REST API and extracts its palette, type scale, radii, spacing, and components into the apex-terminal FigmaThemeExport envelope — ready for the in-app 'Import from Figma' button or the Rust importer (design_system::import).",
+  "bin": { "apex-figma-extract": "src/extract.mjs" },
+  "scripts": {
+    "extract": "node src/extract.mjs"
+  },
+  "engines": { "node": ">=18" }
+}

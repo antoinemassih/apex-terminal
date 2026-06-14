@@ -1,0 +1,57 @@
+{
+  "name": "Sample Trading UI",
+  "styles": {
+    "1:1": { "name": "Background", "styleType": "FILL" },
+    "1:2": { "name": "Surface/Panel", "styleType": "FILL" },
+    "1:3": { "name": "Text/Primary", "styleType": "FILL" },
+    "1:4": { "name": "Accent/Brand", "styleType": "FILL" },
+    "1:5": { "name": "Positive/Bull", "styleType": "FILL" },
+    "1:6": { "name": "Negative/Bear", "styleType": "FILL" },
+    "1:7": { "name": "Caution/Warn", "styleType": "FILL" },
+    "1:8": { "name": "Border/Divider", "styleType": "FILL" }
+  },
+  "document": {
+    "id": "0:0",
+    "type": "DOCUMENT",
+    "children": [
+      {
+        "id": "1:0",
+        "type": "CANVAS",
+        "name": "Page 1",
+        "children": [
+          { "id": "2:1", "type": "RECTANGLE", "name": "bg", "styles": { "fill": "1:1" }, "fills": [{ "type": "SOLID", "color": { "r": 0.04, "g": 0.04, "b": 0.04, "a": 1 } }] },
+          { "id": "2:2", "type": "RECTANGLE", "name": "panel", "styles": { "fill": "1:2" }, "cornerRadius": 10, "fills": [{ "type": "SOLID", "color": { "r": 0.11, "g": 0.10, "b": 0.07, "a": 1 } }] },
+          { "id": "2:3", "type": "RECTANGLE", "name": "stroke", "styles": { "fill": "1:8" }, "fills": [{ "type": "SOLID", "color": { "r": 0.22, "g": 0.21, "b": 0.18, "a": 1 } }] },
+          { "id": "2:4", "type": "RECTANGLE", "name": "accent", "styles": { "fill": "1:4" }, "cornerRadius": 6, "fills": [{ "type": "SOLID", "color": { "r": 0.937, "g": 0.357, "b": 0.231, "a": 1 } }] },
+          { "id": "2:5", "type": "RECTANGLE", "name": "bull", "styles": { "fill": "1:5" }, "fills": [{ "type": "SOLID", "color": { "r": 0.306, "g": 0.753, "b": 0.478, "a": 1 } }] },
+          { "id": "2:6", "type": "RECTANGLE", "name": "bear", "styles": { "fill": "1:6" }, "fills": [{ "type": "SOLID", "color": { "r": 0.847, "g": 0.314, "b": 0.243, "a": 1 } }] },
+          { "id": "2:7", "type": "RECTANGLE", "name": "warn", "styles": { "fill": "1:7" }, "fills": [{ "type": "SOLID", "color": { "r": 1.0, "g": 0.541, "b": 0.298, "a": 1 } }] },
+          { "id": "2:10", "type": "TEXT", "name": "caption", "style": { "fontSize": 9, "fontFamily": "Inter" }, "styles": { "fill": "1:3" }, "fills": [{ "type": "SOLID", "color": { "r": 0.957, "g": 0.925, "b": 0.878, "a": 1 } }] },
+          { "id": "2:11", "type": "TEXT", "name": "body", "style": { "fontSize": 11, "fontFamily": "Inter" } },
+          { "id": "2:12", "type": "TEXT", "name": "reading", "style": { "fontSize": 13, "fontFamily": "Inter" } },
+          { "id": "2:13", "type": "TEXT", "name": "heading", "style": { "fontSize": 16, "fontFamily": "Inter" } },
+          { "id": "2:14", "type": "TEXT", "name": "hero", "style": { "fontSize": 22, "fontFamily": "Inter" } },
+          {
+            "id": "3:1", "type": "FRAME", "name": "toolbar", "layoutMode": "HORIZONTAL",
+            "itemSpacing": 8, "paddingLeft": 12, "paddingTop": 4, "paddingRight": 16, "cornerRadius": 4,
+            "children": [
+              { "id": "3:2", "type": "FRAME", "name": "cluster", "layoutMode": "HORIZONTAL", "itemSpacing": 20, "cornerRadius": 20 }
+            ]
+          },
+          {
+            "id": "4:1", "type": "COMPONENT_SET", "name": "Button/Primary",
+            "children": [
+              { "id": "4:2", "type": "COMPONENT", "name": "State=Default", "cornerRadius": 8, "fills": [{ "type": "SOLID", "color": { "r": 0.937, "g": 0.357, "b": 0.231, "a": 1 } }] }
+            ]
+          },
+          {
+            "id": "5:1", "type": "COMPONENT_SET", "name": "Tag",
+            "children": [
+              { "id": "5:2", "type": "COMPONENT", "name": "Tone=Accent", "cornerRadius": 99, "fills": [{ "type": "SOLID", "color": { "r": 0.937, "g": 0.357, "b": 0.231, "a": 0.2 } }] }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

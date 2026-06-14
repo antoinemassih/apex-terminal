@@ -4,6 +4,7 @@
   "private": true,
   "description": "Figma plugin that scaffolds an apex-terminal design system (variables + component library + layout frames) from apex.tokens.json. The PUSH half of the bidirectional Figma <-> apex-terminal theme sync tool.",
   "scripts": {
+    "setup": "node setup.mjs",
     "typecheck": "tsc --noEmit",
     "build": "esbuild src/code.ts --bundle --outfile=dist/code.js --target=es2017 --loader:.json=json",
     "watch": "npm run build -- --watch"

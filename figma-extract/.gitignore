@@ -1,0 +1,4 @@
+node_modules/
+extracted.figma.json
+figma-mapping.suggested.json
+*.log
