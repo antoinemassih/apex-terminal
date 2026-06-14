@@ -329,14 +329,20 @@ fn window_resize_borders(ctx: &egui::Context, window: &Window) {
     let s = ctx.screen_rect();
     let b = 6.0_f32;   // edge band thickness
     let c = 14.0_f32;  // corner square (takes priority over the straight edges)
+    // The L/R bands sit at Order::Foreground (above everything), so where they
+    // overlap the toolbar they'd eat clicks on the top-nav window controls /
+    // panel toggles. Start the side bands BELOW the toolbar so the whole top nav
+    // stays clickable (you still resize from the lower part of the side edges).
+    let side_top = (s.top() + c)
+        .max(crate::chart_renderer::ui::style::toolbar_rect().bottom() + 2.0);
     let zones: [(egui::Rect, RD, CI, &str); 5] = [
         // bottom corners first (drawn last → on top → win the hit test)
         (egui::Rect::from_min_max(egui::pos2(s.left(), s.bottom()-c), egui::pos2(s.left()+c, s.bottom())), RD::SouthWest, CI::ResizeNeSw, "sw"),
         (egui::Rect::from_min_max(egui::pos2(s.right()-c, s.bottom()-c), s.right_bottom()), RD::SouthEast, CI::ResizeNwSe, "se"),
         // straight edges (inset by the corner size so corners stay distinct)
         (egui::Rect::from_min_max(egui::pos2(s.left()+c, s.bottom()-b), egui::pos2(s.right()-c, s.bottom())), RD::South, CI::ResizeVertical, "so"),
-        (egui::Rect::from_min_max(egui::pos2(s.left(), s.top()+c), egui::pos2(s.left()+b, s.bottom()-c)), RD::West, CI::ResizeHorizontal, "we"),
-        (egui::Rect::from_min_max(egui::pos2(s.right()-b, s.top()+c), egui::pos2(s.right(), s.bottom()-c)), RD::East, CI::ResizeHorizontal, "ea"),
+        (egui::Rect::from_min_max(egui::pos2(s.left(), side_top), egui::pos2(s.left()+b, s.bottom()-c)), RD::West, CI::ResizeHorizontal, "we"),
+        (egui::Rect::from_min_max(egui::pos2(s.right()-b, side_top), egui::pos2(s.right(), s.bottom()-c)), RD::East, CI::ResizeHorizontal, "ea"),
     ];
     // Edges first, then corners last so corners win where they overlap.
     for (rect, dir, cursor, sfx) in [zones[2], zones[3], zones[4], zones[0], zones[1]] {

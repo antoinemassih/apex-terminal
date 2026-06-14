@@ -164,8 +164,32 @@ impl Position {
     }
 }
 
+/// Real risk limits + circuit-breaker status from ApexIB `/risk/limits` +
+/// `/risk/status`. Replaces the Portfolio pane's old fabricated beta/Sharpe/VaR.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct RiskInfo {
+    pub max_gross_exposure: f64,
+    pub max_net_exposure_abs: f64,
+    pub daily_pnl_floor: Option<f64>,
+    pub max_order_notional: f64,
+    pub circuit_tripped: bool,
+    pub manually_halted: bool,
+    pub recent_rejections: i64,
+    pub max_rejections: i64,
+    pub connected: bool,
+    pub have: bool, // true once a successful fetch populated this
+}
+
 // Shared account data — written by background worker, read by render thread
 pub(crate) static ACCOUNT_DATA: OnceLock<Mutex<Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>>> = OnceLock::new();
+
+/// Latest risk limits + status (slow poller). Read by the Portfolio pane.
+pub(crate) static RISK_DATA: OnceLock<Mutex<Option<RiskInfo>>> = OnceLock::new();
+
+/// Read latest risk info (non-blocking).
+pub(crate) fn read_risk_data() -> Option<RiskInfo> {
+    RISK_DATA.get()?.lock().ok()?.clone()
+}
 
 // Session P&L samples — `(unix_ms, daily_pnl)`. Appended once per account-poll
 // cycle so the chart's P&L overlay can draw a real equity curve instead of a
@@ -381,6 +405,36 @@ pub(crate) fn start_account_poller() {
                 }
 
                 summary.last_update = Some(std::time::Instant::now());
+
+                // Risk limits + circuit-breaker status (real) for the Portfolio
+                // pane. Best-effort; failures leave `have=false` so the UI gates.
+                {
+                    let mut ri = RiskInfo::default();
+                    if let Ok(resp) = client.get(format!("{}/risk/limits", APEXIB_URL)).send() {
+                        if let Ok(j) = resp.json::<serde_json::Value>() {
+                            ri.have = true;
+                            ri.max_gross_exposure = j["max_gross_exposure"].as_f64().unwrap_or(0.0);
+                            ri.max_net_exposure_abs = j["max_net_exposure_abs"].as_f64().unwrap_or(0.0);
+                            ri.daily_pnl_floor = j["daily_pnl_floor"].as_f64();
+                            ri.max_order_notional = j["max_order_notional"].as_f64().unwrap_or(0.0);
+                        }
+                    }
+                    if let Ok(resp) = client.get(format!("{}/risk/status", APEXIB_URL)).send() {
+                        if let Ok(j) = resp.json::<serde_json::Value>() {
+                            ri.have = true;
+                            ri.connected = j["connected"].as_bool().unwrap_or(false);
+                            let cb = &j["circuitBreaker"];
+                            ri.circuit_tripped = cb["tripped"].as_bool().unwrap_or(false);
+                            ri.manually_halted = cb["manuallyHalted"].as_bool().unwrap_or(false);
+                            ri.recent_rejections = cb["recentRejections"].as_i64().unwrap_or(0);
+                            ri.max_rejections = cb["maxRejections"].as_i64().unwrap_or(0);
+                        }
+                    }
+                    if ri.have {
+                        let cell = RISK_DATA.get_or_init(|| Mutex::new(None));
+                        if let Ok(mut g) = cell.lock() { *g = Some(ri); }
+                    }
+                }
 
                 // Wave 6d: reconcile broker positions against local Filled state.
                 // Runs after every successful /positions fetch so drift surfaces
