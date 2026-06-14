@@ -368,7 +368,11 @@ pub(crate) fn start_account_poller() {
                                     avg_price: p["avgCost"].as_f64().unwrap_or(0.0) as f32,
                                     current_price: p["marketPrice"].as_f64().unwrap_or(0.0) as f32,
                                     market_value: p["marketValue"].as_f64().unwrap_or(0.0),
-                                    unrealized_pnl: p["unrealizedPnl"].as_f64().unwrap_or(0.0),
+                                    // ApexIB returns `unrealizedPnL` (capital L); the
+                                    // lowercase fallback covers any legacy shape.
+                                    unrealized_pnl: p["unrealizedPnL"].as_f64()
+                                        .or_else(|| p["unrealizedPnl"].as_f64())
+                                        .unwrap_or(0.0),
                                     con_id: p["conId"].as_i64().unwrap_or(0),
                                 });
                             }
