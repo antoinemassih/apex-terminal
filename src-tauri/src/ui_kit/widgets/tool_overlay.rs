@@ -95,6 +95,10 @@ pub struct ToolOverlay<'a> {
     header_leading:  Option<Box<dyn FnOnce(&mut Ui) + 'a>>,
     header_trailing: Option<Box<dyn FnOnce(&mut Ui) + 'a>>,
     footer:          Option<Box<dyn FnOnce(&mut Ui) + 'a>>,
+    /// Caller's open flag. When false the overlay animates OUT and stops
+    /// rendering once hidden. Default true. Pass via `.open()` and call
+    /// `.show()` every frame (don't gate on the flag) to get an exit animation.
+    open: bool,
 }
 
 impl<'a> ToolOverlay<'a> {
@@ -114,6 +118,7 @@ impl<'a> ToolOverlay<'a> {
             header_leading: None,
             header_trailing: None,
             footer: None,
+            open: true,
         }
     }
 
@@ -168,6 +173,12 @@ impl<'a> ToolOverlay<'a> {
     /// Allow / disallow window drag via header. Default: draggable.
     pub fn draggable(mut self, on: bool) -> Self { self.draggable = on; self }
 
+    /// Drive the show/hide animation from the caller's open flag. Pass your
+    /// `*_open` bool and call `.show()` EVERY frame (do NOT gate on the flag):
+    /// the overlay fades in when true, fades out when false, and stops
+    /// rendering once fully hidden. Default true (always shown when called).
+    pub fn open(mut self, open: bool) -> Self { self.open = open; self }
+
     /// Override body padding. Defaults: 14 horizontal, 8 vertical.
     pub fn body_padding(mut self, x: f32, y: f32) -> Self {
         self.body_pad_x = x; self.body_pad_y = y; self
@@ -204,9 +215,18 @@ impl<'a> ToolOverlay<'a> {
             ctx.memory_mut(|m| m.data.insert_temp(seen_id, now));
             let appear_id = egui::Id::new(("tool_overlay_appear", self.id));
             if fresh { ctx.animate_bool_with_time(appear_id, false, 0.0); }
+            // Driven by the caller's open flag: eases up when open, down when the
+            // caller flips it false (the caller must keep calling show() to play
+            // the fade-out). Gated callers leave open=true and rely on the
+            // fresh-open snap above for their entrance.
             crate::ui_kit::widgets::motion::ease_bool(
-                ctx, appear_id, true, crate::ui_kit::widgets::motion::FAST)
+                ctx, appear_id, self.open, crate::ui_kit::widgets::motion::FAST)
         };
+        // Fully hidden — the caller set open=false and the fade-out finished.
+        // Stop rendering (and don't run the body) so it fully disappears.
+        if !self.open && appear < 0.01 {
+            return response;
+        }
 
         let radius = st::r_md_cr();
         let bg = palette_ct(theme).base(Tone::Surface);

@@ -53,7 +53,9 @@ if let Some(edit_id) = watchlist.hotkey_editing_id {
 }
 
 // ── Hotkey editor dialog ────────────────────────────────────────────────
-if watchlist.hotkey_editor_open {
+// Always call show() (no `if open` gate) and drive it with `.open(flag)` so the
+// overlay plays its fade-out; ToolOverlay stops rendering once fully hidden.
+{
     let screen = ctx.screen_rect();
     // Migrated to ToolOverlay (2026-05-26) — shared header chrome.
     let portable_t = crate::chart_renderer::theme_impl::theme_to_portable(t);
@@ -61,6 +63,7 @@ if watchlist.hotkey_editor_open {
         .id("hotkey_editor")
         .width(540.0)
         .pos(egui::pos2(screen.center().x - 270.0, 40.0))
+        .open(watchlist.hotkey_editor_open)
         .show(ctx, &portable_t, |ui| {
             draw_content(ui, watchlist, t);
         });
