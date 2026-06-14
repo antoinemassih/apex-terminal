@@ -16,6 +16,21 @@ import {
   recipeKeyFromName, luminance,
 } from "./heuristics.mjs";
 
+/** Parse a CSS-ish colour string (`#rgb`, `#rrggbb`, `rgb()/rgba()`) → {r,g,b,a} 0..1. */
+function parseColorString(s) {
+  const v = String(s).trim();
+  if (v.startsWith("rgb")) {
+    const p = v.slice(v.indexOf("(") + 1, v.indexOf(")")).split(",").map((x) => parseFloat(x.trim()));
+    return { r: (p[0] || 0) / 255, g: (p[1] || 0) / 255, b: (p[2] || 0) / 255, a: p.length >= 4 ? p[3] : 1 };
+  }
+  let h = v.replace(/^#/, "");
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  const b = (i) => parseInt(h.slice(i, i + 2), 16) / 255;
+  if (h.length === 6) return { r: b(0), g: b(2), b: b(4), a: 1 };
+  if (h.length === 8) return { r: b(0), g: b(2), b: b(4), a: b(6) };
+  return null;
+}
+
 const MODE = "Imported";
 
 // ── args / creds ────────────────────────────────────────────────────────────
@@ -132,6 +147,79 @@ function collect(doc, stylesMeta) {
   return { fillFreq, namedColors, fontSizes, fontFamilies, radii, spacings, componentSets };
 }
 
+// ── Framelink MCP (get_figma_data) adapter ─────────────────────────────────────
+
+/**
+ * Collect from a Framelink Figma MCP dump (the `get_figma_data` YAML) WITHOUT a
+ * YAML dependency. Nodes reference fills/text/layout by id into
+ * `globalVars.styles`; we line-parse that table, then scan node references.
+ * Produces the same shape as collect().
+ */
+function collectMcpText(text) {
+  const lines = text.split(/\r?\n/);
+  const fillColor = {};   // ref -> {r,g,b,a}
+  const fontSizeOf = {};  // ref -> px
+  const fontFamilyOf = {};
+  const layoutGap = {};   // ref -> px
+
+  // ── 1. Parse the globalVars.styles value table (indent-4 entries). ──────────
+  const stylesStart = lines.findIndex((l) => /^\s{2}styles:\s*$/.test(l));
+  for (let i = stylesStart + 1; i < lines.length && stylesStart >= 0; i++) {
+    const m = lines[i].match(/^ {4}([A-Za-z]+_[A-Za-z0-9]+):\s*$/);
+    if (!m) continue;
+    const ref = m[1];
+    if (ref.startsWith("fill_") || ref.startsWith("stroke_")) {
+      const item = lines[i + 1] || "";
+      const cm = item.match(/-\s*'?(#[0-9A-Fa-f]{3,8}|rgba?\([^)]*\))'?/);
+      if (cm) { const c = parseColorString(cm[1]); if (c) fillColor[ref] = c; }
+    } else if (ref.startsWith("style_")) {
+      for (let j = i + 1; j < lines.length; j++) {
+        if (/^ {0,4}\S/.test(lines[j]) && !/^ {6}/.test(lines[j])) break; // dedent
+        const fs = lines[j].match(/^\s*fontSize:\s*([\d.]+)/); if (fs) fontSizeOf[ref] = parseFloat(fs[1]);
+        const ff = lines[j].match(/^\s*fontFamily:\s*(.+?)\s*$/); if (ff) fontFamilyOf[ref] = ff[1];
+      }
+    } else if (ref.startsWith("layout_")) {
+      for (let j = i + 1; j < lines.length; j++) {
+        if (/^ {0,4}\S/.test(lines[j]) && !/^ {6}/.test(lines[j])) break;
+        const g = lines[j].match(/^\s*gap:\s*([\d.]+)/); if (g) layoutGap[ref] = parseFloat(g[1]);
+      }
+    }
+  }
+
+  // ── 2. Scan node references across the whole dump. ──────────────────────────
+  const fillFreq = new Map();
+  const fontSizes = [];
+  const fontFamilies = new Map();
+  const radii = [];
+  const spacings = [];
+  const componentSets = [];
+  const note = (c) => {
+    if (!c) return;
+    const key = `${c.r.toFixed(3)},${c.g.toFixed(3)},${c.b.toFixed(3)}`;
+    const e = fillFreq.get(key);
+    if (e) e.count++; else fillFreq.set(key, { color: c, count: 1 });
+  };
+  let lastName = "";
+  for (const l of lines) {
+    let m;
+    if ((m = l.match(/^\s*name:\s*(.+?)\s*$/))) lastName = m[1];
+    if ((m = l.match(/^\s*fills:\s*(fill_[A-Za-z0-9]+)\s*$/))) note(fillColor[m[1]]);
+    if ((m = l.match(/^\s*strokes:\s*(fill_[A-Za-z0-9]+)\s*$/))) note(fillColor[m[1]]);
+    if ((m = l.match(/^\s*textStyle:\s*(style_[A-Za-z0-9]+)\s*$/))) {
+      const fs = fontSizeOf[m[1]]; if (fs) fontSizes.push(fs);
+      const ff = fontFamilyOf[m[1]]; if (ff) fontFamilies.set(ff, (fontFamilies.get(ff) || 0) + 1);
+    }
+    if ((m = l.match(/^\s*borderRadius:\s*([\d.]+)px/))) { const r = parseFloat(m[1]); if (r > 0) radii.push(r); }
+    if ((m = l.match(/^\s*type:\s*(COMPONENT_SET|COMPONENT)\s*$/))) {
+      const key = recipeKeyFromName(lastName);
+      if (key && !componentSets.some((c) => c.key === key)) componentSets.push({ name: lastName, key, fill: null });
+    }
+  }
+  for (const g of Object.values(layoutGap)) if (g > 0) spacings.push(g);
+
+  return { fillFreq, namedColors: [], fontSizes, fontFamilies, radii, spacings, componentSets };
+}
+
 // ── summaries ────────────────────────────────────────────────────────────────
 
 const uniqSorted = (arr) => [...new Set(arr.map((n) => Math.round(n * 100) / 100))].sort((a, b) => a - b);
@@ -229,25 +317,34 @@ function buildEnvelope(c) {
 async function main() {
   const args = parseArgs(process.argv);
   const { token, file } = resolveCreds(args);
-  if (!args.input && (!token || !file)) {
+  if (!args.input && !args.mcp && (!token || !file)) {
     console.error("Need a Figma PAT and file key.\n  --file <KEY> --token <PAT>\n  --creds <figma_credentials.md>\n  or FIGMA_PAT env var");
     process.exit(2);
   }
   const out = args.out || "extracted.figma.json";
   const mapOut = args.mapping || "figma-mapping.suggested.json";
 
-  let fileJson;
-  if (args.input) {
-    // Offline mode: read a cached `GET /v1/files/:key` response from disk.
-    console.error(`• Reading cached Figma JSON ${args.input} …`);
-    fileJson = JSON.parse(fs.readFileSync(args.input, "utf8"));
+  let collected;
+  if (args.mcp) {
+    // Framelink Figma MCP dump (get_figma_data YAML) — refs into globalVars.
+    console.error(`• Reading Figma MCP dump ${args.mcp} …`);
+    const text = fs.readFileSync(args.mcp, "utf8");
+    const name = text.match(/^\s*name:\s*(.+)$/m)?.[1] || "?";
+    console.error(`• "${name}" — resolving globalVars + scanning node refs …`);
+    collected = collectMcpText(text);
   } else {
-    console.error(`• Fetching Figma file ${file} …`);
-    fileJson = await fetchFile(file, token);
+    let fileJson;
+    if (args.input) {
+      // Offline mode: read a cached `GET /v1/files/:key` response from disk.
+      console.error(`• Reading cached Figma JSON ${args.input} …`);
+      fileJson = JSON.parse(fs.readFileSync(args.input, "utf8"));
+    } else {
+      console.error(`• Fetching Figma file ${file} …`);
+      fileJson = await fetchFile(file, token);
+    }
+    console.error(`• "${fileJson.name}" — walking nodes …`);
+    collected = collect(fileJson.document, fileJson.styles);
   }
-  console.error(`• "${fileJson.name}" — walking nodes …`);
-
-  const collected = collect(fileJson.document, fileJson.styles);
   const { envelope, suggestions, palette } = buildEnvelope(collected);
 
   fs.writeFileSync(out, JSON.stringify(envelope, null, 2));

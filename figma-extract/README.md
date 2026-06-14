@@ -28,7 +28,15 @@ node src/extract.mjs --creds /path/to/figma_credentials.md
 
 # Offline: re-run against a cached `GET /v1/files/:key` response:
 node src/extract.mjs --input fixtures/sample-figma-file.json
+
+# From a Figma MCP dump (Framelink get_figma_data YAML) — no PAT needed when the
+# MCP connection is authenticated. Save the get_figma_data output to a file, then:
+node src/extract.mjs --mcp path/to/get_figma_data-dump.txt
 ```
+
+The `--mcp` mode is dependency-free: it line-parses the dump's `globalVars.styles`
+table and scans node references, so it works even when the REST PAT is expired or
+the npm registry is unreachable.
 
 Outputs (override with `--out` / `--mapping`):
 - `extracted.figma.json` — the `FigmaThemeExport`. Load it via **Theme Studio ▸
