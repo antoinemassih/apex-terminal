@@ -76,6 +76,40 @@ pub(crate) fn draw(
                 ui.add(egui::Slider::new(&mut cfg.pct, 0.0..=0.05).text("% move"));
                 ui.add(egui::Slider::new(&mut cfg.min_touches, 2..=6).text("min touches"));
                 ui.add(egui::Slider::new(&mut cfg.max_lines, 4..=30).text("max lines"));
+                ui.add(egui::Slider::new(&mut cfg.sensitivity, 0.001..=0.02).text("sensitivity"));
+                ui.add(egui::Slider::new(&mut cfg.lookback, 50..=400).text("lookback"));
+                ui.add(egui::Slider::new(&mut cfg.swing_window, 2..=12).text("swing window"));
+
+                ui.separator();
+                ui.label("Extend lines");
+                ui.horizontal(|ui| {
+                    for e in ["none", "right", "both", "left"] {
+                        if ui.selectable_label(cfg.extend == e, e).clicked() {
+                            cfg.extend = e.to_string();
+                        }
+                    }
+                });
+
+                ui.separator();
+                ui.label("Methods (compare — see what works)");
+                for (id, label) in [
+                    ("wick", "Wick swing-pairs"), ("body", "Body"), ("inner", "Inner"),
+                    ("volume", "Volume-weighted"), ("anchored", "Anchored"),
+                    ("regression", "Regression"), ("fibfan", "Fib fan"), ("speed", "Speed lines"),
+                    ("hough", "Hough transform"), ("ransac", "RANSAC"), ("kalman", "Kalman"),
+                    ("kde", "KDE levels"), ("cusum", "CUSUM"), ("wavelet", "Wavelet"),
+                    ("pca", "PCA"), ("tls", "Total least squares"), ("svd", "SVD"),
+                    ("bayesian", "Bayesian"),
+                ] {
+                    let mut on = cfg.methods.iter().any(|m| m == id);
+                    if ui.checkbox(&mut on, label).changed() {
+                        if on {
+                            cfg.methods.push(id.to_string());
+                        } else {
+                            cfg.methods.retain(|m| m != id);
+                        }
+                    }
+                }
             }
 
             if cfg != before {

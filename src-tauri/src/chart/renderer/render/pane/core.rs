@@ -6482,8 +6482,14 @@ fn render_chart_pane(
                 "trendline" if sd.points.len() >= 2 => {
                     let b0 = SignalDrawing::time_to_bar(sd.points[0].0, &chart.timestamps);
                     let b1 = SignalDrawing::time_to_bar(sd.points[1].0, &chart.timestamps);
-                    let p0 = egui::pos2(bx(b0), py(sd.points[0].1));
-                    let p1 = egui::pos2(bx(b1), py(sd.points[1].1));
+                    let mut p0 = egui::pos2(bx(b0), py(sd.points[0].1));
+                    let mut p1 = egui::pos2(bx(b1), py(sd.points[1].1));
+                    // Extend along the line's slope to the chart edge(s) when requested.
+                    if (sd.extend_left || sd.extend_right) && (p1.x - p0.x).abs() > 0.5 {
+                        let m = (p1.y - p0.y) / (p1.x - p0.x);
+                        if sd.extend_right { let x = rect.left() + cw; p1 = egui::pos2(x, p0.y + m * (x - p0.x)); }
+                        if sd.extend_left  { let x = rect.left();      p0 = egui::pos2(x, p0.y + m * (x - p0.x)); }
+                    }
                     match sd.line_style {
                         LineStyle::Solid => { painter.line_segment([p0, p1], stroke); }
                         _ => {
