@@ -1440,6 +1440,8 @@ pub(crate) struct SignalDrawing {
     pub(crate) timeframe: String,
     pub(crate) detection_method: String, // wick/ransac/kalman/hough/kde/… — for by-method filtering
     pub(crate) source: String, // producer: "trendlines" / "chart_patterns" / "signal" — scopes replacement
+    pub(crate) extend_left: bool,  // project line to the left chart edge
+    pub(crate) extend_right: bool, // project line to the right chart edge
 }
 
 impl SignalDrawing {
@@ -1641,6 +1643,20 @@ pub(crate) struct AutoDrawConfig {
     pub min_touches: u32,
     pub touch_pct: f64,
     pub max_lines: usize,
+    /// Legacy methods to also run for comparison (wick, body, hough, ransac, …).
+    pub methods: Vec<String>,
+    /// Line extension: "none" | "right" | "both" | "left".
+    pub extend: String,
+    /// Legacy tuning knobs.
+    pub sensitivity: f64,
+    pub lookback: usize,
+    pub swing_window: usize,
+    /// How many bars back the engine loads/scans (the "window of operation").
+    /// Larger = older, more valuable lines reach further back.
+    pub window: usize,
+    /// Drop lines whose endpoints don't sit on an actual candle (kills
+    /// "middle of nowhere" floating starts from fitted methods).
+    pub anchored_only: bool,
 }
 impl Default for AutoDrawConfig {
     fn default() -> Self {
@@ -1648,6 +1664,9 @@ impl Default for AutoDrawConfig {
             enabled: true, trendlines: true, levels: true, channels: true,
             patterns: true, candles: false, pivot_mode: "hybrid".into(),
             atr_k: 2.0, pct: 0.015, min_touches: 3, touch_pct: 0.004, max_lines: 12,
+            methods: vec![], extend: "none".into(),
+            sensitivity: 0.003, lookback: 200, swing_window: 5,
+            window: 500, anchored_only: true,
         }
     }
 }
@@ -1663,9 +1682,11 @@ impl AutoDrawConfig {
     }
     fn query(&self) -> String {
         format!(
-            "&types={}&pivot_mode={}&atr_k={}&pct={}&min_touches={}&touch_pct={}&max_lines={}",
+            "&types={}&pivot_mode={}&atr_k={}&pct={}&min_touches={}&touch_pct={}&max_lines={}&methods={}&extend={}&sensitivity={}&lookback={}&swing_window={}&window={}&anchored_only={}",
             self.types_csv(), self.pivot_mode, self.atr_k, self.pct,
             self.min_touches, self.touch_pct, self.max_lines,
+            self.methods.join(","), self.extend, self.sensitivity, self.lookback, self.swing_window,
+            self.window, self.anchored_only,
         )
     }
 }
@@ -1770,7 +1791,7 @@ pub(crate) fn fetch_signal_drawings(symbol: String) {
                     let strength = a.get("strength").and_then(|s| s.as_f64()).unwrap_or(0.5) as f32;
                     let timeframe = a.get("timeframe").and_then(|t| t.as_str()).unwrap_or("5m").to_string();
                     let detection_method = a.get("detection_method").and_then(|m| m.as_str()).unwrap_or("").to_string();
-                    Some(SignalDrawing { id, symbol: sym, drawing_type: dtype, points, color, opacity, thickness, line_style, strength, timeframe, detection_method, source: "signal".to_string() })
+                    Some(SignalDrawing { id, symbol: sym, drawing_type: dtype, points, color, opacity, thickness, line_style, strength, timeframe, detection_method, source: "signal".to_string(), extend_left: a.get("extendLeft").and_then(|v| v.as_bool()).unwrap_or(false), extend_right: a.get("extendRight").and_then(|v| v.as_bool()).unwrap_or(false) })
                 }).collect();
 
                 if !drawings.is_empty() {
@@ -2997,7 +3018,7 @@ impl Chart {
                             let strength = a.get("strength").and_then(|s| s.as_f64()).unwrap_or(0.5) as f32;
                             let tf = a.get("timeframe").and_then(|t| t.as_str()).unwrap_or("5m").to_string();
                             let detection_method = a.get("detection_method").and_then(|m| m.as_str()).unwrap_or("").to_string();
-                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf, detection_method, source: source.clone() });
+                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf, detection_method, source: source.clone(), extend_left: a.get("extendLeft").and_then(|v| v.as_bool()).unwrap_or(false), extend_right: a.get("extendRight").and_then(|v| v.as_bool()).unwrap_or(false) });
                         }
                     }
                 }
@@ -3076,7 +3097,7 @@ impl Chart {
                             let strength = a.get("strength").and_then(|s| s.as_f64()).unwrap_or(0.5) as f32;
                             let tf = a.get("timeframe").and_then(|t| t.as_str()).unwrap_or("5m").to_string();
                             let detection_method = a.get("detection_method").and_then(|m| m.as_str()).unwrap_or("").to_string();
-                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf, detection_method, source: source.clone() });
+                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf, detection_method, source: source.clone(), extend_left: a.get("extendLeft").and_then(|v| v.as_bool()).unwrap_or(false), extend_right: a.get("extendRight").and_then(|v| v.as_bool()).unwrap_or(false) });
                         }
                         // Reset the HTTP polling timer so it doesn't immediately overwrite push data
                         self.last_signal_fetch = std::time::Instant::now();
@@ -5755,6 +5776,7 @@ pub(crate) struct Watchlist {
     pub(crate) rrg_tail_length: usize, // how many tail points to show
     // Analysis sidebar — subdivided sections (each has its own tab)
     pub(crate) analysis_open: bool,
+    pub(crate) auto_chart_open: bool, // Auto-Charting side panel
     pub(crate) analysis_tab: crate::chart_renderer::AnalysisTab, // default tab for new sections
     pub(crate) analysis_splits: Vec<SplitSection<crate::chart_renderer::AnalysisTab>>,
     // Signals sidebar — subdivided sections
@@ -6027,6 +6049,7 @@ impl Watchlist {
                rrg_open: false, rrg_sectors: vec![], rrg_cycle_phase: String::new(),
                rrg_time_offset: 0.0, rrg_tail_length: 5,
                analysis_open: false,
+               auto_chart_open: false,
                analysis_tab: crate::chart_renderer::AnalysisTab::Rrg,
                analysis_splits: vec![SplitSection::new(crate::chart_renderer::AnalysisTab::Rrg, 1.0)],
                signals_panel_open: false,
@@ -6379,6 +6402,7 @@ impl Watchlist {
         let screenshot_open = self.screenshot_open;
         let rrg_open = self.rrg_open;
         let analysis_open = self.analysis_open;
+        let auto_chart_open = self.auto_chart_open;
         let signals_panel_open = self.signals_panel_open;
         let indicators_panel_open = self.indicators_panel_open;
         let indicators_section_fracs = self.indicators_section_fracs;
@@ -6417,6 +6441,7 @@ impl Watchlist {
             s.screenshot_open = screenshot_open;
             s.rrg_open = rrg_open;
             s.analysis_open = analysis_open;
+            s.auto_chart_open = auto_chart_open;
             s.signals_panel_open = signals_panel_open;
             s.indicators_panel_open = indicators_panel_open;
             s.indicators_section_fracs = indicators_section_fracs;
@@ -6461,6 +6486,7 @@ impl Watchlist {
         self.screenshot_open = snap.screenshot_open;
         self.rrg_open = snap.rrg_open;
         self.analysis_open = snap.analysis_open;
+        self.auto_chart_open = snap.auto_chart_open;
         self.signals_panel_open = snap.signals_panel_open;
         self.indicators_panel_open = snap.indicators_panel_open;
         self.indicators_section_fracs = snap.indicators_section_fracs;

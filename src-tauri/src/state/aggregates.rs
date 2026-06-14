@@ -676,6 +676,9 @@ pub struct SidebarState {
     /// Source: `Watchlist::analysis_open`.
     #[serde(default)]
     pub analysis_open: bool,
+    /// Source: `Watchlist::auto_chart_open`.
+    #[serde(default)]
+    pub auto_chart_open: bool,
 
     /// Signals sidebar.
     /// Source: `Watchlist::signals_panel_open`.
@@ -763,6 +766,7 @@ impl Default for SidebarState {
             screenshot_open: false,
             rrg_open: false,
             analysis_open: false,
+            auto_chart_open: false,
             signals_panel_open: false,
             indicators_panel_open: false,
             indicators_section_fracs: Self::default_indicators_section_fracs(),
