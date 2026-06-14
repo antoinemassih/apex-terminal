@@ -28,8 +28,10 @@ die(){ echo "✗ $*" >&2; exit 1; }
 # ── 0. preconditions ────────────────────────────────────────────────────────
 cur="$(git branch --show-current)"
 [ "$cur" = "main" ] || die "run from the main checkout (currently on '$cur')"
-[ -z "$(git status --porcelain | grep -v migration-patches)" ] \
-  || die "main working tree is dirty — commit or stash first"
+# Only TRACKED modifications block integration — untracked files (build
+# artifacts, scratch json from other sessions) don't affect a merge or build.
+[ -z "$(git status --porcelain --untracked-files=no)" ] \
+  || die "main has uncommitted TRACKED changes — commit or stash first"
 
 git fetch origin --quiet 2>/dev/null || true
 git merge --ff-only origin/main --quiet 2>/dev/null || true
