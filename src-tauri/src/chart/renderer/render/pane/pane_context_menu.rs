@@ -45,7 +45,9 @@ pub(super) fn pane_context_menu<F>(
         // would otherwise extrapolate beyond min_p/max_p, producing an order
         // that places at an off-screen price and never renders.
         let raw_click_price = ui.input(|i| i.pointer.latest_pos()).map(|p| pos_to_price(p)).unwrap_or(0.0);
-        let click_price = raw_click_price.clamp(min_p, max_p);
+        let click_price = if min_p.is_finite() && max_p.is_finite() && min_p < max_p {
+            raw_click_price.clamp(min_p, max_p)
+        } else { raw_click_price };
         let click_pos = ui.input(|i| i.pointer.latest_pos());
 
         // ── View controls (top) ──

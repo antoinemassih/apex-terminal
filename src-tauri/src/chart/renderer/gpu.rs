@@ -3581,6 +3581,9 @@ impl Chart {
         let s = self.vs as u32; let e = (s+self.vc).min(bars_ref.len() as u32);
         let (mut lo,mut hi) = (f32::MAX,f32::MIN);
         for i in s..e { if let Some(b) = bars_ref.get(i as usize) { lo=lo.min(b.low); hi=hi.max(b.high); } }
+        // No bars in the visible window (empty chart or all snap requests 404'd) —
+        // return a safe flat range so downstream .clamp() never sees NaN.
+        if lo == f32::MAX { return (0.0, 1.0); }
         if lo>=hi { lo-=0.5; hi+=0.5; }
         let p=(hi-lo)*0.05; (lo-p,hi+p)
     }
