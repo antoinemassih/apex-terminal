@@ -3607,11 +3607,19 @@ fn render_chart_pane(
     {
         // Take panes out of chart to avoid borrow conflict with &mut Chart
         let mut floating_panes = std::mem::take(&mut chart.floating_order_panes);
-        let mut close_ids: Vec<u32> = Vec::new();
+        let mut remove_ids: Vec<u32> = Vec::new();
 
         for pane in &mut floating_panes {
             let adv = chart.order_panel.advanced;
             let fp_panel_w = if adv { 340.0 } else { 300.0 };
+
+            // Exit animation: ease 1→0 after close, remove once fully hidden.
+            let close_req_id = egui::Id::new(("fp_close_req", pane_idx, pane.id));
+            let fade_id      = egui::Id::new(("fp_appear",    pane_idx, pane.id));
+            let close_req: bool = ctx.memory(|m| m.data.get_temp(close_req_id).unwrap_or(false));
+            let appear = crate::ui_kit::widgets::motion::ease_bool(
+                ctx, fade_id, !close_req, crate::ui_kit::widgets::motion::FAST);
+            if close_req && appear < 0.01 { remove_ids.push(pane.id); continue; }
 
             egui::Window::new(format!("float_order_{}_{}", pane_idx, pane.id))
                 .fixed_pos(pane.pos)
@@ -3619,6 +3627,7 @@ fn render_chart_pane(
                 .title_bar(false)
                 .frame(egui::Frame::NONE)
                 .show(ctx, |ui| {
+                    ui.set_opacity(appear);
                     use crate::chart_renderer::ui::chrome::FloatingPaneChrome;
                     use crate::ui_kit::icons::Icon;
                     use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant};
@@ -3681,7 +3690,9 @@ fn render_chart_pane(
                         }
                     });
 
-                    if cr.close_clicked          { close_ids.push(pane.id); }
+                    if cr.close_clicked {
+                        ctx.memory_mut(|m| m.data.insert_temp(close_req_id, true));
+                    }
                     if cr.header_double_clicked  { pane.collapsed = !pane.collapsed; }
                     if cr.title_clicked {
                         chart.pane_picker_open = true;
@@ -3696,7 +3707,7 @@ fn render_chart_pane(
                 });
         }
 
-        floating_panes.retain(|p| !close_ids.contains(&p.id));
+        floating_panes.retain(|p| !remove_ids.contains(&p.id));
         chart.floating_order_panes = floating_panes;
     }
 
@@ -12657,16 +12668,25 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                 panes[*active_pane].theme_idx
             } else { 0 };
             let theme = get_theme(theme_idx);
-            let mut open = true;
-            egui::Window::new("Widget Gallery")
-                .open(&mut open)
+            let mut close_gal = false;
+            egui::Window::new("wgal_dev")
                 .default_size((900.0, 700.0))
                 .resizable(true)
-                .scroll([false, true])
+                .title_bar(false)
+                .frame(egui::Frame::window(&ctx.style()).fill(theme.bg).stroke(egui::Stroke::new(1.0, theme.border())))
                 .show(ctx, |ui| {
-                    crate::chart::renderer::ui::panels::widget_gallery::show_widget_gallery(ui, &theme);
+                    ui.horizontal(|ui| {
+                        ui.strong("Widget Gallery");
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("✕").clicked() { close_gal = true; }
+                        });
+                    });
+                    ui.separator();
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        crate::chart::renderer::ui::panels::widget_gallery::show_widget_gallery(ui, &theme);
+                    });
                 });
-            if !open { watchlist.widget_gallery_open = false; }
+            if close_gal { watchlist.widget_gallery_open = false; }
         }
     }
 
@@ -12684,16 +12704,25 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                 panes[*active_pane].theme_idx
             } else { 0 };
             let theme = get_theme(theme_idx);
-            let mut win_open = true;
-            egui::Window::new("Chart Viz Gallery")
-                .open(&mut win_open)
+            let mut close_viz = false;
+            egui::Window::new("cvgal_dev")
                 .default_size((920.0, 660.0))
                 .resizable(true)
-                .scroll([false, true])
+                .title_bar(false)
+                .frame(egui::Frame::window(&ctx.style()).fill(theme.bg).stroke(egui::Stroke::new(1.0, theme.border())))
                 .show(ctx, |ui| {
-                    crate::chart::renderer::ui::panels::widget_gallery::show_chart_gallery(ui, &theme);
+                    ui.horizontal(|ui| {
+                        ui.strong("Chart Viz Gallery");
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("✕").clicked() { close_viz = true; }
+                        });
+                    });
+                    ui.separator();
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        crate::chart::renderer::ui::panels::widget_gallery::show_chart_gallery(ui, &theme);
+                    });
                 });
-            if !win_open { open = false; }
+            if close_viz { open = false; }
         }
         ctx.memory_mut(|m| m.data.insert_temp(id, open));
     }
