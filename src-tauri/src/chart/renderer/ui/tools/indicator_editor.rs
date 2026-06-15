@@ -24,7 +24,24 @@ use crate::chart_renderer::LineStyle;
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
 // ── Indicator editor popup (per-type properties panel) ──────────────────
 // NOTE: do NOT shadow `t` here — the caller already passes the correct theme.
-if let Some(edit_id) = panes[ap].editing_indicator {
+// Exit animation: de-gated from the outer `if let Some` so ToolOverlay can
+// fade out after `editing_indicator` is cleared. We track the last-known
+// edit_id and an open flag in egui memory so the fade-out frame can still
+// render the correct content.
+{
+    let open_key    = egui::Id::new(("ind_editor_open", ap));
+    let last_id_key = egui::Id::new(("ind_editor_last_id", ap));
+
+    if let Some(id) = panes[ap].editing_indicator {
+        ctx.memory_mut(|m| {
+            m.data.insert_temp(open_key, true);
+            m.data.insert_temp(last_id_key, id);
+        });
+    }
+
+    let editor_open: bool = ctx.memory(|m| m.data.get_temp(open_key).unwrap_or(false));
+    let Some(edit_id) = ctx.memory(|m| m.data.get_temp::<u32>(last_id_key)) else { return; };
+
     let mut close_editor = false;
     let mut delete_id: Option<u32> = None;
     let mut needs_recompute = false;
@@ -54,6 +71,7 @@ if let Some(edit_id) = panes[ap].editing_indicator {
         .width(panel_w)
         .pos(egui::pos2(200.0, 80.0))
         .accent_dot(hdr_color)
+        .open(editor_open)
         .show(ctx, &portable_t, |ui| {
             if let Some(ind) = panes[ap].indicators.iter_mut().find(|i| i.id == edit_id) {
                 // Redesigned body (2026-05-26):
@@ -388,7 +406,12 @@ if let Some(edit_id) = panes[ap].editing_indicator {
 
     if modal_resp.closed { close_editor = true; }
 
-    if close_editor { panes[ap].editing_indicator = None; }
+    if close_editor {
+        // Clear immediately so data model is clean; ToolOverlay fades out using
+        // the last-known content still in egui memory.
+        ctx.memory_mut(|m| m.data.insert_temp(open_key, false));
+        panes[ap].editing_indicator = None;
+    }
     if let Some(id) = delete_id { panes[ap].indicators.retain(|i| i.id != id); }
     if needs_recompute { panes[ap].indicator_bar_count = 0; }
     if let Some((sym, tf, ind_id)) = needs_source_fetch {
