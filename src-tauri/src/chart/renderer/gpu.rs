@@ -1813,8 +1813,12 @@ pub(crate) fn fetch_signal_drawings(symbol: String) {
 
 // ─── Orders, Account, Alerts, Triggers ─── (moved to trading.rs)
 
-/// ApexIB endpoint configuration
-pub(crate) const APEXIB_URL: &str = "https://apexib-dev.xllio.com";
+/// ApexIB endpoint — runtime-configurable via Settings panel or `apexib_url()` env.
+/// Use this function; the old const has been removed.
+#[inline]
+pub(crate) fn apexib_url() -> String {
+    crate::chart_renderer::trading::config::apexib_url()
+}
 
 // ─── Volume Profile ───────────────────────────────────────────────────────────
 
@@ -2920,6 +2924,15 @@ impl Chart {
                             self.vol_analytics_computed = 0;
                             eprintln!("[history] prepended {} bars for {} {} (total: {})", new_count, symbol, timeframe, self.bars.len());
                         }
+                    }
+                }
+            }
+            ChartCommand::CacheBars { symbol, timeframe, bars, timestamps } => {
+                if !bars.is_empty() {
+                    let key = (symbol, timeframe);
+                    if !self.tab_cache.contains_key(&key) {
+                        evict_oldest_if_full(&mut self.tab_cache);
+                        self.tab_cache.insert(key, (bars, timestamps, std::time::Instant::now()));
                     }
                 }
             }
