@@ -116,10 +116,58 @@ pub(crate) fn draw(
                 }
             }
 
+            // ── Drawing feedback list ─────────────────────────────────────
+            // Show active drawings with Reject button. Rejected lines are
+            // hidden immediately and POSTed to the engine for learning.
+            if cfg.enabled && !panes.is_empty() {
+                let drawings: Vec<(String, String, String)> = panes[ap]
+                    .signal_drawings
+                    .iter()
+                    .filter(|d| !cfg.rejected_drawings.contains(&d.id))
+                    .map(|d| (d.id.clone(), d.detection_method.clone(), d.drawing_type.clone()))
+                    .collect();
+
+                if !drawings.is_empty() {
+                    ui.separator();
+                    ui.label(format!("Active drawings ({})", drawings.len()));
+                    let red = egui::Color32::from_rgb(200, 60, 60);
+                    egui::ScrollArea::vertical()
+                        .id_source("drawings_scroll")
+                        .max_height(180.0)
+                        .show(ui, |ui| {
+                            for (id, method, dtype) in &drawings {
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        egui::RichText::new(format!("{} / {}", method, dtype))
+                                            .small(),
+                                    );
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        if ui.small_button(
+                                            egui::RichText::new("✕").color(red)
+                                        ).on_hover_text("Reject this line").clicked() {
+                                            cfg.rejected_drawings.insert(id.clone());
+                                            crate::chart_renderer::gpu::post_drawing_feedback(
+                                                id.clone(),
+                                                "reject".to_string(),
+                                                sym.clone(),
+                                                tf.clone(),
+                                            );
+                                        }
+                                    });
+                                });
+                            }
+                        });
+
+                    if ui.small_button("Clear all rejections").clicked() {
+                        cfg.rejected_drawings.clear();
+                    }
+                }
+            }
+
             if cfg != before {
                 crate::chart_renderer::gpu::set_auto_draw_config(cfg);
                 if !sym.is_empty() {
-                    crate::chart_renderer::gpu::fetch_apexsignals_drawings(sym, tf);
+                    crate::chart_renderer::gpu::fetch_apexsignals_drawings(sym.clone(), tf.clone());
                 }
             }
         });

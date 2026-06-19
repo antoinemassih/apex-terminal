@@ -6473,7 +6473,10 @@ fn render_chart_pane(
     span_begin("signal_overlays");
     // ── Signal drawings (auto-generated trendlines from server) ──────────
     if !chart.hide_signal_drawings && !chart.signal_drawings.is_empty() {
+        let rejected = crate::chart_renderer::gpu::auto_draw_config().rejected_drawings;
         for sd in &chart.signal_drawings {
+            // Skip user-rejected drawings.
+            if rejected.contains(&sd.id) { continue; }
             // Per-method filter: skip lines whose detection_method is toggled off.
             if chart.hidden_signal_methods.iter().any(|m| m == &sd.detection_method) { continue; }
             let color = hex_to_color(&sd.color, sd.opacity);
