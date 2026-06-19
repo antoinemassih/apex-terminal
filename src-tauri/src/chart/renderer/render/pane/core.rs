@@ -525,6 +525,14 @@ fn render_chart_pane(
 
         let hdr = builder.show(ui);
 
+        // Dev Inspector — record the pane header rect with contract check.
+        #[cfg(debug_assertions)]
+        crate::dev_inspector::check_contract(
+            &format!("pane.{pane_idx}.header"),
+            header_rect,
+            crate::dev_inspector::layout::Contract::new().non_empty().min_size(100.0, 24.0),
+        );
+
         // ── Header drop shadow ─────────────────────────────────────────────
         {
             let shadow_h = 10.0_f32;
@@ -1625,6 +1633,29 @@ fn render_chart_pane(
     let osc_h = if needs_osc_panel { (h * 0.22).min(120.0) } else { 0.0 };
     let (cw,ch) = (w-pr, h-pt-pb-osc_h);
     if cw<=0.0 || ch<=0.0 { return; }
+    // Dev Inspector — record chart body area for layout assertions.
+    #[cfg(debug_assertions)]
+    {
+        let body_rect = egui::Rect::from_min_size(
+            egui::pos2(rect.left(), rect.top() + pt),
+            egui::vec2(cw, ch),
+        );
+        crate::dev_inspector::record(crate::dev_inspector::WidgetRecord {
+            id: format!("pane.{pane_idx}.chart_body"),
+            role: "canvas".into(),
+            label: format!("{} {}", chart.symbol, chart.timeframe),
+            value: None,
+            rect: body_rect.into(),
+            clip_rect: ui.clip_rect().into(),
+            layer: 0, focused: false, hovered: false, enabled: true,
+            is_clipped: false,
+        });
+        crate::dev_inspector::check_contract(
+            &format!("pane.{pane_idx}.chart_body"),
+            body_rect,
+            crate::dev_inspector::layout::Contract::new().non_empty().min_size(200.0, 100.0),
+        );
+    }
     if n==0 {
         // ── Refined loading indicator ──
         if !chart.symbol.is_empty() {

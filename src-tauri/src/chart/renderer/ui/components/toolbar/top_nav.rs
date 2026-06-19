@@ -722,8 +722,15 @@ pub(crate) fn render(
 
                     // Save current
                     if !watchlist.active_workspace.is_empty() {
-                        if ui.button(egui::RichText::new(format!("{} Save \"{}\"", Icon::CHECK, watchlist.active_workspace))
-                            .monospace().size(font_sm()).color(t.accent)).clicked() {
+                        let save_resp = ui.button(egui::RichText::new(format!("{} Save \"{}\"", Icon::CHECK, watchlist.active_workspace))
+                            .monospace().size(font_sm()).color(t.accent));
+                        #[cfg(debug_assertions)]
+                        crate::dev_inspector::record(
+                            crate::dev_inspector::WidgetRecord::from_response(
+                                "toolbar.save_workspace", "button", "Save workspace", &save_resp, ui,
+                            )
+                        );
+                        if save_resp.clicked() {
                             let ws_name = watchlist.active_workspace.clone();
                             save_workspace(&ws_name, panes, *layout, watchlist);
                             ui.close_menu();

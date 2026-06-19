@@ -123,6 +123,19 @@ pub(crate) fn render(
                     watchlist.timeframe_dropdown_open = !watchlist.timeframe_dropdown_open;
                     watchlist.timeframe_dropdown_pos = egui::pos2(tf_dd_btn.rect.left(), tf_dd_btn.rect.bottom() + 2.0);
                 }
+                // Dev Inspector — record the active timeframe and its dropdown trigger.
+                #[cfg(debug_assertions)]
+                {
+                    let active_tf = panes[ap].timeframe.clone();
+                    crate::dev_inspector::record(crate::dev_inspector::WidgetRecord::from_response(
+                        "toolbar.timeframe_picker", "button", &active_tf, &tf_dd_btn, ui,
+                    ));
+                    crate::dev_inspector::check_contract(
+                        "toolbar.timeframe_picker",
+                        tf_dd_btn.rect,
+                        crate::dev_inspector::layout::Contract::new().touch_target(28.0),
+                    );
+                }
             }
             // Close the interval group box.
             let interval_x1 = ui.cursor().left();
