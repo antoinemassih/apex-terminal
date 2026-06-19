@@ -11522,6 +11522,11 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
     // Clear TB_BTN_CLICKED for next frame — MUST be after the drag handler above reads it
     TB_BTN_CLICKED.with(|f| f.set(false));
 
+    // Dev Inspector — drain queued AppCommands/ChartCommands before widget code runs.
+    // Input injection happens earlier in gpu.rs, pre-ctx.run(), via drain_inputs().
+    #[cfg(debug_assertions)]
+    crate::dev_inspector::begin_frame();
+
     route_commands(rx, panes, active_pane, watchlist);
 
     // Keep ApexData's snapshot poller's watched set synced with visible symbols.
@@ -12735,5 +12740,10 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
     // Drain any AppCommand pushed during this frame's UI render. Theme/style
     // pickers, alert mutations, watchlist edits, etc. all flow through here.
     crate::chart_renderer::commands::drain_and_dispatch(panes, watchlist);
+
+    // Dev Inspector — capture widget/state snapshot after all mutations settle.
+    #[cfg(debug_assertions)]
+    crate::dev_inspector::end_frame(panes, *active_pane, watchlist, ctx);
+
     span_end(); // draw_chart.tail
 }

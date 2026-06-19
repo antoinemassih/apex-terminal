@@ -9,6 +9,8 @@ pub mod ui_kit;
 pub mod watchlist;
 pub mod state;
 pub mod error;
+#[cfg(debug_assertions)]
+pub mod dev_inspector;
 
 pub use error::AppError;
 

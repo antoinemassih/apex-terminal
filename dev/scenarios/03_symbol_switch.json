@@ -1,0 +1,53 @@
+{
+  "name": "symbol_switch",
+  "description": "Switch the active pane symbol via AppCommand and verify state updates.",
+  "tags": ["smoke", "commands"],
+  "settle_ms": 0,
+  "abort_on_failure": true,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "AAPL"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_symbol_equals": "AAPL" }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangeTimeframe",
+      "pane": 0,
+      "tf": "1h"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_symbol_equals": "AAPL" },
+        { "active_timeframe_equals": "1h" }
+      ]
+    },
+    {
+      "action": "log",
+      "message": "Symbol switch scenario passed."
+    }
+  ]
+}

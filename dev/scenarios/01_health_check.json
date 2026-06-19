@@ -1,0 +1,25 @@
+{
+  "name": "health_check",
+  "description": "Verify the inspector server is up and app state is populated after first frame.",
+  "tags": ["smoke", "health"],
+  "settle_ms": 50,
+  "abort_on_failure": true,
+  "steps": [
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "pane_count_equals": 1 },
+        { "no_open_dialogs": true }
+      ]
+    },
+    {
+      "action": "log",
+      "message": "Health check passed — app is running and inspector is live."
+    }
+  ]
+}

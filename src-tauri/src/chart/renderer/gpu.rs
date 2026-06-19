@@ -7290,6 +7290,12 @@ impl GpuCtx {
         // Feed the profiler the input-event count so is_idle() can detect
         // genuinely quiet frames (no clicks, drags, key presses, scrolls).
         crate::foundation::frame_profiler::note_input_events(raw_input.events.len() as u32);
+        // Dev Inspector — inject queued input events into raw_input before the frame.
+        #[cfg(debug_assertions)]
+        {
+            use crate::dev_inspector::input_queue::{drain_inputs_raw};
+            drain_inputs_raw(&mut raw_input.events);
+        }
         let full_output = self.egui_ctx.run(raw_input, |ctx| {
             // NOTE: the inter-region gaps show the GPU chart pipeline's surface
             // clear (already the theme bg), so no egui canvas paint is needed.
@@ -7468,14 +7474,20 @@ impl App {
         //   routing, then hide the titlebar visually with macOS platform APIs.
         //   The result is visually identical but the window is a proper key window.
         #[cfg(not(target_os = "macos"))]
-        let attrs = WindowAttributes::default()
-            .with_title("Apex Terminal")
-            .with_inner_size(PhysicalSize::new(self.iw, self.ih))
-            .with_min_inner_size(PhysicalSize::new(960, 540))
-            .with_decorations(false)
-            .with_window_icon(make_window_icon())
-            .with_active(true)
-            .with_maximized(true);
+        let attrs = {
+            #[allow(unused_mut)]
+            let mut a = WindowAttributes::default()
+                .with_title("Apex Terminal")
+                .with_inner_size(PhysicalSize::new(self.iw, self.ih))
+                .with_min_inner_size(PhysicalSize::new(960, 540))
+                .with_decorations(false)
+                .with_window_icon(make_window_icon())
+                .with_active(true)
+                .with_maximized(true);
+            #[cfg(debug_assertions)]
+            { a = a.with_visible(!crate::dev_inspector::is_headless()); }
+            a
+        };
 
         #[cfg(target_os = "macos")]
         let attrs = {

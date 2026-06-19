@@ -235,6 +235,12 @@ pub enum AppCommand {
     WatchlistSwitchActive { idx: usize },
     /// Rename the currently-active watchlist.
     WatchlistRenameActive { name: String },
+
+    // ── Dev Inspector ────────────────────────────────────────────────────
+    /// Close every open dialog/popup across all panes and the watchlist.
+    /// Injected by `POST /reset` so scenarios always start from a clean UI state.
+    #[cfg(debug_assertions)]
+    CloseAllDialogs,
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -636,6 +642,19 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
                 }
                 watchlist.persist();
             }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::CloseAllDialogs => {
+            for p in panes.iter_mut() {
+                p.pane_picker_open = false;
+                p.editing_indicator = None;
+            }
+            watchlist.settings_open = false;
+            watchlist.hotkey_editor_open = false;
+            watchlist.order_entry_open = false;
+            watchlist.orders_panel_open = false;
+            watchlist.chain_select_mode = false;
         }
     }
 }
