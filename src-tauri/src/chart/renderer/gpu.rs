@@ -1663,6 +1663,10 @@ pub(crate) struct AutoDrawConfig {
     /// Drop lines whose endpoints don't sit on an actual candle (kills
     /// "middle of nowhere" floating starts from fitted methods).
     pub anchored_only: bool,
+    /// Drawing IDs the user has explicitly rejected — filtered from render and
+    /// POSTed to /significance/feedback for learning.
+    #[serde(default)]
+    pub rejected_drawings: std::collections::HashSet<String>,
 }
 impl Default for AutoDrawConfig {
     fn default() -> Self {
@@ -1673,6 +1677,7 @@ impl Default for AutoDrawConfig {
             methods: vec![], extend: "none".into(),
             sensitivity: 0.003, lookback: 200, swing_window: 5,
             window: 500, anchored_only: true,
+            rejected_drawings: Default::default(),
         }
     }
 }
@@ -1768,6 +1773,35 @@ pub(crate) fn fetch_apexsignals_drawings(symbol: String, timeframe: String) {
             for tx in &txs { let _ = tx.send(cmd.clone()); }
         }
         crate::wake_native_ui();
+    });
+}
+
+/// POST user feedback on a drawn line to /significance/feedback.
+/// Fire-and-forget — spawns a thread, ignores errors.
+pub(crate) fn post_drawing_feedback(
+    drawing_id: String,
+    action: String, // "accept" | "reject" | "adjust"
+    symbol: String,
+    timeframe: String,
+) {
+    std::thread::spawn(move || {
+        let base = std::env::var("APEX_SIGNALS_HTTP")
+            .unwrap_or_else(|_| "http://localhost:8100".to_string());
+        let url = format!("{base}/significance/feedback");
+        let body = serde_json::json!({
+            "drawing_id": drawing_id,
+            "action": action,
+            "symbol": symbol,
+            "timeframe": timeframe,
+        });
+        let client = reqwest::blocking::Client::builder()
+            .user_agent("apex-native")
+            .build()
+            .unwrap_or_else(|_| reqwest::blocking::Client::new());
+        let _ = client.post(&url)
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(3))
+            .send();
     });
 }
 
