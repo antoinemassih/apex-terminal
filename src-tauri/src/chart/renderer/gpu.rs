@@ -115,6 +115,7 @@ pub(crate) fn set_pending_wl_tooltip(data: Option<WlTooltipData>) {
 use crate::ui_kit::{self, icons::Icon};
 
 use super::trading::*;
+pub(crate) use super::trading::APEXIB_URL;
 
 // ─── Split-pane sidebar sections ──────────────────────────────────────────────
 
@@ -1847,11 +1848,10 @@ pub(crate) fn fetch_signal_drawings(symbol: String) {
 
 // ─── Orders, Account, Alerts, Triggers ─── (moved to trading.rs)
 
-/// ApexIB endpoint — runtime-configurable via Settings panel or `apexib_url()` env.
-/// Use this function; the old const has been removed.
+/// ApexIB endpoint — runtime-configurable via APEXIB_HTTP env var.
 #[inline]
 pub(crate) fn apexib_url() -> String {
-    crate::chart_renderer::trading::config::apexib_url()
+    std::env::var("APEXIB_HTTP").unwrap_or_else(|_| APEXIB_URL.to_string())
 }
 
 // ─── Volume Profile ───────────────────────────────────────────────────────────
