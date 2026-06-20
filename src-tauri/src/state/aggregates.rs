@@ -1809,6 +1809,7 @@ mod tests {
             provenance_open: true,
             replay_pane_open: true,
             hotkey_editor_open: true,
+            auto_chart_open: true,
         };
         save(&path, &v).unwrap();
         let loaded: SidebarState = load(&path).unwrap();
