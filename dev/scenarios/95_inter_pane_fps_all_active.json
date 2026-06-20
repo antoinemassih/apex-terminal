@@ -25,6 +25,7 @@
     { "action": "assert", "assertions": [
       { "fps_above": 5.0 },
       { "no_active_violations": true }
-    ] }
+    ] },
+    { "action": "reset" }
   ]
 }

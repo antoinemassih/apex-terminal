@@ -393,6 +393,11 @@ mod tests {
                 }
             }
         }
+        assert!(
+            suite_passed == suite_total,
+            "/run-suite {suite_passed}/{suite_total} passed — {} scenario(s) failed",
+            suite_total.saturating_sub(suite_passed)
+        );
         eprintln!("[PASS] /run-suite {suite_passed}/{suite_total} passed");
 
         // ── /design-audit — should be clean after a reset ─────────────────────

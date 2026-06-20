@@ -52,7 +52,6 @@
         }
       ]
     },
-    { "action": "wait_frames", "count": 1 },
     {
       "action": "assert",
       "assertions": [
@@ -73,7 +72,6 @@
     },
     { "action": "save_checkpoint", "name": "audit_150" },
     { "action": "annotate", "clear": true },
-    { "action": "wait_frames", "count": 1 },
     {
       "action": "assert",
       "assertions": [

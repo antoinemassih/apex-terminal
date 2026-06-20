@@ -30,7 +30,6 @@
         }
       ]
     },
-    { "action": "wait_frames", "count": 1 },
     {
       "action": "assert",
       "assertions": [
@@ -51,7 +50,6 @@
         }
       ]
     },
-    { "action": "wait_frames", "count": 1 },
     {
       "action": "assert",
       "assertions": [
@@ -60,7 +58,6 @@
     },
     { "action": "log", "message": "Clearing all annotations." },
     { "action": "annotate", "clear": true },
-    { "action": "wait_frames", "count": 1 },
     {
       "action": "assert",
       "assertions": [

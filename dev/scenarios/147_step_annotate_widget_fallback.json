@@ -7,14 +7,12 @@
   "steps": [
     { "action": "reset" },
     { "action": "annotate", "clear": true },
-    { "action": "wait_frames", "count": 1 },
     { "action": "log", "message": "Upserting 3 annotations with mixed tags" },
     { "action": "annotate", "annotations": [
       { "id": "z1", "rect": { "x": 0,   "y": 0,  "w": 400, "h": 100 }, "label": "Zone A", "color": [100, 180, 255, 80], "tag": "zone" },
       { "id": "z2", "rect": { "x": 0,   "y": 110, "w": 400, "h": 100 }, "label": "Zone B", "color": [100, 180, 255, 80], "tag": "zone" },
       { "id": "m1", "rect": { "x": 500, "y": 50,  "w": 10,  "h": 10  }, "label": "Marker", "color": [255, 80, 80, 200],  "tag": "marker" }
     ]},
-    { "action": "wait_frames", "count": 1 },
     { "action": "assert", "assertions": [
       { "annotation_count_equals": 3 }
     ]},

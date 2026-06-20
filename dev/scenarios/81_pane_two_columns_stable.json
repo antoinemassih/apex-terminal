@@ -17,6 +17,7 @@
       { "fps_above": 5.0 },
       { "no_active_violations": true },
       { "no_clipped_widgets": true }
-    ] }
+    ] },
+    { "action": "reset" }
   ]
 }
