@@ -40,6 +40,9 @@
       { "no_open_dialogs": true },
       { "fps_above": 5.0 }
     ]},
+    { "action": "log", "message": "Restoring single-pane layout for clean handoff" },
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 1 },
     { "action": "log", "message": "Dialog lifecycle fully verified" }
   ]
 }

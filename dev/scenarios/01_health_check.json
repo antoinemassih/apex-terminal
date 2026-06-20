@@ -5,6 +5,7 @@
   "settle_ms": 50,
   "abort_on_failure": true,
   "steps": [
+    { "action": "reset" },
     {
       "action": "wait_frames",
       "count": 3

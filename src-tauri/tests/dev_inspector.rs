@@ -381,6 +381,18 @@ mod tests {
         );
         let suite_total  = suite["total"].as_u64().unwrap_or(0);
         let suite_passed = suite["passed"].as_u64().unwrap_or(0);
+        if let Some(results) = suite["results"].as_array() {
+            for r in results {
+                if r["pass"].as_bool() != Some(true) {
+                    eprintln!("  [run-suite FAIL] {}: {}",
+                        r["scenario"].as_str().unwrap_or("?"),
+                        r["steps"].as_array()
+                            .and_then(|steps| steps.iter().find(|s| s["pass"].as_bool() == Some(false)))
+                            .and_then(|s| s["detail"].as_str())
+                            .unwrap_or("(no detail)"));
+                }
+            }
+        }
         eprintln!("[PASS] /run-suite {suite_passed}/{suite_total} passed");
 
         // ── /design-audit — should be clean after a reset ─────────────────────
