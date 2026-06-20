@@ -7,7 +7,7 @@
 use std::os::windows::process::CommandExt;
 
 use crate::chart_renderer::{ChartCommand, Bar};
-use crate::chart_renderer::gpu::{OptionRow, ScanResult, APEXIB_URL, db_to_drawing};
+use crate::chart_renderer::gpu::{OptionRow, ScanResult, db_to_drawing, apexib_url};
 use crate::chart_renderer::{Drawing, DrawingGroup};
 use crate::chart_renderer::compute::{bs_price, strike_interval, atm_strike, get_iv, sim_oi};
 
@@ -76,7 +76,7 @@ fn apexib_client() -> &'static reqwest::blocking::Client {
 
 /// Fast API fetch using curl subprocess — bypasses reqwest TLS issues on Windows
 fn apexib_curl(path: &str) -> Option<serde_json::Value> {
-    let url = format!("{}{}", APEXIB_URL, path);
+    let url = format!("{}{}", apexib_url(), path);
     #[cfg(windows)]
     const CREATE_NO_WINDOW: u32 = 0x08000000;
     let mut cmd = std::process::Command::new("curl");
@@ -795,7 +795,7 @@ pub(crate) fn fetch_search_background(query: String, source: String) {
         if results.is_empty() {
             let client = apexib_client();
             // URL-encode the user-supplied query to prevent injection.
-            let url = format!("{}/search/{}", APEXIB_URL, urlencoding::encode(&query));
+            let url = format!("{}/search/{}", apexib_url(), urlencoding::encode(&query));
             if let Ok(resp) = client.get(&url).send() {
                 if resp.status().is_success() {
                     if let Ok(json) = resp.json::<serde_json::Value>() {
@@ -1838,7 +1838,57 @@ pub(crate) fn fetch_bars_background(sym: String, tf: String) {
             symbol: sym.clone(),
             timeframe: tf.clone(),
             bars: gpu_bars,
-            timestamps,
+            timestamps: timestamps.clone(),
+        };
+        for tx in &txs { let _ = tx.send(cmd.clone()); }
+        crate::wake_native_ui();
+
+        // Proactively fetch the page of history before the loaded range so that
+        // the first scroll-left doesn't stall waiting for the server.
+        if let Some(&earliest_ts) = timestamps.first() {
+            fetch_history_background(sym.clone(), tf.clone(), earliest_ts);
+        }
+
+        // Pre-warm the next timeframe up into the tab cache so the first TF switch is instant.
+        fetch_prewarm_background(sym, tf);
+    });
+}
+
+/// Fetch bars for the next-higher timeframe and stash them in the tab cache.
+/// The CacheBars handler only inserts when the key is absent, so a live entry
+/// from a user interaction always takes precedence over this background fetch.
+pub(crate) fn fetch_prewarm_background(sym: String, tf: String) {
+    let adjacent = match tf.as_str() {
+        "1m" | "2m" => "5m",
+        "5m"        => "15m",
+        "15m" | "30m" => "1h",
+        "1h" | "60m" => "4h",
+        "4h"        => "1d",
+        _ => return, // 1d / 1wk: no meaningful next TF to preload
+    }.to_string();
+
+    let txs: Vec<std::sync::mpsc::Sender<ChartCommand>> = crate::NATIVE_CHART_TXS
+        .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
+    if txs.is_empty() { return; }
+
+    std::thread::spawn(move || {
+        let chain = crate::data::providers::registry::bar_chain();
+        let rt = fetch_runtime();
+        let result = rt.block_on(async {
+            chain.bars(&sym, &adjacent, 0, 0, None).await
+        });
+        let bars = match result {
+            Ok(b) if !b.is_empty() => b,
+            _ => return,
+        };
+        let gpu_bars: Vec<Bar> = bars.iter().map(|b| Bar {
+            open: b.open as f32, high: b.high as f32, low: b.low as f32,
+            close: b.close as f32, volume: b.volume as f32, _pad: 0.0,
+        }).collect();
+        let timestamps: Vec<i64> = bars.iter().map(|b| b.time / 1000).collect();
+        eprintln!("[prewarm] {} bars cached for {} {}", gpu_bars.len(), sym, adjacent);
+        let cmd = ChartCommand::CacheBars {
+            symbol: sym, timeframe: adjacent, bars: gpu_bars, timestamps,
         };
         for tx in &txs { let _ = tx.send(cmd.clone()); }
         crate::wake_native_ui();

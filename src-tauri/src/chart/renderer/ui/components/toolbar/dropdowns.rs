@@ -37,7 +37,10 @@ pub(crate) fn render_timeframe_dropdown(
 ) {
     use super::top_nav::{ALL_TIMEFRAMES, tf_to_secs, row_text_color};
 
-    if !watchlist.timeframe_dropdown_open { return; }
+    let appear = crate::ui_kit::widgets::motion::ease_bool(
+        ctx, egui::Id::new("timeframe_dd_appear"), watchlist.timeframe_dropdown_open,
+        crate::ui_kit::widgets::motion::FAST);
+    if !watchlist.timeframe_dropdown_open && appear < 0.01 { return; }
 
     let dd_pos = watchlist.timeframe_dropdown_pos;
     let mut close_dd = false;
@@ -56,6 +59,7 @@ pub(crate) fn render_timeframe_dropdown(
                 .inner_margin(egui::Margin::same(gap_md() as i8))
         )
         .show(ctx, |ui| {
+            ui.set_opacity(appear);
             let hover_pos = ui.input(|i| i.pointer.hover_pos());
             let mut last_section = "";
             for &(tf_label, _secs, section) in ALL_TIMEFRAMES {
@@ -154,7 +158,10 @@ pub(crate) fn render_layout_dropdown(
     use super::top_nav::row_text_color;
     use crate::chart_renderer::gpu::{ALL_LAYOUTS};
 
-    if !watchlist.layout_dropdown_open { return; }
+    let appear = crate::ui_kit::widgets::motion::ease_bool(
+        ctx, egui::Id::new("layout_dd_appear"), watchlist.layout_dropdown_open,
+        crate::ui_kit::widgets::motion::FAST);
+    if !watchlist.layout_dropdown_open && appear < 0.01 { return; }
 
     let dd_pos = watchlist.layout_dropdown_pos;
     let mut close_dd = false;
@@ -172,6 +179,7 @@ pub(crate) fn render_layout_dropdown(
                 .inner_margin(egui::Margin::same(gap_md() as i8))
         )
         .show(ctx, |ui| {
+            ui.set_opacity(appear);
             let hover_pos = ui.input(|i| i.pointer.hover_pos());
             let mut last_section = "";
             for &ly in ALL_LAYOUTS {

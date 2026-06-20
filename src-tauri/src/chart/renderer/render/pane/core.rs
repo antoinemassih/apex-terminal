@@ -525,6 +525,14 @@ fn render_chart_pane(
 
         let hdr = builder.show(ui);
 
+        // Dev Inspector — record the pane header rect with contract check.
+        #[cfg(debug_assertions)]
+        crate::dev_inspector::check_contract(
+            &format!("pane.{pane_idx}.header"),
+            header_rect,
+            crate::dev_inspector::layout::Contract::new().non_empty().min_size(100.0, 24.0),
+        );
+
         // ── Header drop shadow ─────────────────────────────────────────────
         {
             let shadow_h = 10.0_f32;
@@ -1625,6 +1633,29 @@ fn render_chart_pane(
     let osc_h = if needs_osc_panel { (h * 0.22).min(120.0) } else { 0.0 };
     let (cw,ch) = (w-pr, h-pt-pb-osc_h);
     if cw<=0.0 || ch<=0.0 { return; }
+    // Dev Inspector — record chart body area for layout assertions.
+    #[cfg(debug_assertions)]
+    {
+        let body_rect = egui::Rect::from_min_size(
+            egui::pos2(rect.left(), rect.top() + pt),
+            egui::vec2(cw, ch),
+        );
+        crate::dev_inspector::record(crate::dev_inspector::WidgetRecord {
+            id: format!("pane.{pane_idx}.chart_body"),
+            role: "canvas".into(),
+            label: format!("{} {}", chart.symbol, chart.timeframe),
+            value: None,
+            rect: body_rect.into(),
+            clip_rect: ui.clip_rect().into(),
+            layer: 0, focused: false, hovered: false, enabled: true,
+            is_clipped: false,
+        });
+        crate::dev_inspector::check_contract(
+            &format!("pane.{pane_idx}.chart_body"),
+            body_rect,
+            crate::dev_inspector::layout::Contract::new().non_empty().min_size(200.0, 100.0),
+        );
+    }
     if n==0 {
         // ── Refined loading indicator ──
         if !chart.symbol.is_empty() {
@@ -2127,7 +2158,6 @@ fn render_chart_pane(
     // MARK_BARS_PROTOCOL: skip when in Mark mode (volume=0 → empty profile).
     if chart.vp.mode != VolumeProfileMode::Off && !chart.bar_source_mark {
         if chart.vp.data.is_none() || chart.vp.last_vs != chart.vs || chart.vp.last_vc != chart.vc {
-            let _vp_z = crate::foundation::frame_profiler::profile_zone("vp_compute");
             // Prefer REAL volume-at-price (ApexData VAP) for the session profile;
             // fall back to the bar-spread approximation over the visible window
             // when VAP isn't backfilled yet for this symbol/date.
@@ -2144,7 +2174,6 @@ fn render_chart_pane(
     }
 
     if chart.vp.mode == VolumeProfileMode::Classic {
-        let _vp_z = crate::foundation::frame_profiler::profile_zone("vp_paint");
         if let Some(ref vp) = chart.vp.data {
             let max_bar_width = cw * 0.25;
             for level in &vp.levels {
@@ -2179,7 +2208,6 @@ fn render_chart_pane(
     }
 
     if chart.vp.mode == VolumeProfileMode::Heatmap {
-        let _vp_z = crate::foundation::frame_profiler::profile_zone("vp_paint");
         if let Some(ref vp) = chart.vp.data {
             for level in &vp.levels {
                 let y_top = py(level.price + vp.price_step / 2.0);
@@ -2210,7 +2238,6 @@ fn render_chart_pane(
     }
 
     if chart.vp.mode == VolumeProfileMode::Strip {
-        let _vp_z = crate::foundation::frame_profiler::profile_zone("vp_paint");
         if let Some(ref vp) = chart.vp.data {
             let strip_w = 50.0_f32;
             let strip_x = rect.left() + cw - strip_w;
@@ -2251,7 +2278,6 @@ fn render_chart_pane(
     }
 
     if chart.vp.mode == VolumeProfileMode::Clean {
-        let _vp_z = crate::foundation::frame_profiler::profile_zone("vp_paint");
         if let Some(ref vp) = chart.vp.data {
             let gold = egui::Color32::from_rgb(255, 193, 37);
             let vah_y = py(vp.vah); let val_y = py(vp.val);
@@ -3612,11 +3638,19 @@ fn render_chart_pane(
     {
         // Take panes out of chart to avoid borrow conflict with &mut Chart
         let mut floating_panes = std::mem::take(&mut chart.floating_order_panes);
-        let mut close_ids: Vec<u32> = Vec::new();
+        let mut remove_ids: Vec<u32> = Vec::new();
 
         for pane in &mut floating_panes {
             let adv = chart.order_panel.advanced;
             let fp_panel_w = if adv { 340.0 } else { 300.0 };
+
+            // Exit animation: ease 1→0 after close, remove once fully hidden.
+            let close_req_id = egui::Id::new(("fp_close_req", pane_idx, pane.id));
+            let fade_id      = egui::Id::new(("fp_appear",    pane_idx, pane.id));
+            let close_req: bool = ctx.memory(|m| m.data.get_temp(close_req_id).unwrap_or(false));
+            let appear = crate::ui_kit::widgets::motion::ease_bool(
+                ctx, fade_id, !close_req, crate::ui_kit::widgets::motion::FAST);
+            if close_req && appear < 0.01 { remove_ids.push(pane.id); continue; }
 
             egui::Window::new(format!("float_order_{}_{}", pane_idx, pane.id))
                 .fixed_pos(pane.pos)
@@ -3624,6 +3658,7 @@ fn render_chart_pane(
                 .title_bar(false)
                 .frame(egui::Frame::NONE)
                 .show(ctx, |ui| {
+                    ui.set_opacity(appear);
                     use crate::chart_renderer::ui::chrome::FloatingPaneChrome;
                     use crate::ui_kit::icons::Icon;
                     use crate::ui_kit::widgets::{Button as KitButton, tokens::Variant};
@@ -3686,7 +3721,9 @@ fn render_chart_pane(
                         }
                     });
 
-                    if cr.close_clicked          { close_ids.push(pane.id); }
+                    if cr.close_clicked {
+                        ctx.memory_mut(|m| m.data.insert_temp(close_req_id, true));
+                    }
                     if cr.header_double_clicked  { pane.collapsed = !pane.collapsed; }
                     if cr.title_clicked {
                         chart.pane_picker_open = true;
@@ -3701,7 +3738,7 @@ fn render_chart_pane(
                 });
         }
 
-        floating_panes.retain(|p| !close_ids.contains(&p.id));
+        floating_panes.retain(|p| !remove_ids.contains(&p.id));
         chart.floating_order_panes = floating_panes;
     }
 
@@ -6478,7 +6515,10 @@ fn render_chart_pane(
     span_begin("signal_overlays");
     // ── Signal drawings (auto-generated trendlines from server) ──────────
     if !chart.hide_signal_drawings && !chart.signal_drawings.is_empty() {
+        let rejected = crate::chart_renderer::gpu::auto_draw_config().rejected_drawings;
         for sd in &chart.signal_drawings {
+            // Skip user-rejected drawings.
+            if rejected.contains(&sd.id) { continue; }
             // Per-method filter: skip lines whose detection_method is toggled off.
             if chart.hidden_signal_methods.iter().any(|m| m == &sd.detection_method) { continue; }
             let color = hex_to_color(&sd.color, sd.opacity);
@@ -6487,8 +6527,14 @@ fn render_chart_pane(
                 "trendline" if sd.points.len() >= 2 => {
                     let b0 = SignalDrawing::time_to_bar(sd.points[0].0, &chart.timestamps);
                     let b1 = SignalDrawing::time_to_bar(sd.points[1].0, &chart.timestamps);
-                    let p0 = egui::pos2(bx(b0), py(sd.points[0].1));
-                    let p1 = egui::pos2(bx(b1), py(sd.points[1].1));
+                    let mut p0 = egui::pos2(bx(b0), py(sd.points[0].1));
+                    let mut p1 = egui::pos2(bx(b1), py(sd.points[1].1));
+                    // Extend along the line's slope to the chart edge(s) when requested.
+                    if (sd.extend_left || sd.extend_right) && (p1.x - p0.x).abs() > 0.5 {
+                        let m = (p1.y - p0.y) / (p1.x - p0.x);
+                        if sd.extend_right { let x = rect.left() + cw; p1 = egui::pos2(x, p0.y + m * (x - p0.x)); }
+                        if sd.extend_left  { let x = rect.left();      p0 = egui::pos2(x, p0.y + m * (x - p0.x)); }
+                    }
                     match sd.line_style {
                         LineStyle::Solid => { painter.line_segment([p0, p1], stroke); }
                         _ => {
@@ -11507,6 +11553,11 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
     // Clear TB_BTN_CLICKED for next frame — MUST be after the drag handler above reads it
     TB_BTN_CLICKED.with(|f| f.set(false));
 
+    // Dev Inspector — drain queued AppCommands/ChartCommands before widget code runs.
+    // Input injection happens earlier in gpu.rs, pre-ctx.run(), via drain_inputs().
+    #[cfg(debug_assertions)]
+    crate::dev_inspector::begin_frame();
+
     route_commands(rx, panes, active_pane, watchlist);
 
     // Keep ApexData's snapshot poller's watched set synced with visible symbols.
@@ -12634,25 +12685,14 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
             let mut spans = snap.subsystems.spans.clone();
             spans.sort_by(|a, b| b.1.cmp(&a.1)); // by avg_us desc
             let top: Vec<String> = spans.iter().take(8)
-                .map(|(n, avg, max, _last)| format!("{}={:.2}/{:.2}ms", n, *avg as f64 / 1000.0, *max as f64 / 1000.0))
-                .collect();
-            // Also surface frame-profiler zones (e.g. vp_compute / vp_paint) — these
-            // live in a separate nestable profiler, NOT in monitoring spans. depth==0
-            // only (no double-counting), top 6 by last-frame duration.
-            let mut zones: Vec<crate::foundation::frame_profiler::ZoneSample> =
-                crate::foundation::frame_profiler::last_frame_zones()
-                    .into_iter().filter(|z| z.depth == 0).collect();
-            zones.sort_by(|a, b| b.duration_us.cmp(&a.duration_us));
-            let ztop: Vec<String> = zones.iter().take(6)
-                .map(|z| format!("{}={:.2}ms", z.name, z.duration_us as f64 / 1000.0))
+                .map(|(n, avg, _max, _last)| format!("{}={:.2}ms", n, *avg as f64 / 1000.0))
                 .collect();
             eprintln!(
-                "[PERF] frame avg {:.2}ms ({:.0} fps) last {:.2}ms | spans(avg/max): {} | zones: {}",
+                "[PERF] frame avg {:.2}ms ({:.0} fps) last {:.2}ms | {}",
                 snap.frames.avg_frame_us as f64 / 1000.0,
                 snap.frames.fps,
                 snap.frames.last_frame_us as f64 / 1000.0,
                 top.join("  "),
-                ztop.join("  "),
             );
         }
     }
@@ -12667,16 +12707,25 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                 panes[*active_pane].theme_idx
             } else { 0 };
             let theme = get_theme(theme_idx);
-            let mut open = true;
-            egui::Window::new("Widget Gallery")
-                .open(&mut open)
+            let mut close_gal = false;
+            egui::Window::new("wgal_dev")
                 .default_size((900.0, 700.0))
                 .resizable(true)
-                .scroll([false, true])
+                .title_bar(false)
+                .frame(egui::Frame::window(&ctx.style()).fill(theme.bg).stroke(egui::Stroke::new(1.0, theme.border())))
                 .show(ctx, |ui| {
-                    crate::chart::renderer::ui::panels::widget_gallery::show_widget_gallery(ui, &theme);
+                    ui.horizontal(|ui| {
+                        ui.strong("Widget Gallery");
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("✕").clicked() { close_gal = true; }
+                        });
+                    });
+                    ui.separator();
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        crate::chart::renderer::ui::panels::widget_gallery::show_widget_gallery(ui, &theme);
+                    });
                 });
-            if !open { watchlist.widget_gallery_open = false; }
+            if close_gal { watchlist.widget_gallery_open = false; }
         }
     }
 
@@ -12694,16 +12743,25 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                 panes[*active_pane].theme_idx
             } else { 0 };
             let theme = get_theme(theme_idx);
-            let mut win_open = true;
-            egui::Window::new("Chart Viz Gallery")
-                .open(&mut win_open)
+            let mut close_viz = false;
+            egui::Window::new("cvgal_dev")
                 .default_size((920.0, 660.0))
                 .resizable(true)
-                .scroll([false, true])
+                .title_bar(false)
+                .frame(egui::Frame::window(&ctx.style()).fill(theme.bg).stroke(egui::Stroke::new(1.0, theme.border())))
                 .show(ctx, |ui| {
-                    crate::chart::renderer::ui::panels::widget_gallery::show_chart_gallery(ui, &theme);
+                    ui.horizontal(|ui| {
+                        ui.strong("Chart Viz Gallery");
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("✕").clicked() { close_viz = true; }
+                        });
+                    });
+                    ui.separator();
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        crate::chart::renderer::ui::panels::widget_gallery::show_chart_gallery(ui, &theme);
+                    });
                 });
-            if !win_open { open = false; }
+            if close_viz { open = false; }
         }
         ctx.memory_mut(|m| m.data.insert_temp(id, open));
     }
@@ -12713,5 +12771,10 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
     // Drain any AppCommand pushed during this frame's UI render. Theme/style
     // pickers, alert mutations, watchlist edits, etc. all flow through here.
     crate::chart_renderer::commands::drain_and_dispatch(panes, watchlist);
+
+    // Dev Inspector — capture widget/state snapshot after all mutations settle.
+    #[cfg(debug_assertions)]
+    crate::dev_inspector::end_frame(panes, *active_pane, watchlist, ctx);
+
     span_end(); // draw_chart.tail
 }

@@ -32,6 +32,18 @@ fn set_macos_dock_icon() {
 }
 
 fn main() {
+    // Dev Inspector — detect --headless flag before anything else so headless
+    // mode is set before the window is created.
+    #[cfg(debug_assertions)]
+    {
+        let headless = std::env::args().any(|a| a == "--headless");
+        _scaffold_lib::dev_inspector::set_headless(headless);
+        _scaffold_lib::dev_inspector::init();
+        if headless {
+            eprintln!("[dev-inspector] headless mode — window will be invisible");
+        }
+    }
+
     eprintln!("╔══════════════════════════════════════╗");
     eprintln!("║  Apex Terminal — Native GPU Edition   ║");
     eprintln!("╚══════════════════════════════════════╝");

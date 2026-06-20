@@ -58,7 +58,7 @@ fn futures_ws_url(symbol: &str) -> String {
         .split("/ws")
         .next()
         .filter(|s| !s.is_empty())
-        .unwrap_or("wss://apex-data-dev.xllio.com");
+        .unwrap_or("wss://apex-data-v2-dev.xllio.com");
     let root = symbol.strip_prefix("F:").unwrap_or(symbol);
     format!("{host}/ws/futures?symbol={root}")
 }

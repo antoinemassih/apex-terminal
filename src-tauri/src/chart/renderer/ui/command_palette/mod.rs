@@ -142,7 +142,13 @@ pub(crate) fn draw(
             }
         }
     }
-    if !watchlist.cmd_palette_open { return; }
+    // Animate entrance/exit: scrim fade + content fade + a small settle. Driven
+    // by the REAL open state every frame (including while closing) so it eases
+    // OUT too, not just in — then we bail once fully collapsed.
+    let appear = crate::ui_kit::widgets::motion::ease_bool(
+        ctx, egui::Id::new("cmd_palette_appear"), watchlist.cmd_palette_open,
+        crate::ui_kit::widgets::motion::MED);
+    if !watchlist.cmd_palette_open && appear < 0.01 { return; }
 
     let screen = ctx.screen_rect();
     let pal_w = 640.0_f32;
@@ -156,19 +162,22 @@ pub(crate) fn draw(
             // Scrim derives from theme bg so wild palettes (pink, lime, etc.) get
             // a scrim in their own hue rather than a pure-black "screen-off" wash.
             let s = t.bg;
+            let scrim_a = ((crate::chart_renderer::ui::style::alpha_scrim() as f32) * appear).round() as u8;
             ui.painter().rect_filled(screen, 0.0,
-                egui::Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(),
-                    crate::chart_renderer::ui::style::alpha_scrim()));
+                egui::Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), scrim_a));
         });
 
     let ai_mode = watchlist.cmd_palette_ai_mode;
 
+    // Small downward settle as it appears (rises into place on close).
+    let pal_y_anim = pal_y - (1.0 - appear) * 6.0;
     let pal_resp = egui::Window::new("cmd_palette")
-        .fixed_pos(egui::pos2(pal_x, pal_y))
+        .fixed_pos(egui::pos2(pal_x, pal_y_anim))
         .fixed_size(egui::vec2(pal_w, 0.0))
         .title_bar(false)
         .frame(PopupFrame::new().colors(tint(t, Tone::Surface, 252), t.accent).ctx(ctx).build())
         .show(ctx, |ui| {
+            ui.set_opacity(appear);
             if ai_mode {
                 draw_ai_mode(ui, watchlist, t, pal_w);
             } else {

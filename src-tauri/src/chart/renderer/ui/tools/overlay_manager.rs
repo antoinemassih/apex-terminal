@@ -13,13 +13,16 @@ use crate::ui_kit::widgets::modal::{Modal, HeaderStyle};
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
 // ── Overlay management pane ─────────────────────────────────────────────
-if panes[ap].overlay_editing {
+// Always call show() (no `if open` gate) and drive it with `.open(flag)` so the
+// overlay plays its fade-out; ToolOverlay stops rendering once fully hidden.
+{
     let mut delete_idx: Option<usize> = None;
     // Migrated to ToolOverlay (2026-05-26) — consolidates header chrome.
     let portable_t = crate::chart_renderer::theme_impl::theme_to_portable(t);
     let modal_resp = crate::ui_kit::widgets::ToolOverlay::new("SYMBOL OVERLAYS")
         .id("overlay_mgr")
         .width(260.0)
+        .open(panes[ap].overlay_editing)
         .show(ctx, &portable_t, |ui| {
             let m = 8.0;
             ui.add_space(gap_sm());

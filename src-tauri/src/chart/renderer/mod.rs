@@ -830,6 +830,16 @@ pub enum ChartCommand {
         bars: Vec<Bar>,
         timestamps: Vec<i64>,
     },
+    /// Insert bars into the tab cache without making them the active pane data.
+    /// Used by background prewarm to make TF switches instant. Never overwrites
+    /// an existing cache entry — first-writer wins so live data is never evicted
+    /// by a stale background fetch.
+    CacheBars {
+        symbol: String,
+        timeframe: String,
+        bars: Vec<Bar>,
+        timestamps: Vec<i64>,
+    },
     /// Append a single new bar + timestamp.
     /// `mark`: MARK_BARS_PROTOCOL source — `false` = last (trade prints, default),
     /// `true` = mark (NBBO mid). Panes drop frames whose source doesn't match their

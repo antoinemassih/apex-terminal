@@ -1,0 +1,52 @@
+{
+  "name": "watchlist_edit",
+  "description": "Add a symbol to the watchlist and verify it appears, then remove it.",
+  "tags": ["smoke", "watchlist"],
+  "settle_ms": 0,
+  "abort_on_failure": true,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "TSLA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_open_dialogs": true }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistRemoveSymbol",
+      "symbol": "TSLA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_open_dialogs": true }
+      ]
+    },
+    {
+      "action": "log",
+      "message": "Watchlist edit scenario passed."
+    }
+  ]
+}

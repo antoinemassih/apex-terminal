@@ -847,6 +847,21 @@ impl<'a> PainterPaneHeader<'a> {
             }
             // Track symbol click separately
             let sym_clicked = sym_resp.clicked();
+            // Dev Inspector — record the symbol header widget.
+            #[cfg(debug_assertions)]
+            crate::dev_inspector::record(crate::dev_inspector::WidgetRecord {
+                id: format!("pane_header.symbol"),
+                role: "label".into(),
+                label: sym.to_string(),
+                value: Some(sym.to_string()),
+                rect: sym_label_rect.into(),
+                clip_rect: ui.clip_rect().into(),
+                layer: 0,
+                focused: false,
+                hovered: sym_resp.hovered(),
+                enabled: true,
+                is_clipped: false,
+            });
             let p0 = pos2(cx + 2.0, rect.center().y);
             painter.text(pos2(p0.x + 0.5, p0.y), Align2::LEFT_CENTER, sym,
                 sym_font.clone(), label_color);

@@ -722,8 +722,15 @@ pub(crate) fn render(
 
                     // Save current
                     if !watchlist.active_workspace.is_empty() {
-                        if ui.button(egui::RichText::new(format!("{} Save \"{}\"", Icon::CHECK, watchlist.active_workspace))
-                            .monospace().size(font_sm()).color(t.accent)).clicked() {
+                        let save_resp = ui.button(egui::RichText::new(format!("{} Save \"{}\"", Icon::CHECK, watchlist.active_workspace))
+                            .monospace().size(font_sm()).color(t.accent));
+                        #[cfg(debug_assertions)]
+                        crate::dev_inspector::record(
+                            crate::dev_inspector::WidgetRecord::from_response(
+                                "toolbar.save_workspace", "button", "Save workspace", &save_resp, ui,
+                            )
+                        );
+                        if save_resp.clicked() {
                             let ws_name = watchlist.active_workspace.clone();
                             save_workspace(&ws_name, panes, *layout, watchlist);
                             ui.close_menu();
@@ -1139,6 +1146,7 @@ pub(crate) fn render(
                 }
                 panel_toggle!(Icon::CURRENCY_DOLLAR, "Orders",     orders_panel_open,     "Orders Panel",                                "right_orders");
                 panel_toggle!(Icon::CHART_LINE,      "Analysis",   analysis_open,         "Analysis Sidebar",                            "right_analysis");
+                panel_toggle!(Icon::CHART_LINE,      "Auto-Chart", auto_chart_open,       "Auto-Charting (lines, levels, patterns, tuning)", "right_autochart");
                 panel_toggle!(Icon::PULSE,           "Indicators", indicators_panel_open, "Indicators (Active + Library + Tools)",       "right_indicators");
 
                 // Signals panel (Alerts + Signals) — no divider after, it's the last in the group
@@ -1314,12 +1322,24 @@ pub(crate) fn render(
     crate::chart_renderer::ui::tools::overlay_manager::draw(ctx, watchlist, panes, ap, t);
 
     // ── Group manager popup ────────────────────────────────────────────────────
+    // Migrated from the raw `dialog_window_themed` factory to the canonical Modal
+    // shell so it gets the same scrim + entry/exit animation + draggable header +
+    // drop shadow as every other dialog. Modal renders the title + close X and
+    // defers `closed` until its exit anim finishes, so the `if open` gate plays
+    // the fade-out correctly.
     if panes[ap].group_manager_open {
         let mut close_gm = false;
-        dialog_window_themed(ctx, "group_manager", egui::pos2(200.0, 100.0), 250.0, t.toolbar_bg, t.toolbar_border, None)
-            .show(ctx, |ui| {
-                if crate::ui_kit::widgets::Header::dialog("NEW GROUP").closable(true).show(ui, t).close_clicked { close_gm = true; }
-                ui.add_space(gap_xl());
+        let gm_resp = crate::ui_kit::widgets::modal::Modal::new("NEW GROUP")
+            .id("group_manager")
+            .ctx(ctx)
+            .theme(t)
+            .size(egui::vec2(250.0, 0.0))
+            .anchor(crate::ui_kit::widgets::modal::Anchor::Window { pos: None })
+            .frame_kind(crate::ui_kit::widgets::modal::FrameKind::DialogWindow)
+            .header_style(crate::ui_kit::widgets::modal::HeaderStyle::Dialog)
+            .separator(true)
+            .show(|ui| {
+                ui.add_space(gap_md());
                 let m = 10.0;
                 ui.horizontal(|ui| {
                     ui.add_space(m);
@@ -1346,6 +1366,7 @@ pub(crate) fn render(
                 });
                 ui.add_space(gap_lg());
             });
+        if gm_resp.closed { close_gm = true; }
         if close_gm { panes[ap].group_manager_open = false; }
     }
 

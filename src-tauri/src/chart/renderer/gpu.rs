@@ -115,6 +115,7 @@ pub(crate) fn set_pending_wl_tooltip(data: Option<WlTooltipData>) {
 use crate::ui_kit::{self, icons::Icon};
 
 use super::trading::*;
+pub(crate) use super::trading::APEXIB_URL;
 
 // ─── Split-pane sidebar sections ──────────────────────────────────────────────
 
@@ -312,6 +313,52 @@ pub(crate) fn pane_header_h(wl: &Watchlist) -> f32 {
     };
     // Multiply by current().header_height_scale so the design-mode slider has effect.
     (style_adj * super::ui::style::current().header_height_scale).max(12.0)
+}
+
+/// Borderless-window edge resize. We draw our own chrome (`with_decorations(false)`),
+/// which on Windows strips the OS sizing border — so without this, window edges
+/// aren't grabbable and resize cursors never appear. This adds INVISIBLE grab bands
+/// at the left/right/bottom edges + bottom corners that show the resize cursor and
+/// start a native OS resize via `drag_resize_window`, WITHOUT adding any Windows
+/// frame (the window stays fully custom). The TOP edge is intentionally left to the
+/// titlebar (window move) to avoid fighting the toolbar drag handler. No-op while
+/// maximized. Runs inside the egui frame so the cursor is applied via egui output.
+fn window_resize_borders(ctx: &egui::Context, window: &Window) {
+    use winit::window::ResizeDirection as RD;
+    use egui::CursorIcon as CI;
+    if window.is_maximized() { return; }
+    let s = ctx.screen_rect();
+    let b = 6.0_f32;   // edge band thickness
+    let c = 14.0_f32;  // corner square (takes priority over the straight edges)
+    // The L/R bands sit at Order::Foreground (above everything), so where they
+    // overlap the toolbar they'd eat clicks on the top-nav window controls /
+    // panel toggles. Start the side bands BELOW the toolbar so the whole top nav
+    // stays clickable (you still resize from the lower part of the side edges).
+    let side_top = (s.top() + c)
+        .max(crate::chart_renderer::ui::style::toolbar_rect().bottom() + 2.0);
+    let zones: [(egui::Rect, RD, CI, &str); 5] = [
+        // bottom corners first (drawn last → on top → win the hit test)
+        (egui::Rect::from_min_max(egui::pos2(s.left(), s.bottom()-c), egui::pos2(s.left()+c, s.bottom())), RD::SouthWest, CI::ResizeNeSw, "sw"),
+        (egui::Rect::from_min_max(egui::pos2(s.right()-c, s.bottom()-c), s.right_bottom()), RD::SouthEast, CI::ResizeNwSe, "se"),
+        // straight edges (inset by the corner size so corners stay distinct)
+        (egui::Rect::from_min_max(egui::pos2(s.left()+c, s.bottom()-b), egui::pos2(s.right()-c, s.bottom())), RD::South, CI::ResizeVertical, "so"),
+        (egui::Rect::from_min_max(egui::pos2(s.left(), side_top), egui::pos2(s.left()+b, s.bottom()-c)), RD::West, CI::ResizeHorizontal, "we"),
+        (egui::Rect::from_min_max(egui::pos2(s.right()-b, side_top), egui::pos2(s.right(), s.bottom()-c)), RD::East, CI::ResizeHorizontal, "ea"),
+    ];
+    // Edges first, then corners last so corners win where they overlap.
+    for (rect, dir, cursor, sfx) in [zones[2], zones[3], zones[4], zones[0], zones[1]] {
+        let resp = egui::Area::new(egui::Id::new(("winrsz", sfx)))
+            .order(egui::Order::Foreground)
+            .fixed_pos(rect.min)
+            .interactable(true)
+            .show(ctx, |ui| {
+                ui.set_min_size(rect.size());
+                ui.allocate_rect(rect, egui::Sense::drag())
+            })
+            .inner;
+        if resp.hovered() || resp.dragged() { ctx.set_cursor_icon(cursor); }
+        if resp.drag_started() { let _ = window.drag_resize_window(dir); }
+    }
 }
 
 /// Paint rounded corner + border frames over each chart pane on the Foreground layer.
@@ -1400,6 +1447,8 @@ pub(crate) struct SignalDrawing {
     pub(crate) timeframe: String,
     pub(crate) detection_method: String, // wick/ransac/kalman/hough/kde/… — for by-method filtering
     pub(crate) source: String, // producer: "trendlines" / "chart_patterns" / "signal" — scopes replacement
+    pub(crate) extend_left: bool,  // project line to the left chart edge
+    pub(crate) extend_right: bool, // project line to the right chart edge
 }
 
 impl SignalDrawing {
@@ -1601,6 +1650,24 @@ pub(crate) struct AutoDrawConfig {
     pub min_touches: u32,
     pub touch_pct: f64,
     pub max_lines: usize,
+    /// Legacy methods to also run for comparison (wick, body, hough, ransac, …).
+    pub methods: Vec<String>,
+    /// Line extension: "none" | "right" | "both" | "left".
+    pub extend: String,
+    /// Legacy tuning knobs.
+    pub sensitivity: f64,
+    pub lookback: usize,
+    pub swing_window: usize,
+    /// How many bars back the engine loads/scans (the "window of operation").
+    /// Larger = older, more valuable lines reach further back.
+    pub window: usize,
+    /// Drop lines whose endpoints don't sit on an actual candle (kills
+    /// "middle of nowhere" floating starts from fitted methods).
+    pub anchored_only: bool,
+    /// Drawing IDs the user has explicitly rejected — filtered from render and
+    /// POSTed to /significance/feedback for learning.
+    #[serde(default)]
+    pub rejected_drawings: std::collections::HashSet<String>,
 }
 impl Default for AutoDrawConfig {
     fn default() -> Self {
@@ -1608,6 +1675,10 @@ impl Default for AutoDrawConfig {
             enabled: true, trendlines: true, levels: true, channels: true,
             patterns: true, candles: false, pivot_mode: "hybrid".into(),
             atr_k: 2.0, pct: 0.015, min_touches: 3, touch_pct: 0.004, max_lines: 12,
+            methods: vec![], extend: "none".into(),
+            sensitivity: 0.003, lookback: 200, swing_window: 5,
+            window: 500, anchored_only: true,
+            rejected_drawings: Default::default(),
         }
     }
 }
@@ -1623,9 +1694,11 @@ impl AutoDrawConfig {
     }
     fn query(&self) -> String {
         format!(
-            "&types={}&pivot_mode={}&atr_k={}&pct={}&min_touches={}&touch_pct={}&max_lines={}",
+            "&types={}&pivot_mode={}&atr_k={}&pct={}&min_touches={}&touch_pct={}&max_lines={}&methods={}&extend={}&sensitivity={}&lookback={}&swing_window={}&window={}&anchored_only={}",
             self.types_csv(), self.pivot_mode, self.atr_k, self.pct,
             self.min_touches, self.touch_pct, self.max_lines,
+            self.methods.join(","), self.extend, self.sensitivity, self.lookback, self.swing_window,
+            self.window, self.anchored_only,
         )
     }
 }
@@ -1704,6 +1777,35 @@ pub(crate) fn fetch_apexsignals_drawings(symbol: String, timeframe: String) {
     });
 }
 
+/// POST user feedback on a drawn line to /significance/feedback.
+/// Fire-and-forget — spawns a thread, ignores errors.
+pub(crate) fn post_drawing_feedback(
+    drawing_id: String,
+    action: String, // "accept" | "reject" | "adjust"
+    symbol: String,
+    timeframe: String,
+) {
+    std::thread::spawn(move || {
+        let base = std::env::var("APEX_SIGNALS_HTTP")
+            .unwrap_or_else(|_| "http://localhost:8100".to_string());
+        let url = format!("{base}/significance/feedback");
+        let body = serde_json::json!({
+            "drawing_id": drawing_id,
+            "action": action,
+            "symbol": symbol,
+            "timeframe": timeframe,
+        });
+        let client = reqwest::blocking::Client::builder()
+            .user_agent("apex-native")
+            .build()
+            .unwrap_or_else(|_| reqwest::blocking::Client::new());
+        let _ = client.post(&url)
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(3))
+            .send();
+    });
+}
+
 /// Fetch signal annotations from OCOCO API for a symbol.
 pub(crate) fn fetch_signal_drawings(symbol: String) {
     let txs: Vec<std::sync::mpsc::Sender<super::ChartCommand>> = crate::NATIVE_CHART_TXS
@@ -1730,7 +1832,7 @@ pub(crate) fn fetch_signal_drawings(symbol: String) {
                     let strength = a.get("strength").and_then(|s| s.as_f64()).unwrap_or(0.5) as f32;
                     let timeframe = a.get("timeframe").and_then(|t| t.as_str()).unwrap_or("5m").to_string();
                     let detection_method = a.get("detection_method").and_then(|m| m.as_str()).unwrap_or("").to_string();
-                    Some(SignalDrawing { id, symbol: sym, drawing_type: dtype, points, color, opacity, thickness, line_style, strength, timeframe, detection_method, source: "signal".to_string() })
+                    Some(SignalDrawing { id, symbol: sym, drawing_type: dtype, points, color, opacity, thickness, line_style, strength, timeframe, detection_method, source: "signal".to_string(), extend_left: a.get("extendLeft").and_then(|v| v.as_bool()).unwrap_or(false), extend_right: a.get("extendRight").and_then(|v| v.as_bool()).unwrap_or(false) })
                 }).collect();
 
                 if !drawings.is_empty() {
@@ -1746,8 +1848,11 @@ pub(crate) fn fetch_signal_drawings(symbol: String) {
 
 // ─── Orders, Account, Alerts, Triggers ─── (moved to trading.rs)
 
-/// ApexIB endpoint configuration
-pub(crate) const APEXIB_URL: &str = "https://apexib-dev.xllio.com";
+/// ApexIB endpoint — runtime-configurable via APEXIB_HTTP env var.
+#[inline]
+pub(crate) fn apexib_url() -> String {
+    std::env::var("APEXIB_HTTP").unwrap_or_else(|_| APEXIB_URL.to_string())
+}
 
 // ─── Volume Profile ───────────────────────────────────────────────────────────
 
@@ -2856,6 +2961,15 @@ impl Chart {
                     }
                 }
             }
+            ChartCommand::CacheBars { symbol, timeframe, bars, timestamps } => {
+                if !bars.is_empty() {
+                    let key = (symbol, timeframe);
+                    if !self.tab_cache.contains_key(&key) {
+                        evict_oldest_if_full(&mut self.tab_cache);
+                        self.tab_cache.insert(key, (bars, timestamps, std::time::Instant::now()));
+                    }
+                }
+            }
             ChartCommand::AppendBar { symbol, timeframe, bar, timestamp, mark } => {
                 // MARK_BARS_PROTOCOL: drop frames whose source doesn't match the pane's
                 // current selection (race window between toggle and server stop).
@@ -2957,7 +3071,7 @@ impl Chart {
                             let strength = a.get("strength").and_then(|s| s.as_f64()).unwrap_or(0.5) as f32;
                             let tf = a.get("timeframe").and_then(|t| t.as_str()).unwrap_or("5m").to_string();
                             let detection_method = a.get("detection_method").and_then(|m| m.as_str()).unwrap_or("").to_string();
-                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf, detection_method, source: source.clone() });
+                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf, detection_method, source: source.clone(), extend_left: a.get("extendLeft").and_then(|v| v.as_bool()).unwrap_or(false), extend_right: a.get("extendRight").and_then(|v| v.as_bool()).unwrap_or(false) });
                         }
                     }
                 }
@@ -3036,7 +3150,7 @@ impl Chart {
                             let strength = a.get("strength").and_then(|s| s.as_f64()).unwrap_or(0.5) as f32;
                             let tf = a.get("timeframe").and_then(|t| t.as_str()).unwrap_or("5m").to_string();
                             let detection_method = a.get("detection_method").and_then(|m| m.as_str()).unwrap_or("").to_string();
-                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf, detection_method, source: source.clone() });
+                            self.signal_drawings.push(SignalDrawing { id, symbol: symbol.clone(), drawing_type: dtype, points, color, opacity, thickness, line_style: ls, strength, timeframe: tf, detection_method, source: source.clone(), extend_left: a.get("extendLeft").and_then(|v| v.as_bool()).unwrap_or(false), extend_right: a.get("extendRight").and_then(|v| v.as_bool()).unwrap_or(false) });
                         }
                         // Reset the HTTP polling timer so it doesn't immediately overwrite push data
                         self.last_signal_fetch = std::time::Instant::now();
@@ -3514,6 +3628,9 @@ impl Chart {
         let s = self.vs as u32; let e = (s+self.vc).min(bars_ref.len() as u32);
         let (mut lo,mut hi) = (f32::MAX,f32::MIN);
         for i in s..e { if let Some(b) = bars_ref.get(i as usize) { lo=lo.min(b.low); hi=hi.max(b.high); } }
+        // No bars in the visible window (empty chart or all snap requests 404'd) —
+        // return a safe flat range so downstream .clamp() never sees NaN.
+        if lo == f32::MAX { return (0.0, 1.0); }
         if lo>=hi { lo-=0.5; hi+=0.5; }
         let p=(hi-lo)*0.05; (lo-p,hi+p)
     }
@@ -4819,13 +4936,13 @@ pub(crate) fn setup_theme(ctx: &egui::Context, panes: &[Chart], active_pane: usi
         // Crisp text rendering
         style.visuals.text_cursor.on_duration = 0.5;
 
-        ctx.set_style(style);
-    }
-    // Apply per-style egui visuals overrides (Meridien denser spacing, flat borders, no shadows).
-    // Must run AFTER the rich visual block above so Meridien tweaks override where needed (#3).
-    {
+        // Per-style egui overrides (Meridien/density/shadows/scrollbar) merged
+        // into the SAME style object — ONE clone + ONE set_style per frame instead
+        // of two (halves the per-frame Style allocation). Must run AFTER the rich
+        // visual block so per-style tweaks win (#3).
         let st = super::ui::style::current();
-        super::ui::style::apply_ui_style(ctx, &st, t.toolbar_border, t.toolbar_bg, t.accent);
+        super::ui::style::apply_ui_style(&mut style, &st, t.toolbar_border, t.toolbar_bg, t.accent);
+        ctx.set_style(style);
     }
     // native_dpi_scale is the floor (never render below display resolution).
     // font_scale is the user zoom on top; on a 1x display it wins if > 1.0,
@@ -5715,6 +5832,7 @@ pub(crate) struct Watchlist {
     pub(crate) rrg_tail_length: usize, // how many tail points to show
     // Analysis sidebar — subdivided sections (each has its own tab)
     pub(crate) analysis_open: bool,
+    pub(crate) auto_chart_open: bool, // Auto-Charting side panel
     pub(crate) analysis_tab: crate::chart_renderer::AnalysisTab, // default tab for new sections
     pub(crate) analysis_splits: Vec<SplitSection<crate::chart_renderer::AnalysisTab>>,
     // Signals sidebar — subdivided sections
@@ -5987,6 +6105,7 @@ impl Watchlist {
                rrg_open: false, rrg_sectors: vec![], rrg_cycle_phase: String::new(),
                rrg_time_offset: 0.0, rrg_tail_length: 5,
                analysis_open: false,
+               auto_chart_open: false,
                analysis_tab: crate::chart_renderer::AnalysisTab::Rrg,
                analysis_splits: vec![SplitSection::new(crate::chart_renderer::AnalysisTab::Rrg, 1.0)],
                signals_panel_open: false,
@@ -6339,6 +6458,7 @@ impl Watchlist {
         let screenshot_open = self.screenshot_open;
         let rrg_open = self.rrg_open;
         let analysis_open = self.analysis_open;
+        let auto_chart_open = self.auto_chart_open;
         let signals_panel_open = self.signals_panel_open;
         let indicators_panel_open = self.indicators_panel_open;
         let indicators_section_fracs = self.indicators_section_fracs;
@@ -6377,6 +6497,7 @@ impl Watchlist {
             s.screenshot_open = screenshot_open;
             s.rrg_open = rrg_open;
             s.analysis_open = analysis_open;
+            s.auto_chart_open = auto_chart_open;
             s.signals_panel_open = signals_panel_open;
             s.indicators_panel_open = indicators_panel_open;
             s.indicators_section_fracs = indicators_section_fracs;
@@ -6421,6 +6542,7 @@ impl Watchlist {
         self.screenshot_open = snap.screenshot_open;
         self.rrg_open = snap.rrg_open;
         self.analysis_open = snap.analysis_open;
+        self.auto_chart_open = snap.auto_chart_open;
         self.signals_panel_open = snap.signals_panel_open;
         self.indicators_panel_open = snap.indicators_panel_open;
         self.indicators_section_fracs = snap.indicators_section_fracs;
@@ -7152,7 +7274,7 @@ impl GpuCtx {
         // Phase 1: Acquire surface texture
         let t0 = std::time::Instant::now();
         let output = match self.surface.get_current_texture() {
-            Ok(t) => t, Err(_) => { self.surface.configure(&self.device, &self.config); return; }
+            Ok(t) => t, Err(_) => { self.surface.configure(&self.device, &self.config); window.request_redraw(); return; }
         };
         let view = output.texture.create_view(&Default::default());
         let acquire_us = t0.elapsed().as_micros() as u64;
@@ -7168,6 +7290,12 @@ impl GpuCtx {
         // Feed the profiler the input-event count so is_idle() can detect
         // genuinely quiet frames (no clicks, drags, key presses, scrolls).
         crate::foundation::frame_profiler::note_input_events(raw_input.events.len() as u32);
+        // Dev Inspector — inject queued input events into raw_input before the frame.
+        #[cfg(debug_assertions)]
+        {
+            use crate::dev_inspector::input_queue::{drain_inputs_raw};
+            drain_inputs_raw(&mut raw_input.events);
+        }
         let full_output = self.egui_ctx.run(raw_input, |ctx| {
             // NOTE: the inter-region gaps show the GPU chart pipeline's surface
             // clear (already the theme bg), so no egui canvas paint is needed.
@@ -7184,6 +7312,9 @@ impl GpuCtx {
                 && crate::chart_renderer::ui::tps_overlay::render_tps_overlay(ctx) {
                 watchlist.boss_key_active = false;
             }
+            // Borderless-window edge-resize grab bands (custom chrome, no OS frame).
+            // Last so the resize cursor overrides the chart crosshair at the edges.
+            window_resize_borders(ctx, window);
         });
         self.egui_state.handle_platform_output(window, full_output.platform_output);
         let layout_us = t1.elapsed().as_micros() as u64;
@@ -7343,14 +7474,20 @@ impl App {
         //   routing, then hide the titlebar visually with macOS platform APIs.
         //   The result is visually identical but the window is a proper key window.
         #[cfg(not(target_os = "macos"))]
-        let attrs = WindowAttributes::default()
-            .with_title("Apex Terminal")
-            .with_inner_size(PhysicalSize::new(self.iw, self.ih))
-            .with_min_inner_size(PhysicalSize::new(960, 540))
-            .with_decorations(false)
-            .with_window_icon(make_window_icon())
-            .with_active(true)
-            .with_maximized(true);
+        let attrs = {
+            #[allow(unused_mut)]
+            let mut a = WindowAttributes::default()
+                .with_title("Apex Terminal")
+                .with_inner_size(PhysicalSize::new(self.iw, self.ih))
+                .with_min_inner_size(PhysicalSize::new(960, 540))
+                .with_decorations(false)
+                .with_window_icon(make_window_icon())
+                .with_active(true)
+                .with_maximized(true);
+            #[cfg(debug_assertions)]
+            { a = a.with_visible(!crate::dev_inspector::is_headless()); }
+            a
+        };
 
         #[cfg(target_os = "macos")]
         let attrs = {
@@ -7739,12 +7876,17 @@ impl ApplicationHandler for App {
                 if s.width>0&&s.height>0 {
                     cw.gpu.config.width=s.width; cw.gpu.config.height=s.height;
                     cw.gpu.surface.configure(&cw.gpu.device, &cw.gpu.config);
-                    // User-driven (window resize) — must be immediate so the
-                    // surface reconfigure is reflected before the next paint.
                     crate::foundation::frame_profiler::note_repaint(
                         concat!(file!(), ":", line!(), " resize"),
                     );
-                    cw.win.request_redraw();
+                    // Paint SYNCHRONOUSLY here rather than only request_redraw():
+                    // the Windows modal resize loop owns the thread and does NOT
+                    // service RedrawRequested, so a deferred redraw leaves the old
+                    // frame stretched by DWM until the drag ends (the rubber-band
+                    // jank). Rendering inline tracks the new size live on every
+                    // step. Same render path as RedrawRequested — this changes only
+                    // WHEN the existing render runs, never the chart GPU pipeline.
+                    cw.gpu.render(&cw.win, &mut cw.panes, &mut cw.active_pane, &mut cw.layout, &mut cw.watchlist, &cw.toasts, &mut cw.conn_panel_open, &cw.rx);
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -8120,11 +8262,20 @@ impl ApplicationHandler for App {
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 cw.watchlist.native_dpi_scale = scale_factor as f32;
-                // OS-driven (DPI change) — must be immediate.
+                // Reconfigure the surface to the new physical size so the frame
+                // isn't mis-scaled/stretched for a beat when crossing monitors of
+                // different DPI (a Resized may not follow, especially mid titlebar
+                // move-loop). Then paint inline (the move-loop won't service a
+                // deferred redraw).
+                let new = cw.win.inner_size();
+                if new.width>0 && new.height>0 {
+                    cw.gpu.config.width=new.width; cw.gpu.config.height=new.height;
+                    cw.gpu.surface.configure(&cw.gpu.device, &cw.gpu.config);
+                }
                 crate::foundation::frame_profiler::note_repaint(
                     concat!(file!(), ":", line!(), " dpi_change"),
                 );
-                cw.win.request_redraw();
+                cw.gpu.render(&cw.win, &mut cw.panes, &mut cw.active_pane, &mut cw.layout, &mut cw.watchlist, &cw.toasts, &mut cw.conn_panel_open, &cw.rx);
             }
             _ => {}
         }
