@@ -1,0 +1,37 @@
+{
+  "name": "error_handling_bad_cmd",
+  "description": "Edge-case input that succeeds at the command-parse level but is silently ignored at execution (OOB pane index, RemoveIndicator when count=0). Verifies no crash or state corruption.",
+  "tags": ["error-handling", "robustness"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "log", "message": "SwapPaneSymbol on pane 99 (out-of-bounds) — silently ignored" },
+    { "action": "cmd", "cmd": "SwapPaneSymbol",  "args": { "pane": 99, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 99, "tf": "1m" } },
+    { "action": "cmd", "cmd": "AddIndicator",    "args": { "pane": 99, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "RemoveIndicator", "args": { "pane": 99, "kind": "RSI" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "pane_count_equals": 1 },
+      { "indicator_count_equals": 0 },
+      { "fps_above": 5.0 }
+    ]},
+    { "action": "log", "message": "WatchlistRemoveSection on idx 99 (out-of-bounds) — silently ignored" },
+    { "action": "cmd", "cmd": "WatchlistRemoveSection", "args": { "idx": 99 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "state_field_lte": { "path": "watchlist.section_count", "max": 0 } },
+      { "fps_above": 5.0 }
+    ]},
+    { "action": "log", "message": "WatchlistToggleSectionCollapse on idx 99 (out-of-bounds) — silently ignored" },
+    { "action": "cmd", "cmd": "WatchlistToggleSectionCollapse", "args": { "idx": 99 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ]},
+    { "action": "log", "message": "All OOB inputs safely ignored — app alive, state clean" }
+  ]
+}

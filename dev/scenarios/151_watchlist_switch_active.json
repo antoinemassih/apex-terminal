@@ -1,0 +1,37 @@
+{
+  "name": "watchlist_switch_active",
+  "description": "Verifies WatchlistSwitchActive actually updates active_idx. Bug: was silently ignored (no handler). Add 3 sections, switch to idx 2, verify active_idx == 2, switch back to idx 0.",
+  "tags": ["watchlist", "regression", "state-mutation"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "state_field_lte": { "path": "watchlist.section_count", "max": 0 } }
+    ]},
+    { "action": "log", "message": "Adding 3 watchlist sections" },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Equities" } },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Futures" } },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Crypto" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "state_field_gte": { "path": "watchlist.section_count", "min": 3 } },
+      { "state_field_lte": { "path": "watchlist.active_idx",    "max": 0 } }
+    ]},
+    { "action": "log", "message": "Switching active to idx 2 (Crypto)" },
+    { "action": "cmd", "cmd": "WatchlistSwitchActive", "args": { "idx": 2 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "state_field_gte": { "path": "watchlist.active_idx", "min": 2 } },
+      { "state_field_lte": { "path": "watchlist.active_idx", "max": 2 } }
+    ]},
+    { "action": "log", "message": "Switching back to idx 0 (Equities)" },
+    { "action": "cmd", "cmd": "WatchlistSwitchActive", "args": { "idx": 0 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "state_field_lte": { "path": "watchlist.active_idx", "max": 0 } }
+    ]},
+    { "action": "log", "message": "WatchlistSwitchActive handler verified" }
+  ]
+}

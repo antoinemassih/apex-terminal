@@ -307,6 +307,21 @@ mod tests {
             "148_step_cmd_batch.json",
             "149_step_http_post_action.json",
             "150_full_step_coverage_audit.json",
+            // ── Bug fixes + new coverage (151-164) ───────────────────────────
+            "151_watchlist_switch_active.json",
+            "152_watchlist_switch_active_oob.json",
+            "153_watchlist_toggle_collapse.json",
+            "154_watchlist_remove_symbol_underflow.json",
+            "155_assert_any_of_combinator.json",
+            "156_error_handling_bad_cmd.json",
+            "157_indicator_count_accuracy.json",
+            "158_annotate_frame_sync.json",
+            "159_theme_style_cycle.json",
+            "160_order_commands_no_crash.json",
+            "161_multi_pane_state_isolation.json",
+            "162_watchlist_section_remove_reindex.json",
+            "163_rapid_reset_stability.json",
+            "164_dialog_lifecycle_complete.json",
         ];
 
         let mut all_pass = true;
@@ -484,8 +499,8 @@ mod tests {
         let list_val: serde_json::Value = serde_json::from_str(&list_body).unwrap_or_default();
         let total_count = list_val["count"].as_u64().unwrap_or(0);
         assert!(
-            total_count >= 150,
-            "/scenario-list count should be >= 150; got {total_count}"
+            total_count >= 164,
+            "/scenario-list count should be >= 164; got {total_count}"
         );
         eprintln!("[PASS] /scenario-list returned {total_count} scenarios");
 

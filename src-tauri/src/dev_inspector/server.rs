@@ -891,9 +891,12 @@ fn execute_step(
         "annotate" => {
             // Upsert annotations: {"action":"annotate","annotations":[{...}]}
             // or clear: {"action":"annotate","clear":true}
+            // Always waits for the next frame so subsequent `assert` steps see the
+            // updated active_annotations without needing a separate wait_frames step.
             if args["clear"].as_bool().unwrap_or(false) {
                 let tag = args["tag"].as_str().map(|s| s.to_string());
                 queues.lock().unwrap().annotation_ops.push(AnnotationOp::Clear(tag));
+                wait_for_next_frame(shared, 1000);
                 (true, "annotations cleared".into())
             } else {
                 let anns: Vec<DebugAnnotation> = match serde_json::from_value(
@@ -904,6 +907,7 @@ fn execute_step(
                 };
                 let count = anns.len();
                 queues.lock().unwrap().annotation_ops.push(AnnotationOp::Upsert(anns));
+                wait_for_next_frame(shared, 1000);
                 (true, format!("upserted {count} annotation(s)"))
             }
         }
@@ -1626,9 +1630,32 @@ fn parse_app_command(
             let title = body["title"].as_str().unwrap_or("New Section").to_string();
             Ok(AppCommand::WatchlistAddSection { title })
         }
+        "WatchlistAddOptionSection" | "watchlist_add_option_section" => {
+            let title = body["title"].as_str().unwrap_or("Options").to_string();
+            Ok(AppCommand::WatchlistAddOptionSection { title })
+        }
+        "WatchlistRemoveSection" | "watchlist_remove_section" => {
+            let idx = body["idx"].as_u64().unwrap_or(0) as usize;
+            Ok(AppCommand::WatchlistRemoveSection { idx })
+        }
+        "WatchlistToggleSectionCollapse" | "watchlist_toggle_section_collapse" => {
+            let idx = body["idx"].as_u64().unwrap_or(0) as usize;
+            Ok(AppCommand::WatchlistToggleSectionCollapse { idx })
+        }
+        "WatchlistRenameActive" | "watchlist_rename_active" => {
+            let name = body["name"].as_str().unwrap_or("").to_string();
+            Ok(AppCommand::WatchlistRenameActive { name })
+        }
 
         // ── UI state ───────────────────────────────────────────────────────
         "CloseAllDialogs" | "close_all_dialogs" => Ok(AppCommand::CloseAllDialogs),
+        "OpenIndicatorEditor" | "open_indicator_editor" => {
+            let id = body["id"].as_u64().unwrap_or(0) as u32;
+            Ok(AppCommand::OpenIndicatorEditor { pane, id })
+        }
+        "CloseIndicatorEditor" | "close_indicator_editor" => {
+            Ok(AppCommand::CloseIndicatorEditor { pane })
+        }
 
         // ── Workspace ops: no AppCommand equivalent; treated as no-op ──────
         // SaveWorkspace/LoadWorkspace use the Tauri layer, not the command bus.

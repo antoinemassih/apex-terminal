@@ -1,0 +1,23 @@
+{
+  "name": "watchlist_switch_active_oob",
+  "description": "WatchlistSwitchActive with out-of-bounds idx should clamp to last valid section, not panic or corrupt state. Add 2 sections, switch to idx 99, verify active_idx <= 1.",
+  "tags": ["watchlist", "error-handling", "bounds"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "A" } },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "B" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "log", "message": "Switching to idx 99 (out-of-bounds)" },
+    { "action": "cmd", "cmd": "WatchlistSwitchActive", "args": { "idx": 99 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "state_field_gte": { "path": "watchlist.active_idx", "min": 0 } },
+      { "state_field_lte": { "path": "watchlist.active_idx", "max": 1 } },
+      { "fps_above": 5.0 }
+    ]},
+    { "action": "log", "message": "OOB switch clamped safely — no crash" }
+  ]
+}

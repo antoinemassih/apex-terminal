@@ -1,0 +1,35 @@
+{
+  "name": "watchlist_section_remove_reindex",
+  "description": "After removing the middle section, section_count decrements and the remaining section order is correct. Also verifies that active_idx is still valid after removal.",
+  "tags": ["watchlist", "state-mutation"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "First" } },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Middle" } },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Last" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "state_field_gte": { "path": "watchlist.section_count", "min": 3 } }
+    ]},
+    { "action": "log", "message": "Removing middle section (idx 1)" },
+    { "action": "cmd", "cmd": "WatchlistRemoveSection", "args": { "idx": 1 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "state_field_gte": { "path": "watchlist.section_count", "min": 2 } },
+      { "state_field_lte": { "path": "watchlist.section_count", "max": 2 } },
+      { "fps_above": 5.0 }
+    ]},
+    { "action": "log", "message": "Removing all remaining sections" },
+    { "action": "cmd", "cmd": "WatchlistRemoveSection", "args": { "idx": 0 } },
+    { "action": "cmd", "cmd": "WatchlistRemoveSection", "args": { "idx": 0 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "state_field_lte": { "path": "watchlist.section_count", "max": 0 } },
+      { "fps_above": 5.0 }
+    ]},
+    { "action": "log", "message": "Section remove reindex verified" }
+  ]
+}

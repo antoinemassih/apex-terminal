@@ -1,0 +1,34 @@
+{
+  "name": "theme_style_cycle",
+  "description": "Cycle through SetThemeIdx (0-4) and SetStyleIdx (0-3) while asserting FPS stays stable. These commands have no headless state mutation but must not crash or degrade performance.",
+  "tags": ["theming", "performance", "smoke"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "log", "message": "Cycling through 5 themes" },
+    { "action": "cmd", "cmd": "SetThemeIdx", "args": { "idx": 0 } },
+    { "action": "cmd", "cmd": "SetThemeIdx", "args": { "idx": 1 } },
+    { "action": "cmd", "cmd": "SetThemeIdx", "args": { "idx": 2 } },
+    { "action": "cmd", "cmd": "SetThemeIdx", "args": { "idx": 3 } },
+    { "action": "cmd", "cmd": "SetThemeIdx", "args": { "idx": 4 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ]},
+    { "action": "log", "message": "Cycling through 4 styles" },
+    { "action": "cmd", "cmd": "SetStyleIdx", "args": { "idx": 0 } },
+    { "action": "cmd", "cmd": "SetStyleIdx", "args": { "idx": 1 } },
+    { "action": "cmd", "cmd": "SetStyleIdx", "args": { "idx": 2 } },
+    { "action": "cmd", "cmd": "SetStyleIdx", "args": { "idx": 3 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "pane_count_equals": 1 }
+    ]},
+    { "action": "log", "message": "Theme/style cycle — no crash, FPS stable" }
+  ]
+}

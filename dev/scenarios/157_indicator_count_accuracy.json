@@ -1,0 +1,39 @@
+{
+  "name": "indicator_count_accuracy",
+  "description": "Verifies AddIndicator and RemoveIndicator keep indicator_count accurate across add/remove cycles. Tests state consistency including saturating_sub at 0.",
+  "tags": ["state-mutation", "indicators", "accuracy"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "indicator_count_equals": 0 }
+    ]},
+    { "action": "log", "message": "Adding 3 indicators" },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "MACD" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "VWAP" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "indicator_count_equals": 3 }
+    ]},
+    { "action": "log", "message": "Removing 2 indicators" },
+    { "action": "cmd", "cmd": "RemoveIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "RemoveIndicator", "args": { "pane": 0, "kind": "MACD" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "indicator_count_equals": 1 }
+    ]},
+    { "action": "log", "message": "Removing 3 more (underflow guard test)" },
+    { "action": "cmd", "cmd": "RemoveIndicator", "args": { "pane": 0, "kind": "VWAP" } },
+    { "action": "cmd", "cmd": "RemoveIndicator", "args": { "pane": 0, "kind": "VWAP" } },
+    { "action": "cmd", "cmd": "RemoveIndicator", "args": { "pane": 0, "kind": "VWAP" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "indicator_count_equals": 0 },
+      { "fps_above": 5.0 }
+    ]},
+    { "action": "log", "message": "indicator_count accurate across add/remove/underflow" }
+  ]
+}

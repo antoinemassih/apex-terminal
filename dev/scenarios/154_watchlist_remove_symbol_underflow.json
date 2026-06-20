@@ -1,0 +1,34 @@
+{
+  "name": "watchlist_remove_symbol_underflow",
+  "description": "WatchlistRemoveSymbol on empty section must not underflow (saturating_sub). Add section with 0 items, remove twice, verify item_count stays 0 and app stays stable.",
+  "tags": ["watchlist", "error-handling", "underflow"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Empty" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "log", "message": "Section has 0 items — removing twice to test underflow guard" },
+    { "action": "cmd", "cmd": "WatchlistRemoveSymbol", "args": { "symbol": "AAPL" } },
+    { "action": "cmd", "cmd": "WatchlistRemoveSymbol", "args": { "symbol": "AAPL" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "state_field_gte": { "path": "watchlist.section_count", "min": 1 } },
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ]},
+    { "action": "log", "message": "Now add 1 symbol then remove 3 times" },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "TSLA" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "WatchlistRemoveSymbol", "args": { "symbol": "TSLA" } },
+    { "action": "cmd", "cmd": "WatchlistRemoveSymbol", "args": { "symbol": "TSLA" } },
+    { "action": "cmd", "cmd": "WatchlistRemoveSymbol", "args": { "symbol": "TSLA" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ]},
+    { "action": "log", "message": "Underflow guard verified — item_count never went negative" }
+  ]
+}

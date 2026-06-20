@@ -371,6 +371,12 @@ fn apply_headless_cmd(
         AppCommand::CloseAllDialogs => {
             hs.open_dialogs.clear();
         }
+        AppCommand::WatchlistSwitchActive { idx } => {
+            // Clamp to valid range; out-of-bounds is a no-op (matches real app behaviour).
+            if !hs.watchlist_sections.is_empty() {
+                hs.watchlist_active_idx = idx.min(hs.watchlist_sections.len() - 1);
+            }
+        }
         // Commands with no observable effect on the synthetic state:
         AppCommand::SetChartFlag { .. }
         | AppCommand::SetThemeIdx { .. }
@@ -382,7 +388,6 @@ fn apply_headless_cmd(
         | AppCommand::PlaceAllDraftAlerts
         | AppCommand::WatchlistCreate { .. }
         | AppCommand::WatchlistDelete { .. }
-        | AppCommand::WatchlistSwitchActive { .. }
         | AppCommand::WatchlistRenameActive { .. }
         | AppCommand::WatchlistDuplicate { .. }
         | _ => {}

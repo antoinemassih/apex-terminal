@@ -1,0 +1,36 @@
+{
+  "name": "assert_any_of_combinator",
+  "description": "Tests the any_of logical-OR assertion combinator. One branch must pass even when the other would fail. Zero coverage prior to this scenario.",
+  "tags": ["assert-engine", "combinators"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "log", "message": "any_of: either 1 pane OR 10 panes — 1 is true" },
+    { "action": "assert", "assertions": [
+      { "any_of": [
+        { "pane_count_equals": 1 },
+        { "pane_count_equals": 10 }
+      ]}
+    ]},
+    { "action": "log", "message": "any_of: fps_above 1 OR fps_above 10000 — first is true" },
+    { "action": "assert", "assertions": [
+      { "any_of": [
+        { "fps_above": 1.0 },
+        { "fps_above": 10000.0 }
+      ]}
+    ]},
+    { "action": "log", "message": "nested: all_of with any_of inside" },
+    { "action": "assert", "assertions": [
+      { "all_of": [
+        { "fps_above": 5.0 },
+        { "any_of": [
+          { "pane_count_equals": 1 },
+          { "pane_count_equals": 99 }
+        ]}
+      ]}
+    ]},
+    { "action": "log", "message": "any_of combinator verified" }
+  ]
+}
