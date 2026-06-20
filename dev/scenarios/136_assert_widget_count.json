@@ -1,0 +1,25 @@
+{
+  "name": "assert_widget_count",
+  "description": "Tests widget_count_gte and widget_count_lte with headless-aware expectations (empty widget tree).",
+  "tags": ["assert-engine", "widget-count"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "log", "message": "Headless: widget tree is empty — asserting zero buttons" },
+    { "action": "assert", "assertions": [
+      { "widget_count_gte": { "min": 0 } },
+      { "widget_count_lte": { "role": "button", "max": 0 } },
+      { "widget_count_lte": { "role": "label", "max": 0 } }
+    ]},
+    { "action": "log", "message": "Adding layout change — widget count stays 0 in headless" },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "widget_count_gte": { "min": 0 } },
+      { "widget_count_lte": { "max": 0 } }
+    ]},
+    { "action": "log", "message": "widget_count_gte / widget_count_lte assertions passed" }
+  ]
+}

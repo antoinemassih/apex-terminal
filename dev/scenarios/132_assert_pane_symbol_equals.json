@@ -1,0 +1,23 @@
+{
+  "name": "assert_pane_symbol_equals",
+  "description": "Tests pane_symbol_equals in a two-pane layout with distinct symbols per pane.",
+  "tags": ["assert-engine", "per-pane"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "log", "message": "Setting pane 0 = AAPL, pane 1 = NVDA" },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 1, "symbol": "NVDA" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "pane_count_equals": 2 },
+      { "pane_symbol_equals": { "pane": 0, "symbol": "AAPL" } },
+      { "pane_symbol_equals": { "pane": 1, "symbol": "NVDA" } }
+    ]},
+    { "action": "log", "message": "pane_symbol_equals assertions passed for both panes" }
+  ]
+}

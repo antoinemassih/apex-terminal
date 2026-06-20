@@ -1,0 +1,25 @@
+{
+  "name": "assert_fps_perf",
+  "description": "Tests fps_history_min_above and frame_time_below_ms with generous CI-safe bounds.",
+  "tags": ["assert-engine", "performance"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "log", "message": "Asserting fps and frame time bounds" },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "fps_history_min_above": 5.0 },
+      { "frame_time_below_ms": 500.0 }
+    ]},
+    { "action": "log", "message": "Adding indicators then re-checking performance" },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "frame_time_below_ms": 500.0 }
+    ]},
+    { "action": "log", "message": "fps_history_min_above and frame_time_below_ms assertions passed" }
+  ]
+}

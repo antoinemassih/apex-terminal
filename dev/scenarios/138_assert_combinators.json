@@ -1,0 +1,31 @@
+{
+  "name": "assert_combinators",
+  "description": "Tests all_of, any_of, and not combinators together on clean reset state.",
+  "tags": ["assert-engine", "combinators"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "log", "message": "Testing all_of combinator" },
+    { "action": "assert", "assertions": [
+      { "all_of": [
+        { "fps_above": 5.0 },
+        { "pane_count_equals": 1 },
+        { "no_open_dialogs": true }
+      ]}
+    ]},
+    { "action": "log", "message": "Testing any_of combinator — first branch false, second true" },
+    { "action": "assert", "assertions": [
+      { "any_of": [
+        { "pane_count_equals": 99 },
+        { "pane_count_equals": 1 }
+      ]}
+    ]},
+    { "action": "log", "message": "Testing not combinator" },
+    { "action": "assert", "assertions": [
+      { "not": { "assertion": { "pane_count_equals": 99 } } }
+    ]},
+    { "action": "log", "message": "all_of / any_of / not combinator assertions passed" }
+  ]
+}

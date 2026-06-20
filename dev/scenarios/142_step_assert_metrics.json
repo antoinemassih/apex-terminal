@@ -1,0 +1,25 @@
+{
+  "name": "step_assert_metrics",
+  "description": "Tests the assert_metrics step action for fps_min and frame_time_max_ms against known headless values (fps=60, frame_time=16ms).",
+  "tags": ["step-actions", "metrics"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "log", "message": "Assert fps_min only — headless delivers 60 fps, threshold 5.0." },
+    { "action": "assert_metrics", "fps_min": 5.0 },
+    { "action": "log", "message": "Assert frame_time_max_ms only — headless delivers ~16ms, threshold 500ms." },
+    { "action": "assert_metrics", "frame_time_max_ms": 500.0 },
+    { "action": "log", "message": "Assert both fps_min and frame_time_max_ms together." },
+    { "action": "assert_metrics", "fps_min": 5.0, "frame_time_max_ms": 500.0 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "pane_count_equals": 1 }
+      ]
+    },
+    { "action": "log", "message": "assert_metrics step action verified — all three forms passed." }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "assert_state_field_gte_lte",
+  "description": "Tests state_field_gte and state_field_lte on indicator count after adding two indicators.",
+  "tags": ["assert-engine", "state-field"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "log", "message": "Adding RSI and MACD to pane 0" },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "MACD" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "state_field_gte": { "path": "panes.0.indicator_count", "min": 2 } },
+      { "state_field_lte": { "path": "panes.0.indicator_count", "max": 5 } },
+      { "state_field_lte": { "path": "pane_count", "max": 4 } }
+    ]},
+    { "action": "log", "message": "state_field_gte / state_field_lte assertions passed" }
+  ]
+}

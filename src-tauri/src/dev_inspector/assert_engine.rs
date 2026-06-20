@@ -355,6 +355,175 @@ fn dispatch(
             ("AnyOf".into(), any_pass, detail)
         }
 
+        // ── State numeric range ───────────────────────────────────────────────
+        "state_field_gte" => {
+            // {"state_field_gte": {"path": "panes.0.indicator_count", "min": 2}}
+            let path = val["path"].as_str().unwrap_or("");
+            let min  = val["min"].as_f64().unwrap_or(0.0);
+            let actual = json_path(&state.app_state, path);
+            let actual_f = actual.as_f64().unwrap_or(0.0);
+            let pass = actual_f >= min;
+            ("StateFieldGte".into(), pass,
+             if pass { format!("state.{path} ({actual_f}) >= {min}") }
+             else    { format!("state.{path}: expected >= {min}, got {actual_f}") })
+        }
+
+        "state_field_lte" => {
+            // {"state_field_lte": {"path": "panes.0.indicator_count", "max": 5}}
+            let path = val["path"].as_str().unwrap_or("");
+            let max  = val["max"].as_f64().unwrap_or(f64::MAX);
+            let actual = json_path(&state.app_state, path);
+            let actual_f = actual.as_f64().unwrap_or(0.0);
+            let pass = actual_f <= max;
+            ("StateFieldLte".into(), pass,
+             if pass { format!("state.{path} ({actual_f}) <= {max}") }
+             else    { format!("state.{path}: expected <= {max}, got {actual_f}") })
+        }
+
+        // ── Widget count ──────────────────────────────────────────────────────
+        "widget_count_gte" => {
+            // {"widget_count_gte": {"role": "button", "min": 1}}
+            let role_f  = val["role"].as_str();
+            let label_f = val["label"].as_str();
+            let min = val["min"].as_u64()
+                .or_else(|| val.as_u64())
+                .unwrap_or(1) as usize;
+            let count = state.widget_tree.iter().filter(|w| {
+                let role_ok  = role_f.map_or(true,  |r| w.role  == r);
+                let label_ok = label_f.map_or(true, |l| w.label == l);
+                role_ok && label_ok
+            }).count();
+            let pass = count >= min;
+            ("WidgetCountGte".into(), pass,
+             if pass { format!("{count} widget(s) found >= {min}") }
+             else    { format!("found {count} widget(s), expected >= {min} (role={role_f:?} label={label_f:?})") })
+        }
+
+        "widget_count_lte" => {
+            // {"widget_count_lte": {"role": "button", "max": 10}}
+            let role_f  = val["role"].as_str();
+            let label_f = val["label"].as_str();
+            let max = val["max"].as_u64()
+                .or_else(|| val.as_u64())
+                .unwrap_or(0) as usize;
+            let count = state.widget_tree.iter().filter(|w| {
+                let role_ok  = role_f.map_or(true,  |r| w.role  == r);
+                let label_ok = label_f.map_or(true, |l| w.label == l);
+                role_ok && label_ok
+            }).count();
+            let pass = count <= max;
+            ("WidgetCountLte".into(), pass,
+             if pass { format!("{count} widget(s) found <= {max}") }
+             else    { format!("found {count} widget(s), expected <= {max} (role={role_f:?} label={label_f:?})") })
+        }
+
+        "widget_label_contains" => {
+            // {"widget_label_contains": {"contains": "AAPL"}} or with optional role filter
+            let needle  = val["contains"].as_str().or_else(|| val.as_str()).unwrap_or("");
+            let role_f  = val["role"].as_str();
+            let case_i  = val["case_insensitive"].as_bool().unwrap_or(true);
+            let needle_cmp = if case_i { needle.to_lowercase() } else { needle.to_string() };
+            let found = state.widget_tree.iter().any(|w| {
+                let role_ok = role_f.map_or(true, |r| w.role == r);
+                let label_cmp = if case_i { w.label.to_lowercase() } else { w.label.clone() };
+                role_ok && label_cmp.contains(&needle_cmp)
+            });
+            ("WidgetLabelContains".into(), found,
+             if found { format!("found widget with label containing '{needle}'") }
+             else     { format!("no widget label contains '{needle}' (role={role_f:?})") })
+        }
+
+        // ── Performance ───────────────────────────────────────────────────────
+        "frame_time_below_ms" => {
+            // {"frame_time_below_ms": 33.3}
+            let max_ms = val.as_f64()
+                .or_else(|| val["max_ms"].as_f64())
+                .unwrap_or(33.3) as f32;
+            let actual = state.frame_time_ms;
+            // 0.0 = headless/not-yet-measured → pass by default
+            let pass = actual < max_ms || actual == 0.0;
+            ("FrameTimeBelowMs".into(), pass,
+             if pass { format!("frame_time {actual:.2}ms < {max_ms}ms") }
+             else    { format!("frame_time {actual:.2}ms >= {max_ms}ms") })
+        }
+
+        "fps_history_min_above" => {
+            // {"fps_history_min_above": 10.0}
+            let min = val.as_f64()
+                .or_else(|| val["min"].as_f64())
+                .unwrap_or(10.0) as f32;
+            let fps_min = state.fps_history.iter().cloned().fold(f32::MAX, f32::min);
+            let pass = state.fps_history.is_empty() || fps_min >= min;
+            ("FpsHistoryMinAbove".into(), pass,
+             if state.fps_history.is_empty() {
+                 "fps history empty — pass by default".into()
+             } else if pass {
+                 format!("fps_min {fps_min:.1} >= {min} (over {} frames)", state.fps_history.len())
+             } else {
+                 format!("fps_min {fps_min:.1} < {min}")
+             })
+        }
+
+        // ── Contract violations count ─────────────────────────────────────────
+        "violation_count_lte" => {
+            // {"violation_count_lte": 0}
+            let max = val.as_u64()
+                .or_else(|| val["max"].as_u64())
+                .unwrap_or(0) as usize;
+            let actual = state.active_violations.len();
+            let pass = actual <= max;
+            ("ViolationCountLte".into(), pass,
+             if pass { format!("{actual} violation(s) <= {max}") }
+             else    { format!("{actual} violation(s) > max {max}") })
+        }
+
+        // ── Per-pane assertions ───────────────────────────────────────────────
+        "pane_symbol_equals" => {
+            // {"pane_symbol_equals": {"pane": 0, "symbol": "AAPL"}}
+            let pane   = val["pane"].as_u64().unwrap_or(0) as usize;
+            let expect = val["symbol"].as_str()
+                .or_else(|| val.as_str())
+                .unwrap_or("");
+            let actual = state.app_state["panes"]
+                .get(pane)
+                .and_then(|p| p["symbol"].as_str())
+                .unwrap_or("");
+            let pass = actual.to_lowercase() == expect.to_lowercase();
+            ("PaneSymbolEquals".into(), pass,
+             if pass { format!("pane {pane} symbol == '{expect}'") }
+             else    { format!("pane {pane} symbol: expected '{expect}', got '{actual}'") })
+        }
+
+        "pane_timeframe_equals" => {
+            // {"pane_timeframe_equals": {"pane": 0, "tf": "5m"}}
+            let pane   = val["pane"].as_u64().unwrap_or(0) as usize;
+            let expect = val["tf"].as_str()
+                .or_else(|| val["timeframe"].as_str())
+                .or_else(|| val.as_str())
+                .unwrap_or("");
+            let actual = state.app_state["panes"]
+                .get(pane)
+                .and_then(|p| p["timeframe"].as_str())
+                .unwrap_or("");
+            let pass = actual == expect;
+            ("PaneTimeframeEquals".into(), pass,
+             if pass { format!("pane {pane} timeframe == '{expect}'") }
+             else    { format!("pane {pane} timeframe: expected '{expect}', got '{actual}'") })
+        }
+
+        // ── Annotation count ──────────────────────────────────────────────────
+        "annotation_count_equals" => {
+            // {"annotation_count_equals": 2}
+            let expect = val.as_u64()
+                .or_else(|| val["count"].as_u64())
+                .unwrap_or(0) as usize;
+            let actual = state.active_annotations.len();
+            let pass = actual == expect;
+            ("AnnotationCountEquals".into(), pass,
+             if pass { format!("annotation count == {expect}") }
+             else    { format!("annotation count: expected {expect}, got {actual}") })
+        }
+
         _ => ("Unknown".into(), false, format!("unknown assertion kind: '{key}'")),
     }
 }

@@ -1,0 +1,24 @@
+{
+  "name": "assert_violation_count_lte",
+  "description": "Tests violation_count_lte — zero violations after reset and generous bound after adding indicators.",
+  "tags": ["assert-engine", "violations"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "log", "message": "Checking violation count is 0 after clean reset" },
+    { "action": "assert", "assertions": [
+      { "violation_count_lte": 0 },
+      { "no_active_violations": true }
+    ]},
+    { "action": "log", "message": "Adding indicators — checking violations stay within generous bound" },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "MACD" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "violation_count_lte": 10 }
+    ]},
+    { "action": "log", "message": "violation_count_lte assertions passed" }
+  ]
+}

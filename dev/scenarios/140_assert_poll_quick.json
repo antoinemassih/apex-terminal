@@ -1,0 +1,32 @@
+{
+  "name": "assert_poll_quick",
+  "description": "Tests assert_poll converges quickly after reset with a 2-second timeout.",
+  "tags": ["assert-engine", "poll"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "log", "message": "Polling for stable state — should converge immediately" },
+    { "action": "assert_poll",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "pane_count_equals": 1 },
+        { "no_open_dialogs": true }
+      ],
+      "timeout_ms": 2000,
+      "interval_ms": 100
+    },
+    { "action": "log", "message": "Adding a command then polling again" },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "assert_poll",
+      "assertions": [
+        { "pane_symbol_equals": { "pane": 0, "symbol": "AAPL" } },
+        { "pane_count_equals": 1 }
+      ],
+      "timeout_ms": 2000,
+      "interval_ms": 100
+    },
+    { "action": "log", "message": "assert_poll quick-convergence assertions passed" }
+  ]
+}

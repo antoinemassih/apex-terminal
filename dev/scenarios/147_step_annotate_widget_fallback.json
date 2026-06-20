@@ -1,0 +1,36 @@
+{
+  "name": "step_annotate_tag_filter",
+  "description": "Tests annotate with tag assignment and tag-filtered clear: upsert 3 annotations (2 tagged 'zone', 1 tagged 'marker'), clear only 'zone' tag, verify 1 remains.",
+  "tags": ["step-actions", "annotate"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "annotate", "clear": true },
+    { "action": "wait_frames", "count": 1 },
+    { "action": "log", "message": "Upserting 3 annotations with mixed tags" },
+    { "action": "annotate", "annotations": [
+      { "id": "z1", "rect": { "x": 0,   "y": 0,  "w": 400, "h": 100 }, "label": "Zone A", "color": [100, 180, 255, 80], "tag": "zone" },
+      { "id": "z2", "rect": { "x": 0,   "y": 110, "w": 400, "h": 100 }, "label": "Zone B", "color": [100, 180, 255, 80], "tag": "zone" },
+      { "id": "m1", "rect": { "x": 500, "y": 50,  "w": 10,  "h": 10  }, "label": "Marker", "color": [255, 80, 80, 200],  "tag": "marker" }
+    ]},
+    { "action": "wait_frames", "count": 1 },
+    { "action": "assert", "assertions": [
+      { "annotation_count_equals": 3 }
+    ]},
+    { "action": "log", "message": "Clearing only 'zone' tag" },
+    { "action": "annotate", "clear": true, "tag": "zone" },
+    { "action": "wait_frames", "count": 1 },
+    { "action": "assert", "assertions": [
+      { "annotation_count_equals": 1 }
+    ]},
+    { "action": "log", "message": "Clearing remaining annotations" },
+    { "action": "annotate", "clear": true },
+    { "action": "wait_frames", "count": 1 },
+    { "action": "assert", "assertions": [
+      { "annotation_count_equals": 0 },
+      { "fps_above": 5.0 }
+    ]},
+    { "action": "log", "message": "Tag-filtered annotate clear verified" }
+  ]
+}

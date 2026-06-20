@@ -1,0 +1,73 @@
+{
+  "name": "step_annotate_actions",
+  "description": "Tests the annotate step action: upsert 2 overlays, assert count, upsert a third, assert count, then clear all and assert zero.",
+  "tags": ["step-actions", "annotate"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "log", "message": "Upserting 2 annotations." },
+    {
+      "action": "annotate",
+      "annotations": [
+        {
+          "id": "test.zone_a",
+          "rect": { "x": 0, "y": 0, "w": 400, "h": 32 },
+          "label": "Zone A",
+          "color": [255, 80, 80, 120],
+          "border_only": false,
+          "tag": "test"
+        },
+        {
+          "id": "test.zone_b",
+          "rect": { "x": 400, "y": 0, "w": 400, "h": 32 },
+          "label": "Zone B",
+          "color": [80, 180, 255, 120],
+          "border_only": true,
+          "border_width": 2.0,
+          "tag": "test"
+        }
+      ]
+    },
+    { "action": "wait_frames", "count": 1 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "annotation_count_equals": 2 }
+      ]
+    },
+    { "action": "log", "message": "Upserting a third annotation." },
+    {
+      "action": "annotate",
+      "annotations": [
+        {
+          "id": "test.zone_c",
+          "rect": { "x": 800, "y": 0, "w": 400, "h": 32 },
+          "label": "Zone C",
+          "color": [80, 255, 140, 120],
+          "border_only": false,
+          "tag": "test"
+        }
+      ]
+    },
+    { "action": "wait_frames", "count": 1 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "annotation_count_equals": 3 }
+      ]
+    },
+    { "action": "log", "message": "Clearing all annotations." },
+    { "action": "annotate", "clear": true },
+    { "action": "wait_frames", "count": 1 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "annotation_count_equals": 0 },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "log", "message": "annotate step action verified — upsert, count, and clear all confirmed." }
+  ]
+}

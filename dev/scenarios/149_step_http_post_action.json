@@ -1,0 +1,36 @@
+{
+  "name": "step_http_post_action",
+  "description": "Tests the http_post step action by building state, then posting to /reset and verifying the app returns to clean initial state.",
+  "tags": ["step-actions", "http-post"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "log", "message": "Building state to be cleared by http_post /reset." },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "VWAP" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_symbol_equals": "AAPL" },
+        { "indicator_count_equals": 2 }
+      ]
+    },
+    { "action": "log", "message": "State confirmed — issuing http_post /reset." },
+    { "action": "http_post", "path": "/reset", "body": {} },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_count_equals": 1 },
+        { "indicator_count_equals": 0 },
+        { "fps_above": 5.0 },
+        { "no_open_dialogs": true }
+      ]
+    },
+    { "action": "log", "message": "http_post step action verified — /reset restored clean state." }
+  ]
+}

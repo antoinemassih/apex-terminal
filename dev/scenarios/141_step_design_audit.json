@@ -1,0 +1,27 @@
+{
+  "name": "step_design_audit",
+  "description": "Tests the design_audit step action in both strict (require_clean: true) and permissive (require_clean: false) modes.",
+  "tags": ["step-actions", "design-audit"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "log", "message": "Running design_audit with require_clean: true (empty tree = clean in headless)." },
+    { "action": "design_audit", "require_clean": true },
+    { "action": "wait_frames", "count": 1 },
+    { "action": "log", "message": "Running design_audit with require_clean: false (always passes, just records)." },
+    { "action": "design_audit", "require_clean": false },
+    { "action": "wait_frames", "count": 1 },
+    { "action": "log", "message": "Running design_audit with no options (default = require_clean: true)." },
+    { "action": "design_audit" },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "log", "message": "design_audit step action verified — all three invocation forms passed." }
+  ]
+}

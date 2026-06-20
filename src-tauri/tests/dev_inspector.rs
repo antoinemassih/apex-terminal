@@ -146,7 +146,7 @@ mod tests {
 
         std::thread::sleep(Duration::from_millis(500));
 
-        // ── All 130 scenarios ─────────────────────────────────────────────────
+        // ── All 150 scenarios ─────────────────────────────────────────────────
         let scenarios = [
             // ── Baseline (01-20) ──────────────────────────────────────────────
             "01_health_check.json",
@@ -285,6 +285,28 @@ mod tests {
             "128_qoe_multi_session_simulation.json",
             "129_qoe_fps_stress_all_features.json",
             "130_qoe_final_integration_audit.json",
+            // ── Assert engine extensions (131-140) ───────────────────────────
+            "131_assert_state_field_gte_lte.json",
+            "132_assert_pane_symbol_equals.json",
+            "133_assert_pane_timeframe_equals.json",
+            "134_assert_fps_perf.json",
+            "135_assert_violation_count_lte.json",
+            "136_assert_widget_count.json",
+            "137_assert_annotation_count.json",
+            "138_assert_combinators.json",
+            "139_assert_state_field_deep_path.json",
+            "140_assert_poll_quick.json",
+            // ── New step actions (141-150) ────────────────────────────────────
+            "141_step_design_audit.json",
+            "142_step_assert_metrics.json",
+            "143_step_save_checkpoint.json",
+            "144_step_loop_basic.json",
+            "145_step_loop_with_assert.json",
+            "146_step_annotate_actions.json",
+            "147_step_annotate_widget_fallback.json",
+            "148_step_cmd_batch.json",
+            "149_step_http_post_action.json",
+            "150_full_step_coverage_audit.json",
         ];
 
         let mut all_pass = true;
@@ -412,6 +434,163 @@ mod tests {
             &svg_body[..svg_body.len().min(120)]
         );
         eprintln!("[PASS] /layout-svg returned SVG ({} bytes)", svg_body.len());
+
+        // ── /state — must return populated JSON object ────────────────────────
+        let state_body = http_get("/state").unwrap_or_default();
+        let state_val: serde_json::Value = serde_json::from_str(&state_body).unwrap_or_default();
+        assert!(
+            state_val.is_object(),
+            "/state must return JSON object; got: {state_body}"
+        );
+        assert!(
+            state_val.get("pane_count").is_some() || state_val.get("fps").is_some(),
+            "/state must contain pane_count or fps; got keys: {}",
+            state_val.as_object().map(|o| o.keys().cloned().collect::<Vec<_>>().join(", ")).unwrap_or_default()
+        );
+        eprintln!("[PASS] /state returns populated object ({} keys)",
+            state_val.as_object().map(|o| o.len()).unwrap_or(0));
+
+        // ── /widget-tree — must return JSON array ─────────────────────────────
+        let tree_body = http_get("/widget-tree").unwrap_or_default();
+        let tree_val: serde_json::Value = serde_json::from_str(&tree_body).unwrap_or_default();
+        assert!(
+            tree_val.is_array(),
+            "/widget-tree must return JSON array; got: {}",
+            &tree_body[..tree_body.len().min(120)]
+        );
+        eprintln!("[PASS] /widget-tree returned array ({} entries)",
+            tree_val.as_array().map_or(0, |a| a.len()));
+
+        // ── /panes — must return JSON array ──────────────────────────────────
+        let panes_body = http_get("/panes").unwrap_or_default();
+        let panes_val: serde_json::Value = serde_json::from_str(&panes_body).unwrap_or_default();
+        assert!(
+            panes_val.is_array(),
+            "/panes must return JSON array; got: {panes_body}"
+        );
+        eprintln!("[PASS] /panes returned {} pane(s)", panes_val.as_array().map_or(0, |a| a.len()));
+
+        // ── /watchlist — must return JSON object ──────────────────────────────
+        let wl_body = http_get("/watchlist").unwrap_or_default();
+        let wl_val: serde_json::Value = serde_json::from_str(&wl_body).unwrap_or_default();
+        assert!(
+            !wl_val.is_null(),
+            "/watchlist must return non-null JSON; got: {wl_body}"
+        );
+        eprintln!("[PASS] /watchlist returned non-null value");
+
+        // ── /scenario-list — base + tag filter ───────────────────────────────
+        let list_body = http_get("/scenario-list").unwrap_or_default();
+        let list_val: serde_json::Value = serde_json::from_str(&list_body).unwrap_or_default();
+        let total_count = list_val["count"].as_u64().unwrap_or(0);
+        assert!(
+            total_count >= 150,
+            "/scenario-list count should be >= 150; got {total_count}"
+        );
+        eprintln!("[PASS] /scenario-list returned {total_count} scenarios");
+
+        // Tag filter — "smoke" tag should return a subset
+        let smoke_body = http_get("/scenario-list?tag=smoke").unwrap_or_default();
+        let smoke_val: serde_json::Value = serde_json::from_str(&smoke_body).unwrap_or_default();
+        let smoke_count = smoke_val["count"].as_u64().unwrap_or(0);
+        assert!(
+            smoke_count > 0 && smoke_count < total_count,
+            "/scenario-list?tag=smoke should return a non-empty subset; got {smoke_count}/{total_count}"
+        );
+        eprintln!("[PASS] /scenario-list?tag=smoke returned {smoke_count}/{total_count}");
+
+        // ── /layout-snapshot — must return JSON object ────────────────────────
+        let snap_body = http_get("/layout-snapshot").unwrap_or_default();
+        let snap_val: serde_json::Value = serde_json::from_str(&snap_body).unwrap_or_default();
+        assert!(
+            snap_val.is_object(),
+            "/layout-snapshot must return JSON object; got: {snap_body}"
+        );
+        eprintln!("[PASS] /layout-snapshot returned object ({} entries)",
+            snap_val.as_object().map_or(0, |o| o.len()));
+
+        // ── /batch — multi-request dispatch ──────────────────────────────────
+        let batch_body = http_post("/batch", r#"[
+            {"method": "GET",  "path": "/state"},
+            {"method": "GET",  "path": "/panes"},
+            {"method": "POST", "path": "/cmd",
+             "body": {"cmd": "SwapPaneSymbol", "pane": 0, "symbol": "TSLA"}}
+        ]"#).unwrap_or_default();
+        let batch_val: serde_json::Value = serde_json::from_str(&batch_body).unwrap_or_default();
+        assert!(
+            batch_val.as_array().map_or(false, |a| a.len() == 3),
+            "/batch must return array of 3 results; got: {batch_body}"
+        );
+        let batch_statuses: Vec<u64> = batch_val.as_array().unwrap()
+            .iter().filter_map(|r| r["status"].as_u64()).collect();
+        assert!(
+            batch_statuses.iter().all(|&s| s == 200),
+            "/batch all responses should be 200; got statuses: {batch_statuses:?}"
+        );
+        eprintln!("[PASS] /batch returned 3 results, all status 200");
+
+        // ── /assert POST — direct assertion against live state ────────────────
+        let assert_body = http_post("/assert", r#"[
+            {"fps_above": 5.0},
+            {"pane_count_equals": 1},
+            {"no_open_dialogs": true}
+        ]"#).unwrap_or_default();
+        let assert_val: serde_json::Value = serde_json::from_str(&assert_body).unwrap_or_default();
+        assert!(
+            assert_val.get("passed").is_some() && assert_val.get("failed").is_some(),
+            "/assert must return passed/failed fields; got: {assert_body}"
+        );
+        let assert_failed = assert_val["failed"].as_u64().unwrap_or(1);
+        assert!(
+            assert_failed == 0,
+            "/assert: {} assertion(s) failed: {assert_body}", assert_failed
+        );
+        eprintln!("[PASS] /assert: {} passed, {} failed",
+            assert_val["passed"].as_u64().unwrap_or(0), assert_failed);
+
+        // ── New assertion types via /assert ───────────────────────────────────
+        let new_assert_body = http_post("/assert", r#"[
+            {"state_field_gte":      {"path": "pane_count", "min": 1}},
+            {"state_field_lte":      {"path": "pane_count", "max": 4}},
+            {"violation_count_lte":  0},
+            {"fps_history_min_above": 5.0},
+            {"frame_time_below_ms":   500.0},
+            {"widget_count_gte":      {"min": 0}},
+            {"annotation_count_equals": 0}
+        ]"#).unwrap_or_default();
+        let na_val: serde_json::Value = serde_json::from_str(&new_assert_body).unwrap_or_default();
+        let na_failed = na_val["failed"].as_u64().unwrap_or(99);
+        assert!(
+            na_failed == 0,
+            "new assertion types: {na_failed} failed: {new_assert_body}"
+        );
+        eprintln!("[PASS] new assertion types all pass ({} assertions)",
+            na_val["passed"].as_u64().unwrap_or(0));
+
+        // ── 404 for unknown routes ────────────────────────────────────────────
+        // Raw TCP so we can read the status line.
+        {
+            use std::io::Write as _;
+            let mut s = TcpStream::connect(format!("127.0.0.1:{PORT}")).unwrap();
+            s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            s.write_all(b"GET /nonexistent_route_xyz HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n").unwrap();
+            let mut buf = String::new();
+            s.read_to_string(&mut buf).ok();
+            assert!(
+                buf.contains("404"),
+                "unknown route should return 404; got: {}",
+                &buf[..buf.len().min(80)]
+            );
+            eprintln!("[PASS] unknown route returns 404");
+        }
+
+        // ── /report — must return HTML ────────────────────────────────────────
+        let report_body = http_get("/report").unwrap_or_default();
+        assert!(
+            report_body.contains("<!DOCTYPE html") || report_body.contains("<html"),
+            "/report must return HTML; got {} bytes", report_body.len()
+        );
+        eprintln!("[PASS] /report returned HTML ({} bytes)", report_body.len());
 
         assert!(all_pass, "one or more dev inspector scenarios failed");
     }

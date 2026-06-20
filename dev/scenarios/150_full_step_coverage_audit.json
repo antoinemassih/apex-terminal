@@ -1,0 +1,87 @@
+{
+  "name": "full_step_coverage_audit",
+  "description": "Integration scenario exercising all major step types in one flow: reset, log, wait, cmd, cmd_batch, assert, assert_metrics, design_audit, annotate, loop, save_checkpoint, and clear.",
+  "tags": ["integration", "coverage", "step-actions"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "log", "message": "Coverage audit started." },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "1m" } },
+    {
+      "action": "cmd_batch",
+      "commands": [
+        { "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+        { "cmd": "AddIndicator", "args": { "pane": 0, "kind": "VWAP" } }
+      ]
+    },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_symbol_equals": "SPY" },
+        { "active_timeframe_equals": "1m" },
+        { "indicator_count_equals": 2 },
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "assert_metrics", "fps_min": 5.0, "frame_time_max_ms": 500.0 },
+    { "action": "design_audit", "require_clean": true },
+    {
+      "action": "annotate",
+      "annotations": [
+        {
+          "id": "audit.toolbar",
+          "rect": { "x": 0, "y": 0, "w": 1920, "h": 32 },
+          "label": "Toolbar zone",
+          "color": [100, 180, 255, 60],
+          "border_only": true,
+          "border_width": 1.5,
+          "tag": "audit"
+        },
+        {
+          "id": "audit.chart",
+          "rect": { "x": 0, "y": 32, "w": 1920, "h": 900 },
+          "label": "Chart area",
+          "color": [80, 255, 140, 40],
+          "border_only": false,
+          "tag": "audit"
+        }
+      ]
+    },
+    { "action": "wait_frames", "count": 1 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "annotation_count_equals": 2 }
+      ]
+    },
+    {
+      "action": "loop",
+      "count": 1,
+      "steps": [
+        {
+          "action": "assert",
+          "assertions": [
+            { "fps_above": 5.0 }
+          ]
+        }
+      ]
+    },
+    { "action": "save_checkpoint", "name": "audit_150" },
+    { "action": "annotate", "clear": true },
+    { "action": "wait_frames", "count": 1 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "annotation_count_equals": 0 },
+        { "fps_above": 5.0 },
+        { "no_open_dialogs": true }
+      ]
+    },
+    { "action": "log", "message": "All step types exercised." }
+  ]
+}

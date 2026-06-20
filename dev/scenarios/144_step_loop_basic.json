@@ -1,0 +1,36 @@
+{
+  "name": "step_loop_basic",
+  "description": "Tests the loop step action by repeating an AddIndicator command 3 times and asserting the cumulative count afterward.",
+  "tags": ["step-actions", "loop"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": 0 }
+      ]
+    },
+    { "action": "log", "message": "Starting loop: add RSI 3 times, 1 frame wait each iteration." },
+    {
+      "action": "loop",
+      "count": 3,
+      "steps": [
+        { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+        { "action": "wait_frames", "count": 1 }
+      ]
+    },
+    { "action": "wait_frames", "count": 1 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": 3 },
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "log", "message": "loop step action verified — 3 iterations produced 3 indicators." }
+  ]
+}

@@ -495,6 +495,16 @@ fn route_for_batch(
             let s = shared.lock().unwrap();
             (200, serde_json::to_vec(&s.widget_tree).unwrap_or_default())
         }
+        ("GET", "/panes") => {
+            let s = shared.lock().unwrap();
+            let panes = s.app_state.get("panes").cloned().unwrap_or(serde_json::Value::Array(vec![]));
+            (200, serde_json::to_vec(&panes).unwrap_or_default())
+        }
+        ("GET", "/watchlist") => {
+            let s = shared.lock().unwrap();
+            let wl = s.app_state.get("watchlist").cloned().unwrap_or(serde_json::Value::Null);
+            (200, serde_json::to_vec(&wl).unwrap_or_default())
+        }
         ("POST", "/cmd") => {
             let body_val = parse_body(body);
             match parse_app_command(&body_val) {
@@ -529,6 +539,11 @@ fn route_for_batch(
             let g = shared.lock().unwrap();
             let v = build_design_audit(&g);
             (200, serde_json::to_vec(&v).unwrap_or_default())
+        }
+        ("POST", "/reset") => {
+            queues.lock().unwrap().reset_pending = true;
+            let frame_ok = wait_for_next_frame(shared, 2000);
+            (200, format!("{{\"ok\":true,\"frame_advanced\":{frame_ok}}}").into_bytes())
         }
         ("POST", "/annotations") => {
             let body_val = parse_body(body);
@@ -957,6 +972,53 @@ fn execute_step(
             let (code, _) = route_for_batch("POST", path,
                 &serde_json::to_vec(&body).unwrap_or_default(), shared, queues);
             (code < 300, format!("POST {path} → {code}"))
+        }
+
+        // ── Design audit step ─────────────────────────────────────────────────
+        "design_audit" => {
+            let require_clean = args["require_clean"].as_bool().unwrap_or(true);
+            let g = shared.lock().unwrap();
+            let audit = build_design_audit(&g);
+            let clean = audit["clean"].as_bool().unwrap_or(false);
+            let total   = audit["total_widgets"].as_u64().unwrap_or(0);
+            let t_fail  = audit["touch_targets"]["fail"].as_u64().unwrap_or(0);
+            let c_fail  = audit["clipping"]["fail"].as_u64().unwrap_or(0);
+            let v_count = audit["contract_violations"]["count"].as_u64().unwrap_or(0);
+            let pass = !require_clean || clean;
+            (pass, format!("design_audit clean={clean} widgets={total} \
+                            touch_fail={t_fail} clip_fail={c_fail} violations={v_count}"))
+        }
+
+        // ── Metrics assertion step ────────────────────────────────────────────
+        "assert_metrics" => {
+            let fps_min   = args["fps_min"].as_f64().map(|v| v as f32);
+            let ft_max_ms = args["frame_time_max_ms"].as_f64().map(|v| v as f32);
+            let g = shared.lock().unwrap();
+            let mut pass = true;
+            let mut details = Vec::new();
+            if let Some(min) = fps_min {
+                let ok = g.fps >= min;
+                if !ok { pass = false; }
+                details.push(format!("fps {:.1} {} {min}", g.fps, if ok { ">=" } else { "<" }));
+            }
+            if let Some(max_ms) = ft_max_ms {
+                // 0.0 = headless/unmeasured → skip
+                let ok = g.frame_time_ms == 0.0 || g.frame_time_ms <= max_ms;
+                if !ok { pass = false; }
+                details.push(format!("frame_time {:.2}ms {} {max_ms}ms",
+                    g.frame_time_ms, if ok { "<=" } else { ">" }));
+            }
+            (pass, if details.is_empty() { "no metrics checked".into() } else { details.join("; ") })
+        }
+
+        // ── Checkpoint save step ──────────────────────────────────────────────
+        "save_checkpoint" => {
+            let name = args["name"].as_str().unwrap_or("scenario_checkpoint");
+            let state = shared.lock().unwrap().app_state.clone();
+            match layout::save_checkpoint(name, &state) {
+                Ok(path) => (true, format!("checkpoint saved to {path}")),
+                Err(e)   => (false, e),
+            }
         }
 
         unknown => (false, format!("unknown action: '{unknown}'")),

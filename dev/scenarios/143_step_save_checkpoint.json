@@ -1,0 +1,37 @@
+{
+  "name": "step_save_checkpoint",
+  "description": "Tests the save_checkpoint step action after building non-trivial state (symbol, timeframe, indicators).",
+  "tags": ["step-actions", "checkpoint"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "log", "message": "Building state before checkpoint." },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "TSLA" } },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "15m" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "VWAP" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_symbol_equals": "TSLA" },
+        { "active_timeframe_equals": "15m" },
+        { "indicator_count_equals": 2 },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "log", "message": "State verified — saving checkpoint scenario_143." },
+    { "action": "save_checkpoint", "name": "scenario_143" },
+    { "action": "wait_frames", "count": 1 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "log", "message": "save_checkpoint step action verified — checkpoint scenario_143 written." }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "name": "assert_state_field_deep_path",
+  "description": "Tests state_field_gte/lte on deep dot-paths: watchlist.section_count after adding sections, and pane_count after a layout change.",
+  "tags": ["assert-engine", "state-path"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "state_field_gte": { "path": "watchlist.section_count", "min": 0 } },
+      { "state_field_lte": { "path": "watchlist.section_count", "max": 0 } }
+    ]},
+    { "action": "log", "message": "Adding two watchlist sections" },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Tech" } },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Energy" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "state_field_gte": { "path": "watchlist.section_count", "min": 2 } },
+      { "state_field_lte": { "path": "watchlist.section_count", "max": 5 } }
+    ]},
+    { "action": "log", "message": "Setting TwoColumns layout and checking pane_count path" },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "state_field_gte": { "path": "pane_count", "min": 2 } },
+      { "state_field_lte": { "path": "pane_count", "max": 4 } }
+    ]},
+    { "action": "log", "message": "Deep-path state_field_gte/lte assertions passed" }
+  ]
+}

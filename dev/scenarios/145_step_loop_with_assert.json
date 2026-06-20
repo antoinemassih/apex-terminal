@@ -1,0 +1,43 @@
+{
+  "name": "step_loop_with_assert",
+  "description": "Tests that assertions inside a loop body execute each iteration — adds an indicator and checks fps per iteration, then verifies total count after.",
+  "tags": ["step-actions", "loop"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": 0 },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "log", "message": "Starting loop: 2 iterations, each adds indicator and asserts fps." },
+    {
+      "action": "loop",
+      "count": 2,
+      "steps": [
+        { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+        { "action": "wait_frames", "count": 1 },
+        {
+          "action": "assert",
+          "assertions": [
+            { "fps_above": 5.0 }
+          ]
+        }
+      ]
+    },
+    { "action": "wait_frames", "count": 1 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": 2 },
+        { "fps_above": 5.0 },
+        { "no_open_dialogs": true }
+      ]
+    },
+    { "action": "log", "message": "loop with inner assert verified — 2 iterations, fps held, count correct." }
+  ]
+}
