@@ -114,6 +114,9 @@ pub mod frames;
 pub mod pane_grid;
 // S5: StyleCtx — threaded style context (see ctx.rs).
 pub mod ctx;
+// Session-6 card-pattern primitives (port of React CardSlots.tsx + tiles.tsx).
+pub mod card_slots;
+pub mod tiles;
 
 // ─── Foundation ──────────────────────────────────────────────────────
 pub use tokens::{Size, Variant};
@@ -230,6 +233,8 @@ pub use scroll_area::{ScrollDirection, ThemedScrollArea};
 pub use theme_preview_card::ThemePreviewCard;
 pub use selectable_row::SelectableRow;
 pub use pane_grid::{PaneGrid, PaneState, PaneId, SplitId, Axis as PaneAxis};
+pub use card_slots::{CardHeader, CardBody, CardFooter};
+pub use tiles::{StatTile, QuoteTile, SparkTile, LiveFlash, Dir as TileDir};
 
 use egui::{Ui, RichText};
 use super::icons::Icon;
