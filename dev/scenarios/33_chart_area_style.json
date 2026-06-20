@@ -1,0 +1,23 @@
+{
+  "name": "chart_area_style",
+  "description": "Switch to area chart style by disabling ShowVolume and OHLC flags, verify FPS, then restore.",
+  "tags": ["chart", "style"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Setting area-style flags: ShowVolume false, OhlcTooltip false" },
+    { "action": "cmd_batch", "cmds": [
+      { "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowVolume", "value": false } },
+      { "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "OhlcTooltip", "value": false } }
+    ]},
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "log", "message": "Restoring ShowVolume" },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowVolume", "value": true } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] }
+  ]
+}

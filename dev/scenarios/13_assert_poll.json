@@ -1,0 +1,34 @@
+{
+  "name": "assert_poll",
+  "description": "Trigger a symbol switch and poll until bars arrive, with a 5-second timeout. Tests async data-arrival detection.",
+  "tags": ["smoke", "data", "async"],
+  "settle_ms": 0,
+  "abort_on_failure": true,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "AAPL"
+    },
+    {
+      "action": "assert_poll",
+      "timeout_ms": 5000,
+      "interval_ms": 200,
+      "assertions": [
+        { "active_symbol_equals": "AAPL" },
+        { "fps_above": 5.0 }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_open_dialogs": true }
+      ]
+    },
+    { "action": "log", "message": "assert_poll scenario passed — async symbol switch confirmed." }
+  ]
+}

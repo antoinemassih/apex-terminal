@@ -1,0 +1,24 @@
+{
+  "name": "options_flow_symbol_change",
+  "description": "Switch to OptionsFlow pane, swap symbol to MSFT, verify stability and active symbol.",
+  "tags": ["options", "symbol"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Switching to OptionsFlow" },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "OptionsFlow" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "pane_type_equals": { "pane": 0, "type": "OptionsFlow" } }] },
+    { "action": "log", "message": "Swapping symbol to MSFT" },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "MSFT" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "active_symbol_equals": "MSFT" }
+    ]}
+  ]
+}

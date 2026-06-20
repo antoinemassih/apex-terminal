@@ -1,0 +1,25 @@
+{
+  "name": "126_qoe_recompute_after_swap",
+  "description": "Add VWAP+RSI on SPY, then swap symbol to TSLA and call RecomputeIndicators. Assert fps_above 5.0 to confirm recompute on new data does not stall the render pipeline.",
+  "tags": ["qoe", "indicators", "symbol"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "VWAP" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [ { "fps_above": 5.0 }, { "indicator_count_equals": 2 } ] },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "TSLA" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "RecomputeIndicators", "args": { "pane": 0 } },
+    { "action": "wait_frames", "count": 8 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "no_clipped_widgets": true }
+    ] }
+  ]
+}

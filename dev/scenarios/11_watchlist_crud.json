@@ -1,0 +1,69 @@
+{
+  "name": "watchlist_crud",
+  "description": "Create a new watchlist, switch to it, add a section, add a symbol, then clean up.",
+  "tags": ["smoke", "watchlist"],
+  "settle_ms": 0,
+  "abort_on_failure": true,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistCreate",
+      "name": "Test List"
+    },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistSwitchActive",
+      "idx": 1
+    },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_open_dialogs": true }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSection",
+      "title": "Tech"
+    },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "NVDA"
+    },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_open_dialogs": true }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistSwitchActive",
+      "idx": 0
+    },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistDelete",
+      "idx": 1
+    },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_open_dialogs": true }
+      ]
+    },
+    { "action": "log", "message": "Watchlist CRUD scenario passed." }
+  ]
+}

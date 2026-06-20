@@ -1,0 +1,26 @@
+{
+  "name": "98_inter_pane_layout_then_indicators",
+  "description": "Establish Quad layout first, then add indicators only to panes 0 and 2 (skipping 1 and 3), assert no violations across all panes.",
+  "tags": ["inter-pane", "indicators"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "Quad" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [ { "pane_count_equals": 4 }, { "fps_above": 5.0 } ] },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 2, "symbol": "TSLA" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "VWAP" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "EMA" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 2, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 2, "kind": "ATR" } },
+    { "action": "wait_frames", "count": 10 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "no_clipped_widgets": true }
+    ] }
+  ]
+}

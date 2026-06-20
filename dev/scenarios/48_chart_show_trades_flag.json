@@ -1,0 +1,20 @@
+{
+  "name": "chart_show_trades_flag",
+  "description": "Toggle ShowTrades on and off, verify FPS and no violations after each state.",
+  "tags": ["chart", "flags"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Enabling ShowTrades" },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowTrades", "value": true } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "log", "message": "Disabling ShowTrades" },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowTrades", "value": false } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] }
+  ]
+}

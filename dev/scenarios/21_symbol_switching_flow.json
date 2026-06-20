@@ -1,0 +1,57 @@
+{
+  "name": "symbol_switching_flow",
+  "description": "User story: as a day trader I switch between symbols frequently. Verifies each swap updates state within one frame and FPS stays stable throughout.",
+  "tags": ["symbol", "state", "fps"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_symbol_equals": "SPY" },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_symbol_equals": "AAPL" },
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "MSFT" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_symbol_equals": "MSFT" },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "NVDA" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_symbol_equals": "NVDA" },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_symbol_equals": "SPY" },
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "log", "message": "Symbol switching flow complete — AAPL→MSFT→NVDA→SPY all stable." }
+  ]
+}

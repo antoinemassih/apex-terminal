@@ -1,0 +1,21 @@
+{
+  "name": "106_qoe_keyboard_sequence_smoke",
+  "description": "Smoke test key input path: inject escape+1+2+escape sequence with delays, assert FPS and no crashes to confirm the input handler is non-blocking.",
+  "tags": ["qoe", "input"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "assert", "assertions": [ { "fps_above": 5.0 } ] },
+    { "action": "key_sequence", "keys": ["Escape", "1", "2", "Escape"], "delay_ms": 80 },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_open_dialogs": true },
+      { "no_active_violations": true }
+    ] }
+  ]
+}

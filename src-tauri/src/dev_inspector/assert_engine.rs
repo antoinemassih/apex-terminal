@@ -25,7 +25,6 @@ pub struct AssertionReport {
 
 // ─── Logical assertions ───────────────────────────────────────────────────────
 
-/// Evaluate a list of logical assertions against the shared state.
 pub fn evaluate(assertions: &[Value], state: &DevSharedState) -> AssertionReport {
     let mut results = Vec::new();
     for (i, a) in assertions.iter().enumerate() {
@@ -72,14 +71,19 @@ fn dispatch(
 
         // ── Dialog ───────────────────────────────────────────────────────────
         "dialog_open" => {
-            let name = val["dialog"].as_str().unwrap_or("");
+            // Accepts: {"dialog_open": {"dialog": "settings"}} or {"dialog_open": "settings"}
+            let name = val.as_str()
+                .or_else(|| val["dialog"].as_str())
+                .unwrap_or("");
             let pass = state.open_dialogs.iter().any(|d| d == name || d.starts_with(&format!("{name}.")));
             ("DialogOpen".into(), pass,
              if pass { format!("dialog '{name}' is open") }
-             else    { format!("dialog '{name}' is not open") })
+             else    { format!("dialog '{name}' is not open (open: {:?})", state.open_dialogs) })
         }
         "dialog_closed" => {
-            let name = val["dialog"].as_str().unwrap_or("");
+            let name = val.as_str()
+                .or_else(|| val["dialog"].as_str())
+                .unwrap_or("");
             let open = state.open_dialogs.iter().any(|d| d == name || d.starts_with(&format!("{name}.")));
             ("DialogClosed".into(), !open,
              if !open { format!("dialog '{name}' is closed") }
@@ -123,19 +127,41 @@ fn dispatch(
              if pass { format!("widget '{id}'.{field} == {expect}") }
              else    { format!("widget '{id}'.{field}: expected {expect}, got {actual}") })
         }
+        "widget_value_equals" => {
+            // {"widget_value_equals": {"id": "pane.0.symbol", "value": "AAPL"}}
+            let id     = val["id"].as_str().unwrap_or("");
+            let expect = val["value"].as_str().unwrap_or("");
+            let w = state.widget_tree.iter().find(|w| w.id == id);
+            match w {
+                None => ("WidgetValueEquals".into(), false, format!("widget '{id}' not found")),
+                Some(w) => {
+                    let actual = w.value.as_deref().unwrap_or("");
+                    let pass = actual == expect;
+                    ("WidgetValueEquals".into(), pass,
+                     if pass { format!("widget '{id}' value == '{expect}'") }
+                     else    { format!("widget '{id}' value: expected '{expect}', got '{actual}'") })
+                }
+            }
+        }
 
         // ── FPS ──────────────────────────────────────────────────────────────
         "fps_above" => {
-            let min = val["min"].as_f64().unwrap_or(30.0) as f32;
+            // Accepts scalar: {"fps_above": 30.0} or object: {"fps_above": {"min": 30.0}}
+            let min = val.as_f64()
+                .or_else(|| val["min"].as_f64())
+                .unwrap_or(30.0) as f32;
             let pass = state.fps >= min;
             ("FpsAbove".into(), pass,
              if pass { format!("{:.1} fps >= {min}", state.fps) }
              else    { format!("{:.1} fps < min {min}", state.fps) })
         }
 
-        // ── Domain: terminal ─────────────────────────────────────────────────
+        // ── Domain: chart terminal ────────────────────────────────────────────
         "active_symbol_equals" => {
-            let sym    = val["symbol"].as_str().unwrap_or("");
+            // Accepts scalar: {"active_symbol_equals": "SPY"} or object form
+            let sym    = val.as_str()
+                .or_else(|| val["symbol"].as_str())
+                .unwrap_or("");
             let actual = state.app_state["active_symbol"].as_str().unwrap_or("");
             let pass   = actual.eq_ignore_ascii_case(sym);
             ("ActiveSymbolEquals".into(), pass,
@@ -143,7 +169,9 @@ fn dispatch(
              else    { format!("active symbol: expected '{sym}', got '{actual}'") })
         }
         "active_timeframe_equals" => {
-            let tf     = val["tf"].as_str().unwrap_or("");
+            let tf     = val.as_str()
+                .or_else(|| val["tf"].as_str())
+                .unwrap_or("");
             let actual = state.app_state["active_timeframe"].as_str().unwrap_or("");
             let pass   = actual == tf;
             ("ActiveTimeframeEquals".into(), pass,
@@ -151,20 +179,91 @@ fn dispatch(
              else    { format!("active tf: expected '{tf}', got '{actual}'") })
         }
         "pane_count_equals" => {
-            let expect = val["count"].as_u64().unwrap_or(0) as usize;
+            let expect = val.as_u64()
+                .or_else(|| val["count"].as_u64())
+                .unwrap_or(0) as usize;
             let actual = state.app_state["pane_count"].as_u64().unwrap_or(0) as usize;
             let pass   = actual == expect;
             ("PaneCountEquals".into(), pass,
              if pass { format!("pane count == {expect}") }
              else    { format!("pane count: expected {expect}, got {actual}") })
         }
+        "active_pane_equals" => {
+            let expect = val.as_u64()
+                .or_else(|| val["pane"].as_u64())
+                .unwrap_or(0) as usize;
+            let actual = state.app_state["active_pane"].as_u64().unwrap_or(0) as usize;
+            let pass   = actual == expect;
+            ("ActivePaneEquals".into(), pass,
+             if pass { format!("active pane == {expect}") }
+             else    { format!("active pane: expected {expect}, got {actual}") })
+        }
         "has_bars" => {
-            let min = val["min"].as_u64().unwrap_or(1) as usize;
+            let min = val.as_u64()
+                .or_else(|| val["min"].as_u64())
+                .unwrap_or(1) as usize;
             let actual = state.app_state["bar_count"].as_u64().unwrap_or(0) as usize;
             let pass = actual >= min;
             ("HasBars".into(), pass,
              if pass { format!("{actual} bars (>= {min})") }
              else    { format!("{actual} bars < min {min}") })
+        }
+        "bar_count_gte" => {
+            // Alias for has_bars with cleaner name
+            let min = val.as_u64()
+                .or_else(|| val["min"].as_u64())
+                .unwrap_or(1) as usize;
+            let actual = state.app_state["bar_count"].as_u64().unwrap_or(0) as usize;
+            let pass = actual >= min;
+            ("BarCountGte".into(), pass,
+             if pass { format!("{actual} bars (>= {min})") }
+             else    { format!("{actual} bars < {min}") })
+        }
+        "indicator_count_equals" => {
+            // {"indicator_count_equals": {"pane": 0, "count": 2}}
+            // or scalar: {"indicator_count_equals": 2} (checks active pane)
+            let (pane_idx, expect) = if let Some(n) = val.as_u64() {
+                let ap = state.app_state["active_pane"].as_u64().unwrap_or(0) as usize;
+                (ap, n as usize)
+            } else {
+                let p = val["pane"].as_u64().unwrap_or(0) as usize;
+                let c = val["count"].as_u64().unwrap_or(0) as usize;
+                (p, c)
+            };
+            let actual = state.app_state["panes"]
+                .get(pane_idx)
+                .and_then(|p| p["indicator_count"].as_u64())
+                .unwrap_or(0) as usize;
+            let pass = actual == expect;
+            ("IndicatorCountEquals".into(), pass,
+             if pass { format!("pane {pane_idx} indicator count == {expect}") }
+             else    { format!("pane {pane_idx} indicator count: expected {expect}, got {actual}") })
+        }
+        "pane_type_equals" => {
+            // {"pane_type_equals": {"pane": 0, "type": "Dashboard"}}
+            let pane_idx = val["pane"].as_u64().unwrap_or(0) as usize;
+            let expect   = val["type"].as_str()
+                .or_else(|| val.as_str())
+                .unwrap_or("Chart");
+            let actual = state.app_state["panes"]
+                .get(pane_idx)
+                .and_then(|p| p["pane_type"].as_str())
+                .unwrap_or("Chart");
+            let pass = actual.to_lowercase() == expect.to_lowercase();
+            ("PaneTypeEquals".into(), pass,
+             if pass { format!("pane {pane_idx} type == '{expect}'") }
+             else    { format!("pane {pane_idx} type: expected '{expect}', got '{actual}'") })
+        }
+        "watchlist_section_count_equals" => {
+            let expect = val.as_u64()
+                .or_else(|| val["count"].as_u64())
+                .unwrap_or(0) as usize;
+            let actual = state.app_state["watchlist"]["section_count"]
+                .as_u64().unwrap_or(0) as usize;
+            let pass = actual == expect;
+            ("WatchlistSectionCountEquals".into(), pass,
+             if pass { format!("watchlist section count == {expect}") }
+             else    { format!("watchlist section count: expected {expect}, got {actual}") })
         }
         "no_active_violations" => {
             let pass = state.active_violations.is_empty();
@@ -178,6 +277,53 @@ fn dispatch(
              })
         }
 
+        // ── Widget tree sweeps ────────────────────────────────────────────────
+        "all_touch_targets_ok" => {
+            // Checks all widgets with role "button" or "input" meet min_size_px
+            let min_px = val.as_f64()
+                .or_else(|| val["min_size_px"].as_f64())
+                .unwrap_or(28.0) as f32;
+            let violations: Vec<_> = state.widget_tree.iter()
+                .filter(|w| w.role == "button" || w.role == "input")
+                .filter(|w| w.rect.area() > 0.0)
+                .filter(|w| w.rect.min_side() < min_px)
+                .map(|w| format!("{} ({:.0}px)", w.id, w.rect.min_side()))
+                .collect();
+            let pass = violations.is_empty();
+            ("AllTouchTargetsOk".into(), pass,
+             if pass {
+                 let n = state.widget_tree.iter().filter(|w| w.role == "button" || w.role == "input").count();
+                 format!("{n} button/input widgets all >= {min_px}px")
+             } else {
+                 format!("touch target too small: {}", violations.join(", "))
+             })
+        }
+        "no_clipped_widgets" => {
+            let violations: Vec<_> = state.widget_tree.iter()
+                .filter(|w| w.is_clipped)
+                .map(|w| w.id.as_str())
+                .collect();
+            let pass = violations.is_empty();
+            ("NoClippedWidgets".into(), pass,
+             if pass { "no clipped widgets".into() }
+             else    { format!("clipped: {}", violations.join(", ")) })
+        }
+        "design_audit_clean" => {
+            // Checks: no violations, no clipped widgets, all touch targets ok
+            let no_viol  = state.active_violations.is_empty();
+            let no_clip  = !state.widget_tree.iter().any(|w| w.is_clipped);
+            let pass = no_viol && no_clip;
+            let mut issues = Vec::new();
+            if !no_viol { issues.push(format!("{} contract violations", state.active_violations.len())); }
+            if !no_clip {
+                let n = state.widget_tree.iter().filter(|w| w.is_clipped).count();
+                issues.push(format!("{n} clipped widgets"));
+            }
+            ("DesignAuditClean".into(), pass,
+             if pass { "design audit clean".into() }
+             else    { issues.join("; ") })
+        }
+
         // ── Logical combinators ───────────────────────────────────────────────
         "not" => {
             let inner = &val["assertion"];
@@ -185,20 +331,26 @@ fn dispatch(
             ("Not".into(), !pass, format!("NOT ({kind}: {detail})"))
         }
         "all_of" => {
-            let items = val["assertions"].as_array().cloned().unwrap_or_default();
+            let items = val.as_array()
+                .or_else(|| val["assertions"].as_array())
+                .cloned()
+                .unwrap_or_default();
             let results: Vec<_> = items.iter().map(|a| eval_one(a, state)).collect();
             let all_pass = results.iter().all(|(_, p, _)| *p);
             let detail = results.iter()
-                .map(|(k, p, d)| format!("[{} {}] {}", if *p {"✓"} else {"✗"}, k, d))
+                .map(|(k, p, d)| format!("[{}{}] {}", if *p {"✓"} else {"✗"}, k, d))
                 .collect::<Vec<_>>().join("; ");
             ("AllOf".into(), all_pass, detail)
         }
         "any_of" => {
-            let items = val["assertions"].as_array().cloned().unwrap_or_default();
+            let items = val.as_array()
+                .or_else(|| val["assertions"].as_array())
+                .cloned()
+                .unwrap_or_default();
             let results: Vec<_> = items.iter().map(|a| eval_one(a, state)).collect();
             let any_pass = results.iter().any(|(_, p, _)| *p);
             let detail = results.iter()
-                .map(|(k, p, d)| format!("[{} {}] {}", if *p {"✓"} else {"✗"}, k, d))
+                .map(|(k, p, d)| format!("[{}{}] {}", if *p {"✓"} else {"✗"}, k, d))
                 .collect::<Vec<_>>().join("; ");
             ("AnyOf".into(), any_pass, detail)
         }
@@ -212,7 +364,7 @@ fn json_path(root: &Value, path: &str) -> Value {
     let mut cur = root;
     let placeholder = Value::Null;
     for segment in path.split('.') {
-        cur = if let Some(idx) = segment.parse::<usize>().ok() {
+        cur = if let Ok(idx) = segment.parse::<usize>() {
             cur.get(idx).unwrap_or(&placeholder)
         } else {
             cur.get(segment).unwrap_or(&placeholder)
@@ -223,21 +375,21 @@ fn json_path(root: &Value, path: &str) -> Value {
 
 fn widget_field(w: &WidgetRecord, field: &str) -> Value {
     match field {
-        "id"       => Value::String(w.id.clone()),
-        "role"     => Value::String(w.role.clone()),
-        "label"    => Value::String(w.label.clone()),
-        "value"    => w.value.as_ref().map(|v| Value::String(v.clone())).unwrap_or(Value::Null),
-        "enabled"  => Value::Bool(w.enabled),
-        "focused"  => Value::Bool(w.focused),
-        "hovered"  => Value::Bool(w.hovered),
+        "id"         => Value::String(w.id.clone()),
+        "role"       => Value::String(w.role.clone()),
+        "label"      => Value::String(w.label.clone()),
+        "value"      => w.value.as_ref().map(|v| Value::String(v.clone())).unwrap_or(Value::Null),
+        "enabled"    => Value::Bool(w.enabled),
+        "focused"    => Value::Bool(w.focused),
+        "hovered"    => Value::Bool(w.hovered),
         "is_clipped" => Value::Bool(w.is_clipped),
+        "style_class"=> w.style_class.as_ref().map(|s| Value::String(s.clone())).unwrap_or(Value::Null),
         _ => Value::Null,
     }
 }
 
 // ─── Layout assertions ────────────────────────────────────────────────────────
 
-/// Evaluate a list of geometric assertions against the widget tree.
 pub fn evaluate_layout(assertions: &[Value], widgets: &[WidgetRecord]) -> AssertionReport {
     let mut results = Vec::new();
     for (i, a) in assertions.iter().enumerate() {
@@ -275,26 +427,9 @@ fn eval_layout_one(assertion: &Value, widgets: &[WidgetRecord]) -> (String, bool
                 return ("Aligned".into(), false,
                     format!("fewer than 2 widgets found (got {})", rects.len()));
             }
-            let base = match edge {
-                "top"    => rects[0].1.y,
-                "bottom" => rects[0].1.y + rects[0].1.h,
-                "left"   => rects[0].1.x,
-                "right"  => rects[0].1.x + rects[0].1.w,
-                "center_y" => rects[0].1.y + rects[0].1.h / 2.0,
-                "center_x" => rects[0].1.x + rects[0].1.w / 2.0,
-                _ => rects[0].1.y,
-            };
+            let base = edge_value(rects[0].1, edge);
             let misaligned: Vec<_> = rects.iter().filter(|(_, r)| {
-                let v = match edge {
-                    "top"      => r.y,
-                    "bottom"   => r.y + r.h,
-                    "left"     => r.x,
-                    "right"    => r.x + r.w,
-                    "center_y" => r.y + r.h / 2.0,
-                    "center_x" => r.x + r.w / 2.0,
-                    _ => r.y,
-                };
-                (v - base).abs() > tol
+                (edge_value(r, edge) - base).abs() > tol
             }).map(|(id, _)| **id).collect();
             let pass = misaligned.is_empty();
             ("Aligned".into(), pass,
@@ -311,7 +446,7 @@ fn eval_layout_one(assertion: &Value, widgets: &[WidgetRecord]) -> (String, bool
                 (Some(a), Some(b)) => (a, b),
                 _ => return ("GapBetween".into(), false, format!("widget '{a_id}' or '{b_id}' not found")),
             };
-            let gap = (wb.rect.x - (wa.rect.x + wa.rect.w)).abs()
+            let gap = ((wb.rect.x - (wa.rect.x + wa.rect.w)).abs())
                 .min((wb.rect.y - (wa.rect.y + wa.rect.h)).abs());
             let pass = gap >= min_px && gap <= max_px;
             ("GapBetween".into(), pass,
@@ -334,7 +469,9 @@ fn eval_layout_one(assertion: &Value, widgets: &[WidgetRecord]) -> (String, bool
         }
 
         "not_clipped" => {
-            let id = val["widget"].as_str().unwrap_or("");
+            let id = val["widget"].as_str()
+                .or_else(|| val.as_str())
+                .unwrap_or("");
             let w  = match find_widget(widgets, id) {
                 Some(w) => w,
                 None => return ("NotClipped".into(), false, format!("widget '{id}' not found")),
@@ -346,7 +483,9 @@ fn eval_layout_one(assertion: &Value, widgets: &[WidgetRecord]) -> (String, bool
         }
 
         "touch_target" => {
-            let id      = val["widget"].as_str().unwrap_or("");
+            let id      = val["widget"].as_str()
+                .or_else(|| val.as_str())
+                .unwrap_or("");
             let min_px  = val["min_size_px"].as_f64().unwrap_or(32.0) as f32;
             let w       = match find_widget(widgets, id) {
                 Some(w) => w,
@@ -424,6 +563,88 @@ fn eval_layout_one(assertion: &Value, widgets: &[WidgetRecord]) -> (String, bool
              else    { format!("overlaps: {}", overlapping.join(", ")) })
         }
 
+        "toolbar_height_consistent" => {
+            // All widgets with style_class=="toolbar" or id starting with "toolbar."
+            // must have the same height within tolerance_px (default 2px).
+            let tol = val.as_f64()
+                .or_else(|| val["tolerance_px"].as_f64())
+                .unwrap_or(2.0) as f32;
+            let toolbar_ws: Vec<_> = widgets.iter()
+                .filter(|w| {
+                    let by_class = w.style_class.as_deref() == Some("toolbar");
+                    let by_id    = w.id.starts_with("toolbar.");
+                    (by_class || by_id) && w.rect.area() > 0.0
+                })
+                .collect();
+            if toolbar_ws.len() < 2 {
+                return ("ToolbarHeightConsistent".into(), true,
+                    format!("fewer than 2 toolbar widgets ({}), nothing to check", toolbar_ws.len()));
+            }
+            let h0 = toolbar_ws[0].rect.h;
+            let inconsistent: Vec<_> = toolbar_ws.iter()
+                .filter(|w| (w.rect.h - h0).abs() > tol)
+                .map(|w| format!("{} ({:.0}px)", w.id, w.rect.h))
+                .collect();
+            let pass = inconsistent.is_empty();
+            ("ToolbarHeightConsistent".into(), pass,
+             if pass { format!("{} toolbar widgets consistent height ~{h0:.0}px", toolbar_ws.len()) }
+             else    { format!("toolbar height mismatch (expected ~{h0:.0}px): {}", inconsistent.join(", ")) })
+        }
+
+        "spacing_between" => {
+            // Alias for gap_between with same semantics; kept separate so scenario authors
+            // can express intent as "spacing" rather than "gap".
+            let a_id   = val["a"].as_str().unwrap_or("");
+            let b_id   = val["b"].as_str().unwrap_or("");
+            let min_px = val["min_px"].as_f64().unwrap_or(0.0) as f32;
+            let max_px = val["max_px"].as_f64().unwrap_or(f64::MAX) as f32;
+            let (wa, wb) = match (find_widget(widgets, a_id), find_widget(widgets, b_id)) {
+                (Some(a), Some(b)) => (a, b),
+                _ => return ("SpacingBetween".into(), false, format!("widget '{a_id}' or '{b_id}' not found")),
+            };
+            let gap = ((wb.rect.x - (wa.rect.x + wa.rect.w)).abs())
+                .min((wb.rect.y - (wa.rect.y + wa.rect.h)).abs());
+            let pass = gap >= min_px && gap <= max_px;
+            ("SpacingBetween".into(), pass,
+             if pass { format!("spacing {gap:.1}px in [{min_px},{max_px}]") }
+             else    { format!("spacing {gap:.1}px outside [{min_px},{max_px}]") })
+        }
+
+        "toolbar_buttons_aligned" => {
+            // Convenience: all "button" role widgets share top edge within tolerance
+            let tol = val.as_f64()
+                .or_else(|| val["tolerance_px"].as_f64())
+                .unwrap_or(2.0) as f32;
+            let buttons: Vec<_> = widgets.iter()
+                .filter(|w| w.role == "button" && w.rect.area() > 0.0)
+                .collect();
+            if buttons.len() < 2 {
+                return ("ToolbarButtonsAligned".into(), true,
+                    format!("fewer than 2 buttons ({}), nothing to check", buttons.len()));
+            }
+            let base_y = buttons[0].rect.y;
+            let misaligned: Vec<_> = buttons.iter()
+                .filter(|w| (w.rect.y - base_y).abs() > tol)
+                .map(|w| w.id.as_str())
+                .collect();
+            let pass = misaligned.is_empty();
+            ("ToolbarButtonsAligned".into(), pass,
+             if pass { format!("{} buttons aligned (y ≈ {base_y:.0})", buttons.len()) }
+             else    { format!("misaligned buttons: {}", misaligned.join(", ")) })
+        }
+
         _ => ("Unknown".into(), false, format!("unknown layout assertion: '{key}'")),
+    }
+}
+
+fn edge_value(r: &SerRect, edge: &str) -> f32 {
+    match edge {
+        "top"      => r.y,
+        "bottom"   => r.y + r.h,
+        "left"     => r.x,
+        "right"    => r.x + r.w,
+        "center_y" => r.y + r.h / 2.0,
+        "center_x" => r.x + r.w / 2.0,
+        _          => r.y,
     }
 }

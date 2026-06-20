@@ -1,0 +1,30 @@
+{
+  "name": "chart_multi_flag_combo",
+  "description": "Set ShowVolume, LogScale, OhlcTooltip, and Magnet all true at once, then all false.",
+  "tags": ["chart", "flags"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Setting all four flags true" },
+    { "action": "cmd_batch", "cmds": [
+      { "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowVolume", "value": true } },
+      { "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "LogScale", "value": true } },
+      { "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "OhlcTooltip", "value": true } },
+      { "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "Magnet", "value": true } }
+    ]},
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "log", "message": "Setting all four flags false" },
+    { "action": "cmd_batch", "cmds": [
+      { "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowVolume", "value": false } },
+      { "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "LogScale", "value": false } },
+      { "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "OhlcTooltip", "value": false } },
+      { "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "Magnet", "value": false } }
+    ]},
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] }
+  ]
+}

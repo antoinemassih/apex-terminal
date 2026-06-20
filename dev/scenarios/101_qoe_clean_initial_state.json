@@ -1,0 +1,19 @@
+{
+  "name": "101_qoe_clean_initial_state",
+  "description": "Baseline QoE check: after reset verify the application starts in a fully clean state — single pane, no open dialogs, no violations, acceptable FPS, no clipped widgets.",
+  "tags": ["qoe", "state"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 8 },
+    { "action": "assert", "assertions": [
+      { "pane_count_equals": 1 },
+      { "no_open_dialogs": true },
+      { "no_active_violations": true },
+      { "fps_above": 5.0 },
+      { "no_clipped_widgets": true }
+    ] },
+    { "action": "log", "message": "Initial state clean — pane=1, no dialogs, no violations, FPS OK" }
+  ]
+}

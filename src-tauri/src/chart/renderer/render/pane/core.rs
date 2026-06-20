@@ -1364,6 +1364,11 @@ fn render_chart_pane(
             chart.pane_picker_open = false;
             ui.ctx().memory_mut(|m| m.close_popup());
         }
+        #[cfg(debug_assertions)]
+        crate::dev_inspector::record(crate::dev_inspector::WidgetRecord::from_response(
+            &format!("dialog.pane_picker.{pane_idx}"), "dialog", "Pane picker",
+            &area_resp.response, ui,
+        ));
     }
 
     // ── DOM Sidebar — left/right/fullscreen, controlled from the panel menu.
@@ -1648,7 +1653,7 @@ fn render_chart_pane(
             rect: body_rect.into(),
             clip_rect: ui.clip_rect().into(),
             layer: 0, focused: false, hovered: false, enabled: true,
-            is_clipped: false,
+            is_clipped: false, style_class: None,
         });
         crate::dev_inspector::check_contract(
             &format!("pane.{pane_idx}.chart_body"),
@@ -12772,9 +12777,12 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
     // pickers, alert mutations, watchlist edits, etc. all flow through here.
     crate::chart_renderer::commands::drain_and_dispatch(panes, watchlist);
 
-    // Dev Inspector — capture widget/state snapshot after all mutations settle.
+    // Dev Inspector — render annotation overlays, then capture widget/state snapshot.
     #[cfg(debug_assertions)]
-    crate::dev_inspector::end_frame(panes, *active_pane, watchlist, ctx);
+    {
+        crate::dev_inspector::render_annotations(ctx);
+        crate::dev_inspector::end_frame(panes, *active_pane, watchlist, ctx);
+    }
 
     span_end(); // draw_chart.tail
 }

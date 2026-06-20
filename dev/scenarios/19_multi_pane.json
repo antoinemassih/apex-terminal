@@ -1,0 +1,71 @@
+{
+  "name": "multi_pane",
+  "description": "Switch to a 2-pane layout, verify pane count, set different symbols on each pane, check alignment and FPS stability, then return to 1-pane.",
+  "tags": ["layout", "multi-pane", "design"],
+  "settle_ms": 100,
+  "abort_on_failure": true,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_count_equals": 1 },
+        { "fps_above": 5.0 }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetLayout",
+      "args": { "layout": "TwoColumns" }
+    },
+    { "action": "wait_frames", "count": 5 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_count_equals": 2 },
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": { "pane": 0, "symbol": "SPY" }
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": { "pane": 1, "symbol": "QQQ" }
+    },
+    { "action": "wait_frames", "count": 5 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_count_equals": 2 },
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    {
+      "action": "assert_layout",
+      "assertions": [
+        { "toolbar_buttons_aligned": true }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetLayout",
+      "args": { "layout": "Single" }
+    },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_count_equals": 1 },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "log", "message": "Multi-pane scenario passed — 2-pane layout stable, back to single." }
+  ]
+}

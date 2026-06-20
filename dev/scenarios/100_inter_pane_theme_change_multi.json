@@ -1,0 +1,29 @@
+{
+  "name": "100_inter_pane_theme_change_multi",
+  "description": "TwoColumns layout with active symbols on both panes, cycle theme idx 0→3→6 asserting FPS at each step to verify theme repaints don't disrupt multi-pane rendering.",
+  "tags": ["inter-pane", "theme"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 1, "symbol": "QQQ" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SetThemeIdx", "args": { "idx": 0 } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [ { "fps_above": 5.0 } ] },
+    { "action": "cmd", "cmd": "SetThemeIdx", "args": { "idx": 3 } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [ { "fps_above": 5.0 } ] },
+    { "action": "cmd", "cmd": "SetThemeIdx", "args": { "idx": 6 } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "no_clipped_widgets": true }
+    ] }
+  ]
+}

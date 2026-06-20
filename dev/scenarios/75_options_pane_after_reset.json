@@ -1,0 +1,20 @@
+{
+  "name": "options_pane_after_reset",
+  "description": "Reset then immediately switch to OptionsSentiment, verify clean state and FPS.",
+  "tags": ["options", "reset"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Immediately switching to OptionsSentiment after reset" },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "OptionsSentiment" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "pane_type_equals": { "pane": 0, "type": "OptionsSentiment" } }
+    ]}
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "name": "watchlist_multi_section",
+  "description": "User story: as a portfolio manager I organise stocks into labelled sections (Tech, Macro, Energy) with symbols in each. The watchlist must handle the full list without any clipping or touch-target violations.",
+  "tags": ["watchlist", "sections", "design"],
+  "settle_ms": 60,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Tech" } },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Macro" } },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Energy" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [{ "watchlist_section_count_equals": 3 }]
+    },
+    {
+      "action": "cmd_batch",
+      "commands": [
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "AAPL" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "MSFT" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "NVDA" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "META" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "GOOG" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "SPY" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "QQQ" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "TLT" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "GLD" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "XOM" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "CVX" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "OXY" } }
+      ]
+    },
+    { "action": "wait_frames", "count": 5 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "no_clipped_widgets": true }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "all_touch_targets_ok": true }
+      ]
+    },
+    { "action": "log", "message": "Watchlist multi-section complete — 3 sections, 12 symbols, no clipping or touch violations." }
+  ]
+}

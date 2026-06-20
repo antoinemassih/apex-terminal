@@ -1,0 +1,82 @@
+{
+  "name": "watchlist_coverage",
+  "description": "Add enough symbols to fill the watchlist panel, verify section headers and item rows are recorded in the widget tree and no clipping violations exist. Core coverage test for the styling sprint.",
+  "tags": ["watchlist", "design", "coverage"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSection",
+      "args": { "title": "Tech" }
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSection",
+      "args": { "title": "Macro" }
+    },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "cmd_batch",
+      "commands": [
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "AAPL" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "MSFT" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "NVDA" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "GOOG" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "META" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "TSLA" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "AMZN" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "AMD" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "SPY" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "QQQ" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "IWM" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "GLD" } }
+      ]
+    },
+    { "action": "wait_frames", "count": 5 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "no_clipped_widgets": true }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "all_touch_targets_ok": true }
+      ]
+    },
+    {
+      "action": "annotate",
+      "annotations": [
+        {
+          "id": "watchlist.coverage_marker",
+          "rect": { "x": 1720, "y": 32, "w": 200, "h": 868 },
+          "label": "Watchlist panel (12 items, 2 sections)",
+          "color": [100, 200, 255, 30],
+          "border_only": true,
+          "border_width": 1.5,
+          "tag": "coverage"
+        }
+      ]
+    },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "annotate", "clear": true },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "log", "message": "Watchlist coverage scenario complete — 12 items across 2 sections, no clipping or touch-target violations." }
+  ]
+}

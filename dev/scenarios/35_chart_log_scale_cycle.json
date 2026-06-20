@@ -1,0 +1,20 @@
+{
+  "name": "chart_log_scale_cycle",
+  "description": "Enable then disable log scale on pane 0, verify no violations after each toggle.",
+  "tags": ["chart", "flags"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Enabling LogScale" },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "LogScale", "value": true } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "log", "message": "Disabling LogScale" },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "LogScale", "value": false } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] }
+  ]
+}

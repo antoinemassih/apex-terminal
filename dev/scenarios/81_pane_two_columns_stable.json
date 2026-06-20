@@ -1,0 +1,22 @@
+{
+  "name": "81_pane_two_columns_stable",
+  "description": "Set TwoColumns layout, assert pane count equals 2, assign distinct symbols to each pane, wait for stabilization, assert FPS.",
+  "tags": ["pane", "layout"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [ { "pane_count_equals": 2 } ] },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 1, "symbol": "QQQ" } },
+    { "action": "wait_frames", "count": 8 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "no_clipped_widgets": true }
+    ] }
+  ]
+}

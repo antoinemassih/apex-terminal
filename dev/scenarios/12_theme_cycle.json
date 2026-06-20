@@ -1,0 +1,58 @@
+{
+  "name": "theme_cycle",
+  "description": "Cycle through theme and style variants, verifying FPS stability and no design violations after each switch.",
+  "tags": ["design", "ui", "themes"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "loop",
+      "count": 4,
+      "steps": [
+        { "action": "cmd", "cmd": "SetThemeIdx", "idx": 0 },
+        { "action": "wait_frames", "count": 2 },
+        { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+        { "action": "cmd", "cmd": "SetThemeIdx", "idx": 1 },
+        { "action": "wait_frames", "count": 2 },
+        { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] }
+      ]
+    },
+    {
+      "action": "loop",
+      "count": 3,
+      "steps": [
+        { "action": "cmd", "cmd": "SetStyleIdx", "idx": 0 },
+        { "action": "wait_frames", "count": 2 },
+        { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+        { "action": "cmd", "cmd": "SetStyleIdx", "idx": 1 },
+        { "action": "wait_frames", "count": 2 },
+        { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+        { "action": "cmd", "cmd": "SetStyleIdx", "idx": 2 },
+        { "action": "wait_frames", "count": 2 },
+        { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "idx": 0
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetStyleIdx",
+      "idx": 0
+    },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_active_violations": true },
+        { "design_audit_clean": true }
+      ]
+    },
+    { "action": "log", "message": "Theme cycle scenario passed — all theme/style combos stable." }
+  ]
+}

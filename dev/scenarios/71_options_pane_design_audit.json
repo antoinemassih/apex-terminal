@@ -1,0 +1,26 @@
+{
+  "name": "options_pane_design_audit",
+  "description": "Switch to OptionsSentiment pane and run full design audit assertions.",
+  "tags": ["options", "design"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Switching to OptionsSentiment for design audit" },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "OptionsSentiment" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "no_clipped_widgets": true },
+      { "design_audit_clean": true }
+    ]},
+    { "action": "assert_layout", "assertions": [
+      { "no_unintended_overlap": { "layer": 0 } },
+      { "toolbar_buttons_aligned": true },
+      { "toolbar_height_consistent": { "tolerance_px": 4.0 } }
+    ]}
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "name": "options_pane_rapid_type_switch",
+  "description": "Rapidly cycle pane 0 through Chart -> OptionsSentiment -> OptionsFlow -> Chart, checking FPS.",
+  "tags": ["options", "pane", "fps"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Switching to OptionsSentiment" },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "OptionsSentiment" } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "pane_type_equals": { "pane": 0, "type": "OptionsSentiment" } }] },
+    { "action": "log", "message": "Switching to OptionsFlow" },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "OptionsFlow" } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "pane_type_equals": { "pane": 0, "type": "OptionsFlow" } }] },
+    { "action": "log", "message": "Switching back to Chart" },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "Chart" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "pane_type_equals": { "pane": 0, "type": "Chart" } }
+    ]}
+  ]
+}

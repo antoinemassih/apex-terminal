@@ -1,0 +1,26 @@
+{
+  "name": "options_two_pane_chart_options",
+  "description": "2-column: pane 0 Chart with RSI indicator, pane 1 OptionsSentiment, check FPS.",
+  "tags": ["options", "pane", "fps"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 7 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "pane_count_equals": 2 }] },
+    { "action": "log", "message": "Adding RSI to pane 0" },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "log", "message": "Setting pane 1 to OptionsSentiment" },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 1, "kind": "OptionsSentiment" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "pane_type_equals": { "pane": 1, "type": "OptionsSentiment" } }
+    ]}
+  ]
+}

@@ -406,6 +406,20 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [
 
     if modal_resp.closed { close_editor = true; }
 
+    #[cfg(debug_assertions)]
+    if let Some(drect) = modal_resp.rect {
+        crate::dev_inspector::record(crate::dev_inspector::WidgetRecord {
+            id: format!("dialog.indicator_editor.{ap}"),
+            role: "dialog".into(),
+            label: hdr_name.clone(),
+            value: None,
+            rect: drect.into(),
+            clip_rect: crate::dev_inspector::SerRect::zero(),
+            layer: 1, focused: false, hovered: false, enabled: true,
+            is_clipped: false, style_class: None,
+        });
+    }
+
     if close_editor {
         // Clear immediately so data model is clean; ToolOverlay fades out using
         // the last-known content still in egui memory.

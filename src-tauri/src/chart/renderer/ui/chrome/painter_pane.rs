@@ -861,6 +861,7 @@ impl<'a> PainterPaneHeader<'a> {
                 hovered: sym_resp.hovered(),
                 enabled: true,
                 is_clipped: false,
+                style_class: None,
             });
             let p0 = pos2(cx + 2.0, rect.center().y);
             painter.text(pos2(p0.x + 0.5, p0.y), Align2::LEFT_CENTER, sym,

@@ -1,0 +1,34 @@
+{
+  "name": "110_qoe_fps_multi_pane_heavy",
+  "description": "Worst-case multi-pane rendering: Quad layout with 3 indicators per pane (12 total across 4 panes), assert fps_above 5.0 to confirm GPU pipeline is not overwhelmed.",
+  "tags": ["qoe", "fps", "pane"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "Quad" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 1, "symbol": "QQQ" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 2, "symbol": "AAPL" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 3, "symbol": "NVDA" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "MACD" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "VWAP" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 1, "kind": "EMA" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 1, "kind": "SMA" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 1, "kind": "BB" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 2, "kind": "ATR" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 2, "kind": "STOCH" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 2, "kind": "OBV" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 3, "kind": "Volume" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 3, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 3, "kind": "MACD" } },
+    { "action": "wait_frames", "count": 15 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] }
+  ]
+}

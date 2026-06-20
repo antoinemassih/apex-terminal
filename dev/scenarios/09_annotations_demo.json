@@ -1,0 +1,79 @@
+{
+  "name": "annotations_demo",
+  "description": "Write debug annotation overlays via the scenario runner, verify they're stored, then clear them. Demonstrates the visual refinement feedback loop.",
+  "tags": ["debug", "annotations", "design"],
+  "settle_ms": 0,
+  "abort_on_failure": true,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "annotate",
+      "annotations": [
+        {
+          "id": "zone.toolbar",
+          "rect": { "x": 0, "y": 0, "w": 1920, "h": 32 },
+          "label": "Toolbar zone",
+          "color": [100, 180, 255, 50],
+          "border_only": false,
+          "tag": "layout"
+        },
+        {
+          "id": "zone.chart_body",
+          "rect": { "x": 0, "y": 32, "w": 1720, "h": 900 },
+          "label": "Chart body",
+          "color": [50, 200, 100, 25],
+          "border_only": true,
+          "border_width": 2.0,
+          "tag": "layout"
+        },
+        {
+          "id": "zone.sidebar",
+          "rect": { "x": 1720, "y": 32, "w": 200, "h": 900 },
+          "label": "Sidebar",
+          "color": [255, 180, 50, 40],
+          "border_only": false,
+          "tag": "layout"
+        }
+      ]
+    },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "log", "message": "Layout zones annotated — visible in /report and on the live canvas." },
+    {
+      "action": "annotate",
+      "annotations": [
+        {
+          "id": "highlight.toolbar_area",
+          "rect": { "x": 0, "y": 0, "w": 400, "h": 32 },
+          "label": "toolbar left cluster",
+          "color": [255, 80, 80, 200],
+          "border_only": true,
+          "tag": "widget_highlight"
+        },
+        {
+          "id": "highlight.timeframe_area",
+          "rect": { "x": 400, "y": 0, "w": 200, "h": 32 },
+          "label": "timeframe picker area",
+          "color": [80, 255, 80, 200],
+          "border_only": true,
+          "tag": "widget_highlight"
+        }
+      ]
+    },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "log", "message": "Widget area highlights active — visible in /report SVG diagram." },
+    {
+      "action": "annotate",
+      "clear": true
+    },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "log", "message": "Annotations demo complete. All overlays cleared." }
+  ]
+}

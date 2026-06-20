@@ -782,6 +782,15 @@ pub(crate) fn render(
                     ui.label(egui::RichText::new("MAs, Oscillators, Volume, Overlays, Tools, Suites").size(font_xs()).color(theme.dim()));
                 }).show(ui, &indicators_menu.response, t);
             }
+            #[cfg(debug_assertions)]
+            {
+                let ind_count = panes[ap].indicators.len().to_string();
+                crate::dev_inspector::record(
+                    crate::dev_inspector::WidgetRecord::from_response(
+                        "toolbar.indicators_btn", "button", &ind_count, &indicators_menu.response, ui,
+                    ).with_style("toolbar"),
+                );
+            }
 
             if watchlist.pending_overlay_add {
                 watchlist.pending_overlay_add = false;
@@ -897,6 +906,15 @@ pub(crate) fn render(
                     ui.label(egui::RichText::new("Widgets").size(font_sm()).strong().color(theme.text()));
                     ui.label(egui::RichText::new("Add live data tiles to the chart").size(font_xs()).color(theme.dim()));
                 }).show(ui, &widgets_menu.response, t);
+            }
+            #[cfg(debug_assertions)]
+            {
+                let widget_count = panes[ap].chart_widgets.len().to_string();
+                crate::dev_inspector::record(
+                    crate::dev_inspector::WidgetRecord::from_response(
+                        "toolbar.widgets_btn", "button", &widget_count, &widgets_menu.response, ui,
+                    ).with_style("toolbar"),
+                );
             }
 
             if !bg_enclosed { crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t); }

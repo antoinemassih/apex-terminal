@@ -1,0 +1,21 @@
+{
+  "name": "111_qoe_design_health_after_load",
+  "description": "After reset and initial load, run a comprehensive design health check: no_clipped_widgets, no_active_violations, all_touch_targets_ok 24, design_audit_clean.",
+  "tags": ["qoe", "design"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 8 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_clipped_widgets": true },
+      { "no_active_violations": true },
+      { "all_touch_targets_ok": 24 },
+      { "design_audit_clean": true }
+    ] },
+    { "action": "log", "message": "Full design health passed after initial load" }
+  ]
+}

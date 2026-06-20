@@ -1,0 +1,24 @@
+{
+  "name": "options_flow_in_quad",
+  "description": "Quad layout with panes 0-2 as Chart and pane 3 as OptionsFlow, verify FPS and types.",
+  "tags": ["options", "layout"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Setting Quad layout" },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "Quad" } },
+    { "action": "wait_frames", "count": 8 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "pane_count_equals": 4 }] },
+    { "action": "log", "message": "Setting pane 3 to OptionsFlow" },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 3, "kind": "OptionsFlow" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "pane_type_equals": { "pane": 3, "type": "OptionsFlow" } }
+    ]}
+  ]
+}

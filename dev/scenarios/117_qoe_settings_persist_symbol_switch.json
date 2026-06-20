@@ -1,0 +1,23 @@
+{
+  "name": "117_qoe_settings_persist_symbol_switch",
+  "description": "Set ShowVolume flag true, then swap the active symbol — flag should persist across the swap. Assert fps_above to confirm no re-render stall on persist path.",
+  "tags": ["qoe", "state"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowVolume", "value": true } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [ { "fps_above": 5.0 } ] },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "no_clipped_widgets": true }
+    ] },
+    { "action": "log", "message": "ShowVolume flag should persist after symbol swap to AAPL" }
+  ]
+}

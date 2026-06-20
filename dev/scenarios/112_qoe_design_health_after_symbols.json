@@ -1,0 +1,26 @@
+{
+  "name": "112_qoe_design_health_after_symbols",
+  "description": "Swap through 4 different symbols (AAPL→TSLA→NVDA→SPY) in sequence, then run a full design audit to confirm symbol transitions leave UI in a clean state.",
+  "tags": ["qoe", "design", "symbol"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "TSLA" } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "NVDA" } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_clipped_widgets": true },
+      { "no_active_violations": true },
+      { "all_touch_targets_ok": 24 },
+      { "design_audit_clean": true }
+    ] }
+  ]
+}

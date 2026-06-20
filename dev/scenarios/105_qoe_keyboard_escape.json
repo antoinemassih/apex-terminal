@@ -1,0 +1,23 @@
+{
+  "name": "105_qoe_keyboard_escape",
+  "description": "Open order entry dialog, then press Escape via key_sequence, assert no_open_dialogs to confirm keyboard dismiss path works.",
+  "tags": ["qoe", "input"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "cmd", "cmd": "OpenOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [ { "fps_above": 5.0 } ] },
+    { "action": "key_sequence", "keys": ["Escape"], "delay_ms": 50 },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_open_dialogs": true },
+      { "no_active_violations": true }
+    ] }
+  ]
+}

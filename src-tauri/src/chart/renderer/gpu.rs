@@ -7485,7 +7485,16 @@ impl App {
                 .with_active(true)
                 .with_maximized(true);
             #[cfg(debug_assertions)]
-            { a = a.with_visible(!crate::dev_inspector::is_headless()); }
+            if crate::dev_inspector::is_headless() {
+                // In headless mode: small window, fully on-screen, so DWM delivers
+                // WM_PAINT at full speed. The ShowWindow block below sends it to the
+                // bottom of the Z-order so it hides behind every other open window.
+                // Must also un-maximize — a maximized window ignores position.
+                a = a
+                    .with_maximized(false)
+                    .with_inner_size(winit::dpi::PhysicalSize::new(640_u32, 480_u32))
+                    .with_position(winit::dpi::PhysicalPosition::new(0_i32, 0_i32));
+            }
             a
         };
 
@@ -7558,8 +7567,27 @@ impl App {
                                 }
                                 // SW_SHOWMAXIMIZED preserves the with_maximized(true)
                                 // state and re-registers the taskbar entry. SW_RESTORE
-                                // would un-maximize.
-                                ShowWindow(hwnd, 3);                       // SW_SHOWMAXIMIZED
+                                // would un-maximize. In headless mode, SW_SHOWNORMAL
+                                // keeps the off-screen position instead of overriding it.
+                                #[cfg(debug_assertions)]
+                                // SW_SHOWNOACTIVATE(8): show at position without stealing focus.
+                                let show_cmd = if crate::dev_inspector::is_headless() { 8 } else { 3 };
+                                #[cfg(not(debug_assertions))]
+                                let show_cmd = 3_i32;
+                                ShowWindow(hwnd, show_cmd);
+
+                                // In headless mode, push window to bottom of Z-order so
+                                // it renders at full speed (on-screen) but hides behind
+                                // every other window. HWND_BOTTOM = 1 as a sentinel.
+                                #[cfg(debug_assertions)]
+                                if crate::dev_inspector::is_headless() {
+                                    SetWindowPos(
+                                        hwnd,
+                                        1 as *mut _,  // HWND_BOTTOM
+                                        0, 0, 0, 0,
+                                        0x0001 | 0x0002 | 0x0010, // NOSIZE|NOMOVE|NOACTIVATE
+                                    );
+                                }
 
                                 // DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2
                                 let preference: u32 = 2;

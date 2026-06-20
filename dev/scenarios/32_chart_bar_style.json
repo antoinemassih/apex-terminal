@@ -1,0 +1,20 @@
+{
+  "name": "chart_bar_style",
+  "description": "Switch to OHLC bar chart type via SetChartFlag and back, verifying FPS remains stable.",
+  "tags": ["chart", "style"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Switching to OHLC bar style via OhlcTooltip flag" },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "OhlcTooltip", "value": true } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "log", "message": "Reverting OHLC bar style" },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "OhlcTooltip", "value": false } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] }
+  ]
+}

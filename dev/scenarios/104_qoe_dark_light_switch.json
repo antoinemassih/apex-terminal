@@ -1,0 +1,27 @@
+{
+  "name": "104_qoe_dark_light_switch",
+  "description": "Switch between dark (idx 0) and light (idx 4) themes and back, asserting FPS after each transition to confirm the recolor path is non-blocking.",
+  "tags": ["qoe", "theme"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "SetThemeIdx", "args": { "idx": 0 } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [ { "fps_above": 5.0 } ] },
+    { "action": "snapshot", "name": "dark_theme" },
+    { "action": "cmd", "cmd": "SetThemeIdx", "args": { "idx": 4 } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [ { "fps_above": 5.0 }, { "no_clipped_widgets": true } ] },
+    { "action": "snapshot", "name": "light_theme" },
+    { "action": "cmd", "cmd": "SetThemeIdx", "args": { "idx": 0 } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] }
+  ]
+}

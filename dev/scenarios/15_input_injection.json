@@ -1,0 +1,50 @@
+{
+  "name": "input_injection",
+  "description": "Inject keyboard and pointer inputs via the inspector API and verify the app responds without crashing.",
+  "tags": ["input", "interaction"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "key_sequence",
+      "keys": ["escape"],
+      "delay_ms": 50
+    },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_open_dialogs": true }
+      ]
+    },
+    {
+      "action": "key_sequence",
+      "keys": ["1", "2", "escape"],
+      "delay_ms": 30
+    },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "CloseAllDialogs"
+    },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "no_open_dialogs": true },
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "log", "message": "Input injection scenario passed — app stable after injected events." }
+  ]
+}

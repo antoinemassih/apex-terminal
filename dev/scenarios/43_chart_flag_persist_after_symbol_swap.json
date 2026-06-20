@@ -1,0 +1,27 @@
+{
+  "name": "chart_flag_persist_after_symbol_swap",
+  "description": "Set ShowVolume and ShowPrevClose, swap symbol to NVDA, assert FPS still ok after swap.",
+  "tags": ["chart", "flags", "symbol"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Setting ShowVolume and ShowPrevClose flags" },
+    { "action": "cmd_batch", "cmds": [
+      { "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowVolume", "value": true } },
+      { "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowPrevClose", "value": true } }
+    ]},
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Swapping symbol to NVDA" },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "NVDA" } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "active_symbol_equals": "NVDA" }
+    ]}
+  ]
+}

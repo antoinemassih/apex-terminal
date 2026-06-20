@@ -1,0 +1,24 @@
+{
+  "name": "92_inter_pane_timeframe_diversity",
+  "description": "TwoColumns with the same symbol SPY but opposite timeframe extremes: pane0=1m (fastest), pane1=1d (slowest), verifying both maintain correct state.",
+  "tags": ["inter-pane", "timeframe"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [ { "pane_count_equals": 2 } ] },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "1m" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 1, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 1, "tf": "1d" } },
+    { "action": "wait_frames", "count": 10 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "no_clipped_widgets": true }
+    ] }
+  ]
+}

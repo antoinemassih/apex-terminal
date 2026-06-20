@@ -1,0 +1,48 @@
+{
+  "name": "130_qoe_final_integration_audit",
+  "description": "Final integration audit: reset, build a complete multi-feature session (symbols, indicators, watchlist, theme, multi-pane), run full design audit including assert_layout assertions, and log completion. This is the gold-standard end-to-end scenario.",
+  "tags": ["qoe", "integration", "audit"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "log", "message": "Starting final integration audit" },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "5m" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "VWAP" } },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowVolume", "value": true } },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "AutoScale", "value": true } },
+    { "action": "cmd", "cmd": "WatchlistCreate", "args": { "name": "AuditList" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "AAPL" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "NVDA" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "TSLA" } },
+    { "action": "cmd", "cmd": "SetThemeIdx", "args": { "idx": 1 } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [ { "fps_above": 5.0 } ] },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 1, "symbol": "QQQ" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 1, "kind": "MACD" } },
+    { "action": "cmd", "cmd": "AddPriceAlert", "args": { "pane": 0, "price": 480.0 } },
+    { "action": "wait_frames", "count": 10 },
+    { "action": "snapshot", "name": "final_audit_state" },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "pane_count_equals": 2 },
+      { "no_open_dialogs": true },
+      { "no_clipped_widgets": true },
+      { "no_active_violations": true },
+      { "all_touch_targets_ok": 24 },
+      { "design_audit_clean": true }
+    ] },
+    { "action": "assert_layout", "assertions": [
+      { "no_unintended_overlap": { "layer": 0 } },
+      { "toolbar_buttons_aligned": true },
+      { "toolbar_height_consistent": { "tolerance_px": 4.0 } }
+    ] },
+    { "action": "cmd", "cmd": "WatchlistDelete", "args": { "name": "AuditList" } },
+    { "action": "log", "message": "Final integration audit complete — all assertions passed" }
+  ]
+}

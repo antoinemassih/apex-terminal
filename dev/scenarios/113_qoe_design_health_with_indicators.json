@@ -1,0 +1,23 @@
+{
+  "name": "113_qoe_design_health_with_indicators",
+  "description": "Add RSI+MACD+VWAP to pane 0, then run a full design audit to confirm indicator panels do not cause layout violations or widget clipping.",
+  "tags": ["qoe", "design", "indicators"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "MACD" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "VWAP" } },
+    { "action": "wait_frames", "count": 10 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_clipped_widgets": true },
+      { "no_active_violations": true },
+      { "all_touch_targets_ok": 24 },
+      { "design_audit_clean": true }
+    ] }
+  ]
+}

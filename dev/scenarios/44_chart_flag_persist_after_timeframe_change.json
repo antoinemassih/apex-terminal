@@ -1,0 +1,24 @@
+{
+  "name": "chart_flag_persist_after_timeframe_change",
+  "description": "Set ShowVolume, change timeframe to 1h, assert flags still stable and FPS ok.",
+  "tags": ["chart", "flags", "timeframe"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Setting ShowVolume flag" },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowVolume", "value": true } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Changing timeframe to 1h" },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "1h" } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "active_timeframe_equals": "1h" }
+    ]}
+  ]
+}

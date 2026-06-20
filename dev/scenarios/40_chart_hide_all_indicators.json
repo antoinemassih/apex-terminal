@@ -1,0 +1,25 @@
+{
+  "name": "chart_hide_all_indicators",
+  "description": "Add RSI and MACD, then hide all indicators via flag, verify FPS, then re-show.",
+  "tags": ["chart", "indicators", "flags"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Adding RSI and MACD indicators" },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "MACD" } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Hiding all indicators" },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "HideAllIndicators", "value": true } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "log", "message": "Re-showing all indicators" },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "HideAllIndicators", "value": false } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] }
+  ]
+}

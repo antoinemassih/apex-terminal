@@ -1,0 +1,34 @@
+{
+  "name": "119_qoe_annotations_smoke",
+  "description": "Smoke test the annotation overlay system: annotate toolbar zone with a rect, wait for render, assert FPS, then clear all annotations to verify clean teardown.",
+  "tags": ["qoe", "annotations"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "annotate", "annotations": [
+      {
+        "id": "zone.toolbar",
+        "rect": { "x": 0, "y": 0, "w": 1920, "h": 32 },
+        "label": "Toolbar",
+        "color": [100, 180, 255, 50],
+        "border_only": false,
+        "tag": "layout"
+      }
+    ] },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "annotate", "clear": true },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_clipped_widgets": true }
+    ] }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "name": "128_qoe_multi_session_simulation",
+  "description": "Simulate two back-to-back trading sessions separated by a reset: session 1 (SPY + indicators + watchlist), reset, session 2 (NVDA + different TF + theme change). Assert clean state at each session boundary.",
+  "tags": ["qoe", "session"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "5m" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "VWAP" } },
+    { "action": "cmd", "cmd": "WatchlistCreate", "args": { "name": "Session1" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "AAPL" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "log", "message": "Session 1 complete — resetting" },
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "pane_count_equals": 1 },
+      { "no_open_dialogs": true }
+    ] },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "NVDA" } },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "15m" } },
+    { "action": "cmd", "cmd": "SetThemeIdx", "args": { "idx": 2 } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "no_clipped_widgets": true }
+    ] },
+    { "action": "log", "message": "Session 2 complete — both sessions stable" }
+  ]
+}

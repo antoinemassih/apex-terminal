@@ -1,0 +1,109 @@
+{
+  "name": "full_session_simulation",
+  "description": "User story: as a trader I run a complete realistic session — pick a symbol, set timeframe, add indicators, build watchlist, open order entry, check design health, then reset. This is the highest-level integration test.",
+  "tags": ["session", "integration", "full-flow"],
+  "settle_ms": 60,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_open_dialogs": true },
+        { "pane_count_equals": 1 }
+      ]
+    },
+    { "action": "log", "message": "Step 1: Symbol + timeframe setup" },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "5m" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_symbol_equals": "AAPL" },
+        { "active_timeframe_equals": "5m" },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "log", "message": "Step 2: Build indicator stack" },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "VWAP" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": 2 },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "log", "message": "Step 3: Display tweaks" },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowVolume", "value": true } },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "OhlcTooltip", "value": true } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "log", "message": "Step 4: Build watchlist" },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Positions" } },
+    {
+      "action": "cmd_batch",
+      "commands": [
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "AAPL" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "NVDA" } },
+        { "cmd": "WatchlistAddSymbol", "args": { "symbol": "SPY" } }
+      ]
+    },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_clipped_widgets": true }
+      ]
+    },
+    { "action": "log", "message": "Step 5: Open and close order entry" },
+    { "action": "cmd", "cmd": "CloseAllDialogs" },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "no_open_dialogs": true },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "log", "message": "Step 6: Full design health check" },
+    {
+      "action": "assert",
+      "assertions": [
+        { "all_touch_targets_ok": true },
+        { "no_clipped_widgets": true },
+        { "no_active_violations": true },
+        { "fps_above": 5.0 }
+      ]
+    },
+    {
+      "action": "assert_layout",
+      "assertions": [
+        { "toolbar_height_consistent": { "tolerance_px": 4.0 } }
+      ]
+    },
+    { "action": "log", "message": "Step 7: Session teardown" },
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "no_open_dialogs": true },
+        { "pane_count_equals": 1 },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "log", "message": "Full session simulation complete — all 7 steps passed." }
+  ]
+}

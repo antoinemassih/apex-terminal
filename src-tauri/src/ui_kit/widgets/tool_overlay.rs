@@ -62,6 +62,9 @@ pub struct ToolOverlayResponse {
     /// when the overlay is `.controlled_pos()` — host-managed position).
     /// Host adds this to its stored position to follow the drag.
     pub drag_delta: egui::Vec2,
+    /// Full window rect for the frame (None on the first frame before egui
+    /// has laid out the window, or when the overlay is fully faded out).
+    pub rect: Option<egui::Rect>,
 }
 
 /// Position-management mode for the overlay window.
@@ -447,6 +450,7 @@ impl<'a> ToolOverlay<'a> {
         // while it's being dragged).
         if let Some(ir) = tool_resp {
             ctx.memory_mut(|m| m.data.insert_temp(shadow_mem_id, ir.response.rect));
+            response.rect = Some(ir.response.rect);
         }
 
         response

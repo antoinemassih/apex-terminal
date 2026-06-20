@@ -1,0 +1,43 @@
+{
+  "name": "order_entry",
+  "description": "Open the order entry panel, verify the app stays stable and at framerate, then close it.",
+  "tags": ["order", "panel", "design"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_open_dialogs": true }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "OpenOrderEntry"
+    },
+    { "action": "wait_frames", "count": 5 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "CloseAllDialogs"
+    },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "no_open_dialogs": true },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "log", "message": "Order entry scenario complete — panel opened and closed without violations." }
+  ]
+}

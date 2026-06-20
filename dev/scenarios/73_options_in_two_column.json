@@ -1,0 +1,25 @@
+{
+  "name": "options_in_two_column",
+  "description": "2-column layout with pane 0 as Chart and pane 1 as OptionsSentiment, verify stability.",
+  "tags": ["options", "layout"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Setting TwoColumns layout" },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 7 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "pane_count_equals": 2 }] },
+    { "action": "log", "message": "Setting pane 1 to OptionsSentiment" },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 1, "kind": "OptionsSentiment" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "pane_type_equals": { "pane": 0, "type": "Chart" } },
+      { "pane_type_equals": { "pane": 1, "type": "OptionsSentiment" } }
+    ]}
+  ]
+}

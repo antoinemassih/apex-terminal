@@ -1,0 +1,38 @@
+{
+  "name": "125_qoe_indicator_add_remove_cycle",
+  "description": "Add RSI, verify count=1, remove RSI, verify count=0, repeat with MACD. Tests the full add/remove lifecycle for indicator management stability.",
+  "tags": ["qoe", "indicators", "lifecycle"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "indicator_count_equals": 1 }
+    ] },
+    { "action": "cmd", "cmd": "RemoveIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "indicator_count_equals": 0 }
+    ] },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "MACD" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "indicator_count_equals": 1 }
+    ] },
+    { "action": "cmd", "cmd": "RemoveIndicator", "args": { "pane": 0, "kind": "MACD" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "indicator_count_equals": 0 },
+      { "no_active_violations": true }
+    ] }
+  ]
+}

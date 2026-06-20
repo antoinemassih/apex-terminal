@@ -1,0 +1,28 @@
+{
+  "name": "order_design_health_while_open",
+  "description": "Open order entry, run design health assertions while the dialog is open, then close.",
+  "tags": ["order", "design"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Opening order entry for design health check" },
+    { "action": "cmd", "cmd": "OpenOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "no_clipped_widgets": true }
+    ]},
+    { "action": "assert_layout", "assertions": [
+      { "toolbar_buttons_aligned": true },
+      { "toolbar_height_consistent": { "tolerance_px": 4.0 } }
+    ]},
+    { "action": "log", "message": "Closing order entry" },
+    { "action": "cmd", "cmd": "CloseAllDialogs", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_open_dialogs": true }] }
+  ]
+}

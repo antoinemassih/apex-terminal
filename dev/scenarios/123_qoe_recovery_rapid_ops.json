@@ -1,0 +1,31 @@
+{
+  "name": "123_qoe_recovery_rapid_ops",
+  "description": "Stress recovery test: rapid sequence of 5 symbol swaps, 3 timeframe changes, 4 flag toggles, and 2 indicator adds in quick succession. Assert fps_above 5.0 at end to confirm no accumulation of errors.",
+  "tags": ["qoe", "stress", "recovery"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "TSLA" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "NVDA" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "QQQ" } },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "1m" } },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "15m" } },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "1h" } },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowVolume", "value": true } },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "AutoScale", "value": true } },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "CrosshairEnabled", "value": false } },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "CrosshairEnabled", "value": true } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "VWAP" } },
+    { "action": "wait_frames", "count": 10 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "no_clipped_widgets": true }
+    ] }
+  ]
+}

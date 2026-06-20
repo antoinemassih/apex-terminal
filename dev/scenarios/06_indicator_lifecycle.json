@@ -1,0 +1,60 @@
+{
+  "name": "indicator_lifecycle",
+  "description": "Add an RSI indicator to the active pane, verify indicator count, then remove it.",
+  "tags": ["smoke", "indicators"],
+  "settle_ms": 0,
+  "abort_on_failure": true,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": 0 }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "RSI"
+    },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": 1 },
+        { "fps_above": 5.0 },
+        { "no_open_dialogs": true }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "MACD"
+    },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": 2 },
+        { "fps_above": 5.0 }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "RecomputeIndicators",
+      "pane": 0
+    },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "log", "message": "Indicator lifecycle scenario passed." }
+  ]
+}

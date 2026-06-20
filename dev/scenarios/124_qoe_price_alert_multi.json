@@ -1,0 +1,23 @@
+{
+  "name": "124_qoe_price_alert_multi",
+  "description": "Add three price alerts at distinct price levels (400.0, 450.0, 500.0) on pane 0, then assert fps_above 5.0 to verify alert overlays do not stall rendering.",
+  "tags": ["qoe", "alert"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "AddPriceAlert", "args": { "pane": 0, "price": 400.0 } },
+    { "action": "cmd", "cmd": "AddPriceAlert", "args": { "pane": 0, "price": 450.0 } },
+    { "action": "cmd", "cmd": "AddPriceAlert", "args": { "pane": 0, "price": 500.0 } },
+    { "action": "wait_frames", "count": 8 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "no_clipped_widgets": true }
+    ] },
+    { "action": "snapshot", "name": "three_price_alerts" }
+  ]
+}

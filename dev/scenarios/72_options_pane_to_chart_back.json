@@ -1,0 +1,24 @@
+{
+  "name": "options_pane_to_chart_back",
+  "description": "Switch to OptionsFlow, then back to Chart, verify pane_type_equals Chart.",
+  "tags": ["options", "pane"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Switching pane 0 to OptionsFlow" },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "OptionsFlow" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "pane_type_equals": { "pane": 0, "type": "OptionsFlow" } }] },
+    { "action": "log", "message": "Switching pane 0 back to Chart" },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "Chart" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "pane_type_equals": { "pane": 0, "type": "Chart" } }
+    ]}
+  ]
+}

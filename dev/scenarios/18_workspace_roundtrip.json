@@ -1,0 +1,43 @@
+{
+  "name": "workspace_roundtrip",
+  "description": "Save the current layout as a named workspace, switch away, then reload it — verifies save/load round-trip and the workspace dropdown trigger.",
+  "tags": ["workspace", "persistence"],
+  "settle_ms": 100,
+  "abort_on_failure": true,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "cmd",
+      "cmd": "SaveWorkspace",
+      "args": { "name": "inspector_test_ws" }
+    },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": { "pane": 0, "symbol": "AAPL" }
+    },
+    { "action": "wait_frames", "count": 5 },
+    {
+      "action": "cmd",
+      "cmd": "LoadWorkspace",
+      "args": { "name": "inspector_test_ws" }
+    },
+    { "action": "wait_frames", "count": 5 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "log", "message": "Workspace round-trip complete — saved, mutated, reloaded successfully." }
+  ]
+}

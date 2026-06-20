@@ -1,0 +1,23 @@
+{
+  "name": "116_qoe_snapshot_baseline",
+  "description": "Capture a named baseline snapshot after reset, then swap to NVDA and assert FPS to confirm snapshot capture does not interfere with rendering.",
+  "tags": ["qoe", "snapshot"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "snapshot", "name": "qoe_baseline" },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "NVDA" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "snapshot", "name": "qoe_after_nvda" },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_clipped_widgets": true }
+    ] }
+  ]
+}

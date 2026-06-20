@@ -1,0 +1,44 @@
+{
+  "name": "options_session_roundtrip",
+  "description": "Full session: reset, 2-col layout, pane 0 Chart AAPL+RSI, pane 1 OptionsSentiment SPY, design audit, reset.",
+  "tags": ["options", "session"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Setting TwoColumns layout" },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 7 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "pane_count_equals": 2 }] },
+    { "action": "log", "message": "Setting pane 0 to Chart with AAPL and RSI" },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "active_symbol_equals": "AAPL" }] },
+    { "action": "log", "message": "Setting pane 1 to OptionsSentiment on SPY" },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 1, "kind": "OptionsSentiment" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 1, "symbol": "SPY" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "pane_type_equals": { "pane": 0, "type": "Chart" } },
+      { "pane_type_equals": { "pane": 1, "type": "OptionsSentiment" } }
+    ]},
+    { "action": "log", "message": "Running design audit" },
+    { "action": "assert", "assertions": [
+      { "no_clipped_widgets": true },
+      { "design_audit_clean": true }
+    ]},
+    { "action": "assert_layout", "assertions": [
+      { "no_unintended_overlap": { "layer": 0 } },
+      { "toolbar_buttons_aligned": true }
+    ]},
+    { "action": "log", "message": "Final reset to clean state" },
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] }
+  ]
+}

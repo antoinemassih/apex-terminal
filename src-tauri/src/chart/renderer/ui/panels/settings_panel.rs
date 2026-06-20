@@ -141,6 +141,13 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                 if resp.clicked() {
                     commands::push(AppCommand::SetThemeIdx { pane: ap, idx: i });
                 }
+                #[cfg(debug_assertions)]
+                crate::dev_inspector::record(
+                    crate::dev_inspector::WidgetRecord::from_response(
+                        &format!("settings.theme_card.{i}"), "button", preview_theme.name,
+                        &resp, ui,
+                    )
+                );
             }
         });
     });
@@ -159,12 +166,20 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                 for (id, name) in chunk {
                     let id_us = *id as usize;
                     let active = id_us == cur_si;
-                    if Button::toggle(name.as_str(), active)
+                    let style_resp = Button::toggle(name.as_str(), active)
                         .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                         .min_size(egui::vec2(btn_w, btn_h))
-                        .show(ui, t).clicked() {
+                        .show(ui, t);
+                    if style_resp.clicked() {
                         commands::push(AppCommand::SetStyleIdx { idx: id_us });
                     }
+                    #[cfg(debug_assertions)]
+                    crate::dev_inspector::record(
+                        crate::dev_inspector::WidgetRecord::from_response(
+                            &format!("settings.style_btn.{id_us}"), "button", name.as_str(),
+                            &style_resp, ui,
+                        )
+                    );
                 }
             });
             ui.add_space(gap_xs());

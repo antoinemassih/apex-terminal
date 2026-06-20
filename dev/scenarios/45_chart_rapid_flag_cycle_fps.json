@@ -1,0 +1,30 @@
+{
+  "name": "chart_rapid_flag_cycle_fps",
+  "description": "Rapidly toggle 6 flags in succession and check FPS stays above 5 throughout.",
+  "tags": ["chart", "flags", "fps"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowVolume", "value": true } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "LogScale", "value": true } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "OhlcTooltip", "value": true } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "Magnet", "value": true } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowPrevClose", "value": true } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "CrosshairEnabled", "value": false } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] }
+  ]
+}

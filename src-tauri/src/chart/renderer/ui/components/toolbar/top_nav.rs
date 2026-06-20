@@ -772,6 +772,15 @@ pub(crate) fn render(
                         ui.label(egui::RichText::new(format!("Active: {}", active_ws)).size(font_xs()).color(theme.dim()));
                     }).show(ui, &ws_menu.response, t);
                 }
+                #[cfg(debug_assertions)]
+                {
+                    let ws_name = watchlist.active_workspace.clone();
+                    crate::dev_inspector::record(
+                        crate::dev_inspector::WidgetRecord::from_response(
+                            "toolbar.workspace_btn", "button", &ws_name, &ws_menu.response, ui,
+                        ).with_style("toolbar"),
+                    );
+                }
             }
 
             crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);
@@ -871,6 +880,11 @@ pub(crate) fn render(
                 }
                 // Dropdown caret for the full layout picker
                 let dd_btn = toolbar_btn(ui, Icon::CARET_DOWN, watchlist.layout_dropdown_open, t);
+                #[cfg(debug_assertions)]
+                crate::dev_inspector::record(
+                    crate::dev_inspector::WidgetRecord::from_response("toolbar.layout_picker", "button", "Layout picker", &dd_btn, ui)
+                        .with_style("toolbar")
+                );
                 Tooltip::new(if pane_layout_matches_template { "Layout picker" } else { "Layout picker (custom — pick to reset)" })
                     .show(ui, &dd_btn, t);
                 if dd_btn.clicked() {
@@ -955,6 +969,12 @@ pub(crate) fn render(
                         ui.label(egui::RichText::new("Click to open Connection panel").size(font_xs()).color(theme.dim()));
                     }).show(ui, &resp, t);
                     if resp.clicked() { *conn_panel_open = !*conn_panel_open; }
+                    #[cfg(debug_assertions)]
+                    crate::dev_inspector::record(
+                        crate::dev_inspector::WidgetRecord::from_response(
+                            "toolbar.connection_btn", "button", "", &resp, ui,
+                        ).with_style("toolbar"),
+                    );
                 }
 
                 // Style-aware label helper for nav buttons that have a text label.
@@ -1011,6 +1031,11 @@ pub(crate) fn render(
                     if cmd_comma { watchlist.update_sidebar_state(|s| s.settings_open = !s.settings_open); }
 
                     let settings_resp = toolbar_btn(ui, Icon::GEAR, watchlist.settings_open, t);
+                    #[cfg(debug_assertions)]
+                    crate::dev_inspector::record(
+                        crate::dev_inspector::WidgetRecord::from_response("toolbar.settings_btn", "button", "Settings", &settings_resp, ui)
+                            .with_style("toolbar")
+                    );
                     Tooltip::new("Settings (Cmd+,)").show(ui, &settings_resp, t);
                     paint_nav_col_tint(ui, tb_rect, settings_resp.rect, t, settings_resp.hovered(), watchlist.settings_open, "right_settings");
                     actions_rect = Some(settings_resp.rect);
@@ -1021,6 +1046,11 @@ pub(crate) fn render(
                 {
                     use crate::ui_kit::widgets::{Tooltip, Kbd};
                     let search_resp = toolbar_btn(ui, Icon::MAGNIFYING_GLASS, watchlist.cmd_palette_open, t);
+                    #[cfg(debug_assertions)]
+                    crate::dev_inspector::record(
+                        crate::dev_inspector::WidgetRecord::from_response("toolbar.search_btn", "button", "Search", &search_resp, ui)
+                            .with_style("toolbar")
+                    );
                     paint_nav_col_tint(ui, tb_rect, search_resp.rect, t, search_resp.hovered(), watchlist.cmd_palette_open, "right_search");
                     Tooltip::rich(|ui, theme| {
                         ui.label(egui::RichText::new("Search").size(font_sm()).strong().color(theme.text()));
@@ -1048,6 +1078,11 @@ pub(crate) fn render(
                 {
                     let tn_on = crate::chart_renderer::ui::style::toolnav_visible();
                     let resp = toolbar_btn(ui, Icon::BROWSERS, tn_on, t);
+                    #[cfg(debug_assertions)]
+                    crate::dev_inspector::record(
+                        crate::dev_inspector::WidgetRecord::from_response("toolbar.toolnav_toggle", "button", "Toolbar toggle", &resp, ui)
+                            .with_style("toolbar")
+                    );
                     paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), tn_on, "right_toolnav");
                     crate::ui_kit::widgets::Tooltip::new("Toolbar").show(ui, &resp, t);
                     if resp.clicked() {
@@ -1139,6 +1174,11 @@ pub(crate) fn render(
                 // Watchlist: display field (`open`) differs from state field (`watchlist_open`)
                 {
                     let resp = toolbar_btn(ui, &nav_label(Icon::LIST, "Watchlist"), watchlist.open, t);
+                    #[cfg(debug_assertions)]
+                    crate::dev_inspector::record(
+                        crate::dev_inspector::WidgetRecord::from_response("toolbar.watchlist_toggle", "button", "Watchlist", &resp, ui)
+                            .with_style("toolbar")
+                    );
                     Tooltip::new("Watchlist").show(ui, &resp, t);
                     paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), watchlist.open, "right_watchlist");
                     if resp.clicked() { watchlist.update_sidebar_state(|s| s.watchlist_open = !s.watchlist_open); }

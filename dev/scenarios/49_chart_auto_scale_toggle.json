@@ -1,0 +1,20 @@
+{
+  "name": "chart_auto_scale_toggle",
+  "description": "Toggle AutoScale off then on, verify no violations and stable FPS after each change.",
+  "tags": ["chart", "flags"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Disabling AutoScale" },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "AutoScale", "value": false } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "log", "message": "Re-enabling AutoScale" },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "AutoScale", "value": true } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] }
+  ]
+}

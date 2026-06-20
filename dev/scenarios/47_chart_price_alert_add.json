@@ -1,0 +1,20 @@
+{
+  "name": "chart_price_alert_add",
+  "description": "Add a price alert at 500.0 on pane 0 and verify rendering stability and FPS.",
+  "tags": ["chart", "alert"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Adding price alert at 500.0" },
+    { "action": "cmd", "cmd": "AddPriceAlert", "args": { "pane": 0, "price": 500.0 } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "log", "message": "Adding second price alert at 450.0" },
+    { "action": "cmd", "cmd": "AddPriceAlert", "args": { "pane": 0, "price": 450.0 } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] }
+  ]
+}

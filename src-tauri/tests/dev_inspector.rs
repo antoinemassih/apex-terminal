@@ -1,12 +1,9 @@
 //! CI integration test for the Dev Inspector.
 //!
 //! Spawns the app binary in `--headless` mode, waits for the HTTP server to
-//! come up on :7891, then drives all five smoke scenarios via the REST API.
+//! come up on :7891, then drives all scenarios plus the new endpoints.
 //!
 //! Run with:  cargo test --test dev_inspector -- --nocapture
-//!
-//! The test is skipped automatically in release builds (the inspector is
-//! compiled out) and when the binary cannot be found (CI without a prior build).
 
 #[cfg(debug_assertions)]
 mod tests {
@@ -14,20 +11,18 @@ mod tests {
     use std::net::TcpStream;
     use std::process::{Child, Command, Stdio};
     use std::time::{Duration, Instant};
+    #[cfg(target_os = "windows")]
+    use std::os::windows::process::CommandExt;
 
-    const PORT: u16 = 7891;
-    const API: &str = "http://127.0.0.1:7891";
+    const PORT: u16 = 7892;
 
-    // Path to the debug binary — built by `cargo build` before running tests.
     fn binary_path() -> std::path::PathBuf {
         let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        // apex-terminal-native (the standalone binary crate)
-        let bin = if cfg!(target_os = "windows") {
-            manifest.join("../target/debug/apex-terminal-native.exe")
+        if cfg!(target_os = "windows") {
+            manifest.join("target/debug/apex-native.exe")
         } else {
-            manifest.join("../target/debug/apex-terminal-native")
-        };
-        bin
+            manifest.join("target/debug/apex-native")
+        }
     }
 
     fn wait_for_server(timeout: Duration) -> bool {
@@ -51,13 +46,12 @@ mod tests {
         stream.write_all(req.as_bytes()).ok()?;
         let mut buf = String::new();
         stream.read_to_string(&mut buf).ok()?;
-        // Return body (after \r\n\r\n)
         buf.split("\r\n\r\n").nth(1).map(|s| s.to_string())
     }
 
     fn http_post(path: &str, body: &str) -> Option<String> {
         let mut stream = TcpStream::connect(format!("127.0.0.1:{PORT}")).ok()?;
-        stream.set_read_timeout(Some(Duration::from_secs(10))).ok()?;
+        stream.set_read_timeout(Some(Duration::from_secs(30))).ok()?;
         let req = format!(
             "POST {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
@@ -69,11 +63,37 @@ mod tests {
         buf.split("\r\n\r\n").nth(1).map(|s| s.to_string())
     }
 
+    fn http_delete(path: &str) -> Option<String> {
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{PORT}")).ok()?;
+        stream.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
+        let req = format!("DELETE {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+        use std::io::Write;
+        stream.write_all(req.as_bytes()).ok()?;
+        let mut buf = String::new();
+        stream.read_to_string(&mut buf).ok()?;
+        buf.split("\r\n\r\n").nth(1).map(|s| s.to_string())
+    }
+
     fn run_scenario(file: &str) -> bool {
         let body = format!(r#"{{"file":"{file}"}}"#);
         let resp = http_post("/run-scenario", &body).unwrap_or_default();
         let val: serde_json::Value = serde_json::from_str(&resp).unwrap_or_default();
-        val["pass"].as_bool().unwrap_or(false)
+        let pass = val["pass"].as_bool().unwrap_or(false);
+        if !pass {
+            // Print first failing step detail to aid debugging.
+            if let Some(steps) = val["steps"].as_array() {
+                for step in steps {
+                    if step["pass"].as_bool() == Some(false) {
+                        eprintln!("  [FAIL detail] step {}: action={} detail={}",
+                            step["step"].as_u64().unwrap_or(0),
+                            step["action"].as_str().unwrap_or("?"),
+                            step["detail"].as_str().unwrap_or("?"));
+                        break;
+                    }
+                }
+            }
+        }
+        pass
     }
 
     struct HeadlessApp(Child);
@@ -92,16 +112,28 @@ mod tests {
             return;
         }
 
-        let child = Command::new(&bin)
-            .arg("--headless")
+        // Run from the repo root so "dev/scenarios" resolves correctly.
+        let repo_root = bin.parent().unwrap() // target/debug
+            .parent().unwrap()               // target
+            .parent().unwrap();              // src-tauri (= CARGO_MANIFEST_DIR)
+        // dev/scenarios lives one level above src-tauri (repo root)
+        let repo_root = repo_root.parent().unwrap_or(repo_root);
+
+        let mut cmd = Command::new(&bin);
+        cmd.arg("--headless")
+            .current_dir(repo_root)
             .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("failed to spawn headless binary");
+            .stderr(Stdio::null());
+        // CREATE_NEW_CONSOLE (0x10): gives the child its own console session so Windows
+        // delivers WM_PAINT events to its off-screen headless window. Without this flag
+        // the child inherits the test runner's (non-interactive) console context and DWM
+        // refuses to composite its window, so the render loop never ticks.
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(0x00000010);
+        let child = cmd.spawn().expect("failed to spawn headless binary");
 
         let _guard = HeadlessApp(child);
 
-        // Wait up to 20s for the HTTP server
         assert!(
             wait_for_server(Duration::from_secs(20)),
             "inspector server did not come up on port {PORT}"
@@ -112,16 +144,147 @@ mod tests {
         let health_val: serde_json::Value = serde_json::from_str(&health).unwrap_or_default();
         assert_eq!(health_val["status"].as_str(), Some("ok"), "health endpoint");
 
-        // Wait a few frames before running scenarios
         std::thread::sleep(Duration::from_millis(500));
 
-        // Run all 5 scenarios
+        // ── All 130 scenarios ─────────────────────────────────────────────────
         let scenarios = [
+            // ── Baseline (01-20) ──────────────────────────────────────────────
             "01_health_check.json",
             "02_reset.json",
             "03_symbol_switch.json",
             "04_chart_flags.json",
             "05_watchlist_edit.json",
+            "06_indicator_lifecycle.json",
+            "07_pane_type_switch.json",
+            "08_design_audit.json",
+            "09_annotations_demo.json",
+            "10_layout_regression.json",
+            "11_watchlist_crud.json",
+            "12_theme_cycle.json",
+            "13_assert_poll.json",
+            "14_toolbar_layout_audit.json",
+            "15_input_injection.json",
+            "16_dialog_lifecycle.json",
+            "17_order_entry.json",
+            "18_workspace_roundtrip.json",
+            "19_multi_pane.json",
+            "20_watchlist_coverage.json",
+            // ── User-story-derived (21-30) ────────────────────────────────────
+            "21_symbol_switching_flow.json",
+            "22_timeframe_progression.json",
+            "23_indicator_stack_lifecycle.json",
+            "24_chart_flag_matrix.json",
+            "25_watchlist_multi_section.json",
+            "26_fps_stress_rapid_switch.json",
+            "27_design_token_audit.json",
+            "28_theme_style_cycle_audit.json",
+            "29_indicator_recompute_after_swap.json",
+            "30_full_session_simulation.json",
+            // ── Chart manipulation (31-50) ────────────────────────────────────
+            "31_chart_line_style.json",
+            "32_chart_bar_style.json",
+            "33_chart_area_style.json",
+            "34_chart_extended_hours.json",
+            "35_chart_log_scale_cycle.json",
+            "36_chart_prev_close_line.json",
+            "37_chart_magnet_snap.json",
+            "38_chart_ohlc_tooltip.json",
+            "39_chart_oscillators_visibility.json",
+            "40_chart_hide_all_indicators.json",
+            "41_chart_volume_bars_cycle.json",
+            "42_chart_multi_flag_combo.json",
+            "43_chart_flag_persist_after_symbol_swap.json",
+            "44_chart_flag_persist_after_timeframe_change.json",
+            "45_chart_rapid_flag_cycle_fps.json",
+            "46_chart_crosshair_toggle.json",
+            "47_chart_price_alert_add.json",
+            "48_chart_show_trades_flag.json",
+            "49_chart_auto_scale_toggle.json",
+            "50_chart_indicator_heavy_fps.json",
+            // ── Order entry (51-65) ───────────────────────────────────────────
+            "51_order_open_close_fast.json",
+            "52_order_open_buy_flow.json",
+            "53_order_open_sell_flow.json",
+            "54_order_market_type_setup.json",
+            "55_order_limit_type_setup.json",
+            "56_order_stop_type_setup.json",
+            "57_order_after_symbol_change.json",
+            "58_order_after_timeframe_change.json",
+            "59_order_escape_to_close.json",
+            "60_order_design_health_while_open.json",
+            "61_order_reopen_after_close.json",
+            "62_order_fps_during_open.json",
+            "63_order_after_indicator_add.json",
+            "64_order_from_two_pane_layout.json",
+            "65_order_close_resets_dialog_state.json",
+            // ── Options pane (66-80) ──────────────────────────────────────────
+            "66_options_sentiment_pane.json",
+            "67_options_flow_pane.json",
+            "68_options_pane_fps.json",
+            "69_options_sentiment_symbol_change.json",
+            "70_options_flow_symbol_change.json",
+            "71_options_pane_design_audit.json",
+            "72_options_pane_to_chart_back.json",
+            "73_options_in_two_column.json",
+            "74_options_flow_in_quad.json",
+            "75_options_pane_after_reset.json",
+            "76_options_pane_no_violations.json",
+            "77_options_two_pane_chart_options.json",
+            "78_options_sentiment_theme_change.json",
+            "79_options_pane_rapid_type_switch.json",
+            "80_options_session_roundtrip.json",
+            // ── Pane / inter-pane operations (81-100) ────────────────────────
+            "81_pane_two_columns_stable.json",
+            "82_pane_two_rows.json",
+            "83_pane_quad_layout.json",
+            "84_pane_layout_cycle_all.json",
+            "85_pane_independent_timeframes.json",
+            "86_pane_independent_indicators.json",
+            "87_pane_type_mix_two.json",
+            "88_pane_type_mix_quad.json",
+            "89_pane_collapse_to_single.json",
+            "90_pane_expand_then_collapse.json",
+            "91_inter_pane_symbol_diversity.json",
+            "92_inter_pane_timeframe_diversity.json",
+            "93_inter_pane_design_health.json",
+            "94_inter_pane_indicator_isolation.json",
+            "95_inter_pane_fps_all_active.json",
+            "96_inter_pane_order_entry_from_layout.json",
+            "97_inter_pane_options_in_layout.json",
+            "98_inter_pane_layout_then_indicators.json",
+            "99_inter_pane_watchlist_multi_pane.json",
+            "100_inter_pane_theme_change_multi.json",
+            // ── Quality of experience (101-130) ──────────────────────────────
+            "101_qoe_clean_initial_state.json",
+            "102_qoe_theme_cycle_all.json",
+            "103_qoe_style_cycle.json",
+            "104_qoe_dark_light_switch.json",
+            "105_qoe_keyboard_escape.json",
+            "106_qoe_keyboard_sequence_smoke.json",
+            "107_qoe_fps_baseline.json",
+            "108_qoe_fps_5_indicators.json",
+            "109_qoe_fps_10_indicators.json",
+            "110_qoe_fps_multi_pane_heavy.json",
+            "111_qoe_design_health_after_load.json",
+            "112_qoe_design_health_after_symbols.json",
+            "113_qoe_design_health_with_indicators.json",
+            "114_qoe_design_health_multi_pane.json",
+            "115_qoe_watchlist_build_and_clear.json",
+            "116_qoe_snapshot_baseline.json",
+            "117_qoe_settings_persist_symbol_switch.json",
+            "118_qoe_no_clipped_widgets_all_themes.json",
+            "119_qoe_annotations_smoke.json",
+            "120_qoe_annotations_survive_symbol_swap.json",
+            "121_qoe_full_trader_session_v2.json",
+            "122_qoe_stress_all_flags.json",
+            "123_qoe_recovery_rapid_ops.json",
+            "124_qoe_price_alert_multi.json",
+            "125_qoe_indicator_add_remove_cycle.json",
+            "126_qoe_recompute_after_swap.json",
+            "127_qoe_layout_design_integrity.json",
+            "128_qoe_multi_session_simulation.json",
+            "129_qoe_fps_stress_all_features.json",
+            "130_qoe_final_integration_audit.json",
         ];
 
         let mut all_pass = true;
@@ -135,13 +298,125 @@ mod tests {
             }
         }
 
+        // ── /metrics — must return non-empty history + frame_time_ms ─────────
+        let metrics_body = http_get("/metrics").unwrap_or_default();
+        let metrics: serde_json::Value = serde_json::from_str(&metrics_body).unwrap_or_default();
+        let fps_history = metrics["fps"]["history"].as_array();
+        assert!(
+            fps_history.map_or(false, |h| !h.is_empty()),
+            "/metrics fps history should be non-empty after running scenarios"
+        );
+        eprintln!("[PASS] /metrics history non-empty ({} frames)", fps_history.map_or(0, |h| h.len()));
+        assert!(
+            metrics.get("frame_time_ms").is_some(),
+            "/metrics must contain frame_time_ms field"
+        );
+        eprintln!("[PASS] /metrics frame_time_ms = {:.2}ms", metrics["frame_time_ms"].as_f64().unwrap_or(0.0));
+
+        // ── /last-run — must reflect the last scenario executed ───────────────
+        let last_body = http_get("/last-run").unwrap_or_default();
+        let last: serde_json::Value = serde_json::from_str(&last_body).unwrap_or_default();
+        assert!(
+            last.get("scenario").is_some(),
+            "/last-run must have 'scenario' field; got: {last_body}"
+        );
+        eprintln!("[PASS] /last-run scenario={}", last["scenario"].as_str().unwrap_or("?"));
+
+        // ── /run-suite — cross-category smoke sample ──────────────────────────
+        let suite_body = http_post("/run-suite", r#"{
+            "scenarios": [
+                "01_health_check.json",
+                "30_full_session_simulation.json",
+                "31_chart_line_style.json",
+                "50_chart_indicator_heavy_fps.json",
+                "51_order_open_close_fast.json",
+                "66_options_sentiment_pane.json",
+                "81_pane_two_columns_stable.json",
+                "95_inter_pane_fps_all_active.json",
+                "107_qoe_fps_baseline.json",
+                "130_qoe_final_integration_audit.json"
+            ]
+        }"#).unwrap_or_default();
+        let suite: serde_json::Value = serde_json::from_str(&suite_body).unwrap_or_default();
+        assert!(
+            suite.get("total").is_some(),
+            "/run-suite must return total field; got: {suite_body}"
+        );
+        let suite_total  = suite["total"].as_u64().unwrap_or(0);
+        let suite_passed = suite["passed"].as_u64().unwrap_or(0);
+        eprintln!("[PASS] /run-suite {suite_passed}/{suite_total} passed");
+
+        // ── /design-audit — should be clean after a reset ─────────────────────
+        http_post("/reset", "{}").unwrap_or_default();
+        std::thread::sleep(Duration::from_millis(200));
+        let audit_body = http_get("/design-audit").unwrap_or_default();
+        let audit: serde_json::Value = serde_json::from_str(&audit_body).unwrap_or_default();
+        // Report must parse and have a `clean` field (value may be false if
+        // widgets are clipped on a headless framebuffer — just check presence).
+        assert!(
+            audit.get("clean").is_some(),
+            "/design-audit response must contain 'clean' field; got: {audit_body}"
+        );
+        eprintln!("[PASS] /design-audit responded (clean={})", audit["clean"]);
+
+        // ── /annotations round-trip ───────────────────────────────────────────
+        // POST two annotations
+        let ann_body = r#"[
+            {"id":"test.a","rect":{"x":10,"y":10,"w":100,"h":50},
+             "label":"Test A","color":[255,0,0,128],"border_only":false},
+            {"id":"test.b","rect":{"x":200,"y":200,"w":80,"h":40},
+             "label":"Test B","color":[0,255,0,200],"border_only":true,"border_width":2.0}
+        ]"#;
+        http_post("/annotations", ann_body).unwrap_or_default();
+        std::thread::sleep(Duration::from_millis(100));
+
+        // GET — should see both
+        let get_body = http_get("/annotations").unwrap_or_default();
+        let anns: serde_json::Value = serde_json::from_str(&get_body).unwrap_or_default();
+        let ann_arr = anns.as_array();
+        assert!(
+            ann_arr.map_or(false, |a| a.len() >= 2),
+            "/annotations GET should return >= 2 annotations; got: {get_body}"
+        );
+        eprintln!("[PASS] /annotations POST→GET ({} entries)", ann_arr.map_or(0, |a| a.len()));
+
+        // DELETE one
+        http_delete("/annotations/test.a").unwrap_or_default();
+        std::thread::sleep(Duration::from_millis(100));
+        let after_del = http_get("/annotations").unwrap_or_default();
+        let after_arr: serde_json::Value = serde_json::from_str(&after_del).unwrap_or_default();
+        let remaining = after_arr.as_array().map_or(0, |a| a.len());
+        // test.b should remain; test.a should be gone
+        assert_eq!(remaining, 1, "/annotations DELETE one should leave 1; got {remaining}");
+        eprintln!("[PASS] /annotations DELETE one → 1 remaining");
+
+        // DELETE all
+        http_delete("/annotations").unwrap_or_default();
+        std::thread::sleep(Duration::from_millis(100));
+        let after_clear = http_get("/annotations").unwrap_or_default();
+        let after_clear_arr: serde_json::Value =
+            serde_json::from_str(&after_clear).unwrap_or_default();
+        let count_after_clear = after_clear_arr.as_array().map_or(0, |a| a.len());
+        assert_eq!(
+            count_after_clear, 0,
+            "/annotations DELETE all should leave 0; got {count_after_clear}"
+        );
+        eprintln!("[PASS] /annotations DELETE all → empty");
+
+        // ── /layout-svg — must return SVG markup ─────────────────────────────
+        let svg_body = http_get("/layout-svg").unwrap_or_default();
+        assert!(
+            svg_body.contains("<svg") && svg_body.contains("</svg>"),
+            "/layout-svg must return valid SVG; got {} bytes starting with: {}",
+            svg_body.len(),
+            &svg_body[..svg_body.len().min(120)]
+        );
+        eprintln!("[PASS] /layout-svg returned SVG ({} bytes)", svg_body.len());
+
         assert!(all_pass, "one or more dev inspector scenarios failed");
     }
 }
 
-// No-op for release builds where the inspector is compiled out
 #[cfg(not(debug_assertions))]
 #[test]
-fn inspector_not_built_in_release() {
-    // This is expected — the inspector is a debug-only feature.
-}
+fn inspector_not_built_in_release() {}

@@ -1,0 +1,26 @@
+{
+  "name": "86_pane_independent_indicators",
+  "description": "Verify that indicators are pane-isolated in TwoColumns layout: add RSI to pane0, MACD to pane1, check indicator_count on each independently.",
+  "tags": ["pane", "indicators"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 1, "symbol": "AAPL" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "assert", "assertions": [ { "fps_above": 5.0 } ] },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 1, "kind": "MACD" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "no_clipped_widgets": true }
+    ] },
+    { "action": "snapshot", "name": "independent_indicators_two_panes" }
+  ]
+}

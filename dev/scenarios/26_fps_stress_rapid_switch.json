@@ -1,0 +1,40 @@
+{
+  "name": "fps_stress_rapid_switch",
+  "description": "User story: as a scalper I switch symbols 8 times in rapid succession. FPS must not fall below 5 at any checkpoint. Models the worst-case symbol-hopping pattern.",
+  "tags": ["fps", "stress", "symbol"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [{ "fps_above": 5.0 }]
+    },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "wait_frames", "count": 1 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "TSLA" } },
+    { "action": "wait_frames", "count": 1 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AMZN" } },
+    { "action": "wait_frames", "count": 1 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "NVDA" } },
+    { "action": "wait_frames", "count": 1 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AMD" } },
+    { "action": "wait_frames", "count": 1 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "MSFT" } },
+    { "action": "wait_frames", "count": 1 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "META" } },
+    { "action": "wait_frames", "count": 1 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_symbol_equals": "SPY" },
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "log", "message": "FPS stress test complete — 8 rapid symbol switches, FPS held above 5." }
+  ]
+}

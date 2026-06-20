@@ -1,0 +1,19 @@
+{
+  "name": "chart_ohlc_tooltip",
+  "description": "Enable OhlcTooltip flag and leave it on while checking FPS remains stable.",
+  "tags": ["chart", "flags"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Enabling OhlcTooltip" },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "OhlcTooltip", "value": true } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "snapshot", "name": "ohlc_tooltip_on" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] }
+  ]
+}

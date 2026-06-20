@@ -1,0 +1,54 @@
+{
+  "name": "indicator_recompute_after_swap",
+  "description": "User story: as an analyst I add RSI and EMA to a chart, then swap the underlying symbol. The indicators must survive the swap (count unchanged) and the app must remain stable after recompute.",
+  "tags": ["indicators", "symbol", "recompute"],
+  "settle_ms": 80,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "EMA" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": 2 },
+        { "active_symbol_equals": "SPY" },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_symbol_equals": "AAPL" },
+        { "indicator_count_equals": 2 },
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "cmd", "cmd": "RecomputeIndicators", "args": { "pane": 0 } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": 2 },
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "MSFT" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_symbol_equals": "MSFT" },
+        { "indicator_count_equals": 2 },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "log", "message": "Indicator recompute after swap complete — RSI+EMA survived SPY→AAPL→MSFT swaps, counts stable." }
+  ]
+}

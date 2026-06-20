@@ -1,0 +1,71 @@
+{
+  "name": "timeframe_progression",
+  "description": "User story: as a chart analyst I step through timeframes from 1m to 1D to read multi-scale structure. Verifies state updates and FPS at each step.",
+  "tags": ["timeframe", "state", "fps"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [{ "fps_above": 5.0 }]
+    },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "1m" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_timeframe_equals": "1m" },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "5m" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_timeframe_equals": "5m" },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "15m" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_timeframe_equals": "15m" },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "1h" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_timeframe_equals": "1h" },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "4h" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_timeframe_equals": "4h" },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "1d" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_timeframe_equals": "1d" },
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "log", "message": "Timeframe progression complete — 1m→5m→15m→1h→4h→1d all stable." }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "name": "115_qoe_watchlist_build_and_clear",
+  "description": "Create a named watchlist, populate it with 10 symbols, add two section separators, assert no_clipped_widgets, then delete the watchlist to verify full lifecycle without UI corruption.",
+  "tags": ["qoe", "watchlist"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "WatchlistCreate", "args": { "name": "MyHeavyList" } },
+    { "action": "cmd", "cmd": "WatchlistSwitchActive", "args": { "name": "MyHeavyList" } },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Large Caps" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "QQQ" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "AAPL" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "MSFT" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "NVDA" } },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Growth" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "TSLA" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "AMZN" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "GOOGL" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "AMD" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "GLD" } },
+    { "action": "wait_frames", "count": 8 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_clipped_widgets": true },
+      { "no_active_violations": true }
+    ] },
+    { "action": "cmd", "cmd": "WatchlistDelete", "args": { "name": "MyHeavyList" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [ { "fps_above": 5.0 } ] }
+  ]
+}

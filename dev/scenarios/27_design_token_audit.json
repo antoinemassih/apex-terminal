@@ -1,0 +1,55 @@
+{
+  "name": "design_token_audit",
+  "description": "User story: as a UI reviewer I expect all toolbar buttons to share the same height and all interactive elements to have sufficient touch targets (≥28px). Tests the new toolbar_height_consistent and spacing_between assertions.",
+  "tags": ["design", "tokens", "toolbar", "accessibility"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert_layout",
+      "assertions": [
+        { "toolbar_height_consistent": { "tolerance_px": 4.0 } }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "all_touch_targets_ok": true },
+        { "no_clipped_widgets": true }
+      ]
+    },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert_layout",
+      "assertions": [
+        { "toolbar_height_consistent": { "tolerance_px": 4.0 } }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "all_touch_targets_ok": true },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert_layout",
+      "assertions": [
+        { "toolbar_height_consistent": { "tolerance_px": 4.0 } }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "all_touch_targets_ok": true },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "log", "message": "Design token audit complete — toolbar height consistent, touch targets ok across reset/indicator/symbol-switch states." }
+  ]
+}

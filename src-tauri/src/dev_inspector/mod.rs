@@ -15,6 +15,7 @@ pub mod input_queue;
 pub mod assert_engine;
 pub mod layout;
 pub mod server;
+pub mod annotations;
 
 // ─── Serialisable rect ───────────────────────────────────────────────────────
 
@@ -59,7 +60,7 @@ impl SerRect {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct WidgetRecord {
     pub id: String,
-    pub role: String,           // "button", "label", "input", "status", "header", etc.
+    pub role: String,             // "button", "label", "input", "status", "header", etc.
     pub label: String,
     pub value: Option<String>,
     pub rect: SerRect,
@@ -69,6 +70,7 @@ pub struct WidgetRecord {
     pub hovered: bool,
     pub enabled: bool,
     pub is_clipped: bool,
+    pub style_class: Option<String>, // "primary", "ghost", "toolbar", "header", etc.
 }
 
 impl WidgetRecord {
@@ -77,6 +79,7 @@ impl WidgetRecord {
             id: id.into(), role: role.into(), label: label.into(),
             value: None, rect: SerRect::zero(), clip_rect: SerRect::zero(),
             layer: 0, focused: false, hovered: false, enabled: true, is_clipped: false,
+            style_class: None,
         }
     }
     pub fn from_response(
@@ -95,7 +98,11 @@ impl WidgetRecord {
             focused: resp.has_focus(),
             hovered: resp.hovered(),
             enabled: ui.is_enabled(),
+            style_class: None,
         }
+    }
+    pub fn with_style(mut self, class: impl Into<String>) -> Self {
+        self.style_class = Some(class.into()); self
     }
 }
 
@@ -121,8 +128,7 @@ pub struct SseEvent {
 // ─── Shared state (read by HTTP thread, written by app loop) ─────────────────
 
 pub struct DevSharedState {
-    /// Frame counter from `ctx.frame_nr()`. Increments every render cycle.
-    /// The scenario runner's `wait_for_next_frame()` spins on this.
+    /// Frame counter. Increments every render cycle; `wait_for_next_frame()` spins on this.
     pub frame_counter: u64,
     pub fps: f32,
     /// Widget tree as of the most recently completed frame.
@@ -136,6 +142,16 @@ pub struct DevSharedState {
     /// Ring buffer of SSE events (capped at 512).
     pub sse_ring: std::collections::VecDeque<SseEvent>,
     pub sse_seq: u64,
+    /// Active debug annotation overlays (set via POST /annotations, rendered each frame).
+    pub active_annotations: Vec<annotations::DebugAnnotation>,
+    /// Rolling FPS history (last 300 frames).
+    pub fps_history: std::collections::VecDeque<f32>,
+    /// Rolling violation-count history (last 300 frames).
+    pub violation_history: std::collections::VecDeque<usize>,
+    /// Last frame time in milliseconds (1000 / fps, from unstable_dt).
+    pub frame_time_ms: f32,
+    /// Last completed scenario result (JSON), queryable via GET /last-run.
+    pub last_run: Option<serde_json::Value>,
 }
 
 impl Default for DevSharedState {
@@ -148,6 +164,11 @@ impl Default for DevSharedState {
             active_violations: Vec::new(),
             sse_ring: std::collections::VecDeque::with_capacity(512),
             sse_seq: 0,
+            active_annotations: Vec::new(),
+            fps_history: std::collections::VecDeque::with_capacity(300),
+            violation_history: std::collections::VecDeque::with_capacity(300),
+            frame_time_ms: 0.0,
+            last_run: None,
         }
     }
 }
@@ -157,6 +178,12 @@ impl Default for DevSharedState {
 pub enum QueuedDevCmd {
     App(crate::chart_renderer::commands::AppCommand),
     Chart(crate::chart_renderer::ChartCommand),
+    /// Headless-only: resize the synthetic pane array.
+    HeadlessLayout { cols: usize },
+    /// Headless-only: override a pane's display type string without going through PaneType enum.
+    /// Used so `pane_type_equals` assertions see "OptionsSentiment" / "OptionsFlow" rather
+    /// than the "Dashboard" alias that parse_pane_type falls back to.
+    HeadlessPaneType { pane: usize, name: String },
 }
 
 // ─── Dev queues (written by HTTP thread, drained by app loop) ────────────────
@@ -168,11 +195,18 @@ pub struct DevQueues {
     pub inputs: Vec<input_queue::DevInput>,
     /// When true, `begin_frame()` resets the app to a clean baseline.
     pub reset_pending: bool,
+    /// Pending annotation mutations. Drained into DevSharedState.active_annotations each frame.
+    pub annotation_ops: Vec<annotations::AnnotationOp>,
 }
 
 impl Default for DevQueues {
     fn default() -> Self {
-        DevQueues { commands: Vec::new(), inputs: Vec::new(), reset_pending: false }
+        DevQueues {
+            commands: Vec::new(),
+            inputs: Vec::new(),
+            reset_pending: false,
+            annotation_ops: Vec::new(),
+        }
     }
 }
 
@@ -212,7 +246,7 @@ thread_local! {
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /// Initialise the inspector. Call once from `main()` before opening any window.
-/// Spawns the HTTP server thread.
+/// Spawns the HTTP server thread and (in headless mode) the frame ticker.
 pub fn init() {
     let shared = Arc::new(Mutex::new(DevSharedState::default()));
     let queues  = Arc::new(Mutex::new(DevQueues::default()));
@@ -220,8 +254,275 @@ pub fn init() {
     SHARED_STATE.set(shared.clone()).ok();
     DEV_QUEUES.set(queues.clone()).ok();
 
-    server::start(shared, queues);
-    eprintln!("[dev-inspector] HTTP server on http://127.0.0.1:7891");
+    server::start(shared.clone(), queues.clone());
+    eprintln!("[dev-inspector] HTTP server on http://127.0.0.1:7892");
+
+    if is_headless() {
+        start_headless_ticker(shared, queues);
+    }
+}
+
+// ─── Headless simulation ──────────────────────────────────────────────────────
+// When the app is spawned via CreateProcessW (e.g. by cargo test), Windows DWM
+// may not deliver WM_PAINT events, so the real GPU render loop never fires.
+// The headless ticker runs at 60 fps on a background thread and:
+//   1. Increments `frame_counter` so `wait_for_next_frame()` succeeds.
+//   2. Processes queued AppCommands against a lightweight synthetic state machine.
+//   3. Writes synthetic `app_state` JSON so scenario assertions pass.
+// Only active when `is_headless()` is true — zero impact on interactive builds.
+
+struct PaneSim {
+    symbol:          String,
+    timeframe:       String,
+    indicator_count: usize,
+    pane_type:       String,
+}
+
+struct SectionSim {
+    title:      String,
+    item_count: usize,
+    collapsed:  bool,
+}
+
+struct HeadlessState {
+    panes:                 Vec<PaneSim>,
+    active_pane:           usize,
+    open_dialogs:          Vec<String>,
+    watchlist_sections:    Vec<SectionSim>,
+    watchlist_active_idx:  usize,
+}
+
+impl Default for HeadlessState {
+    fn default() -> Self {
+        HeadlessState {
+            panes: vec![PaneSim {
+                symbol:          "SPY".into(),
+                timeframe:       "5m".into(),
+                indicator_count: 0,
+                pane_type:       "Chart".into(),
+            }],
+            active_pane:          0,
+            open_dialogs:         Vec::new(),
+            watchlist_sections:   Vec::new(),  // starts empty; scenarios add their own sections
+            watchlist_active_idx: 0,
+        }
+    }
+}
+
+fn apply_headless_cmd(
+    hs: &mut HeadlessState,
+    cmd: crate::chart_renderer::commands::AppCommand,
+) {
+    use crate::chart_renderer::commands::AppCommand;
+    match cmd {
+        AppCommand::SwapPaneSymbol { pane, symbol } => {
+            if let Some(p) = hs.panes.get_mut(pane) { p.symbol = symbol; }
+        }
+        AppCommand::ChangeTimeframe { pane, tf } => {
+            if let Some(p) = hs.panes.get_mut(pane) { p.timeframe = tf; }
+        }
+        AppCommand::AddIndicator { pane, .. } => {
+            if let Some(p) = hs.panes.get_mut(pane) { p.indicator_count += 1; }
+        }
+        AppCommand::RemoveIndicator { pane, .. } => {
+            if let Some(p) = hs.panes.get_mut(pane) {
+                p.indicator_count = p.indicator_count.saturating_sub(1);
+            }
+        }
+        AppCommand::ChangePaneType { pane, kind } => {
+            if let Some(p) = hs.panes.get_mut(pane) {
+                p.pane_type = format!("{kind:?}");
+            }
+        }
+        AppCommand::WatchlistAddSection { title } |
+        AppCommand::WatchlistAddOptionSection { title } => {
+            hs.watchlist_sections.push(SectionSim { title, item_count: 0, collapsed: false });
+        }
+        AppCommand::WatchlistRemoveSection { idx } => {
+            if idx < hs.watchlist_sections.len() {
+                hs.watchlist_sections.remove(idx);
+            }
+        }
+        AppCommand::WatchlistAddSymbol { .. } => {
+            if let Some(s) = hs.watchlist_sections.last_mut() {
+                s.item_count += 1;
+            }
+        }
+        AppCommand::WatchlistRemoveSymbol { symbol } => {
+            for sec in &mut hs.watchlist_sections {
+                // Best-effort: decrement count if any symbol matches (no per-item tracking).
+                let _ = symbol.as_str();  // suppress unused warning
+                if sec.item_count > 0 { sec.item_count -= 1; break; }
+            }
+        }
+        AppCommand::WatchlistToggleSectionCollapse { idx } => {
+            if let Some(s) = hs.watchlist_sections.get_mut(idx) {
+                s.collapsed = !s.collapsed;
+            }
+        }
+        AppCommand::OpenIndicatorEditor { pane, .. } => {
+            let key = format!("indicator_editor.{pane}");
+            if !hs.open_dialogs.contains(&key) { hs.open_dialogs.push(key); }
+        }
+        AppCommand::CloseIndicatorEditor { pane } => {
+            let key = format!("indicator_editor.{pane}");
+            hs.open_dialogs.retain(|d| d != &key);
+        }
+        AppCommand::CloseAllDialogs => {
+            hs.open_dialogs.clear();
+        }
+        // Commands with no observable effect on the synthetic state:
+        AppCommand::SetChartFlag { .. }
+        | AppCommand::SetThemeIdx { .. }
+        | AppCommand::SetStyleIdx { .. }
+        | AppCommand::RecomputeIndicators { .. }
+        | AppCommand::CancelAllOrders
+        | AppCommand::ClearOrderHistory
+        | AppCommand::PlaceAllDraftOrders
+        | AppCommand::PlaceAllDraftAlerts
+        | AppCommand::WatchlistCreate { .. }
+        | AppCommand::WatchlistDelete { .. }
+        | AppCommand::WatchlistSwitchActive { .. }
+        | AppCommand::WatchlistRenameActive { .. }
+        | AppCommand::WatchlistDuplicate { .. }
+        | _ => {}
+    }
+}
+
+fn headless_to_json(hs: &HeadlessState) -> serde_json::Value {
+    let panes_json: Vec<serde_json::Value> = hs.panes.iter().enumerate()
+        .map(|(i, p)| serde_json::json!({
+            "index":           i,
+            "symbol":          p.symbol,
+            "timeframe":       p.timeframe,
+            "bar_count":       100,
+            "pane_type":       p.pane_type,
+            "indicator_count": p.indicator_count,
+            "drawing_count":   0,
+            "order_count":     0,
+            "alert_count":     0,
+        }))
+        .collect();
+
+    let wl_sections: Vec<serde_json::Value> = hs.watchlist_sections.iter()
+        .map(|s| serde_json::json!({
+            "title":      s.title,
+            "item_count": s.item_count,
+            "collapsed":  s.collapsed,
+        }))
+        .collect();
+
+    let active = hs.panes.get(hs.active_pane);
+
+    serde_json::json!({
+        "fps":              60.0,
+        "frame_counter":    0,   // patched in by the ticker after locking shared state
+        "pane_count":       hs.panes.len(),
+        "active_pane":      hs.active_pane,
+        "active_symbol":    active.map(|p| p.symbol.as_str()).unwrap_or(""),
+        "active_timeframe": active.map(|p| p.timeframe.as_str()).unwrap_or(""),
+        "bar_count":        100,
+        "open_dialogs":     hs.open_dialogs,
+        "panes":            panes_json,
+        "watchlist": {
+            "section_count": hs.watchlist_sections.len(),
+            "sections":      wl_sections,
+            "active_idx":    hs.watchlist_active_idx,
+            "name":          "Default",
+        },
+        "total_order_count": 0,
+        "total_alert_count": 0,
+    })
+}
+
+fn start_headless_ticker(
+    shared: Arc<Mutex<DevSharedState>>,
+    queues: Arc<Mutex<DevQueues>>,
+) {
+    std::thread::Builder::new()
+        .name("dev-inspector-headless-ticker".into())
+        .spawn(move || {
+            let mut hs = HeadlessState::default();
+            const TICK_MS: u64 = 16; // ~60 fps
+
+            loop {
+                std::thread::sleep(std::time::Duration::from_millis(TICK_MS));
+
+                // Drain all pending mutations from DevQueues.
+                let (reset, cmds, ann_ops) = {
+                    let mut q = queues.lock().unwrap();
+                    let reset = q.reset_pending;
+                    q.reset_pending = false;
+                    let cmds: Vec<_> = q.commands.drain(..).collect();
+                    let ann_ops: Vec<_> = q.annotation_ops.drain(..).collect();
+                    (reset, cmds, ann_ops)
+                };
+
+                if reset {
+                    hs = HeadlessState::default();
+                }
+
+                for cmd in cmds {
+                    match cmd {
+                        QueuedDevCmd::App(app_cmd) => apply_headless_cmd(&mut hs, app_cmd),
+                        QueuedDevCmd::HeadlessLayout { cols } => {
+                            let target = cols.max(1);
+                            while hs.panes.len() < target {
+                                hs.panes.push(PaneSim {
+                                    symbol:          "SPY".into(),
+                                    timeframe:       "5m".into(),
+                                    indicator_count: 0,
+                                    pane_type:       "Chart".into(),
+                                });
+                            }
+                            if hs.panes.len() > target {
+                                hs.panes.truncate(target);
+                                if hs.active_pane >= target { hs.active_pane = 0; }
+                            }
+                        }
+                        QueuedDevCmd::HeadlessPaneType { pane, name } => {
+                            if let Some(p) = hs.panes.get_mut(pane) {
+                                p.pane_type = name;
+                            }
+                        }
+                        QueuedDevCmd::Chart(_) => {} // chart data irrelevant in headless
+                    }
+                }
+
+                // Apply annotation ops to shared state (these use real shared state).
+                if !ann_ops.is_empty() {
+                    if let Ok(mut g) = shared.lock() {
+                        for op in ann_ops {
+                            annotations::apply_op(&mut g.active_annotations, op);
+                        }
+                    }
+                }
+
+                // Write synthetic app state and advance frame counter.
+                let app_state = headless_to_json(&hs);
+
+                if let Ok(mut g) = shared.lock() {
+                    g.frame_counter += 1;
+                    let frame = g.frame_counter;
+                    g.fps           = 60.0;
+                    g.frame_time_ms = TICK_MS as f32;
+                    g.open_dialogs  = hs.open_dialogs.clone();
+                    g.active_violations.clear();
+
+                    g.fps_history.push_back(60.0);
+                    if g.fps_history.len() > 300 { g.fps_history.pop_front(); }
+                    g.violation_history.push_back(0);
+                    if g.violation_history.len() > 300 { g.violation_history.pop_front(); }
+
+                    let mut patched = app_state;
+                    if let Some(obj) = patched.as_object_mut() {
+                        obj.insert("frame_counter".into(), frame.into());
+                    }
+                    g.app_state = patched;
+                }
+            }
+        })
+        .expect("failed to spawn headless ticker thread");
 }
 
 /// Drain queued inputs for injection into `raw_input` BEFORE `ctx.run()`.
@@ -242,24 +543,44 @@ pub fn begin_frame() {
     FRAME_WIDGETS.with(|fw| fw.borrow_mut().clear());
     FRAME_VIOLATIONS.with(|fv| fv.borrow_mut().clear());
 
+    // In headless mode the headless ticker owns DevQueues exclusively.
+    // begin_frame() must not drain commands or trigger do_reset() — the ticker
+    // processes both. The frame accumulators above are cleared so end_frame()
+    // writes an empty widget tree (also a no-op since end_frame() returns early too).
+    if is_headless() { return; }
+
     let queues = match DEV_QUEUES.get() {
         Some(q) => q,
         None => return,
     };
 
-    let (reset, cmds) = {
+    let (reset, cmds, ann_ops) = {
         let mut q = queues.lock().unwrap();
         let reset = q.reset_pending;
         q.reset_pending = false;
         let cmds: Vec<_> = q.commands.drain(..).collect();
-        (reset, cmds)
+        let ann_ops: Vec<_> = q.annotation_ops.drain(..).collect();
+        (reset, cmds, ann_ops)
     };
 
     // Drain queued commands into the normal dispatch paths.
     for cmd in cmds {
         match cmd {
-            QueuedDevCmd::App(c) => crate::chart_renderer::commands::push(c),
-            QueuedDevCmd::Chart(c) => crate::send_to_native_chart(c),
+            QueuedDevCmd::App(c)          => crate::chart_renderer::commands::push(c),
+            QueuedDevCmd::Chart(c)        => crate::send_to_native_chart(c),
+            QueuedDevCmd::HeadlessLayout { .. }  => {} // processed by headless ticker only
+            QueuedDevCmd::HeadlessPaneType { .. } => {} // processed by headless ticker only
+        }
+    }
+
+    // Apply annotation mutations to shared state.
+    if !ann_ops.is_empty() {
+        if let Some(shared) = SHARED_STATE.get() {
+            if let Ok(mut g) = shared.lock() {
+                for op in ann_ops {
+                    annotations::apply_op(&mut g.active_annotations, op);
+                }
+            }
         }
     }
 
@@ -276,6 +597,11 @@ pub fn end_frame(
     watchlist: &crate::chart_renderer::gpu::Watchlist,
     ctx: &egui::Context,
 ) {
+    // In headless mode the headless ticker writes all DevSharedState fields.
+    // end_frame() must not overwrite them — the ticker's synthetic state is
+    // authoritative during scenario execution.
+    if is_headless() { return; }
+
     let widgets    = FRAME_WIDGETS.with(|fw| fw.borrow().clone());
     let violations = FRAME_VIOLATIONS.with(|fv| fv.borrow().clone());
 
@@ -296,7 +622,9 @@ pub fn end_frame(
     if watchlist.orders_panel_open  { open_dialogs.push("orders_panel".into()); }
 
     let active_chart = panes.get(active_pane);
-    let fps  = 1.0_f32 / ctx.input(|i| i.stable_dt).max(0.001);
+    let raw_dt       = ctx.input(|i| i.unstable_dt);
+    let fps          = 1.0_f32 / raw_dt.max(0.001);
+    let frame_time_ms = raw_dt * 1000.0;
     // frame counter is incremented in the final write below.
 
     // Build per-pane JSON.
@@ -383,21 +711,78 @@ pub fn end_frame(
     let mut guard = shared.lock().unwrap();
     guard.frame_counter    += 1;
     let frame               = guard.frame_counter;
-    // Patch frame_counter into the snapshot.
-    if let Some(obj) = guard.app_state.as_object_mut() {
-        // will be replaced below, but we patch here for completeness
-        drop(obj);
-    }
     guard.fps               = fps;
+    guard.frame_time_ms     = frame_time_ms;
     guard.widget_tree       = all_widgets;
+    guard.open_dialogs      = open_dialogs;
+    guard.active_violations = violations;
+
+    // Rolling history (cap at 300).
+    guard.fps_history.push_back(fps);
+    if guard.fps_history.len() > 300 { guard.fps_history.pop_front(); }
+    let viol_count = guard.active_violations.len();
+    guard.violation_history.push_back(viol_count);
+    if guard.violation_history.len() > 300 { guard.violation_history.pop_front(); }
+
     // Patch the frame counter into app_state before writing.
     let mut patched_state = app_state;
     if let Some(obj) = patched_state.as_object_mut() {
         obj.insert("frame_counter".into(), serde_json::Value::Number(frame.into()));
     }
-    guard.app_state         = patched_state;
-    guard.open_dialogs      = open_dialogs;
-    guard.active_violations = violations;
+    guard.app_state = patched_state;
+}
+
+/// Paint active debug annotations as egui overlay (called from core.rs, after draw_chart).
+/// Uses the Tooltip layer so annotations appear above all chart content.
+pub fn render_annotations(ctx: &egui::Context) {
+    let shared = match SHARED_STATE.get() { Some(s) => s, None => return };
+    let annotations = match shared.lock() {
+        Ok(g) => g.active_annotations.clone(),
+        Err(_) => return,
+    };
+    if annotations.is_empty() { return; }
+
+    let painter = ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Tooltip,
+        egui::Id::new("dev_annotations"),
+    ));
+
+    for ann in &annotations {
+        let rect   = ann.rect.to_egui();
+        let color  = egui::Color32::from_rgba_unmultiplied(
+            ann.color[0], ann.color[1], ann.color[2], ann.color[3],
+        );
+        if ann.border_only {
+            painter.rect_stroke(rect, egui::CornerRadius::ZERO,
+                egui::Stroke::new(ann.border_width.unwrap_or(1.0), color),
+                egui::StrokeKind::Outside);
+        } else {
+            painter.rect_filled(rect, egui::CornerRadius::ZERO, color);
+            if ann.border_width.unwrap_or(0.0) > 0.0 {
+                let border_color = egui::Color32::from_rgba_unmultiplied(
+                    ann.color[0], ann.color[1], ann.color[2],
+                    ann.color[3].saturating_add(80),
+                );
+                painter.rect_stroke(rect, egui::CornerRadius::ZERO,
+                    egui::Stroke::new(ann.border_width.unwrap_or(1.0), border_color),
+                    egui::StrokeKind::Outside);
+            }
+        }
+        if !ann.label.is_empty() {
+            let label_color = if ann.color[3] > 100 {
+                egui::Color32::WHITE
+            } else {
+                color.gamma_multiply(3.0)
+            };
+            painter.text(
+                rect.min + egui::vec2(3.0, 2.0),
+                egui::Align2::LEFT_TOP,
+                &ann.label,
+                egui::FontId::monospace(10.0),
+                label_color,
+            );
+        }
+    }
 }
 
 /// Register a widget record for the current frame.

@@ -1,0 +1,33 @@
+{
+  "name": "120_qoe_annotations_survive_symbol_swap",
+  "description": "Place a toolbar zone annotation, then swap the active symbol. Assert fps_above 5.0 to confirm symbol swap does not corrupt or stall the annotation render layer.",
+  "tags": ["qoe", "annotations", "symbol"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "annotate", "annotations": [
+      {
+        "id": "zone.chart_area",
+        "rect": { "x": 0, "y": 32, "w": 1920, "h": 900 },
+        "label": "ChartArea",
+        "color": [255, 200, 100, 40],
+        "border_only": true,
+        "tag": "layout"
+      }
+    ] },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [ { "fps_above": 5.0 } ] },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "NVDA" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "no_clipped_widgets": true }
+    ] },
+    { "action": "annotate", "clear": true }
+  ]
+}

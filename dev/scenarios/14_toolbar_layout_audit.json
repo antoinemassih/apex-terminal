@@ -1,0 +1,40 @@
+{
+  "name": "toolbar_layout_audit",
+  "description": "Verify design system health: no clipped widgets, all touch targets ok, no violations, design audit clean.",
+  "tags": ["design", "ui", "toolbar"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    {
+      "action": "assert_layout",
+      "assertions": [
+        { "no_unintended_overlap": { "layer": 0 } }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "all_touch_targets_ok": 24 },
+        { "no_clipped_widgets": true },
+        { "design_audit_clean": true }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_count_equals": 1 },
+        { "no_open_dialogs": true }
+      ]
+    },
+    { "action": "log", "message": "Toolbar layout audit passed — design constraints verified." }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "name": "107_qoe_fps_baseline",
+  "description": "Absolute FPS baseline: clean reset with no symbols or indicators loaded, wait 5 frames, assert fps_above 5.0. This is the floor — everything else should be at or above this.",
+  "tags": ["qoe", "fps"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "pane_count_equals": 1 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "log", "message": "FPS baseline established — empty chart state" }
+  ]
+}

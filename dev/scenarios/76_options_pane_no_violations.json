@@ -1,0 +1,21 @@
+{
+  "name": "options_pane_no_violations",
+  "description": "Switch to OptionsFlow, assert no_active_violations and no_clipped_widgets.",
+  "tags": ["options", "design"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Switching to OptionsFlow" },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "OptionsFlow" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "no_clipped_widgets": true }
+    ]},
+    { "action": "snapshot", "name": "options_flow_clean" }
+  ]
+}

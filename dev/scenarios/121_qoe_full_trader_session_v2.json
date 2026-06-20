@@ -1,0 +1,33 @@
+{
+  "name": "121_qoe_full_trader_session_v2",
+  "description": "Realistic full trader session: load SPY 5m with RSI+VWAP, build a watchlist, switch to 2-col layout with NVDA, run design audit. End-to-end integration smoke test.",
+  "tags": ["qoe", "session", "integration"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "5m" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "VWAP" } },
+    { "action": "cmd", "cmd": "WatchlistCreate", "args": { "name": "TradeSession" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "AAPL" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "TSLA" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "NVDA" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [ { "fps_above": 5.0 } ] },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 1, "symbol": "NVDA" } },
+    { "action": "wait_frames", "count": 8 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_clipped_widgets": true },
+      { "no_active_violations": true },
+      { "all_touch_targets_ok": 24 },
+      { "design_audit_clean": true }
+    ] },
+    { "action": "cmd", "cmd": "WatchlistDelete", "args": { "name": "TradeSession" } }
+  ]
+}

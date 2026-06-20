@@ -1,0 +1,77 @@
+{
+  "name": "indicator_stack_lifecycle",
+  "description": "User story: as a technical analyst I layer RSI+MACD+SMA on the same chart and expect each to register without FPS degradation. Then I remove them in sequence to verify teardown.",
+  "tags": ["indicators", "lifecycle", "fps"],
+  "settle_ms": 80,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": 0 },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": 1 },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "MACD" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": 2 },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "SMA" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": 3 },
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "BB" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": 4 },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "cmd", "cmd": "RemoveIndicator", "args": { "pane": 0, "id": 0 } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": 3 },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "cmd", "cmd": "RemoveIndicator", "args": { "pane": 0, "id": 1 } },
+    { "action": "cmd", "cmd": "RemoveIndicator", "args": { "pane": 0, "id": 2 } },
+    { "action": "cmd", "cmd": "RemoveIndicator", "args": { "pane": 0, "id": 3 } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": 0 },
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "log", "message": "Indicator stack lifecycle complete — 4 added, all removed, FPS stable throughout." }
+  ]
+}

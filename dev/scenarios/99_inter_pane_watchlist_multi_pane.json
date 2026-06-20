@@ -1,0 +1,26 @@
+{
+  "name": "99_inter_pane_watchlist_multi_pane",
+  "description": "TwoColumns layout, add 5 symbols to the watchlist while multi-pane is active, assert no_clipped_widgets to confirm watchlist panel renders without overflow.",
+  "tags": ["inter-pane", "watchlist"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 1, "symbol": "QQQ" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "AAPL" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "MSFT" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "NVDA" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "TSLA" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "AMD" } },
+    { "action": "wait_frames", "count": 8 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_clipped_widgets": true },
+      { "no_active_violations": true }
+    ] }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "name": "122_qoe_stress_all_flags",
+  "description": "Toggle every known chart flag once in sequence on pane 0 (11 flags total), then assert fps_above 5.0 to confirm the flags pipeline causes no stall or violation.",
+  "tags": ["qoe", "flags", "stress"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowVolume", "value": true } },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "LogScale", "value": true } },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "OhlcTooltip", "value": true } },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "Magnet", "value": true } },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowOscillators", "value": true } },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "HideAllIndicators", "value": false } },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowPrevClose", "value": true } },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ExtendedHours", "value": true } },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowTrades", "value": true } },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "CrosshairEnabled", "value": true } },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "AutoScale", "value": true } },
+    { "action": "wait_frames", "count": 8 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "no_clipped_widgets": true }
+    ] }
+  ]
+}

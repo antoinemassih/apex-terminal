@@ -1,0 +1,39 @@
+{
+  "name": "127_qoe_layout_design_integrity",
+  "description": "Test all 4 layouts with assert_layout checks (no_unintended_overlap, toolbar_height_consistent) to ensure structural integrity holds across all layout modes.",
+  "tags": ["qoe", "layout", "design"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [ { "fps_above": 5.0 } ] },
+    { "action": "assert_layout", "assertions": [
+      { "no_unintended_overlap": { "layer": 0 } },
+      { "toolbar_height_consistent": { "tolerance_px": 4.0 } }
+    ] },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [ { "fps_above": 5.0 } ] },
+    { "action": "assert_layout", "assertions": [
+      { "no_unintended_overlap": { "layer": 0 } },
+      { "toolbar_height_consistent": { "tolerance_px": 4.0 } }
+    ] },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoRows" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [ { "fps_above": 5.0 } ] },
+    { "action": "assert_layout", "assertions": [
+      { "no_unintended_overlap": { "layer": 0 } },
+      { "toolbar_height_consistent": { "tolerance_px": 4.0 } }
+    ] },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "Quad" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [ { "fps_above": 5.0 } ] },
+    { "action": "assert_layout", "assertions": [
+      { "no_unintended_overlap": { "layer": 0 } },
+      { "toolbar_height_consistent": { "tolerance_px": 4.0 } }
+    ] }
+  ]
+}

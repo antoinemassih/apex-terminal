@@ -639,6 +639,13 @@ if is_spawn || watchlist.open {
                                 if resp.chevron_clicked { toggle_collapse = Some(si); }
                                 if resp.delete_clicked  { remove_section  = Some(si); }
                                 section_header_rects.push((si, resp.header_response.rect));
+                                #[cfg(debug_assertions)]
+                                crate::dev_inspector::record(
+                                    crate::dev_inspector::WidgetRecord::from_response(
+                                        &format!("watchlist.section.{si}.header"), "header", &sec_title,
+                                        &resp.header_response, ui,
+                                    )
+                                );
 
                                 // Right-click context menu on section header
                                 resp.header_response.context_menu(|ui| {
@@ -839,6 +846,13 @@ if is_spawn || watchlist.open {
 
                                         let row_rect = resp.response.rect;
                                         row_rects.push((si, ii, row_rect));
+                                        #[cfg(debug_assertions)]
+                                        crate::dev_inspector::record(
+                                            crate::dev_inspector::WidgetRecord::from_response(
+                                                &format!("watchlist.option.{si}.{ii}"), "button", item_sym,
+                                                &resp.response, ui,
+                                            )
+                                        );
 
                                         let drag_resp = resp.response.interact(egui::Sense::click_and_drag());
                                         if drag_resp.drag_started() {
@@ -998,6 +1012,13 @@ if is_spawn || watchlist.open {
                                         let resp = &wresp.response;
                                         let row_hovered = resp.hovered();
                                         let y_c = rect.center().y;
+                                        #[cfg(debug_assertions)]
+                                        crate::dev_inspector::record(
+                                            crate::dev_inspector::WidgetRecord::from_response(
+                                                &format!("watchlist.item.{si}.{ii}"), "button", item_sym,
+                                                resp, ui,
+                                            )
+                                        );
 
                                         // ── Corporate-actions / news badges ──
                                         // Pure-data fetch via projector caches (TTL-gated, won't

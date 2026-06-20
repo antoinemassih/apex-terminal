@@ -1,0 +1,42 @@
+{
+  "name": "design_audit",
+  "description": "Run a full design system audit: no contract violations, no fps drop, design-audit endpoint clean.",
+  "tags": ["design", "ui", "audit"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "design_audit_clean": true }
+      ]
+    },
+    {
+      "action": "assert_layout",
+      "assertions": [
+        { "no_unintended_overlap": { "layer": 0 } }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "all_touch_targets_ok": 24 },
+        { "no_clipped_widgets": true }
+      ]
+    },
+    {
+      "action": "http_get",
+      "path": "/design-audit"
+    },
+    { "action": "log", "message": "Design audit scenario passed." }
+  ]
+}
