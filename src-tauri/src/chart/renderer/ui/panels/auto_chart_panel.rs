@@ -135,6 +135,7 @@ pub(crate) fn draw(
                         .id_source("drawings_scroll")
                         .max_height(180.0)
                         .show(ui, |ui| {
+                            let green = egui::Color32::from_rgb(60, 180, 80);
                             for (id, method, dtype) in &drawings {
                                 ui.horizontal(|ui| {
                                     ui.label(
@@ -144,11 +145,21 @@ pub(crate) fn draw(
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                         if ui.small_button(
                                             egui::RichText::new("✕").color(red)
-                                        ).on_hover_text("Reject this line").clicked() {
+                                        ).on_hover_text("Reject — hide and log for learning").clicked() {
                                             cfg.rejected_drawings.insert(id.clone());
                                             crate::chart_renderer::gpu::post_drawing_feedback(
                                                 id.clone(),
                                                 "reject".to_string(),
+                                                sym.clone(),
+                                                tf.clone(),
+                                            );
+                                        }
+                                        if ui.small_button(
+                                            egui::RichText::new("✓").color(green)
+                                        ).on_hover_text("Accept — confirm this line is good").clicked() {
+                                            crate::chart_renderer::gpu::post_drawing_feedback(
+                                                id.clone(),
+                                                "accept".to_string(),
                                                 sym.clone(),
                                                 tf.clone(),
                                             );
