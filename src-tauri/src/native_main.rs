@@ -205,6 +205,10 @@ fn main() {
     // surfaces backend-computed break/retest events in the alert-badge feed.
     _scaffold_lib::intercepts_feed::start();
 
+    // Live auto-drawing feed trigger — re-pulls drawings when the backend
+    // recomputes them (only active when AutoDrawConfig.live_feed is on).
+    _scaffold_lib::drawings_feed::start();
+
     eprintln!("[apex-native] Opening chart window...");
 
     // Create a channel and open the first window

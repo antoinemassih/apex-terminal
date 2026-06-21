@@ -1668,6 +1668,13 @@ pub(crate) struct AutoDrawConfig {
     /// POSTed to /significance/feedback for learning.
     #[serde(default)]
     pub rejected_drawings: std::collections::HashSet<String>,
+    /// Use the apex-data unified drawing FEED (computed for the whole universe,
+    /// updated live via /ws/drawings) instead of the tuned per-chart ApexSignals
+    /// fetch. Off by default — the tuned path honours the panel knobs; the feed
+    /// uses fixed server-side config but updates live and exists for symbols with
+    /// no chart open.
+    #[serde(default)]
+    pub live_feed: bool,
 }
 impl Default for AutoDrawConfig {
     fn default() -> Self {
@@ -1679,6 +1686,7 @@ impl Default for AutoDrawConfig {
             sensitivity: 0.003, lookback: 200, swing_window: 5,
             window: 500, anchored_only: true,
             rejected_drawings: Default::default(),
+            live_feed: false,
         }
     }
 }
@@ -1738,6 +1746,23 @@ pub(crate) fn set_auto_draw_config(cfg: AutoDrawConfig) {
     let _ = crate::state::persistence::save(&auto_draw_path(), &cfg);
 }
 
+/// Classify an apex-data unified-feed drawing into the terminal's source bucket
+/// ("trendlines" | "chart_patterns" | "candles") so the existing replace-by-source
+/// render path applies. Patterns carry `detection_method = "pattern:*"`; candle
+/// markers are `type = "marker_*"`; everything else (trendlines, lines, zones,
+/// channels, fib) is a "trendline" overlay.
+fn classify_drawing_source(d: &serde_json::Value) -> &'static str {
+    let method = d.get("detection_method").and_then(|v| v.as_str()).unwrap_or("");
+    let dtype = d.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    if method.starts_with("pattern") {
+        "chart_patterns"
+    } else if dtype.starts_with("marker") {
+        "candles"
+    } else {
+        "trendlines"
+    }
+}
+
 /// Fetch auto-chart drawings from ApexSignals using the current panel config.
 /// Sends an AutoTrendlines command for *every* known source (empty if the engine
 /// returned none) so unchecked layers and master-off actually clear. The engine
@@ -1750,10 +1775,31 @@ pub(crate) fn fetch_apexsignals_drawings(symbol: String, timeframe: String) {
     std::thread::spawn(move || {
         const SOURCES: [&str; 3] = ["trendlines", "chart_patterns", "candles"];
         let mut by_source: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-        if cfg.enabled {
+        let client = reqwest::blocking::Client::builder().user_agent("apex-native").build().unwrap_or_else(|_| reqwest::blocking::Client::new());
+        if cfg.enabled && cfg.live_feed {
+            // Unified apex-data drawing feed: one flat list (all sources merged),
+            // regrouped client-side into the terminal's source buckets so the
+            // replace-by-source render path is unchanged.
+            let base = crate::data::feeds::apex_data::config::apex_url();
+            let class = if symbol.starts_with("F:") { "futures" } else { "stocks" };
+            let sym = symbol.strip_prefix("F:").unwrap_or(&symbol);
+            let url = format!("{base}/api/drawings/{class}/{sym}/{timeframe}");
+            let mut buckets: std::collections::HashMap<&str, Vec<serde_json::Value>> = std::collections::HashMap::new();
+            if let Ok(resp) = client.get(&url).timeout(std::time::Duration::from_secs(4)).send() {
+                if let Ok(json) = resp.json::<serde_json::Value>() {
+                    if let Some(arr) = json.get("drawings").and_then(|d| d.as_array()) {
+                        for d in arr {
+                            buckets.entry(classify_drawing_source(d)).or_default().push(d.clone());
+                        }
+                    }
+                }
+            }
+            for (src, items) in buckets {
+                by_source.insert(src.to_string(), serde_json::Value::Array(items).to_string());
+            }
+        } else if cfg.enabled {
             let base = std::env::var("APEX_SIGNALS_HTTP").unwrap_or_else(|_| "http://localhost:8100".to_string());
             let url = format!("{base}/signals/drawings/{symbol}?timeframe={timeframe}{}", cfg.query());
-            let client = reqwest::blocking::Client::builder().user_agent("apex-native").build().unwrap_or_else(|_| reqwest::blocking::Client::new());
             if let Ok(resp) = client.get(&url).timeout(std::time::Duration::from_secs(4)).send() {
                 if let Ok(json) = resp.json::<serde_json::Value>() {
                     if let Some(frames) = json.get("frames").and_then(|f| f.as_array()) {
@@ -2331,6 +2377,22 @@ pub(crate) struct GammaLevel {
     pub(crate) exposure:  f32,
 }
 
+/// A continuation-gauge call at a down-thrust stall, from the signal feed
+/// (`/signals/continuation/...`). Rendered as a HOLD (green) / EXIT (red) marker
+/// on the chart's time axis. `p` is the pin-adjusted P(continuation); `strong`
+/// = STRONG HOLD/EXIT band.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ContinuationMarker {
+    /// Stall time, epoch ms (UTC) — aligns to bar timestamps.
+    pub(crate) time:   i64,
+    /// true = HOLD/continuation lean, false = EXIT/reversal lean.
+    pub(crate) hold:   bool,
+    /// STRONG band (|P-0.5| large) → brighter marker.
+    pub(crate) strong: bool,
+    /// Pin-adjusted P(continuation), 0..1.
+    pub(crate) p:      f32,
+}
+
 /// Watchlist item drag state.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct WatchlistDragState {
@@ -2579,6 +2641,9 @@ pub(crate) struct Chart {
     pub(crate) gamma_flow_active: bool,
     /// `short_posture.posture` string (e.g. `hold_press`). Empty when absent.
     pub(crate) gamma_posture: String,
+    /// Continuation-gauge HOLD/EXIT markers (signal feed). Shown with the gamma
+    /// overlay; refreshed for the date currently loaded on the chart.
+    pub(crate) continuation_signals: Vec<ContinuationMarker>,
     // Analytics overlays
     pub(crate) show_vol_shelves: bool,
     pub(crate) show_confluence: bool,
@@ -2795,7 +2860,7 @@ impl Chart {
             symbol_overlays: vec![], overlay_editing: false, overlay_editing_idx: None, overlay_input: String::new(),
             show_gamma: false, hit_highlight: false, hit_highlights: vec![], hit_cooldowns: vec![],
             show_events: false, event_markers: vec![],
-            show_strikes_overlay: false, overlay_calls: vec![], overlay_puts: vec![], overlay_chain_symbol: String::new(), overlay_chain_loading: false, overlay_chain_placeholder: false, floating_order_panes: vec![], gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0, gamma_ppe: None, gamma_iv_rising: None, gamma_flow_active: false, gamma_posture: String::new(),
+            show_strikes_overlay: false, overlay_calls: vec![], overlay_puts: vec![], overlay_chain_symbol: String::new(), overlay_chain_loading: false, overlay_chain_placeholder: false, floating_order_panes: vec![], gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0, gamma_ppe: None, gamma_iv_rising: None, gamma_flow_active: false, gamma_posture: String::new(), continuation_signals: vec![],
             fundamentals: FundamentalData::default(), show_analyst_targets: false,
             show_pe_band: false, show_insider_trades: false, insider_trades: vec![],
             show_corp_actions: false, corp_actions: vec![],
@@ -2921,6 +2986,7 @@ impl Chart {
                 self.last_signal_fetch = std::time::Instant::now();
                 fetch_signal_drawings(self.symbol.clone());
                 fetch_apexsignals_drawings(self.symbol.clone(), self.timeframe.clone()); // initial auto-chart paint
+                crate::data::drawings_feed::set_target(&self.symbol, &self.timeframe); // live-feed re-pull target
 
                 // Reload cross-timeframe indicator sources for new symbol
                 for ind in &mut self.indicators {

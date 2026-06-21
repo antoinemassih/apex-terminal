@@ -1,6 +1,7 @@
 pub mod apex_data;
 pub mod crypto_feed;
 pub mod dom_feed;
+pub mod drawings_feed;
 pub mod futures_feed;
 pub mod intercepts_feed;
 pub mod signals_feed;

@@ -23,6 +23,7 @@ pub use data::bar_cache;
 pub use data::apex_data;
 pub use data::crypto_feed;
 pub use data::dom_feed;
+pub use data::drawings_feed;
 pub use data::futures_feed;
 pub use data::intercepts_feed;
 pub use data::signals_feed;

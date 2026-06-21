@@ -37,7 +37,12 @@ if watchlist.trendline_filter_open {
             let mut cfg = auto_draw_config();
             let before = cfg.clone();
             let (sym, tf) = { let c = &panes[ap]; (c.symbol.clone(), c.timeframe.clone()) };
-            ui.horizontal(|ui| { ui.add_space(m); ui.checkbox(&mut cfg.enabled, "On"); });
+            ui.horizontal(|ui| {
+                ui.add_space(m);
+                ui.checkbox(&mut cfg.enabled, "On");
+                ui.checkbox(&mut cfg.live_feed, "Live feed")
+                    .on_hover_text("Use the apex-data unified drawing feed (updates live as the backend recomputes across the universe) instead of the tuned per-chart fetch");
+            });
             if cfg.enabled {
                 ui.horizontal(|ui| {
                     ui.add_space(m);

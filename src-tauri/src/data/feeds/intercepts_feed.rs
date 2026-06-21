@@ -12,8 +12,8 @@
 //! default — only `break` and `retest` reach the badge feed (override via
 //! `INTERCEPTS_FEED_EVENTS`, a CSV of event names).
 
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use crate::chart_renderer::ui::components::toolbar::alert_feed;
