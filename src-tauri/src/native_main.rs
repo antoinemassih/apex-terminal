@@ -201,6 +201,10 @@ fn main() {
     // Futures live-bar feed — connects to apex-data /ws/futures (IB 5s bars)
     _scaffold_lib::futures_feed::start();
 
+    // Drawing-interception feed — connects to apex-data /ws/intercepts and
+    // surfaces backend-computed break/retest events in the alert-badge feed.
+    _scaffold_lib::intercepts_feed::start();
+
     eprintln!("[apex-native] Opening chart window...");
 
     // Create a channel and open the first window

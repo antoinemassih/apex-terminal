@@ -2,6 +2,7 @@ pub mod apex_data;
 pub mod crypto_feed;
 pub mod dom_feed;
 pub mod futures_feed;
+pub mod intercepts_feed;
 pub mod signals_feed;
 pub mod ib_ws;
 pub mod discord;

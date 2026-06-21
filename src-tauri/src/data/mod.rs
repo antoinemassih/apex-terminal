@@ -11,6 +11,7 @@ pub use feeds::apex_data;
 pub use feeds::crypto_feed;
 pub use feeds::dom_feed;
 pub use feeds::futures_feed;
+pub use feeds::intercepts_feed;
 pub use feeds::signals_feed;
 pub use feeds::discord;
 
