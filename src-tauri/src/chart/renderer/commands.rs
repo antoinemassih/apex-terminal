@@ -66,6 +66,11 @@ pub enum ChartFlag {
     HideAllIndicators,
     /// Hide all user drawings.
     HideAllDrawings,
+    // ── Overlays (gamma + options strikes) ───────────────────────────────
+    /// Show/hide the GEX gamma-levels overlay.
+    ShowGamma,
+    /// Show/hide the options strikes overlay on the chart.
+    ShowStrikesOverlay,
 }
 
 // ─── UiCtx ─────────────────────────────────────────────────────────────────
@@ -289,18 +294,8 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
                 "AddPriceAlert: pane index {} out of bounds (len={})", pane, panes.len());
             let Some(p) = panes.get_mut(pane) else { return; };
             let sym = p.symbol.clone();
-            watchlist.update_alerts_state(|s| {
-                let id = s.next_alert_id;
-                s.next_alert_id += 1;
-                s.alerts.push(crate::state::PersistedAlert {
-                    id,
-                    symbol: sym.clone(),
-                    price,
-                    above,
-                    triggered: false,
-                    message: String::new(),
-                });
-            });
+            // Add to pane only — the alerts panel already shows pane_active; pushing
+            // to watchlist.alerts as well created duplicate rows in the ACTIVE section.
             let pid = p.next_alert_id;
             p.next_alert_id += 1;
             p.price_alerts.push(PriceAlert {
@@ -589,8 +584,10 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
                 ChartFlag::ShowPrevClose     => p.show_prev_close = value,
                 ChartFlag::ShowPatternLabels => p.show_pattern_labels = value,
                 ChartFlag::ShowFootprint     => p.show_footprint = value,
-                ChartFlag::HideAllIndicators => p.hide_all_indicators = value,
-                ChartFlag::HideAllDrawings   => p.hide_all_drawings = value,
+                ChartFlag::HideAllIndicators  => p.hide_all_indicators = value,
+                ChartFlag::HideAllDrawings    => p.hide_all_drawings = value,
+                ChartFlag::ShowGamma          => p.show_gamma = value,
+                ChartFlag::ShowStrikesOverlay => p.show_strikes_overlay = value,
             }
         }
 
@@ -613,7 +610,8 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
 
         AppCommand::ChangeTimeframe { pane, tf } => {
             if let Some(p) = panes.get_mut(pane) {
-                p.timeframe = tf;
+                p.timeframe = tf.clone();
+                p.pending_timeframe_change = Some(tf);
             }
         }
 

@@ -1,0 +1,33 @@
+{
+  "name": "chart_viewport_few_bars",
+  "description": "Rapidly cycle through symbols and overlay states. The viewport right-alignment fix (negative vs) must not crash when bars are fewer than vc. Tests stability after removing the .max(0.0) clamp on vs.",
+  "story": "Chart/ViewportFewBars",
+  "tags": ["chart", "viewport", "regression"],
+  "settle_ms": 40,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Rapid symbol switches — viewport resets each time" },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "TSLA" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "NVDA" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "log", "message": "Overlay + gamma during sparse-bar conditions" },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowStrikesOverlay", "value": true } },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowGamma", "value": true } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowStrikesOverlay", "value": false } },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowGamma", "value": false } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "reset" }
+  ]
+}

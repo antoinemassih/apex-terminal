@@ -589,8 +589,13 @@ pub(crate) fn render(
                                 if let Some(last_bar) = panes[ap].bars.last() {
                                     panes[ap].gamma_hvl = last_bar.close;
                                 }
-                            } else if let Some(last_bar) = panes[ap].bars.last() {
-                                let price = last_bar.close;
+                            } else {
+                                // Feed unavailable — synthesize placeholder levels so the
+                                // overlay renders immediately. Works even when bars are empty
+                                // (e.g. chart loading): fall back to a sensible default price.
+                                let price = panes[ap].bars.last().map(|b| b.close)
+                                    .filter(|&p| p > 0.0)
+                                    .unwrap_or(500.0);
                                 let step = if price > 200.0 { 5.0 } else if price > 50.0 { 2.5 } else { 1.0 };
                                 let mut levels: Vec<GammaLevel> = vec![];
                                 for i in -15..=15_i32 {

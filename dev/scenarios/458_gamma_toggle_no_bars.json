@@ -1,0 +1,31 @@
+{
+  "name": "gamma_toggle_no_bars",
+  "description": "Toggle gamma overlay on then off. Even when bars are absent or feed is unavailable, the synthetic fallback must produce levels — no crash, healthy fps throughout.",
+  "story": "GammaOverlay/EmptyBarsFallback",
+  "tags": ["gamma", "overlay", "regression"],
+  "settle_ms": 40,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "log", "message": "Enable gamma — synthetic fallback must fire even with empty bars" },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowGamma", "value": true } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "log", "message": "Toggle gamma off" },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowGamma", "value": false } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "log", "message": "Re-enable gamma on a different symbol" },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowGamma", "value": true } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "log", "message": "Disable gamma and verify clean state" },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "ShowGamma", "value": false } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "reset" }
+  ]
+}

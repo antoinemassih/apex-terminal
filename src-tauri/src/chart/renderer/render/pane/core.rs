@@ -333,7 +333,9 @@ fn render_chart_pane(
 
         // ── Build tab slice for widget ─────────────────────────────────────
         let can_go_back = chart.symbol_history_idx > 0;
-        let can_go_fwd  = chart.symbol_history_idx < chart.symbol_history.len();
+        // Forward requires at least one entry AFTER the current position.
+        // history[idx+1] is the forward destination (see back handler below).
+        let can_go_fwd  = chart.symbol_history_idx + 1 < chart.symbol_history.len();
 
         // Option badges data (shared between tab/simple paths)
         let opt_side   = if chart.is_option { chart.option_type.as_str() } else { "" };
@@ -710,13 +712,21 @@ fn render_chart_pane(
 
         // Back / Fwd navigation
         if hdr.clicked_back && can_go_back {
+            // When at the tip of history (no forward entries), push the current
+            // symbol first so the Forward button can find it later. Without this,
+            // Forward would re-load the same symbol the user is already on.
+            if chart.symbol_history_idx == chart.symbol_history.len() && !chart.symbol.is_empty() {
+                chart.symbol_history.push(chart.symbol.clone());
+            }
             chart.symbol_history_idx -= 1;
             let target = chart.symbol_history[chart.symbol_history_idx].clone();
             chart.symbol_nav_in_progress = true;
             chart.pending_symbol_change = Some(target);
         }
         if hdr.clicked_fwd && can_go_fwd {
-            let target = chart.symbol_history[chart.symbol_history_idx].clone();
+            // Forward destination is one position AHEAD of current (history[idx+1]).
+            // This is always valid when can_go_fwd is true (idx+1 < len).
+            let target = chart.symbol_history[chart.symbol_history_idx + 1].clone();
             chart.symbol_history_idx += 1;
             chart.symbol_nav_in_progress = true;
             chart.pending_symbol_change = Some(target);
@@ -1277,6 +1287,14 @@ fn render_chart_pane(
                                     chart.symbol = opt_sym.clone();
                                     chart.option_type = if is_call { "C".into() } else { "P".into() };
                                     chart.option_strike = strike;
+                                    // Drawings are keyed by OCC contract — reset the fetch gate so
+                                    // the new contract's drawings replace the stale ones when
+                                    // LoadBars arrives. Without this, switching between contracts
+                                    // on the same underlying leaves old drawings visible forever.
+                                    if chart.option_contract != occ_final {
+                                        chart.drawings.clear();
+                                        chart.drawings_requested = false;
+                                    }
                                     chart.option_contract = occ_final.clone();
                                     chart.bars.clear();
                                     chart.timestamps.clear();
@@ -3103,6 +3121,24 @@ fn render_chart_pane(
             painter.text(egui::pos2(rect.left() + cw - 26.0, hvl_y), egui::Align2::RIGHT_CENTER,
                 &format!("HVL {:.2}", chart.gamma_hvl), mono_xs_plus(), gold);
         }
+    }
+
+    // ── Continuation-gauge markers (HOLD/EXIT at down-thrust stalls) ──────
+    // Shown with the gamma overlay. Green "H" = HOLD/continuation lean, red "X" =
+    // EXIT/reversal lean; brighter = STRONG band. Lane sits just above the axis.
+    if chart.show_gamma && !chart.continuation_signals.is_empty() && !chart.timestamps.is_empty() {
+        let lane_y = rect.top() + pt + ch - 14.0;
+        for m in &chart.continuation_signals {
+            let x = bx(SignalDrawing::time_to_bar(m.time, &chart.timestamps));
+            if x < rect.left() - 5.0 || x > rect.left() + cw + 5.0 { continue; }
+            let base = if m.hold { t.bull } else { t.bear };
+            let col = color_alpha(base, if m.strong { 235 } else { 120 });
+            painter.circle_filled(egui::pos2(x, lane_y), if m.strong { 3.5 } else { 2.5 }, col);
+            painter.text(egui::pos2(x, lane_y + 4.0), egui::Align2::CENTER_TOP,
+                if m.hold { "H" } else { "X" }, mono_3xs(), col);
+        }
+        painter.text(egui::pos2(rect.left() + 6.0, lane_y - 6.0), egui::Align2::LEFT_BOTTOM,
+            "CONTINUATION", mono_3xs(), color_alpha(t.text, 90));
     }
 
     // ── Event Markers Overlay ─────────────────────────────────────────────
@@ -7828,6 +7864,9 @@ fn render_chart_pane(
         painter.text(egui::pos2(axis_rect.center().x, axis_rect.center().y), egui::Align2::CENTER_CENTER,
             &chart.fmt_buf, mono_xs(), dark);
     }
+    if any_pulsing_order {
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(33));
+    }
 
     // ── Play lines on chart (companion for play editor) ────────────
     if !chart.play_lines.is_empty() {
@@ -10088,7 +10127,7 @@ fn render_chart_pane(
                 let old = chart.vc;
                 let nw = ((old as f32*f).round() as u32).max(20).min(n as u32);
                 let d = (old as i32 - nw as i32) / 2;
-                chart.vc = nw; chart.vc_target = nw; chart.vs = (chart.vs + d as f32).max(0.0);
+                chart.vc = nw; chart.vc_target = nw; chart.vs = (chart.vs + d as f32).max(-(nw as f32));
                 chart.auto_scroll = false; chart.last_input = std::time::Instant::now();
             }
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
@@ -10729,7 +10768,7 @@ fn render_chart_pane(
         // bar-distance at typical zoom levels.
         const PAN_SENS: f32 = 1.30;
         // Horizontal pan
-        chart.vs = (chart.vs - d.x * PAN_SENS / bs).max(0.0).min(n as f32 + 200.0);
+        chart.vs = (chart.vs - d.x * PAN_SENS / bs).max(-(chart.vc as f32)).min(n as f32 + 200.0);
         // Vertical pan — shift price range (only when vertical movement dominates)
         if d.y.abs() > 1.0 && d.y.abs() > d.x.abs() * 1.5 {
             let (lo, hi) = chart.price_range();
@@ -10881,7 +10920,7 @@ fn render_chart_pane(
 
             // Horizontal trackpad pan — 2-finger swipe left/right
             if scroll_x.abs() > 0.1 {
-                chart.vs = (chart.vs - scroll_x / bs).max(0.0).min(n as f32 + 200.0);
+                chart.vs = (chart.vs - scroll_x / bs).max(-(chart.vc as f32)).min(n as f32 + 200.0);
                 chart.auto_scroll = false;
                 chart.last_input = std::time::Instant::now();
             }
@@ -12239,8 +12278,36 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
             let redo = m.command && m.shift && m.alt && i.key_pressed(egui::Key::Y);
             (undo, redo)
         });
-        if kb.0 { let _ = crate::chart_renderer::gpu::pane_layout_undo(watchlist); }
-        if kb.1 { let _ = crate::chart_renderer::gpu::pane_layout_redo(watchlist); }
+        if kb.0 {
+            if crate::chart_renderer::gpu::pane_layout_undo(watchlist) {
+                // Undo of a split restores the pre-split layout, leaving the chart that was
+                // pushed during the split as an orphan in panes (ID in pane_ids but no leaf).
+                // Queue it for removal so panes doesn't silently accumulate orphan charts.
+                if let Some(pl) = &watchlist.pane_layout {
+                    let leaf_ids: std::collections::HashSet<u64> = pl.iter_slots().map(|(_, s)| s).collect();
+                    let orphans: Vec<usize> = watchlist.pane_ids.iter().enumerate()
+                        .filter_map(|(i, &id)| if !leaf_ids.contains(&id) { Some(i) } else { None })
+                        .collect();
+                    if !orphans.is_empty() {
+                        crate::chart_renderer::gpu::PENDING_PANE_CLOSE.with(|q| q.borrow_mut().extend(orphans));
+                    }
+                }
+            }
+        }
+        if kb.1 {
+            if crate::chart_renderer::gpu::pane_layout_redo(watchlist) {
+                // Same orphan cleanup for redo (mirrors the undo path above).
+                if let Some(pl) = &watchlist.pane_layout {
+                    let leaf_ids: std::collections::HashSet<u64> = pl.iter_slots().map(|(_, s)| s).collect();
+                    let orphans: Vec<usize> = watchlist.pane_ids.iter().enumerate()
+                        .filter_map(|(i, &id)| if !leaf_ids.contains(&id) { Some(i) } else { None })
+                        .collect();
+                    if !orphans.is_empty() {
+                        crate::chart_renderer::gpu::PENDING_PANE_CLOSE.with(|q| q.borrow_mut().extend(orphans));
+                    }
+                }
+            }
+        }
 
         // ── Phase 1c: split popup + close-pane queue ─────────────────────
         // Render the H/V picker popup if the user clicked any pane's split
@@ -12427,6 +12494,7 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                     {
                         let src = drag.source_pane;
                         let ti = drag.tab_idx;
+                        let dragged_was_active = ti == panes[src].tab_active;
                         // Remove from source
                         panes[src].tab_symbols.remove(ti);
                         panes[src].tab_timeframes.remove(ti);
@@ -12436,6 +12504,17 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                             panes[src].tab_active = panes[src].tab_symbols.len().saturating_sub(1);
                         } else if panes[src].tab_active > ti {
                             panes[src].tab_active -= 1;
+                        }
+                        // If the dragged tab was the active one, load the new active tab's
+                        // symbol so the source pane's chart content matches the tab indicator.
+                        // Without this, the pane continues showing the dragged symbol's bars
+                        // while a different tab is highlighted in the header.
+                        if dragged_was_active && !panes[src].tab_symbols.is_empty() {
+                            let new_idx = panes[src].tab_active;
+                            let new_sym = panes[src].tab_symbols[new_idx].clone();
+                            let new_tf  = panes[src].tab_timeframes[new_idx].clone();
+                            panes[src].pending_symbol_change = Some(new_sym);
+                            panes[src].pending_timeframe_change = Some(new_tf);
                         }
                         // If source had exactly one tab (now zero), keep its current symbol
                         // rendering via the non-tab header. tab_symbols is allowed to be empty.

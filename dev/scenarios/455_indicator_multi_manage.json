@@ -1,0 +1,47 @@
+{
+  "name": "indicator_multi_manage",
+  "description": "Add multiple indicators (SMA, EMA, RSI, MACD, BB), verify counts, hide all, then clear each by kind. Stress-test indicator lifecycle.",
+  "story": "Indicators/MultiManage",
+  "tags": ["indicators", "chart"],
+  "settle_ms": 40,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "log", "message": "Add five indicators via SetIndicatorOutput" },
+    { "action": "cmd", "cmd": "SetIndicatorOutput", "pane": 0, "kind": "SMA",  "value": 550.0 },
+    { "action": "cmd", "cmd": "SetIndicatorOutput", "pane": 0, "kind": "EMA",  "value": 548.0 },
+    { "action": "cmd", "cmd": "SetIndicatorOutput", "pane": 0, "kind": "VWAP", "value": 549.5 },
+    { "action": "cmd", "cmd": "SetIndicatorOutput", "pane": 0, "kind": "RSI",  "value": 55.0  },
+    { "action": "cmd", "cmd": "SetIndicatorOutput", "pane": 0, "kind": "MACD", "value": 0.5   },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "canvas_indicator_count_equals": { "pane": 0, "count": 5 } },
+      { "fps_above": 5.0 }
+    ] },
+    { "action": "log", "message": "HideAllIndicators flag — renders 0 visible but state stays" },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "HideAllIndicators", "value": true } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "log", "message": "Restore indicators visibility" },
+    { "action": "cmd", "cmd": "SetChartFlag", "args": { "pane": 0, "flag": "HideAllIndicators", "value": false } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "canvas_indicator_count_equals": { "pane": 0, "count": 5 } },
+      { "fps_above": 5.0 }
+    ] },
+    { "action": "log", "message": "Clear indicators one by one" },
+    { "action": "cmd", "cmd": "ClearIndicator", "pane": 0, "kind": "SMA"  },
+    { "action": "cmd", "cmd": "ClearIndicator", "pane": 0, "kind": "EMA"  },
+    { "action": "cmd", "cmd": "ClearIndicator", "pane": 0, "kind": "VWAP" },
+    { "action": "cmd", "cmd": "ClearIndicator", "pane": 0, "kind": "RSI"  },
+    { "action": "cmd", "cmd": "ClearIndicator", "pane": 0, "kind": "MACD" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "canvas_no_indicators": { "pane": 0 } },
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "reset" }
+  ]
+}

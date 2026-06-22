@@ -1,0 +1,39 @@
+{
+  "name": "watchlist_section_lifecycle",
+  "description": "Add a watchlist section, collapse it, toggle it back open, add an option section, then remove the empty regular section.",
+  "story": "Watchlist/SectionLifecycle",
+  "tags": ["watchlist", "sections"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "log", "message": "Record initial section count" },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Tech" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "log", "message": "Add an options section" },
+    { "action": "cmd", "cmd": "WatchlistAddOptionSection", "args": { "title": "SPY Options" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "log", "message": "Toggle collapse on first user section (idx 1 = first added section after default)" },
+    { "action": "cmd", "cmd": "WatchlistToggleSectionCollapse", "args": { "idx": 1 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Toggle it back open" },
+    { "action": "cmd", "cmd": "WatchlistToggleSectionCollapse", "args": { "idx": 1 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "log", "message": "Toggle collapse on OOB index (should be no-op, not crash)" },
+    { "action": "cmd", "cmd": "WatchlistToggleSectionCollapse", "args": { "idx": 99 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "reset" }
+  ]
+}

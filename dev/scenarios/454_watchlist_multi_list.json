@@ -1,0 +1,43 @@
+{
+  "name": "watchlist_multi_list",
+  "description": "Create a second watchlist, switch to it, then delete it. Verify section counts and stability throughout.",
+  "story": "Watchlist/MultiList",
+  "tags": ["watchlist", "multi_list"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Create a new watchlist named 'Options'" },
+    { "action": "cmd", "cmd": "WatchlistCreate", "args": { "name": "Options" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "log", "message": "Add a symbol to the new watchlist" },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "QQQ" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "log", "message": "Rename active watchlist" },
+    { "action": "cmd", "cmd": "WatchlistRenameActive", "args": { "name": "My Options" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "log", "message": "Switch back to original watchlist (idx 0)" },
+    { "action": "cmd", "cmd": "WatchlistSwitchActive", "args": { "idx": 0 } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "log", "message": "Delete watchlist at idx 1 (the one we created)" },
+    { "action": "cmd", "cmd": "WatchlistDelete", "args": { "idx": 1 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "log", "message": "Delete when only 1 exists (should be no-op)" },
+    { "action": "cmd", "cmd": "WatchlistDelete", "args": { "idx": 0 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "reset" }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "name": "price_alert_add_noop",
+  "description": "Add two price alerts to pane 0 (above and below) without triggering or submitting any orders. Verify fps stays healthy.",
+  "story": "Alerts/AddNoop",
+  "tags": ["alerts", "price_alert", "no_orders"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Add price alert above 600.0 on pane 0" },
+    { "action": "cmd", "cmd": "AddPriceAlert", "args": { "pane": 0, "price": 600.0, "above": true } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "log", "message": "Add price alert below 500.0 on pane 0" },
+    { "action": "cmd", "cmd": "AddPriceAlert", "args": { "pane": 0, "price": 500.0, "above": false } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "log", "message": "PlaceAllDraftAlerts (converts any drafts to live)" },
+    { "action": "cmd", "cmd": "PlaceAllDraftAlerts", "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "reset" }
+  ]
+}

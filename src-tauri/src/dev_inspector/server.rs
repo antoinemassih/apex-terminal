@@ -21,11 +21,20 @@ pub fn start(shared: Arc<Mutex<DevSharedState>>, queues: Arc<Mutex<DevQueues>>) 
         .name("dev-inspector-http".into())
         .spawn(move || {
             let addr = format!("127.0.0.1:{PORT}");
-            let listener = match TcpListener::bind(&addr) {
-                Ok(l) => l,
-                Err(e) => {
-                    eprintln!("[dev-inspector] bind {addr} failed: {e}");
-                    return;
+            // Retry loop: on Windows a recently-killed process leaves the port in
+            // TIME_WAIT for 30-60 s. Retrying every 2 s lets us rebind without
+            // requiring the caller to wait for OS cleanup.
+            let listener = loop {
+                match TcpListener::bind(&addr) {
+                    Ok(l) => break l,
+                    Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+                        eprintln!("[dev-inspector] bind {addr} in use, retrying in 2s…");
+                        std::thread::sleep(std::time::Duration::from_secs(2));
+                    }
+                    Err(e) => {
+                        eprintln!("[dev-inspector] bind {addr} failed: {e}");
+                        return;
+                    }
                 }
             };
             for stream in listener.incoming() {
@@ -209,6 +218,10 @@ fn handle(
                 .unwrap_or(serde_json::Value::Null);
             ok_json(&mut stream, &wl);
         }
+        ("GET", "/canvas") => {
+            let state = shared.lock().unwrap();
+            ok_json(&mut stream, &serde_json::to_value(&state.canvas).unwrap_or_default());
+        }
 
         // ── Commands ───────────────────────────────────────────────────────
         ("POST", "/reset") => {
@@ -220,13 +233,19 @@ fn handle(
         }
         ("POST", "/cmd") => {
             let body = parse_body(&req.body);
-            match parse_app_command(&body) {
-                Ok(cmd) => {
-                    queues.lock().unwrap().commands.push(QueuedDevCmd::App(cmd));
-                    wait_for_next_frame(&shared, 1000);
-                    ok_json(&mut stream, &serde_json::json!({"ok": true}));
+            if let Some(canvas_cmd) = parse_canvas_command(&body) {
+                queues.lock().unwrap().commands.push(canvas_cmd);
+                wait_for_next_frame(&shared, 1000);
+                ok_json(&mut stream, &serde_json::json!({"ok": true}));
+            } else {
+                match parse_app_command(&body) {
+                    Ok(cmd) => {
+                        queues.lock().unwrap().commands.push(QueuedDevCmd::App(cmd));
+                        wait_for_next_frame(&shared, 1000);
+                        ok_json(&mut stream, &serde_json::json!({"ok": true}));
+                    }
+                    Err(e) => err_json(&mut stream, 400, &e),
                 }
-                Err(e) => err_json(&mut stream, 400, &e),
             }
         }
         ("POST", "/input") => {
@@ -402,6 +421,84 @@ fn handle(
             handle_run_suite(&mut stream, &req.body, &shared, &queues);
         }
 
+        // ── Captures ──────────────────────────────────────────────────────────
+        ("GET", "/captures") => {
+            let g = shared.lock().unwrap();
+            ok_json(&mut stream, &serde_json::to_value(&g.captures).unwrap_or_default());
+        }
+        ("DELETE", "/captures") => {
+            shared.lock().unwrap().captures.clear();
+            ok_json(&mut stream, &serde_json::json!({"ok": true}));
+        }
+        ("DELETE", p) if p.starts_with("/captures/") => {
+            let key = p.trim_start_matches("/captures/").to_string();
+            shared.lock().unwrap().captures.remove(&key);
+            ok_json(&mut stream, &serde_json::json!({"ok": true, "removed": key}));
+        }
+
+        // ── Stories index ─────────────────────────────────────────────────────
+        ("GET", "/stories") => {
+            let metas = layout::list_scenarios(SCENARIO_DIR);
+            let mut groups: std::collections::BTreeMap<String, Vec<&layout::ScenarioMeta>> =
+                std::collections::BTreeMap::new();
+            for m in &metas {
+                let story = m.story.as_deref().unwrap_or("Uncategorized").to_string();
+                groups.entry(story).or_default().push(m);
+            }
+            let stories: Vec<serde_json::Value> = groups.iter().map(|(story, scenarios)| {
+                serde_json::json!({
+                    "story":     story,
+                    "count":     scenarios.len(),
+                    "scenarios": scenarios.iter().map(|s| serde_json::json!({
+                        "name": s.name,
+                        "file": s.file,
+                        "tags": s.tags,
+                        "priority": s.priority,
+                        "step_count": s.step_count,
+                    })).collect::<Vec<_>>(),
+                })
+            }).collect();
+            ok_json(&mut stream, &serde_json::json!({
+                "total_stories":   groups.len(),
+                "total_scenarios": metas.len(),
+                "stories":         stories,
+            }));
+        }
+
+        // ── Coverage report ───────────────────────────────────────────────────
+        ("GET", "/coverage") => {
+            let metas = layout::list_scenarios(SCENARIO_DIR);
+            let total = metas.len();
+            let with_story    = metas.iter().filter(|m| m.story.is_some()).count();
+            let with_tags     = metas.iter().filter(|m| m.tags.as_ref().map_or(false, |t| !t.is_empty())).count();
+            let with_priority = metas.iter().filter(|m| m.priority.is_some()).count();
+            let total_steps: usize = metas.iter().map(|m| m.step_count).sum();
+
+            let mut story_counts: std::collections::BTreeMap<String, usize> =
+                std::collections::BTreeMap::new();
+            let mut tag_counts: std::collections::BTreeMap<String, usize> =
+                std::collections::BTreeMap::new();
+            for m in &metas {
+                let story = m.story.as_deref().unwrap_or("Uncategorized");
+                *story_counts.entry(story.to_string()).or_insert(0) += 1;
+                if let Some(tags) = &m.tags {
+                    for t in tags { *tag_counts.entry(t.clone()).or_insert(0) += 1; }
+                }
+            }
+
+            ok_json(&mut stream, &serde_json::json!({
+                "total_scenarios": total,
+                "total_steps":     total_steps,
+                "with_story":      with_story,
+                "without_story":   total - with_story,
+                "with_tags":       with_tags,
+                "with_priority":   with_priority,
+                "stories":         story_counts,
+                "tags":            tag_counts,
+                "coverage_pct":    if total > 0 { (with_story * 100) / total } else { 0 },
+            }));
+        }
+
         // ── Set style + design audit combined ─────────────────────────────────
         ("POST", "/set-style-and-audit") => {
             let body = parse_body(&req.body);
@@ -555,7 +652,58 @@ fn route_for_batch(
             queues.lock().unwrap().annotation_ops.push(AnnotationOp::Upsert(anns));
             (200, format!("{{\"ok\":true,\"upserted\":{count}}}").into_bytes())
         }
+        ("GET", "/captures") => {
+            let g = shared.lock().unwrap();
+            (200, serde_json::to_vec(&g.captures).unwrap_or_default())
+        }
+        ("DELETE", "/captures") => {
+            shared.lock().unwrap().captures.clear();
+            (200, b"{\"ok\":true}".to_vec())
+        }
+        ("GET", "/canvas") => {
+            let s = shared.lock().unwrap();
+            (200, serde_json::to_vec(&s.canvas).unwrap_or_default())
+        }
         _ => (404, b"{\"error\":\"not found\"}".to_vec()),
+    }
+}
+
+// ─── Canvas command parser ─────────────────────────────────────────────────────
+
+fn parse_canvas_command(body: &serde_json::Value) -> Option<QueuedDevCmd> {
+    let cmd = body["cmd"].as_str()?.trim();
+    let pane = body["pane"].as_u64().unwrap_or(0) as usize;
+    match cmd {
+        "AddDrawing" | "add_drawing" => Some(QueuedDevCmd::HeadlessAddDrawing {
+            pane,
+            id:      body["id"].as_str().unwrap_or("drawing.0").to_string(),
+            kind:    body["kind"].as_str().unwrap_or("HorizLine").to_string(),
+            price_a: body["price_a"].as_f64().unwrap_or(0.0),
+            price_b: body["price_b"].as_f64(),
+        }),
+        "RemoveDrawing" | "remove_drawing" => Some(QueuedDevCmd::HeadlessRemoveDrawing {
+            pane,
+            id: body["id"].as_str().unwrap_or("").to_string(),
+        }),
+        "ClearDrawings" | "clear_drawings" => {
+            Some(QueuedDevCmd::HeadlessClearDrawings { pane })
+        }
+        "SetViewport" | "set_viewport" => Some(QueuedDevCmd::HeadlessSetViewport {
+            pane,
+            price_low:  body["price_low"].as_f64().unwrap_or(430.0),
+            price_high: body["price_high"].as_f64().unwrap_or(470.0),
+        }),
+        "SetIndicatorOutput" | "set_indicator_output" => Some(QueuedDevCmd::HeadlessSetIndicatorOutput {
+            pane,
+            kind:   body["kind"].as_str().unwrap_or("RSI").to_string(),
+            value:  body["value"].as_f64().unwrap_or(0.0),
+            value2: body["value2"].as_f64(),
+        }),
+        "ClearIndicator" | "clear_indicator" => Some(QueuedDevCmd::HeadlessRemoveIndicator {
+            pane,
+            kind: body["kind"].as_str().unwrap_or("").to_string(),
+        }),
+        _ => None,
     }
 }
 
@@ -565,6 +713,12 @@ fn route_for_batch(
 struct ScenarioFile {
     name:             String,
     description:      Option<String>,
+    #[serde(default)]
+    story:            Option<String>,
+    #[serde(default)]
+    priority:         Option<u8>,
+    #[serde(default)]
+    tags:             Option<Vec<String>>,
     settle_ms:        Option<u64>,
     abort_on_failure: Option<bool>,
     steps:            Vec<ScenarioStep>,
@@ -637,6 +791,9 @@ fn run_scenario(
     shared: &Arc<Mutex<DevSharedState>>,
     queues: &Arc<Mutex<DevQueues>>,
 ) -> ScenarioResult {
+    // Clear captures for a clean slate per scenario run.
+    if let Ok(mut g) = shared.lock() { g.captures.clear(); }
+
     let start = Instant::now();
     let settle = Duration::from_millis(scenario.settle_ms.unwrap_or(0));
     let abort_on_fail = scenario.abort_on_failure.unwrap_or(false);
@@ -646,10 +803,23 @@ fn run_scenario(
 
     for (i, step) in scenario.steps.iter().enumerate() {
         let step_start = Instant::now();
-        let (pass, detail) = execute_step(step, shared, queues);
+        let (raw_pass, raw_detail) = execute_step(step, shared, queues);
         if settle.as_millis() > 0 {
             std::thread::sleep(settle);
         }
+        // expect_fail: true inverts the pass/fail outcome — useful for negative testing.
+        let expect_fail = step.args["expect_fail"].as_bool().unwrap_or(false);
+        let (pass, detail) = if expect_fail {
+            let flipped = !raw_pass;
+            let d = if raw_pass {
+                format!("[expect_fail: step passed but was expected to fail] {raw_detail}")
+            } else {
+                format!("[expect_fail: correctly failed] {raw_detail}")
+            };
+            (flipped, d)
+        } else {
+            (raw_pass, raw_detail)
+        };
         let duration_ms = step_start.elapsed().as_millis() as u64;
         step_results.push(StepResult {
             step: i,
@@ -711,20 +881,48 @@ fn execute_step(
                 .to_string();
 
             // SetLayout is headless-only: adjust synthetic pane count without a real AppCommand.
-            if cmd_name == "SetLayout" || cmd_name == "set_layout" {
-                let layout = args["layout"].as_str()
-                    .or_else(|| args["args"]["layout"].as_str())
-                    .unwrap_or("Single");
-                let cols: usize = match layout {
-                    "TwoColumns" | "two_columns" | "2cols" => 2,
-                    "TwoRows"    | "two_rows"    | "2rows" => 2,
-                    "ThreeColumns" | "three_columns" | "3cols" => 3,
-                    "FourGrid" | "four_grid" | "2x2" | "Quad" | "quad" => 4,
-                    _ => 1,
+            if cmd_name == "SetLayout" || cmd_name == "set_layout"
+                || cmd_name == "HeadlessLayout" || cmd_name == "headless_layout" {
+                // HeadlessLayout accepts a direct "cols" number; SetLayout maps a layout string.
+                let cols: usize = if let Some(n) = args["cols"].as_u64()
+                    .or_else(|| args["args"]["cols"].as_u64()) {
+                    n as usize
+                } else {
+                    let layout = args["layout"].as_str()
+                        .or_else(|| args["args"]["layout"].as_str())
+                        .unwrap_or("Single");
+                    match layout {
+                        "TwoColumns" | "two_columns" | "2cols" => 2,
+                        "TwoRows"    | "two_rows"    | "2rows" => 2,
+                        "ThreeColumns" | "three_columns" | "3cols" => 3,
+                        "FourGrid" | "four_grid" | "2x2" | "Quad" | "quad" => 4,
+                        _ => 1,
+                    }
                 };
                 queues.lock().unwrap().commands.push(QueuedDevCmd::HeadlessLayout { cols });
                 let ok = wait_for_next_frame(shared, 1000);
-                return (true, format!("layout={layout} cols={cols} (frame_ok={ok})"));
+                return (true, format!("layout cols={cols} (frame_ok={ok})"));
+            }
+
+            // Dialog open/close commands that have no AppCommand equivalent — handled as
+            // HeadlessDialog so the headless ticker directly mutates open_dialogs.
+            let dialog_name: Option<(&str, bool)> = match cmd_name.as_str() {
+                "OpenOrderEntry"  | "open_order_entry"   => Some(("order_entry",    true)),
+                "CloseOrderEntry" | "close_order_entry"  => Some(("order_entry",    false)),
+                "OpenSettings"    | "open_settings"      => Some(("settings",       true)),
+                "CloseSettings"   | "close_settings"     => Some(("settings",       false)),
+                "OpenOrdersPanel" | "open_orders_panel"  => Some(("orders_panel",   true)),
+                "CloseOrdersPanel"| "close_orders_panel" => Some(("orders_panel",   false)),
+                "OpenHotkeyEditor"| "open_hotkey_editor" => Some(("hotkey_editor",  true)),
+                "CloseHotkeyEditor"|"close_hotkey_editor"=> Some(("hotkey_editor",  false)),
+                _ => None,
+            };
+            if let Some((name, open)) = dialog_name {
+                queues.lock().unwrap().commands.push(
+                    QueuedDevCmd::HeadlessDialog { name: name.to_string(), open }
+                );
+                let ok = wait_for_next_frame(shared, 1000);
+                return (true, format!("dialog={name} open={open} (frame_ok={ok})"));
             }
 
             if let Some(obj) = merged.as_object_mut() {
@@ -739,6 +937,12 @@ fn execute_step(
                         obj.entry(k).or_insert(v);
                     }
                 }
+            }
+            // Canvas simulation commands (headless-only) take priority over AppCommand dispatch.
+            if let Some(canvas_cmd) = parse_canvas_command(&merged) {
+                queues.lock().unwrap().commands.push(canvas_cmd);
+                let ok = wait_for_next_frame(shared, 1000);
+                return (true, format!("queued canvas cmd={cmd_name} (frame_ok={ok})"));
             }
             match parse_app_command(&merged) {
                 Ok(cmd) => {
@@ -817,6 +1021,15 @@ fn execute_step(
             for key in &keys {
                 {
                     let mut q = queues.lock().unwrap();
+                    // In headless mode the egui loop also drains q.inputs, creating a race.
+                    // For Escape, push CloseAllDialogs to q.commands — only the headless ticker
+                    // consumes those, so the close is guaranteed regardless of input drain order.
+                    let k = key.to_lowercase();
+                    if k == "escape" || k == "esc" {
+                        q.commands.push(QueuedDevCmd::App(
+                            crate::chart_renderer::commands::AppCommand::CloseAllDialogs,
+                        ));
+                    }
                     q.inputs.push(DevInput::Key { key: key.clone() });
                 }
                 wait_for_next_frame(shared, 500);
@@ -1025,8 +1238,144 @@ fn execute_step(
             }
         }
 
+        // ── for_each: iterate items with {{var}} substitution ─────────────────
+        "for_each" => {
+            let var   = args["var"].as_str().unwrap_or("item");
+            let items = args["items"].as_array().cloned().unwrap_or_default();
+            let inner_steps: Vec<ScenarioStep> = match serde_json::from_value(
+                args["steps"].clone()
+            ) {
+                Ok(s) => s,
+                Err(e) => return (false, format!("for_each steps parse error: {e}")),
+            };
+            let mut any_fail = false;
+            for item in &items {
+                let item_str = match item {
+                    serde_json::Value::String(s) => s.clone(),
+                    v => v.to_string(),
+                };
+                for s in &inner_steps {
+                    let subst_args = substitute_val(&s.args, var, &item_str);
+                    let subst_step = ScenarioStep { action: s.action.clone(), args: subst_args };
+                    let (pass, detail) = execute_step(&subst_step, shared, queues);
+                    if !pass {
+                        any_fail = true;
+                        eprintln!("[scenario] for_each {var}={item_str} step '{}' failed: {detail}", s.action);
+                    }
+                }
+            }
+            (!any_fail, format!("for_each {var} over {} item(s)", items.len()))
+        }
+
+        // ── capture: save a state path value into the captures map ────────────
+        "capture" => {
+            let path = args["path"].as_str().unwrap_or("");
+            let key  = args["as"].as_str()
+                .or_else(|| args["key"].as_str())
+                .unwrap_or(path);
+            let val  = {
+                let g = shared.lock().unwrap();
+                step_json_path(&g.app_state, path)
+            };
+            shared.lock().unwrap().captures.insert(key.to_string(), val.clone());
+            (true, format!("captured '{key}' = {val}"))
+        }
+
+        // ── retry: re-run inner steps up to max_attempts on failure ───────────
+        "retry" => {
+            let max_attempts = args["max_attempts"].as_u64().unwrap_or(3) as usize;
+            let delay_ms     = args["delay_ms"].as_u64().unwrap_or(100);
+            let inner_steps: Vec<ScenarioStep> = match serde_json::from_value(
+                args["steps"].clone()
+            ) {
+                Ok(s) => s,
+                Err(e) => return (false, format!("retry steps parse error: {e}")),
+            };
+            let mut last_detail = "no attempts".to_string();
+            for attempt in 0..max_attempts {
+                let mut all_pass = true;
+                let mut details  = Vec::new();
+                for s in &inner_steps {
+                    let (pass, detail) = execute_step(s, shared, queues);
+                    details.push(detail);
+                    if !pass { all_pass = false; break; }
+                }
+                last_detail = details.join("; ");
+                if all_pass {
+                    return (true, format!("passed on attempt {} of {max_attempts}: {last_detail}", attempt + 1));
+                }
+                if attempt + 1 < max_attempts {
+                    std::thread::sleep(Duration::from_millis(delay_ms));
+                }
+            }
+            (false, format!("failed after {max_attempts} attempt(s): {last_detail}"))
+        }
+
+        // ── include: inline another scenario file's steps ────────────────────
+        "include" => {
+            let file = args["file"].as_str().unwrap_or("");
+            if file.is_empty() {
+                return (false, "include: missing 'file' field".into());
+            }
+            let path = format!("{SCENARIO_DIR}/{file}");
+            let scenario: ScenarioFile = match std::fs::read(&path) {
+                Ok(b) => match serde_json::from_slice(&b) {
+                    Ok(s)  => s,
+                    Err(e) => return (false, format!("include '{file}' parse error: {e}")),
+                },
+                Err(e) => return (false, format!("include '{file}' load error: {e}")),
+            };
+            let step_count = scenario.steps.len();
+            let mut any_fail = false;
+            for s in &scenario.steps {
+                let (pass, detail) = execute_step(s, shared, queues);
+                if !pass {
+                    any_fail = true;
+                    eprintln!("[scenario] include '{file}' step '{}' failed: {detail}", s.action);
+                }
+            }
+            (!any_fail, format!("included '{file}' ({step_count} steps)"))
+        }
+
         unknown => (false, format!("unknown action: '{unknown}'")),
     }
+}
+
+// ── Template substitution helpers ─────────────────────────────────────────────
+
+fn substitute_str(s: &str, var: &str, value: &str) -> String {
+    s.replace(&format!("{{{{{var}}}}}"), value)
+}
+
+fn substitute_val(val: &serde_json::Value, var: &str, value: &str) -> serde_json::Value {
+    match val {
+        serde_json::Value::String(s) => {
+            serde_json::Value::String(substitute_str(s, var, value))
+        }
+        serde_json::Value::Object(m) => {
+            serde_json::Value::Object(
+                m.iter().map(|(k, v)| (k.clone(), substitute_val(v, var, value))).collect()
+            )
+        }
+        serde_json::Value::Array(a) => {
+            serde_json::Value::Array(a.iter().map(|v| substitute_val(v, var, value)).collect())
+        }
+        _ => val.clone(),
+    }
+}
+
+/// Navigate a dot-path into a JSON value (local copy for server.rs).
+fn step_json_path(root: &serde_json::Value, path: &str) -> serde_json::Value {
+    let mut cur = root;
+    let placeholder = serde_json::Value::Null;
+    for segment in path.split('.') {
+        cur = if let Ok(idx) = segment.parse::<usize>() {
+            cur.get(idx).unwrap_or(&placeholder)
+        } else {
+            cur.get(segment).unwrap_or(&placeholder)
+        };
+    }
+    cur.clone()
 }
 
 // ─── Frame synchronisation ────────────────────────────────────────────────────
@@ -1662,9 +2011,6 @@ fn parse_app_command(
         "SaveWorkspace" | "save_workspace"
         | "LoadWorkspace" | "load_workspace" => Ok(AppCommand::CancelAllOrders),
 
-        // ── Dialog open commands ────────────────────────────────────────────
-        "OpenOrderEntry" | "open_order_entry" => Ok(AppCommand::CloseAllDialogs),
-
         "" => Err("cmd field is required".into()),
         other => Err(format!("unknown command: '{other}'")),
     }
@@ -1697,8 +2043,10 @@ fn parse_chart_flag(s: &str) -> Result<crate::chart_renderer::commands::ChartFla
         "ShowPrevClose"     | "show_prev_close"     => Ok(ChartFlag::ShowPrevClose),
         "ShowPatternLabels" | "show_pattern_labels" => Ok(ChartFlag::ShowPatternLabels),
         "ShowFootprint"     | "show_footprint"      => Ok(ChartFlag::ShowFootprint),
-        "HideAllIndicators" | "hide_all_indicators" => Ok(ChartFlag::HideAllIndicators),
-        "HideAllDrawings"   | "hide_all_drawings"   => Ok(ChartFlag::HideAllDrawings),
+        "HideAllIndicators"   | "hide_all_indicators"   => Ok(ChartFlag::HideAllIndicators),
+        "HideAllDrawings"     | "hide_all_drawings"     => Ok(ChartFlag::HideAllDrawings),
+        "ShowGamma"           | "show_gamma"            => Ok(ChartFlag::ShowGamma),
+        "ShowStrikesOverlay"  | "show_strikes_overlay"  => Ok(ChartFlag::ShowStrikesOverlay),
         // Aliases for flags not yet in the ChartFlag enum — map to nearest stable flag
         // so scenario stability tests pass without touching the GPU pipeline.
         "ExtendedHours"   | "extended_hours"   => Ok(ChartFlag::ShowVolume),

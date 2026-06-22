@@ -2966,7 +2966,9 @@ impl Chart {
                 // (no-op / deactivates for non-futures symbols).
                 crate::data::futures_feed::set_target(&self.symbol, &self.timeframe);
                 self.bars = bars; self.timestamps = timestamps;
-                self.vs = (self.bars.len() as f32 - self.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
+                // Allow negative vs: fewer bars than vc → bars right-align instead
+                // of clustering at the left edge with empty space on the right.
+                self.vs = self.bars.len() as f32 - self.vc as f32 + CHART_RIGHT_PAD as f32;
                 self.sim_price = 0.0;
                 self.last_candle_time = std::time::Instant::now();
                 self.indicator_bar_count = 0; // force recompute
@@ -2989,6 +2991,15 @@ impl Chart {
                     self.fundamentals = FundamentalData::default();
                     self.econ_calendar = Vec::new();
                     self.insider_trades = Vec::new();
+                    // If an overlay-chain fetch was in-flight for the old symbol,
+                    // the OverlayChainData handler checks chart.symbol == *symbol,
+                    // so it will silently drop the result. Clear the loading flag
+                    // now so the auto-fetch condition can trigger for the new symbol.
+                    if self.overlay_chain_loading {
+                        self.overlay_chain_loading = false;
+                    }
+                    self.overlay_calls.clear();
+                    self.overlay_puts.clear();
                 }
                 // Futures live-bars feed (/ws/futures): re-target on any symbol
                 // OR timeframe load (futures bars are tf-specific, and tf changes
@@ -4205,7 +4216,7 @@ fn tick_simulation(chart: &mut Chart) {
         }
 
         if chart.auto_scroll {
-            chart.vs = (chart.bars.len() as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
+            chart.vs = chart.bars.len() as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32;
         }
 
     }
@@ -4239,7 +4250,7 @@ fn tick_simulation(chart: &mut Chart) {
             if chart.last_input.elapsed().as_secs() >= AUTO_SCROLL_RESUME_SECS {
                 chart.auto_scroll = true;
                 chart.price_lock = None;
-                chart.vs = (chart.bars.len() as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32).max(0.0);
+                chart.vs = chart.bars.len() as f32 - chart.vc as f32 + CHART_RIGHT_PAD as f32;
             }
         } else if right_edge - latest <= 20.0 {
             // Latest is within 20 bars of the right edge — re-engage smoothly without snapping
