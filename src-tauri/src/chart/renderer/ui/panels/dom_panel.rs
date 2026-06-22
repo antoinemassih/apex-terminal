@@ -434,7 +434,7 @@ pub(crate) fn draw(
             .kbd("Ctrl+B")
             .min_size(egui::vec2(side_w, action_h)))
     });
-    if resp.clicked() { let p = if !is_mkt { dom_selected_price.unwrap_or(current_price) } else { current_price }; *new_order = Some((OrderSide::Buy, p, *order_qty)); }
+    if resp.clicked() { let p = if !is_mkt { dom_selected_price.unwrap_or(current_price) } else { current_price }; if p > 0.0 { *new_order = Some((OrderSide::Buy, p, *order_qty)); } }
 
     // Middle: FLATTEN (top) + CANCEL (bottom) — proper Secondary buttons,
     // matching the BUY/SELL pill treatment so the row reads as a unit.
@@ -480,7 +480,7 @@ pub(crate) fn draw(
             .kbd("Ctrl+Shift+B")
             .min_size(egui::vec2(side_w, action_h)))
     });
-    if resp.clicked() { let p = if !is_mkt { dom_selected_price.unwrap_or(current_price) } else { current_price }; *new_order = Some((OrderSide::Sell, p, *order_qty)); }
+    if resp.clicked() { let p = if !is_mkt { dom_selected_price.unwrap_or(current_price) } else { current_price }; if p > 0.0 { *new_order = Some((OrderSide::Sell, p, *order_qty)); } }
 
     // ── Price ladder ──
     let body_top = sep_y+1.0;
@@ -490,6 +490,11 @@ pub(crate) fn draw(
 
     let pil = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| p.x >= dom_rect.left() && p.x <= dom_rect.right() && p.y >= body_top && p.y <= ctrl_top);
     if pil { let s = ui.input(|i| i.raw_scroll_delta.y); if s.abs() > 0.5 { *center_price += if s > 0.0 { tick_size } else { -tick_size }; } }
+    // Clamp scroll so the ladder can't drift more than 200 ticks from current price.
+    if current_price > 0.0 {
+        let max_drift = tick_size * 200.0;
+        *center_price = center_price.clamp(current_price - max_drift, current_price + max_drift);
+    }
 
     let sc = (*center_price / tick_size).round() * tick_size;
     let mb = levels.iter().map(|l| l.bid_size).max().unwrap_or(1).max(1);

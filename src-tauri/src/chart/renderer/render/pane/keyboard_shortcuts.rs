@@ -378,6 +378,7 @@ pub(super) fn handle_keyboard_shortcuts(
         if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::Q)) {
             crate::chart_renderer::trading::order_manager::cancel_all_orders("");
             chart.orders.clear();
+            watchlist.selected_order_ids.clear();
         }
         // Ctrl+Shift+F: Flatten all positions — cancel all orders, then route the
         // flatten POST through the broker abstraction (live mode only).
@@ -386,6 +387,7 @@ pub(super) fn handle_keyboard_shortcuts(
         if ui.input(|i| i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::F)) {
             crate::chart_renderer::trading::order_manager::cancel_all_orders("");
             chart.orders.retain(|o| o.status == OrderStatus::Executed);
+            watchlist.selected_order_ids.clear();
             // Flatten POST: only fire against a live broker; paper mode has no
             // real positions to flatten and a raw HTTP call would reach a live
             // endpoint even in paper mode (dangerous).
@@ -406,6 +408,7 @@ pub(super) fn handle_keyboard_shortcuts(
             crate::chart_renderer::trading::order_manager::kill_switch();
             let _ = crate::chart_renderer::trading::order_manager::halt_trading();
             chart.orders.clear();
+            watchlist.selected_order_ids.clear();
             crate::chart_renderer::ui::tools::notification::push_pending(
                 crate::chart_renderer::ui::tools::notification::Notification::new(
                     "KILL SWITCH — orders cancelled, trading halted",

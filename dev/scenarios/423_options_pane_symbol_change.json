@@ -1,0 +1,28 @@
+{
+  "name": "options_pane_symbol_change",
+  "description": "Switch pane 0 to OptionsSentiment, change the symbol to AAPL, and verify fps remains stable.",
+  "story": "OptionsChain/SymbolChange",
+  "tags": ["options", "symbol"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Switching pane 0 to OptionsSentiment" },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "OptionsSentiment" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "pane_type_equals": { "pane": 0, "type": "OptionsSentiment" } }
+    ] },
+    { "action": "log", "message": "Swapping symbol to AAPL" },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "reset" }
+  ]
+}

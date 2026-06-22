@@ -240,13 +240,15 @@ fn render_dom_ladder(
             if KitButton::new(bid_lbl.as_str()).variant(KitVariant::Ghost).size(KitSize::Sm).fg(bc)
                 .min_size(egui::vec2(col_w, row_h)).frameless(true).show(ui, t).clicked() {
                 use crate::chart_renderer::trading::order_manager::*;
-                if let Some(id) = submit_and_get_id(OrderIntent {
-                    symbol: chart.symbol.clone(), side: OrderSide::Buy,
-                    order_type: ManagedOrderType::Limit, price, qty: chart.order_panel.qty,
-                    source: OrderSource::ChartClick, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
-                    strategy_id: None, override_warnings: false,
-                }) {
-                    chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_panel.qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                if chart.order_panel.qty > 0 {
+                    if let Some(id) = submit_and_get_id(OrderIntent {
+                        symbol: chart.symbol.clone(), side: OrderSide::Buy,
+                        order_type: ManagedOrderType::Limit, price, qty: chart.order_panel.qty,
+                        source: OrderSource::ChartClick, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
+                        strategy_id: None, override_warnings: false,
+                    }) {
+                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Buy, price, qty: chart.order_panel.qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                    }
                 }
             }
             let pc = if is_current { t.text } else if price > current_price { color_subtle(t.bull) } else { color_subtle(t.bear) };
@@ -258,13 +260,15 @@ fn render_dom_ladder(
             if KitButton::new(ask_lbl.as_str()).variant(KitVariant::Ghost).size(KitSize::Sm).fg(ac)
                 .min_size(egui::vec2(col_w, row_h)).frameless(true).show(ui, t).clicked() {
                 use crate::chart_renderer::trading::order_manager::*;
-                if let Some(id) = submit_and_get_id(OrderIntent {
-                    symbol: chart.symbol.clone(), side: OrderSide::Sell,
-                    order_type: ManagedOrderType::Limit, price, qty: chart.order_panel.qty,
-                    source: OrderSource::ChartClick, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
-                    strategy_id: None, override_warnings: false,
-                }) {
-                    chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_panel.qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                if chart.order_panel.qty > 0 {
+                    if let Some(id) = submit_and_get_id(OrderIntent {
+                        symbol: chart.symbol.clone(), side: OrderSide::Sell,
+                        order_type: ManagedOrderType::Limit, price, qty: chart.order_panel.qty,
+                        source: OrderSource::ChartClick, pair_with: None, option_symbol: None, option_con_id: None, stop_price: 0.0, trail_amount: None, trail_percent: None, last_price: 0.0, tif: 0, outside_rth: false,
+                        strategy_id: None, override_warnings: false,
+                    }) {
+                        chart.orders.push(OrderLevel { id: id as u32, side: OrderSide::Sell, price, qty: chart.order_panel.qty, status: OrderStatus::Draft, state: OrderState::Draft, pair_id: None, option_symbol: None, option_con_id: None, trail_amount: None, trail_percent: None, filled_ratio: 0.0 });
+                    }
                 }
             }
         });

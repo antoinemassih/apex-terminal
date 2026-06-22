@@ -13,6 +13,7 @@ use std::cell::RefCell;
 
 pub mod input_queue;
 pub mod assert_engine;
+pub mod canvas;
 pub mod layout;
 pub mod server;
 pub mod annotations;
@@ -152,6 +153,10 @@ pub struct DevSharedState {
     pub frame_time_ms: f32,
     /// Last completed scenario result (JSON), queryable via GET /last-run.
     pub last_run: Option<serde_json::Value>,
+    /// Named captures set by the `capture` step action, queryable via GET /captures.
+    pub captures: std::collections::HashMap<String, serde_json::Value>,
+    /// Per-frame canvas snapshot: drawings, indicators, visible bars with world+screen coords.
+    pub canvas: canvas::CanvasSnapshot,
 }
 
 impl Default for DevSharedState {
@@ -169,6 +174,8 @@ impl Default for DevSharedState {
             violation_history: std::collections::VecDeque::with_capacity(300),
             frame_time_ms: 0.0,
             last_run: None,
+            captures: std::collections::HashMap::new(),
+            canvas: canvas::CanvasSnapshot::default(),
         }
     }
 }
@@ -181,9 +188,25 @@ pub enum QueuedDevCmd {
     /// Headless-only: resize the synthetic pane array.
     HeadlessLayout { cols: usize },
     /// Headless-only: override a pane's display type string without going through PaneType enum.
-    /// Used so `pane_type_equals` assertions see "OptionsSentiment" / "OptionsFlow" rather
-    /// than the "Dashboard" alias that parse_pane_type falls back to.
     HeadlessPaneType { pane: usize, name: String },
+    /// Headless-only: open or close a named dialog directly (no AppCommand equivalent).
+    HeadlessDialog { name: String, open: bool },
+    // ── Canvas / drawing commands (headless simulation) ───────────────────────
+    /// Add or replace a synthetic drawing on a pane.
+    HeadlessAddDrawing {
+        pane: usize, id: String, kind: String,
+        price_a: f64, price_b: Option<f64>,
+    },
+    /// Remove a synthetic drawing by ID.
+    HeadlessRemoveDrawing { pane: usize, id: String },
+    /// Remove all synthetic drawings from a pane.
+    HeadlessClearDrawings { pane: usize },
+    /// Override the visible price range for a pane.
+    HeadlessSetViewport { pane: usize, price_low: f64, price_high: f64 },
+    /// Set the last-computed output value for a named indicator on a pane.
+    HeadlessSetIndicatorOutput { pane: usize, kind: String, value: f64, value2: Option<f64> },
+    /// Remove a synthetic indicator by kind name.
+    HeadlessRemoveIndicator { pane: usize, kind: String },
 }
 
 // ─── Dev queues (written by HTTP thread, drained by app loop) ────────────────
@@ -271,11 +294,47 @@ pub fn init() {
 //   3. Writes synthetic `app_state` JSON so scenario assertions pass.
 // Only active when `is_headless()` is true — zero impact on interactive builds.
 
+struct DrawingSim {
+    id:       String,
+    kind:     String,
+    /// (bar_offset_from_right, price). offset=0 → current rightmost bar.
+    anchor_a: (f64, f64),
+    anchor_b: Option<(f64, f64)>,
+    visible:  bool,
+    selected: bool,
+}
+
+struct IndicatorOutputSim {
+    id:          u32,
+    kind:        String,
+    period:      usize,
+    visible:     bool,
+    last_value:  Option<f64>,
+    last_value2: Option<f64>,
+}
+
+struct ViewportSim {
+    price_low:     f64,
+    price_high:    f64,
+    bars_visible:  u32,
+}
+
+impl Default for ViewportSim {
+    fn default() -> Self {
+        ViewportSim { price_low: 430.0, price_high: 470.0, bars_visible: 100 }
+    }
+}
+
 struct PaneSim {
     symbol:          String,
     timeframe:       String,
     indicator_count: usize,
     pane_type:       String,
+    // Canvas state
+    drawings:        Vec<DrawingSim>,
+    viewport:        ViewportSim,
+    indicators:      Vec<IndicatorOutputSim>,
+    bar_count:       usize,
 }
 
 struct SectionSim {
@@ -290,21 +349,35 @@ struct HeadlessState {
     open_dialogs:          Vec<String>,
     watchlist_sections:    Vec<SectionSim>,
     watchlist_active_idx:  usize,
+    watchlist_count:       usize,
+    next_indicator_id:     u32,
+}
+
+impl PaneSim {
+    fn new_default(symbol: &str) -> Self {
+        PaneSim {
+            symbol:          symbol.into(),
+            timeframe:       "5m".into(),
+            indicator_count: 0,
+            pane_type:       "Chart".into(),
+            drawings:        Vec::new(),
+            viewport:        ViewportSim::default(),
+            indicators:      Vec::new(),
+            bar_count:       100,
+        }
+    }
 }
 
 impl Default for HeadlessState {
     fn default() -> Self {
         HeadlessState {
-            panes: vec![PaneSim {
-                symbol:          "SPY".into(),
-                timeframe:       "5m".into(),
-                indicator_count: 0,
-                pane_type:       "Chart".into(),
-            }],
+            panes: vec![PaneSim::new_default("SPY")],
             active_pane:          0,
             open_dialogs:         Vec::new(),
-            watchlist_sections:   Vec::new(),  // starts empty; scenarios add their own sections
+            watchlist_sections:   vec![SectionSim { title: "Stocks".into(), item_count: 0, collapsed: false }],
             watchlist_active_idx: 0,
+            watchlist_count:      1,
+            next_indicator_id:    1,
         }
     }
 }
@@ -372,9 +445,24 @@ fn apply_headless_cmd(
             hs.open_dialogs.clear();
         }
         AppCommand::WatchlistSwitchActive { idx } => {
-            // Clamp to valid range; out-of-bounds is a no-op (matches real app behaviour).
-            if !hs.watchlist_sections.is_empty() {
-                hs.watchlist_active_idx = idx.min(hs.watchlist_sections.len() - 1);
+            let bound = hs.watchlist_sections.len().max(hs.watchlist_count);
+            if bound > 0 {
+                hs.watchlist_active_idx = idx.min(bound - 1);
+            }
+        }
+        AppCommand::WatchlistCreate { .. } => {
+            hs.watchlist_count += 1;
+        }
+        AppCommand::WatchlistDelete { idx } => {
+            if hs.watchlist_count > 1 {
+                hs.watchlist_count -= 1;
+                if hs.watchlist_active_idx >= hs.watchlist_count {
+                    hs.watchlist_active_idx = hs.watchlist_count - 1;
+                }
+                // If we deleted the active watchlist (or one before it), step back.
+                if idx <= hs.watchlist_active_idx && hs.watchlist_active_idx > 0 {
+                    hs.watchlist_active_idx -= 1;
+                }
             }
         }
         // Commands with no observable effect on the synthetic state:
@@ -386,8 +474,6 @@ fn apply_headless_cmd(
         | AppCommand::ClearOrderHistory
         | AppCommand::PlaceAllDraftOrders
         | AppCommand::PlaceAllDraftAlerts
-        | AppCommand::WatchlistCreate { .. }
-        | AppCommand::WatchlistDelete { .. }
         | AppCommand::WatchlistRenameActive { .. }
         | AppCommand::WatchlistDuplicate { .. }
         | _ => {}
@@ -430,10 +516,11 @@ fn headless_to_json(hs: &HeadlessState) -> serde_json::Value {
         "open_dialogs":     hs.open_dialogs,
         "panes":            panes_json,
         "watchlist": {
-            "section_count": hs.watchlist_sections.len(),
-            "sections":      wl_sections,
-            "active_idx":    hs.watchlist_active_idx,
-            "name":          "Default",
+            "section_count":  hs.watchlist_sections.len(),
+            "sections":       wl_sections,
+            "active_idx":     hs.watchlist_active_idx,
+            "watchlist_count": hs.watchlist_count,
+            "name":           "Default",
         },
         "total_order_count": 0,
         "total_alert_count": 0,
@@ -454,13 +541,14 @@ fn start_headless_ticker(
                 std::thread::sleep(std::time::Duration::from_millis(TICK_MS));
 
                 // Drain all pending mutations from DevQueues.
-                let (reset, cmds, ann_ops) = {
+                let (reset, cmds, inputs, ann_ops) = {
                     let mut q = queues.lock().unwrap();
                     let reset = q.reset_pending;
                     q.reset_pending = false;
-                    let cmds: Vec<_> = q.commands.drain(..).collect();
+                    let cmds:    Vec<_> = q.commands.drain(..).collect();
+                    let inputs:  Vec<_> = q.inputs.drain(..).collect();
                     let ann_ops: Vec<_> = q.annotation_ops.drain(..).collect();
-                    (reset, cmds, ann_ops)
+                    (reset, cmds, inputs, ann_ops)
                 };
 
                 if reset {
@@ -473,12 +561,7 @@ fn start_headless_ticker(
                         QueuedDevCmd::HeadlessLayout { cols } => {
                             let target = cols.max(1);
                             while hs.panes.len() < target {
-                                hs.panes.push(PaneSim {
-                                    symbol:          "SPY".into(),
-                                    timeframe:       "5m".into(),
-                                    indicator_count: 0,
-                                    pane_type:       "Chart".into(),
-                                });
+                                hs.panes.push(PaneSim::new_default("SPY"));
                             }
                             if hs.panes.len() > target {
                                 hs.panes.truncate(target);
@@ -486,11 +569,76 @@ fn start_headless_ticker(
                             }
                         }
                         QueuedDevCmd::HeadlessPaneType { pane, name } => {
+                            if let Some(p) = hs.panes.get_mut(pane) { p.pane_type = name; }
+                        }
+                        QueuedDevCmd::HeadlessDialog { name, open } => {
+                            if open {
+                                if !hs.open_dialogs.contains(&name) { hs.open_dialogs.push(name); }
+                            } else {
+                                hs.open_dialogs.retain(|d| d != &name);
+                            }
+                        }
+                        // ── Canvas commands ───────────────────────────────────
+                        QueuedDevCmd::HeadlessAddDrawing { pane, id, kind, price_a, price_b } => {
                             if let Some(p) = hs.panes.get_mut(pane) {
-                                p.pane_type = name;
+                                p.drawings.retain(|d| d.id != id); // replace if exists
+                                p.drawings.push(DrawingSim {
+                                    id, kind,
+                                    anchor_a: (0.0, price_a),
+                                    anchor_b: price_b.map(|pr| (10.0, pr)),
+                                    visible: true, selected: false,
+                                });
+                            }
+                        }
+                        QueuedDevCmd::HeadlessRemoveDrawing { pane, id } => {
+                            if let Some(p) = hs.panes.get_mut(pane) {
+                                p.drawings.retain(|d| d.id != id);
+                            }
+                        }
+                        QueuedDevCmd::HeadlessClearDrawings { pane } => {
+                            if let Some(p) = hs.panes.get_mut(pane) { p.drawings.clear(); }
+                        }
+                        QueuedDevCmd::HeadlessSetViewport { pane, price_low, price_high } => {
+                            if let Some(p) = hs.panes.get_mut(pane) {
+                                p.viewport.price_low  = price_low;
+                                p.viewport.price_high = price_high;
+                            }
+                        }
+                        QueuedDevCmd::HeadlessSetIndicatorOutput { pane, kind, value, value2 } => {
+                            if let Some(p) = hs.panes.get_mut(pane) {
+                                if let Some(ind) = p.indicators.iter_mut().find(|i| i.kind == kind) {
+                                    ind.last_value  = Some(value);
+                                    ind.last_value2 = value2;
+                                } else {
+                                    let id = hs.next_indicator_id;
+                                    hs.next_indicator_id += 1;
+                                    p.indicator_count += 1;
+                                    p.indicators.push(IndicatorOutputSim {
+                                        id, kind, period: 14,
+                                        visible: true, last_value: Some(value), last_value2: value2,
+                                    });
+                                }
+                            }
+                        }
+                        QueuedDevCmd::HeadlessRemoveIndicator { pane, kind } => {
+                            if let Some(p) = hs.panes.get_mut(pane) {
+                                let before = p.indicators.len();
+                                p.indicators.retain(|i| i.kind != kind);
+                                let removed = before - p.indicators.len();
+                                p.indicator_count = p.indicator_count.saturating_sub(removed);
                             }
                         }
                         QueuedDevCmd::Chart(_) => {} // chart data irrelevant in headless
+                    }
+                }
+
+                // Process injected key events: Escape closes all dialogs; others no-op in headless.
+                for input in inputs {
+                    if let input_queue::DevInput::Key { key } = &input {
+                        let k = key.to_lowercase();
+                        if k == "escape" || k == "esc" {
+                            hs.open_dialogs.clear();
+                        }
                     }
                 }
 
@@ -502,6 +650,35 @@ fn start_headless_ticker(
                         }
                     }
                 }
+
+                // Build canvas snapshot from headless state before locking shared.
+                let pane_drawings: Vec<Vec<canvas::HeadlessDrawing>> = hs.panes.iter().map(|p| {
+                    p.drawings.iter().map(|d| canvas::HeadlessDrawing {
+                        id: d.id.clone(), kind: d.kind.clone(),
+                        anchor_a: d.anchor_a, anchor_b: d.anchor_b,
+                        visible: d.visible, selected: d.selected,
+                    }).collect()
+                }).collect();
+                let pane_indicators: Vec<Vec<canvas::HeadlessIndicator>> = hs.panes.iter().map(|p| {
+                    p.indicators.iter().map(|ind| canvas::HeadlessIndicator {
+                        id: ind.id, kind: ind.kind.clone(), period: ind.period,
+                        visible: ind.visible, last_value: ind.last_value, last_value2: ind.last_value2,
+                    }).collect()
+                }).collect();
+                let canvas_hp: Vec<canvas::HeadlessPane<'_>> = hs.panes.iter().enumerate().map(|(i, p)| {
+                    canvas::HeadlessPane {
+                        index: i,
+                        symbol: &p.symbol, timeframe: &p.timeframe, pane_type: &p.pane_type,
+                        visible_bar_count: p.viewport.bars_visible,
+                        price_low: p.viewport.price_low, price_high: p.viewport.price_high,
+                        drawings: &pane_drawings[i], indicators: &pane_indicators[i],
+                        bar_count: p.bar_count,
+                    }
+                }).collect();
+                let canvas_input = canvas::HeadlessCanvasInput {
+                    panes: &canvas_hp, active_pane: hs.active_pane,
+                };
+                let mut canvas_snap = canvas::from_headless(&canvas_input);
 
                 // Write synthetic app state and advance frame counter.
                 let app_state = headless_to_json(&hs);
@@ -524,6 +701,8 @@ fn start_headless_ticker(
                         obj.insert("frame_counter".into(), frame.into());
                     }
                     g.app_state = patched;
+                    canvas_snap.captured_at_frame = frame;
+                    g.canvas = canvas_snap;
                 }
             }
         })
@@ -571,10 +750,18 @@ pub fn begin_frame() {
     // Drain queued commands into the normal dispatch paths.
     for cmd in cmds {
         match cmd {
-            QueuedDevCmd::App(c)          => crate::chart_renderer::commands::push(c),
-            QueuedDevCmd::Chart(c)        => crate::send_to_native_chart(c),
-            QueuedDevCmd::HeadlessLayout { .. }  => {} // processed by headless ticker only
-            QueuedDevCmd::HeadlessPaneType { .. } => {} // processed by headless ticker only
+            QueuedDevCmd::App(c)   => crate::chart_renderer::commands::push(c),
+            QueuedDevCmd::Chart(c) => crate::send_to_native_chart(c),
+            // All Headless* variants are owned by the headless ticker — ignore in live mode.
+            QueuedDevCmd::HeadlessLayout { .. }
+            | QueuedDevCmd::HeadlessPaneType { .. }
+            | QueuedDevCmd::HeadlessDialog { .. }
+            | QueuedDevCmd::HeadlessAddDrawing { .. }
+            | QueuedDevCmd::HeadlessRemoveDrawing { .. }
+            | QueuedDevCmd::HeadlessClearDrawings { .. }
+            | QueuedDevCmd::HeadlessSetViewport { .. }
+            | QueuedDevCmd::HeadlessSetIndicatorOutput { .. }
+            | QueuedDevCmd::HeadlessRemoveIndicator { .. } => {}
         }
     }
 
@@ -735,6 +922,11 @@ pub fn end_frame(
         obj.insert("frame_counter".into(), serde_json::Value::Number(frame.into()));
     }
     guard.app_state = patched_state;
+
+    // Capture canvas snapshot — reads already-computed chart state, no GPU work.
+    let mut snap = canvas::capture(panes, active_pane);
+    snap.captured_at_frame = frame;
+    guard.canvas = snap;
 }
 
 /// Paint active debug annotations as egui overlay (called from core.rs, after draw_chart).

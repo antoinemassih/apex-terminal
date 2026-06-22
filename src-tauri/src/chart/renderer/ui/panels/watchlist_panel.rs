@@ -517,7 +517,6 @@ if is_spawn || watchlist.open {
                         let color_presets = ["#4a9eff","#e74c3c","#2ecc71","#f39c12","#9b59b6","#1abc9c","#e67e22","#3498db","#e91e63","#00bcd4","#8bc34a","#ff5722","#607d8b","#795548","#cddc39","#ff9800"];
 
 
-                        let mut active_sym_change: Option<String> = None;
                         // ── PINNED section at the top (no title, darker background) ──
                         let has_pinned = watchlist.sections.iter().any(|s| s.items.iter().any(|i| i.pinned));
                         if has_pinned {
@@ -584,7 +583,7 @@ if is_spawn || watchlist.open {
                                         if let Some(item) = sec.items.get_mut(*ii) { item.pinned = false; }
                                     }
                                 } else if wresp.response.clicked() {
-                                    active_sym_change = Some(pin_sym.clone());
+                                    click_sym = Some(pin_sym.clone());
                                 }
                             }
                             // Small spacer after the inset section (matches original layout).
@@ -1828,7 +1827,8 @@ if is_spawn || watchlist.open {
                                 }
                                 StrikeMode::Pct(pct_idx) => {
                                     let pct = PCT_OPTIONS.get(pct_idx as usize).copied().unwrap_or(1.0) / 100.0;
-                                    all_strikes.iter().filter(|&&s| (s - price).abs() / price <= pct).copied().collect()
+                                    // Guard against price == 0 (no feed data yet) to avoid divide-by-zero / NaN.
+                                    all_strikes.iter().filter(|&&s| price > 0.0 && (s - price).abs() / price <= pct).copied().collect()
                                 }
                                 StrikeMode::StdDev => {
                                     all_strikes.iter().filter(|&&s| (s - price).abs() <= sigma * 2.0).copied().collect()
@@ -1854,7 +1854,8 @@ if is_spawn || watchlist.open {
                                 StrikeMode::Pct(pct_idx) => {
                                     let pct = PCT_OPTIONS.get(pct_idx as usize).copied().unwrap_or(1.0) / 100.0;
                                     all_strikes.iter().filter(|&&s| {
-                                        if s >= price { s >= call_start_price && (s - call_start_price) / price <= pct }
+                                        if price <= 0.0 { false }
+                                        else if s >= price { s >= call_start_price && (s - call_start_price) / price <= pct }
                                         else { s <= put_start_price && (put_start_price - s) / price <= pct }
                                     }).copied().collect()
                                 }

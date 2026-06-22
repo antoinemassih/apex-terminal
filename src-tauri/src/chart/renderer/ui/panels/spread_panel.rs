@@ -193,7 +193,7 @@ fn compute_spread_metrics(legs: &[SpreadLeg], underlying: &str) -> (f32, f32, f3
         let strikes: Vec<f32> = legs.iter().map(|l| l.strike).collect();
         let wing_width = if strikes.len() >= 4 {
             let mut sorted = strikes.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             (sorted[1] - sorted[0]).min(sorted[3] - sorted[2])
         } else { 5.0 };
         max_profit = net_premium.abs().min(wing_width);

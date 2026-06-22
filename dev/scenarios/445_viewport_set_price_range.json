@@ -1,0 +1,20 @@
+{
+  "name": "viewport_set_price_range",
+  "description": "Set chart viewport to a specific price range and verify it contains the midpoint price.",
+  "story": "Chart/Viewport",
+  "tags": ["chart", "viewport"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "SetViewport", "args": { "pane": 0, "price_low": 400.0, "price_high": 600.0 } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "canvas_viewport_price_contains": { "pane": 0, "price": 500.0 } },
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "reset" }
+  ]
+}

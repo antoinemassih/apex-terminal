@@ -1,0 +1,26 @@
+{
+  "name": "chart_drawing_horiz_line",
+  "description": "Add a horizontal line drawing, verify it exists, then remove it and verify zero drawings.",
+  "story": "Drawings/HorizLine",
+  "tags": ["drawings", "chart"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "AddDrawing", "args": { "pane": 0, "id": "line_a", "kind": "HorizLine", "price_a": 500.0 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "canvas_drawing_exists": { "pane": 0, "id": "line_a" } },
+      { "canvas_drawing_count_equals": { "pane": 0, "count": 1 } },
+      { "fps_above": 5.0 }
+    ] },
+    { "action": "cmd", "cmd": "RemoveDrawing", "args": { "pane": 0, "id": "line_a" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "canvas_no_drawings": { "pane": 0 } },
+      { "no_active_violations": true }
+    ] },
+    { "action": "reset" }
+  ]
+}

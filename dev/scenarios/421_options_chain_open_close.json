@@ -1,0 +1,30 @@
+{
+  "name": "options_chain_open_close",
+  "description": "Switch pane 0 to OptionsSentiment, verify pane type is OptionsSentiment with stable fps, then return to Chart.",
+  "story": "OptionsChain/PaneSwitching",
+  "tags": ["options", "pane", "smoke"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Switching pane 0 to OptionsSentiment" },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "OptionsSentiment" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "pane_type_equals": { "pane": 0, "type": "OptionsSentiment" } },
+      { "no_active_violations": true }
+    ] },
+    { "action": "log", "message": "Returning pane 0 to Chart" },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "Chart" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "pane_type_equals": { "pane": 0, "type": "Chart" } },
+      { "no_active_violations": true }
+    ] },
+    { "action": "reset" }
+  ]
+}

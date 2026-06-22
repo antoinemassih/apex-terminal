@@ -1,0 +1,32 @@
+{
+  "name": "layout_cycle_pane_counts",
+  "description": "Cycle through TwoColumns, TwoRows, and Quad layouts, verifying correct pane counts at each step.",
+  "story": "Layout/Cycle",
+  "tags": ["layout"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "pane_count_equals": 2 }] },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoRows" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "pane_count_equals": 2 }] },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "Quad" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "pane_count_equals": 4 },
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "pane_count_equals": 2 },
+      { "fps_above": 5.0 }
+    ] },
+    { "action": "reset" }
+  ]
+}

@@ -104,12 +104,17 @@ impl<'a> OrderRow<'a> {
                 painter.text(pill.center(), egui::Align2::CENTER_CENTER,
                     side_lbl, mono_sm(), side_col);
 
-                painter.text(egui::pos2(pill.right() + 6.0, cy), egui::Align2::LEFT_CENTER,
-                    symbol, mono_sm(), fg);
+                // Symbol — clip to prevent long option tickers bleeding into qty@price column.
+                let sym_x = pill.right() + 6.0;
+                painter.with_clip_rect(painter.clip_rect().intersect(
+                    egui::Rect::from_x_y_ranges(sym_x..=(rect.center().x - 4.0), rect.y_range())
+                )).text(egui::pos2(sym_x, cy), egui::Align2::LEFT_CENTER, symbol, mono_sm(), fg);
 
-                painter.text(egui::pos2(rect.center().x, cy), egui::Align2::CENTER_CENTER,
-                    &format!("{} @ {:.2}", qty, price),
-                    mono_sm(), fg);
+                // Qty @ price — clip between symbol and status columns.
+                painter.with_clip_rect(painter.clip_rect().intersect(
+                    egui::Rect::from_x_y_ranges((rect.left() + 30.0)..=(rect.right() - 84.0), rect.y_range())
+                )).text(egui::pos2(rect.center().x, cy), egui::Align2::CENTER_CENTER,
+                    &format!("{} @ {:.2}", qty, price), mono_sm(), fg);
 
                 painter.text(egui::pos2(rect.right() - 80.0, cy), egui::Align2::RIGHT_CENTER,
                     status, mono_sm(), dim);

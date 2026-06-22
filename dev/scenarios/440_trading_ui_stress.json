@@ -1,0 +1,46 @@
+{
+  "name": "trading_ui_stress",
+  "description": "Rapid cycle through order entry, orders panel, and options pane switches; assert fps >= 5 at the end.",
+  "story": "TradingUI/Stress",
+  "tags": ["stress", "order_entry", "orders_panel", "options"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Rapid cycle: open/close order entry" },
+    { "action": "cmd", "cmd": "OpenOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "CloseOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "log", "message": "Rapid cycle: open/close orders panel" },
+    { "action": "cmd", "cmd": "OpenOrdersPanel", "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "CloseOrdersPanel", "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "log", "message": "Rapid cycle: switch to OptionsFlow" },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "OptionsFlow" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "log", "message": "Rapid cycle: switch back to Chart" },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "Chart" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "log", "message": "Open both panels simultaneously" },
+    { "action": "cmd", "cmd": "OpenOrderEntry", "args": {} },
+    { "action": "cmd", "cmd": "OpenOrdersPanel", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "dialog_open": "order_entry" },
+      { "dialog_open": "orders_panel" }
+    ] },
+    { "action": "log", "message": "Close all and verify fps" },
+    { "action": "cmd", "cmd": "CloseAllDialogs", "args": {} },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "no_open_dialogs": true },
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "reset" }
+  ]
+}

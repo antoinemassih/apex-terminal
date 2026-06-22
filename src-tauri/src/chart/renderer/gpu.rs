@@ -3,8 +3,6 @@
 
 use std::sync::{mpsc, Arc, Mutex};
 use std::fmt::Write as FmtWrite;
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -626,7 +624,19 @@ pub(crate) fn pane_layout_record_undo(wl: &mut Watchlist) {
 
 /// Pop the most recent undo snapshot; push the current state onto redo.
 /// Returns `true` if anything was undone.
+///
+/// Entries that reference pane IDs no longer in `pane_ids` (i.e. charts that
+/// were closed) are silently discarded: we have no chart data to restore, so
+/// applying them would produce a layout leaf that dead-slot cleanup would
+/// immediately remove — appearing to the user as "undo did nothing". Skipping
+/// those entries is the least-surprising safe behavior.
 pub(crate) fn pane_layout_undo(wl: &mut Watchlist) -> bool {
+    let live_ids: std::collections::HashSet<u64> = wl.pane_ids.iter().copied().collect();
+    while wl.pane_layout_undo.last().map_or(false, |snap| {
+        snap.as_ref().map_or(false, |pl| pl.iter_slots().any(|(_, s)| !live_ids.contains(&s)))
+    }) {
+        wl.pane_layout_undo.pop();
+    }
     if let Some(prev) = wl.pane_layout_undo.pop() {
         let current = wl.pane_layout.clone();
         wl.pane_layout_redo.push(current);
@@ -638,7 +648,14 @@ pub(crate) fn pane_layout_undo(wl: &mut Watchlist) -> bool {
 }
 
 /// Pop the most recent redo snapshot; push the current state onto undo.
+/// Dead-entry skipping mirrors `pane_layout_undo` for the same reason.
 pub(crate) fn pane_layout_redo(wl: &mut Watchlist) -> bool {
+    let live_ids: std::collections::HashSet<u64> = wl.pane_ids.iter().copied().collect();
+    while wl.pane_layout_redo.last().map_or(false, |snap| {
+        snap.as_ref().map_or(false, |pl| pl.iter_slots().any(|(_, s)| !live_ids.contains(&s)))
+    }) {
+        wl.pane_layout_redo.pop();
+    }
     if let Some(next) = wl.pane_layout_redo.pop() {
         let current = wl.pane_layout.clone();
         wl.pane_layout_undo.push(current);
@@ -2960,6 +2977,9 @@ impl Chart {
                     // Re-point the DOM (L2 depth) feed at the new symbol.
                     crate::data::dom_feed::set_symbol(&self.symbol);
                     self.dom.last_live_ms = 0; // drop stale live flag until first frame
+                    self.dom.selected_price = None; // reset stale selected price level
+                    self.dom.center_price = 0.0;    // reset scroll position for new symbol
+                    self.option_quick.dte_idx = 0;  // reset to 0DTE on symbol change
                     self.drawings_requested = false; self.drawings.clear();
                     // No synthetic fundamentals / econ-calendar / insider trades —
                     // these have no live feed yet (see FRONTEND_REQUEST_DATA_GAPS),
@@ -4773,13 +4793,29 @@ pub(crate) fn apply_pane_events(
                         pane.bars.clear();
                         pane.timestamps.clear();
                     }
-                    pane.indicators.clear();
+                    for ind in &mut pane.indicators {
+                        ind.values.clear(); ind.values2.clear(); ind.values3.clear();
+                        ind.values4.clear(); ind.values5.clear();
+                        ind.supertrend_dir.clear(); ind.histogram.clear(); ind.divergences.clear();
+                        ind.source_bars.clear(); ind.source_timestamps.clear();
+                        ind.source_loaded = false;
+                    }
                     pane.drawings.clear();
                     pane.drawings_requested = false;
                     pane.history_loading = false;
                     pane.history_exhausted = false;
+                    pane.replay_mode = false;
+                    pane.replay_playing = false;
                     if apply_bars_fetch {
-                        fetch_bars_background(sym, tf);
+                        fetch_bars_background(sym.clone(), tf.clone());
+                    }
+                    if !pane.symbol_overlays.is_empty() {
+                        for ov in &mut pane.symbol_overlays {
+                            ov.bars.clear();
+                            ov.timestamps.clear();
+                            ov.loading = true;
+                            fetch_overlay_bars_background(ov.symbol.clone(), tf.clone());
+                        }
                     }
                 }
             }
@@ -8185,6 +8221,19 @@ impl ApplicationHandler for App {
                                         chart.show_pnl_curve = gb("show_pnl_curve", false);
                                         chart.show_pattern_labels = gb("show_pattern_labels", true);
                                         chart.link_group = p.get("link_group").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
+                                        // v5: overlay toggles
+                                        chart.show_vol_shelves     = gb("show_vol_shelves", false);
+                                        chart.show_confluence      = gb("show_confluence", false);
+                                        chart.show_momentum_heat   = gb("show_momentum_heat", false);
+                                        chart.show_trend_strip     = gb("show_trend_strip", false);
+                                        chart.show_breadth_tint    = gb("show_breadth_tint", false);
+                                        chart.show_vol_cone        = gb("show_vol_cone", false);
+                                        chart.show_price_memory    = gb("show_price_memory", false);
+                                        chart.show_liquidity_voids = gb("show_liquidity_voids", false);
+                                        chart.show_corr_ribbon     = gb("show_corr_ribbon", false);
+                                        chart.show_analyst_targets = gb("show_analyst_targets", false);
+                                        chart.show_pe_band         = gb("show_pe_band", false);
+                                        chart.show_insider_trades  = gb("show_insider_trades", false);
                                         // Session shading
                                         chart.session_shading = gb("session_shading", false);
                                         chart.rth_start_minutes = p.get("rth_start_minutes").and_then(|v| v.as_u64()).unwrap_or(570) as u16;
@@ -8260,6 +8309,28 @@ impl ApplicationHandler for App {
                                         // v4: per-pane DOM panel state.
                                         chart.dom.open = gb("dom_open", false);
                                         chart.dom.sidebar_open = gb("dom_sidebar_open", false);
+                                        // v6: tab history
+                                        if let Some(ts) = p.get("tab_symbols").and_then(|v| v.as_array()) {
+                                            chart.tab_symbols = ts.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
+                                        }
+                                        if let Some(ts) = p.get("tab_timeframes").and_then(|v| v.as_array()) {
+                                            chart.tab_timeframes = ts.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
+                                        }
+                                        chart.tab_active = p.get("tab_active").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                                        // v6: symbol overlays — bars re-fetched when pending_symbol_change fires
+                                        if let Some(ovs) = p.get("symbol_overlays").and_then(|v| v.as_array()) {
+                                            for ov in ovs {
+                                                let sym = ov.get("symbol").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                                if sym.is_empty() { continue; }
+                                                chart.symbol_overlays.push(SymbolOverlay {
+                                                    symbol: sym,
+                                                    color: ov.get("color").and_then(|v| v.as_str()).unwrap_or("#FF5733").to_string(),
+                                                    show_candles: ov.get("show_candles").and_then(|v| v.as_bool()).unwrap_or(false),
+                                                    visible: ov.get("visible").and_then(|v| v.as_bool()).unwrap_or(true),
+                                                    bars: vec![], timestamps: vec![], loading: true,
+                                                });
+                                            }
+                                        }
                                         panes.push(chart);
                                     }
                                 }
@@ -8518,18 +8589,62 @@ impl ApplicationHandler for App {
                         pane.bars.clear();
                         pane.timestamps.clear();
                     }
-                    pane.indicators.clear();
+                    // Preserve indicator configuration across symbol/tf switches.
+                    // Only wipe computed values so they're rebuilt against the new bars
+                    // when LoadBars arrives and update_indicators() runs. Clearing the
+                    // whole Vec meant users silently lost all their RSI/MACD settings on
+                    // every symbol change — and the cross-TF source reload in LoadBars
+                    // silently iterated an empty Vec.
+                    for ind in &mut pane.indicators {
+                        ind.values.clear();
+                        ind.values2.clear();
+                        ind.values3.clear();
+                        ind.values4.clear();
+                        ind.values5.clear();
+                        ind.supertrend_dir.clear();
+                        ind.histogram.clear();
+                        ind.divergences.clear();
+                        ind.source_bars.clear();
+                        ind.source_timestamps.clear();
+                        ind.source_loaded = false;
+                    }
                     pane.drawings.clear(); // cleared here, reloaded when LoadBars arrives
                     pane.drawings_requested = false; // allow re-fetch for new timeframe
                     pane.history_loading = false;
                     pane.history_exhausted = false;
                     pane.sim_price = 0.0;
                     pane.last_candle_time = std::time::Instant::now();
+                    // Replay position is meaningless after a symbol/tf change — the bar
+                    // count refers to the OLD symbol's bars. Stop replay so the user
+                    // doesn't land in replay mode showing an arbitrary slice of the new
+                    // symbol's bars. The user can re-enable replay manually after switching.
+                    pane.replay_mode = false;
+                    pane.replay_playing = false;
 
                     if pane.is_option && !pane.option_contract.is_empty() {
                         fetch_option_bars_background(pane.option_contract.clone(), sym.clone(), tf.clone(), pane.bar_source_mark);
                     } else {
                         fetch_bars_background(sym.clone(), tf.clone());
+                    }
+
+                    // Overlay bars are rendered by index, so they must be on the same
+                    // timeframe as the main chart. Refetch on TF change (symbol change
+                    // is fine — the TF is unchanged and index alignment still holds).
+                    if tf_changed && !pane.symbol_overlays.is_empty() {
+                        for ov in &mut pane.symbol_overlays {
+                            ov.bars.clear();
+                            ov.timestamps.clear();
+                            ov.loading = true;
+                            fetch_overlay_bars_background(ov.symbol.clone(), tf.clone());
+                        }
+                    } else {
+                        // Overlays restored from workspace have loading=true and empty bars.
+                        // Trigger their fetch now that the main chart's symbol/tf is known.
+                        for ov in &pane.symbol_overlays {
+                            if ov.loading && ov.bars.is_empty() {
+                                fetch_overlay_bars_background(ov.symbol.clone(), tf.clone());
+                            }
+                        }
                     }
 
                     // Wave 12c: record this pane's change for cross-pane
@@ -8778,6 +8893,28 @@ fn workspace_to_json(panes: &[Chart], layout: Layout, wl: &Watchlist) -> String 
             // v4: per-pane DOM panel open state (floating + sidebar mode).
             "dom_open": p.dom.open,
             "dom_sidebar_open": p.dom.sidebar_open,
+            // v5: overlay toggles (command-palette "overlay:" actions).
+            // All default to false so older workspaces load with overlays off.
+            "show_vol_shelves":    p.show_vol_shelves,
+            "show_confluence":     p.show_confluence,
+            "show_momentum_heat":  p.show_momentum_heat,
+            "show_trend_strip":    p.show_trend_strip,
+            "show_breadth_tint":   p.show_breadth_tint,
+            "show_vol_cone":       p.show_vol_cone,
+            "show_price_memory":   p.show_price_memory,
+            "show_liquidity_voids":p.show_liquidity_voids,
+            "show_corr_ribbon":    p.show_corr_ribbon,
+            "show_analyst_targets":p.show_analyst_targets,
+            "show_pe_band":        p.show_pe_band,
+            "show_insider_trades": p.show_insider_trades,
+            // v6: tab history (symbol/timeframe per tab slot) and symbol overlays
+            "tab_symbols":    &p.tab_symbols,
+            "tab_timeframes": &p.tab_timeframes,
+            "tab_active":     p.tab_active,
+            "symbol_overlays": p.symbol_overlays.iter().map(|ov| serde_json::json!({
+                "symbol": &ov.symbol, "color": &ov.color,
+                "show_candles": ov.show_candles, "visible": ov.visible,
+            })).collect::<Vec<_>>(),
         })
     }).collect();
     let state = serde_json::json!({
@@ -8957,6 +9094,17 @@ pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &mut Watchl
             "underlying": p.underlying,
             // MARK_BARS_PROTOCOL — persist Last/Mark choice per chart.
             "bar_source": if p.bar_source_mark { "mark" } else { "last" },
+            // v4: per-pane DOM panel state
+            "dom_open": p.dom.open,
+            "dom_sidebar_open": p.dom.sidebar_open,
+            // v6: tab history and symbol overlays
+            "tab_symbols":    &p.tab_symbols,
+            "tab_timeframes": &p.tab_timeframes,
+            "tab_active":     p.tab_active,
+            "symbol_overlays": p.symbol_overlays.iter().map(|ov| serde_json::json!({
+                "symbol": &ov.symbol, "color": &ov.color,
+                "show_candles": ov.show_candles, "visible": ov.visible,
+            })).collect::<Vec<_>>(),
         })
     }).collect();
     // Global settings from Watchlist
@@ -9115,6 +9263,19 @@ fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
             chart.show_pnl_curve = gb("show_pnl_curve", false);
             chart.show_pattern_labels = gb("show_pattern_labels", true);
             chart.link_group = p.get("link_group").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
+            // v5: overlay toggles (command-palette "overlay:" actions)
+            chart.show_vol_shelves     = gb("show_vol_shelves", false);
+            chart.show_confluence      = gb("show_confluence", false);
+            chart.show_momentum_heat   = gb("show_momentum_heat", false);
+            chart.show_trend_strip     = gb("show_trend_strip", false);
+            chart.show_breadth_tint    = gb("show_breadth_tint", false);
+            chart.show_vol_cone        = gb("show_vol_cone", false);
+            chart.show_price_memory    = gb("show_price_memory", false);
+            chart.show_liquidity_voids = gb("show_liquidity_voids", false);
+            chart.show_corr_ribbon     = gb("show_corr_ribbon", false);
+            chart.show_analyst_targets = gb("show_analyst_targets", false);
+            chart.show_pe_band         = gb("show_pe_band", false);
+            chart.show_insider_trades  = gb("show_insider_trades", false);
 
             // Restore session shading settings
             chart.session_shading = gb("session_shading", false);
@@ -9199,6 +9360,31 @@ fn load_state() -> (Vec<Chart>, Layout, LoadedSettings) {
             chart.underlying      = p.get("underlying").and_then(|v| v.as_str()).unwrap_or("").to_string();
             // MARK_BARS_PROTOCOL — default to "last" on missing.
             chart.bar_source_mark = p.get("bar_source").and_then(|v| v.as_str()).unwrap_or("last") == "mark";
+            // v4: per-pane DOM panel open state.
+            chart.dom.open         = gb("dom_open", false);
+            chart.dom.sidebar_open = gb("dom_sidebar_open", false);
+            // v6: tab history
+            if let Some(ts) = p.get("tab_symbols").and_then(|v| v.as_array()) {
+                chart.tab_symbols = ts.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
+            }
+            if let Some(ts) = p.get("tab_timeframes").and_then(|v| v.as_array()) {
+                chart.tab_timeframes = ts.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
+            }
+            chart.tab_active = p.get("tab_active").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            // v6: symbol overlays — bars re-fetched when pending_symbol_change fires
+            if let Some(ovs) = p.get("symbol_overlays").and_then(|v| v.as_array()) {
+                for ov in ovs {
+                    let sym = ov.get("symbol").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    if sym.is_empty() { continue; }
+                    chart.symbol_overlays.push(SymbolOverlay {
+                        symbol: sym,
+                        color: ov.get("color").and_then(|v| v.as_str()).unwrap_or("#FF5733").to_string(),
+                        show_candles: ov.get("show_candles").and_then(|v| v.as_bool()).unwrap_or(false),
+                        visible: ov.get("visible").and_then(|v| v.as_bool()).unwrap_or(true),
+                        bars: vec![], timestamps: vec![], loading: true,
+                    });
+                }
+            }
 
             panes.push(chart);
         }

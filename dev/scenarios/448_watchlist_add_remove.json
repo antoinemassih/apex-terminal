@@ -1,0 +1,28 @@
+{
+  "name": "watchlist_add_remove",
+  "description": "Add two symbols to the watchlist and remove them; verify no violations throughout.",
+  "story": "Watchlist/AddRemove",
+  "tags": ["watchlist"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "NVDA" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "AMD" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "cmd", "cmd": "WatchlistRemoveSymbol", "args": { "symbol": "NVDA" } },
+    { "action": "cmd", "cmd": "WatchlistRemoveSymbol", "args": { "symbol": "AMD" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "reset" }
+  ]
+}

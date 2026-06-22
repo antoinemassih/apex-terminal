@@ -107,7 +107,9 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
                     .frameless(true)
                     .show(ui, c.t);
                 if resp.lost_focus && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    if let Ok(p) = c.edit_price.parse::<f32>() { apply_price = Some(p); }
+                    if let Ok(p) = c.edit_price.parse::<f32>() {
+                        if p.is_finite() && p > 0.0 { apply_price = Some(p); }
+                    }
                 }
             });
             ui.add_space(gap_sm());
@@ -133,7 +135,7 @@ pub fn show_order_edit_dialog(c: OrderEditCtx<'_>) -> OrderEditOutput {
                     .frameless(true)
                     .show(ui, c.t);
                 if resp.lost_focus && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    if let Ok(q) = c.edit_qty.parse::<u32>() { apply_qty = Some(q.max(1)); }
+                    if let Ok(q) = c.edit_qty.parse::<u32>() { apply_qty = Some(q.clamp(1, 99_999)); }
                 }
                 if KitButton::new("+").variant(KitVariant::Ghost).size(KitSize::Sm)
                     .fg(c.t.dim).min_size(egui::vec2(20.0, row_height_default())).show(ui, c.t).clicked() {

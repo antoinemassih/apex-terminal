@@ -1350,9 +1350,10 @@ impl OrderManager {
 
         if let Some(o) = self.orders.iter_mut().find(|o| o.id == order_id && o.state == OrderState::Draft) {
             let now = epoch_ms();
-            o.state = OrderState::Working;
+            o.state = OrderState::PendingSubmit;
             o.updated_at = ts_from_ms(now);
             o.state_history.push((OrderState::PendingSubmit, ts_from_ms(now)));
+            o.state = OrderState::Working;
             o.state_history.push((OrderState::Working, ts_from_ms(now)));
             // Submit to ApexIB
             let sym = o.symbol.clone();
@@ -1601,7 +1602,7 @@ impl OrderManager {
             let id = self.next_id; self.next_id += 1;
             local_ids.push(id);
 
-            let initial_state = if self.armed { OrderState::PendingSubmit } else { OrderState::Draft };
+            let initial_state = if self.paper_mode || self.armed { OrderState::PendingSubmit } else { OrderState::Draft };
 
             self.orders.push(ManagedOrder {
                 id, client_order_id: new_client_order_id(), symbol: intent.symbol.clone(), symbol_typed: Symbol::equity(&intent.symbol), side: intent.side,

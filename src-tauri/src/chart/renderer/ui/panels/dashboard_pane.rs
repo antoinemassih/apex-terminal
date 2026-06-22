@@ -131,8 +131,8 @@ pub(crate) fn render(
         // Convert pixel position to fractional position (as draw_widgets expects)
         let px = content.left() + col as f32 * (tile_w + TILE_GAP);
         let py = content.top() + row as f32 * (tile_h + TILE_GAP);
-        w.x = (px - rect.left()) / rect.width();
-        w.y = (py - rect.top()) / rect.height();
+        w.x = if rect.width() > 0.0 { (px - rect.left()) / rect.width() } else { 0.0 };
+        w.y = if rect.height() > 0.0 { (py - rect.top()) / rect.height() } else { 0.0 };
         w.w = tile_w;
         w.h = tile_h;
         w.display = crate::chart_renderer::WidgetDisplayMode::Card;

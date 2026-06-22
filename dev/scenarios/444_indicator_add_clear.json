@@ -1,0 +1,25 @@
+{
+  "name": "indicator_add_clear",
+  "description": "Add RSI indicator to pane 0, verify count is 1, then clear it by kind and verify 0.",
+  "story": "Indicators/AddClear",
+  "tags": ["indicators", "chart"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "SetIndicatorOutput", "pane": 0, "kind": "RSI", "value": 55.0 },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "canvas_indicator_count_equals": { "pane": 0, "count": 1 } },
+      { "fps_above": 5.0 }
+    ] },
+    { "action": "cmd", "cmd": "ClearIndicator", "pane": 0, "kind": "RSI" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "canvas_no_indicators": { "pane": 0 } },
+      { "no_active_violations": true }
+    ] },
+    { "action": "reset" }
+  ]
+}

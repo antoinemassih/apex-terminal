@@ -1,0 +1,26 @@
+{
+  "name": "options_pane_rapid_symbol_cycle",
+  "description": "OptionsSentiment pane: cycle through 3 symbols in quick succession, verify pane type and FPS remain stable.",
+  "story": "OptionsChain/SymbolCycle",
+  "tags": ["options", "fps", "symbol_change"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "OptionsSentiment" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "QQQ" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "pane_type_equals": { "pane": 0, "type": "OptionsSentiment" } },
+      { "pane_symbol_equals": { "pane": 0, "symbol": "QQQ" } },
+      { "no_active_violations": true }
+    ] },
+    { "action": "reset" }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "name": "options_pane_in_two_pane",
+  "description": "Two-pane layout with pane 0 as Chart and pane 1 as OptionsSentiment, verify both panes render without violations.",
+  "story": "OptionsChain/Layout",
+  "tags": ["options", "layout", "multi_pane"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Setting TwoColumns layout" },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [{ "pane_count_equals": 2 }] },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "Chart" } },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 1, "kind": "OptionsSentiment" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 1, "symbol": "SPY" } },
+    { "action": "wait_frames", "count": 8 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "pane_count_equals": 2 },
+      { "pane_type_equals": { "pane": 0, "type": "Chart" } },
+      { "pane_type_equals": { "pane": 1, "type": "OptionsSentiment" } },
+      { "no_active_violations": true }
+    ] },
+    { "action": "reset" }
+  ]
+}

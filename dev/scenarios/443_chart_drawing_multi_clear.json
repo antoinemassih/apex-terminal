@@ -1,0 +1,28 @@
+{
+  "name": "chart_drawing_multi_clear",
+  "description": "Add three horizontal line drawings then clear all at once; verify count resets to zero.",
+  "story": "Drawings/ClearAll",
+  "tags": ["drawings", "chart"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "AddDrawing", "args": { "pane": 0, "id": "dl1", "kind": "HorizLine", "price_a": 480.0 } },
+    { "action": "cmd", "cmd": "AddDrawing", "args": { "pane": 0, "id": "dl2", "kind": "HorizLine", "price_a": 500.0 } },
+    { "action": "cmd", "cmd": "AddDrawing", "args": { "pane": 0, "id": "dl3", "kind": "HorizLine", "price_a": 520.0 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "canvas_drawing_count_equals": { "pane": 0, "count": 3 } },
+      { "fps_above": 5.0 }
+    ] },
+    { "action": "cmd", "cmd": "ClearDrawings", "args": { "pane": 0 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [
+      { "canvas_no_drawings": { "pane": 0 } },
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "reset" }
+  ]
+}

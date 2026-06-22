@@ -1,0 +1,29 @@
+{
+  "name": "dom_state_reset_on_symbol_change",
+  "description": "Change symbol twice on a chart pane; DOM center-price and selection reset each time, FPS stays stable.",
+  "story": "DOM/SymbolChange",
+  "tags": ["dom", "symbol_change", "fps"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Swap to AAPL — DOM state should reset" },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "pane_symbol_equals": { "pane": 0, "symbol": "AAPL" } }
+    ] },
+    { "action": "log", "message": "Swap to TSLA — DOM state resets again" },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "TSLA" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "pane_symbol_equals": { "pane": 0, "symbol": "TSLA" } },
+      { "no_active_violations": true }
+    ] },
+    { "action": "reset" }
+  ]
+}

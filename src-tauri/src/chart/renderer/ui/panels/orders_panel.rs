@@ -86,6 +86,7 @@ pub(crate) fn draw(
     if let Some(it) = instance_tab { *it = book_tab_to_u8(book_tab); }
     else { watchlist.book_tab = book_tab; }
     if resp.close_clicked {
+        watchlist.selected_order_ids.clear();
         if is_spawn { spawn_close = true; }
         else { watchlist.update_sidebar_state(|s| s.orders_panel_open = false); }
     }
@@ -392,7 +393,7 @@ fn draw_book(
                 let mut any_rows = false;
 
                 for (pi, pane) in panes.iter().enumerate() {
-                    for order in &pane.orders {
+                    for order in pane.orders.iter().filter(|o| o.status != OrderStatus::Cancelled) {
                         any_rows = true;
                         let status_text = match order.status {
                             OrderStatus::Draft => "DRAFT",

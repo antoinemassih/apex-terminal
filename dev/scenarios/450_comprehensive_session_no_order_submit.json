@@ -1,0 +1,64 @@
+{
+  "name": "comprehensive_session_no_order_submit",
+  "description": "Full session mixing chart, options, watchlist, drawings, and dialog operations without submitting any orders.",
+  "story": "Session/Comprehensive",
+  "tags": ["comprehensive", "no_orders"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Step 1: Two-column layout with Chart + OptionsSentiment" },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "Chart" } },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 1, "kind": "OptionsSentiment" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 1, "symbol": "SPY" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "pane_count_equals": 2 },
+      { "pane_type_equals": { "pane": 0, "type": "Chart" } },
+      { "pane_type_equals": { "pane": 1, "type": "OptionsSentiment" } },
+      { "fps_above": 5.0 }
+    ] },
+    { "action": "log", "message": "Step 2: Add drawing and indicator to chart pane" },
+    { "action": "cmd", "cmd": "AddDrawing", "args": { "pane": 0, "id": "sup1", "kind": "HorizLine", "price_a": 550.0 } },
+    { "action": "cmd", "cmd": "SetIndicatorOutput", "pane": 0, "kind": "SMA", "value": 550.0 },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "canvas_drawing_count_equals": { "pane": 0, "count": 1 } },
+      { "canvas_indicator_count_equals": { "pane": 0, "count": 1 } },
+      { "fps_above": 5.0 }
+    ] },
+    { "action": "log", "message": "Step 3: Add symbols to watchlist" },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "NVDA" } },
+    { "action": "cmd", "cmd": "WatchlistAddSymbol", "args": { "symbol": "TSLA" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "log", "message": "Step 4: Open order entry (inspect only, no submit)" },
+    { "action": "cmd", "cmd": "OpenOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "dialog_open": "order_entry" }] },
+    { "action": "cmd", "cmd": "CloseOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "dialog_closed": "order_entry" }] },
+    { "action": "log", "message": "Step 5: Change options pane symbol, verify pane type persists" },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 1, "symbol": "AAPL" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "pane_type_equals": { "pane": 1, "type": "OptionsSentiment" } },
+      { "pane_symbol_equals": { "pane": 1, "symbol": "AAPL" } }
+    ] },
+    { "action": "log", "message": "Step 6: Clear drawings and indicator, verify clean state" },
+    { "action": "cmd", "cmd": "ClearDrawings", "args": { "pane": 0 } },
+    { "action": "cmd", "cmd": "ClearIndicator", "pane": 0, "kind": "SMA" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "canvas_no_drawings": { "pane": 0 } },
+      { "canvas_no_indicators": { "pane": 0 } }
+    ] },
+    { "action": "reset" }
+  ]
+}
