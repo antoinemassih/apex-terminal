@@ -98,32 +98,6 @@ thread_local! {
         = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
-/// US Eastern UTC offset in minutes — 240 (EDT) in summer, 300 (EST) in winter.
-/// US DST runs from the 2nd Sunday of March to the 1st Sunday of November.
-fn us_eastern_offset_min() -> u16 {
-    use chrono::Datelike;
-    let now = chrono::Utc::now();
-    let (y, m, d) = (now.year(), now.month(), now.day());
-    // Day-of-month of the Nth Sunday of `month` (n is 1-based).
-    let nth_sunday = |month: u32, n: u32| -> u32 {
-        match chrono::NaiveDate::from_ymd_opt(y, month, 1) {
-            Some(first) => {
-                let fw = first.weekday().num_days_from_sunday();
-                let first_sun = if fw == 0 { 1 } else { 8 - fw };
-                first_sun + 7 * (n - 1)
-            }
-            None => 99, // unreachable for a valid (year, month, 1)
-        }
-    };
-    let in_dst = match m {
-        4..=10 => true,
-        3 => d >= nth_sunday(3, 2),
-        11 => d < nth_sunday(11, 1),
-        _ => false,
-    };
-    if in_dst { 240 } else { 300 }
-}
-
 /// US/Eastern UTC offset in MINUTES for the date of `ts_secs` (DST-aware,
 /// per-timestamp — NOT `now()`). Axis labels must use the offset of the bar's
 /// OWN date, else historical/cross-DST charts render an hour off. 240=EDT, 300=EST.
@@ -2095,18 +2069,21 @@ fn render_chart_pane(
     // Extended hours helper — true when timestamp is outside regular trading hours
     // Uses chart session settings when session_shading is enabled, otherwise defaults to US equities (9:30-16:00 ET)
     let is_crypto = crate::data::is_crypto(&chart.symbol);
-    // ET->UTC offset, DST-aware (240 EDT / 300 EST) — audit fix: was hardcoded EDT,
-    // making session shading wrong by an hour for ~5 months a year.
-    let et_offset_min: u16 = us_eastern_offset_min();
-    let (rth_start_utc_secs, rth_end_utc_secs) = if chart.session_shading && !is_crypto {
-        ((chart.rth_start_minutes + et_offset_min) as i64 * 60,
-         (chart.rth_end_minutes + et_offset_min) as i64 * 60)
+    // RTH window in ET minutes-from-midnight (custom when session_shading on, else
+    // US equities 9:30–16:00). The ET→UTC offset is applied PER-BAR inside the
+    // closure via et_offset_min_for(ts) — DST-aware for each bar's own date — so
+    // shading on historical / cross-DST charts isn't an hour off (the prior code
+    // used one Utc::now()-based offset for the whole visible range).
+    let (rth_start_min, rth_end_min): (i64, i64) = if chart.session_shading && !is_crypto {
+        (chart.rth_start_minutes as i64, chart.rth_end_minutes as i64)
     } else {
-        // Default US equities RTH: 9:30 (570 min) - 16:00 (960 min) ET.
-        (((570 + et_offset_min) as i64) * 60, ((960 + et_offset_min) as i64) * 60)
+        (570, 960)
     };
     let is_extended_hour = |ts: i64| -> bool {
         if is_crypto { return false; }
+        let off = et_offset_min_for(ts); // 240 EDT / 300 EST for ts's date
+        let rth_start_utc_secs = (rth_start_min + off) * 60;
+        let rth_end_utc_secs = (rth_end_min + off) * 60;
         let secs_in_day = ((ts % 86400) + 86400) % 86400;
         secs_in_day < rth_start_utc_secs || secs_in_day >= rth_end_utc_secs
     };
