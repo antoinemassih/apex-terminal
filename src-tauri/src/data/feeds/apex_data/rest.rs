@@ -11,19 +11,38 @@ use super::config::{apex_url, apex_token, is_enabled};
 use super::types::*;
 use crate::data::connectivity::error::{ApiError, AuthError};
 use reqwest::blocking::Client;
+use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-/// Simple circuit breaker: after `TRIP_THRESHOLD` consecutive failures,
-/// shortcut all REST calls to None for `COOLDOWN` before probing again.
+/// Per-route-group circuit breaker: after `TRIP_THRESHOLD` consecutive network
+/// failures on a route group, shortcut calls to *that group* for `COOLDOWN`
+/// before probing again. Keying by group (e.g. `/api/bars` vs `/api/snap`)
+/// means a failing poller endpoint can't starve unrelated calls like chart-bar
+/// history — the previous single global breaker tripped on any 3 net errors and
+/// then blocked every endpoint for 30s.
 const TRIP_THRESHOLD: u32 = 3;
 const COOLDOWN: Duration = Duration::from_secs(30);
 
+#[derive(Default)]
 struct Breaker { fails: u32, opened_at: Option<Instant> }
 
-static BREAKER: OnceLock<Mutex<Breaker>> = OnceLock::new();
-fn breaker() -> &'static Mutex<Breaker> {
-    BREAKER.get_or_init(|| Mutex::new(Breaker { fails: 0, opened_at: None }))
+static BREAKERS: OnceLock<Mutex<HashMap<String, Breaker>>> = OnceLock::new();
+fn breakers() -> &'static Mutex<HashMap<String, Breaker>> {
+    BREAKERS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Reduce a request path to its breaker key: the first two path segments
+/// (query stripped). `/api/bars/stocks/QQQ/5m` → `/api/bars`,
+/// `/api/snap/stocks/QQQ` → `/api/snap`, so the two never share a breaker.
+fn route_group(path: &str) -> String {
+    let p = path.split('?').next().unwrap_or(path);
+    let mut segs = p.split('/').filter(|s| !s.is_empty());
+    match (segs.next(), segs.next()) {
+        (Some(a), Some(b)) => format!("/{a}/{b}"),
+        (Some(a), None)    => format!("/{a}"),
+        _ => "/".to_string(),
+    }
 }
 
 // ── REST stats (for diagnostics panel) ─────────────────────────────────────
@@ -78,29 +97,40 @@ pub fn stats_snapshot() -> (u64, u64, u64, u64, u64, Vec<RestCall>) {
     }).unwrap_or((0, 0, 0, 0, 0, vec![]))
 }
 
-/// Breaker state for the diagnostics panel.
+/// Aggregate breaker state for the diagnostics panel: total live fails across
+/// all route groups, and the longest remaining cooldown among open groups.
 pub fn breaker_snapshot() -> (u32, Option<Duration>) {
-    breaker().lock().ok().map(|b| {
-        let remaining = b.opened_at.map(|t| COOLDOWN.saturating_sub(t.elapsed()));
-        (b.fails, remaining)
+    breakers().lock().ok().map(|m| {
+        let fails: u32 = m.values().map(|b| b.fails).sum();
+        let remaining = m.values()
+            .filter_map(|b| b.opened_at)
+            .map(|t| COOLDOWN.saturating_sub(t.elapsed()))
+            .filter(|d| !d.is_zero())
+            .max();
+        (fails, remaining)
     }).unwrap_or((0, None))
 }
-fn breaker_is_open() -> bool {
-    if let Ok(b) = breaker().lock() {
-        if let Some(t) = b.opened_at { return t.elapsed() < COOLDOWN; }
+fn breaker_is_open(key: &str) -> bool {
+    if let Ok(m) = breakers().lock() {
+        if let Some(b) = m.get(key) {
+            if let Some(t) = b.opened_at { return t.elapsed() < COOLDOWN; }
+        }
     }
     false
 }
-fn breaker_note_success() {
-    if let Ok(mut b) = breaker().lock() { b.fails = 0; b.opened_at = None; }
+fn breaker_note_success(key: &str) {
+    if let Ok(mut m) = breakers().lock() {
+        if let Some(b) = m.get_mut(key) { b.fails = 0; b.opened_at = None; }
+    }
 }
-/// Manually clear the breaker (used after settings changes that may have
+/// Manually clear all breakers (used after settings changes that may have
 /// fixed the underlying connectivity issue).
 pub fn reset_breaker() {
-    if let Ok(mut b) = breaker().lock() { b.fails = 0; b.opened_at = None; }
+    if let Ok(mut m) = breakers().lock() { m.clear(); }
 }
-fn breaker_note_failure() {
-    if let Ok(mut b) = breaker().lock() {
+fn breaker_note_failure(key: &str) {
+    if let Ok(mut m) = breakers().lock() {
+        let b = m.entry(key.to_string()).or_default();
         b.fails += 1;
         if b.fails >= TRIP_THRESHOLD { b.opened_at = Some(Instant::now()); }
     }
@@ -138,7 +168,8 @@ fn get<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, ApiError> {
         record(RestCall { path: path.into(), status: 0, outcome: "skip", ms: 0, at: std::time::SystemTime::now() });
         return Err(ApiError::NotSupported("apex_data disabled".into()));
     }
-    if breaker_is_open() {
+    let breaker_key = route_group(path);
+    if breaker_is_open(&breaker_key) {
         crate::apex_log!("rest.skip", "breaker open: {path}");
         record(RestCall { path: path.into(), status: 1, outcome: "skip", ms: 0, at: std::time::SystemTime::now() });
         return Err(ApiError::CircuitOpen);
@@ -155,7 +186,7 @@ fn get<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, ApiError> {
             match r.json::<T>() {
                 Ok(v) => {
                     crate::apex_log!("rest.ok", "{path} → {} ({:?})", status, t0.elapsed());
-                    breaker_note_success();
+                    breaker_note_success(&breaker_key);
                     record(RestCall { path: path.into(), status: status.as_u16(), outcome: "ok", ms: t0.elapsed().as_millis(), at: std::time::SystemTime::now() });
                     Ok(v)
                 }
@@ -182,7 +213,7 @@ fn get<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, ApiError> {
         }
         Err(e) => {
             crate::apex_log!("rest.err", "{path} network error ({:?}): {e}", t0.elapsed());
-            breaker_note_failure();
+            breaker_note_failure(&breaker_key);
             record(RestCall { path: path.into(), status: 0, outcome: "err", ms: t0.elapsed().as_millis(), at: std::time::SystemTime::now() });
             Err(ApiError::Network(e.to_string()))
         }
@@ -201,7 +232,8 @@ fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(path: &str, bo
         record(RestCall { path: format!("POST {path}"), status: 0, outcome: "skip", ms: 0, at: std::time::SystemTime::now() });
         return None;
     }
-    if breaker_is_open() {
+    let breaker_key = route_group(path);
+    if breaker_is_open(&breaker_key) {
         crate::apex_log!("rest.skip", "breaker open: POST {path}");
         record(RestCall { path: format!("POST {path}"), status: 1, outcome: "skip", ms: 0, at: std::time::SystemTime::now() });
         return None;
@@ -218,7 +250,7 @@ fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(path: &str, bo
             match r.json::<T>() {
                 Ok(v) => {
                     crate::apex_log!("rest.ok", "POST {path} → {} ({:?})", status, t0.elapsed());
-                    breaker_note_success();
+                    breaker_note_success(&breaker_key);
                     record(RestCall { path: format!("POST {path}"), status: status.as_u16(), outcome: "ok", ms: t0.elapsed().as_millis(), at: std::time::SystemTime::now() });
                     Some(v)
                 }
@@ -236,7 +268,7 @@ fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(path: &str, bo
         }
         Err(e) => {
             crate::apex_log!("rest.err", "POST {path} network error ({:?}): {e}", t0.elapsed());
-            breaker_note_failure();
+            breaker_note_failure(&breaker_key);
             record(RestCall { path: format!("POST {path}"), status: 0, outcome: "err", ms: t0.elapsed().as_millis(), at: std::time::SystemTime::now() });
             None
         }
@@ -936,7 +968,7 @@ pub fn get_provenance(
     if !is_enabled() {
         return Err(ProvenanceError::Other("apex_data disabled".into()));
     }
-    if breaker_is_open() {
+    if breaker_is_open("/api/provenance") {
         return Err(ProvenanceError::Other("rest breaker open".into()));
     }
     let d = depth.clamp(1, 10);
@@ -970,7 +1002,7 @@ pub fn get_provenance(
                 let status = r.status().as_u16();
                 match r.json::<ProvenanceTreeNode>() {
                     Ok(node) => {
-                        breaker_note_success();
+                        breaker_note_success("/api/provenance");
                         record(RestCall {
                             path,
                             status,
@@ -1008,7 +1040,7 @@ pub fn get_provenance(
                 }
             }
             Err(e) => {
-                breaker_note_failure();
+                breaker_note_failure("/api/provenance");
                 record(RestCall {
                     path,
                     status: 0,
@@ -1327,5 +1359,36 @@ mod p1_8_auth_retry_tests {
 
         _m401.assert();
         _m200.assert();
+    }
+}
+
+#[cfg(test)]
+mod breaker_routing_tests {
+    use super::{breaker_is_open, breaker_note_failure, reset_breaker, route_group, TRIP_THRESHOLD};
+    use serial_test::serial;
+
+    #[test]
+    fn route_group_maps_to_first_two_segments() {
+        assert_eq!(route_group("/api/bars/stocks/QQQ/5m"), "/api/bars");
+        assert_eq!(route_group("/api/snap/stocks/QQQ"), "/api/snap");
+        assert_eq!(route_group("/api/stocks/movers?direction=gainers"), "/api/stocks");
+        assert_eq!(route_group("/api/health/ready"), "/api/health");
+        assert_eq!(route_group("/health"), "/health");
+    }
+
+    #[test]
+    #[serial]
+    fn tripping_one_group_does_not_open_another() {
+        reset_breaker();
+        // Trip the snap group with TRIP_THRESHOLD consecutive failures.
+        for _ in 0..TRIP_THRESHOLD {
+            breaker_note_failure("/api/snap");
+        }
+        assert!(breaker_is_open("/api/snap"), "snap group should be open after threshold failures");
+        // The bars group must remain closed — this is the whole point of keying:
+        // a failing poller endpoint can't starve chart-bar history.
+        assert!(!breaker_is_open("/api/bars"), "bars group must NOT be affected by snap failures");
+        reset_breaker();
+        assert!(!breaker_is_open("/api/snap"), "reset must clear all groups");
     }
 }

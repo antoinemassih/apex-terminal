@@ -91,3 +91,5 @@ Split `gpu.rs` into `app/`/`theme/`/`model/`; group `Chart`/`AppState` fields in
 
 ## Progress log
 - 2026-06-28: Audit created. Phase 0 started.
+- 2026-06-28: Phase 0 complete (commit 7e7a80b3) — `cargo fix` sweep (576→409 warnings), Cyrillic homoglyph fixed, `live_state.rs:364` unwrap hardened, data-outage UX (`BarsUnavailable` → "no data" message instead of endless spinner).
+- 2026-06-28: Phase 1 (1/4) — **per-route circuit breakers**. Replaced the single global breaker in `apex_data/rest.rs` with a `HashMap<route_group, Breaker>` keyed by the first two path segments (`/api/bars` vs `/api/snap` etc.), so a failing poller endpoint can no longer starve chart-bar history for 30s. Wired through `get`/`post_json`/`get_provenance`; `breaker_snapshot` now aggregates across groups (diagnostics panel unchanged); added `breaker_routing_tests`. Remaining Phase 1: `ResilientWs` helper, centralized endpoint config + token-off-URL, provider-abstraction decision.
