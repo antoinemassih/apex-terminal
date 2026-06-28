@@ -320,14 +320,16 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
             RECONNECT_COUNT.fetch_add(1, Ordering::Relaxed);
         }
         first_attempt = false;
-        let url = format!("{}?format=msgpack{}", apex_ws_url(),
-            apex_token().map(|t| format!("&token={t}")).unwrap_or_default());
+        // Token goes in the Authorization header, NOT the URL query — a `?token=`
+        // leaks the secret into proxy / server / app logs. Mirrors the REST
+        // client's bearer discipline. Safe to log this URL (no secret in it).
+        let url = format!("{}?format=msgpack", apex_ws_url());
         report(ErrorLevel::Info, "apex_data.ws", "connecting", format!("→ {url}"));
         publish_state(ConnectionState::Connecting {
             attempt: RECONNECT_COUNT.load(Ordering::Relaxed) + 1,
         });
 
-        let req = match url.into_client_request() {
+        let mut req = match url.into_client_request() {
             Ok(r) => r,
             Err(e) => {
                 report(ErrorLevel::Error, "apex_data.ws", "bad_url", e.to_string());
@@ -337,6 +339,12 @@ async fn run_connection_loop(mgr: Arc<Manager>, mut rx_ctrl: mpsc::UnboundedRece
                 continue;
             }
         };
+        if let Some(tok) = apex_token() {
+            use tokio_tungstenite::tungstenite::http::{header::AUTHORIZATION, HeaderValue};
+            if let Ok(v) = HeaderValue::from_str(&format!("Bearer {tok}")) {
+                req.headers_mut().insert(AUTHORIZATION, v);
+            }
+        }
 
         // LAN-IP override: when set, connect TCP directly to the homelab
         // Traefik IP and hand the socket to `client_async` with the original
@@ -646,8 +654,8 @@ impl Drop for ReplaySubscription {
 /// call [`ReplaySubscription::stop`]) to tear down.
 ///
 /// Uses the same WS URL base as the live data session (`apex_ws_url()`) but
-/// rewrites the path to `/api/replay/:id/stream`. Auth token, if set, is
-/// passed as `?token=...` to mirror what the live WS does.
+/// rewrites the path to `/api/replay/:id/stream`. Auth token, if set, is sent
+/// via the Authorization header (not the URL) to mirror the live WS.
 pub fn subscribe_replay<F>(replay_id: impl Into<String>, on_frame: F) -> ReplaySubscription
 where
     F: Fn(super::types::ReplayEvent) + Send + Sync + 'static,
@@ -679,7 +687,7 @@ where
     let url = build_replay_url(&base, &replay_id);
     eprintln!("[apex_data.ws.replay] connect {url}");
 
-    let req = match url.clone().into_client_request() {
+    let mut req = match url.clone().into_client_request() {
         Ok(r) => r,
         Err(e) => {
             eprintln!("[apex_data.ws.replay] bad url: {e}");
@@ -687,6 +695,12 @@ where
             return;
         }
     };
+    if let Some(tok) = apex_token() {
+        use tokio_tungstenite::tungstenite::http::{header::AUTHORIZATION, HeaderValue};
+        if let Ok(v) = HeaderValue::from_str(&format!("Bearer {tok}")) {
+            req.headers_mut().insert(AUTHORIZATION, v);
+        }
+    }
 
     // Reuse the LAN-IP override path (same trick the live WS uses) so the
     // replay socket also bypasses public DNS in the homelab.
@@ -752,7 +766,8 @@ where
 
 /// Build the replay stream URL by reusing the live WS host:port and swapping
 /// the path. `apex_ws_url()` may end in `/api/ws` or similar — we strip the
-/// path and append `/api/replay/:id/stream?format=msgpack[&token=...]`.
+/// path and append `/api/replay/:id/stream?format=msgpack`. The auth token is
+/// sent via the Authorization header by the caller, not the URL.
 fn build_replay_url(base: &str, replay_id: &str) -> String {
     // The base URL is constructed elsewhere; rather than parse it fully we
     // do a cheap split on `://` + first `/` of the authority portion.
@@ -766,8 +781,7 @@ fn build_replay_url(base: &str, replay_id: &str) -> String {
         }
         None => (base, ""),
     };
-    let token_q = apex_token().map(|t| format!("&token={t}")).unwrap_or_default();
-    format!("{scheme_auth}/api/replay/{replay_id}/stream?format=msgpack{token_q}")
+    format!("{scheme_auth}/api/replay/{replay_id}/stream?format=msgpack")
 }
 
 fn handle_replay_text<F>(text: &str, on_frame: &Arc<F>)
