@@ -54,12 +54,18 @@ struct ReportDraft {
     list_input: String,
     /// Saved image files (absolute or cwd-relative), already on disk.
     images: Vec<PathBuf>,
-    /// Capture the clicked region as a screenshot on save.
+    /// Reference the clicked region's clean screenshot (captured at click time,
+    /// before this dialog opened) in the saved report.
     auto_shot: bool,
+    /// Path to the region screenshot captured at click time, if any.
+    region_path: Option<PathBuf>,
     /// Transient status line shown under the buttons.
     status: String,
-    /// True only on the first frame, so we can auto-focus the text field.
-    fresh: bool,
+    /// Skip the dialog render for exactly one frame so the click-time region
+    /// capture lands on a clean frame (no dialog, no inspect overlay).
+    skip_render_once: bool,
+    /// Auto-focus the text field on the first real render frame.
+    focus_next: bool,
 }
 
 thread_local! {
@@ -68,6 +74,8 @@ thread_local! {
     static PENDING: RefCell<Option<AnchorHit>> = const { RefCell::new(None) };
     static DRAFT: RefCell<Option<ReportDraft>> = const { RefCell::new(None) };
     static CAPTURE: RefCell<Vec<CaptureReq>> = const { RefCell::new(Vec::new()) };
+    /// Region screenshot staged at click time: (bug_id, png path).
+    static STAGED_REGION: RefCell<Option<(u32, PathBuf)>> = const { RefCell::new(None) };
 }
 
 pub fn set_inspect(on: bool) { INSPECT.with(|c| c.set(on)); }
@@ -81,7 +89,14 @@ pub fn begin_frame() { FRAME.with(|f| f.borrow_mut().clear()); }
 pub fn take_pending() -> Option<AnchorHit> { PENDING.with(|p| p.borrow_mut().take()) }
 
 pub fn draft_is_open() -> bool { DRAFT.with(|d| d.borrow().is_some()) }
-pub fn close_draft() { DRAFT.with(|d| *d.borrow_mut() = None); }
+
+/// Discard the open draft (if any), deleting its staged images + region shot.
+pub fn close_draft() {
+    if let Some(draft) = DRAFT.with(|d| d.borrow_mut().take()) {
+        for p in &draft.images { let _ = std::fs::remove_file(p); }
+        if let Some(p) = &draft.region_path { let _ = std::fs::remove_file(p); }
+    }
+}
 
 /// Drain queued region-screenshot requests (fulfilled by `gpu.rs`).
 pub fn take_capture_reqs() -> Vec<CaptureReq> { CAPTURE.with(|c| std::mem::take(&mut *c.borrow_mut())) }
@@ -176,43 +191,63 @@ pub fn resolve_frame(ctx: &egui::Context, note_open: bool) {
     let screen = ctx.screen_rect();
 
     // Banner — a filled pill placed below the toolbar so it is not occluded.
-    let banner = "● BUG INSPECT — click a region to report it · hold Alt for the containing region · Ctrl+Shift+I to exit";
-    let font = FontId::proportional(12.5);
-    let center = egui::pos2(screen.center().x, screen.top() + 52.0);
-    let galley = painter.layout_no_wrap(banner.to_string(), font, Color32::WHITE);
-    let pill = Rect::from_center_size(center, galley.size() + egui::vec2(24.0, 12.0));
-    painter.rect_filled(pill, 14.0, Color32::from_rgb(40, 70, 130));
-    painter.rect_stroke(pill, 14.0, Stroke::new(1.0, Color32::from_rgb(150, 190, 255)), egui::StrokeKind::Inside);
-    painter.galley(pill.center() - galley.size() / 2.0, galley, Color32::WHITE);
+    let paint_banner = || {
+        let banner = "● BUG INSPECT — click a region to report it · hold Alt for the containing region · Ctrl+Shift+I to exit";
+        let font = FontId::proportional(12.5);
+        let center = egui::pos2(screen.center().x, screen.top() + 52.0);
+        let galley = painter.layout_no_wrap(banner.to_string(), font, Color32::WHITE);
+        let pill = Rect::from_center_size(center, galley.size() + egui::vec2(24.0, 12.0));
+        painter.rect_filled(pill, 14.0, Color32::from_rgb(40, 70, 130));
+        painter.rect_stroke(pill, 14.0, Stroke::new(1.0, Color32::from_rgb(150, 190, 255)), egui::StrokeKind::Inside);
+        painter.galley(pill.center() - galley.size() / 2.0, galley, Color32::WHITE);
+    };
 
     if note_open {
+        paint_banner();
         return; // let the report window take input
     }
 
-    let Some(p) = ctx.pointer_hover_pos() else { return };
-
-    // Default = most specific (smallest region under the pointer). Hold Alt to
-    // grab the containing region instead.
-    let want_parent = ctx.input(|i| i.modifiers.alt);
-    let hit = FRAME.with(|f| {
-        let mut containing: Vec<AnchorHit> =
-            f.borrow().iter().filter(|a| a.rect.contains(p)).cloned().collect();
-        containing.sort_by(|a, b| a.rect.area().partial_cmp(&b.rect.area()).unwrap_or(std::cmp::Ordering::Equal));
-        if want_parent {
-            containing.into_iter().nth(1)
-        } else {
-            containing.into_iter().next()
-        }
-    });
-    // When Alt is held but there is no parent, fall back to the smallest.
-    let hit = match hit {
-        Some(h) => Some(h),
-        None => FRAME.with(|f| {
+    // Resolve the region under the pointer (default = smallest; Alt = parent).
+    let hit = ctx.pointer_hover_pos().and_then(|p| {
+        let want_parent = ctx.input(|i| i.modifiers.alt);
+        let by_area = FRAME.with(|f| {
+            let mut containing: Vec<AnchorHit> =
+                f.borrow().iter().filter(|a| a.rect.contains(p)).cloned().collect();
+            containing.sort_by(|a, b| a.rect.area().partial_cmp(&b.rect.area()).unwrap_or(std::cmp::Ordering::Equal));
+            if want_parent { containing.into_iter().nth(1) } else { containing.into_iter().next() }
+        });
+        by_area.or_else(|| FRAME.with(|f| {
             f.borrow().iter().filter(|a| a.rect.contains(p))
                 .min_by(|a, b| a.rect.area().partial_cmp(&b.rect.area()).unwrap_or(std::cmp::Ordering::Equal))
                 .cloned()
-        }),
-    };
+        }))
+    });
+
+    // Full-window catch layer so the click captures the anchor instead of
+    // activating the widget underneath. It paints nothing, so it never pollutes
+    // a capture frame.
+    let _catch = egui::Area::new(egui::Id::new("bug_inspect_catch"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(screen.min)
+        .interactable(true)
+        .show(ctx, |ui| ui.allocate_rect(screen, Sense::click()))
+        .inner;
+    ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
+
+    // On click: stage a CLEAN region screenshot (this frame paints no banner,
+    // no highlight, and the dialog is held back one frame — see prompt's
+    // skip_render_once), then record the pending hit and return early so the
+    // capture lands on an un-occluded frame.
+    if ctx.input(|i| i.pointer.primary_clicked()) {
+        if let Some(hit) = hit {
+            stage_region_capture(&hit);
+            PENDING.with(|pp| *pp.borrow_mut() = Some(hit));
+        }
+        return;
+    }
+
+    // No click this frame → paint the banner + the hovered region highlight.
+    paint_banner();
     let Some(hit) = hit else { return };
 
     painter.rect_filled(hit.rect, 2.0, Color32::from_rgba_unmultiplied(120, 170, 255, 30));
@@ -233,26 +268,26 @@ pub fn resolve_frame(ctx: &egui::Context, note_open: bool) {
     painter.rect_filled(bg, 3.0, PANEL_BG);
     painter.rect_stroke(bg, 3.0, Stroke::new(1.0, ACCENT), egui::StrokeKind::Inside);
     painter.galley(origin + pad, galley, Color32::WHITE);
+}
 
-    // Full-window catch layer so the click captures the anchor instead of
-    // activating the widget underneath.
-    let _catch = egui::Area::new(egui::Id::new("bug_inspect_catch"))
-        .order(egui::Order::Foreground)
-        .fixed_pos(screen.min)
-        .interactable(true)
-        .show(ctx, |ui| ui.allocate_rect(screen, Sense::click()))
-        .inner;
-    ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
-    if ctx.input(|i| i.pointer.primary_clicked()) {
-        PENDING.with(|pp| *pp.borrow_mut() = Some(hit));
-    }
+/// Queue a clean region screenshot at click time + stash its path for the draft.
+fn stage_region_capture(hit: &AnchorHit) {
+    let bug_id = next_bug_id();
+    let path = images_dir().join(format!("bug-{:04}-region.png", bug_id));
+    let _ = std::fs::create_dir_all(images_dir());
+    CAPTURE.with(|c| c.borrow_mut().push(CaptureReq { rect: hit.rect, out: path.clone() }));
+    STAGED_REGION.with(|s| *s.borrow_mut() = Some((bug_id, path)));
 }
 
 // ── Report draft ────────────────────────────────────────────────────────────
 
-/// Open the report prompt for a freshly clicked anchor.
+/// Open the report prompt for a freshly clicked anchor. Consumes the region
+/// screenshot staged at click time (captured on a clean frame).
 pub fn open_draft(hit: AnchorHit) {
-    let bug_id = next_bug_id();
+    let (bug_id, region_path) = match STAGED_REGION.with(|s| s.borrow_mut().take()) {
+        Some((id, path)) => (id, Some(path)),
+        None => (next_bug_id(), None),
+    };
     DRAFT.with(|d| {
         *d.borrow_mut() = Some(ReportDraft {
             hit,
@@ -261,9 +296,11 @@ pub fn open_draft(hit: AnchorHit) {
             list: Vec::new(),
             list_input: String::new(),
             images: Vec::new(),
-            auto_shot: true,
+            auto_shot: region_path.is_some(),
+            region_path,
             status: String::new(),
-            fresh: true,
+            skip_render_once: true,
+            focus_next: false,
         });
     });
 }
@@ -273,6 +310,15 @@ pub fn prompt(ctx: &egui::Context) {
     // Take the draft out so we don't hold a RefCell borrow across the egui
     // closure; put it back unless it was saved/cancelled.
     let Some(mut draft) = DRAFT.with(|d| d.borrow_mut().take()) else { return };
+
+    // Hold the dialog back for exactly one frame after the click so the
+    // click-time region screenshot lands on a clean frame (no dialog visible).
+    if draft.skip_render_once {
+        draft.skip_render_once = false;
+        draft.focus_next = true;
+        DRAFT.with(|d| *d.borrow_mut() = Some(draft));
+        return;
+    }
 
     let key = draft.hit.key.clone();
     let src = format!("{}:{}", short_file(draft.hit.file), draft.hit.line);
@@ -306,8 +352,9 @@ pub fn prompt(ctx: &egui::Context) {
                     .desired_width(f32::INFINITY)
                     .hint_text("e.g. % column shows wrong value when market is closed"),
             );
-            if draft.fresh {
+            if draft.focus_next {
                 resp.request_focus();
+                draft.focus_next = false;
             }
             if ui.input(|i| (i.modifiers.command || i.modifiers.ctrl) && i.key_pressed(egui::Key::Enter)) {
                 save = true;
@@ -346,19 +393,29 @@ pub fn prompt(ctx: &egui::Context) {
             ui.add_space(10.0);
             ui.label(egui::RichText::new("Images").size(11.5).color(DIM));
             ui.add_space(3.0);
+            let chip = |ui: &mut egui::Ui, text: String| -> bool {
+                let mut removed = false;
+                egui::Frame::none()
+                    .fill(Color32::from_rgb(28, 38, 60))
+                    .stroke(Stroke::new(1.0, Color32::from_rgb(60, 80, 120)))
+                    .inner_margin(egui::Margin::symmetric(6, 3))
+                    .corner_radius(egui::CornerRadius::same(3))
+                    .show(ui, |ui| {
+                        ui.label(egui::RichText::new(text).size(10.5).color(Color32::WHITE));
+                        if ui.small_button("✕").clicked() { removed = true; }
+                    });
+                removed
+            };
             let mut remove_img: Option<usize> = None;
             ui.horizontal_wrapped(|ui| {
+                // Region screenshot (captured at click time) shown as a togglable chip.
+                if draft.region_path.is_some() {
+                    let label = if draft.auto_shot { "🖼 region screenshot ✓" } else { "🖼 region screenshot (off)" };
+                    if chip(ui, label.to_string()) { draft.auto_shot = false; }
+                }
                 for (i, p) in draft.images.iter().enumerate() {
                     let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                    egui::Frame::none()
-                        .fill(Color32::from_rgb(28, 38, 60))
-                        .stroke(Stroke::new(1.0, Color32::from_rgb(60, 80, 120)))
-                        .inner_margin(egui::Margin::symmetric(6, 3))
-                        .corner_radius(egui::CornerRadius::same(3))
-                        .show(ui, |ui| {
-                            ui.label(egui::RichText::new(format!("🖼 {name}")).size(10.5).color(Color32::WHITE));
-                            if ui.small_button("✕").clicked() { remove_img = Some(i); }
-                        });
+                    if chip(ui, format!("🖼 {name}")) { remove_img = Some(i); }
                 }
             });
             if let Some(i) = remove_img {
@@ -367,7 +424,9 @@ pub fn prompt(ctx: &egui::Context) {
             }
 
             ui.add_space(4.0);
-            ui.checkbox(&mut draft.auto_shot, "Auto-capture a screenshot of the clicked region on save");
+            if draft.region_path.is_some() {
+                ui.checkbox(&mut draft.auto_shot, "Include the clicked-region screenshot");
+            }
 
             ui.horizontal(|ui| {
                 if ui.button("📎 Attach image…").clicked() {
@@ -413,18 +472,14 @@ pub fn prompt(ctx: &egui::Context) {
             }
         });
 
-    draft.fresh = false;
-
     if save {
-        // Queue the region screenshot first so the markdown can reference it.
-        let region_ref = if draft.auto_shot {
-            let fname = format!("bug-{:04}-region.png", draft.bug_id);
-            let out = images_dir().join(&fname);
-            let _ = std::fs::create_dir_all(images_dir());
-            CAPTURE.with(|c| c.borrow_mut().push(CaptureReq { rect: draft.hit.rect, out }));
-            Some(format!("{}/{}", images_dir_name(), fname))
-        } else {
-            None
+        // The region screenshot was already captured (cleanly) at click time.
+        // Reference it if still wanted; otherwise delete the staged file.
+        let region_ref = match (&draft.region_path, draft.auto_shot) {
+            (Some(p), true) => p.file_name()
+                .map(|n| format!("{}/{}", images_dir_name(), n.to_string_lossy())),
+            (Some(p), false) => { let _ = std::fs::remove_file(p); None }
+            (None, _) => None,
         };
         match write_report(&draft, region_ref.as_deref()) {
             Ok(()) => eprintln!("[bug-anchor] Logged @anchor {} → {}", draft.hit.key, reports_path().display()),
@@ -432,8 +487,9 @@ pub fn prompt(ctx: &egui::Context) {
         }
         // Saved → don't put the draft back (window closes).
     } else if close {
-        // Cancelled → drop staged images that won't be referenced.
+        // Cancelled → drop staged images + the region screenshot.
         for p in &draft.images { let _ = std::fs::remove_file(p); }
+        if let Some(p) = &draft.region_path { let _ = std::fs::remove_file(p); }
         // Draft dropped (window closes).
     } else {
         // Still composing → put it back.
