@@ -377,6 +377,7 @@ impl<'a> Modal<'a> {
 
         let mut closed = false;
         let mut inner: Option<R> = None;
+        let mut modal_rect = egui::Rect::NOTHING; // for the bug-report anchor
 
         // If closing_t has fully settled at 1.0, the exit animation is done —
         // report closed and clear the temp state so the next show starts fresh.
@@ -502,8 +503,9 @@ impl<'a> Modal<'a> {
                 });
                 // Track the live window rect so next frame's shadow follows a
                 // dragged window.
-                if draggable {
-                    if let Some(ir) = win_resp {
+                if let Some(ir) = win_resp {
+                    modal_rect = ir.response.rect;
+                    if draggable {
                         ctx.memory_mut(|m| m.data.insert_temp(win_rect_id, ir.response.rect));
                     }
                 }
@@ -544,6 +546,7 @@ impl<'a> Modal<'a> {
                     });
 
                 if popup_rect.width() > 0.0 && popup_rect.height() > 0.0 {
+                    modal_rect = popup_rect;
                     ctx.memory_mut(|m| {
                         m.data.insert_temp(Id::new(("apex_modal_rect", id)), popup_rect);
                     });
@@ -558,6 +561,14 @@ impl<'a> Modal<'a> {
                 }
             }
         }
+
+        // Bug-report anchor for the whole dialog (no-op unless Inspect is on).
+        crate::chart_renderer::bug_anchor::register(
+            &format!("dialog/{}", crate::chart_renderer::bug_anchor::slug(title)),
+            modal_rect,
+            file!(),
+            line!(),
+        );
 
         ModalResponse { inner, closed }
     }

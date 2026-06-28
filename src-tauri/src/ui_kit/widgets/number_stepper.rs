@@ -68,7 +68,9 @@ impl<'a, T: egui::emath::Numeric> NumberStepper<'a, T> {
     /// Convenience: render as an integer (alias for `.decimals(0)`).
     pub fn integer(mut self) -> Self { self.fixed_decimals = Some(0); self }
 
+    #[track_caller]
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
+        let bug_loc = std::panic::Location::caller();
         let font = match self.size {
             Size::Xs => st::font_xs(),
             Size::Sm => st::font_sm(),
@@ -110,6 +112,7 @@ impl<'a, T: egui::emath::Numeric> NumberStepper<'a, T> {
 
             ui.add_enabled(!disabled, dv)
         });
+        crate::chart_renderer::bug_anchor::mark(bug_loc, "stepper", resp.inner.rect);
         resp.inner
     }
 }

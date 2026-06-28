@@ -198,8 +198,11 @@ impl<'a> Tabs<'a> {
     /// Callers that need per-call-site dimension overrides construct a
     /// `StyleCtx` directly.  All existing `show(ui, theme)` callers are
     /// unaffected — `show` delegates here via `StyleCtx::from_theme`.
+    #[track_caller]
     pub fn show_ctx(self, ui: &mut Ui, ctx: &super::ctx::StyleCtx<'_>) -> TabsResponse {
-        paint_tabs(self, ui, ctx.theme())
+        let r = paint_tabs(self, ui, ctx.theme());
+        crate::chart_renderer::bug_anchor::mark(std::panic::Location::caller(), "tabs", r.response.rect);
+        r
     }
 }
 

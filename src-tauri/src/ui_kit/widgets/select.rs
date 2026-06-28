@@ -271,8 +271,11 @@ impl<'a, T: 'a> Select<'a, T> {
         self
     }
 
+    #[track_caller]
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> SelectResponse {
-        paint_select(ui, theme, self)
+        let r = paint_select(ui, theme, self);
+        crate::chart_renderer::bug_anchor::mark(std::panic::Location::caller(), "select", r.response.rect);
+        r
     }
 }
 

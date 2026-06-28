@@ -534,6 +534,20 @@ fn render_chart_pane(
 
         let hdr = builder.show(ui);
 
+        // Bug-report anchors for the pane-header custom chrome (no-op unless
+        // Inspect mode is on). The icon-cluster buttons (OVERLAY/LAYERS/…) are
+        // already covered via ui_kit Button::show_at; these add the symbol,
+        // tabs, +Tab and split controls.
+        {
+            use crate::chart_renderer::bug_anchor as ba;
+            if ba::inspect() {
+                if let Some(r) = hdr.symbol_rect { ba::register("symbol", r, file!(), line!()); }
+                if let Some(r) = hdr.plus_tab_rect { ba::register("button/add-tab", r, file!(), line!()); }
+                if let Some(r) = hdr.split_btn_rect { ba::register("button/split", r, file!(), line!()); }
+                for r in &hdr.tab_rects { ba::register("tab", *r, file!(), line!()); }
+            }
+        }
+
         // Dev Inspector — record the pane header rect with contract check.
         #[cfg(debug_assertions)]
         crate::dev_inspector::check_contract(

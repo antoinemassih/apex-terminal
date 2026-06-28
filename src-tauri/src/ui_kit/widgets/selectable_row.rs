@@ -55,8 +55,10 @@ impl<'a> SelectableRow<'a> {
     pub fn leading_icon(mut self, icon: &'a str) -> Self { self.leading_icon = Some(icon); self }
     pub fn size(mut self, s: Size) -> Self { self.size = s; self }
 
+    #[track_caller]
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
         let pal = palette_ct(theme); // bind once: avoid per-read Palette copies in this hot row
+        let bug_loc = std::panic::Location::caller();
         let SelectableRow { label, selected, disabled, leading_icon, size } = self;
 
         // Sizing. Row height ~gap_2xl() (24px) at default Sm; scales modestly.
@@ -164,6 +166,7 @@ impl<'a> SelectableRow<'a> {
             text_color,
         );
 
+        crate::chart_renderer::bug_anchor::mark(bug_loc, "row", response.rect);
         response
     }
 }

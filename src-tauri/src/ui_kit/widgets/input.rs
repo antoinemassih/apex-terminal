@@ -192,12 +192,15 @@ impl<'a> Input<'a> {
     /// Explicit `egui::Id` for the input row (and its derived editor id).
     pub fn id(mut self, id: egui::Id) -> Self { self.explicit_id = Some(id); self }
 
+    #[track_caller]
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> InputResponse {
-        if self.frameless || self.multiline {
+        let r = if self.frameless || self.multiline {
             paint_input_bare(ui, theme, self)
         } else {
             paint_input(ui, theme, self)
-        }
+        };
+        crate::chart_renderer::bug_anchor::mark(std::panic::Location::caller(), "input", r.response.rect);
+        r
     }
 }
 

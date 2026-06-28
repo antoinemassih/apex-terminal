@@ -106,6 +106,7 @@ impl<'a> MenuItem<'a> {
 
     /// Render the menu item into `ui`. Returns the interaction [`Response`];
     /// check `.clicked()` to dispatch the action.
+    #[track_caller]
     pub fn show(self, ui: &mut Ui, theme: &dyn ComponentTheme) -> Response {
         // Compose the label in one string — optional leading check / icon,
         // the text, then an optional trailing submenu caret — so it renders
@@ -146,6 +147,7 @@ impl<'a> MenuItem<'a> {
         if self.enabled && resp.hovered() {
             ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
         }
+        crate::chart_renderer::bug_anchor::mark(std::panic::Location::caller(), "menuitem", resp.rect);
         resp
     }
 

@@ -137,6 +137,15 @@ pub fn tag(ui: &Ui, key: &str, resp: egui::Response) -> egui::Response {
     resp
 }
 
+/// Register an anchor for a widget rect, using a call-site `Location` captured by
+/// the *caller's* `#[track_caller]`. Lets a widget's `show()` (marked
+/// `#[track_caller]`) attribute the anchor to the app code that called it:
+/// `bug_anchor::mark(std::panic::Location::caller(), "input", resp.rect)`.
+/// No outline (quiet) — relies on the hover highlight. No-op unless inspect is on.
+pub fn mark(loc: &'static std::panic::Location<'static>, key: &str, rect: Rect) {
+    register(key, rect, loc.file(), loc.line());
+}
+
 /// `anchor!(ui, "area/section/control", rect)` — captures source location.
 #[macro_export]
 macro_rules! bug_anchor {

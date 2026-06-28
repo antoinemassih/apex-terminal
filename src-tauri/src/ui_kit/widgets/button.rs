@@ -590,7 +590,7 @@ fn show_styled_impl<'a, S: ButtonStyle>(
         btn.leading_icon.or(btn.trailing_icon),
     );
     let resp = show_styled_impl_inner(ui, theme, btn, style, placed);
-    crate::chart_renderer::bug_anchor::anchor(ui, &bug_key, resp.rect, file!(), line!());
+    crate::chart_renderer::bug_anchor::register(&bug_key, resp.rect, file!(), line!());
     resp
 }
 
