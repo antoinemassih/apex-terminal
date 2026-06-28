@@ -152,6 +152,184 @@ async fn run_one(url: &str, cfg: &WsConfig, shutdown: &AtomicBool)
     }
 }
 
+// ── Subscribed feeds (crypto / signals): connect + subscribe + heartbeat ─────
+//
+// crypto_feed and signals_feed are ~95% identical: connect → send a subscribe
+// message over the write half → publish ConnectionState → heartbeat-ping while
+// idle → tick-age watchdog with a cooldown'd stall toast → metrics. This second
+// entry point captures all of that; the feed supplies its URL, subscribe JSON,
+// heartbeat/staleness policy, its own metrics + state-publish handles (so the
+// provider's `state_tx().subscribe()` keeps working), and an `on_text` parser.
+
+use std::sync::atomic::{AtomicI64, AtomicU32, AtomicU64};
+use crate::data::connectivity::{ConnectionState, errors_sink::{report, ErrorLevel}};
+
+/// `&'static` handles to a feed's metric counters — the helper bumps the
+/// transport-level ones; `parse_errors` is the feed's own (bumped in `on_text`).
+pub struct FeedMetrics {
+    pub messages_in: &'static AtomicU64,
+    pub reconnect_count: &'static AtomicU32,
+    pub last_message_at_ms: &'static AtomicI64,
+}
+
+pub struct SubscribedWsConfig {
+    pub name: &'static str,
+    /// Build the WS URL (re-evaluated each connect for env overrides).
+    pub url: Box<dyn Fn() -> String + Send>,
+    /// JSON subscribe frame sent immediately after connect.
+    pub subscribe_msg: String,
+    /// `ConnectionState::Subscribed { count }` reported after subscribing.
+    pub subscribed_count: usize,
+    /// Heartbeat ping interval; `None` disables pings.
+    pub heartbeat: Option<Duration>,
+    /// When true, skip the heartbeat ping if a frame arrived within the interval
+    /// (for chatty feeds where traffic is its own keepalive).
+    pub conditional_heartbeat: bool,
+    /// Reconnect (with a cooldown'd toast) if no frame within this window.
+    pub stale_timeout: Option<Duration>,
+    /// Trigger SubscriptionManager gap-fill after each non-initial reconnect.
+    pub gap_fill_on_reconnect: bool,
+    pub metrics: FeedMetrics,
+    /// Publish lifecycle transitions to the feed's own `state_tx()` broadcast.
+    pub publish_state: Box<dyn Fn(ConnectionState) + Send>,
+    /// Parse + route one text frame (also bumps the feed's `parse_errors`).
+    pub on_text: Box<dyn Fn(&str) + Send>,
+}
+
+fn epoch_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// Spawn a dedicated thread + runtime for a subscribe-style feed. Call once.
+pub fn spawn_subscribed(cfg: SubscribedWsConfig) {
+    let shutdown = Arc::new(AtomicBool::new(false));
+    connectivity::register(cfg.name, Arc::new(WsShutdown { name: cfg.name, flag: shutdown.clone() }));
+    let name = cfg.name;
+    let _ = std::thread::Builder::new().name(name.into()).spawn(move || {
+        let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+            Ok(rt) => rt,
+            Err(e) => { tracing::error!(target: "resilient_ws", "{name}: runtime build failed: {e}"); return; }
+        };
+        rt.block_on(run_subscribed_loop(cfg, shutdown));
+    });
+}
+
+async fn run_subscribed_loop(cfg: SubscribedWsConfig, shutdown: Arc<AtomicBool>) {
+    let stall_toast_at = AtomicI64::new(0);
+    let mut backoff = Backoff::new().with_max_attempts(None);
+    let mut first = true;
+    loop {
+        if shutdown.load(Ordering::SeqCst) {
+            (cfg.publish_state)(ConnectionState::ShuttingDown);
+            return;
+        }
+        if !first { cfg.metrics.reconnect_count.fetch_add(1, Ordering::Relaxed); }
+        first = false;
+        (cfg.publish_state)(ConnectionState::Connecting {
+            attempt: cfg.metrics.reconnect_count.load(Ordering::Relaxed) + 1,
+        });
+        match run_subscribed_one(&cfg, &shutdown, &stall_toast_at).await {
+            Ok(()) => backoff.reset(),
+            Err(e) => report(ErrorLevel::Warn, cfg.name, "reconnect", e.to_string()),
+        }
+        if shutdown.load(Ordering::SeqCst) {
+            (cfg.publish_state)(ConnectionState::ShuttingDown);
+            return;
+        }
+        if let Some(d) = backoff.next_delay() {
+            (cfg.publish_state)(ConnectionState::Backoff {
+                until: std::time::Instant::now() + d,
+                attempt: cfg.metrics.reconnect_count.load(Ordering::Relaxed) + 1,
+                reason: "disconnected".into(),
+            });
+            tokio::time::sleep(d).await;
+        }
+    }
+}
+
+async fn run_subscribed_one(
+    cfg: &SubscribedWsConfig,
+    shutdown: &AtomicBool,
+    stall_toast_at: &AtomicI64,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::Message;
+
+    let url = (cfg.url)();
+    report(ErrorLevel::Info, cfg.name, "connecting", &url);
+    let ws = connect_lan_aware(&url).await?;
+    let (mut write, mut read) = ws.split();
+
+    // Gap-fill after a real reconnect (not the first connect).
+    if cfg.gap_fill_on_reconnect && cfg.metrics.reconnect_count.load(Ordering::Relaxed) > 0 {
+        let name = cfg.name;
+        tokio::spawn(async move {
+            let n = crate::data::providers::registry::subscription_manager()
+                .gap_fill_on_reconnect_all().await;
+            if n > 0 { report(ErrorLevel::Info, name, "gap_fill", format!("replayed {n} bars after reconnect")); }
+        });
+    }
+
+    write.send(Message::Text(cfg.subscribe_msg.clone().into())).await?;
+    (cfg.publish_state)(ConnectionState::Authenticated);
+    (cfg.publish_state)(ConnectionState::Subscribed { count: cfg.subscribed_count });
+
+    let hb = cfg.heartbeat.unwrap_or(Duration::from_secs(3600));
+    let mut heartbeat = tokio::time::interval(hb);
+    heartbeat.tick().await; // skip immediate first
+    let mut watchdog = tokio::time::interval(Duration::from_secs(5));
+    watchdog.tick().await;
+
+    loop {
+        tokio::select! {
+            _ = heartbeat.tick() => {
+                if cfg.heartbeat.is_none() { continue; }
+                if cfg.conditional_heartbeat {
+                    let age = epoch_ms() - cfg.metrics.last_message_at_ms.load(Ordering::Relaxed);
+                    if age <= hb.as_millis() as i64 { continue; } // traffic is its own keepalive
+                }
+                write.send(Message::Ping(Vec::new().into())).await?;
+            }
+            _ = watchdog.tick() => {
+                if cfg.reconnect_due(shutdown) { return Ok(()); }
+                if let Some(to) = cfg.stale_timeout {
+                    let last = cfg.metrics.last_message_at_ms.load(Ordering::Relaxed);
+                    let now = epoch_ms();
+                    if last > 0 && now - last > to.as_millis() as i64 {
+                        let stall_secs = (now - last) / 1000;
+                        report(ErrorLevel::Warn, cfg.name, "tick_stalled",
+                            format!("no frames for {}ms — reconnecting", now - last));
+                        // 60s cooldown on the user-visible toast.
+                        if now - stall_toast_at.load(Ordering::Relaxed) >= 60_000 {
+                            stall_toast_at.store(now, Ordering::Relaxed);
+                            report(ErrorLevel::Warn, cfg.name, "feed_stalled",
+                                format!("{} silent for >{stall_secs}s — reconnecting", cfg.name));
+                        }
+                        return Ok(()); // force reconnect
+                    }
+                }
+            }
+            frame = read.next() => {
+                let Some(msg) = frame else { return Ok(()); };
+                let msg = msg?;
+                cfg.metrics.last_message_at_ms.store(epoch_ms(), Ordering::Relaxed);
+                if !msg.is_text() { continue; }
+                cfg.metrics.messages_in.fetch_add(1, Ordering::Relaxed);
+                (cfg.on_text)(msg.to_text()?);
+            }
+        }
+    }
+}
+
+impl SubscribedWsConfig {
+    fn reconnect_due(&self, shutdown: &AtomicBool) -> bool {
+        shutdown.load(Ordering::SeqCst)
+    }
+}
+
 struct WsShutdown { name: &'static str, flag: Arc<AtomicBool> }
 
 #[async_trait::async_trait]
