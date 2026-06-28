@@ -1327,4 +1327,51 @@ mod wave10_parse_tests {
             assert_eq!(h.symbol, "GME");
         }
     }
+
+    // ── snap/bulk: new envelope vs legacy bare array ─────────────────────────
+
+    #[test]
+    fn snap_bulk_envelope_carries_server_change_perc() {
+        // New apex-data-v2 shape: { stale, results: [ {…, change_perc} ] }.
+        let body = r#"{
+          "stale": false,
+          "session": "closed",
+          "results": [
+            { "ticker": "QQQ", "change_perc": -1.3763, "change_abs": -9.86,
+              "ref_price": 706.52, "session": "closed",
+              "lastTrade": { "p": 706.52 }, "prevDay": { "c": 716.38 } }
+          ]
+        }"#;
+        let parsed: BulkSnapshotBody = serde_json::from_str(body).expect("envelope parse");
+        let results = parsed.into_results();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].ticker, "QQQ");
+        assert_eq!(results[0].change_perc, Some(-1.3763));
+        assert_eq!(results[0].session.as_deref(), Some("closed"));
+        assert_eq!(results[0].prev_day.close, 716.38);
+    }
+
+    #[test]
+    fn snap_bulk_legacy_bare_array_still_parses() {
+        // Older backend returned a bare array with no server-computed change.
+        let body = r#"[ { "ticker": "SPY", "lastTrade": { "p": 500.0 } } ]"#;
+        let parsed: BulkSnapshotBody = serde_json::from_str(body).expect("bare-array parse");
+        let results = parsed.into_results();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].ticker, "SPY");
+        // No server % on the legacy shape → panel falls back to its own formula.
+        assert_eq!(results[0].change_perc, None);
+    }
+
+    #[test]
+    fn snap_bulk_envelope_surfaces_stale_flag() {
+        let body = r#"{ "stale": true, "served_from_cache": true, "results": [] }"#;
+        match serde_json::from_str::<BulkSnapshotBody>(body).expect("parse") {
+            BulkSnapshotBody::Envelope(e) => {
+                assert!(e.stale && e.served_from_cache);
+                assert!(e.results.is_empty());
+            }
+            BulkSnapshotBody::Bare(_) => panic!("object must parse as the envelope variant"),
+        }
+    }
 }
