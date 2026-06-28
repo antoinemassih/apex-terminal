@@ -27,26 +27,39 @@ screenshots for visual/UX review.
 - Screenshots captured (`ux_clean_chart.png`, `nvda_vwap_rsi.png`, `nvda_gamma_on.png`).
 - UX audit fires and catches real issues (below).
 
-## Real findings surfaced (these match the original bug report)
+## Findings surfaced (follow-up investigation revised these — see honest notes)
 
-### 1. Strikes overlay never populates — even though the chain feed returns 200 OK
-Repro: `903–905_strikes_overlay_*`. Enabling the strikes overlay sets
-`overlay_chain_loading` and requests the chain; `/api/chain/SPY` returns **200 OK**
-(~0.5 s, every ~6 s), yet `overlay_calls`/`overlay_puts` stay empty and the overlay
-is blank — the auto-fetch (core.rs:3544) keeps re-requesting because the result
-never lands. The result handler (gpu.rs:4648) requires
-`chart.symbol == result.symbol && overlay_chain_loading`; the overlay isn't getting
-populated, so the chain data the feed returns is being dropped before it reaches the
-pane. **This is the "options chain doesn't appear on chart" bug, now reproducible.**
+> Update: a focused follow-up showed the gamma/strikes overlays are blank here
+> because their upstream data sources are absent in this environment, not because of
+> app-logic bugs. The harness's *visibility* is the win — it detects blank overlays
+> and will catch a real regression when the feeds are up. The toolbar/touch-target
+> UX finding (#3) is a genuine app-side issue.
 
-### 2. Gamma overlay shows 0 levels when enabled via the flag
-Repro: `900–902_gamma_overlay_*`. The chart only DRAWS gamma when
-`gamma_levels` is non-empty (core.rs:3017), but the gamma fetch
-(`fetch_gamma_from_feed`) is wired only to the toolbar gamma action
-(chart_controls.rs:579) / `refresh_gamma_feeds` — there is no render-path auto-fetch
-when `show_gamma` becomes true (unlike the strikes overlay, which has one at
-core.rs:3544). So toggling `ShowGamma` shows the flag on but never loads gamma data
-→ blank overlay. **This is the "gamma levels don't appear" bug.**
+### 1. Strikes overlay stays blank — but the data sources are down in THIS env
+Repro: `903–905_strikes_overlay_*`. The harness correctly detects the blank overlay.
+On investigation (2026-06-28, follow-up): `fetch_overlay_chain_background` tries
+apex-data `get_chain` → apexib `/options/` fallback → a synthetic placeholder. The
+result handler's `[overlay-chain] Loaded …` log **never fires** (0 occurrences), and
+the log shows the apexib backend is unreachable here
+(`http://apexibdata-api:5000/contract/SPY` resolve failures). apex-data's chain
+endpoint could not be reached from outside the app to confirm whether its rows are
+usable. **Conclusion: in this environment the option-chain data isn't available, so
+the overlay legitimately can't populate — this is largely a data-availability issue,
+NOT confirmed app-logic.** Loose end worth a real-data retest: even the synthetic
+placeholder path didn't render, which I could not isolate statically. (The auto-fetch
+also re-requests the chain every ~6 s while empty — a minor efficiency issue.)
+
+### 2. Gamma overlay shows 0 levels — NOT an app bug (corrected)
+Repro: `900–902_gamma_overlay_*`. **Correction to an earlier draft of this doc:** the
+gamma overlay IS wired correctly. `refresh_gamma_feeds` runs every render frame
+(core.rs:12013) and auto-fetches gamma for supported symbols, so there is a
+render-path trigger. Two real reasons it's blank here: (a) gamma support is limited
+to `QQQ,SPY` (env `APEX_GAMMA_FEED_SYMBOLS`), so the NVDA scenario is blank by
+design; (b) gamma data comes from a **separate gamma feed service on port 8412**
+(`fetch_gamma_from_feed`, env `APEX_GAMMA_FEED_URL`) which is not running in this
+environment. So this is a data-source-availability issue, not defective wiring. No
+code fix appropriate. The valuable outcome: the harness now *detects* a blank gamma
+overlay, so it will catch a real regression when the feed IS up.
 
 ### 3. UX / usability
 Repro: `913_ux_audit_baseline`. `toolbar.workspace_btn`, `indicators_btn`,
