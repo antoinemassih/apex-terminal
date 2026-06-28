@@ -1,0 +1,74 @@
+{
+  "name": "watchlist_pct_spy_qqq_aapl",
+  "description": "Watchlist rows for ['SPY', 'QQQ', 'AAPL'] show a present, sane % change.",
+  "story": "Watchlist/Pct",
+  "tags": [
+    "watchlist",
+    "correctness"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "SPY"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "QQQ"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "AAPL"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "wait",
+      "ms": 2000
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "log",
+      "message": "watchlist % ['SPY', 'QQQ', 'AAPL']"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "watchlist_pct_present": true
+        },
+        {
+          "watchlist_pct_sane": 25.0
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

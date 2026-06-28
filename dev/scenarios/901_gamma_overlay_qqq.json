@@ -1,0 +1,74 @@
+{
+  "name": "gamma_overlay_qqq",
+  "description": "Enabling the gamma overlay on QQQ actually populates gamma levels.",
+  "story": "Options/Gamma",
+  "tags": [
+    "options",
+    "gamma",
+    "correctness"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "QQQ"
+    },
+    {
+      "action": "wait",
+      "ms": 1200
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "ShowGamma",
+      "value": true
+    },
+    {
+      "action": "wait",
+      "ms": 2500
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "log",
+      "message": "gamma on QQQ"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "gamma_overlay_active": {
+            "pane": 0
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    }
+  ]
+}

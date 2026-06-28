@@ -231,6 +231,16 @@ fn handle(
                 "ok": true, "frame_advanced": frame_ok,
             }));
         }
+        ("POST", "/screenshot") => {
+            let body = parse_body(&req.body);
+            let name = body["name"].as_str().or_else(|| body["file"].as_str())
+                .unwrap_or("screenshot").to_string();
+            super::request_screenshot(name.clone());
+            for _ in 0..4 { wait_for_next_frame(&shared, 1000); }
+            ok_json(&mut stream, &serde_json::json!({
+                "ok": true, "path": format!("dev/screenshots/{name}.png"),
+            }));
+        }
         ("POST", "/cmd") => {
             let body = parse_body(&req.body);
             if let Some(canvas_cmd) = parse_canvas_command(&body) {
@@ -859,6 +869,18 @@ fn execute_step(
             let msg = args["message"].as_str().unwrap_or("(no message)");
             eprintln!("[scenario] {msg}");
             (true, msg.to_string())
+        }
+
+        "screenshot" => {
+            // Capture the live window to dev/screenshots/<name>.png. The render
+            // thread fulfils it; wait a few frames so the PNG is written.
+            let name = args["name"].as_str()
+                .or_else(|| args["file"].as_str())
+                .unwrap_or("screenshot")
+                .to_string();
+            super::request_screenshot(name.clone());
+            for _ in 0..4 { wait_for_next_frame(shared, 1000); }
+            (true, format!("dev/screenshots/{name}.png"))
         }
 
         "wait" => {

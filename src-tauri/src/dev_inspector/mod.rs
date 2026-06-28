@@ -333,6 +333,22 @@ pub fn clear_panics() {
     if let Ok(mut g) = panic_log().lock() { g.clear(); }
 }
 
+// ─── Screenshot requests (fulfilled on the render thread, which owns the HWND) ──
+// The HTTP/scenario thread can't touch the window; it queues a filename here and
+// gpu.rs drains it each frame, capturing the live window to dev/screenshots/<name>.png.
+static SCREENSHOT_REQS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+fn screenshot_reqs() -> &'static Mutex<Vec<String>> {
+    SCREENSHOT_REQS.get_or_init(|| Mutex::new(Vec::new()))
+}
+/// Queue a full-window screenshot to `dev/screenshots/<name>.png`.
+pub fn request_screenshot(name: impl Into<String>) {
+    if let Ok(mut g) = screenshot_reqs().lock() { g.push(name.into()); }
+}
+/// Drain pending screenshot filenames (called by the render thread).
+pub fn take_screenshot_reqs() -> Vec<String> {
+    screenshot_reqs().lock().map(|mut g| std::mem::take(&mut *g)).unwrap_or_default()
+}
+
 fn install_panic_hook() {
     static INSTALLED: OnceLock<()> = OnceLock::new();
     if INSTALLED.set(()).is_err() { return; }
@@ -911,6 +927,16 @@ pub fn end_frame(
             "title":      sec.title,
             "item_count": sec.items.len(),
             "collapsed":  sec.collapsed,
+            // Expose each row so the harness can verify the % column is populated
+            // and sane (the original "watchlist % completely wrong" bug). change_perc
+            // is the server-computed value; null until the row loads.
+            "items": sec.items.iter().map(|it| serde_json::json!({
+                "symbol":      it.symbol,
+                "last":        it.price,
+                "prev_close":  it.prev_close,
+                "change_perc": it.change_perc,
+                "loaded":      it.loaded,
+            })).collect::<Vec<_>>(),
         }))
         .collect();
 

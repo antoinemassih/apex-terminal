@@ -33,6 +33,28 @@ pub struct PaneCanvas {
     pub bars: Vec<BarRecord>,
     pub selected_drawing_id: Option<String>,
     pub active_draw_tool: Option<String>,
+    /// Options/gamma overlay state — lets the harness verify the gamma levels and
+    /// strikes overlay actually populate when their flags are on (not just that
+    /// toggling the flag doesn't crash).
+    pub overlays: PaneOverlays,
+}
+
+/// Snapshot of the options-analysis overlays drawn on a chart pane.
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct PaneOverlays {
+    pub show_gamma: bool,
+    /// Number of gamma exposure levels available to draw.
+    pub gamma_level_count: usize,
+    pub gamma_call_wall: f32,
+    pub gamma_put_wall: f32,
+    pub gamma_zero: f32,
+    pub gamma_hvl: f32,
+    pub show_strikes_overlay: bool,
+    /// Option-chain rows backing the strikes overlay.
+    pub strikes_call_count: usize,
+    pub strikes_put_count: usize,
+    pub overlay_chain_symbol: String,
+    pub overlay_chain_loading: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -398,6 +420,20 @@ fn capture_pane(idx: usize, chart: &crate::chart_renderer::gpu::Chart) -> PaneCa
             .collect()
     };
 
+    let overlays = PaneOverlays {
+        show_gamma:           chart.show_gamma,
+        gamma_level_count:    chart.gamma_levels.len(),
+        gamma_call_wall:      chart.gamma_call_wall,
+        gamma_put_wall:       chart.gamma_put_wall,
+        gamma_zero:           chart.gamma_zero,
+        gamma_hvl:            chart.gamma_hvl,
+        show_strikes_overlay: chart.show_strikes_overlay,
+        strikes_call_count:   chart.overlay_calls.len(),
+        strikes_put_count:    chart.overlay_puts.len(),
+        overlay_chain_symbol: chart.overlay_chain_symbol.clone(),
+        overlay_chain_loading: chart.overlay_chain_loading,
+    };
+
     PaneCanvas {
         index: idx,
         symbol:         chart.symbol.clone(),
@@ -411,6 +447,7 @@ fn capture_pane(idx: usize, chart: &crate::chart_renderer::gpu::Chart) -> PaneCa
         selected_drawing_id: chart.selected_id.clone(),
         active_draw_tool: if chart.draw_tool.is_empty() { None }
                           else { Some(chart.draw_tool.clone()) },
+        overlays,
     }
 }
 
@@ -563,6 +600,7 @@ pub fn from_headless(input: &HeadlessCanvasInput<'_>) -> CanvasSnapshot {
             drawings, indicators, bars,
             selected_drawing_id: None,
             active_draw_tool: None,
+            overlays: PaneOverlays::default(),
         }
     }).collect();
 

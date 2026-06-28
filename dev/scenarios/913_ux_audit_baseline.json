@@ -1,0 +1,36 @@
+{
+  "name": "ux_audit_baseline",
+  "description": "UX audit on a clean chart: no clipping, sub-28px targets, or overlaps; plus a screenshot.",
+  "story": "Design/UX",
+  "tags": [
+    "ux",
+    "usability",
+    "audit"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "screenshot",
+      "name": "ux_clean_chart"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "ux_audit": {
+            "min_touch_px": 28
+          }
+        }
+      ]
+    }
+  ]
+}

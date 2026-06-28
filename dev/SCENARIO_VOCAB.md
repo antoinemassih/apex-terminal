@@ -74,6 +74,19 @@ Liquid symbols with reliable data: SPY,QQQ,AAPL,MSFT,NVDA,TSLA,AMZN,META,GOOGL,A
 - `{"widget_exists":{"role":"button"}}`, `{"widget_label_contains":{"contains":"AAPL"}}`
 - `{"all_of":[...]}`, `{"any_of":[...]}`, `{"not":{"assertion":{...}}}`
 
+## Functional-correctness & UX assertions (new — "is it working as intended")
+These read app state that the capture now exposes, so the harness verifies the app
+*does the right thing*, not just that it doesn't crash:
+- `{"gamma_overlay_active":{"pane":0}}` — gamma overlay is ON **and** has levels to draw (fails if enabled-but-blank). Gamma loads async — settle ~2.5 s after enabling.
+- `{"strikes_overlay_active":{"pane":0}}` — strikes overlay ON **and** has option-chain rows. Async; settle ~2.5 s.
+- `{"watchlist_pct_present":true}` — every *loaded* watchlist row has a server `change_perc`.
+- `{"watchlist_pct_sane":25.0}` — all `change_perc` values within ±25% (catches "% completely wrong").
+- `{"canvas_indicator_correct":{"pane":0,"kind":"SMA","rel_tol":0.01}}` — recomputes the indicator from captured bars and checks the chart's value matches within 1%. Window indicators only (SMA, WMA); recursive ones (EMA/RSI/MACD/…) are skipped (pass).
+- `{"ux_audit":{"min_touch_px":28}}` — bundled usability check: no clipped widgets, no sub-28px buttons/inputs, no overlapping buttons.
+
+## Screenshot action (visual review)
+- `{"action":"screenshot","name":"my_state"}` — saves the live window to `dev/screenshots/my_state.png` (real GDI capture of what the user sees). Use to snapshot key states for visual/UX review.
+
 ## Rules for good stories
 1. Always `reset` + `wait_frames` first; after a symbol/tf change, `wait` 600–800ms then `wait_frames`.
 2. End meaningful steps with an `assert` carrying the invariant block + any targeted checks.

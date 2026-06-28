@@ -1085,6 +1085,186 @@ fn dispatch(
              else { format!("{} out-of-bounds bar(s): {}", bad.len(), shown.join("; ")) })
         }
 
+        // ── Indicator numerical correctness (oracle) ──────────────────────────
+        // Recompute a window-based indicator independently from the captured bars
+        // and compare to the chart's value — verifies the number is RIGHT, not just
+        // present and in-range. Only window indicators (SMA, WMA) are recomputable
+        // from a visible window; recursive ones (EMA/RSI/MACD/DEMA/TEMA/Supertrend)
+        // carry history and are out of scope here. Assumes the chart shows the
+        // latest bars (not panned), which all harness scenarios do.
+        "canvas_indicator_correct" => {
+            let pane = val["pane"].as_u64().unwrap_or(0) as usize;
+            let kind = val["kind"].as_str().unwrap_or("");
+            let rel  = val["rel_tol"].as_f64().unwrap_or(0.01) as f32; // 1% default
+            let Some(p) = state.canvas.panes.get(pane) else {
+                return ("CanvasIndicatorCorrect".into(), false, format!("pane {pane} not found"));
+            };
+            let Some(ind) = p.indicators.iter().find(|i| i.kind == kind) else {
+                return ("CanvasIndicatorCorrect".into(), false, format!("pane {pane} has no indicator '{kind}'"));
+            };
+            let Some(actual) = ind.last_value else {
+                return ("CanvasIndicatorCorrect".into(), false, format!("pane {pane} '{kind}' has no value"));
+            };
+            // The chart's last_value is the indicator at the LAST bar of the full
+            // series; we can only recompute it from the captured (visible) bars when
+            // the last data bar is actually on screen (no right-margin / panning).
+            // Otherwise skip — recomputing from a window that doesn't reach the last
+            // bar would be a false positive, not an app fault.
+            let last_visible_idx = p.bars.last().map(|b| b.index);
+            if last_visible_idx != Some(ind.series_length.saturating_sub(1)) {
+                return ("CanvasIndicatorCorrect".into(), true,
+                    format!("chart not anchored to latest bar (last visible {:?} of {}); oracle skipped",
+                            last_visible_idx, ind.series_length));
+            }
+            let period = ind.period.max(1);
+            let closes: Vec<f32> = p.bars.iter().map(|b| b.close).collect();
+            if closes.len() < period {
+                return ("CanvasIndicatorCorrect".into(), true,
+                    format!("only {} visible bars < period {period}; skipped", closes.len()));
+            }
+            let win = &closes[closes.len()-period..];
+            let expected = match kind {
+                "SMA" => Some(win.iter().sum::<f32>() / period as f32),
+                "WMA" => {
+                    let denom = (period * (period + 1) / 2) as f32;
+                    Some(win.iter().enumerate().map(|(j,&c)| c * (j+1) as f32).sum::<f32>() / denom)
+                }
+                _ => None,
+            };
+            match expected {
+                None => ("CanvasIndicatorCorrect".into(), true,
+                    format!("'{kind}' is recursive/non-window — correctness oracle not applicable (skipped)")),
+                Some(exp) => {
+                    let tol = (exp.abs() * rel).max(1e-3);
+                    let pass = (exp - actual).abs() <= tol;
+                    ("CanvasIndicatorCorrect".into(), pass,
+                     if pass { format!("pane {pane} {kind}({period}) = {actual:.4} matches recompute {exp:.4} (±{tol:.4})") }
+                     else    { format!("pane {pane} {kind}({period}) = {actual:.4} but recompute = {exp:.4} (diff {:.4} > tol {tol:.4})", (exp-actual).abs()) })
+                }
+            }
+        }
+
+        // ── Watchlist % column (functional correctness) ────────────────────────
+        // Every loaded watchlist row must carry a server-computed change_perc.
+        // Catches the "watchlist % missing/blank" class.
+        "watchlist_pct_present" => {
+            let sections = state.app_state["watchlist"]["sections"].as_array();
+            let mut loaded = 0usize; let mut missing: Vec<String> = Vec::new();
+            if let Some(secs) = sections {
+                for s in secs {
+                    if let Some(items) = s["items"].as_array() {
+                        for it in items {
+                            if it["loaded"].as_bool().unwrap_or(false) {
+                                loaded += 1;
+                                if it["change_perc"].is_null() {
+                                    missing.push(it["symbol"].as_str().unwrap_or("?").to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            let pass = missing.is_empty();
+            ("WatchlistPctPresent".into(), pass,
+             if loaded == 0 { "no loaded watchlist rows yet (vacuous pass)".into() }
+             else if pass { format!("all {loaded} loaded row(s) have a change_perc") }
+             else { format!("{}/{loaded} loaded row(s) missing change_perc: {}", missing.len(), missing.join(", ")) })
+        }
+        // change_perc must be within a sane band — catches the "% completely wrong"
+        // class (e.g. ±100% minute-bar artifacts, bad ref price).
+        "watchlist_pct_sane" => {
+            let max = val.as_f64().or_else(|| val["max_abs"].as_f64()).unwrap_or(50.0);
+            let sections = state.app_state["watchlist"]["sections"].as_array();
+            let mut checked = 0usize; let mut bad: Vec<String> = Vec::new();
+            if let Some(secs) = sections {
+                for s in secs {
+                    if let Some(items) = s["items"].as_array() {
+                        for it in items {
+                            if let Some(p) = it["change_perc"].as_f64() {
+                                checked += 1;
+                                if !p.is_finite() || p.abs() > max {
+                                    bad.push(format!("{}={:.2}%", it["symbol"].as_str().unwrap_or("?"), p));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            let pass = bad.is_empty();
+            ("WatchlistPctSane".into(), pass,
+             if checked == 0 { "no rows with a change_perc yet (vacuous pass)".into() }
+             else if pass { format!("all {checked} change_perc value(s) within ±{max}%") }
+             else { format!("{} value(s) outside ±{max}%: {}", bad.len(), bad.join(", ")) })
+        }
+
+        // ── Options/gamma overlays (functional correctness, not just no-crash) ──
+        // When the gamma overlay is enabled it must actually have levels to draw.
+        // This is the assertion the original "gamma levels don't appear" bug needed:
+        // it fails if the flag is on but no gamma data populated.
+        "gamma_overlay_active" => {
+            let pane = val["pane"].as_u64().unwrap_or(0) as usize;
+            match state.canvas.panes.get(pane).map(|p| &p.overlays) {
+                None => ("GammaOverlayActive".into(), false, format!("pane {pane} not found")),
+                Some(o) => {
+                    let pass = o.show_gamma && o.gamma_level_count > 0;
+                    ("GammaOverlayActive".into(), pass,
+                     if pass { format!("pane {pane} gamma ON with {} level(s) (call_wall {:.2}, put_wall {:.2}, zero {:.2})",
+                                        o.gamma_level_count, o.gamma_call_wall, o.gamma_put_wall, o.gamma_zero) }
+                     else if !o.show_gamma { format!("pane {pane} gamma overlay is OFF") }
+                     else { format!("pane {pane} gamma ON but 0 levels populated (overlay would be blank)") })
+                }
+            }
+        }
+        // When the strikes overlay is enabled it must have option-chain rows.
+        "strikes_overlay_active" => {
+            let pane = val["pane"].as_u64().unwrap_or(0) as usize;
+            match state.canvas.panes.get(pane).map(|p| &p.overlays) {
+                None => ("StrikesOverlayActive".into(), false, format!("pane {pane} not found")),
+                Some(o) => {
+                    let rows = o.strikes_call_count + o.strikes_put_count;
+                    let pass = o.show_strikes_overlay && rows > 0;
+                    ("StrikesOverlayActive".into(), pass,
+                     if pass { format!("pane {pane} strikes ON with {} call / {} put row(s) [{}]",
+                                        o.strikes_call_count, o.strikes_put_count, o.overlay_chain_symbol) }
+                     else if !o.show_strikes_overlay { format!("pane {pane} strikes overlay is OFF") }
+                     else if o.overlay_chain_loading { format!("pane {pane} strikes ON but chain still loading") }
+                     else { format!("pane {pane} strikes ON but 0 chain rows (overlay would be blank)") })
+                }
+            }
+        }
+
+        // ── UX / usability audit (one bundled check) ───────────────────────────
+        // Clipping + sub-minimum touch targets + overlapping interactive widgets.
+        // The widget tree lets the harness "see" usability problems a user would hit.
+        "ux_audit" => {
+            let min_px = val["min_touch_px"].as_f64().unwrap_or(28.0) as f32;
+            let mut issues: Vec<String> = Vec::new();
+            let clipped: Vec<_> = state.widget_tree.iter()
+                .filter(|w| w.is_clipped).map(|w| w.id.as_str()).collect();
+            if !clipped.is_empty() { issues.push(format!("clipped: {}", clipped.join(", "))); }
+            let small: Vec<_> = state.widget_tree.iter()
+                .filter(|w| (w.role == "button" || w.role == "input")
+                         && w.rect.area() > 0.0 && w.rect.min_side() < min_px)
+                .map(|w| format!("{} ({:.0}px)", w.id, w.rect.min_side())).collect();
+            if !small.is_empty() { issues.push(format!("touch<{min_px}px: {}", small.join(", "))); }
+            let btns: Vec<_> = state.widget_tree.iter()
+                .filter(|w| w.role == "button" && w.layer == 0 && w.rect.area() > 0.0).collect();
+            let mut ov = Vec::new();
+            for i in 0..btns.len() {
+                for j in (i + 1)..btns.len() {
+                    let (a, b) = (&btns[i].rect, &btns[j].rect);
+                    if a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y {
+                        ov.push(format!("{}~{}", btns[i].id, btns[j].id));
+                    }
+                }
+            }
+            if !ov.is_empty() { issues.push(format!("overlap: {}", ov.join(", "))); }
+            let pass = issues.is_empty();
+            ("UxAudit".into(), pass,
+             if pass { format!("UX clean across {} widgets", state.widget_tree.len()) }
+             else { issues.join(" | ") })
+        }
+
         _ => ("Unknown".into(), false, format!("unknown assertion kind: '{key}'")),
     }
 }

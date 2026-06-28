@@ -7491,8 +7491,10 @@ impl GpuCtx {
         // this frame (the window HWND + scale live here, not inside draw_chart).
         #[cfg(target_os = "windows")]
         {
-            let reqs = crate::chart_renderer::bug_anchor::take_capture_reqs();
-            if !reqs.is_empty() {
+            let reqs  = crate::chart_renderer::bug_anchor::take_capture_reqs();
+            // Harness screenshot requests (full-window) share this render-thread site.
+            let shots = crate::dev_inspector::take_screenshot_reqs();
+            if !reqs.is_empty() || !shots.is_empty() {
                 use winit::raw_window_handle::HasWindowHandle;
                 if let Ok(handle) = window.window_handle() {
                     if let winit::raw_window_handle::RawWindowHandle::Win32(h) = handle.as_raw() {
@@ -7503,6 +7505,16 @@ impl GpuCtx {
                                 hwnd, scale, req.rect, &req.out,
                             ) {
                                 eprintln!("[bug-anchor] region capture failed: {e}");
+                            }
+                        }
+                        // Full-window: pass an oversized rect; capture clamps to the client area.
+                        let full = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1.0e5, 1.0e5));
+                        for name in shots {
+                            let out = std::path::Path::new("dev/screenshots").join(format!("{name}.png"));
+                            if let Err(e) = crate::chart_renderer::bug_anchor::capture_window_region(
+                                hwnd, scale, full, &out,
+                            ) {
+                                eprintln!("[dev-inspector] screenshot '{name}' failed: {e}");
                             }
                         }
                     }

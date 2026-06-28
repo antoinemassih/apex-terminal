@@ -50,3 +50,6 @@ src-tauri/binaries/ococo-api-x86_64-unknown-linux-gnu
 # dev-inspector generated artifacts
 dev/bug_report.json
 dev/bug_report.md
+
+# dev-inspector generated screenshots
+dev/screenshots/

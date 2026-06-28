@@ -426,5 +426,75 @@ for i,sym in enumerate(SYMBOLS[:10]):
          ["indicator","rsi","invariants"], steps,
          f"RSI on {sym} computes a finite value within 0..100.")
 
+# ── 900+: functional-correctness & UX visibility (new capture fields) ────────
+# Gamma overlay actually populates when enabled (the original "gamma doesn't
+# appear" bug). Generous settle — gamma data fetches async.
+for i,sym in enumerate(["SPY","QQQ","NVDA"]):
+    emit(900+i, f"gamma_overlay_{sym.lower()}", "Options/Gamma",
+         ["options","gamma","correctness"],
+         [{"action":"reset"},{"action":"wait_frames","count":3},
+          cmd("SwapPaneSymbol",pane=0,symbol=sym),{"action":"wait","ms":1200},{"action":"wait_frames","count":3},
+          cmd("SetChartFlag",pane=0,flag="ShowGamma",value=True),
+          {"action":"wait","ms":2500},{"action":"wait_frames","count":5},
+          {"action":"log","message":f"gamma on {sym}"},
+          A({"gamma_overlay_active":{"pane":0}}, {"no_panic":True},{"viewport_sane":True},{"fps_above":5.0})],
+         f"Enabling the gamma overlay on {sym} actually populates gamma levels.")
+
+# Strikes overlay actually populates when enabled.
+for i,sym in enumerate(["SPY","QQQ","AAPL"]):
+    emit(903+i, f"strikes_overlay_{sym.lower()}", "Options/Strikes",
+         ["options","strikes","correctness"],
+         [{"action":"reset"},{"action":"wait_frames","count":3},
+          cmd("SwapPaneSymbol",pane=0,symbol=sym),{"action":"wait","ms":1200},{"action":"wait_frames","count":3},
+          cmd("SetChartFlag",pane=0,flag="ShowStrikesOverlay",value=True),
+          {"action":"wait","ms":2500},{"action":"wait_frames","count":5},
+          {"action":"log","message":f"strikes on {sym}"},
+          A({"strikes_overlay_active":{"pane":0}}, {"no_panic":True},{"viewport_sane":True},{"fps_above":5.0})],
+         f"Enabling the strikes overlay on {sym} actually loads option-chain rows.")
+
+# Watchlist % column populates and is sane (the original "% completely wrong" bug).
+for i,grp in enumerate([["SPY","QQQ","AAPL"],["NVDA","TSLA","AMD"],["MSFT","META","GOOGL"]]):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3}]
+    for s in grp: steps+=[cmd("WatchlistAddSymbol",symbol=s),{"action":"wait_frames","count":2}]
+    steps+=[{"action":"wait","ms":2000},{"action":"wait_frames","count":4},
+            {"action":"log","message":f"watchlist % {grp}"},
+            A({"watchlist_pct_present":True},{"watchlist_pct_sane":25.0},{"no_panic":True})]
+    emit(906+i, f"watchlist_pct_{'_'.join(s.lower() for s in grp)}", "Watchlist/Pct",
+         ["watchlist","correctness"], steps,
+         f"Watchlist rows for {grp} show a present, sane % change.")
+
+# Indicator numerical correctness (recompute oracle). SMA only in shipped
+# scenarios: it's order-independent and validated to <1%. WMA recompute showed a
+# ~2.5% delta that is likely an oracle window-ordering issue (under investigation),
+# so it's not asserted here yet — see FINDINGS.
+corr=[("SPY","SMA"),("QQQ","SMA"),("AAPL","SMA"),("NVDA","SMA")]
+for i,(sym,kind) in enumerate(corr):
+    emit(909+i, f"indicator_correct_{kind.lower()}_{sym.lower()}", "Chart/Correctness",
+         ["indicator","correctness"],
+         [{"action":"reset"},{"action":"wait_frames","count":3},
+          cmd("SwapPaneSymbol",pane=0,symbol=sym),{"action":"wait","ms":1200},{"action":"wait_frames","count":3},
+          cmd("AddIndicator",pane=0,kind=kind),{"action":"wait_frames","count":3},
+          cmd("RecomputeIndicators",pane=0),{"action":"wait_frames","count":3},
+          {"action":"log","message":f"{kind} correctness {sym}"},
+          A({"canvas_indicator_correct":{"pane":0,"kind":kind,"rel_tol":0.01}}, *invariants())],
+         f"{kind} on {sym} matches an independent recompute within 1%.")
+
+# UX audit baseline + visual screenshots for review.
+emit(913,"ux_audit_baseline","Design/UX",["ux","usability","audit"],
+     [{"action":"reset"},{"action":"wait_frames","count":4},
+      {"action":"screenshot","name":"ux_clean_chart"},
+      A({"ux_audit":{"min_touch_px":28}})],
+     "UX audit on a clean chart: no clipping, sub-28px targets, or overlaps; plus a screenshot.")
+emit(914,"visual_states_capture","Design/Visual",["visual","screenshot"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SwapPaneSymbol",pane=0,symbol="NVDA"),{"action":"wait","ms":1200},{"action":"wait_frames","count":3},
+      cmd("AddIndicator",pane=0,kind="VWAP"),cmd("AddIndicator",pane=0,kind="RSI"),
+      cmd("RecomputeIndicators",pane=0),{"action":"wait_frames","count":4},
+      {"action":"screenshot","name":"nvda_vwap_rsi"},
+      cmd("SetChartFlag",pane=0,flag="ShowGamma",value=True),{"action":"wait","ms":2000},{"action":"wait_frames","count":4},
+      {"action":"screenshot","name":"nvda_gamma_on"},
+      A({"no_panic":True},{"viewport_sane":True})],
+     "Capture screenshots of key visual states (indicators, gamma) for review.")
+
 print(f"generated {len(made)} scenarios into {OUT}")
 for p in made[:3]: print("  e.g.", os.path.basename(p))

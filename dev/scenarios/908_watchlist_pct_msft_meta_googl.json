@@ -1,0 +1,74 @@
+{
+  "name": "watchlist_pct_msft_meta_googl",
+  "description": "Watchlist rows for ['MSFT', 'META', 'GOOGL'] show a present, sane % change.",
+  "story": "Watchlist/Pct",
+  "tags": [
+    "watchlist",
+    "correctness"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "MSFT"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "META"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "GOOGL"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "wait",
+      "ms": 2000
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "log",
+      "message": "watchlist % ['MSFT', 'META', 'GOOGL']"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "watchlist_pct_present": true
+        },
+        {
+          "watchlist_pct_sane": 25.0
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}
