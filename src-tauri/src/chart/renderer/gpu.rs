@@ -1874,7 +1874,7 @@ pub(crate) fn fetch_signal_drawings(symbol: String) {
         .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
     if txs.is_empty() { return; }
     std::thread::spawn(move || {
-        let url = format!("http://192.168.1.60:30300/api/annotations?symbol={}&source=signal", symbol);
+        let url = format!("{}/api/annotations?symbol={}&source=signal", crate::data::endpoints::ococo_http(), symbol);
         let client = reqwest::blocking::Client::builder().user_agent("apex-native").build().unwrap_or_else(|_| reqwest::blocking::Client::new());
         if let Ok(resp) = client.get(&url).timeout(std::time::Duration::from_secs(3)).send() {
             if let Ok(json) = resp.json::<Vec<serde_json::Value>>() {

@@ -1421,7 +1421,7 @@ pub(crate) fn fetch_indicator_source(sym: String, tf: String, indicator_id: u32)
             "30m" => ("30m","60d"), "1h" => ("60m","60d"), "4h" => ("1h","730d"),
             "1d" => ("1d","5y"), "1wk" => ("1wk","10y"), _ => ("5m","5d"),
         };
-        let url = format!("https://query1.finance.yahoo.com/v8/finance/chart/{}?interval={}&range={}", sym, yf_interval, yf_range);
+        let url = format!("{}/v8/finance/chart/{}?interval={}&range={}", crate::data::endpoints::yahoo_chart(), sym, yf_interval, yf_range);
         let client = reqwest::blocking::Client::builder().user_agent("Mozilla/5.0").build().unwrap_or_else(|_| reqwest::blocking::Client::new());
         if let Ok(resp) = client.get(&url).timeout(std::time::Duration::from_secs(5)).send() {
             if let Ok(json) = resp.json::<serde_json::Value>() {
@@ -1596,8 +1596,8 @@ pub(crate) fn fetch_history_background(sym: String, tf: String, before_ts: i64) 
         };
 
         let url = format!(
-            "https://query1.finance.yahoo.com/v8/finance/chart/{}?interval={}&period1={}&period2={}",
-            sym, yf_interval, period1, period2
+            "{}/v8/finance/chart/{}?interval={}&period1={}&period2={}",
+            crate::data::endpoints::yahoo_chart(), sym, yf_interval, period1, period2
         );
         eprintln!("[history] fetching {} {} before {} ({}..{})", sym, tf, before_ts, period1, period2);
 
@@ -1998,7 +1998,7 @@ pub(crate) fn fetch_overlay_bars_background(sym: String, tf: String) {
             let resp = client.get(url).timeout(std::time::Duration::from_secs(5)).send().ok()?;
             resp.json::<Vec<crate::data::Bar>>().ok()
         };
-        let ococo_url = format!("http://192.168.1.60:30300/api/bars?symbol={}&interval={}&limit=500", sym, tf);
+        let ococo_url = format!("{}/api/bars?symbol={}&interval={}&limit=500", crate::data::endpoints::ococo_http(), sym, tf);
         if let Some(bars) = fetch(&ococo_url).filter(|b| !b.is_empty()) {
             let gpu_bars: Vec<Bar> = bars.iter().map(|b| Bar { open: b.open as f32, high: b.high as f32, low: b.low as f32, close: b.close as f32, volume: b.volume as f32, _pad: 0.0 }).collect();
             let timestamps: Vec<i64> = bars.iter().map(|b| b.time).collect();
@@ -2006,7 +2006,7 @@ pub(crate) fn fetch_overlay_bars_background(sym: String, tf: String) {
             for tx in &txs { let _ = tx.send(cmd.clone()); } crate::wake_native_ui();
             return;
         }
-        let yahoo_url = format!("https://query1.finance.yahoo.com/v8/finance/chart/{}?interval={}&range={}", sym, yf_interval, yf_range);
+        let yahoo_url = format!("{}/v8/finance/chart/{}?interval={}&range={}", crate::data::endpoints::yahoo_chart(), sym, yf_interval, yf_range);
         if let Ok(resp) = client.get(&yahoo_url).timeout(std::time::Duration::from_secs(5)).send() {
             if let Ok(json) = resp.json::<serde_json::Value>() {
                 if let Some(bars) = crate::data::parse_yahoo_v8(&json) {

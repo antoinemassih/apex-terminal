@@ -104,7 +104,7 @@ pub async fn get_bars(
 
     // 0. Crypto → ApexCrypto directly (manages its own cache + Binance backfill)
     if is_crypto(&symbol) {
-        let apex_url = format!("http://192.168.1.56:30840/api/bars/{}/{}", symbol, interval);
+        let apex_url = format!("{}/api/bars/{}/{}", crate::data::endpoints::crypto_http(), symbol, interval);
         if let Ok(resp) = client.get(&apex_url).timeout(std::time::Duration::from_secs(5)).send().await {
             if let Ok(bars) = resp.json::<Vec<Bar>>().await {
                 if !bars.is_empty() {
@@ -125,7 +125,7 @@ pub async fn get_bars(
     }
 
     // 2. OCOCO
-    let ococo_url = format!("http://192.168.1.60:30300/api/bars?symbol={}&interval={}&limit=500", symbol, interval);
+    let ococo_url = format!("{}/api/bars?symbol={}&interval={}&limit=500", crate::data::endpoints::ococo_http(), symbol, interval);
     if let Ok(resp) = client.get(&ococo_url).timeout(std::time::Duration::from_secs(2)).send().await {
         if let Ok(bars) = resp.json::<Vec<Bar>>().await {
             if !bars.is_empty() {
@@ -136,7 +136,7 @@ pub async fn get_bars(
     }
 
     // 3. yfinance sidecar
-    let yf_url = format!("http://127.0.0.1:8777/bars?symbol={}&interval={}&period={}", symbol, interval, period);
+    let yf_url = format!("{}/bars?symbol={}&interval={}&period={}", crate::data::endpoints::yfin_sidecar(), symbol, interval, period);
     if let Ok(resp) = client.get(&yf_url).timeout(std::time::Duration::from_secs(3)).send().await {
         if let Ok(bars) = resp.json::<Vec<Bar>>().await {
             if !bars.is_empty() {
@@ -155,8 +155,8 @@ pub async fn get_bars(
         _ => (interval.as_str(), &*period),
     };
     let yahoo_url = format!(
-        "https://query1.finance.yahoo.com/v8/finance/chart/{}?interval={}&range={}",
-        symbol, yf_interval, yf_range
+        "{}/v8/finance/chart/{}?interval={}&range={}",
+        crate::data::endpoints::yahoo_chart(), symbol, yf_interval, yf_range
     );
     if let Ok(resp) = client.get(&yahoo_url).timeout(std::time::Duration::from_secs(5)).send().await {
         if let Ok(json) = resp.json::<serde_json::Value>().await {
@@ -200,7 +200,7 @@ pub async fn get_options_chain(
     date: Option<String>,
 ) -> Result<OptionsChain, crate::error::AppError> {
     use crate::error::AppError;
-    let mut url = format!("http://127.0.0.1:8777/options?symbol={}", symbol);
+    let mut url = format!("{}/options?symbol={}", crate::data::endpoints::yfin_sidecar(), symbol);
     if let Some(d) = &date {
         url.push_str(&format!("&date={}", d));
     }

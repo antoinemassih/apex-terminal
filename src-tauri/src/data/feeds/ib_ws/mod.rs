@@ -182,7 +182,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use crate::data::connectivity::{self, errors_sink::{report, ErrorLevel}, Backoff};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-const WS_URL: &str = "ws://127.0.0.1:5000/ws";
+fn ws_url() -> String { crate::data::endpoints::ibserver_ws() }
 
 // ── Command channel ───────────────────────────────────────────────────────────
 
@@ -270,7 +270,7 @@ async fn ws_loop(
         publish_state(ConnectionState::Connecting {
             attempt: RECONNECT_COUNT.load(Ordering::Relaxed) + 1,
         });
-        match connect_async(WS_URL).await {
+        match connect_async(ws_url()).await {
             Ok((stream, _)) => {
                 backoff.reset();
                 publish_state(ConnectionState::Authenticated);

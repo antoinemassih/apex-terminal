@@ -1,5 +1,6 @@
 pub mod bar_cache;
 pub mod connectivity;
+pub mod endpoints;
 pub mod feeds;
 pub mod providers;
 

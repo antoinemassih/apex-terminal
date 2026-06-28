@@ -40,17 +40,20 @@ pub fn bar_chain() -> Arc<dyn MarketDataProvider> {
                     Arc::new(CachedProvider::new(Arc::new(ApexDataProvider::new()))),
                     Arc::new(HttpFallbackProvider::new(
                         "ococo",
-                        "http://192.168.1.60:30300/api/bars?symbol={symbol}&interval={interval}&limit=500",
+                        &format!("{}/api/bars?symbol={{symbol}}&interval={{interval}}&limit=500",
+                            crate::data::endpoints::ococo_http()),
                         Mode::BarsJson,
                     ).with_timeout_ms(2000)),
                     Arc::new(HttpFallbackProvider::new(
                         "yfinance-sidecar",
-                        "http://127.0.0.1:8777/bars?symbol={symbol}&interval={interval}&period={range}",
+                        &format!("{}/bars?symbol={{symbol}}&interval={{interval}}&period={{range}}",
+                            crate::data::endpoints::yfin_sidecar()),
                         Mode::BarsJson,
                     ).with_timeout_ms(3000)),
                     Arc::new(HttpFallbackProvider::new(
                         "yahoo-v8",
-                        "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval={interval}&range={range}",
+                        &format!("{}/v8/finance/chart/{{symbol}}?interval={{interval}}&range={{range}}",
+                            crate::data::endpoints::yahoo_chart()),
                         Mode::YahooV8,
                     ).with_timeout_ms(5000)),
                 ],

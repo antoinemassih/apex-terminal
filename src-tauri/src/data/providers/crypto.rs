@@ -17,8 +17,6 @@ use crate::data::connectivity::{
 };
 use crate::data::feeds::apex_data::types::{AssetClass, BarWire};
 
-const APEX_CRYPTO_BARS: &str = "http://192.168.1.56:30840/api/bars";
-
 pub struct CryptoProvider;
 
 impl CryptoProvider {
@@ -76,7 +74,7 @@ impl MarketDataProvider for CryptoProvider {
         }
         let sym = symbol.to_string();
         let tf = timeframe.to_string();
-        let url = format!("{}/{}/{}", APEX_CRYPTO_BARS, sym, tf);
+        let url = format!("{}/api/bars/{}/{}", crate::data::endpoints::crypto_http(), sym, tf);
         let res: Result<Vec<crate::data::Bar>, ApiError> = tokio::task::spawn_blocking(move || {
             let client = reqwest::blocking::Client::builder()
                 .user_agent("apex-terminal/crypto")

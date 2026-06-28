@@ -38,15 +38,13 @@ pub(crate) fn publish_state(s: ConnectionState) {
 
 static STARTED: OnceLock<()> = OnceLock::new();
 
-const APEX_CRYPTO_WS: &str = "ws://192.168.1.56:30840/ws";
-
 pub fn start() {
     if STARTED.set(()).is_err() {
         return;
     }
     resilient_ws::spawn_subscribed(SubscribedWsConfig {
         name: "crypto_feed",
-        url: Box::new(|| APEX_CRYPTO_WS.to_string()),
+        url: Box::new(crate::data::endpoints::crypto_ws),
         subscribe_msg: serde_json::json!({
             "subscribe": ["*:1s", "*:1m", "*:5m", "*:15m", "*:30m", "*:1h", "*:4h", "*:1d"],
             "tape": ["*"]
