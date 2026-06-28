@@ -1884,6 +1884,10 @@ pub(crate) fn fetch_bars_background(sym: String, tf: String) {
             // tickers whose strings end in `USDT` still get the ApexData
             // WS subscription.
             if crate::apex_data::is_enabled() && !sym_is_crypto {
+                // Registers the upstream WS bar subscription (→ ws::add_bar_sub)
+                // + the gap-fill anchor pump. The returned receiver is
+                // intentionally dropped: live bars reach the UI via the lib.rs
+                // NATIVE_CHART_TXS hot path, not this fanout. See providers/mod.rs.
                 let _ = crate::data::providers::registry::subscription_manager()
                     .subscribe_bars(&sym, &tf);
             }
