@@ -1257,7 +1257,47 @@ pub(crate) fn watchlist_price_from_snapshot(
 /// call per refresh tick instead of one per symbol. ApexIB/Yahoo stock
 /// fallbacks are gone; crypto and options keep their own data paths (this
 /// fn only ever sees stock symbols thanks to `is_stock_symbol`).
+/// Map a non-stock watchlist symbol to its `(class, url_symbol)` for
+/// `/api/snap/:class/:symbol`. Returns `None` for stocks (handled by the bulk
+/// path) and for display-label options that aren't in OCC form.
+fn wl_class_and_url(s: &str) -> Option<(&'static str, String)> {
+    let up = s.to_uppercase();
+    let crypto = crate::foundation::types::registry()
+        .get(s).map(|sy| sy.is_crypto())
+        .unwrap_or_else(|| crate::data::is_crypto(s));
+    if crypto { return Some(("crypto", up)); }
+    if let Some(root) = up.strip_prefix("F:") { return Some(("futures", root.to_string())); } // backend wants bare root
+    if up.starts_with("O:") { return Some(("options", s.to_string())); }                       // OCC as-is
+    if up.starts_with("I:") { return Some(("index", s.to_string())); }                         // e.g. I:SPX
+    None
+}
+
 pub(crate) fn fetch_watchlist_prices(symbols: Vec<String>) {
+    // Non-stock rows (crypto / futures / options / index) read the server's
+    // session/DST-aware % from the per-class `/api/snap/:class/:symbol`. This
+    // fails safe: a 404 / missing endpoint / network error → no-op (the row
+    // keeps its last value; crypto/futures still get fresh price from their
+    // live WS feeds, whose `change_perc: None` doesn't clobber this one).
+    let class_syms: Vec<(String, &'static str, String)> = symbols.iter()
+        .filter(|s| !is_stock_symbol(s))
+        .filter_map(|s| wl_class_and_url(s).map(|(c, u)| (s.clone(), c, u)))
+        .collect();
+    if !class_syms.is_empty() {
+        std::thread::spawn(move || {
+            for (orig, class, url_sym) in class_syms {
+                if let Some(snap) = crate::apex_data::rest::snap_class(class, &url_sym) {
+                    crate::send_to_native_chart(ChartCommand::WatchlistPrice {
+                        symbol: orig,
+                        price: snap.last as f32,
+                        prev_close: snap.prev_close as f32,
+                        day_close: 0.0,
+                        change_perc: snap.change_perc.map(|p| p as f32),
+                    });
+                }
+            }
+        });
+    }
+
     let symbols: Vec<String> = symbols.into_iter().filter(|s| is_stock_symbol(s)).collect();
     if symbols.is_empty() { return; }
     // Filter: this fn only knows how to fetch equities (Redis/ApexIB/Yahoo).

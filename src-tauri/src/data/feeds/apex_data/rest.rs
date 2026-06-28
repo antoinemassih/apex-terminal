@@ -552,6 +552,16 @@ pub fn snap_bulk(tickers: &[String]) -> Option<Vec<StockSnapshot>> {
         .map(|b| b.into_results())
 }
 
+/// `GET /api/snap/:class/:symbol` — per-symbol snapshot for any asset class
+/// (options / crypto / futures / index / stocks), carrying the server-computed
+/// `change_perc`. Returns `None` on 404 (no data yet — caller renders `—`),
+/// network error, or breaker-open; the breaker is keyed `/api/snap` so a flurry
+/// of per-symbol 404s/timeouts can't starve `/api/bars` or `/api/stocks`.
+pub fn snap_class(class: &str, symbol: &str) -> Option<ClassSnapshot> {
+    let enc = urlencoding::encode(symbol);
+    get::<ClassSnapshot>(&format!("/api/snap/{class}/{enc}")).ok()
+}
+
 /// One symbol-search hit from `GET /api/search?q=`. Polygon ticker-reference
 /// shaped; only the fields the terminal's search box needs are parsed.
 #[derive(Debug, Clone, serde::Deserialize)]

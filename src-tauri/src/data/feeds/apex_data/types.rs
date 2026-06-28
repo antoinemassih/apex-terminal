@@ -915,6 +915,23 @@ pub struct StockSnapshot {
     #[serde(default)] pub stale: bool,
 }
 
+/// `GET /api/snap/:class/:symbol` — unified per-symbol snapshot for all asset
+/// classes (stocks|options|index|crypto|futures). Carries the server-computed,
+/// session/DST-aware `change_perc` like the stocks bulk envelope. `404` = valid
+/// class but no data yet (render `—`, not an error); `400` = unknown class.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ClassSnapshot {
+    #[serde(default)] pub symbol: String,
+    #[serde(default)] pub class: String,
+    #[serde(default)] pub last: f64,
+    #[serde(default)] pub prev_close: f64,
+    #[serde(default)] pub change_perc: Option<f64>,
+    #[serde(default)] pub change_abs: Option<f64>,
+    #[serde(default)] pub source: Option<String>,
+    #[serde(default)] pub ts_ms: i64,
+    #[serde(default)] pub stale: bool,
+}
+
 /// `GET /api/stocks/snap/bulk` envelope (new shape): `{ results, stale,
 /// served_from_cache, ... }`. Older deployments returned a bare array — see
 /// [`BulkSnapshotBody`].
