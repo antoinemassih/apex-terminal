@@ -124,6 +124,43 @@ fn us_eastern_offset_min() -> u16 {
     if in_dst { 240 } else { 300 }
 }
 
+/// US/Eastern UTC offset in MINUTES for the date of `ts_secs` (DST-aware,
+/// per-timestamp — NOT `now()`). Axis labels must use the offset of the bar's
+/// OWN date, else historical/cross-DST charts render an hour off. 240=EDT, 300=EST.
+fn et_offset_min_for(ts_secs: i64) -> i64 {
+    use chrono::Datelike;
+    let date = match chrono::DateTime::from_timestamp(ts_secs, 0) {
+        Some(dt) => dt.naive_utc().date(),
+        None => return 300,
+    };
+    let (y, m, d) = (date.year(), date.month(), date.day());
+    let nth_sunday = |month: u32, n: u32| -> u32 {
+        match chrono::NaiveDate::from_ymd_opt(y, month, 1) {
+            Some(first) => {
+                let fw = first.weekday().num_days_from_sunday();
+                let first_sun = if fw == 0 { 1 } else { 8 - fw };
+                first_sun + 7 * (n - 1)
+            }
+            None => 99,
+        }
+    };
+    let in_dst = match m {
+        4..=10 => true,
+        3 => d >= nth_sunday(3, 2),
+        11 => d < nth_sunday(11, 1),
+        _ => false,
+    };
+    if in_dst { 240 } else { 300 }
+}
+
+/// Convert a UTC epoch-seconds bar time to the chart's display-local epoch
+/// seconds: market-local (US/Eastern, DST-aware per date) for equities/options/
+/// index/futures; left as UTC for crypto (24/7). Axis/crosshair labels format
+/// from this so the clock reads in the instrument's session timezone.
+fn chart_local_ts(ts_secs: i64, is_crypto: bool) -> i64 {
+    if is_crypto { ts_secs } else { ts_secs - et_offset_min_for(ts_secs) * 60 }
+}
+
 /// Phase 6+7: Render a single chart pane (candles, overlays, indicators, interactions).
 #[allow(unused_assignments)]
 fn render_chart_pane(
@@ -2017,14 +2054,17 @@ fn render_chart_pane(
                 let x = bx(bar_f);
                 if x > rect.left() + 20.0 && x < rect.left() + cw - 10.0 {
                     chart.fmt_buf.clear();
+                    // Render in the instrument's session timezone (ET, DST-aware
+                    // per label date) — equities/options/index/futures; crypto=UTC.
+                    let lt = chart_local_ts(ti, crate::data::is_crypto(&chart.symbol));
                     if time_interval >= 86400 {
-                        let days = (ti / 86400) as i32; let y2k = days - 10957;
+                        let days = (lt / 86400) as i32; let y2k = days - 10957;
                         let month = ((y2k % 365) / 30 + 1).min(12).max(1);
                         let day = ((y2k % 365) % 30 + 1).min(31).max(1);
                         let _ = write!(chart.fmt_buf, "{:02}/{:02}", month, day);
                     } else {
-                        let h = ((ti % 86400) / 3600) as u32;
-                        let m = ((ti % 3600) / 60) as u32;
+                        let h = (lt.rem_euclid(86400) / 3600) as u32;
+                        let m = (lt.rem_euclid(3600) / 60) as u32;
                         let _ = write!(chart.fmt_buf, "{:02}:{:02}", h, m);
                     };
                     let y = rect.top() + pt + ch - 10.0;
@@ -5629,7 +5669,7 @@ fn render_chart_pane(
                     } else {
                         dashed_line(&painter, egui::pos2(x, rect.top()+pt), egui::pos2(x, rect.top()+pt+ch), sc, LineStyle::Dashed);
                     }
-                    let ts_label = *time;
+                    let ts_label = chart_local_ts(*time, is_crypto); // session-tz label
                     let dt = chrono::NaiveDateTime::from_timestamp_opt(ts_label, 0).map(|d| d.format("%m/%d %H:%M").to_string()).unwrap_or_default();
                     painter.text(egui::pos2(x + 3.0, rect.top()+pt+4.0), egui::Align2::LEFT_TOP,
                         &dt, mono_3xs(), color_alpha(dc, 180));
@@ -8457,7 +8497,8 @@ fn render_chart_pane(
                 let bar_idx = bar_idx_f.round() as usize;
                 if let Some(&ts) = chart.timestamps.get(bar_idx) {
                     CROSSHAIR_SYNC_TIME.with(|c| c.set(ts));
-                    let dt = chrono::DateTime::from_timestamp(ts, 0);
+                    // Display in session timezone (ET DST-aware; crypto=UTC).
+                    let dt = chrono::DateTime::from_timestamp(chart_local_ts(ts, is_crypto), 0);
                     if let Some(dt) = dt {
                         let dt = dt.naive_utc();
                         let time_str = match chart.timeframe.as_str() {
