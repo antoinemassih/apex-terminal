@@ -1,33 +1,25 @@
 //! Live DOM (L2 depth-of-market) feed.
 //!
-//! Connects to apex-data `/ws/dom?symbol=X&rows=30` and pushes a merged,
+//! Connects to apex-data `/ws/dom?symbol=X&rows=20` and pushes a merged,
 //! price-keyed ladder into the chart renderer via `ChartCommand::DomLevels`.
 //!
-//! Unlike `signals_feed` (one global wildcard socket), the DOM endpoint is
-//! per-symbol — the symbol lives in the URL — so this feed re-dials whenever
-//! the active chart symbol changes. Call `set_symbol()` on every symbol switch
-//! (and once on startup); the connect loop observes the change and reconnects.
+//! The DOM endpoint is per-symbol (the symbol lives in the URL), so this feed
+//! re-dials whenever the active chart symbol changes. Call `set_symbol()` on
+//! every symbol switch (and once on startup); the connect loop reconnects.
+//!
+//! Transport (connect / LAN-resolve / backoff / shutdown / chart-send) is
+//! handled by [`resilient_ws`]; this file is the URL + the `dom` ladder parse.
 
 use std::sync::{Arc, OnceLock};
 use parking_lot::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 
 use crate::chart_renderer::{ChartCommand, ui::panels::dom_panel::DomLevel};
+use crate::data::feeds::resilient_ws::{self, WsConfig};
 
-static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 static ACTIVE_SYMBOL: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static RECONNECT: OnceLock<Arc<AtomicBool>> = OnceLock::new();
 static STARTED: OnceLock<()> = OnceLock::new();
-
-fn rt() -> &'static tokio::runtime::Runtime {
-    RT.get_or_init(|| {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("dom_feed tokio runtime")
-    })
-}
 
 fn active() -> &'static Mutex<Option<String>> {
     ACTIVE_SYMBOL.get_or_init(|| Mutex::new(None))
@@ -73,105 +65,37 @@ fn dom_ws_url(symbol: &str) -> String {
     format!("{host}/ws/dom?symbol={symbol}&rows=20")
 }
 
-type DomWsStream = tokio_tungstenite::WebSocketStream<
-    tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
-
-/// Connect to `url`, honouring the same LAN-IP override the main apex_data WS
-/// uses. When `APEX_DATA_LAN_IP` is set, public DNS resolves the apex-data host
-/// to a non-routable IP on the LAN, so dial the homelab Traefik IP directly
-/// (plain ws) and hand the socket to `client_async` with the original
-/// Host-bearing request — keeping Traefik ingress routing intact. Without this
-/// the DOM socket silently fails to connect from inside the LAN.
-async fn connect_lan_aware(url: &str)
-    -> Result<DomWsStream, Box<dyn std::error::Error + Send + Sync>>
-{
-    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-    use tokio_tungstenite::{client_async, connect_async, MaybeTlsStream};
-    use tokio::net::TcpStream;
-    use crate::data::feeds::apex_data::config;
-
-    let req = url.into_client_request()?;
-    let lan = match (config::apex_lan_ip(), config::apex_host_port()) {
-        (Some(ip), Some((_h, port))) => Some((ip, port)),
-        _ => None,
-    };
-    if let Some((ip, port)) = lan {
-        tracing::info!(target: "dom_feed", "lan_override dial {ip}:{port}");
-        let stream = TcpStream::connect((ip.as_str(), port)).await?;
-        let (ws, _) = client_async(req, MaybeTlsStream::Plain(stream)).await?;
-        Ok(ws)
-    } else {
-        let (ws, _) = connect_async(req).await?;
-        Ok(ws)
-    }
-}
-
-/// Spawn the feed thread. Idempotent — safe to call once at startup.
+/// Spawn the feed. Idempotent — safe to call once at startup.
 pub fn start() {
     if STARTED.set(()).is_err() {
         return;
     }
-    let reconnect = reconnect_flag().clone();
-    std::thread::spawn(move || {
-        rt().block_on(async move {
-            loop {
-                let sym = active().lock().clone();
-                let Some(sym) = sym else {
-                    // No symbol selected yet — idle until one arrives.
-                    tokio::time::sleep(Duration::from_millis(500)).await;
-                    continue;
-                };
-                reconnect.store(false, Ordering::SeqCst);
-                if let Err(e) = run_one(&sym, &reconnect).await {
-                    tracing::warn!(target: "dom_feed", "{sym}: {e}");
-                    tokio::time::sleep(Duration::from_secs(2)).await;
-                }
-            }
-        });
+    resilient_ws::spawn(WsConfig {
+        name: "dom_feed",
+        reconnect: reconnect_flag().clone(),
+        // A book can be legitimately quiet (illiquid / off-hours), so no idle
+        // watchdog — only reconnect on symbol change or a dropped socket.
+        idle_timeout: None,
+        url_provider: Box::new(|| active().lock().as_ref().map(|s| dom_ws_url(s))),
+        on_text: Box::new(on_text),
     });
 }
 
-async fn run_one(
-    symbol: &str,
-    reconnect: &AtomicBool,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use futures_util::StreamExt;
-
-    let url = dom_ws_url(symbol);
-    tracing::info!(target: "dom_feed", "connecting {url}");
-    let ws = connect_lan_aware(&url).await?;
-    let (_w, mut read) = ws.split();
-
-    // 250ms tick lets us notice a symbol switch promptly even on a quiet book.
-    let mut tick = tokio::time::interval(Duration::from_millis(250));
-    loop {
-        tokio::select! {
-            _ = tick.tick() => {
-                if reconnect.load(Ordering::SeqCst) {
-                    // Symbol changed — outer loop re-dials the new one.
-                    return Ok(());
-                }
-            }
-            frame = read.next() => {
-                let Some(msg) = frame else { return Ok(()); };
-                let msg = msg?;
-                if !msg.is_text() { continue; }
-                let v: serde_json::Value = match serde_json::from_str(msg.to_text()?) {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-                match v.get("type").and_then(|t| t.as_str()) {
-                    Some("dom") => {
-                        let levels = parse_dom(&v);
-                        send(ChartCommand::DomLevels { symbol: symbol.to_string(), levels });
-                    }
-                    Some("error") => {
-                        tracing::warn!(target: "dom_feed", "server error: {v}");
-                    }
-                    _ => {}
-                }
-            }
+/// Parse one text frame and route it. Reads the current symbol for the
+/// `DomLevels` command's symbol field.
+fn on_text(text: &str) {
+    let Some(symbol) = active().lock().clone() else { return };
+    let v: serde_json::Value = match serde_json::from_str(text) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    match v.get("type").and_then(|t| t.as_str()) {
+        Some("dom") => {
+            let levels = parse_dom(&v);
+            resilient_ws::send_to_charts(ChartCommand::DomLevels { symbol, levels });
         }
+        Some("error") => tracing::warn!(target: "dom_feed", "server error: {v}"),
+        _ => {}
     }
 }
 
@@ -204,8 +128,6 @@ fn parse_dom(v: &serde_json::Value) -> Vec<DomLevel> {
     }
     for lvl in read_side("asks") {
         let p = lvl.get("price").and_then(|x| x.as_f64()).unwrap_or(0.0);
-        // Sizes arrive as JSON floats (e.g. `12.0`); as_u64() returns None on
-        // those, so read as f64 and round.
         let s = lvl.get("size").and_then(|x| x.as_f64()).unwrap_or(0.0).round() as u32;
         let e = book.entry((p * 1000.0) as i64).or_insert(DomLevel {
             price: p as f32, bid_size: 0, ask_size: 0, volume: 0, delta: 0,
@@ -221,13 +143,4 @@ fn parse_dom(v: &serde_json::Value) -> Vec<DomLevel> {
             l
         })
         .collect()
-}
-
-fn send(cmd: ChartCommand) {
-    if let Some(lock) = crate::NATIVE_CHART_TXS.get() {
-        if let Ok(mut g) = lock.lock() {
-            g.retain(|tx| tx.send(cmd.clone()).is_ok());
-        }
-    }
-    crate::wake_native_ui();
 }

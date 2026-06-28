@@ -2,38 +2,29 @@
 //!
 //! Connects to apex-data `/ws/intercepts` and surfaces backend-computed
 //! interception events (price breaking / retesting an auto-drawn line) in the
-//! terminal's alert-badge feed. This is the read side of the auto-drawing feed:
-//! the backend (apex-data `InterceptEngine`) computes interceptions across the
-//! whole universe — independent of whether a chart is open — and streams them;
-//! here we just render the significant ones as notifications.
+//! terminal's alert-badge feed. The backend (`InterceptEngine`) computes
+//! interceptions across the whole universe — independent of whether a chart is
+//! open — and streams them; here we render the significant ones as notifications.
 //!
-//! Global socket (no per-symbol dialing), mirroring `dom_feed`'s LAN-aware
-//! connect. Noisy phases (approach/touch/bounce/cross) are filtered out by
-//! default — only `break` and `retest` reach the badge feed (override via
-//! `INTERCEPTS_FEED_EVENTS`, a CSV of event names).
+//! Global socket (fixed URL, no per-symbol dialing). Noisy phases
+//! (approach/touch/bounce/cross) are filtered out by default — only `break` and
+//! `retest` reach the badge feed (override via `INTERCEPTS_FEED_EVENTS`).
+//!
+//! Transport (connect / LAN-resolve / backoff / shutdown) is handled by
+//! [`resilient_ws`]; this file is the URL + the event filter/parse.
 
-use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::OnceLock;
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::{Arc, OnceLock};
 
 use crate::chart_renderer::ui::components::toolbar::alert_feed;
 use crate::chart_renderer::ui::tools::notification::AlertKind;
+use crate::data::feeds::resilient_ws::{self, WsConfig};
 
-static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 static STARTED: OnceLock<()> = OnceLock::new();
 /// Only surface interceptions newer than this (epoch ms) — set at startup so the
 /// WS replay of recent history doesn't spam the feed, and reconnects don't
 /// re-push already-seen events.
 static SINCE_MS: AtomicI64 = AtomicI64::new(0);
-
-fn rt() -> &'static tokio::runtime::Runtime {
-    RT.get_or_init(|| {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("intercepts_feed tokio runtime")
-    })
-}
 
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
@@ -60,36 +51,7 @@ fn intercepts_ws_url() -> String {
     format!("{host}/ws/intercepts")
 }
 
-type WsStream = tokio_tungstenite::WebSocketStream<
-    tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
-
-/// LAN-aware connect, mirroring `dom_feed`: when `APEX_DATA_LAN_IP` is set,
-/// public DNS points at a non-routable IP, so dial the homelab Traefik IP
-/// directly (plain ws) with the original Host-bearing request.
-async fn connect_lan_aware(url: &str)
-    -> Result<WsStream, Box<dyn std::error::Error + Send + Sync>>
-{
-    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-    use tokio_tungstenite::{client_async, connect_async, MaybeTlsStream};
-    use tokio::net::TcpStream;
-    use crate::data::feeds::apex_data::config;
-
-    let req = url.into_client_request()?;
-    let lan = match (config::apex_lan_ip(), config::apex_host_port()) {
-        (Some(ip), Some((_h, port))) => Some((ip, port)),
-        _ => None,
-    };
-    if let Some((ip, port)) = lan {
-        let stream = TcpStream::connect((ip.as_str(), port)).await?;
-        let (ws, _) = client_async(req, MaybeTlsStream::Plain(stream)).await?;
-        Ok(ws)
-    } else {
-        let (ws, _) = connect_async(req).await?;
-        Ok(ws)
-    }
-}
-
-/// Spawn the feed thread. Idempotent — safe to call once at startup. Opt-out via
+/// Spawn the feed. Idempotent — safe to call once at startup. Opt-out via
 /// `INTERCEPTS_FEED_ENABLED=0`.
 pub fn start() {
     if std::env::var("INTERCEPTS_FEED_ENABLED").map(|v| v == "0").unwrap_or(false) {
@@ -100,58 +62,35 @@ pub fn start() {
     }
     SINCE_MS.store(now_ms(), Ordering::SeqCst);
     let surfaced = surfaced_events();
-    std::thread::spawn(move || {
-        rt().block_on(async move {
-            let mut backoff = Duration::from_secs(1);
-            loop {
-                match run_once(&surfaced).await {
-                    Ok(()) => backoff = Duration::from_secs(1),
-                    Err(e) => {
-                        tracing::warn!(target: "intercepts_feed", "reconnect: {e}");
-                    }
-                }
-                tokio::time::sleep(backoff).await;
-                backoff = (backoff * 2).min(Duration::from_secs(30));
-            }
-        });
+    resilient_ws::spawn(WsConfig {
+        name: "intercepts_feed",
+        // Fixed global URL — no target changes, so the reconnect signal is unused.
+        reconnect: Arc::new(AtomicBool::new(false)),
+        idle_timeout: None, // interceptions are sporadic; quiet is normal
+        url_provider: Box::new(|| Some(intercepts_ws_url())),
+        on_text: Box::new(move |text| on_text(text, &surfaced)),
     });
 }
 
-async fn run_once(surfaced: &[String]) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use futures_util::StreamExt;
-    use tokio_tungstenite::tungstenite::Message;
-
-    let url = intercepts_ws_url();
-    tracing::info!(target: "intercepts_feed", "connecting {url}");
-    let ws = connect_lan_aware(&url).await?;
-    let (_write, mut read) = ws.split();
-
-    while let Some(msg) = read.next().await {
-        let txt = match msg? {
-            Message::Text(t) => t.to_string(),
-            Message::Close(_) => break,
-            _ => continue,
-        };
-        let Ok(ev) = serde_json::from_str::<serde_json::Value>(&txt) else { continue };
-        let event = ev.get("event").and_then(|v| v.as_str()).unwrap_or("");
-        if !surfaced.iter().any(|e| e == &event.to_lowercase()) {
-            continue;
-        }
-        let ts = ev.get("ts_ms").and_then(|v| v.as_i64()).unwrap_or(0);
-        if ts <= SINCE_MS.load(Ordering::SeqCst) {
-            continue; // historical replay / already past — don't badge
-        }
-        let symbol = ev.get("symbol").and_then(|v| v.as_str()).unwrap_or("?").to_string();
-        let dtype = ev.get("dtype").and_then(|v| v.as_str()).unwrap_or("line");
-        let tf = ev.get("tf").and_then(|v| v.as_str()).unwrap_or("");
-        let price = ev.get("price").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let kind = match event {
-            "break" => AlertKind::Warning,
-            _ => AlertKind::Signal,
-        };
-        let msg = format!("{event} {dtype} {tf} @ {price:.2}");
-        alert_feed::push(kind, Some(symbol), msg);
-        crate::wake_native_ui();
+fn on_text(text: &str, surfaced: &[String]) {
+    let Ok(ev) = serde_json::from_str::<serde_json::Value>(text) else { return };
+    let event = ev.get("event").and_then(|v| v.as_str()).unwrap_or("");
+    if !surfaced.iter().any(|e| e == &event.to_lowercase()) {
+        return;
     }
-    Ok(())
+    let ts = ev.get("ts_ms").and_then(|v| v.as_i64()).unwrap_or(0);
+    if ts <= SINCE_MS.load(Ordering::SeqCst) {
+        return; // historical replay / already past — don't badge
+    }
+    let symbol = ev.get("symbol").and_then(|v| v.as_str()).unwrap_or("?").to_string();
+    let dtype = ev.get("dtype").and_then(|v| v.as_str()).unwrap_or("line");
+    let tf = ev.get("tf").and_then(|v| v.as_str()).unwrap_or("");
+    let price = ev.get("price").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let kind = match event {
+        "break" => AlertKind::Warning,
+        _ => AlertKind::Signal,
+    };
+    let msg = format!("{event} {dtype} {tf} @ {price:.2}");
+    alert_feed::push(kind, Some(symbol), msg);
+    crate::wake_native_ui();
 }
