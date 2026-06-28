@@ -15,6 +15,7 @@ pub use feeds::drawings_feed;
 pub use feeds::futures_feed;
 pub use feeds::intercepts_feed;
 pub use feeds::signals_feed;
+pub use feeds::signals_v2_feed;
 pub use feeds::discord;
 
 // ib_ws is pub(crate) / mod only — keep internal

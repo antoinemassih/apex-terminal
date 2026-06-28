@@ -209,6 +209,10 @@ fn main() {
     // recomputes them (only active when AutoDrawConfig.live_feed is on).
     _scaffold_lib::drawings_feed::start();
 
+    // Signals-as-datatype consumer — surfaces the broader ApexSignals universe
+    // (via apex-data /ws/v2 `signals`) as alert badges. Inert unless APEX_WS_V2=1.
+    _scaffold_lib::signals_v2_feed::start();
+
     eprintln!("[apex-native] Opening chart window...");
 
     // Create a channel and open the first window

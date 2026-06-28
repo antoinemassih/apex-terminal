@@ -62,18 +62,32 @@ pub fn start() {
     if STARTED.set(()).is_err() {
         return;
     }
+    // Opt-in: consume the unified /ws/v2 `drawings` topic instead of the bespoke
+    // /ws/drawings endpoint (which stays aliased server-side). `on_text` handles
+    // both shapes, so the flag only changes the URL + subscribe frame.
+    let v2 = resilient_ws::v2_enabled();
     resilient_ws::spawn(WsConfig {
         name: "drawings_feed",
         // Fixed global URL — no target changes, so the reconnect signal is unused.
         reconnect: Arc::new(AtomicBool::new(false)),
         idle_timeout: None, // drawing events are sporadic; quiet is normal
-        url_provider: Box::new(|| Some(drawings_ws_url())),
+        url_provider: Box::new(move || Some(if v2 { resilient_ws::v2_url() } else { drawings_ws_url() })),
+        subscribe_msg: if v2 { Some(resilient_ws::v2_subscribe(&["drawings"], "*")) } else { None },
         on_text: Box::new(on_text),
     });
 }
 
 fn on_text(text: &str) {
-    let Ok(ev) = serde_json::from_str::<serde_json::Value>(text) else { return };
+    // /ws/v2 wraps the DrawEvent in a Frame::Event envelope; unwrap to the inner
+    // event. Otherwise treat the text as a raw /ws/drawings event (bespoke path).
+    let ev: serde_json::Value = match resilient_ws::unwrap_v2_event(text) {
+        Some((dt, inner)) if dt == "drawings" => inner,
+        Some(_) => return, // a different datatype sharing the socket — ignore
+        None => {
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else { return };
+            v
+        }
+    };
     let sym = ev.get("symbol").and_then(|v| v.as_str()).unwrap_or("");
     let tf = ev.get("tf").and_then(|v| v.as_str()).unwrap_or("");
 

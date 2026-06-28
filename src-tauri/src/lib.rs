@@ -27,6 +27,7 @@ pub use data::drawings_feed;
 pub use data::futures_feed;
 pub use data::intercepts_feed;
 pub use data::signals_feed;
+pub use data::signals_v2_feed;
 pub use data::discord;
 pub use persistence::drawing_db;
 pub use persistence::watchlist_db;

@@ -77,6 +77,7 @@ pub fn start() {
         // watchdog — only reconnect on symbol change or a dropped socket.
         idle_timeout: None,
         url_provider: Box::new(|| active().lock().as_ref().map(|s| dom_ws_url(s))),
+        subscribe_msg: None,
         on_text: Box::new(on_text),
     });
 }

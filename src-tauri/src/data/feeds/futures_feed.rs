@@ -72,6 +72,7 @@ pub fn start() {
         url_provider: Box::new(|| {
             target().lock().as_ref().map(|(sym, _tf)| futures_ws_url(sym))
         }),
+        subscribe_msg: None,
         on_text: Box::new(on_text),
     });
 }

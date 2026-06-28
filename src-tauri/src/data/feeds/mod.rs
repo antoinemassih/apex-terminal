@@ -6,6 +6,7 @@ pub mod drawings_feed;
 pub mod futures_feed;
 pub mod intercepts_feed;
 pub mod signals_feed;
+pub mod signals_v2_feed;
 pub mod ib_ws;
 pub mod discord;
 pub mod discord_keychain;

@@ -34,6 +34,61 @@ pub fn send_to_charts(cmd: ChartCommand) {
     crate::wake_native_ui();
 }
 
+// ── Unified /ws/v2 topic helpers ─────────────────────────────────────────────
+//
+// ApexData's /ws/v2 carries every datatype as a topic on ONE socket (bars,
+// trades, quotes, depth, futures_bars, drawings, intercepts, scans, alerts,
+// signals). A feed opts in via `APEX_WS_V2=1`; until then it keeps using its
+// bespoke endpoint (which remains aliased server-side). See
+// ApexData/docs/SPEC_DATA_ACCESS_ARCHITECTURE.md §3.
+
+/// True when feeds should use the unified `/ws/v2` socket instead of bespoke
+/// per-topic endpoints. Opt-in (default off) so the migration is verified at
+/// market hours before becoming the default.
+pub fn v2_enabled() -> bool {
+    std::env::var("APEX_WS_V2").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false)
+}
+
+/// The unified socket URL `{scheme}://{host}/ws/v2?format=json`, derived from
+/// the configured apex-data base.
+pub fn v2_url() -> String {
+    let base = crate::data::feeds::apex_data::config::apex_ws_url();
+    let host = base
+        .split("/ws")
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("wss://apex-data-v2-dev.xllio.com");
+    format!("{host}/ws/v2?format=json")
+}
+
+/// Build a `/ws/v2` subscribe frame for the given topics. `instrument` is a
+/// concrete symbol for instrument-scoped topics, or `"*"` for account-wide ones.
+pub fn v2_subscribe(datatypes: &[&str], instrument: &str) -> String {
+    serde_json::json!({
+        "action": "subscribe",
+        "instrument": instrument,
+        "datatypes": datatypes,
+        "time_source": { "mode": "live" },
+    })
+    .to_string()
+}
+
+/// Unwrap a `/ws/v2` `Frame::Event` envelope
+/// (`{"v":1,"type":"event","data":{"datatype":..,"symbol":..,"data":<event>}}`)
+/// into `(datatype, inner_event)`. Returns `None` for non-event frames
+/// (hello/error/etc.) or a raw bespoke frame — so callers can fall back to
+/// parsing the text as their legacy shape.
+pub fn unwrap_v2_event(text: &str) -> Option<(String, serde_json::Value)> {
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    if v.get("type")?.as_str()? != "event" {
+        return None;
+    }
+    let data = v.get("data")?;
+    let dt = data.get("datatype")?.as_str()?.to_string();
+    let inner = data.get("data")?.clone();
+    Some((dt, inner))
+}
+
 type WsStream = tokio_tungstenite::WebSocketStream<
     tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
@@ -74,6 +129,11 @@ pub struct WsConfig {
     pub idle_timeout: Option<Duration>,
     /// Returns the URL to connect to, or `None` to idle (no active target).
     pub url_provider: Box<dyn Fn() -> Option<String> + Send>,
+    /// Optional JSON frame sent once immediately after each (re)connect. `None`
+    /// (the default for stream-on-connect endpoints like `/ws/drawings`) sends
+    /// nothing — behaviour is unchanged. `Some` is used to drive the unified
+    /// `/ws/v2` socket, which requires a `{"action":"subscribe",…}` message.
+    pub subscribe_msg: Option<String>,
     /// Called for every text frame received.
     pub on_text: Box<dyn Fn(&str) + Send>,
 }
@@ -123,9 +183,16 @@ async fn run_loop(cfg: WsConfig, shutdown: Arc<AtomicBool>) {
 async fn run_one(url: &str, cfg: &WsConfig, shutdown: &AtomicBool)
     -> Result<(), Box<dyn std::error::Error + Send + Sync>>
 {
-    use futures_util::StreamExt;
+    use futures_util::{SinkExt, StreamExt};
     let ws = connect_lan_aware(url).await?;
-    let (_w, mut read) = ws.split();
+    let (mut write, mut read) = ws.split();
+    // Drive the unified /ws/v2 socket (or any subscribe-on-connect endpoint).
+    // Stream-on-connect feeds pass `None` and this is a no-op (write half is
+    // simply held open, which does not close the connection).
+    if let Some(msg) = &cfg.subscribe_msg {
+        use tokio_tungstenite::tungstenite::Message;
+        write.send(Message::Text(msg.clone().into())).await?;
+    }
     let mut tick = tokio::time::interval(Duration::from_millis(250));
     let mut last_activity = Instant::now();
     loop {

@@ -62,18 +62,31 @@ pub fn start() {
     }
     SINCE_MS.store(now_ms(), Ordering::SeqCst);
     let surfaced = surfaced_events();
+    // Opt-in: consume the unified /ws/v2 `intercepts` topic instead of the
+    // bespoke /ws/intercepts endpoint (which stays aliased server-side).
+    let v2 = resilient_ws::v2_enabled();
     resilient_ws::spawn(WsConfig {
         name: "intercepts_feed",
         // Fixed global URL — no target changes, so the reconnect signal is unused.
         reconnect: Arc::new(AtomicBool::new(false)),
         idle_timeout: None, // interceptions are sporadic; quiet is normal
-        url_provider: Box::new(|| Some(intercepts_ws_url())),
+        url_provider: Box::new(move || Some(if v2 { resilient_ws::v2_url() } else { intercepts_ws_url() })),
+        subscribe_msg: if v2 { Some(resilient_ws::v2_subscribe(&["intercepts"], "*")) } else { None },
         on_text: Box::new(move |text| on_text(text, &surfaced)),
     });
 }
 
 fn on_text(text: &str, surfaced: &[String]) {
-    let Ok(ev) = serde_json::from_str::<serde_json::Value>(text) else { return };
+    // /ws/v2 wraps the InterceptEvent in a Frame::Event envelope; unwrap to the
+    // inner event. Otherwise treat the text as a raw /ws/intercepts event.
+    let ev: serde_json::Value = match resilient_ws::unwrap_v2_event(text) {
+        Some((dt, inner)) if dt == "intercepts" => inner,
+        Some(_) => return, // a different datatype sharing the socket — ignore
+        None => {
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else { return };
+            v
+        }
+    };
     let event = ev.get("event").and_then(|v| v.as_str()).unwrap_or("");
     if !surfaced.iter().any(|e| e == &event.to_lowercase()) {
         return;
