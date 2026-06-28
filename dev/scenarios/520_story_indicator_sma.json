@@ -66,6 +66,13 @@
           }
         },
         {
+          "canvas_indicator_correct": {
+            "pane": 0,
+            "kind": "SMA",
+            "rel_tol": 0.01
+          }
+        },
+        {
           "no_panic": true
         },
         {

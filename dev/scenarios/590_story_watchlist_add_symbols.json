@@ -1,6 +1,6 @@
 {
   "name": "story_watchlist_add_symbols",
-  "description": "Trader builds a watchlist of five symbols.",
+  "description": "Trader builds a watchlist of five symbols; % column populates and is sane.",
   "story": "Watchlist/CRUD",
   "tags": [
     "story",
@@ -63,6 +63,14 @@
       "count": 2
     },
     {
+      "action": "wait",
+      "ms": 2000
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
       "action": "assert",
       "assertions": [
         {
@@ -70,6 +78,12 @@
         },
         {
           "fps_above": 5.0
+        },
+        {
+          "watchlist_pct_present": true
+        },
+        {
+          "watchlist_pct_sane": 25.0
         }
       ]
     }

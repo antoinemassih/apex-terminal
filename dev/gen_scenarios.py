@@ -108,6 +108,9 @@ for i,ind in enumerate(INDIS):
     if ind in IND_RANGE:
         lo,hi=IND_RANGE[ind]
         asserts.append({"canvas_indicator_value_in_range":{"pane":pane,"kind":lbl(ind),"min":lo,"max":hi}})
+    # Numerical-correctness oracle for the window indicator SMA (proven <1%).
+    if ind == "SMA":
+        asserts.append({"canvas_indicator_correct":{"pane":pane,"kind":"SMA","rel_tol":0.01}})
     steps=[{"action":"reset"},{"action":"wait_frames","count":3},
            cmd("SwapPaneSymbol",pane=0,symbol="AAPL"),
            {"action":"wait","ms":600},{"action":"wait_frames","count":3},
@@ -186,8 +189,8 @@ emit(571,"story_style_cycle_all","Design/Styles",
 # theme/style cycles.
 emit(572,"design_audit_baseline","Design/Audit",["design","audit","baseline"],
      [{"action":"reset"},{"action":"wait_frames","count":4},
-      A({"no_clipped_widgets":True},{"design_audit_clean":True})],
-     "Baseline design audit: no clipped widgets and no design-contract violations.")
+      A({"no_clipped_widgets":True},{"ux_audit":True})],
+     "Baseline design audit: no clipping, overlaps, or sub-floor (desktop) targets.")
 
 # ── 580-584: pane type switches ─────────────────────────────────────────────
 for i,pt in enumerate(PANETYPES):
@@ -210,8 +213,10 @@ emit(590,"story_watchlist_add_symbols","Watchlist/CRUD",["story","watchlist"],
      [{"action":"reset"},{"action":"wait_frames","count":3}]+
      sum([[cmd("WatchlistAddSymbol",symbol=s),{"action":"wait_frames","count":2}]
           for s in ["SPY","QQQ","AAPL","NVDA","TSLA"]],[])+
-     [A({"no_panic":True},{"fps_above":5.0})],
-     "Trader builds a watchlist of five symbols.")
+     [{"action":"wait","ms":2000},{"action":"wait_frames","count":4},
+      A({"no_panic":True},{"fps_above":5.0},
+        {"watchlist_pct_present":True},{"watchlist_pct_sane":25.0})],
+     "Trader builds a watchlist of five symbols; % column populates and is sane.")
 emit(591,"story_watchlist_add_remove","Watchlist/CRUD",["story","watchlist"],
      [{"action":"reset"},{"action":"wait_frames","count":3},
       cmd("WatchlistAddSymbol",symbol="AMD"),{"action":"wait_frames","count":2},

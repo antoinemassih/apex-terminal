@@ -1,6 +1,6 @@
 {
   "name": "design_audit_baseline",
-  "description": "Baseline design audit: no clipped widgets and no design-contract violations.",
+  "description": "Baseline design audit: no clipping, overlaps, or sub-floor (desktop) targets.",
   "story": "Design/Audit",
   "tags": [
     "design",
@@ -25,7 +25,7 @@
           "no_clipped_widgets": true
         },
         {
-          "design_audit_clean": true
+          "ux_audit": true
         }
       ]
     }
