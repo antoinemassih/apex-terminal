@@ -1,0 +1,335 @@
+{
+  "name": "recovery_reset_clean_liquid_converge",
+  "description": "After heavy churn and many flags, reset and load a clean liquid symbol, giving a generous settle to confirm the app converges to the intended state.",
+  "story": "Recovery/CleanConverge",
+  "tags": [
+    "story",
+    "recovery",
+    "invariants"
+  ],
+  "priority": 2,
+  "settle_ms": 10,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "TSLA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangeTimeframe",
+      "pane": 0,
+      "tf": "1m"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "RSI"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "MACD"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "NVDA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangeTimeframe",
+      "pane": 0,
+      "tf": "1m"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "RSI"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "MACD"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "AMD"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangeTimeframe",
+      "pane": 0,
+      "tf": "5m"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "RSI"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "MACD"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "META"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangeTimeframe",
+      "pane": 0,
+      "tf": "15m"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "RSI"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "MACD"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "LogScale",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "ShowOscillators",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "ShowFootprint",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "Magnet",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 3.0
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "SPY"
+    },
+    {
+      "action": "wait",
+      "ms": 1500
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangeTimeframe",
+      "pane": 0,
+      "tf": "5m"
+    },
+    {
+      "action": "wait",
+      "ms": 1500
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_symbol_equals": {
+            "pane": 0,
+            "symbol": "SPY"
+          }
+        },
+        {
+          "pane_timeframe_equals": {
+            "pane": 0,
+            "tf": "5m"
+          }
+        },
+        {
+          "canvas_visible_bar_count_gte": {
+            "pane": 0,
+            "min": 1
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 3.0
+        }
+      ]
+    }
+  ]
+}

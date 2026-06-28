@@ -1,0 +1,165 @@
+{
+  "name": "breakout_avgo_volume",
+  "description": "Watch an AVGO breakout with Bollinger Bands and volume, confirm on 1m.",
+  "story": "DayTrading/Breakout",
+  "tags": [
+    "story",
+    "daytrading",
+    "avgo",
+    "breakout",
+    "bb"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "log",
+      "message": "AVGO breakout watch: volume + BB on 5m, confirm on 1m"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "AVGO"
+    },
+    {
+      "action": "wait",
+      "ms": 1200
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangeTimeframe",
+      "pane": 0,
+      "tf": "5m"
+    },
+    {
+      "action": "wait",
+      "ms": 1200
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "BB"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "ShowVolume",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_symbol_equals": {
+            "pane": 0,
+            "symbol": "AVGO"
+          }
+        },
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "BB"
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangeTimeframe",
+      "pane": 0,
+      "tf": "1m"
+    },
+    {
+      "action": "wait",
+      "ms": 1200
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_timeframe_equals": {
+            "pane": 0,
+            "tf": "1m"
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "name": "story_semis_watchlist",
+  "description": "Trader builds a semiconductor-focused watchlist.",
+  "story": "Watchlist/ThemedBuild",
+  "tags": [
+    "story",
+    "watchlist",
+    "semis"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "log",
+      "message": "Build a semiconductors watchlist"
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "NVDA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "AMD"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "AVGO"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "QQQ"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "name": "story_delete_section",
+  "description": "Trader removes a watchlist section that is no longer needed.",
+  "story": "Watchlist/Sections",
+  "tags": [
+    "story",
+    "watchlist",
+    "sections"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "log",
+      "message": "Create sections then delete one"
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSection",
+      "title": "Core ETFs"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "SPY"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "QQQ"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSection",
+      "title": "Speculative"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "TSLA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistRemoveSection",
+      "idx": 1
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    }
+  ]
+}

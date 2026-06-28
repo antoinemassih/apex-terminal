@@ -1,0 +1,216 @@
+{
+  "name": "alert_laddering_session",
+  "description": "Ladder many draft price alerts above and below price, then safely cancel orders and clear history, asserting the chart stays well-formed.",
+  "story": "PowerUser/Alerts",
+  "tags": [
+    "story",
+    "stress",
+    "alerts"
+  ],
+  "priority": 2,
+  "settle_ms": 10,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "SPY"
+    },
+    {
+      "action": "wait",
+      "ms": 700
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddPriceAlert",
+      "pane": 0,
+      "price": 430.0,
+      "above": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddPriceAlert",
+      "pane": 0,
+      "price": 440.0,
+      "above": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddPriceAlert",
+      "pane": 0,
+      "price": 450.0,
+      "above": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddPriceAlert",
+      "pane": 0,
+      "price": 460.0,
+      "above": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddPriceAlert",
+      "pane": 0,
+      "price": 470.0,
+      "above": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddPriceAlert",
+      "pane": 0,
+      "price": 420.0,
+      "above": false
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddPriceAlert",
+      "pane": 0,
+      "price": 410.0,
+      "above": false
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddPriceAlert",
+      "pane": 0,
+      "price": 400.0,
+      "above": false
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 3.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "CancelAllOrders"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "ClearOrderHistory"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "AAPL"
+    },
+    {
+      "action": "wait",
+      "ms": 1500
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_symbol_equals": {
+            "pane": 0,
+            "symbol": "AAPL"
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 3.0
+        }
+      ]
+    }
+  ]
+}

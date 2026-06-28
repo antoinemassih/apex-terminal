@@ -346,5 +346,85 @@ steps+=[{"action":"reset"},{"action":"wait_frames","count":4},
 emit(645,"stress_recovery_after_thrash","Adversarial/Recovery",["stress","recovery","invariants"],steps,
      "After heavy churn, a reset + clean load must return a sane, well-formed chart.")
 
+# ── 800-817: per-symbol load + sanity (one file per symbol) ─────────────────
+for i,sym in enumerate(SYMBOLS):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3},
+           cmd("SwapPaneSymbol",pane=0,symbol=sym),
+           {"action":"wait","ms":1000},{"action":"wait_frames","count":4},
+           {"action":"log","message":f"load {sym}"},
+           A({"pane_symbol_equals":{"pane":0,"symbol":sym}},
+             {"canvas_visible_bar_count_gte":{"pane":0,"min":1}}, *invariants())]
+    emit(800+i, f"load_{sym.lower()}", "Chart/Load",
+         ["symbol","load","invariants"], steps,
+         f"Loading {sym} produces a populated, well-formed chart.")
+
+# ── 820-837: per-symbol VWAP+RSI study on 5m ────────────────────────────────
+for i,sym in enumerate(SYMBOLS):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3},
+           cmd("SwapPaneSymbol",pane=0,symbol=sym),{"action":"wait","ms":1000},{"action":"wait_frames","count":3},
+           cmd("ChangeTimeframe",pane=0,tf="5m"),{"action":"wait","ms":900},{"action":"wait_frames","count":3},
+           cmd("AddIndicator",pane=0,kind="VWAP"),{"action":"wait_frames","count":2},
+           cmd("AddIndicator",pane=0,kind="RSI"),{"action":"wait_frames","count":2},
+           cmd("RecomputeIndicators",pane=0),{"action":"wait_frames","count":4},
+           {"action":"log","message":f"{sym} VWAP+RSI 5m"},
+           A({"canvas_indicator_exists":{"pane":0,"kind":"VWAP"}},
+             {"canvas_indicator_value_in_range":{"pane":0,"kind":"RSI","min":0,"max":100}},
+             *invariants())]
+    emit(820+i, f"study_{sym.lower()}_vwap_rsi", "Chart/Study",
+         ["symbol","indicator","invariants"], steps,
+         f"{sym} on 5m with VWAP and RSI computes finite, in-range values.")
+
+# ── 840-846: pane-1 / multi-pane independence ───────────────────────────────
+pane1_syms=["AAPL","NVDA","TSLA","SPY","QQQ","AMD","META"]
+for i,sym in enumerate(pane1_syms):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3},
+           cmd("SwapPaneSymbol",pane=1,symbol=sym),{"action":"wait","ms":1000},{"action":"wait_frames","count":4},
+           cmd("ChangeTimeframe",pane=1,tf="15m"),{"action":"wait","ms":900},{"action":"wait_frames","count":3},
+           cmd("AddIndicator",pane=1,kind="EMA"),{"action":"wait_frames","count":2},
+           cmd("RecomputeIndicators",pane=1),{"action":"wait_frames","count":3},
+           {"action":"log","message":f"pane1 {sym} 15m EMA"},
+           A({"pane_symbol_equals":{"pane":1,"symbol":sym}},
+             {"pane_timeframe_equals":{"pane":1,"tf":"15m"}},
+             {"canvas_indicator_exists":{"pane":1,"kind":"EMA"}},
+             {"no_panic":True},{"viewport_sane":True},{"canvas_all_finite":True},
+             {"canvas_bar_ohlc_valid":{"pane":1}},{"fps_above":5.0})]
+    emit(840+i, f"pane1_independence_{sym.lower()}", "Chart/MultiPane",
+         ["multipane","pane1","invariants"], steps,
+         f"Pane 1 independently loads {sym} @15m with EMA while pane 0 is untouched.")
+
+# ── 850-861: chart-flag pair combinations ───────────────────────────────────
+flag_pairs=[("ShowVolume","LogScale"),("ShowVolume","Magnet"),("LogScale","ShowPrevClose"),
+            ("ShowOscillators","ShowVolume"),("ShowGamma","ShowStrikesOverlay"),
+            ("ShowFootprint","ShowVolume"),("OhlcTooltip","Magnet"),
+            ("ShowPatternLabels","ShowPrevClose"),("ShowGamma","ShowVolume"),
+            ("LogScale","ShowFootprint"),("Magnet","MeasureTooltip"),
+            ("HideAllIndicators","ShowVolume")]
+for i,(f1,f2) in enumerate(flag_pairs):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3},
+           cmd("SwapPaneSymbol",pane=0,symbol="SPY"),{"action":"wait","ms":900},{"action":"wait_frames","count":3},
+           cmd("SetChartFlag",pane=0,flag=f1,value=True),{"action":"wait_frames","count":2},
+           cmd("SetChartFlag",pane=0,flag=f2,value=True),{"action":"wait_frames","count":3},
+           {"action":"log","message":f"{f1}+{f2}"},
+           A(*invariants()),
+           cmd("SetChartFlag",pane=0,flag=f1,value=False),
+           cmd("SetChartFlag",pane=0,flag=f2,value=False),{"action":"wait_frames","count":3},
+           A(*invariants())]
+    emit(850+i, f"flagpair_{f1.lower()}_{f2.lower()}", "Chart/DisplayFlags",
+         ["flag","combo","invariants"], steps,
+         f"Display flags {f1}+{f2} on together then off; render stays sane.")
+
+# ── 870-879: RSI on each liquid symbol (symbol-specific compute) ─────────────
+for i,sym in enumerate(SYMBOLS[:10]):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3},
+           cmd("SwapPaneSymbol",pane=0,symbol=sym),{"action":"wait","ms":1000},{"action":"wait_frames","count":3},
+           cmd("AddIndicator",pane=0,kind="RSI"),{"action":"wait_frames","count":2},
+           cmd("RecomputeIndicators",pane=0),{"action":"wait_frames","count":3},
+           {"action":"log","message":f"RSI {sym}"},
+           A({"canvas_indicator_value_in_range":{"pane":0,"kind":"RSI","min":0,"max":100}},
+             *invariants())]
+    emit(870+i, f"rsi_compute_{sym.lower()}", "Chart/Indicators",
+         ["indicator","rsi","invariants"], steps,
+         f"RSI on {sym} computes a finite value within 0..100.")
+
 print(f"generated {len(made)} scenarios into {OUT}")
 for p in made[:3]: print("  e.g.", os.path.basename(p))

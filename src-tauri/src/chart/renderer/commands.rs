@@ -163,6 +163,8 @@ pub enum AppCommand {
     AddIndicator { pane: usize, kind: IndicatorType },
     /// Remove an indicator by id from a pane.
     RemoveIndicator { pane: usize, id: u32 },
+    /// Remove ALL indicators from a pane (clean slate).
+    ClearIndicators { pane: usize },
     /// Toggle the `visible` flag for an indicator on a pane.
     ToggleIndicatorVisibility { pane: usize, id: u32 },
     /// Reorder an indicator within a pane (move from index → to index).
@@ -531,6 +533,17 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
                 p.indicators.retain(|i| i.id != id);
                 if p.editing_indicator == Some(id) { p.editing_indicator = None; }
                 p.indicator_bar_count = 0;
+            }
+        }
+
+        AppCommand::ClearIndicators { pane } => {
+            if let Some(p) = panes.get_mut(pane) {
+                p.indicators.clear();
+                p.editing_indicator = None;
+                p.indicator_bar_count = 0;
+                // A cleared pane behaves like a fresh one: restart id numbering so
+                // subsequently-added indicators get predictable ids 0,1,2,…
+                p.next_indicator_id = 0;
             }
         }
 

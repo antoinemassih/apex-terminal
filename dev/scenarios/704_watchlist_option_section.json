@@ -1,0 +1,68 @@
+{
+  "name": "watchlist_option_section",
+  "description": "Options trader builds a watchlist options section for 0DTE plays.",
+  "story": "Options/Watchlist",
+  "tags": [
+    "story",
+    "options",
+    "watchlist",
+    "section"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "log",
+      "message": "Build a watchlist options section"
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddOptionSection",
+      "title": "0DTE Plays"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "SPY"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "QQQ"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    }
+  ]
+}

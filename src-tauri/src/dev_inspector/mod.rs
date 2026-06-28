@@ -1098,6 +1098,11 @@ fn do_reset() {
     use crate::chart_renderer::commands::{push, AppCommand, ChartFlag};
     push(AppCommand::CloseAllDialogs);
     push(AppCommand::CancelAllOrders);
+    // Clean slate: clear accumulated indicators on both panes so each scenario
+    // starts isolated (otherwise indicators pile up across a shared session and
+    // eventually break per-pane counts and degrade fps).
+    push(AppCommand::ClearIndicators { pane: 0 });
+    push(AppCommand::ClearIndicators { pane: 1 });
     push(AppCommand::SwapPaneSymbol { pane: 0, symbol: "SPY".into() });
     push(AppCommand::ChangeTimeframe { pane: 0, tf: "5m".into() });
     push(AppCommand::SetChartFlag { pane: 0, flag: ChartFlag::ShowVolume, value: true });
