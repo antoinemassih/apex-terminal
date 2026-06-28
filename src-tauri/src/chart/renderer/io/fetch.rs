@@ -769,23 +769,30 @@ pub(crate) fn fetch_overlay_chain_background(symbol: String, underlying_price: f
     std::thread::spawn(move || {
         // 0. ApexData — preferred. 0DTE strikes, wide strike band.
         if crate::apex_data::is_enabled() {
-            if let Ok(chain) = crate::apex_data::rest::get_chain(&symbol) {
-                let spot = if underlying_price > 0.0 { underlying_price }
-                           else {
-                               crate::apex_data::live_state::get_snapshot(&symbol)
-                                   .map(|s| s.last as f32).unwrap_or(0.0)
-                           };
-                let (calls, puts, _eff) = apex_data_chain_to_tuples(&chain.rows, 0, 75, spot);
-                if !calls.is_empty() || !puts.is_empty() {
-                    crate::send_to_native_chart(ChartCommand::OverlayChainData {
-                        symbol: symbol.clone(), calls, puts, placeholder: false });
-                    return;
+            match crate::apex_data::rest::get_chain(&symbol) {
+                Ok(chain) => {
+                    let spot = if underlying_price > 0.0 { underlying_price }
+                               else {
+                                   crate::apex_data::live_state::get_snapshot(&symbol)
+                                       .map(|s| s.last as f32).unwrap_or(0.0)
+                               };
+                    let (calls, puts, _eff) = apex_data_chain_to_tuples(&chain.rows, 0, 75, spot);
+                    eprintln!("[overlay-fetch] {symbol}: apex_data get_chain OK rows={} -> {} calls / {} puts (spot {:.2})",
+                              chain.rows.len(), calls.len(), puts.len(), spot);
+                    if !calls.is_empty() || !puts.is_empty() {
+                        crate::send_to_native_chart(ChartCommand::OverlayChainData {
+                            symbol: symbol.clone(), calls, puts, placeholder: false });
+                        return;
+                    }
                 }
+                Err(e) => eprintln!("[overlay-fetch] {symbol}: apex_data get_chain ERR {e:?}"),
             }
         }
 
         let path = format!("/options/{}?strikeCount=150&dte=0", symbol);
-        if let Some(json) = apexib_curl(&path) {
+        let apexib_json = apexib_curl(&path);
+        eprintln!("[overlay-fetch] {symbol}: apexib /options fallback {}", if apexib_json.is_some() {"got JSON"} else {"no response"});
+        if let Some(json) = apexib_json {
             let parse_rows = |key: &str| -> Vec<(f32,f32,f32,f32,i32,i32,f32,bool,String)> {
                 json.get(key).and_then(|v| v.as_array()).map(|arr| {
                     arr.iter().filter_map(|row| {
@@ -825,8 +832,10 @@ pub(crate) fn fetch_overlay_chain_background(symbol: String, underlying_price: f
         let to_tuple = |r: &OptionRow| (
             r.strike, r.last, r.bid, r.ask, r.volume, r.oi, r.iv, r.itm, r.contract.clone()
         );
-        let calls = calls_rows.iter().map(to_tuple).collect();
-        let puts  = puts_rows.iter().map(to_tuple).collect();
+        let calls: Vec<_> = calls_rows.iter().map(to_tuple).collect();
+        let puts:  Vec<_> = puts_rows.iter().map(to_tuple).collect();
+        eprintln!("[overlay-fetch] {symbol}: sending PLACEHOLDER chain ({} calls / {} puts, spot {:.2})",
+                  calls.len(), puts.len(), spot);
         crate::send_to_native_chart(ChartCommand::OverlayChainData {
             symbol, calls, puts, placeholder: true });
     });

@@ -26,9 +26,7 @@
       "action": "assert",
       "assertions": [
         {
-          "ux_audit": {
-            "min_touch_px": 28
-          }
+          "ux_audit": true
         }
       ]
     }

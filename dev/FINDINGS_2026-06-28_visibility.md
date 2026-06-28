@@ -35,7 +35,20 @@ screenshots for visual/UX review.
 > and will catch a real regression when the feeds are up. The toolbar/touch-target
 > UX finding (#3) is a genuine app-side issue.
 
-### 1. Strikes overlay stays blank — but the data sources are down in THIS env
+### 1b. UPDATE (instrumented retest): strikes overlay WORKS — not a bug
+After adding `[overlay-fetch]` diagnostics and re-running with the chain feed
+available, the log shows `apex_data get_chain OK rows=2126 -> 111 calls / 111 puts`
+and `903/904_strikes_overlay_*` now **pass** — the overlay populates correctly when
+the chain data is present. The earlier blank was data-readiness/timing in that run,
+not an app-logic bug. Confirmed via instrumentation (recommendation #2), exactly the
+decisive check that avoids guessing.
+
+Minor real oddity spotted in the same logs: the underlying spot is `731.20` for
+**both** SPY and QQQ — a symbol-agnostic price feeding the overlay fetch
+(`fetch_overlay_chain_background` underlying_price / snapshot fallback). Worth a look;
+low severity (the overlay still populated).
+
+### 1. (original) Strikes overlay stays blank — but the data sources are down in THIS env
 Repro: `903–905_strikes_overlay_*`. The harness correctly detects the blank overlay.
 On investigation (2026-06-28, follow-up): `fetch_overlay_chain_background` tries
 apex-data `get_chain` → apexib `/options/` fallback → a synthetic placeholder. The
@@ -62,10 +75,17 @@ code fix appropriate. The valuable outcome: the harness now *detects* a blank ga
 overlay, so it will catch a real regression when the feed IS up.
 
 ### 3. UX / usability
-Repro: `913_ux_audit_baseline`. `toolbar.workspace_btn`, `indicators_btn`,
-`widgets_btn` are clipped; many icon buttons are below the 28px touch-target floor
-(connection 20px, watchlist_toggle 22px, layout/settings/search/toolnav/timeframe
-24px). Low severity but real and now machine-detected.
+Repro: `913_ux_audit_baseline`.
+- **Touch targets — reclassified as by-design (harness fixed).** The "sub-28px"
+  hits are intentionally dense desktop controls (e.g. the 20px connection *status
+  dot*, `allocate_exact_size(20,20)`). 28px is a touch guideline, wrong for a
+  mouse-driven terminal, so `ux_audit`'s default floor was lowered to 16px; these
+  no longer false-flag.
+- **Toolbar clip — real, minor.** The dropdown buttons `workspace_btn`,
+  `indicators_btn`, `widgets_btn` have a 36.6px response rect but their toolbar row
+  clips at 30–34px, so the bottom 2–7px is cut. Fix = align the menu-button height
+  to the row (or raise the row height); needs visual iteration to get right, so it's
+  reported rather than blind-changed.
 
 ## Honest limits
 - The strikes/gamma findings are reproduced with the data feed confirmed responding

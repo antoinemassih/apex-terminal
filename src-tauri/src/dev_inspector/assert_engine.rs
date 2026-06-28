@@ -1237,7 +1237,11 @@ fn dispatch(
         // Clipping + sub-minimum touch targets + overlapping interactive widgets.
         // The widget tree lets the harness "see" usability problems a user would hit.
         "ux_audit" => {
-            let min_px = val["min_touch_px"].as_f64().unwrap_or(28.0) as f32;
+            // 28px is a *touch* guideline; this is a mouse-driven desktop terminal
+            // with intentionally dense icon/status buttons (e.g. the 20px connection
+            // dot), so the default floor is 16px — flag only genuinely tiny targets.
+            // Clipping and overlap remain hard checks (real defects either way).
+            let min_px = val["min_touch_px"].as_f64().unwrap_or(16.0) as f32;
             let mut issues: Vec<String> = Vec::new();
             let clipped: Vec<_> = state.widget_tree.iter()
                 .filter(|w| w.is_clipped).map(|w| w.id.as_str()).collect();

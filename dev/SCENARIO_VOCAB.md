@@ -82,7 +82,7 @@ These read app state that the capture now exposes, so the harness verifies the a
 - `{"watchlist_pct_present":true}` — every *loaded* watchlist row has a server `change_perc`.
 - `{"watchlist_pct_sane":25.0}` — all `change_perc` values within ±25% (catches "% completely wrong").
 - `{"canvas_indicator_correct":{"pane":0,"kind":"SMA","rel_tol":0.01}}` — recomputes the indicator from captured bars and checks the chart's value matches within 1%. Window indicators only (SMA, WMA); recursive ones (EMA/RSI/MACD/…) are skipped (pass).
-- `{"ux_audit":{"min_touch_px":28}}` — bundled usability check: no clipped widgets, no sub-28px buttons/inputs, no overlapping buttons.
+- `{"ux_audit":true}` — bundled usability check: no clipped widgets, no overlapping buttons, no buttons/inputs below the touch floor (default 16px — desktop-appropriate; pass `{"min_touch_px":N}` to override). Clipping/overlap are hard checks; the touch floor is intentionally low because this is a dense mouse-driven terminal.
 
 ## Screenshot action (visual review)
 - `{"action":"screenshot","name":"my_state"}` — saves the live window to `dev/screenshots/my_state.png` (real GDI capture of what the user sees). Use to snapshot key states for visual/UX review.

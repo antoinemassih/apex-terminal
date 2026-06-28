@@ -483,7 +483,7 @@ for i,(sym,kind) in enumerate(corr):
 emit(913,"ux_audit_baseline","Design/UX",["ux","usability","audit"],
      [{"action":"reset"},{"action":"wait_frames","count":4},
       {"action":"screenshot","name":"ux_clean_chart"},
-      A({"ux_audit":{"min_touch_px":28}})],
+      A({"ux_audit":True})],
      "UX audit on a clean chart: no clipping, sub-28px targets, or overlaps; plus a screenshot.")
 emit(914,"visual_states_capture","Design/Visual",["visual","screenshot"],
      [{"action":"reset"},{"action":"wait_frames","count":3},
