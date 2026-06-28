@@ -630,6 +630,7 @@ if is_spawn || watchlist.open {
                                 // preserve drag/drop hit rects + section background tinting.
                                 let mut sec_expanded = !sec_collapsed;
                                 let resp = PanelSection::new(&sec_title)
+                                    .id_salt(sec_id)
                                     .count(sec_item_count)
                                     .collapsible(&mut sec_expanded)
                                     .delete_when_empty()
@@ -1311,6 +1312,7 @@ if is_spawn || watchlist.open {
                                 // migrated to canonical PanelSection (see stocks-loop comment).
                                 let mut sec_expanded = !sec_collapsed;
                                 let resp = PanelSection::new(&sec_title)
+                                    .id_salt(sec_id)
                                     .count(sec_item_count)
                                     .collapsible(&mut sec_expanded)
                                     .delete_when_empty()

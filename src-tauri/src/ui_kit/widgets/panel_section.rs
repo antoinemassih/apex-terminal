@@ -132,6 +132,10 @@ pub struct PanelSection<'a> {
     /// Whether to show a trailing X (delete) button when count == 0 —
     /// see [`PanelSection::delete_when_empty`].
     delete_when_empty: bool,
+    /// Optional disambiguator for the header's widget id — see
+    /// [`PanelSection::id_salt`]. Needed when several sections share a title
+    /// in the same `Ui` (e.g. watchlist sections), which would otherwise clash.
+    id_salt: Option<egui::Id>,
 }
 
 /// Response returned from [`PanelSection::show`].
@@ -166,7 +170,18 @@ impl<'a> PanelSection<'a> {
             rule: true,
             expanded: None,
             delete_when_empty: false,
+            id_salt: None,
         }
+    }
+
+    /// Disambiguate the header's widget id when multiple sections may share a
+    /// title within the same parent `Ui`. Without this, two same-titled
+    /// collapsible sections produce the same egui `Id` ("first use of widget
+    /// id" clash). Pass any stable, per-section hashable value (e.g. a section
+    /// id). No-op for unique titles.
+    pub fn id_salt(mut self, salt: impl std::hash::Hash) -> Self {
+        self.id_salt = Some(egui::Id::new(salt));
+        self
     }
 
     /// Make this section collapsible. Adds a leading caret
@@ -229,12 +244,16 @@ impl<'a> PanelSection<'a> {
         self
     }
 
+    #[track_caller]
     pub fn show<T: ComponentTheme, R>(
         self,
         ui: &mut Ui,
         t: &T,
         body: impl FnOnce(&mut Ui, &T) -> R,
     ) -> SectionResponse<R> {
+        // Bug-report anchor key + call-site source (no-op unless Inspect is on).
+        let bug_loc = std::panic::Location::caller();
+        let bug_key = format!("section/{}", crate::chart_renderer::bug_anchor::slug(self.title));
         let title_color = self.title_color.unwrap_or(palette_ct(t).base(SxTone::Dim));
         let mut action_clicked = false;
         let mut delete_clicked = false;
@@ -252,6 +271,7 @@ impl<'a> PanelSection<'a> {
             rule: rule_enabled,
             mut expanded,
             delete_when_empty,
+            id_salt,
         } = self;
 
         // Resolve collapsible state. When no `&mut bool` was bound,
@@ -386,14 +406,21 @@ impl<'a> PanelSection<'a> {
         // We re-interact on the header rect with a stable id so the
         // child label widgets above don't swallow the click.
         let header_rect = header_resp.response.rect;
+        crate::chart_renderer::bug_anchor::register(&bug_key, header_rect, bug_loc.file(), bug_loc.line());
         // Only sense clicks on the whole header when it's collapsible — otherwise
         // this overlay steals clicks from the action/delete button laid out above
         // (egui hit-tests later widgets first). Hover-sense still produces a
         // Response usable for .context_menu() attachment.
         let header_sense = if collapsible { Sense::click() } else { Sense::hover() };
+        // Salt the header id with the caller-supplied disambiguator (if any) so
+        // same-titled sections in one Ui don't collide.
+        let mut header_id = ui.id().with(("panel_section_header", title_str));
+        if let Some(salt) = id_salt {
+            header_id = header_id.with(salt);
+        }
         let header_response = ui.interact(
             header_rect,
-            ui.id().with(("panel_section_header", title_str)),
+            header_id,
             header_sense,
         );
         let header_response = if collapsible {

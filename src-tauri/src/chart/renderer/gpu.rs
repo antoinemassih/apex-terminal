@@ -3116,10 +3116,23 @@ impl Chart {
                         }
                         if self.auto_scroll { self.vs += 1.0; }
                     } else if let Some(l) = self.bars.last_mut() {
-                        l.high = l.high.max(bar.high);
-                        l.low = l.low.min(bar.low);
+                        // ApexData sends the FULL current-minute aggregate every
+                        // frame, so TRUST its high/low (replace) rather than
+                        // min/max-accumulating. Min/max made any single transient
+                        // bad frame (e.g. a spurious low) permanent — the bar then
+                        // rendered an extreme wick that never recovered even after
+                        // good frames arrived (the long-wick "comb" bug). Guard
+                        // against non-positive prices (invalid) by keeping the
+                        // prior value.
+                        if bar.high > 0.0 { l.high = bar.high; }
+                        if bar.low  > 0.0 { l.low  = bar.low;  }
                         l.close = bar.close;
                         l.volume = bar.volume; // cumulative — replace, don't add
+                        // Keep OHLC self-consistent: the wick must bracket the body.
+                        let body_hi = l.open.max(l.close);
+                        let body_lo = l.open.min(l.close);
+                        if l.high < body_hi { l.high = body_hi; }
+                        if l.low  > body_lo { l.low  = body_lo; }
                     }
                     self.sim_price = bar.close;
                 } else if let Some(l) = self.bars.last_mut() {

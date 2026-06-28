@@ -12392,12 +12392,20 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                     } else {
                         crate::chart_renderer::gpu::pane_layout_record_undo(watchlist);
                         let source_theme = panes[popup_pane_idx].theme_idx;
+                        let source_symbol = panes[popup_pane_idx].symbol.clone();
+                        let source_tf = panes[popup_pane_idx].timeframe.clone();
                         let source_id = watchlist.pane_ids.get(popup_pane_idx).copied();
                         // P17 #1 — push_chart_with_id keeps panes & pane_ids
                         // in lockstep and returns the freshly minted ID to
-                        // use as the new leaf's PaneSlot.
-                        let mut new_chart = crate::chart_renderer::gpu::Chart::new();
+                        // use as the new leaf's PaneSlot. Inherit the source
+                        // pane's symbol/timeframe so the split shows the same
+                        // chart, and set pending_symbol_change so the initial
+                        // bar fetch actually fires — otherwise the new pane sits
+                        // on the loading spinner forever until the user reselects
+                        // the ticker.
+                        let mut new_chart = crate::chart_renderer::gpu::Chart::new_with(&source_symbol, &source_tf);
                         new_chart.theme_idx = source_theme;
+                        new_chart.pending_symbol_change = Some(source_symbol);
                         let new_id = crate::chart_renderer::gpu::push_chart_with_id(
                             panes, watchlist, new_chart);
                         if let (Some(src_id), Some(pl)) = (source_id, watchlist.pane_layout.as_mut()) {

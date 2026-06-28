@@ -163,6 +163,13 @@ pub fn slug(s: &str) -> String {
     out
 }
 
+/// Build a `button/<slug>` key from a button's label (falling back to its icon
+/// glyph for icon-only buttons).
+pub fn button_key(label: &str, icon: Option<&str>) -> String {
+    let basis = if label.trim().is_empty() { icon.unwrap_or("") } else { label };
+    format!("button/{}", slug(basis))
+}
+
 /// Public accessor for trimming a source path to its `src/...` tail.
 pub fn short(f: &str) -> &str { short_file(f) }
 

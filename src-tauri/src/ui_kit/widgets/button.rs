@@ -574,7 +574,27 @@ impl<'a> Widget for Button<'a> {
 /// the function (status overrides, placement overrides, fill_override, motion
 /// animation) runs unchanged on top of those seed colors — so all existing
 /// escape hatches keep working regardless of which `ButtonStyle` is in play.
+/// Wrapper around the real button render that registers a bug-report anchor
+/// (no-op unless Ctrl+Shift+I Inspect mode is on). Keying off the label means
+/// every button across the app — toolbars, nav, dialogs, panels — becomes
+/// selectable in Inspect mode without per-call-site instrumentation.
 fn show_styled_impl<'a, S: ButtonStyle>(
+    ui: &mut Ui,
+    theme: &dyn ComponentTheme,
+    btn: Button<'a>,
+    style: &S,
+    placed: Option<(Rect, &egui::Painter)>,
+) -> Response {
+    let bug_key = crate::chart_renderer::bug_anchor::button_key(
+        btn.label,
+        btn.leading_icon.or(btn.trailing_icon),
+    );
+    let resp = show_styled_impl_inner(ui, theme, btn, style, placed);
+    crate::chart_renderer::bug_anchor::anchor(ui, &bug_key, resp.rect, file!(), line!());
+    resp
+}
+
+fn show_styled_impl_inner<'a, S: ButtonStyle>(
     ui: &mut Ui,
     theme: &dyn ComponentTheme,
     btn: Button<'a>,

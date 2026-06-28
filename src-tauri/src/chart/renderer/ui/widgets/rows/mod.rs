@@ -140,13 +140,18 @@ impl<'a, B: FnOnce(&mut Ui) + 'a, T: FnOnce(&mut Ui) + 'a> ListRow<'a, B, T> {
 
     /// Render the row. Returns the row's `Response` so callers can detect
     /// click/hover.
+    #[track_caller]
     pub fn show(self, ui: &mut Ui) -> Response {
+        let bug_loc = std::panic::Location::caller();
         let w = ui.available_width();
         let rect = egui::Rect::from_min_size(
             egui::pos2(ui.cursor().min.x, ui.cursor().min.y),
             egui::vec2(w, self.height),
         );
         let resp = ui.allocate_rect(rect, self.sense);
+        // Bug-report anchor (no-op unless Inspect mode is on); call site = the
+        // list that built the row.
+        crate::chart_renderer::bug_anchor::register("row", rect, bug_loc.file(), bug_loc.line());
 
         let default_t = crate::chart_renderer::theme_impl::active_theme(ui.ctx());
         let border = self.theme_border.unwrap_or(default_t.toolbar_border);
