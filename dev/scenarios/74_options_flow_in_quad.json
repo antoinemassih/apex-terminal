@@ -1,6 +1,7 @@
 {
   "name": "options_flow_in_quad",
   "description": "Quad layout with panes 0-2 as Chart and pane 3 as OptionsFlow, verify FPS and types.",
+  "story": "UserJourney/OptionsPanel",
   "tags": ["options", "layout"],
   "settle_ms": 50,
   "abort_on_failure": false,

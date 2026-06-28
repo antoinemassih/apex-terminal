@@ -1,6 +1,7 @@
 {
   "name": "chart_hide_all_indicators",
   "description": "Add RSI and MACD, then hide all indicators via flag, verify FPS, then re-show.",
+  "story": "Chart/Settings",
   "tags": ["chart", "indicators", "flags"],
   "settle_ms": 50,
   "abort_on_failure": false,

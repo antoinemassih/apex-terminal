@@ -1,6 +1,7 @@
 {
   "name": "assert_poll_quick",
   "description": "Tests assert_poll converges quickly after reset with a 2-second timeout.",
+  "story": "TestInfra/AssertEngine",
   "tags": ["assert-engine", "poll"],
   "settle_ms": 0,
   "abort_on_failure": false,

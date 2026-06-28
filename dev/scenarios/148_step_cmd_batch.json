@@ -1,6 +1,7 @@
 {
   "name": "step_cmd_batch",
   "description": "Tests cmd_batch by issuing 3 AddIndicator commands and a symbol change in a single batch, then asserting all effects applied.",
+  "story": "TestInfra/AssertEngine",
   "tags": ["step-actions", "cmd-batch"],
   "settle_ms": 0,
   "abort_on_failure": false,

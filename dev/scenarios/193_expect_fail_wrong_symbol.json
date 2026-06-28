@@ -1,0 +1,35 @@
+{
+  "name": "expect_fail_wrong_symbol",
+  "description": "Negative test: expects that asserting wrong symbol (QQQ when SPY is active) fails. expect_fail=true makes the scenario pass on that failure.",
+  "story": "ErrorHandling/NegativeTest",
+  "priority": 3,
+  "tags": ["expect_fail", "extension", "negative"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "expect_fail": true,
+      "assertions": [
+        { "active_symbol_equals": "QQQ" }
+      ]
+    },
+    {
+      "action": "assert",
+      "expect_fail": true,
+      "assertions": [
+        { "pane_count_equals": 99 }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_symbol_equals": "SPY" },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

@@ -1,0 +1,133 @@
+{
+  "name": "story_flag_logscale",
+  "description": "Trader toggles LogScale on and off; chart render stays sane both ways.",
+  "story": "Chart/DisplayFlags",
+  "tags": [
+    "story",
+    "flag",
+    "display",
+    "invariants"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "SPY"
+    },
+    {
+      "action": "wait",
+      "ms": 600
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "LogScale",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "log",
+      "message": "flag LogScale ON"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5.0
+        },
+        {
+          "canvas_bars_within_pane": {
+            "pane": 0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "LogScale",
+      "value": false
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "log",
+      "message": "flag LogScale OFF"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5.0
+        },
+        {
+          "canvas_bars_within_pane": {
+            "pane": 0
+          }
+        }
+      ]
+    }
+  ]
+}

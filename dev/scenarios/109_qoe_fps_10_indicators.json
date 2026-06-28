@@ -1,6 +1,7 @@
 {
   "name": "109_qoe_fps_10_indicators",
   "description": "Maximum single-pane indicator load: all 10 indicator types (RSI+MACD+VWAP+BB+ATR+EMA+SMA+STOCH+OBV+Volume) on pane 0, assert fps_above 5.0.",
+  "story": "QoE/Full",
   "tags": ["qoe", "fps", "indicators"],
   "settle_ms": 50,
   "abort_on_failure": false,

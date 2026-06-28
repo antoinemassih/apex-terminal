@@ -1,0 +1,32 @@
+{
+  "name": "reset_clears_all_dialogs",
+  "description": "Open settings, order_entry, and orders_panel. Assert 3 open dialogs. Reset. Assert no dialogs remain open.",
+  "story": "Reset/Integrity",
+  "tags": ["reset", "dialogs", "integrity"],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "OpenSettings", "args": {} },
+    { "action": "cmd", "cmd": "OpenOrderEntry", "args": {} },
+    { "action": "cmd", "cmd": "OpenOrdersPanel", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "open_dialog_count_equals": 3 }
+      ]
+    },
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "no_open_dialogs": true },
+        { "open_dialog_count_equals": 0 },
+        { "fps_above": 5.0 }
+      ]
+    }
+  ]
+}

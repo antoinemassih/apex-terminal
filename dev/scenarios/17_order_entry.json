@@ -1,6 +1,7 @@
 {
   "name": "order_entry",
   "description": "Open the order entry panel, verify the app stays stable and at framerate, then close it.",
+  "story": "UserJourney/OrderEntry",
   "tags": ["order", "panel", "design"],
   "settle_ms": 50,
   "abort_on_failure": false,

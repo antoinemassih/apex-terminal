@@ -1,0 +1,34 @@
+{
+  "name": "reset_clears_ohlc_validity",
+  "description": "Build complex multi-pane state with indicators and symbol swaps. Assert OHLC valid. Reset. Assert OHLC still valid and pane count restored.",
+  "story": "Reset/Integrity",
+  "tags": ["reset", "ohlc", "integrity", "multi-pane"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 1, "symbol": "MSFT" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 1, "kind": "MACD" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "canvas_bar_ohlc_valid": { "pane": 0 } }
+      ]
+    },
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "canvas_bar_ohlc_valid": { "pane": 0 } },
+        { "pane_count_equals": 1 },
+        { "fps_above": 5.0 }
+      ]
+    }
+  ]
+}

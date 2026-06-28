@@ -1,0 +1,31 @@
+{
+  "name": "rapid_indicator_add_remove",
+  "description": "Loop 10 times adding then removing RSI on pane 0. At end, assert indicator count is 0 and FPS is acceptable.",
+  "story": "StressTest/Mutations",
+  "tags": ["stress-test", "indicators", "rapid", "loop", "add-remove"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "loop",
+      "count": 10,
+      "steps": [
+        { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+        { "action": "wait_frames", "count": 1 },
+        { "action": "cmd", "cmd": "RemoveIndicator", "args": { "pane": 0, "kind": "RSI" } },
+        { "action": "wait_frames", "count": 1 }
+      ]
+    },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": { "pane": 0, "count": 0 } },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

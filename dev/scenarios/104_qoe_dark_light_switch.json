@@ -1,6 +1,7 @@
 {
   "name": "104_qoe_dark_light_switch",
   "description": "Switch between dark (idx 0) and light (idx 4) themes and back, asserting FPS after each transition to confirm the recolor path is non-blocking.",
+  "story": "QoE/Full",
   "tags": ["qoe", "theme"],
   "settle_ms": 50,
   "abort_on_failure": false,

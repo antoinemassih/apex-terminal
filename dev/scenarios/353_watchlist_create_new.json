@@ -1,0 +1,44 @@
+{
+  "name": "watchlist_create_new",
+  "description": "WatchlistCreate creates a named watchlist; FPS stable and no violations.",
+  "story": "Watchlist/CRUD",
+  "tags": [
+    "watchlist"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistCreate",
+      "args": {
+        "name": "My New List"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "fps_above": 5
+        },
+        {
+          "no_active_violations": true
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

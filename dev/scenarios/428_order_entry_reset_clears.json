@@ -1,0 +1,24 @@
+{
+  "name": "order_entry_reset_clears",
+  "description": "Open the order entry dialog, then perform a reset action, and assert no open dialogs remain after reset.",
+  "story": "OrderEntry/Reset",
+  "tags": ["order_entry", "reset"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Opening order entry dialog" },
+    { "action": "cmd", "cmd": "OpenOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "dialog_open": "order_entry" }] },
+    { "action": "log", "message": "Performing reset — dialog should be dismissed" },
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "no_open_dialogs": true },
+      { "fps_above": 5.0 }
+    ] }
+  ]
+}

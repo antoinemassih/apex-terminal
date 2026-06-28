@@ -1,6 +1,7 @@
 {
   "name": "step_annotate_tag_filter",
   "description": "Tests annotate with tag assignment and tag-filtered clear: upsert 3 annotations (2 tagged 'zone', 1 tagged 'marker'), clear only 'zone' tag, verify 1 remains.",
+  "story": "TestInfra/AssertEngine",
   "tags": ["step-actions", "annotate"],
   "settle_ms": 0,
   "abort_on_failure": false,

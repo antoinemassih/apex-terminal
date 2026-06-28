@@ -1,0 +1,44 @@
+{
+  "name": "story_watchlist_journey",
+  "description": "User story: trader builds a watchlist from scratch — adds sections with titles, adds symbols, switches active, verifies state at each stage.",
+  "story": "UserJourney/Watchlist",
+  "priority": 1,
+  "tags": ["story", "watchlist", "journey"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Mega Cap" } },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "ETFs" } },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Futures" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "watchlist_section_count_equals": 4 },
+        { "watchlist_section_title_equals": { "idx": 1, "title": "Mega Cap" } },
+        { "watchlist_section_title_equals": { "idx": 2, "title": "ETFs" } },
+        { "watchlist_section_title_equals": { "idx": 3, "title": "Futures" } }
+      ]
+    },
+    { "action": "cmd", "cmd": "WatchlistSwitchActive", "args": { "idx": 1 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "capture", "path": "watchlist.active_idx", "as": "active_wl" },
+    {
+      "action": "assert",
+      "assertions": [
+        { "captures_equal": { "key": "active_wl", "equals": 1 } }
+      ]
+    },
+    { "action": "cmd", "cmd": "WatchlistRemoveSection", "args": { "idx": 2 } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "watchlist_section_count_equals": 3 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

@@ -1,6 +1,7 @@
 {
   "name": "chart_line_style",
   "description": "Switch pane 0 to line chart type, verify stability, then return to candlestick.",
+  "story": "Chart/Settings",
   "tags": ["chart", "style", "display"],
   "settle_ms": 30,
   "abort_on_failure": false,

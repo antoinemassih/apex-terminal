@@ -1,6 +1,7 @@
 {
   "name": "chart_area_style",
   "description": "Switch to area chart style by disabling ShowVolume and OHLC flags, verify FPS, then restore.",
+  "story": "Chart/Settings",
   "tags": ["chart", "style"],
   "settle_ms": 50,
   "abort_on_failure": false,

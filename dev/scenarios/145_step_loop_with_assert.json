@@ -1,6 +1,7 @@
 {
   "name": "step_loop_with_assert",
   "description": "Tests that assertions inside a loop body execute each iteration — adds an indicator and checks fps per iteration, then verifies total count after.",
+  "story": "TestInfra/AssertEngine",
   "tags": ["step-actions", "loop"],
   "settle_ms": 0,
   "abort_on_failure": false,

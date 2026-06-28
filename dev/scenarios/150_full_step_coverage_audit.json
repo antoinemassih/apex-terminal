@@ -1,6 +1,7 @@
 {
   "name": "full_step_coverage_audit",
   "description": "Integration scenario exercising all major step types in one flow: reset, log, wait, cmd, cmd_batch, assert, assert_metrics, design_audit, annotate, loop, save_checkpoint, and clear.",
+  "story": "TestInfra/AssertEngine",
   "tags": ["integration", "coverage", "step-actions"],
   "settle_ms": 0,
   "abort_on_failure": false,

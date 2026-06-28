@@ -1,0 +1,51 @@
+{
+  "name": "indicator_wma",
+  "description": "Add WMA indicator to pane 0, assert indicator_count_equals 1 and FPS stable.",
+  "story": "Indicator/Lifecycle",
+  "tags": [
+    "indicator"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "args": {
+        "pane": 0,
+        "kind": "WMA"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "indicator_count_equals": {
+            "pane": 0,
+            "count": 1
+          }
+        },
+        {
+          "fps_above": 5
+        },
+        {
+          "no_active_violations": true
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "name": "pane_type_isolation",
+  "description": "Two panes. Set pane 0 to Chart type and pane 1 to Dashboard type. Assert each pane has the correct independent type.",
+  "story": "MultiPane/PaneTypes",
+  "tags": ["multi-pane", "pane-type", "isolation"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "Chart" } },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 1, "kind": "Dashboard" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_type_equals": { "pane": 0, "type": "Chart" } },
+        { "pane_type_equals": { "pane": 1, "type": "Dashboard" } },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

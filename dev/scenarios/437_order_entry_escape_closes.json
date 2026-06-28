@@ -1,0 +1,28 @@
+{
+  "name": "order_entry_escape_closes",
+  "description": "Open the order entry dialog, press Escape via key_sequence to dismiss it, and verify no dialogs remain open.",
+  "story": "OrderEntry/Keyboard",
+  "tags": ["order_entry", "keyboard", "escape"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Opening order entry dialog" },
+    { "action": "cmd", "cmd": "OpenOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "dialog_open": "order_entry" },
+      { "fps_above": 5.0 }
+    ] },
+    { "action": "log", "message": "Pressing Escape to dismiss dialog" },
+    { "action": "key_sequence", "keys": ["Escape"], "delay_ms": 50 },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "no_open_dialogs": true },
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] }
+  ]
+}

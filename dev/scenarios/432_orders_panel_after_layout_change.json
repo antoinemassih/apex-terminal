@@ -1,0 +1,31 @@
+{
+  "name": "orders_panel_after_layout_change",
+  "description": "Open the orders panel, switch to a two-pane layout, assert the panel remains open, then close it.",
+  "story": "OrderManagement/Stability",
+  "tags": ["orders_panel", "layout"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Opening orders panel" },
+    { "action": "cmd", "cmd": "OpenOrdersPanel", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "dialog_open": "orders_panel" }] },
+    { "action": "log", "message": "Switching to TwoColumns layout while panel is open" },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "dialog_open": "orders_panel" },
+      { "pane_count_equals": 2 },
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "log", "message": "Closing orders panel" },
+    { "action": "cmd", "cmd": "CloseOrdersPanel", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "no_open_dialogs": true }] },
+    { "action": "reset" }
+  ]
+}

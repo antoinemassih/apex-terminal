@@ -1,0 +1,39 @@
+{
+  "name": "story_theming_full",
+  "description": "User story: theme switching quality — cycles through theme indices 0-4, asserts fps and no violations after each. Captures baseline pane state before and after.",
+  "story": "UserJourney/Theming",
+  "priority": 1,
+  "tags": ["story", "theming", "quality"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "capture", "path": "pane_count", "as": "pre_theme_panes" },
+    {
+      "action": "for_each",
+      "var": "idx",
+      "items": ["0", "1", "2", "3", "4"],
+      "steps": [
+        { "action": "cmd", "cmd": "SetThemeIdx", "args": { "idx": "{{idx}}" } },
+        { "action": "wait_frames", "count": 3 },
+        {
+          "action": "assert",
+          "assertions": [
+            { "fps_above": 5.0 },
+            { "no_active_violations": true }
+          ]
+        }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "captures_equal": { "key": "pre_theme_panes", "equals": 1 } },
+        { "pane_count_equals": 1 },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

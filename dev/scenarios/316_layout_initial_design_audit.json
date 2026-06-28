@@ -1,0 +1,47 @@
+{
+  "name": "layout_initial_design_audit",
+  "description": "After reset on single pane with SPY, full design audit passes.",
+  "story": "Layout/System",
+  "tags": [
+    "layout",
+    "design",
+    "audit"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": {
+        "pane": 0,
+        "symbol": "SPY"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 6
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "design_audit_clean": true
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

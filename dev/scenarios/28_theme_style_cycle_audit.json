@@ -1,6 +1,7 @@
 {
   "name": "theme_style_cycle_audit",
   "description": "User story: as a design-conscious user I cycle through style presets and theme indices. Each combination should leave the UI without contract violations and with acceptable FPS.",
+  "story": "UX/Theming",
   "tags": ["theme", "style", "design", "audit"],
   "settle_ms": 80,
   "abort_on_failure": false,

@@ -1,6 +1,7 @@
 {
   "name": "103_qoe_style_cycle",
   "description": "Cycle SetStyleIdx 0→1→2→0, asserting fps_above after each change to verify style transitions are smooth.",
+  "story": "QoE/Full",
   "tags": ["qoe", "style"],
   "settle_ms": 50,
   "abort_on_failure": false,

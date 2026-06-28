@@ -1,0 +1,25 @@
+{
+  "name": "chart_price_alert_multi",
+  "description": "Add 3 price alerts at different price levels on pane 0 and verify fps remains stable after all alerts are set.",
+  "story": "ChartPane/PriceAlerts",
+  "tags": ["chart", "alert", "multi"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "log", "message": "Adding 3 price alerts at 470.0, 490.0, 510.0" },
+    { "action": "cmd", "cmd": "AddPriceAlert", "args": { "pane": 0, "price": 470.0, "above": false } },
+    { "action": "cmd", "cmd": "AddPriceAlert", "args": { "pane": 0, "price": 490.0, "above": false } },
+    { "action": "cmd", "cmd": "AddPriceAlert", "args": { "pane": 0, "price": 510.0, "above": true } },
+    { "action": "wait_frames", "count": 6 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "reset" }
+  ]
+}

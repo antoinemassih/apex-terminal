@@ -1,0 +1,92 @@
+{
+  "name": "canvas_indicator_count_matches",
+  "description": "Add RSI+MACD, set outputs; canvas indicator count equals 2.",
+  "story": "Canvas/Integrity",
+  "tags": [
+    "canvas",
+    "indicator"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "args": {
+        "pane": 0,
+        "kind": "RSI"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "args": {
+        "pane": 0,
+        "kind": "MACD"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetIndicatorOutput",
+      "args": {
+        "pane": 0,
+        "kind": "RSI",
+        "value": 60
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetIndicatorOutput",
+      "args": {
+        "pane": 0,
+        "kind": "MACD",
+        "value": 0.5,
+        "value2": 0.3
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_indicator_count_equals": {
+            "pane": 0,
+            "count": 2
+          }
+        },
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "RSI"
+          }
+        },
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "MACD"
+          }
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

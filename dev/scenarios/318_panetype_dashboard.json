@@ -1,0 +1,52 @@
+{
+  "name": "panetype_dashboard",
+  "description": "Switch pane 0 to Dashboard type, assert pane_type_equals Dashboard, FPS stable.",
+  "story": "PaneType/Switching",
+  "tags": [
+    "pane",
+    "panetype"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangePaneType",
+      "args": {
+        "pane": 0,
+        "kind": "Dashboard"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 6
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_type_equals": {
+            "pane": 0,
+            "type": "Dashboard"
+          }
+        },
+        {
+          "fps_above": 5
+        },
+        {
+          "no_active_violations": true
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

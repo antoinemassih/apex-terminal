@@ -1,0 +1,271 @@
+{
+  "name": "stress_all_indicators_at_once",
+  "description": "Add ALL 19 indicators to one pane at once, recompute, then hide; survive it.",
+  "story": "Adversarial/Stress",
+  "tags": [
+    "stress",
+    "indicator",
+    "perf"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "MSFT"
+    },
+    {
+      "action": "wait",
+      "ms": 600
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "SMA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "EMA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "WMA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "DEMA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "TEMA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "VWAP"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "BB"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "ICHI"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "PSAR"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "ST"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "KC"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "RSI"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "MACD"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "STOCH"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "ADX"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "CCI"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "WILLIAMSR"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "ATR"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "OBV"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "RecomputeIndicators",
+      "pane": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 3.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "HideAllIndicators",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        }
+      ]
+    }
+  ]
+}

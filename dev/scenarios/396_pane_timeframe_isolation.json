@@ -1,0 +1,26 @@
+{
+  "name": "pane_timeframe_isolation",
+  "description": "Two panes. Set pane 0 to 5m and pane 1 to 1h. Assert each pane has the correct independent timeframe.",
+  "story": "MultiPane/Timeframes",
+  "tags": ["multi-pane", "timeframes", "isolation"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "5m" } },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 1, "tf": "1h" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_timeframe_equals": { "pane": 0, "tf": "5m" } },
+        { "pane_timeframe_equals": { "pane": 1, "tf": "1h" } },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

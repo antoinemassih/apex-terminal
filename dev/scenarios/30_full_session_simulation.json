@@ -1,6 +1,7 @@
 {
   "name": "full_session_simulation",
   "description": "User story: as a trader I run a complete realistic session — pick a symbol, set timeframe, add indicators, build watchlist, open order entry, check design health, then reset. This is the highest-level integration test.",
+  "story": "Baseline/Health",
   "tags": ["session", "integration", "full-flow"],
   "settle_ms": 60,
   "abort_on_failure": false,

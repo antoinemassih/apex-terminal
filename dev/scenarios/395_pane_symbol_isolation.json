@@ -1,0 +1,26 @@
+{
+  "name": "pane_symbol_isolation",
+  "description": "Two panes. Swap pane 0 to AAPL and pane 1 to MSFT. Assert each pane tracks the correct independent symbol.",
+  "story": "MultiPane/Symbols",
+  "tags": ["multi-pane", "symbols", "isolation"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 1, "symbol": "MSFT" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_symbol_equals": { "pane": 0, "symbol": "AAPL" } },
+        { "pane_symbol_equals": { "pane": 1, "symbol": "MSFT" } },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

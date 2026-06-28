@@ -1,0 +1,44 @@
+{
+  "name": "watchlist_rename_active",
+  "description": "WatchlistRenameActive changes the name of the current watchlist; FPS stable.",
+  "story": "Watchlist/CRUD",
+  "tags": [
+    "watchlist"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistRenameActive",
+      "args": {
+        "name": "Renamed List"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "fps_above": 5
+        },
+        {
+          "no_active_violations": true
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

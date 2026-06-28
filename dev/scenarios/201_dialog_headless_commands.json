@@ -1,0 +1,40 @@
+{
+  "name": "dialog_headless_commands",
+  "description": "Exercises all headless-only dialog open/close commands: OpenOrderEntry, CloseOrderEntry, OpenSettings, CloseSettings, OpenOrdersPanel, CloseOrdersPanel. Verifies open_dialog_count_equals at each step.",
+  "story": "Dialogs/HeadlessCommands",
+  "priority": 1,
+  "tags": ["dialogs", "headless", "commands", "coverage"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "open_dialog_count_equals": 0 }] },
+
+    { "action": "cmd", "cmd": "OpenOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 1 },
+    { "action": "assert", "assertions": [{ "open_dialog_count_equals": 1 }, { "dialog_open": "order_entry" }] },
+
+    { "action": "cmd", "cmd": "OpenSettings", "args": {} },
+    { "action": "wait_frames", "count": 1 },
+    { "action": "assert", "assertions": [{ "open_dialog_count_equals": 2 }, { "dialog_open": "settings" }] },
+
+    { "action": "cmd", "cmd": "OpenOrdersPanel", "args": {} },
+    { "action": "wait_frames", "count": 1 },
+    { "action": "assert", "assertions": [{ "open_dialog_count_equals": 3 }, { "dialog_open": "orders_panel" }] },
+
+    { "action": "cmd", "cmd": "CloseOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 1 },
+    { "action": "assert", "assertions": [{ "open_dialog_count_equals": 2 }, { "dialog_closed": "order_entry" }] },
+
+    { "action": "cmd", "cmd": "CloseSettings", "args": {} },
+    { "action": "wait_frames", "count": 1 },
+    { "action": "assert", "assertions": [{ "open_dialog_count_equals": 1 }, { "dialog_closed": "settings" }] },
+
+    { "action": "cmd", "cmd": "CloseOrdersPanel", "args": {} },
+    { "action": "wait_frames", "count": 1 },
+    { "action": "assert", "assertions": [{ "open_dialog_count_equals": 0 }, { "no_open_dialogs": true }] },
+
+    { "action": "reset" }
+  ]
+}

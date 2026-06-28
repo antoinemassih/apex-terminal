@@ -1,6 +1,7 @@
 {
   "name": "127_qoe_layout_design_integrity",
   "description": "Test all 4 layouts with assert_layout checks (no_unintended_overlap, toolbar_height_consistent) to ensure structural integrity holds across all layout modes.",
+  "story": "QoE/Full",
   "tags": ["qoe", "layout", "design"],
   "settle_ms": 50,
   "abort_on_failure": false,

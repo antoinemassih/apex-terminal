@@ -1,6 +1,7 @@
 {
   "name": "chart_flag_persist_after_symbol_swap",
   "description": "Set ShowVolume and ShowPrevClose, swap symbol to NVDA, assert FPS still ok after swap.",
+  "story": "Chart/Settings",
   "tags": ["chart", "flags", "symbol"],
   "settle_ms": 50,
   "abort_on_failure": false,

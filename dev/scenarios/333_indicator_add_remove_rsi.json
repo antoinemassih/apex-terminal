@@ -1,0 +1,83 @@
+{
+  "name": "indicator_add_remove_rsi",
+  "description": "Add RSI indicator then remove it: indicator_count goes 0→1→0.",
+  "story": "Indicator/Lifecycle",
+  "tags": [
+    "indicator",
+    "lifecycle"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "indicator_count_equals": {
+            "pane": 0,
+            "count": 0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "args": {
+        "pane": 0,
+        "kind": "RSI"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "indicator_count_equals": {
+            "pane": 0,
+            "count": 1
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "RemoveIndicator",
+      "args": {
+        "pane": 0,
+        "id": 0
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "indicator_count_equals": {
+            "pane": 0,
+            "count": 0
+          }
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "name": "canvas_bars_ohlcv_wide_viewport",
+  "description": "OHLC validity holds after widening the viewport",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "bars",
+    "viewport"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetViewport",
+      "pane": 0,
+      "price_low": 300,
+      "price_high": 700
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "canvas_visible_bar_count_gte": {
+            "pane": 0,
+            "min": 1
+          }
+        }
+      ]
+    }
+  ]
+}

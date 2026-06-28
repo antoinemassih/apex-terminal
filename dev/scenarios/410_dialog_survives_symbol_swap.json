@@ -1,0 +1,31 @@
+{
+  "name": "dialog_survives_symbol_swap",
+  "description": "Open order_entry dialog. Swap pane 0 to AAPL. Assert order_entry dialog remains open after the symbol swap.",
+  "story": "Dialog/Persistence",
+  "tags": ["dialogs", "persistence", "symbol-swap"],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "OpenOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "dialog_open": "order_entry" }
+      ]
+    },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "dialog_open": "order_entry" },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "cmd", "cmd": "CloseOrderEntry", "args": {} },
+    { "action": "reset" }
+  ]
+}

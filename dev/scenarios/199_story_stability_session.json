@@ -1,0 +1,67 @@
+{
+  "name": "story_stability_session",
+  "description": "User story: full trading session stability simulation — symbol switches, layout changes, watchlist builds, indicator stacking, annotations, retried assertions, recovery. All in one scenario.",
+  "story": "Integration/StabilitySession",
+  "priority": 1,
+  "tags": ["story", "stability", "integration", "coverage"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "capture", "path": "active_symbol", "as": "session_start_sym" },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Session Watchlist" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "for_each",
+      "var": "sym",
+      "items": ["QQQ", "AAPL"],
+      "steps": [
+        { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "{{sym}}" } },
+        { "action": "cmd", "cmd": "AddIndicator",    "args": { "pane": 0, "kind": "RSI" } },
+        { "action": "wait_frames", "count": 3 }
+      ]
+    },
+    {
+      "action": "annotate",
+      "annotations": [
+        { "id": "session.zone", "rect": { "x": 0, "y": 0, "w": 500, "h": 200 }, "label": "Session Zone", "color": [100,200,255,60], "border_only": true }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "annotation_id_exists": "session.zone" },
+        { "watchlist_section_title_equals": { "idx": 1, "title": "Session Watchlist" } },
+        { "captures_equal": { "key": "session_start_sym", "equals": "SPY" } },
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    {
+      "action": "retry",
+      "max_attempts": 2,
+      "delay_ms": 50,
+      "steps": [
+        { "action": "reset" },
+        { "action": "wait_frames", "count": 5 },
+        {
+          "action": "assert",
+          "assertions": [
+            { "pane_count_equals": 1 },
+            { "active_symbol_equals": "SPY" },
+            { "no_open_dialogs": true }
+          ]
+        }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "open_dialog_count_equals": 0 },
+        { "state_field_contains": { "path": "active_symbol", "contains": "S" } },
+        { "state_field_not_null": "pane_count" }
+      ]
+    }
+  ]
+}

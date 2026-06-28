@@ -1,0 +1,48 @@
+{
+  "name": "story_performance_regression",
+  "description": "User story: verify no performance regression across a heavy operation sequence — 4 panes, 3 indicator adds per pane via for_each, watchlist build, captures. FPS must stay above 5 throughout.",
+  "story": "Performance/RegressionGuard",
+  "priority": 1,
+  "tags": ["performance", "regression", "story", "smoke"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "capture", "path": "pane_count", "as": "initial_panes" },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_active_violations": true }] },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "Quad" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "for_each",
+      "var": "kind",
+      "items": ["RSI", "MACD", "BollingerBands"],
+      "steps": [
+        { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "{{kind}}" } },
+        { "action": "wait_frames", "count": 1 }
+      ]
+    },
+    {
+      "action": "for_each",
+      "var": "sym",
+      "items": ["QQQ", "AAPL", "MSFT"],
+      "steps": [
+        { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "{{sym}} Watch" } },
+        { "action": "wait_frames", "count": 1 }
+      ]
+    },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "capture", "path": "pane_count", "as": "final_panes" },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_active_violations": true },
+        { "pane_count_equals": 4 },
+        { "captures_equal": { "key": "final_panes", "equals": 4 } }
+      ]
+    },
+    { "action": "assert_metrics", "min_fps": 5.0, "max_frame_ms": 100.0 },
+    { "action": "reset" }
+  ]
+}

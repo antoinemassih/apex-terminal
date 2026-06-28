@@ -1,6 +1,7 @@
 {
   "name": "chart_multi_flag_combo",
   "description": "Set ShowVolume, LogScale, OhlcTooltip, and Magnet all true at once, then all false.",
+  "story": "Chart/Settings",
   "tags": ["chart", "flags"],
   "settle_ms": 50,
   "abort_on_failure": false,

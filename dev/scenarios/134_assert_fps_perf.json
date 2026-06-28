@@ -1,6 +1,7 @@
 {
   "name": "assert_fps_perf",
   "description": "Tests fps_history_min_above and frame_time_below_ms with generous CI-safe bounds.",
+  "story": "TestInfra/AssertEngine",
   "tags": ["assert-engine", "performance"],
   "settle_ms": 0,
   "abort_on_failure": false,

@@ -1,0 +1,17 @@
+{
+  "name": "canvas_indicator_stochastic",
+  "description": "Stochastic reports %K (value) and %D (value2), both 0-100",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": ["canvas", "indicators"],
+  "steps": [
+    {"action": "reset"},
+    {"action": "wait", "ms": 30},
+    {"action": "cmd", "cmd": "SetIndicatorOutput", "pane": 0, "kind": "Stochastic", "value": 75, "value2": 70},
+    {"action": "wait", "ms": 30},
+    {"action": "assert", "assertions": [
+      {"canvas_indicator_exists": {"pane": 0, "kind": "Stochastic"}},
+      {"canvas_indicator_value2_in_range": {"pane": 0, "kind": "Stochastic", "min": 0, "max": 100}}
+    ]}
+  ]
+}

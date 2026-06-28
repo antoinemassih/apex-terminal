@@ -1,0 +1,50 @@
+{
+  "name": "full_multi_pane_session",
+  "description": "Comprehensive integration test: 2 panes with different symbols, timeframes, and indicators. Open settings. Verify complete state. Then reset and verify full cleanup.",
+  "story": "Integration/MultiPane",
+  "tags": ["integration", "multi-pane", "symbols", "timeframes", "indicators", "dialogs", "reset"],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 1, "symbol": "AAPL" } },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "5m" } },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 1, "tf": "1h" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 1, "kind": "MACD" } },
+    { "action": "cmd", "cmd": "OpenSettings", "args": {} },
+    { "action": "wait_frames", "count": 5 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_count_equals": 2 },
+        { "pane_symbol_equals": { "pane": 0, "symbol": "SPY" } },
+        { "pane_symbol_equals": { "pane": 1, "symbol": "AAPL" } },
+        { "pane_timeframe_equals": { "pane": 0, "tf": "5m" } },
+        { "pane_timeframe_equals": { "pane": 1, "tf": "1h" } },
+        { "indicator_count_equals": { "pane": 0, "count": 1 } },
+        { "indicator_count_equals": { "pane": 1, "count": 1 } },
+        { "dialog_open": "settings" },
+        { "canvas_bar_ohlc_valid": { "pane": 0 } },
+        { "canvas_bar_ohlc_valid": { "pane": 1 } },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "cmd", "cmd": "CloseAllDialogs", "args": {} },
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_count_equals": 1 },
+        { "indicator_count_equals": { "pane": 0, "count": 0 } },
+        { "no_open_dialogs": true },
+        { "fps_above": 5.0 }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "name": "state_field_contains",
+  "description": "Exercises state_field_contains assertion: checks that active_symbol contains 'P' (SPY) case-insensitively after reset.",
+  "story": "Assertions/StringContains",
+  "priority": 2,
+  "tags": ["extension", "assertions"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "state_field_contains": { "path": "active_symbol", "contains": "SP" } },
+        { "state_field_contains": { "path": "active_symbol", "contains": "spy", "case_insensitive": true } }
+      ]
+    },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "state_field_contains": { "path": "active_symbol", "contains": "AA" } }
+      ]
+    },
+    {
+      "action": "assert",
+      "expect_fail": true,
+      "assertions": [
+        { "state_field_contains": { "path": "active_symbol", "contains": "SPY" } }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

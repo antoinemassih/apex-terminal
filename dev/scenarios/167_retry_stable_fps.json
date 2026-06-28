@@ -1,0 +1,28 @@
+{
+  "name": "retry_stable_fps",
+  "description": "Exercises the retry step: wraps an fps assertion in a retry block (max 3 attempts, 50ms delay). Since headless fps is always 60, should pass on first attempt.",
+  "story": "Performance/Retry",
+  "priority": 2,
+  "tags": ["retry", "extension", "performance"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    {
+      "action": "retry",
+      "max_attempts": 3,
+      "delay_ms": 50,
+      "steps": [
+        {
+          "action": "assert",
+          "assertions": [
+            { "fps_above": 5.0 },
+            { "no_active_violations": true }
+          ]
+        }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

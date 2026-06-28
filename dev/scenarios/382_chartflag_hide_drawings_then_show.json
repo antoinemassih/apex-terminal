@@ -1,0 +1,102 @@
+{
+  "name": "chartflag_hide_drawings_then_show",
+  "description": "Add drawing, HideAllDrawings true: drawing still in canvas data. Set false: still present.",
+  "story": "ChartFlag/Settings",
+  "tags": [
+    "chartflag",
+    "drawings"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "args": {
+        "pane": 0,
+        "id": "d1",
+        "kind": "HorizLine",
+        "price_a": 450
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_drawing_exists": {
+            "pane": 0,
+            "id": "d1"
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "args": {
+        "pane": 0,
+        "flag": "HideAllDrawings",
+        "value": true
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_drawing_exists": {
+            "pane": 0,
+            "id": "d1"
+          }
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "args": {
+        "pane": 0,
+        "flag": "HideAllDrawings",
+        "value": false
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_drawing_exists": {
+            "pane": 0,
+            "id": "d1"
+          }
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

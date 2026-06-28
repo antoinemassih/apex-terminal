@@ -1,6 +1,7 @@
 {
   "name": "assert_violation_count_lte",
   "description": "Tests violation_count_lte — zero violations after reset and generous bound after adding indicators.",
+  "story": "TestInfra/AssertEngine",
   "tags": ["assert-engine", "violations"],
   "settle_ms": 0,
   "abort_on_failure": false,

@@ -1,6 +1,7 @@
 {
   "name": "126_qoe_recompute_after_swap",
   "description": "Add VWAP+RSI on SPY, then swap symbol to TSLA and call RecomputeIndicators. Assert fps_above 5.0 to confirm recompute on new data does not stall the render pipeline.",
+  "story": "QoE/Full",
   "tags": ["qoe", "indicators", "symbol"],
   "settle_ms": 50,
   "abort_on_failure": false,

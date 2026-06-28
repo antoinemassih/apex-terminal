@@ -1,0 +1,51 @@
+{
+  "name": "layout_two_rows_stable",
+  "description": "SetLayout TwoRows produces 2 panes stacked with stable FPS.",
+  "story": "Layout/System",
+  "tags": [
+    "layout",
+    "pane"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetLayout",
+      "args": {
+        "layout": "TwoRows"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_count_equals": 2
+        },
+        {
+          "canvas_pane_count_equals": 2
+        },
+        {
+          "fps_above": 5
+        },
+        {
+          "no_active_violations": true
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

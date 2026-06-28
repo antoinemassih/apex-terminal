@@ -1,0 +1,91 @@
+{
+  "name": "story_indicator_lifecycle",
+  "description": "Set three indicators, verify all, reset, verify none remain",
+  "story": "Canvas Introspection",
+  "priority": 1,
+  "tags": [
+    "canvas",
+    "story",
+    "indicators"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetIndicatorOutput",
+      "pane": 0,
+      "kind": "SMA",
+      "value": 449
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetIndicatorOutput",
+      "pane": 0,
+      "kind": "EMA",
+      "value": 447
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetIndicatorOutput",
+      "pane": 0,
+      "kind": "RSI",
+      "value": 62
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_indicator_count_equals": {
+            "pane": 0,
+            "count": 3
+          }
+        },
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "SMA"
+          }
+        },
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "EMA"
+          }
+        },
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "RSI"
+          }
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 50
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_no_indicators": {
+            "pane": 0
+          }
+        }
+      ]
+    }
+  ]
+}

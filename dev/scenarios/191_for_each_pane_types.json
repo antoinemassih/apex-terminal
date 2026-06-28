@@ -1,0 +1,30 @@
+{
+  "name": "for_each_pane_types",
+  "description": "Uses for_each to cycle through pane types (Dashboard, Chart), asserting pane_type_equals after each change.",
+  "story": "Pane/TypeMatrix",
+  "priority": 2,
+  "tags": ["for_each", "extension", "pane"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "for_each",
+      "var": "ptype",
+      "items": ["Dashboard", "Chart"],
+      "steps": [
+        { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "{{ptype}}" } },
+        { "action": "wait_frames", "count": 2 },
+        {
+          "action": "assert",
+          "assertions": [
+            { "pane_type_equals": { "pane": 0, "type": "{{ptype}}" } },
+            { "fps_above": 5.0 }
+          ]
+        }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

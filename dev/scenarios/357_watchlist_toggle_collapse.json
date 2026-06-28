@@ -1,0 +1,64 @@
+{
+  "name": "watchlist_toggle_collapse",
+  "description": "WatchlistToggleSectionCollapse on section 0 then back; FPS stable after both toggles.",
+  "story": "Watchlist/CRUD",
+  "tags": [
+    "watchlist",
+    "section"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistToggleSectionCollapse",
+      "args": {
+        "idx": 0
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistToggleSectionCollapse",
+      "args": {
+        "idx": 0
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "fps_above": 5
+        },
+        {
+          "no_active_violations": true
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 {
   "name": "multi_pane",
   "description": "Switch to a 2-pane layout, verify pane count, set different symbols on each pane, check alignment and FPS stability, then return to 1-pane.",
+  "story": "Layout/Panes",
   "tags": ["layout", "multi-pane", "design"],
   "settle_ms": 100,
   "abort_on_failure": true,

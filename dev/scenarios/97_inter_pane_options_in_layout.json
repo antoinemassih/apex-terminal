@@ -1,6 +1,7 @@
 {
   "name": "97_inter_pane_options_in_layout",
   "description": "TwoColumns layout mixing a Chart pane and an OptionsSentiment pane on the same underlying symbol AAPL, verifying both render concurrently without FPS degradation.",
+  "story": "Layout/Panes",
   "tags": ["inter-pane", "options"],
   "settle_ms": 50,
   "abort_on_failure": false,

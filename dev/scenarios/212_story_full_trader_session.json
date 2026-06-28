@@ -1,0 +1,57 @@
+{
+  "name": "story_full_trader_session",
+  "description": "User story: full morning session startup — set 4-pane layout, load symbols, add indicators, open order entry, annotate a zone, verify dialogs, escape to close, assert clean state.",
+  "story": "Integration/MorningSession",
+  "priority": 1,
+  "tags": ["story", "integration", "session", "smoke"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "Quad" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "for_each",
+      "var": "sym",
+      "items": ["SPY", "QQQ", "AAPL", "TSLA"],
+      "steps": [
+        { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "{{sym}}" } },
+        { "action": "wait_frames", "count": 1 }
+      ]
+    },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "VWAP" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "OpenOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "open_dialog_count_equals": 1 }, { "fps_above": 5.0 }] },
+    {
+      "action": "annotate",
+      "annotations": [
+        { "id": "session.morning_zone", "rect": { "x": 0, "y": 0, "w": 400, "h": 150 }, "label": "Morning Zone", "color": [255,200,0,80], "border_only": false }
+      ]
+    },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "annotation_id_exists": "session.morning_zone" },
+        { "open_dialog_count_equals": 1 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "key_sequence", "keys": ["Escape"], "delay_ms": 20 },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "no_open_dialogs": true },
+        { "fps_above": 5.0 },
+        { "annotation_id_exists": "session.morning_zone" }
+      ]
+    },
+    { "action": "annotate", "clear": true },
+    { "action": "reset" }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "name": "watchlist_add_section",
+  "description": "WatchlistAddSection creates a new section; watchlist_section_count increases by 1.",
+  "story": "Watchlist/CRUD",
+  "tags": [
+    "watchlist",
+    "section"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "watchlist_section_count_equals": 1
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSection",
+      "args": {
+        "title": "Tech Stocks"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "watchlist_section_count_equals": 2
+        },
+        {
+          "watchlist_section_title_equals": {
+            "idx": 1,
+            "title": "Tech Stocks"
+          }
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

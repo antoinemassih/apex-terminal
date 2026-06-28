@@ -1,0 +1,71 @@
+{
+  "name": "watchlist_section_count_cycle",
+  "description": "Add 2 sections then remove 1: net section count = 2.",
+  "story": "Watchlist/CRUD",
+  "tags": [
+    "watchlist",
+    "section"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSection",
+      "args": {
+        "title": "A"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSection",
+      "args": {
+        "title": "B"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "watchlist_section_count_equals": 3
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistRemoveSection",
+      "args": {
+        "idx": 2
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "watchlist_section_count_equals": 2
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

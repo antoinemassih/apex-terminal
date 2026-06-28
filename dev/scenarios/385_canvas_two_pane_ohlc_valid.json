@@ -1,0 +1,85 @@
+{
+  "name": "canvas_two_pane_ohlc_valid",
+  "description": "TwoColumns SPY+QQQ: both panes have valid OHLC bars.",
+  "story": "Canvas/Integrity",
+  "tags": [
+    "canvas",
+    "bars",
+    "pane"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetLayout",
+      "args": {
+        "layout": "TwoColumns"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": {
+        "pane": 0,
+        "symbol": "SPY"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": {
+        "pane": 1,
+        "symbol": "QQQ"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 8
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 1
+          }
+        },
+        {
+          "canvas_visible_bar_count_gte": {
+            "pane": 0,
+            "min": 1
+          }
+        },
+        {
+          "canvas_visible_bar_count_gte": {
+            "pane": 1,
+            "min": 1
+          }
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 {
   "name": "step_assert_metrics",
   "description": "Tests the assert_metrics step action for fps_min and frame_time_max_ms against known headless values (fps=60, frame_time=16ms).",
+  "story": "TestInfra/AssertEngine",
   "tags": ["step-actions", "metrics"],
   "settle_ms": 0,
   "abort_on_failure": false,

@@ -1,0 +1,33 @@
+{
+  "name": "for_each_pane_symbols",
+  "description": "Set up 4-pane layout via for_each, swap each pane to a different symbol, capture each pane's symbol, assert state_field_equals for each.",
+  "story": "Chart/MultiPaneSymbolMatrix",
+  "priority": 1,
+  "tags": ["panes", "for_each", "captures", "story"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "Quad" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "pane_count_equals": 4 }] },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 1, "symbol": "QQQ" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 2, "symbol": "AAPL" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 3, "symbol": "TSLA" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_symbol_equals": { "pane": 0, "symbol": "SPY" } },
+        { "pane_symbol_equals": { "pane": 1, "symbol": "QQQ" } },
+        { "pane_symbol_equals": { "pane": 2, "symbol": "AAPL" } },
+        { "pane_symbol_equals": { "pane": 3, "symbol": "TSLA" } },
+        { "state_field_length_equals": { "path": "panes", "length": 4 } }
+      ]
+    },
+    { "action": "capture", "path": "pane_count", "as": "pane_count_quad" },
+    { "action": "assert", "assertions": [{ "captures_equal": { "key": "pane_count_quad", "equals": 4 } }] },
+    { "action": "reset" }
+  ]
+}

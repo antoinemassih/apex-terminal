@@ -1,0 +1,52 @@
+{
+  "name": "canvas_bars_valid_two_panes",
+  "description": "OHLC valid and bars present on both panes in a 2-pane layout",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "bars",
+    "pane"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "cmd",
+      "cmd": "HeadlessLayout",
+      "cols": 2
+    },
+    {
+      "action": "wait",
+      "ms": 50
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 1
+          }
+        },
+        {
+          "canvas_visible_bar_count_gte": {
+            "pane": 0,
+            "min": 1
+          }
+        },
+        {
+          "canvas_visible_bar_count_gte": {
+            "pane": 1,
+            "min": 1
+          }
+        }
+      ]
+    }
+  ]
+}

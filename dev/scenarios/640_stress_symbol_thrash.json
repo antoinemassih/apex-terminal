@@ -1,0 +1,283 @@
+{
+  "name": "stress_symbol_thrash",
+  "description": "Hammer the symbol switcher 24\u00d7 with no settle; must not panic or NaN.",
+  "story": "Adversarial/Stress",
+  "tags": [
+    "stress",
+    "fuzz",
+    "invariants"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "SPY"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "QQQ"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "AAPL"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "MSFT"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "NVDA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "TSLA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "AMZN"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "META"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "GOOGL"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "AMD"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "NFLX"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "IWM"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "DIA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "GLD"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "XLF"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "XLK"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "AVGO"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "COST"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "SPY"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "QQQ"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "AAPL"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "MSFT"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "NVDA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "TSLA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 3.0
+        }
+      ]
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 {
   "name": "assert_any_of_combinator",
   "description": "Tests the any_of logical-OR assertion combinator. One branch must pass even when the other would fail. Zero coverage prior to this scenario.",
+  "story": "TestInfra/AssertEngine",
   "tags": ["assert-engine", "combinators"],
   "settle_ms": 0,
   "abort_on_failure": false,

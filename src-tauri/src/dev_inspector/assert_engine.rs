@@ -260,6 +260,24 @@ fn dispatch(
              })
         }
 
+        // ── Crash / panic ─────────────────────────────────────────────────────
+        // Highest-severity invariant: nothing panicked during this scenario.
+        // A render-thread panic closes the window; a headless-ticker panic stalls
+        // frames. Either is a bug worth surfacing. Reads the global panic log
+        // (cleared at scenario start).
+        "no_panic" => {
+            let panics = super::panics();
+            let pass = panics.is_empty();
+            ("NoPanic".into(), pass,
+             if pass { "no panics".into() }
+             else {
+                 let ps: Vec<_> = panics.iter()
+                     .map(|p| format!("[{}] {} ({})", p.thread, p.message, p.location))
+                     .collect();
+                 format!("{} panic(s): {}", ps.len(), ps.join(" | "))
+             })
+        }
+
         // ── Widget tree sweeps ────────────────────────────────────────────────
         "all_touch_targets_ok" => {
             // Checks all widgets with role "button" or "input" meet min_size_px
@@ -698,6 +716,75 @@ fn dispatch(
              else    { format!("canvas pane {pane} px_per_bar {actual:.2} < {min:.2}") })
         }
 
+        // ── Canvas invariants (render-data sanity) ────────────────────────────
+        // No NaN/Inf anywhere in the canvas: bar OHLCV + screen coords, viewport
+        // densities/range, drawing anchors, indicator values. NaN/Inf here means a
+        // divide-by-zero / bad-scale math bug that paints garbage or blanks the
+        // chart — exactly the class a thorough story should surface. Pass when no
+        // panes (nothing to violate).
+        "canvas_all_finite" => {
+            let mut bad: Vec<String> = Vec::new();
+            for p in &state.canvas.panes {
+                let mut chk = |name: &str, v: f32| { if !v.is_finite() { bad.push(format!("pane{} {name}={v}", p.index)); } };
+                chk("vp.price_low", p.viewport.price_low);
+                chk("vp.price_high", p.viewport.price_high);
+                chk("vp.px_per_bar", p.viewport.px_per_bar);
+                chk("vp.px_per_price", p.viewport.px_per_price);
+                for (bi, b) in p.bars.iter().enumerate() {
+                    for (n, v) in [("o",b.open),("h",b.high),("l",b.low),("c",b.close),("v",b.volume),
+                                   ("sx",b.screen_x),("soy",b.screen_open_y),("shy",b.screen_high_y),
+                                   ("sly",b.screen_low_y),("scy",b.screen_close_y)] {
+                        if !v.is_finite() { bad.push(format!("pane{} bar{bi}.{n}={v}", p.index)); }
+                    }
+                }
+                for d in &p.drawings {
+                    for (ai, a) in d.anchors.iter().enumerate() {
+                        for (n, v) in [("price",a.price),("sx",a.screen_x),("sy",a.screen_y)] {
+                            if !v.is_finite() { bad.push(format!("pane{} {}#{ai}.{n}={v}", p.index, d.id)); }
+                        }
+                    }
+                }
+                // NOTE: indicator last_value/2/3 are intentionally NOT checked here.
+                // Several indicators have legitimately-NaN latest values — Ichimoku's
+                // chikou span is plotted shifted into the past (its most recent `kijun`
+                // bars are undefined), and long-warmup overlays may not have filled the
+                // final bar yet. Indicator value sanity is covered precisely by
+                // `canvas_indicator_value_in_range` on the bounded oscillators. This
+                // assertion stays focused on render geometry, where NaN is unambiguous.
+            }
+            // Cap the detail so a fully-NaN frame doesn't produce a megabyte string.
+            let pass = bad.is_empty();
+            let shown: Vec<_> = bad.iter().take(12).cloned().collect();
+            ("CanvasAllFinite".into(), pass,
+             if pass { "all canvas values finite".into() }
+             else { format!("{} non-finite value(s): {}", bad.len(), shown.join(", ")) })
+        }
+
+        // Viewport is coherent: finite, price_low < price_high, positive density.
+        // A collapsed/inverted/zero-density viewport => blank or garbled chart.
+        "viewport_sane" => {
+            let only = val["pane"].as_u64().map(|n| n as usize);
+            let mut bad: Vec<String> = Vec::new();
+            for p in &state.canvas.panes {
+                if let Some(idx) = only { if p.index != idx { continue; } }
+                let vp = &p.viewport;
+                if !vp.price_low.is_finite() || !vp.price_high.is_finite() {
+                    bad.push(format!("pane{} non-finite range [{},{}]", p.index, vp.price_low, vp.price_high));
+                } else if vp.price_low >= vp.price_high {
+                    bad.push(format!("pane{} inverted/empty range [{}, {}]", p.index, vp.price_low, vp.price_high));
+                }
+                if !(vp.px_per_bar.is_finite() && vp.px_per_bar > 0.0) {
+                    bad.push(format!("pane{} px_per_bar={}", p.index, vp.px_per_bar));
+                }
+                if !vp.px_per_price.is_finite() {
+                    bad.push(format!("pane{} px_per_price={}", p.index, vp.px_per_price));
+                }
+            }
+            let pass = bad.is_empty();
+            ("ViewportSane".into(), pass,
+             if pass { "viewport(s) sane".into() } else { bad.join("; ") })
+        }
+
         // ── Canvas indicator assertions ───────────────────────────────────────
         "canvas_indicator_value_in_range" => {
             let pane = val["pane"].as_u64().unwrap_or(0) as usize;
@@ -907,6 +994,95 @@ fn dispatch(
                 None => ("CanvasIndicatorValue2InRange".into(), false,
                          format!("canvas pane {pane} indicator '{kind}' has no value2"))
             }
+        }
+
+        // ── Canvas time/geometry ordering invariants ──────────────────────────
+        // Bars must march forward in time, left→right on screen. Duplicate or
+        // out-of-order timestamps (a gap-fill/merge bug) paint a chart that
+        // "doesn't look right day to day". Pure data — checks every visible bar.
+        "canvas_bars_monotonic" => {
+            let only = val["pane"].as_u64().map(|n| n as usize);
+            let mut bad: Vec<String> = Vec::new();
+            for p in &state.canvas.panes {
+                if let Some(idx) = only { if p.index != idx { continue; } }
+                for w in p.bars.windows(2) {
+                    if w[1].ts_ns <= w[0].ts_ns {
+                        bad.push(format!("pane{} ts not increasing: bar{} ts={} <= bar{} ts={}",
+                            p.index, w[1].index, w[1].ts_ns, w[0].index, w[0].ts_ns));
+                    }
+                    if w[1].screen_x < w[0].screen_x {
+                        bad.push(format!("pane{} screen_x regressed: bar{} x={:.1} < bar{} x={:.1}",
+                            p.index, w[1].index, w[1].screen_x, w[0].index, w[0].screen_x));
+                    }
+                }
+            }
+            let pass = bad.is_empty();
+            let shown: Vec<_> = bad.iter().take(8).cloned().collect();
+            ("CanvasBarsMonotonic".into(), pass,
+             if pass { "bars strictly time-ordered, left→right".into() }
+             else { format!("{} ordering violation(s): {}", bad.len(), shown.join("; ")) })
+        }
+
+        // Candle geometry sanity: on screen, high is above (smaller y than) low,
+        // and open/close sit between them. Inverted/garbled geometry = the
+        // "long wicks" / broken candle class of render bug.
+        "canvas_bars_screen_ordered" => {
+            let only = val["pane"].as_u64().map(|n| n as usize);
+            let tol  = val["tolerance"].as_f64().unwrap_or(1.0) as f32;
+            let mut bad: Vec<String> = Vec::new();
+            for p in &state.canvas.panes {
+                if let Some(idx) = only { if p.index != idx { continue; } }
+                for b in &p.bars {
+                    if b.screen_high_y > b.screen_low_y + tol {
+                        bad.push(format!("pane{} bar{} high_y={:.1} below low_y={:.1}",
+                            p.index, b.index, b.screen_high_y, b.screen_low_y));
+                    }
+                    let (hi, lo) = (b.screen_high_y - tol, b.screen_low_y + tol);
+                    if b.screen_open_y < hi || b.screen_open_y > lo {
+                        bad.push(format!("pane{} bar{} open_y={:.1} outside wick [{:.1},{:.1}]",
+                            p.index, b.index, b.screen_open_y, b.screen_high_y, b.screen_low_y));
+                    }
+                    if b.screen_close_y < hi || b.screen_close_y > lo {
+                        bad.push(format!("pane{} bar{} close_y={:.1} outside wick [{:.1},{:.1}]",
+                            p.index, b.index, b.screen_close_y, b.screen_high_y, b.screen_low_y));
+                    }
+                }
+            }
+            let pass = bad.is_empty();
+            let shown: Vec<_> = bad.iter().take(8).cloned().collect();
+            ("CanvasBarsScreenOrdered".into(), pass,
+             if pass { "candle geometry ordered (high above low, body within wick)".into() }
+             else { format!("{} geometry violation(s): {}", bad.len(), shown.join("; ")) })
+        }
+
+        // Bars must paint inside their own pane rect (+tol). Bars bleeding past
+        // the pane bounds = a viewport/scale bug that draws over neighbours.
+        "canvas_bars_within_pane" => {
+            let only = val["pane"].as_u64().map(|n| n as usize);
+            let tol  = val["tolerance"].as_f64().unwrap_or(4.0) as f32;
+            let mut bad: Vec<String> = Vec::new();
+            for p in &state.canvas.panes {
+                if let Some(idx) = only { if p.index != idx { continue; } }
+                let r = &p.screen_rect;
+                if !(r.w > 0.0 && r.h > 0.0) { continue; } // pane not laid out yet
+                let (xl, xr) = (r.x - tol, r.x + r.w + tol);
+                let (yt, yb) = (r.y - tol, r.y + r.h + tol);
+                for b in &p.bars {
+                    if b.screen_x < xl || b.screen_x > xr {
+                        bad.push(format!("pane{} bar{} x={:.1} outside [{:.1},{:.1}]",
+                            p.index, b.index, b.screen_x, xl, xr));
+                    }
+                    if b.screen_high_y < yt || b.screen_low_y > yb {
+                        bad.push(format!("pane{} bar{} y[{:.1},{:.1}] outside [{:.1},{:.1}]",
+                            p.index, b.index, b.screen_high_y, b.screen_low_y, yt, yb));
+                    }
+                }
+            }
+            let pass = bad.is_empty();
+            let shown: Vec<_> = bad.iter().take(8).cloned().collect();
+            ("CanvasBarsWithinPane".into(), pass,
+             if pass { "all bars paint within their pane".into() }
+             else { format!("{} out-of-bounds bar(s): {}", bad.len(), shown.join("; ")) })
         }
 
         _ => ("Unknown".into(), false, format!("unknown assertion kind: '{key}'")),

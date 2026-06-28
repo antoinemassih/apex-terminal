@@ -1,0 +1,688 @@
+{
+  "name": "story_theme_cycle_all",
+  "description": "Trader cycles through every theme; no clipping, violations, or render breakage.",
+  "story": "Design/Themes",
+  "tags": [
+    "story",
+    "theme",
+    "design",
+    "invariants"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "QQQ"
+    },
+    {
+      "action": "wait",
+      "ms": 500
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 0"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 1
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 1"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 2
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 2"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 3
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 3"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 4
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 4"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 5
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 5"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 6
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 6"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 7
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 7"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 8
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 8"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 9
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 9"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 10
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 10"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 11
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 11"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 12
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 12"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 13
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 13"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 14
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 14"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 15
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 15"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 16
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 16"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 17
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 17"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 18
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 18"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 19
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 19"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetThemeIdx",
+      "pane": 0,
+      "idx": 20
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "theme 20"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    }
+  ]
+}

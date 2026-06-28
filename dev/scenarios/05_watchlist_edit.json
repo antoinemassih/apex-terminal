@@ -1,6 +1,7 @@
 {
   "name": "watchlist_edit",
   "description": "Add a symbol to the watchlist and verify it appears, then remove it.",
+  "story": "UserJourney/Watchlist",
   "tags": ["smoke", "watchlist"],
   "settle_ms": 0,
   "abort_on_failure": true,

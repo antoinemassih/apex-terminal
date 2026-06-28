@@ -1,6 +1,7 @@
 {
   "name": "chart_magnet_snap",
   "description": "Toggle Magnet flag on and off, verify no FPS degradation or violations.",
+  "story": "Chart/Settings",
   "tags": ["chart", "interaction"],
   "settle_ms": 50,
   "abort_on_failure": false,

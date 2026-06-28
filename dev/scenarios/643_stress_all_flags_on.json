@@ -1,0 +1,200 @@
+{
+  "name": "stress_all_flags_on",
+  "description": "Turn on every display flag simultaneously; render must stay sane.",
+  "story": "Adversarial/Stress",
+  "tags": [
+    "stress",
+    "flag",
+    "invariants"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "QQQ"
+    },
+    {
+      "action": "wait",
+      "ms": 600
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "ShowVolume",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "LogScale",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "Magnet",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "OhlcTooltip",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "MeasureTooltip",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "ShowOscillators",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "ShowPrevClose",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "ShowPatternLabels",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "ShowFootprint",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "ShowGamma",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "ShowStrikesOverlay",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "HideAllIndicators",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "HideAllDrawings",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "fps_above": 3.0
+        }
+      ]
+    }
+  ]
+}

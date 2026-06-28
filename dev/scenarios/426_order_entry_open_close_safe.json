@@ -1,0 +1,28 @@
+{
+  "name": "order_entry_open_close_safe",
+  "description": "Open the order entry dialog, assert it is open with stable fps, close it, and assert no open dialogs remain.",
+  "story": "OrderEntry/UI",
+  "tags": ["order_entry", "dialog", "smoke"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_open_dialogs": true }] },
+    { "action": "log", "message": "Opening order entry dialog" },
+    { "action": "cmd", "cmd": "OpenOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "dialog_open": "order_entry" },
+      { "fps_above": 5.0 }
+    ] },
+    { "action": "log", "message": "Closing order entry dialog" },
+    { "action": "cmd", "cmd": "CloseOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "no_open_dialogs": true },
+      { "fps_above": 5.0 }
+    ] },
+    { "action": "reset" }
+  ]
+}

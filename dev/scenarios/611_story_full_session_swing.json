@@ -1,0 +1,174 @@
+{
+  "name": "story_full_session_swing",
+  "description": "Swing trader: AAPL daily, Bollinger+SMA, log scale, prev-close, set an alert.",
+  "story": "Journeys/FullSession",
+  "tags": [
+    "story",
+    "journey",
+    "invariants"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "AAPL"
+    },
+    {
+      "action": "wait",
+      "ms": 700
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangeTimeframe",
+      "pane": 0,
+      "tf": "1d"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "BB"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "SMA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "LogScale",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "ShowPrevClose",
+      "value": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "RecomputeIndicators",
+      "pane": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5.0
+        },
+        {
+          "canvas_bars_within_pane": {
+            "pane": 0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddPriceAlert",
+      "pane": 0,
+      "price": 200.0,
+      "above": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5.0
+        },
+        {
+          "canvas_bars_within_pane": {
+            "pane": 0
+          }
+        }
+      ]
+    }
+  ]
+}

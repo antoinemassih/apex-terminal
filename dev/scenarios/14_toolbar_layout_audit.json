@@ -1,6 +1,7 @@
 {
   "name": "toolbar_layout_audit",
   "description": "Verify design system health: no clipped widgets, all touch targets ok, no violations, design audit clean.",
+  "story": "Design/Quality",
   "tags": ["design", "ui", "toolbar"],
   "settle_ms": 50,
   "abort_on_failure": false,

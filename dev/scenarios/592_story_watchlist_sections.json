@@ -1,0 +1,65 @@
+{
+  "name": "story_watchlist_sections",
+  "description": "Trader organises the watchlist into sections and collapses one.",
+  "story": "Watchlist/Sections",
+  "tags": [
+    "story",
+    "watchlist",
+    "section"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSection",
+      "title": "Indices"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSection",
+      "title": "Tech"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistToggleSectionCollapse",
+      "idx": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

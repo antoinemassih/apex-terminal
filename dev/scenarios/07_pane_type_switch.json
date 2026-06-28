@@ -1,6 +1,7 @@
 {
   "name": "pane_type_switch",
   "description": "Switch pane 0 through pane types and verify each transition is stable.",
+  "story": "Layout/Panes",
   "tags": ["smoke", "pane-types"],
   "settle_ms": 0,
   "abort_on_failure": false,

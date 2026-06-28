@@ -1,0 +1,43 @@
+{
+  "name": "multi_pane_dialog_isolation",
+  "description": "Open indicator editors on pane 0 and pane 1 independently; verify both show as open (count=2); close each separately; verify isolation is maintained throughout.",
+  "story": "Dialogs/MultiPaneIsolation",
+  "priority": 1,
+  "tags": ["dialogs", "panes", "isolation", "story"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "pane_count_equals": 2 }, { "open_dialog_count_equals": 0 }] },
+    { "action": "cmd", "cmd": "OpenIndicatorEditor", "args": { "pane": 0, "id": 1 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "open_dialog_count_equals": 1 }, { "dialog_open": "indicator_editor.0" }] },
+    { "action": "cmd", "cmd": "OpenIndicatorEditor", "args": { "pane": 1, "id": 1 } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "open_dialog_count_equals": 2 },
+        { "dialog_open": "indicator_editor.0" },
+        { "dialog_open": "indicator_editor.1" }
+      ]
+    },
+    { "action": "cmd", "cmd": "CloseIndicatorEditor", "args": { "pane": 0 } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "open_dialog_count_equals": 1 },
+        { "dialog_closed": "indicator_editor.0" },
+        { "dialog_open": "indicator_editor.1" }
+      ]
+    },
+    { "action": "cmd", "cmd": "CloseIndicatorEditor", "args": { "pane": 1 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "open_dialog_count_equals": 0 }, { "no_open_dialogs": true }] },
+    { "action": "reset" }
+  ]
+}

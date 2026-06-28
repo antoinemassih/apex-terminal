@@ -1,6 +1,7 @@
 {
   "name": "chart_prev_close_line",
   "description": "Enable ShowPrevClose flag and verify rendering stability and FPS.",
+  "story": "Chart/Settings",
   "tags": ["chart", "flags"],
   "settle_ms": 50,
   "abort_on_failure": false,

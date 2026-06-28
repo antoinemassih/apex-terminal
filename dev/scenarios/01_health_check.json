@@ -1,6 +1,7 @@
 {
   "name": "health_check",
   "description": "Verify the inspector server is up and app state is populated after first frame.",
+  "story": "Baseline/Health",
   "tags": ["smoke", "health"],
   "settle_ms": 50,
   "abort_on_failure": true,

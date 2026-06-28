@@ -1,6 +1,7 @@
 {
   "name": "130_qoe_final_integration_audit",
   "description": "Final integration audit: reset, build a complete multi-feature session (symbols, indicators, watchlist, theme, multi-pane), run full design audit including assert_layout assertions, and log completion. This is the gold-standard end-to-end scenario.",
+  "story": "QoE/Full",
   "tags": ["qoe", "integration", "audit"],
   "settle_ms": 50,
   "abort_on_failure": false,

@@ -1,6 +1,7 @@
 {
   "name": "123_qoe_recovery_rapid_ops",
   "description": "Stress recovery test: rapid sequence of 5 symbol swaps, 3 timeframe changes, 4 flag toggles, and 2 indicator adds in quick succession. Assert fps_above 5.0 at end to confirm no accumulation of errors.",
+  "story": "QoE/Full",
   "tags": ["qoe", "stress", "recovery"],
   "settle_ms": 50,
   "abort_on_failure": false,

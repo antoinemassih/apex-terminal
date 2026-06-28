@@ -1,0 +1,51 @@
+{
+  "name": "negative_invalid_commands",
+  "description": "Invalid commands are rejected (expect_fail) and the app does not crash.",
+  "story": "Adversarial/Negative",
+  "tags": [
+    "negative",
+    "expect_fail"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "symbol": "",
+      "pane": 0,
+      "expect_fail": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "kind": "NOTAREALINDICATOR",
+      "pane": 0,
+      "expect_fail": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "flag": "NoSuchFlag",
+      "pane": 0,
+      "value": true,
+      "expect_fail": true
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

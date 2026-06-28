@@ -1,6 +1,7 @@
 {
   "name": "120_qoe_annotations_survive_symbol_swap",
   "description": "Place a toolbar zone annotation, then swap the active symbol. Assert fps_above 5.0 to confirm symbol swap does not corrupt or stall the annotation render layer.",
+  "story": "QoE/Full",
   "tags": ["qoe", "annotations", "symbol"],
   "settle_ms": 50,
   "abort_on_failure": false,

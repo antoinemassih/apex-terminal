@@ -1,6 +1,7 @@
 {
   "name": "options_in_two_column",
   "description": "2-column layout with pane 0 as Chart and pane 1 as OptionsSentiment, verify stability.",
+  "story": "UserJourney/OptionsPanel",
   "tags": ["options", "layout"],
   "settle_ms": 50,
   "abort_on_failure": false,

@@ -1,6 +1,7 @@
 {
   "name": "step_loop_basic",
   "description": "Tests the loop step action by repeating an AddIndicator command 3 times and asserting the cumulative count afterward.",
+  "story": "TestInfra/AssertEngine",
   "tags": ["step-actions", "loop"],
   "settle_ms": 0,
   "abort_on_failure": false,

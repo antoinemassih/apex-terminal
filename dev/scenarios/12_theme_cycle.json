@@ -1,6 +1,7 @@
 {
   "name": "theme_cycle",
   "description": "Cycle through theme and style variants, verifying FPS stability and no design violations after each switch.",
+  "story": "UX/Theming",
   "tags": ["design", "ui", "themes"],
   "settle_ms": 0,
   "abort_on_failure": false,

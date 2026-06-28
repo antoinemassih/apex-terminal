@@ -1,6 +1,7 @@
 {
   "name": "watchlist_crud",
   "description": "Create a new watchlist, switch to it, add a section, add a symbol, then clean up.",
+  "story": "UserJourney/Watchlist",
   "tags": ["smoke", "watchlist"],
   "settle_ms": 0,
   "abort_on_failure": true,

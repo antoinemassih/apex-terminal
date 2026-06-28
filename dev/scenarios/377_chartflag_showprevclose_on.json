@@ -1,0 +1,58 @@
+{
+  "name": "chartflag_showprevclose_on",
+  "description": "ShowPrevClose on: FPS stable, no violations.",
+  "story": "ChartFlag/Settings",
+  "tags": [
+    "chartflag"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": {
+        "pane": 0,
+        "symbol": "SPY"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "args": {
+        "pane": 0,
+        "flag": "ShowPrevClose",
+        "value": true
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "fps_above": 5
+        },
+        {
+          "no_active_violations": true
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

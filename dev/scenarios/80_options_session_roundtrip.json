@@ -1,6 +1,7 @@
 {
   "name": "options_session_roundtrip",
   "description": "Full session: reset, 2-col layout, pane 0 Chart AAPL+RSI, pane 1 OptionsSentiment SPY, design audit, reset.",
+  "story": "UserJourney/OptionsPanel",
   "tags": ["options", "session"],
   "settle_ms": 50,
   "abort_on_failure": false,

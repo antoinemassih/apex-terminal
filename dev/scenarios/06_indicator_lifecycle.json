@@ -1,6 +1,7 @@
 {
   "name": "indicator_lifecycle",
   "description": "Add an RSI indicator to the active pane, verify indicator count, then remove it.",
+  "story": "UX/Indicators",
   "tags": ["smoke", "indicators"],
   "settle_ms": 0,
   "abort_on_failure": true,

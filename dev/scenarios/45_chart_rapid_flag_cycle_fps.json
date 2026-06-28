@@ -1,6 +1,7 @@
 {
   "name": "chart_rapid_flag_cycle_fps",
   "description": "Rapidly toggle 6 flags in succession and check FPS stays above 5 throughout.",
+  "story": "Chart/Settings",
   "tags": ["chart", "flags", "fps"],
   "settle_ms": 50,
   "abort_on_failure": false,

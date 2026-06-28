@@ -1,0 +1,18 @@
+{
+  "name": "canvas_indicator_multi_pane",
+  "description": "Indicators are isolated per pane — pane 0 indicator not visible on pane 1",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": ["canvas", "indicators", "pane"],
+  "steps": [
+    {"action": "reset"},
+    {"action": "cmd", "cmd": "HeadlessLayout", "cols": 2},
+    {"action": "wait", "ms": 50},
+    {"action": "cmd", "cmd": "SetIndicatorOutput", "pane": 0, "kind": "RSI", "value": 72.0},
+    {"action": "wait", "ms": 30},
+    {"action": "assert", "assertions": [
+      {"canvas_pane_count_equals": 2},
+      {"canvas_indicator_value_in_range": {"pane": 0, "kind": "RSI", "min": 70.0, "max": 80.0}}
+    ]}
+  ]
+}

@@ -1,6 +1,7 @@
 {
   "name": "chart_auto_scale_toggle",
   "description": "Toggle AutoScale off then on, verify no violations and stable FPS after each change.",
+  "story": "Chart/Settings",
   "tags": ["chart", "flags"],
   "settle_ms": 50,
   "abort_on_failure": false,

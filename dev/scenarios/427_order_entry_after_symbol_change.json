@@ -1,0 +1,30 @@
+{
+  "name": "order_entry_after_symbol_change",
+  "description": "Open the order entry dialog, change the active symbol to TSLA, assert the dialog remains open, then close it.",
+  "story": "OrderEntry/Stability",
+  "tags": ["order_entry", "symbol", "dialog"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Opening order entry" },
+    { "action": "cmd", "cmd": "OpenOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "dialog_open": "order_entry" }] },
+    { "action": "log", "message": "Swapping pane 0 symbol to TSLA while dialog is open" },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "TSLA" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "dialog_open": "order_entry" },
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "log", "message": "Closing order entry" },
+    { "action": "cmd", "cmd": "CloseOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "no_open_dialogs": true }] },
+    { "action": "reset" }
+  ]
+}

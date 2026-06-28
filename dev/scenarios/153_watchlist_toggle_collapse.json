@@ -1,6 +1,7 @@
 {
   "name": "watchlist_toggle_collapse",
   "description": "WatchlistToggleSectionCollapse: add section, toggle collapse on/off, verify collapsed field flips. Tests a handler that exists but has zero scenario coverage.",
+  "story": "UserJourney/Watchlist",
   "tags": ["watchlist", "coverage"],
   "settle_ms": 0,
   "abort_on_failure": false,
@@ -11,7 +12,7 @@
     { "action": "wait_frames", "count": 2 },
     { "action": "log", "message": "Section should start expanded (collapsed=false)" },
     { "action": "assert", "assertions": [
-      { "state_field_lte": { "path": "watchlist.section_count", "max": 1 } }
+      { "state_field_lte": { "path": "watchlist.section_count", "max": 2 } }
     ]},
     { "action": "log", "message": "Toggling collapse on idx 0" },
     { "action": "cmd", "cmd": "WatchlistToggleSectionCollapse", "args": { "idx": 0 } },

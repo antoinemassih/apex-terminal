@@ -1,6 +1,7 @@
 {
   "name": "indicator_stack_lifecycle",
   "description": "User story: as a technical analyst I layer RSI+MACD+SMA on the same chart and expect each to register without FPS degradation. Then I remove them in sequence to verify teardown.",
+  "story": "UX/Indicators",
   "tags": ["indicators", "lifecycle", "fps"],
   "settle_ms": 80,
   "abort_on_failure": false,

@@ -1,0 +1,15 @@
+{
+  "name": "canvas_pane_viewport_density",
+  "description": "Verify viewport pixel density fields are positive after reset",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": ["canvas", "viewport", "coordinates"],
+  "steps": [
+    {"action": "reset"},
+    {"action": "wait", "ms": 30},
+    {"action": "assert", "assertions": [
+      {"canvas_viewport_px_per_bar_gte": {"pane": 0, "min": 0.1}},
+      {"canvas_viewport_price_contains": {"pane": 0, "price": 450.0}}
+    ]}
+  ]
+}

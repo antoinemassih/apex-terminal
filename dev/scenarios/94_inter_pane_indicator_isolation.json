@@ -1,6 +1,7 @@
 {
   "name": "94_inter_pane_indicator_isolation",
   "description": "Quad layout: add RSI only to pane0, verify it does not bleed to other panes, then add MACD exclusively to pane1. Confirms per-pane indicator isolation.",
+  "story": "Layout/Panes",
   "tags": ["inter-pane", "indicators"],
   "settle_ms": 50,
   "abort_on_failure": false,

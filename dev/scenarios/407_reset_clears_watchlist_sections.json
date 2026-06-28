@@ -1,0 +1,32 @@
+{
+  "name": "reset_clears_watchlist_sections",
+  "description": "Add 4 watchlist sections on top of the default, reaching count 5. Reset. Assert count returns to 1 (default Stocks section).",
+  "story": "Reset/Integrity",
+  "tags": ["reset", "watchlist", "integrity"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "A" } },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "B" } },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "C" } },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "D" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "watchlist_section_count_equals": 5 }
+      ]
+    },
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "watchlist_section_count_equals": 1 },
+        { "fps_above": 5.0 }
+      ]
+    }
+  ]
+}

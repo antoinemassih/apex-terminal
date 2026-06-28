@@ -1,0 +1,35 @@
+{
+  "name": "story_chart_regression",
+  "description": "User story: as a trader I expect the chart to maintain correct symbol+timeframe state after rapid switches. Captures baseline, applies mutations, verifies consistency.",
+  "story": "Regression/Chart",
+  "priority": 1,
+  "tags": ["story", "regression", "chart"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "capture", "path": "panes.0.symbol",   "as": "baseline_sym" },
+    { "action": "capture", "path": "panes.0.timeframe", "as": "baseline_tf" },
+    {
+      "action": "for_each",
+      "var": "sym",
+      "items": ["QQQ", "NVDA", "AAPL", "SPY"],
+      "steps": [
+        { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "{{sym}}" } },
+        { "action": "wait_frames", "count": 2 },
+        { "action": "assert", "assertions": [{ "state_field_not_null": "active_symbol" }] }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_symbol_equals": "SPY" },
+        { "pane_count_equals": 1 },
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

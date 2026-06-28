@@ -1,0 +1,47 @@
+{
+  "name": "canvas_viewport_boundary_low",
+  "description": "Price just above low boundary is inside the viewport",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "viewport"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetViewport",
+      "pane": 0,
+      "price_low": 400,
+      "price_high": 500
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_viewport_price_contains": {
+            "pane": 0,
+            "price": 401
+          }
+        },
+        {
+          "canvas_viewport_price_contains": {
+            "pane": 0,
+            "price": 450
+          }
+        }
+      ]
+    }
+  ]
+}

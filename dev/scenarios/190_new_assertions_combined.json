@@ -1,0 +1,36 @@
+{
+  "name": "new_assertions_combined",
+  "description": "Exercises all 6 new assertion types in a single scenario: annotation_id_exists, watchlist_section_title_equals, open_dialog_count_equals, captures_equal, state_field_contains, state_field_not_null.",
+  "story": "Assertions/Combined",
+  "priority": 1,
+  "tags": ["extension", "assertions", "coverage"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "annotate", "clear": true },
+    {
+      "action": "annotate",
+      "annotations": [
+        { "id": "combined.test", "rect": { "x": 10, "y": 10, "w": 50, "h": 50 }, "label": "Test", "color": [200,200,200,100], "border_only": false }
+      ]
+    },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Coverage Test" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "capture", "path": "active_symbol", "as": "sym_check" },
+    {
+      "action": "assert",
+      "assertions": [
+        { "annotation_id_exists": "combined.test" },
+        { "watchlist_section_title_equals": { "idx": 1, "title": "Coverage Test" } },
+        { "open_dialog_count_equals": 0 },
+        { "captures_equal": { "key": "sym_check", "equals": "SPY" } },
+        { "state_field_contains": { "path": "active_symbol", "contains": "S" } },
+        { "state_field_not_null": "pane_count" }
+      ]
+    },
+    { "action": "annotate", "clear": true },
+    { "action": "reset" }
+  ]
+}

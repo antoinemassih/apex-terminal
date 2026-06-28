@@ -1,0 +1,44 @@
+{
+  "name": "story_usability_watchlist",
+  "description": "User story: watchlist usability — build 3 sections via for_each, collapse middle one, assert collapsed state, switch active section, verify title assertions.",
+  "story": "UserJourney/Usability",
+  "priority": 1,
+  "tags": ["story", "usability", "watchlist"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "for_each",
+      "var": "sec",
+      "items": ["Morning Movers", "Day Trades", "Swing Plays"],
+      "steps": [
+        { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "{{sec}}" } },
+        { "action": "wait_frames", "count": 1 }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "watchlist_section_count_equals": 4 },
+        { "watchlist_section_title_equals": { "idx": 1, "title": "Morning Movers" } },
+        { "watchlist_section_title_equals": { "idx": 2, "title": "Day Trades" } },
+        { "watchlist_section_title_equals": { "idx": 3, "title": "Swing Plays" } }
+      ]
+    },
+    { "action": "cmd", "cmd": "WatchlistToggleSectionCollapse", "args": { "idx": 2 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "WatchlistSwitchActive", "args": { "idx": 3 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "capture", "path": "watchlist.active_idx", "as": "active_section" },
+    {
+      "action": "assert",
+      "assertions": [
+        { "captures_equal": { "key": "active_section", "equals": 3 } },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

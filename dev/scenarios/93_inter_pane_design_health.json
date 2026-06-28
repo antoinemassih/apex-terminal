@@ -1,6 +1,7 @@
 {
   "name": "93_inter_pane_design_health",
   "description": "TwoColumns with indicators on both panes, then run full design health audit: no_clipped_widgets, no_active_violations, all_touch_targets_ok.",
+  "story": "Layout/Panes",
   "tags": ["inter-pane", "design"],
   "settle_ms": 50,
   "abort_on_failure": false,

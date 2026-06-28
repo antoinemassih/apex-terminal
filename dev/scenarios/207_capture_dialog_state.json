@@ -1,0 +1,30 @@
+{
+  "name": "capture_dialog_state",
+  "description": "Capture open_dialogs array at key points, use state_field_array_contains and state_field_length_equals to verify transitions. Exercises captures + new state assertions together.",
+  "story": "Captures/DialogState",
+  "priority": 1,
+  "tags": ["captures", "dialogs", "assertions", "story"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "capture", "path": "open_dialogs", "as": "dialogs_before" },
+    { "action": "assert", "assertions": [{ "captures_equal": { "key": "dialogs_before", "equals": [] } }] },
+    { "action": "cmd", "cmd": "OpenOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "capture", "path": "open_dialogs", "as": "dialogs_after" },
+    {
+      "action": "assert",
+      "assertions": [
+        { "state_field_length_equals": { "path": "open_dialogs", "length": 1 } },
+        { "state_field_array_contains": { "path": "open_dialogs", "value": "order_entry" } }
+      ]
+    },
+    { "action": "cmd", "cmd": "CloseAllDialogs", "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "capture", "path": "open_dialogs", "as": "dialogs_closed" },
+    { "action": "assert", "assertions": [{ "captures_equal": { "key": "dialogs_closed", "equals": [] } }] },
+    { "action": "reset" }
+  ]
+}

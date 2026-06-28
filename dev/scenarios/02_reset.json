@@ -1,6 +1,7 @@
 {
   "name": "reset",
   "description": "Verify POST /reset restores the app to a known clean baseline state.",
+  "story": "Baseline/Health",
   "tags": ["smoke", "reset"],
   "settle_ms": 0,
   "abort_on_failure": true,

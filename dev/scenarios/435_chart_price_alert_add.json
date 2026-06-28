@@ -1,0 +1,23 @@
+{
+  "name": "chart_price_alert_add",
+  "description": "Add a price alert on pane 0 via AddPriceAlert, assert fps remains stable and no violations occur.",
+  "story": "ChartPane/PriceAlerts",
+  "tags": ["chart", "alert", "smoke"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "log", "message": "Adding price alert at 500.0 on pane 0" },
+    { "action": "cmd", "cmd": "AddPriceAlert", "args": { "pane": 0, "price": 500.0, "above": true } },
+    { "action": "wait_frames", "count": 4 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "reset" }
+  ]
+}

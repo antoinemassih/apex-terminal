@@ -1,6 +1,7 @@
 {
   "name": "108_qoe_fps_5_indicators",
   "description": "Load 5 indicators (RSI+MACD+VWAP+BB+ATR) on a single chart pane and assert fps_above 5.0, testing the mid-tier indicator render cost.",
+  "story": "QoE/Full",
   "tags": ["qoe", "fps", "indicators"],
   "settle_ms": 50,
   "abort_on_failure": false,

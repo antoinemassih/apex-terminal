@@ -1,6 +1,7 @@
 {
   "name": "115_qoe_watchlist_build_and_clear",
   "description": "Create a named watchlist, populate it with 10 symbols, add two section separators, assert no_clipped_widgets, then delete the watchlist to verify full lifecycle without UI corruption.",
+  "story": "QoE/Full",
   "tags": ["qoe", "watchlist"],
   "settle_ms": 50,
   "abort_on_failure": false,

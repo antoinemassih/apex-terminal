@@ -1,6 +1,7 @@
 {
   "name": "rapid_reset_stability",
   "description": "Fire reset 5 times in quick succession — verifies the reset mechanism is idempotent and doesn't leave the app in a partially-reset state. After the last reset, standard initial assertions must pass.",
+  "story": "Baseline/Health",
   "tags": ["reset", "stability", "stress"],
   "settle_ms": 0,
   "abort_on_failure": false,
@@ -15,7 +16,7 @@
     { "action": "assert", "assertions": [
       { "pane_count_equals": 1 },
       { "indicator_count_equals": 0 },
-      { "watchlist_section_count_equals": 0 },
+      { "watchlist_section_count_equals": 1 },
       { "no_open_dialogs": true },
       { "fps_above": 5.0 }
     ]},

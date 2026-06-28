@@ -1,0 +1,28 @@
+{
+  "name": "escape_key_clears_all",
+  "description": "Open multiple dialogs then press Escape; verify all are closed. Tests headless Escape key handling.",
+  "story": "Dialogs/EscapeHandling",
+  "priority": 1,
+  "tags": ["dialogs", "input", "escape", "story"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "OpenOrderEntry",      "args": {} },
+    { "action": "cmd", "cmd": "OpenIndicatorEditor", "args": { "pane": 0, "id": 1 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "open_dialog_count_equals": 2 }] },
+    { "action": "key_sequence", "keys": ["Escape"], "delay_ms": 20 },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "open_dialog_count_equals": 0 },
+        { "no_open_dialogs": true },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

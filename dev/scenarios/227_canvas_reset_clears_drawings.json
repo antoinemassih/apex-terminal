@@ -1,0 +1,25 @@
+{
+  "name": "canvas_reset_clears_drawings",
+  "description": "Reset must clear all canvas drawings to zero",
+  "story": "Canvas Introspection",
+  "priority": 1,
+  "tags": ["canvas", "drawings", "smoke"],
+  "steps": [
+    {"action": "reset"},
+    {"action": "wait", "ms": 30},
+    {"action": "cmd", "cmd": "AddDrawing", "pane": 0,
+     "id": "tmp1", "kind": "HorizLine", "price_a": 455.0},
+    {"action": "cmd", "cmd": "AddDrawing", "pane": 0,
+     "id": "tmp2", "kind": "HorizLine", "price_a": 460.0},
+    {"action": "wait", "ms": 30},
+    {"action": "assert", "assertions": [
+      {"canvas_drawing_count_equals": {"pane": 0, "count": 2}}
+    ]},
+    {"action": "reset"},
+    {"action": "wait", "ms": 50},
+    {"action": "assert", "assertions": [
+      {"canvas_no_drawings":          {"pane": 0}},
+      {"canvas_drawing_count_equals": {"pane": 0, "count": 0}}
+    ]}
+  ]
+}

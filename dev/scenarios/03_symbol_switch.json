@@ -1,6 +1,7 @@
 {
   "name": "symbol_switch",
   "description": "Switch the active pane symbol via AppCommand and verify state updates.",
+  "story": "Baseline/Health",
   "tags": ["smoke", "commands"],
   "settle_ms": 0,
   "abort_on_failure": true,

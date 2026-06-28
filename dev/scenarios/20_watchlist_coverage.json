@@ -1,6 +1,7 @@
 {
   "name": "watchlist_coverage",
   "description": "Add enough symbols to fill the watchlist panel, verify section headers and item rows are recorded in the widget tree and no clipping violations exist. Core coverage test for the styling sprint.",
+  "story": "UserJourney/Watchlist",
   "tags": ["watchlist", "design", "coverage"],
   "settle_ms": 50,
   "abort_on_failure": false,

@@ -1,0 +1,58 @@
+{
+  "name": "dialog_reset_closes_all",
+  "description": "Open order_entry dialog then reset: no dialogs remain open.",
+  "story": "Dialog/Lifecycle",
+  "tags": [
+    "dialog",
+    "reset"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "OpenOrderEntry",
+      "args": {}
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "dialog_open": "order_entry"
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_open_dialogs": true
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

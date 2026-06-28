@@ -1,0 +1,31 @@
+{
+  "name": "rapid_symbol_swap",
+  "description": "Loop 10 times swapping between AAPL and SPY on pane 0 (20 total swaps). After loop, assert OHLC valid and FPS acceptable.",
+  "story": "StressTest/Mutations",
+  "tags": ["stress-test", "symbol-swap", "rapid", "loop"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "loop",
+      "count": 10,
+      "steps": [
+        { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+        { "action": "wait_frames", "count": 1 },
+        { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+        { "action": "wait_frames", "count": 1 }
+      ]
+    },
+    { "action": "wait_frames", "count": 5 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "canvas_bar_ohlc_valid": { "pane": 0 } },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

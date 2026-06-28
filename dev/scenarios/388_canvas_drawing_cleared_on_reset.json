@@ -1,0 +1,69 @@
+{
+  "name": "canvas_drawing_cleared_on_reset",
+  "description": "Drawings added before reset are gone after reset.",
+  "story": "Canvas/Integrity",
+  "tags": [
+    "canvas",
+    "drawings",
+    "reset"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "args": {
+        "pane": 0,
+        "id": "pre_reset",
+        "kind": "HorizLine",
+        "price_a": 400
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_drawing_exists": {
+            "pane": 0,
+            "id": "pre_reset"
+          }
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_no_drawings": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

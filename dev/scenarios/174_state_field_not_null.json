@@ -1,0 +1,30 @@
+{
+  "name": "state_field_not_null",
+  "description": "Exercises state_field_not_null assertion: verifies key top-level state fields are populated after reset. Also verifies missing path is null (expect_fail).",
+  "story": "Assertions/NotNull",
+  "priority": 2,
+  "tags": ["extension", "assertions"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "state_field_not_null": "active_symbol" },
+        { "state_field_not_null": "pane_count" },
+        { "state_field_not_null": "active_pane" },
+        { "state_field_not_null": { "path": "watchlist" } }
+      ]
+    },
+    {
+      "action": "assert",
+      "expect_fail": true,
+      "assertions": [
+        { "state_field_not_null": "nonexistent_field_xyz" }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

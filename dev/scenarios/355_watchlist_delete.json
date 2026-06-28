@@ -1,0 +1,69 @@
+{
+  "name": "watchlist_delete",
+  "description": "Create a watchlist then delete it; active_idx returns to 0.",
+  "story": "Watchlist/CRUD",
+  "tags": [
+    "watchlist"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistCreate",
+      "args": {
+        "name": "Deletable"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistSwitchActive",
+      "args": {
+        "idx": 1
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistDelete",
+      "args": {
+        "idx": 1
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "watchlist.active_idx",
+            "value": 0
+          }
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

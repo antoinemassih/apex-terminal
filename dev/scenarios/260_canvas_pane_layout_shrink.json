@@ -1,0 +1,66 @@
+{
+  "name": "canvas_pane_layout_shrink",
+  "description": "Pane count shrinks correctly as layout reduces 4→2→1",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "pane"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "cmd",
+      "cmd": "HeadlessLayout",
+      "cols": 4
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_pane_count_equals": 4
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "HeadlessLayout",
+      "cols": 2
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_pane_count_equals": 2
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "HeadlessLayout",
+      "cols": 1
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_pane_count_equals": 1
+        }
+      ]
+    }
+  ]
+}

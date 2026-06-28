@@ -1,6 +1,7 @@
 {
   "name": "119_qoe_annotations_smoke",
   "description": "Smoke test the annotation overlay system: annotate toolbar zone with a rect, wait for render, assert FPS, then clear all annotations to verify clean teardown.",
+  "story": "QoE/Full",
   "tags": ["qoe", "annotations"],
   "settle_ms": 50,
   "abort_on_failure": false,

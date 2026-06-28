@@ -1,0 +1,18 @@
+{
+  "name": "canvas_initial_state",
+  "description": "Canvas endpoint returns valid pane data after reset",
+  "story": "Canvas Introspection",
+  "priority": 1,
+  "tags": ["canvas", "smoke"],
+  "steps": [
+    {"action": "reset"},
+    {"action": "wait", "ms": 50},
+    {"action": "assert", "assertions": [
+      {"canvas_pane_count_equals": 1},
+      {"canvas_no_drawings": {"pane": 0}},
+      {"canvas_viewport_price_contains": {"pane": 0, "price": 450.0}},
+      {"canvas_visible_bar_count_gte": {"pane": 0, "min": 1}},
+      {"canvas_bar_ohlc_valid": {"pane": 0}}
+    ]}
+  ]
+}

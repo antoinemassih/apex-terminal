@@ -1,0 +1,22 @@
+{
+  "name": "include_shared_steps",
+  "description": "Exercises the include step: inlines the steps from 163_rapid_reset_stability.json and verifies clean state afterward.",
+  "story": "Infrastructure/Include",
+  "priority": 2,
+  "tags": ["include", "extension"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "include", "file": "163_rapid_reset_stability.json" },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_count_equals": 1 },
+        { "no_open_dialogs": true },
+        { "fps_above": 5.0 }
+      ]
+    }
+  ]
+}

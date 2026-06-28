@@ -1,0 +1,83 @@
+{
+  "name": "canvas_clear_drawings_cmd",
+  "description": "ClearDrawings command removes all drawings at once",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "drawings"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "a",
+      "kind": "HorizLine",
+      "price_a": 430
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "b",
+      "kind": "HorizLine",
+      "price_a": 440
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "c",
+      "kind": "HorizLine",
+      "price_a": 450
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_drawing_count_equals": {
+            "pane": 0,
+            "count": 3
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "ClearDrawings",
+      "pane": 0
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_no_drawings": {
+            "pane": 0
+          }
+        },
+        {
+          "canvas_drawing_count_equals": {
+            "pane": 0,
+            "count": 0
+          }
+        }
+      ]
+    }
+  ]
+}

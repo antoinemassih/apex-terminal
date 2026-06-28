@@ -1,0 +1,47 @@
+{
+  "name": "canvas_viewport_narrow",
+  "description": "Narrow viewport [449.5, 450.5] contains mid price",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "viewport"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetViewport",
+      "pane": 0,
+      "price_low": 449.5,
+      "price_high": 450.5
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_viewport_price_contains": {
+            "pane": 0,
+            "price": 450
+          }
+        },
+        {
+          "canvas_viewport_px_per_bar_gte": {
+            "pane": 0,
+            "min": 1
+          }
+        }
+      ]
+    }
+  ]
+}

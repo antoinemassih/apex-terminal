@@ -1,0 +1,31 @@
+{
+  "name": "for_each_watchlist_sections",
+  "description": "Uses for_each to add 5 watchlist sections with unique names, then asserts total count and title at each index.",
+  "story": "Watchlist/Matrix",
+  "priority": 2,
+  "tags": ["for_each", "extension", "watchlist"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "for_each",
+      "var": "title",
+      "items": ["Alpha", "Beta", "Gamma", "Delta", "Epsilon"],
+      "steps": [
+        { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "{{title}}" } },
+        { "action": "wait_frames", "count": 1 }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "watchlist_section_count_equals": 6 },
+        { "watchlist_section_title_equals": { "idx": 1, "title": "Alpha" } },
+        { "watchlist_section_title_equals": { "idx": 5, "title": "Epsilon" } }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

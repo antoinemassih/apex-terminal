@@ -1,0 +1,27 @@
+{
+  "name": "two_pane_ohlc_independence",
+  "description": "Two panes with different symbols (SPY and QQQ). Assert OHLC bars are independently valid on each pane and symbols match.",
+  "story": "MultiPane/Canvas",
+  "tags": ["multi-pane", "ohlc", "canvas", "independence"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 1, "symbol": "QQQ" } },
+    { "action": "wait_frames", "count": 5 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "canvas_bar_ohlc_valid": { "pane": 0 } },
+        { "canvas_bar_ohlc_valid": { "pane": 1 } },
+        { "pane_symbol_equals": { "pane": 0, "symbol": "SPY" } },
+        { "pane_symbol_equals": { "pane": 1, "symbol": "QQQ" } },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

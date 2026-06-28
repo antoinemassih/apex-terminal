@@ -1,0 +1,27 @@
+{
+  "name": "expect_fail_bad_assert",
+  "description": "Exercises expect_fail: a deliberately failing assertion (fps_above 99999) is expected to fail — the scenario passes because the failure is anticipated.",
+  "story": "ErrorHandling/NegativeTest",
+  "priority": 2,
+  "tags": ["expect_fail", "extension", "negative"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "expect_fail": true,
+      "assertions": [
+        { "fps_above": 99999.0 }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

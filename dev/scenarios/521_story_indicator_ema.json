@@ -1,0 +1,99 @@
+{
+  "name": "story_indicator_ema",
+  "description": "Trader adds the EMA indicator and it computes a finite, sane series.",
+  "story": "Chart/Indicators",
+  "tags": [
+    "story",
+    "indicator",
+    "chart",
+    "invariants"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "AAPL"
+    },
+    {
+      "action": "wait",
+      "ms": 600
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "EMA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "cmd",
+      "cmd": "RecomputeIndicators",
+      "pane": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "log",
+      "message": "indicator EMA"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "EMA"
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5.0
+        },
+        {
+          "canvas_bars_within_pane": {
+            "pane": 0
+          }
+        }
+      ]
+    }
+  ]
+}

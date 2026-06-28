@@ -1,6 +1,7 @@
 {
   "name": "layout_regression",
   "description": "Save a baseline widget-tree snapshot after reset, then verify a symbol switch doesn't break state or fps.",
+  "story": "Layout/Panes",
   "tags": ["design", "regression", "layout"],
   "settle_ms": 0,
   "abort_on_failure": false,

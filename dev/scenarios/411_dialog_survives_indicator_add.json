@@ -1,0 +1,32 @@
+{
+  "name": "dialog_survives_indicator_add",
+  "description": "Open orders_panel. Add RSI indicator. Assert orders_panel remains open and indicator count updated to 1.",
+  "story": "Dialog/Persistence",
+  "tags": ["dialogs", "persistence", "indicators"],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "OpenOrdersPanel", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "dialog_open": "orders_panel" }
+      ]
+    },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "dialog_open": "orders_panel" },
+        { "indicator_count_equals": { "pane": 0, "count": 1 } },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "cmd", "cmd": "CloseOrdersPanel", "args": {} },
+    { "action": "reset" }
+  ]
+}

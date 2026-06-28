@@ -46,3 +46,7 @@ apex-native/target/
 # (per Wave 7B notes) and intentionally not listed here.
 src-tauri/binaries/ococo-api-aarch64-apple-darwin
 src-tauri/binaries/ococo-api-x86_64-unknown-linux-gnu
+
+# dev-inspector generated artifacts
+dev/bug_report.json
+dev/bug_report.md

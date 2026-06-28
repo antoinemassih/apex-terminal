@@ -1,0 +1,30 @@
+{
+  "name": "escape_key_closes_dialogs",
+  "description": "Open settings dialog. Send Escape key via key_sequence. Assert settings dialog is closed afterward.",
+  "story": "Dialog/Lifecycle",
+  "tags": ["dialogs", "lifecycle", "keyboard", "escape"],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "OpenSettings", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "dialog_open": "settings" }
+      ]
+    },
+    { "action": "key_sequence", "keys": ["Escape"] },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "no_open_dialogs": true },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "name": "retry_with_dialog_assert",
+  "description": "Open a dialog, then use retry block to assert dialog state — exercises retry + dialog assertions together. Also verifies retry succeeds on first attempt (stable system).",
+  "story": "Robustness/RetryDialogAssert",
+  "priority": 2,
+  "tags": ["retry", "dialogs", "robustness", "story"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "OpenOrderEntry", "args": {} },
+    { "action": "cmd", "cmd": "OpenSettings",   "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "retry",
+      "max_attempts": 3,
+      "delay_ms": 30,
+      "steps": [
+        {
+          "action": "assert",
+          "assertions": [
+            { "open_dialog_count_equals": 2 },
+            { "state_field_array_contains": { "path": "open_dialogs", "value": "order_entry" } },
+            { "state_field_array_contains": { "path": "open_dialogs", "value": "settings" } },
+            { "fps_above": 5.0 }
+          ]
+        }
+      ]
+    },
+    { "action": "cmd", "cmd": "CloseSettings",   "args": {} },
+    { "action": "wait_frames", "count": 1 },
+    {
+      "action": "retry",
+      "max_attempts": 2,
+      "delay_ms": 20,
+      "steps": [
+        {
+          "action": "assert",
+          "assertions": [
+            { "open_dialog_count_equals": 1 },
+            { "dialog_open": "order_entry" },
+            { "dialog_closed": "settings" }
+          ]
+        }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

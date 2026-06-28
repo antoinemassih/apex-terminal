@@ -1,6 +1,7 @@
 {
   "name": "indicator_count_accuracy",
   "description": "Verifies AddIndicator and RemoveIndicator keep indicator_count accurate across add/remove cycles. Tests state consistency including saturating_sub at 0.",
+  "story": "UX/Indicators",
   "tags": ["state-mutation", "indicators", "accuracy"],
   "settle_ms": 0,
   "abort_on_failure": false,

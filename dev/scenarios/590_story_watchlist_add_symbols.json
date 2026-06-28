@@ -1,0 +1,77 @@
+{
+  "name": "story_watchlist_add_symbols",
+  "description": "Trader builds a watchlist of five symbols.",
+  "story": "Watchlist/CRUD",
+  "tags": [
+    "story",
+    "watchlist"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "SPY"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "QQQ"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "AAPL"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "NVDA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "TSLA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    }
+  ]
+}

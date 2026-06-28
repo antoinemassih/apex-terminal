@@ -1,6 +1,7 @@
 {
   "name": "116_qoe_snapshot_baseline",
   "description": "Capture a named baseline snapshot after reset, then swap to NVDA and assert FPS to confirm snapshot capture does not interfere with rendering.",
+  "story": "QoE/Full",
   "tags": ["qoe", "snapshot"],
   "settle_ms": 50,
   "abort_on_failure": false,

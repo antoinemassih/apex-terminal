@@ -1,0 +1,56 @@
+{
+  "name": "layout_single_no_clip",
+  "description": "Single pane layout with SPY: no clipped widgets, no violations.",
+  "story": "Layout/System",
+  "tags": [
+    "layout",
+    "design"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetLayout",
+      "args": {
+        "layout": "One"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": {
+        "pane": 0,
+        "symbol": "SPY"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 6
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_clipped_widgets": true
+        },
+        {
+          "no_active_violations": true
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

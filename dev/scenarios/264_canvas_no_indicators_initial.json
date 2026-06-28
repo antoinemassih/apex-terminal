@@ -1,0 +1,29 @@
+{
+  "name": "canvas_no_indicators_initial",
+  "description": "Fresh reset leaves no indicators on any pane",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "indicators"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 50
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_no_indicators": {
+            "pane": 0
+          }
+        }
+      ]
+    }
+  ]
+}

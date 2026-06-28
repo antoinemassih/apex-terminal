@@ -1,6 +1,7 @@
 {
   "name": "design_audit",
   "description": "Run a full design system audit: no contract violations, no fps drop, design-audit endpoint clean.",
+  "story": "Design/Quality",
   "tags": ["design", "ui", "audit"],
   "settle_ms": 50,
   "abort_on_failure": false,

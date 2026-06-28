@@ -1,0 +1,59 @@
+{
+  "name": "canvas_viewport_very_wide",
+  "description": "Very wide viewport [100, 900] contains prices across the full range",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "viewport"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetViewport",
+      "pane": 0,
+      "price_low": 100,
+      "price_high": 900
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_viewport_price_contains": {
+            "pane": 0,
+            "price": 200
+          }
+        },
+        {
+          "canvas_viewport_price_contains": {
+            "pane": 0,
+            "price": 500
+          }
+        },
+        {
+          "canvas_viewport_price_contains": {
+            "pane": 0,
+            "price": 800
+          }
+        },
+        {
+          "canvas_viewport_px_per_bar_gte": {
+            "pane": 0,
+            "min": 0.01
+          }
+        }
+      ]
+    }
+  ]
+}

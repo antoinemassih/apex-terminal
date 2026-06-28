@@ -1,0 +1,61 @@
+{
+  "name": "canvas_indicator_clear",
+  "description": "ClearIndicator removes the indicator; no_indicators passes afterwards",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "indicators"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetIndicatorOutput",
+      "pane": 0,
+      "kind": "SMA",
+      "value": 449
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "SMA"
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "ClearIndicator",
+      "pane": 0,
+      "kind": "SMA"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_no_indicators": {
+            "pane": 0
+          }
+        }
+      ]
+    }
+  ]
+}

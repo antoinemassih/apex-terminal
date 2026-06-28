@@ -1,6 +1,7 @@
 {
   "name": "101_qoe_clean_initial_state",
   "description": "Baseline QoE check: after reset verify the application starts in a fully clean state — single pane, no open dialogs, no violations, acceptable FPS, no clipped widgets.",
+  "story": "QoE/Full",
   "tags": ["qoe", "state"],
   "settle_ms": 50,
   "abort_on_failure": false,

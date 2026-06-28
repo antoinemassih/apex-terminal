@@ -1,6 +1,7 @@
 {
   "name": "chart_oscillators_visibility",
   "description": "Toggle ShowOscillators on and off, verifying FPS and no violations after each state.",
+  "story": "Chart/Settings",
   "tags": ["chart", "flags"],
   "settle_ms": 50,
   "abort_on_failure": false,

@@ -1,6 +1,7 @@
 {
   "name": "91_inter_pane_symbol_diversity",
   "description": "Quad layout with 4 fully distinct symbols (SPY/AAPL/TSLA/NVDA), verifying all panes render without conflicts or FPS drops.",
+  "story": "Layout/Panes",
   "tags": ["inter-pane", "symbol"],
   "settle_ms": 50,
   "abort_on_failure": false,

@@ -1,6 +1,7 @@
 {
   "name": "90_pane_expand_then_collapse",
   "description": "Single→Quad→Single layout cycle, checking FPS and pane counts at each transition to ensure no render pipeline disruption.",
+  "story": "Layout/Panes",
   "tags": ["pane", "layout", "fps"],
   "settle_ms": 50,
   "abort_on_failure": false,

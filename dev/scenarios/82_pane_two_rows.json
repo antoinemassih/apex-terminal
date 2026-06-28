@@ -1,6 +1,7 @@
 {
   "name": "82_pane_two_rows",
   "description": "Set TwoRows layout, assert pane count equals 2, assign AAPL 1h to pane 0 and MSFT 5m to pane 1, assert FPS.",
+  "story": "Layout/Panes",
   "tags": ["pane", "layout"],
   "settle_ms": 50,
   "abort_on_failure": false,

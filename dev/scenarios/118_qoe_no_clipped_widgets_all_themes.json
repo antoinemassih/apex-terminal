@@ -1,6 +1,7 @@
 {
   "name": "118_qoe_no_clipped_widgets_all_themes",
   "description": "Cycle through all 9 themes with a live chart, asserting no_clipped_widgets after each to verify that text and UI elements reflow correctly under every color scheme.",
+  "story": "QoE/Full",
   "tags": ["qoe", "theme", "design"],
   "settle_ms": 50,
   "abort_on_failure": false,

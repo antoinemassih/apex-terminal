@@ -1,6 +1,7 @@
 {
   "name": "step_annotate_actions",
   "description": "Tests the annotate step action: upsert 2 overlays, assert count, upsert a third, assert count, then clear all and assert zero.",
+  "story": "TestInfra/AssertEngine",
   "tags": ["step-actions", "annotate"],
   "settle_ms": 0,
   "abort_on_failure": false,

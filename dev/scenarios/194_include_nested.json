@@ -1,0 +1,23 @@
+{
+  "name": "include_nested",
+  "description": "Includes a scenario that itself uses multiple steps (02_reset.json), then verifies state is clean afterward. Tests include chaining.",
+  "story": "Infrastructure/Include",
+  "priority": 2,
+  "tags": ["include", "extension"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "NVDA" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "include", "file": "02_reset.json" },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_count_equals": 1 },
+        { "active_symbol_equals": "SPY" },
+        { "fps_above": 5.0 }
+      ]
+    }
+  ]
+}

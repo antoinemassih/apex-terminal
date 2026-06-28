@@ -1,6 +1,7 @@
 {
   "name": "83_pane_quad_layout",
   "description": "Set Quad layout, assert pane count equals 4, assign SPY/QQQ/AAPL/NVDA to panes 0-3, assert FPS.",
+  "story": "Layout/Panes",
   "tags": ["pane", "layout"],
   "settle_ms": 50,
   "abort_on_failure": false,

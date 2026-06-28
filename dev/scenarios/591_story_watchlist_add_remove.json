@@ -1,0 +1,56 @@
+{
+  "name": "story_watchlist_add_remove",
+  "description": "Trader adds then removes a watchlist symbol.",
+  "story": "Watchlist/CRUD",
+  "tags": [
+    "story",
+    "watchlist"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "AMD"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "symbol": "META"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistRemoveSymbol",
+      "symbol": "AMD"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

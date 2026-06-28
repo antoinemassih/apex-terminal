@@ -1,6 +1,7 @@
 {
   "name": "dialog_lifecycle",
   "description": "Open the indicator editor via AddIndicator, verify it is tracked as an open dialog, then close all dialogs and verify it is gone.",
+  "story": "UX/Dialogs",
   "tags": ["dialog", "indicator", "design"],
   "settle_ms": 50,
   "abort_on_failure": true,

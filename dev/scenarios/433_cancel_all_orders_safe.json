@@ -1,0 +1,22 @@
+{
+  "name": "cancel_all_orders_safe",
+  "description": "Send CancelAllOrders command (no-op when no live orders) and assert the app remains stable with fps above 5.",
+  "story": "OrderManagement/CancelFlow",
+  "tags": ["orders", "cancel", "safe"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Sending CancelAllOrders (safe no-op if no live orders)" },
+    { "action": "cmd", "cmd": "CancelAllOrders", "args": {} },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "no_open_dialogs": true }
+    ] },
+    { "action": "reset" }
+  ]
+}

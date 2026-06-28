@@ -1,6 +1,7 @@
 {
   "name": "86_pane_independent_indicators",
   "description": "Verify that indicators are pane-isolated in TwoColumns layout: add RSI to pane0, MACD to pane1, check indicator_count on each independently.",
+  "story": "Layout/Panes",
   "tags": ["pane", "indicators"],
   "settle_ms": 50,
   "abort_on_failure": false,

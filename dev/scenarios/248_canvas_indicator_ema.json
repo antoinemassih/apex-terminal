@@ -1,0 +1,49 @@
+{
+  "name": "canvas_indicator_ema",
+  "description": "EMA indicator output tracked independently",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "indicators"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetIndicatorOutput",
+      "pane": 0,
+      "kind": "EMA",
+      "value": 350
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_indicator_last_value_near": {
+            "pane": 0,
+            "kind": "EMA",
+            "value": 350,
+            "tolerance": 0.01
+          }
+        },
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "EMA"
+          }
+        }
+      ]
+    }
+  ]
+}

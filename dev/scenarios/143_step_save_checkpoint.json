@@ -1,6 +1,7 @@
 {
   "name": "step_save_checkpoint",
   "description": "Tests the save_checkpoint step action after building non-trivial state (symbol, timeframe, indicators).",
+  "story": "TestInfra/AssertEngine",
   "tags": ["step-actions", "checkpoint"],
   "settle_ms": 0,
   "abort_on_failure": false,

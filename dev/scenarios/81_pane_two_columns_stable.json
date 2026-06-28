@@ -1,6 +1,7 @@
 {
   "name": "81_pane_two_columns_stable",
   "description": "Set TwoColumns layout, assert pane count equals 2, assign distinct symbols to each pane, wait for stabilization, assert FPS.",
+  "story": "Layout/Panes",
   "tags": ["pane", "layout"],
   "settle_ms": 50,
   "abort_on_failure": false,

@@ -1,0 +1,65 @@
+{
+  "name": "watchlist_preserved_after_symbol_swap",
+  "description": "Watchlist section count is unaffected by SwapPaneSymbol.",
+  "story": "Watchlist/CRUD",
+  "tags": [
+    "watchlist",
+    "symbol"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSection",
+      "args": {
+        "title": "Keeper"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "watchlist_section_count_equals": 2
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": {
+        "pane": 0,
+        "symbol": "TSLA"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "watchlist_section_count_equals": 2
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

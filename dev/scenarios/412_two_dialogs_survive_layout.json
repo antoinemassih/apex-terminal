@@ -1,0 +1,36 @@
+{
+  "name": "two_dialogs_survive_layout",
+  "description": "Open settings and orders_panel simultaneously. Change layout to TwoColumns. Assert both dialogs remain open.",
+  "story": "Dialog/Persistence",
+  "tags": ["dialogs", "persistence", "layout", "multi-dialog"],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "OpenSettings", "args": {} },
+    { "action": "cmd", "cmd": "OpenOrdersPanel", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "open_dialog_count_equals": 2 },
+        { "dialog_open": "settings" },
+        { "dialog_open": "orders_panel" }
+      ]
+    },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "open_dialog_count_equals": 2 },
+        { "dialog_open": "settings" },
+        { "dialog_open": "orders_panel" },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "cmd", "cmd": "CloseAllDialogs", "args": {} },
+    { "action": "reset" }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "name": "watchlist_remove_section",
+  "description": "Add a section then remove it: section_count returns to 1.",
+  "story": "Watchlist/CRUD",
+  "tags": [
+    "watchlist",
+    "section"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSection",
+      "args": {
+        "title": "Temp Section"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "watchlist_section_count_equals": 2
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistRemoveSection",
+      "args": {
+        "idx": 1
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "watchlist_section_count_equals": 1
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "name": "canvas_indicator_atr",
+  "description": "ATR indicator reports primary value in valid range",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": ["canvas", "indicators"],
+  "steps": [
+    {"action": "reset"},
+    {"action": "wait", "ms": 30},
+    {"action": "cmd", "cmd": "SetIndicatorOutput", "pane": 0, "kind": "ATR", "value": 2.5},
+    {"action": "wait", "ms": 30},
+    {"action": "assert", "assertions": [
+      {"canvas_indicator_exists": {"pane": 0, "kind": "ATR"}},
+      {"canvas_indicator_value_in_range": {"pane": 0, "kind": "ATR", "min": 0, "max": 100}}
+    ]}
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "name": "canvas_indicator_count_two",
+  "description": "canvas_indicator_count_equals: 2 after setting two different kinds",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "indicators"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetIndicatorOutput",
+      "pane": 0,
+      "kind": "SMA",
+      "value": 449
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetIndicatorOutput",
+      "pane": 0,
+      "kind": "EMA",
+      "value": 447
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_indicator_count_equals": {
+            "pane": 0,
+            "count": 2
+          }
+        },
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "SMA"
+          }
+        },
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "EMA"
+          }
+        }
+      ]
+    }
+  ]
+}

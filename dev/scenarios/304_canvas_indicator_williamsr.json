@@ -1,0 +1,17 @@
+{
+  "name": "canvas_indicator_williamsr",
+  "description": "Williams %R reports negative value in -100 to 0 range",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": ["canvas", "indicators"],
+  "steps": [
+    {"action": "reset"},
+    {"action": "wait", "ms": 30},
+    {"action": "cmd", "cmd": "SetIndicatorOutput", "pane": 0, "kind": "WilliamsR", "value": -25},
+    {"action": "wait", "ms": 30},
+    {"action": "assert", "assertions": [
+      {"canvas_indicator_exists": {"pane": 0, "kind": "WilliamsR"}},
+      {"canvas_indicator_value_in_range": {"pane": 0, "kind": "WilliamsR", "min": -100, "max": 0}}
+    ]}
+  ]
+}

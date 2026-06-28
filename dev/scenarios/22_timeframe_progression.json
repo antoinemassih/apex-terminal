@@ -1,6 +1,7 @@
 {
   "name": "timeframe_progression",
   "description": "User story: as a chart analyst I step through timeframes from 1m to 1D to read multi-scale structure. Verifies state updates and FPS at each step.",
+  "story": "UX/SymbolNav",
   "tags": ["timeframe", "state", "fps"],
   "settle_ms": 50,
   "abort_on_failure": false,

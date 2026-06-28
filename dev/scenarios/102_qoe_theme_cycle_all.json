@@ -1,6 +1,7 @@
 {
   "name": "102_qoe_theme_cycle_all",
   "description": "Cycle through all 9 theme indices (0-8), asserting fps_above 5.0 after each switch to confirm theme repaints never block the render pipeline.",
+  "story": "QoE/Full",
   "tags": ["qoe", "theme"],
   "settle_ms": 50,
   "abort_on_failure": false,

@@ -1,0 +1,36 @@
+{
+  "name": "retry_with_delay",
+  "description": "Exercises retry with delay: wraps a symbol swap + assert into retry(3, 100ms). Tests that retry correctly loops and succeeds.",
+  "story": "Robustness/Retry",
+  "priority": 2,
+  "tags": ["retry", "extension"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "retry",
+      "max_attempts": 3,
+      "delay_ms": 100,
+      "steps": [
+        { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "MSFT" } },
+        { "action": "wait_frames", "count": 2 },
+        {
+          "action": "assert",
+          "assertions": [
+            { "active_symbol_equals": "MSFT" },
+            { "fps_above": 5.0 }
+          ]
+        }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_symbol_equals": "MSFT" }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

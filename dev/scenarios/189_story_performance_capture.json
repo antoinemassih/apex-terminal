@@ -1,0 +1,41 @@
+{
+  "name": "story_performance_capture",
+  "description": "User story: performance baseline — captures initial fps-bucket state, runs heavy indicator load, asserts fps holds, verifies no regressions from baseline pane count.",
+  "story": "Performance/Capture",
+  "priority": 1,
+  "tags": ["story", "performance", "captures"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "capture", "path": "pane_count",  "as": "baseline_panes" },
+    { "action": "capture", "path": "active_symbol", "as": "baseline_sym" },
+    {
+      "action": "cmd_batch",
+      "commands": [
+        { "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+        { "cmd": "AddIndicator", "args": { "pane": 0, "kind": "VWAP" } },
+        { "cmd": "AddIndicator", "args": { "pane": 0, "kind": "EMA" } },
+        { "cmd": "AddIndicator", "args": { "pane": 0, "kind": "MACD" } },
+        { "cmd": "AddIndicator", "args": { "pane": 0, "kind": "BB" } }
+      ]
+    },
+    { "action": "wait_frames", "count": 12 },
+    {
+      "action": "assert_metrics",
+      "fps_min": 5.0,
+      "frame_time_max_ms": 500.0
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "captures_equal": { "key": "baseline_panes", "equals": 1 } },
+        { "captures_equal": { "key": "baseline_sym",   "equals": "SPY" } },
+        { "fps_above": 5.0 },
+        { "indicator_count_equals": { "pane": 0, "count": 5 } }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

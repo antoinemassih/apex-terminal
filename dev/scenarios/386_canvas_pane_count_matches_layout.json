@@ -1,0 +1,83 @@
+{
+  "name": "canvas_pane_count_matches_layout",
+  "description": "Canvas pane count mirrors layout: 1→2→4 panes.",
+  "story": "Canvas/Integrity",
+  "tags": [
+    "canvas",
+    "layout"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetLayout",
+      "args": {
+        "layout": "One"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_pane_count_equals": 1
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetLayout",
+      "args": {
+        "layout": "TwoColumns"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_pane_count_equals": 2
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetLayout",
+      "args": {
+        "layout": "FourGrid"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_pane_count_equals": 4
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

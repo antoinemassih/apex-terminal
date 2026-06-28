@@ -1,6 +1,7 @@
 {
   "name": "input_injection",
   "description": "Inject keyboard and pointer inputs via the inspector API and verify the app responds without crashing.",
+  "story": "Baseline/Health",
   "tags": ["input", "interaction"],
   "settle_ms": 50,
   "abort_on_failure": false,

@@ -1,6 +1,7 @@
 {
   "name": "99_inter_pane_watchlist_multi_pane",
   "description": "TwoColumns layout, add 5 symbols to the watchlist while multi-pane is active, assert no_clipped_widgets to confirm watchlist panel renders without overflow.",
+  "story": "Layout/Panes",
   "tags": ["inter-pane", "watchlist"],
   "settle_ms": 50,
   "abort_on_failure": false,

@@ -1,0 +1,18 @@
+{
+  "name": "canvas_indicator_near",
+  "description": "Set indicator output and verify last_value_near with tight tolerance",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": ["canvas", "indicators"],
+  "steps": [
+    {"action": "reset"},
+    {"action": "wait", "ms": 30},
+    {"action": "cmd", "cmd": "SetIndicatorOutput", "pane": 0,
+     "kind": "SMA", "value": 453.25},
+    {"action": "wait", "ms": 30},
+    {"action": "assert", "assertions": [
+      {"canvas_indicator_last_value_near": {"pane": 0, "kind": "SMA", "value": 453.25, "tolerance": 0.01}},
+      {"canvas_indicator_last_value_near": {"pane": 0, "kind": "SMA", "value": 453.00, "tolerance": 0.50}}
+    ]}
+  ]
+}

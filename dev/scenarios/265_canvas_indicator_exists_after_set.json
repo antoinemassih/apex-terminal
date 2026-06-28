@@ -1,0 +1,47 @@
+{
+  "name": "canvas_indicator_exists_after_set",
+  "description": "canvas_indicator_exists is true immediately after SetIndicatorOutput",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "indicators"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetIndicatorOutput",
+      "pane": 0,
+      "kind": "SMA",
+      "value": 449
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "SMA"
+          }
+        },
+        {
+          "canvas_indicator_count_equals": {
+            "pane": 0,
+            "count": 1
+          }
+        }
+      ]
+    }
+  ]
+}

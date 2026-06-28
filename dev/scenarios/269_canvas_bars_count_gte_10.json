@@ -1,0 +1,30 @@
+{
+  "name": "canvas_bars_count_gte_10",
+  "description": "At least 10 bars visible in default headless state",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "bars"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_visible_bar_count_gte": {
+            "pane": 0,
+            "min": 10
+          }
+        }
+      ]
+    }
+  ]
+}

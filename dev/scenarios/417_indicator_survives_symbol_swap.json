@@ -1,0 +1,46 @@
+{
+  "name": "indicator_survives_symbol_swap",
+  "description": "Add RSI to pane 0. Swap symbol 3 times across different tickers. Assert indicator count remains 1 after each swap.",
+  "story": "PaneState/Preservation",
+  "tags": ["pane-state", "preservation", "indicators", "symbol-swap"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": { "pane": 0, "count": 1 } }
+      ]
+    },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": { "pane": 0, "count": 1 } }
+      ]
+    },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "MSFT" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": { "pane": 0, "count": 1 } }
+      ]
+    },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "SPY" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": { "pane": 0, "count": 1 } },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

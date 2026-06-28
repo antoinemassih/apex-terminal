@@ -1,0 +1,59 @@
+{
+  "name": "timeframe_1d",
+  "description": "Switch active pane to 1d timeframe, assert pane_timeframe_equals \"1d\".",
+  "story": "Timeframe/Switching",
+  "tags": [
+    "timeframe"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": {
+        "pane": 0,
+        "symbol": "SPY"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangeTimeframe",
+      "args": {
+        "pane": 0,
+        "tf": "1d"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 6
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_timeframe_equals": {
+            "pane": 0,
+            "tf": "1d"
+          }
+        },
+        {
+          "fps_above": 5
+        },
+        {
+          "no_active_violations": true
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

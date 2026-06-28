@@ -1,0 +1,78 @@
+{
+  "name": "panetype_two_pane_mixed",
+  "description": "TwoColumns layout: pane 0 = Chart, pane 1 = Portfolio. Assert each pane type independently.",
+  "story": "PaneType/Switching",
+  "tags": [
+    "pane",
+    "panetype",
+    "layout"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetLayout",
+      "args": {
+        "layout": "TwoColumns"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangePaneType",
+      "args": {
+        "pane": 0,
+        "kind": "Chart"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangePaneType",
+      "args": {
+        "pane": 1,
+        "kind": "Portfolio"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 6
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_type_equals": {
+            "pane": 0,
+            "type": "Chart"
+          }
+        },
+        {
+          "pane_type_equals": {
+            "pane": 1,
+            "type": "Portfolio"
+          }
+        },
+        {
+          "fps_above": 5
+        },
+        {
+          "no_active_violations": true
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

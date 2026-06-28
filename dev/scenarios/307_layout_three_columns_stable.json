@@ -1,0 +1,51 @@
+{
+  "name": "layout_three_columns_stable",
+  "description": "SetLayout ThreeColumns produces 3 panes with stable FPS and no violations.",
+  "story": "Layout/System",
+  "tags": [
+    "layout",
+    "pane"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetLayout",
+      "args": {
+        "layout": "ThreeColumns"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_count_equals": 3
+        },
+        {
+          "canvas_pane_count_equals": 3
+        },
+        {
+          "fps_above": 5
+        },
+        {
+          "no_active_violations": true
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

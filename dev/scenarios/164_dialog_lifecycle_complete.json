@@ -1,6 +1,7 @@
 {
   "name": "dialog_lifecycle_complete",
   "description": "Full dialog open/close lifecycle: open indicator editor on pane 0, verify dialog_open, close via CloseIndicatorEditor, verify dialog_closed. Then open and close via CloseAllDialogs.",
+  "story": "UX/Dialogs",
   "tags": ["dialogs", "state-mutation"],
   "settle_ms": 0,
   "abort_on_failure": false,

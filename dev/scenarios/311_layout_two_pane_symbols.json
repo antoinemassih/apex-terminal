@@ -1,0 +1,78 @@
+{
+  "name": "layout_two_pane_symbols",
+  "description": "TwoColumns layout with SPY on pane 0 and QQQ on pane 1 — assert per-pane symbol assignment.",
+  "story": "Layout/System",
+  "tags": [
+    "layout",
+    "pane",
+    "symbol"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetLayout",
+      "args": {
+        "layout": "TwoColumns"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": {
+        "pane": 0,
+        "symbol": "SPY"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": {
+        "pane": 1,
+        "symbol": "QQQ"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 6
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_symbol_equals": {
+            "pane": 0,
+            "symbol": "SPY"
+          }
+        },
+        {
+          "pane_symbol_equals": {
+            "pane": 1,
+            "symbol": "QQQ"
+          }
+        },
+        {
+          "fps_above": 5
+        },
+        {
+          "no_active_violations": true
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

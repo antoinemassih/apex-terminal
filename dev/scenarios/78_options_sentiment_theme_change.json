@@ -1,6 +1,7 @@
 {
   "name": "options_sentiment_theme_change",
   "description": "Switch to OptionsSentiment pane, cycle theme (idx 0 -> 4 -> 8), check FPS each step.",
+  "story": "UserJourney/OptionsPanel",
   "tags": ["options", "theme"],
   "settle_ms": 50,
   "abort_on_failure": false,

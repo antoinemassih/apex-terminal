@@ -1,0 +1,61 @@
+{
+  "name": "new_assertions_audit",
+  "description": "Comprehensive audit of all three new assertion types: state_field_length_equals, state_field_array_contains, state_field_equals — positive and negative (expect_fail) cases.",
+  "story": "Audit/NewAssertions",
+  "priority": 1,
+  "tags": ["audit", "assertions", "coverage", "story"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "log", "message": "Phase 1: state_field_equals" },
+    {
+      "action": "assert",
+      "assertions": [
+        { "state_field_equals": { "path": "active_symbol",   "value": "SPY" } },
+        { "state_field_equals": { "path": "active_timeframe","value": "5m" } },
+        { "state_field_equals": { "path": "pane_count",      "value": 1 } },
+        { "state_field_equals": { "path": "bar_count",       "value": 100 } }
+      ]
+    },
+    {
+      "action": "assert",
+      "expect_fail": true,
+      "assertions": [{ "state_field_equals": { "path": "active_symbol", "value": "WRONG" } }]
+    },
+    { "action": "log", "message": "Phase 2: state_field_length_equals" },
+    {
+      "action": "assert",
+      "assertions": [
+        { "state_field_length_equals": { "path": "panes",        "length": 1 } },
+        { "state_field_length_equals": { "path": "open_dialogs", "length": 0 } },
+        { "state_field_length_equals": { "path": "active_symbol","length": 3 } }
+      ]
+    },
+    {
+      "action": "assert",
+      "expect_fail": true,
+      "assertions": [{ "state_field_length_equals": { "path": "panes", "length": 99 } }]
+    },
+    { "action": "log", "message": "Phase 3: state_field_array_contains with dialogs" },
+    { "action": "cmd", "cmd": "OpenOrderEntry", "args": {} },
+    { "action": "cmd", "cmd": "OpenSettings",   "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "state_field_array_contains": { "path": "open_dialogs", "value": "order_entry" } },
+        { "state_field_array_contains": { "path": "open_dialogs", "value": "settings" } },
+        { "state_field_length_equals":  { "path": "open_dialogs", "length": 2 } }
+      ]
+    },
+    {
+      "action": "assert",
+      "expect_fail": true,
+      "assertions": [{ "state_field_array_contains": { "path": "open_dialogs", "value": "orders_panel" } }]
+    },
+    { "action": "log", "message": "All new assertion types verified" },
+    { "action": "reset" }
+  ]
+}

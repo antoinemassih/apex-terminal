@@ -1,0 +1,56 @@
+{
+  "name": "canvas_two_pane_drawing_isolation",
+  "description": "Drawing added to pane 0 does not appear on pane 1",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "drawings",
+    "pane"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "cmd",
+      "cmd": "HeadlessLayout",
+      "cols": 2
+    },
+    {
+      "action": "wait",
+      "ms": 50
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "pane0_line",
+      "kind": "HorizLine",
+      "price_a": 450
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_pane_count_equals": 2
+        },
+        {
+          "canvas_drawing_exists": {
+            "pane": 0,
+            "id": "pane0_line"
+          }
+        },
+        {
+          "canvas_no_drawings": {
+            "pane": 1
+          }
+        }
+      ]
+    }
+  ]
+}

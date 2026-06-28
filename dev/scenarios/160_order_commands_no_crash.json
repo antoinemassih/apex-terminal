@@ -1,6 +1,7 @@
 {
   "name": "order_commands_no_crash",
   "description": "CancelAllOrders, ClearOrderHistory, PlaceAllDraftOrders, PlaceAllDraftAlerts have no headless state mutation but must not crash. Zero coverage before this scenario.",
+  "story": "UserJourney/OrderEntry",
   "tags": ["orders", "smoke", "robustness"],
   "settle_ms": 0,
   "abort_on_failure": false,

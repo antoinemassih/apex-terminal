@@ -1,6 +1,7 @@
 {
   "name": "122_qoe_stress_all_flags",
   "description": "Toggle every known chart flag once in sequence on pane 0 (11 flags total), then assert fps_above 5.0 to confirm the flags pipeline causes no stall or violation.",
+  "story": "QoE/Full",
   "tags": ["qoe", "flags", "stress"],
   "settle_ms": 50,
   "abort_on_failure": false,

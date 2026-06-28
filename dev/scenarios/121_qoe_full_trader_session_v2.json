@@ -1,6 +1,7 @@
 {
   "name": "121_qoe_full_trader_session_v2",
   "description": "Realistic full trader session: load SPY 5m with RSI+VWAP, build a watchlist, switch to 2-col layout with NVDA, run design audit. End-to-end integration smoke test.",
+  "story": "QoE/Full",
   "tags": ["qoe", "session", "integration"],
   "settle_ms": 50,
   "abort_on_failure": false,

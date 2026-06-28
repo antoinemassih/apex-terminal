@@ -1,0 +1,65 @@
+{
+  "name": "story_watchlist_lists",
+  "description": "Trader creates multiple watchlists, switches and renames the active one.",
+  "story": "Watchlist/Lists",
+  "tags": [
+    "story",
+    "watchlist"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistCreate",
+      "name": "Swing"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistCreate",
+      "name": "Daytrade"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistSwitchActive",
+      "idx": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistRenameActive",
+      "name": "Core"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

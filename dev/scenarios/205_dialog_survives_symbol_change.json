@@ -1,0 +1,33 @@
+{
+  "name": "dialog_survives_symbol_change",
+  "description": "Verify that a dialog open on pane 0 remains open after swapping the pane's symbol. Dialog state should be independent of the symbol.",
+  "story": "Dialogs/Persistence",
+  "priority": 1,
+  "tags": ["dialogs", "symbol", "persistence", "story"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "OpenIndicatorEditor", "args": { "pane": 0, "id": 1 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "open_dialog_count_equals": 1 }, { "dialog_open": "indicator_editor" }] },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "QQQ" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "active_symbol_equals": "QQQ" },
+        { "open_dialog_count_equals": 1 },
+        { "dialog_open": "indicator_editor" }
+      ]
+    },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "active_symbol_equals": "AAPL" }, { "dialog_open": "indicator_editor" }] },
+    { "action": "cmd", "cmd": "CloseAllDialogs", "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "no_open_dialogs": true }] },
+    { "action": "reset" }
+  ]
+}

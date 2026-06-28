@@ -1,0 +1,51 @@
+{
+  "name": "layout_quad_stable",
+  "description": "SetLayout FourGrid produces 4 panes in a 2x2 grid with stable FPS.",
+  "story": "Layout/System",
+  "tags": [
+    "layout",
+    "pane"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetLayout",
+      "args": {
+        "layout": "FourGrid"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_count_equals": 4
+        },
+        {
+          "canvas_pane_count_equals": 4
+        },
+        {
+          "fps_above": 5
+        },
+        {
+          "no_active_violations": true
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

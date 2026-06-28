@@ -1,0 +1,48 @@
+{
+  "name": "state_field_new_assertions",
+  "description": "Exercise state_field_length_equals, state_field_array_contains, and state_field_equals across multiple state fields. Also tests expect_fail for all three.",
+  "story": "Assertions/StateFieldExtended",
+  "priority": 1,
+  "tags": ["assertions", "state", "coverage", "story"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "state_field_equals": { "path": "active_symbol", "value": "SPY" } },
+        { "state_field_equals": { "path": "pane_count",    "value": 1 } },
+        { "state_field_length_equals": { "path": "panes",        "length": 1 } },
+        { "state_field_length_equals": { "path": "open_dialogs", "length": 0 } },
+        { "state_field_length_equals": { "path": "active_symbol","length": 3 } }
+      ]
+    },
+    { "action": "cmd", "cmd": "OpenOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "state_field_length_equals": { "path": "open_dialogs", "length": 1 } },
+        { "state_field_array_contains": { "path": "open_dialogs", "value": "order_entry" } }
+      ]
+    },
+    {
+      "action": "assert",
+      "expect_fail": true,
+      "assertions": [{ "state_field_equals": { "path": "active_symbol", "value": "QQQ" } }]
+    },
+    {
+      "action": "assert",
+      "expect_fail": true,
+      "assertions": [{ "state_field_length_equals": { "path": "panes", "length": 5 } }]
+    },
+    {
+      "action": "assert",
+      "expect_fail": true,
+      "assertions": [{ "state_field_array_contains": { "path": "open_dialogs", "value": "settings" } }]
+    },
+    { "action": "reset" }
+  ]
+}

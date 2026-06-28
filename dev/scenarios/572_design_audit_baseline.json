@@ -1,0 +1,33 @@
+{
+  "name": "design_audit_baseline",
+  "description": "Baseline design audit: no clipped widgets and no design-contract violations.",
+  "story": "Design/Audit",
+  "tags": [
+    "design",
+    "audit",
+    "baseline"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_clipped_widgets": true
+        },
+        {
+          "design_audit_clean": true
+        }
+      ]
+    }
+  ]
+}

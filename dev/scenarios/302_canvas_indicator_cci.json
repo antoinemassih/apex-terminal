@@ -1,0 +1,17 @@
+{
+  "name": "canvas_indicator_cci",
+  "description": "CCI indicator value can be set and read back",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": ["canvas", "indicators"],
+  "steps": [
+    {"action": "reset"},
+    {"action": "wait", "ms": 30},
+    {"action": "cmd", "cmd": "SetIndicatorOutput", "pane": 0, "kind": "CCI", "value": 120},
+    {"action": "wait", "ms": 30},
+    {"action": "assert", "assertions": [
+      {"canvas_indicator_exists": {"pane": 0, "kind": "CCI"}},
+      {"canvas_indicator_last_value_near": {"pane": 0, "kind": "CCI", "value": 120, "tolerance": 0.1}}
+    ]}
+  ]
+}

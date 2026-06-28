@@ -1,6 +1,7 @@
 {
   "name": "annotate_frame_sync",
   "description": "Regression: annotate step must auto-sync a frame so annotation_count_equals asserts immediately after annotate without a manual wait_frames. Bug was: annotate was fire-and-forget, requiring callers to add wait_frames:1 workaround.",
+  "story": "Dev/Annotations",
   "tags": ["annotate", "regression", "frame-sync"],
   "settle_ms": 0,
   "abort_on_failure": false,

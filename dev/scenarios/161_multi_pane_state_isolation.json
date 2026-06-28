@@ -1,6 +1,7 @@
 {
   "name": "multi_pane_state_isolation",
   "description": "After SetLayout TwoColumns, each pane tracks its own symbol/timeframe/indicators independently. Mutations on pane 0 must not bleed into pane 1 and vice versa.",
+  "story": "Layout/Panes",
   "tags": ["multi-pane", "state-isolation", "regression"],
   "settle_ms": 0,
   "abort_on_failure": false,

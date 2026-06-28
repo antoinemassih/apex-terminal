@@ -1,6 +1,7 @@
 {
   "name": "fps_stress_rapid_switch",
   "description": "User story: as a scalper I switch symbols 8 times in rapid succession. FPS must not fall below 5 at any checkpoint. Models the worst-case symbol-hopping pattern.",
+  "story": "Performance/FPS",
   "tags": ["fps", "stress", "symbol"],
   "settle_ms": 0,
   "abort_on_failure": false,

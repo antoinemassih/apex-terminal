@@ -1,0 +1,108 @@
+{
+  "name": "story_two_pane_trading_view",
+  "description": "Two-pane: price chart (SMA + drawing) on pane 0, RSI panel on pane 1",
+  "story": "Canvas Introspection",
+  "priority": 1,
+  "tags": [
+    "canvas",
+    "story",
+    "pane"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "cmd",
+      "cmd": "HeadlessLayout",
+      "cols": 2
+    },
+    {
+      "action": "wait",
+      "ms": 50
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetViewport",
+      "pane": 0,
+      "price_low": 420,
+      "price_high": 480
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetViewport",
+      "pane": 1,
+      "price_low": 0,
+      "price_high": 100
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetIndicatorOutput",
+      "pane": 0,
+      "kind": "SMA",
+      "value": 449
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetIndicatorOutput",
+      "pane": 1,
+      "kind": "RSI",
+      "value": 58
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "key_level",
+      "kind": "HorizLine",
+      "price_a": 445
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_pane_count_equals": 2
+        },
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "SMA"
+          }
+        },
+        {
+          "canvas_indicator_exists": {
+            "pane": 1,
+            "kind": "RSI"
+          }
+        },
+        {
+          "canvas_no_drawings": {
+            "pane": 1
+          }
+        },
+        {
+          "canvas_drawing_exists": {
+            "pane": 0,
+            "id": "key_level"
+          }
+        },
+        {
+          "canvas_viewport_price_contains": {
+            "pane": 0,
+            "price": 449
+          }
+        },
+        {
+          "canvas_viewport_price_contains": {
+            "pane": 1,
+            "price": 58
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 {
   "name": "96_inter_pane_order_entry_from_layout",
   "description": "TwoColumns layout with SPY on pane0, open order entry (CloseAllDialogs behavior), assert stability, then close dialogs and verify clean state.",
+  "story": "Layout/Panes",
   "tags": ["inter-pane", "order"],
   "settle_ms": 50,
   "abort_on_failure": false,

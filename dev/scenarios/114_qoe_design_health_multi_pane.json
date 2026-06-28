@@ -1,6 +1,7 @@
 {
   "name": "114_qoe_design_health_multi_pane",
   "description": "TwoColumns with indicators on both panes, assert no_unintended_overlap in the layout to confirm pane boundaries are respected.",
+  "story": "QoE/Full",
   "tags": ["qoe", "design", "pane"],
   "settle_ms": 50,
   "abort_on_failure": false,

@@ -1,6 +1,7 @@
 {
   "name": "113_qoe_design_health_with_indicators",
   "description": "Add RSI+MACD+VWAP to pane 0, then run a full design audit to confirm indicator panels do not cause layout violations or widget clipping.",
+  "story": "QoE/Full",
   "tags": ["qoe", "design", "indicators"],
   "settle_ms": 50,
   "abort_on_failure": false,

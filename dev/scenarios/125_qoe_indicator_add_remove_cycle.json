@@ -1,6 +1,7 @@
 {
   "name": "125_qoe_indicator_add_remove_cycle",
   "description": "Add RSI, verify count=1, remove RSI, verify count=0, repeat with MACD. Tests the full add/remove lifecycle for indicator management stability.",
+  "story": "QoE/Full",
   "tags": ["qoe", "indicators", "lifecycle"],
   "settle_ms": 50,
   "abort_on_failure": false,

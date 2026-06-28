@@ -1,0 +1,28 @@
+{
+  "name": "orders_panel_open_close",
+  "description": "Open the orders panel, assert dialog_open=orders_panel with stable fps, then close it and assert no open dialogs.",
+  "story": "OrderManagement/Panel",
+  "tags": ["orders_panel", "dialog", "smoke"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_open_dialogs": true }] },
+    { "action": "log", "message": "Opening orders panel" },
+    { "action": "cmd", "cmd": "OpenOrdersPanel", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "dialog_open": "orders_panel" },
+      { "fps_above": 5.0 }
+    ] },
+    { "action": "log", "message": "Closing orders panel" },
+    { "action": "cmd", "cmd": "CloseOrdersPanel", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "no_open_dialogs": true },
+      { "fps_above": 5.0 }
+    ] },
+    { "action": "reset" }
+  ]
+}

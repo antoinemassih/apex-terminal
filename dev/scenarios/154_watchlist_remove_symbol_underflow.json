@@ -1,6 +1,7 @@
 {
   "name": "watchlist_remove_symbol_underflow",
   "description": "WatchlistRemoveSymbol on empty section must not underflow (saturating_sub). Add section with 0 items, remove twice, verify item_count stays 0 and app stays stable.",
+  "story": "UserJourney/Watchlist",
   "tags": ["watchlist", "error-handling", "underflow"],
   "settle_ms": 0,
   "abort_on_failure": false,

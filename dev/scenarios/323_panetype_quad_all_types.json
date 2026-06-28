@@ -1,0 +1,103 @@
+{
+  "name": "panetype_quad_all_types",
+  "description": "FourGrid layout with all 4 pane types: Chart / Portfolio / Dashboard / Heatmap.",
+  "story": "PaneType/Switching",
+  "tags": [
+    "pane",
+    "panetype",
+    "layout"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetLayout",
+      "args": {
+        "layout": "FourGrid"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangePaneType",
+      "args": {
+        "pane": 0,
+        "kind": "Chart"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangePaneType",
+      "args": {
+        "pane": 1,
+        "kind": "Portfolio"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangePaneType",
+      "args": {
+        "pane": 2,
+        "kind": "Dashboard"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangePaneType",
+      "args": {
+        "pane": 3,
+        "kind": "Heatmap"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 8
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_type_equals": {
+            "pane": 0,
+            "type": "Chart"
+          }
+        },
+        {
+          "pane_type_equals": {
+            "pane": 1,
+            "type": "Portfolio"
+          }
+        },
+        {
+          "pane_type_equals": {
+            "pane": 2,
+            "type": "Dashboard"
+          }
+        },
+        {
+          "pane_type_equals": {
+            "pane": 3,
+            "type": "Heatmap"
+          }
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

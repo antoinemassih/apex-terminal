@@ -5,10 +5,21 @@
 
 pub fn compute_sma(data: &[f32], period: usize) -> Vec<f32> {
     let mut r = vec![f32::NAN; data.len()];
-    if data.len() < period { return r; }
-    let mut s: f32 = data[..period].iter().sum();
-    r[period-1] = s / period as f32;
-    for i in period..data.len() { s += data[i] - data[i-period]; r[i] = s / period as f32; }
+    if period == 0 || data.len() < period { return r; }
+    // Skip leading NaN warmup before seeding the running sum. When this SMA
+    // smooths another indicator (e.g. Stochastic %K → %D), the input begins
+    // with NaNs; seeding the running sum on a NaN would otherwise poison every
+    // subsequent value and the whole output series would be NaN (the %D signal
+    // line would never render). Matches compute_ema's NaN-aware seeding.
+    let mut start = 0;
+    while start + period <= data.len() {
+        if data[start..start+period].iter().all(|v| !v.is_nan()) { break; }
+        start += 1;
+    }
+    if start + period > data.len() { return r; }
+    let mut s: f32 = data[start..start+period].iter().sum();
+    r[start+period-1] = s / period as f32;
+    for i in (start+period)..data.len() { s += data[i] - data[i-period]; r[i] = s / period as f32; }
     r
 }
 
@@ -159,7 +170,9 @@ pub fn compute_ichimoku(highs: &[f32], lows: &[f32], closes: &[f32], tenkan: usi
     for i in 0..n { if !span_b_raw[i].is_nan() { senkou_b_vals[i + kijun] = span_b_raw[i]; } }
     let mut chikou = vec![f32::NAN; n];
     // Chikou span: current close plotted kijun periods in the past.
-    for i in 0..(n - kijun) { chikou[i] = closes[i + kijun]; }
+    // saturating_sub: with fewer bars than `kijun`, the span is simply empty
+    // (all NaN) rather than underflowing usize and panicking the compute thread.
+    for i in 0..n.saturating_sub(kijun) { chikou[i] = closes[i + kijun]; }
     senkou_a.truncate(n); senkou_b_vals.truncate(n);
     (tenkan_sen, kijun_sen, senkou_a, senkou_b_vals, chikou)
 }

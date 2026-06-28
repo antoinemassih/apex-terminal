@@ -1,0 +1,34 @@
+{
+  "name": "story_usability_keyboard",
+  "description": "User story: keyboard-driven usability — opens indicator editor, uses Escape to close (key_sequence), asserts dialogs close cleanly.",
+  "story": "UserJourney/Usability",
+  "priority": 1,
+  "tags": ["story", "usability", "keyboard"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "open_dialog_count_equals": 0 }] },
+    { "action": "cmd", "cmd": "OpenIndicatorEditor", "args": { "pane": 0, "id": 0 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "open_dialog_count_equals": 1 }] },
+    {
+      "action": "key_sequence",
+      "keys": ["Escape"],
+      "delay_ms": 0
+    },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "cmd", "cmd": "CloseAllDialogs", "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "open_dialog_count_equals": 0 }] },
+    { "action": "reset" }
+  ]
+}

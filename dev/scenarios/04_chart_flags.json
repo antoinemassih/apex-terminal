@@ -1,6 +1,7 @@
 {
   "name": "chart_flags",
   "description": "Toggle chart display flags (volume, log scale) and verify no crash.",
+  "story": "Baseline/Health",
   "tags": ["smoke", "commands"],
   "settle_ms": 0,
   "abort_on_failure": false,

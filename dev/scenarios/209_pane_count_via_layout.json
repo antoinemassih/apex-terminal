@@ -1,0 +1,27 @@
+{
+  "name": "pane_count_via_layout",
+  "description": "Use SetLayout to cycle through 1→2→3→4→1 panes; assert pane_count_equals and state_field_length_equals(panes) at each step.",
+  "story": "Pane/LayoutCycle",
+  "priority": 1,
+  "tags": ["panes", "layout", "state", "story"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "pane_count_equals": 1 }, { "state_field_length_equals": { "path": "panes", "length": 1 } }] },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "pane_count_equals": 2 }, { "state_field_length_equals": { "path": "panes", "length": 2 } }] },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "ThreeColumns" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "pane_count_equals": 3 }, { "state_field_length_equals": { "path": "panes", "length": 3 } }] },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "Quad" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "pane_count_equals": 4 }, { "state_field_length_equals": { "path": "panes", "length": 4 } }] },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "Single" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "pane_count_equals": 1 }, { "state_field_length_equals": { "path": "panes", "length": 1 } }] },
+    { "action": "reset" }
+  ]
+}

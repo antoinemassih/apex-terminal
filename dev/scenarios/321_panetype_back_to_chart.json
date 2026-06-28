@@ -1,0 +1,72 @@
+{
+  "name": "panetype_back_to_chart",
+  "description": "Switch pane to Portfolio then back to Chart — type resets to Chart.",
+  "story": "PaneType/Switching",
+  "tags": [
+    "pane",
+    "panetype"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangePaneType",
+      "args": {
+        "pane": 0,
+        "kind": "Portfolio"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_type_equals": {
+            "pane": 0,
+            "type": "Portfolio"
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangePaneType",
+      "args": {
+        "pane": 0,
+        "kind": "Chart"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_type_equals": {
+            "pane": 0,
+            "type": "Chart"
+          }
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

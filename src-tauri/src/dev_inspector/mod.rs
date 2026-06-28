@@ -89,11 +89,21 @@ impl WidgetRecord {
     ) -> Self {
         let rect: SerRect = resp.rect.into();
         let clip_rect: SerRect = ui.clip_rect().into();
-        let min_dim = rect.min_side();
+        // True geometric clipping: the widget's rect is not fully contained within
+        // its clip rect (egui will visually cut it off). Previously this checked
+        // min-side < 28px, which mislabels every small icon button as "clipped" —
+        // a touch-target concern, not clipping (see `all_touch_targets_ok`).
+        const TOL: f32 = 0.5;
+        let is_clipped = rect.w > 0.0 && rect.h > 0.0 && (
+            rect.x          < clip_rect.x - TOL ||
+            rect.y          < clip_rect.y - TOL ||
+            rect.x + rect.w > clip_rect.x + clip_rect.w + TOL ||
+            rect.y + rect.h > clip_rect.y + clip_rect.h + TOL
+        );
         WidgetRecord {
             id: id.into(), role: role.into(), label: label.into(),
             value: None,
-            is_clipped: min_dim > 0.0 && min_dim < 28.0,
+            is_clipped,
             rect, clip_rect,
             layer: 0,
             focused: resp.has_focus(),
@@ -277,12 +287,73 @@ pub fn init() {
     SHARED_STATE.set(shared.clone()).ok();
     DEV_QUEUES.set(queues.clone()).ok();
 
+    install_panic_hook();
     server::start(shared.clone(), queues.clone());
     eprintln!("[dev-inspector] HTTP server on http://127.0.0.1:7892");
 
     if is_headless() {
         start_headless_ticker(shared, queues);
     }
+}
+
+// ─── Panic capture ────────────────────────────────────────────────────────────
+// A panic on the render thread (interactive) closes the window; a panic on the
+// headless ticker stalls frames. Either way the scenario harness needs to KNOW —
+// a crash is the highest-severity bug a story can surface. We chain a panic hook
+// that records every panic into a global log (it survives the panicking thread's
+// unwind, and the HTTP server thread stays alive to report it). The `no_panic`
+// assertion + the suite bug-report read this. Debug-only (this whole module is
+// `#[cfg(debug_assertions)]`).
+
+/// One captured panic.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct PanicReport {
+    pub message: String,
+    pub location: String,
+    pub thread: String,
+}
+
+static PANIC_LOG: OnceLock<Mutex<Vec<PanicReport>>> = OnceLock::new();
+fn panic_log() -> &'static Mutex<Vec<PanicReport>> {
+    PANIC_LOG.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Snapshot all captured panics (newest last).
+pub fn panics() -> Vec<PanicReport> {
+    panic_log().lock().map(|g| g.clone()).unwrap_or_default()
+}
+
+/// Number of panics captured since startup.
+pub fn panic_count() -> usize {
+    panic_log().lock().map(|g| g.len()).unwrap_or(0)
+}
+
+/// Clear the panic log (called on `reset` so each scenario starts clean).
+pub fn clear_panics() {
+    if let Ok(mut g) = panic_log().lock() { g.clear(); }
+}
+
+fn install_panic_hook() {
+    static INSTALLED: OnceLock<()> = OnceLock::new();
+    if INSTALLED.set(()).is_err() { return; }
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let message = match info.payload().downcast_ref::<&str>() {
+            Some(s) => s.to_string(),
+            None => match info.payload().downcast_ref::<String>() {
+                Some(s) => s.clone(),
+                None => "<non-string panic payload>".to_string(),
+            },
+        };
+        let location = info.location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<unknown>".to_string());
+        let thread = std::thread::current().name().unwrap_or("<unnamed>").to_string();
+        if let Ok(mut g) = panic_log().lock() {
+            g.push(PanicReport { message, location, thread });
+        }
+        prev(info); // keep the default hook (backtrace to stderr)
+    }));
 }
 
 // ─── Headless simulation ──────────────────────────────────────────────────────

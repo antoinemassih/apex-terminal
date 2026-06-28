@@ -1,6 +1,7 @@
 {
   "name": "step_http_post_action",
   "description": "Tests the http_post step action by building state, then posting to /reset and verifying the app returns to clean initial state.",
+  "story": "TestInfra/AssertEngine",
   "tags": ["step-actions", "http-post"],
   "settle_ms": 0,
   "abort_on_failure": false,

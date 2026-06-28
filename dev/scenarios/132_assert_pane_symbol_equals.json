@@ -1,6 +1,7 @@
 {
   "name": "assert_pane_symbol_equals",
   "description": "Tests pane_symbol_equals in a two-pane layout with distinct symbols per pane.",
+  "story": "TestInfra/AssertEngine",
   "tags": ["assert-engine", "per-pane"],
   "settle_ms": 0,
   "abort_on_failure": false,

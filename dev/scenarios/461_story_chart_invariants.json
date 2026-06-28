@@ -1,0 +1,53 @@
+{
+  "name": "story_chart_invariants",
+  "description": "User story: a trader rapidly switches symbols, timeframes, indicators and pane layouts. Throughout, the chart must never panic, never produce NaN/Inf in its render data, never collapse its viewport, and stay responsive.",
+  "story": "Chart/Invariants",
+  "tags": ["story", "invariants", "chart", "smoke"],
+  "priority": 1,
+  "settle_ms": 20,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "no_panic": true }, { "viewport_sane": true }, { "canvas_all_finite": true }, { "fps_above": 5.0 }
+    ] },
+
+    { "action": "log", "message": "Rapid symbol switches" },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "QQQ" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "TSLA" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "no_panic": true }, { "viewport_sane": true }, { "canvas_all_finite": true }
+    ] },
+
+    { "action": "log", "message": "Timeframe sweep" },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "1m" } },
+    { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "1d" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "no_panic": true }, { "viewport_sane": true }, { "canvas_all_finite": true }
+    ] },
+
+    { "action": "log", "message": "Stack indicators" },
+    { "action": "cmd", "cmd": "SetIndicatorOutput", "pane": 0, "kind": "SMA", "value": 550.0 },
+    { "action": "cmd", "cmd": "SetIndicatorOutput", "pane": 0, "kind": "RSI", "value": 55.0 },
+    { "action": "cmd", "cmd": "SetIndicatorOutput", "pane": 0, "kind": "MACD", "value": 0.5 },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "no_panic": true }, { "canvas_all_finite": true }, { "fps_above": 5.0 }
+    ] },
+
+    { "action": "log", "message": "Multi-pane layout" },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "Quad" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "no_panic": true }, { "viewport_sane": true }, { "canvas_all_finite": true }, { "fps_above": 5.0 }
+    ] },
+
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [ { "no_panic": true } ] }
+  ]
+}

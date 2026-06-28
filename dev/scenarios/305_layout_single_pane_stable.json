@@ -1,0 +1,51 @@
+{
+  "name": "layout_single_pane_stable",
+  "description": "SetLayout One produces exactly 1 pane with stable FPS and no design violations.",
+  "story": "Layout/System",
+  "tags": [
+    "layout",
+    "pane"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetLayout",
+      "args": {
+        "layout": "One"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_count_equals": 1
+        },
+        {
+          "canvas_pane_count_equals": 1
+        },
+        {
+          "fps_above": 5
+        },
+        {
+          "no_active_violations": true
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

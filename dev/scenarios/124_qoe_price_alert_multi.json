@@ -1,6 +1,7 @@
 {
   "name": "124_qoe_price_alert_multi",
   "description": "Add three price alerts at distinct price levels (400.0, 450.0, 500.0) on pane 0, then assert fps_above 5.0 to verify alert overlays do not stall rendering.",
+  "story": "QoE/Full",
   "tags": ["qoe", "alert"],
   "settle_ms": 50,
   "abort_on_failure": false,

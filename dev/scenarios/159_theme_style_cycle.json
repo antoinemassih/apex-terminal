@@ -1,6 +1,7 @@
 {
   "name": "theme_style_cycle",
   "description": "Cycle through SetThemeIdx (0-4) and SetStyleIdx (0-3) while asserting FPS stays stable. These commands have no headless state mutation but must not crash or degrade performance.",
+  "story": "UX/Theming",
   "tags": ["theming", "performance", "smoke"],
   "settle_ms": 0,
   "abort_on_failure": false,

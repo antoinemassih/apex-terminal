@@ -1,6 +1,7 @@
 {
   "name": "chart_flag_persist_after_timeframe_change",
   "description": "Set ShowVolume, change timeframe to 1h, assert flags still stable and FPS ok.",
+  "story": "Chart/Settings",
   "tags": ["chart", "flags", "timeframe"],
   "settle_ms": 50,
   "abort_on_failure": false,

@@ -1,0 +1,62 @@
+{
+  "name": "watchlist_add_multiple_symbols",
+  "description": "Add SPY, QQQ, AAPL in sequence — section item_count should be at least 3.",
+  "story": "Watchlist/CRUD",
+  "tags": [
+    "watchlist",
+    "symbol"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "args": {
+        "symbol": "SPY"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "args": {
+        "symbol": "QQQ"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "args": {
+        "symbol": "AAPL"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 6
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_gte": {
+            "path": "watchlist.sections.0.item_count",
+            "min": 3
+          }
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

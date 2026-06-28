@@ -1,6 +1,7 @@
 {
   "name": "chart_price_alert_add",
   "description": "Add a price alert at 500.0 on pane 0 and verify rendering stability and FPS.",
+  "story": "Chart/Settings",
   "tags": ["chart", "alert"],
   "settle_ms": 50,
   "abort_on_failure": false,

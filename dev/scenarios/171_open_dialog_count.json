@@ -1,0 +1,37 @@
+{
+  "name": "open_dialog_count",
+  "description": "Exercises open_dialog_count_equals: asserts 0 dialogs after reset, opens an indicator editor (dialog), asserts count 1, closes all, asserts 0 again.",
+  "story": "Dialogs/CountAssertion",
+  "priority": 1,
+  "tags": ["extension", "dialogs"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "open_dialog_count_equals": 0 },
+        { "no_open_dialogs": true }
+      ]
+    },
+    { "action": "cmd", "cmd": "OpenIndicatorEditor", "args": { "pane": 0, "id": 1 } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "open_dialog_count_equals": 1 }
+      ]
+    },
+    { "action": "cmd", "cmd": "CloseAllDialogs", "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "open_dialog_count_equals": 0 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "name": "canvas_viewport_sequential_changes",
+  "description": "Final viewport after three SetViewport calls is the last one applied",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "viewport"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetViewport",
+      "pane": 0,
+      "price_low": 300,
+      "price_high": 400
+    },
+    {
+      "action": "wait",
+      "ms": 20
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetViewport",
+      "pane": 0,
+      "price_low": 350,
+      "price_high": 450
+    },
+    {
+      "action": "wait",
+      "ms": 20
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetViewport",
+      "pane": 0,
+      "price_low": 420,
+      "price_high": 480
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_viewport_price_contains": {
+            "pane": 0,
+            "price": 450
+          }
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        }
+      ]
+    }
+  ]
+}

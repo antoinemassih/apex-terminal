@@ -1,0 +1,41 @@
+{
+  "name": "rapid_dialog_cycle",
+  "description": "Loop 5x opening and closing settings, then 5x opening and closing orders panel. At end, assert no open dialogs and FPS ok.",
+  "story": "StressTest/Mutations",
+  "tags": ["stress-test", "dialogs", "rapid", "loop"],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "loop",
+      "count": 5,
+      "steps": [
+        { "action": "cmd", "cmd": "OpenSettings", "args": {} },
+        { "action": "wait_frames", "count": 1 },
+        { "action": "cmd", "cmd": "CloseSettings", "args": {} },
+        { "action": "wait_frames", "count": 1 }
+      ]
+    },
+    {
+      "action": "loop",
+      "count": 5,
+      "steps": [
+        { "action": "cmd", "cmd": "OpenOrdersPanel", "args": {} },
+        { "action": "wait_frames", "count": 1 },
+        { "action": "cmd", "cmd": "CloseOrdersPanel", "args": {} },
+        { "action": "wait_frames", "count": 1 }
+      ]
+    },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "no_open_dialogs": true },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

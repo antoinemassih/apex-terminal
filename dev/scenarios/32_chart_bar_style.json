@@ -1,6 +1,7 @@
 {
   "name": "chart_bar_style",
   "description": "Switch to OHLC bar chart type via SetChartFlag and back, verifying FPS remains stable.",
+  "story": "Chart/Settings",
   "tags": ["chart", "style"],
   "settle_ms": 50,
   "abort_on_failure": false,

@@ -1,0 +1,30 @@
+{
+  "name": "rapid_layout_cycle",
+  "description": "Cycle through layouts [TwoColumns, ThreeColumns, FourGrid, Single, TwoColumns, FourGrid, Single]. Last is Single so pane_count should be 1. Assert FPS ok.",
+  "story": "StressTest/Mutations",
+  "tags": ["stress-test", "layout", "rapid", "for-each"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "for_each",
+      "var": "layout",
+      "items": ["TwoColumns", "ThreeColumns", "FourGrid", "Single", "TwoColumns", "FourGrid", "Single"],
+      "steps": [
+        { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "{{layout}}" } },
+        { "action": "wait_frames", "count": 2 }
+      ]
+    },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_count_equals": 1 },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

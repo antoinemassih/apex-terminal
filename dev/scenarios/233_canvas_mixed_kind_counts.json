@@ -1,0 +1,90 @@
+{
+  "name": "canvas_mixed_kind_counts",
+  "description": "Mix of HorizLine (3) and HorizZone (2) kinds counted independently",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "drawings"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "h1",
+      "kind": "HorizLine",
+      "price_a": 420
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "h2",
+      "kind": "HorizLine",
+      "price_a": 440
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "h3",
+      "kind": "HorizLine",
+      "price_a": 460
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "z1",
+      "kind": "HorizZone",
+      "price_a": 430,
+      "price_b": 450
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "z2",
+      "kind": "HorizZone",
+      "price_a": 455,
+      "price_b": 475
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_drawing_count_equals": {
+            "pane": 0,
+            "count": 5
+          }
+        },
+        {
+          "canvas_drawing_kind_count": {
+            "pane": 0,
+            "kind": "HorizLine",
+            "count": 3
+          }
+        },
+        {
+          "canvas_drawing_kind_count": {
+            "pane": 0,
+            "kind": "HorizZone",
+            "count": 2
+          }
+        }
+      ]
+    }
+  ]
+}

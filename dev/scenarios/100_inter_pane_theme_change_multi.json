@@ -1,6 +1,7 @@
 {
   "name": "100_inter_pane_theme_change_multi",
   "description": "TwoColumns layout with active symbols on both panes, cycle theme idx 0→3→6 asserting FPS at each step to verify theme repaints don't disrupt multi-pane rendering.",
+  "story": "Layout/Panes",
   "tags": ["inter-pane", "theme"],
   "settle_ms": 50,
   "abort_on_failure": false,

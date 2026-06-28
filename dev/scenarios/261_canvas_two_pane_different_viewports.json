@@ -1,0 +1,63 @@
+{
+  "name": "canvas_two_pane_different_viewports",
+  "description": "Each pane independently tracks its own viewport price range",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "viewport",
+    "pane"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "cmd",
+      "cmd": "HeadlessLayout",
+      "cols": 2
+    },
+    {
+      "action": "wait",
+      "ms": 50
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetViewport",
+      "pane": 0,
+      "price_low": 420,
+      "price_high": 480
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetViewport",
+      "pane": 1,
+      "price_low": 200,
+      "price_high": 300
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_viewport_price_contains": {
+            "pane": 0,
+            "price": 450
+          }
+        },
+        {
+          "canvas_viewport_price_contains": {
+            "pane": 1,
+            "price": 250
+          }
+        },
+        {
+          "canvas_pane_count_equals": 2
+        }
+      ]
+    }
+  ]
+}

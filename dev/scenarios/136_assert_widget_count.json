@@ -1,6 +1,7 @@
 {
   "name": "assert_widget_count",
   "description": "Tests widget_count_gte and widget_count_lte with headless-aware expectations (empty widget tree).",
+  "story": "TestInfra/AssertEngine",
   "tags": ["assert-engine", "widget-count"],
   "settle_ms": 0,
   "abort_on_failure": false,

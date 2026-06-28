@@ -1,6 +1,7 @@
 {
   "name": "110_qoe_fps_multi_pane_heavy",
   "description": "Worst-case multi-pane rendering: Quad layout with 3 indicators per pane (12 total across 4 panes), assert fps_above 5.0 to confirm GPU pipeline is not overwhelmed.",
+  "story": "QoE/Full",
   "tags": ["qoe", "fps", "pane"],
   "settle_ms": 50,
   "abort_on_failure": false,

@@ -1,6 +1,7 @@
 {
   "name": "options_flow_symbol_change",
   "description": "Switch to OptionsFlow pane, swap symbol to MSFT, verify stability and active symbol.",
+  "story": "UserJourney/OptionsPanel",
   "tags": ["options", "symbol"],
   "settle_ms": 50,
   "abort_on_failure": false,

@@ -1,6 +1,7 @@
 {
   "name": "117_qoe_settings_persist_symbol_switch",
   "description": "Set ShowVolume flag true, then swap the active symbol — flag should persist across the swap. Assert fps_above to confirm no re-render stall on persist path.",
+  "story": "QoE/Full",
   "tags": ["qoe", "state"],
   "settle_ms": 50,
   "abort_on_failure": false,

@@ -1,6 +1,7 @@
 {
   "name": "step_design_audit",
   "description": "Tests the design_audit step action in both strict (require_clean: true) and permissive (require_clean: false) modes.",
+  "story": "TestInfra/AssertEngine",
   "tags": ["step-actions", "design-audit"],
   "settle_ms": 0,
   "abort_on_failure": false,

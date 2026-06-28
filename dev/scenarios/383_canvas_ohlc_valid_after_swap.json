@@ -1,0 +1,55 @@
+{
+  "name": "canvas_ohlc_valid_after_swap",
+  "description": "After SwapPaneSymbol SPY, all visible bars have valid OHLC (high >= low, close in [low,high]).",
+  "story": "Canvas/Integrity",
+  "tags": [
+    "canvas",
+    "bars",
+    "ohlc"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": {
+        "pane": 0,
+        "symbol": "SPY"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 8
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "canvas_visible_bar_count_gte": {
+            "pane": 0,
+            "min": 1
+          }
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

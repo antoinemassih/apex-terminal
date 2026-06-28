@@ -1,6 +1,7 @@
 {
   "name": "chart_ohlc_tooltip",
   "description": "Enable OhlcTooltip flag and leave it on while checking FPS remains stable.",
+  "story": "Chart/Settings",
   "tags": ["chart", "flags"],
   "settle_ms": 50,
   "abort_on_failure": false,

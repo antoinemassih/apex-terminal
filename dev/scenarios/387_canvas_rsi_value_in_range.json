@@ -1,0 +1,71 @@
+{
+  "name": "canvas_rsi_value_in_range",
+  "description": "Add RSI with simulated value 55: canvas_indicator_value_in_range [0, 100].",
+  "story": "Canvas/Integrity",
+  "tags": [
+    "canvas",
+    "indicator",
+    "rsi"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "args": {
+        "pane": 0,
+        "kind": "RSI"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetIndicatorOutput",
+      "args": {
+        "pane": 0,
+        "kind": "RSI",
+        "value": 55
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_indicator_value_in_range": {
+            "pane": 0,
+            "kind": "RSI",
+            "min": 0,
+            "max": 100
+          }
+        },
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "RSI"
+          }
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

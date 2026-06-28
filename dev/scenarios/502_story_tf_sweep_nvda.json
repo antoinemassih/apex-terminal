@@ -1,0 +1,493 @@
+{
+  "name": "story_tf_sweep_nvda",
+  "description": "Trader studies NVDA across every timeframe; chart stays sane throughout.",
+  "story": "Chart/Timeframes",
+  "tags": [
+    "story",
+    "timeframe",
+    "chart",
+    "invariants"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "NVDA"
+    },
+    {
+      "action": "wait",
+      "ms": 700
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangeTimeframe",
+      "pane": 0,
+      "tf": "1m"
+    },
+    {
+      "action": "wait",
+      "ms": 1200
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "log",
+      "message": "NVDA @ 1m"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_timeframe_equals": {
+            "pane": 0,
+            "tf": "1m"
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5.0
+        },
+        {
+          "canvas_bars_within_pane": {
+            "pane": 0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangeTimeframe",
+      "pane": 0,
+      "tf": "5m"
+    },
+    {
+      "action": "wait",
+      "ms": 1200
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "log",
+      "message": "NVDA @ 5m"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_timeframe_equals": {
+            "pane": 0,
+            "tf": "5m"
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5.0
+        },
+        {
+          "canvas_bars_within_pane": {
+            "pane": 0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangeTimeframe",
+      "pane": 0,
+      "tf": "15m"
+    },
+    {
+      "action": "wait",
+      "ms": 1200
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "log",
+      "message": "NVDA @ 15m"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_timeframe_equals": {
+            "pane": 0,
+            "tf": "15m"
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5.0
+        },
+        {
+          "canvas_bars_within_pane": {
+            "pane": 0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangeTimeframe",
+      "pane": 0,
+      "tf": "30m"
+    },
+    {
+      "action": "wait",
+      "ms": 1200
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "log",
+      "message": "NVDA @ 30m"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_timeframe_equals": {
+            "pane": 0,
+            "tf": "30m"
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5.0
+        },
+        {
+          "canvas_bars_within_pane": {
+            "pane": 0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangeTimeframe",
+      "pane": 0,
+      "tf": "1h"
+    },
+    {
+      "action": "wait",
+      "ms": 1200
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "log",
+      "message": "NVDA @ 1h"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_timeframe_equals": {
+            "pane": 0,
+            "tf": "1h"
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5.0
+        },
+        {
+          "canvas_bars_within_pane": {
+            "pane": 0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangeTimeframe",
+      "pane": 0,
+      "tf": "4h"
+    },
+    {
+      "action": "wait",
+      "ms": 1200
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "log",
+      "message": "NVDA @ 4h"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_timeframe_equals": {
+            "pane": 0,
+            "tf": "4h"
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5.0
+        },
+        {
+          "canvas_bars_within_pane": {
+            "pane": 0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangeTimeframe",
+      "pane": 0,
+      "tf": "1d"
+    },
+    {
+      "action": "wait",
+      "ms": 1200
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "log",
+      "message": "NVDA @ 1d"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_timeframe_equals": {
+            "pane": 0,
+            "tf": "1d"
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5.0
+        },
+        {
+          "canvas_bars_within_pane": {
+            "pane": 0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangeTimeframe",
+      "pane": 0,
+      "tf": "1w"
+    },
+    {
+      "action": "wait",
+      "ms": 1200
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "log",
+      "message": "NVDA @ 1w"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_timeframe_equals": {
+            "pane": 0,
+            "tf": "1w"
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5.0
+        },
+        {
+          "canvas_bars_within_pane": {
+            "pane": 0
+          }
+        }
+      ]
+    }
+  ]
+}

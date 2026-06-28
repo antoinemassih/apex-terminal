@@ -1,0 +1,195 @@
+{
+  "name": "story_indicator_stack_5",
+  "description": "Trader stacks 7 indicators; all compute and the chart stays responsive.",
+  "story": "Chart/Indicators",
+  "tags": [
+    "story",
+    "indicator",
+    "stack",
+    "perf"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "NVDA"
+    },
+    {
+      "action": "wait",
+      "ms": 600
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "SMA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "EMA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "WMA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "DEMA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "TEMA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "VWAP"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "BB"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "RecomputeIndicators",
+      "pane": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "log",
+      "message": "stack of 7"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "SMA"
+          }
+        },
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "EMA"
+          }
+        },
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "WMA"
+          }
+        },
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "DEMA"
+          }
+        },
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "TEMA"
+          }
+        },
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "VWAP"
+          }
+        },
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "BB"
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 4.0
+        },
+        {
+          "canvas_bars_within_pane": {
+            "pane": 0
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "name": "for_each_symbols_capture",
+  "description": "Combines for_each and capture: iterates 3 symbols, each time capturing the symbol, then asserts the last capture equals the final symbol.",
+  "story": "Chart/SymbolMatrix",
+  "priority": 2,
+  "tags": ["for_each", "capture", "extension", "chart"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "for_each",
+      "var": "sym",
+      "items": ["AAPL", "TSLA", "GOOGL"],
+      "steps": [
+        { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "{{sym}}" } },
+        { "action": "wait_frames", "count": 2 },
+        { "action": "capture", "path": "active_symbol", "as": "last_active_sym" }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "captures_equal": { "key": "last_active_sym", "equals": "GOOGL" } },
+        { "active_symbol_equals": "GOOGL" },
+        { "state_field_contains": { "path": "active_symbol", "contains": "GOOG" } }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

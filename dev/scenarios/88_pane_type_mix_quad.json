@@ -1,6 +1,7 @@
 {
   "name": "88_pane_type_mix_quad",
   "description": "Quad layout with all four different pane types: pane0=Chart, pane1=Dashboard, pane2=Portfolio, pane3=OptionsSentiment. Verify each and assert FPS.",
+  "story": "Layout/Panes",
   "tags": ["pane", "types"],
   "settle_ms": 50,
   "abort_on_failure": false,

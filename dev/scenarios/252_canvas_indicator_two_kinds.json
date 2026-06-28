@@ -1,0 +1,64 @@
+{
+  "name": "canvas_indicator_two_kinds",
+  "description": "Two different indicator kinds both in range with count=2",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "indicators"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetIndicatorOutput",
+      "pane": 0,
+      "kind": "SMA",
+      "value": 449
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetIndicatorOutput",
+      "pane": 0,
+      "kind": "RSI",
+      "value": 55
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_indicator_value_in_range": {
+            "pane": 0,
+            "kind": "SMA",
+            "min": 440,
+            "max": 460
+          }
+        },
+        {
+          "canvas_indicator_value_in_range": {
+            "pane": 0,
+            "kind": "RSI",
+            "min": 50,
+            "max": 60
+          }
+        },
+        {
+          "canvas_indicator_count_equals": {
+            "pane": 0,
+            "count": 2
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 {
   "name": "107_qoe_fps_baseline",
   "description": "Absolute FPS baseline: clean reset with no symbols or indicators loaded, wait 5 frames, assert fps_above 5.0. This is the floor — everything else should be at or above this.",
+  "story": "QoE/Full",
   "tags": ["qoe", "fps"],
   "settle_ms": 50,
   "abort_on_failure": false,

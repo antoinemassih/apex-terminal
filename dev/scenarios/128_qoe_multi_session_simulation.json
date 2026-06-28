@@ -1,6 +1,7 @@
 {
   "name": "128_qoe_multi_session_simulation",
   "description": "Simulate two back-to-back trading sessions separated by a reset: session 1 (SPY + indicators + watchlist), reset, session 2 (NVDA + different TF + theme change). Assert clean state at each session boundary.",
+  "story": "QoE/Full",
   "tags": ["qoe", "session"],
   "settle_ms": 50,
   "abort_on_failure": false,

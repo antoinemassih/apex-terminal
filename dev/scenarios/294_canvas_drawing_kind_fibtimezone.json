@@ -1,0 +1,20 @@
+{
+  "name": "canvas_drawing_kind_fibtimezone",
+  "description": "FibTimeZone drawing kind can be added and identified by kind name",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": ["canvas", "drawings"],
+  "steps": [
+    {"action": "reset"},
+    {"action": "wait", "ms": 30},
+    {"action": "cmd", "cmd": "AddDrawing", "pane": 0, "id": "d1", "kind": "FibTimeZone", "price_a": 450},
+    {"action": "wait", "ms": 30},
+    {"action": "assert", "assertions": [
+      {"canvas_drawing_exists":     {"pane": 0, "id": "d1"}},
+      {"canvas_drawing_kind_count": {"pane": 0, "kind": "FibTimeZone", "count": 1}},
+      {"canvas_drawing_anchor_count": {"pane": 0, "id": "d1", "count": 1}},
+      {"canvas_drawing_anchor_price_near": {"pane": 0, "id": "d1", "anchor": 0, "price": 450, "tolerance": 0.01}},
+      {"canvas_drawing_count_equals": {"pane": 0, "count": 1}}
+    ]}
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "clear_order_history_safe",
+  "description": "Send ClearOrderHistory command and verify the app remains stable with fps above 5 and no violations.",
+  "story": "OrderManagement/History",
+  "tags": ["orders", "history", "safe"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Sending ClearOrderHistory" },
+    { "action": "cmd", "cmd": "ClearOrderHistory", "args": {} },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [
+      { "fps_above": 5.0 },
+      { "no_active_violations": true },
+      { "no_open_dialogs": true }
+    ] },
+    { "action": "reset" }
+  ]
+}

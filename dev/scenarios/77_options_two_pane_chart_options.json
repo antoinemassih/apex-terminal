@@ -1,6 +1,7 @@
 {
   "name": "options_two_pane_chart_options",
   "description": "2-column: pane 0 Chart with RSI indicator, pane 1 OptionsSentiment, check FPS.",
+  "story": "UserJourney/OptionsPanel",
   "tags": ["options", "pane", "fps"],
   "settle_ms": 50,
   "abort_on_failure": false,

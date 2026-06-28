@@ -1,0 +1,29 @@
+{
+  "name": "capture_multi_field",
+  "description": "Captures several different state paths (symbol, pane_count, active_pane, timeframe), verifies each with captures_equal.",
+  "story": "Captures/MultiField",
+  "priority": 2,
+  "tags": ["extension", "captures"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "capture", "path": "active_symbol",    "as": "c_sym" },
+    { "action": "capture", "path": "pane_count",       "as": "c_panes" },
+    { "action": "capture", "path": "active_pane",      "as": "c_active" },
+    { "action": "capture", "path": "active_timeframe", "as": "c_tf" },
+    { "action": "capture", "path": "panes.0.symbol",   "as": "c_pane0_sym" },
+    {
+      "action": "assert",
+      "assertions": [
+        { "captures_equal": { "key": "c_sym",       "equals": "SPY" } },
+        { "captures_equal": { "key": "c_panes",     "equals": 1 } },
+        { "captures_equal": { "key": "c_active",    "equals": 0 } },
+        { "captures_equal": { "key": "c_tf",        "equals": "5m" } },
+        { "captures_equal": { "key": "c_pane0_sym", "equals": "SPY" } }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

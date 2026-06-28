@@ -1,0 +1,69 @@
+{
+  "name": "canvas_drawing_not_exists_after_remove",
+  "description": "canvas_drawing_not_exists passes after a drawing is removed",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "drawings"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "temp",
+      "kind": "HorizLine",
+      "price_a": 450
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_drawing_exists": {
+            "pane": 0,
+            "id": "temp"
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "RemoveDrawing",
+      "pane": 0,
+      "id": "temp"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_drawing_not_exists": {
+            "pane": 0,
+            "id": "temp"
+          }
+        },
+        {
+          "canvas_drawing_count_equals": {
+            "pane": 0,
+            "count": 0
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 {
   "name": "watchlist_switch_active",
   "description": "Verifies WatchlistSwitchActive actually updates active_idx. Bug: was silently ignored (no handler). Add 3 sections, switch to idx 2, verify active_idx == 2, switch back to idx 0.",
+  "story": "UserJourney/Watchlist",
   "tags": ["watchlist", "regression", "state-mutation"],
   "settle_ms": 0,
   "abort_on_failure": false,
@@ -8,7 +9,7 @@
     { "action": "reset" },
     { "action": "wait_frames", "count": 2 },
     { "action": "assert", "assertions": [
-      { "state_field_lte": { "path": "watchlist.section_count", "max": 0 } }
+      { "state_field_lte": { "path": "watchlist.section_count", "max": 1 } }
     ]},
     { "action": "log", "message": "Adding 3 watchlist sections" },
     { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Equities" } },

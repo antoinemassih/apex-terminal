@@ -1,0 +1,35 @@
+{
+  "name": "pane_indicator_remove_isolation",
+  "description": "Add RSI to both panes. Remove RSI from pane 0. Assert pane 0 has 0 indicators and pane 1 still has 1.",
+  "story": "MultiPane/Indicators",
+  "tags": ["multi-pane", "indicators", "isolation", "remove"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 1, "kind": "RSI" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": { "pane": 0, "count": 1 } },
+        { "indicator_count_equals": { "pane": 1, "count": 1 } }
+      ]
+    },
+    { "action": "cmd", "cmd": "RemoveIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": { "pane": 0, "count": 0 } },
+        { "indicator_count_equals": { "pane": 1, "count": 1 } },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "name": "story_recovery_sequence",
+  "description": "User story: system stress then recovery — rapid symbol switches, indicator stacking, forced reset, verify clean baseline post-recovery.",
+  "story": "Recovery/Stress",
+  "priority": 1,
+  "tags": ["story", "recovery", "stress"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "for_each",
+      "var": "sym",
+      "items": ["SPY", "QQQ", "NVDA", "AAPL", "MSFT"],
+      "steps": [
+        { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "{{sym}}" } },
+        { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+        { "action": "wait_frames", "count": 1 }
+      ]
+    },
+    {
+      "action": "retry",
+      "max_attempts": 3,
+      "delay_ms": 50,
+      "steps": [
+        { "action": "reset" },
+        { "action": "wait_frames", "count": 5 },
+        {
+          "action": "assert",
+          "assertions": [
+            { "pane_count_equals": 1 },
+            { "active_symbol_equals": "SPY" },
+            { "no_open_dialogs": true },
+            { "fps_above": 5.0 }
+          ]
+        }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": { "pane": 0, "count": 0 } },
+        { "no_active_violations": true }
+      ]
+    }
+  ]
+}

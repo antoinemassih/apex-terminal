@@ -1,6 +1,7 @@
 {
   "name": "chart_flag_matrix",
   "description": "User story: as a trader I toggle volume, log scale, oscillator visibility, and other display options independently. Each toggle should leave the chart stable with no contract violations.",
+  "story": "Chart/Settings",
   "tags": ["flags", "display", "design"],
   "settle_ms": 50,
   "abort_on_failure": false,

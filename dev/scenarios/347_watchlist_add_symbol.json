@@ -1,0 +1,48 @@
+{
+  "name": "watchlist_add_symbol",
+  "description": "WatchlistAddSymbol SPY increases the watchlist item count in the active section.",
+  "story": "Watchlist/CRUD",
+  "tags": [
+    "watchlist",
+    "symbol"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSymbol",
+      "args": {
+        "symbol": "SPY"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_gte": {
+            "path": "watchlist.sections.0.item_count",
+            "min": 1
+          }
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

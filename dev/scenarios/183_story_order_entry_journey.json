@@ -1,0 +1,38 @@
+{
+  "name": "story_order_entry_journey",
+  "description": "User story: trader opens indicator editor + order entry panel simultaneously, verifies both are open (count=2), closes all, verifies clean state. Tests open_dialog_count_equals at 0/1/2.",
+  "story": "UserJourney/OrderEntry",
+  "priority": 1,
+  "tags": ["story", "orders", "dialogs", "journey"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "open_dialog_count_equals": 0 }] },
+    { "action": "cmd", "cmd": "OpenIndicatorEditor", "args": { "pane": 0, "id": 1 } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "open_dialog_count_equals": 1 }, { "dialog_open": "indicator_editor" }] },
+    { "action": "cmd", "cmd": "OpenOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "open_dialog_count_equals": 2 },
+        { "dialog_open": "indicator_editor" },
+        { "dialog_open": "order_entry" },
+        { "state_field_not_null": "open_dialogs" }
+      ]
+    },
+    { "action": "cmd", "cmd": "CloseAllDialogs", "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "open_dialog_count_equals": 0 },
+        { "no_open_dialogs": true }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

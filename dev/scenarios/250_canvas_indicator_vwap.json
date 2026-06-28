@@ -1,0 +1,49 @@
+{
+  "name": "canvas_indicator_vwap",
+  "description": "VWAP indicator output at a realistic price level",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "indicators"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetIndicatorOutput",
+      "pane": 0,
+      "kind": "VWAP",
+      "value": 448.5
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_indicator_last_value_near": {
+            "pane": 0,
+            "kind": "VWAP",
+            "value": 448.5,
+            "tolerance": 0.01
+          }
+        },
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "VWAP"
+          }
+        }
+      ]
+    }
+  ]
+}

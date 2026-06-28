@@ -1,0 +1,32 @@
+{
+  "name": "canvas_three_pane_layout",
+  "description": "HeadlessLayout cols=3 creates 3 canvas panes",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "pane"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "cmd",
+      "cmd": "HeadlessLayout",
+      "cols": 3
+    },
+    {
+      "action": "wait",
+      "ms": 50
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_pane_count_equals": 3
+        }
+      ]
+    }
+  ]
+}

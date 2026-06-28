@@ -1,6 +1,7 @@
 {
   "name": "92_inter_pane_timeframe_diversity",
   "description": "TwoColumns with the same symbol SPY but opposite timeframe extremes: pane0=1m (fastest), pane1=1d (slowest), verifying both maintain correct state.",
+  "story": "Layout/Panes",
   "tags": ["inter-pane", "timeframe"],
   "settle_ms": 50,
   "abort_on_failure": false,

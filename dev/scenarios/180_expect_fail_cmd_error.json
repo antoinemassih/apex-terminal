@@ -1,0 +1,27 @@
+{
+  "name": "expect_fail_cmd_error",
+  "description": "expect_fail on a cmd step that will fail due to unknown command. Verifies negative testing works for command errors.",
+  "story": "ErrorHandling/NegativeTest",
+  "priority": 3,
+  "tags": ["expect_fail", "extension", "negative"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "cmd",
+      "expect_fail": true,
+      "cmd": "UnknownCommandThatDoesNotExist",
+      "args": {}
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "fps_above": 5.0 },
+        { "pane_count_equals": 1 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

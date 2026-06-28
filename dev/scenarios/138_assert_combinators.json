@@ -1,6 +1,7 @@
 {
   "name": "assert_combinators",
   "description": "Tests all_of, any_of, and not combinators together on clean reset state.",
+  "story": "TestInfra/AssertEngine",
   "tags": ["assert-engine", "combinators"],
   "settle_ms": 0,
   "abort_on_failure": false,

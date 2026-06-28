@@ -1,6 +1,7 @@
 {
   "name": "options_pane_rapid_type_switch",
   "description": "Rapidly cycle pane 0 through Chart -> OptionsSentiment -> OptionsFlow -> Chart, checking FPS.",
+  "story": "UserJourney/OptionsPanel",
   "tags": ["options", "pane", "fps"],
   "settle_ms": 50,
   "abort_on_failure": false,

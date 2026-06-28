@@ -1,0 +1,35 @@
+{
+  "name": "capture_annotation_baseline",
+  "description": "Captures annotation count as baseline (0), adds 3 annotations, captures count again, verifies both captures are correct values.",
+  "story": "Captures/Annotations",
+  "priority": 2,
+  "tags": ["extension", "captures", "annotations"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "annotate", "clear": true },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "capture", "path": "pane_count", "as": "count_before_ann" },
+    {
+      "action": "annotate",
+      "annotations": [
+        { "id": "cap.a1", "rect": { "x": 0,   "y": 0,   "w": 100, "h": 50 }, "label": "A1", "color": [255,0,0,100], "border_only": false },
+        { "id": "cap.a2", "rect": { "x": 110,  "y": 0,   "w": 100, "h": 50 }, "label": "A2", "color": [0,255,0,100], "border_only": false },
+        { "id": "cap.a3", "rect": { "x": 220,  "y": 0,   "w": 100, "h": 50 }, "label": "A3", "color": [0,0,255,100], "border_only": false }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "annotation_count_equals": 3 },
+        { "annotation_id_exists": "cap.a1" },
+        { "annotation_id_exists": "cap.a2" },
+        { "annotation_id_exists": "cap.a3" },
+        { "captures_equal": { "key": "count_before_ann", "equals": 1 } }
+      ]
+    },
+    { "action": "annotate", "clear": true },
+    { "action": "assert", "assertions": [{ "annotation_count_equals": 0 }] }
+  ]
+}

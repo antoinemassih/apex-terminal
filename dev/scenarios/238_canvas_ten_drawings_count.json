@@ -1,0 +1,133 @@
+{
+  "name": "canvas_ten_drawings_count",
+  "description": "Ten drawings added — count is accurate at scale",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "drawings"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "lvl1",
+      "kind": "HorizLine",
+      "price_a": 401
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "lvl2",
+      "kind": "HorizLine",
+      "price_a": 411
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "lvl3",
+      "kind": "HorizLine",
+      "price_a": 421
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "lvl4",
+      "kind": "HorizLine",
+      "price_a": 431
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "lvl5",
+      "kind": "HorizLine",
+      "price_a": 441
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "lvl6",
+      "kind": "HorizLine",
+      "price_a": 451
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "lvl7",
+      "kind": "HorizLine",
+      "price_a": 461
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "lvl8",
+      "kind": "HorizLine",
+      "price_a": 471
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "lvl9",
+      "kind": "HorizLine",
+      "price_a": 481
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddDrawing",
+      "pane": 0,
+      "id": "lvl10",
+      "kind": "HorizLine",
+      "price_a": 491
+    },
+    {
+      "action": "wait",
+      "ms": 50
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_drawing_count_equals": {
+            "pane": 0,
+            "count": 10
+          }
+        },
+        {
+          "canvas_drawing_kind_count": {
+            "pane": 0,
+            "kind": "HorizLine",
+            "count": 10
+          }
+        },
+        {
+          "canvas_drawing_exists": {
+            "pane": 0,
+            "id": "lvl1"
+          }
+        },
+        {
+          "canvas_drawing_exists": {
+            "pane": 0,
+            "id": "lvl10"
+          }
+        }
+      ]
+    }
+  ]
+}

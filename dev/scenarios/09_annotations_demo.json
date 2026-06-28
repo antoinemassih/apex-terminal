@@ -1,6 +1,7 @@
 {
   "name": "annotations_demo",
   "description": "Write debug annotation overlays via the scenario runner, verify they're stored, then clear them. Demonstrates the visual refinement feedback loop.",
+  "story": "Dev/Annotations",
   "tags": ["debug", "annotations", "design"],
   "settle_ms": 0,
   "abort_on_failure": true,

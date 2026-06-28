@@ -1,0 +1,30 @@
+{
+  "name": "for_each_timeframes",
+  "description": "Uses for_each to iterate over standard timeframes, changing pane 0's timeframe and asserting state is valid after each.",
+  "story": "Chart/TimeframeMatrix",
+  "priority": 2,
+  "tags": ["for_each", "extension", "chart"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "for_each",
+      "var": "tf",
+      "items": ["1m", "5m", "15m", "1h", "1d"],
+      "steps": [
+        { "action": "cmd", "cmd": "ChangeTimeframe", "args": { "pane": 0, "tf": "{{tf}}" } },
+        { "action": "wait_frames", "count": 2 },
+        {
+          "action": "assert",
+          "assertions": [
+            { "pane_timeframe_equals": { "pane": 0, "tf": "{{tf}}" } },
+            { "fps_above": 5.0 }
+          ]
+        }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

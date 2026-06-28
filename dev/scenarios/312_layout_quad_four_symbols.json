@@ -1,0 +1,103 @@
+{
+  "name": "layout_quad_four_symbols",
+  "description": "FourGrid layout with 4 distinct symbols — one per pane — assert all pane symbol assignments.",
+  "story": "Layout/System",
+  "tags": [
+    "layout",
+    "pane",
+    "symbol"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetLayout",
+      "args": {
+        "layout": "FourGrid"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": {
+        "pane": 0,
+        "symbol": "SPY"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": {
+        "pane": 1,
+        "symbol": "QQQ"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": {
+        "pane": 2,
+        "symbol": "AAPL"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": {
+        "pane": 3,
+        "symbol": "NVDA"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 8
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "pane_symbol_equals": {
+            "pane": 0,
+            "symbol": "SPY"
+          }
+        },
+        {
+          "pane_symbol_equals": {
+            "pane": 1,
+            "symbol": "QQQ"
+          }
+        },
+        {
+          "pane_symbol_equals": {
+            "pane": 2,
+            "symbol": "AAPL"
+          }
+        },
+        {
+          "pane_symbol_equals": {
+            "pane": 3,
+            "symbol": "NVDA"
+          }
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

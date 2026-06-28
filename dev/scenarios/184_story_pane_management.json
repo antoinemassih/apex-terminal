@@ -1,0 +1,38 @@
+{
+  "name": "story_pane_management",
+  "description": "User story: trader expands to quad layout, assigns distinct symbols using for_each, captures pane 0 symbol, verifies isolation, collapses back.",
+  "story": "UserJourney/PaneManagement",
+  "priority": 1,
+  "tags": ["story", "pane", "for_each", "journey"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "Quad" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [{ "pane_count_equals": 4 }] },
+    {
+      "action": "for_each",
+      "var": "sym",
+      "items": ["SPY", "QQQ", "AAPL", "NVDA"],
+      "steps": [
+        { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "{{sym}}" } },
+        { "action": "wait_frames", "count": 1 }
+      ]
+    },
+    { "action": "capture", "path": "panes.0.symbol", "as": "last_sym" },
+    {
+      "action": "assert",
+      "assertions": [
+        { "captures_equal": { "key": "last_sym", "equals": "NVDA" } },
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "Single" } },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "assert", "assertions": [{ "pane_count_equals": 1 }] },
+    { "action": "reset" }
+  ]
+}

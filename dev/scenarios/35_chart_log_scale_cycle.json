@@ -1,6 +1,7 @@
 {
   "name": "chart_log_scale_cycle",
   "description": "Enable then disable log scale on pane 0, verify no violations after each toggle.",
+  "story": "Chart/Settings",
   "tags": ["chart", "flags"],
   "settle_ms": 50,
   "abort_on_failure": false,

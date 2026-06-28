@@ -1,0 +1,59 @@
+{
+  "name": "canvas_viewport_wide",
+  "description": "Wide viewport [300, 700] contains multiple prices",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "viewport"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetViewport",
+      "pane": 0,
+      "price_low": 300,
+      "price_high": 700
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_viewport_price_contains": {
+            "pane": 0,
+            "price": 350
+          }
+        },
+        {
+          "canvas_viewport_price_contains": {
+            "pane": 0,
+            "price": 500
+          }
+        },
+        {
+          "canvas_viewport_price_contains": {
+            "pane": 0,
+            "price": 650
+          }
+        },
+        {
+          "canvas_viewport_px_per_bar_gte": {
+            "pane": 0,
+            "min": 1
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "name": "symbol_preserved_after_pane_type_change",
+  "description": "Swap pane 0 to AAPL. Change pane type to Dashboard then back to Chart. Assert symbol is still AAPL after the round-trip.",
+  "story": "PaneState/Preservation",
+  "tags": ["pane-state", "preservation", "symbol", "pane-type"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "AAPL" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_symbol_equals": { "pane": 0, "symbol": "AAPL" } }
+      ]
+    },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "Dashboard" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "ChangePaneType", "args": { "pane": 0, "kind": "Chart" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_symbol_equals": { "pane": 0, "symbol": "AAPL" } },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "name": "for_each_indicators",
+  "description": "Uses for_each to add 4 indicators one at a time, asserting indicator count increments each iteration.",
+  "story": "Chart/IndicatorMatrix",
+  "priority": 2,
+  "tags": ["for_each", "extension", "indicators"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [{ "indicator_count_equals": { "pane": 0, "count": 0 } }]
+    },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "VWAP" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "MACD" } },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "BB" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": { "pane": 0, "count": 4 } },
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    {
+      "action": "for_each",
+      "var": "unused",
+      "items": ["a", "b", "c", "d"],
+      "steps": [
+        { "action": "cmd", "cmd": "RemoveIndicator", "args": { "pane": 0, "id": 0 } },
+        { "action": "wait_frames", "count": 1 }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": { "pane": 0, "count": 0 } }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

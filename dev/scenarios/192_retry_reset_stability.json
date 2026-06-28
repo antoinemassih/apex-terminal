@@ -1,0 +1,32 @@
+{
+  "name": "retry_reset_stability",
+  "description": "Uses retry to assert clean state after reset, testing that retry correctly identifies a passing scenario on first attempt.",
+  "story": "Recovery/Retry",
+  "priority": 2,
+  "tags": ["retry", "extension", "stability"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "retry",
+      "max_attempts": 2,
+      "delay_ms": 50,
+      "steps": [
+        { "action": "reset" },
+        { "action": "wait_frames", "count": 5 },
+        {
+          "action": "assert",
+          "assertions": [
+            { "pane_count_equals": 1 },
+            { "active_symbol_equals": "SPY" },
+            { "active_timeframe_equals": "5m" },
+            { "no_open_dialogs": true },
+            { "fps_above": 5.0 }
+          ]
+        }
+      ]
+    }
+  ]
+}

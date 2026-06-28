@@ -1,6 +1,7 @@
 {
   "name": "options_pane_to_chart_back",
   "description": "Switch to OptionsFlow, then back to Chart, verify pane_type_equals Chart.",
+  "story": "UserJourney/OptionsPanel",
   "tags": ["options", "pane"],
   "settle_ms": 50,
   "abort_on_failure": false,

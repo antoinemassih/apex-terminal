@@ -1,6 +1,7 @@
 {
   "name": "workspace_roundtrip",
   "description": "Save the current layout as a named workspace, switch away, then reload it — verifies save/load round-trip and the workspace dropdown trigger.",
+  "story": "Baseline/Health",
   "tags": ["workspace", "persistence"],
   "settle_ms": 100,
   "abort_on_failure": true,

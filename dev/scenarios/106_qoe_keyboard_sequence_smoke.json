@@ -1,6 +1,7 @@
 {
   "name": "106_qoe_keyboard_sequence_smoke",
   "description": "Smoke test key input path: inject escape+1+2+escape sequence with delays, assert FPS and no crashes to confirm the input handler is non-blocking.",
+  "story": "QoE/Full",
   "tags": ["qoe", "input"],
   "settle_ms": 50,
   "abort_on_failure": false,

@@ -1,0 +1,92 @@
+{
+  "name": "comprehensive_extension_audit",
+  "description": "Master coverage audit: exercises every new capability in one scenario — for_each, capture, retry, include, expect_fail, annotation_id_exists, watchlist_section_title_equals, open_dialog_count_equals, captures_equal, state_field_contains, state_field_not_null.",
+  "story": "Audit/Extension",
+  "priority": 1,
+  "tags": ["extension", "audit", "coverage", "integration"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "log", "message": "Phase 1: captures and state assertions" },
+    { "action": "capture", "path": "active_symbol",    "as": "sym_before" },
+    { "action": "capture", "path": "pane_count",       "as": "panes_before" },
+    {
+      "action": "assert",
+      "assertions": [
+        { "state_field_not_null": "active_symbol" },
+        { "state_field_contains": { "path": "active_symbol", "contains": "SP" } },
+        { "captures_equal": { "key": "sym_before",   "equals": "SPY" } },
+        { "captures_equal": { "key": "panes_before", "equals": 1 } }
+      ]
+    },
+    { "action": "log", "message": "Phase 2: for_each symbol swap" },
+    {
+      "action": "for_each",
+      "var": "sym",
+      "items": ["QQQ", "SPY"],
+      "steps": [
+        { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "{{sym}}" } },
+        { "action": "wait_frames", "count": 2 }
+      ]
+    },
+    { "action": "log", "message": "Phase 3: watchlist + annotations" },
+    { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "Audit Section" } },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "annotate",
+      "annotations": [
+        { "id": "audit.overlay", "rect": { "x": 0, "y": 0, "w": 300, "h": 100 }, "label": "Audit", "color": [255,200,0,80], "border_only": false }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "watchlist_section_title_equals": { "idx": 1, "title": "Audit Section" } },
+        { "annotation_id_exists": "audit.overlay" },
+        { "open_dialog_count_equals": 0 }
+      ]
+    },
+    { "action": "log", "message": "Phase 4: retry block" },
+    {
+      "action": "retry",
+      "max_attempts": 2,
+      "delay_ms": 50,
+      "steps": [
+        {
+          "action": "assert",
+          "assertions": [
+            { "fps_above": 5.0 },
+            { "no_active_violations": true }
+          ]
+        }
+      ]
+    },
+    { "action": "log", "message": "Phase 5: expect_fail negative tests" },
+    {
+      "action": "assert",
+      "expect_fail": true,
+      "assertions": [{ "fps_above": 99999.0 }]
+    },
+    {
+      "action": "assert",
+      "expect_fail": true,
+      "assertions": [{ "pane_count_equals": 999 }]
+    },
+    { "action": "log", "message": "Phase 6: include another scenario" },
+    { "action": "include", "file": "01_health_check.json" },
+    { "action": "log", "message": "Phase 7: final state verification" },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_count_equals": 1 },
+        { "fps_above": 5.0 },
+        { "no_open_dialogs": true },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "annotate", "clear": true },
+    { "action": "reset" }
+  ]
+}

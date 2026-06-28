@@ -1,0 +1,32 @@
+{
+  "name": "dialog_survives_layout_change",
+  "description": "Open settings dialog. Change layout to TwoColumns. Assert settings dialog remains open and pane count updated.",
+  "story": "Dialog/Persistence",
+  "tags": ["dialogs", "persistence", "layout"],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "OpenSettings", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "dialog_open": "settings" }
+      ]
+    },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "TwoColumns" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "dialog_open": "settings" },
+        { "pane_count_equals": 2 },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "cmd", "cmd": "CloseSettings", "args": {} },
+    { "action": "reset" }
+  ]
+}

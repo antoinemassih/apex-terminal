@@ -1,0 +1,47 @@
+{
+  "name": "canvas_viewport_bars_still_valid",
+  "description": "OHLC validity preserved after viewport change",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "viewport",
+    "bars"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetViewport",
+      "pane": 0,
+      "price_low": 440,
+      "price_high": 460
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "canvas_visible_bar_count_gte": {
+            "pane": 0,
+            "min": 1
+          }
+        }
+      ]
+    }
+  ]
+}

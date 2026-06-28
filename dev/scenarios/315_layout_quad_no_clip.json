@@ -1,0 +1,80 @@
+{
+  "name": "layout_quad_no_clip",
+  "description": "FourGrid layout with symbols on all 4 panes: no clipped widgets, no violations.",
+  "story": "Layout/System",
+  "tags": [
+    "layout",
+    "design"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetLayout",
+      "args": {
+        "layout": "FourGrid"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": {
+        "pane": 0,
+        "symbol": "SPY"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": {
+        "pane": 1,
+        "symbol": "QQQ"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": {
+        "pane": 2,
+        "symbol": "AAPL"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": {
+        "pane": 3,
+        "symbol": "NVDA"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 8
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_clipped_widgets": true
+        },
+        {
+          "no_active_violations": true
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

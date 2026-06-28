@@ -1,0 +1,28 @@
+{
+  "name": "for_each_dialog_open_close",
+  "description": "Use for_each to iterate over dialog commands, opening and closing multiple dialogs in a cycle. Exercises HeadlessDialog + for_each together.",
+  "story": "Dialogs/ForEachCycle",
+  "priority": 2,
+  "tags": ["dialogs", "for_each", "story"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "open_dialog_count_equals": 0 }] },
+    {
+      "action": "for_each",
+      "var": "dlg",
+      "items": ["OpenOrderEntry", "OpenSettings", "OpenOrdersPanel"],
+      "steps": [
+        { "action": "cmd", "cmd": "{{dlg}}", "args": {} },
+        { "action": "wait_frames", "count": 1 }
+      ]
+    },
+    { "action": "assert", "assertions": [{ "open_dialog_count_equals": 3 }] },
+    { "action": "cmd", "cmd": "CloseAllDialogs", "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    { "action": "assert", "assertions": [{ "open_dialog_count_equals": 0 }, { "no_open_dialogs": true }] },
+    { "action": "reset" }
+  ]
+}

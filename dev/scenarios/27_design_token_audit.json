@@ -1,6 +1,7 @@
 {
   "name": "design_token_audit",
   "description": "User story: as a UI reviewer I expect all toolbar buttons to share the same height and all interactive elements to have sufficient touch targets (≥28px). Tests the new toolbar_height_consistent and spacing_between assertions.",
+  "story": "Design/Quality",
   "tags": ["design", "tokens", "toolbar", "accessibility"],
   "settle_ms": 50,
   "abort_on_failure": false,

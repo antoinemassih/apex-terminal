@@ -1,0 +1,40 @@
+{
+  "name": "annotation_id_exists",
+  "description": "Exercises annotation_id_exists assertion: adds a named annotation, asserts its id is found, clears it, asserts it is gone.",
+  "story": "Annotations/IdExists",
+  "priority": 1,
+  "tags": ["extension", "annotations"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "annotate", "clear": true },
+    {
+      "action": "annotate",
+      "annotations": [
+        { "id": "zone.alpha", "rect": { "x": 0, "y": 0, "w": 200, "h": 100 }, "label": "Alpha Zone", "color": [100, 200, 255, 80], "border_only": false }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        { "annotation_id_exists": "zone.alpha" },
+        { "annotation_count_equals": 1 }
+      ]
+    },
+    { "action": "annotate", "clear": true },
+    {
+      "action": "assert",
+      "assertions": [
+        { "annotation_count_equals": 0 }
+      ]
+    },
+    {
+      "action": "assert",
+      "expect_fail": true,
+      "assertions": [
+        { "annotation_id_exists": "zone.alpha" }
+      ]
+    }
+  ]
+}

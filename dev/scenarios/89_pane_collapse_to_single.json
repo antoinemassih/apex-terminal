@@ -1,6 +1,7 @@
 {
   "name": "89_pane_collapse_to_single",
   "description": "Start TwoColumns with SPY+QQQ, then collapse to Single layout, verify pane_count returns to 1 with no violations.",
+  "story": "Layout/Panes",
   "tags": ["pane", "layout"],
   "settle_ms": 50,
   "abort_on_failure": false,

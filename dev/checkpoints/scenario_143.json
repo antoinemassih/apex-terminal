@@ -1,0 +1,38 @@
+{
+  "active_pane": 0,
+  "active_symbol": "TSLA",
+  "active_timeframe": "15m",
+  "bar_count": 100,
+  "fps": 60.0,
+  "frame_counter": 7866,
+  "open_dialogs": [],
+  "pane_count": 1,
+  "panes": [
+    {
+      "alert_count": 0,
+      "bar_count": 100,
+      "drawing_count": 0,
+      "index": 0,
+      "indicator_count": 2,
+      "order_count": 0,
+      "pane_type": "Chart",
+      "symbol": "TSLA",
+      "timeframe": "15m"
+    }
+  ],
+  "total_alert_count": 0,
+  "total_order_count": 0,
+  "watchlist": {
+    "active_idx": 0,
+    "name": "Default",
+    "section_count": 1,
+    "sections": [
+      {
+        "collapsed": false,
+        "item_count": 0,
+        "title": "Stocks"
+      }
+    ],
+    "watchlist_count": 1
+  }
+}

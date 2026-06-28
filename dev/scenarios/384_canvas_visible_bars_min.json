@@ -1,0 +1,54 @@
+{
+  "name": "canvas_visible_bars_min",
+  "description": "After symbol assignment, canvas should show at least 10 bars.",
+  "story": "Canvas/Integrity",
+  "tags": [
+    "canvas",
+    "bars"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "args": {
+        "pane": 0,
+        "symbol": "AAPL"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 10
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_visible_bar_count_gte": {
+            "pane": 0,
+            "min": 10
+          }
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

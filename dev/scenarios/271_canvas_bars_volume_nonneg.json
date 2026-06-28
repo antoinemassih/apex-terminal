@@ -1,0 +1,30 @@
+{
+  "name": "canvas_bars_volume_nonneg",
+  "description": "All visible bars have non-negative volume",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "bars"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_bar_volume_gte": {
+            "pane": 0,
+            "min": 0
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 {
   "name": "111_qoe_design_health_after_load",
   "description": "After reset and initial load, run a comprehensive design health check: no_clipped_widgets, no_active_violations, all_touch_targets_ok 24, design_audit_clean.",
+  "story": "QoE/Full",
   "tags": ["qoe", "design"],
   "settle_ms": 50,
   "abort_on_failure": false,

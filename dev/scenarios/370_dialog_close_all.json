@@ -1,0 +1,22 @@
+{
+  "name": "dialog_close_all",
+  "description": "Open order_entry then CloseAllDialogs command clears all open dialogs.",
+  "story": "Dialog/Lifecycle",
+  "tags": ["dialog"],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "cmd", "cmd": "OpenOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "dialog_open": "order_entry" }] },
+    { "action": "cmd", "cmd": "CloseAllDialogs", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "no_open_dialogs": true },
+      { "fps_above": 5.0 }
+    ]},
+    { "action": "reset" }
+  ]
+}

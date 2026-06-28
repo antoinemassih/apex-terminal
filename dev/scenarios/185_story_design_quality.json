@@ -1,0 +1,34 @@
+{
+  "name": "story_design_quality",
+  "description": "User story: QA validates design quality — runs design_audit at baseline, after multi-symbol swap, and after indicator stack, capturing violation count each time.",
+  "story": "Quality/Design",
+  "priority": 1,
+  "tags": ["story", "design", "quality"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    { "action": "design_audit", "require_clean": false },
+    { "action": "capture", "path": "pane_count", "as": "pane_count_baseline" },
+    {
+      "action": "for_each",
+      "var": "sym",
+      "items": ["QQQ", "MSFT", "SPY"],
+      "steps": [
+        { "action": "cmd", "cmd": "SwapPaneSymbol", "args": { "pane": 0, "symbol": "{{sym}}" } },
+        { "action": "wait_frames", "count": 2 }
+      ]
+    },
+    { "action": "design_audit", "require_clean": false },
+    {
+      "action": "assert",
+      "assertions": [
+        { "captures_equal": { "key": "pane_count_baseline", "equals": 1 } },
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

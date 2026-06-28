@@ -1,0 +1,37 @@
+{
+  "name": "layout_shrink_with_indicators",
+  "description": "Four panes each with a different indicator. Shrink to Single layout. Assert pane count is 1 and pane 0 still has its indicator.",
+  "story": "MultiPane/LayoutChange",
+  "tags": ["multi-pane", "layout", "indicators", "shrink"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "FourGrid" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 1, "kind": "MACD" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 2, "kind": "EMA" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 3, "kind": "ATR" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "indicator_count_equals": { "pane": 0, "count": 1 } },
+        { "pane_count_equals": 4 }
+      ]
+    },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "Single" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_count_equals": 1 },
+        { "indicator_count_equals": { "pane": 0, "count": 1 } },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

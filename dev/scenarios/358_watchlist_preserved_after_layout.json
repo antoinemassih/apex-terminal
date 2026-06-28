@@ -1,0 +1,67 @@
+{
+  "name": "watchlist_preserved_after_layout",
+  "description": "Add symbols to watchlist, change layout, assert section count unchanged.",
+  "story": "Watchlist/CRUD",
+  "tags": [
+    "watchlist",
+    "layout"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "WatchlistAddSection",
+      "args": {
+        "title": "Test"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "watchlist_section_count_equals": 2
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetLayout",
+      "args": {
+        "layout": "TwoColumns"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "watchlist_section_count_equals": 2
+        },
+        {
+          "pane_count_equals": 2
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

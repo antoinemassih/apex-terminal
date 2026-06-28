@@ -1,0 +1,42 @@
+{
+  "name": "order_management_full_noop_flow",
+  "description": "Full non-submitting order management flow: open orders panel, cancel all (no-op), clear history, open order entry, then close all dialogs.",
+  "story": "OrderManagement/FullFlow",
+  "tags": ["orders", "order_entry", "safe", "flow"],
+  "settle_ms": 50,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }, { "no_open_dialogs": true }] },
+    { "action": "log", "message": "Opening orders panel" },
+    { "action": "cmd", "cmd": "OpenOrdersPanel", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "dialog_open": "orders_panel" }] },
+    { "action": "log", "message": "Cancelling all orders (no-op if no live orders)" },
+    { "action": "cmd", "cmd": "CancelAllOrders", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Clearing order history" },
+    { "action": "cmd", "cmd": "ClearOrderHistory", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [{ "fps_above": 5.0 }] },
+    { "action": "log", "message": "Opening order entry alongside orders panel" },
+    { "action": "cmd", "cmd": "OpenOrderEntry", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "dialog_open": "order_entry" },
+      { "dialog_open": "orders_panel" },
+      { "fps_above": 5.0 },
+      { "no_active_violations": true }
+    ] },
+    { "action": "log", "message": "Closing all dialogs" },
+    { "action": "cmd", "cmd": "CloseAllDialogs", "args": {} },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "assert", "assertions": [
+      { "no_open_dialogs": true },
+      { "fps_above": 5.0 }
+    ] },
+    { "action": "reset" }
+  ]
+}

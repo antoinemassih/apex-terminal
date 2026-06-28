@@ -1,6 +1,7 @@
 {
   "name": "chart_extended_hours",
   "description": "Toggle ExtendedHours flag on and off, verify no violations and stable FPS each time.",
+  "story": "Chart/Settings",
   "tags": ["chart", "flags"],
   "settle_ms": 50,
   "abort_on_failure": false,

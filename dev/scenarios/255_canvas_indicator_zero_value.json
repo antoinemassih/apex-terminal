@@ -1,0 +1,51 @@
+{
+  "name": "canvas_indicator_zero_value",
+  "description": "Indicator value of exactly 0.0 is handled correctly",
+  "story": "Canvas Introspection",
+  "priority": 2,
+  "tags": [
+    "canvas",
+    "indicators"
+  ],
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetIndicatorOutput",
+      "pane": 0,
+      "kind": "SMA",
+      "value": 0
+    },
+    {
+      "action": "wait",
+      "ms": 30
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_indicator_last_value_near": {
+            "pane": 0,
+            "kind": "SMA",
+            "value": 0,
+            "tolerance": 0.001
+          }
+        },
+        {
+          "canvas_indicator_value_in_range": {
+            "pane": 0,
+            "kind": "SMA",
+            "min": -0.1,
+            "max": 0.1
+          }
+        }
+      ]
+    }
+  ]
+}

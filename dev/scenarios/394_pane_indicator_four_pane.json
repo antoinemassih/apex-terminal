@@ -1,0 +1,31 @@
+{
+  "name": "pane_indicator_four_pane",
+  "description": "Four panes. Add one unique indicator per pane (RSI, MACD, EMA, ATR). Assert each pane has exactly 1 indicator.",
+  "story": "MultiPane/Indicators",
+  "tags": ["multi-pane", "indicators", "isolation", "four-pane"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "FourGrid" } },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 0, "kind": "RSI" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 1, "kind": "MACD" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 2, "kind": "EMA" } },
+    { "action": "cmd", "cmd": "AddIndicator", "args": { "pane": 3, "kind": "ATR" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_count_equals": 4 },
+        { "indicator_count_equals": { "pane": 0, "count": 1 } },
+        { "indicator_count_equals": { "pane": 1, "count": 1 } },
+        { "indicator_count_equals": { "pane": 2, "count": 1 } },
+        { "indicator_count_equals": { "pane": 3, "count": 1 } },
+        { "fps_above": 5.0 }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

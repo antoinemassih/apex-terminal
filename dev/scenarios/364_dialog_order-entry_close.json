@@ -1,0 +1,51 @@
+{
+  "name": "dialog_order_entry_close",
+  "description": "After OpenOrderEntry+CloseOrderEntry dialog is closed.",
+  "story": "Dialog/Lifecycle",
+  "tags": [
+    "dialog"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "OpenOrderEntry",
+      "args": {}
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "CloseOrderEntry",
+      "args": {}
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "dialog_closed": "order_entry"
+        },
+        {
+          "fps_above": 5
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

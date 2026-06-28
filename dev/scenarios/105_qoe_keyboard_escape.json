@@ -1,6 +1,7 @@
 {
   "name": "105_qoe_keyboard_escape",
   "description": "Open order entry dialog, then press Escape via key_sequence, assert no_open_dialogs to confirm keyboard dismiss path works.",
+  "story": "QoE/Full",
   "tags": ["qoe", "input"],
   "settle_ms": 50,
   "abort_on_failure": false,

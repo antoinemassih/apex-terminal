@@ -1,0 +1,51 @@
+{
+  "name": "story_watchlist_and_orders",
+  "description": "User story: build a watchlist, open orders panel, verify both panels coexist, check state consistency, close orders panel, verify watchlist sections remain.",
+  "story": "UserJourney/WatchlistAndOrders",
+  "priority": 1,
+  "tags": ["story", "watchlist", "orders", "integration"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "for_each",
+      "var": "title",
+      "items": ["Tech", "Energy", "Finance"],
+      "steps": [
+        { "action": "cmd", "cmd": "WatchlistAddSection", "args": { "title": "{{title}}" } },
+        { "action": "wait_frames", "count": 1 }
+      ]
+    },
+    { "action": "assert", "assertions": [
+      { "watchlist_section_title_equals": { "idx": 1, "title": "Tech" } },
+      { "watchlist_section_title_equals": { "idx": 2, "title": "Energy" } },
+      { "watchlist_section_title_equals": { "idx": 3, "title": "Finance" } }
+    ]},
+    { "action": "cmd", "cmd": "OpenOrdersPanel", "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "open_dialog_count_equals": 1 },
+        { "dialog_open": "orders_panel" },
+        { "state_field_array_contains": { "path": "open_dialogs", "value": "orders_panel" } },
+        { "fps_above": 5.0 },
+        { "no_active_violations": true }
+      ]
+    },
+    { "action": "capture", "path": "open_dialogs", "as": "orders_open" },
+    { "action": "cmd", "cmd": "CloseOrdersPanel", "args": {} },
+    { "action": "wait_frames", "count": 2 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "open_dialog_count_equals": 0 },
+        { "dialog_closed": "orders_panel" },
+        { "watchlist_section_title_equals": { "idx": 1, "title": "Tech" } }
+      ]
+    },
+    { "action": "reset" }
+  ]
+}

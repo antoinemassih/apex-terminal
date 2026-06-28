@@ -1,0 +1,68 @@
+{
+  "name": "indicator_add_three",
+  "description": "Add RSI, MACD, and BB to same pane: indicator_count_equals 3.",
+  "story": "Indicator/Lifecycle",
+  "tags": [
+    "indicator",
+    "lifecycle"
+  ],
+  "settle_ms": 30,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "args": {
+        "pane": 0,
+        "kind": "RSI"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "args": {
+        "pane": 0,
+        "kind": "MACD"
+      }
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "args": {
+        "pane": 0,
+        "kind": "BB"
+      }
+    },
+    {
+      "action": "wait_frames",
+      "count": 6
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "indicator_count_equals": {
+            "pane": 0,
+            "count": 3
+          }
+        },
+        {
+          "fps_above": 5
+        },
+        {
+          "no_active_violations": true
+        }
+      ]
+    },
+    {
+      "action": "reset"
+    }
+  ]
+}

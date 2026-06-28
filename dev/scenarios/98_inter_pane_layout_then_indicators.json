@@ -1,6 +1,7 @@
 {
   "name": "98_inter_pane_layout_then_indicators",
   "description": "Establish Quad layout first, then add indicators only to panes 0 and 2 (skipping 1 and 3), assert no violations across all panes.",
+  "story": "Layout/Panes",
   "tags": ["inter-pane", "indicators"],
   "settle_ms": 50,
   "abort_on_failure": false,

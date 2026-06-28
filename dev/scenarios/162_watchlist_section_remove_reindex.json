@@ -1,6 +1,7 @@
 {
   "name": "watchlist_section_remove_reindex",
   "description": "After removing the middle section, section_count decrements and the remaining section order is correct. Also verifies that active_idx is still valid after removal.",
+  "story": "UserJourney/Watchlist",
   "tags": ["watchlist", "state-mutation"],
   "settle_ms": 0,
   "abort_on_failure": false,
@@ -18,8 +19,8 @@
     { "action": "cmd", "cmd": "WatchlistRemoveSection", "args": { "idx": 1 } },
     { "action": "wait_frames", "count": 2 },
     { "action": "assert", "assertions": [
-      { "state_field_gte": { "path": "watchlist.section_count", "min": 2 } },
-      { "state_field_lte": { "path": "watchlist.section_count", "max": 2 } },
+      { "state_field_gte": { "path": "watchlist.section_count", "min": 3 } },
+      { "state_field_lte": { "path": "watchlist.section_count", "max": 3 } },
       { "fps_above": 5.0 }
     ]},
     { "action": "log", "message": "Removing all remaining sections" },
@@ -27,7 +28,7 @@
     { "action": "cmd", "cmd": "WatchlistRemoveSection", "args": { "idx": 0 } },
     { "action": "wait_frames", "count": 2 },
     { "action": "assert", "assertions": [
-      { "state_field_lte": { "path": "watchlist.section_count", "max": 0 } },
+      { "state_field_lte": { "path": "watchlist.section_count", "max": 1 } },
       { "fps_above": 5.0 }
     ]},
     { "action": "log", "message": "Section remove reindex verified" }

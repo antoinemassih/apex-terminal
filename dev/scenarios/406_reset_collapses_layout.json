@@ -1,0 +1,29 @@
+{
+  "name": "reset_collapses_layout",
+  "description": "Set FourGrid layout so pane_count is 4. Reset. Assert layout collapses back to a single pane.",
+  "story": "Reset/Integrity",
+  "tags": ["reset", "layout", "integrity"],
+  "settle_ms": 0,
+  "abort_on_failure": false,
+  "steps": [
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 3 },
+    { "action": "cmd", "cmd": "SetLayout", "args": { "layout": "FourGrid" } },
+    { "action": "wait_frames", "count": 3 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_count_equals": 4 }
+      ]
+    },
+    { "action": "reset" },
+    { "action": "wait_frames", "count": 5 },
+    {
+      "action": "assert",
+      "assertions": [
+        { "pane_count_equals": 1 },
+        { "fps_above": 5.0 }
+      ]
+    }
+  ]
+}

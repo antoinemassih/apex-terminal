@@ -1,6 +1,7 @@
 {
   "name": "assert_poll",
   "description": "Trigger a symbol switch and poll until bars arrive, with a 5-second timeout. Tests async data-arrival detection.",
+  "story": "TestInfra/AssertEngine",
   "tags": ["smoke", "data", "async"],
   "settle_ms": 0,
   "abort_on_failure": true,

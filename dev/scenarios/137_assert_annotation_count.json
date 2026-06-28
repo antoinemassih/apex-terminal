@@ -1,6 +1,7 @@
 {
   "name": "assert_annotation_count",
   "description": "Tests annotation_count_equals by upserting two annotations (with required rect) then clearing them.",
+  "story": "TestInfra/AssertEngine",
   "tags": ["assert-engine", "annotations"],
   "settle_ms": 0,
   "abort_on_failure": false,

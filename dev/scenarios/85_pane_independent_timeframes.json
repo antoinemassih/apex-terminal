@@ -1,6 +1,7 @@
 {
   "name": "85_pane_independent_timeframes",
   "description": "Verify that panes maintain independent timeframes in TwoColumns layout: pane0=SPY 1h, pane1=QQQ 5m.",
+  "story": "Layout/Panes",
   "tags": ["pane", "timeframe"],
   "settle_ms": 50,
   "abort_on_failure": false,
