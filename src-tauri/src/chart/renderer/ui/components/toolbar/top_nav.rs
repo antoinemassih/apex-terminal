@@ -435,7 +435,11 @@ pub(crate) fn render(
     let rgap = crate::chart_renderer::ui::style::region_gap();
     let tb_frame = crate::chart_renderer::ui::style::region_frame(t, t.toolbar_bg)
         .inner_margin(egui::Margin { left: (gap_xs() + rgap) as i8, right: rgap as i8, top: 0, bottom: 0 });
-    let base_h = (if watchlist.compact_mode { 30.0 } else { 38.0 }) * tb_scale;
+    // The dropdown menu buttons (workspace/indicators/widgets) are ~36.6px tall and
+    // do NOT scale with tb_scale, so any toolbar shorter than ~38px clips them at the
+    // bottom (compact mode used 30px; tb_scale<1 also shrank it below the buttons).
+    // Floor the effective height at 38px — the known clip-free value.
+    let base_h = (38.0 * tb_scale).max(38.0);
     egui::TopBottomPanel::top("tb")
         .frame(tb_frame)
         // Add 2×gap to the reserved height so the card itself keeps `base_h`

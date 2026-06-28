@@ -43,10 +43,12 @@ the chain data is present. The earlier blank was data-readiness/timing in that r
 not an app-logic bug. Confirmed via instrumentation (recommendation #2), exactly the
 decisive check that avoids guessing.
 
-Minor real oddity spotted in the same logs: the underlying spot is `731.20` for
-**both** SPY and QQQ — a symbol-agnostic price feeding the overlay fetch
-(`fetch_overlay_chain_background` underlying_price / snapshot fallback). Worth a look;
-low severity (the overlay still populated).
+Minor real oddity spotted in the same logs: the underlying spot was `731.20` for
+**both** SPY and QQQ. **FIXED:** the caller passed `chart.bars.last().close`, which
+lags a symbol swap (bars load async), so enabling strikes right after switching
+centered the chain on the previous symbol's price. `fetch_overlay_chain_background`
+now prefers the symbol-keyed live snapshot — QQQ now fetches at its own ~706, not
+SPY's 731. Verified.
 
 ### 1. (original) Strikes overlay stays blank — but the data sources are down in THIS env
 Repro: `903–905_strikes_overlay_*`. The harness correctly detects the blank overlay.
@@ -81,11 +83,12 @@ Repro: `913_ux_audit_baseline`.
   dot*, `allocate_exact_size(20,20)`). 28px is a touch guideline, wrong for a
   mouse-driven terminal, so `ux_audit`'s default floor was lowered to 16px; these
   no longer false-flag.
-- **Toolbar clip — real, minor.** The dropdown buttons `workspace_btn`,
-  `indicators_btn`, `widgets_btn` have a 36.6px response rect but their toolbar row
-  clips at 30–34px, so the bottom 2–7px is cut. Fix = align the menu-button height
-  to the row (or raise the row height); needs visual iteration to get right, so it's
-  reported rather than blind-changed.
+- **Toolbar clip — FIXED.** The dropdown buttons `workspace_btn`, `indicators_btn`,
+  `widgets_btn` (~36.6px, fixed egui size) were clipped because the main toolbar
+  (`tb`, 30px in compact mode × `tb_scale`≈0.9 → 34px) and the second `toolnav` row
+  (30px) were shorter than the buttons. Floored both at 38px (`top_nav.rs` base_h,
+  `style.rs` toolnav_resolved_height). Verified: zero clipped widgets, `ux_audit`
+  passes.
 
 ## Honest limits
 - The strikes/gamma findings are reproduced with the data feed confirmed responding

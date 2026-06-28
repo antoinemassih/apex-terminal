@@ -1401,8 +1401,10 @@ pub(crate) fn toolnav_visible() -> bool {
 /// but the active style sets `toolnav_height = 0`.
 #[inline]
 pub(crate) fn toolnav_resolved_height() -> f32 {
+    // Floor at 38px: the second toolbar row hosts the same ~36.6px dropdown menu
+    // buttons (indicators/widgets) as the main toolbar, so a 30px row clipped them.
     let h = current().toolnav_height;
-    if h > 0.0 { h } else { 30.0 }
+    if h > 0.0 { h.max(38.0) } else { 38.0 }
 }
 
 // ── Footer (bottom dock) visibility override (hybrid: style default + user) ──

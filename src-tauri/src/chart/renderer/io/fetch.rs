@@ -771,11 +771,16 @@ pub(crate) fn fetch_overlay_chain_background(symbol: String, underlying_price: f
         if crate::apex_data::is_enabled() {
             match crate::apex_data::rest::get_chain(&symbol) {
                 Ok(chain) => {
-                    let spot = if underlying_price > 0.0 { underlying_price }
-                               else {
-                                   crate::apex_data::live_state::get_snapshot(&symbol)
-                                       .map(|s| s.last as f32).unwrap_or(0.0)
-                               };
+                    // Prefer the symbol-keyed live snapshot. The caller's
+                    // underlying_price comes from chart.bars, which lags a symbol
+                    // swap (bars load async) — so enabling strikes right after a swap
+                    // would otherwise center the chain on the PREVIOUS symbol's price
+                    // (observed: QQQ strikes fetched at SPY's 731 instead of QQQ 700).
+                    let spot = {
+                        let snap = crate::apex_data::live_state::get_snapshot(&symbol)
+                            .map(|s| s.last as f32).unwrap_or(0.0);
+                        if snap > 0.0 { snap } else { underlying_price }
+                    };
                     let (calls, puts, _eff) = apex_data_chain_to_tuples(&chain.rows, 0, 75, spot);
                     eprintln!("[overlay-fetch] {symbol}: apex_data get_chain OK rows={} -> {} calls / {} puts (spot {:.2})",
                               chain.rows.len(), calls.len(), puts.len(), spot);
