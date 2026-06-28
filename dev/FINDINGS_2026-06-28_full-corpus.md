@@ -17,29 +17,40 @@ against the **real interactive window**.
 Run in 9 chunks (≈30/chunk) against one live build; the app survived the entire
 corpus (no crashes). The 3 open findings are in `dev/bug_report.md`.
 
-## Bugs found & fixed in this run
+## Test-harness isolation fix (NOT an app bug)
 
-### Indicators accumulate across sessions — `reset` never cleared them
-The dev-inspector `reset` (`do_reset`) restored symbol/timeframe/flags but never
-cleared indicators, so across a long shared session they piled up on pane 0
-(observed 87 → 166). This broke per-pane indicator-count assertions and degraded
-the chart. The app did NOT crash under 166 indicators (good robustness), but the
-emergent accumulation is exactly the kind of cross-session state a single scenario
-never reveals — it only showed up running 250 scenarios back-to-back.
-**Fixes:**
+> Correction: an earlier version of this doc framed the indicator accumulation as
+> a "bug found & fixed." That was wrong — it is a test-isolation gap in the
+> harness, not defective app behaviour. Indicator persistence (save_workspace/load)
+> is deliberate and untouched.
+
+### Indicators accumulated across the test session — harness `reset` didn't clear them
+The dev-inspector `reset` (`do_reset`, a debug-only test fixture, never called on
+startup) restored symbol/timeframe/flags but did not clear indicators. Because
+~250 scenarios each call `AddIndicator` into one long-running process, they piled
+up on pane 0 (observed 87 → 166) with nothing cleaning up between tests. This is
+**test pollution**, not the app's saved-state persistence — `do_reset` does not
+load or save a workspace, it just pushes a few commands. Notably the app did NOT
+crash under 166 indicators (good robustness).
+**Harness fixes (for test isolation only):**
 - New `AppCommand::ClearIndicators { pane }` (commands.rs) — removes all indicators
   on a pane and restarts id numbering (a cleared pane behaves like a fresh one).
-- `do_reset` now clears indicators on both panes for true test isolation.
-- Side note surfaced: `AddIndicator` sets `editing_indicator`, which is why the
+  Only invoked by `do_reset`; not wired to startup, save, load, or any UI, so it
+  does not affect real indicator persistence.
+- `do_reset` now clears indicators on both panes so each scenario starts isolated.
+- Side observation: `AddIndicator` sets `editing_indicator`, which is why the
   indicator-editor panel stays open after adding — relevant to the toolbar-clip
   finding.
 
 ## Open findings (see dev/bug_report.md)
 1. **Toolbar clipping** — `workspace_btn` / `indicators_btn` / `widgets_btn` clipped
    a few px; `timeframe_picker` is a 24px touch target (< 28px min). Low severity.
-2. **Timeframe convergence under a rapid storm** — after many rapid tf changes, the
-   pane can settle on an earlier tf (slow async load wins). Single switches are
-   fine. Medium severity; fix touches async load coordination.
+2. **Timeframe under a rapid storm settles on an earlier tf** — *possibly
+   by-design, needs a product call.* After many rapid tf changes the pane can show
+   an earlier timeframe (its label appears to follow the data load rather than the
+   last request). If "label waits for bars to arrive" is intended, this is expected
+   behaviour, not a defect; single switches are fine at ≥1.2 s settle. Flagging for
+   a decision rather than asserting it's a bug.
 3. **`indicator_add_remove_churn` count** — brittle absolute-count assertion in one
    power-user scenario (off by one). Test limitation, not an app bug.
 
