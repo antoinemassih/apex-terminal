@@ -1,4 +1,5 @@
 pub mod apex_data;
+pub mod resilient_ws;
 pub mod crypto_feed;
 pub mod dom_feed;
 pub mod drawings_feed;

@@ -8,6 +8,10 @@
 //!
 //! Activates ONLY for `F:`-tagged futures symbols; any non-futures target
 //! deactivates it. Re-dials on symbol change, like `dom_feed`.
+//!
+//! Transport (connect / LAN-resolve / backoff / idle-watchdog / shutdown /
+//! chart-send) is handled by [`resilient_ws`]; this file is just the URL +
+//! the `bar`-frame parse.
 
 use std::sync::{Arc, OnceLock};
 use parking_lot::Mutex;
@@ -15,21 +19,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crate::chart_renderer::{Bar, ChartCommand};
+use crate::data::feeds::resilient_ws::{self, WsConfig};
 
-static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 /// Active target: `(canonical_symbol_with_F_tag, timeframe)`. `None` = idle.
 static TARGET: OnceLock<Mutex<Option<(String, String)>>> = OnceLock::new();
 static RECONNECT: OnceLock<Arc<AtomicBool>> = OnceLock::new();
 static STARTED: OnceLock<()> = OnceLock::new();
 
-fn rt() -> &'static tokio::runtime::Runtime {
-    RT.get_or_init(|| {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("futures_feed tokio runtime")
-    })
-}
 fn target() -> &'static Mutex<Option<(String, String)>> { TARGET.get_or_init(|| Mutex::new(None)) }
 fn reconnect_flag() -> &'static Arc<AtomicBool> { RECONNECT.get_or_init(|| Arc::new(AtomicBool::new(false))) }
 
@@ -63,92 +59,35 @@ fn futures_ws_url(symbol: &str) -> String {
     format!("{host}/ws/futures?symbol={root}")
 }
 
-type FutWsStream = tokio_tungstenite::WebSocketStream<
-    tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
-
-/// LAN-aware connect — mirrors `dom_feed::connect_lan_aware`.
-async fn connect_lan_aware(url: &str)
-    -> Result<FutWsStream, Box<dyn std::error::Error + Send + Sync>>
-{
-    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-    use tokio_tungstenite::{client_async, connect_async, MaybeTlsStream};
-    use tokio::net::TcpStream;
-    use crate::data::feeds::apex_data::config;
-
-    let req = url.into_client_request()?;
-    let lan = match (config::apex_lan_ip(), config::apex_host_port()) {
-        (Some(ip), Some((_h, port))) => Some((ip, port)),
-        _ => None,
-    };
-    if let Some((ip, port)) = lan {
-        let stream = TcpStream::connect((ip.as_str(), port)).await?;
-        let (ws, _) = client_async(req, MaybeTlsStream::Plain(stream)).await?;
-        Ok(ws)
-    } else {
-        let (ws, _) = connect_async(req).await?;
-        Ok(ws)
-    }
-}
-
-/// Spawn the feed thread. Idempotent — safe to call once at startup.
+/// Spawn the feed. Idempotent — safe to call once at startup.
 pub fn start() {
     if STARTED.set(()).is_err() {
         return;
     }
-    let reconnect = reconnect_flag().clone();
-    std::thread::spawn(move || {
-        rt().block_on(async move {
-            loop {
-                let tgt = target().lock().clone();
-                let Some((sym, tf)) = tgt else {
-                    tokio::time::sleep(Duration::from_millis(500)).await;
-                    continue;
-                };
-                reconnect.store(false, Ordering::SeqCst);
-                if let Err(e) = run_one(&sym, &tf, &reconnect).await {
-                    tracing::warn!(target: "futures_feed", "{sym}: {e}");
-                    tokio::time::sleep(Duration::from_secs(2)).await;
-                }
-            }
-        });
+    resilient_ws::spawn(WsConfig {
+        name: "futures_feed",
+        reconnect: reconnect_flag().clone(),
+        // 5s bars; a 30s gap means the stream is stale → reconnect.
+        idle_timeout: Some(Duration::from_secs(30)),
+        url_provider: Box::new(|| {
+            target().lock().as_ref().map(|(sym, _tf)| futures_ws_url(sym))
+        }),
+        on_text: Box::new(on_text),
     });
 }
 
-async fn run_one(
-    symbol: &str,
-    timeframe: &str,
-    reconnect: &AtomicBool,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use futures_util::StreamExt;
-
-    let url = futures_ws_url(symbol);
-    tracing::info!(target: "futures_feed", "connecting {url}");
-    let ws = connect_lan_aware(&url).await?;
-    let (_w, mut read) = ws.split();
-
-    let mut tick = tokio::time::interval(Duration::from_millis(250));
-    loop {
-        tokio::select! {
-            _ = tick.tick() => {
-                if reconnect.load(Ordering::SeqCst) {
-                    return Ok(());
-                }
-            }
-            frame = read.next() => {
-                let Some(msg) = frame else { return Ok(()); };
-                let msg = msg?;
-                if !msg.is_text() { continue; }
-                let v: serde_json::Value = match serde_json::from_str(msg.to_text()?) {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-                match v.get("type").and_then(|t| t.as_str()) {
-                    Some("bar") => emit_bar(&v, symbol, timeframe),
-                    Some("error") => tracing::warn!(target: "futures_feed", "server error: {v}"),
-                    _ => {}
-                }
-            }
-        }
+/// Parse one text frame and route it. Reads the current target for the symbol /
+/// timeframe context the chart commands need.
+fn on_text(text: &str) {
+    let Some((symbol, timeframe)) = target().lock().clone() else { return };
+    let v: serde_json::Value = match serde_json::from_str(text) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    match v.get("type").and_then(|t| t.as_str()) {
+        Some("bar") => emit_bar(&v, &symbol, &timeframe),
+        Some("error") => tracing::warn!(target: "futures_feed", "server error: {v}"),
+        _ => {}
     }
 }
 
@@ -162,7 +101,7 @@ fn emit_bar(v: &serde_json::Value, symbol: &str, timeframe: &str) {
     let time_sec = v.get("time").and_then(|x| x.as_i64()).unwrap_or(0);
 
     // Watchlist price (keyed by the canonical F: symbol the watchlist stores).
-    send(ChartCommand::WatchlistPrice {
+    resilient_ws::send_to_charts(ChartCommand::WatchlistPrice {
         symbol: symbol.to_string(),
         price: close as f32,
         prev_close: open as f32,
@@ -170,8 +109,7 @@ fn emit_bar(v: &serde_json::Value, symbol: &str, timeframe: &str) {
     });
 
     // Fold into the current chart candle. `cumulative: false` = incremental
-    // tick model (volume +=, high/low via close) — the IB/crypto path. Volume
-    // is carried so the building candle accrues it.
+    // tick model (volume +=, high/low via close) — the IB/crypto path.
     let bar = Bar {
         open: open as f32,
         high: high as f32,
@@ -180,7 +118,7 @@ fn emit_bar(v: &serde_json::Value, symbol: &str, timeframe: &str) {
         volume: volume as f32,
         _pad: 0.0,
     };
-    send(ChartCommand::UpdateLastBar {
+    resilient_ws::send_to_charts(ChartCommand::UpdateLastBar {
         symbol: symbol.to_string(),
         timeframe: timeframe.to_string(),
         bar,
@@ -188,13 +126,4 @@ fn emit_bar(v: &serde_json::Value, symbol: &str, timeframe: &str) {
         mark: false,
         cumulative: false,
     });
-}
-
-fn send(cmd: ChartCommand) {
-    if let Some(lock) = crate::NATIVE_CHART_TXS.get() {
-        if let Ok(mut g) = lock.lock() {
-            g.retain(|tx| tx.send(cmd.clone()).is_ok());
-        }
-    }
-    crate::wake_native_ui();
 }
