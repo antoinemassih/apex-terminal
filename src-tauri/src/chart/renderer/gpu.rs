@@ -7428,8 +7428,45 @@ impl GpuCtx {
             // Borderless-window edge-resize grab bands (custom chrome, no OS frame).
             // Last so the resize cursor overrides the chart crosshair at the edges.
             window_resize_borders(ctx, window);
+
+            // Bug-report Inspect overlay (Ctrl+Shift+I) — resolved LAST so every
+            // panel + pane anchor registered this frame is hit-testable. Pure egui
+            // overlay; never touches the GPU chart pipeline.
+            {
+                use crate::chart_renderer::bug_anchor as ba;
+                if ba::inspect() {
+                    ba::resolve_frame(ctx, ba::draft_is_open());
+                    if !ba::draft_is_open() {
+                        if let Some(hit) = ba::take_pending() { ba::open_draft(hit); }
+                    }
+                    ba::prompt(ctx);
+                }
+            }
         });
         self.egui_state.handle_platform_output(window, full_output.platform_output);
+
+        // Fulfill any region-screenshot requests queued by the bug-report prompt
+        // this frame (the window HWND + scale live here, not inside draw_chart).
+        #[cfg(target_os = "windows")]
+        {
+            let reqs = crate::chart_renderer::bug_anchor::take_capture_reqs();
+            if !reqs.is_empty() {
+                use winit::raw_window_handle::HasWindowHandle;
+                if let Ok(handle) = window.window_handle() {
+                    if let winit::raw_window_handle::RawWindowHandle::Win32(h) = handle.as_raw() {
+                        let hwnd = h.hwnd.get() as *mut std::ffi::c_void;
+                        let scale = full_output.pixels_per_point;
+                        for req in reqs {
+                            if let Err(e) = crate::chart_renderer::bug_anchor::capture_window_region(
+                                hwnd, scale, req.rect, &req.out,
+                            ) {
+                                eprintln!("[bug-anchor] region capture failed: {e}");
+                            }
+                        }
+                    }
+                }
+            }
+        }
         let layout_us = t1.elapsed().as_micros() as u64;
 
         // The per-pane upload + render now happens inside the chart pass loop

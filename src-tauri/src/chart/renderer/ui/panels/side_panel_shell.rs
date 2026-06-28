@@ -273,12 +273,16 @@ impl<'a> SidePanelShell<'a> {
     ///
     /// The caller is responsible for the open/closed early-return — only call
     /// `.show()` when the panel is open.
+    #[track_caller]
     pub fn show(
         self,
         ctx: &Context,
         t: &Theme,
         body: impl FnOnce(&mut Ui, &Theme),
     ) -> SidePanelShellResponse {
+        // Bug-report anchor key + call-site source (no-op unless inspect is on).
+        let bug_key = format!("panel/{}", crate::chart_renderer::bug_anchor::slug(self.title));
+        let bug_loc = std::panic::Location::caller();
         // Rail-slot mode: render the REAL header + body into the assigned slot
         // (not a crude strip) so the panel keeps its native header styling. The
         // only addition is the size-cycle control, injected left of the close.
@@ -298,6 +302,7 @@ impl<'a> SidePanelShell<'a> {
                 });
             paint_header_underline_and_shadow(&mut ui, t, header_resp.response.rect, id);
             render_body_and_footer(&mut ui, t, body, footer);
+            crate::chart_renderer::bug_anchor::register(&bug_key, ui.min_rect(), bug_loc.file(), bug_loc.line());
             return SidePanelShellResponse { close_clicked };
         }
         let panel = build_side_panel(self.id, self.side, self.width, self.width_bounds.as_ref());
@@ -317,7 +322,7 @@ impl<'a> SidePanelShell<'a> {
         let SidePanelShell { id, title, icon, pane_metrics, header_actions, footer, .. } = self;
 
         let mut close_clicked = false;
-        panel.show(ctx, |ui| {
+        let panel_inner = panel.show(ctx, |ui| {
             // Wrap the header in a Frame filled with `t.header_surface()`
             // so the side panel's header band matches the chart pane
             // header above it — same fill, same visual weight.
@@ -333,6 +338,7 @@ impl<'a> SidePanelShell<'a> {
             paint_header_underline_and_shadow(ui, t, header_resp.response.rect, id);
             render_body_and_footer(ui, t, body, footer);
         });
+        crate::chart_renderer::bug_anchor::register(&bug_key, panel_inner.response.rect, bug_loc.file(), bug_loc.line());
         SidePanelShellResponse { close_clicked }
     }
 

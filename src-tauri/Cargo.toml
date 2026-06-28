@@ -74,7 +74,7 @@ rfd = "0.15"
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "wgpu"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_System_DataExchange", "Win32_System_Memory"] }
 # Windows: NVML FFI for GPU monitoring (loads nvml.dll at runtime).
 libloading = "0.8"
 

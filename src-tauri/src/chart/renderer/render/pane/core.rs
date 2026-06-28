@@ -144,6 +144,13 @@ fn render_chart_pane(
     crate::design_tokens::register_hit(
         [pane_rect.min.x, pane_rect.min.y, pane_rect.width(), pane_rect.height()],
         "CHART_PANE", "Chart");
+    // Bug-report anchor for the whole pane (no-op unless inspect mode is on).
+    crate::chart_renderer::bug_anchor::register(
+        &format!("pane/{}/{}", pane_idx, panes.get(pane_idx).map(|c| c.symbol.as_str()).unwrap_or("?")),
+        pane_rect,
+        file!(),
+        line!(),
+    );
     let chart = &mut panes[pane_idx];
 
     // Drawing-palette visibility toggle (header DRAW button). Declared at
@@ -11556,6 +11563,20 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
     // Publish the active style id for `style::current()` so widget primitives
     // can pick the right corners / borders / serifs / button treatment.
     crate::chart_renderer::ui::style::set_active_style(style_id(watchlist));
+
+    // ── Bug-report Inspect mode (Ctrl+Shift+I) ──────────────────────────────
+    // Toggle + per-frame anchor registry reset before any UI registers regions.
+    // `consume_key` removes the press so nothing else sees it. The overlay +
+    // report prompt are resolved at the very end of the egui frame (in gpu.rs,
+    // after all panels and pane card frames have registered their anchors).
+    // Pure egui overlay — does not touch the GPU chart pipeline.
+    if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::I)) {
+        crate::chart_renderer::bug_anchor::toggle_inspect();
+        if !crate::chart_renderer::bug_anchor::inspect() {
+            crate::chart_renderer::bug_anchor::close_draft();
+        }
+    }
+    crate::chart_renderer::bug_anchor::begin_frame();
 
     // ── Watchlist divider drag (handled at top level to avoid panel interference) ──
     if watchlist.divider_y > 0.0 && watchlist.options_visible {
