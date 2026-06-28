@@ -545,7 +545,11 @@ pub fn snap_bulk(tickers: &[String]) -> Option<Vec<StockSnapshot>> {
         .join(",");
     // URL-encode the joined ticker list so commas/special chars are safe.
     let encoded = urlencoding::encode(&joined);
-    get(&format!("/api/stocks/snap/bulk?tickers={encoded}")).ok()
+    // The new backend returns a `{ results: [...] , stale }` envelope; older
+    // deployments returned a bare array. `BulkSnapshotBody` accepts both.
+    get::<BulkSnapshotBody>(&format!("/api/stocks/snap/bulk?tickers={encoded}"))
+        .ok()
+        .map(|b| b.into_results())
 }
 
 /// One symbol-search hit from `GET /api/search?q=`. Polygon ticker-reference

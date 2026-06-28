@@ -4575,10 +4575,11 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                 }
             }
             // Watchlist-targeted commands: handle directly
-            ChartCommand::WatchlistPrice { symbol, price, prev_close, day_close } => {
+            ChartCommand::WatchlistPrice { symbol, price, prev_close, day_close, change_perc } => {
                 watchlist.set_price(symbol, *price);
                 watchlist.set_prev_close(symbol, *prev_close);
                 watchlist.set_day_close(symbol, *day_close);
+                watchlist.set_change_perc(symbol, *change_perc);
             }
             ChartCommand::ScannerPrice { symbol, price, prev_close, volume } => {
                 // Update or insert into scanner results pool
@@ -5483,6 +5484,9 @@ pub(crate) struct WatchlistItem {
     /// Today's regular-session close (bulk snap `day.c`); 0 while live/pre-open,
     /// set after close + weekends. Drives last-close-to-close + ext-hours change.
     pub(crate) day_close: f32,
+    /// Server-computed session/DST-aware % change (apex-data-v2). `Some` →
+    /// render directly; `None` → fall back to the client-side computation.
+    pub(crate) change_perc: Option<f32>,
     pub(crate) loaded: bool,
     // Option fields (defaults for stocks)
     pub(crate) is_option: bool,
@@ -6870,7 +6874,7 @@ impl Watchlist {
         let sym_hash = s.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
         let rvol_seed = 1.0; // neutral until real RVOL is wired (was: hash-seeded random masquerading as data)
         self.sections[target_idx].items.push(WatchlistItem {
-            symbol: s, price: 0.0, prev_close: 0.0, day_close: 0.0, loaded: false,
+            symbol: s, price: 0.0, prev_close: 0.0, day_close: 0.0, change_perc: None, loaded: false,
             is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new(), bid: 0.0, ask: 0.0,
             pinned: false, tags: vec![], rvol: rvol_seed, atr: 0.0,
             high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,
@@ -6929,6 +6933,19 @@ impl Watchlist {
         for sec in &mut self.sections {
             if let Some(item) = sec.items.iter_mut().find(|i| i.symbol == sym) {
                 item.day_close = day_close;
+            }
+        }
+    }
+
+    /// Set the server-computed session/DST-aware % change (apex-data-v2). When
+    /// `Some`, the watchlist renders this directly instead of recomputing.
+    /// `None` (older backend) leaves any prior value in place so a transient
+    /// missing field doesn't blank the row.
+    pub(crate) fn set_change_perc(&mut self, sym: &str, change_perc: Option<f32>) {
+        let Some(p) = change_perc else { return };
+        for sec in &mut self.sections {
+            if let Some(item) = sec.items.iter_mut().find(|i| i.symbol == sym) {
+                item.change_perc = Some(p);
             }
         }
     }
@@ -6999,7 +7016,7 @@ impl Watchlist {
             self.sections.len() - 1
         };
         self.sections[sec_idx].items.push(WatchlistItem {
-            symbol: opt_sym, price: 0.0, prev_close: 0.0, day_close: 0.0, loaded: false,
+            symbol: opt_sym, price: 0.0, prev_close: 0.0, day_close: 0.0, change_perc: None, loaded: false,
             is_option: true, underlying: underlying.to_string(), option_type: type_str.to_string(), strike, expiry: expiry.to_string(), bid, ask,
             pinned: false, tags: vec![], rvol: 1.0, atr: 0.0,
             high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,
@@ -8098,10 +8115,11 @@ impl ApplicationHandler for App {
                 let mut cmds_to_requeue = Vec::new();
                 while let Ok(cmd) = cw.rx.try_recv() {
                     match cmd {
-                        ChartCommand::WatchlistPrice { ref symbol, price, prev_close, day_close } => {
+                        ChartCommand::WatchlistPrice { ref symbol, price, prev_close, day_close, change_perc } => {
                             cw.watchlist.set_price(symbol, price);
                             cw.watchlist.set_prev_close(symbol, prev_close);
                             cw.watchlist.set_day_close(symbol, day_close);
+                            cw.watchlist.set_change_perc(symbol, change_perc);
                         }
                         ChartCommand::ScannerPrice { ref symbol, price, prev_close, volume } => {
                             if let Some(r) = cw.watchlist.scanner_results.iter_mut().find(|r| r.symbol == *symbol) {
@@ -9821,7 +9839,7 @@ fn load_watchlists() -> (Vec<SavedWatchlist>, usize) {
                             let sym_hash = symbol.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
                             let rvol_seed = 1.0; // neutral until real RVOL feed
                             items.push(WatchlistItem {
-                                symbol, price: 0.0, prev_close: 0.0, day_close: 0.0, loaded: false,
+                                symbol, price: 0.0, prev_close: 0.0, day_close: 0.0, change_perc: None, loaded: false,
                                 is_option, underlying, option_type, strike, expiry, bid, ask,
                                 pinned: false, tags: vec![], rvol: rvol_seed, atr: 0.0,
                                 high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,
@@ -9847,7 +9865,7 @@ fn default_watchlists() -> (Vec<SavedWatchlist>, usize) {
             let sym_hash = s.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
             let rvol_seed = 1.0; // neutral until real RVOL feed
             WatchlistItem {
-                symbol: s.into(), price: 0.0, prev_close: 0.0, day_close: 0.0, loaded: false,
+                symbol: s.into(), price: 0.0, prev_close: 0.0, day_close: 0.0, change_perc: None, loaded: false,
                 is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new(), bid: 0.0, ask: 0.0,
                 pinned: false, tags: vec![], rvol: rvol_seed, atr: 0.0,
                 high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,

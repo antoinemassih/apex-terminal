@@ -725,6 +725,7 @@ if is_spawn || watchlist.open {
                                     let item_price = item.price;
                                     let item_prev_close = item.prev_close;
                                     let item_day_close = item.day_close; // today's regular close (0 while live)
+                                    let item_change_perc = item.change_perc; // server-computed % (apex-data-v2), if available
                                     let item_loaded = item.loaded;
                                     let item_is_option = item.is_option;
                                     let item_strike = item.strike;
@@ -891,7 +892,14 @@ if is_spawn || watchlist.open {
                                         let close_to_close = if item_day_close > 0.0 && item_prev_close > 0.0 {
                                             Some(((item_day_close - item_prev_close) / item_prev_close) * 100.0)
                                         } else { None };
-                                        let change_pct = if mkt_rth {
+                                        // Prefer the server's session/DST-aware % (apex-data-v2) — it's
+                                        // correct in RTH, after-hours AND pre-market, and doesn't depend
+                                        // on the flaky /api/market_status gate. Fall back to the local
+                                        // computation only when the server value is absent (older backend
+                                        // / not yet loaded / non-stock rows).
+                                        let change_pct = if let Some(p) = item_change_perc {
+                                            p
+                                        } else if mkt_rth {
                                             live_chg
                                         } else {
                                             close_to_close.or_else(||

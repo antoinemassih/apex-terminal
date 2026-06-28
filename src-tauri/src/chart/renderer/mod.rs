@@ -919,6 +919,10 @@ pub enum ChartCommand {
         /// 0 while the session is live / pre-open; set after close (and over
         /// weekends). Used for last-close-to-close + ext-hours change.
         day_close: f32,
+        /// Server-computed session/DST-aware % change (apex-data-v2). When
+        /// `Some`, the watchlist renders this directly instead of recomputing
+        /// from prev_close; `None` on older backends → client fallback.
+        change_perc: Option<f32>,
     },
     /// Time & Sales tape entry
     TapeEntry {

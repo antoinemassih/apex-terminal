@@ -105,6 +105,7 @@ fn on_text(text: &str) {
             price: bar.close as f32,
             prev_close: bar.open as f32,
             day_close: 0.0, // crypto: no regular-session close concept
+            change_perc: None, // crypto: panel computes from prev_close
         });
         return;
     }

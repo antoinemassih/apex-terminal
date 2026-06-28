@@ -904,6 +904,43 @@ pub struct StockSnapshot {
     #[serde(default, alias = "todaysChangePerc")] pub todays_change_perc: f64,
     /// Epoch nanos — `updated` per Polygon spec.
     #[serde(default)] pub updated: i64,
+    // ── Server-computed change (apex-data-v2, session/DST-aware) ──────────────
+    // Prefer these over recomputing client-side. Present on the new
+    // `/api/stocks/snap/bulk` envelope; absent (None) on older deployments.
+    #[serde(default)] pub change_perc: Option<f64>,
+    #[serde(default)] pub change_abs: Option<f64>,
+    #[serde(default)] pub ref_price: Option<f64>,
+    #[serde(default)] pub session: Option<String>,
+    /// True when this row was served from the backend's last-good cache.
+    #[serde(default)] pub stale: bool,
+}
+
+/// `GET /api/stocks/snap/bulk` envelope (new shape): `{ results, stale,
+/// served_from_cache, ... }`. Older deployments returned a bare array — see
+/// [`BulkSnapshotBody`].
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct BulkSnapshotEnvelope {
+    #[serde(default)] pub results: Vec<StockSnapshot>,
+    #[serde(default)] pub stale: bool,
+    #[serde(default)] pub served_from_cache: bool,
+}
+
+/// Accepts either the new `{ results: [...] }` envelope or a bare `[...]` array
+/// (older backend), so the snap-bulk client works across both.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum BulkSnapshotBody {
+    Envelope(BulkSnapshotEnvelope),
+    Bare(Vec<StockSnapshot>),
+}
+
+impl BulkSnapshotBody {
+    pub fn into_results(self) -> Vec<StockSnapshot> {
+        match self {
+            BulkSnapshotBody::Envelope(e) => e.results,
+            BulkSnapshotBody::Bare(v) => v,
+        }
+    }
 }
 
 impl StockSnapshot {

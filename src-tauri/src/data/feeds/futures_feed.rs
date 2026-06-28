@@ -106,6 +106,7 @@ fn emit_bar(v: &serde_json::Value, symbol: &str, timeframe: &str) {
         price: close as f32,
         prev_close: open as f32,
         day_close: 0.0, // futures: 24h, no equity-style regular close
+        change_perc: None, // futures: panel computes from prev_close
     });
 
     // Fold into the current chart candle. `cumulative: false` = incremental

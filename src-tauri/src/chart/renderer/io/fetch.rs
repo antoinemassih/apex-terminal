@@ -1298,6 +1298,9 @@ pub(crate) fn fetch_watchlist_prices(symbols: Vec<String>) {
             let (price, prev_close, day_close) = watchlist_price_from_snapshot(snap);
             crate::send_to_native_chart(ChartCommand::WatchlistPrice {
                 symbol: snap.ticker.clone(), price, prev_close, day_close,
+                // Prefer the server's session/DST-aware % (apex-data-v2); None
+                // on older backends → the panel falls back to its own formula.
+                change_perc: snap.change_perc.map(|p| p as f32),
             });
         }
     });
@@ -2056,6 +2059,7 @@ mod tests {
             todays_change: last_price - prev_close,
             todays_change_perc: ((last_price - prev_close) / prev_close) * 100.0,
             updated: 0,
+            ..Default::default()
         }
     }
 
