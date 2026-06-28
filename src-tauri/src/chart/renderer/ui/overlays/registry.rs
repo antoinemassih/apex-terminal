@@ -22,7 +22,6 @@
 
 use egui::{self, Color32};
 use crate::chart_renderer::gpu::Theme;
-use crate::chart_renderer::ChartWidgetKind;
 use super::super::chart_widgets::{WidgetData, WidgetBtnAction};
 
 /// The render contract every on-chart overlay kind implements.

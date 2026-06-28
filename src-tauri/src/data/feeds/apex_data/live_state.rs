@@ -361,7 +361,7 @@ pub fn push_trade(t: Trade) {
             *m.entry(bucket).or_insert(0.0) += signed;
             // Cap ~1500 minute-buckets per symbol (~a full session) to bound mem.
             while m.len() > 1500 {
-                let k = *m.keys().next().unwrap();
+                let Some(&k) = m.keys().next() else { break };
                 m.remove(&k);
             }
         }
@@ -702,7 +702,7 @@ pub fn push_regime(frame: RegimeFrame) {
         let now = &frame.regime;
         let old = &prev.regime;
         let t_ms = frame.t_ms;
-        let mut push = |axis: &str, from: &str, to: &str| {
+        let push = |axis: &str, from: &str, to: &str| {
             if from != to {
                 if let Ok(mut q) = state().regime_transitions.lock() {
                     q.push_back(RegimeTransition {

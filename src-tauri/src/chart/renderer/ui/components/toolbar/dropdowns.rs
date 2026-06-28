@@ -345,8 +345,13 @@ pub(crate) fn render_layout_dropdown(
         *layout = ly;
         let max = ly.max_panes();
         while panes.len() < max {
-            let mut c = Chart::new();
+            let syms = ["SPY","AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOG","AMD"];
+            let sym = syms.get(panes.len()).copied().unwrap_or("SPY");
+            let tf = panes[0].timeframe.clone();
+            let mut c = Chart::new_with(sym, &tf);
             c.theme_idx = panes[0].theme_idx;
+            c.recent_symbols = panes[0].recent_symbols.clone();
+            c.pending_symbol_change = Some(sym.to_string());
             panes.push(c);
         }
         if *active_pane >= max { *active_pane = 0; }

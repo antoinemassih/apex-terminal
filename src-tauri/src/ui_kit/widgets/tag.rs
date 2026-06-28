@@ -9,7 +9,7 @@
 //!   let r = Tag::new("Tech").closable(true).show(ui, theme);
 //!   if r.closed { /* remove */ }
 
-use egui::{Color32, CornerRadius, FontId, Pos2, Response, Sense, Stroke, StrokeKind, Ui, Vec2, Widget};
+use egui::{Color32, FontId, Pos2, Response, Sense, Ui, Vec2, Widget};
 
 use super::theme::{ComponentTheme, get_ambient_recipes};
 use super::tokens::Size;

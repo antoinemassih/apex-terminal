@@ -1,7 +1,7 @@
 //! Header glyph buttons + tab bar with close affordance.
 
 use super::super::style::*;
-use egui::{self, Color32, Response, RichText, Stroke, Ui, Vec2};
+use egui::{self, Color32, Response, Stroke, Ui, Vec2};
 use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;

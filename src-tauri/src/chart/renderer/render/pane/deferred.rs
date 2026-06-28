@@ -42,6 +42,13 @@ pub(super) fn handle_deferred(
         panes[target].option_type = if is_call { "C".into() } else { "P".into() };
         panes[target].option_strike = strike;
         panes[target].option_expiry = expiry;
+        // Drawings are keyed by OCC — reset the fetch gate when switching contracts
+        // or converting an equity pane to option mode (equity drawings would otherwise
+        // persist on a price scale they don't belong to).
+        if panes[target].option_contract != occ || !panes[target].is_option {
+            panes[target].drawings.clear();
+            panes[target].drawings_requested = false;
+        }
         panes[target].option_contract = occ.clone();
 
         let tf = panes[target].timeframe.clone();

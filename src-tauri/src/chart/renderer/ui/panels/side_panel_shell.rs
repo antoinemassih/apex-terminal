@@ -48,7 +48,7 @@ use crate::ui_kit::widgets::placement::Side;
 use super::kit::{PanelHeader, PanelHeaderTabs};
 use crate::ui_kit::widgets::frames::PanelFrame;
 use crate::ui_kit::tokens::{
-    gap_lg, gap_md, gap_sm, shadow_color_alpha, stroke_thin,
+    gap_lg, gap_sm, shadow_color_alpha, stroke_thin,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::chart_renderer::gpu::Theme;

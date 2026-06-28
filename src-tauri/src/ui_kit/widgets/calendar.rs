@@ -15,7 +15,7 @@
 //!   ui.add(Calendar::multi(&mut dates));
 
 use chrono::{Datelike, Duration, NaiveDate, Weekday};
-use egui::{Color32, CornerRadius, FontId, Id, Pos2, Rect, Response, RichText, Sense, Stroke, StrokeKind, Ui, Vec2, Widget};
+use egui::{CornerRadius, FontId, Id, Pos2, Rect, Response, RichText, Sense, Stroke, StrokeKind, Ui, Vec2, Widget};
 
 use super::motion;
 use super::placement::{Align, Placement, Side};

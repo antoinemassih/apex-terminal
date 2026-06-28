@@ -2,7 +2,6 @@
 //! `Bar`s. Extracted from `chart_widgets.rs` so data computation lives apart
 //! from rendering (the UI file should not compute RSI/ATR/breadth/…).
 
-use crate::chart_renderer::types::Bar;
 
 pub(crate) fn compute_autocorrelation(bars: &[crate::chart_renderer::types::Bar], period: usize) -> f32 {
     let n = bars.len();

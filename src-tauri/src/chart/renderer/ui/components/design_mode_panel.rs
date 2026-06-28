@@ -9,7 +9,7 @@
 //! ```
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use crate::chart_renderer::ui::style::{font_xs, font_sm, font_md_plus, gap_xs, gap_sm, gap_md};
+use crate::chart_renderer::ui::style::{font_xs, font_sm, gap_xs, gap_sm, gap_md};
 use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width};
 use crate::chart_renderer::theme_impl::active_theme;
 

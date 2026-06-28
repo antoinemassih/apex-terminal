@@ -34,8 +34,7 @@ use std::time::{Duration, Instant};
 use egui;
 
 use crate::chart_renderer::ui::style::{
-    gap_2xs, gap_xs,
-    color_alpha, alpha_solid, alpha_muted,
+    gap_2xs, gap_xs, alpha_solid, alpha_muted,
     stroke_std,
     radius_sm,
     font_md, font_sm, font_xs_plus, font_xs,

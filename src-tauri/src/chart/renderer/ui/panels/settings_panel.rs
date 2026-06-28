@@ -670,7 +670,7 @@ fn draw_notifications(ui: &mut egui::Ui, t: &Theme) {
         ui.add(SectionLabel::new("ROUTE BY TYPE").tiny().color(tint(t, Tone::Dim, 200)));
 
         const DEST: &[(usize, &str)] = &[(0, "Off"), (1, "Toolbar"), (2, "Toast"), (3, "Both")];
-        let mut route_row = |ui: &mut egui::Ui, label: &str, d: &mut notif::NotifDest| {
+        let route_row = |ui: &mut egui::Ui, label: &str, d: &mut notif::NotifDest| {
             setting_form_row(label, t).show(ui, t, |ui| {
                 let mut v = d.to_u8() as usize;
                 SegmentedControl::new(&mut v, DEST).show(ui, t);

@@ -3,7 +3,7 @@
 use egui::Context;
 use crate::chart_renderer::gpu::{Theme, Chart, DrawingAction, drawing_persist_key, drawing_to_db};
 use crate::chart_renderer::{DrawingKind, LineStyle};
-use crate::chart_renderer::ui::style::{hex_to_color, COLOR_AMBER, gap_xs, font_xs, font_sm, font_md, row_height_compact, row_height_dense, stroke_bold, radius_sm};
+use crate::chart_renderer::ui::style::{hex_to_color, COLOR_AMBER, gap_xs, font_xs, font_md, row_height_compact, row_height_dense, stroke_bold, radius_sm};
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button as KitButton, Tooltip, tokens::{Variant as KitVariant, Size as KitSize}};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
@@ -27,8 +27,8 @@ pub fn show_drawing_properties_bar(
     chart: &mut Chart,
     pane_idx: usize,
 ) -> PropertiesBarOutput {
-    let mut delete_sel = false;
-    let mut open_group_manager = false;
+    let delete_sel = false;
+    let open_group_manager = false;
 
     // Guard: we need a selected id and it must resolve to a drawing.
     let sel_id = match chart.selected_id.clone() {

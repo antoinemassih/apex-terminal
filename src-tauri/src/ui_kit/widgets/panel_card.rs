@@ -35,11 +35,11 @@
 //!
 //! Sister widgets: `PanelSection`, `PanelListRow`, `TradeCard`.
 
-use egui::{Color32, CornerRadius, Frame, Margin, Pos2, Rect, Stroke, Ui};
+use egui::{CornerRadius, Frame, Margin, Pos2, Rect, Stroke, Ui};
 
 use super::panel_section::Tone;
 use crate::ui_kit::tokens::{
-    color_layer_up, gap_md, radius_md, shadow_card_themed,
+    gap_md, radius_md,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
 

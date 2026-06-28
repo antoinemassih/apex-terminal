@@ -26,7 +26,7 @@
 //! transition — both work, no big-bang refactor required.
 
 use crate::chart_renderer::gpu::{Chart, Theme, Watchlist, IndicatorType, Indicator, PaneType, get_theme, indicator_default_color};
-use crate::chart_renderer::trading::{Alert, OrderStatus, PriceAlert, cancel_order_with_pair};
+use crate::chart_renderer::trading::{OrderStatus, PriceAlert, cancel_order_with_pair};
 
 // ─── ChartFlag ────────────────────────────────────────────────────────────────
 // Enum covering every user-facing per-pane display boolean. Only the ~10 most

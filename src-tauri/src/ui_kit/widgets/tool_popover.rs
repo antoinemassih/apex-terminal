@@ -24,7 +24,7 @@
 //! if resp.dismissed { /* host closes */ }
 //! ```
 
-use egui::{Color32, Context, CornerRadius, Pos2, Rect, Sense, Stroke, Ui};
+use egui::{Color32, Context, CornerRadius, Pos2, Sense, Stroke, Ui};
 
 use super::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};

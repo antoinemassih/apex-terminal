@@ -44,7 +44,7 @@ fn now_ms() -> i64 {
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
 }
-use crate::chart_renderer::{self, ChartCommand, Bar};
+use crate::chart_renderer::{ChartCommand, Bar};
 use crate::data::connectivity::{self, errors_sink::{report, ErrorLevel}, Backoff, ConnectionState};
 
 const APEX_CRYPTO_WS: &str = "ws://192.168.1.56:30840/ws";

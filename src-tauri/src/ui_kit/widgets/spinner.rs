@@ -9,7 +9,6 @@ use egui::{Response, Ui, Widget};
 
 use super::progress::Progress;
 use super::theme::ComponentTheme;
-use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 
 #[must_use = "Spinner does nothing until `.show(ui, theme)` or `ui.add(spinner)` is called"]

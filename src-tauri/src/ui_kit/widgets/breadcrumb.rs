@@ -16,7 +16,6 @@ use egui::{Response, Ui};
 use super::button::Button;
 use super::label::Label;
 use super::theme::ComponentTheme;
-use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::{Size, Variant};
 use crate::ui_kit::tokens as st;
 

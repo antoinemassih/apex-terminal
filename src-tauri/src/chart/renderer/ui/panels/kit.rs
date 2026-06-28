@@ -25,8 +25,8 @@ use crate::chart_renderer::ui::style::tint;
 use crate::ui_kit::sx::Tone as SxTone;
 
 use super::super::style::{
-    alpha_dim, alpha_ghost, alpha_line, alpha_soft, alpha_subtle, alpha_tint,
-    color_alpha, color_dim, color_subtle, current, font_md, font_xs, gap_md, gap_sm, gap_xs,
+    alpha_ghost, alpha_line, alpha_soft, alpha_subtle,
+    color_alpha, color_dim, current, font_xs, gap_md, gap_sm, gap_xs,
     section_header_font_id, style_label_case, stroke_thin,
 };
 use super::super::components::text::SectionLabel;

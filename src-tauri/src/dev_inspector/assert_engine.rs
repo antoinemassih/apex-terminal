@@ -52,23 +52,6 @@ fn dispatch(
     state: &DevSharedState,
 ) -> (String, bool, String) {
     match key {
-        // ── State field ──────────────────────────────────────────────────────
-        "state_field_equals" => {
-            let path   = val["path"].as_str().unwrap_or("");
-            let expect = &val["equals"];
-            let actual = json_path(&state.app_state, path);
-            let pass = actual == *expect;
-            (
-                "StateFieldEquals".into(),
-                pass,
-                if pass {
-                    format!("state.{path} == {expect}")
-                } else {
-                    format!("state.{path}: expected {expect}, got {actual}")
-                },
-            )
-        }
-
         // ── Dialog ───────────────────────────────────────────────────────────
         "dialog_open" => {
             // Accepts: {"dialog_open": {"dialog": "settings"}} or {"dialog_open": "settings"}
@@ -522,6 +505,408 @@ fn dispatch(
             ("AnnotationCountEquals".into(), pass,
              if pass { format!("annotation count == {expect}") }
              else    { format!("annotation count: expected {expect}, got {actual}") })
+        }
+
+        // ── Annotation id lookup ──────────────────────────────────────────────
+        "annotation_id_exists" => {
+            // {"annotation_id_exists": "ann.toolbar"}
+            let id = val.as_str()
+                .or_else(|| val["id"].as_str())
+                .unwrap_or("");
+            let pass = state.active_annotations.iter().any(|a| a.id == id);
+            ("AnnotationIdExists".into(), pass,
+             if pass { format!("annotation '{id}' exists") }
+             else    { format!("annotation '{id}' not found (active: {})", state.active_annotations.len()) })
+        }
+
+        // ── Watchlist section title ───────────────────────────────────────────
+        "watchlist_section_title_equals" => {
+            // {"watchlist_section_title_equals": {"idx": 0, "title": "Stocks"}}
+            let idx    = val["idx"].as_u64().unwrap_or(0) as usize;
+            let expect = val["title"].as_str().unwrap_or("");
+            let actual = state.app_state["watchlist"]["sections"]
+                .get(idx)
+                .and_then(|s| s["title"].as_str())
+                .unwrap_or("");
+            let pass = actual == expect;
+            ("WatchlistSectionTitleEquals".into(), pass,
+             if pass { format!("watchlist section {idx} title == '{expect}'") }
+             else    { format!("watchlist section {idx} title: expected '{expect}', got '{actual}'") })
+        }
+
+        // ── Open dialog count ─────────────────────────────────────────────────
+        "open_dialog_count_equals" => {
+            // {"open_dialog_count_equals": 0}
+            let expect = val.as_u64()
+                .or_else(|| val["count"].as_u64())
+                .unwrap_or(0) as usize;
+            let actual = state.open_dialogs.len();
+            let pass   = actual == expect;
+            ("OpenDialogCountEquals".into(), pass,
+             if pass { format!("open dialog count == {expect}") }
+             else    { format!("open dialog count: expected {expect}, got {actual} ({:?})", state.open_dialogs) })
+        }
+
+        // ── Captures equality ─────────────────────────────────────────────────
+        "captures_equal" => {
+            // {"captures_equal": {"key": "initial_symbol", "equals": "SPY"}}
+            let key    = val["key"].as_str().unwrap_or("");
+            let expect = &val["equals"];
+            let actual = state.captures.get(key).cloned().unwrap_or(Value::Null);
+            let pass   = &actual == expect;
+            ("CapturesEqual".into(), pass,
+             if pass { format!("captures['{key}'] == {expect}") }
+             else    { format!("captures['{key}']: expected {expect}, got {actual}") })
+        }
+
+        // ── State field string contains ───────────────────────────────────────
+        "state_field_contains" => {
+            // {"state_field_contains": {"path": "active_symbol", "contains": "S"}}
+            let path    = val["path"].as_str().unwrap_or("");
+            let needle  = val["contains"].as_str().unwrap_or("");
+            let case_i  = val["case_insensitive"].as_bool().unwrap_or(true);
+            let actual  = json_path(&state.app_state, path);
+            let actual_s = actual.as_str().unwrap_or("");
+            let pass = if case_i {
+                actual_s.to_lowercase().contains(&needle.to_lowercase())
+            } else {
+                actual_s.contains(needle)
+            };
+            ("StateFieldContains".into(), pass,
+             if pass { format!("state.{path} ('{actual_s}') contains '{needle}'") }
+             else    { format!("state.{path} ('{actual_s}') does not contain '{needle}'") })
+        }
+
+        // ── State field not null ──────────────────────────────────────────────
+        "state_field_not_null" => {
+            // {"state_field_not_null": "active_symbol"} or {"state_field_not_null": {"path":"..."}}
+            let path = val.as_str()
+                .or_else(|| val["path"].as_str())
+                .unwrap_or("");
+            let actual = json_path(&state.app_state, path);
+            let pass   = !actual.is_null();
+            ("StateFieldNotNull".into(), pass,
+             if pass { format!("state.{path} is non-null ({actual})") }
+             else    { format!("state.{path} is null/missing") })
+        }
+
+        // ── State field length ────────────────────────────────────────────────
+        "state_field_length_equals" => {
+            // {"state_field_length_equals": {"path": "panes", "length": 2}}
+            let path   = val["path"].as_str().unwrap_or("");
+            let expect = val["length"].as_u64().unwrap_or(0) as usize;
+            let field  = json_path(&state.app_state, path);
+            let actual = match &field {
+                Value::Array(a)  => a.len(),
+                Value::String(s) => s.len(),
+                _                => 0,
+            };
+            let pass = actual == expect;
+            ("StateFieldLengthEquals".into(), pass,
+             if pass { format!("state.{path}.len() == {expect}") }
+             else    { format!("state.{path}.len(): expected {expect}, got {actual}") })
+        }
+
+        // ── State field array contains value ──────────────────────────────────
+        "state_field_array_contains" => {
+            // {"state_field_array_contains": {"path": "open_dialogs", "value": "order_entry"}}
+            let path  = val["path"].as_str().unwrap_or("");
+            let value = &val["value"];
+            let field = json_path(&state.app_state, path);
+            let pass = field.as_array()
+                .map(|arr| arr.iter().any(|v| v == value))
+                .unwrap_or(false);
+            ("StateFieldArrayContains".into(), pass,
+             if pass { format!("state.{path} contains {value}") }
+             else    { format!("state.{path} does not contain {value} (got {field})") })
+        }
+
+        // ── State field equals ────────────────────────────────────────────────
+        "state_field_equals" => {
+            // {"state_field_equals": {"path": "active_symbol", "value": "SPY"}}
+            let path   = val["path"].as_str().unwrap_or("");
+            let expect = &val["value"];
+            let actual = json_path(&state.app_state, path);
+            let pass   = &actual == expect;
+            ("StateFieldEquals".into(), pass,
+             if pass { format!("state.{path} == {expect}") }
+             else    { format!("state.{path}: expected {expect}, got {actual}") })
+        }
+
+        // ── Canvas drawing assertions ─────────────────────────────────────────
+        "canvas_drawing_count_equals" => {
+            let pane   = val["pane"].as_u64().unwrap_or(0) as usize;
+            let expect = val["count"].as_u64().unwrap_or(0) as usize;
+            let actual = state.canvas.panes.get(pane).map(|p| p.drawings.len()).unwrap_or(0);
+            let pass   = actual == expect;
+            ("CanvasDrawingCountEquals".into(), pass,
+             if pass { format!("canvas pane {pane} has {actual} drawing(s)") }
+             else    { format!("canvas pane {pane}: expected {expect} drawings, got {actual}") })
+        }
+        "canvas_drawing_exists" => {
+            let pane = val["pane"].as_u64().unwrap_or(0) as usize;
+            let id   = val["id"].as_str().unwrap_or("");
+            let pass = state.canvas.panes.get(pane)
+                .map(|p| p.drawings.iter().any(|d| d.id == id)).unwrap_or(false);
+            ("CanvasDrawingExists".into(), pass,
+             if pass { format!("canvas pane {pane} has drawing '{id}'") }
+             else    { format!("canvas pane {pane}: no drawing '{id}'") })
+        }
+        "canvas_drawing_kind_count" => {
+            let pane   = val["pane"].as_u64().unwrap_or(0) as usize;
+            let kind   = val["kind"].as_str().unwrap_or("");
+            let expect = val["count"].as_u64().unwrap_or(0) as usize;
+            let actual = state.canvas.panes.get(pane)
+                .map(|p| p.drawings.iter().filter(|d| d.kind == kind).count()).unwrap_or(0);
+            let pass   = actual == expect;
+            ("CanvasDrawingKindCount".into(), pass,
+             if pass { format!("canvas pane {pane} has {actual} '{kind}' drawing(s)") }
+             else    { format!("canvas pane {pane}: expected {expect} '{kind}' drawings, got {actual}") })
+        }
+        "canvas_no_drawings" => {
+            let pane   = val["pane"].as_u64().unwrap_or(0) as usize;
+            let actual = state.canvas.panes.get(pane).map(|p| p.drawings.len()).unwrap_or(0);
+            let pass   = actual == 0;
+            ("CanvasNoDrawings".into(), pass,
+             if pass { format!("canvas pane {pane} has no drawings") }
+             else    { format!("canvas pane {pane} has {actual} drawing(s) (expected 0)") })
+        }
+
+        // ── Canvas viewport assertions ────────────────────────────────────────
+        "canvas_viewport_price_contains" => {
+            let pane  = val["pane"].as_u64().unwrap_or(0) as usize;
+            let price = val["price"].as_f64().unwrap_or(0.0) as f32;
+            let pass  = state.canvas.panes.get(pane)
+                .map(|p| price >= p.viewport.price_low && price <= p.viewport.price_high)
+                .unwrap_or(false);
+            ("CanvasViewportPriceContains".into(), pass,
+             if pass { format!("canvas pane {pane} viewport contains price {price:.2}") }
+             else {
+                 let range = state.canvas.panes.get(pane)
+                     .map(|p| format!("[{:.2}, {:.2}]", p.viewport.price_low, p.viewport.price_high))
+                     .unwrap_or_else(|| "pane not found".into());
+                 format!("canvas pane {pane} viewport {range} does not contain price {price:.2}")
+             })
+        }
+        "canvas_viewport_px_per_bar_gte" => {
+            let pane   = val["pane"].as_u64().unwrap_or(0) as usize;
+            let min    = val["min"].as_f64().unwrap_or(0.0) as f32;
+            let actual = state.canvas.panes.get(pane).map(|p| p.viewport.px_per_bar).unwrap_or(0.0);
+            let pass   = actual >= min;
+            ("CanvasViewportPxPerBarGte".into(), pass,
+             if pass { format!("canvas pane {pane} px_per_bar {actual:.2} >= {min:.2}") }
+             else    { format!("canvas pane {pane} px_per_bar {actual:.2} < {min:.2}") })
+        }
+
+        // ── Canvas indicator assertions ───────────────────────────────────────
+        "canvas_indicator_value_in_range" => {
+            let pane = val["pane"].as_u64().unwrap_or(0) as usize;
+            let kind = val["kind"].as_str().unwrap_or("");
+            let min  = val["min"].as_f64().unwrap_or(f64::NEG_INFINITY) as f32;
+            let max  = val["max"].as_f64().unwrap_or(f64::INFINITY) as f32;
+            match state.canvas.panes.get(pane)
+                .and_then(|p| p.indicators.iter().find(|i| i.kind == kind))
+                .and_then(|i| i.last_value)
+            {
+                Some(v) => {
+                    let pass = v >= min && v <= max;
+                    ("CanvasIndicatorValueInRange".into(), pass,
+                     if pass { format!("canvas pane {pane} {kind} last={v:.4} in [{min}, {max}]") }
+                     else    { format!("canvas pane {pane} {kind} last={v:.4} outside [{min}, {max}]") })
+                }
+                None => ("CanvasIndicatorValueInRange".into(), false,
+                         format!("canvas pane {pane} has no indicator '{kind}'"))
+            }
+        }
+        "canvas_indicator_last_value_near" => {
+            let pane   = val["pane"].as_u64().unwrap_or(0) as usize;
+            let kind   = val["kind"].as_str().unwrap_or("");
+            let expect = val["value"].as_f64().unwrap_or(0.0) as f32;
+            let tol    = val["tolerance"].as_f64().unwrap_or(0.01) as f32;
+            match state.canvas.panes.get(pane)
+                .and_then(|p| p.indicators.iter().find(|i| i.kind == kind))
+                .and_then(|i| i.last_value)
+            {
+                Some(v) => {
+                    let pass = (v - expect).abs() <= tol;
+                    ("CanvasIndicatorLastValueNear".into(), pass,
+                     if pass { format!("canvas pane {pane} {kind} ≈ {expect:.4} (actual {v:.4})") }
+                     else    { format!("canvas pane {pane} {kind}: expected ≈ {expect:.4}, got {v:.4} (tol {tol:.4})") })
+                }
+                None => ("CanvasIndicatorLastValueNear".into(), false,
+                         format!("canvas pane {pane} has no indicator '{kind}'"))
+            }
+        }
+
+        // ── Canvas bar assertions ─────────────────────────────────────────────
+        "canvas_bar_ohlc_valid" => {
+            let pane = val["pane"].as_u64().unwrap_or(0) as usize;
+            let bars = state.canvas.panes.get(pane).map(|p| p.bars.as_slice()).unwrap_or(&[]);
+            let invalid = bars.iter()
+                .filter(|b| b.high < b.low || b.close < b.low || b.close > b.high)
+                .count();
+            let pass = invalid == 0;
+            ("CanvasBarOhlcValid".into(), pass,
+             if pass { format!("canvas pane {pane}: all {} bars have valid OHLC", bars.len()) }
+             else    { format!("canvas pane {pane}: {invalid}/{} bars have invalid OHLC", bars.len()) })
+        }
+        "canvas_visible_bar_count_gte" => {
+            let pane   = val["pane"].as_u64().unwrap_or(0) as usize;
+            let min    = val["min"].as_u64().unwrap_or(0) as usize;
+            let actual = state.canvas.panes.get(pane).map(|p| p.bars.len()).unwrap_or(0);
+            let pass   = actual >= min;
+            ("CanvasVisibleBarCountGte".into(), pass,
+             if pass { format!("canvas pane {pane} has {actual} visible bars (>= {min})") }
+             else    { format!("canvas pane {pane}: expected >= {min} visible bars, got {actual}") })
+        }
+
+        // ── Canvas drawing anchor assertions ──────────────────────────────────
+        "canvas_drawing_anchor_price_near" => {
+            let pane       = val["pane"].as_u64().unwrap_or(0) as usize;
+            let id         = val["id"].as_str().unwrap_or("");
+            let anchor_idx = val["anchor"].as_u64().unwrap_or(0) as usize;
+            let expect     = val["price"].as_f64().unwrap_or(0.0) as f32;
+            let tol        = val["tolerance"].as_f64().unwrap_or(0.01) as f32;
+            match state.canvas.panes.get(pane)
+                .and_then(|p| p.drawings.iter().find(|d| d.id == id))
+                .and_then(|d| d.anchors.get(anchor_idx))
+                .map(|a| a.price)
+            {
+                Some(price) => {
+                    let pass = (price - expect).abs() <= tol;
+                    ("CanvasDrawingAnchorPriceNear".into(), pass,
+                     if pass { format!("canvas pane {pane} drawing '{id}' anchor {anchor_idx} price ≈ {expect:.2}") }
+                     else    { format!("canvas pane {pane} drawing '{id}' anchor {anchor_idx}: expected ≈ {expect:.2}, got {price:.2}") })
+                }
+                None => ("CanvasDrawingAnchorPriceNear".into(), false,
+                         format!("canvas pane {pane}: no drawing '{id}' or anchor {anchor_idx}"))
+            }
+        }
+
+        // ── Canvas pane count ─────────────────────────────────────────────────
+        "canvas_pane_count_equals" => {
+            let expect = val.as_u64().unwrap_or(0) as usize;
+            let actual = state.canvas.panes.len();
+            let pass   = actual == expect;
+            ("CanvasPaneCountEquals".into(), pass,
+             if pass { format!("canvas has {actual} pane(s)") }
+             else    { format!("canvas: expected {expect} panes, got {actual}") })
+        }
+
+        // ── Canvas drawing negative assertions ────────────────────────────────
+        "canvas_drawing_not_exists" => {
+            let pane = val["pane"].as_u64().unwrap_or(0) as usize;
+            let id   = val["id"].as_str().unwrap_or("");
+            let found = state.canvas.panes.get(pane)
+                .map(|p| p.drawings.iter().any(|d| d.id == id)).unwrap_or(false);
+            ("CanvasDrawingNotExists".into(), !found,
+             if !found { format!("canvas pane {pane}: drawing '{id}' correctly absent") }
+             else      { format!("canvas pane {pane}: drawing '{id}' unexpectedly exists") })
+        }
+
+        // ── Canvas indicator presence ─────────────────────────────────────────
+        "canvas_no_indicators" => {
+            let pane   = val["pane"].as_u64().unwrap_or(0) as usize;
+            let actual = state.canvas.panes.get(pane)
+                .map(|p| p.indicators.iter().filter(|i| i.last_value.is_some()).count())
+                .unwrap_or(0);
+            let pass   = actual == 0;
+            ("CanvasNoIndicators".into(), pass,
+             if pass { format!("canvas pane {pane} has no indicators") }
+             else    { format!("canvas pane {pane} has {actual} indicator(s) (expected 0)") })
+        }
+        "canvas_indicator_exists" => {
+            let pane = val["pane"].as_u64().unwrap_or(0) as usize;
+            let kind = val["kind"].as_str().unwrap_or("");
+            let pass = state.canvas.panes.get(pane)
+                .map(|p| p.indicators.iter().any(|i| i.kind == kind && i.last_value.is_some()))
+                .unwrap_or(false);
+            ("CanvasIndicatorExists".into(), pass,
+             if pass { format!("canvas pane {pane} indicator '{kind}' exists") }
+             else    { format!("canvas pane {pane}: no indicator '{kind}' with a value") })
+        }
+        "canvas_indicator_count_equals" => {
+            let pane   = val["pane"].as_u64().unwrap_or(0) as usize;
+            let expect = val["count"].as_u64().unwrap_or(0) as usize;
+            let actual = state.canvas.panes.get(pane)
+                .map(|p| p.indicators.iter().filter(|i| i.last_value.is_some()).count())
+                .unwrap_or(0);
+            let pass   = actual == expect;
+            ("CanvasIndicatorCountEquals".into(), pass,
+             if pass { format!("canvas pane {pane} has {actual} indicator(s)") }
+             else    { format!("canvas pane {pane}: expected {expect} indicators, got {actual}") })
+        }
+
+        // ── Canvas drawing anchor count ───────────────────────────────────────
+        "canvas_drawing_anchor_count" => {
+            let pane   = val["pane"].as_u64().unwrap_or(0) as usize;
+            let id     = val["id"].as_str().unwrap_or("");
+            let expect = val["count"].as_u64().unwrap_or(0) as usize;
+            match state.canvas.panes.get(pane)
+                .and_then(|p| p.drawings.iter().find(|d| d.id == id))
+            {
+                Some(d) => {
+                    let actual = d.anchors.len();
+                    let pass   = actual == expect;
+                    ("CanvasDrawingAnchorCount".into(), pass,
+                     if pass { format!("canvas pane {pane} drawing '{id}' has {actual} anchor(s)") }
+                     else    { format!("canvas pane {pane} drawing '{id}': expected {expect} anchors, got {actual}") })
+                }
+                None => ("CanvasDrawingAnchorCount".into(), false,
+                         format!("canvas pane {pane}: drawing '{id}' not found"))
+            }
+        }
+
+        // ── Canvas bar volume ─────────────────────────────────────────────────
+        "canvas_bar_volume_gte" => {
+            let pane = val["pane"].as_u64().unwrap_or(0) as usize;
+            let min  = val["min"].as_f64().unwrap_or(0.0) as f32;
+            let bars = state.canvas.panes.get(pane).map(|p| p.bars.as_slice()).unwrap_or(&[]);
+            let invalid = bars.iter().filter(|b| b.volume < min).count();
+            let pass = invalid == 0;
+            ("CanvasBarVolumeGte".into(), pass,
+             if pass { format!("canvas pane {pane}: all {} bar(s) have volume >= {min:.0}", bars.len()) }
+             else    { format!("canvas pane {pane}: {invalid}/{} bar(s) have volume < {min:.0}", bars.len()) })
+        }
+
+        // ── Canvas indicator auxiliary value assertions ───────────────────────
+        "canvas_indicator_value2_near" => {
+            let pane   = val["pane"].as_u64().unwrap_or(0) as usize;
+            let kind   = val["kind"].as_str().unwrap_or("");
+            let expect = val["value"].as_f64().unwrap_or(0.0) as f32;
+            let tol    = val["tolerance"].as_f64().unwrap_or(0.01) as f32;
+            match state.canvas.panes.get(pane)
+                .and_then(|p| p.indicators.iter().find(|i| i.kind == kind))
+                .and_then(|i| i.last_value2)
+            {
+                Some(v) => {
+                    let pass = (v - expect).abs() <= tol;
+                    ("CanvasIndicatorValue2Near".into(), pass,
+                     if pass { format!("canvas pane {pane} {kind} value2 ≈ {expect:.4} (actual {v:.4})") }
+                     else    { format!("canvas pane {pane} {kind}: value2 expected ≈ {expect:.4}, got {v:.4} (tol {tol:.4})") })
+                }
+                None => ("CanvasIndicatorValue2Near".into(), false,
+                         format!("canvas pane {pane} indicator '{kind}' has no value2"))
+            }
+        }
+        "canvas_indicator_value2_in_range" => {
+            let pane = val["pane"].as_u64().unwrap_or(0) as usize;
+            let kind = val["kind"].as_str().unwrap_or("");
+            let min  = val["min"].as_f64().unwrap_or(f64::NEG_INFINITY) as f32;
+            let max  = val["max"].as_f64().unwrap_or(f64::INFINITY) as f32;
+            match state.canvas.panes.get(pane)
+                .and_then(|p| p.indicators.iter().find(|i| i.kind == kind))
+                .and_then(|i| i.last_value2)
+            {
+                Some(v) => {
+                    let pass = v >= min && v <= max;
+                    ("CanvasIndicatorValue2InRange".into(), pass,
+                     if pass { format!("canvas pane {pane} {kind} value2={v:.4} in [{min:.4}, {max:.4}]") }
+                     else    { format!("canvas pane {pane} {kind} value2={v:.4} outside [{min:.4}, {max:.4}]") })
+                }
+                None => ("CanvasIndicatorValue2InRange".into(), false,
+                         format!("canvas pane {pane} indicator '{kind}' has no value2"))
+            }
         }
 
         _ => ("Unknown".into(), false, format!("unknown assertion kind: '{key}'")),

@@ -16,7 +16,6 @@ use egui::Ui;
 
 use super::input::InputResponse;
 use super::theme::ComponentTheme;
-use crate::ui_kit::sx::{palette_ct, Tone};
 use super::tokens::Size;
 use super::Input;
 use crate::ui_kit::icons::Icon;

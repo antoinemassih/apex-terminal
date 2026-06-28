@@ -52,6 +52,7 @@ pub(super) fn execute(
     // Timeframes
     if let Some(tf) = id.strip_prefix("tf:") {
         panes[ap].timeframe = tf.to_string();
+        panes[ap].pending_timeframe_change = Some(tf.to_string());
         let sym = panes[ap].symbol.clone();
         fetch_bars_background(sym, tf.to_string());
         return;
@@ -73,6 +74,7 @@ pub(super) fn execute(
             let tf = panes[0].timeframe.clone();
             let mut p = Chart::new_with(sym, &tf);
             p.theme_idx = panes[0].theme_idx;
+            p.pending_symbol_change = Some(sym.to_string());
             panes.push(p);
         }
         *layout = ly;

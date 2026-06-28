@@ -6,11 +6,10 @@
 use egui::Context;
 use crate::chart_renderer::gpu::Theme;
 use crate::chart_renderer::trading::OrderSide;
-use crate::chart_renderer::ui::style::{color_alpha, color_half, color_muted, dialog_separator_shadow, gap_xs, gap_sm, gap_md, gap_lg, font_xs, font_sm, font_md, radius_md, row_height_default, shadow_color_alpha, stroke_thin};
+use crate::chart_renderer::ui::style::{color_alpha, color_half, color_muted, dialog_separator_shadow, gap_xs, gap_sm, gap_md, gap_lg, font_xs, font_sm, font_md, row_height_default};
 use crate::ui_kit::widgets::Input;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button as KitButton, tokens::{Variant as KitVariant, Size as KitSize}};
-use crate::ui_kit::widgets::modal::{Modal, Anchor, HeaderStyle, FrameKind};
 
 /// Everything the dialog needs to read (no mutation — mutations come back via [`OrderEditOutput`]).
 pub struct OrderEditCtx<'a> {

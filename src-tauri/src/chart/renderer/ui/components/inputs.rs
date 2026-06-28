@@ -81,7 +81,7 @@ pub fn compact_stepper(
         };
 
         let theme = ambient_theme(ui.ctx());
-        let mut mk_btn = |ui: &mut Ui, sym: &str| -> Response {
+        let mk_btn = |ui: &mut Ui, sym: &str| -> Response {
             KitButton::new(sym).variant(KitVariant::Ghost).size(KitSize::Xs)
                 .fg(dim).stroke(stroke).min_size(Vec2::new(14.0, 14.0))
                 .show(ui, &theme)
@@ -123,7 +123,7 @@ pub fn numeric_stepper(
         };
 
         let theme = ambient_theme(ui.ctx());
-        let mut mk_btn = |ui: &mut Ui, sym: &str| -> Response {
+        let mk_btn = |ui: &mut Ui, sym: &str| -> Response {
             KitButton::new(sym).variant(KitVariant::Ghost).size(KitSize::Sm)
                 .fg(dim).stroke(stroke).min_size(Vec2::new(18.0, 18.0))
                 .show(ui, &theme)

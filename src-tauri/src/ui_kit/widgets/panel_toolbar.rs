@@ -47,7 +47,7 @@
 //!
 //! Sister widgets: [`Header`], [`PanelSection`], [`TableHeader`], [`PanelSubSection`].
 
-use egui::{Align, FontId, Layout, Pos2, Sense, Ui, Vec2};
+use egui::{Align, Layout, Pos2, Sense, Ui, Vec2};
 
 use crate::ui_kit::tokens::{
     alpha_ghost, color_alpha, font_xs, gap_md, gap_xs, stroke_thin,

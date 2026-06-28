@@ -12,7 +12,6 @@
 //! All helpers below use these constants internally, so a single change propagates everywhere.
 
 use egui::{self, Color32, RichText, Stroke};
-use std::cell::Cell;
 use crate::ui_kit::sx::Tone;
 
 // ─── Owned-by-ui_kit re-exports (UI extraction, item 1) ──────────────────────

@@ -11,7 +11,7 @@ use super::super::style::*;
 use super::super::super::gpu::*;
 use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::Button as KitButton;
-use crate::ui_kit::widgets::{PanelLoading, Tooltip};
+use crate::ui_kit::widgets::PanelLoading;
 
 const DTE_LIST: &[i32] = &[0, 1, 2, 3, 7, 14, 30, 60];
 
@@ -295,6 +295,12 @@ pub(crate) fn draw(
                 panes[pi].symbol_meta = crate::foundation::types::symbol_or_guess(&opt_sym);
                 panes[pi].option_type = if is_call { "C".into() } else { "P".into() };
                 panes[pi].option_strike = strike;
+                // Same drawings reset as the chain-picker path: clear stale drawings
+                // so the new contract's OCC-keyed drawings are loaded on LoadBars.
+                if panes[pi].option_contract != occ_final {
+                    panes[pi].drawings.clear();
+                    panes[pi].drawings_requested = false;
+                }
                 panes[pi].option_contract = occ_final.clone();
                 panes[pi].bars.clear();
                 panes[pi].timestamps.clear();

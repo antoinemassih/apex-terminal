@@ -808,7 +808,7 @@ fn measure_tab_width(
 ) -> f32 {
     let mut w = pad_x * 2.0;
     let mut first = true;
-    let mut add_segment = |seg_w: f32, w: &mut f32, first: &mut bool| {
+    let add_segment = |seg_w: f32, w: &mut f32, first: &mut bool| {
         if !*first { *w += inner_gap; }
         *w += seg_w;
         *first = false;

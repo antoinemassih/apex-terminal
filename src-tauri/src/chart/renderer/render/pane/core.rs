@@ -756,7 +756,7 @@ fn render_chart_pane(
         // per-pane loop finishes (mutating Vec<Chart> mid-iteration would
         // invalidate the loop's indices). P17 #1: close the leaf by its
         // STABLE id so we don't depend on pane_idx being valid post-mutation.
-        if hdr.clicked(PaneBtn::ClosePanе) {
+        if hdr.clicked(PaneBtn::ClosePane) {
             // P17 #3 — snapshot for undo BEFORE the destructive op.
             crate::chart_renderer::gpu::pane_layout_record_undo(watchlist);
             let close_id = watchlist.pane_ids.get(pane_idx).copied();
@@ -1738,8 +1738,23 @@ fn render_chart_pane(
         );
     }
     if n==0 {
+        // ── No-data state: the fetch returned nothing / sources were down ──
+        // Show an honest message instead of an endless spinner so a backend
+        // outage reads as "no data", not "broken".
+        if let Some(err) = &chart.load_error {
+            let center = egui::pos2(rect.left() + cw / 2.0, rect.top() + pt + ch / 2.0);
+            let lp = ui.painter();
+            lp.text(egui::pos2(center.x, center.y - 8.0), egui::Align2::CENTER_CENTER,
+                &format!("{} {} — no data", chart.symbol, chart.timeframe),
+                mono_xs_plus(), color_alpha(t.dim, 200));
+            lp.text(egui::pos2(center.x, center.y + 12.0), egui::Align2::CENTER_CENTER,
+                err, mono_xs_plus(), color_alpha(t.dim, 130));
+            lp.text(egui::pos2(center.x, center.y + 30.0), egui::Align2::CENTER_CENTER,
+                "reselect the symbol to retry",
+                mono_xs_plus(), color_alpha(t.dim, 90));
+        }
         // ── Refined loading indicator ──
-        if !chart.symbol.is_empty() {
+        else if !chart.symbol.is_empty() {
             let center = egui::pos2(rect.left() + cw / 2.0, rect.top() + pt + ch / 2.0);
             let lp = ui.painter();
             crate::chart_renderer::ui::chart_widgets::draw_refined_spinner(lp, center, 14.0, t.accent);
@@ -9109,8 +9124,8 @@ fn render_chart_pane(
         let mut new_tool: Option<String> = None;
         let mut new_candle: Option<CandleMode> = None;
         let mut new_log: Option<(bool, bool)> = None;     // (value, fan-out)
-        let mut new_magnet: Option<bool> = None;
-        let mut new_hit: Option<(bool, bool)> = None;     // (value, fan-out)
+        let new_magnet: Option<bool> = None;
+        let new_hit: Option<(bool, bool)> = None;     // (value, fan-out)
         let mut new_filter: Option<bool> = None;
         let mut new_range: Option<(String, u32)> = None;  // (timeframe, vc)
         // Per-pane collapse + drag state, stored in egui memory (Chart is
@@ -11335,7 +11350,7 @@ fn render_chart_pane(
         let btn_y = replay_rect.top() + (replay_h - btn_size.y) * 0.5;
         let mut cx = replay_rect.left() + 8.0;
 
-        let mut replay_btn = |ui: &mut egui::Ui, cx: &mut f32, icon: &str, tooltip: &str| -> bool {
+        let replay_btn = |ui: &mut egui::Ui, cx: &mut f32, icon: &str, tooltip: &str| -> bool {
             let r = egui::Rect::from_min_size(egui::pos2(*cx, btn_y), btn_size);
             *cx += btn_size.x + 2.0;
             let resp = ui.allocate_rect(r, egui::Sense::click());

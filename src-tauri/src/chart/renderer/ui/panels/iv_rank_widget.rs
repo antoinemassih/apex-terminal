@@ -15,7 +15,7 @@ use crate::chart_renderer::ui::style::tint;
 use crate::ui_kit::sx::Tone;
 use super::super::super::gpu::Theme;
 use super::super::style::{
-    alpha_muted, color_alpha, gap_2xs, gap_xs, radius_xs, stroke_std,
+    alpha_muted, gap_2xs, gap_xs, radius_xs, stroke_std,
 };
 use crate::data::feeds::apex_data::live_state as projector;
 use crate::data::feeds::apex_data::types::IvRankV2;

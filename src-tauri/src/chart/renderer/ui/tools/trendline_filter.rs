@@ -10,7 +10,6 @@ use crate::ui_kit::widgets::tokens::Variant;
 use crate::ui_kit::icons::Icon;
 use crate::monitoring::{span_begin, span_end};
 use crate::chart_renderer::DrawingKind;
-use crate::ui_kit::widgets::modal::{Modal, Anchor, HeaderStyle};
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
 // ── Trendline filter dropdown ────────────────────────────────────────────

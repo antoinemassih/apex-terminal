@@ -10,8 +10,6 @@
 use egui;
 use crate::ui_kit::sx::Tone;
 use super::style::*;
-use super::components::*;
-use super::components_extra::*;
 use super::components::frames_widget::PopupFrame;
 use super::components::text::BodyLabel;
 use crate::ui_kit::widgets::Input;

@@ -41,12 +41,11 @@ use zip::{
 use super::{BundleError, ThemePack};
 use crate::design_system::{
     color_scheme::ColorScheme,
-    loader::LoadError,
     recipes::RecipeSet,
     style_system::StyleSystem,
     theme_pack::manifest::{AssetInventoryEntry, PackCapabilities, ThemeManifest},
 };
-use crate::ui_kit::assets::{AssetHandle, AssetKind, AssetRegistry, AssetSource};
+use crate::ui_kit::assets::{AssetHandle, AssetRegistry, AssetSource};
 
 // ── Entry name constants ──────────────────────────────────────────────────────
 

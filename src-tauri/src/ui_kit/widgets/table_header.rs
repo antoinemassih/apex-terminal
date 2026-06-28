@@ -41,7 +41,7 @@
 //!
 //! Sister widgets: [`PanelListRow`], [`PanelSection`], `ui_kit::Table`.
 
-use egui::{Color32, FontId, Pos2, Rect, Sense, Ui, Vec2};
+use egui::{FontId, Pos2, Rect, Sense, Ui, Vec2};
 
 use crate::ui_kit::tokens::{
     alpha_ghost, color_alpha, font_xs, gap_md, gap_xs, stroke_thin,

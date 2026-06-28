@@ -16,7 +16,7 @@ use super::super::{
     annotations::Annotation,
     drawings::{Drawing, DrawingFlags, DrawingKind, Point},
     indicators::IndicatorRef,
-    style_table::{DashKind, Style, StyleTable},
+    style_table::{DashKind, Style},
     AssetClass, ChartState, ProviderHints, Symbol, ThemeOverride, Timeframe, Viewport,
 };
 

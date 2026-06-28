@@ -5,7 +5,6 @@
 //! Body: `PanelSection` per group, `PanelListRow` per service.
 
 use egui;
-use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use super::connection_state_snapshot;

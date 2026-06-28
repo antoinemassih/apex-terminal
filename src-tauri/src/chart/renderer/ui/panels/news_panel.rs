@@ -12,11 +12,10 @@
 //! matches, otherwise a list of `PanelListRow` headlines.
 
 use egui;
-use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::chrome::modal::{Modal, Anchor, HeaderStyle, FrameKind};
 use super::super::super::gpu::{Watchlist, NewsItem, Theme};
-use crate::ui_kit::widgets::{Button, Skeleton};
+use crate::ui_kit::widgets::Button;
 use crate::ui_kit::widgets::tokens::Variant;
 use crate::data::feeds::apex_data::live_state as projector;
 use crate::data::feeds::apex_data::types::NewsReading;

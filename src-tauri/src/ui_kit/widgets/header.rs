@@ -47,7 +47,7 @@
 //!   which has a hard `Watchlist` coupling. Use this widget for new
 //!   panels that don't need that coupling.
 
-use egui::{Align, CornerRadius, FontId, Layout, Response, RichText, Sense, Stroke, StrokeKind, Ui, Vec2};
+use egui::{Align, CornerRadius, FontId, Layout, Response, Sense, Stroke, StrokeKind, Ui, Vec2};
 
 use crate::ui_kit::tokens as st;
 use super::theme::ComponentTheme;

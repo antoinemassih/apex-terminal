@@ -371,7 +371,7 @@ impl PackRegistry {
 /// The manifest `id` matches the `ColorScheme::meta.id` so the active-pair
 /// tracking can eventually bridge the two layers.
 fn builtin_manifests() -> Vec<ThemeManifest> {
-    use crate::design_system::builtin::{builtin_color_schemes, builtin_style_systems};
+    use crate::design_system::builtin::builtin_color_schemes;
     use crate::design_system::theme_pack::manifest::ThemeManifest;
 
     let mut manifests = Vec::new();

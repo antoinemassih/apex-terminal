@@ -4,8 +4,6 @@ use egui;
 use super::Category;
 use super::registry::*;
 use super::super::style::*;
-use super::super::components::*;
-use super::super::components_extra::*;
 use super::super::components::text::{BodyLabel, CaptionLabel};
 use super::super::components::text::SectionLabel;
 use crate::ui_kit::widgets::Input;

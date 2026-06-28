@@ -9,7 +9,6 @@ use crate::ui_kit::icons::Icon;
 use crate::ui_kit::widgets::{Button, Input, Tooltip};
 use crate::ui_kit::widgets::tokens::{Variant, Size as KitSize};
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
-use crate::ui_kit::widgets::modal::{Modal, HeaderStyle};
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [Chart], ap: usize, t: &Theme) {
 // ── Overlay management pane ─────────────────────────────────────────────

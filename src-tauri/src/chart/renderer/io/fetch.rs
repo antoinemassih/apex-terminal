@@ -7,7 +7,7 @@
 use std::os::windows::process::CommandExt;
 
 use crate::chart_renderer::{ChartCommand, Bar};
-use crate::chart_renderer::gpu::{OptionRow, ScanResult, db_to_drawing, apexib_url};
+use crate::chart_renderer::gpu::{OptionRow, db_to_drawing, apexib_url};
 use crate::chart_renderer::{Drawing, DrawingGroup};
 use crate::chart_renderer::compute::{bs_price, strike_interval, atm_strike, get_iv, sim_oi};
 
@@ -196,6 +196,54 @@ macro_rules! str_keyed_cache {
 }
 
 str_keyed_cache!(gamma_cache, gamma_inflight, (GammaSnapshot, std::time::Instant));
+// Continuation-gauge markers, keyed by "SYMBOL|YYYY-MM-DD" (date currently on the chart).
+str_keyed_cache!(continuation_cache, continuation_inflight, (Vec<crate::chart_renderer::gpu::ContinuationMarker>, std::time::Instant));
+
+/// Fetch continuation-gauge stalls (HOLD/EXIT) for `symbol` on `date` from the
+/// signal feed (`/signals/continuation/{sym}?date=`). The feed returns each
+/// stall with an absolute `stall_ms` (epoch ms), the pin-adjusted call, and P,
+/// so no client-side timezone math is needed. `None` if unreachable/unsupported.
+pub(crate) fn fetch_continuation_from_feed(symbol: &str, date: &str)
+    -> Option<Vec<crate::chart_renderer::gpu::ContinuationMarker>> {
+    use crate::chart_renderer::gpu::ContinuationMarker;
+    if !gamma_feed_supports(symbol) { return None; }
+    let url = format!("{}/signals/continuation/{}?date={}",
+                      gamma_feed_url(), symbol.to_uppercase(), date);
+    let v: serde_json::Value = apexib_client().get(&url).send().ok()?.json().ok()?;
+    let stalls = v.get("stalls")?.as_array()?;
+    let mut out = Vec::with_capacity(stalls.len());
+    for s in stalls {
+        let call = s.get("call").and_then(|x| x.as_str()).unwrap_or("");
+        if !(call.contains("HOLD") || call.contains("EXIT")) { continue; } // skip ASIDE/neutral
+        let time = match s.get("stall_ms").and_then(|x| x.as_i64()) { Some(t) => t, None => continue };
+        out.push(ContinuationMarker {
+            time,
+            hold: call.contains("HOLD"),
+            strong: call.starts_with("STRONG"),
+            p: s.get("p_adj").and_then(|x| x.as_f64()).unwrap_or(0.5) as f32,
+        });
+    }
+    Some(out)
+}
+
+/// Spawn a deduped, non-blocking continuation fetch into the cache (key `SYM|date`).
+fn spawn_continuation_fetch(symbol: String, date: String) {
+    let key = format!("{}|{}", symbol.to_uppercase(), date);
+    {
+        let mut inf = match continuation_inflight().lock() { Ok(g) => g, Err(e) => e.into_inner() };
+        if inf.contains(&key) { return; }
+        inf.insert(key.clone());
+    }
+    std::thread::spawn(move || {
+        if let Some(markers) = fetch_continuation_from_feed(&symbol, &date) {
+            if let Ok(mut c) = continuation_cache().lock() {
+                c.insert(key.clone(), (markers, std::time::Instant::now()));
+            }
+            crate::wake_native_ui();
+        }
+        if let Ok(mut inf) = continuation_inflight().lock() { inf.remove(&key); }
+    });
+}
 
 /// How stale a cached gamma bundle may get before a refetch is spawned.
 const GAMMA_REFRESH_SECS: u64 = 20;
@@ -248,7 +296,26 @@ pub(crate) fn refresh_gamma_feeds(panes: &mut [crate::chart_renderer::gpu::Chart
                 fresh = at.elapsed().as_secs() < GAMMA_REFRESH_SECS;
             }
         }
-        if !fresh { spawn_gamma_fetch(sym); }
+        if !fresh { spawn_gamma_fetch(sym.clone()); }
+
+        // Continuation-gauge markers for the date currently loaded on the chart
+        // (live = today; historical = the displayed day). RTH bars share the UTC
+        // calendar day with the ET trading date, so the last bar's UTC date is the
+        // trading date. Reuses the same non-blocking cache machinery as gamma.
+        if let Some(&last_ts) = p.timestamps.last() {
+            if let Some(dt) = chrono::DateTime::from_timestamp_millis(last_ts) {
+                let date = dt.format("%Y-%m-%d").to_string();
+                let key = format!("{}|{}", sym, date);
+                let mut cfresh = false;
+                if let Ok(c) = continuation_cache().lock() {
+                    if let Some((markers, at)) = c.get(&key) {
+                        p.continuation_signals = markers.clone();
+                        cfresh = at.elapsed().as_secs() < GAMMA_REFRESH_SECS;
+                    }
+                }
+                if !cfresh { spawn_continuation_fetch(sym.clone(), date); }
+            }
+        }
     }
 }
 
@@ -1677,7 +1744,7 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
         mgr.unsubscribe_bars_with_source(&occ, &tf, BarSource::Mark);
         crate::apex_data::ws::remove_mark_bar_sub(&occ, &tf);
     }
-    let mut quote_set: Vec<String> = vec![occ.clone()];
+    let quote_set: Vec<String> = vec![occ.clone()];
     // Keep any existing quote subs alongside this one.
     // (set_quotes is replace-set semantics, so we need the full set — but our
     //  frame hook rebuilds the quote set each frame from watched_list, so just
@@ -1824,8 +1891,26 @@ pub(crate) fn fetch_bars_background(sym: String, tf: String) {
         });
         let bars = match result {
             Ok(b) if !b.is_empty() => b,
-            Ok(_) => { eprintln!("[native-chart] {} {} empty", sym, tf); return; }
-            Err(e) => { eprintln!("[native-chart] {} {} all sources failed: {e}", sym, tf); return; }
+            Ok(_) => {
+                eprintln!("[native-chart] {} {} empty", sym, tf);
+                let cmd = ChartCommand::BarsUnavailable {
+                    symbol: sym.clone(), timeframe: tf.clone(),
+                    reason: "no bars returned".into(),
+                };
+                for tx in &txs { let _ = tx.send(cmd.clone()); }
+                crate::wake_native_ui();
+                return;
+            }
+            Err(e) => {
+                eprintln!("[native-chart] {} {} all sources failed: {e}", sym, tf);
+                let cmd = ChartCommand::BarsUnavailable {
+                    symbol: sym.clone(), timeframe: tf.clone(),
+                    reason: "data source unreachable".into(),
+                };
+                for tx in &txs { let _ = tx.send(cmd.clone()); }
+                crate::wake_native_ui();
+                return;
+            }
         };
         let gpu_bars: Vec<Bar> = bars.iter().map(|b| Bar {
             open: b.open as f32, high: b.high as f32, low: b.low as f32,

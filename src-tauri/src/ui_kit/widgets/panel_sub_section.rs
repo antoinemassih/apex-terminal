@@ -50,7 +50,7 @@ use egui::{CornerRadius, FontId, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 
 use super::super::icons::Icon;
 use crate::ui_kit::tokens::{
-    color_alpha, font_sm, gap_2xs, gap_md, gap_xs, radius_sm, stroke_thin,
+    color_alpha, font_sm, gap_2xs, gap_md, gap_xs, stroke_thin,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Tone};

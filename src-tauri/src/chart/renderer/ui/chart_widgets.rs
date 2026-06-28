@@ -22,7 +22,7 @@ use super::overlays::kit::{
 use super::overlays::registry::OverlayWidget;
 use super::overlays::viz::charts::{
     bars_colored, compass, dot_matrix, hbars, heatmap_signed, lollipops, multiring_colored,
-    multiring_radius, multiring_thickness, scatter_quadrant, spoke_radar, tile_grid,
+    multiring_radius, multiring_thickness, spoke_radar, tile_grid,
 };
 use super::overlays::viz::style::ChartStyle;
 use super::super::gpu::*;
@@ -165,7 +165,7 @@ pub(crate) fn draw_widgets(
     // ══════════════════════════════════════════════════════════════════════════
 
     let mut mode_toggle: Option<usize> = None;
-    let mut collapse_toggle: Option<usize> = None;
+    let collapse_toggle: Option<usize> = None;
     let mut popup_open: Option<usize> = None;
     let mut resize_delta: Option<(usize, egui::Vec2)> = None;
     // Deferred context menu actions (to avoid borrow conflicts)

@@ -831,6 +831,15 @@ pub enum ChartCommand {
         bars: Vec<Bar>,
         timestamps: Vec<i64>,
     },
+    /// The bar fetch for (symbol, timeframe) returned nothing or every source
+    /// failed. Lets the pane replace its infinite loading spinner with an
+    /// honest "no data / source unreachable" message instead of spinning
+    /// forever (the data sources were down). `reason` is a short human string.
+    BarsUnavailable {
+        symbol: String,
+        timeframe: String,
+        reason: String,
+    },
     /// Insert bars into the tab cache without making them the active pane data.
     /// Used by background prewarm to make TF switches instant. Never overwrites
     /// an existing cache entry — first-writer wins so live data is never evicted

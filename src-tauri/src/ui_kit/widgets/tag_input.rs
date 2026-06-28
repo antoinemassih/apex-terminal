@@ -105,7 +105,7 @@ impl<'a> TagInput<'a> {
         // We paint inside a vertical layout so the outer widget can grow.
         let outer_id = base_id.with("outer");
 
-        let mut outer_resp: Option<Response> = None;
+        let outer_resp: Option<Response> = None;
         let focused = ui.memory(|m| m.has_focus(edit_id));
         let border_col = if focused {
             palette_ct(theme).base(SxTone::Accent)
@@ -127,8 +127,8 @@ impl<'a> TagInput<'a> {
                     let start_pos = ui.cursor().min;
 
                     let inner_w = desired_w - pad_x * 2.0;
-                    let mut cursor_x = start_pos.x + pad_x;
-                    let mut cursor_y = start_pos.y + pad_y;
+                    let cursor_x = start_pos.x + pad_x;
+                    let cursor_y = start_pos.y + pad_y;
                     let row_h = font_size + 8.0; // tag/edit row height
 
                     // We need to compute total height first (two-pass).

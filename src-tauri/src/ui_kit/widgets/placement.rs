@@ -86,7 +86,7 @@ pub fn compute(
     let primary_pos = try_side(placement.side);
     let primary_rect = Rect::from_min_size(primary_pos, overlay_size);
 
-    let (mut pos, mut side) = if screen.contains_rect(primary_rect) {
+    let (mut pos, side) = if screen.contains_rect(primary_rect) {
         (primary_pos, placement.side)
     } else {
         let opp = placement.side.opposite();

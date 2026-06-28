@@ -11,7 +11,7 @@ use winit::{
     dpi::PhysicalSize,
 };
 
-use super::{Bar, ChartCommand, Drawing, DrawingKind, DrawingGroup, DrawingSignificance, LineStyle, PatternLabel};
+use super::{Bar, ChartCommand, Drawing, DrawingKind, DrawingGroup, LineStyle, PatternLabel};
 
 // ── Replay overlay hook (sibling-branch ReplayScrubber feature) ────────────
 //
@@ -110,7 +110,7 @@ pub(crate) fn set_pending_wl_tooltip(data: Option<WlTooltipData>) {
     PENDING_WL_TOOLTIP.with(|t| *t.borrow_mut() = data);
 }
 
-use crate::ui_kit::{self, icons::Icon};
+use crate::ui_kit::{self};
 
 use super::trading::*;
 pub(crate) use super::trading::APEXIB_URL;
@@ -856,8 +856,7 @@ use super::ui::style::{
     alpha_muted, alpha_dim, alpha_strong, alpha_active,
 };
 use super::ui::style as style;
-use super::ui::foundation::text_style::TextStyle;
-use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, bs_price, strike_interval, atm_strike, get_iv, sim_oi, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner, compute_adx, compute_cci, compute_williams_r, compute_obv};
+use super::compute::{compute_sma, compute_ema, compute_rsi, compute_macd, compute_stochastic, compute_vwap, detect_divergences, compute_atr, compute_bollinger, compute_ichimoku, compute_psar, compute_supertrend, compute_keltner, compute_adx, compute_cci, compute_williams_r, compute_obv};
 
 // compute_sma, compute_ema — now in compute.rs
 
@@ -2497,6 +2496,10 @@ pub(crate) struct Chart {
     pub(crate) option_quick: OptionQuickPicker,
     pub(crate) history_loading: bool, // true while fetching older bars
     pub(crate) history_exhausted: bool, // true if no more history available
+    /// Set when the bar fetch returned nothing / every source failed, so the
+    /// pane shows an honest "no data" message instead of an endless spinner.
+    /// Cleared on a successful LoadBars or a new symbol/timeframe request.
+    pub(crate) load_error: Option<String>,
     pub(crate) tick_counter: u64, pub(crate) last_candle_time: std::time::Instant, pub(crate) sim_price: f32, pub(crate) sim_seed: u64,
     pub(crate) theme_idx: usize,
     pub(crate) draw_tool: String, // "", "hline", "trendline", "hzone", "barmarker", "fibonacci", "channel"
@@ -2828,7 +2831,7 @@ impl Chart {
             auto_scroll: true, draw_price_freeze: None,
             template_popup: TemplatePopup::default(),
             option_quick: OptionQuickPicker::default(),
-            history_loading: false, history_exhausted: false,
+            history_loading: false, history_exhausted: false, load_error: None,
             last_input: std::time::Instant::now(), tick_counter: 0,
             last_candle_time: std::time::Instant::now(), sim_price: 0.0,
             sim_seed: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(42),
@@ -2966,6 +2969,7 @@ impl Chart {
                 // (no-op / deactivates for non-futures symbols).
                 crate::data::futures_feed::set_target(&self.symbol, &self.timeframe);
                 self.bars = bars; self.timestamps = timestamps;
+                self.load_error = None; // bars arrived — clear any prior "no data" state
                 // Allow negative vs: fewer bars than vc → bars right-align instead
                 // of clustering at the left edge with empty space on the right.
                 self.vs = self.bars.len() as f32 - self.vc as f32 + CHART_RIGHT_PAD as f32;
@@ -3026,6 +3030,17 @@ impl Chart {
                         ind.source_bars.clear();
                         ind.source_timestamps.clear();
                         fetch_indicator_source(self.symbol.clone(), ind.source_tf.clone(), ind.id);
+                    }
+                }
+            }
+            ChartCommand::BarsUnavailable { symbol, timeframe, reason } => {
+                // Only act if this is still the pane's current selection and we
+                // have nothing to show — don't blank a chart that already has bars
+                // just because a background refresh failed.
+                if self.symbol == symbol && self.timeframe == timeframe {
+                    self.history_loading = false;
+                    if self.bars.is_empty() {
+                        self.load_error = Some(reason);
                     }
                 }
             }
@@ -5404,8 +5419,7 @@ pub(crate) fn paint_widget_preview(p: &egui::Painter, r: egui::Rect, kind: super
 
 
 // ─── Render functions (moved to render/pane.rs) ──────────────────────────────
-pub(crate) use super::render::pane::{render_toolbar, draw_chart};
-use super::render::pane::*;
+pub(crate) use super::render::pane::draw_chart;
 
 
 // ─── winit + egui integration ─────────────────────────────────────────────────
@@ -7141,10 +7155,8 @@ pub(crate) use super::io::fetch::{
     fetch_indicator_source, submit_ib_order, fetch_option_history_background,
     fetch_history_background, fetch_drawings_background,
     synthesize_occ, fetch_option_bars_background, fetch_bars_background,
-    fetch_overlay_bars_background, fetch_gamma_from_feed, refresh_gamma_feeds,
-    GammaSnapshot, fetch_corp_actions, ticker_detail_cached,
-    options_analytics_cached, OptionsAnalytics, prev_session_change_cached,
-    daily_stats_cached, rvol_cached, futures_price_cached, vap_cached,
+    fetch_overlay_bars_background, fetch_gamma_from_feed, refresh_gamma_feeds, fetch_corp_actions, ticker_detail_cached,
+    options_analytics_cached, prev_session_change_cached, rvol_cached, futures_price_cached, vap_cached,
 };
 
 
@@ -8673,6 +8685,7 @@ impl ApplicationHandler for App {
                     pane.drawings_requested = false; // allow re-fetch for new timeframe
                     pane.history_loading = false;
                     pane.history_exhausted = false;
+                    pane.load_error = None; // new symbol/tf — show spinner, not a stale error
                     pane.sim_price = 0.0;
                     pane.last_candle_time = std::time::Instant::now();
                     // Replay position is meaningless after a symbol/tf change — the bar
@@ -9531,7 +9544,7 @@ fn alerts_path() -> std::path::PathBuf {
 }
 
 fn save_alerts(watchlist: &Watchlist, panes: &[Chart]) {
-    use crate::chart_renderer::trading::PriceAlert;
+    
     // Watchlist-level alerts
     let wl_alerts: Vec<serde_json::Value> = watchlist.alerts.iter().map(|a| serde_json::json!({
         "id": a.id, "symbol": a.symbol, "price": a.price, "above": a.above,
@@ -10078,6 +10091,7 @@ mod tab_cache_lru_tests {
     use super::{evict_oldest_if_full, Bar, TAB_CACHE_MAX};
     use std::collections::HashMap;
     use std::time::{Duration, Instant};
+
 
     #[test]
     fn evict_drops_oldest_when_full() {

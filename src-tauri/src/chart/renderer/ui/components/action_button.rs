@@ -2,7 +2,7 @@
 //! brand CTA. Defines `ActionTier`, `ActionSize`, `ActionButton`.
 
 use super::super::style::*;
-use egui::{self, Color32, Response, RichText, Stroke, Ui};
+use egui::{self, Color32, Response, Stroke, Ui};
 use crate::ui_kit::widgets::Button as KitButton;
 use crate::ui_kit::widgets::tokens::{Variant as KitVariant, Size as KitSize};
 

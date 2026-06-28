@@ -505,15 +505,15 @@ async fn ws_loop(
                                     }
                                 }
                             }
+                            // Socket closed → report and reconnect
+                            Some(Ok(Message::Close(_))) => {
+                                report(ErrorLevel::Warn, "ib_ws", "ws_close", "close frame received");
+                                break;
+                            }
                             // Ping/pong/text — refresh liveness so the watchdog
                             // sees the pong from our own ping when no data flows.
                             Some(Ok(_)) => {
                                 LAST_MESSAGE_AT_MS.store(now_ms(), Ordering::Relaxed);
-                            }
-                            // Socket closed or error → report and reconnect
-                            Some(Ok(Message::Close(_))) => {
-                                report(ErrorLevel::Warn, "ib_ws", "ws_close", "close frame received");
-                                break;
                             }
                             Some(Err(e)) => {
                                 report(ErrorLevel::Warn, "ib_ws", "recv_error", e.to_string());

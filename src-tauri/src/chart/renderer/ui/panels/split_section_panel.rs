@@ -43,7 +43,7 @@ use std::ops::RangeInclusive;
 use crate::chart_renderer::ui::style::tint;
 use crate::ui_kit::sx::Tone;
 
-use egui::{Color32, Context, Pos2, Sense, Stroke, Ui, Vec2};
+use egui::{Context, Pos2, Sense, Stroke, Ui, Vec2};
 
 use crate::ui_kit::widgets::placement::Side;
 use super::side_panel_shell::{SidePanelShellResponse, Width};
@@ -52,7 +52,7 @@ use super::kit::PanelHeader;
 use crate::ui_kit::widgets::Tooltip;
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::tokens::{
-    alpha_faint, color_alpha, color_dim, font_xs, gap_xs, split_divider, stroke_thin,
+    alpha_faint, split_divider, stroke_thin,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::chart_renderer::gpu::Theme;

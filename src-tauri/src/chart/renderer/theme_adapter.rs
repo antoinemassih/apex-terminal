@@ -35,7 +35,7 @@
 //! scope here).
 
 use crate::design_system::color_scheme::ColorScheme;
-use super::gpu::{alpha, element_overlay, hairline_border, hairline_border_variant, Theme};
+use super::gpu::{hairline_border, hairline_border_variant, Theme};
 
 /// Convert a `ColorScheme` into a `gpu::Theme`.
 ///

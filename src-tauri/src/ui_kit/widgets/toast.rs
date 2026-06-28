@@ -14,7 +14,6 @@
 use egui::{Color32, Id, Rect, Response, RichText, Stroke, Ui, Vec2};
 
 use super::theme::ComponentTheme;
-use crate::ui_kit::sx::{palette_ct, Tone};
 use super::motion;
 
 use crate::ui_kit::tokens::{

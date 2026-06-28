@@ -245,7 +245,7 @@ pub(crate) fn overlay_card_header(
     let btn_h = 22.0;
 
     // One header button: hover-lit fill + stroke + glyph. Returns its rect.
-    let mut header_btn = |center_x: f32, glyph: &str| -> egui::Rect {
+    let header_btn = |center_x: f32, glyph: &str| -> egui::Rect {
         let r = egui::Rect::from_center_size(
             egui::pos2(center_x, hdr.center().y), egui::vec2(btn_w, btn_h));
         let hov = ptr.map(|q| r.contains(q)).unwrap_or(false);

@@ -8,8 +8,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::dev_inspector::{DevSharedState, DevQueues, QueuedDevCmd, SseEvent};
-use crate::dev_inspector::assert_engine::{evaluate, evaluate_layout, AssertionReport};
-use crate::dev_inspector::layout::{self, ScenarioMeta};
+use crate::dev_inspector::assert_engine::{evaluate, evaluate_layout};
+use crate::dev_inspector::layout::{self};
 use crate::dev_inspector::input_queue::DevInput;
 use crate::dev_inspector::annotations::{DebugAnnotation, AnnotationOp};
 
@@ -1885,8 +1885,8 @@ svg.layout{{max-width:100%;border:1px solid #2a2a2a;border-radius:4px}}
 fn parse_app_command(
     body: &serde_json::Value,
 ) -> Result<crate::chart_renderer::commands::AppCommand, String> {
-    use crate::chart_renderer::commands::{AppCommand, ChartFlag};
-    use crate::chart_renderer::gpu::{IndicatorType, PaneType};
+    use crate::chart_renderer::commands::AppCommand;
+    
 
     let cmd = body["cmd"].as_str().unwrap_or("").trim();
     let pane = body["pane"].as_u64().unwrap_or(0) as usize;

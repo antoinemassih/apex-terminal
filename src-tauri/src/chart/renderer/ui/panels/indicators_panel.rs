@@ -24,7 +24,7 @@ use crate::ui_kit::widgets::tokens::Size as KitSize;
 use crate::ui_kit::widgets::icon_placement::IconPlacement;
 use crate::ui_kit::widgets::Input;
 use super::super::super::gpu::{
-    Watchlist, Chart, Theme, Indicator, IndicatorType, INDICATOR_COLORS, VolumeProfileMode,
+    Watchlist, Chart, Theme, Indicator, IndicatorType, VolumeProfileMode,
     indicator_default_color,
 };
 use crate::ui_kit::icons::Icon;

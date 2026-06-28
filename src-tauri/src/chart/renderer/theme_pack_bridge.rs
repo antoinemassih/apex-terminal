@@ -290,7 +290,7 @@ fn upsert_theme_into_live_store(theme: crate::chart_renderer::gpu::Theme) -> usi
 fn reverse_theme_to_color_scheme(
     t: &crate::chart_renderer::gpu::Theme,
 ) -> crate::design_system::color_scheme::ColorScheme {
-    use crate::design_system::color_scheme::{ColorScheme, Meta, CMD_PALETTE_DEFAULT};
+    use crate::design_system::color_scheme::{ColorScheme, Meta};
 
     let c = |c: egui::Color32| -> [u8; 4] { [c.r(), c.g(), c.b(), c.a()] };
 

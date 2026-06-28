@@ -11,8 +11,6 @@ use crate::ui_kit::widgets::NumberStepper;
 use super::super::inputs::form::{IndicatorParamRow, IndicatorParamRowF};
 use crate::ui_kit::widgets::FormRow;
 use super::super::inputs::inputs::{ColorSwatchPicker, ThicknessPicker};
-use super::super::chrome::modal::{Modal, Anchor, FrameKind, HeaderStyle};
-use super::super::components::frames_widget::PopupFrame;
 use super::super::inputs::select::SegmentedControl;
 use crate::ui_kit::icons::Icon;
 use crate::chart_renderer::LineStyle;
@@ -325,7 +323,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, panes: &mut [
                     ui.add_space(gap_xs());
 
                     const BAND_WIDTHS: &[f32] = &[0.5, 0.8, 1.0, 1.5, 2.0];
-                    let mut band_row = |ui: &mut egui::Ui, label: &str, color_field: &mut String, thickness_field: &mut f32| {
+                    let band_row = |ui: &mut egui::Ui, label: &str, color_field: &mut String, thickness_field: &mut f32| {
                         // Color swatch row
                         ui.horizontal(|ui| {
                             ui.add_space(m);

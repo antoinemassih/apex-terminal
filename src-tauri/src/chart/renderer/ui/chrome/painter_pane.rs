@@ -78,7 +78,7 @@ pub enum PaneBtn {
     Layers    = 6,
     Expand    = 7,
     Split     = 8,
-    ClosePanе = 9,
+    ClosePane = 9,
 }
 const PANE_BTN_COUNT: usize = 10;
 
@@ -484,7 +484,7 @@ impl<'a> PainterPaneHeader<'a> {
     }
     /// Show the close-pane button (distinct from the per-tab close).
     pub fn show_close_pane_btn(mut self) -> Self {
-        self.buttons[PaneBtn::ClosePanе as usize] = ButtonState { show: true, active: false }; self
+        self.buttons[PaneBtn::ClosePane as usize] = ButtonState { show: true, active: false }; self
     }
 
     pub fn show(self, ui: &mut Ui) -> PainterPaneHeaderResponse {
@@ -973,7 +973,7 @@ impl<'a> PainterPaneHeader<'a> {
         const CLOSE_PANE_BTN_W: f32 = 28.0;
         let expand_total      = if self.buttons[PaneBtn::Expand as usize].show     { EXPAND_BTN_W     } else { 0.0 };
         let split_total       = if self.buttons[PaneBtn::Split as usize].show      { SPLIT_BTN_W      } else { 0.0 };
-        let close_pane_total  = if self.buttons[PaneBtn::ClosePanе as usize].show { CLOSE_PANE_BTN_W } else { 0.0 };
+        let close_pane_total  = if self.buttons[PaneBtn::ClosePane as usize].show { CLOSE_PANE_BTN_W } else { 0.0 };
         let close_total       = if self.show_close          { gap_md() + CLOSE_BTN_SIZE + gap_md() } else { gap_sm() };
         // Pane-action controls are at the far right (left of close-tab button).
         let pane_ctrls_total  = close_pane_total + split_total + expand_total;
@@ -1052,7 +1052,7 @@ impl<'a> PainterPaneHeader<'a> {
             let pc_left = rect.right() - close_total - pane_ctrls_total;
             let mut px  = pc_left;
 
-            if self.buttons[PaneBtn::ClosePanе as usize].show {
+            if self.buttons[PaneBtn::ClosePane as usize].show {
                 let cp_rect = Rect::from_min_size(
                     pos2(px, rect.center().y - icon_h / 2.0),
                     Vec2::new(CLOSE_PANE_BTN_W, icon_h),
@@ -1067,7 +1067,7 @@ impl<'a> PainterPaneHeader<'a> {
                     cp_rect.center(), Align2::CENTER_CENTER,
                     Icon::X, FontId::proportional(font_md_plus()), col,
                 );
-                if resp.clicked() { out.clicked_button = Some(PaneBtn::ClosePanе); }
+                if resp.clicked() { out.clicked_button = Some(PaneBtn::ClosePane); }
                 px += CLOSE_PANE_BTN_W;
             }
 

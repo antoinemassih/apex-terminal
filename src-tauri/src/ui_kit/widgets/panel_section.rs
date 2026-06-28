@@ -68,7 +68,7 @@ use super::super::icons::Icon;
 use super::tooltip::Tooltip;
 use super::theme::{active_theme, get_ambient_recipes};
 use crate::ui_kit::tokens::{
-    color_alpha, font_sm, font_xs, gap_lg, gap_md, gap_sm, gap_xs, stroke_thin,
+    color_alpha, font_sm, font_xs, gap_lg, gap_sm, gap_xs, stroke_thin,
 };
 use crate::ui_kit::widgets::theme::ComponentTheme;
 use crate::ui_kit::sx::{palette_ct, Sx, StyleState, Tone as SxTone};

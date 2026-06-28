@@ -196,6 +196,8 @@ pub struct ScenarioMeta {
     pub step_count: usize,
     pub description: Option<String>,
     pub tags: Option<Vec<String>>,
+    pub story: Option<String>,
+    pub priority: Option<u8>,
 }
 
 pub fn list_scenarios(dir: &str) -> Vec<ScenarioMeta> {
@@ -214,7 +216,9 @@ pub fn list_scenarios(dir: &str) -> Vec<ScenarioMeta> {
         let tags = val["tags"].as_array().map(|a| {
             a.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()
         });
-        out.push(ScenarioMeta { name, file, step_count, description, tags });
+        let story    = val["story"].as_str().map(|s| s.to_string());
+        let priority = val["priority"].as_u64().map(|n| n as u8);
+        out.push(ScenarioMeta { name, file, step_count, description, tags, story, priority });
     }
     out.sort_by(|a, b| a.file.cmp(&b.file));
     out
