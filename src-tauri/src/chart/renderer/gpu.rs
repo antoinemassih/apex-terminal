@@ -7493,7 +7493,12 @@ impl GpuCtx {
         {
             let reqs  = crate::chart_renderer::bug_anchor::take_capture_reqs();
             // Harness screenshot requests (full-window) share this render-thread site.
+            // `dev_inspector` is `#[cfg(debug_assertions)]` (a dev-only tool), so the
+            // screenshot harness is inert in release — keeps the release build buildable.
+            #[cfg(debug_assertions)]
             let shots = crate::dev_inspector::take_screenshot_reqs();
+            #[cfg(not(debug_assertions))]
+            let shots: Vec<String> = Vec::new();
             if !reqs.is_empty() || !shots.is_empty() {
                 use winit::raw_window_handle::HasWindowHandle;
                 if let Ok(handle) = window.window_handle() {
