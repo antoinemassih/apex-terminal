@@ -35,7 +35,21 @@ screenshots for visual/UX review.
 > and will catch a real regression when the feeds are up. The toolbar/touch-target
 > UX finding (#3) is a genuine app-side issue.
 
-### 1b. UPDATE (instrumented retest): strikes overlay WORKS — not a bug
+### 1c. FINAL: strikes overlay was a REAL bug (dual-drain race) — FIXED
+The contamination-filtered full-corpus runner surfaced strikes as failing even
+"in isolation". Instrumentation showed the chain feed returns valid data
+(`get_chain OK rows=2124 -> 136 calls/136 puts`) and `OverlayChainData` is SENT,
+but the handler ran 0 times — `overlay_calls` stayed empty, `overlay_chain_loading`
+stuck true. Root cause: `OverlayChainData` is a **window-level** command (applied
+across panes at gpu.rs:4655), but the `about_to_wait` command drain routed unmatched
+commands to `pane.process()`, which has no `OverlayChainData` arm — so whenever that
+drain (rather than `draw_chart`) consumed the result, it was **silently dropped**.
+Whether the overlay populated was a coin-flip on which drain won. **Fix:** handle
+`OverlayChainData` window-level in the `about_to_wait` drain too. Verified: strikes
+overlay now populates reliably (6/6 across repeated runs). This is the original
+"options chain doesn't appear on chart" bug, root-caused and fixed.
+
+### 1b. (earlier) instrumented retest: strikes overlay WORKS — not a bug
 After adding `[overlay-fetch]` diagnostics and re-running with the chain feed
 available, the log shows `apex_data get_chain OK rows=2126 -> 111 calls / 111 puts`
 and `903/904_strikes_overlay_*` now **pass** — the overlay populates correctly when

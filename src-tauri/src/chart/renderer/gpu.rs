@@ -8253,6 +8253,29 @@ impl ApplicationHandler for App {
                             eprintln!("[about_to_wait] OverlayBars for '{}' arrived", symbol);
                             let s = symbol.clone(); for p in cw.panes.iter_mut() { if p.symbol_overlays.iter().any(|o| o.symbol == s) { p.process(cmd.clone()); } } continue;
                         }
+                        // OverlayChainData is a WINDOW-level command (applied across panes),
+                        // not a per-pane one — routing it to p.process() drops it silently.
+                        // Apply it here exactly like the draw_chart dispatch (gpu.rs:4655),
+                        // otherwise whether the strikes overlay populates depends on which
+                        // drain consumes the result (it was racily lost about half the time).
+                        ChartCommand::OverlayChainData { symbol, calls, puts, placeholder } => {
+                            let to_rows = |data: &[(f32,f32,f32,f32,i32,i32,f32,bool,String)]| -> Vec<OptionRow> {
+                                data.iter().map(|(strike,last,bid,ask,vol,oi,iv,itm,contract)| OptionRow {
+                                    strike: *strike, last: *last, bid: *bid, ask: *ask,
+                                    volume: *vol, oi: *oi, iv: *iv, itm: *itm, contract: contract.clone(),
+                                }).collect()
+                            };
+                            for p in cw.panes.iter_mut() {
+                                if p.symbol == *symbol && p.overlay_chain_loading {
+                                    p.overlay_calls = to_rows(calls);
+                                    p.overlay_puts = to_rows(puts);
+                                    p.overlay_chain_symbol = symbol.clone();
+                                    p.overlay_chain_loading = false;
+                                    p.overlay_chain_placeholder = *placeholder;
+                                }
+                            }
+                            continue;
+                        }
                         _ => None,
                     };
                     if let Some(s) = sym {

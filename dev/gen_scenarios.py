@@ -452,7 +452,7 @@ for i,sym in enumerate(["SPY","QQQ","AAPL"]):
          [{"action":"reset"},{"action":"wait_frames","count":3},
           cmd("SwapPaneSymbol",pane=0,symbol=sym),{"action":"wait","ms":1200},{"action":"wait_frames","count":3},
           cmd("SetChartFlag",pane=0,flag="ShowStrikesOverlay",value=True),
-          {"action":"wait","ms":4000},{"action":"wait_frames","count":6},
+          {"action":"wait","ms":7000},{"action":"wait_frames","count":8},
           {"action":"log","message":f"strikes on {sym}"},
           A({"strikes_overlay_active":{"pane":0}}, {"no_panic":True},{"viewport_sane":True},{"fps_above":5.0})],
          f"Enabling the strikes overlay on {sym} actually loads option-chain rows.")

@@ -82,7 +82,7 @@ def main():
              or next((f for f in files if nm in f), None)
         if not fn:
             real.append((nm, "could not locate file", first_fail_detail(r))); continue
-        time.sleep(0.3)
+        time.sleep(1.5)  # let the full run's in-flight loads drain before the solo retry
         solo = run([fn], timeout=180)["results"][0]
         if solo.get("pass"):
             flake.append(nm)

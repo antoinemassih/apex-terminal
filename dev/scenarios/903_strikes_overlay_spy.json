@@ -41,11 +41,11 @@
     },
     {
       "action": "wait",
-      "ms": 4000
+      "ms": 7000
     },
     {
       "action": "wait_frames",
-      "count": 6
+      "count": 8
     },
     {
       "action": "log",
