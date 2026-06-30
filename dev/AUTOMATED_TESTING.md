@@ -142,3 +142,18 @@ not on every functional story.
 
 See `dev/FINDINGS_2026-06-28.md` for the first run's results (3 bugs fixed,
 2 open) and `dev/bug_report.md` for the live auto-generated failure list.
+
+## Reliable full-corpus runner (contamination-filtered)
+
+`python dev/run_corpus.py` runs every scenario (prefix ≥ 500) against a live build,
+then **re-runs each failure in isolation** to classify it:
+- passes in isolation → a back-to-back **contamination flake** (a previous
+  scenario's late async load bled into the next; not a feature defect),
+- fails in isolation → a **real** failure.
+
+It writes `dev/bug_report.md` with only the real failures. This is the trustworthy
+way to read the full corpus: back-to-back runs share one process and are
+non-deterministically flaky at scenario boundaries, but every real correctness
+signal survives the isolation re-run. (A fully deterministic back-to-back run would
+need a monotonic load-generation guard on the bar-load path — deferred as it touches
+business-critical loading.)
