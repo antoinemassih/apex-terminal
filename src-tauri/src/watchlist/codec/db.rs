@@ -183,6 +183,7 @@ pub async fn load_watchlists(
                     prev_close: 0.0,
                     day_close: 0.0,
                     change_perc: None,
+                    stale: false,
                     loaded: false,
                     is_option,
                     underlying,

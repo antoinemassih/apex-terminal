@@ -75,7 +75,7 @@ pub fn start() {
         reconnect: Arc::new(AtomicBool::new(false)),
         idle_timeout: None, // signals can be legitimately quiet
         url_provider: Box::new(|| Some(resilient_ws::v2_url())),
-        subscribe_msg: Some(resilient_ws::v2_subscribe(&["signals"], "*")),
+        subscribe_provider: Box::new(|| Some(resilient_ws::v2_subscribe(&["signals"], "*"))),
         on_text: Box::new(move |text| on_text(text, &surfaced)),
     });
 }

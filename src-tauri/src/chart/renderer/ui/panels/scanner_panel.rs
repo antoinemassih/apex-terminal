@@ -417,7 +417,7 @@ pub(crate) fn draw_content(
             let sym_hash = r.symbol.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
             let rvol_seed = 0.5 + (sym_hash % 40) as f32 * 0.1;
             WatchlistItem {
-                symbol: r.symbol.clone(), price: r.price, prev_close: if r.change_pct != 0.0 { r.price / (1.0 + r.change_pct / 100.0) } else { r.price }, day_close: 0.0, change_perc: None, loaded: true,
+                symbol: r.symbol.clone(), price: r.price, prev_close: if r.change_pct != 0.0 { r.price / (1.0 + r.change_pct / 100.0) } else { r.price }, day_close: 0.0, change_perc: None, stale: false, loaded: true,
                 is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new(), bid: 0.0, ask: 0.0,
                 pinned: false, tags: vec![], rvol: rvol_seed, atr: 0.0,
                 high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,

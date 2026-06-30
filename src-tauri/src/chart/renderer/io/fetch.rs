@@ -1306,6 +1306,7 @@ pub(crate) fn fetch_watchlist_prices(symbols: Vec<String>) {
                         prev_close: snap.prev_close as f32,
                         day_close: 0.0,
                         change_perc: snap.change_perc.map(|p| p as f32),
+                        stale: snap.stale,
                     });
                 }
             }
@@ -1355,6 +1356,7 @@ pub(crate) fn fetch_watchlist_prices(symbols: Vec<String>) {
                 // Prefer the server's session/DST-aware % (apex-data-v2); None
                 // on older backends → the panel falls back to its own formula.
                 change_perc: snap.change_perc.map(|p| p as f32),
+                stale: snap.stale,
             });
         }
     });

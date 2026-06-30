@@ -70,14 +70,28 @@ pub fn start() {
     if STARTED.set(()).is_err() {
         return;
     }
+    // Opt-in: use the unified /ws/v2 `depth` topic (one socket + a per-symbol
+    // subscribe) instead of the bespoke per-symbol /ws/dom URL. Both reconnect on
+    // symbol change; on_text is dual-shape. Bespoke stays aliased server-side.
+    let v2 = resilient_ws::v2_enabled();
     resilient_ws::spawn(WsConfig {
         name: "dom_feed",
         reconnect: reconnect_flag().clone(),
         // A book can be legitimately quiet (illiquid / off-hours), so no idle
         // watchdog — only reconnect on symbol change or a dropped socket.
         idle_timeout: None,
-        url_provider: Box::new(|| active().lock().as_ref().map(|s| dom_ws_url(s))),
-        subscribe_msg: None,
+        url_provider: Box::new(move || {
+            // Idle (None) until a symbol is set; in v2 the symbol rides the
+            // subscribe, so the URL is the global socket.
+            active().lock().as_ref().map(|s| if v2 { resilient_ws::v2_url() } else { dom_ws_url(s) })
+        }),
+        subscribe_provider: Box::new(move || {
+            if !v2 { return None; }
+            active().lock().as_ref().map(|s| {
+                let root = s.strip_prefix("F:").unwrap_or(s);
+                resilient_ws::v2_subscribe(&["depth"], root)
+            })
+        }),
         on_text: Box::new(on_text),
     });
 }
@@ -92,7 +106,13 @@ fn on_text(text: &str) {
     };
     match v.get("type").and_then(|t| t.as_str()) {
         Some("dom") => {
-            let levels = parse_dom(&v);
+            // /ws/v2 (Frame::Dom) nests bids/asks under `data`; the bespoke
+            // /ws/dom carries them at the top level. Parse whichever has them.
+            let payload = match v.get("data") {
+                Some(d) if d.get("bids").is_some() || d.get("asks").is_some() => d,
+                _ => &v,
+            };
+            let levels = parse_dom(payload);
             resilient_ws::send_to_charts(ChartCommand::DomLevels { symbol, levels });
         }
         Some("error") => tracing::warn!(target: "dom_feed", "server error: {v}"),

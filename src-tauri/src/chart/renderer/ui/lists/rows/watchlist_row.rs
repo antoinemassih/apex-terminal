@@ -156,6 +156,11 @@ pub struct WatchlistRow<'a> {
     // Price-flash animation — caller pre-computes the tint color with baked-in
     // alpha and passes it here. None = no flash this frame.
     price_flash_tint: Option<Color32>,
+
+    /// Latest snapshot was served from the backend's last-good cache (upstream
+    /// blip) rather than fresh. The value is still real, so the row renders it
+    /// but mutes the change-% color to signal it isn't live.
+    stale: bool,
 }
 
 impl<'a> WatchlistRow<'a> {
@@ -203,9 +208,12 @@ impl<'a> WatchlistRow<'a> {
             sym_x_offset_no_star: 10.0,
             fg_override: None,
             price_flash_tint: None,
+            stale: false,
         }
     }
     pub fn spark(mut self, s: &'a [f32]) -> Self { self.spark = Some(s); self }
+    /// Mark the row's data as stale (last-good cache) — mutes the change-% color.
+    pub fn stale(mut self, v: bool) -> Self { self.stale = v; self }
     pub fn selected(mut self, v: bool) -> Self { self.selected = v; self }
     pub fn height(mut self, h: f32) -> Self { self.height = h; self }
     pub fn theme(mut self, t: &'a Theme) -> Self {
@@ -289,6 +297,7 @@ impl<'a> WatchlistRow<'a> {
         let bull = self.theme_bull.unwrap_or(theme_ref.bull);
         let bear = self.theme_bear.unwrap_or(theme_ref.bear);
         let dim = self.theme_dim.unwrap_or(theme_ref.dim);
+        let stale = self.stale;
         let fg = self.fg_override.unwrap_or_else(|| self.theme_fg.unwrap_or(theme_ref.text));
         let accent = self.theme_accent.unwrap_or(theme_ref.accent);
         let border = self.theme_border.unwrap_or(theme_ref.toolbar_border);
@@ -423,7 +432,12 @@ impl<'a> WatchlistRow<'a> {
                     );
                 }
                 let cy = rect.center().y;
-                let chg_col = if change_pct >= 0.0 { bull } else { bear };
+                // Stale (last-good cache) rows mute the change-% color so the
+                // trader can tell the value isn't live, without hiding it.
+                let chg_col = {
+                    let base = if change_pct >= 0.0 { bull } else { bear };
+                    if stale { color_half(base) } else { base }
+                };
 
                 // ── Project row tint (e.g. pinned-row faint bg) ─────────
                 if let Some(tint) = row_tint {

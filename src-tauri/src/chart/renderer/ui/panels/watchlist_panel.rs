@@ -726,6 +726,7 @@ if is_spawn || watchlist.open {
                                     let item_prev_close = item.prev_close;
                                     let item_day_close = item.day_close; // today's regular close (0 while live)
                                     let item_change_perc = item.change_perc; // server-computed % (apex-data-v2), if available
+                                    let item_stale = item.stale; // served from backend last-good cache (upstream blip)
                                     let item_loaded = item.loaded;
                                     let item_is_option = item.is_option;
                                     let item_strike = item.strike;
@@ -964,6 +965,7 @@ if is_spawn || watchlist.open {
                                             .theme(t)
                                             .height(row_h)
                                             .active(is_active)
+                                            .stale(item_stale)
                                             .drag_handle(true)
                                             .pin_state(pin_state)
                                             .show_star_on_hover(true)

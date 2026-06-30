@@ -4575,11 +4575,12 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                 }
             }
             // Watchlist-targeted commands: handle directly
-            ChartCommand::WatchlistPrice { symbol, price, prev_close, day_close, change_perc } => {
+            ChartCommand::WatchlistPrice { symbol, price, prev_close, day_close, change_perc, stale } => {
                 watchlist.set_price(symbol, *price);
                 watchlist.set_prev_close(symbol, *prev_close);
                 watchlist.set_day_close(symbol, *day_close);
                 watchlist.set_change_perc(symbol, *change_perc);
+                watchlist.set_stale(symbol, *stale);
             }
             ChartCommand::ScannerPrice { symbol, price, prev_close, volume } => {
                 // Update or insert into scanner results pool
@@ -5487,6 +5488,10 @@ pub(crate) struct WatchlistItem {
     /// Server-computed session/DST-aware % change (apex-data-v2). `Some` →
     /// render directly; `None` → fall back to the client-side computation.
     pub(crate) change_perc: Option<f32>,
+    /// True when the latest snapshot was served from the backend's last-good
+    /// cache (upstream blip) rather than fresh. Value is still real; the row
+    /// marks it so the trader knows it isn't live.
+    pub(crate) stale: bool,
     pub(crate) loaded: bool,
     // Option fields (defaults for stocks)
     pub(crate) is_option: bool,
@@ -6874,7 +6879,7 @@ impl Watchlist {
         let sym_hash = s.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
         let rvol_seed = 1.0; // neutral until real RVOL is wired (was: hash-seeded random masquerading as data)
         self.sections[target_idx].items.push(WatchlistItem {
-            symbol: s, price: 0.0, prev_close: 0.0, day_close: 0.0, change_perc: None, loaded: false,
+            symbol: s, price: 0.0, prev_close: 0.0, day_close: 0.0, change_perc: None, stale: false, loaded: false,
             is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new(), bid: 0.0, ask: 0.0,
             pinned: false, tags: vec![], rvol: rvol_seed, atr: 0.0,
             high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,
@@ -6950,6 +6955,16 @@ impl Watchlist {
         }
     }
 
+    /// Mark whether `sym`'s latest snapshot was last-good cache (stale) vs fresh.
+    /// Set unconditionally so a recovered row clears its stale mark.
+    pub(crate) fn set_stale(&mut self, sym: &str, stale: bool) {
+        for sec in &mut self.sections {
+            if let Some(item) = sec.items.iter_mut().find(|i| i.symbol == sym) {
+                item.stale = stale;
+            }
+        }
+    }
+
     /// Look up live change% for `sym` from the watchlist's loaded items
     /// (returns None if the symbol isn't in the watchlist or has no prev_close).
     pub(crate) fn get_change_pct(&self, sym: &str) -> Option<f32> {
@@ -7016,7 +7031,7 @@ impl Watchlist {
             self.sections.len() - 1
         };
         self.sections[sec_idx].items.push(WatchlistItem {
-            symbol: opt_sym, price: 0.0, prev_close: 0.0, day_close: 0.0, change_perc: None, loaded: false,
+            symbol: opt_sym, price: 0.0, prev_close: 0.0, day_close: 0.0, change_perc: None, stale: false, loaded: false,
             is_option: true, underlying: underlying.to_string(), option_type: type_str.to_string(), strike, expiry: expiry.to_string(), bid, ask,
             pinned: false, tags: vec![], rvol: 1.0, atr: 0.0,
             high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,
@@ -8132,11 +8147,12 @@ impl ApplicationHandler for App {
                 let mut cmds_to_requeue = Vec::new();
                 while let Ok(cmd) = cw.rx.try_recv() {
                     match cmd {
-                        ChartCommand::WatchlistPrice { ref symbol, price, prev_close, day_close, change_perc } => {
+                        ChartCommand::WatchlistPrice { ref symbol, price, prev_close, day_close, change_perc, stale } => {
                             cw.watchlist.set_price(symbol, price);
                             cw.watchlist.set_prev_close(symbol, prev_close);
                             cw.watchlist.set_day_close(symbol, day_close);
                             cw.watchlist.set_change_perc(symbol, change_perc);
+                            cw.watchlist.set_stale(symbol, stale);
                         }
                         ChartCommand::ScannerPrice { ref symbol, price, prev_close, volume } => {
                             if let Some(r) = cw.watchlist.scanner_results.iter_mut().find(|r| r.symbol == *symbol) {
@@ -9856,7 +9872,7 @@ fn load_watchlists() -> (Vec<SavedWatchlist>, usize) {
                             let sym_hash = symbol.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
                             let rvol_seed = 1.0; // neutral until real RVOL feed
                             items.push(WatchlistItem {
-                                symbol, price: 0.0, prev_close: 0.0, day_close: 0.0, change_perc: None, loaded: false,
+                                symbol, price: 0.0, prev_close: 0.0, day_close: 0.0, change_perc: None, stale: false, loaded: false,
                                 is_option, underlying, option_type, strike, expiry, bid, ask,
                                 pinned: false, tags: vec![], rvol: rvol_seed, atr: 0.0,
                                 high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,
@@ -9882,7 +9898,7 @@ fn default_watchlists() -> (Vec<SavedWatchlist>, usize) {
             let sym_hash = s.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
             let rvol_seed = 1.0; // neutral until real RVOL feed
             WatchlistItem {
-                symbol: s.into(), price: 0.0, prev_close: 0.0, day_close: 0.0, change_perc: None, loaded: false,
+                symbol: s.into(), price: 0.0, prev_close: 0.0, day_close: 0.0, change_perc: None, stale: false, loaded: false,
                 is_option: false, underlying: String::new(), option_type: String::new(), strike: 0.0, expiry: String::new(), bid: 0.0, ask: 0.0,
                 pinned: false, tags: vec![], rvol: rvol_seed, atr: 0.0,
                 high_52wk: 0.0, low_52wk: 0.0, day_high: 0.0, day_low: 0.0,

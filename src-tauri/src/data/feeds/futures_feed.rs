@@ -64,15 +64,25 @@ pub fn start() {
     if STARTED.set(()).is_err() {
         return;
     }
+    // Opt-in: use the unified /ws/v2 `futures_bars` topic (one socket + per-symbol
+    // subscribe) instead of the bespoke per-symbol /ws/futures URL. Bespoke stays
+    // aliased server-side; on_text is dual-shape.
+    let v2 = resilient_ws::v2_enabled();
     resilient_ws::spawn(WsConfig {
         name: "futures_feed",
         reconnect: reconnect_flag().clone(),
         // 5s bars; a 30s gap means the stream is stale → reconnect.
         idle_timeout: Some(Duration::from_secs(30)),
-        url_provider: Box::new(|| {
-            target().lock().as_ref().map(|(sym, _tf)| futures_ws_url(sym))
+        url_provider: Box::new(move || {
+            target().lock().as_ref().map(|(sym, _tf)| if v2 { resilient_ws::v2_url() } else { futures_ws_url(sym) })
         }),
-        subscribe_msg: None,
+        subscribe_provider: Box::new(move || {
+            if !v2 { return None; }
+            target().lock().as_ref().map(|(sym, _tf)| {
+                let root = sym.strip_prefix("F:").unwrap_or(sym);
+                resilient_ws::v2_subscribe(&["futures_bars"], root)
+            })
+        }),
         on_text: Box::new(on_text),
     });
 }
@@ -86,7 +96,14 @@ fn on_text(text: &str) {
         Err(_) => return,
     };
     match v.get("type").and_then(|t| t.as_str()) {
+        // Bespoke /ws/futures: fields at top level.
         Some("bar") => emit_bar(&v, &symbol, &timeframe),
+        // /ws/v2 (Frame::FuturesBar): fields nested under `data`.
+        Some("futures_bar") => {
+            if let Some(d) = v.get("data") {
+                emit_bar(d, &symbol, &timeframe);
+            }
+        }
         Some("error") => tracing::warn!(target: "futures_feed", "server error: {v}"),
         _ => {}
     }
@@ -108,6 +125,7 @@ fn emit_bar(v: &serde_json::Value, symbol: &str, timeframe: &str) {
         prev_close: open as f32,
         day_close: 0.0, // futures: 24h, no equity-style regular close
         change_perc: None, // futures: panel computes from prev_close
+        stale: false, // live IB feed — always fresh
     });
 
     // Fold into the current chart candle. `cumulative: false` = incremental

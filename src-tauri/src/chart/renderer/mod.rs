@@ -923,6 +923,11 @@ pub enum ChartCommand {
         /// `Some`, the watchlist renders this directly instead of recomputing
         /// from prev_close; `None` on older backends → client fallback.
         change_perc: Option<f32>,
+        /// True when this snapshot was served from the backend's last-good cache
+        /// (Polygon egress blip / breaker open) rather than fresh upstream. The
+        /// value is still the most recent real one — the row renders it but
+        /// marks it stale so the trader knows it isn't live.
+        stale: bool,
     },
     /// Time & Sales tape entry
     TapeEntry {

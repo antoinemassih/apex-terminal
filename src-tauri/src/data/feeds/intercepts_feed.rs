@@ -71,7 +71,7 @@ pub fn start() {
         reconnect: Arc::new(AtomicBool::new(false)),
         idle_timeout: None, // interceptions are sporadic; quiet is normal
         url_provider: Box::new(move || Some(if v2 { resilient_ws::v2_url() } else { intercepts_ws_url() })),
-        subscribe_msg: if v2 { Some(resilient_ws::v2_subscribe(&["intercepts"], "*")) } else { None },
+        subscribe_provider: Box::new(move || v2.then(|| resilient_ws::v2_subscribe(&["intercepts"], "*"))),
         on_text: Box::new(move |text| on_text(text, &surfaced)),
     });
 }

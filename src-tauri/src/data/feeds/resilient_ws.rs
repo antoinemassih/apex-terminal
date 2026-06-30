@@ -129,11 +129,12 @@ pub struct WsConfig {
     pub idle_timeout: Option<Duration>,
     /// Returns the URL to connect to, or `None` to idle (no active target).
     pub url_provider: Box<dyn Fn() -> Option<String> + Send>,
-    /// Optional JSON frame sent once immediately after each (re)connect. `None`
-    /// (the default for stream-on-connect endpoints like `/ws/drawings`) sends
-    /// nothing — behaviour is unchanged. `Some` is used to drive the unified
-    /// `/ws/v2` socket, which requires a `{"action":"subscribe",…}` message.
-    pub subscribe_msg: Option<String>,
+    /// Builds an optional JSON frame sent once immediately after each
+    /// (re)connect. Evaluated PER connect, so per-symbol feeds (dom/futures) can
+    /// return a subscribe for the *current* symbol. Return `None` to send nothing
+    /// (stream-on-connect endpoints like `/ws/drawings`) — behaviour unchanged.
+    /// `Some(json)` drives the unified `/ws/v2` socket's `{"action":"subscribe"…}`.
+    pub subscribe_provider: Box<dyn Fn() -> Option<String> + Send>,
     /// Called for every text frame received.
     pub on_text: Box<dyn Fn(&str) + Send>,
 }
@@ -187,11 +188,12 @@ async fn run_one(url: &str, cfg: &WsConfig, shutdown: &AtomicBool)
     let ws = connect_lan_aware(url).await?;
     let (mut write, mut read) = ws.split();
     // Drive the unified /ws/v2 socket (or any subscribe-on-connect endpoint).
-    // Stream-on-connect feeds pass `None` and this is a no-op (write half is
-    // simply held open, which does not close the connection).
-    if let Some(msg) = &cfg.subscribe_msg {
+    // Stream-on-connect feeds return `None` and this is a no-op (write half is
+    // simply held open, which does not close the connection). Evaluated per
+    // connect so per-symbol feeds subscribe for the current symbol.
+    if let Some(msg) = (cfg.subscribe_provider)() {
         use tokio_tungstenite::tungstenite::Message;
-        write.send(Message::Text(msg.clone().into())).await?;
+        write.send(Message::Text(msg.into())).await?;
     }
     let mut tick = tokio::time::interval(Duration::from_millis(250));
     let mut last_activity = Instant::now();
