@@ -2959,6 +2959,13 @@ impl Chart {
             ChartCommand::LoadBars { bars, timestamps, symbol, timeframe, .. } => {
                 // Skip if this pane is an option chart and the LoadBars is for the underlying
                 if self.is_option && symbol != self.symbol { return; }
+                // Stale-timeframe drop: same symbol but an older timeframe than the
+                // pane now wants (rapid tf switching). Without this, a late result
+                // from a superseded request overwrites both the bars AND self.timeframe
+                // (set below), so the chart settles on the wrong tf.
+                if symbol == self.symbol && !self.timeframe.is_empty() && timeframe != self.timeframe {
+                    return;
+                }
                 let is_new_symbol = self.symbol != symbol;
                 self.symbol = symbol;
                 if is_new_symbol {
@@ -4566,11 +4573,18 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                     crate::apex_log!("route.load", "matched pane symbol='{}' option_contract='{}'", p.symbol, p.option_contract);
                     p.process(cmd);
                 } else if let Some(p) = panes.get_mut(*active_pane) {
-                    if !p.is_option {
+                    // Only adopt an unmatched load if the active pane is actually
+                    // showing this symbol. A load whose symbol matches no visible pane
+                    // is stale — the user switched away (or reset) before it arrived —
+                    // so dropping it prevents an in-flight load from clobbering the
+                    // active pane back to a previous symbol (rapid-switch convergence).
+                    if !p.is_option && p.symbol == s {
                         crate::apex_log!("route.load", "fallback to active_pane (stock)");
                         p.process(cmd);
                     } else {
-                        crate::apex_log!("route.load", "DROPPED — no matching pane (active is option)");
+                        crate::apex_log!("route.load",
+                            "DROPPED stale load '{s}' (active pane shows '{}', is_option={})",
+                            p.symbol, p.is_option);
                     }
                 }
             }

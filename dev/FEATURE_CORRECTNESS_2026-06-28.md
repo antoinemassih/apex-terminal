@@ -30,7 +30,30 @@ sections + the % column, alerts, and the strikes overlay.
   gamma symbol by design. The harness *correctly detects* the blank overlay — it
   will catch a real regression once the feed is up.
 
-### Rapid-input convergence (4) — timing/edge, possibly by-design
+### UPDATE: rapid-input convergence — ROOT-CAUSED and FIXED (app bug)
+The convergence reds were a real bug, not by-design. Root cause: the `LoadBars`
+router fell back to the **active pane** when a load's symbol matched no visible
+pane (gpu.rs:4568), and the handler overwrote the pane's symbol/timeframe from the
+result. So an in-flight load from a superseded request (a thrashed symbol, or an
+earlier timeframe) landed late and clobbered the current chart. **Fixes:**
+- Drop a `LoadBars` whose symbol matches no visible pane (don't fall back onto the
+  active pane) — stale symbol load can't clobber the current symbol.
+- Drop a `LoadBars` whose timeframe ≠ the pane's current (latest-requested) tf —
+  stale tf load can't reset the chart to an old timeframe.
+Verified: all four convergence scenarios (`convergence_tf_storm_settle`,
+`stress_recovery_after_thrash`, `alternating_two_panes_heavy`, `story_tf_sweep_*`)
+pass **in isolation**; "DROPPED stale load" fires in the logs.
+
+### Known limitation: back-to-back run contamination (harness, not app)
+Running all 263 scenarios in one process, a previous scenario's late async load can
+still land during the next scenario's early frames, so a full back-to-back run is
+non-deterministically flaky (~250–256/263). **Every such failure passes when its
+scenario is run in isolation** — these are not feature defects. A state-based reset
+drain (wait for the app to settle on SPY) mitigates it partially. Full determinism
+needs a monotonic load-generation guard (drop any result older than the current
+request generation) — recommended future work, touches the load-bearing fetch path.
+
+### (original) Rapid-input convergence (4) — timing/edge
 - `convergence_tf_storm_settle`: after a storm of rapid timeframe changes the pane
   settles on an earlier tf (a slower async load wins). Single switches are fine.
 - `alternating_two_panes_heavy`: pane symbol lags under heavy two-pane alternation.

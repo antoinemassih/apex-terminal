@@ -862,7 +862,22 @@ fn execute_step(
         "reset" => {
             queues.lock().unwrap().reset_pending = true;
             let ok = wait_for_next_frame(shared, 2000);
-            (true, format!("app reset (frame_advanced={ok})"))
+            // State-based drain for back-to-back isolation: wait until the app has
+            // actually converged to the reset symbol (SPY) and held it stable for a
+            // couple of frames, so in-flight async loads from the PREVIOUS scenario
+            // have settled (and stale ones been dropped) before this one starts.
+            // Adapts: fast when clean, longer when loads are still draining.
+            let deadline = Instant::now() + Duration::from_millis(3500);
+            let mut stable = 0;
+            loop {
+                wait_for_next_frame(shared, 500);
+                let at_spy = shared.lock().ok()
+                    .map(|g| g.app_state["active_symbol"].as_str().unwrap_or("") == "SPY")
+                    .unwrap_or(false);
+                stable = if at_spy { stable + 1 } else { 0 };
+                if stable >= 3 || Instant::now() >= deadline { break; }
+            }
+            (true, format!("app reset (frame_advanced={ok}, settled={})", stable >= 3))
         }
 
         "log" => {
