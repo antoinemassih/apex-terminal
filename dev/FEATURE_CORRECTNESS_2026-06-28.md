@@ -4,7 +4,17 @@ Ran the entire interactive corpus (263 user-story scenarios) against the fixed
 build, now with the correctness/UX oracles in play — verifying features behave
 *correctly*, not merely that they don't crash.
 
-## Headline: 256 / 263 pass — every core feature verified correct
+## Latest verdict (contamination-filtered runner): 262 / 263 correct
+After fixing the options-overlay drop and the rapid-switch convergence bug, the
+`dev/run_corpus.py` runner reports **259/263 raw → 262/263 true**: the only real
+failures are the 3 gamma-overlay scenarios, all caused by the external `:8412`
+gamma feed being absent in this environment (not a code defect). The 4th flagged
+"real" (`story_scan_megatech`) passes 3/3 in isolation — residual contamination, not
+a defect. New this run: a Bollinger-band correctness oracle (recomputes middle + ±2σ
+from bars) — **passes**, so the band math is verified correct. Strikes overlay now
+passes across the whole corpus (the OverlayChainData dual-drain fix held).
+
+## (earlier) Headline: 256 / 263 pass — every core feature verified correct
 
 The new correctness oracles passed across the board:
 

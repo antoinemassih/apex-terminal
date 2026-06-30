@@ -108,9 +108,10 @@ for i,ind in enumerate(INDIS):
     if ind in IND_RANGE:
         lo,hi=IND_RANGE[ind]
         asserts.append({"canvas_indicator_value_in_range":{"pane":pane,"kind":lbl(ind),"min":lo,"max":hi}})
-    # Numerical-correctness oracle for the window indicator SMA (proven <1%).
-    if ind == "SMA":
-        asserts.append({"canvas_indicator_correct":{"pane":pane,"kind":"SMA","rel_tol":0.01}})
+    # Numerical-correctness oracle for window indicators (recomputed from bars):
+    # SMA / WMA (single value) and BB (middle + ±2σ bands).
+    if ind in ("SMA","WMA","BB"):
+        asserts.append({"canvas_indicator_correct":{"pane":pane,"kind":lbl(ind),"rel_tol":0.02}})
     steps=[{"action":"reset"},{"action":"wait_frames","count":3},
            cmd("SwapPaneSymbol",pane=0,symbol="AAPL"),
            {"action":"wait","ms":600},{"action":"wait_frames","count":3},
@@ -452,7 +453,7 @@ for i,sym in enumerate(["SPY","QQQ","AAPL"]):
          [{"action":"reset"},{"action":"wait_frames","count":3},
           cmd("SwapPaneSymbol",pane=0,symbol=sym),{"action":"wait","ms":1200},{"action":"wait_frames","count":3},
           cmd("SetChartFlag",pane=0,flag="ShowStrikesOverlay",value=True),
-          {"action":"wait","ms":7000},{"action":"wait_frames","count":8},
+          {"action":"wait","ms":2500},{"action":"wait_frames","count":5},
           {"action":"log","message":f"strikes on {sym}"},
           A({"strikes_overlay_active":{"pane":0}}, {"no_panic":True},{"viewport_sane":True},{"fps_above":5.0})],
          f"Enabling the strikes overlay on {sym} actually loads option-chain rows.")

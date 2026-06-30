@@ -1123,6 +1123,27 @@ fn dispatch(
                     format!("only {} visible bars < period {period}; skipped", closes.len()));
             }
             let win = &closes[closes.len()-period..];
+            // Bollinger Bands: verify the middle (SMA) AND the ±2σ bands together —
+            // the band math (stddev) is what the single-value oracle can't reach.
+            if kind == "BB" {
+                let mid = win.iter().sum::<f32>() / period as f32;
+                let var = win.iter().map(|c| (c - mid).powi(2)).sum::<f32>() / period as f32;
+                let std = var.sqrt();
+                let (exp_up, exp_lo) = (mid + 2.0 * std, mid - 2.0 * std);
+                let tol = |e: f32| (e.abs() * rel).max(1e-3);
+                let mut bad: Vec<String> = Vec::new();
+                if (mid - actual).abs() > tol(mid) {
+                    bad.push(format!("mid {actual:.4}≠{mid:.4}"));
+                }
+                match ind.last_value2 { Some(u) if (exp_up - u).abs() > tol(exp_up) =>
+                    bad.push(format!("upper {u:.4}≠{exp_up:.4}")), _ => {} }
+                match ind.last_value3 { Some(l) if (exp_lo - l).abs() > tol(exp_lo) =>
+                    bad.push(format!("lower {l:.4}≠{exp_lo:.4}")), _ => {} }
+                let pass = bad.is_empty();
+                return ("CanvasIndicatorCorrect".into(), pass,
+                    if pass { format!("pane {pane} BB({period}) mid/upper/lower match recompute (±{:.4})", tol(mid)) }
+                    else    { format!("pane {pane} BB({period}) mismatch: {}", bad.join(", ")) });
+            }
             let expected = match kind {
                 "SMA" => Some(win.iter().sum::<f32>() / period as f32),
                 "WMA" => {

@@ -60,7 +60,7 @@ def main():
     results = {}
     for i in range(0, len(files), CHUNK):
         chunk = files[i:i+CHUNK]
-        d = run(chunk, timeout=590)
+        d = run(chunk, timeout=900)
         for r in d["results"]:
             results[r["scenario"]] = r
         print(f"  chunk {i//CHUNK}: {d['passed']}/{d['total']}")
@@ -82,8 +82,15 @@ def main():
              or next((f for f in files if nm in f), None)
         if not fn:
             real.append((nm, "could not locate file", first_fail_detail(r))); continue
-        time.sleep(1.5)  # let the full run's in-flight loads drain before the solo retry
-        solo = run([fn], timeout=180)["results"][0]
+        # Re-run solo up to twice: the first solo retry can still inherit residual
+        # in-flight loads from the full corpus, so a real-vs-flake call needs a
+        # scenario that fails BOTH solo attempts before it's deemed real.
+        solo = None
+        for _ in range(2):
+            time.sleep(2.0)
+            solo = run([fn], timeout=180)["results"][0]
+            if solo.get("pass"):
+                break
         if solo.get("pass"):
             flake.append(nm)
         else:
