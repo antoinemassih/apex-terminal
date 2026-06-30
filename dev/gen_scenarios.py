@@ -502,5 +502,151 @@ emit(914,"visual_states_capture","Design/Visual",["visual","screenshot"],
       A({"no_panic":True},{"viewport_sane":True})],
      "Capture screenshots of key visual states (indicators, gamma) for review.")
 
+# ════════════════════════════════════════════════════════════════════════════
+# NEW AREAS (950-999): cross-asset, deep pane types, orders, alerts, alias flags,
+# indicator editor. Probed live: futures/crypto/commodities load real bars; pane
+# types reflect correctly; orders clear to 0. (Alerts accumulate across the shared
+# session, so alert scenarios assert workflow/no-panic, not absolute counts.)
+# ════════════════════════════════════════════════════════════════════════════
+FUTURES   = ["ES","NQ","YM","RTY","CL","GC","SI","ZB","ZN","HG"]
+CRYPTO    = ["BTC-USD","ETH-USD","SOL-USD"]
+CROSSASSET = FUTURES + CRYPTO
+
+# ── 950-962: cross-asset load + sanity (one per symbol) ─────────────────────
+for i,sym in enumerate(CROSSASSET):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3},
+           cmd("SwapPaneSymbol",pane=0,symbol=sym),
+           {"action":"wait","ms":1200},{"action":"wait_frames","count":4},
+           {"action":"log","message":f"cross-asset {sym}"},
+           A({"pane_symbol_equals":{"pane":0,"symbol":sym}}, *invariants())]
+    emit(950+i, f"crossasset_{sym.lower().replace('-','_')}", "CrossAsset/Load",
+         ["crossasset","symbol","invariants"], steps,
+         f"Trader loads {sym} (futures/crypto/commodity); chart is well-formed.")
+
+# ── 963-967: cross-asset studies (futures/crypto with indicators) ───────────
+ca_studies=[("ES","5m",["VWAP","RSI"]),("NQ","15m",["EMA","MACD"]),
+            ("BTC-USD","1h",["SMA","BB"]),("CL","1d",["SMA","ATR"]),
+            ("GC","4h",["EMA","RSI"])]
+for i,(sym,tf,inds) in enumerate(ca_studies):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3},
+           cmd("SwapPaneSymbol",pane=0,symbol=sym),{"action":"wait","ms":1200},{"action":"wait_frames","count":3},
+           cmd("ChangeTimeframe",pane=0,tf=tf),{"action":"wait","ms":900},{"action":"wait_frames","count":3}]
+    for ind in inds:
+        steps+=[cmd("AddIndicator",pane=0,kind=ind),{"action":"wait_frames","count":2}]
+    steps+=[cmd("RecomputeIndicators",pane=0),{"action":"wait_frames","count":4},
+            {"action":"log","message":f"{sym} {tf} study"},
+            A({"pane_symbol_equals":{"pane":0,"symbol":sym}},
+              {"canvas_indicator_exists":{"pane":0,"kind":inds[0]}}, *invariants())]
+    emit(963+i, f"crossasset_study_{sym.lower().replace('-','_')}", "CrossAsset/Study",
+         ["crossasset","indicator","invariants"], steps,
+         f"Trader studies {sym} on {tf} with {'+'.join(inds)}; indicators compute on cross-asset data.")
+
+# ── 970-974: deep pane types (switch to each, verify, back to Chart) ────────
+for i,pt in enumerate(["Portfolio","Dashboard","Heatmap","Spreadsheet","OptionsSentiment"]):
+    chk = "Dashboard" if pt in ("OptionsSentiment","OptionsFlow") else pt
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3},
+           cmd("ChangePaneType",pane=0,kind=pt),{"action":"wait_frames","count":5},
+           {"action":"log","message":f"pane type {pt}"},
+           A({"pane_type_equals":{"pane":0,"type":chk}},
+             {"no_panic":True},{"viewport_sane":True},{"fps_above":5.0}),
+           cmd("ChangePaneType",pane=0,kind="Chart"),{"action":"wait_frames","count":4},
+           cmd("SwapPaneSymbol",pane=0,symbol="SPY"),{"action":"wait","ms":900},{"action":"wait_frames","count":3},
+           A({"pane_type_equals":{"pane":0,"type":"Chart"}}, *invariants())]
+    emit(970+i, f"panetype_deep_{pt.lower()}", "Chart/PaneTypes",
+         ["pane","panetype","invariants"], steps,
+         f"Trader opens the {pt} pane, verifies it, and returns to a clean Chart.")
+
+# ── 975-978: multi-pane mixed (pane 0 chart, pane 1 different pane type) ─────
+mixes=[("NVDA","Portfolio"),("SPY","Dashboard"),("QQQ","Heatmap"),("AAPL","Spreadsheet")]
+for i,(sym,pt) in enumerate(mixes):
+    chk = "Dashboard" if pt in ("OptionsSentiment","OptionsFlow") else pt
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3},
+           cmd("SwapPaneSymbol",pane=0,symbol=sym),{"action":"wait","ms":1000},{"action":"wait_frames","count":3},
+           cmd("ChangePaneType",pane=1,kind=pt),{"action":"wait_frames","count":4},
+           {"action":"log","message":f"pane0 {sym} chart / pane1 {pt}"},
+           A({"pane_symbol_equals":{"pane":0,"symbol":sym}},
+             {"pane_type_equals":{"pane":1,"type":chk}},
+             {"no_panic":True},{"viewport_sane":True},
+             {"canvas_bar_ohlc_valid":{"pane":0}},{"fps_above":5.0})]
+    emit(975+i, f"multipane_mixed_{pt.lower()}", "Chart/MultiPane",
+         ["multipane","panetype","invariants"], steps,
+         f"Trading desk: pane 0 charts {sym} while pane 1 shows the {pt} view.")
+
+# ── 980-984: alert workflows (workflow + no-panic; counts accumulate) ───────
+emit(980,"alerts_ladder_spy","Trading/Alerts",["alerts","workflow"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SwapPaneSymbol",pane=0,symbol="SPY"),{"action":"wait","ms":900},{"action":"wait_frames","count":3}]+
+     sum([[cmd("AddPriceAlert",pane=0,price=float(p),above=(p>700)),{"action":"wait_frames","count":2}]
+          for p in [690,700,710,720,730]],[])+
+     [{"action":"log","message":"5 laddered alerts"},
+      A({"state_field_gte":{"path":"total_alert_count","min":5}}, *invariants())],
+     "Trader ladders five price alerts above and below; chart stays sane.")
+emit(981,"alerts_multi_symbol","Trading/Alerts",["alerts","workflow"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SwapPaneSymbol",pane=0,symbol="NVDA"),{"action":"wait","ms":900},{"action":"wait_frames","count":3},
+      cmd("AddPriceAlert",pane=0,price=150.0,above=True),{"action":"wait_frames","count":2},
+      cmd("SwapPaneSymbol",pane=0,symbol="TSLA"),{"action":"wait","ms":900},{"action":"wait_frames","count":3},
+      cmd("AddPriceAlert",pane=0,price=400.0,above=True),{"action":"wait_frames","count":2},
+      {"action":"log","message":"alerts on two symbols"},
+      A({"state_field_gte":{"path":"total_alert_count","min":2}}, *invariants())],
+     "Trader sets alerts on NVDA then TSLA while switching symbols.")
+emit(982,"alerts_with_indicators","Trading/Alerts",["alerts","workflow"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SwapPaneSymbol",pane=0,symbol="AAPL"),{"action":"wait","ms":900},{"action":"wait_frames","count":3},
+      cmd("AddIndicator",pane=0,kind="VWAP"),cmd("AddIndicator",pane=0,kind="RSI"),
+      cmd("RecomputeIndicators",pane=0),{"action":"wait_frames","count":3},
+      cmd("AddPriceAlert",pane=0,price=300.0,above=True),{"action":"wait_frames","count":2},
+      A({"canvas_indicator_exists":{"pane":0,"kind":"VWAP"}}, *invariants())],
+     "Trader sets an alert on a charted AAPL with VWAP+RSI.")
+
+# ── 985-987: order management (SAFE — cancel/clear only) ─────────────────────
+emit(985,"orders_cancel_all","Trading/Orders",["orders","workflow"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("CancelAllOrders"),{"action":"wait_frames","count":2},
+      {"action":"log","message":"cancel all orders"},
+      A({"state_field_equals":{"path":"total_order_count","value":0}},{"no_panic":True})],
+     "Trader cancels all working orders; order count is zero.")
+emit(986,"orders_clear_history","Trading/Orders",["orders","workflow"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("ClearOrderHistory"),{"action":"wait_frames","count":2},
+      cmd("CancelAllOrders"),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"total_order_count","value":0}},{"no_panic":True},{"fps_above":5.0})],
+     "Trader clears order history and cancels orders (no live submission).")
+
+# ── 990-994: alias / extended display flags ─────────────────────────────────
+for i,flag in enumerate(["ExtendedHours","ShowTrades","CrosshairEnabled","AutoScale","ChartType"]):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3},
+           cmd("SwapPaneSymbol",pane=0,symbol="QQQ"),{"action":"wait","ms":900},{"action":"wait_frames","count":3},
+           cmd("SetChartFlag",pane=0,flag=flag,value=True),{"action":"wait_frames","count":3},
+           {"action":"log","message":f"alias flag {flag}"},
+           A(*invariants()),
+           cmd("SetChartFlag",pane=0,flag=flag,value=False),{"action":"wait_frames","count":3},
+           A(*invariants())]
+    emit(990+i, f"flag_alias_{flag.lower()}", "Chart/DisplayFlags",
+         ["flag","alias","invariants"], steps,
+         f"Trader toggles the {flag} display option on and off; render stays sane.")
+
+# ── 995-997: indicator editor open/close ────────────────────────────────────
+emit(995,"indicator_editor_lifecycle","Chart/Indicators",["indicator","editor"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SwapPaneSymbol",pane=0,symbol="SPY"),{"action":"wait","ms":900},{"action":"wait_frames","count":3},
+      cmd("AddIndicator",pane=0,kind="RSI"),{"action":"wait_frames","count":3},
+      cmd("OpenIndicatorEditor",pane=0,id=0),{"action":"wait_frames","count":3},
+      {"action":"log","message":"indicator editor open"},
+      A({"canvas_indicator_exists":{"pane":0,"kind":"RSI"}},{"no_panic":True}),
+      cmd("CloseIndicatorEditor",pane=0),{"action":"wait_frames","count":3},
+      cmd("RecomputeIndicators",pane=0),{"action":"wait_frames","count":3},
+      A({"canvas_indicator_value_in_range":{"pane":0,"kind":"RSI","min":0,"max":100}}, *invariants())],
+     "Trader opens the RSI indicator editor, closes it, and the indicator stays valid.")
+emit(996,"indicator_editor_then_remove","Chart/Indicators",["indicator","editor"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SwapPaneSymbol",pane=0,symbol="NVDA"),{"action":"wait","ms":900},{"action":"wait_frames","count":3},
+      cmd("AddIndicator",pane=0,kind="MACD"),{"action":"wait_frames","count":3},
+      cmd("OpenIndicatorEditor",pane=0,id=0),{"action":"wait_frames","count":2},
+      cmd("CloseIndicatorEditor",pane=0),{"action":"wait_frames","count":2},
+      cmd("RemoveIndicator",pane=0,id=0),{"action":"wait_frames","count":3},
+      A({"no_panic":True},{"viewport_sane":True},{"fps_above":5.0})],
+     "Trader edits then removes the MACD indicator; the chart cleans up.")
+
 print(f"generated {len(made)} scenarios into {OUT}")
 for p in made[:3]: print("  e.g.", os.path.basename(p))

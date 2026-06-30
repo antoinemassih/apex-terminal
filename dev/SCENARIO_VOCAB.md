@@ -51,6 +51,20 @@ synthetic mirror (no real effect).
 
 Liquid symbols with reliable data: SPY,QQQ,AAPL,MSFT,NVDA,TSLA,AMZN,META,GOOGL,AMD,NFLX,IWM,DIA,GLD,XLF,XLK,AVGO,COST.
 
+**Cross-asset symbols (verified to load real bars):**
+- Futures: ES, NQ, YM, RTY (index), CL, GC, SI, HG (commodity), ZB, ZN (bond).
+- Crypto: BTC-USD, ETH-USD, SOL-USD.
+Use them just like stocks via `SwapPaneSymbol`. After loading, assert `pane_symbol_equals` + invariants.
+
+**Alias display flags** (also valid for `SetChartFlag`): ExtendedHours, ShowTrades, CrosshairEnabled, AutoScale, ChartType.
+
+**Pane types** (`ChangePaneType` kind): Chart, Portfolio, Dashboard, Heatmap, Spreadsheet, OptionsSentiment, OptionsFlow. Note: OptionsSentiment/OptionsFlow report `pane_type` as `Dashboard` — assert `{"pane_type_equals":{"pane":0,"type":"Dashboard"}}` for those.
+
+**Order/alert state** (in app_state):
+- `{"state_field_equals":{"path":"total_order_count","value":0}}` after `CancelAllOrders`.
+- `{"state_field_gte":{"path":"total_alert_count","min":N}}` after adding alerts (alerts accumulate across the session, so use gte / workflow, not exact).
+- `OpenIndicatorEditor`/`CloseIndicatorEditor` (pane,id) — id is the numeric indicator id (0,1,… after a reset clears indicators).
+
 ## Assertions (evaluate against real captured state)
 **Invariants — include these in nearly every assert step (they only fail on real bugs):**
 - `{"no_panic":true}` — no thread panicked since scenario start (crash = highest severity).

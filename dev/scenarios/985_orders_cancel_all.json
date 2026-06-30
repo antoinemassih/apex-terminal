@@ -1,0 +1,47 @@
+{
+  "name": "orders_cancel_all",
+  "description": "Trader cancels all working orders; order count is zero.",
+  "story": "Trading/Orders",
+  "tags": [
+    "orders",
+    "workflow"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "CancelAllOrders"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "cancel all orders"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "total_order_count",
+            "value": 0
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}
