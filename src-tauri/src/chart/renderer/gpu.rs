@@ -2815,6 +2815,69 @@ impl Chart {
         c.timeframe = timeframe.into();
         c
     }
+
+    /// Populate the GEX/gamma overlay levels for this pane: prefer the real
+    /// gamma feed (gamma_feed_service / ApexSignals via :8412), else synthesize
+    /// placeholder levels so the overlay renders immediately. Single source of
+    /// truth shared by the toolbar Overlays menu and the dev-inspector
+    /// `SynthGamma` command — the command path previously only flipped the
+    /// `show_gamma` bool (via `SetChartFlag`) and never populated levels, so
+    /// gamma scenarios stayed empty whenever the :8412 feed was absent.
+    pub(crate) fn populate_gamma(&mut self, force_synth: bool) {
+        if !self.gamma_levels.is_empty() {
+            return;
+        }
+        // Prefer the real feed unless the caller forces synthesis (the harness
+        // SynthGamma command does, so gamma is deterministic without :8412).
+        // Treat an empty feed snapshot as "no data" and fall through to synth —
+        // for QQQ/SPY the feed is *queried* but returns nothing when :8412 is down.
+        if !force_synth {
+            if let Some(snap) = crate::chart_renderer::gpu::fetch_gamma_from_feed(&self.symbol) {
+                if !snap.levels.is_empty() {
+                    self.gamma_levels = snap.levels;
+                    self.gamma_zero = snap.flip;
+                    self.gamma_call_wall = snap.call_wall;
+                    self.gamma_put_wall = snap.put_wall;
+                    self.gamma_ppe = snap.ppe;
+                    self.gamma_iv_rising = snap.iv_rising;
+                    self.gamma_flow_active = snap.flow_active;
+                    self.gamma_posture = snap.posture;
+                    if let Some(last_bar) = self.bars.last() {
+                        self.gamma_hvl = last_bar.close;
+                    }
+                    return;
+                }
+            }
+        }
+        // Feed unavailable — synthesize placeholder levels. Works even when bars
+        // are empty (falls back to a sensible default price).
+        let price = self.bars.last().map(|b| b.close).filter(|&p| p > 0.0).unwrap_or(500.0);
+        let step = if price > 200.0 { 5.0 } else if price > 50.0 { 2.5 } else { 1.0 };
+        let mut levels: Vec<GammaLevel> = vec![];
+        for i in -15..=15_i32 {
+            let level_price = (price / step).round() * step + i as f32 * step;
+            let dist = i.abs() as f32;
+            let gex = if dist < 5.0 {
+                (500.0 - dist * 80.0) * (1.0 + 0.3 * (level_price * 7.3).sin())
+            } else {
+                (-100.0 - (dist - 5.0) * 50.0) * (1.0 + 0.2 * (level_price * 3.1).sin())
+            };
+            levels.push(GammaLevel { price: level_price, exposure: gex });
+        }
+        let max_pos = levels.iter().filter(|l| l.exposure > 0.0)
+            .max_by(|a, b| a.exposure.partial_cmp(&b.exposure).unwrap_or(std::cmp::Ordering::Equal));
+        let max_neg = levels.iter().filter(|l| l.exposure < 0.0)
+            .min_by(|a, b| a.exposure.partial_cmp(&b.exposure).unwrap_or(std::cmp::Ordering::Equal));
+        self.gamma_call_wall = max_pos.map_or(price + 10.0 * step, |l| l.price);
+        self.gamma_put_wall = max_neg.map_or(price - 10.0 * step, |l| l.price);
+        let mut zero = price;
+        for w in levels.windows(2) {
+            if w[0].exposure >= 0.0 && w[1].exposure < 0.0 { zero = (w[0].price + w[1].price) / 2.0; break; }
+        }
+        self.gamma_zero = zero;
+        self.gamma_hvl = max_pos.map_or(price, |l| l.price);
+        self.gamma_levels = levels;
+    }
     pub(crate) fn new() -> Self {
         Self { pane_type: PaneType::Chart,
             symbol: "AAPL".into(),

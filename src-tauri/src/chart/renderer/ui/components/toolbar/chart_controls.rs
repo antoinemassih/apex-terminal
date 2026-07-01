@@ -28,7 +28,7 @@ use crate::chart_renderer::gpu::{
     CandleMode, VolumeProfileMode,
     IndicatorType, IndicatorCategory, Indicator,
     EventMarker, DarkPoolPrint,
-    indicator_default_color, GammaLevel,
+    indicator_default_color,
     widget_description, paint_widget_preview,
 };
 use crate::chart_renderer::ui::style::{
@@ -572,49 +572,10 @@ pub(crate) fn render(
                     let gamma = panes[ap].show_gamma;
                     if ui.add(SelectableRow::new("Gamma Levels (GEX)", gamma)).clicked() {
                         panes[ap].show_gamma = !panes[ap].show_gamma;
-                        if panes[ap].show_gamma && panes[ap].gamma_levels.is_empty() {
-                            // Real gamma/regime feed (gamma_feed_service / ApexSignals).
-                            let gamma_sym = panes[ap].symbol.clone();
-                            if let Some(snap) =
-                                crate::chart_renderer::gpu::fetch_gamma_from_feed(&gamma_sym)
-                            {
-                                panes[ap].gamma_levels = snap.levels;
-                                panes[ap].gamma_zero = snap.flip;
-                                panes[ap].gamma_call_wall = snap.call_wall;
-                                panes[ap].gamma_put_wall = snap.put_wall;
-                                panes[ap].gamma_ppe = snap.ppe;
-                                panes[ap].gamma_iv_rising = snap.iv_rising;
-                                panes[ap].gamma_flow_active = snap.flow_active;
-                                panes[ap].gamma_posture = snap.posture;
-                                if let Some(last_bar) = panes[ap].bars.last() {
-                                    panes[ap].gamma_hvl = last_bar.close;
-                                }
-                            } else {
-                                // Feed unavailable — synthesize placeholder levels so the
-                                // overlay renders immediately. Works even when bars are empty
-                                // (e.g. chart loading): fall back to a sensible default price.
-                                let price = panes[ap].bars.last().map(|b| b.close)
-                                    .filter(|&p| p > 0.0)
-                                    .unwrap_or(500.0);
-                                let step = if price > 200.0 { 5.0 } else if price > 50.0 { 2.5 } else { 1.0 };
-                                let mut levels: Vec<GammaLevel> = vec![];
-                                for i in -15..=15_i32 {
-                                    let level_price = (price / step).round() * step + i as f32 * step;
-                                    let dist = i.abs() as f32;
-                                    let gex = if dist < 5.0 { (500.0 - dist * 80.0) * (1.0 + 0.3 * (level_price * 7.3).sin()) }
-                                    else { (-100.0 - (dist - 5.0) * 50.0) * (1.0 + 0.2 * (level_price * 3.1).sin()) };
-                                    levels.push(GammaLevel { price: level_price, exposure: gex });
-                                }
-                                let max_pos = levels.iter().filter(|l| l.exposure > 0.0).max_by(|a, b| a.exposure.partial_cmp(&b.exposure).unwrap_or(std::cmp::Ordering::Equal));
-                                let max_neg = levels.iter().filter(|l| l.exposure < 0.0).min_by(|a, b| a.exposure.partial_cmp(&b.exposure).unwrap_or(std::cmp::Ordering::Equal));
-                                panes[ap].gamma_call_wall = max_pos.map_or(price + 10.0 * step, |l| l.price);
-                                panes[ap].gamma_put_wall  = max_neg.map_or(price - 10.0 * step, |l| l.price);
-                                let mut zero = price;
-                                for w in levels.windows(2) { if w[0].exposure >= 0.0 && w[1].exposure < 0.0 { zero = (w[0].price + w[1].price) / 2.0; break; } }
-                                panes[ap].gamma_zero = zero;
-                                panes[ap].gamma_hvl  = max_pos.map_or(price, |l| l.price);
-                                panes[ap].gamma_levels = levels;
-                            }
+                        if panes[ap].show_gamma {
+                            // Shared feed-or-synth path (see Chart::populate_gamma).
+                            // UI prefers the real feed; synthesizes only if absent.
+                            panes[ap].populate_gamma(false);
                         }
                     }
                 });

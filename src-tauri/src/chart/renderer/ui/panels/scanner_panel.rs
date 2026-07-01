@@ -27,7 +27,7 @@ use crate::ui_kit::widgets::icon_placement::IconPlacement;
 const REFRESH_INTERVAL_SECS: u64 = 30;
 
 /// Apply a scanner definition to the raw result pool and return filtered+sorted results.
-fn apply_scanner(def: &ScannerDef, pool: &[ScanResult]) -> Vec<ScanResult> {
+pub(crate) fn apply_scanner(def: &ScannerDef, pool: &[ScanResult]) -> Vec<ScanResult> {
     let mut filtered: Vec<ScanResult> = pool.iter()
         .filter(|r| r.price > 0.0) // exclude unfetched
         .filter(|r| r.change_pct >= def.min_change && r.change_pct <= def.max_change)

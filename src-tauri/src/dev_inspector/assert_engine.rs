@@ -237,6 +237,42 @@ fn dispatch(
              if pass { format!("pane {pane_idx} type == '{expect}'") }
              else    { format!("pane {pane_idx} type: expected '{expect}', got '{actual}'") })
         }
+        // ── Order-entry SAFETY invariant ──────────────────────────────────────
+        // Proves the harness never submitted a live (or paper) order through the
+        // OrderManager: paper_mode must be on AND the authoritative snapshot must
+        // have zero orders in a submitted lifecycle state. Drop this into EVERY
+        // order-entry scenario as belt-and-suspenders against accidental submission.
+        "no_live_orders" => {
+            let om = &state.app_state["order_manager"];
+            let paper   = om["paper_mode"].as_bool().unwrap_or(false);
+            let working = om["mgr_working_count"].as_u64().unwrap_or(0);
+            let pass = paper && working == 0;
+            ("NoLiveOrders".into(), pass,
+             if pass { "paper_mode on, 0 orders in a submitted state".into() }
+             else { format!("SAFETY: paper_mode={paper}, mgr_working_count={working} (expected true / 0)") })
+        }
+
+        // ── DOM ladder cross-field invariant ──────────────────────────────────
+        // A populated ladder must have strictly-descending prices and a sane
+        // spread (best ask >= best bid, both positive around the mid).
+        // {"dom_spread_sane": {"pane": 0}}
+        "dom_spread_sane" => {
+            let pane_idx = val["pane"].as_u64().unwrap_or(0) as usize;
+            let pane = &state.app_state["panes"][pane_idx];
+            let levels = pane["dom_level_count"].as_u64().unwrap_or(0);
+            let desc = pane["dom_prices_desc"].as_bool().unwrap_or(false);
+            let bid = pane["dom_best_bid"].as_f64();
+            let ask = pane["dom_best_ask"].as_f64();
+            let spread_ok = match (bid, ask) {
+                (Some(b), Some(a)) => a >= b && b > 0.0,
+                _ => false,
+            };
+            let pass = levels > 0 && desc && spread_ok;
+            ("DomSpreadSane".into(), pass,
+             if pass { format!("pane {pane_idx} DOM ladder sane ({levels} levels, desc, bid={:?} ask={:?})", bid, ask) }
+             else { format!("pane {pane_idx} DOM ladder BAD: levels={levels} desc={desc} bid={:?} ask={:?}", bid, ask) })
+        }
+
         "watchlist_section_count_equals" => {
             let expect = val.as_u64()
                 .or_else(|| val["count"].as_u64())

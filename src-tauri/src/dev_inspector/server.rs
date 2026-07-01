@@ -2085,6 +2085,49 @@ fn parse_app_command(
         "CancelAllOrders"   | "cancel_all_orders"  => Ok(AppCommand::CancelAllOrders),
         "ClearOrderHistory" | "clear_order_history"=> Ok(AppCommand::ClearOrderHistory),
         "PlaceAllDraftOrders" | "place_all_draft_orders" => Ok(AppCommand::PlaceAllDraftOrders),
+        "CancelOrder" | "cancel_order" => {
+            let id = body["id"].as_u64().unwrap_or(0) as u32;
+            Ok(AppCommand::CancelOrder { pane, id })
+        }
+        "PlaceSelectedOrders" | "place_selected_orders" => Ok(AppCommand::PlaceSelectedOrders),
+        "CancelSelectedOrders" | "cancel_selected_orders" => Ok(AppCommand::CancelSelectedOrders),
+
+        // ── Dev Inspector — subsystem drivers (broker-safe, never submit) ────
+        "SeedDraftOrder" | "seed_draft_order" => {
+            let side  = body["side"].as_str().unwrap_or("buy").to_string();
+            let price = body["price"].as_f64().unwrap_or(0.0) as f32;
+            let qty   = body["qty"].as_u64().unwrap_or(100) as u32;
+            Ok(AppCommand::SeedDraftOrder { pane, side, price, qty })
+        }
+        "SetOrderPanel" | "set_order_panel" => {
+            let collapsed = body["collapsed"].as_bool().unwrap_or(false);
+            Ok(AppCommand::SetOrderPanel { pane, collapsed })
+        }
+        "SynthGamma" | "synth_gamma" => Ok(AppCommand::SynthGamma { pane }),
+        "SetDomSidebar" | "set_dom_sidebar" => {
+            let open = body["open"].as_bool().unwrap_or(true);
+            Ok(AppCommand::SetDomSidebar { pane, open })
+        }
+        "SetScannerOpen" | "set_scanner_open" => {
+            let open = body["open"].as_bool().unwrap_or(true);
+            Ok(AppCommand::SetScannerOpen { open })
+        }
+        "SeedScannerResults" | "seed_scanner_results" => {
+            let count = body["count"].as_u64().unwrap_or(50) as usize;
+            Ok(AppCommand::SeedScannerResults { count })
+        }
+        "SetRrgOpen" | "set_rrg_open" => {
+            let open = body["open"].as_bool().unwrap_or(true);
+            Ok(AppCommand::SetRrgOpen { open })
+        }
+        "SetRrgTail" | "set_rrg_tail" => {
+            let len = body["len"].as_u64().unwrap_or(5) as usize;
+            Ok(AppCommand::SetRrgTail { len })
+        }
+        "SeedHeatmapCells" | "seed_heatmap_cells" => {
+            let count = body["count"].as_u64().unwrap_or(60) as usize;
+            Ok(AppCommand::SeedHeatmapCells { count })
+        }
 
         // ── Alerts ─────────────────────────────────────────────────────────
         "PlaceAllDraftAlerts" | "place_all_draft_alerts" => Ok(AppCommand::PlaceAllDraftAlerts),

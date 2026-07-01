@@ -27,6 +27,8 @@
 
 use crate::chart_renderer::gpu::{Chart, Theme, Watchlist, IndicatorType, Indicator, PaneType, get_theme, indicator_default_color};
 use crate::chart_renderer::trading::{OrderStatus, PriceAlert, cancel_order_with_pair};
+#[cfg(debug_assertions)]
+use crate::chart_renderer::trading::{OrderLevel, OrderSide, OrderState};
 
 // ─── ChartFlag ────────────────────────────────────────────────────────────────
 // Enum covering every user-facing per-pane display boolean. Only the ~10 most
@@ -248,6 +250,40 @@ pub enum AppCommand {
     /// Injected by `POST /reset` so scenarios always start from a clean UI state.
     #[cfg(debug_assertions)]
     CloseAllDialogs,
+
+    // ── Dev Inspector — subsystem drivers (harness-only, debug builds) ─────
+    // These exist so the scenario harness can OPEN and OBSERVE UI-only
+    // subsystems (DOM, scanner, RRG, order-entry panel, gamma) that have no
+    // production command. They are pure state mutations that NEVER touch the
+    // broker/OrderManager or spawn network IO. See dev/SUBSYSTEM_DRIVABILITY.md.
+    /// Populate + show the GEX/gamma overlay via the shared feed-or-synth path.
+    #[cfg(debug_assertions)]
+    SynthGamma { pane: usize },
+    /// Toggle the per-pane DOM ladder sidebar (auto-populates a mock ladder).
+    #[cfg(debug_assertions)]
+    SetDomSidebar { pane: usize, open: bool },
+    /// Seed a broker-safe DRAFT order onto the pane's *visual* list only
+    /// (`Chart.orders`, System A). Never calls OrderManager/broker.
+    #[cfg(debug_assertions)]
+    SeedDraftOrder { pane: usize, side: String, price: f32, qty: u32 },
+    /// Collapse/expand the per-pane order-entry panel.
+    #[cfg(debug_assertions)]
+    SetOrderPanel { pane: usize, collapsed: bool },
+    /// Open/close the scanner side panel.
+    #[cfg(debug_assertions)]
+    SetScannerOpen { open: bool },
+    /// Seed a deterministic pool of scanner results (no live fetch).
+    #[cfg(debug_assertions)]
+    SeedScannerResults { count: usize },
+    /// Open/close the RRG side panel (demo sectors render when opened).
+    #[cfg(debug_assertions)]
+    SetRrgOpen { open: bool },
+    /// Set the RRG tail length (clamped to a sane range).
+    #[cfg(debug_assertions)]
+    SetRrgTail { len: usize },
+    /// Seed a deterministic set of heatmap cells (no live fetch).
+    #[cfg(debug_assertions)]
+    SeedHeatmapCells { count: usize },
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -668,6 +704,106 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
             watchlist.order_entry_open = false;
             watchlist.orders_panel_open = false;
             watchlist.chain_select_mode = false;
+        }
+
+        // ── Dev Inspector — subsystem drivers ─────────────────────────────
+        #[cfg(debug_assertions)]
+        AppCommand::SynthGamma { pane } => {
+            if let Some(p) = panes.get_mut(pane) {
+                p.show_gamma = true;
+                p.populate_gamma(true); // force synth — deterministic without :8412
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SetDomSidebar { pane, open } => {
+            if let Some(p) = panes.get_mut(pane) {
+                p.dom.sidebar_open = open;
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SeedDraftOrder { pane, side, price, qty } => {
+            // Visual-only (System A). Never touches OrderManager/broker.
+            if let Some(p) = panes.get_mut(pane) {
+                let os = match side.to_ascii_lowercase().as_str() {
+                    "sell" | "s" => OrderSide::Sell,
+                    "stop"       => OrderSide::Stop,
+                    _             => OrderSide::Buy,
+                };
+                let id = p.next_order_id;
+                p.next_order_id = p.next_order_id.wrapping_add(1);
+                p.orders.push(OrderLevel {
+                    id,
+                    side: os,
+                    price,
+                    qty,
+                    status: OrderStatus::Draft,
+                    state: OrderState::Draft,
+                    pair_id: None,
+                    option_symbol: None,
+                    option_con_id: None,
+                    trail_amount: None,
+                    trail_percent: None,
+                    filled_ratio: 0.0,
+                });
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SetOrderPanel { pane, collapsed } => {
+            if let Some(p) = panes.get_mut(pane) {
+                p.order_panel.collapsed = collapsed;
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SetScannerOpen { open } => {
+            // Route through the sidebar-state store, else the store→flat sync
+            // overwrites the flat bool back to its persisted value every frame.
+            watchlist.update_sidebar_state(|s| s.scanner_open = open);
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SeedScannerResults { count } => {
+            // Deterministic synthetic pool so `apply_scanner` filtering is
+            // testable without a live /api/stocks/movers response.
+            let n = count.min(500);
+            let mut rows = Vec::with_capacity(n);
+            for i in 0..n {
+                let f = i as f32;
+                // Spread change_pct across [-9.5, +9.5] deterministically.
+                let change_pct = ((f * 1.9) % 19.0) - 9.5;
+                rows.push(crate::chart_renderer::gpu::ScanResult {
+                    symbol: format!("SYN{i:03}"),
+                    price: 10.0 + (f * 3.17) % 490.0,
+                    change_pct,
+                    volume: 1_000_000 + (i as u64) * 250_000,
+                });
+            }
+            watchlist.scanner_results = rows;
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SetRrgOpen { open } => {
+            watchlist.update_sidebar_state(|s| s.rrg_open = open);
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SetRrgTail { len } => {
+            watchlist.rrg_tail_length = len.clamp(1, 20);
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SeedHeatmapCells { count } => {
+            let n = count.min(200);
+            let mut cells = Vec::with_capacity(n);
+            for i in 0..n {
+                let f = i as f32;
+                let change_pct = ((f * 1.3) % 12.0) - 6.0;
+                cells.push((format!("HM{i:03}"), change_pct, 1.0e6 + (i as f64) * 5.0e5));
+            }
+            watchlist.heatmap_cells = cells;
         }
     }
 }

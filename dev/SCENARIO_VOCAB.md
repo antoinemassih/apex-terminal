@@ -98,6 +98,46 @@ These read app state that the capture now exposes, so the harness verifies the a
 - `{"canvas_indicator_correct":{"pane":0,"kind":"SMA","rel_tol":0.01}}` — recomputes the indicator from captured bars and checks the chart's value matches within 1%. Window indicators only (SMA, WMA); recursive ones (EMA/RSI/MACD/…) are skipped (pass).
 - `{"ux_audit":true}` — bundled usability check: no clipped widgets, no overlapping buttons, no buttons/inputs below the touch floor (default 16px — desktop-appropriate; pass `{"min_touch_px":N}` to override). Clipping/overlap are hard checks; the touch floor is intentionally low because this is a dense mouse-driven terminal.
 
+## Subsystem drivers (NEW — DOM / orders / scanner / RRG / heatmap / gamma)
+These harness-only commands OPEN and OBSERVE subsystems that have no production
+command (UI-only). All are broker-SAFE — they never submit orders or hit the network.
+| cmd | fields | effect |
+|-----|--------|--------|
+| `SynthGamma` | `pane` | show gamma + populate ~31 synthetic GEX levels + walls (deterministic, no `:8412` feed needed) |
+| `SetDomSidebar` | `pane`,`open` | open/close the DOM ladder; opening auto-fills a 61-row mock ladder |
+| `SeedDraftOrder` | `pane`,`side`(buy/sell/stop),`price`,`qty` | push a **visual-only** DRAFT order (never touches OrderManager/broker) |
+| `SetOrderPanel` | `pane`,`collapsed` | collapse/expand the order-entry panel |
+| `CancelOrder` | `pane`,`id` | cancel one visual order |
+| `SetScannerOpen` | `open` | open/close the scanner panel |
+| `SeedScannerResults` | `count` | seed a deterministic pool of `count` scanner rows (≤500) |
+| `SetRrgOpen` | `open` | open/close the RRG panel (renders 11 deterministic demo sectors) |
+| `SetRrgTail` | `len` | RRG tail length (1..20) |
+| `SeedHeatmapCells` | `count` | seed `count` deterministic heatmap cells (≤200) |
+
+**Note on visual orders:** `SeedDraftOrder` adds to the pane's *visual* list. The
+per-frame reconcile REMOVES cancelled local-only orders, so after `CancelAllOrders`
+assert `order_count == 0` (drafts cleaned up), not a cancelled count.
+
+## Subsystem state (in app_state — assert with `state_field_*`)
+Per-pane (`panes.<i>.<field>`): `dom_sidebar_open`, `dom_level_count`, `dom_best_bid`,
+`dom_best_ask`, `dom_prices_desc`, `dom_is_live`, `order_draft_count`,
+`order_placed_count`, `order_cancelled_count`, `order_panel_collapsed`,
+`gamma_level_count`, `gamma_call_wall`, `gamma_put_wall`, `show_gamma`,
+`strikes_call_count`, `strikes_put_count`.
+Global: `scanner.open`, `scanner.result_count`, `scanner.first_def_filtered_count`,
+`rrg.open`, `rrg.tail_length`, `rrg.sector_count`, `heatmap.cell_count`,
+`order_manager.paper_mode`, `order_manager.mgr_working_count`.
+
+**Order-entry SAFETY invariants (put in EVERY order scenario):**
+- `{"no_live_orders":true}` — asserts `paper_mode` on AND 0 orders in a submitted state (proof nothing was submitted).
+- `{"dom_spread_sane":{"pane":0}}` — DOM ladder populated, prices strictly descending, best ask ≥ best bid.
+
+Examples:
+- `{"state_field_gte":{"path":"panes.0.gamma_level_count","min":1}}` after `SynthGamma`.
+- `{"state_field_gte":{"path":"panes.0.dom_level_count","min":1}}` after `SetDomSidebar` open.
+- `{"state_field_equals":{"path":"scanner.result_count","value":50}}` after `SeedScannerResults` count=50.
+- `{"state_field_equals":{"path":"rrg.sector_count","value":11}}` after `SetRrgOpen`.
+
 ## Screenshot action (visual review)
 - `{"action":"screenshot","name":"my_state"}` — saves the live window to `dev/screenshots/my_state.png` (real GDI capture of what the user sees). Use to snapshot key states for visual/UX review.
 

@@ -907,18 +907,77 @@ pub fn end_frame(
     // frame counter is incremented in the final write below.
 
     // Build per-pane JSON.
+    use crate::chart_renderer::trading::OrderStatus;
+    let now_epoch_ms: i64 = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
     let panes_json: Vec<serde_json::Value> = panes.iter().enumerate()
-        .map(|(i, p)| serde_json::json!({
-            "index":           i,
-            "symbol":          p.symbol,
-            "timeframe":       p.timeframe,
-            "bar_count":       p.bars.len(),
-            "pane_type":       format!("{:?}", p.pane_type),
-            "indicator_count": p.indicators.len(),
-            "drawing_count":   p.drawings.len(),
-            "order_count":     p.orders.len(),
-            "alert_count":     p.price_alerts.len(),
-        }))
+        .map(|(i, p)| {
+            // Order status breakdown (visual System-A list — never the broker).
+            let (mut n_draft, mut n_placed, mut n_exec, mut n_cancel) = (0u32, 0u32, 0u32, 0u32);
+            for o in &p.orders {
+                match o.status {
+                    OrderStatus::Draft     => n_draft  += 1,
+                    OrderStatus::Placed    => n_placed += 1,
+                    OrderStatus::Executed  => n_exec   += 1,
+                    OrderStatus::Cancelled => n_cancel += 1,
+                }
+            }
+            // DOM ladder is sorted high→low. Best bid/ask are defined relative
+            // to the mid (center) price, not by side flags — the mock ladder
+            // carries bid+ask size on every level, so a size-only rule is
+            // meaningless. best_ask = lowest price >= mid; best_bid = highest
+            // price <= mid ⇒ ask >= bid always holds for a well-formed ladder.
+            let dom_mid = if p.dom.center_price > 0.0 {
+                p.dom.center_price
+            } else {
+                p.dom.levels.get(p.dom.levels.len() / 2).map(|l| l.price).unwrap_or(0.0)
+            };
+            let dom_best_ask = p.dom.levels.iter().filter(|l| l.price >= dom_mid)
+                .map(|l| l.price).fold(f32::NAN, f32::min);
+            let dom_best_bid = p.dom.levels.iter().filter(|l| l.price <= dom_mid)
+                .map(|l| l.price).fold(f32::NAN, f32::max);
+            let dom_best_ask = if dom_best_ask.is_finite() { Some(dom_best_ask) } else { None };
+            let dom_best_bid = if dom_best_bid.is_finite() { Some(dom_best_bid) } else { None };
+            // Real correctness invariant: prices strictly descend down the ladder.
+            let dom_prices_desc = p.dom.levels.windows(2).all(|w| w[0].price > w[1].price);
+            let dom_is_live  = p.dom.last_live_ms != 0
+                && (now_epoch_ms.saturating_sub(p.dom.last_live_ms)) < 2000;
+            serde_json::json!({
+                "index":           i,
+                "symbol":          p.symbol,
+                "timeframe":       p.timeframe,
+                "bar_count":       p.bars.len(),
+                "pane_type":       format!("{:?}", p.pane_type),
+                "indicator_count": p.indicators.len(),
+                "drawing_count":   p.drawings.len(),
+                "order_count":     p.orders.len(),
+                "alert_count":     p.price_alerts.len(),
+                // Order-entry (visual) breakdown + panel state.
+                "order_draft_count":     n_draft,
+                "order_placed_count":    n_placed,
+                "order_executed_count":  n_exec,
+                "order_cancelled_count": n_cancel,
+                "order_panel_collapsed": p.order_panel.collapsed,
+                // DOM ladder.
+                "dom_sidebar_open": p.dom.sidebar_open,
+                "dom_open":         p.dom.open,
+                "dom_level_count":  p.dom.levels.len(),
+                "dom_best_bid":     dom_best_bid,
+                "dom_best_ask":     dom_best_ask,
+                "dom_prices_desc":  dom_prices_desc,
+                "dom_is_live":      dom_is_live,
+                // Gamma / strikes overlays.
+                "show_gamma":         p.show_gamma,
+                "gamma_level_count":  p.gamma_levels.len(),
+                "gamma_call_wall":    p.gamma_call_wall,
+                "gamma_put_wall":     p.gamma_put_wall,
+                "show_strikes_overlay": p.show_strikes_overlay,
+                "strikes_call_count":   p.overlay_calls.len(),
+                "strikes_put_count":    p.overlay_puts.len(),
+            })
+        })
         .collect();
 
     // Build watchlist summary.
@@ -959,6 +1018,46 @@ pub fn end_frame(
         },
         "total_order_count": panes.iter().map(|p| p.orders.len()).sum::<usize>(),
         "total_alert_count": panes.iter().map(|p| p.price_alerts.len()).sum::<usize>(),
+        // ── Subsystem observability (scanner / RRG / heatmap) ──────────────
+        "scanner": {
+            "open":         watchlist.scanner_open,
+            "result_count": watchlist.scanner_results.len(),
+            "def_count":    watchlist.scanner_defs.len(),
+            // Filtered count for the first def — proves apply_scanner() ran on
+            // the seeded pool (the harness re-derives this to assert correctness).
+            "first_def_filtered_count": watchlist.scanner_defs.first()
+                .map(|d| crate::chart_renderer::ui::panels::scanner_panel::apply_scanner(d, &watchlist.scanner_results).len())
+                .unwrap_or(0),
+        },
+        "rrg": {
+            "open":        watchlist.rrg_open,
+            "tail_length": watchlist.rrg_tail_length,
+            // Effective sector count: real if populated, else the deterministic
+            // demo set the panel falls back to (always 11 SPDR sectors).
+            "sector_count": if watchlist.rrg_sectors.is_empty() {
+                crate::chart_renderer::ui::panels::rrg_panel::demo_sectors().len()
+            } else {
+                watchlist.rrg_sectors.len()
+            },
+        },
+        "heatmap": {
+            "cell_count": watchlist.heatmap_cells.len(),
+        },
+        // ── Order-manager safety telemetry (proves no live submission) ─────
+        "order_manager": {
+            "paper_mode":      crate::chart_renderer::trading::order_manager::is_paper_mode(),
+            "armed":           crate::chart_renderer::trading::order_manager::is_armed(),
+            "trading_blocked": crate::chart_renderer::trading::order_manager::is_trading_blocked(),
+            // Authoritative (System-B) order counts from the lock-free snapshot.
+            // Non-zero working/pending/filled would indicate a real submit path
+            // fired — the harness asserts these stay 0.
+            "mgr_working_count": crate::chart_renderer::trading::snapshot::current().orders.iter()
+                .filter(|o| matches!(o.state,
+                    crate::chart_renderer::trading::OrderState::Working
+                    | crate::chart_renderer::trading::OrderState::PendingSubmit
+                    | crate::chart_renderer::trading::OrderState::PartialFill
+                    | crate::chart_renderer::trading::OrderState::Filled)).count(),
+        },
     });
 
     // State-derived widget records (supplement egui-response-backed ones).
