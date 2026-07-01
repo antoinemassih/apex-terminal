@@ -10,6 +10,10 @@ pub enum DevInput {
     DoubleClick  { x: f32, y: f32 },
     RightClick   { x: f32, y: f32 },
     Move         { x: f32, y: f32 },
+    /// Pointer press / release primitives — split across frames for a reliable
+    /// egui widget click (same-frame press+release can miss `clicked()`).
+    Down         { x: f32, y: f32 },
+    Up           { x: f32, y: f32 },
     Drag         { from_x: f32, from_y: f32, to_x: f32, to_y: f32 },
     Scroll       { x: f32, y: f32, delta_y: f32 },
     Key          { key: String },
@@ -32,6 +36,21 @@ fn append_events(events: &mut Vec<egui::Event>, input: DevInput) {
     match input {
         DevInput::Move { x, y } => {
             events.push(Event::PointerMoved(egui::pos2(x, y)));
+        }
+
+        DevInput::Down { x, y } => {
+            let pos = egui::pos2(x, y);
+            events.push(Event::PointerMoved(pos));
+            events.push(Event::PointerButton {
+                pos, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE,
+            });
+        }
+
+        DevInput::Up { x, y } => {
+            let pos = egui::pos2(x, y);
+            events.push(Event::PointerButton {
+                pos, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE,
+            });
         }
 
         DevInput::Click { x, y } => {

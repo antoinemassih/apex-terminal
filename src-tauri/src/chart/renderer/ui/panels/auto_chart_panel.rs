@@ -10,6 +10,18 @@ use super::super::super::gpu::{Chart, Theme, Watchlist};
 use crate::chart_renderer::ui::panels::side_panel_shell::{RailSlot, SidePanelShell, Width};
 use egui;
 
+/// Record a panel control into the dev-inspector widget-tree so the harness can
+/// assert it renders (rect/label/clip) and click it by id. Debug-only; a no-op
+/// in release. `value` carries the control's current state (reflects config).
+#[cfg(debug_assertions)]
+fn rec_ctrl(id: &str, role: &str, label: &str, resp: &egui::Response, ui: &egui::Ui, value: String) {
+    let mut w = crate::dev_inspector::WidgetRecord::from_response(id, role, label, resp, ui);
+    w.value = Some(value);
+    crate::dev_inspector::record(w);
+}
+#[cfg(not(debug_assertions))]
+#[inline] fn rec_ctrl(_: &str, _: &str, _: &str, _: &egui::Response, _: &egui::Ui, _: String) {}
+
 /// Rail registration — one line in `right_rail::PANELS`.
 pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
     id: "auto_chart",
@@ -52,26 +64,34 @@ pub(crate) fn draw(
             let before = cfg.clone();
 
             ui.add_space(6.0);
-            ui.checkbox(&mut cfg.enabled, "Auto-charting ON");
+            let r = ui.checkbox(&mut cfg.enabled, "Auto-charting ON");
+            rec_ctrl("auto_chart.enabled", "checkbox", "Auto-charting ON", &r, ui, cfg.enabled.to_string());
             ui.separator();
             if cfg.enabled {
                 ui.label("Window of operation");
-                ui.add(egui::Slider::new(&mut cfg.window, 100..=2000).text("bars back"));
-                ui.checkbox(&mut cfg.anchored_only, "Anchored only (no floating starts)");
+                let r = ui.add(egui::Slider::new(&mut cfg.window, 100..=2000).text("bars back"));
+                rec_ctrl("auto_chart.window", "slider", "bars back", &r, ui, cfg.window.to_string());
+                let r = ui.checkbox(&mut cfg.anchored_only, "Anchored only (no floating starts)");
+                rec_ctrl("auto_chart.anchored_only", "checkbox", "Anchored only", &r, ui, cfg.anchored_only.to_string());
                 ui.separator();
                 ui.label("Layers");
-                ui.checkbox(&mut cfg.trendlines, "Trendlines");
-                ui.checkbox(&mut cfg.channels, "Channels");
-                ui.checkbox(&mut cfg.levels, "Levels");
-                ui.checkbox(&mut cfg.patterns, "Chart patterns");
-                ui.checkbox(&mut cfg.candles, "Candlesticks");
+                let r = ui.checkbox(&mut cfg.trendlines, "Trendlines");
+                rec_ctrl("auto_chart.trendlines", "checkbox", "Trendlines", &r, ui, cfg.trendlines.to_string());
+                let r = ui.checkbox(&mut cfg.channels, "Channels");
+                rec_ctrl("auto_chart.channels", "checkbox", "Channels", &r, ui, cfg.channels.to_string());
+                let r = ui.checkbox(&mut cfg.levels, "Levels");
+                rec_ctrl("auto_chart.levels", "checkbox", "Levels", &r, ui, cfg.levels.to_string());
+                let r = ui.checkbox(&mut cfg.patterns, "Chart patterns");
+                rec_ctrl("auto_chart.patterns", "checkbox", "Chart patterns", &r, ui, cfg.patterns.to_string());
+                let r = ui.checkbox(&mut cfg.candles, "Candlesticks");
+                rec_ctrl("auto_chart.candles", "checkbox", "Candlesticks", &r, ui, cfg.candles.to_string());
                 ui.separator();
                 ui.label("Pivot method");
                 ui.horizontal(|ui| {
                     for m in ["hybrid", "atr", "percent"] {
-                        if ui.selectable_label(cfg.pivot_mode == m, m).clicked() {
-                            cfg.pivot_mode = m.to_string();
-                        }
+                        let r = ui.selectable_label(cfg.pivot_mode == m, m);
+                        rec_ctrl(&format!("auto_chart.pivot.{m}"), "toggle", m, &r, ui, (cfg.pivot_mode == m).to_string());
+                        if r.clicked() { cfg.pivot_mode = m.to_string(); }
                     }
                 });
                 ui.separator();
@@ -88,9 +108,9 @@ pub(crate) fn draw(
                 ui.label("Extend lines");
                 ui.horizontal(|ui| {
                     for e in ["none", "right", "both", "left"] {
-                        if ui.selectable_label(cfg.extend == e, e).clicked() {
-                            cfg.extend = e.to_string();
-                        }
+                        let r = ui.selectable_label(cfg.extend == e, e);
+                        rec_ctrl(&format!("auto_chart.extend.{e}"), "toggle", e, &r, ui, (cfg.extend == e).to_string());
+                        if r.clicked() { cfg.extend = e.to_string(); }
                     }
                 });
 

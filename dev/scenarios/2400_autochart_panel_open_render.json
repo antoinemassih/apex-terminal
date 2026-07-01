@@ -1,0 +1,160 @@
+{
+  "name": "autochart_panel_open_render",
+  "description": "Auto-charting panel opens, renders all 15 controls without clipping, and closes.",
+  "story": "AutoChart/Panel",
+  "tags": [
+    "autochart",
+    "panel",
+    "frontend"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetAutoChartPanel",
+      "open": true
+    },
+    {
+      "action": "wait",
+      "ms": 700
+    },
+    {
+      "action": "wait_frames",
+      "count": 8
+    },
+    {
+      "action": "log",
+      "message": "auto-chart panel open"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "auto_chart.open",
+            "value": true
+          }
+        },
+        {
+          "widget_exists": {
+            "id": "auto_chart.enabled"
+          }
+        },
+        {
+          "widget_exists": {
+            "id": "auto_chart.window"
+          }
+        },
+        {
+          "widget_exists": {
+            "id": "auto_chart.anchored_only"
+          }
+        },
+        {
+          "widget_exists": {
+            "id": "auto_chart.trendlines"
+          }
+        },
+        {
+          "widget_exists": {
+            "id": "auto_chart.channels"
+          }
+        },
+        {
+          "widget_exists": {
+            "id": "auto_chart.levels"
+          }
+        },
+        {
+          "widget_exists": {
+            "id": "auto_chart.patterns"
+          }
+        },
+        {
+          "widget_exists": {
+            "id": "auto_chart.candles"
+          }
+        },
+        {
+          "widget_exists": {
+            "id": "auto_chart.pivot.hybrid"
+          }
+        },
+        {
+          "widget_exists": {
+            "id": "auto_chart.pivot.atr"
+          }
+        },
+        {
+          "widget_exists": {
+            "id": "auto_chart.pivot.percent"
+          }
+        },
+        {
+          "widget_exists": {
+            "id": "auto_chart.extend.none"
+          }
+        },
+        {
+          "widget_exists": {
+            "id": "auto_chart.extend.right"
+          }
+        },
+        {
+          "widget_exists": {
+            "id": "auto_chart.extend.both"
+          }
+        },
+        {
+          "widget_exists": {
+            "id": "auto_chart.extend.left"
+          }
+        },
+        {
+          "no_clipped_widgets": true
+        },
+        {
+          "ux_audit": true
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetAutoChartPanel",
+      "open": false
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "auto_chart.open",
+            "value": false
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

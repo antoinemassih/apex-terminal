@@ -1016,6 +1016,9 @@ pub fn end_frame(
         }))
         .collect();
 
+    // Auto-charting panel: open state + the global AutoDrawConfig the panel edits.
+    let adc = crate::chart_renderer::gpu::auto_draw_config();
+    let signal_drawing_count = active_chart.map(|c| c.signal_drawings.len()).unwrap_or(0);
     // ── Behavioral-oracle data (RRG sectors, scanner filter I/O) ──────────
     // RRG: effective sectors (real if populated, else the deterministic demo
     // set) with the raw inputs so the harness can verify quadrant classification.
@@ -1087,6 +1090,22 @@ pub fn end_frame(
         },
         "heatmap": {
             "cell_count": watchlist.heatmap_cells.len(),
+        },
+        // ── Auto-charting panel (front-end) ───────────────────────────────
+        "auto_chart": {
+            "open":         watchlist.auto_chart_open,
+            "enabled":      adc.enabled,
+            "trendlines":   adc.trendlines,
+            "channels":     adc.channels,
+            "levels":       adc.levels,
+            "patterns":     adc.patterns,
+            "candles":      adc.candles,
+            "pivot_mode":   adc.pivot_mode,
+            "extend":       adc.extend,
+            "window":       adc.window,
+            "anchored_only": adc.anchored_only,
+            "methods_count": adc.methods.len(),
+            "signal_drawing_count": signal_drawing_count,
         },
         // ── Order-manager safety telemetry (proves no live submission) ─────
         "order_manager": {
@@ -1301,6 +1320,12 @@ fn do_reset() {
     push(AppCommand::SeedScannerResults { count: 0 });
     push(AppCommand::SetRrgOpen { open: false });
     push(AppCommand::SeedHeatmapCells { count: 0 });
+    push(AppCommand::SetAutoChartPanel { open: false });
+    // Reset the global (disk-persisted) auto-draw config to defaults so the
+    // auto-charting panel starts from a known baseline every scenario. Debug-only
+    // (do_reset never runs in normal use), so clobbering the config is fine here.
+    crate::chart_renderer::gpu::set_auto_draw_config(
+        crate::chart_renderer::gpu::AutoDrawConfig::default());
     // Kick off a fresh bar fetch for the reset state.
     crate::chart_renderer::gpu::fetch_bars_background_pub("SPY".into(), "5m".into());
 }

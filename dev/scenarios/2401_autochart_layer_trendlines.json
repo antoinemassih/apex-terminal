@@ -1,0 +1,106 @@
+{
+  "name": "autochart_layer_trendlines",
+  "description": "Clicking the trendlines layer checkbox flips auto_chart.trendlines and back.",
+  "story": "AutoChart/Panel",
+  "tags": [
+    "autochart",
+    "panel",
+    "frontend",
+    "toggle"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "SPY"
+    },
+    {
+      "action": "wait",
+      "ms": 700
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetAutoChartPanel",
+      "open": true
+    },
+    {
+      "action": "wait",
+      "ms": 700
+    },
+    {
+      "action": "wait_frames",
+      "count": 8
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "auto_chart.trendlines",
+            "value": true
+          }
+        }
+      ]
+    },
+    {
+      "action": "click_widget",
+      "id": "auto_chart.trendlines"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "log",
+      "message": "toggled trendlines"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "auto_chart.trendlines",
+            "value": false
+          }
+        }
+      ]
+    },
+    {
+      "action": "click_widget",
+      "id": "auto_chart.trendlines"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "auto_chart.trendlines",
+            "value": true
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

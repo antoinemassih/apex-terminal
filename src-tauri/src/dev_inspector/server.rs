@@ -1052,6 +1052,33 @@ fn execute_step(
             }
         }
 
+        // Click a recorded widget by id — resolves its rect center from the last
+        // captured widget-tree and injects a real synthetic click there. Lets
+        // front-end scenarios drive UI controls by stable id instead of coords.
+        "click_widget" => {
+            let id = args["id"].as_str().unwrap_or("");
+            let center = {
+                let g = shared.lock().unwrap();
+                g.widget_tree.iter().find(|w| w.id == id)
+                    .map(|w| (w.rect.x + w.rect.w / 2.0, w.rect.y + w.rect.h / 2.0))
+            };
+            match center {
+                Some((x, y)) => {
+                    // Split across frames: hover (Move), press (Down), release (Up).
+                    // egui needs the widget hovered before the press and the
+                    // release in a later frame to register clicked().
+                    queues.lock().unwrap().inputs.push(DevInput::Move { x, y });
+                    wait_for_next_frame(shared, 1000);
+                    queues.lock().unwrap().inputs.push(DevInput::Down { x, y });
+                    wait_for_next_frame(shared, 1000);
+                    queues.lock().unwrap().inputs.push(DevInput::Up { x, y });
+                    wait_for_next_frame(shared, 1000);
+                    (true, format!("clicked widget '{id}' @ ({x:.0},{y:.0})"))
+                }
+                None => (false, format!("widget '{id}' not found in widget-tree")),
+            }
+        }
+
         "key_sequence" => {
             let keys: Vec<String> = args["keys"].as_array()
                 .map(|a| a.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
@@ -2127,6 +2154,10 @@ fn parse_app_command(
         "SeedHeatmapCells" | "seed_heatmap_cells" => {
             let count = body["count"].as_u64().unwrap_or(60) as usize;
             Ok(AppCommand::SeedHeatmapCells { count })
+        }
+        "SetAutoChartPanel" | "set_auto_chart_panel" => {
+            let open = body["open"].as_bool().unwrap_or(true);
+            Ok(AppCommand::SetAutoChartPanel { open })
         }
 
         // ── Alerts ─────────────────────────────────────────────────────────

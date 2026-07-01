@@ -284,6 +284,9 @@ pub enum AppCommand {
     /// Seed a deterministic set of heatmap cells (no live fetch).
     #[cfg(debug_assertions)]
     SeedHeatmapCells { count: usize },
+    /// Open/close the Auto-Charting side panel (front-end panel test).
+    #[cfg(debug_assertions)]
+    SetAutoChartPanel { open: bool },
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -815,6 +818,13 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
                 cells.push((format!("HM{i:03}"), change_pct, 1.0e6 + (i as f64) * 5.0e5));
             }
             watchlist.heatmap_cells = cells;
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SetAutoChartPanel { open } => {
+            // Route through the sidebar-state store (else the store→flat sync
+            // overwrites the flat bool every frame), same as scanner/RRG.
+            watchlist.update_sidebar_state(|s| s.auto_chart_open = open);
         }
     }
 }

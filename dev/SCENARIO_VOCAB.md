@@ -146,6 +146,15 @@ Examples:
 - `{"state_field_equals":{"path":"scanner.result_count","value":50}}` after `SeedScannerResults` count=50.
 - `{"state_field_equals":{"path":"rrg.sector_count","value":11}}` after `SetRrgOpen`.
 
+## Auto-Charting panel — front-end testing (real widget clicks)
+Drive the actual panel controls and verify they change config:
+- `SetAutoChartPanel` cmd `{open}` — open/close the Auto-Charting side panel.
+- `{"action":"click_widget","id":"auto_chart.trendlines"}` — click a recorded panel control by id (resolves its rect from the widget-tree, injects a real move→down→up click). **Settle after opening the panel** (it animates): `wait 700ms` + `wait_frames 8` before clicking.
+- Recorded control ids: `auto_chart.enabled`, `.window`, `.anchored_only`, `.trendlines`, `.channels`, `.levels`, `.patterns`, `.candles`, `.pivot.{hybrid,atr,percent}`, `.extend.{none,right,both,left}`.
+- Observable (`state_field_*` on `auto_chart.*`): `open`, `enabled`, `trendlines`, `channels`, `levels`, `patterns`, `candles`, `pivot_mode`, `extend`, `window`, `anchored_only`, `methods_count`, `signal_drawing_count`.
+- Assert controls render: `{"widget_exists":{"id":"auto_chart.trendlines"}}`; conditional hiding: when `enabled=false` the layer controls disappear (`{"not":{"assertion":{"widget_exists":{"id":"auto_chart.trendlines"}}}}`).
+NOTE: auto-draw OUTPUT (signal_drawings) is backend-computed (ApexSignals :8100) — not produced offline. This tests the PANEL front-end (controls render + drive config), not the backend detection.
+
 ## Screenshot action (visual review)
 - `{"action":"screenshot","name":"my_state"}` — saves the live window to `dev/screenshots/my_state.png` (real GDI capture of what the user sees). Use to snapshot key states for visual/UX review.
 

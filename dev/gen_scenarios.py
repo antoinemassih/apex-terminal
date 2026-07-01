@@ -991,5 +991,95 @@ for sym in ["SPY","QQQ","NVDA","TSLA","AAPL","ES","BTC-USD"]:
              f"After driving {nm} on {sym}, reset returns a clean baseline (no contamination).")
         n+=1
 
+# ── 2400-2415: Auto-Charting PANEL front-end (real widget clicks drive config) ─
+# The panel animates open, so settle generously before clicking its controls.
+def cw(wid): return {"action":"click_widget","id":wid}
+def open_ac():
+    return [cmd("SetAutoChartPanel",open=True),{"action":"wait","ms":700},{"action":"wait_frames","count":8}]
+AC_CTRLS=["auto_chart.enabled","auto_chart.window","auto_chart.anchored_only",
+          "auto_chart.trendlines","auto_chart.channels","auto_chart.levels",
+          "auto_chart.patterns","auto_chart.candles",
+          "auto_chart.pivot.hybrid","auto_chart.pivot.atr","auto_chart.pivot.percent",
+          "auto_chart.extend.none","auto_chart.extend.right","auto_chart.extend.both","auto_chart.extend.left"]
+
+# 2400: panel opens, renders ALL controls cleanly, closes.
+emit(2400,"autochart_panel_open_render","AutoChart/Panel",["autochart","panel","frontend"],
+     [{"action":"reset"},{"action":"wait_frames","count":4}]+open_ac()+[
+       {"action":"log","message":"auto-chart panel open"},
+       A({"state_field_equals":{"path":"auto_chart.open","value":True}},
+         *[{"widget_exists":{"id":w}} for w in AC_CTRLS],
+         {"no_clipped_widgets":True},{"ux_audit":True},{"no_panic":True},{"fps_above":5.0}),
+       cmd("SetAutoChartPanel",open=False),{"action":"wait_frames","count":3},
+       A({"state_field_equals":{"path":"auto_chart.open","value":False}},{"no_panic":True})],
+     "Auto-charting panel opens, renders all 15 controls without clipping, and closes.")
+
+# 2401: every layer toggle flips its config field (click -> state).
+layer_map=[("trendlines","auto_chart.trendlines"),("channels","auto_chart.channels"),
+           ("levels","auto_chart.levels"),("patterns","auto_chart.patterns"),
+           ("candles","auto_chart.candles")]
+for i,(field,wid) in enumerate(layer_map):
+    # trendlines/channels/levels/patterns default True (flip to False); candles default False (flip to True).
+    default_on = field!="candles"
+    steps=[{"action":"reset"},{"action":"wait_frames","count":4},
+           cmd("SwapPaneSymbol",pane=0,symbol="SPY"),{"action":"wait","ms":700},{"action":"wait_frames","count":3}]+open_ac()+[
+           A({"state_field_equals":{"path":f"auto_chart.{field}","value":default_on}}),
+           cw(wid),{"action":"wait_frames","count":3},
+           {"action":"log","message":f"toggled {field}"},
+           A({"state_field_equals":{"path":f"auto_chart.{field}","value":(not default_on)}}),
+           cw(wid),{"action":"wait_frames","count":3},
+           A({"state_field_equals":{"path":f"auto_chart.{field}","value":default_on}},{"no_panic":True})]
+    emit(2401+i, f"autochart_layer_{field}", "AutoChart/Panel",
+         ["autochart","panel","frontend","toggle"], steps,
+         f"Clicking the {field} layer checkbox flips auto_chart.{field} and back.")
+
+# 2406-2408: pivot method selector — each option selects.
+for i,mode in enumerate(["hybrid","atr","percent"]):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":4},
+           cmd("SwapPaneSymbol",pane=0,symbol="SPY"),{"action":"wait","ms":700},{"action":"wait_frames","count":3}]+open_ac()+[
+           cw(f"auto_chart.pivot.{mode}"),{"action":"wait_frames","count":3},
+           {"action":"log","message":f"pivot {mode}"},
+           A({"state_field_equals":{"path":"auto_chart.pivot_mode","value":mode}},{"no_panic":True})]
+    emit(2406+i, f"autochart_pivot_{mode}", "AutoChart/Panel",
+         ["autochart","panel","frontend","selector"], steps,
+         f"Selecting pivot method '{mode}' sets auto_chart.pivot_mode.")
+
+# 2409-2412: extend selector — each option selects.
+for i,ext in enumerate(["none","right","both","left"]):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":4},
+           cmd("SwapPaneSymbol",pane=0,symbol="SPY"),{"action":"wait","ms":700},{"action":"wait_frames","count":3}]+open_ac()+[
+           cw(f"auto_chart.extend.{ext}"),{"action":"wait_frames","count":3},
+           {"action":"log","message":f"extend {ext}"},
+           A({"state_field_equals":{"path":"auto_chart.extend","value":ext}},{"no_panic":True})]
+    emit(2409+i, f"autochart_extend_{ext}", "AutoChart/Panel",
+         ["autochart","panel","frontend","selector"], steps,
+         f"Selecting extend '{ext}' sets auto_chart.extend.")
+
+# 2413: master toggle hides/shows the layer controls (conditional rendering).
+emit(2413,"autochart_master_conditional","AutoChart/Panel",["autochart","panel","frontend","conditional"],
+     [{"action":"reset"},{"action":"wait_frames","count":4},
+      cmd("SwapPaneSymbol",pane=0,symbol="SPY"),{"action":"wait","ms":700},{"action":"wait_frames","count":3}]+open_ac()+[
+      A({"state_field_equals":{"path":"auto_chart.enabled","value":True}},
+        {"widget_exists":{"id":"auto_chart.trendlines"}},{"widget_exists":{"id":"auto_chart.pivot.hybrid"}}),
+      cw("auto_chart.enabled"),{"action":"wait_frames","count":4},
+      {"action":"log","message":"master OFF -> layers hidden"},
+      A({"state_field_equals":{"path":"auto_chart.enabled","value":False}},
+        {"not":{"assertion":{"widget_exists":{"id":"auto_chart.trendlines"}}}},
+        {"not":{"assertion":{"widget_exists":{"id":"auto_chart.pivot.hybrid"}}}}),
+      cw("auto_chart.enabled"),{"action":"wait_frames","count":6},
+      {"action":"log","message":"master ON -> layers back"},
+      A({"state_field_equals":{"path":"auto_chart.enabled","value":True}},
+        {"widget_exists":{"id":"auto_chart.trendlines"}},{"no_panic":True})],
+     "Auto-charting master toggle hides the layer/tuning controls when off and restores them when on.")
+
+# 2414: window slider control renders + config observable; anchored_only toggles.
+emit(2414,"autochart_anchored_toggle","AutoChart/Panel",["autochart","panel","frontend","toggle"],
+     [{"action":"reset"},{"action":"wait_frames","count":4},
+      cmd("SwapPaneSymbol",pane=0,symbol="SPY"),{"action":"wait","ms":700},{"action":"wait_frames","count":3}]+open_ac()+[
+      A({"state_field_equals":{"path":"auto_chart.anchored_only","value":True}},
+        {"widget_exists":{"id":"auto_chart.window"}}),
+      cw("auto_chart.anchored_only"),{"action":"wait_frames","count":3},
+      A({"state_field_equals":{"path":"auto_chart.anchored_only","value":False}},{"no_panic":True})],
+     "The Anchored-only checkbox flips auto_chart.anchored_only; window slider renders.")
+
 print(f"generated {len(made)} scenarios into {OUT}")
 for p in made[:3]: print("  e.g.", os.path.basename(p))

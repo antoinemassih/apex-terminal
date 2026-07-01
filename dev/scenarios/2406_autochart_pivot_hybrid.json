@@ -1,0 +1,76 @@
+{
+  "name": "autochart_pivot_hybrid",
+  "description": "Selecting pivot method 'hybrid' sets auto_chart.pivot_mode.",
+  "story": "AutoChart/Panel",
+  "tags": [
+    "autochart",
+    "panel",
+    "frontend",
+    "selector"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "SPY"
+    },
+    {
+      "action": "wait",
+      "ms": 700
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetAutoChartPanel",
+      "open": true
+    },
+    {
+      "action": "wait",
+      "ms": 700
+    },
+    {
+      "action": "wait_frames",
+      "count": 8
+    },
+    {
+      "action": "click_widget",
+      "id": "auto_chart.pivot.hybrid"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "log",
+      "message": "pivot hybrid"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "auto_chart.pivot_mode",
+            "value": "hybrid"
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

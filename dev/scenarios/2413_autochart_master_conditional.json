@@ -1,0 +1,143 @@
+{
+  "name": "autochart_master_conditional",
+  "description": "Auto-charting master toggle hides the layer/tuning controls when off and restores them when on.",
+  "story": "AutoChart/Panel",
+  "tags": [
+    "autochart",
+    "panel",
+    "frontend",
+    "conditional"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "SPY"
+    },
+    {
+      "action": "wait",
+      "ms": 700
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetAutoChartPanel",
+      "open": true
+    },
+    {
+      "action": "wait",
+      "ms": 700
+    },
+    {
+      "action": "wait_frames",
+      "count": 8
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "auto_chart.enabled",
+            "value": true
+          }
+        },
+        {
+          "widget_exists": {
+            "id": "auto_chart.trendlines"
+          }
+        },
+        {
+          "widget_exists": {
+            "id": "auto_chart.pivot.hybrid"
+          }
+        }
+      ]
+    },
+    {
+      "action": "click_widget",
+      "id": "auto_chart.enabled"
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "log",
+      "message": "master OFF -> layers hidden"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "auto_chart.enabled",
+            "value": false
+          }
+        },
+        {
+          "not": {
+            "assertion": {
+              "widget_exists": {
+                "id": "auto_chart.trendlines"
+              }
+            }
+          }
+        },
+        {
+          "not": {
+            "assertion": {
+              "widget_exists": {
+                "id": "auto_chart.pivot.hybrid"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "action": "click_widget",
+      "id": "auto_chart.enabled"
+    },
+    {
+      "action": "wait_frames",
+      "count": 6
+    },
+    {
+      "action": "log",
+      "message": "master ON -> layers back"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "auto_chart.enabled",
+            "value": true
+          }
+        },
+        {
+          "widget_exists": {
+            "id": "auto_chart.trendlines"
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}
