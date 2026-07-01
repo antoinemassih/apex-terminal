@@ -648,5 +648,344 @@ emit(996,"indicator_editor_then_remove","Chart/Indicators",["indicator","editor"
       A({"no_panic":True},{"viewport_sane":True},{"fps_above":5.0})],
      "Trader edits then removes the MACD indicator; the chart cleans up.")
 
+# ════════════════════════════════════════════════════════════════════════════
+# 1000+ : EXHAUSTIVE subsystem coverage using the NEW harness drivers
+# (DOM, order entry, scanner, RRG, heatmap, gamma-synth). Every command here is
+# broker-SAFE: SeedDraftOrder only touches the visual list; no submit path is
+# ever driven; each order scenario carries the no_live_orders safety invariant.
+# ════════════════════════════════════════════════════════════════════════════
+STOCKS   = SYMBOLS                       # 18 equities/ETFs
+XSYMS    = FUTURES + CRYPTO              # 13 cross-asset
+ALLSYMS  = STOCKS + XSYMS               # 31 symbols
+def sset(sym): return sym.lower().replace('-', '_')
+
+SAFETY = [{"no_live_orders": True}]      # drop into EVERY order scenario
+
+def load(sym, pane=0, ms=1100):
+    return [cmd("SwapPaneSymbol", pane=pane, symbol=sym),
+            {"action":"wait","ms":ms}, {"action":"wait_frames","count":3}]
+
+# ── 1000-1030: gamma-synth populates levels+walls, per symbol (pane 0) ───────
+# SynthGamma forces synthesis, so this is deterministic for EVERY symbol without
+# the :8412 feed — directly exercises the fix for the persistent gamma reds.
+for i,sym in enumerate(ALLSYMS):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3}]+load(sym)+[
+        cmd("SynthGamma",pane=0),{"action":"wait_frames","count":4},
+        {"action":"log","message":f"gamma synth {sym}"},
+        A({"gamma_overlay_active":{"pane":0}},
+          {"state_field_gte":{"path":"panes.0.gamma_level_count","min":1}},
+          {"state_field_gte":{"path":"panes.0.gamma_call_wall","min":0.01}},
+          {"state_field_gte":{"path":"panes.0.gamma_put_wall","min":0.01}}, *invariants())]
+    emit(1000+i, f"gamma_synth_{sset(sym)}", "Options/Gamma",
+         ["options","gamma","correctness"], steps,
+         f"SynthGamma on {sym} populates GEX levels and call/put walls.")
+
+# ── 1040-1070: gamma-synth on pane 1 (multi-pane independence) ───────────────
+for i,sym in enumerate(ALLSYMS):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3}]+load(sym,pane=1)+[
+        cmd("SynthGamma",pane=1),{"action":"wait_frames","count":4},
+        {"action":"log","message":f"gamma synth pane1 {sym}"},
+        A({"gamma_overlay_active":{"pane":1}},
+          {"state_field_gte":{"path":"panes.1.gamma_level_count","min":1}},
+          {"no_panic":True},{"viewport_sane":True},{"fps_above":5.0})]
+    emit(1040+i, f"gamma_synth_pane1_{sset(sym)}", "Options/Gamma",
+         ["options","gamma","multipane"], steps,
+         f"SynthGamma on pane 1 for {sym} populates without disturbing pane 0.")
+
+# ── 1100-1130: DOM ladder opens + populates (mock) + sane, per symbol ────────
+for i,sym in enumerate(ALLSYMS):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3}]+load(sym)+[
+        cmd("SetDomSidebar",pane=0,open=True),{"action":"wait_frames","count":6},
+        {"action":"log","message":f"DOM {sym}"},
+        A({"state_field_gte":{"path":"panes.0.dom_level_count","min":1}},
+          {"state_field_equals":{"path":"panes.0.dom_sidebar_open","value":True}},
+          {"dom_spread_sane":{"pane":0}}, *invariants()),
+        cmd("SetDomSidebar",pane=0,open=False),{"action":"wait_frames","count":3},
+        A({"state_field_equals":{"path":"panes.0.dom_sidebar_open","value":False}},{"no_panic":True})]
+    emit(1100+i, f"dom_ladder_{sset(sym)}", "Trading/DOM",
+         ["dom","ladder","correctness"], steps,
+         f"DOM ladder for {sym} opens, fills a descending sane ladder, and closes.")
+
+# ── 1140-1160: DOM + gamma together (desk overlay stack) ─────────────────────
+for i,sym in enumerate(["SPY","QQQ","NVDA","TSLA","AAPL","ES","NQ","BTC-USD","CL","GC"]):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3}]+load(sym)+[
+        cmd("SynthGamma",pane=0),{"action":"wait_frames","count":3},
+        cmd("SetDomSidebar",pane=0,open=True),{"action":"wait_frames","count":5},
+        {"action":"log","message":f"DOM+gamma {sym}"},
+        A({"state_field_gte":{"path":"panes.0.dom_level_count","min":1}},
+          {"state_field_gte":{"path":"panes.0.gamma_level_count","min":1}},
+          {"dom_spread_sane":{"pane":0}},{"gamma_overlay_active":{"pane":0}}, *invariants())]
+    emit(1140+i, f"dom_gamma_{sset(sym)}", "Trading/DOM",
+         ["dom","gamma","combo"], steps,
+         f"{sym}: DOM ladder and gamma overlay populate together, both sane.")
+
+# ── 1200-1260: order entry (SAFE) — seed drafts, verify, cancel-clean ────────
+# side/qty grid across liquid symbols; every step asserts the safety invariant.
+order_grid=[("buy",100),("sell",200),("buy",500),("sell",50),("stop",100),("buy",1000)]
+oi=0
+for sym in STOCKS[:10]:
+    for (side,qty) in order_grid:
+        steps=[{"action":"reset"},{"action":"wait_frames","count":3}]+load(sym,ms=900)+[
+            cmd("SeedDraftOrder",pane=0,side=side,price=100.0,qty=qty),{"action":"wait_frames","count":2},
+            {"action":"log","message":f"seed {side} {qty} {sym}"},
+            A({"state_field_gte":{"path":"panes.0.order_draft_count","min":1}}, *SAFETY, {"no_panic":True}),
+            cmd("CancelAllOrders"),{"action":"wait_frames","count":4},
+            A({"state_field_equals":{"path":"panes.0.order_count","value":0}}, *SAFETY, {"fps_above":5.0})]
+        emit(1200+oi, f"order_seed_{sset(sym)}_{side}_{qty}", "Trading/Orders",
+             ["orders","safe","correctness"], steps,
+             f"Seed a {side} {qty} DRAFT on {sym} (no submit), then cancel-clean; paper-safe.")
+        oi+=1
+
+# ── 1270-1289: multiple drafts, ladder + panel toggle (SAFE) ─────────────────
+for i,sym in enumerate(["SPY","QQQ","AAPL","NVDA","TSLA","AMD","META","MSFT","AMZN","GOOGL"]):
+    seed=[]
+    for k,p in enumerate([95,100,105,110]):
+        seed+=[cmd("SeedDraftOrder",pane=0,side=("buy" if k%2==0 else "sell"),price=float(p),qty=100),
+               {"action":"wait_frames","count":1}]
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3}]+load(sym,ms=900)+seed+[
+        {"action":"wait_frames","count":2},
+        A({"state_field_gte":{"path":"panes.0.order_draft_count","min":2}}, *SAFETY),
+        cmd("SetOrderPanel",pane=0,collapsed=True),{"action":"wait_frames","count":2},
+        A({"state_field_equals":{"path":"panes.0.order_panel_collapsed","value":True}}, *SAFETY),
+        cmd("SetOrderPanel",pane=0,collapsed=False),{"action":"wait_frames","count":2},
+        cmd("CancelAllOrders"),{"action":"wait_frames","count":4},
+        A({"state_field_equals":{"path":"panes.0.order_count","value":0}}, *SAFETY, {"no_panic":True})]
+    emit(1270+i, f"order_ladder_{sset(sym)}", "Trading/Orders",
+         ["orders","safe","panel"], steps,
+         f"Ladder four DRAFT orders on {sym}, toggle the panel, cancel-clean; never submits.")
+
+# ── 1300-1340: scanner seed + open, result/filter correctness ────────────────
+si=0
+for count in [1,5,10,25,50,100,200,300,500,750]:
+    exp=min(count,500)
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3},
+           cmd("SeedScannerResults",count=count),{"action":"wait_frames","count":2},
+           cmd("SetScannerOpen",open=True),{"action":"wait_frames","count":3},
+           {"action":"log","message":f"scanner {count} rows"},
+           A({"state_field_equals":{"path":"scanner.result_count","value":exp}},
+             {"state_field_equals":{"path":"scanner.open","value":True}},
+             {"state_field_lte":{"path":"scanner.first_def_filtered_count","max":exp}},
+             {"no_panic":True},{"fps_above":5.0}),
+           cmd("SetScannerOpen",open=False),{"action":"wait_frames","count":2},
+           A({"state_field_equals":{"path":"scanner.open","value":False}},{"no_panic":True})]
+    emit(1300+si, f"scanner_seed_{count}", "Scanner/Results",
+         ["scanner","correctness"], steps,
+         f"Scanner seeded with {count} rows (cap 500) filters and displays correctly.")
+    si+=1
+# scanner over a loaded chart + re-seed churn
+for i,sym in enumerate(["SPY","NVDA","QQQ","TSLA","AAPL"]):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3}]+load(sym,ms=900)+[
+        cmd("SetScannerOpen",open=True),{"action":"wait_frames","count":2},
+        cmd("SeedScannerResults",count=100),{"action":"wait_frames","count":2},
+        cmd("SeedScannerResults",count=25),{"action":"wait_frames","count":2},
+        A({"state_field_equals":{"path":"scanner.result_count","value":25}},
+          {"state_field_equals":{"path":"scanner.open","value":True}},{"no_panic":True}, *invariants())]
+    emit(1330+i, f"scanner_reseed_{sset(sym)}", "Scanner/Results",
+         ["scanner","churn"], steps,
+         f"Scanner re-seed churn over a live {sym} chart stays consistent.")
+
+# ── 1400-1440: RRG open + tail sweep (deterministic 11 demo sectors) ─────────
+ri=0
+for tl in range(1,21):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3},
+           cmd("SetRrgOpen",open=True),{"action":"wait_frames","count":2},
+           cmd("SetRrgTail",len=tl),{"action":"wait_frames","count":2},
+           {"action":"log","message":f"rrg tail {tl}"},
+           A({"state_field_equals":{"path":"rrg.open","value":True}},
+             {"state_field_equals":{"path":"rrg.tail_length","value":tl}},
+             {"state_field_equals":{"path":"rrg.sector_count","value":11}},
+             {"no_panic":True},{"fps_above":5.0})]
+    emit(1400+ri, f"rrg_tail_{tl:02d}", "RRG/Rotation",
+         ["rrg","rotation","correctness"], steps,
+         f"RRG open with tail length {tl}; 11 SPDR sectors render deterministically.")
+    ri+=1
+# rrg open/close + over a loaded chart
+for i,sym in enumerate(["SPY","QQQ","XLK","XLF"]):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3}]+load(sym,ms=900)+[
+        cmd("SetRrgOpen",open=True),{"action":"wait_frames","count":3},
+        A({"state_field_equals":{"path":"rrg.open","value":True}},
+          {"state_field_equals":{"path":"rrg.sector_count","value":11}}, *invariants()),
+        cmd("SetRrgOpen",open=False),{"action":"wait_frames","count":2},
+        A({"state_field_equals":{"path":"rrg.open","value":False}},{"no_panic":True})]
+    emit(1420+i, f"rrg_over_chart_{sset(sym)}", "RRG/Rotation",
+         ["rrg","rotation"], steps,
+         f"RRG panel opens over a live {sym} chart and closes cleanly.")
+
+# ── 1500-1520: heatmap seed + pane, cell-count correctness ───────────────────
+hi=0
+for count in [1,10,30,60,100,150,200,300]:
+    exp=min(count,200)
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3},
+           cmd("SeedHeatmapCells",count=count),{"action":"wait_frames","count":2},
+           cmd("ChangePaneType",pane=0,kind="Heatmap"),{"action":"wait_frames","count":4},
+           {"action":"log","message":f"heatmap {count} cells"},
+           A({"state_field_equals":{"path":"heatmap.cell_count","value":exp}},
+             {"pane_type_equals":{"pane":0,"type":"Heatmap"}},
+             {"no_panic":True},{"viewport_sane":True},{"fps_above":5.0})]
+    emit(1500+hi, f"heatmap_seed_{count}", "Heatmap/Cells",
+         ["heatmap","correctness"], steps,
+         f"Heatmap pane with {count} seeded cells (cap 200) renders correctly.")
+    hi+=1
+
+# ── 1530-1560: strikes overlay per symbol (already works; broaden coverage) ──
+for i,sym in enumerate(ALLSYMS):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3}]+load(sym,ms=1200)+[
+        cmd("SetChartFlag",pane=0,flag="ShowStrikesOverlay",value=True),
+        {"action":"wait","ms":2500},{"action":"wait_frames","count":5},
+        {"action":"log","message":f"strikes {sym}"},
+        A({"strikes_overlay_active":{"pane":0}},{"no_panic":True},{"viewport_sane":True},{"fps_above":5.0})]
+    emit(1530+i, f"strikes_{sset(sym)}", "Options/Strikes",
+         ["options","strikes","correctness"], steps,
+         f"Strikes overlay on {sym} loads option-chain rows onto the chart.")
+
+# ── 1600-1630: full trading-desk journeys (all subsystems, per symbol) ───────
+desk=["SPY","QQQ","NVDA","TSLA","AAPL","MSFT","AMD","META","ES","NQ","BTC-USD","CL","GC","IWM"]
+for i,sym in enumerate(desk):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3}]+load(sym,ms=1100)+[
+        cmd("AddIndicator",pane=0,kind="VWAP"),cmd("AddIndicator",pane=0,kind="RSI"),
+        cmd("RecomputeIndicators",pane=0),{"action":"wait_frames","count":3},
+        cmd("SynthGamma",pane=0),{"action":"wait_frames","count":2},
+        cmd("SetDomSidebar",pane=0,open=True),{"action":"wait_frames","count":3},
+        cmd("SeedDraftOrder",pane=0,side="buy",price=100.0,qty=100),{"action":"wait_frames","count":2},
+        cmd("SetScannerOpen",open=True),cmd("SeedScannerResults",count=50),{"action":"wait_frames","count":3},
+        {"action":"log","message":f"desk session {sym}"},
+        A({"canvas_indicator_exists":{"pane":0,"kind":"VWAP"}},
+          {"state_field_gte":{"path":"panes.0.gamma_level_count","min":1}},
+          {"state_field_gte":{"path":"panes.0.dom_level_count","min":1}},
+          {"state_field_gte":{"path":"panes.0.order_draft_count","min":1}},
+          {"state_field_equals":{"path":"scanner.result_count","value":50}},
+          {"dom_spread_sane":{"pane":0}}, *SAFETY, *invariants()),
+        cmd("CancelAllOrders"),{"action":"wait_frames","count":4},
+        A({"state_field_equals":{"path":"panes.0.order_count","value":0}}, *SAFETY)]
+    emit(1600+i, f"desk_session_{sset(sym)}", "Journeys/Desk",
+         ["journey","desk","allsubsystems","safe"], steps,
+         f"Full desk session on {sym}: indicators+gamma+DOM+draft order+scanner, all sane; never submits.")
+
+# ── 1700-1799: cross-product quick-drives (symbol × subsystem matrix) ────────
+# One lean scenario per (symbol, subsystem) — broad breadth, minimal steps.
+subsys=[
+  ("gamma",  lambda p: [cmd("SynthGamma",pane=0)],
+             lambda: [{"state_field_gte":{"path":"panes.0.gamma_level_count","min":1}}]),
+  ("dom",    lambda p: [cmd("SetDomSidebar",pane=0,open=True)],
+             lambda: [{"state_field_gte":{"path":"panes.0.dom_level_count","min":1}},{"dom_spread_sane":{"pane":0}}]),
+  ("order",  lambda p: [cmd("SeedDraftOrder",pane=0,side="buy",price=100.0,qty=100)],
+             lambda: [{"state_field_gte":{"path":"panes.0.order_draft_count","min":1}}]+SAFETY),
+  ("scanner",lambda p: [cmd("SetScannerOpen",open=True),cmd("SeedScannerResults",count=40)],
+             lambda: [{"state_field_equals":{"path":"scanner.result_count","value":40}}]),
+  ("rrg",    lambda p: [cmd("SetRrgOpen",open=True)],
+             lambda: [{"state_field_equals":{"path":"rrg.sector_count","value":11}}]),
+  ("heatmap",lambda p: [cmd("SeedHeatmapCells",count=40)],
+             lambda: [{"state_field_equals":{"path":"heatmap.cell_count","value":40}}]),
+]
+n=1700
+for sym in ALLSYMS:
+    for (nm,drive,chk) in subsys:
+        steps=[{"action":"reset"},{"action":"wait_frames","count":3}]+load(sym,ms=900)+ \
+              drive(0)+[{"action":"wait_frames","count":4},
+              {"action":"log","message":f"{nm} {sym}"},
+              A(*chk(), {"no_panic":True},{"viewport_sane":True},{"fps_above":5.0})]
+        emit(n, f"matrix_{nm}_{sset(sym)}", f"Matrix/{nm.capitalize()}",
+             ["matrix",nm,"breadth"], steps,
+             f"{sym}: {nm} subsystem drives + observes correctly.")
+        n+=1
+
+# ── 1900-1992: per-pane subsystem independence on PANE 1 (gamma/dom/order) ───
+pane1_sub=[
+  ("gamma", lambda: [cmd("SynthGamma",pane=1)],
+            lambda: [{"gamma_overlay_active":{"pane":1}},
+                     {"state_field_gte":{"path":"panes.1.gamma_level_count","min":1}}]),
+  ("dom",   lambda: [cmd("SetDomSidebar",pane=1,open=True)],
+            lambda: [{"state_field_gte":{"path":"panes.1.dom_level_count","min":1}},
+                     {"dom_spread_sane":{"pane":1}}]),
+  ("order", lambda: [cmd("SeedDraftOrder",pane=1,side="buy",price=100.0,qty=100)],
+            lambda: [{"state_field_gte":{"path":"panes.1.order_draft_count","min":1}}]+SAFETY),
+]
+n=1900
+for sym in ALLSYMS:
+    for (nm,drive,chk) in pane1_sub:
+        steps=[{"action":"reset"},{"action":"wait_frames","count":3}]+load(sym,pane=1,ms=900)+ \
+              drive()+[{"action":"wait_frames","count":4},
+              {"action":"log","message":f"pane1 {nm} {sym}"},
+              A(*chk(), {"no_panic":True},{"viewport_sane":True},{"fps_above":5.0})]
+        emit(n, f"pane1_{nm}_{sset(sym)}", f"MultiPane/{nm.capitalize()}",
+             ["multipane",nm,"independence"], steps,
+             f"{sym}: {nm} subsystem drives correctly on pane 1 (independence).")
+        n+=1
+
+# ── 2000-2185: subsystem matrix under the DAILY timeframe (tf independence) ──
+n=2000
+for sym in ALLSYMS:
+    for (nm,drive,chk) in subsys:
+        steps=[{"action":"reset"},{"action":"wait_frames","count":3}]+load(sym,ms=900)+[
+              cmd("ChangeTimeframe",pane=0,tf="1d"),{"action":"wait","ms":800},{"action":"wait_frames","count":3}]+ \
+              drive(0)+[{"action":"wait_frames","count":4},
+              {"action":"log","message":f"{nm} {sym} 1d"},
+              A(*chk(), {"no_panic":True},{"viewport_sane":True},{"fps_above":5.0})]
+        emit(n, f"matrix1d_{nm}_{sset(sym)}", f"Matrix1d/{nm.capitalize()}",
+             ["matrix",nm,"timeframe"], steps,
+             f"{sym} @1d: {nm} subsystem drives + observes correctly on the daily.")
+        n+=1
+
+# ── 2200-2230: gamma + strikes overlay together, per symbol ──────────────────
+for i,sym in enumerate(ALLSYMS):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3}]+load(sym,ms=1200)+[
+        cmd("SynthGamma",pane=0),{"action":"wait_frames","count":3},
+        cmd("SetChartFlag",pane=0,flag="ShowStrikesOverlay",value=True),
+        {"action":"wait","ms":2500},{"action":"wait_frames","count":5},
+        {"action":"log","message":f"gamma+strikes {sym}"},
+        A({"gamma_overlay_active":{"pane":0}},{"strikes_overlay_active":{"pane":0}},
+          {"state_field_gte":{"path":"panes.0.gamma_level_count","min":1}}, *invariants())]
+    emit(2200+i, f"gamma_strikes_{sset(sym)}", "Options/Overlays",
+         ["options","gamma","strikes","combo"], steps,
+         f"{sym}: gamma GEX and strikes overlays populate together and stay sane.")
+
+# ── 2240-2255: extended order grid on the remaining liquid symbols (SAFE) ─────
+oi=0
+for sym in STOCKS[10:]:
+    for (side,qty) in [("buy",100),("sell",300)]:
+        steps=[{"action":"reset"},{"action":"wait_frames","count":3}]+load(sym,ms=900)+[
+            cmd("SeedDraftOrder",pane=0,side=side,price=100.0,qty=qty),{"action":"wait_frames","count":2},
+            {"action":"log","message":f"seed {side} {qty} {sym}"},
+            A({"state_field_gte":{"path":"panes.0.order_draft_count","min":1}}, *SAFETY,{"no_panic":True}),
+            cmd("CancelAllOrders"),{"action":"wait_frames","count":4},
+            A({"state_field_equals":{"path":"panes.0.order_count","value":0}}, *SAFETY)]
+        emit(2240+oi, f"order_seed2_{sset(sym)}_{side}_{qty}", "Trading/Orders",
+             ["orders","safe"], steps,
+             f"Seed a {side} {qty} DRAFT on {sym} (no submit), cancel-clean; paper-safe.")
+        oi+=1
+
+# ── 2300-2360: reset-isolation — drive a subsystem, RESET, assert cleared ────
+# Validates do_reset clears the new subsystem state (contamination guard), so
+# back-to-back scenarios start clean. Post-reset baselines match do_reset:
+# gamma hidden, DOM closed, scanner empty+closed, RRG closed, heatmap empty,
+# orders 0. (gamma_levels aren't wiped, only hidden — assert show_gamma false.)
+reset_iso=[
+  ("gamma",   lambda: [cmd("SynthGamma",pane=0)],
+              [{"state_field_equals":{"path":"panes.0.show_gamma","value":False}}]),
+  ("dom",     lambda: [cmd("SetDomSidebar",pane=0,open=True)],
+              [{"state_field_equals":{"path":"panes.0.dom_sidebar_open","value":False}}]),
+  ("scanner", lambda: [cmd("SetScannerOpen",open=True),cmd("SeedScannerResults",count=80)],
+              [{"state_field_equals":{"path":"scanner.open","value":False}},
+               {"state_field_equals":{"path":"scanner.result_count","value":0}}]),
+  ("rrg",     lambda: [cmd("SetRrgOpen",open=True)],
+              [{"state_field_equals":{"path":"rrg.open","value":False}}]),
+  ("heatmap", lambda: [cmd("SeedHeatmapCells",count=80)],
+              [{"state_field_equals":{"path":"heatmap.cell_count","value":0}}]),
+  ("order",   lambda: [cmd("SeedDraftOrder",pane=0,side="buy",price=100.0,qty=100)],
+              [{"state_field_equals":{"path":"panes.0.order_count","value":0}}]+SAFETY),
+]
+n=2300
+for sym in ["SPY","QQQ","NVDA","TSLA","AAPL","ES","BTC-USD"]:
+    for (nm,drive,post) in reset_iso:
+        steps=[{"action":"reset"},{"action":"wait_frames","count":3}]+load(sym,ms=800)+ \
+              drive()+[{"action":"wait_frames","count":3},
+              {"action":"log","message":f"drive {nm} then reset {sym}"},
+              {"action":"reset"},{"action":"wait_frames","count":5},
+              A(*post, {"no_panic":True},{"viewport_sane":True})]
+        emit(n, f"reset_iso_{nm}_{sset(sym)}", "Harness/ResetIsolation",
+             ["harness","reset","isolation"], steps,
+             f"After driving {nm} on {sym}, reset returns a clean baseline (no contamination).")
+        n+=1
+
 print(f"generated {len(made)} scenarios into {OUT}")
 for p in made[:3]: print("  e.g.", os.path.basename(p))

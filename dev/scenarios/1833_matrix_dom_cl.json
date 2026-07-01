@@ -1,0 +1,75 @@
+{
+  "name": "matrix_dom_cl",
+  "description": "CL: dom subsystem drives + observes correctly.",
+  "story": "Matrix/Dom",
+  "tags": [
+    "matrix",
+    "dom",
+    "breadth"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "CL"
+    },
+    {
+      "action": "wait",
+      "ms": 900
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetDomSidebar",
+      "pane": 0,
+      "open": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "log",
+      "message": "dom CL"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_gte": {
+            "path": "panes.0.dom_level_count",
+            "min": 1
+          }
+        },
+        {
+          "dom_spread_sane": {
+            "pane": 0
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    }
+  ]
+}

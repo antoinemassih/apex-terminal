@@ -1,0 +1,74 @@
+{
+  "name": "gamma_synth_pane1_iwm",
+  "description": "SynthGamma on pane 1 for IWM populates without disturbing pane 0.",
+  "story": "Options/Gamma",
+  "tags": [
+    "options",
+    "gamma",
+    "multipane"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 1,
+      "symbol": "IWM"
+    },
+    {
+      "action": "wait",
+      "ms": 1100
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SynthGamma",
+      "pane": 1
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "log",
+      "message": "gamma synth pane1 IWM"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "gamma_overlay_active": {
+            "pane": 1
+          }
+        },
+        {
+          "state_field_gte": {
+            "path": "panes.1.gamma_level_count",
+            "min": 1
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    }
+  ]
+}

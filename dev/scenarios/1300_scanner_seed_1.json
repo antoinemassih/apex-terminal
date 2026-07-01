@@ -1,0 +1,95 @@
+{
+  "name": "scanner_seed_1",
+  "description": "Scanner seeded with 1 rows (cap 500) filters and displays correctly.",
+  "story": "Scanner/Results",
+  "tags": [
+    "scanner",
+    "correctness"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedScannerResults",
+      "count": 1
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetScannerOpen",
+      "open": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "log",
+      "message": "scanner 1 rows"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "scanner.result_count",
+            "value": 1
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "scanner.open",
+            "value": true
+          }
+        },
+        {
+          "state_field_lte": {
+            "path": "scanner.first_def_filtered_count",
+            "max": 1
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetScannerOpen",
+      "open": false
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "scanner.open",
+            "value": false
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

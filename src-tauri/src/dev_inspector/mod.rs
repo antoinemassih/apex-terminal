@@ -1243,6 +1243,19 @@ fn do_reset() {
     push(AppCommand::ChangePaneType { pane: 1, kind: PaneType::Chart });
     push(AppCommand::SetChartFlag { pane: 0, flag: ChartFlag::ShowVolume, value: true });
     push(AppCommand::SetChartFlag { pane: 0, flag: ChartFlag::LogScale,   value: false });
+    // Clear the new subsystem overlays/panels so a scenario always starts from a
+    // clean observable baseline (prevents cross-scenario contamination — reset
+    // predates DOM/scanner/RRG/heatmap/gamma capture). All debug-only, all safe.
+    for pane in 0..2usize {
+        push(AppCommand::SetDomSidebar { pane, open: false });
+        push(AppCommand::SetChartFlag { pane, flag: ChartFlag::ShowGamma, value: false });
+        push(AppCommand::SetChartFlag { pane, flag: ChartFlag::ShowStrikesOverlay, value: false });
+        push(AppCommand::SetOrderPanel { pane, collapsed: false });
+    }
+    push(AppCommand::SetScannerOpen { open: false });
+    push(AppCommand::SeedScannerResults { count: 0 });
+    push(AppCommand::SetRrgOpen { open: false });
+    push(AppCommand::SeedHeatmapCells { count: 0 });
     // Kick off a fresh bar fetch for the reset state.
     crate::chart_renderer::gpu::fetch_bars_background_pub("SPY".into(), "5m".into());
 }

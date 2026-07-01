@@ -1,0 +1,88 @@
+{
+  "name": "matrix1d_scanner_si",
+  "description": "SI @1d: scanner subsystem drives + observes correctly on the daily.",
+  "story": "Matrix1d/Scanner",
+  "tags": [
+    "matrix",
+    "scanner",
+    "timeframe"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "SI"
+    },
+    {
+      "action": "wait",
+      "ms": 900
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangeTimeframe",
+      "pane": 0,
+      "tf": "1d"
+    },
+    {
+      "action": "wait",
+      "ms": 800
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetScannerOpen",
+      "open": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedScannerResults",
+      "count": 40
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "log",
+      "message": "scanner SI 1d"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "scanner.result_count",
+            "value": 40
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    }
+  ]
+}

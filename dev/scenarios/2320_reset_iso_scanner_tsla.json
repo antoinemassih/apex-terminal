@@ -1,0 +1,84 @@
+{
+  "name": "reset_iso_scanner_tsla",
+  "description": "After driving scanner on TSLA, reset returns a clean baseline (no contamination).",
+  "story": "Harness/ResetIsolation",
+  "tags": [
+    "harness",
+    "reset",
+    "isolation"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "TSLA"
+    },
+    {
+      "action": "wait",
+      "ms": 800
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetScannerOpen",
+      "open": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedScannerResults",
+      "count": 80
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "log",
+      "message": "drive scanner then reset TSLA"
+    },
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "scanner.open",
+            "value": false
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "scanner.result_count",
+            "value": 0
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        }
+      ]
+    }
+  ]
+}

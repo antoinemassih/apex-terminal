@@ -1,0 +1,200 @@
+{
+  "name": "desk_session_qqq",
+  "description": "Full desk session on QQQ: indicators+gamma+DOM+draft order+scanner, all sane; never submits.",
+  "story": "Journeys/Desk",
+  "tags": [
+    "journey",
+    "desk",
+    "allsubsystems",
+    "safe"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "QQQ"
+    },
+    {
+      "action": "wait",
+      "ms": 1100
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "VWAP"
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddIndicator",
+      "pane": 0,
+      "kind": "RSI"
+    },
+    {
+      "action": "cmd",
+      "cmd": "RecomputeIndicators",
+      "pane": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SynthGamma",
+      "pane": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetDomSidebar",
+      "pane": 0,
+      "open": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedDraftOrder",
+      "pane": 0,
+      "side": "buy",
+      "price": 100.0,
+      "qty": 100
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetScannerOpen",
+      "open": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedScannerResults",
+      "count": 50
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "log",
+      "message": "desk session QQQ"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "canvas_indicator_exists": {
+            "pane": 0,
+            "kind": "VWAP"
+          }
+        },
+        {
+          "state_field_gte": {
+            "path": "panes.0.gamma_level_count",
+            "min": 1
+          }
+        },
+        {
+          "state_field_gte": {
+            "path": "panes.0.dom_level_count",
+            "min": 1
+          }
+        },
+        {
+          "state_field_gte": {
+            "path": "panes.0.order_draft_count",
+            "min": 1
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "scanner.result_count",
+            "value": 50
+          }
+        },
+        {
+          "dom_spread_sane": {
+            "pane": 0
+          }
+        },
+        {
+          "no_live_orders": true
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5.0
+        },
+        {
+          "canvas_bars_within_pane": {
+            "pane": 0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "CancelAllOrders"
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "panes.0.order_count",
+            "value": 0
+          }
+        },
+        {
+          "no_live_orders": true
+        }
+      ]
+    }
+  ]
+}

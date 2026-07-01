@@ -1,0 +1,114 @@
+{
+  "name": "gamma_strikes_nvda",
+  "description": "NVDA: gamma GEX and strikes overlays populate together and stay sane.",
+  "story": "Options/Overlays",
+  "tags": [
+    "options",
+    "gamma",
+    "strikes",
+    "combo"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "NVDA"
+    },
+    {
+      "action": "wait",
+      "ms": 1200
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SynthGamma",
+      "pane": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetChartFlag",
+      "pane": 0,
+      "flag": "ShowStrikesOverlay",
+      "value": true
+    },
+    {
+      "action": "wait",
+      "ms": 2500
+    },
+    {
+      "action": "wait_frames",
+      "count": 5
+    },
+    {
+      "action": "log",
+      "message": "gamma+strikes NVDA"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "gamma_overlay_active": {
+            "pane": 0
+          }
+        },
+        {
+          "strikes_overlay_active": {
+            "pane": 0
+          }
+        },
+        {
+          "state_field_gte": {
+            "path": "panes.0.gamma_level_count",
+            "min": 1
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5.0
+        },
+        {
+          "canvas_bars_within_pane": {
+            "pane": 0
+          }
+        }
+      ]
+    }
+  ]
+}

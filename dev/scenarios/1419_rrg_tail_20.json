@@ -1,0 +1,73 @@
+{
+  "name": "rrg_tail_20",
+  "description": "RRG open with tail length 20; 11 SPDR sectors render deterministically.",
+  "story": "RRG/Rotation",
+  "tags": [
+    "rrg",
+    "rotation",
+    "correctness"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetRrgOpen",
+      "open": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetRrgTail",
+      "len": 20
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "rrg tail 20"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "rrg.open",
+            "value": true
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "rrg.tail_length",
+            "value": 20
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "rrg.sector_count",
+            "value": 11
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    }
+  ]
+}

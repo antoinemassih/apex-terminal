@@ -1,0 +1,69 @@
+{
+  "name": "matrix_gamma_ym",
+  "description": "YM: gamma subsystem drives + observes correctly.",
+  "story": "Matrix/Gamma",
+  "tags": [
+    "matrix",
+    "gamma",
+    "breadth"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "YM"
+    },
+    {
+      "action": "wait",
+      "ms": 900
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SynthGamma",
+      "pane": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "log",
+      "message": "gamma YM"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_gte": {
+            "path": "panes.0.gamma_level_count",
+            "min": 1
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,112 @@
+{
+  "name": "rrg_over_chart_qqq",
+  "description": "RRG panel opens over a live QQQ chart and closes cleanly.",
+  "story": "RRG/Rotation",
+  "tags": [
+    "rrg",
+    "rotation"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "QQQ"
+    },
+    {
+      "action": "wait",
+      "ms": 900
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetRrgOpen",
+      "open": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "rrg.open",
+            "value": true
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "rrg.sector_count",
+            "value": 11
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5.0
+        },
+        {
+          "canvas_bars_within_pane": {
+            "pane": 0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetRrgOpen",
+      "open": false
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "rrg.open",
+            "value": false
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

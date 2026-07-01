@@ -1,0 +1,89 @@
+{
+  "name": "matrix1d_order_avgo",
+  "description": "AVGO @1d: order subsystem drives + observes correctly on the daily.",
+  "story": "Matrix1d/Order",
+  "tags": [
+    "matrix",
+    "order",
+    "timeframe"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "AVGO"
+    },
+    {
+      "action": "wait",
+      "ms": 900
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangeTimeframe",
+      "pane": 0,
+      "tf": "1d"
+    },
+    {
+      "action": "wait",
+      "ms": 800
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedDraftOrder",
+      "pane": 0,
+      "side": "buy",
+      "price": 100.0,
+      "qty": 100
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "log",
+      "message": "order AVGO 1d"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_gte": {
+            "path": "panes.0.order_draft_count",
+            "min": 1
+          }
+        },
+        {
+          "no_live_orders": true
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    }
+  ]
+}

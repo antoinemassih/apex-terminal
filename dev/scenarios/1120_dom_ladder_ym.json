@@ -1,0 +1,124 @@
+{
+  "name": "dom_ladder_ym",
+  "description": "DOM ladder for YM opens, fills a descending sane ladder, and closes.",
+  "story": "Trading/DOM",
+  "tags": [
+    "dom",
+    "ladder",
+    "correctness"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "YM"
+    },
+    {
+      "action": "wait",
+      "ms": 1100
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetDomSidebar",
+      "pane": 0,
+      "open": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 6
+    },
+    {
+      "action": "log",
+      "message": "DOM YM"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_gte": {
+            "path": "panes.0.dom_level_count",
+            "min": 1
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "panes.0.dom_sidebar_open",
+            "value": true
+          }
+        },
+        {
+          "dom_spread_sane": {
+            "pane": 0
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "canvas_all_finite": true
+        },
+        {
+          "canvas_bars_monotonic": true
+        },
+        {
+          "canvas_bars_screen_ordered": true
+        },
+        {
+          "canvas_bar_ohlc_valid": {
+            "pane": 0
+          }
+        },
+        {
+          "fps_above": 5.0
+        },
+        {
+          "canvas_bars_within_pane": {
+            "pane": 0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetDomSidebar",
+      "pane": 0,
+      "open": false
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "panes.0.dom_sidebar_open",
+            "value": false
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

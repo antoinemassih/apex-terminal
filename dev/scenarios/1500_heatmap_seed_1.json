@@ -1,0 +1,70 @@
+{
+  "name": "heatmap_seed_1",
+  "description": "Heatmap pane with 1 seeded cells (cap 200) renders correctly.",
+  "story": "Heatmap/Cells",
+  "tags": [
+    "heatmap",
+    "correctness"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedHeatmapCells",
+      "count": 1
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangePaneType",
+      "pane": 0,
+      "kind": "Heatmap"
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "log",
+      "message": "heatmap 1 cells"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "heatmap.cell_count",
+            "value": 1
+          }
+        },
+        {
+          "pane_type_equals": {
+            "pane": 0,
+            "type": "Heatmap"
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    }
+  ]
+}
