@@ -356,3 +356,71 @@ oracle. Extend the same way per epic:
 Every acceptance criterion above is written to be checkable this way — so each
 story ships with its scenario, exactly as we did for DOM/scanner/RRG/gamma/
 spreadsheet/auto-chart.
+
+---
+
+## 7. Build-on ledger — status of every story vs what already exists
+
+Legend: **DONE** = already functional, reuse as-is · **ENHANCE** = partly exists,
+extend it · **NEW** = build from scratch (scaffold may exist). File anchors point
+at the existing code to build on.
+
+| Story | Status | What already exists / what to add |
+|---|---|---|
+| A1 persist | **NEW** | `watchlist.plays` in-memory only (`gpu.rs:5978`), no serde on `Watchlist`. `Play` IS serde-ready → add `plays.json`/DB. |
+| A2 search/filter | **NEW** | Card list render exists (`plays_panel.rs:663`); no filter/search UI. |
+| A3 books | **NEW** | No collection concept. |
+| A4 dup/rename/archive/delete | **ENHANCE** | **Delete DONE** (`plays_panel.rs:91`); dup/rename/archive new. |
+| B1 author | **NEW (small)** | `Play.author` field exists, never set (`mod.rs:562`). Add a profile + stamp on create. |
+| B2 entry zone | **ENHANCE** | Entry as single price line + click-to-set **DONE**; widen to a low/high zone. |
+| B3 target ladder + allocation | **DONE→ENHANCE** | **T1/T2/T3 with per-target % allocation stepper already in the editor** (`plays_panel.rs:290-386`, `add_target_line`). Add: validate Σpct=1.0 + per-target `note`. |
+| B4 conviction/horizon/catalyst | **NEW** | none of these fields exist. |
+| B5 rich rationale + per-level notes | **ENHANCE** | flat `notes` string **DONE** (`plays_panel.rs:450`); add markdown (reuse `Annotation.body_md`) + per-level notes. |
+| B6 options contract/legs | **ENHANCE** | `contract` + `spread_legs` **model exists** (`mod.rs:441`), no editor UI → build the UI. |
+| B7 snap to key levels | **NEW** | no snap; but gamma walls (`SynthGamma`) + auto-chart output already available to snap to. |
+| B8 new-from-chart | **ENHANCE** | click-to-set + drag lines + `spawn_play_lines` **DONE** (`plays_panel.rs:139`); add a thin "capture drawn levels → Draft" wrapper. |
+| B9 templates | **NEW (on scaffold)** | `PlayTemplate` + `template_name` + `watchlist.play_templates` exist but **inert** → add save/apply. |
+| B10 invalidation/expiry | **NEW** | no such fields. |
+| C1 full on-chart anatomy | **DONE→ENHANCE** | **Entry/T1/T2/T3/Stop lines + tinted zone bands + R:R box + badges + axis tags all render** (`core.rs:7924-8070`). Add: entry-zone band, invalidation line, per-target allocation labels. |
+| C2 anchored annotations | **NEW (wiring)** | `Annotation{anchor(ts,price),body_md,...}` **model exists** (`state/annotations.rs`), **not wired to renderer** → wire a draw path. |
+| C3 live overlay metrics | **ENHANCE** | live R:R box **DONE** (`core.rs:7962`); add live distance / live-R-as-price-moves. |
+| C4 multiple plays / active | **NEW** | one play at a time; no `active_play_id` (`play_lines` is a flat singleton-per-kind vec). |
+| C5 time-anchored elements | **NEW** | `PlayLine` is **price-only, no time anchor** (`mod.rs:480`). |
+| C6 ghost mode (cross-tf overlay) | **ENHANCE** | price-only lines **already overlay on any timeframe**; "display" re-spawns them (`plays_panel.rs:104`). Add ghost styling + import-preview. |
+| C7 thumbnail | **NEW** | reuse the GDI screenshot capture path. |
+| C8 walkthrough | **NEW** | none. |
+| D1 auto-activate | **NEW** | only the **manual "Activate" button DONE** (`plays_panel.rs:94`). No price monitor. |
+| D2 auto-mark hits | **NEW** | order-fill logic exists for `OrderLevel` but is **decoupled** from `Play`. |
+| D3 auto-resolve Won/Lost/Expired | **NEW** | those statuses exist as enum variants but are **never set**. |
+| D4 performance metrics | **NEW** | only `risk_reward` is computed (once). |
+| D5 track record | **NEW** | none. |
+| D6 link play↔orders | **ENHANCE** | **`convert_play_to_orders` DONE** (`plays_panel.rs:612`); store the linkage. |
+| E1 export/import JSON | **NEW (small)** | `Play` serde-ready; copy the `.xol` codec pattern (`state/codec/xol.rs`). |
+| E2 deep link | **NEW** | none. |
+| E3 image card | **NEW** | reuse GDI capture + card renderer. |
+| E4 QR | **NEW** | none. |
+| E5 Discord embed | **ENHANCE** | **`discord::send_message_bg` transport DONE** (`discord.rs:628`), unwired to plays → format an embed. |
+| E6 receive/import flow | **NEW** | none. |
+| F1–F6 feed/discovery/publish | **NEW** | Feed panel exists (News/Discord/Screenshots) → add a Plays tab; `signals_feed` is the inbound-transport pattern; `TODO(community)` seam in `chart_library_panel.rs`. |
+| G1–G5 fork/diff/version/collab | **NEW** | none. |
+| H1 play→paper bracket | **DONE** | **`convert_play_to_orders` (entry+OCO) DONE**; just assert `no_live_orders`. |
+| H2 alerts from play | **ENHANCE** | `AddPriceAlert` **DONE**; wire play levels → alerts. |
+| H3 signal→play | **NEW** | `signals_feed` inbound exists; add a "signal → Draft play" action. |
+| H4 watchlist play badge | **NEW** | none. |
+| H5 gamma/auto-chart snap | **NEW** | see B7; source data exists. |
+| I1 card states | **ENHANCE** | card **DONE** (`plays_panel.rs:663`); add compact/expanded/hover. |
+| I2 live R:R while dragging | **DONE** | live R:R **DONE** + line drag **DONE** — already combined in the editor. |
+| I3 empty states/onboarding | **NEW** | none for plays. |
+| I4 keyboard/palette | **NEW** | none for plays. |
+| I5 undo/redo | **NEW** | drawing undo/redo exists as a pattern to copy. |
+| I6 toasts | **ENHANCE** | `alert_feed` badge system **DONE**; wire play events. |
+| I7 a11y/theming | **ENHANCE** | cards use themed `ui_kit` **DONE**; add a11y labels. |
+
+**Headline:** the **authoring + on-chart + play→order layers are substantially
+built already** (editor with target-ladder allocations, fully-interactive price
+lines with form sync, zone bands + R:R box, cards, activate→OCO). The genuinely
+NEW work concentrates in four areas: **persistence**, **lifecycle/auto-grading**,
+**chart-anchored annotations + multiple/time-anchored plays**, and the **entire
+sharing/feed/social layer**. P0 therefore leans heavily on existing code
+(persist what's already composed; auto-grade what already renders; keep the
+existing overlay + order conversion) rather than rebuilding.
