@@ -34,14 +34,12 @@
     },
     {
       "action": "cmd",
-      "cmd": "SetChartFlag",
-      "pane": 0,
-      "flag": "ShowGamma",
-      "value": true
+      "cmd": "SynthGamma",
+      "pane": 0
     },
     {
       "action": "wait",
-      "ms": 2500
+      "ms": 800
     },
     {
       "action": "wait_frames",

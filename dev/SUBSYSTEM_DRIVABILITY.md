@@ -24,7 +24,7 @@ capture to assert on). Extension = add a *safe* harness command + capture field 
 
 | Subsystem | Renders? | Open/drive via cmd today | Observable today | Extension needed |
 |---|---|---|---|---|
-| DOM ladder | yes | ❌ UI-only `dom.sidebar_open` | ❌ | `SetDomSidebar`/`SetDomOpen` cmd + capture `chart.dom` (levels/best bid-ask/is_live) + asserts. **Auto-populates 61-row mock when open — no feed needed.** |
+| DOM ladder | yes | ❌ UI-only `dom.sidebar_open` | ❌ | `SetDomSidebar` cmd + capture `chart.dom` (levels/best bid-ask/prices_desc/is_live) + asserts. Mock ladder auto-fills — no feed needed. NOTE: mock population is *render-path gated*, and pane 1's sidebar isn't reliably rendered in the default single-pane layout, so `SetDomSidebar` now **populates the mock on command** (mirrors `core.rs`) → DOM is deterministic for any pane. |
 | Order entry | yes | partial (visual-only cancel/clear) | ❌ pane.orders not captured | `SeedDraftOrder` (System A only), `SetOrderPanel` + capture order counts + mgr paper/armed/blocked + safety asserts |
 | Scanner | yes | ❌ UI-only `scanner_open`; live gainers/losers only | ❌ | `SetScannerOpen`, `SeedScannerResults` (deterministic pool) + capture + `scanner_filter_correct` (recompute `apply_scanner`) |
 | RRG | yes | ❌ UI-only `rrg_open` | ❌ | `SetRrgOpen`/`SetRrgTail`/`SetRrgTimeOffset` + capture effective sectors. **Demo-only but DETERMINISTIC (11 SPDR sectors)** → great assertion target |

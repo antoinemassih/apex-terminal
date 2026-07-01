@@ -440,8 +440,8 @@ for i,sym in enumerate(["SPY","QQQ","NVDA"]):
          ["options","gamma","correctness"],
          [{"action":"reset"},{"action":"wait_frames","count":3},
           cmd("SwapPaneSymbol",pane=0,symbol=sym),{"action":"wait","ms":1200},{"action":"wait_frames","count":3},
-          cmd("SetChartFlag",pane=0,flag="ShowGamma",value=True),
-          {"action":"wait","ms":2500},{"action":"wait_frames","count":5},
+          cmd("SynthGamma",pane=0),
+          {"action":"wait","ms":800},{"action":"wait_frames","count":5},
           {"action":"log","message":f"gamma on {sym}"},
           A({"gamma_overlay_active":{"pane":0}}, {"no_panic":True},{"viewport_sane":True},{"fps_above":5.0})],
          f"Enabling the gamma overlay on {sym} actually populates gamma levels.")

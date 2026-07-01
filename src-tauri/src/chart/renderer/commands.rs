@@ -719,6 +719,17 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         AppCommand::SetDomSidebar { pane, open } => {
             if let Some(p) = panes.get_mut(pane) {
                 p.dom.sidebar_open = open;
+                // Populate the mock ladder on command (not just in the render
+                // path) so DOM is observable for ANY pane — pane 1's sidebar
+                // isn't reliably rendered in the harness's default layout, so
+                // the render-path fallback never fires there. Mirrors core.rs.
+                if open && p.dom.levels.is_empty() {
+                    let center = p.bars.last().map(|b| b.close).filter(|&c| c > 0.0).unwrap_or(500.0);
+                    if p.dom.center_price <= 0.0 { p.dom.center_price = center; }
+                    if p.dom.tick_size <= 0.0 { p.dom.tick_size = 0.01; }
+                    p.dom.levels = crate::chart_renderer::ui::panels::dom_panel::generate_mock_levels(
+                        p.dom.center_price, p.dom.tick_size, 30);
+                }
             }
         }
 

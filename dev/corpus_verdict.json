@@ -1,0 +1,131 @@
+{
+  "done": true,
+  "total": 1005,
+  "correct": 974,
+  "real": [
+    {
+      "file": "1901_pane1_dom_spy.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1904_pane1_dom_qqq.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1907_pane1_dom_aapl.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1910_pane1_dom_msft.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1913_pane1_dom_nvda.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1916_pane1_dom_tsla.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1919_pane1_dom_amzn.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1922_pane1_dom_meta.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1925_pane1_dom_googl.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1928_pane1_dom_amd.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1931_pane1_dom_nflx.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1934_pane1_dom_iwm.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1937_pane1_dom_dia.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1940_pane1_dom_gld.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1943_pane1_dom_xlf.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1946_pane1_dom_xlk.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1949_pane1_dom_avgo.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1952_pane1_dom_cost.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1955_pane1_dom_es.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1958_pane1_dom_nq.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1961_pane1_dom_ym.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1964_pane1_dom_rty.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1967_pane1_dom_cl.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1970_pane1_dom_gc.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1973_pane1_dom_si.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1976_pane1_dom_zb.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1979_pane1_dom_zn.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1982_pane1_dom_hg.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1985_pane1_dom_btc_usd.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1988_pane1_dom_eth_usd.json",
+      "detail": "http None"
+    },
+    {
+      "file": "1991_pane1_dom_sol_usd.json",
+      "detail": "http None"
+    }
+  ]
+}
