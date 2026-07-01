@@ -615,6 +615,7 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
 
         AppCommand::SwapPaneSymbol { pane, symbol } => {
             if let Some(p) = panes.get_mut(pane) {
+                p.request_gen = p.request_gen.wrapping_add(1);
                 p.symbol = symbol.clone();
                 p.symbol_meta = crate::foundation::types::symbol_or_guess(&symbol);
                 p.pending_symbol_change = Some(symbol);
@@ -623,6 +624,7 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
 
         AppCommand::ChangeTimeframe { pane, tf } => {
             if let Some(p) = panes.get_mut(pane) {
+                p.request_gen = p.request_gen.wrapping_add(1);
                 p.timeframe = tf.clone();
                 p.pending_timeframe_change = Some(tf);
             }

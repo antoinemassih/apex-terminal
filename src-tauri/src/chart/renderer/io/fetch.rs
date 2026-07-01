@@ -1718,7 +1718,7 @@ pub(crate) fn fetch_drawings_background(sym: String) {
 }
 
 /// Public entry point for standalone binary to trigger initial data load.
-pub fn fetch_bars_background_pub(sym: String, tf: String) { fetch_bars_background(sym, tf); }
+pub fn fetch_bars_background_pub(sym: String, tf: String) { fetch_bars_background(sym, tf, 0); }
 
 /// Fetch bars for an option contract using the OCC ticker as the fetch key,
 /// but emit `ChartCommand::LoadBars` with the pane's display symbol so existing
@@ -1823,6 +1823,7 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
                 symbol: display_sym.clone(),
                 timeframe: tf.clone(),
                 bars: gpu_bars, timestamps,
+                gen: 0, // option-chart path (not the rapid symbol-switch stock path)
             };
             for tx in &txs { let _ = tx.send(cmd.clone()); } crate::wake_native_ui();
         };
@@ -1901,6 +1902,7 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
                     timeframe: tf.clone(),
                     bars: vec![],
                     timestamps: vec![],
+                    gen: 0,
                 };
                 for tx in &txs { let _ = tx.send(cmd.clone()); }
                 crate::wake_native_ui();
@@ -1909,7 +1911,7 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
     });
 }
 
-pub(crate) fn fetch_bars_background(sym: String, tf: String) {
+pub(crate) fn fetch_bars_background(sym: String, tf: String, gen: u64) {
     let txs: Vec<std::sync::mpsc::Sender<ChartCommand>> = crate::NATIVE_CHART_TXS
         .get()
         .and_then(|m| m.lock().ok())
@@ -1987,6 +1989,7 @@ pub(crate) fn fetch_bars_background(sym: String, tf: String) {
             timeframe: tf.clone(),
             bars: gpu_bars,
             timestamps: timestamps.clone(),
+            gen, // stamp the result with the request generation captured at spawn
         };
         for tx in &txs { let _ = tx.send(cmd.clone()); }
         crate::wake_native_ui();

@@ -1252,7 +1252,7 @@ pub(crate) fn render(
                     let sym = panes[ap].symbol.clone();
                     let tf = panes[ap].timeframe.clone();
                     let initial = ChartCommand::LoadBars {
-                        symbol: sym.clone(), timeframe: tf.clone(), bars: vec![], timestamps: vec![],
+                        symbol: sym.clone(), timeframe: tf.clone(), bars: vec![], timestamps: vec![], gen: 0,
                     };
                     {
                         let global = crate::NATIVE_CHART_TXS.get_or_init(|| std::sync::Mutex::new(Vec::new()));
@@ -1260,7 +1260,7 @@ pub(crate) fn render(
                     }
                     crate::chart_renderer::gpu::open_window(rx, initial);
                     crate::chart_renderer::gpu::fetch_bars_background(
-                        panes[ap].symbol.clone(), panes[ap].timeframe.clone());
+                        panes[ap].symbol.clone(), panes[ap].timeframe.clone(), 0);
                 }
 
                 crate::ui_kit::widgets::Separator::vertical().spacing(4.0).show(ui, t);

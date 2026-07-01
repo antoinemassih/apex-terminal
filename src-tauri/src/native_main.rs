@@ -222,6 +222,7 @@ fn main() {
         timeframe: "5m".into(),
         bars: vec![],
         timestamps: vec![],
+        gen: 0,
     };
 
     // Register the sender for tick forwarding

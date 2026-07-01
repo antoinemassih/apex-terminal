@@ -823,6 +823,11 @@ pub enum ChartCommand {
         timeframe: String,
         bars: Vec<Bar>,
         timestamps: Vec<i64>,
+        /// Per-pane request generation captured at fetch time. The handler drops a
+        /// result whose gen is older than the pane's current generation (a
+        /// superseded request from a rapid symbol/timeframe switch).
+        /// 0 = unversioned / force-apply (initial loads, reset).
+        gen: u64,
     },
     /// Prepend historical bars (pagination — older data loaded on scroll-left)
     PrependBars {

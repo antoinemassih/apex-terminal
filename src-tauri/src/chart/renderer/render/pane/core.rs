@@ -886,7 +886,7 @@ fn render_chart_pane(
                     chart.pending_timeframe_change = Some(new_tf);
                 }
                 if new_sym == chart.symbol && chart.bars.is_empty() && !new_sym.is_empty() {
-                    fetch_bars_background(new_sym, chart.timeframe.clone());
+                    fetch_bars_background(new_sym, chart.timeframe.clone(), 0);
                 }
             } else {
                 // Already-active tab clicked — open the unified pane picker
@@ -1105,7 +1105,7 @@ fn render_chart_pane(
                                             .fill(egui::Color32::TRANSPARENT)
                                         ).clicked() {
                                             chart.pending_symbol_change = Some(sym.clone());
-                                            fetch_bars_background(sym.clone(), chart.timeframe.clone());
+                                            fetch_bars_background(sym.clone(), chart.timeframe.clone(), 0);
                                             close_picker = true;
                                         }
                                         ui.label(egui::RichText::new(name).size(crate::chart_renderer::ui::style::font_sm()).color(t.dim));
@@ -1120,7 +1120,7 @@ fn render_chart_pane(
                                             .fill(egui::Color32::TRANSPARENT)
                                         ).clicked() {
                                             chart.pending_symbol_change = Some(sym.clone());
-                                            fetch_bars_background(sym.clone(), chart.timeframe.clone());
+                                            fetch_bars_background(sym.clone(), chart.timeframe.clone(), 0);
                                             close_picker = true;
                                         }
                                         ui.label(egui::RichText::new(name).size(crate::chart_renderer::ui::style::font_sm()).color(t.dim));

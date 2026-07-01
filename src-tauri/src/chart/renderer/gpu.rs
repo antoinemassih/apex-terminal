@@ -2484,6 +2484,10 @@ pub(crate) struct Chart {
     pub(crate) indicator_bar_count: usize, // bar count when indicators were last computed
     pub(crate) next_indicator_id: u32,
     pub(crate) editing_indicator: Option<u32>, // id of indicator being edited
+    /// Monotonic request generation, bumped on every symbol/timeframe change. A
+    /// LoadBars result carries the gen it was fetched under; if it arrives stale
+    /// (gen < this) it's dropped so a superseded async load can't clobber the pane.
+    pub(crate) request_gen: u64,
     pub(crate) vs: f32, pub(crate) vc: u32, pub(crate) price_lock: Option<(f32,f32)>,
     pub(crate) log_scale: bool,
     pub(crate) drag_zoom_active: bool,
@@ -2820,7 +2824,7 @@ impl Chart {
             option_strike: 0.0, option_expiry: String::new(), option_con_id: 0, option_contract: String::new(),
             bar_source_mark: false,
             bars: vec![], timestamps: vec![], drawings: vec![], tab_cache: std::collections::HashMap::new(), indicator_bar_count: 0,
-            next_indicator_id: 5, editing_indicator: None,
+            next_indicator_id: 5, editing_indicator: None, request_gen: 0,
             indicators: vec![
                 Indicator::new(1, IndicatorType::SMA, 20, "#00bef0"),
                 Indicator::new(2, IndicatorType::SMA, 50, "#f0961a"),
@@ -2956,13 +2960,19 @@ impl Chart {
 
     fn process(&mut self, cmd: ChartCommand) {
         match cmd {
-            ChartCommand::LoadBars { bars, timestamps, symbol, timeframe, .. } => {
+            ChartCommand::LoadBars { bars, timestamps, symbol, timeframe, gen, .. } => {
                 // Skip if this pane is an option chart and the LoadBars is for the underlying
                 if self.is_option && symbol != self.symbol { return; }
-                // Stale-timeframe drop: same symbol but an older timeframe than the
-                // pane now wants (rapid tf switching). Without this, a late result
-                // from a superseded request overwrites both the bars AND self.timeframe
-                // (set below), so the chart settles on the wrong tf.
+                // Stale-generation drop (the authoritative guard): this result was
+                // fetched under an older request generation than the pane now holds —
+                // i.e. the user has since switched symbol/timeframe (each bumps the
+                // generation), so this load is superseded. gen == 0 is unversioned
+                // (initial load / reset) and always applies. This catches even the
+                // same-(symbol,timeframe) races the symbol/tf guards below cannot.
+                if gen != 0 && gen < self.request_gen { return; }
+                // Stale-timeframe / -symbol drops (belt-and-suspenders, and they also
+                // cover gen==0 / unversioned loads): don't let a late result overwrite
+                // the pane's current symbol or timeframe.
                 if symbol == self.symbol && !self.timeframe.is_empty() && timeframe != self.timeframe {
                     return;
                 }
@@ -4815,7 +4825,8 @@ pub(crate) fn apply_pane_events(
                     pane.drawings_requested = false;
                     pane.drawings.clear();
                     if apply_bars_fetch {
-                        fetch_bars_background(symbol.clone(), tf);
+                        pane.request_gen = pane.request_gen.wrapping_add(1);
+                        fetch_bars_background(symbol.clone(), tf, pane.request_gen);
                     }
                 }
             }
@@ -4862,7 +4873,8 @@ pub(crate) fn apply_pane_events(
                     pane.replay_mode = false;
                     pane.replay_playing = false;
                     if apply_bars_fetch {
-                        fetch_bars_background(sym.clone(), tf.clone());
+                        pane.request_gen = pane.request_gen.wrapping_add(1);
+                        fetch_bars_background(sym.clone(), tf.clone(), pane.request_gen);
                     }
                     if !pane.symbol_overlays.is_empty() {
                         for ov in &mut pane.symbol_overlays {
@@ -8786,7 +8798,9 @@ impl ApplicationHandler for App {
                     if pane.is_option && !pane.option_contract.is_empty() {
                         fetch_option_bars_background(pane.option_contract.clone(), sym.clone(), tf.clone(), pane.bar_source_mark);
                     } else {
-                        fetch_bars_background(sym.clone(), tf.clone());
+                        // Origin pane fetch (its request_gen was bumped in commands.rs
+                        // when the symbol/timeframe change was queued).
+                        fetch_bars_background(sym.clone(), tf.clone(), pane.request_gen);
                     }
 
                     // Overlay bars are rendered by index, so they must be on the same

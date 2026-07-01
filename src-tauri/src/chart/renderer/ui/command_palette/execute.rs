@@ -28,7 +28,7 @@ pub(super) fn execute(
         panes[ap].symbol = sym.to_string();
         panes[ap].symbol_meta = crate::foundation::types::symbol_or_guess(sym);
         panes[ap].pending_symbol_change = Some(sym.to_string());
-        fetch_bars_background(sym.to_string(), tf);
+        fetch_bars_background(sym.to_string(), tf, 0);
         // Wave 12c: the cross-pane SubscriptionBus publish for this
         // symbol change happens centrally in `App::about_to_wait` when
         // `pending_symbol_change` is consumed. No per-call-site publish
@@ -54,7 +54,7 @@ pub(super) fn execute(
         panes[ap].timeframe = tf.to_string();
         panes[ap].pending_timeframe_change = Some(tf.to_string());
         let sym = panes[ap].symbol.clone();
-        fetch_bars_background(sym, tf.to_string());
+        fetch_bars_background(sym, tf.to_string(), 0);
         return;
     }
 
@@ -158,7 +158,7 @@ pub(super) fn execute(
             panes[ap].symbol = sym.clone();
             panes[ap].symbol_meta = crate::foundation::types::symbol_or_guess(&sym);
             panes[ap].pending_symbol_change = Some(sym.clone());
-            fetch_bars_background(sym, tf);
+            fetch_bars_background(sym, tf, 0);
         }
         return;
     }
@@ -172,7 +172,7 @@ pub(super) fn execute(
                 panes[ap].symbol = sym.clone();
                 panes[ap].symbol_meta = crate::foundation::types::symbol_or_guess(&sym);
                 panes[ap].pending_symbol_change = Some(sym.clone());
-                fetch_bars_background(sym, tf);
+                fetch_bars_background(sym, tf, 0);
             }
         }
         return;
