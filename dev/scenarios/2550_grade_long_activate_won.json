@@ -1,0 +1,137 @@
+{
+  "name": "grade_long_activate_won",
+  "description": "Long play: below entry stays Draft, crossing entry -> Active, reaching target -> Won.",
+  "story": "Playbook/Grading",
+  "tags": [
+    "playbook",
+    "grading",
+    "lifecycle"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlaybookPanel",
+      "open": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "GRLW",
+      "long": true,
+      "entry": 100.0,
+      "target": 110.0,
+      "stop": 95.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.status",
+            "value": "DRAFT"
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "GradePlaysAtPrice",
+      "symbol": "GRLW",
+      "price": 98.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "GRLW @ 98.0 -> DRAFT"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.status",
+            "value": "DRAFT"
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "GradePlaysAtPrice",
+      "symbol": "GRLW",
+      "price": 101.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "GRLW @ 101.0 -> ACTIVE"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.status",
+            "value": "ACTIVE"
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "GradePlaysAtPrice",
+      "symbol": "GRLW",
+      "price": 110.5
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "GRLW @ 110.5 -> WON"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.status",
+            "value": "WON"
+          }
+        }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "no_live_orders": true
+        }
+      ]
+    }
+  ]
+}

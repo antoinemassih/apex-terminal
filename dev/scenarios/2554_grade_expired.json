@@ -1,0 +1,97 @@
+{
+  "name": "grade_expired",
+  "description": "A play past its expiry resolves to Expired.",
+  "story": "Playbook/Grading",
+  "tags": [
+    "playbook",
+    "grading",
+    "lifecycle"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlaybookPanel",
+      "open": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "GREX",
+      "long": true,
+      "entry": 100.0,
+      "target": 110.0,
+      "stop": 95.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlayExpiry",
+      "idx": 0,
+      "expiry": 1
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.status",
+            "value": "DRAFT"
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "GradePlaysAtPrice",
+      "symbol": "GREX",
+      "price": 98.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "GREX @ 98.0 -> EXPIRED"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.status",
+            "value": "EXPIRED"
+          }
+        }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "no_live_orders": true
+        }
+      ]
+    }
+  ]
+}

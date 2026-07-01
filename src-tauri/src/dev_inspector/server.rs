@@ -2180,6 +2180,16 @@ fn parse_app_command(
         "ClearPlays" | "clear_plays" => Ok(AppCommand::ClearPlays),
         "PersistPlays" | "persist_plays" => Ok(AppCommand::PersistPlays),
         "ReloadPlays" | "reload_plays" => Ok(AppCommand::ReloadPlays),
+        "GradePlaysAtPrice" | "grade_plays_at_price" => {
+            let symbol = body["symbol"].as_str().unwrap_or("SPY").to_string();
+            let price  = body["price"].as_f64().unwrap_or(0.0) as f32;
+            Ok(AppCommand::GradePlaysAtPrice { symbol, price })
+        }
+        "SetPlayExpiry" | "set_play_expiry" => {
+            let idx    = body["idx"].as_u64().unwrap_or(0) as usize;
+            let expiry = body["expiry"].as_i64().unwrap_or(0);
+            Ok(AppCommand::SetPlayExpiry { idx, expiry })
+        }
 
         // ── Alerts ─────────────────────────────────────────────────────────
         "PlaceAllDraftAlerts" | "place_all_draft_alerts" => Ok(AppCommand::PlaceAllDraftAlerts),

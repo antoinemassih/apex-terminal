@@ -1,0 +1,112 @@
+{
+  "name": "grade_terminal_sticks",
+  "description": "Once Won, a play stays Won even if price later reaches the stop (terminal state is sticky).",
+  "story": "Playbook/Grading",
+  "tags": [
+    "playbook",
+    "grading",
+    "lifecycle"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlaybookPanel",
+      "open": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "GRTS",
+      "long": true,
+      "entry": 100.0,
+      "target": 110.0,
+      "stop": 95.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.status",
+            "value": "DRAFT"
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "GradePlaysAtPrice",
+      "symbol": "GRTS",
+      "price": 110.5
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "GRTS @ 110.5 -> WON"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.status",
+            "value": "WON"
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "GradePlaysAtPrice",
+      "symbol": "GRTS",
+      "price": 94.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "GRTS @ 94.0 -> WON"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.status",
+            "value": "WON"
+          }
+        }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "no_live_orders": true
+        }
+      ]
+    }
+  ]
+}

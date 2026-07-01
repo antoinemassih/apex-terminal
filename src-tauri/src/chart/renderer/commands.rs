@@ -305,6 +305,12 @@ pub enum AppCommand {
     /// Reload plays from the debug store into memory (persistence test).
     #[cfg(debug_assertions)]
     ReloadPlays,
+    /// Auto-grade all plays for `symbol` against a synthetic `price` (lifecycle test).
+    #[cfg(debug_assertions)]
+    GradePlaysAtPrice { symbol: String, price: f32 },
+    /// Set play[idx].expiry (unix seconds; <=0 clears) — for expiry grading tests.
+    #[cfg(debug_assertions)]
+    SetPlayExpiry { idx: usize, expiry: i64 },
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -328,6 +334,35 @@ pub fn drain_and_dispatch(panes: &mut [Chart], watchlist: &mut Watchlist) {
     for cmd in cmds {
         dispatch(panes, watchlist, cmd);
     }
+    grade_open_plays_live(panes, watchlist);
+}
+
+/// Auto-grade open plays against current prices each frame (P0/D1-D3). Price
+/// source per play: the watchlist row for its symbol, else the active pane's
+/// last bar close if the symbol matches. Persists only when a status changes,
+/// so there's no disk churn on quiet frames. Cheap: only open plays are scanned.
+fn grade_open_plays_live(panes: &[Chart], watchlist: &mut Watchlist) {
+    if watchlist.plays.iter().all(|p| !p.is_open()) { return; }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+    // Snapshot per-symbol prices we can resolve (avoids borrowing watchlist while mutating plays).
+    let mut changed = 0usize;
+    let open_syms: std::collections::HashSet<String> =
+        watchlist.plays.iter().filter(|p| p.is_open()).map(|p| p.symbol.to_uppercase()).collect();
+    let mut price_of: std::collections::HashMap<String, f32> = std::collections::HashMap::new();
+    for sym in &open_syms {
+        if let Some(px) = watchlist.get_price(sym) {
+            price_of.insert(sym.clone(), px);
+        } else if let Some(p) = panes.iter().find(|p| p.symbol.eq_ignore_ascii_case(sym) && !p.bars.is_empty()) {
+            if let Some(b) = p.bars.last() { if b.close > 0.0 { price_of.insert(sym.clone(), b.close); } }
+        }
+    }
+    for play in watchlist.plays.iter_mut().filter(|p| p.is_open()) {
+        if let Some(&px) = price_of.get(&play.symbol.to_uppercase()) {
+            if crate::chart_renderer::grade_play(play, px, now) { changed += 1; }
+        }
+    }
+    if changed > 0 { watchlist.persist_plays(); }
 }
 
 // ─── Transition-log helper ────────────────────────────────────────────────────
@@ -872,6 +907,20 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         AppCommand::ReloadPlays => {
             watchlist.plays = crate::chart_renderer::gpu::load_plays_from(
                 &crate::chart_renderer::gpu::plays_debug_path());
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::GradePlaysAtPrice { symbol, price } => {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+            crate::chart_renderer::grade_plays(&mut watchlist.plays, &symbol, price, now);
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SetPlayExpiry { idx, expiry } => {
+            if let Some(p) = watchlist.plays.get_mut(idx) {
+                p.expiry = if expiry > 0 { Some(expiry) } else { None };
+            }
         }
 
         #[cfg(debug_assertions)]

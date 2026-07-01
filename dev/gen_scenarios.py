@@ -1186,5 +1186,42 @@ emit(2541,"playbook_persist_empty","Playbook/Persistence",["playbook","persisten
       A({"state_field_equals":{"path":"playbook.play_count","value":0}},{"no_panic":True})],
      "An empty playbook persists and reloads as empty (no crash, no phantom plays).")
 
+# ── 2550-2559: Playbook AUTO-GRADING lifecycle (D1-D3) ───────────────────────
+# Synthetic symbols (not in the watchlist) so GradePlaysAtPrice fully controls
+# the outcome (the live per-frame grader has no price for them). Status oracle
+# via playbook.plays.0.status. NO orders are ever submitted.
+def grade_scn(num, name, sym, long, e, t, s, steps_prices, desc, expiry=None):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":3},
+           cmd("SetPlaybookPanel",open=True),
+           cmd("SeedPlay",symbol=sym,long=long,entry=e,target=t,stop=s),{"action":"wait_frames","count":2}]
+    if expiry is not None:
+        steps+=[cmd("SetPlayExpiry",idx=0,expiry=expiry),{"action":"wait_frames","count":1}]
+    steps+=[A({"state_field_equals":{"path":"playbook.plays.0.status","value":"DRAFT"}})]
+    for (price,expect) in steps_prices:
+        steps+=[cmd("GradePlaysAtPrice",symbol=sym,price=price),{"action":"wait_frames","count":2},
+                {"action":"log","message":f"{sym} @ {price} -> {expect}"},
+                A({"state_field_equals":{"path":"playbook.plays.0.status","value":expect}})]
+    steps+=[A({"no_panic":True},*SAFETY)]
+    emit(num, name, "Playbook/Grading", ["playbook","grading","lifecycle"], steps, desc)
+
+grade_scn(2550,"grade_long_activate_won","GRLW",True,100.0,110.0,95.0,
+          [(98.0,"DRAFT"),(101.0,"ACTIVE"),(110.5,"WON")],
+          "Long play: below entry stays Draft, crossing entry -> Active, reaching target -> Won.")
+grade_scn(2551,"grade_long_lost","GRLL",True,100.0,110.0,95.0,
+          [(101.0,"ACTIVE"),(94.0,"LOST")],
+          "Long play activates then hits stop -> Lost.")
+grade_scn(2552,"grade_short_won","GRSW",False,200.0,170.0,215.0,
+          [(201.0,"DRAFT"),(199.0,"ACTIVE"),(169.0,"WON")],
+          "Short play: above entry stays Draft, crossing entry down -> Active, reaching target -> Won.")
+grade_scn(2553,"grade_short_lost","GRSL",False,200.0,170.0,215.0,
+          [(199.0,"ACTIVE"),(216.0,"LOST")],
+          "Short play activates then hits stop above -> Lost.")
+grade_scn(2554,"grade_expired","GREX",True,100.0,110.0,95.0,
+          [(98.0,"EXPIRED")],
+          "A play past its expiry resolves to Expired.", expiry=1)
+grade_scn(2555,"grade_terminal_sticks","GRTS",True,100.0,110.0,95.0,
+          [(110.5,"WON"),(94.0,"WON")],
+          "Once Won, a play stays Won even if price later reaches the stop (terminal state is sticky).")
+
 print(f"generated {len(made)} scenarios into {OUT}")
 for p in made[:3]: print("  e.g.", os.path.basename(p))

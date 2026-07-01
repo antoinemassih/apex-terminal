@@ -1,0 +1,112 @@
+{
+  "name": "grade_short_lost",
+  "description": "Short play activates then hits stop above -> Lost.",
+  "story": "Playbook/Grading",
+  "tags": [
+    "playbook",
+    "grading",
+    "lifecycle"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlaybookPanel",
+      "open": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "GRSL",
+      "long": false,
+      "entry": 200.0,
+      "target": 170.0,
+      "stop": 215.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.status",
+            "value": "DRAFT"
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "GradePlaysAtPrice",
+      "symbol": "GRSL",
+      "price": 199.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "GRSL @ 199.0 -> ACTIVE"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.status",
+            "value": "ACTIVE"
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "GradePlaysAtPrice",
+      "symbol": "GRSL",
+      "price": 216.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "GRSL @ 216.0 -> LOST"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.status",
+            "value": "LOST"
+          }
+        }
+      ]
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "no_panic": true
+        },
+        {
+          "no_live_orders": true
+        }
+      ]
+    }
+  ]
+}

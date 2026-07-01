@@ -7108,6 +7108,16 @@ impl Watchlist {
         None
     }
 
+    /// Current live price for a symbol from any watchlist row (0/unloaded → None).
+    pub(crate) fn get_price(&self, sym: &str) -> Option<f32> {
+        for sec in &self.sections {
+            if let Some(item) = sec.items.iter().find(|i| i.symbol.eq_ignore_ascii_case(sym)) {
+                if item.loaded && item.price > 0.0 { return Some(item.price); }
+            }
+        }
+        None
+    }
+
     /// Collect all symbols across all sections.
     fn all_symbols(&self) -> Vec<String> {
         self.sections.iter().flat_map(|s| s.items.iter().map(|i| i.symbol.clone())).collect()

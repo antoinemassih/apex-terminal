@@ -517,6 +517,13 @@ pub(crate) struct Play {
     pub risk_reward: f32,      // computed: (target - entry) / (entry - stop)
     pub tags: Vec<String>,     // "momentum", "breakout", "earnings", etc.
     pub template_name: Option<String>,
+    // ── Auto-grading lifecycle (P0/D1-D3) ─────────────────────────────────
+    /// Unix seconds when price first crossed entry (Draft/Published → Active).
+    #[serde(default)] pub activated_at: Option<i64>,
+    /// Unix seconds when the play resolved (Won/Lost/Expired).
+    #[serde(default)] pub resolved_at: Option<i64>,
+    /// Optional expiry (unix seconds); past this with no resolution → Expired.
+    #[serde(default)] pub expiry: Option<i64>,
 }
 
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -564,8 +571,61 @@ impl Play {
             risk_reward: rr,
             tags: vec![],
             template_name: None,
+            activated_at: None,
+            resolved_at: None,
+            expiry: None,
         }
     }
+
+    /// Is this play still open (can transition)?
+    pub fn is_open(&self) -> bool {
+        matches!(self.status, PlayStatus::Draft | PlayStatus::Published | PlayStatus::Active)
+    }
+}
+
+/// Auto-grade a single play against a `price` for its symbol at time `now`
+/// (unix seconds). Pure state transition, no IO. Trigger semantics:
+///   Draft/Published → Active when price reaches the entry trigger
+///     (long: price ≥ entry; short: price ≤ entry).
+///   Active → Won at target (long: ≥ target; short: ≤ target).
+///   Active → Lost at stop  (long: ≤ stop;  short: ≥ stop).
+///   Open play past `expiry` → Expired.
+/// Returns true if the status changed.
+pub(crate) fn grade_play(play: &mut Play, price: f32, now: i64) -> bool {
+    use PlayStatus::*;
+    if !play.is_open() { return false; }
+    let before = play.status;
+    let long = matches!(play.direction, PlayDirection::Long);
+    // Expiry: an open play past its expiry resolves to Expired.
+    if let Some(exp) = play.expiry {
+        if now >= exp {
+            play.status = Expired;
+            play.resolved_at = Some(now);
+            return play.status != before;
+        }
+    }
+    // Activation.
+    if matches!(play.status, Draft | Published) {
+        let triggered = if long { price >= play.entry_price } else { price <= play.entry_price };
+        if triggered { play.status = Active; play.activated_at = Some(now); }
+    }
+    // Resolution (a gap straight through resolves in the same call).
+    if matches!(play.status, Active) {
+        let hit_target = if long { price >= play.target_price } else { price <= play.target_price };
+        let hit_stop   = play.stop_price > 0.0
+            && if long { price <= play.stop_price } else { price >= play.stop_price };
+        if hit_target { play.status = Won;  play.resolved_at = Some(now); }
+        else if hit_stop { play.status = Lost; play.resolved_at = Some(now); }
+    }
+    play.status != before
+}
+
+/// Grade every play for `symbol` against `price`. Returns the number changed.
+pub(crate) fn grade_plays(plays: &mut [Play], symbol: &str, price: f32, now: i64) -> usize {
+    plays.iter_mut()
+        .filter(|p| p.symbol.eq_ignore_ascii_case(symbol))
+        .map(|p| grade_play(p, price, now) as usize)
+        .sum()
 }
 
 /// Tab selector for the Book pane (Positions/Orders + Journal).
