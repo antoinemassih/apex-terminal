@@ -311,6 +311,9 @@ pub enum AppCommand {
     /// Set play[idx].expiry (unix seconds; <=0 clears) — for expiry grading tests.
     #[cfg(debug_assertions)]
     SetPlayExpiry { idx: usize, expiry: i64 },
+    /// Set the local author handle stamped on new plays.
+    #[cfg(debug_assertions)]
+    SetAuthor { handle: String },
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -889,7 +892,15 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         AppCommand::SeedPlay { symbol, long, entry, target, stop } => {
             use crate::chart_renderer::{Play, PlayDirection, PlayType};
             let dir = if long { PlayDirection::Long } else { PlayDirection::Short };
-            watchlist.plays.push(Play::new(&symbol, dir, PlayType::Directional, entry, target, stop));
+            let mut play = Play::new(&symbol, dir, PlayType::Directional, entry, target, stop);
+            play.author = crate::chart_renderer::gpu::author_handle();
+            watchlist.plays.push(play);
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SetAuthor { handle } => {
+            // In-memory only — never write the user's real author.txt from a test.
+            crate::chart_renderer::gpu::set_author_handle_mem(&handle);
         }
 
         #[cfg(debug_assertions)]

@@ -2190,6 +2190,10 @@ fn parse_app_command(
             let expiry = body["expiry"].as_i64().unwrap_or(0);
             Ok(AppCommand::SetPlayExpiry { idx, expiry })
         }
+        "SetAuthor" | "set_author" => {
+            let handle = body["handle"].as_str().unwrap_or("").to_string();
+            Ok(AppCommand::SetAuthor { handle })
+        }
 
         // ── Alerts ─────────────────────────────────────────────────────────
         "PlaceAllDraftAlerts" | "place_all_draft_alerts" => Ok(AppCommand::PlaceAllDraftAlerts),

@@ -1799,6 +1799,30 @@ pub(crate) fn save_plays(plays: &[super::Play]) { save_plays_to(&plays_path(), p
 #[cfg(debug_assertions)]
 pub(crate) fn plays_debug_path() -> std::path::PathBuf { plays_data_file("plays.debug.json") }
 
+// ── Author identity (playbook attribution) ──────────────────────────────────
+// The local user's handle, stamped on plays they create so shared plays are
+// attributable. Persisted as a plain file; empty until the user sets one.
+static PLAY_AUTHOR: std::sync::OnceLock<std::sync::Mutex<String>> = std::sync::OnceLock::new();
+fn author_path() -> std::path::PathBuf { plays_data_file("author.txt") }
+pub(crate) fn author_handle() -> String {
+    PLAY_AUTHOR
+        .get_or_init(|| std::sync::Mutex::new(
+            std::fs::read_to_string(author_path()).unwrap_or_default().trim().to_string()))
+        .lock().map(|g| g.clone()).unwrap_or_default()
+}
+/// Set the in-memory author without persisting (used by tests + do_reset so the
+/// user's real author.txt is never touched).
+pub(crate) fn set_author_handle_mem(handle: &str) {
+    let cell = PLAY_AUTHOR.get_or_init(|| std::sync::Mutex::new(String::new()));
+    if let Ok(mut g) = cell.lock() { *g = handle.to_string(); }
+}
+/// Set + persist the author handle (the real settings path).
+#[allow(dead_code)]
+pub(crate) fn set_author_handle(handle: &str) {
+    set_author_handle_mem(handle);
+    let _ = std::fs::write(author_path(), handle);
+}
+
 /// Classify an apex-data unified-feed drawing into the terminal's source bucket
 /// ("trendlines" | "chart_patterns" | "candles") so the existing replace-by-source
 /// render path applies. Patterns carry `detection_method = "pattern:*"`; candle

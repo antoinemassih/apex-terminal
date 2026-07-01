@@ -470,6 +470,7 @@ fn draw_play_editor(
                     play.notes = watchlist.play_editor_notes.trim().to_string();
                     play.quantity = 1; // not important anymore
                     play.tags = watchlist.play_editor_tags.clone();
+                    play.author = crate::chart_renderer::gpu::author_handle();
 
                     // Add target allocations
                     let t1_pct = watchlist.play_editor_target_pct.parse::<f32>().unwrap_or(100.0) / 100.0;

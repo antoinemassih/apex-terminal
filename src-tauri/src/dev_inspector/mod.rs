@@ -1034,6 +1034,7 @@ pub fn end_frame(
         "stop":         p.stop_price,
         "risk_reward":  p.risk_reward,
         "status":       p.status.label(),
+        "author":       p.author,
     })).collect();
     // Auto-charting panel: open state + the global AutoDrawConfig the panel edits.
     let adc = crate::chart_renderer::gpu::auto_draw_config();
@@ -1113,6 +1114,7 @@ pub fn end_frame(
         "playbook": {
             "open":       watchlist.playbook_panel_open,
             "play_count": watchlist.plays.len(),
+            "author":     crate::chart_renderer::gpu::author_handle(),
             "plays":      plays_json,
         },
         // ── Auto-charting panel (front-end) ───────────────────────────────
@@ -1347,6 +1349,8 @@ fn do_reset() {
     push(AppCommand::SetAutoChartPanel { open: false });
     push(AppCommand::SetPlaybookPanel { open: false });
     push(AppCommand::ClearPlays);
+    // Reset the in-memory author to a clean test baseline (never touches author.txt).
+    crate::chart_renderer::gpu::set_author_handle_mem("");
     // Reset the global (disk-persisted) auto-draw config to defaults so the
     // auto-charting panel starts from a known baseline every scenario. Debug-only
     // (do_reset never runs in normal use), so clobbering the config is fine here.

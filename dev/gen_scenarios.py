@@ -1223,5 +1223,17 @@ grade_scn(2555,"grade_terminal_sticks","GRTS",True,100.0,110.0,95.0,
           [(110.5,"WON"),(94.0,"WON")],
           "Once Won, a play stays Won even if price later reaches the stop (terminal state is sticky).")
 
+# ── 2560: Playbook AUTHOR attribution (B1) ──────────────────────────────────
+emit(2560,"playbook_author_stamp","Playbook/Author",["playbook","author","attribution"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SetAuthor",handle="quant_jane"),{"action":"wait_frames","count":1},
+      cmd("SeedPlay",symbol="GRAU",long=True,entry=100.0,target=110.0,stop=95.0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.author","value":"quant_jane"}},
+        {"state_field_equals":{"path":"playbook.plays.0.author","value":"quant_jane"}},{"no_panic":True}),
+      {"action":"reset"},{"action":"wait_frames","count":3},
+      {"action":"log","message":"reset clears author baseline"},
+      A({"state_field_equals":{"path":"playbook.author","value":""}})],
+     "New plays are stamped with the local author handle; reset restores a clean baseline.")
+
 print(f"generated {len(made)} scenarios into {OUT}")
 for p in made[:3]: print("  e.g.", os.path.basename(p))
