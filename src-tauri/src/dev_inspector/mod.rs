@@ -1122,15 +1122,26 @@ pub fn emit(name: &str, data: serde_json::Value) {
 
 fn do_reset() {
     use crate::chart_renderer::commands::{push, AppCommand, ChartFlag};
+    use crate::chart_renderer::gpu::PaneType;
     push(AppCommand::CloseAllDialogs);
     push(AppCommand::CancelAllOrders);
-    // Clean slate: clear accumulated indicators on both panes so each scenario
-    // starts isolated (otherwise indicators pile up across a shared session and
-    // eventually break per-pane counts and degrade fps).
-    push(AppCommand::ClearIndicators { pane: 0 });
-    push(AppCommand::ClearIndicators { pane: 1 });
-    push(AppCommand::SwapPaneSymbol { pane: 0, symbol: "SPY".into() });
-    push(AppCommand::ChangeTimeframe { pane: 0, tf: "5m".into() });
+    // Clean slate for EVERY possible pane slot, not just 0/1. A previous scenario
+    // can leave the shared session with extra layout panes and/or a non-Chart pane
+    // (Spreadsheet/Dashboard) still holding a stale symbol. Because bar-load results
+    // route by symbol across all panes, that makes the routing ambiguous and lets a
+    // stale load land on pane 0. Forcing every pane back to a plain Chart on SPY/5m
+    // (no indicators) removes the ambiguity. Commands for non-existent panes no-op.
+    // SwapPaneSymbol/ChangeTimeframe/ClearIndicators use get_mut and safely no-op
+    // for slots that don't exist, so we can sweep a generous range.
+    for pane in 0..8usize {
+        push(AppCommand::ClearIndicators { pane });
+        push(AppCommand::SwapPaneSymbol { pane, symbol: "SPY".into() });
+        push(AppCommand::ChangeTimeframe { pane, tf: "5m".into() });
+    }
+    // ChangePaneType debug_asserts on out-of-bounds indices, so only issue it for
+    // the standard two panes (covers a leftover Spreadsheet/Dashboard on pane 1).
+    push(AppCommand::ChangePaneType { pane: 0, kind: PaneType::Chart });
+    push(AppCommand::ChangePaneType { pane: 1, kind: PaneType::Chart });
     push(AppCommand::SetChartFlag { pane: 0, flag: ChartFlag::ShowVolume, value: true });
     push(AppCommand::SetChartFlag { pane: 0, flag: ChartFlag::LogScale,   value: false });
     // Kick off a fresh bar fetch for the reset state.
