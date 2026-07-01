@@ -424,3 +424,136 @@ NEW work concentrates in four areas: **persistence**, **lifecycle/auto-grading**
 sharing/feed/social layer**. P0 therefore leans heavily on existing code
 (persist what's already composed; auto-grade what already renders; keep the
 existing overlay + order conversion) rather than rebuilding.
+
+---
+
+## 8. Design, usability & the advanced ceiling
+
+The functionality above is the skeleton. This section is the *product* — how it
+looks, how it feels, and how far it can go. apex has native superpowers
+(gamma walls, auto-chart, the day-type classifier, signals feed, voice bridge,
+homelab LLM, paper-order engine, GDI capture) that let the playbook do things a
+generic "ideas" feed can't.
+
+### 8.1 Design language
+
+**The Play Card is the hero object** — one atom that renders coherently across
+five surfaces (chart badge, panel list, feed, hover preview, share image). One
+information hierarchy, four densities:
+- **Ticker chip** (compact, feed row) — symbol · direction arrow · R:R · status dot.
+- **Standard card** (list) — + level ladder, allocation ribbon, tags, author, mini track-record badge.
+- **Expanded** (detail) — + thesis (markdown), per-level notes, sparkline/thumbnail, live metrics, comments.
+- **Hero image** (share) — branded, screenshot-quality, QR + deep link baked in.
+
+**Visual encoding that stays legible under stress:**
+- Direction is **shape + color** (▲/▼ *and* bull/bear), never color alone → color-blind safe.
+- **R:R as a proportioned bar** (reward green / risk red segments), not just a number.
+- **Status is a state machine you can read**: Draft (dashed/ghost) → Published (solid) →
+  Active (pulsing) → Won (green fill) / Lost (red) / Expired (grey).
+- **Conviction** as filled pips (●●●○○); **track record** as a small "W/L, avg R" chip on the author.
+
+**The on-chart overlay is a narrative, not just lines.** Today it's dashed
+price lines + zone tints. Advanced version:
+- **Entry zone** as a soft glow band; **reward box** (entry→targets) tinted green,
+  **risk box** (entry→stop) tinted red, sized to actual R:R — the trade's shape is instantly visible.
+- **Target ladder** with allocation ribbons (T1 50% / T2 30% / T3 20%) drawn as proportional ticks.
+- **Anchored annotation callouts** with leader lines to the exact bar ("breakout retest here"),
+  markdown on hover/expand.
+- **Catalyst/expiry markers** on the time axis with a live countdown.
+- **Live approach animation**: as price nears the entry zone the band "breathes";
+  a live R-multiple readout tracks price; crossing a level triggers a subtle flash + toast.
+
+**Motion & micro-interactions** (egui-friendly, cheap):
+- Drag a level → **magnetic snap** to gamma walls / auto-chart levels / swing points / round numbers,
+  with a **live R:R readout** floating at the cursor.
+- Card hover → chart preview lights up that play (ghost overlay).
+- Status transitions animate (Draft→Active pulse, Won confetti-lite).
+- Everything reversible (undo/redo); nothing modal that can't be escaped.
+
+### 8.2 Usability principles & signature flows
+
+**Principles:** progressive disclosure (simple by default, advanced on demand) ·
+smart defaults (auto-derive stop from target × R:R; snap to key levels; Σallocation
+auto-normalizes) · zero-friction creation · always reversible · cross-surface
+coherence · keyboard-first + accessible.
+
+**Signature flows (the ones that make it feel magical):**
+1. **Create-from-chart in 3 gestures** — click entry, click stop, click target on the
+   chart → a Draft play materializes (levels, live R:R, snapped to key levels). Reuses
+   the existing click-to-set + drag lines; just adds the capture wrapper.
+2. **Signal → play** — a card on an ApexSignals pattern has "Make it a play"; prefills
+   levels + a rationale referencing the signal.
+3. **Talk it into existence** — voice bridge: "long SPY breakout above 450, stop 445,
+   target 460, thesis gamma wall magnet" → Draft play. (apex already has the voice pipe.)
+4. **Fork in one click** — someone's play → "Fork & edit" → your editable copy with
+   attribution; a diff shows what you changed.
+5. **Receive → preview → act** — an imported/DM'd play opens as a read-only ghost on
+   YOUR chart (adapts to your timeframe) → Add to book / Fork / set alerts.
+6. **Live grading feedback loop** — you don't babysit: toasts fire "SPY play hit T1
+   (+1.8R)"; the card auto-updates; your track record ticks.
+
+**Onboarding & empty states:** first run seeds 2–3 sample plays (a won, a lost, an
+active) so the value is obvious; coach-marks on the create-from-chart gesture;
+command-palette entries ("New play", "Publish", "Share to Discord").
+
+### 8.3 The advanced ceiling (three tiers)
+
+**Tier 1 — Premium polish (a great product):** persistence + auto-grading + the
+card/overlay design above; export/link/image/QR/Discord share; a Plays feed with
+filters; alerts from a play; play → paper bracket (paper-safe). All achievable with
+apex's existing tech.
+
+**Tier 2 — apex-native differentiators (nobody else can do these):**
+- **Context fusion** — a play *references* apex intelligence: "target = gamma call
+  wall", "stop below auto-chart trendline", "invalid if flip breaks". Levels snap to
+  and stay linked to gamma walls / auto-chart output / seasonality / earnings dates.
+- **Day-type-conditioned track records** — grade performance *by regime* using the
+  day-type classifier: "your breakout plays win 71% on trend days, 22% on PIN days."
+  This is genuinely differentiating analytics.
+- **Auto-grading analytics** — expectancy, MFE/MAE, calibration curves (does your 3:1
+  actually pay 3:1?), edge decay, Kelly-suggested sizing, per-setup win rates.
+- **LLM thesis & critique** (homelab Qwen/Claude) — draft a thesis from chart context
+  (pattern + levels + gamma + news); **critique a play** ("stop is inside the 1-ATR
+  noise band; T2 sits exactly on the put wall — consider trimming before it");
+  natural-language authoring; auto-summarize a noisy feed into the 3 best setups.
+- **Backtest-a-setup** — "how has this exact template performed on this symbol
+  historically?" using apex's bar history + replay engine.
+
+**Tier 3 — moonshots (category-defining):**
+- **Live war-room** — real-time co-authoring + presence + reactions on a play during
+  its catalyst (earnings, FOMC); the play updates for all watchers live.
+- **Paper copy-trading** — subscribe to an author; their published plays auto-instantiate
+  as *paper* brackets in your account (paper-safe by construction); your track record
+  vs theirs. **Never live without explicit per-order consent.**
+- **Reputation economy** — verified, auto-graded track records; leaderboards by realized
+  R and calibration; "provably not cherry-picked" because grading is automatic.
+- **Public/embeddable plays** — a play has a public web view + an embeddable widget
+  (Twitter/blog); the image card + deep link already make this cheap.
+- **ML-personalized feed** — rank by "plays like ones you've won", your risk profile,
+  and authors whose edge holds in the current regime.
+- **Voice-annotated walkthroughs** — narrate a play; it becomes a step-through lesson
+  (voice bridge + playback control).
+
+### 8.4 Why this beats a generic "ideas" feed
+
+TradingView-style ideas are static screenshots + text. apex's playbook is
+**structured, live, auto-graded, and fused with real market microstructure**:
+- levels that *snap to and reference* gamma walls and auto-detected structure,
+- outcomes graded automatically (no self-reported wins),
+- performance sliced by **day-type/regime**,
+- one-click **paper** execution and copy-trading,
+- LLM critique using the *actual* chart context,
+- hands-free **voice** authoring.
+
+Each of these plugs into an apex system that **already exists** — the playbook is
+the surface that ties them together into a shareable, accountable trade-idea object.
+
+### 8.5 Design/usability acceptance (testable via the harness)
+
+- Color-blind-safe: direction encoded by shape+color (assert both present).
+- Cross-surface coherence: the same play's key fields match across card/chart/feed captures.
+- Progressive disclosure: advanced fields hidden until toggled (widget-tree conditional, like the auto-chart panel).
+- Live metrics correctness: live-R / distance / calibration all pass derive-and-compare oracles.
+- Snap correctness: snapped level == the referenced gamma wall / auto-chart level (exact).
+- Accessibility: every interactive control carries a role+label in the widget-tree.
+- Safety: copy-trading & play→order paths assert `no_live_orders`; never `PlaceAllDraftOrders`.
