@@ -1,0 +1,55 @@
+{
+  "name": "playbook_persist_empty",
+  "description": "An empty playbook persists and reloads as empty (no crash, no phantom plays).",
+  "story": "Playbook/Persistence",
+  "tags": [
+    "playbook",
+    "persistence"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "ClearPlays"
+    },
+    {
+      "action": "cmd",
+      "cmd": "PersistPlays"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "ReloadPlays"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.play_count",
+            "value": 0
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

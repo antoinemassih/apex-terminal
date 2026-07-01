@@ -1762,6 +1762,43 @@ pub(crate) fn set_auto_draw_config(cfg: AutoDrawConfig) {
     let _ = crate::state::persistence::save(&auto_draw_path(), &cfg);
 }
 
+// ── Plays persistence (playbook durability) ─────────────────────────────────
+// Plays were previously in-memory only (lost on restart). They now serialize to
+// a versioned JSON file via the standard `state::persistence` envelope. `Play`
+// and all sub-types already derive serde.
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PlaysFile {
+    #[serde(default)]
+    pub plays: Vec<super::Play>,
+}
+impl crate::state::persistence::Persistable for PlaysFile {
+    const KEY: &'static str = "plays";
+    const VERSION: u32 = 1;
+}
+fn plays_data_file(name: &str) -> std::path::PathBuf {
+    let mut p = dirs::data_local_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    p.push("apex-terminal");
+    let _ = std::fs::create_dir_all(&p);
+    p.push(name);
+    p
+}
+/// Real on-disk store the app loads at startup and the editor writes to.
+pub(crate) fn plays_path() -> std::path::PathBuf { plays_data_file("plays.json") }
+pub(crate) fn load_plays_from(path: &std::path::Path) -> Vec<super::Play> {
+    crate::state::persistence::load::<PlaysFile>(path).map(|f| f.plays).unwrap_or_default()
+}
+pub(crate) fn save_plays_to(path: &std::path::Path, plays: &[super::Play]) {
+    let _ = crate::state::persistence::save(path, &PlaysFile { plays: plays.to_vec() });
+}
+/// Load/save the real playbook (startup + editor mutations).
+pub(crate) fn load_plays() -> Vec<super::Play> { load_plays_from(&plays_path()) }
+pub(crate) fn save_plays(plays: &[super::Play]) { save_plays_to(&plays_path(), plays) }
+/// Separate store used ONLY by the debug PersistPlays/ReloadPlays commands so the
+/// test harness can exercise the save/load round-trip without ever touching the
+/// user's real plays.json.
+#[cfg(debug_assertions)]
+pub(crate) fn plays_debug_path() -> std::path::PathBuf { plays_data_file("plays.debug.json") }
+
 /// Classify an apex-data unified-feed drawing into the terminal's source bucket
 /// ("trendlines" | "chart_patterns" | "candles") so the existing replace-by-source
 /// render path applies. Patterns carry `detection_method = "pattern:*"`; candle
@@ -7158,6 +7195,12 @@ impl Watchlist {
         save_watchlists(self);
     }
 
+    /// Persist the playbook to disk. Call after any real (user-driven) play
+    /// mutation — create / edit / delete / activate.
+    pub(crate) fn persist_plays(&self) {
+        save_plays(&self.plays);
+    }
+
     /// Switch to a different watchlist by index. Returns symbols needing price fetch.
     pub(crate) fn switch_to(&mut self, idx: usize) -> Vec<String> {
         if idx >= self.saved_watchlists.len() || idx == self.active_watchlist_idx { return vec![]; }
@@ -7955,6 +7998,8 @@ impl App {
         let id = w.id();
         let (panes, layout, loaded_settings) = load_state();
         let mut wl = Watchlist::new();
+        // Restore the saved playbook (plays are persisted to plays.json).
+        wl.plays = load_plays();
         // Apply persisted global settings
         wl.font_scale = loaded_settings.font_scale;
         wl.font_idx = loaded_settings.font_idx;

@@ -2178,6 +2178,8 @@ fn parse_app_command(
             Ok(AppCommand::SeedPlay { symbol, long, entry, target, stop })
         }
         "ClearPlays" | "clear_plays" => Ok(AppCommand::ClearPlays),
+        "PersistPlays" | "persist_plays" => Ok(AppCommand::PersistPlays),
+        "ReloadPlays" | "reload_plays" => Ok(AppCommand::ReloadPlays),
 
         // ── Alerts ─────────────────────────────────────────────────────────
         "PlaceAllDraftAlerts" | "place_all_draft_alerts" => Ok(AppCommand::PlaceAllDraftAlerts),

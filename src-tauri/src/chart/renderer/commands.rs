@@ -299,6 +299,12 @@ pub enum AppCommand {
     /// Clear all plays (playbook reset).
     #[cfg(debug_assertions)]
     ClearPlays,
+    /// Save the current in-memory plays to the debug store (persistence test).
+    #[cfg(debug_assertions)]
+    PersistPlays,
+    /// Reload plays from the debug store into memory (persistence test).
+    #[cfg(debug_assertions)]
+    ReloadPlays,
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -854,6 +860,18 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         #[cfg(debug_assertions)]
         AppCommand::ClearPlays => {
             watchlist.plays.clear();
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::PersistPlays => {
+            crate::chart_renderer::gpu::save_plays_to(
+                &crate::chart_renderer::gpu::plays_debug_path(), &watchlist.plays);
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::ReloadPlays => {
+            watchlist.plays = crate::chart_renderer::gpu::load_plays_from(
+                &crate::chart_renderer::gpu::plays_debug_path());
         }
 
         #[cfg(debug_assertions)]

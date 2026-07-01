@@ -1159,5 +1159,32 @@ multi+=[{"action":"wait_frames","count":2},
 emit(2528,"playbook_multi_crud","Playbook/CRUD",["playbook","crud"], multi,
      "Build a 5-play book (all R:R correct), then clear it to zero.")
 
+# ── 2540-2542: Playbook PERSISTENCE (A1) — plays survive a save/reload ───────
+emit(2540,"playbook_persist_roundtrip","Playbook/Persistence",["playbook","persistence"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SetPlaybookPanel",open=True),
+      cmd("SeedPlay",symbol="AAPL",long=True,entry=100.0,target=110.0,stop=95.0),
+      cmd("SeedPlay",symbol="NVDA",long=True,entry=50.0,target=65.0,stop=45.0),
+      {"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.play_count","value":2}},{"play_rr_correct":True}),
+      cmd("PersistPlays"),{"action":"wait_frames","count":2},
+      cmd("ClearPlays"),{"action":"wait_frames","count":2},
+      {"action":"log","message":"persisted then wiped memory"},
+      A({"state_field_equals":{"path":"playbook.play_count","value":0}}),
+      cmd("ReloadPlays"),{"action":"wait_frames","count":2},
+      {"action":"log","message":"reloaded from disk"},
+      A({"state_field_equals":{"path":"playbook.play_count","value":2}},
+        {"state_field_equals":{"path":"playbook.plays.0.symbol","value":"AAPL"}},
+        {"state_field_equals":{"path":"playbook.plays.0.risk_reward","value":2.0}},
+        {"state_field_equals":{"path":"playbook.plays.1.symbol","value":"NVDA"}},
+        {"play_rr_correct":True},{"no_panic":True})],
+     "Plays persist: seed 2, save to disk, wipe memory (0), reload from disk (2 back, fields intact).")
+emit(2541,"playbook_persist_empty","Playbook/Persistence",["playbook","persistence"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("ClearPlays"),cmd("PersistPlays"),{"action":"wait_frames","count":2},
+      cmd("ReloadPlays"),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.play_count","value":0}},{"no_panic":True})],
+     "An empty playbook persists and reloads as empty (no crash, no phantom plays).")
+
 print(f"generated {len(made)} scenarios into {OUT}")
 for p in made[:3]: print("  e.g.", os.path.basename(p))

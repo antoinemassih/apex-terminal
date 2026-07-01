@@ -89,6 +89,7 @@ pub(crate) fn draw_content(
 
     if let Some(id) = remove_id {
         watchlist.plays.retain(|p| p.id != id);
+        watchlist.persist_plays();
     }
 
     if let Some(id) = activate_id {
@@ -98,6 +99,7 @@ pub(crate) fn draw_content(
                 convert_play_to_orders(play, &mut panes[ap]);
             }
         }
+        watchlist.persist_plays();
     }
 
     // Display play on chart — spawn play lines from saved play data
@@ -487,6 +489,7 @@ fn draw_play_editor(
                     }
 
                     watchlist.plays.push(play);
+                    watchlist.persist_plays();
                     clear_editor(watchlist);
                     if let Some(ref mut c) = chart {
                         c.play_lines.clear();

@@ -1,0 +1,140 @@
+{
+  "name": "playbook_persist_roundtrip",
+  "description": "Plays persist: seed 2, save to disk, wipe memory (0), reload from disk (2 back, fields intact).",
+  "story": "Playbook/Persistence",
+  "tags": [
+    "playbook",
+    "persistence"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlaybookPanel",
+      "open": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "AAPL",
+      "long": true,
+      "entry": 100.0,
+      "target": 110.0,
+      "stop": 95.0
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "NVDA",
+      "long": true,
+      "entry": 50.0,
+      "target": 65.0,
+      "stop": 45.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.play_count",
+            "value": 2
+          }
+        },
+        {
+          "play_rr_correct": true
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "PersistPlays"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "ClearPlays"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "persisted then wiped memory"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.play_count",
+            "value": 0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "ReloadPlays"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "reloaded from disk"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.play_count",
+            "value": 2
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.symbol",
+            "value": "AAPL"
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.risk_reward",
+            "value": 2.0
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.1.symbol",
+            "value": "NVDA"
+          }
+        },
+        {
+          "play_rr_correct": true
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}
