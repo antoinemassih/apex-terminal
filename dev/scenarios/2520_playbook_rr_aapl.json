@@ -1,0 +1,80 @@
+{
+  "name": "playbook_rr_aapl",
+  "description": "Playbook AAPL long computes risk/reward 2.0 correctly.",
+  "story": "Playbook/RiskReward",
+  "tags": [
+    "playbook",
+    "riskreward",
+    "correctness"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlaybookPanel",
+      "open": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "AAPL",
+      "long": true,
+      "entry": 100.0,
+      "target": 110.0,
+      "stop": 95.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "log",
+      "message": "play AAPL rr=2.0"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.open",
+            "value": true
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.play_count",
+            "value": 1
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.risk_reward",
+            "value": 2.0
+          }
+        },
+        {
+          "play_rr_correct": true
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    }
+  ]
+}

@@ -387,6 +387,46 @@ fn dispatch(
                             if raw.is_empty() { " [no raw pool]" } else { "" }) })
         }
 
+        // ── BEHAVIORAL ORACLE: spreadsheet formula computes the right value ───
+        // Reads the app's formula-evaluated value for a cell and compares to the
+        // expected result. {"spreadsheet_cell_equals":{"pane":0,"row":0,"col":3,"value":30}}
+        "spreadsheet_cell_equals" => {
+            let pane_idx = val["pane"].as_u64().unwrap_or(0) as usize;
+            let row = val["row"].as_u64().unwrap_or(0) as usize;
+            let col = val["col"].as_u64().unwrap_or(0) as usize;
+            let want = val["value"].as_f64().unwrap_or(f64::NAN);
+            let tol  = val["tol"].as_f64().unwrap_or(1e-6);
+            let got = state.app_state["panes"][pane_idx]["spreadsheet"]["computed"]
+                .get(row).and_then(|r| r.get(col)).and_then(|v| v.as_f64());
+            let pass = matches!(got, Some(g) if (g - want).abs() <= tol);
+            ("SpreadsheetCellEquals".into(), pass,
+             if pass { format!("cell ({row},{col}) == {want}") }
+             else { format!("cell ({row},{col}): expected {want}, got {:?}", got) })
+        }
+
+        // ── BEHAVIORAL ORACLE: every play's risk/reward is computed correctly ──
+        // rr must equal |target-entry| / |entry-stop| for each play. {"play_rr_correct":true}
+        "play_rr_correct" => {
+            let plays = state.app_state["playbook"]["plays"].as_array().cloned().unwrap_or_default();
+            let mut bad = vec![];
+            for p in &plays {
+                let e = p["entry"].as_f64().unwrap_or(0.0);
+                let t = p["target"].as_f64().unwrap_or(0.0);
+                let s = p["stop"].as_f64().unwrap_or(0.0);
+                let got = p["risk_reward"].as_f64().unwrap_or(-1.0);
+                let want = if (e - s).abs() > 0.001 { (t - e).abs() / (e - s).abs() } else { 0.0 };
+                if (got - want).abs() > 1e-3 {
+                    bad.push(format!("{} e{e} t{t} s{s}: rr got {got:.3}, want {want:.3}",
+                                     p["symbol"].as_str().unwrap_or("?")));
+                }
+            }
+            let pass = !plays.is_empty() && bad.is_empty();
+            ("PlayRrCorrect".into(), pass,
+             if pass { format!("all {} plays have correct risk/reward", plays.len()) }
+             else if plays.is_empty() { "no plays present".into() }
+             else { format!("{} wrong: {}", bad.len(), bad.join("; ")) })
+        }
+
         "watchlist_section_count_equals" => {
             let expect = val.as_u64()
                 .or_else(|| val["count"].as_u64())

@@ -1081,5 +1081,83 @@ emit(2414,"autochart_anchored_toggle","AutoChart/Panel",["autochart","panel","fr
       A({"state_field_equals":{"path":"auto_chart.anchored_only","value":False}},{"no_panic":True})],
      "The Anchored-only checkbox flips auto_chart.anchored_only; window slider renders.")
 
+# ── 2500-2514: Spreadsheet FORMULA correctness (behavioral oracle) ───────────
+# Seed a known grid + formulas, assert the app's formula engine computes the
+# right value. Cell (row,col): A1=(0,0), B1=(0,1), A3=(2,0).
+def setcell(row,col,text): return cmd("SetCell",pane=0,row=row,col=col,text=text)
+def sheet(name, seeds, checks, desc):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":4},
+           cmd("ChangePaneType",pane=0,kind="Spreadsheet"),{"action":"wait_frames","count":3}]
+    for (r,c,t) in seeds: steps+=[setcell(r,c,t)]
+    steps+=[{"action":"wait_frames","count":3},{"action":"log","message":name}]
+    steps+=[A(*[{"spreadsheet_cell_equals":{"pane":0,"row":r,"col":c,"value":v}} for (r,c,v) in checks],
+             {"pane_type_equals":{"pane":0,"type":"Spreadsheet"}},{"no_panic":True},{"fps_above":5.0})]
+    return steps
+SHEETS=[
+ ("agg_functions",
+  [(0,0,"5"),(1,0,"10"),(2,0,"15"),
+   (0,1,"=SUM(A1:A3)"),(1,1,"=AVG(A1:A3)"),(2,1,"=MIN(A1:A3)"),(3,1,"=MAX(A1:A3)"),(4,1,"=COUNT(A1:A3)")],
+  [(0,1,30),(1,1,10),(2,1,5),(3,1,15),(4,1,3)],
+  "SUM/AVG/MIN/MAX/COUNT over a range compute correctly."),
+ ("arithmetic",
+  [(0,0,"5"),(1,0,"10"),(2,0,"15"),
+   (0,1,"=A1*A2+A3"),(1,1,"=(A1+A2)/A3*2"),(2,1,"=A2-A1"),(3,1,"=A3/A1")],
+  [(0,1,65),(1,1,2.0),(2,1,5),(3,1,3)],
+  "Operator precedence, parentheses, and division compute correctly."),
+ ("nested_refs",
+  [(0,0,"4"),(1,0,"6"),(2,0,"8"),
+   (0,1,"=SUM(A1:A3)"),(1,1,"=MAX(A1:A3)-MIN(A1:A3)"),(2,1,"=B1+B2"),(3,1,"=B3*2")],
+  [(0,1,18),(1,1,4),(2,1,22),(3,1,44)],
+  "Formulas that reference other formula cells resolve correctly (nested)."),
+ ("negatives_decimals",
+  [(0,0,"-5"),(1,0,"2.5"),(2,0,"10"),
+   (0,1,"=SUM(A1:A3)"),(1,1,"=A1+A2"),(2,1,"=A3*A2")],
+  [(0,1,7.5),(1,1,-2.5),(2,1,25.0)],
+  "Negative numbers and decimals compute correctly."),
+ ("two_col_range",
+  [(0,0,"1"),(0,1,"2"),(1,0,"3"),(1,1,"4"),
+   (0,2,"=SUM(A1:B2)"),(1,2,"=AVG(A1:B2)"),(2,2,"=MAX(A1:B2)")],
+  [(0,2,10),(1,2,2.5),(2,2,4)],
+  "A rectangular range (A1:B2) sums/averages across both columns."),
+ ("unary_paren",
+  [(0,0,"3"),(1,0,"7"),
+   (0,1,"=-A1+A2"),(1,1,"=-(A1+A2)"),(2,1,"=2*(A1+A2)")],
+  [(0,1,4),(1,1,-10),(2,1,20)],
+  "Unary minus and parenthesised sub-expressions compute correctly."),
+]
+for i,(name,seeds,checks,desc) in enumerate(SHEETS):
+    emit(2500+i, f"spreadsheet_{name}", "Spreadsheet/Formula",
+         ["spreadsheet","formula","correctness"], sheet(name,seeds,checks,desc), desc)
+
+# ── 2520-2532: Playbook risk/reward correctness + panel + CRUD ───────────────
+# Seed plays with known entry/target/stop; assert the computed risk_reward.
+PLAYS=[("AAPL",True,100.0,110.0,95.0,2.0),("TSLA",False,200.0,170.0,215.0,2.0),
+       ("NVDA",True,50.0,65.0,45.0,3.0),("SPY",True,400.0,412.0,396.0,3.0),
+       ("QQQ",False,350.0,335.0,356.0,2.5),("AMD",True,120.0,138.0,114.0,3.0),
+       ("META",True,300.0,318.0,291.0,2.0),("MSFT",False,400.0,376.0,412.0,2.0)]
+for i,(sym,long,e,t,s,rr) in enumerate(PLAYS):
+    steps=[{"action":"reset"},{"action":"wait_frames","count":4},
+           cmd("SetPlaybookPanel",open=True),{"action":"wait_frames","count":3},
+           cmd("SeedPlay",symbol=sym,long=long,entry=e,target=t,stop=s),{"action":"wait_frames","count":3},
+           {"action":"log","message":f"play {sym} rr={rr}"},
+           A({"state_field_equals":{"path":"playbook.open","value":True}},
+             {"state_field_equals":{"path":"playbook.play_count","value":1}},
+             {"state_field_equals":{"path":"playbook.plays.0.risk_reward","value":rr}},
+             {"play_rr_correct":True},{"no_panic":True},{"fps_above":5.0})]
+    emit(2520+i, f"playbook_rr_{sset(sym)}", "Playbook/RiskReward",
+         ["playbook","riskreward","correctness"], steps,
+         f"Playbook {sym} {'long' if long else 'short'} computes risk/reward {rr} correctly.")
+
+# 2528: multi-play book + clear (CRUD).
+multi=[{"action":"reset"},{"action":"wait_frames","count":4},cmd("SetPlaybookPanel",open=True),{"action":"wait_frames","count":2}]
+for (sym,long,e,t,s,rr) in PLAYS[:5]:
+    multi+=[cmd("SeedPlay",symbol=sym,long=long,entry=e,target=t,stop=s),{"action":"wait_frames","count":1}]
+multi+=[{"action":"wait_frames","count":2},
+        A({"state_field_equals":{"path":"playbook.play_count","value":5}},{"play_rr_correct":True}),
+        cmd("ClearPlays"),{"action":"wait_frames","count":2},
+        A({"state_field_equals":{"path":"playbook.play_count","value":0}},{"no_panic":True})]
+emit(2528,"playbook_multi_crud","Playbook/CRUD",["playbook","crud"], multi,
+     "Build a 5-play book (all R:R correct), then clear it to zero.")
+
 print(f"generated {len(made)} scenarios into {OUT}")
 for p in made[:3]: print("  e.g.", os.path.basename(p))

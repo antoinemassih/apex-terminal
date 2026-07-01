@@ -1,0 +1,161 @@
+{
+  "name": "spreadsheet_agg_functions",
+  "description": "SUM/AVG/MIN/MAX/COUNT over a range compute correctly.",
+  "story": "Spreadsheet/Formula",
+  "tags": [
+    "spreadsheet",
+    "formula",
+    "correctness"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangePaneType",
+      "pane": 0,
+      "kind": "Spreadsheet"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 0,
+      "col": 0,
+      "text": "5"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 1,
+      "col": 0,
+      "text": "10"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 2,
+      "col": 0,
+      "text": "15"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 0,
+      "col": 1,
+      "text": "=SUM(A1:A3)"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 1,
+      "col": 1,
+      "text": "=AVG(A1:A3)"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 2,
+      "col": 1,
+      "text": "=MIN(A1:A3)"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 3,
+      "col": 1,
+      "text": "=MAX(A1:A3)"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 4,
+      "col": 1,
+      "text": "=COUNT(A1:A3)"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "log",
+      "message": "agg_functions"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "spreadsheet_cell_equals": {
+            "pane": 0,
+            "row": 0,
+            "col": 1,
+            "value": 30
+          }
+        },
+        {
+          "spreadsheet_cell_equals": {
+            "pane": 0,
+            "row": 1,
+            "col": 1,
+            "value": 10
+          }
+        },
+        {
+          "spreadsheet_cell_equals": {
+            "pane": 0,
+            "row": 2,
+            "col": 1,
+            "value": 5
+          }
+        },
+        {
+          "spreadsheet_cell_equals": {
+            "pane": 0,
+            "row": 3,
+            "col": 1,
+            "value": 15
+          }
+        },
+        {
+          "spreadsheet_cell_equals": {
+            "pane": 0,
+            "row": 4,
+            "col": 1,
+            "value": 3
+          }
+        },
+        {
+          "pane_type_equals": {
+            "pane": 0,
+            "type": "Spreadsheet"
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    }
+  ]
+}

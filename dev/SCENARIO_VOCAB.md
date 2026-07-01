@@ -155,6 +155,18 @@ Drive the actual panel controls and verify they change config:
 - Assert controls render: `{"widget_exists":{"id":"auto_chart.trendlines"}}`; conditional hiding: when `enabled=false` the layer controls disappear (`{"not":{"assertion":{"widget_exists":{"id":"auto_chart.trendlines"}}}}`).
 NOTE: auto-draw OUTPUT (signal_drawings) is backend-computed (ApexSignals :8100) — not produced offline. This tests the PANEL front-end (controls render + drive config), not the backend detection.
 
+## Spreadsheet formula correctness (behavioral oracle)
+- `SetCell` cmd `{pane,row,col,text}` — set a cell's raw text (grows the grid). Cell A1=(row0,col0), B1=(0,1), A3=(2,0).
+- `{"spreadsheet_cell_equals":{"pane":0,"row":0,"col":3,"value":30}}` — assert the app's formula-evaluated value for a cell equals the expected (verifies the SUM/AVG/MIN/MAX/COUNT + arithmetic engine). Switch the pane to Spreadsheet first (`ChangePaneType Spreadsheet`).
+- Observable: `panes.<i>.spreadsheet.computed[row][col]` (formula-evaluated numeric grid).
+
+## Playbook (plays) correctness + panel
+- `SetPlaybookPanel` cmd `{open}` — open/close the Playbook panel.
+- `SeedPlay` cmd `{symbol,long,entry,target,stop}` — add a directional play (local only).
+- `ClearPlays` cmd — remove all plays.
+- `{"play_rr_correct":true}` — every play's `risk_reward` equals `|target-entry|/|entry-stop|`.
+- Observable: `playbook.open`, `playbook.play_count`, `playbook.plays.<i>.{symbol,direction,entry,target,stop,risk_reward,status}`.
+
 ## Screenshot action (visual review)
 - `{"action":"screenshot","name":"my_state"}` — saves the live window to `dev/screenshots/my_state.png` (real GDI capture of what the user sees). Use to snapshot key states for visual/UX review.
 

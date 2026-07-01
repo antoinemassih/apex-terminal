@@ -287,6 +287,18 @@ pub enum AppCommand {
     /// Open/close the Auto-Charting side panel (front-end panel test).
     #[cfg(debug_assertions)]
     SetAutoChartPanel { open: bool },
+    /// Set a spreadsheet cell's raw text (grows the grid as needed).
+    #[cfg(debug_assertions)]
+    SetCell { pane: usize, row: usize, col: usize, text: String },
+    /// Open/close the Playbook side panel.
+    #[cfg(debug_assertions)]
+    SetPlaybookPanel { open: bool },
+    /// Seed a directional Play (playbook) onto the watchlist — local only.
+    #[cfg(debug_assertions)]
+    SeedPlay { symbol: String, long: bool, entry: f32, target: f32, stop: f32 },
+    /// Clear all plays (playbook reset).
+    #[cfg(debug_assertions)]
+    ClearPlays,
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -825,6 +837,39 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
             // Route through the sidebar-state store (else the store→flat sync
             // overwrites the flat bool every frame), same as scanner/RRG.
             watchlist.update_sidebar_state(|s| s.auto_chart_open = open);
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SetPlaybookPanel { open } => {
+            watchlist.update_sidebar_state(|s| s.playbook_panel_open = open);
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SeedPlay { symbol, long, entry, target, stop } => {
+            use crate::chart_renderer::{Play, PlayDirection, PlayType};
+            let dir = if long { PlayDirection::Long } else { PlayDirection::Short };
+            watchlist.plays.push(Play::new(&symbol, dir, PlayType::Directional, entry, target, stop));
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::ClearPlays => {
+            watchlist.plays.clear();
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SetCell { pane, row, col, text } => {
+            if let Some(p) = panes.get_mut(pane) {
+                // Grow the grid so (row,col) is addressable.
+                if col + 1 > p.spreadsheet_cols { p.spreadsheet_cols = col + 1; }
+                while p.spreadsheet_cells.len() <= row {
+                    p.spreadsheet_cells.push(vec![String::new(); p.spreadsheet_cols]);
+                }
+                for r in p.spreadsheet_cells.iter_mut() {
+                    while r.len() < p.spreadsheet_cols { r.push(String::new()); }
+                }
+                p.spreadsheet_rows = p.spreadsheet_cells.len();
+                p.spreadsheet_cells[row][col] = text;
+            }
         }
     }
 }

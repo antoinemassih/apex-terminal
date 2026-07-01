@@ -1,0 +1,145 @@
+{
+  "name": "spreadsheet_arithmetic",
+  "description": "Operator precedence, parentheses, and division compute correctly.",
+  "story": "Spreadsheet/Formula",
+  "tags": [
+    "spreadsheet",
+    "formula",
+    "correctness"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangePaneType",
+      "pane": 0,
+      "kind": "Spreadsheet"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 0,
+      "col": 0,
+      "text": "5"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 1,
+      "col": 0,
+      "text": "10"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 2,
+      "col": 0,
+      "text": "15"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 0,
+      "col": 1,
+      "text": "=A1*A2+A3"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 1,
+      "col": 1,
+      "text": "=(A1+A2)/A3*2"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 2,
+      "col": 1,
+      "text": "=A2-A1"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 3,
+      "col": 1,
+      "text": "=A3/A1"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "log",
+      "message": "arithmetic"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "spreadsheet_cell_equals": {
+            "pane": 0,
+            "row": 0,
+            "col": 1,
+            "value": 65
+          }
+        },
+        {
+          "spreadsheet_cell_equals": {
+            "pane": 0,
+            "row": 1,
+            "col": 1,
+            "value": 2.0
+          }
+        },
+        {
+          "spreadsheet_cell_equals": {
+            "pane": 0,
+            "row": 2,
+            "col": 1,
+            "value": 5
+          }
+        },
+        {
+          "spreadsheet_cell_equals": {
+            "pane": 0,
+            "row": 3,
+            "col": 1,
+            "value": 3
+          }
+        },
+        {
+          "pane_type_equals": {
+            "pane": 0,
+            "type": "Spreadsheet"
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    }
+  ]
+}

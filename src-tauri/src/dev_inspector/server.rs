@@ -2159,6 +2159,25 @@ fn parse_app_command(
             let open = body["open"].as_bool().unwrap_or(true);
             Ok(AppCommand::SetAutoChartPanel { open })
         }
+        "SetCell" | "set_cell" => {
+            let row  = body["row"].as_u64().unwrap_or(0) as usize;
+            let col  = body["col"].as_u64().unwrap_or(0) as usize;
+            let text = body["text"].as_str().unwrap_or("").to_string();
+            Ok(AppCommand::SetCell { pane, row, col, text })
+        }
+        "SetPlaybookPanel" | "set_playbook_panel" => {
+            let open = body["open"].as_bool().unwrap_or(true);
+            Ok(AppCommand::SetPlaybookPanel { open })
+        }
+        "SeedPlay" | "seed_play" => {
+            let symbol = body["symbol"].as_str().unwrap_or("SPY").to_string();
+            let long   = body["long"].as_bool().unwrap_or(true);
+            let entry  = body["entry"].as_f64().unwrap_or(100.0) as f32;
+            let target = body["target"].as_f64().unwrap_or(110.0) as f32;
+            let stop   = body["stop"].as_f64().unwrap_or(95.0) as f32;
+            Ok(AppCommand::SeedPlay { symbol, long, entry, target, stop })
+        }
+        "ClearPlays" | "clear_plays" => Ok(AppCommand::ClearPlays),
 
         // ── Alerts ─────────────────────────────────────────────────────────
         "PlaceAllDraftAlerts" | "place_all_draft_alerts" => Ok(AppCommand::PlaceAllDraftAlerts),

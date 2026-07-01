@@ -1,0 +1,121 @@
+{
+  "name": "spreadsheet_unary_paren",
+  "description": "Unary minus and parenthesised sub-expressions compute correctly.",
+  "story": "Spreadsheet/Formula",
+  "tags": [
+    "spreadsheet",
+    "formula",
+    "correctness"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangePaneType",
+      "pane": 0,
+      "kind": "Spreadsheet"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 0,
+      "col": 0,
+      "text": "3"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 1,
+      "col": 0,
+      "text": "7"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 0,
+      "col": 1,
+      "text": "=-A1+A2"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 1,
+      "col": 1,
+      "text": "=-(A1+A2)"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 2,
+      "col": 1,
+      "text": "=2*(A1+A2)"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "log",
+      "message": "unary_paren"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "spreadsheet_cell_equals": {
+            "pane": 0,
+            "row": 0,
+            "col": 1,
+            "value": 4
+          }
+        },
+        {
+          "spreadsheet_cell_equals": {
+            "pane": 0,
+            "row": 1,
+            "col": 1,
+            "value": -10
+          }
+        },
+        {
+          "spreadsheet_cell_equals": {
+            "pane": 0,
+            "row": 2,
+            "col": 1,
+            "value": 20
+          }
+        },
+        {
+          "pane_type_equals": {
+            "pane": 0,
+            "type": "Spreadsheet"
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    }
+  ]
+}

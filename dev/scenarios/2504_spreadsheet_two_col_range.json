@@ -1,0 +1,137 @@
+{
+  "name": "spreadsheet_two_col_range",
+  "description": "A rectangular range (A1:B2) sums/averages across both columns.",
+  "story": "Spreadsheet/Formula",
+  "tags": [
+    "spreadsheet",
+    "formula",
+    "correctness"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "cmd",
+      "cmd": "ChangePaneType",
+      "pane": 0,
+      "kind": "Spreadsheet"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 0,
+      "col": 0,
+      "text": "1"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 0,
+      "col": 1,
+      "text": "2"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 1,
+      "col": 0,
+      "text": "3"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 1,
+      "col": 1,
+      "text": "4"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 0,
+      "col": 2,
+      "text": "=SUM(A1:B2)"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 1,
+      "col": 2,
+      "text": "=AVG(A1:B2)"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetCell",
+      "pane": 0,
+      "row": 2,
+      "col": 2,
+      "text": "=MAX(A1:B2)"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "log",
+      "message": "two_col_range"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "spreadsheet_cell_equals": {
+            "pane": 0,
+            "row": 0,
+            "col": 2,
+            "value": 10
+          }
+        },
+        {
+          "spreadsheet_cell_equals": {
+            "pane": 0,
+            "row": 1,
+            "col": 2,
+            "value": 2.5
+          }
+        },
+        {
+          "spreadsheet_cell_equals": {
+            "pane": 0,
+            "row": 2,
+            "col": 2,
+            "value": 4
+          }
+        },
+        {
+          "pane_type_equals": {
+            "pane": 0,
+            "type": "Spreadsheet"
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    }
+  ]
+}

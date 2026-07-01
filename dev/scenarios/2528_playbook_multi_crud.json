@@ -1,0 +1,135 @@
+{
+  "name": "playbook_multi_crud",
+  "description": "Build a 5-play book (all R:R correct), then clear it to zero.",
+  "story": "Playbook/CRUD",
+  "tags": [
+    "playbook",
+    "crud"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlaybookPanel",
+      "open": true
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "AAPL",
+      "long": true,
+      "entry": 100.0,
+      "target": 110.0,
+      "stop": 95.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "TSLA",
+      "long": false,
+      "entry": 200.0,
+      "target": 170.0,
+      "stop": 215.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "NVDA",
+      "long": true,
+      "entry": 50.0,
+      "target": 65.0,
+      "stop": 45.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "SPY",
+      "long": true,
+      "entry": 400.0,
+      "target": 412.0,
+      "stop": 396.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "QQQ",
+      "long": false,
+      "entry": 350.0,
+      "target": 335.0,
+      "stop": 356.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.play_count",
+            "value": 5
+          }
+        },
+        {
+          "play_rr_correct": true
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "ClearPlays"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.play_count",
+            "value": 0
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

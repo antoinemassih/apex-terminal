@@ -956,6 +956,9 @@ pub fn end_frame(
                 "qty":    o.qty,
                 "status": format!("{:?}", o.status),
             })).collect();
+            // Spreadsheet: formula-evaluated value of every cell (correctness oracle).
+            let spreadsheet_computed: Vec<Vec<Option<f64>>> =
+                crate::chart_renderer::ui::panels::spreadsheet_pane::computed_values(&p.spreadsheet_cells);
             serde_json::json!({
                 "index":           i,
                 "symbol":          p.symbol,
@@ -993,6 +996,12 @@ pub fn end_frame(
                 "show_strikes_overlay": p.show_strikes_overlay,
                 "strikes_call_count":   p.overlay_calls.len(),
                 "strikes_put_count":    p.overlay_puts.len(),
+                // Spreadsheet computed grid (rows×cols of formula-evaluated values).
+                "spreadsheet": {
+                    "rows": p.spreadsheet_rows,
+                    "cols": p.spreadsheet_cols,
+                    "computed": spreadsheet_computed,
+                },
             })
         })
         .collect();
@@ -1016,6 +1025,16 @@ pub fn end_frame(
         }))
         .collect();
 
+    // Playbook: local plays list (symbol/direction/levels/computed risk_reward).
+    let plays_json: Vec<serde_json::Value> = watchlist.plays.iter().take(32).map(|p| serde_json::json!({
+        "symbol":       p.symbol,
+        "direction":    p.direction.label(),
+        "entry":        p.entry_price,
+        "target":       p.target_price,
+        "stop":         p.stop_price,
+        "risk_reward":  p.risk_reward,
+        "status":       p.status.label(),
+    })).collect();
     // Auto-charting panel: open state + the global AutoDrawConfig the panel edits.
     let adc = crate::chart_renderer::gpu::auto_draw_config();
     let signal_drawing_count = active_chart.map(|c| c.signal_drawings.len()).unwrap_or(0);
@@ -1090,6 +1109,11 @@ pub fn end_frame(
         },
         "heatmap": {
             "cell_count": watchlist.heatmap_cells.len(),
+        },
+        "playbook": {
+            "open":       watchlist.playbook_panel_open,
+            "play_count": watchlist.plays.len(),
+            "plays":      plays_json,
         },
         // ── Auto-charting panel (front-end) ───────────────────────────────
         "auto_chart": {
@@ -1321,6 +1345,8 @@ fn do_reset() {
     push(AppCommand::SetRrgOpen { open: false });
     push(AppCommand::SeedHeatmapCells { count: 0 });
     push(AppCommand::SetAutoChartPanel { open: false });
+    push(AppCommand::SetPlaybookPanel { open: false });
+    push(AppCommand::ClearPlays);
     // Reset the global (disk-persisted) auto-draw config to defaults so the
     // auto-charting panel starts from a known baseline every scenario. Debug-only
     // (do_reset never runs in normal use), so clobbering the config is fine here.

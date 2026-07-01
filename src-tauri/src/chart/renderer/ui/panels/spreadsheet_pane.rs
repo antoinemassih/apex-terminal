@@ -225,6 +225,15 @@ fn apply_fn(name: &str, ns: &[f64]) -> Result<f64, String> {
     }
 }
 
+/// Dev-inspector correctness oracle: the numeric (formula-evaluated) value of
+/// every cell, so the harness can verify the formula engine computes correctly.
+#[cfg(debug_assertions)]
+pub(crate) fn computed_values(cells: &[Vec<String>]) -> Vec<Vec<Option<f64>>> {
+    (0..cells.len())
+        .map(|r| (0..cells[r].len()).map(|c| cell_numeric(cells, r, c, 0)).collect())
+        .collect()
+}
+
 fn cell_numeric(cells: &[Vec<String>], r: usize, c: usize, depth: u32) -> Option<f64> {
     if r >= cells.len() || c >= cells[r].len() { return None; }
     let raw = cells[r][c].trim();
