@@ -60,15 +60,8 @@
           }
         },
         {
-          "state_field_gte": {
-            "path": "panes.0.gamma_call_wall",
-            "min": 0.01
-          }
-        },
-        {
-          "state_field_gte": {
-            "path": "panes.0.gamma_put_wall",
-            "min": 0.01
+          "gamma_structure_sane": {
+            "pane": 0
           }
         },
         {

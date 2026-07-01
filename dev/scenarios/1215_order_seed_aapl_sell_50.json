@@ -37,7 +37,7 @@
       "cmd": "SeedDraftOrder",
       "pane": 0,
       "side": "sell",
-      "price": 100.0,
+      "price": 123.45,
       "qty": 50
     },
     {
@@ -55,6 +55,14 @@
           "state_field_gte": {
             "path": "panes.0.order_draft_count",
             "min": 1
+          }
+        },
+        {
+          "order_matches": {
+            "pane": 0,
+            "side": "Sell",
+            "price": 123.45,
+            "qty": 50
           }
         },
         {

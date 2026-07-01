@@ -944,6 +944,18 @@ pub fn end_frame(
             let dom_prices_desc = p.dom.levels.windows(2).all(|w| w[0].price > w[1].price);
             let dom_is_live  = p.dom.last_live_ms != 0
                 && (now_epoch_ms.saturating_sub(p.dom.last_live_ms)) < 2000;
+            // DOM uniform tick spacing: every adjacent price delta ≈ tick_size.
+            let dom_uniform_spacing = p.dom.levels.len() >= 2
+                && p.dom.tick_size > 0.0
+                && p.dom.levels.windows(2)
+                    .all(|w| ((w[0].price - w[1].price) - p.dom.tick_size).abs() <= p.dom.tick_size * 0.05);
+            // Order round-trip: expose the visual order list (side/price/qty/status).
+            let orders_json: Vec<serde_json::Value> = p.orders.iter().take(16).map(|o| serde_json::json!({
+                "side":   format!("{:?}", o.side),
+                "price":  o.price,
+                "qty":    o.qty,
+                "status": format!("{:?}", o.status),
+            })).collect();
             serde_json::json!({
                 "index":           i,
                 "symbol":          p.symbol,
@@ -967,12 +979,17 @@ pub fn end_frame(
                 "dom_best_bid":     dom_best_bid,
                 "dom_best_ask":     dom_best_ask,
                 "dom_prices_desc":  dom_prices_desc,
+                "dom_uniform_spacing": dom_uniform_spacing,
+                "dom_center_price": p.dom.center_price,
                 "dom_is_live":      dom_is_live,
+                // Order round-trip.
+                "orders":           orders_json,
                 // Gamma / strikes overlays.
                 "show_gamma":         p.show_gamma,
                 "gamma_level_count":  p.gamma_levels.len(),
                 "gamma_call_wall":    p.gamma_call_wall,
                 "gamma_put_wall":     p.gamma_put_wall,
+                "gamma_zero":         p.gamma_zero,
                 "show_strikes_overlay": p.show_strikes_overlay,
                 "strikes_call_count":   p.overlay_calls.len(),
                 "strikes_put_count":    p.overlay_puts.len(),
@@ -999,6 +1016,38 @@ pub fn end_frame(
         }))
         .collect();
 
+    // ── Behavioral-oracle data (RRG sectors, scanner filter I/O) ──────────
+    // RRG: effective sectors (real if populated, else the deterministic demo
+    // set) with the raw inputs so the harness can verify quadrant classification.
+    let rrg_secs = if watchlist.rrg_sectors.is_empty() {
+        crate::chart_renderer::ui::panels::rrg_panel::demo_sectors()
+    } else {
+        watchlist.rrg_sectors.clone()
+    };
+    let rrg_sectors_json: Vec<serde_json::Value> = rrg_secs.iter().map(|s| serde_json::json!({
+        "symbol":      s.symbol,
+        "rs_ratio":    s.rs_ratio,
+        "rs_momentum": s.rs_momentum,
+        "quadrant":    s.quadrant,
+    })).collect();
+    // Scanner: raw pool + def[0] criteria + the app's filtered+sorted output, so
+    // the harness can recompute the expected result and check filter/sort logic.
+    let scan_raw_json: Vec<serde_json::Value> = watchlist.scanner_results.iter().take(600)
+        .map(|r| serde_json::json!({"symbol": r.symbol, "price": r.price, "change_pct": r.change_pct, "volume": r.volume}))
+        .collect();
+    let (scan_def0_json, scan_filtered_json) = match watchlist.scanner_defs.first() {
+        Some(d) => {
+            let filtered = crate::chart_renderer::ui::panels::scanner_panel::apply_scanner(d, &watchlist.scanner_results);
+            (serde_json::json!({
+                "min_change": d.min_change, "max_change": d.max_change,
+                "min_volume": d.min_volume, "sort_by": format!("{:?}", d.sort_by), "limit": d.limit,
+             }),
+             filtered.iter().map(|r| serde_json::json!({"symbol": r.symbol, "change_pct": r.change_pct, "volume": r.volume}))
+                 .collect::<Vec<_>>())
+        }
+        None => (serde_json::Value::Null, vec![]),
+    };
+
     let app_state = serde_json::json!({
         "fps":             fps,
         "frame_counter":   0u64, // filled in during write below
@@ -1023,22 +1072,18 @@ pub fn end_frame(
             "open":         watchlist.scanner_open,
             "result_count": watchlist.scanner_results.len(),
             "def_count":    watchlist.scanner_defs.len(),
-            // Filtered count for the first def — proves apply_scanner() ran on
-            // the seeded pool (the harness re-derives this to assert correctness).
-            "first_def_filtered_count": watchlist.scanner_defs.first()
-                .map(|d| crate::chart_renderer::ui::panels::scanner_panel::apply_scanner(d, &watchlist.scanner_results).len())
-                .unwrap_or(0),
+            "first_def_filtered_count": scan_filtered_json.len(),
+            // Behavioral oracle I/O: raw pool + def[0] criteria + app's output.
+            "raw":      scan_raw_json,
+            "def0":     scan_def0_json,
+            "filtered": scan_filtered_json,
         },
         "rrg": {
             "open":        watchlist.rrg_open,
             "tail_length": watchlist.rrg_tail_length,
-            // Effective sector count: real if populated, else the deterministic
-            // demo set the panel falls back to (always 11 SPDR sectors).
-            "sector_count": if watchlist.rrg_sectors.is_empty() {
-                crate::chart_renderer::ui::panels::rrg_panel::demo_sectors().len()
-            } else {
-                watchlist.rrg_sectors.len()
-            },
+            "sector_count": rrg_sectors_json.len(),
+            // Behavioral oracle: each sector's inputs + classified quadrant.
+            "sectors":     rrg_sectors_json,
         },
         "heatmap": {
             "cell_count": watchlist.heatmap_cells.len(),

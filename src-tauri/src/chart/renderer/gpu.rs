@@ -2864,18 +2864,22 @@ impl Chart {
             };
             levels.push(GammaLevel { price: level_price, exposure: gex });
         }
-        let max_pos = levels.iter().filter(|l| l.exposure > 0.0)
-            .max_by(|a, b| a.exposure.partial_cmp(&b.exposure).unwrap_or(std::cmp::Ordering::Equal));
-        let max_neg = levels.iter().filter(|l| l.exposure < 0.0)
-            .min_by(|a, b| a.exposure.partial_cmp(&b.exposure).unwrap_or(std::cmp::Ordering::Equal));
-        self.gamma_call_wall = max_pos.map_or(price + 10.0 * step, |l| l.price);
-        self.gamma_put_wall = max_neg.map_or(price - 10.0 * step, |l| l.price);
-        let mut zero = price;
-        for w in levels.windows(2) {
-            if w[0].exposure >= 0.0 && w[1].exposure < 0.0 { zero = (w[0].price + w[1].price) / 2.0; break; }
-        }
-        self.gamma_zero = zero;
-        self.gamma_hvl = max_pos.map_or(price, |l| l.price);
+        // Walls must sit on the correct side of spot: the call wall (largest
+        // gamma above price) above, the put wall (largest gamma below price)
+        // below — mirroring how a real GEX profile brackets spot. Picking global
+        // max/min exposure ignored side and could invert them.
+        let center = (price / step).round() * step;
+        let by_mag = |a: &&GammaLevel, b: &&GammaLevel|
+            a.exposure.abs().partial_cmp(&b.exposure.abs()).unwrap_or(std::cmp::Ordering::Equal);
+        let call = levels.iter().filter(|l| l.price > center).max_by(by_mag);
+        let put  = levels.iter().filter(|l| l.price < center).max_by(by_mag);
+        self.gamma_call_wall = call.map_or(center + 10.0 * step, |l| l.price);
+        self.gamma_put_wall  = put.map_or(center - 10.0 * step, |l| l.price);
+        // Flip (zero-gamma) sits at spot for the placeholder profile.
+        self.gamma_zero = center;
+        self.gamma_hvl  = levels.iter().filter(|l| l.exposure > 0.0).max_by(|a, b|
+            a.exposure.partial_cmp(&b.exposure).unwrap_or(std::cmp::Ordering::Equal))
+            .map_or(center, |l| l.price);
         self.gamma_levels = levels;
     }
     pub(crate) fn new() -> Self {

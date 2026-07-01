@@ -50,12 +50,6 @@
       "action": "assert",
       "assertions": [
         {
-          "state_field_gte": {
-            "path": "panes.0.dom_level_count",
-            "min": 1
-          }
-        },
-        {
           "state_field_equals": {
             "path": "panes.0.dom_sidebar_open",
             "value": true
@@ -63,6 +57,11 @@
         },
         {
           "dom_spread_sane": {
+            "pane": 0
+          }
+        },
+        {
+          "dom_ladder_correct": {
             "pane": 0
           }
         },

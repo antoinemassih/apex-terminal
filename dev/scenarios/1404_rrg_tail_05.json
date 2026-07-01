@@ -62,6 +62,9 @@
           }
         },
         {
+          "rrg_quadrants_correct": true
+        },
+        {
           "no_panic": true
         },
         {

@@ -674,8 +674,7 @@ for i,sym in enumerate(ALLSYMS):
         {"action":"log","message":f"gamma synth {sym}"},
         A({"gamma_overlay_active":{"pane":0}},
           {"state_field_gte":{"path":"panes.0.gamma_level_count","min":1}},
-          {"state_field_gte":{"path":"panes.0.gamma_call_wall","min":0.01}},
-          {"state_field_gte":{"path":"panes.0.gamma_put_wall","min":0.01}}, *invariants())]
+          {"gamma_structure_sane":{"pane":0}}, *invariants())]
     emit(1000+i, f"gamma_synth_{sset(sym)}", "Options/Gamma",
          ["options","gamma","correctness"], steps,
          f"SynthGamma on {sym} populates GEX levels and call/put walls.")
@@ -697,9 +696,8 @@ for i,sym in enumerate(ALLSYMS):
     steps=[{"action":"reset"},{"action":"wait_frames","count":3}]+load(sym)+[
         cmd("SetDomSidebar",pane=0,open=True),{"action":"wait_frames","count":6},
         {"action":"log","message":f"DOM {sym}"},
-        A({"state_field_gte":{"path":"panes.0.dom_level_count","min":1}},
-          {"state_field_equals":{"path":"panes.0.dom_sidebar_open","value":True}},
-          {"dom_spread_sane":{"pane":0}}, *invariants()),
+        A({"state_field_equals":{"path":"panes.0.dom_sidebar_open","value":True}},
+          {"dom_spread_sane":{"pane":0}},{"dom_ladder_correct":{"pane":0}}, *invariants()),
         cmd("SetDomSidebar",pane=0,open=False),{"action":"wait_frames","count":3},
         A({"state_field_equals":{"path":"panes.0.dom_sidebar_open","value":False}},{"no_panic":True})]
     emit(1100+i, f"dom_ladder_{sset(sym)}", "Trading/DOM",
@@ -725,10 +723,15 @@ order_grid=[("buy",100),("sell",200),("buy",500),("sell",50),("stop",100),("buy"
 oi=0
 for sym in STOCKS[:10]:
     for (side,qty) in order_grid:
+        # Seed at a distinctive price so the round-trip oracle is unambiguous.
+        oprice=123.45
         steps=[{"action":"reset"},{"action":"wait_frames","count":3}]+load(sym,ms=900)+[
-            cmd("SeedDraftOrder",pane=0,side=side,price=100.0,qty=qty),{"action":"wait_frames","count":2},
+            cmd("SeedDraftOrder",pane=0,side=side,price=oprice,qty=qty),{"action":"wait_frames","count":2},
             {"action":"log","message":f"seed {side} {qty} {sym}"},
-            A({"state_field_gte":{"path":"panes.0.order_draft_count","min":1}}, *SAFETY, {"no_panic":True}),
+            A({"state_field_gte":{"path":"panes.0.order_draft_count","min":1}},
+              {"order_matches":{"pane":0,"side":("Buy" if side=="buy" else "Sell" if side=="sell" else "Stop"),
+                                "price":oprice,"qty":qty}},
+              *SAFETY, {"no_panic":True}),
             cmd("CancelAllOrders"),{"action":"wait_frames","count":4},
             A({"state_field_equals":{"path":"panes.0.order_count","value":0}}, *SAFETY, {"fps_above":5.0})]
         emit(1200+oi, f"order_seed_{sset(sym)}_{side}_{qty}", "Trading/Orders",
@@ -764,7 +767,7 @@ for count in [1,5,10,25,50,100,200,300,500,750]:
            {"action":"log","message":f"scanner {count} rows"},
            A({"state_field_equals":{"path":"scanner.result_count","value":exp}},
              {"state_field_equals":{"path":"scanner.open","value":True}},
-             {"state_field_lte":{"path":"scanner.first_def_filtered_count","max":exp}},
+             {"scanner_filter_correct":True},
              {"no_panic":True},{"fps_above":5.0}),
            cmd("SetScannerOpen",open=False),{"action":"wait_frames","count":2},
            A({"state_field_equals":{"path":"scanner.open","value":False}},{"no_panic":True})]
@@ -794,6 +797,7 @@ for tl in range(1,21):
            A({"state_field_equals":{"path":"rrg.open","value":True}},
              {"state_field_equals":{"path":"rrg.tail_length","value":tl}},
              {"state_field_equals":{"path":"rrg.sector_count","value":11}},
+             {"rrg_quadrants_correct":True},
              {"no_panic":True},{"fps_above":5.0})]
     emit(1400+ri, f"rrg_tail_{tl:02d}", "RRG/Rotation",
          ["rrg","rotation","correctness"], steps,

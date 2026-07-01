@@ -55,10 +55,7 @@
           }
         },
         {
-          "state_field_lte": {
-            "path": "scanner.first_def_filtered_count",
-            "max": 10
-          }
+          "scanner_filter_correct": true
         },
         {
           "no_panic": true

@@ -132,6 +132,14 @@ Global: `scanner.open`, `scanner.result_count`, `scanner.first_def_filtered_coun
 - `{"no_live_orders":true}` — asserts `paper_mode` on AND 0 orders in a submitted state (proof nothing was submitted).
 - `{"dom_spread_sane":{"pane":0}}` — DOM ladder populated, prices strictly descending, best ask ≥ best bid.
 
+## Behavioral-correctness oracles (verify it computes the RIGHT thing, not just "populated")
+These derive the correct answer independently and compare — the "behaving as intended" bar:
+- `{"rrg_quadrants_correct":true}` — every RRG sector's quadrant matches the standard rule from its (rs_ratio, rs_momentum): LEADING both≥100, WEAKENING ratio≥100/mom<100, LAGGING both<100, IMPROVING ratio<100/mom≥100.
+- `{"gamma_structure_sane":{"pane":0}}` — synthesized GEX has correct structure: put wall < flip (zero-gamma) < call wall, all positive.
+- `{"dom_ladder_correct":{"pane":0}}` — DOM is a real price ladder: ≥3 levels, strictly descending, uniform tick spacing.
+- `{"order_matches":{"pane":0,"side":"Buy","price":123.45,"qty":500}}` — the pane's order list contains an order with exactly that side/price/qty (round-trip).
+- `{"scanner_filter_correct":true}` — independently recompute filter+sort+truncate from the raw pool + def[0] criteria and compare symbol-for-symbol to the app's output.
+
 Examples:
 - `{"state_field_gte":{"path":"panes.0.gamma_level_count","min":1}}` after `SynthGamma`.
 - `{"state_field_gte":{"path":"panes.0.dom_level_count","min":1}}` after `SetDomSidebar` open.

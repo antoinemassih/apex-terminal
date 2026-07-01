@@ -273,6 +273,120 @@ fn dispatch(
              else { format!("pane {pane_idx} DOM ladder BAD: levels={levels} desc={desc} bid={:?} ask={:?}", bid, ask) })
         }
 
+        // ── BEHAVIORAL ORACLE: RRG quadrant classification is correct ─────────
+        // For every sector, the classified quadrant must match the standard RRG
+        // rule from its (rs_ratio, rs_momentum): >=100 on both axes.
+        "rrg_quadrants_correct" => {
+            let secs = state.app_state["rrg"]["sectors"].as_array().cloned().unwrap_or_default();
+            let mut bad = vec![];
+            for s in &secs {
+                let r = s["rs_ratio"].as_f64().unwrap_or(0.0);
+                let m = s["rs_momentum"].as_f64().unwrap_or(0.0);
+                let want = match (r >= 100.0, m >= 100.0) {
+                    (true, true)   => "LEADING",
+                    (true, false)  => "WEAKENING",
+                    (false, false) => "LAGGING",
+                    (false, true)  => "IMPROVING",
+                };
+                let got = s["quadrant"].as_str().unwrap_or("");
+                if got != want {
+                    bad.push(format!("{} (r={r:.1},m={m:.1}): got {got}, want {want}",
+                                     s["symbol"].as_str().unwrap_or("?")));
+                }
+            }
+            let pass = !secs.is_empty() && bad.is_empty();
+            ("RrgQuadrantsCorrect".into(), pass,
+             if pass { format!("all {} RRG sectors classified correctly", secs.len()) }
+             else if secs.is_empty() { "no RRG sectors present".into() }
+             else { format!("{} misclassified: {}", bad.len(), bad.join("; ")) })
+        }
+
+        // ── BEHAVIORAL ORACLE: gamma wall/flip structure is sane ──────────────
+        // The put wall (max negative GEX) must sit below the flip (zero-gamma),
+        // which sits below the call wall (max positive GEX). {"gamma_structure_sane":{"pane":0}}
+        "gamma_structure_sane" => {
+            let pane_idx = val["pane"].as_u64().unwrap_or(0) as usize;
+            let p = &state.app_state["panes"][pane_idx];
+            let call = p["gamma_call_wall"].as_f64().unwrap_or(0.0);
+            let put  = p["gamma_put_wall"].as_f64().unwrap_or(0.0);
+            let zero = p["gamma_zero"].as_f64().unwrap_or(0.0);
+            let n    = p["gamma_level_count"].as_u64().unwrap_or(0);
+            let pass = n > 0 && put > 0.0 && call > 0.0 && put < call && put <= zero && zero <= call;
+            ("GammaStructureSane".into(), pass,
+             if pass { format!("pane {pane_idx} gamma structure ok (put {put:.2} <= flip {zero:.2} <= call {call:.2}, {n} levels)") }
+             else { format!("pane {pane_idx} gamma structure BAD: put={put:.2} flip={zero:.2} call={call:.2} levels={n}") })
+        }
+
+        // ── BEHAVIORAL ORACLE: DOM ladder is a correct price ladder ───────────
+        // Populated, strictly descending, with uniform tick spacing.
+        // {"dom_ladder_correct":{"pane":0}}
+        "dom_ladder_correct" => {
+            let pane_idx = val["pane"].as_u64().unwrap_or(0) as usize;
+            let p = &state.app_state["panes"][pane_idx];
+            let n    = p["dom_level_count"].as_u64().unwrap_or(0);
+            let desc = p["dom_prices_desc"].as_bool().unwrap_or(false);
+            let unif = p["dom_uniform_spacing"].as_bool().unwrap_or(false);
+            let pass = n >= 3 && desc && unif;
+            ("DomLadderCorrect".into(), pass,
+             if pass { format!("pane {pane_idx} DOM ladder correct ({n} levels, descending, uniform tick)") }
+             else { format!("pane {pane_idx} DOM ladder BAD: levels={n} desc={desc} uniform={unif}") })
+        }
+
+        // ── BEHAVIORAL ORACLE: a seeded order round-trips correctly ───────────
+        // The pane's order list must contain an order matching the given
+        // side/price/qty. {"order_matches":{"pane":0,"side":"Buy","price":100.0,"qty":500}}
+        "order_matches" => {
+            let pane_idx = val["pane"].as_u64().unwrap_or(0) as usize;
+            let side  = val["side"].as_str().unwrap_or("");
+            let price = val["price"].as_f64().unwrap_or(f64::NAN);
+            let qty   = val["qty"].as_u64().unwrap_or(0);
+            let orders = state.app_state["panes"][pane_idx]["orders"].as_array().cloned().unwrap_or_default();
+            let found = orders.iter().any(|o|
+                o["side"].as_str().unwrap_or("").eq_ignore_ascii_case(side)
+                && (o["price"].as_f64().unwrap_or(f64::NAN) - price).abs() < 1e-3
+                && o["qty"].as_u64().unwrap_or(0) == qty);
+            ("OrderMatches".into(), found,
+             if found { format!("pane {pane_idx} has order {side} {qty}@{price}") }
+             else { format!("pane {pane_idx} MISSING order {side} {qty}@{price}; have {} order(s)", orders.len()) })
+        }
+
+        // ── BEHAVIORAL ORACLE: scanner filter+sort matches an independent recompute
+        // Re-derives the expected filtered/sorted/truncated result from the raw
+        // pool + def[0] criteria and compares to the app's output symbol-for-symbol.
+        "scanner_filter_correct" => {
+            let raw = state.app_state["scanner"]["raw"].as_array().cloned().unwrap_or_default();
+            let def = &state.app_state["scanner"]["def0"];
+            let got: Vec<String> = state.app_state["scanner"]["filtered"].as_array().cloned().unwrap_or_default()
+                .iter().map(|r| r["symbol"].as_str().unwrap_or("").to_string()).collect();
+            let (mn, mx, mv, limit) = (
+                def["min_change"].as_f64().unwrap_or(f64::MIN),
+                def["max_change"].as_f64().unwrap_or(f64::MAX),
+                def["min_volume"].as_f64().unwrap_or(0.0),
+                def["limit"].as_u64().unwrap_or(usize::MAX as u64) as usize);
+            let sort_by = def["sort_by"].as_str().unwrap_or("ChangeDesc");
+            let mut want: Vec<(String, f64, f64)> = raw.iter().filter_map(|r| {
+                let sym = r["symbol"].as_str()?.to_string();
+                let ch  = r["change_pct"].as_f64()?;
+                let vol = r["volume"].as_f64()?;
+                let px  = r["price"].as_f64().unwrap_or(0.0);
+                // Mirror apply_scanner exactly: price>0, change in [min,max], vol>=min.
+                (px > 0.0 && ch >= mn && ch <= mx && vol >= mv).then_some((sym, ch, vol))
+            }).collect();
+            match sort_by {
+                "ChangeAsc"  => want.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)),
+                "VolumeDesc" => want.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal)),
+                _            => want.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)),
+            }
+            want.truncate(limit);
+            let want_syms: Vec<String> = want.into_iter().map(|t| t.0).collect();
+            let pass = !raw.is_empty() && got == want_syms;
+            ("ScannerFilterCorrect".into(), pass,
+             if pass { format!("scanner filter+sort correct ({} rows, sort={sort_by})", got.len()) }
+             else { format!("scanner filter WRONG (sort={sort_by}): app={} rows, expected={} rows{}",
+                            got.len(), want_syms.len(),
+                            if raw.is_empty() { " [no raw pool]" } else { "" }) })
+        }
+
         "watchlist_section_count_equals" => {
             let expect = val.as_u64()
                 .or_else(|| val["count"].as_u64())
