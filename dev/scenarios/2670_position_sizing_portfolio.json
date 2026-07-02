@@ -1,0 +1,125 @@
+{
+  "name": "position_sizing_portfolio",
+  "description": "Risk sizing: $500/trade sizes each play by its stop distance; portfolio aggregates $ risk + exposure.",
+  "story": "Playbook/Risk",
+  "tags": [
+    "playbook",
+    "sizing",
+    "portfolio",
+    "correctness"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlaybookPanel",
+      "open": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetAccountRisk",
+      "account": 50000.0,
+      "risk_pct": 0.01
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "SIZ1",
+      "long": true,
+      "entry": 100.0,
+      "target": 110.0,
+      "stop": 95.0
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "SIZ2",
+      "long": true,
+      "entry": 200.0,
+      "target": 220.0,
+      "stop": 190.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.suggested_size",
+            "value": 100
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.dollar_risk",
+            "value": 500.0
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.1.suggested_size",
+            "value": 50
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.1.dollar_risk",
+            "value": 500.0
+          }
+        }
+      ]
+    },
+    {
+      "action": "log",
+      "message": "portfolio aggregate risk + exposure"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.portfolio.total_risk",
+            "value": 1000.0
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.portfolio.gross_exposure",
+            "value": 20000.0
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.portfolio.net_exposure",
+            "value": 20000.0
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.portfolio.long_count",
+            "value": 2
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

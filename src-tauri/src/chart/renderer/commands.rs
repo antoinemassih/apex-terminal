@@ -385,6 +385,9 @@ pub enum AppCommand {
     /// Compute the options-spread payoff at underlying `price` and stash it.
     #[cfg(debug_assertions)]
     PayoffAt { idx: usize, price: f32 },
+    /// Set account equity + risk-per-trade fraction (drives sizing + portfolio risk).
+    #[cfg(debug_assertions)]
+    SetAccountRisk { account: f32, risk_pct: f32 },
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -1142,6 +1145,12 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
                 let v = crate::chart_renderer::option_payoff_at(&p.spread_legs, price);
                 crate::chart_renderer::gpu::set_last_payoff(v);
             }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SetAccountRisk { account, risk_pct } => {
+            watchlist.account_size = account.max(0.0);
+            watchlist.risk_pct = risk_pct.clamp(0.0, 1.0);
         }
 
         #[cfg(debug_assertions)]

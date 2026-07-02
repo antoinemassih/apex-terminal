@@ -790,6 +790,18 @@ impl<'a> ExprParser<'a> {
     }
 }
 
+/// Risk-based position size: shares such that a stop-out loses ≈ account·risk_pct.
+/// `floor((account·risk_pct) / |entry−stop|)`; 0 if the stop distance is ~0.
+pub(crate) fn suggested_size(entry: f32, stop: f32, account: f32, risk_pct: f32) -> u32 {
+    let per_share = (entry - stop).abs();
+    if per_share < 1e-6 || account <= 0.0 || risk_pct <= 0.0 { return 0; }
+    ((account * risk_pct) / per_share).floor().max(0.0) as u32
+}
+/// Dollar risk of a play at `size` shares (loss if stopped out).
+pub(crate) fn dollar_risk(entry: f32, stop: f32, size: u32) -> f32 {
+    (entry - stop).abs() * size as f32
+}
+
 /// A key price level a dragged play line can magnetically snap to, with a label.
 #[derive(Clone, Debug)]
 pub(crate) struct SnapLevel { pub price: f32, pub label: String }

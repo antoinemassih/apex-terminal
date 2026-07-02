@@ -1572,5 +1572,39 @@ emit(2661,"options_short_put_credit","Playbook/Options",["playbook","options","p
       A({"state_field_equals":{"path":"playbook.last_payoff","value":-700.0}},{"no_panic":True})],
      "Short put (credit): net credit -300, keep premium above strike (+300), assigned loss below (-700).")
 
+# ── 2670-2671: Playbook position sizing + portfolio risk aggregation ─────────
+# Account 50k, risk 1% = $500/trade. Long e100/s95 -> $5/sh -> 100 shares ($500).
+# Long e200/s190 -> $10/sh -> 50 shares ($500). Portfolio: risk 1000, gross 20000.
+emit(2670,"position_sizing_portfolio","Playbook/Risk",["playbook","sizing","portfolio","correctness"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SetPlaybookPanel",open=True),
+      cmd("SetAccountRisk",account=50000.0,risk_pct=0.01),{"action":"wait_frames","count":1},
+      cmd("SeedPlay",symbol="SIZ1",long=True,entry=100.0,target=110.0,stop=95.0),
+      cmd("SeedPlay",symbol="SIZ2",long=True,entry=200.0,target=220.0,stop=190.0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.suggested_size","value":100}},
+        {"state_field_equals":{"path":"playbook.plays.0.dollar_risk","value":500.0}},
+        {"state_field_equals":{"path":"playbook.plays.1.suggested_size","value":50}},
+        {"state_field_equals":{"path":"playbook.plays.1.dollar_risk","value":500.0}}),
+      {"action":"log","message":"portfolio aggregate risk + exposure"},
+      A({"state_field_equals":{"path":"playbook.portfolio.total_risk","value":1000.0}},
+        {"state_field_equals":{"path":"playbook.portfolio.gross_exposure","value":20000.0}},
+        {"state_field_equals":{"path":"playbook.portfolio.net_exposure","value":20000.0}},
+        {"state_field_equals":{"path":"playbook.portfolio.long_count","value":2}},{"no_panic":True})],
+     "Risk sizing: $500/trade sizes each play by its stop distance; portfolio aggregates $ risk + exposure.")
+# Market-neutral: one long + one short of equal exposure -> net 0, gross 20000.
+emit(2671,"portfolio_market_neutral","Playbook/Risk",["playbook","portfolio","correctness"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SetPlaybookPanel",open=True),
+      cmd("SetAccountRisk",account=50000.0,risk_pct=0.01),{"action":"wait_frames","count":1},
+      cmd("SeedPlay",symbol="LNG1",long=True,entry=100.0,target=110.0,stop=95.0),
+      cmd("SeedPlay",symbol="SHT1",long=False,entry=100.0,target=90.0,stop=105.0),{"action":"wait_frames","count":2},
+      {"action":"log","message":"long + short of equal exposure -> net 0"},
+      A({"state_field_equals":{"path":"playbook.portfolio.net_exposure","value":0.0}},
+        {"state_field_equals":{"path":"playbook.portfolio.gross_exposure","value":20000.0}},
+        {"state_field_equals":{"path":"playbook.portfolio.long_count","value":1}},
+        {"state_field_equals":{"path":"playbook.portfolio.short_count","value":1}},
+        {"state_field_equals":{"path":"playbook.portfolio.total_risk","value":1000.0}},{"no_panic":True})],
+     "A long + short of equal exposure nets to market-neutral (net 0, gross 20000), risk 1000.")
+
 print(f"generated {len(made)} scenarios into {OUT}")
 for p in made[:3]: print("  e.g.", os.path.basename(p))

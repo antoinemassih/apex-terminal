@@ -2316,6 +2316,11 @@ fn parse_app_command(
             let price = body["price"].as_f64().unwrap_or(0.0) as f32;
             Ok(AppCommand::PayoffAt { idx, price })
         }
+        "SetAccountRisk" | "set_account_risk" => {
+            let account  = body["account"].as_f64().unwrap_or(0.0) as f32;
+            let risk_pct = body["risk_pct"].as_f64().unwrap_or(0.0) as f32;
+            Ok(AppCommand::SetAccountRisk { account, risk_pct })
+        }
 
         // ── Alerts ─────────────────────────────────────────────────────────
         "PlaceAllDraftAlerts" | "place_all_draft_alerts" => Ok(AppCommand::PlaceAllDraftAlerts),

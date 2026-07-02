@@ -1,0 +1,101 @@
+{
+  "name": "portfolio_market_neutral",
+  "description": "A long + short of equal exposure nets to market-neutral (net 0, gross 20000), risk 1000.",
+  "story": "Playbook/Risk",
+  "tags": [
+    "playbook",
+    "portfolio",
+    "correctness"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlaybookPanel",
+      "open": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetAccountRisk",
+      "account": 50000.0,
+      "risk_pct": 0.01
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "LNG1",
+      "long": true,
+      "entry": 100.0,
+      "target": 110.0,
+      "stop": 95.0
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "SHT1",
+      "long": false,
+      "entry": 100.0,
+      "target": 90.0,
+      "stop": 105.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "long + short of equal exposure -> net 0"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.portfolio.net_exposure",
+            "value": 0.0
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.portfolio.gross_exposure",
+            "value": 20000.0
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.portfolio.long_count",
+            "value": 1
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.portfolio.short_count",
+            "value": 1
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.portfolio.total_risk",
+            "value": 1000.0
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

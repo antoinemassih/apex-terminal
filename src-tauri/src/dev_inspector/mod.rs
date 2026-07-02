@@ -1028,6 +1028,28 @@ pub fn end_frame(
 
     // Playbook: local plays list (symbol/direction/levels/computed risk_reward).
     use crate::chart_renderer::PlayOrigin;
+    // Portfolio risk aggregate (P-power): total $ risk + net/gross exposure across
+    // plays, sized from account × risk% and each play's stop distance.
+    let portfolio_json = {
+        let (acct, rpct) = (watchlist.account_size, watchlist.risk_pct);
+        let (mut total_risk, mut gross, mut net) = (0.0f32, 0.0f32, 0.0f32);
+        let (mut longs, mut shorts) = (0u32, 0u32);
+        for p in &watchlist.plays {
+            let sz = crate::chart_renderer::suggested_size(p.entry_price, p.stop_price, acct, rpct);
+            total_risk += crate::chart_renderer::dollar_risk(p.entry_price, p.stop_price, sz);
+            let exposure = sz as f32 * p.entry_price;
+            gross += exposure;
+            match p.direction {
+                crate::chart_renderer::PlayDirection::Long  => { net += exposure; longs += 1; }
+                crate::chart_renderer::PlayDirection::Short => { net -= exposure; shorts += 1; }
+            }
+        }
+        serde_json::json!({
+            "account_size": acct, "risk_pct": rpct,
+            "total_risk": total_risk, "gross_exposure": gross, "net_exposure": net,
+            "long_count": longs, "short_count": shorts,
+        })
+    };
     let plays_json: Vec<serde_json::Value> = watchlist.plays.iter().take(32).map(|p| {
         let (is_fork, forked_from) = match &p.origin {
             PlayOrigin::Fork { of_author, .. } => (true, of_author.clone()),
@@ -1059,6 +1081,11 @@ pub fn end_frame(
             })).collect::<Vec<_>>(),
             "spread_leg_count": p.spread_legs.len(),
             "net_debit":        crate::chart_renderer::option_net_debit(&p.spread_legs),
+            "suggested_size":   crate::chart_renderer::suggested_size(
+                                    p.entry_price, p.stop_price, watchlist.account_size, watchlist.risk_pct),
+            "dollar_risk":      crate::chart_renderer::dollar_risk(p.entry_price, p.stop_price,
+                                    crate::chart_renderer::suggested_size(
+                                        p.entry_price, p.stop_price, watchlist.account_size, watchlist.risk_pct)),
             "status":       p.status.label(),
             "author":       p.author,
             "is_fork":      is_fork,
@@ -1157,6 +1184,7 @@ pub fn end_frame(
                 "direction": p.direction.label(),
             })).collect::<Vec<_>>(),
             "last_share": crate::chart_renderer::gpu::last_share(),
+            "portfolio":  portfolio_json,
             // Snap engine (Phase-1 authoring): last SnapTest result + the active
             // chart's snap candidate labels (proves gamma/round/swing wiring).
             "last_snap_price": crate::chart_renderer::gpu::last_snap().0,
@@ -1399,6 +1427,7 @@ fn do_reset() {
     push(AppCommand::SetAutoChartPanel { open: false });
     push(AppCommand::SetPlaybookPanel { open: false });
     push(AppCommand::ClearPlays);
+    push(AppCommand::SetAccountRisk { account: 100000.0, risk_pct: 0.01 });
     push(AppCommand::SeedFeed { count: 0 });
     push(AppCommand::SetFeedFilter { symbol: String::new() });
     // Reset the in-memory author to a clean test baseline (never touches author.txt).

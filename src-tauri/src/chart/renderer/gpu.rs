@@ -6194,6 +6194,10 @@ pub(crate) struct Watchlist {
     pub(crate) feed: Vec<super::Play>,
     /// Feed filter (F2): symbol substring ("" = all).
     pub(crate) feed_filter_symbol: String,
+    /// Risk sizing (P-power): account equity + risk-per-trade fraction, used to
+    /// size plays from their stop distance and aggregate portfolio risk.
+    pub(crate) account_size: f32,
+    pub(crate) risk_pct: f32,
     pub(crate) play_editor_open: bool,
     pub(crate) play_editor_symbol: String,
     pub(crate) play_editor_entry: String,
@@ -6499,7 +6503,8 @@ impl Watchlist {
                dashboard_templates: vec!["Default".into()],
                heatmap_templates: vec!["Default".into()],
                spreadsheet_templates: vec!["Default".into()],
-               plays: vec![], feed: vec![], feed_filter_symbol: String::new(), play_editor_open: false,
+               plays: vec![], feed: vec![], feed_filter_symbol: String::new(),
+               account_size: 100000.0, risk_pct: 0.01, play_editor_open: false,
                play_editor_symbol: String::new(), play_editor_entry: String::new(),
                play_editor_target: String::new(), play_editor_stop: String::new(),
                play_editor_notes: String::new(), play_editor_direction: super::PlayDirection::Long,
