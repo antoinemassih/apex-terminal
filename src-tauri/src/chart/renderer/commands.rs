@@ -320,6 +320,9 @@ pub enum AppCommand {
     /// Import a play from the debug export file and add it to the book.
     #[cfg(debug_assertions)]
     ImportPlay,
+    /// Fork play[idx] into a new copy owned by the local author (attribution kept).
+    #[cfg(debug_assertions)]
+    ForkPlay { idx: usize },
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -922,6 +925,17 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
             if let Some(p) = crate::chart_renderer::gpu::import_play_from_file(
                 &crate::chart_renderer::gpu::play_export_debug_path()) {
                 watchlist.plays.push(p);
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::ForkPlay { idx } => {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+            let author = crate::chart_renderer::gpu::author_handle();
+            if let Some(src) = watchlist.plays.get(idx) {
+                let fork = src.fork(&author, now);
+                watchlist.plays.push(fork);
             }
         }
 

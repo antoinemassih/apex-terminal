@@ -1,0 +1,101 @@
+{
+  "name": "playbook_fork_resets_status",
+  "description": "Forking a Won play yields a fresh Draft (the forker's own idea), still attributed to the origin.",
+  "story": "Playbook/Fork",
+  "tags": [
+    "playbook",
+    "fork",
+    "lifecycle"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetAuthor",
+      "handle": "alice"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "FRK2",
+      "long": true,
+      "entry": 100.0,
+      "target": 110.0,
+      "stop": 95.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "GradePlaysAtPrice",
+      "symbol": "FRK2",
+      "price": 111.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.status",
+            "value": "WON"
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetAuthor",
+      "handle": "carol"
+    },
+    {
+      "action": "cmd",
+      "cmd": "ForkPlay",
+      "idx": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.1.status",
+            "value": "DRAFT"
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.1.author",
+            "value": "carol"
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.1.forked_from",
+            "value": "alice"
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

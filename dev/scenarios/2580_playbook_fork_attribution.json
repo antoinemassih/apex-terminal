@@ -1,0 +1,126 @@
+{
+  "name": "playbook_fork_attribution",
+  "description": "Bob forks Alice's play: new copy owned by Bob, attributed to Alice, levels kept, status Draft.",
+  "story": "Playbook/Fork",
+  "tags": [
+    "playbook",
+    "fork",
+    "attribution"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetAuthor",
+      "handle": "alice"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "FRK1",
+      "long": true,
+      "entry": 100.0,
+      "target": 110.0,
+      "stop": 95.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.author",
+            "value": "alice"
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.is_fork",
+            "value": false
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetAuthor",
+      "handle": "bob"
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "ForkPlay",
+      "idx": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "bob forks alice's play"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.play_count",
+            "value": 2
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.1.author",
+            "value": "bob"
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.1.is_fork",
+            "value": true
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.1.forked_from",
+            "value": "alice"
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.1.symbol",
+            "value": "FRK1"
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.1.status",
+            "value": "DRAFT"
+          }
+        },
+        {
+          "play_rr_correct": true
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

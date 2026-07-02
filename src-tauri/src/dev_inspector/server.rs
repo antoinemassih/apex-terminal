@@ -2199,6 +2199,10 @@ fn parse_app_command(
             Ok(AppCommand::ExportPlay { idx })
         }
         "ImportPlay" | "import_play" => Ok(AppCommand::ImportPlay),
+        "ForkPlay" | "fork_play" => {
+            let idx = body["idx"].as_u64().unwrap_or(0) as usize;
+            Ok(AppCommand::ForkPlay { idx })
+        }
 
         // ── Alerts ─────────────────────────────────────────────────────────
         "PlaceAllDraftAlerts" | "place_all_draft_alerts" => Ok(AppCommand::PlaceAllDraftAlerts),

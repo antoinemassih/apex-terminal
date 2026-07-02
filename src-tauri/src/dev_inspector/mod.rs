@@ -1026,16 +1026,25 @@ pub fn end_frame(
         .collect();
 
     // Playbook: local plays list (symbol/direction/levels/computed risk_reward).
-    let plays_json: Vec<serde_json::Value> = watchlist.plays.iter().take(32).map(|p| serde_json::json!({
-        "symbol":       p.symbol,
-        "direction":    p.direction.label(),
-        "entry":        p.entry_price,
-        "target":       p.target_price,
-        "stop":         p.stop_price,
-        "risk_reward":  p.risk_reward,
-        "status":       p.status.label(),
-        "author":       p.author,
-    })).collect();
+    use crate::chart_renderer::PlayOrigin;
+    let plays_json: Vec<serde_json::Value> = watchlist.plays.iter().take(32).map(|p| {
+        let (is_fork, forked_from) = match &p.origin {
+            PlayOrigin::Fork { of_author, .. } => (true, of_author.clone()),
+            PlayOrigin::Original => (false, String::new()),
+        };
+        serde_json::json!({
+            "symbol":       p.symbol,
+            "direction":    p.direction.label(),
+            "entry":        p.entry_price,
+            "target":       p.target_price,
+            "stop":         p.stop_price,
+            "risk_reward":  p.risk_reward,
+            "status":       p.status.label(),
+            "author":       p.author,
+            "is_fork":      is_fork,
+            "forked_from":  forked_from,
+        })
+    }).collect();
     // Auto-charting panel: open state + the global AutoDrawConfig the panel edits.
     let adc = crate::chart_renderer::gpu::auto_draw_config();
     let signal_drawing_count = active_chart.map(|c| c.signal_drawings.len()).unwrap_or(0);

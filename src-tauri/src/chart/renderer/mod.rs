@@ -517,6 +517,8 @@ pub(crate) struct Play {
     pub risk_reward: f32,      // computed: (target - entry) / (entry - stop)
     pub tags: Vec<String>,     // "momentum", "breakout", "earnings", etc.
     pub template_name: Option<String>,
+    /// Provenance: an original idea or a fork of someone else's play.
+    #[serde(default)] pub origin: PlayOrigin,
     // ── Auto-grading lifecycle (P0/D1-D3) ─────────────────────────────────
     /// Unix seconds when price first crossed entry (Draft/Published → Active).
     #[serde(default)] pub activated_at: Option<i64>,
@@ -528,6 +530,17 @@ pub(crate) struct Play {
 
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum PlayDirection { Long, Short }
+
+/// Where a play came from — an original idea, or a fork of someone else's play
+/// (carries attribution to the source).
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum PlayOrigin {
+    Original,
+    Fork { of_id: String, of_author: String },
+}
+impl Default for PlayOrigin {
+    fn default() -> Self { PlayOrigin::Original }
+}
 
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum PlayStatus {
@@ -571,6 +584,7 @@ impl Play {
             risk_reward: rr,
             tags: vec![],
             template_name: None,
+            origin: PlayOrigin::Original,
             activated_at: None,
             resolved_at: None,
             expiry: None,
@@ -580,6 +594,21 @@ impl Play {
     /// Is this play still open (can transition)?
     pub fn is_open(&self) -> bool {
         matches!(self.status, PlayStatus::Draft | PlayStatus::Published | PlayStatus::Active)
+    }
+
+    /// Fork this play into a new, independent, editable copy owned by
+    /// `new_author`, attributed to the source. New id, reset lifecycle, back to
+    /// Draft — the forker's own idea, credited to the original.
+    pub fn fork(&self, new_author: &str, now: i64) -> Play {
+        let mut f = self.clone();
+        f.id = uuid::Uuid::new_v4().to_string();
+        f.origin = PlayOrigin::Fork { of_id: self.id.clone(), of_author: self.author.clone() };
+        f.author = new_author.to_string();
+        f.status = PlayStatus::Draft;
+        f.created_at = now;
+        f.activated_at = None;
+        f.resolved_at = None;
+        f
     }
 }
 

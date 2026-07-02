@@ -1267,5 +1267,36 @@ emit(2571,"playbook_import_alongside","Playbook/Share",["playbook","share","impo
       A({"state_field_equals":{"path":"playbook.play_count","value":3}},{"play_rr_correct":True},{"no_panic":True})],
      "A received (imported) play is added alongside the user's own plays.")
 
+# ── 2580-2581: Playbook FORK with attribution (G1) ──────────────────────────
+emit(2580,"playbook_fork_attribution","Playbook/Fork",["playbook","fork","attribution"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SetAuthor",handle="alice"),
+      cmd("SeedPlay",symbol="FRK1",long=True,entry=100.0,target=110.0,stop=95.0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.author","value":"alice"}},
+        {"state_field_equals":{"path":"playbook.plays.0.is_fork","value":False}}),
+      cmd("SetAuthor",handle="bob"),{"action":"wait_frames","count":1},
+      cmd("ForkPlay",idx=0),{"action":"wait_frames","count":2},
+      {"action":"log","message":"bob forks alice's play"},
+      A({"state_field_equals":{"path":"playbook.play_count","value":2}},
+        {"state_field_equals":{"path":"playbook.plays.1.author","value":"bob"}},
+        {"state_field_equals":{"path":"playbook.plays.1.is_fork","value":True}},
+        {"state_field_equals":{"path":"playbook.plays.1.forked_from","value":"alice"}},
+        {"state_field_equals":{"path":"playbook.plays.1.symbol","value":"FRK1"}},
+        {"state_field_equals":{"path":"playbook.plays.1.status","value":"DRAFT"}},
+        {"play_rr_correct":True},{"no_panic":True})],
+     "Bob forks Alice's play: new copy owned by Bob, attributed to Alice, levels kept, status Draft.")
+# Forking a resolved play resets it to a fresh Draft idea.
+emit(2581,"playbook_fork_resets_status","Playbook/Fork",["playbook","fork","lifecycle"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SetAuthor",handle="alice"),
+      cmd("SeedPlay",symbol="FRK2",long=True,entry=100.0,target=110.0,stop=95.0),{"action":"wait_frames","count":1},
+      cmd("GradePlaysAtPrice",symbol="FRK2",price=111.0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.status","value":"WON"}}),
+      cmd("SetAuthor",handle="carol"),cmd("ForkPlay",idx=0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.1.status","value":"DRAFT"}},
+        {"state_field_equals":{"path":"playbook.plays.1.author","value":"carol"}},
+        {"state_field_equals":{"path":"playbook.plays.1.forked_from","value":"alice"}},{"no_panic":True})],
+     "Forking a Won play yields a fresh Draft (the forker's own idea), still attributed to the origin.")
+
 print(f"generated {len(made)} scenarios into {OUT}")
 for p in made[:3]: print("  e.g.", os.path.basename(p))
