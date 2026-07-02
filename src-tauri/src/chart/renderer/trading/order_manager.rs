@@ -159,6 +159,21 @@ fn with_mgr<F, R>(f: F) -> R where F: FnOnce(&mut OrderManager) -> R {
     result
 }
 
+/// A2 (audit): the state a persisted order is restored AS on cold start.
+///
+/// A `PendingSubmit` order crashed between being written to disk and the
+/// broker Ack — we cannot claim it is live, so it comes back as `Unknown`
+/// ("needs reconcile") and the journal-driven `replay_and_recover` resolves it
+/// against the broker. Every other persisted (active) state is restored as
+/// `Working` for the trader to verify. Pure so it can be unit-tested without
+/// touching disk.
+fn restored_state_for(persisted: OrderState) -> OrderState {
+    match persisted {
+        OrderState::PendingSubmit => OrderState::Unknown,
+        _ => OrderState::Working,
+    }
+}
+
 /// Path for persisted open orders.
 fn orders_state_path() -> PathBuf {
     let dir = std::env::current_exe().ok()
@@ -1253,10 +1268,24 @@ impl OrderManager {
                     };
                     match broker.submit(&args) {
                         Ok(ib_oid) => {
+                            // A2 (audit): transition PendingSubmit -> Working ONLY now,
+                            // on the real broker Ack, and only after the backend id is
+                            // recorded. The order is never persisted as Working with a
+                            // None backend id, so a crash can't restore an uncancelable
+                            // phantom. is_terminal()/state guards keep a poller-driven
+                            // reconcile that lands first from being clobbered.
                             with_mgr(|mgr| {
                                 if let Some(o) = mgr.orders.iter_mut().find(|o| o.id == order_id_copy) {
                                     o.backend_order_id = Some(ib_oid.clone());
+                                    if o.state == OrderState::PendingSubmit {
+                                        let now = epoch_ms();
+                                        o.state = OrderState::Working;
+                                        o.updated_at = ts_from_ms(now);
+                                        o.state_history.push((OrderState::Working, ts_from_ms(now)));
+                                    }
                                 }
+                                mgr.needs_snapshot = true;
+                                mgr.save_to_disk();
                             });
                             journal::append(JournalEvent::Ack {
                                 client_id: cid_thread, backend_id: Some(ib_oid), ts_ms: epoch_ms(),
@@ -1287,7 +1316,13 @@ impl OrderManager {
                     }
                 });
             }
-            self.transition(id, OrderState::Working); // Optimistic — will reconcile from poller
+            // A2 (audit): paper orders are synthetically acked synchronously above,
+            // so they go Working immediately. LIVE orders stay PendingSubmit until
+            // the async broker Ack (handled in the spawned thread's Ok branch) —
+            // no optimistic Working-before-Ack window that a crash could persist.
+            if paper {
+                self.transition(id, OrderState::Working);
+            }
             self.pending_toasts.push(format!("{} {} x{} @ {:.2}", side_str.to_uppercase(), intent.symbol, qty, price));
             // `price` here is already f32 from the wire-boundary capture above.
             OrderResult::Accepted(id)
@@ -2371,8 +2406,16 @@ impl OrderManager {
     }
 
     /// Load persisted orders from disk and repopulate.
+    ///
     /// Restored orders are marked Working — the trader must verify with the
     /// broker since we don't know if these are still live.
+    ///
+    /// A2 (audit) EXCEPTION: an order persisted as `PendingSubmit` crashed
+    /// *between* being written and the broker Ack — we do NOT know it ever
+    /// reached the broker, so we must not claim it is live `Working`. Restore
+    /// it as `Unknown` (the documented "needs reconcile" state); the
+    /// journal-driven `replay_and_recover` then queries the broker by
+    /// client_order_id and resolves it to Working / Rejected / absent.
     pub(crate) fn load_from_disk(&mut self) {
         let path = orders_state_path();
         let bytes = match std::fs::read(&path) {
@@ -2387,16 +2430,24 @@ impl OrderManager {
             }
         };
         let count = restored.len();
+        let mut unresolved = 0usize;
         let now = epoch_ms();
         for mut o in restored {
-            o.state = OrderState::Working;
+            let restored_state = restored_state_for(o.state);
+            if restored_state == OrderState::Unknown { unresolved += 1; }
+            o.state = restored_state;
             o.updated_at = ts_from_ms(now);
-            o.state_history.push((OrderState::Working, ts_from_ms(now)));
+            o.state_history.push((restored_state, ts_from_ms(now)));
             if o.id >= self.next_id { self.next_id = o.id + 1; }
             self.orders.push(o);
         }
         if count > 0 {
-            self.pending_toasts.push(format!("Restored {} open orders — verify with broker", count));
+            let msg = if unresolved > 0 {
+                format!("Restored {count} open orders ({unresolved} unconfirmed — reconciling with broker)")
+            } else {
+                format!("Restored {count} open orders — verify with broker")
+            };
+            self.pending_toasts.push(msg);
         }
         // CC1: defer snapshot publish until ORDER_MANAGER guard drops.
         self.needs_snapshot = true;
@@ -3658,6 +3709,26 @@ mod tests {
     }
 
     // ── A. Idempotency / dedup ───────────────────────────────────────────────
+
+    // ── A2 (audit): crash-window restore mapping ─────────────────────────────
+    #[test]
+    fn restored_pending_submit_becomes_unknown_not_working() {
+        // An order persisted mid-submit (crash between disk write and broker
+        // Ack) must NOT come back as live Working — it becomes Unknown so
+        // replay_and_recover reconciles it against the broker.
+        assert_eq!(restored_state_for(OrderState::PendingSubmit), OrderState::Unknown,
+            "PendingSubmit restored as Unknown (needs reconcile), never a phantom Working");
+    }
+
+    #[test]
+    fn restored_live_states_become_working() {
+        // Genuinely-live persisted states restore as Working for the trader to
+        // verify — unchanged pre-A2 behavior.
+        for s in [OrderState::Working, OrderState::PartialFill, OrderState::PendingModify] {
+            assert_eq!(restored_state_for(s), OrderState::Working,
+                "{s:?} should restore as Working");
+        }
+    }
 
     #[test]
     fn submit_duplicate_within_cooldown_returns_duplicate() {
@@ -5149,7 +5220,7 @@ mod tests {
             let r = g.submit(limit_intent("AAPL", OrderSide::Buy, 100.0, 5));
             match r {
                 OrderResult::Accepted(id) => id,
-                other => panic!("submit should accept (optimistically), got {:?}", other),
+                other => panic!("submit should accept, got {:?}", other),
             }
         };
 
@@ -5166,18 +5237,18 @@ mod tests {
         assert!(matches!(calls[0], MockCall::Submit { .. }),
             "broker must have seen the Submit call, got {:?}", calls[0]);
 
-        // Verify the inline-manager's order is still optimistically Working
-        // (the global manager's order would be Rejected, but we can't observe
-        // that here without rewriting the test to use the global path).
-        // The key assertion is that the broker-Err path does NOT leave the
-        // order in PendingSubmit with no backend_id (it either stays Working
-        // for reconciliation or transitions to Rejected via with_mgr on the
-        // global manager).  This unit test covers the call-path only;
-        // see the integration-style test `broker_fail_transitions_order_to_rejected`
-        // comment for the full reasoning.
+        // A2 (audit): a LIVE order stays PendingSubmit until the async broker
+        // Ack — the pre-A2 optimistic Working-before-Ack transition was removed.
+        // The spawned broker thread writes the Rejected outcome to the GLOBAL
+        // manager (a different instance), which this local Arc can't observe, so
+        // here the local order remains PendingSubmit. That is the CORRECT durable
+        // in-flight state: it carries a client_order_id but no phantom Working
+        // claim, and replay_and_recover / the global reconcile resolve it to
+        // Rejected (or Working) against the broker. The key invariant this test
+        // now pins: submit() does NOT optimistically flip a live order to Working.
         let state = mgr.lock().unwrap().orders.iter()
             .find(|o| o.id == id).map(|o| o.state);
-        assert!(matches!(state, Some(OrderState::Working) | Some(OrderState::Rejected)),
-            "order must be in Working (optimistic) or Rejected state, not stuck in PendingSubmit: {:?}", state);
+        assert_eq!(state, Some(OrderState::PendingSubmit),
+            "live order must remain PendingSubmit until async broker Ack (no optimistic Working): {:?}", state);
     }
 }
