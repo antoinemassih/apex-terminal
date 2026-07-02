@@ -1,0 +1,112 @@
+{
+  "name": "options_short_put_credit",
+  "description": "Short put (credit): net credit -300, keep premium above strike (+300), assigned loss below (-700).",
+  "story": "Playbook/Options",
+  "tags": [
+    "playbook",
+    "options",
+    "payoff",
+    "correctness"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlaybookPanel",
+      "open": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "OPT2",
+      "long": false,
+      "entry": 100.0,
+      "target": 90.0,
+      "stop": 105.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddSpreadLeg",
+      "idx": 0,
+      "is_call": false,
+      "strike": 100.0,
+      "buy": false,
+      "price": 3.0,
+      "qty": 1,
+      "expiry": "0DTE"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.net_debit",
+            "value": -300.0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "PayoffAt",
+      "idx": 0,
+      "price": 100.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.last_payoff",
+            "value": 300.0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "PayoffAt",
+      "idx": 0,
+      "price": 90.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.last_payoff",
+            "value": -700.0
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

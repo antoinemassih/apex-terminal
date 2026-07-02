@@ -2297,6 +2297,25 @@ fn parse_app_command(
             let idx = body["idx"].as_u64().unwrap_or(0) as usize;
             Ok(AppCommand::OpenPlayMultiPane { idx })
         }
+        "AddSpreadLeg" | "add_spread_leg" => {
+            let idx     = body["idx"].as_u64().unwrap_or(0) as usize;
+            let is_call = body["is_call"].as_bool().unwrap_or(true);
+            let strike  = body["strike"].as_f64().unwrap_or(0.0) as f32;
+            let buy     = body["buy"].as_bool().unwrap_or(true);
+            let price   = body["price"].as_f64().unwrap_or(0.0) as f32;
+            let qty     = body["qty"].as_u64().unwrap_or(1) as u32;
+            let expiry  = body["expiry"].as_str().unwrap_or("0DTE").to_string();
+            Ok(AppCommand::AddSpreadLeg { idx, is_call, strike, buy, price, qty, expiry })
+        }
+        "ClearSpreadLegs" | "clear_spread_legs" => {
+            let idx = body["idx"].as_u64().unwrap_or(0) as usize;
+            Ok(AppCommand::ClearSpreadLegs { idx })
+        }
+        "PayoffAt" | "payoff_at" => {
+            let idx   = body["idx"].as_u64().unwrap_or(0) as usize;
+            let price = body["price"].as_f64().unwrap_or(0.0) as f32;
+            Ok(AppCommand::PayoffAt { idx, price })
+        }
 
         // ── Alerts ─────────────────────────────────────────────────────────
         "PlaceAllDraftAlerts" | "place_all_draft_alerts" => Ok(AppCommand::PlaceAllDraftAlerts),

@@ -441,9 +441,35 @@ pub(crate) struct PlayTarget {
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct SpreadLeg {
     pub contract: String,       // "450C 0DTE"
-    pub side: PlayDirection,    // buy or sell this leg
-    pub price: f32,
+    pub side: PlayDirection,    // Long = buy this leg, Short = sell this leg
+    pub price: f32,             // premium per share
     pub quantity: u32,
+    // Structured option fields (P4) — serde-default so old data loads.
+    #[serde(default)] pub strike: f32,
+    #[serde(default)] pub is_call: bool,
+    #[serde(default)] pub expiry: String,
+}
+
+const OPT_MULT: f32 = 100.0; // shares per contract
+
+/// Net debit (>0 = paid) / credit (<0 = received) of an options spread:
+/// Σ (buy: +1, sell: −1) · premium · qty · 100.
+pub(crate) fn option_net_debit(legs: &[SpreadLeg]) -> f32 {
+    legs.iter().map(|l| {
+        let sign = if matches!(l.side, PlayDirection::Long) { 1.0 } else { -1.0 };
+        sign * l.price * l.quantity as f32 * OPT_MULT
+    }).sum()
+}
+
+/// Expiration P&L of an options spread at underlying price `s`:
+/// Σ sign · intrinsic(s) · qty · 100 − net_debit.
+pub(crate) fn option_payoff_at(legs: &[SpreadLeg], s: f32) -> f32 {
+    let intrinsic_val: f32 = legs.iter().map(|l| {
+        let sign = if matches!(l.side, PlayDirection::Long) { 1.0 } else { -1.0 };
+        let intrinsic = if l.is_call { (s - l.strike).max(0.0) } else { (l.strike - s).max(0.0) };
+        sign * intrinsic * l.quantity as f32 * OPT_MULT
+    }).sum();
+    intrinsic_val - option_net_debit(legs)
 }
 
 /// Play line kind — which price level this line represents on the chart.

@@ -1057,6 +1057,8 @@ pub fn end_frame(
                 "symbol": l.symbol, "role": l.role.label(),
                 "direction": l.direction.label(), "weight": l.weight,
             })).collect::<Vec<_>>(),
+            "spread_leg_count": p.spread_legs.len(),
+            "net_debit":        crate::chart_renderer::option_net_debit(&p.spread_legs),
             "status":       p.status.label(),
             "author":       p.author,
             "is_fork":      is_fork,
@@ -1159,6 +1161,7 @@ pub fn end_frame(
             // chart's snap candidate labels (proves gamma/round/swing wiring).
             "last_snap_price": crate::chart_renderer::gpu::last_snap().0,
             "last_snap_label": crate::chart_renderer::gpu::last_snap().1,
+            "last_payoff":     crate::chart_renderer::gpu::last_payoff(),
             "snap_labels": active_chart
                 .map(|c| crate::chart_renderer::gpu::snap_candidates(c)
                     .iter().map(|s| s.label.clone()).collect::<Vec<_>>())

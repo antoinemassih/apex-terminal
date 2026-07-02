@@ -1,0 +1,174 @@
+{
+  "name": "options_bull_call_spread",
+  "description": "Bull call spread: net debit 300, max profit 700 (>=110), max loss -300 (<=100), 200 mid-spread.",
+  "story": "Playbook/Options",
+  "tags": [
+    "playbook",
+    "options",
+    "payoff",
+    "correctness"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlaybookPanel",
+      "open": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "OPT1",
+      "long": true,
+      "entry": 100.0,
+      "target": 110.0,
+      "stop": 95.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddSpreadLeg",
+      "idx": 0,
+      "is_call": true,
+      "strike": 100.0,
+      "buy": true,
+      "price": 5.0,
+      "qty": 1,
+      "expiry": "0DTE"
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddSpreadLeg",
+      "idx": 0,
+      "is_call": true,
+      "strike": 110.0,
+      "buy": false,
+      "price": 2.0,
+      "qty": 1,
+      "expiry": "0DTE"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.spread_leg_count",
+            "value": 2
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.net_debit",
+            "value": 300.0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "PayoffAt",
+      "idx": 0,
+      "price": 115.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "payoff at 115 = max profit 700"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.last_payoff",
+            "value": 700.0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "PayoffAt",
+      "idx": 0,
+      "price": 95.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.last_payoff",
+            "value": -300.0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "PayoffAt",
+      "idx": 0,
+      "price": 105.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.last_payoff",
+            "value": 200.0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "ClearSpreadLegs",
+      "idx": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.spread_leg_count",
+            "value": 0
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

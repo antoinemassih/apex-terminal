@@ -376,6 +376,15 @@ pub enum AppCommand {
     /// levels (authoring/restore). This is the multi-pane restore flow.
     #[cfg(debug_assertions)]
     OpenPlayMultiPane { idx: usize },
+    /// Add an options leg (call/put, strike, buy/sell, premium, qty) to play[idx].
+    #[cfg(debug_assertions)]
+    AddSpreadLeg { idx: usize, is_call: bool, strike: f32, buy: bool, price: f32, qty: u32, expiry: String },
+    /// Clear play[idx] options legs.
+    #[cfg(debug_assertions)]
+    ClearSpreadLegs { idx: usize },
+    /// Compute the options-spread payoff at underlying `price` and stash it.
+    #[cfg(debug_assertions)]
+    PayoffAt { idx: usize, price: f32 },
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -1107,6 +1116,32 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         #[cfg(debug_assertions)]
         AppCommand::ClearLegs { idx } => {
             if let Some(p) = watchlist.plays.get_mut(idx) { p.legs.clear(); }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::AddSpreadLeg { idx, is_call, strike, buy, price, qty, expiry } => {
+            use crate::chart_renderer::{SpreadLeg, PlayDirection};
+            if let Some(p) = watchlist.plays.get_mut(idx) {
+                let cp = if is_call { 'C' } else { 'P' };
+                p.spread_legs.push(SpreadLeg {
+                    contract: format!("{strike:.0}{cp} {expiry}"),
+                    side: if buy { PlayDirection::Long } else { PlayDirection::Short },
+                    price, quantity: qty.max(1), strike, is_call, expiry,
+                });
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::ClearSpreadLegs { idx } => {
+            if let Some(p) = watchlist.plays.get_mut(idx) { p.spread_legs.clear(); }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::PayoffAt { idx, price } => {
+            if let Some(p) = watchlist.plays.get(idx) {
+                let v = crate::chart_renderer::option_payoff_at(&p.spread_legs, price);
+                crate::chart_renderer::gpu::set_last_payoff(v);
+            }
         }
 
         #[cfg(debug_assertions)]

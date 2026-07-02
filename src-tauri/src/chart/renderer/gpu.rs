@@ -1858,6 +1858,18 @@ pub(crate) fn set_last_snap(price: f32, label: &str) {
 pub(crate) fn last_snap() -> (f32, String) {
     LAST_SNAP.get().and_then(|c| c.lock().ok().map(|g| g.clone())).unwrap_or((0.0, String::new()))
 }
+/// Debug capture of the last options-payoff computation (for harness assertions).
+#[cfg(debug_assertions)]
+static LAST_PAYOFF: std::sync::OnceLock<std::sync::Mutex<f32>> = std::sync::OnceLock::new();
+#[cfg(debug_assertions)]
+pub(crate) fn set_last_payoff(v: f32) {
+    let c = LAST_PAYOFF.get_or_init(|| std::sync::Mutex::new(0.0));
+    if let Ok(mut g) = c.lock() { *g = v; }
+}
+#[cfg(debug_assertions)]
+pub(crate) fn last_payoff() -> f32 {
+    LAST_PAYOFF.get().and_then(|c| c.lock().ok().map(|g| *g)).unwrap_or(0.0)
+}
 
 /// Set a pane's play-line overlay (Entry/Target/Stop) from explicit prices — used
 /// to lay a play leg's levels onto its own pane in a multi-instrument play (P3).

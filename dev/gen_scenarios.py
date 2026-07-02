@@ -1535,5 +1535,42 @@ emit(2651,"multileg_clear","Playbook/MultiLeg",["playbook","legs"],
       A({"state_field_equals":{"path":"playbook.plays.0.leg_count","value":0}},{"no_panic":True})],
      "A play with a hedge leg (NVDA long + SMH short-hedge, weight 0.5); legs clear cleanly.")
 
+# ── 2660-2661: Playbook Phase 4 — options legs + payoff math ─────────────────
+# Bull call spread: long 100C @5, short 110C @2. net debit = (5-2)*100 = 300.
+# Max profit = (width 10 - cost 3)*100 = 700 (S>=110); max loss = -300 (S<=100).
+emit(2660,"options_bull_call_spread","Playbook/Options",["playbook","options","payoff","correctness"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SetPlaybookPanel",open=True),
+      cmd("SeedPlay",symbol="OPT1",long=True,entry=100.0,target=110.0,stop=95.0),{"action":"wait_frames","count":1},
+      cmd("AddSpreadLeg",idx=0,is_call=True,strike=100.0,buy=True,price=5.0,qty=1,expiry="0DTE"),
+      cmd("AddSpreadLeg",idx=0,is_call=True,strike=110.0,buy=False,price=2.0,qty=1,expiry="0DTE"),
+      {"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.spread_leg_count","value":2}},
+        {"state_field_equals":{"path":"playbook.plays.0.net_debit","value":300.0}}),
+      cmd("PayoffAt",idx=0,price=115.0),{"action":"wait_frames","count":2},
+      {"action":"log","message":"payoff at 115 = max profit 700"},
+      A({"state_field_equals":{"path":"playbook.last_payoff","value":700.0}}),
+      cmd("PayoffAt",idx=0,price=95.0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.last_payoff","value":-300.0}}),
+      cmd("PayoffAt",idx=0,price=105.0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.last_payoff","value":200.0}}),
+      cmd("ClearSpreadLegs",idx=0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.spread_leg_count","value":0}},{"no_panic":True})],
+     "Bull call spread: net debit 300, max profit 700 (>=110), max loss -300 (<=100), 200 mid-spread.")
+# Short put (credit): sell 100P @3 -> net debit -300 (credit). Keep premium above
+# strike (payoff 300 at 100); lose below (payoff -700 at 90).
+emit(2661,"options_short_put_credit","Playbook/Options",["playbook","options","payoff","correctness"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SetPlaybookPanel",open=True),
+      cmd("SeedPlay",symbol="OPT2",long=False,entry=100.0,target=90.0,stop=105.0),{"action":"wait_frames","count":1},
+      cmd("AddSpreadLeg",idx=0,is_call=False,strike=100.0,buy=False,price=3.0,qty=1,expiry="0DTE"),
+      {"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.net_debit","value":-300.0}}),
+      cmd("PayoffAt",idx=0,price=100.0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.last_payoff","value":300.0}}),
+      cmd("PayoffAt",idx=0,price=90.0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.last_payoff","value":-700.0}},{"no_panic":True})],
+     "Short put (credit): net credit -300, keep premium above strike (+300), assigned loss below (-700).")
+
 print(f"generated {len(made)} scenarios into {OUT}")
 for p in made[:3]: print("  e.g.", os.path.basename(p))
