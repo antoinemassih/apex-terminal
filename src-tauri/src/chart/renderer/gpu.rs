@@ -1799,6 +1799,28 @@ pub(crate) fn save_plays(plays: &[super::Play]) { save_plays_to(&plays_path(), p
 #[cfg(debug_assertions)]
 pub(crate) fn plays_debug_path() -> std::path::PathBuf { plays_data_file("plays.debug.json") }
 
+// ── Play export / import (sharing foundation) ───────────────────────────────
+// A single play serializes to portable JSON — the payload behind every share
+// transport (file, clipboard, deep link, Discord, feed). `Play` is serde-ready.
+pub(crate) fn export_play_json(play: &super::Play) -> String {
+    serde_json::to_string_pretty(play).unwrap_or_default()
+}
+pub(crate) fn import_play_json(s: &str) -> Option<super::Play> {
+    serde_json::from_str::<super::Play>(s).ok()
+}
+/// Write a play to a `.play.json` file (real export uses the file dialog; this is
+/// the underlying transport, also used by the harness round-trip).
+pub(crate) fn export_play_to_file(play: &super::Play, path: &std::path::Path) -> std::io::Result<()> {
+    std::fs::write(path, export_play_json(play))
+}
+pub(crate) fn import_play_from_file(path: &std::path::Path) -> Option<super::Play> {
+    std::fs::read_to_string(path).ok().and_then(|s| import_play_json(&s))
+}
+/// Debug export target so the harness can round-trip export→import through a real
+/// file without a file dialog and without touching user data.
+#[cfg(debug_assertions)]
+pub(crate) fn play_export_debug_path() -> std::path::PathBuf { plays_data_file("play.debug.export.json") }
+
 // ── Author identity (playbook attribution) ──────────────────────────────────
 // The local user's handle, stamped on plays they create so shared plays are
 // attributable. Persisted as a plain file; empty until the user sets one.

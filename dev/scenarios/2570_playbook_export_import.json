@@ -1,0 +1,143 @@
+{
+  "name": "playbook_export_import",
+  "description": "A play exports to JSON and imports back with every field intact (symbol/levels/RR/author).",
+  "story": "Playbook/Share",
+  "tags": [
+    "playbook",
+    "share",
+    "export",
+    "import"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetAuthor",
+      "handle": "quant_jane"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "SHR1",
+      "long": true,
+      "entry": 100.0,
+      "target": 112.0,
+      "stop": 96.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.play_count",
+            "value": 1
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "ExportPlay",
+      "idx": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "ClearPlays"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "exported then cleared"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.play_count",
+            "value": 0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "ImportPlay"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "imported from file"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.play_count",
+            "value": 1
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.symbol",
+            "value": "SHR1"
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.entry",
+            "value": 100.0
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.target",
+            "value": 112.0
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.risk_reward",
+            "value": 3.0
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.author",
+            "value": "quant_jane"
+          }
+        },
+        {
+          "play_rr_correct": true
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

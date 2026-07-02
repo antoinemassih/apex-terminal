@@ -2194,6 +2194,11 @@ fn parse_app_command(
             let handle = body["handle"].as_str().unwrap_or("").to_string();
             Ok(AppCommand::SetAuthor { handle })
         }
+        "ExportPlay" | "export_play" => {
+            let idx = body["idx"].as_u64().unwrap_or(0) as usize;
+            Ok(AppCommand::ExportPlay { idx })
+        }
+        "ImportPlay" | "import_play" => Ok(AppCommand::ImportPlay),
 
         // ── Alerts ─────────────────────────────────────────────────────────
         "PlaceAllDraftAlerts" | "place_all_draft_alerts" => Ok(AppCommand::PlaceAllDraftAlerts),

@@ -1235,5 +1235,37 @@ emit(2560,"playbook_author_stamp","Playbook/Author",["playbook","author","attrib
       A({"state_field_equals":{"path":"playbook.author","value":""}})],
      "New plays are stamped with the local author handle; reset restores a clean baseline.")
 
+# ── 2570-2571: Playbook EXPORT/IMPORT round-trip (E1 — sharing foundation) ───
+emit(2570,"playbook_export_import","Playbook/Share",["playbook","share","export","import"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SetAuthor",handle="quant_jane"),
+      cmd("SeedPlay",symbol="SHR1",long=True,entry=100.0,target=112.0,stop=96.0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.play_count","value":1}}),
+      cmd("ExportPlay",idx=0),{"action":"wait_frames","count":2},
+      cmd("ClearPlays"),{"action":"wait_frames","count":2},
+      {"action":"log","message":"exported then cleared"},
+      A({"state_field_equals":{"path":"playbook.play_count","value":0}}),
+      cmd("ImportPlay"),{"action":"wait_frames","count":2},
+      {"action":"log","message":"imported from file"},
+      A({"state_field_equals":{"path":"playbook.play_count","value":1}},
+        {"state_field_equals":{"path":"playbook.plays.0.symbol","value":"SHR1"}},
+        {"state_field_equals":{"path":"playbook.plays.0.entry","value":100.0}},
+        {"state_field_equals":{"path":"playbook.plays.0.target","value":112.0}},
+        {"state_field_equals":{"path":"playbook.plays.0.risk_reward","value":3.0}},
+        {"state_field_equals":{"path":"playbook.plays.0.author","value":"quant_jane"}},
+        {"play_rr_correct":True},{"no_panic":True})],
+     "A play exports to JSON and imports back with every field intact (symbol/levels/RR/author).")
+# Import can be added to a DIFFERENT book (recipient adds a shared play alongside their own).
+emit(2571,"playbook_import_alongside","Playbook/Share",["playbook","share","import"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SeedPlay",symbol="MINE",long=True,entry=50.0,target=60.0,stop=45.0),{"action":"wait_frames","count":1},
+      cmd("ExportPlay",idx=0),{"action":"wait_frames","count":1},
+      cmd("SeedPlay",symbol="OWN2",long=False,entry=200.0,target=180.0,stop=210.0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.play_count","value":2}}),
+      cmd("ImportPlay"),{"action":"wait_frames","count":2},
+      {"action":"log","message":"received play imported alongside own"},
+      A({"state_field_equals":{"path":"playbook.play_count","value":3}},{"play_rr_correct":True},{"no_panic":True})],
+     "A received (imported) play is added alongside the user's own plays.")
+
 print(f"generated {len(made)} scenarios into {OUT}")
 for p in made[:3]: print("  e.g.", os.path.basename(p))

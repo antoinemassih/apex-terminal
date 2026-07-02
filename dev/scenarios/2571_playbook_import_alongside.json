@@ -1,0 +1,97 @@
+{
+  "name": "playbook_import_alongside",
+  "description": "A received (imported) play is added alongside the user's own plays.",
+  "story": "Playbook/Share",
+  "tags": [
+    "playbook",
+    "share",
+    "import"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "MINE",
+      "long": true,
+      "entry": 50.0,
+      "target": 60.0,
+      "stop": 45.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "ExportPlay",
+      "idx": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "OWN2",
+      "long": false,
+      "entry": 200.0,
+      "target": 180.0,
+      "stop": 210.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.play_count",
+            "value": 2
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "ImportPlay"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "received play imported alongside own"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.play_count",
+            "value": 3
+          }
+        },
+        {
+          "play_rr_correct": true
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

@@ -314,6 +314,12 @@ pub enum AppCommand {
     /// Set the local author handle stamped on new plays.
     #[cfg(debug_assertions)]
     SetAuthor { handle: String },
+    /// Export play[idx] to the debug export file (share round-trip test).
+    #[cfg(debug_assertions)]
+    ExportPlay { idx: usize },
+    /// Import a play from the debug export file and add it to the book.
+    #[cfg(debug_assertions)]
+    ImportPlay,
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -901,6 +907,22 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         AppCommand::SetAuthor { handle } => {
             // In-memory only — never write the user's real author.txt from a test.
             crate::chart_renderer::gpu::set_author_handle_mem(&handle);
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::ExportPlay { idx } => {
+            if let Some(p) = watchlist.plays.get(idx) {
+                let _ = crate::chart_renderer::gpu::export_play_to_file(
+                    p, &crate::chart_renderer::gpu::play_export_debug_path());
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::ImportPlay => {
+            if let Some(p) = crate::chart_renderer::gpu::import_play_from_file(
+                &crate::chart_renderer::gpu::play_export_debug_path()) {
+                watchlist.plays.push(p);
+            }
         }
 
         #[cfg(debug_assertions)]
