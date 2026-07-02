@@ -99,7 +99,7 @@ pub(crate) fn start_wal_backup_thread() {
     static STARTED: OnceLock<()> = OnceLock::new();
     if STARTED.get().is_some() { return; }
     let _ = STARTED.set(());
-    std::thread::spawn(|| loop {
+    crate::foundation::guard::spawn_guarded("mod", || loop {
         std::thread::sleep(std::time::Duration::from_secs(3600)); // 1 hour
         match snapshot_wal() {
             Ok(path) => report(ErrorLevel::Info, "wal_backup", "snapshot_saved", path),

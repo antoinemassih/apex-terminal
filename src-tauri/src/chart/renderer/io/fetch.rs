@@ -234,7 +234,7 @@ fn spawn_continuation_fetch(symbol: String, date: String) {
         if inf.contains(&key) { return; }
         inf.insert(key.clone());
     }
-    std::thread::spawn(move || {
+    crate::foundation::guard::spawn_guarded("fetch", move || {
         if let Some(markers) = fetch_continuation_from_feed(&symbol, &date) {
             if let Ok(mut c) = continuation_cache().lock() {
                 c.insert(key.clone(), (markers, std::time::Instant::now()));
@@ -258,7 +258,7 @@ fn spawn_gamma_fetch(symbol: String) {
         if inf.contains(&sym) { return; }
         inf.insert(sym.clone());
     }
-    std::thread::spawn(move || {
+    crate::foundation::guard::spawn_guarded("fetch", move || {
         if let Some(bundle) = fetch_gamma_from_feed(&sym) {
             if let Ok(mut c) = gamma_cache().lock() {
                 c.insert(sym.clone(), (bundle, std::time::Instant::now()));
@@ -423,7 +423,7 @@ fn normalize_underlying(sym: &str) -> String {
 /// seeds off-hours/weekends, so replacing would empty the 0DTE grid and leave
 /// the panel stuck on "Loading chain…". Non-blocking; no-ops on error.
 pub(crate) fn refresh_chain_rest(symbol: String) {
-    std::thread::spawn(move || {
+    crate::foundation::guard::spawn_guarded("fetch", move || {
         use crate::apex_data::types::ChainQuery;
         let q = ChainQuery { dte_max: Some(14), strike_window_pct: Some(10.0), ..Default::default() };
         if let Ok(chain) = crate::apex_data::rest::get_chain_with(&symbol, &q) {
@@ -437,7 +437,7 @@ pub(crate) fn refresh_chain_rest(symbol: String) {
 
 pub(crate) fn fetch_chain_background(symbol: String, num_strikes: usize, dte: i32, underlying_price: f32) {
     let symbol = normalize_underlying(&symbol);
-    std::thread::spawn(move || {
+    crate::foundation::guard::spawn_guarded("fetch", move || {
         let api_strikes = 150;
         let path = format!("/options/{}?strikeCount={}&dte={}", symbol, api_strikes, dte);
 
@@ -766,7 +766,7 @@ pub(crate) fn apex_data_chain_to_tuples(
 
 /// Fetch chain data for the strikes overlay (independent of sidebar chain tab).
 pub(crate) fn fetch_overlay_chain_background(symbol: String, underlying_price: f32) {
-    std::thread::spawn(move || {
+    crate::foundation::guard::spawn_guarded("fetch", move || {
         // 0. ApexData — preferred. 0DTE strikes, wide strike band.
         if crate::apex_data::is_enabled() {
             match crate::apex_data::rest::get_chain(&symbol) {
@@ -854,7 +854,7 @@ pub(crate) fn fetch_overlay_chain_background(symbol: String, underlying_price: f
 /// options-centric and has been intermittently down, so it is no longer the
 /// primary path.
 pub(crate) fn fetch_search_background(query: String, source: String) {
-    std::thread::spawn(move || {
+    crate::foundation::guard::spawn_guarded("fetch", move || {
         let mut results: Vec<(String, String)> = Vec::new();
 
         // ── Primary: ApexData symbol search (stock-capable) ──────────────
@@ -950,7 +950,7 @@ pub(crate) fn options_analytics_cached(underlying: &str) -> Option<OptionsAnalyt
         };
         if spawn {
             let s2 = sym.clone();
-            std::thread::spawn(move || {
+            crate::foundation::guard::spawn_guarded("fetch", move || {
                 use crate::apex_data::rest;
                 let bundle = OptionsAnalytics {
                     expected_move: rest::expected_move(&s2),
@@ -1017,7 +1017,7 @@ pub(crate) fn daily_stats_cached(symbol: &str) -> Option<DailyStats> {
         inf.insert(sym.clone());
     }
     let s2 = sym.clone();
-    std::thread::spawn(move || {
+    crate::foundation::guard::spawn_guarded("fetch", move || {
         let stats = crate::apex_data::rest::get_bars(
             crate::apex_data::types::AssetClass::Stock, &s2, "1d", crate::apex_data::BarSource::Last,
         ).ok().and_then(|bars| {
@@ -1075,7 +1075,7 @@ pub(crate) fn futures_price_cached(symbol: &str) -> Option<f32> {
         };
         if spawn {
             let s2 = sym.clone();
-            std::thread::spawn(move || {
+            crate::foundation::guard::spawn_guarded("fetch", move || {
                 // get_price does NOT strip F: — the price endpoint wants the
                 // F:-tagged symbol so it resolves the future, not the equity.
                 let v = crate::apex_data::rest::get_price(&s2).ok().map(|p| p.price as f32);
@@ -1114,7 +1114,7 @@ pub(crate) fn vap_cached(symbol: &str) -> Option<crate::apex_data::rest::VapResp
         };
         if spawn {
             let s2 = sym.clone();
-            std::thread::spawn(move || {
+            crate::foundation::guard::spawn_guarded("fetch", move || {
                 let date = active_zero_dte_date().format("%Y-%m-%d").to_string();
                 let v = crate::apex_data::rest::stock_vap(&s2, &date, 0.25)
                     .filter(|r| r.total_volume > 0.0 && !r.levels.is_empty());
@@ -1152,7 +1152,7 @@ pub(crate) fn rvol_cached(symbol: &str) -> Option<f32> {
         };
         if spawn {
             let s2 = sym.clone();
-            std::thread::spawn(move || {
+            crate::foundation::guard::spawn_guarded("fetch", move || {
                 let v = crate::apex_data::rest::stock_rvol(&s2)
                     .filter(|r| r.rvol > 0.0)
                     .map(|r| r.rvol as f32);
@@ -1186,7 +1186,7 @@ pub(crate) fn ticker_detail_cached(symbol: &str) -> Option<crate::apex_data::res
         inf.insert(sym.clone());
     }
     let s2 = sym.clone();
-    std::thread::spawn(move || {
+    crate::foundation::guard::spawn_guarded("fetch", move || {
         let d = crate::apex_data::rest::ticker_detail(&s2);
         if let Ok(mut c) = ticker_detail_cache().lock() { c.insert(s2.clone(), d); }
         if let Ok(mut inf) = ticker_detail_inflight().lock() { inf.remove(&s2); }
@@ -1297,7 +1297,7 @@ pub(crate) fn fetch_watchlist_prices(symbols: Vec<String>) {
         .filter_map(|s| wl_class_and_url(s).map(|(c, u)| (s.clone(), c, u)))
         .collect();
     if !class_syms.is_empty() {
-        std::thread::spawn(move || {
+        crate::foundation::guard::spawn_guarded("fetch", move || {
             for (orig, class, url_sym) in class_syms {
                 if let Some(snap) = crate::apex_data::rest::snap_class(class, &url_sym) {
                     crate::send_to_native_chart(ChartCommand::WatchlistPrice {
@@ -1347,7 +1347,7 @@ pub(crate) fn fetch_watchlist_prices(symbols: Vec<String>) {
             true
         })
         .collect();
-    std::thread::spawn(move || {
+    crate::foundation::guard::spawn_guarded("fetch", move || {
         let snaps = crate::apex_data::rest::snap_bulk(&symbols).unwrap_or_default();
         for snap in &snaps {
             let (price, prev_close, day_close) = watchlist_price_from_snapshot(snap);
@@ -1393,7 +1393,7 @@ pub(crate) fn scanner_price_from_snapshot(
 /// Custom user-defined scanners are NOT served by this fn — they need a
 /// scanner-run endpoint that lives on a separate ApexData PR (TODO).
 pub(crate) fn fetch_scanner_prices_for(presets: Vec<String>) {
-    std::thread::spawn(move || {
+    crate::foundation::guard::spawn_guarded("fetch", move || {
         for preset in &presets {
             if preset != "gainers" && preset != "losers" {
                 // TODO(scanner-run): "most_active" + custom scanners need a
@@ -1438,7 +1438,7 @@ pub(crate) fn heatmap_cell_from_grouped(
 /// most recent session and ship them back as `HeatmapBars`. Live updates
 /// come from the watchlist `set_price` path — no separate poller needed.
 pub(crate) fn fetch_heatmap_cold_start() {
-    std::thread::spawn(move || {
+    crate::foundation::guard::spawn_guarded("fetch", move || {
         let date = active_zero_dte_date().format("%Y-%m-%d").to_string();
         let Some(bars) = crate::apex_data::rest::stocks_grouped_daily(&date) else {
             crate::apex_data::live_state::push_toast(
@@ -1460,7 +1460,7 @@ pub(crate) fn fetch_indicator_source(sym: String, tf: String, indicator_id: u32)
     let txs: Vec<std::sync::mpsc::Sender<ChartCommand>> = crate::NATIVE_CHART_TXS
         .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
     if txs.is_empty() { return; }
-    std::thread::spawn(move || {
+    crate::foundation::guard::spawn_guarded("fetch", move || {
         // Try Redis cache first
         if let Some(bars) = crate::bar_cache::get(&sym, &tf) {
             if !bars.is_empty() {
@@ -1542,7 +1542,7 @@ pub(crate) fn fetch_option_history_background(occ: String, display_sym: String, 
         .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
     if txs.is_empty() { return; }
 
-    std::thread::spawn(move || {
+    crate::foundation::guard::spawn_guarded("fetch", move || {
         // Page sizes — options trade only during market hours so a "day" is
         // ~390 minutes. Scale the lookback so each page yields ~500 bars.
         let page_seconds: i64 = match tf.as_str() {
@@ -1609,7 +1609,7 @@ pub(crate) fn fetch_history_background(sym: String, tf: String, before_ts: i64) 
         .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
     if txs.is_empty() { return; }
 
-    std::thread::spawn(move || {
+    crate::foundation::guard::spawn_guarded("fetch", move || {
         // Calculate how far back to fetch based on timeframe
         let page_seconds: i64 = match tf.as_str() {
             "1m" => 86400 * 2,        // 2 days
@@ -1706,7 +1706,7 @@ pub(crate) fn fetch_drawings_background(sym: String) {
 
     // Spawn a thread that sends requests to the DB worker and waits for replies.
     // The DB worker is a single thread with a single tokio runtime — no pool exhaustion.
-    std::thread::spawn(move || {
+    crate::foundation::guard::spawn_guarded("fetch", move || {
         let db_drawings = crate::drawing_db::load_symbol(&sym);
         let drawings: Vec<Drawing> = db_drawings.iter().filter_map(|dd| db_to_drawing(dd)).collect();
         let db_groups = crate::drawing_db::load_groups();
@@ -1810,7 +1810,7 @@ pub(crate) fn fetch_option_bars_background(occ: String, display_sym: String, tf:
     //  adding via live_state watch is enough — it'll be included next tick.)
     let _ = quote_set;
 
-    std::thread::spawn(move || {
+    crate::foundation::guard::spawn_guarded("fetch", move || {
         let send = |bars: Vec<crate::data::Bar>, src: &str| {
             let gpu_bars: Vec<Bar> = bars.iter().map(|b| Bar {
                 open: b.open as f32, high: b.high as f32, low: b.low as f32,
@@ -1922,7 +1922,7 @@ pub(crate) fn fetch_bars_background(sym: String, tf: String, gen: u64) {
     // Route through the canonical Wave-2 provider chain (crypto → cached
     // apex_data → OCOCO → yfinance → Yahoo). The chain encapsulates the
     // 6-tier `if-else` ladder this function used to inline.
-    std::thread::spawn(move || {
+    crate::foundation::guard::spawn_guarded("fetch", move || {
         let chain = crate::data::providers::registry::bar_chain();
         // Re-use the process-wide fetch runtime rather than spinning a fresh
         // single-thread runtime per call (H3 fix). Guard against the rare case
@@ -2022,7 +2022,7 @@ pub(crate) fn fetch_prewarm_background(sym: String, tf: String) {
         .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
     if txs.is_empty() { return; }
 
-    std::thread::spawn(move || {
+    crate::foundation::guard::spawn_guarded("fetch", move || {
         let chain = crate::data::providers::registry::bar_chain();
         let rt = fetch_runtime();
         let result = rt.block_on(async {
@@ -2051,7 +2051,7 @@ pub(crate) fn fetch_overlay_bars_background(sym: String, tf: String) {
     let txs: Vec<std::sync::mpsc::Sender<ChartCommand>> = crate::NATIVE_CHART_TXS
         .get().and_then(|m| m.lock().ok()).map(|g| g.clone()).unwrap_or_default();
     if txs.is_empty() { eprintln!("[overlay-fetch] No TXS channels!"); return; }
-    std::thread::spawn(move || {
+    crate::foundation::guard::spawn_guarded("fetch", move || {
         let client = reqwest::blocking::Client::builder()
             .user_agent("Mozilla/5.0").build().unwrap_or_else(|_| reqwest::blocking::Client::new());
         let (yf_interval, yf_range) = match tf.as_str() {

@@ -290,8 +290,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
             painter.text(pt + egui::vec2(0.0, -10.0), egui::Align2::CENTER_CENTER,
                 labels.get(i).copied().unwrap_or("?"), mono_xs(), xabcd_color);
         }
-        if !chart.pending_pts.is_empty() {
-            let last = chart.pending_pts.last().unwrap();
+        if let Some(last) = chart.pending_pts.last() {
             let lp = egui::pos2(bx(last.0), py(last.1));
             painter.line_segment([lp, pos], egui::Stroke::new(stroke_bold(), color_alpha(xabcd_color, 160)));
             let next_label = labels.get(chart.pending_pts.len()).copied().unwrap_or("?");
@@ -363,8 +362,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
             }
             let _ = (b0, cx);
         }
-        if !chart.pending_pts.is_empty() {
-            let last = chart.pending_pts.last().unwrap();
+        if let Some(last) = chart.pending_pts.last() {
             let lp = egui::pos2(bx(last.0), py(last.1));
             painter.line_segment([lp, pos], egui::Stroke::new(stroke_bold(), color_alpha(fibext_color, 140)));
         }
@@ -463,8 +461,7 @@ pub(super) fn render_tool_previews<Py, Bx>(
             // contrast_fg picks BLACK on the light teal/wave circle fill, WHITE on dark.
             painter.text(pt, egui::Align2::CENTER_CENTER, labels.get(i).copied().unwrap_or("?"), mono_3xs(), crate::ui_kit::style::contrast_fg(wave_color));
         }
-        if !chart.pending_pts.is_empty() {
-            let last = chart.pending_pts.last().unwrap();
+        if let Some(last) = chart.pending_pts.last() {
             let lp = egui::pos2(bx(last.0), py(last.1));
             painter.line_segment([lp, pos], egui::Stroke::new(stroke_bold(), color_alpha(wave_color, 160)));
         }

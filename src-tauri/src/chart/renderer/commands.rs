@@ -422,20 +422,25 @@ fn grade_open_plays_live(panes: &[Chart], watchlist: &mut Watchlist) {
     if watchlist.plays.iter().all(|p| !p.is_open()) { return; }
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
-    // Snapshot per-symbol prices we can resolve (avoids borrowing watchlist while mutating plays).
-    let mut changed = 0usize;
-    let open_syms: std::collections::HashSet<String> =
-        watchlist.plays.iter().filter(|p| p.is_open()).map(|p| p.symbol.to_uppercase()).collect();
-    let mut price_of: std::collections::HashMap<String, f32> = std::collections::HashMap::new();
-    for sym in &open_syms {
-        if let Some(px) = watchlist.get_price(sym) {
-            price_of.insert(sym.clone(), px);
-        } else if let Some(p) = panes.iter().find(|p| p.symbol.eq_ignore_ascii_case(sym) && !p.bars.is_empty()) {
-            if let Some(b) = p.bars.last() { if b.close > 0.0 { price_of.insert(sym.clone(), b.close); } }
-        }
+    // A6 (audit): this runs per frame in RELEASE — no per-frame HashSet/HashMap/
+    // to_uppercase String churn. Resolve each open play's price directly
+    // (get_price + pane fallback are already case-insensitive), collecting
+    // (index, price) into one small scratch Vec, then mutate in a second pass.
+    let mut jobs: Vec<(usize, f32)> = Vec::with_capacity(8);
+    for (i, p) in watchlist.plays.iter().enumerate() {
+        if !p.is_open() { continue; }
+        let px = watchlist.get_price(&p.symbol).or_else(|| {
+            panes.iter()
+                .find(|c| c.symbol.eq_ignore_ascii_case(&p.symbol))
+                .and_then(|c| c.bars.last())
+                .map(|b| b.close)
+                .filter(|&c| c > 0.0)
+        });
+        if let Some(px) = px { jobs.push((i, px)); }
     }
-    for play in watchlist.plays.iter_mut().filter(|p| p.is_open()) {
-        if let Some(&px) = price_of.get(&play.symbol.to_uppercase()) {
+    let mut changed = 0usize;
+    for (i, px) in jobs {
+        if let Some(play) = watchlist.plays.get_mut(i) {
             let armed = crate::chart_renderer::arm_branches(play, px);
             let graded = crate::chart_renderer::grade_play(play, px, now);
             if armed || graded { changed += 1; }

@@ -61,7 +61,7 @@ fn manager() -> &'static Mutex<OrderManager> {
         } else {
             // Spawn the recovery work so we don't block init on HTTP. It re-acquires
             // the manager lock when it has results to apply.
-            std::thread::spawn(replay_and_recover);
+            crate::foundation::guard::spawn_guarded("order_manager", replay_and_recover);
         }
         start_pending_sweeper();
         start_broker_watchdog();
@@ -1000,7 +1000,7 @@ impl OrderManager {
         self.cancel_all("");
         self.kill_engaged = true;
         let broker = Arc::clone(&self.broker);
-        std::thread::spawn(move || {
+        crate::foundation::guard::spawn_guarded("order_manager", move || {
             let _ = broker.kill();
         });
         report(ErrorLevel::Warn, "kill", "engaged", "ENGAGED (local + broker)");
@@ -1016,7 +1016,7 @@ impl OrderManager {
     pub(crate) fn halt_inner(&mut self) -> Result<(), String> {
         self.halted = true;
         let broker = Arc::clone(&self.broker);
-        std::thread::spawn(move || {
+        crate::foundation::guard::spawn_guarded("order_manager", move || {
             let _ = broker.halt();
         });
         report(ErrorLevel::Warn, "halt", "engaged", "ENGAGED (local + broker)");
@@ -1026,7 +1026,7 @@ impl OrderManager {
     pub(crate) fn resume_inner(&mut self) -> Result<(), String> {
         self.halted = false;
         let broker = Arc::clone(&self.broker);
-        std::thread::spawn(move || {
+        crate::foundation::guard::spawn_guarded("order_manager", move || {
             let _ = broker.resume();
         });
         report(ErrorLevel::Info, "halt", "resume", "(local + broker)");
@@ -1238,7 +1238,7 @@ impl OrderManager {
                 let sym_owned = sym;
                 let idem_owned = idem_key;
                 let broker = Arc::clone(&self.broker);
-                std::thread::spawn(move || {
+                crate::foundation::guard::spawn_guarded("order_manager", move || {
                     let args = SubmitArgs {
                         symbol: &sym_owned,
                         side: &side_owned,
@@ -1372,7 +1372,7 @@ impl OrderManager {
             let order_id_copy = order_id;
             let side_owned: String = side_str.to_string();
             let broker = Arc::clone(&self.broker);
-            std::thread::spawn(move || {
+            crate::foundation::guard::spawn_guarded("order_manager", move || {
                 let args = SubmitArgs {
                     symbol: &sym,
                     side: &side_owned,
@@ -1529,7 +1529,7 @@ impl OrderManager {
                 stop_loss_price: sl_price,
                 idempotency_key: idem_key,
             };
-            std::thread::spawn(move || {
+            crate::foundation::guard::spawn_guarded("order_manager", move || {
                 match broker.submit_bracket(&bargs) {
                     Ok(resp) => {
                         with_mgr(|mgr| {
@@ -1666,7 +1666,7 @@ impl OrderManager {
                 }
             }).collect();
             let oargs = OcoSubmitArgs { legs, oca_group: oca.clone() };
-            std::thread::spawn(move || {
+            crate::foundation::guard::spawn_guarded("order_manager", move || {
                 match broker.submit_oco(&oargs) {
                     Ok(resp) => {
                         with_mgr(|mgr| {
@@ -1780,7 +1780,7 @@ impl OrderManager {
             conditions_cancel_order: cancel_order,
             idempotency_key: idem_key,
         };
-        std::thread::spawn(move || {
+        crate::foundation::guard::spawn_guarded("order_manager", move || {
             match broker.submit_conditional(&cargs) {
                 Ok(oid) => {
                     with_mgr(|mgr| {
@@ -1890,7 +1890,7 @@ impl OrderManager {
             exit_price, exit_direction: exit_dir,
             idempotency_key: idem_key,
         };
-        std::thread::spawn(move || {
+        crate::foundation::guard::spawn_guarded("order_manager", move || {
             match broker.submit_options_trigger(&oargs) {
                 Ok(resp) => {
                     with_mgr(|mgr| {
@@ -2014,7 +2014,7 @@ impl OrderManager {
             }).collect(),
             idempotency_key: idem_key,
         };
-        std::thread::spawn(move || {
+        crate::foundation::guard::spawn_guarded("order_manager", move || {
             match broker.submit_combo(&cargs) {
                 Ok(oid) => {
                     with_mgr(|mgr| {
@@ -2070,7 +2070,7 @@ impl OrderManager {
                 let cid_thread = cid.clone();
                 let bid = backend_id.clone();
                 let broker = Arc::clone(&self.broker);
-                std::thread::spawn(move || {
+                crate::foundation::guard::spawn_guarded("order_manager", move || {
                     // These journal::append calls are in a spawned thread (ORDER_MANAGER
                     // not held here) — they call WAL_LOCK directly without nesting.
                     match broker.cancel(&bid, &cid_thread) {
@@ -2095,7 +2095,7 @@ impl OrderManager {
                         .map(|o| o.client_order_id.clone())
                         .unwrap_or_default();
                     let broker = Arc::clone(&self.broker);
-                    std::thread::spawn(move || {
+                    crate::foundation::guard::spawn_guarded("order_manager", move || {
                         let _ = broker.cancel(&pair_backend_id, &pair_cid);
                     });
                 }
@@ -2143,7 +2143,7 @@ impl OrderManager {
             let cid_thread = cid.clone();
             let symbol_thread = symbol.to_string();
             let broker = Arc::clone(&self.broker);
-            std::thread::spawn(move || {
+            crate::foundation::guard::spawn_guarded("order_manager", move || {
                 // Spawned thread — ORDER_MANAGER not held; journal::append is safe here.
                 match broker.cancel_all(&symbol_thread) {
                     Ok(_n) => journal::append(JournalEvent::Ack { client_id: cid_thread, backend_id: None, ts_ms: epoch_ms() }),
@@ -2219,7 +2219,7 @@ impl OrderManager {
                         else if is_stop_limit { ModifyKind::StopLimit }
                         else { ModifyKind::Limit };
                     let broker = Arc::clone(&self.broker);
-                    std::thread::spawn(move || {
+                    crate::foundation::guard::spawn_guarded("order_manager", move || {
                         let args = ModifyArgs {
                             backend_id: &bid_thread,
                             client_order_id: &cid_thread,
@@ -2350,7 +2350,9 @@ impl OrderManager {
         match serde_json::to_vec_pretty(&active) {
             Ok(bytes) => {
                 let path = orders_state_path();
-                if let Err(e) = std::fs::write(&path, &bytes) {
+                // A1 (audit): crash-safe tmp+fsync+rename — a crash mid-write
+                // must never corrupt the active-orders file.
+                if let Err(e) = crate::state::persistence::atomic_write(&path, &bytes) {
                     report(ErrorLevel::Error, "order_manager", "save_write_failed", e.to_string());
                 }
             }
@@ -2734,7 +2736,10 @@ fn control_flags_path() -> std::path::PathBuf {
 fn save_control_flags() {
     let (k, h) = with_mgr(|m| (m.kill_engaged, m.halted));
     let v = serde_json::json!({ "kill_engaged": k, "halted": h });
-    if let Err(e) = std::fs::write(control_flags_path(), v.to_string()) {
+    // A1 (audit): THE KILL SWITCH FILE. A crash mid-write must never corrupt it
+    // ("a UI crash must not silently un-engage the local gate") — atomic
+    // tmp+fsync+rename guarantees the previous state survives any crash.
+    if let Err(e) = crate::state::persistence::atomic_write(&control_flags_path(), v.to_string().as_bytes()) {
         report(ErrorLevel::Error, "control", "save_flags_failed", e.to_string());
     }
 }
@@ -3191,7 +3196,7 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
             let cid_thread = cid_str;
             let bid_thread = bid.clone();
             let broker = Arc::clone(&mgr.broker);
-            std::thread::spawn(move || {
+            crate::foundation::guard::spawn_guarded("order_manager", move || {
                 match broker.cancel(&bid_thread, &cid_thread) {
                     Ok(()) => journal::append(JournalEvent::Ack { client_id: cid_thread.clone(), backend_id: Some(bid_thread), ts_ms: epoch_ms() }),
                     Err(e) => journal::append(JournalEvent::Fail { client_id: cid_thread.clone(), reason: format!("rule4 recancel: {e}"), ts_ms: epoch_ms() }),
@@ -3468,7 +3473,7 @@ pub(crate) fn reconcile_positions(positions: &[super::Position]) {
 fn start_pending_sweeper() {
     static STARTED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
     STARTED.get_or_init(|| {
-        std::thread::spawn(|| {
+        crate::foundation::guard::spawn_guarded("order_manager", || {
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(2));
                 let now = epoch_ms();
@@ -3579,7 +3584,7 @@ pub(crate) fn trading_block_reason() -> (bool, bool, bool) {
 fn start_broker_watchdog() {
     static STARTED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
     STARTED.get_or_init(|| {
-        std::thread::spawn(|| {
+        crate::foundation::guard::spawn_guarded("order_manager", || {
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(1));
                 check_broker_health();

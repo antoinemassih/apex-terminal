@@ -1,4 +1,5 @@
 pub mod shortcuts;
+pub mod guard;
 pub mod monitoring;
 pub mod frame_profiler;
 pub mod perf_log;

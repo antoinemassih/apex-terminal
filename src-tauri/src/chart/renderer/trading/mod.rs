@@ -295,7 +295,7 @@ pub(crate) fn start_account_poller() {
         // schedule and sleep for FAST_POLL_MS (100ms) instead so TP/SL fills
         // are detected sub-second.  Normal cadence resumes once all bracket
         // legs have reached a terminal state.
-        std::thread::spawn(|| {
+        crate::foundation::guard::spawn_guarded("mod", || {
             let client = reqwest::blocking::Client::builder()
                 .timeout(std::time::Duration::from_secs(3))
                 .build().unwrap_or_else(|_| reqwest::blocking::Client::new());
@@ -337,7 +337,7 @@ pub(crate) fn start_account_poller() {
 
         // ── Slow account thread (5s) ────────────────────────────────────────
         // Account summary / P&L / positions don't need sub-second cadence.
-        std::thread::spawn(|| {
+        crate::foundation::guard::spawn_guarded("mod", || {
             let client = reqwest::blocking::Client::builder()
                 .timeout(std::time::Duration::from_secs(3))
                 .build().unwrap_or_else(|_| reqwest::blocking::Client::new());

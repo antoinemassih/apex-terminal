@@ -32,6 +32,11 @@ fn set_macos_dock_icon() {
 }
 
 fn main() {
+    // Panic isolation (audit A4): release-active panic hook — reports every
+    // thread panic via tracing + errors_sink, then chains to any prior hook
+    // (the debug dev_inspector hook installs after and wraps this one).
+    _scaffold_lib::foundation::guard::install_release_panic_hook();
+
     // Dev Inspector — detect --headless flag before anything else so headless
     // mode is set before the window is created.
     #[cfg(debug_assertions)]

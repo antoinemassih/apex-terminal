@@ -315,6 +315,10 @@ where
                 let auth = super::config::ApexDataAuth;
                 // Try to use an existing tokio handle; fall back to a one-shot runtime.
                 match tokio::runtime::Handle::try_current() {
+                    // Deliberately a bare spawn (NOT spawn_guarded): this thread's
+                    // return value is consumed via join(), and join() already
+                    // converts a worker panic into Err through unwrap_or — the
+                    // panic is contained by construction.
                     Ok(handle) => std::thread::spawn(move || {
                         handle.block_on(
                             crate::data::connectivity::auth::Authenticated::refresh_token(&auth)

@@ -195,7 +195,7 @@ mod tests {
         // Route the result through a channel so the main test thread can
         // apply a hard recv_timeout without relying on unstable JoinHandle APIs.
         let (tx, rx) = mpsc::channel::<Option<Vec<Bar>>>();
-        std::thread::spawn(move || {
+        crate::foundation::guard::spawn_guarded("bar_cache", move || {
             let _ = tx.send(get("TIMEOUT_TEST", "1m"));
         });
 

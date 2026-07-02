@@ -295,6 +295,24 @@ pub(crate) trait Broker: Send + Sync {
 pub(crate) struct LiveBroker;
 
 impl LiveBroker {
+    /// A3 (audit) — defense-in-depth paper guard. The paper short-circuit lives
+    /// upstream in `OrderManager::submit()`, but nothing previously stopped a
+    /// NEW code path from calling `broker.submit_*()` directly while the app is
+    /// in paper mode and silently POSTing a live order. Every submission method
+    /// re-checks paper mode at the wire boundary and refuses. Cancels/modifies
+    /// are deliberately NOT guarded: they are risk-REDUCING and must never be
+    /// blocked by a confused mode flag.
+    fn refuse_if_paper(op: &str) -> Result<(), String> {
+        if super::order_manager::is_paper_mode() {
+            let msg = format!("paper-mode guard: refused live {op} (LiveBroker called while paper_mode=true)");
+            crate::data::connectivity::errors_sink::report(
+                crate::data::connectivity::errors_sink::ErrorLevel::Error,
+                "broker", "paper_guard_refused", msg.clone());
+            return Err(msg);
+        }
+        Ok(())
+    }
+
     fn resolve_con_id(client: &reqwest::blocking::Client, symbol: &str) -> Option<i64> {
         client.get(format!("{}/contract/{}", APEXIB_URL, symbol))
             .timeout(std::time::Duration::from_secs(5)).send()
@@ -312,6 +330,7 @@ impl LiveBroker {
 impl Broker for LiveBroker {
     #[tracing::instrument(skip(self, args), level = "debug", fields(symbol = %args.symbol, side = %args.side, qty = args.qty, client_order_id = %args.client_order_id))]
     fn submit(&self, args: &SubmitArgs) -> Result<String, String> {
+        Self::refuse_if_paper("submit")?;
         let client = reqwest::blocking::Client::new();
         let con_id = Self::resolve_con_id(&client, args.symbol)
             .ok_or_else(|| format!("conId lookup failed for {}", args.symbol))?;
@@ -537,6 +556,7 @@ impl Broker for LiveBroker {
 
     #[tracing::instrument(skip(self, args), level = "debug", fields(symbol = %args.symbol, qty = args.qty, tp = args.take_profit_price, sl = args.stop_loss_price))]
     fn submit_bracket(&self, args: &BracketSubmitArgs) -> Result<BracketSubmitResponse, String> {
+        Self::refuse_if_paper("submit_bracket")?;
         let client = reqwest::blocking::Client::new();
         let con_id = Self::resolve_con_id(&client, &args.symbol)
             .ok_or_else(|| format!("[bracket] no conId for {}", args.symbol))?;
@@ -577,6 +597,7 @@ impl Broker for LiveBroker {
 
     #[tracing::instrument(skip(self, args), level = "debug", fields(oca_group = %args.oca_group, n_legs = args.legs.len()))]
     fn submit_oco(&self, args: &OcoSubmitArgs) -> Result<OcoSubmitResponse, String> {
+        Self::refuse_if_paper("submit_oco")?;
         let client = reqwest::blocking::Client::new();
         let mut oco_orders = Vec::new();
         for leg in &args.legs {
@@ -620,6 +641,7 @@ impl Broker for LiveBroker {
 
     #[tracing::instrument(skip(self, args), level = "debug", fields(symbol = %args.symbol, qty = args.qty, n_conds = args.conditions.len()))]
     fn submit_conditional(&self, args: &ConditionalSubmitArgs) -> Result<String, String> {
+        Self::refuse_if_paper("submit_conditional")?;
         let client = reqwest::blocking::Client::new();
         let con_id = Self::resolve_con_id(&client, &args.symbol)
             .ok_or_else(|| format!("[conditional] no conId for {}", args.symbol))?;
@@ -656,6 +678,7 @@ impl Broker for LiveBroker {
 
     #[tracing::instrument(skip(self, args), level = "debug", fields(underlying = %args.underlying, strike = args.strike, qty = args.qty))]
     fn submit_options_trigger(&self, args: &OptionsTriggerArgs) -> Result<OptionsTriggerResponse, String> {
+        Self::refuse_if_paper("submit_options_trigger")?;
         let client = reqwest::blocking::Client::new();
         let body = serde_json::json!({
             "underlying": args.underlying,
@@ -683,6 +706,7 @@ impl Broker for LiveBroker {
 
     #[tracing::instrument(skip(self, args), level = "debug", fields(symbol = %args.symbol, n_legs = args.legs.len(), qty = args.qty))]
     fn submit_combo(&self, args: &ComboSubmitArgs) -> Result<String, String> {
+        Self::refuse_if_paper("submit_combo")?;
         let client = reqwest::blocking::Client::new();
         let legs_json: Vec<serde_json::Value> = args.legs.iter().map(|l| {
             serde_json::json!({
