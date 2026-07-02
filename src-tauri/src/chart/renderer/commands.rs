@@ -366,6 +366,16 @@ pub enum AppCommand {
     /// Clear play[idx] branches.
     #[cfg(debug_assertions)]
     ClearBranches { idx: usize },
+    /// Add an instrument leg (hedge/pair/basket) to play[idx].
+    #[cfg(debug_assertions)]
+    AddLeg { idx: usize, symbol: String, role: String, long: bool, entry: f32, target: f32, stop: f32, weight: f32 },
+    /// Clear play[idx] legs.
+    #[cfg(debug_assertions)]
+    ClearLegs { idx: usize },
+    /// Open a multi-instrument play across panes: pane i shows leg i's symbol +
+    /// levels (authoring/restore). This is the multi-pane restore flow.
+    #[cfg(debug_assertions)]
+    OpenPlayMultiPane { idx: usize },
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -1076,6 +1086,42 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         #[cfg(debug_assertions)]
         AppCommand::ClearBranches { idx } => {
             if let Some(p) = watchlist.plays.get_mut(idx) { p.branches.clear(); }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::AddLeg { idx, symbol, role, long, entry, target, stop, weight } => {
+            use crate::chart_renderer::{PlayLeg, PlayDirection, LegRole};
+            if let Some(p) = watchlist.plays.get_mut(idx) {
+                let role = match role.as_str() {
+                    "hedge" => LegRole::Hedge, "pair_short" | "pairshort" => LegRole::PairShort,
+                    "basket" => LegRole::BasketMember, _ => LegRole::Primary,
+                };
+                p.legs.push(PlayLeg {
+                    symbol: symbol.to_uppercase(), role,
+                    direction: if long { PlayDirection::Long } else { PlayDirection::Short },
+                    entry, target, stop, weight: if weight > 0.0 { weight } else { 1.0 },
+                });
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::ClearLegs { idx } => {
+            if let Some(p) = watchlist.plays.get_mut(idx) { p.legs.clear(); }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::OpenPlayMultiPane { idx } => {
+            // Restore the whole multi-pane view: pane i ← leg i's symbol + levels.
+            let legs = watchlist.plays.get(idx).map(|p| p.legs.clone()).unwrap_or_default();
+            for (i, leg) in legs.iter().enumerate() {
+                if let Some(pane) = panes.get_mut(i) {
+                    pane.request_gen = pane.request_gen.wrapping_add(1);
+                    pane.symbol = leg.symbol.clone();
+                    pane.symbol_meta = crate::foundation::types::symbol_or_guess(&leg.symbol);
+                    pane.pending_symbol_change = Some(leg.symbol.clone());
+                    crate::chart_renderer::gpu::set_pane_play_lines(pane, leg.entry, leg.target, leg.stop);
+                }
+            }
         }
 
         #[cfg(debug_assertions)]

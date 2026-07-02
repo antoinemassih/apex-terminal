@@ -1,0 +1,165 @@
+{
+  "name": "multileg_pair_multipane",
+  "description": "A long-SPY / short-QQQ pair play opens across two panes, each pane showing its leg's symbol + levels.",
+  "story": "Playbook/MultiLeg",
+  "tags": [
+    "playbook",
+    "legs",
+    "multipane",
+    "pair"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlaybookPanel",
+      "open": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "SPY",
+      "long": true,
+      "entry": 450.0,
+      "target": 460.0,
+      "stop": 445.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddLeg",
+      "idx": 0,
+      "symbol": "SPY",
+      "role": "primary",
+      "long": true,
+      "entry": 450.0,
+      "target": 460.0,
+      "stop": 445.0,
+      "weight": 1.0
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddLeg",
+      "idx": 0,
+      "symbol": "QQQ",
+      "role": "pair_short",
+      "long": false,
+      "entry": 380.0,
+      "target": 370.0,
+      "stop": 385.0,
+      "weight": 1.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.leg_count",
+            "value": 2
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.legs.0.symbol",
+            "value": "SPY"
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.legs.0.role",
+            "value": "PRIMARY"
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.legs.1.symbol",
+            "value": "QQQ"
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.legs.1.role",
+            "value": "PAIR_SHORT"
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.legs.1.direction",
+            "value": "SHORT"
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "OpenPlayMultiPane",
+      "idx": 0
+    },
+    {
+      "action": "wait",
+      "ms": 700
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "log",
+      "message": "pair play opened across panes"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "panes.0.symbol",
+            "value": "SPY"
+          }
+        },
+        {
+          "state_field_gte": {
+            "path": "panes.0.play_line_count",
+            "min": 3
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "panes.1.symbol",
+            "value": "QQQ"
+          }
+        },
+        {
+          "state_field_gte": {
+            "path": "panes.1.play_line_count",
+            "min": 3
+          }
+        },
+        {
+          "no_panic": true
+        },
+        {
+          "viewport_sane": true
+        },
+        {
+          "fps_above": 5.0
+        }
+      ]
+    }
+  ]
+}

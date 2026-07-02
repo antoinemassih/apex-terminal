@@ -1500,5 +1500,40 @@ emit(2642,"ifthen_branch_down","Playbook/Triggers",["playbook","branch","ifthen"
         {"state_field_equals":{"path":"playbook.plays.0.entry","value":445.0}},{"no_panic":True})],
      "If-then: breaking below the lower line arms the short branch (adopts short direction + levels).")
 
+# ── 2650-2651: Playbook Phase 3 — multi-instrument legs + multi-pane open ────
+emit(2650,"multileg_pair_multipane","Playbook/MultiLeg",["playbook","legs","multipane","pair"],
+     [{"action":"reset"},{"action":"wait_frames","count":4},
+      cmd("SetPlaybookPanel",open=True),
+      cmd("SeedPlay",symbol="SPY",long=True,entry=450.0,target=460.0,stop=445.0),{"action":"wait_frames","count":1},
+      cmd("AddLeg",idx=0,symbol="SPY",role="primary",long=True,entry=450.0,target=460.0,stop=445.0,weight=1.0),
+      cmd("AddLeg",idx=0,symbol="QQQ",role="pair_short",long=False,entry=380.0,target=370.0,stop=385.0,weight=1.0),
+      {"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.leg_count","value":2}},
+        {"state_field_equals":{"path":"playbook.plays.0.legs.0.symbol","value":"SPY"}},
+        {"state_field_equals":{"path":"playbook.plays.0.legs.0.role","value":"PRIMARY"}},
+        {"state_field_equals":{"path":"playbook.plays.0.legs.1.symbol","value":"QQQ"}},
+        {"state_field_equals":{"path":"playbook.plays.0.legs.1.role","value":"PAIR_SHORT"}},
+        {"state_field_equals":{"path":"playbook.plays.0.legs.1.direction","value":"SHORT"}}),
+      cmd("OpenPlayMultiPane",idx=0),{"action":"wait","ms":700},{"action":"wait_frames","count":4},
+      {"action":"log","message":"pair play opened across panes"},
+      A({"state_field_equals":{"path":"panes.0.symbol","value":"SPY"}},
+        {"state_field_gte":{"path":"panes.0.play_line_count","min":3}},
+        {"state_field_equals":{"path":"panes.1.symbol","value":"QQQ"}},
+        {"state_field_gte":{"path":"panes.1.play_line_count","min":3}},
+        {"no_panic":True},{"viewport_sane":True},{"fps_above":5.0})],
+     "A long-SPY / short-QQQ pair play opens across two panes, each pane showing its leg's symbol + levels.")
+emit(2651,"multileg_clear","Playbook/MultiLeg",["playbook","legs"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SetPlaybookPanel",open=True),
+      cmd("SeedPlay",symbol="NVDA",long=True,entry=50.0,target=60.0,stop=45.0),{"action":"wait_frames","count":1},
+      cmd("AddLeg",idx=0,symbol="NVDA",role="primary",long=True,entry=50.0,target=60.0,stop=45.0,weight=1.0),
+      cmd("AddLeg",idx=0,symbol="SMH",role="hedge",long=False,entry=200.0,target=190.0,stop=205.0,weight=0.5),
+      {"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.leg_count","value":2}},
+        {"state_field_equals":{"path":"playbook.plays.0.legs.1.role","value":"HEDGE"}}),
+      cmd("ClearLegs",idx=0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.leg_count","value":0}},{"no_panic":True})],
+     "A play with a hedge leg (NVDA long + SMH short-hedge, weight 0.5); legs clear cleanly.")
+
 print(f"generated {len(made)} scenarios into {OUT}")
 for p in made[:3]: print("  e.g.", os.path.basename(p))

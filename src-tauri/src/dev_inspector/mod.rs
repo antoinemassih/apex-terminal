@@ -996,6 +996,7 @@ pub fn end_frame(
                 "show_strikes_overlay": p.show_strikes_overlay,
                 "strikes_call_count":   p.overlay_calls.len(),
                 "strikes_put_count":    p.overlay_puts.len(),
+                "play_line_count":      p.play_lines.len(),
                 // Spreadsheet computed grid (rows×cols of formula-evaluated values).
                 "spreadsheet": {
                     "rows": p.spreadsheet_rows,
@@ -1051,6 +1052,11 @@ pub fn end_frame(
             "trigger":          p.trigger.label(),
             "branch_count":     p.branches.len(),
             "armed_branch":     p.branches.iter().position(|b| b.armed).map(|i| i as i64).unwrap_or(-1),
+            "leg_count":        p.legs.len(),
+            "legs":             p.legs.iter().map(|l| serde_json::json!({
+                "symbol": l.symbol, "role": l.role.label(),
+                "direction": l.direction.label(), "weight": l.weight,
+            })).collect::<Vec<_>>(),
             "status":       p.status.label(),
             "author":       p.author,
             "is_fork":      is_fork,

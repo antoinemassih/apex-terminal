@@ -533,6 +533,8 @@ pub(crate) struct Play {
     #[serde(default)] pub trigger: EntryTrigger,
     /// If-then scenario branches (P2): armed when price crosses their level.
     #[serde(default)] pub branches: Vec<PlayBranch>,
+    /// Multi-instrument legs (P3): hedge/pair/basket. Empty = single-symbol play.
+    #[serde(default)] pub legs: Vec<PlayLeg>,
     // ── Auto-grading lifecycle (P0/D1-D3) ─────────────────────────────────
     /// Unix seconds when price first crossed entry (Draft/Published → Active).
     #[serde(default)] pub activated_at: Option<i64>,
@@ -544,6 +546,30 @@ pub(crate) struct Play {
 
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum PlayDirection { Long, Short }
+
+/// The role of a leg in a multi-instrument play (P3).
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum LegRole { Primary, Hedge, PairShort, BasketMember }
+impl Default for LegRole { fn default() -> Self { LegRole::Primary } }
+impl LegRole {
+    pub fn label(self) -> &'static str {
+        match self { Self::Primary=>"PRIMARY", Self::Hedge=>"HEDGE", Self::PairShort=>"PAIR_SHORT", Self::BasketMember=>"BASKET" }
+    }
+}
+
+/// One instrument leg of a multi-instrument play (P3). Each leg has its own
+/// symbol + levels and authors/restores on its own pane.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PlayLeg {
+    pub symbol: String,
+    pub role: LegRole,
+    pub direction: PlayDirection,
+    pub entry: f32,
+    pub target: f32,
+    pub stop: f32,
+    #[serde(default = "one")] pub weight: f32,
+}
+fn one() -> f32 { 1.0 }
 
 /// How an entry triggers (P2). Stop = breakout (fill as price breaks THROUGH the
 /// level), Limit = pullback (fill as price returns TO the level), Market = immediate.
@@ -626,6 +652,7 @@ impl Play {
             origin: PlayOrigin::Original,
             trigger: EntryTrigger::Stop,
             branches: vec![],
+            legs: vec![],
             activated_at: None,
             resolved_at: None,
             expiry: None,

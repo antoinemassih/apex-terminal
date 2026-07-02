@@ -2278,6 +2278,25 @@ fn parse_app_command(
             let idx = body["idx"].as_u64().unwrap_or(0) as usize;
             Ok(AppCommand::ClearBranches { idx })
         }
+        "AddLeg" | "add_leg" => {
+            let idx    = body["idx"].as_u64().unwrap_or(0) as usize;
+            let symbol = body["symbol"].as_str().unwrap_or("").to_string();
+            let role   = body["role"].as_str().unwrap_or("primary").to_string();
+            let long   = body["long"].as_bool().unwrap_or(true);
+            let entry  = body["entry"].as_f64().unwrap_or(0.0) as f32;
+            let target = body["target"].as_f64().unwrap_or(0.0) as f32;
+            let stop   = body["stop"].as_f64().unwrap_or(0.0) as f32;
+            let weight = body["weight"].as_f64().unwrap_or(1.0) as f32;
+            Ok(AppCommand::AddLeg { idx, symbol, role, long, entry, target, stop, weight })
+        }
+        "ClearLegs" | "clear_legs" => {
+            let idx = body["idx"].as_u64().unwrap_or(0) as usize;
+            Ok(AppCommand::ClearLegs { idx })
+        }
+        "OpenPlayMultiPane" | "open_play_multi_pane" => {
+            let idx = body["idx"].as_u64().unwrap_or(0) as usize;
+            Ok(AppCommand::OpenPlayMultiPane { idx })
+        }
 
         // ── Alerts ─────────────────────────────────────────────────────────
         "PlaceAllDraftAlerts" | "place_all_draft_alerts" => Ok(AppCommand::PlaceAllDraftAlerts),

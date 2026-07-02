@@ -1,0 +1,107 @@
+{
+  "name": "multileg_clear",
+  "description": "A play with a hedge leg (NVDA long + SMH short-hedge, weight 0.5); legs clear cleanly.",
+  "story": "Playbook/MultiLeg",
+  "tags": [
+    "playbook",
+    "legs"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlaybookPanel",
+      "open": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "NVDA",
+      "long": true,
+      "entry": 50.0,
+      "target": 60.0,
+      "stop": 45.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddLeg",
+      "idx": 0,
+      "symbol": "NVDA",
+      "role": "primary",
+      "long": true,
+      "entry": 50.0,
+      "target": 60.0,
+      "stop": 45.0,
+      "weight": 1.0
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddLeg",
+      "idx": 0,
+      "symbol": "SMH",
+      "role": "hedge",
+      "long": false,
+      "entry": 200.0,
+      "target": 190.0,
+      "stop": 205.0,
+      "weight": 0.5
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.leg_count",
+            "value": 2
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.legs.1.role",
+            "value": "HEDGE"
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "ClearLegs",
+      "idx": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.leg_count",
+            "value": 0
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

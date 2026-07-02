@@ -1859,6 +1859,20 @@ pub(crate) fn last_snap() -> (f32, String) {
     LAST_SNAP.get().and_then(|c| c.lock().ok().map(|g| g.clone())).unwrap_or((0.0, String::new()))
 }
 
+/// Set a pane's play-line overlay (Entry/Target/Stop) from explicit prices — used
+/// to lay a play leg's levels onto its own pane in a multi-instrument play (P3).
+pub(crate) fn set_pane_play_lines(chart: &mut Chart, entry: f32, target: f32, stop: f32) {
+    use super::{PlayLine, PlayLineKind};
+    chart.play_lines.clear();
+    let mut id = 1u32;
+    chart.play_lines.push(PlayLine { id, kind: PlayLineKind::Entry, price: entry }); id += 1;
+    chart.play_lines.push(PlayLine { id, kind: PlayLineKind::Target, price: target }); id += 1;
+    if stop > 0.0 {
+        chart.play_lines.push(PlayLine { id, kind: PlayLineKind::Stop, price: stop }); id += 1;
+    }
+    chart.next_play_line_id = id;
+}
+
 /// Build the inline-expression context for a play from its levels + the chart
 /// showing its symbol (gamma walls, price, a simple ATR and VWAP over recent bars).
 pub(crate) fn play_expr_ctx(entry: f32, stop: f32, target: f32, chart: Option<&Chart>) -> super::ExprCtx {
