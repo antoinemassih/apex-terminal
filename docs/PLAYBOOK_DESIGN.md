@@ -417,6 +417,47 @@ same canvas.
   else behind one "Advanced" reveal + the chips. **Numeric + gesture parity:** every
   draggable level also has a tiny inline number + keyboard nudge.
 
+### 6b.5 Multi-instrument plays = multi-pane authoring
+
+Some ideas span more than one instrument — a **hedge** on a different symbol, a
+**long-A/short-B pair**, a **basket**. You can't author those on one chart: each
+leg needs its own pane where you drag *its* levels. This maps directly onto
+apex's existing multi-pane substrate (`panes: Vec<Chart>`, the `Layout` enum,
+pane splits, per-pane `SwapPaneSymbol`).
+
+**Model.** A play becomes a set of **legs**, each with its own symbol + level set:
+`legs: [PlayLeg { symbol, role (Primary|Hedge|PairShort|BasketMember), direction,
+entry_zone, stop, targets, weight, notes }]`. The single-symbol play is just one
+Primary leg (backward-compatible).
+
+**Authoring flow (auto-pane).** When you `+ hedge` / `+ pair leg` / `+ instrument`
+and pick a symbol:
+1. the view **auto-splits** and the new instrument opens in a fresh pane
+   (`SwapPaneSymbol` on the next pane slot),
+2. that leg's levels render **on that pane**, ready to drag — you apply inputs
+   in each pane independently,
+3. the play **remembers its layout** (a pair → vertical 2-split A/B; a basket →
+   grid) and restores it when the play is opened/reviewed.
+
+**Per-pane binding + ghost/detach.** Each leg binds to whichever pane shows its
+symbol; drag leg-B's stop in pane 1 → the play updates → the card reflects it.
+If a pane's symbol changes or the pane closes, that leg's levels **detach**
+(still stored on the play) and re-appear as a ghost overlay when the symbol is
+shown again — same mechanism as viewing someone else's play (C6).
+
+**Cross-leg intelligence.** The card summarizes all legs with **combined
+exposure, net R:R, and correlation/heat** (ties to the portfolio-playbook idea):
+"long SPY / short QQQ, net beta ~0, correlated 0.9 — this is a spread, not two bets."
+
+**Options note.** Options *legs* share one underlying, so they author on a single
+pane via the strike-ladder + payoff curve (Phase 4) — no extra panes. Multi-pane
+is specifically for multi-*instrument* legs (Phase 3 hedges/pairs/baskets).
+
+**Harness-testable:** add a hedge leg on symbol B → assert pane 1 shows B and
+leg-B levels are present on pane 1 (per-pane play-line capture, which the suite
+already does for pane-1 gamma/DOM). Layout restore + detach/ghost are assertable
+via pane_type/symbol + play-line presence per pane.
+
 ### 6b.3 Styles of ideas = one-tap templates
 
 directional · scale-in/pyramid · bracket/OCO · range (if-above/if-below) · mean-reversion ·
