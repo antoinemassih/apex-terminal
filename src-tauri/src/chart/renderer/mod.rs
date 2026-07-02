@@ -511,7 +511,9 @@ pub(crate) struct Play {
     #[serde(default)] pub invalidation: Option<f32>,
     pub target_price: f32,
     pub stop_price: f32,
-    pub targets: Vec<PlayTarget>,     // T2/T3 for Swing plays
+    pub targets: Vec<PlayTarget>,     // T2/T3 for Swing plays (scale-OUT ladder)
+    /// Scale-IN ladder: multiple entries with weights (P1 rich levels).
+    #[serde(default)] pub scale_ins: Vec<PlayTarget>,
     pub spread_legs: Vec<SpreadLeg>,  // legs for Spread plays
     pub contract: String,      // empty for equity, "450C 0DTE" for options
     pub quantity: u32,
@@ -583,7 +585,7 @@ impl Play {
             direction, play_type, entry_price: entry, entry_low: entry, entry_high: entry,
             invalidation: None,
             target_price: target, stop_price: stop,
-            targets: vec![], spread_legs: vec![],
+            targets: vec![], scale_ins: vec![], spread_legs: vec![],
             contract: String::new(), quantity: 1,
             status: PlayStatus::Draft,
             author: String::new(), notes: String::new(),
@@ -616,6 +618,90 @@ impl Play {
         f.activated_at = None;
         f.resolved_at = None;
         f
+    }
+}
+
+/// Context for resolving an inline level expression (`=3R`, `ATR`, `callwall`, …).
+#[derive(Clone, Copy, Default)]
+pub(crate) struct ExprCtx {
+    pub entry: f32, pub stop: f32, pub target: f32,
+    pub atr: f32, pub vwap: f32, pub price: f32,
+    pub callwall: f32, pub putwall: f32, pub flip: f32,
+}
+impl ExprCtx { pub fn r(&self) -> f32 { (self.entry - self.stop).abs() } }
+
+/// Parse a bare N-risk-multiple shorthand ("3R", "=1.5r") → Some(N). Returns None
+/// for a full expression (e.g. "entry+3*R", "callwall") so the caller falls back
+/// to the evaluator. A bare NR is placed at N risk-units from entry by the caller
+/// (direction-aware), since "3R" alone is an offset, not an absolute price.
+pub(crate) fn parse_risk_multiple(expr: &str) -> Option<f32> {
+    let e = expr.trim().trim_start_matches('=').trim();
+    let core = e.strip_suffix('R').or_else(|| e.strip_suffix('r'))?;
+    core.trim().parse::<f32>().ok()
+}
+
+/// Resolve an inline level expression to a price. Supports `+ - * / ( )`, unary
+/// minus, numbers, the `NR` shorthand (N risk-units = N·|entry−stop|), and named
+/// refs (case-insensitive): entry stop target atr vwap price r callwall putwall
+/// flip. Returns None on a parse error / non-finite result. A leading `=` is
+/// stripped so both `=3R` and `entry+2*atr` work.
+pub(crate) fn resolve_level_expr(expr: &str, ctx: &ExprCtx) -> Option<f32> {
+    let s = expr.trim().trim_start_matches('=').trim();
+    let mut p = ExprParser { s: s.as_bytes(), i: 0, ctx };
+    let v = p.expr()?;
+    p.skip_ws();
+    if p.i != p.s.len() { return None; }
+    v.is_finite().then_some(v)
+}
+struct ExprParser<'a> { s: &'a [u8], i: usize, ctx: &'a ExprCtx }
+impl<'a> ExprParser<'a> {
+    fn skip_ws(&mut self) { while self.i < self.s.len() && (self.s[self.i] as char).is_whitespace() { self.i += 1; } }
+    fn peek(&self) -> u8 { if self.i < self.s.len() { self.s[self.i] } else { 0 } }
+    fn expr(&mut self) -> Option<f32> {
+        let mut v = self.term()?;
+        loop { self.skip_ws(); match self.peek() {
+            b'+' => { self.i += 1; v += self.term()?; }
+            b'-' => { self.i += 1; v -= self.term()?; }
+            _ => break, } }
+        Some(v)
+    }
+    fn term(&mut self) -> Option<f32> {
+        let mut v = self.factor()?;
+        loop { self.skip_ws(); match self.peek() {
+            b'*' => { self.i += 1; v *= self.factor()?; }
+            b'/' => { self.i += 1; let d = self.factor()?; if d == 0.0 { return None; } v /= d; }
+            _ => break, } }
+        Some(v)
+    }
+    fn factor(&mut self) -> Option<f32> {
+        self.skip_ws();
+        if self.peek() == b'-' { self.i += 1; return Some(-self.factor()?); }
+        if self.peek() == b'+' { self.i += 1; return self.factor(); }
+        if self.peek() == b'(' {
+            self.i += 1; let v = self.expr()?; self.skip_ws();
+            if self.peek() != b')' { return None; } self.i += 1; return Some(v);
+        }
+        let c = self.peek();
+        if c.is_ascii_digit() || c == b'.' {
+            let start = self.i;
+            while self.i < self.s.len() { let b = self.s[self.i]; if b.is_ascii_digit() || b == b'.' { self.i += 1; } else { break; } }
+            let num: f32 = std::str::from_utf8(&self.s[start..self.i]).ok()?.parse().ok()?;
+            if matches!(self.peek(), b'R' | b'r') { self.i += 1; return Some(num * self.ctx.r()); } // NR shorthand
+            return Some(num);
+        }
+        if c.is_ascii_alphabetic() {
+            let start = self.i;
+            while self.i < self.s.len() && (self.s[self.i] as char).is_ascii_alphabetic() { self.i += 1; }
+            let id = std::str::from_utf8(&self.s[start..self.i]).ok()?.to_ascii_lowercase();
+            return match id.as_str() {
+                "entry" => Some(self.ctx.entry), "stop" => Some(self.ctx.stop), "target" => Some(self.ctx.target),
+                "atr" => Some(self.ctx.atr), "vwap" => Some(self.ctx.vwap), "price" => Some(self.ctx.price),
+                "r" => Some(self.ctx.r()),
+                "callwall" => Some(self.ctx.callwall), "putwall" => Some(self.ctx.putwall), "flip" => Some(self.ctx.flip),
+                _ => None,
+            };
+        }
+        None
     }
 }
 

@@ -1388,5 +1388,50 @@ emit(2610,"play_entry_zone_invalidation","Playbook/RichLevels",["playbook","zone
       A({"state_field_equals":{"path":"playbook.plays.0.invalidation","value":93.0}},{"no_panic":True})],
      "Entry zone (low/high) sets the entry mid + recomputes R:R; invalidation level is set independently of the stop.")
 
+# ── 2620-2622: Playbook authoring P1 — inline expressions + scale-in ladder ──
+emit(2620,"play_level_expressions","Playbook/RichLevels",["playbook","expression","authoring","correctness"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SetPlaybookPanel",open=True),
+      cmd("SeedPlay",symbol="EXPR1",long=True,entry=100.0,target=110.0,stop=95.0),{"action":"wait_frames","count":2},
+      # entry+3*R : r=|100-95|=5 -> 115
+      cmd("SetPlayLevelExpr",idx=0,which="target",expr="entry+3*R"),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.target","value":115.0}},{"play_rr_correct":True}),
+      # bare "3R" shorthand on a long target -> entry+3*r = 115
+      cmd("SetPlayLevelExpr",idx=0,which="target",expr="3R"),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.target","value":115.0}}),
+      # stop = entry-2*R : r=5 (stop still 95) -> 90
+      cmd("SetPlayLevelExpr",idx=0,which="stop",expr="entry-2*R"),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.stop","value":90.0}}),
+      # now r=|100-90|=10 ; target = entry+1*R -> 110 ; and parens
+      cmd("SetPlayLevelExpr",idx=0,which="target",expr="entry+1*R"),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.target","value":110.0}}),
+      cmd("SetPlayLevelExpr",idx=0,which="target",expr="(entry+stop)/2"),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.target","value":95.0}},{"no_panic":True})],
+     "Inline level expressions resolve correctly: entry+N*R, bare NR shorthand, arithmetic, parens.")
+emit(2621,"play_scale_in_ladder","Playbook/RichLevels",["playbook","scalein","ladder","correctness"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SetPlaybookPanel",open=True),
+      cmd("SeedPlay",symbol="SCIN1",long=True,entry=100.0,target=110.0,stop=95.0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.scale_in_count","value":0}}),
+      cmd("AddScaleIn",idx=0,price=99.0,pct=0.5),
+      cmd("AddScaleIn",idx=0,price=97.0,pct=0.3),
+      cmd("AddScaleIn",idx=0,price=95.0,pct=0.2),{"action":"wait_frames","count":2},
+      {"action":"log","message":"3-rung scale-in ladder, weights sum 1.0"},
+      A({"state_field_equals":{"path":"playbook.plays.0.scale_in_count","value":3}},
+        {"state_field_equals":{"path":"playbook.plays.0.scale_in_pct_sum","value":1.0}}),
+      cmd("ClearScaleIns",idx=0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.scale_in_count","value":0}},{"no_panic":True})],
+     "Scale-in ladder: add weighted entries (sum to 1.0), then clear.")
+emit(2622,"play_expr_callwall","Playbook/RichLevels",["playbook","expression","gamma","authoring"],
+     [{"action":"reset"},{"action":"wait_frames","count":3}]+load("SPY",ms=1000)+[
+      cmd("SynthGamma",pane=0),{"action":"wait_frames","count":3},
+      cmd("SetPlaybookPanel",open=True),
+      cmd("SeedPlay",symbol="SPY",long=True,entry=100.0,target=110.0,stop=95.0),{"action":"wait_frames","count":2},
+      cmd("SetPlayLevelExpr",idx=0,which="target",expr="callwall"),{"action":"wait_frames","count":2},
+      {"action":"log","message":"target resolved to SPY gamma call wall"},
+      # SPY trades well above 110, so its call wall resolves to a value >> the original.
+      A({"state_field_gte":{"path":"playbook.plays.0.target","min":200.0}},{"no_panic":True})],
+     "An inline 'callwall' expression resolves a level to the chart's gamma call wall.")
+
 print(f"generated {len(made)} scenarios into {OUT}")
 for p in made[:3]: print("  e.g.", os.path.basename(p))

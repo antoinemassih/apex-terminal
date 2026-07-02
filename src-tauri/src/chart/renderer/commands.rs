@@ -345,6 +345,15 @@ pub enum AppCommand {
     /// Set play[idx] invalidation level (<=0 clears).
     #[cfg(debug_assertions)]
     SetPlayInvalidation { idx: usize, price: f32 },
+    /// Add a scale-IN entry (price + weight) to play[idx].
+    #[cfg(debug_assertions)]
+    AddScaleIn { idx: usize, price: f32, pct: f32 },
+    /// Clear play[idx] scale-in ladder.
+    #[cfg(debug_assertions)]
+    ClearScaleIns { idx: usize },
+    /// Set play[idx] entry/stop/target from an inline expression (=3R / ATR / callwall / …).
+    #[cfg(debug_assertions)]
+    SetPlayLevelExpr { idx: usize, which: String, expr: String },
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -1023,6 +1032,58 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         AppCommand::SetPlayInvalidation { idx, price } => {
             if let Some(p) = watchlist.plays.get_mut(idx) {
                 p.invalidation = if price > 0.0 { Some(price) } else { None };
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::AddScaleIn { idx, price, pct } => {
+            use crate::chart_renderer::PlayTarget;
+            if let Some(p) = watchlist.plays.get_mut(idx) {
+                let n = p.scale_ins.len() + 1;
+                p.scale_ins.push(PlayTarget { price, pct, label: format!("S{n}") });
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::ClearScaleIns { idx } => {
+            if let Some(p) = watchlist.plays.get_mut(idx) { p.scale_ins.clear(); }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SetPlayLevelExpr { idx, which, expr } => {
+            use crate::chart_renderer::PlayDirection;
+            // Read the play's levels/symbol/direction, build ctx from the pane showing it.
+            let Some((entry, stop, target, sym, long)) = watchlist.plays.get(idx).map(|p|
+                (p.entry_price, p.stop_price, p.target_price, p.symbol.clone(),
+                 matches!(p.direction, PlayDirection::Long))) else { return; };
+            let chart = panes.iter().find(|c| c.symbol.eq_ignore_ascii_case(&sym)).or_else(|| panes.first());
+            // Bare "NR" shorthand → place at N risk-units from entry (direction-aware);
+            // otherwise evaluate the full expression.
+            let resolved = if let Some(n) = crate::chart_renderer::parse_risk_multiple(&expr) {
+                let r = (entry - stop).abs();
+                let dir = if long { 1.0 } else { -1.0 };
+                match which.as_str() {
+                    "target" => Some(entry + n * r * dir),
+                    "stop"   => Some(entry - n * r * dir),
+                    _ => None,
+                }
+            } else {
+                let ctx = crate::chart_renderer::gpu::play_expr_ctx(entry, stop, target, chart);
+                crate::chart_renderer::resolve_level_expr(&expr, &ctx)
+            };
+            if let Some(v) = resolved {
+                if let Some(p) = watchlist.plays.get_mut(idx) {
+                    match which.as_str() {
+                        "entry"  => { p.entry_price = v; p.entry_low = v; p.entry_high = v; }
+                        "stop"   => p.stop_price = v,
+                        "target" => p.target_price = v,
+                        _ => {}
+                    }
+                    if (p.entry_price - p.stop_price).abs() > 0.001 {
+                        p.risk_reward = (p.target_price - p.entry_price).abs()
+                            / (p.entry_price - p.stop_price).abs();
+                    }
+                }
             }
         }
 

@@ -1,0 +1,157 @@
+{
+  "name": "play_level_expressions",
+  "description": "Inline level expressions resolve correctly: entry+N*R, bare NR shorthand, arithmetic, parens.",
+  "story": "Playbook/RichLevels",
+  "tags": [
+    "playbook",
+    "expression",
+    "authoring",
+    "correctness"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlaybookPanel",
+      "open": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "EXPR1",
+      "long": true,
+      "entry": 100.0,
+      "target": 110.0,
+      "stop": 95.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlayLevelExpr",
+      "idx": 0,
+      "which": "target",
+      "expr": "entry+3*R"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.target",
+            "value": 115.0
+          }
+        },
+        {
+          "play_rr_correct": true
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlayLevelExpr",
+      "idx": 0,
+      "which": "target",
+      "expr": "3R"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.target",
+            "value": 115.0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlayLevelExpr",
+      "idx": 0,
+      "which": "stop",
+      "expr": "entry-2*R"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.stop",
+            "value": 90.0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlayLevelExpr",
+      "idx": 0,
+      "which": "target",
+      "expr": "entry+1*R"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.target",
+            "value": 110.0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlayLevelExpr",
+      "idx": 0,
+      "which": "target",
+      "expr": "(entry+stop)/2"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.target",
+            "value": 95.0
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

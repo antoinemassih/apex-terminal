@@ -1,0 +1,121 @@
+{
+  "name": "play_scale_in_ladder",
+  "description": "Scale-in ladder: add weighted entries (sum to 1.0), then clear.",
+  "story": "Playbook/RichLevels",
+  "tags": [
+    "playbook",
+    "scalein",
+    "ladder",
+    "correctness"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlaybookPanel",
+      "open": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "SCIN1",
+      "long": true,
+      "entry": 100.0,
+      "target": 110.0,
+      "stop": 95.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.scale_in_count",
+            "value": 0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddScaleIn",
+      "idx": 0,
+      "price": 99.0,
+      "pct": 0.5
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddScaleIn",
+      "idx": 0,
+      "price": 97.0,
+      "pct": 0.3
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddScaleIn",
+      "idx": 0,
+      "price": 95.0,
+      "pct": 0.2
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "3-rung scale-in ladder, weights sum 1.0"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.scale_in_count",
+            "value": 3
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.scale_in_pct_sum",
+            "value": 1.0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "ClearScaleIns",
+      "idx": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.scale_in_count",
+            "value": 0
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

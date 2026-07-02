@@ -1859,6 +1859,34 @@ pub(crate) fn last_snap() -> (f32, String) {
     LAST_SNAP.get().and_then(|c| c.lock().ok().map(|g| g.clone())).unwrap_or((0.0, String::new()))
 }
 
+/// Build the inline-expression context for a play from its levels + the chart
+/// showing its symbol (gamma walls, price, a simple ATR and VWAP over recent bars).
+pub(crate) fn play_expr_ctx(entry: f32, stop: f32, target: f32, chart: Option<&Chart>) -> super::ExprCtx {
+    let mut c = super::ExprCtx { entry, stop, target, ..Default::default() };
+    if let Some(ch) = chart {
+        c.callwall = ch.gamma_call_wall;
+        c.putwall = ch.gamma_put_wall;
+        c.flip = ch.gamma_zero;
+        if let Some(b) = ch.bars.last() { c.price = b.close; }
+        let n = ch.bars.len();
+        if n > 0 {
+            let atr_lo = n.saturating_sub(14);
+            let recent = &ch.bars[atr_lo..];
+            if !recent.is_empty() {
+                c.atr = recent.iter().map(|b| b.high - b.low).sum::<f32>() / recent.len() as f32;
+            }
+            let vw_lo = n.saturating_sub(40);
+            let (mut pv, mut vv) = (0.0f32, 0.0f32);
+            for b in &ch.bars[vw_lo..] {
+                let typ = (b.high + b.low + b.close) / 3.0;
+                pv += typ * b.volume; vv += b.volume;
+            }
+            if vv > 0.0 { c.vwap = pv / vv; }
+        }
+    }
+    c
+}
+
 // ── Snap candidates (magnetic level dragging) ───────────────────────────────
 /// Gather the key levels a play line can snap to on this chart: gamma call/put
 /// walls + flip, round numbers around the last price, and the recent swing

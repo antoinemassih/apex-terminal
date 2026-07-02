@@ -2237,6 +2237,22 @@ fn parse_app_command(
             let price = body["price"].as_f64().unwrap_or(0.0) as f32;
             Ok(AppCommand::SetPlayInvalidation { idx, price })
         }
+        "AddScaleIn" | "add_scale_in" => {
+            let idx   = body["idx"].as_u64().unwrap_or(0) as usize;
+            let price = body["price"].as_f64().unwrap_or(0.0) as f32;
+            let pct   = body["pct"].as_f64().unwrap_or(0.0) as f32;
+            Ok(AppCommand::AddScaleIn { idx, price, pct })
+        }
+        "ClearScaleIns" | "clear_scale_ins" => {
+            let idx = body["idx"].as_u64().unwrap_or(0) as usize;
+            Ok(AppCommand::ClearScaleIns { idx })
+        }
+        "SetPlayLevelExpr" | "set_play_level_expr" => {
+            let idx   = body["idx"].as_u64().unwrap_or(0) as usize;
+            let which = body["which"].as_str().unwrap_or("target").to_string();
+            let expr  = body["expr"].as_str().unwrap_or("").to_string();
+            Ok(AppCommand::SetPlayLevelExpr { idx, which, expr })
+        }
 
         // ── Alerts ─────────────────────────────────────────────────────────
         "PlaceAllDraftAlerts" | "place_all_draft_alerts" => Ok(AppCommand::PlaceAllDraftAlerts),
