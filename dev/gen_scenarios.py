@@ -1365,5 +1365,28 @@ emit(2601,"snap_candidates_gamma","Playbook/Snap",["playbook","snap","gamma","au
         {"state_field_array_contains":{"path":"playbook.snap_labels","value":"round"}},{"no_panic":True})],
      "A chart's magnetic-drag snap candidates include the gamma call/put walls, flip, and round numbers.")
 
+# ── 2610: Playbook rich levels — entry ZONE + invalidation (B2/B10) ──────────
+emit(2610,"play_entry_zone_invalidation","Playbook/RichLevels",["playbook","zone","invalidation","authoring"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SetPlaybookPanel",open=True),
+      cmd("SeedPlay",symbol="ZONE1",long=True,entry=100.0,target=110.0,stop=95.0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.has_zone","value":False}},
+        {"state_field_equals":{"path":"playbook.plays.0.entry_low","value":100.0}},
+        {"state_field_equals":{"path":"playbook.plays.0.entry_high","value":100.0}}),
+      cmd("SetPlayZone",idx=0,low=98.0,high=102.0),{"action":"wait_frames","count":2},
+      {"action":"log","message":"symmetric zone, mid=100"},
+      A({"state_field_equals":{"path":"playbook.plays.0.entry_low","value":98.0}},
+        {"state_field_equals":{"path":"playbook.plays.0.entry_high","value":102.0}},
+        {"state_field_equals":{"path":"playbook.plays.0.has_zone","value":True}},
+        {"state_field_equals":{"path":"playbook.plays.0.entry","value":100.0}},
+        {"play_rr_correct":True}),
+      cmd("SetPlayZone",idx=0,low=100.0,high=104.0),{"action":"wait_frames","count":2},
+      {"action":"log","message":"asymmetric zone, mid=102 -> R:R recomputes"},
+      A({"state_field_equals":{"path":"playbook.plays.0.entry","value":102.0}},
+        {"play_rr_correct":True}),
+      cmd("SetPlayInvalidation",idx=0,price=93.0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.invalidation","value":93.0}},{"no_panic":True})],
+     "Entry zone (low/high) sets the entry mid + recomputes R:R; invalidation level is set independently of the stop.")
+
 print(f"generated {len(made)} scenarios into {OUT}")
 for p in made[:3]: print("  e.g.", os.path.basename(p))

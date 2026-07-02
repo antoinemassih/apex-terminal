@@ -2226,6 +2226,17 @@ fn parse_app_command(
                 a.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect()).unwrap_or_default();
             Ok(AppCommand::SnapTest { price, targets, tolerance })
         }
+        "SetPlayZone" | "set_play_zone" => {
+            let idx  = body["idx"].as_u64().unwrap_or(0) as usize;
+            let low  = body["low"].as_f64().unwrap_or(0.0) as f32;
+            let high = body["high"].as_f64().unwrap_or(0.0) as f32;
+            Ok(AppCommand::SetPlayZone { idx, low, high })
+        }
+        "SetPlayInvalidation" | "set_play_invalidation" => {
+            let idx   = body["idx"].as_u64().unwrap_or(0) as usize;
+            let price = body["price"].as_f64().unwrap_or(0.0) as f32;
+            Ok(AppCommand::SetPlayInvalidation { idx, price })
+        }
 
         // ── Alerts ─────────────────────────────────────────────────────────
         "PlaceAllDraftAlerts" | "place_all_draft_alerts" => Ok(AppCommand::PlaceAllDraftAlerts),

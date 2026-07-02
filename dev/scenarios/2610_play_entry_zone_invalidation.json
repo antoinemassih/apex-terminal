@@ -1,0 +1,164 @@
+{
+  "name": "play_entry_zone_invalidation",
+  "description": "Entry zone (low/high) sets the entry mid + recomputes R:R; invalidation level is set independently of the stop.",
+  "story": "Playbook/RichLevels",
+  "tags": [
+    "playbook",
+    "zone",
+    "invalidation",
+    "authoring"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlaybookPanel",
+      "open": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "ZONE1",
+      "long": true,
+      "entry": 100.0,
+      "target": 110.0,
+      "stop": 95.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.has_zone",
+            "value": false
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.entry_low",
+            "value": 100.0
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.entry_high",
+            "value": 100.0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlayZone",
+      "idx": 0,
+      "low": 98.0,
+      "high": 102.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "symmetric zone, mid=100"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.entry_low",
+            "value": 98.0
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.entry_high",
+            "value": 102.0
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.has_zone",
+            "value": true
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.entry",
+            "value": 100.0
+          }
+        },
+        {
+          "play_rr_correct": true
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlayZone",
+      "idx": 0,
+      "low": 100.0,
+      "high": 104.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "asymmetric zone, mid=102 -> R:R recomputes"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.entry",
+            "value": 102.0
+          }
+        },
+        {
+          "play_rr_correct": true
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlayInvalidation",
+      "idx": 0,
+      "price": 93.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.invalidation",
+            "value": 93.0
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

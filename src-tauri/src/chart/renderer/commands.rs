@@ -339,6 +339,12 @@ pub enum AppCommand {
     /// `tolerance`; stashes the result for assertion (deterministic, no chart).
     #[cfg(debug_assertions)]
     SnapTest { price: f32, targets: Vec<f32>, tolerance: f32 },
+    /// Set play[idx] entry ZONE (low/high); entry_price becomes the mid, R:R recomputes.
+    #[cfg(debug_assertions)]
+    SetPlayZone { idx: usize, low: f32, high: f32 },
+    /// Set play[idx] invalidation level (<=0 clears).
+    #[cfg(debug_assertions)]
+    SetPlayInvalidation { idx: usize, price: f32 },
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -997,6 +1003,26 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
             if let Some(p) = watchlist.plays.get(idx) {
                 crate::chart_renderer::gpu::set_last_share(
                     crate::chart_renderer::gpu::format_play_embed(p));
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SetPlayZone { idx, low, high } => {
+            if let Some(p) = watchlist.plays.get_mut(idx) {
+                let (lo, hi) = if low <= high { (low, high) } else { (high, low) };
+                p.entry_low = lo; p.entry_high = hi;
+                p.entry_price = (lo + hi) / 2.0; // zone mid drives grading + R:R
+                if (p.entry_price - p.stop_price).abs() > 0.001 {
+                    p.risk_reward = (p.target_price - p.entry_price).abs()
+                        / (p.entry_price - p.stop_price).abs();
+                }
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SetPlayInvalidation { idx, price } => {
+            if let Some(p) = watchlist.plays.get_mut(idx) {
+                p.invalidation = if price > 0.0 { Some(price) } else { None };
             }
         }
 

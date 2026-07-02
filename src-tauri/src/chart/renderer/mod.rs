@@ -504,6 +504,11 @@ pub(crate) struct Play {
     pub direction: PlayDirection,
     pub play_type: PlayType,
     pub entry_price: f32,
+    /// Entry ZONE (B2): low/high band. A single-price entry has low==high==entry_price.
+    #[serde(default)] pub entry_low: f32,
+    #[serde(default)] pub entry_high: f32,
+    /// Invalidation level (B10): thesis is *wrong* here (distinct from the risk stop).
+    #[serde(default)] pub invalidation: Option<f32>,
     pub target_price: f32,
     pub stop_price: f32,
     pub targets: Vec<PlayTarget>,     // T2/T3 for Swing plays
@@ -575,7 +580,9 @@ impl Play {
             id: uuid::Uuid::new_v4().to_string(),
             title: format!("{} {}", symbol, direction.label()),
             symbol: symbol.into(),
-            direction, play_type, entry_price: entry, target_price: target, stop_price: stop,
+            direction, play_type, entry_price: entry, entry_low: entry, entry_high: entry,
+            invalidation: None,
+            target_price: target, stop_price: stop,
             targets: vec![], spread_legs: vec![],
             contract: String::new(), quantity: 1,
             status: PlayStatus::Draft,
