@@ -1,0 +1,96 @@
+{
+  "name": "playbook_publish",
+  "description": "Publishing a play sets it Published and adds it to the feed.",
+  "story": "Playbook/Feed",
+  "tags": [
+    "playbook",
+    "publish",
+    "feed"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetAuthor",
+      "handle": "alice"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "PUB1",
+      "long": true,
+      "entry": 100.0,
+      "target": 110.0,
+      "stop": 95.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.status",
+            "value": "DRAFT"
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.feed_count",
+            "value": 0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "PublishPlay",
+      "idx": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "published"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.status",
+            "value": "PUBLISHED"
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.feed_count",
+            "value": 1
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.feed.0.symbol",
+            "value": "PUB1"
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

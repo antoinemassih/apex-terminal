@@ -1125,6 +1125,18 @@ pub fn end_frame(
             "play_count": watchlist.plays.len(),
             "author":     crate::chart_renderer::gpu::author_handle(),
             "plays":      plays_json,
+            // Feed (F1/F2) + last share payload (E5).
+            "feed_count":  watchlist.feed.len(),
+            "feed_filter": watchlist.feed_filter_symbol,
+            "feed_filtered_count": watchlist.feed.iter()
+                .filter(|p| watchlist.feed_filter_symbol.is_empty()
+                    || p.symbol.to_uppercase().contains(&watchlist.feed_filter_symbol))
+                .count(),
+            "feed": watchlist.feed.iter().take(64).map(|p| serde_json::json!({
+                "symbol": p.symbol, "author": p.author, "status": p.status.label(),
+                "direction": p.direction.label(),
+            })).collect::<Vec<_>>(),
+            "last_share": crate::chart_renderer::gpu::last_share(),
         },
         // ── Auto-charting panel (front-end) ───────────────────────────────
         "auto_chart": {
@@ -1358,6 +1370,8 @@ fn do_reset() {
     push(AppCommand::SetAutoChartPanel { open: false });
     push(AppCommand::SetPlaybookPanel { open: false });
     push(AppCommand::ClearPlays);
+    push(AppCommand::SeedFeed { count: 0 });
+    push(AppCommand::SetFeedFilter { symbol: String::new() });
     // Reset the in-memory author to a clean test baseline (never touches author.txt).
     crate::chart_renderer::gpu::set_author_handle_mem("");
     // Reset the global (disk-persisted) auto-draw config to defaults so the

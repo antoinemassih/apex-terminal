@@ -2203,6 +2203,22 @@ fn parse_app_command(
             let idx = body["idx"].as_u64().unwrap_or(0) as usize;
             Ok(AppCommand::ForkPlay { idx })
         }
+        "PublishPlay" | "publish_play" => {
+            let idx = body["idx"].as_u64().unwrap_or(0) as usize;
+            Ok(AppCommand::PublishPlay { idx })
+        }
+        "SeedFeed" | "seed_feed" => {
+            let count = body["count"].as_u64().unwrap_or(20) as usize;
+            Ok(AppCommand::SeedFeed { count })
+        }
+        "SetFeedFilter" | "set_feed_filter" => {
+            let symbol = body["symbol"].as_str().unwrap_or("").to_string();
+            Ok(AppCommand::SetFeedFilter { symbol })
+        }
+        "SharePlayToDiscord" | "share_play_to_discord" => {
+            let idx = body["idx"].as_u64().unwrap_or(0) as usize;
+            Ok(AppCommand::SharePlayToDiscord { idx })
+        }
 
         // ── Alerts ─────────────────────────────────────────────────────────
         "PlaceAllDraftAlerts" | "place_all_draft_alerts" => Ok(AppCommand::PlaceAllDraftAlerts),

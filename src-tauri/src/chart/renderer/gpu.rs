@@ -1821,6 +1821,32 @@ pub(crate) fn import_play_from_file(path: &std::path::Path) -> Option<super::Pla
 #[cfg(debug_assertions)]
 pub(crate) fn play_export_debug_path() -> std::path::PathBuf { plays_data_file("play.debug.export.json") }
 
+/// Format a play as a shareable message (Discord embed / social post). Contains
+/// the essence: symbol, direction, levels, R:R, author, and a short thesis line.
+pub(crate) fn format_play_embed(play: &super::Play) -> String {
+    let author = if play.author.is_empty() { "anon" } else { play.author.as_str() };
+    let thesis = play.notes.lines().next().unwrap_or("");
+    format!(
+        "📈 {} {}  •  entry {:.2} → target {:.2}  •  stop {:.2}  •  R:R {:.2}:1  •  by @{}{}",
+        play.symbol, play.direction.label(),
+        play.entry_price, play.target_price, play.stop_price, play.risk_reward, author,
+        if thesis.is_empty() { String::new() } else { format!("\n{thesis}") },
+    )
+}
+/// Debug capture of the last share payload so the harness can assert the embed
+/// format WITHOUT ever actually posting to Discord.
+#[cfg(debug_assertions)]
+static LAST_SHARE: std::sync::OnceLock<std::sync::Mutex<String>> = std::sync::OnceLock::new();
+#[cfg(debug_assertions)]
+pub(crate) fn set_last_share(s: String) {
+    let c = LAST_SHARE.get_or_init(|| std::sync::Mutex::new(String::new()));
+    if let Ok(mut g) = c.lock() { *g = s; }
+}
+#[cfg(debug_assertions)]
+pub(crate) fn last_share() -> String {
+    LAST_SHARE.get().and_then(|c| c.lock().ok().map(|g| g.clone())).unwrap_or_default()
+}
+
 // ── Author identity (playbook attribution) ──────────────────────────────────
 // The local user's handle, stamped on plays they create so shared plays are
 // attributable. Persisted as a plain file; empty until the user sets one.
@@ -6059,6 +6085,11 @@ pub(crate) struct Watchlist {
     pub(crate) spreadsheet_templates: Vec<String>,
     // Plays / Playbook system
     pub(crate) plays: Vec<super::Play>,
+    /// Community/received feed of published plays (F1). Populated by Publish +
+    /// import + (future) a backend feed source.
+    pub(crate) feed: Vec<super::Play>,
+    /// Feed filter (F2): symbol substring ("" = all).
+    pub(crate) feed_filter_symbol: String,
     pub(crate) play_editor_open: bool,
     pub(crate) play_editor_symbol: String,
     pub(crate) play_editor_entry: String,
@@ -6364,7 +6395,7 @@ impl Watchlist {
                dashboard_templates: vec!["Default".into()],
                heatmap_templates: vec!["Default".into()],
                spreadsheet_templates: vec!["Default".into()],
-               plays: vec![], play_editor_open: false,
+               plays: vec![], feed: vec![], feed_filter_symbol: String::new(), play_editor_open: false,
                play_editor_symbol: String::new(), play_editor_entry: String::new(),
                play_editor_target: String::new(), play_editor_stop: String::new(),
                play_editor_notes: String::new(), play_editor_direction: super::PlayDirection::Long,

@@ -1,0 +1,85 @@
+{
+  "name": "playbook_discord_embed",
+  "description": "A play formats to a Discord/social embed containing symbol/direction/levels/author (never posted in tests).",
+  "story": "Playbook/Share",
+  "tags": [
+    "playbook",
+    "share",
+    "discord"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetAuthor",
+      "handle": "quant_jane"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "EMB1",
+      "long": true,
+      "entry": 100.0,
+      "target": 112.0,
+      "stop": 96.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "SharePlayToDiscord",
+      "idx": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "formatted discord embed (not posted)"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_contains": {
+            "path": "playbook.last_share",
+            "contains": "EMB1"
+          }
+        },
+        {
+          "state_field_contains": {
+            "path": "playbook.last_share",
+            "contains": "LONG"
+          }
+        },
+        {
+          "state_field_contains": {
+            "path": "playbook.last_share",
+            "contains": "112"
+          }
+        },
+        {
+          "state_field_contains": {
+            "path": "playbook.last_share",
+            "contains": "quant_jane"
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

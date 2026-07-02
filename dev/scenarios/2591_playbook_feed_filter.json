@@ -1,0 +1,116 @@
+{
+  "name": "playbook_feed_filter",
+  "description": "Feed holds published plays and the symbol filter returns exactly the matching subset.",
+  "story": "Playbook/Feed",
+  "tags": [
+    "playbook",
+    "feed",
+    "filter",
+    "correctness"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedFeed",
+      "count": 40
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.feed_count",
+            "value": 40
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.feed_filtered_count",
+            "value": 40
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetFeedFilter",
+      "symbol": "NVDA"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "filter NVDA"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.feed_filtered_count",
+            "value": 5
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetFeedFilter",
+      "symbol": "ZZZNONE"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.feed_filtered_count",
+            "value": 0
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetFeedFilter",
+      "symbol": ""
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.feed_filtered_count",
+            "value": 40
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

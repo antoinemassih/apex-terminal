@@ -1298,5 +1298,46 @@ emit(2581,"playbook_fork_resets_status","Playbook/Fork",["playbook","fork","life
         {"state_field_equals":{"path":"playbook.plays.1.forked_from","value":"alice"}},{"no_panic":True})],
      "Forking a Won play yields a fresh Draft (the forker's own idea), still attributed to the origin.")
 
+# ── 2590-2593: Playbook PUBLISH + FEED + FILTER + Discord embed (F6/F1/F2/E5) ─
+emit(2590,"playbook_publish","Playbook/Feed",["playbook","publish","feed"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SetAuthor",handle="alice"),
+      cmd("SeedPlay",symbol="PUB1",long=True,entry=100.0,target=110.0,stop=95.0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.status","value":"DRAFT"}},
+        {"state_field_equals":{"path":"playbook.feed_count","value":0}}),
+      cmd("PublishPlay",idx=0),{"action":"wait_frames","count":2},
+      {"action":"log","message":"published"},
+      A({"state_field_equals":{"path":"playbook.plays.0.status","value":"PUBLISHED"}},
+        {"state_field_equals":{"path":"playbook.feed_count","value":1}},
+        {"state_field_equals":{"path":"playbook.feed.0.symbol","value":"PUB1"}},{"no_panic":True})],
+     "Publishing a play sets it Published and adds it to the feed.")
+# F1/F2: feed populated + symbol filter is correct (deterministic seeded feed).
+# SeedFeed cycles [SPY,QQQ,NVDA,TSLA,AAPL,AMD,META,MSFT]; for count=40 NVDA (idx2)
+# appears at i=2,10,18,26,34 -> 5 times.
+emit(2591,"playbook_feed_filter","Playbook/Feed",["playbook","feed","filter","correctness"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SeedFeed",count=40),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.feed_count","value":40}},
+        {"state_field_equals":{"path":"playbook.feed_filtered_count","value":40}}),
+      cmd("SetFeedFilter",symbol="NVDA"),{"action":"wait_frames","count":2},
+      {"action":"log","message":"filter NVDA"},
+      A({"state_field_equals":{"path":"playbook.feed_filtered_count","value":5}}),
+      cmd("SetFeedFilter",symbol="ZZZNONE"),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.feed_filtered_count","value":0}}),
+      cmd("SetFeedFilter",symbol=""),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.feed_filtered_count","value":40}},{"no_panic":True})],
+     "Feed holds published plays and the symbol filter returns exactly the matching subset.")
+emit(2592,"playbook_discord_embed","Playbook/Share",["playbook","share","discord"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SetAuthor",handle="quant_jane"),
+      cmd("SeedPlay",symbol="EMB1",long=True,entry=100.0,target=112.0,stop=96.0),{"action":"wait_frames","count":2},
+      cmd("SharePlayToDiscord",idx=0),{"action":"wait_frames","count":2},
+      {"action":"log","message":"formatted discord embed (not posted)"},
+      A({"state_field_contains":{"path":"playbook.last_share","contains":"EMB1"}},
+        {"state_field_contains":{"path":"playbook.last_share","contains":"LONG"}},
+        {"state_field_contains":{"path":"playbook.last_share","contains":"112"}},
+        {"state_field_contains":{"path":"playbook.last_share","contains":"quant_jane"}},{"no_panic":True})],
+     "A play formats to a Discord/social embed containing symbol/direction/levels/author (never posted in tests).")
+
 print(f"generated {len(made)} scenarios into {OUT}")
 for p in made[:3]: print("  e.g.", os.path.basename(p))

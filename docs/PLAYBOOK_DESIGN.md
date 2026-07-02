@@ -548,6 +548,46 @@ TradingView-style ideas are static screenshots + text. apex's playbook is
 Each of these plugs into an apex system that **already exists** — the playbook is
 the surface that ties them together into a shareable, accountable trade-idea object.
 
+### 8.6 Further improvements — next capabilities (prioritized)
+
+Beyond the tiers above, the highest-leverage *new* directions:
+
+**Capability — a living, context-aware play:**
+- **Frozen context provenance** — snapshot the world at authoring (gamma walls,
+  day-type, IV rank, pattern, news) so a reader/fork sees what the author saw.
+- **Live thesis-health / auto-invalidation** — rules+LLM flag "thesis compromised"
+  when the premise breaks (gamma flip, trend break, catalyst passed, IV collapse).
+- **Conditional / scenario-tree plays** ("if breaks 450 → long; if rejects → short").
+- **Portfolio-level playbook** — correlation-aware risk/heat across active plays.
+- **Position-sizing engine** — size from account × risk% × stop distance; concurrent-risk caps.
+
+**Usability — collapse friction:**
+- <5 clicks to publish (a measured budget); contextual "make a play from this"
+  on any level/drawing/gamma wall/signal; inline edit on every surface (no modals);
+  smart triage inbox for received plays (ranked by author track record + watchlist
+  relevance); draft autosave + resume; keyboard-first flow + palette; intent search.
+
+**UX — glanceability & honest feedback:**
+- The 1-second rule (one hero number = live R, rest on demand); surface author
+  **calibration** (accuracy at this conviction); distance-to-decision urgency;
+  constructive post-mortems ("what would have improved this"); notification hygiene;
+  a11y + reduced-motion first-class.
+
+**Design — one visual grammar & restraint:**
+- A single reusable play geometry across card/chart/feed/image; overlay recedes
+  until relevant; density modes (cockpit vs focus); motion encodes state only;
+  the share image as a designed, brand-worthy artifact; theme via StyleSystem×ColorScheme.
+
+**Cross-cutting — trust & ecosystem (the moat):**
+- Anti-gaming verified track records (can't cherry-pick; reward *process* over luck);
+  granular privacy/visibility; interop (TradingView import, broker export, webhooks);
+  author analytics.
+
+**Top three to build next:** (1) context provenance + live thesis-health (uniquely
+enabled by apex's gamma/day-type/signals), (2) contextual one-gesture creation
+(friction is the #1 killer of sharing), (3) anti-gaming verified track records
+(the trust the whole social layer rests on).
+
 ### 8.5 Design/usability acceptance (testable via the harness)
 
 - Color-blind-safe: direction encoded by shape+color (assert both present).

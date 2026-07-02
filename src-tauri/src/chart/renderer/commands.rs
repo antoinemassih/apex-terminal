@@ -323,6 +323,18 @@ pub enum AppCommand {
     /// Fork play[idx] into a new copy owned by the local author (attribution kept).
     #[cfg(debug_assertions)]
     ForkPlay { idx: usize },
+    /// Publish play[idx]: status Draft/Active → Published, and add it to the feed.
+    #[cfg(debug_assertions)]
+    PublishPlay { idx: usize },
+    /// Seed the feed with `count` deterministic published plays (feed/filter test).
+    #[cfg(debug_assertions)]
+    SeedFeed { count: usize },
+    /// Set the feed symbol filter ("" = all).
+    #[cfg(debug_assertions)]
+    SetFeedFilter { symbol: String },
+    /// Format play[idx] as a Discord/social embed and stash it (never posts in tests).
+    #[cfg(debug_assertions)]
+    SharePlayToDiscord { idx: usize },
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -936,6 +948,51 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
             if let Some(src) = watchlist.plays.get(idx) {
                 let fork = src.fork(&author, now);
                 watchlist.plays.push(fork);
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::PublishPlay { idx } => {
+            use crate::chart_renderer::PlayStatus;
+            if let Some(p) = watchlist.plays.get_mut(idx) {
+                p.status = PlayStatus::Published;
+                let published = p.clone();
+                // Add to the feed if not already present (idempotent by id).
+                if !watchlist.feed.iter().any(|f| f.id == published.id) {
+                    watchlist.feed.push(published);
+                }
+                watchlist.persist_plays();
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SeedFeed { count } => {
+            use crate::chart_renderer::{Play, PlayDirection, PlayType, PlayStatus};
+            let n = count.min(200);
+            let syms = ["SPY","QQQ","NVDA","TSLA","AAPL","AMD","META","MSFT"];
+            watchlist.feed = (0..n).map(|i| {
+                let long = i % 2 == 0;
+                let e = 100.0 + (i as f32 % 50.0);
+                let (t, s) = if long { (e + 10.0, e - 5.0) } else { (e - 10.0, e + 5.0) };
+                let mut p = Play::new(syms[i % syms.len()], if long { PlayDirection::Long } else { PlayDirection::Short },
+                                      PlayType::Directional, e, t, s);
+                p.author = format!("author{}", i % 4);
+                p.status = PlayStatus::Published;
+                p
+            }).collect();
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SetFeedFilter { symbol } => {
+            watchlist.feed_filter_symbol = symbol.to_uppercase();
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SharePlayToDiscord { idx } => {
+            // Format + stash only — NEVER posts to Discord from a test.
+            if let Some(p) = watchlist.plays.get(idx) {
+                crate::chart_renderer::gpu::set_last_share(
+                    crate::chart_renderer::gpu::format_play_embed(p));
             }
         }
 
