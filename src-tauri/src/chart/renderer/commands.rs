@@ -357,6 +357,15 @@ pub enum AppCommand {
     /// Set a per-level note ("entry" | "stop" | "thesis") on play[idx].
     #[cfg(debug_assertions)]
     SetPlayNote { idx: usize, which: String, note: String },
+    /// Set play[idx] entry trigger style ("stop" | "limit" | "market").
+    #[cfg(debug_assertions)]
+    SetPlayTrigger { idx: usize, style: String },
+    /// Add an if-then branch to play[idx] (arms when price crosses `level`).
+    #[cfg(debug_assertions)]
+    AddBranch { idx: usize, above: bool, level: f32, long: bool, entry: f32, target: f32, stop: f32 },
+    /// Clear play[idx] branches.
+    #[cfg(debug_assertions)]
+    ClearBranches { idx: usize },
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -405,7 +414,9 @@ fn grade_open_plays_live(panes: &[Chart], watchlist: &mut Watchlist) {
     }
     for play in watchlist.plays.iter_mut().filter(|p| p.is_open()) {
         if let Some(&px) = price_of.get(&play.symbol.to_uppercase()) {
-            if crate::chart_renderer::grade_play(play, px, now) { changed += 1; }
+            let armed = crate::chart_renderer::arm_branches(play, px);
+            let graded = crate::chart_renderer::grade_play(play, px, now);
+            if armed || graded { changed += 1; }
         }
     }
     if changed > 0 { watchlist.persist_plays(); }
@@ -1036,6 +1047,35 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
             if let Some(p) = watchlist.plays.get_mut(idx) {
                 p.invalidation = if price > 0.0 { Some(price) } else { None };
             }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SetPlayTrigger { idx, style } => {
+            use crate::chart_renderer::EntryTrigger;
+            if let Some(p) = watchlist.plays.get_mut(idx) {
+                p.trigger = match style.as_str() {
+                    "limit"  => EntryTrigger::Limit,
+                    "market" => EntryTrigger::Market,
+                    _        => EntryTrigger::Stop,
+                };
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::AddBranch { idx, above, level, long, entry, target, stop } => {
+            use crate::chart_renderer::{PlayBranch, PlayDirection};
+            if let Some(p) = watchlist.plays.get_mut(idx) {
+                p.branches.push(PlayBranch {
+                    above, level,
+                    direction: if long { PlayDirection::Long } else { PlayDirection::Short },
+                    entry, target, stop, armed: false,
+                });
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::ClearBranches { idx } => {
+            if let Some(p) = watchlist.plays.get_mut(idx) { p.branches.clear(); }
         }
 
         #[cfg(debug_assertions)]

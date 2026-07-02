@@ -1,0 +1,152 @@
+{
+  "name": "trigger_styles",
+  "description": "Entry trigger styles: LIMIT fills on a pullback, MARKET fills immediately (STOP breakout covered by grading tests).",
+  "story": "Playbook/Triggers",
+  "tags": [
+    "playbook",
+    "trigger",
+    "lifecycle"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlaybookPanel",
+      "open": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "LIM1",
+      "long": true,
+      "entry": 100.0,
+      "target": 110.0,
+      "stop": 95.0
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "MKT1",
+      "long": true,
+      "entry": 100.0,
+      "target": 110.0,
+      "stop": 95.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlayTrigger",
+      "idx": 0,
+      "style": "limit"
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlayTrigger",
+      "idx": 1,
+      "style": "market"
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.trigger",
+            "value": "LIMIT"
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.1.trigger",
+            "value": "MARKET"
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "GradePlaysAtPrice",
+      "symbol": "LIM1",
+      "price": 105.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.status",
+            "value": "DRAFT"
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "GradePlaysAtPrice",
+      "symbol": "LIM1",
+      "price": 99.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "limit filled on pullback"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.status",
+            "value": "ACTIVE"
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "GradePlaysAtPrice",
+      "symbol": "MKT1",
+      "price": 100.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.1.status",
+            "value": "ACTIVE"
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

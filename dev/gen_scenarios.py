@@ -1448,5 +1448,57 @@ emit(2630,"play_per_level_notes","Playbook/RichLevels",["playbook","notes","auth
         {"no_panic":True})],
      "Per-level notes: entry and stop carry their own rationale, distinct from the overall thesis.")
 
+# ── 2640-2642: Playbook Phase 2 — entry trigger styles + if-then branches ────
+# LIMIT (long) triggers on a pullback (price<=entry); STOP on breakout (>=entry);
+# MARKET immediately. Synthetic symbols so the live grader doesn't interfere.
+emit(2640,"trigger_styles","Playbook/Triggers",["playbook","trigger","lifecycle"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SetPlaybookPanel",open=True),
+      cmd("SeedPlay",symbol="LIM1",long=True,entry=100.0,target=110.0,stop=95.0),
+      cmd("SeedPlay",symbol="MKT1",long=True,entry=100.0,target=110.0,stop=95.0),{"action":"wait_frames","count":2},
+      cmd("SetPlayTrigger",idx=0,style="limit"),
+      cmd("SetPlayTrigger",idx=1,style="market"),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.trigger","value":"LIMIT"}},
+        {"state_field_equals":{"path":"playbook.plays.1.trigger","value":"MARKET"}}),
+      # LIMIT long: price ABOVE entry does NOT trigger (needs a pullback to entry)
+      cmd("GradePlaysAtPrice",symbol="LIM1",price=105.0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.status","value":"DRAFT"}}),
+      cmd("GradePlaysAtPrice",symbol="LIM1",price=99.0),{"action":"wait_frames","count":2},
+      {"action":"log","message":"limit filled on pullback"},
+      A({"state_field_equals":{"path":"playbook.plays.0.status","value":"ACTIVE"}}),
+      # MARKET: activates immediately at any price within the trade range
+      cmd("GradePlaysAtPrice",symbol="MKT1",price=100.0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.1.status","value":"ACTIVE"}},{"no_panic":True})],
+     "Entry trigger styles: LIMIT fills on a pullback, MARKET fills immediately (STOP breakout covered by grading tests).")
+# If-then branch: up-break arms a long, down-break arms a short. First met wins.
+emit(2641,"ifthen_branch_up","Playbook/Triggers",["playbook","branch","ifthen"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SetPlaybookPanel",open=True),
+      cmd("SeedPlay",symbol="RNG1",long=True,entry=448.0,target=448.0,stop=448.0),{"action":"wait_frames","count":1},
+      cmd("AddBranch",idx=0,above=True,level=451.0,long=True,entry=451.0,target=460.0,stop=446.0),
+      cmd("AddBranch",idx=0,above=False,level=445.0,long=False,entry=445.0,target=435.0,stop=449.0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.branch_count","value":2}},
+        {"state_field_equals":{"path":"playbook.plays.0.armed_branch","value":-1}}),
+      cmd("GradePlaysAtPrice",symbol="RNG1",price=448.0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.armed_branch","value":-1}}),
+      cmd("GradePlaysAtPrice",symbol="RNG1",price=452.0),{"action":"wait_frames","count":2},
+      {"action":"log","message":"up-break arms the long branch"},
+      A({"state_field_equals":{"path":"playbook.plays.0.armed_branch","value":0}},
+        {"state_field_equals":{"path":"playbook.plays.0.direction","value":"LONG"}},
+        {"state_field_equals":{"path":"playbook.plays.0.entry","value":451.0}},{"no_panic":True})],
+     "If-then: price between the lines arms nothing; breaking above the upper line arms the long branch (adopts its levels).")
+emit(2642,"ifthen_branch_down","Playbook/Triggers",["playbook","branch","ifthen"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SetPlaybookPanel",open=True),
+      cmd("SeedPlay",symbol="RNG2",long=True,entry=448.0,target=448.0,stop=448.0),{"action":"wait_frames","count":1},
+      cmd("AddBranch",idx=0,above=True,level=451.0,long=True,entry=451.0,target=460.0,stop=446.0),
+      cmd("AddBranch",idx=0,above=False,level=445.0,long=False,entry=445.0,target=435.0,stop=449.0),{"action":"wait_frames","count":2},
+      cmd("GradePlaysAtPrice",symbol="RNG2",price=444.0),{"action":"wait_frames","count":2},
+      {"action":"log","message":"down-break arms the short branch"},
+      A({"state_field_equals":{"path":"playbook.plays.0.armed_branch","value":1}},
+        {"state_field_equals":{"path":"playbook.plays.0.direction","value":"SHORT"}},
+        {"state_field_equals":{"path":"playbook.plays.0.entry","value":445.0}},{"no_panic":True})],
+     "If-then: breaking below the lower line arms the short branch (adopts short direction + levels).")
+
 print(f"generated {len(made)} scenarios into {OUT}")
 for p in made[:3]: print("  e.g.", os.path.basename(p))

@@ -2259,6 +2259,25 @@ fn parse_app_command(
             let note  = body["note"].as_str().unwrap_or("").to_string();
             Ok(AppCommand::SetPlayNote { idx, which, note })
         }
+        "SetPlayTrigger" | "set_play_trigger" => {
+            let idx   = body["idx"].as_u64().unwrap_or(0) as usize;
+            let style = body["style"].as_str().unwrap_or("stop").to_string();
+            Ok(AppCommand::SetPlayTrigger { idx, style })
+        }
+        "AddBranch" | "add_branch" => {
+            let idx    = body["idx"].as_u64().unwrap_or(0) as usize;
+            let above  = body["above"].as_bool().unwrap_or(true);
+            let level  = body["level"].as_f64().unwrap_or(0.0) as f32;
+            let long   = body["long"].as_bool().unwrap_or(true);
+            let entry  = body["entry"].as_f64().unwrap_or(0.0) as f32;
+            let target = body["target"].as_f64().unwrap_or(0.0) as f32;
+            let stop   = body["stop"].as_f64().unwrap_or(0.0) as f32;
+            Ok(AppCommand::AddBranch { idx, above, level, long, entry, target, stop })
+        }
+        "ClearBranches" | "clear_branches" => {
+            let idx = body["idx"].as_u64().unwrap_or(0) as usize;
+            Ok(AppCommand::ClearBranches { idx })
+        }
 
         // ── Alerts ─────────────────────────────────────────────────────────
         "PlaceAllDraftAlerts" | "place_all_draft_alerts" => Ok(AppCommand::PlaceAllDraftAlerts),

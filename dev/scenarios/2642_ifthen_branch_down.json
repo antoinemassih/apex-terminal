@@ -1,0 +1,106 @@
+{
+  "name": "ifthen_branch_down",
+  "description": "If-then: breaking below the lower line arms the short branch (adopts short direction + levels).",
+  "story": "Playbook/Triggers",
+  "tags": [
+    "playbook",
+    "branch",
+    "ifthen"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SetPlaybookPanel",
+      "open": true
+    },
+    {
+      "action": "cmd",
+      "cmd": "SeedPlay",
+      "symbol": "RNG2",
+      "long": true,
+      "entry": 448.0,
+      "target": 448.0,
+      "stop": 448.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 1
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddBranch",
+      "idx": 0,
+      "above": true,
+      "level": 451.0,
+      "long": true,
+      "entry": 451.0,
+      "target": 460.0,
+      "stop": 446.0
+    },
+    {
+      "action": "cmd",
+      "cmd": "AddBranch",
+      "idx": 0,
+      "above": false,
+      "level": 445.0,
+      "long": false,
+      "entry": 445.0,
+      "target": 435.0,
+      "stop": 449.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "cmd",
+      "cmd": "GradePlaysAtPrice",
+      "symbol": "RNG2",
+      "price": 444.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "down-break arms the short branch"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.armed_branch",
+            "value": 1
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.direction",
+            "value": "SHORT"
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.plays.0.entry",
+            "value": 445.0
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

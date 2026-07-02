@@ -529,6 +529,10 @@ pub(crate) struct Play {
     pub template_name: Option<String>,
     /// Provenance: an original idea or a fork of someone else's play.
     #[serde(default)] pub origin: PlayOrigin,
+    /// Entry trigger style (P2): breakout / pullback / market.
+    #[serde(default)] pub trigger: EntryTrigger,
+    /// If-then scenario branches (P2): armed when price crosses their level.
+    #[serde(default)] pub branches: Vec<PlayBranch>,
     // ── Auto-grading lifecycle (P0/D1-D3) ─────────────────────────────────
     /// Unix seconds when price first crossed entry (Draft/Published → Active).
     #[serde(default)] pub activated_at: Option<i64>,
@@ -540,6 +544,28 @@ pub(crate) struct Play {
 
 #[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum PlayDirection { Long, Short }
+
+/// How an entry triggers (P2). Stop = breakout (fill as price breaks THROUGH the
+/// level), Limit = pullback (fill as price returns TO the level), Market = immediate.
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum EntryTrigger { Stop, Limit, Market }
+impl Default for EntryTrigger { fn default() -> Self { EntryTrigger::Stop } }
+impl EntryTrigger {
+    pub fn label(self) -> &'static str { match self { Self::Stop=>"STOP", Self::Limit=>"LIMIT", Self::Market=>"MARKET" } }
+}
+
+/// An if-then scenario branch (P2 "draw-a-trigger"): when price crosses `level`
+/// in the `above` direction, this branch ARMS and defines the resulting play.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PlayBranch {
+    pub above: bool,      // true = arm when price >= level; false = when price <= level
+    pub level: f32,
+    pub direction: PlayDirection,
+    pub entry: f32,
+    pub target: f32,
+    pub stop: f32,
+    #[serde(default)] pub armed: bool,
+}
 
 /// Where a play came from — an original idea, or a fork of someone else's play
 /// (carries attribution to the source).
@@ -598,6 +624,8 @@ impl Play {
             tags: vec![],
             template_name: None,
             origin: PlayOrigin::Original,
+            trigger: EntryTrigger::Stop,
+            branches: vec![],
             activated_at: None,
             resolved_at: None,
             expiry: None,
@@ -756,9 +784,14 @@ pub(crate) fn grade_play(play: &mut Play, price: f32, now: i64) -> bool {
             return play.status != before;
         }
     }
-    // Activation.
+    // Activation — respects the entry trigger style.
     if matches!(play.status, Draft | Published) {
-        let triggered = if long { price >= play.entry_price } else { price <= play.entry_price };
+        let triggered = match play.trigger {
+            EntryTrigger::Market => true,
+            // Stop = breakout THROUGH entry; Limit = pullback TO entry.
+            EntryTrigger::Stop  => if long { price >= play.entry_price } else { price <= play.entry_price },
+            EntryTrigger::Limit => if long { price <= play.entry_price } else { price >= play.entry_price },
+        };
         if triggered { play.status = Active; play.activated_at = Some(now); }
     }
     // Resolution (a gap straight through resolves in the same call).
@@ -772,11 +805,33 @@ pub(crate) fn grade_play(play: &mut Play, price: f32, now: i64) -> bool {
     play.status != before
 }
 
-/// Grade every play for `symbol` against `price`. Returns the number changed.
+/// Evaluate a play's if-then branches against `price`: arm the first branch whose
+/// condition is met and adopt its direction + levels (the drawn scenario fires).
+/// Returns true if a branch newly armed.
+pub(crate) fn arm_branches(play: &mut Play, price: f32) -> bool {
+    if play.branches.is_empty() || play.branches.iter().any(|b| b.armed) { return false; }
+    if let Some(i) = play.branches.iter().position(|b|
+        (b.above && price >= b.level) || (!b.above && price <= b.level))
+    {
+        let b = play.branches[i].clone();
+        play.branches[i].armed = true;
+        play.direction = b.direction;
+        play.entry_price = b.entry; play.entry_low = b.entry; play.entry_high = b.entry;
+        play.target_price = b.target; play.stop_price = b.stop;
+        if (play.entry_price - play.stop_price).abs() > 0.001 {
+            play.risk_reward = (play.target_price - play.entry_price).abs()
+                / (play.entry_price - play.stop_price).abs();
+        }
+        return true;
+    }
+    false
+}
+
+/// Grade every play for `symbol` against `price` (arm branches first). Returns #changed.
 pub(crate) fn grade_plays(plays: &mut [Play], symbol: &str, price: f32, now: i64) -> usize {
     plays.iter_mut()
         .filter(|p| p.symbol.eq_ignore_ascii_case(symbol))
-        .map(|p| grade_play(p, price, now) as usize)
+        .map(|p| { let a = arm_branches(p, price); let g = grade_play(p, price, now); (a || g) as usize })
         .sum()
 }
 
