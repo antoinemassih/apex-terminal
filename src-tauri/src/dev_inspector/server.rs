@@ -2253,6 +2253,12 @@ fn parse_app_command(
             let expr  = body["expr"].as_str().unwrap_or("").to_string();
             Ok(AppCommand::SetPlayLevelExpr { idx, which, expr })
         }
+        "SetPlayNote" | "set_play_note" => {
+            let idx   = body["idx"].as_u64().unwrap_or(0) as usize;
+            let which = body["which"].as_str().unwrap_or("thesis").to_string();
+            let note  = body["note"].as_str().unwrap_or("").to_string();
+            Ok(AppCommand::SetPlayNote { idx, which, note })
+        }
 
         // ── Alerts ─────────────────────────────────────────────────────────
         "PlaceAllDraftAlerts" | "place_all_draft_alerts" => Ok(AppCommand::PlaceAllDraftAlerts),

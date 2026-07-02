@@ -1433,5 +1433,20 @@ emit(2622,"play_expr_callwall","Playbook/RichLevels",["playbook","expression","g
       A({"state_field_gte":{"path":"playbook.plays.0.target","min":200.0}},{"no_panic":True})],
      "An inline 'callwall' expression resolves a level to the chart's gamma call wall.")
 
+# ── 2630: Playbook per-level notes (P1 rich levels — "why this stop") ────────
+emit(2630,"play_per_level_notes","Playbook/RichLevels",["playbook","notes","authoring"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SetPlaybookPanel",open=True),
+      cmd("SeedPlay",symbol="NOTE1",long=True,entry=100.0,target=110.0,stop=95.0),{"action":"wait_frames","count":2},
+      A({"state_field_equals":{"path":"playbook.plays.0.entry_note","value":""}},
+        {"state_field_equals":{"path":"playbook.plays.0.stop_note","value":""}}),
+      cmd("SetPlayNote",idx=0,which="entry",note="buying the retest of the breakout"),
+      cmd("SetPlayNote",idx=0,which="stop",note="below the swing low; thesis wrong if lost"),{"action":"wait_frames","count":2},
+      {"action":"log","message":"per-level rationale set"},
+      A({"state_field_equals":{"path":"playbook.plays.0.entry_note","value":"buying the retest of the breakout"}},
+        {"state_field_equals":{"path":"playbook.plays.0.stop_note","value":"below the swing low; thesis wrong if lost"}},
+        {"no_panic":True})],
+     "Per-level notes: entry and stop carry their own rationale, distinct from the overall thesis.")
+
 print(f"generated {len(made)} scenarios into {OUT}")
 for p in made[:3]: print("  e.g.", os.path.basename(p))

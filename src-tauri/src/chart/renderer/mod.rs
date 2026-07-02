@@ -519,7 +519,10 @@ pub(crate) struct Play {
     pub quantity: u32,
     pub status: PlayStatus,
     pub author: String,        // who created it
-    pub notes: String,         // strategy rationale
+    pub notes: String,         // overall strategy rationale / thesis
+    /// Per-level rationale ("why this entry / stop"), P1 rich levels.
+    #[serde(default)] pub entry_note: String,
+    #[serde(default)] pub stop_note: String,
     pub created_at: i64,       // unix timestamp
     pub risk_reward: f32,      // computed: (target - entry) / (entry - stop)
     pub tags: Vec<String>,     // "momentum", "breakout", "earnings", etc.
@@ -589,6 +592,7 @@ impl Play {
             contract: String::new(), quantity: 1,
             status: PlayStatus::Draft,
             author: String::new(), notes: String::new(),
+            entry_note: String::new(), stop_note: String::new(),
             created_at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64,
             risk_reward: rr,
             tags: vec![],

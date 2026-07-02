@@ -354,6 +354,9 @@ pub enum AppCommand {
     /// Set play[idx] entry/stop/target from an inline expression (=3R / ATR / callwall / …).
     #[cfg(debug_assertions)]
     SetPlayLevelExpr { idx: usize, which: String, expr: String },
+    /// Set a per-level note ("entry" | "stop" | "thesis") on play[idx].
+    #[cfg(debug_assertions)]
+    SetPlayNote { idx: usize, which: String, note: String },
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -1032,6 +1035,18 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         AppCommand::SetPlayInvalidation { idx, price } => {
             if let Some(p) = watchlist.plays.get_mut(idx) {
                 p.invalidation = if price > 0.0 { Some(price) } else { None };
+            }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SetPlayNote { idx, which, note } => {
+            if let Some(p) = watchlist.plays.get_mut(idx) {
+                match which.as_str() {
+                    "entry"  => p.entry_note = note,
+                    "stop"   => p.stop_note = note,
+                    "thesis" => p.notes = note,
+                    _ => {}
+                }
             }
         }
 

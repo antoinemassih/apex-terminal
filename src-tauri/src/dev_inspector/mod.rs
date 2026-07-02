@@ -1046,6 +1046,8 @@ pub fn end_frame(
             "scale_in_count":   p.scale_ins.len(),
             "scale_in_pct_sum": p.scale_ins.iter().map(|t| t.pct).sum::<f32>(),
             "target_pct_sum":   p.targets.iter().map(|t| t.pct).sum::<f32>(),
+            "entry_note":       p.entry_note,
+            "stop_note":        p.stop_note,
             "status":       p.status.label(),
             "author":       p.author,
             "is_fork":      is_fork,
