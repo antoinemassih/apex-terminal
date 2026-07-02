@@ -425,19 +425,31 @@ leg needs its own pane where you drag *its* levels. This maps directly onto
 apex's existing multi-pane substrate (`panes: Vec<Chart>`, the `Layout` enum,
 pane splits, per-pane `SwapPaneSymbol`).
 
-**Model.** A play becomes a set of **legs**, each with its own symbol + level set:
-`legs: [PlayLeg { symbol, role (Primary|Hedge|PairShort|BasketMember), direction,
-entry_zone, stop, targets, weight, notes }]`. The single-symbol play is just one
-Primary leg (backward-compatible).
+**Model.** A play becomes a set of **legs**, each with its own symbol + level set,
+plus a remembered **layout**:
+`Play { …, legs: [PlayLeg { symbol, role (Primary|Hedge|PairShort|BasketMember),
+direction, entry_zone, stop, targets, weight, notes }], layout: LayoutSpec }`.
+`LayoutSpec` = the pane arrangement + which leg maps to which pane slot (e.g. pair →
+vertical 2-split, leg0→pane0 / leg1→pane1; basket → grid). The single-symbol play is
+one Primary leg with a 1-pane layout (backward-compatible).
 
-**Authoring flow (auto-pane).** When you `+ hedge` / `+ pair leg` / `+ instrument`
+**Two symmetric flows — authoring and opening produce the *same* multi-pane view:**
+
+*Authoring (auto-open on add).* When you `+ hedge` / `+ pair leg` / `+ instrument`
 and pick a symbol:
 1. the view **auto-splits** and the new instrument opens in a fresh pane
-   (`SwapPaneSymbol` on the next pane slot),
-2. that leg's levels render **on that pane**, ready to drag — you apply inputs
-   in each pane independently,
-3. the play **remembers its layout** (a pair → vertical 2-split A/B; a basket →
-   grid) and restores it when the play is opened/reviewed.
+   (`SwapPaneSymbol` on the next slot); the play's `layout` records the slot,
+2. that leg's levels render **on that pane**, ready to drag — you apply
+   entries / exits / TP / stop / parameters **in each pane independently**,
+3. removing a leg collapses its pane back.
+
+*Opening/reviewing a saved play (restore).* Selecting a saved multi-instrument
+play **reconstructs its whole view**: apply its `LayoutSpec` (split the panes),
+`SwapPaneSymbol` each pane to its leg's symbol, and re-spawn each leg's level set
+on its pane — so you land exactly where the author left it and can edit any leg's
+parameters in its own pane. Same code path as auto-open, driven from stored state
+instead of a live add. (Today's single-pane "display" already re-spawns one leg's
+lines on the active pane; this generalizes it to N panes + a layout.)
 
 **Per-pane binding + ghost/detach.** Each leg binds to whichever pane shows its
 symbol; drag leg-B's stop in pane 1 → the play updates → the card reflects it.
