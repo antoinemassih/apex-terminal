@@ -359,6 +359,89 @@ spreadsheet/auto-chart.
 
 ---
 
+## 6b. Play anatomy & authoring UX (the parameter space + how you add it)
+
+Guiding principle: **direct manipulation first, forms last.** Dragging a level is
+intuitive because it happens in price space. *Every* parameter should be added the
+same way — a gesture on the chart, a one-tap chip, or an inline expression — never
+a wall of form fields. Progressive disclosure keeps a beginner at "3 lines you
+drag" while a pro composes a scenario tree with a hedge and a payoff curve on the
+same canvas.
+
+### 6b.1 The parameter taxonomy — what a play can consist of
+
+1. **Levels (spatial skeleton):** entry (price → zone → scale-in ladder w/ weights);
+   stop (fixed → trailing $/%/ATR → structure "below the line" → time-stop); targets
+   (T1/T2/T3 ladder w/ scale-out %); invalidation (distinct from stop); breakeven rule;
+   pyramid/add levels.
+2. **Time:** valid-from/until (entry window); catalyst marker (date on x-axis); expiry;
+   time-stop; session rules (RTH-only, skip-open).
+3. **Triggers & conditions:** entry style (limit/stop/on-close/on-retest/market);
+   if-then branches (scenario tree); confirmations (volume/indicator/gamma/other symbol);
+   per-level alerts.
+4. **Structure/style:** long/short; type (directional/breakout/mean-rev/scalp/swing/
+   position/event); hedge leg; pairs (long A/short B); options (single→vertical→calendar
+   →straddle→condor).
+5. **Sizing & risk:** size as shares/contracts/$/%-account/risk-based; risk per trade
+   ($ or R); R:R (derived); max concurrent risk; scale weights.
+6. **Narrative:** thesis (markdown); per-level notes; anchored callouts; play-owned
+   drawings; tags; conviction; horizon; frozen context (gamma/day-type/IV at authoring).
+7. **Auto/derived:** snap-to-key-levels (gamma walls, auto-chart trendlines, swing H/L,
+   round numbers, VWAP, PDH/PDL, fibs); auto-stop from R:R; auto-target from ATR/structure;
+   suggested size from risk.
+
+### 6b.2 The authoring mechanics (build ALL of these)
+
+- **Draggable everything; handles spawn handles.** Drag target → ghost "+T2" appears;
+  reward/risk box grows; scale-out % is a ribbon you split by dragging.
+- **Magnetic snap + live HUD.** While dragging, a floating readout shows price·distance·
+  live-R and the line snaps to key levels with a labeled tick ("call wall 455"). You
+  *feel* the levels. (Snap sources already computed by apex: gamma, auto-chart, VWAP.)
+- **Type morphing on the badge.** Click a line's badge to cycle Entry→Stop→Target→
+  Invalidation; long-press for a radial (limit/stop/trailing/time). One object, many roles.
+- **Quick-add chips.** `+target +scale-in +hedge +option +trigger +note +alert` — one tap
+  drops the element with sensible defaults you then drag.
+- **Triggers you draw.** Break line + arrow = breakout trigger; two lines = range with
+  if-above/if-below branches (the scenario tree is drawn spatially).
+- **Sketch-to-structure.** Rough-draw a trendline/zone; it snaps to structure and offers
+  "use as stop reference / entry zone."
+- **Inline math in any level.** `=3R` places the stop at 3:1; `ATR`, `vwap`, `pdh`,
+  `callwall` resolve to those. Levels are expressions, not just numbers.
+- **R:R box as a first-class object.** Grab the whole reward/risk rectangle and reshape it.
+- **Hedge/spread as a dimmed second track;** options via a mini strike ladder on the price
+  axis + a live payoff curve (tap strikes, not a form).
+- **Annotations by pointing or voice.** Click a bar → type → anchored callout; or hover +
+  say "note: breakout retest here" (voice bridge).
+- **Templates lay out the whole skeleton** + auto-levels; drag to fit.
+- **Progressive disclosure:** default = today (entry/stop/target you drag); everything
+  else behind one "Advanced" reveal + the chips. **Numeric + gesture parity:** every
+  draggable level also has a tiny inline number + keyboard nudge.
+
+### 6b.3 Styles of ideas = one-tap templates
+
+directional · scale-in/pyramid · bracket/OCO · range (if-above/if-below) · mean-reversion ·
+breakout-with-retest · trailing runner · hedged (core + protection) · pairs (long/short) ·
+options single/vertical/calendar/straddle/condor · event/catalyst · time-boxed scalp.
+
+### 6b.4 Phased roadmap (everything, phased — user-chosen)
+
+- **Phase 1 — Rich levels + intelligent drag** (the core everyone touches):
+  entry zone, scale-in/out ladders w/ weights, trailing/time stops, invalidation,
+  per-level notes + alerts; **magnetic snap + live HUD**; quick-add chips; badge morphing;
+  inline `=3R`/`ATR`/`vwap` expressions. Snap engine is a pure function → behavioral-oracle
+  testable (snap near a gamma wall → lands on the wall exactly).
+- **Phase 2 — Time & triggers:** entry styles, if-then scenario branches (draw-a-trigger),
+  valid-until/expiry (expiry grading already exists), catalyst markers, confirmations.
+- **Phase 3 — Hedges & pairs:** paired protective leg + long-A/short-B as a dimmed second
+  track; combined risk/heat.
+- **Phase 4 — Options:** legs via strike-ladder + live payoff curve; greeks/IV context;
+  DTE management.
+
+Each phase ships behind progressive disclosure, extends the existing `PlayLine` drag +
+`convert_play_to_orders` (paper-safe), and lands with harness commands + behavioral-oracle
+scenarios — snap-exactness, allocation-sums-to-1, expression resolution, trigger logic,
+payoff math — same bar as the rest of the suite. `no_live_orders` stays on every order path.
+
 ## 7. Build-on ledger — status of every story vs what already exists
 
 Legend: **DONE** = already functional, reuse as-is · **ENHANCE** = partly exists,
