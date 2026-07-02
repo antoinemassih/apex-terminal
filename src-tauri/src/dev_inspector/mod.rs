@@ -1137,6 +1137,14 @@ pub fn end_frame(
                 "direction": p.direction.label(),
             })).collect::<Vec<_>>(),
             "last_share": crate::chart_renderer::gpu::last_share(),
+            // Snap engine (Phase-1 authoring): last SnapTest result + the active
+            // chart's snap candidate labels (proves gamma/round/swing wiring).
+            "last_snap_price": crate::chart_renderer::gpu::last_snap().0,
+            "last_snap_label": crate::chart_renderer::gpu::last_snap().1,
+            "snap_labels": active_chart
+                .map(|c| crate::chart_renderer::gpu::snap_candidates(c)
+                    .iter().map(|s| s.label.clone()).collect::<Vec<_>>())
+                .unwrap_or_default(),
         },
         // ── Auto-charting panel (front-end) ───────────────────────────────
         "auto_chart": {

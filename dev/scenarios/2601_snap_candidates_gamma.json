@@ -1,0 +1,82 @@
+{
+  "name": "snap_candidates_gamma",
+  "description": "A chart's magnetic-drag snap candidates include the gamma call/put walls, flip, and round numbers.",
+  "story": "Playbook/Snap",
+  "tags": [
+    "playbook",
+    "snap",
+    "gamma",
+    "authoring"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SwapPaneSymbol",
+      "pane": 0,
+      "symbol": "SPY"
+    },
+    {
+      "action": "wait",
+      "ms": 1000
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SynthGamma",
+      "pane": 0
+    },
+    {
+      "action": "wait_frames",
+      "count": 4
+    },
+    {
+      "action": "log",
+      "message": "snap candidates include gamma walls"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_array_contains": {
+            "path": "playbook.snap_labels",
+            "value": "call wall"
+          }
+        },
+        {
+          "state_field_array_contains": {
+            "path": "playbook.snap_labels",
+            "value": "put wall"
+          }
+        },
+        {
+          "state_field_array_contains": {
+            "path": "playbook.snap_labels",
+            "value": "gamma flip"
+          }
+        },
+        {
+          "state_field_array_contains": {
+            "path": "playbook.snap_labels",
+            "value": "round"
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

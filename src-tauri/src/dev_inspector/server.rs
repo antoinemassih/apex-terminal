@@ -2219,6 +2219,13 @@ fn parse_app_command(
             let idx = body["idx"].as_u64().unwrap_or(0) as usize;
             Ok(AppCommand::SharePlayToDiscord { idx })
         }
+        "SnapTest" | "snap_test" => {
+            let price = body["price"].as_f64().unwrap_or(0.0) as f32;
+            let tolerance = body["tolerance"].as_f64().unwrap_or(0.0) as f32;
+            let targets = body["targets"].as_array().map(|a|
+                a.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect()).unwrap_or_default();
+            Ok(AppCommand::SnapTest { price, targets, tolerance })
+        }
 
         // ── Alerts ─────────────────────────────────────────────────────────
         "PlaceAllDraftAlerts" | "place_all_draft_alerts" => Ok(AppCommand::PlaceAllDraftAlerts),

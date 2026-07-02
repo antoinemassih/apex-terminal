@@ -1,0 +1,131 @@
+{
+  "name": "snap_engine",
+  "description": "Snap engine snaps a price to the nearest key level within tolerance; leaves it unchanged when none is close.",
+  "story": "Playbook/Snap",
+  "tags": [
+    "playbook",
+    "snap",
+    "authoring",
+    "correctness"
+  ],
+  "priority": 2,
+  "settle_ms": 15,
+  "abort_on_failure": false,
+  "steps": [
+    {
+      "action": "reset"
+    },
+    {
+      "action": "wait_frames",
+      "count": 3
+    },
+    {
+      "action": "cmd",
+      "cmd": "SnapTest",
+      "price": 100.4,
+      "targets": [
+        100.0,
+        105.0
+      ],
+      "tolerance": 1.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "100.4 near 100 within tol"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.last_snap_price",
+            "value": 100.0
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.last_snap_label",
+            "value": "t0"
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SnapTest",
+      "price": 104.6,
+      "targets": [
+        100.0,
+        105.0
+      ],
+      "tolerance": 1.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "104.6 nearest is 105"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.last_snap_price",
+            "value": 105.0
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.last_snap_label",
+            "value": "t1"
+          }
+        }
+      ]
+    },
+    {
+      "action": "cmd",
+      "cmd": "SnapTest",
+      "price": 103.0,
+      "targets": [
+        100.0,
+        105.0
+      ],
+      "tolerance": 1.0
+    },
+    {
+      "action": "wait_frames",
+      "count": 2
+    },
+    {
+      "action": "log",
+      "message": "103.0 out of tolerance -> no snap"
+    },
+    {
+      "action": "assert",
+      "assertions": [
+        {
+          "state_field_equals": {
+            "path": "playbook.last_snap_price",
+            "value": 103.0
+          }
+        },
+        {
+          "state_field_equals": {
+            "path": "playbook.last_snap_label",
+            "value": ""
+          }
+        },
+        {
+          "no_panic": true
+        }
+      ]
+    }
+  ]
+}

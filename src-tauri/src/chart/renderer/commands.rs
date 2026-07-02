@@ -335,6 +335,10 @@ pub enum AppCommand {
     /// Format play[idx] as a Discord/social embed and stash it (never posts in tests).
     #[cfg(debug_assertions)]
     SharePlayToDiscord { idx: usize },
+    /// Test the snap engine: snap `price` to the nearest of `targets` within
+    /// `tolerance`; stashes the result for assertion (deterministic, no chart).
+    #[cfg(debug_assertions)]
+    SnapTest { price: f32, targets: Vec<f32>, tolerance: f32 },
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -994,6 +998,15 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
                 crate::chart_renderer::gpu::set_last_share(
                     crate::chart_renderer::gpu::format_play_embed(p));
             }
+        }
+
+        #[cfg(debug_assertions)]
+        AppCommand::SnapTest { price, targets, tolerance } => {
+            use crate::chart_renderer::SnapLevel;
+            let cands: Vec<SnapLevel> = targets.iter().enumerate()
+                .map(|(i, &p)| SnapLevel { price: p, label: format!("t{i}") }).collect();
+            let (snapped, label) = crate::chart_renderer::snap_price(price, &cands, tolerance);
+            crate::chart_renderer::gpu::set_last_snap(snapped, label.as_deref().unwrap_or(""));
         }
 
         #[cfg(debug_assertions)]

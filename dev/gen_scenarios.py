@@ -1339,5 +1339,31 @@ emit(2592,"playbook_discord_embed","Playbook/Share",["playbook","share","discord
         {"state_field_contains":{"path":"playbook.last_share","contains":"quant_jane"}},{"no_panic":True})],
      "A play formats to a Discord/social embed containing symbol/direction/levels/author (never posted in tests).")
 
+# ── 2600-2601: Playbook authoring Phase 1 — magnetic snap engine ─────────────
+emit(2600,"snap_engine","Playbook/Snap",["playbook","snap","authoring","correctness"],
+     [{"action":"reset"},{"action":"wait_frames","count":3},
+      cmd("SnapTest",price=100.4,targets=[100.0,105.0],tolerance=1.0),{"action":"wait_frames","count":2},
+      {"action":"log","message":"100.4 near 100 within tol"},
+      A({"state_field_equals":{"path":"playbook.last_snap_price","value":100.0}},
+        {"state_field_equals":{"path":"playbook.last_snap_label","value":"t0"}}),
+      cmd("SnapTest",price=104.6,targets=[100.0,105.0],tolerance=1.0),{"action":"wait_frames","count":2},
+      {"action":"log","message":"104.6 nearest is 105"},
+      A({"state_field_equals":{"path":"playbook.last_snap_price","value":105.0}},
+        {"state_field_equals":{"path":"playbook.last_snap_label","value":"t1"}}),
+      cmd("SnapTest",price=103.0,targets=[100.0,105.0],tolerance=1.0),{"action":"wait_frames","count":2},
+      {"action":"log","message":"103.0 out of tolerance -> no snap"},
+      A({"state_field_equals":{"path":"playbook.last_snap_price","value":103.0}},
+        {"state_field_equals":{"path":"playbook.last_snap_label","value":""}},{"no_panic":True})],
+     "Snap engine snaps a price to the nearest key level within tolerance; leaves it unchanged when none is close.")
+emit(2601,"snap_candidates_gamma","Playbook/Snap",["playbook","snap","gamma","authoring"],
+     [{"action":"reset"},{"action":"wait_frames","count":3}]+load("SPY",ms=1000)+[
+      cmd("SynthGamma",pane=0),{"action":"wait_frames","count":4},
+      {"action":"log","message":"snap candidates include gamma walls"},
+      A({"state_field_array_contains":{"path":"playbook.snap_labels","value":"call wall"}},
+        {"state_field_array_contains":{"path":"playbook.snap_labels","value":"put wall"}},
+        {"state_field_array_contains":{"path":"playbook.snap_labels","value":"gamma flip"}},
+        {"state_field_array_contains":{"path":"playbook.snap_labels","value":"round"}},{"no_panic":True})],
+     "A chart's magnetic-drag snap candidates include the gamma call/put walls, flip, and round numbers.")
+
 print(f"generated {len(made)} scenarios into {OUT}")
 for p in made[:3]: print("  e.g.", os.path.basename(p))

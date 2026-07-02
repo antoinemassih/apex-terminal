@@ -612,6 +612,32 @@ impl Play {
     }
 }
 
+/// A key price level a dragged play line can magnetically snap to, with a label.
+#[derive(Clone, Debug)]
+pub(crate) struct SnapLevel { pub price: f32, pub label: String }
+
+/// Snap `price` to the nearest candidate within `tolerance` (absolute price).
+/// Returns (snapped_price, Some(label)) if one is close, else (price, None).
+/// Pure — the intelligence behind magnetic level dragging.
+pub(crate) fn snap_price(price: f32, candidates: &[SnapLevel], tolerance: f32) -> (f32, Option<String>) {
+    candidates.iter()
+        .filter(|c| (c.price - price).abs() <= tolerance)
+        .min_by(|a, b| (a.price - price).abs()
+            .partial_cmp(&(b.price - price).abs()).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|c| (c.price, Some(c.label.clone())))
+        .unwrap_or((price, None))
+}
+
+/// A sensible round-number step for a price magnitude (for round-level snapping).
+pub(crate) fn round_step(price: f32) -> f32 {
+    let p = price.abs();
+    if p >= 1000.0 { 10.0 } else if p >= 200.0 { 5.0 } else if p >= 50.0 { 1.0 }
+    else if p >= 10.0 { 0.5 } else if p >= 1.0 { 0.1 } else { 0.01 }
+}
+
+/// Default snap tolerance for a price: ~0.15% (scale-independent), min a cent.
+pub(crate) fn snap_tolerance(price: f32) -> f32 { (price.abs() * 0.0015).max(0.01) }
+
 /// Auto-grade a single play against a `price` for its symbol at time `now`
 /// (unix seconds). Pure state transition, no IO. Trigger semantics:
 ///   Draft/Published → Active when price reaches the entry trigger

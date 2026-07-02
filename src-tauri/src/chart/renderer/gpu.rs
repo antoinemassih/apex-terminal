@@ -1846,6 +1846,53 @@ pub(crate) fn set_last_share(s: String) {
 pub(crate) fn last_share() -> String {
     LAST_SHARE.get().and_then(|c| c.lock().ok().map(|g| g.clone())).unwrap_or_default()
 }
+/// Debug capture of the last snap result (price, label) for harness assertions.
+#[cfg(debug_assertions)]
+static LAST_SNAP: std::sync::OnceLock<std::sync::Mutex<(f32, String)>> = std::sync::OnceLock::new();
+#[cfg(debug_assertions)]
+pub(crate) fn set_last_snap(price: f32, label: &str) {
+    let c = LAST_SNAP.get_or_init(|| std::sync::Mutex::new((0.0, String::new())));
+    if let Ok(mut g) = c.lock() { *g = (price, label.to_string()); }
+}
+#[cfg(debug_assertions)]
+pub(crate) fn last_snap() -> (f32, String) {
+    LAST_SNAP.get().and_then(|c| c.lock().ok().map(|g| g.clone())).unwrap_or((0.0, String::new()))
+}
+
+// ── Snap candidates (magnetic level dragging) ───────────────────────────────
+/// Gather the key levels a play line can snap to on this chart: gamma call/put
+/// walls + flip, round numbers around the last price, and the recent swing
+/// high/low. apex already computes gamma; this just surfaces it as snap targets.
+pub(crate) fn snap_candidates(chart: &Chart) -> Vec<super::SnapLevel> {
+    use super::SnapLevel;
+    let mut v: Vec<SnapLevel> = Vec::new();
+    if chart.gamma_call_wall > 0.0 { v.push(SnapLevel { price: chart.gamma_call_wall, label: "call wall".into() }); }
+    if chart.gamma_put_wall  > 0.0 { v.push(SnapLevel { price: chart.gamma_put_wall,  label: "put wall".into() }); }
+    if chart.gamma_zero      > 0.0 { v.push(SnapLevel { price: chart.gamma_zero,       label: "gamma flip".into() }); }
+    if let Some(last) = chart.bars.last() {
+        let p = last.close;
+        if p > 0.0 {
+            // Round numbers around the last price.
+            let step = super::round_step(p);
+            let base = (p / step).round() * step;
+            for k in -3..=3i32 {
+                let rp = base + k as f32 * step;
+                if rp > 0.0 { v.push(SnapLevel { price: rp, label: "round".into() }); }
+            }
+        }
+        // Recent swing high/low over the last ~40 visible bars.
+        let n = chart.bars.len();
+        let lo_idx = n.saturating_sub(40);
+        let recent = &chart.bars[lo_idx..];
+        if let Some(hi) = recent.iter().map(|b| b.high).fold(None, |m: Option<f32>, h| Some(m.map_or(h, |x| x.max(h)))) {
+            v.push(SnapLevel { price: hi, label: "swing high".into() });
+        }
+        if let Some(lo) = recent.iter().map(|b| b.low).fold(None, |m: Option<f32>, l| Some(m.map_or(l, |x| x.min(l)))) {
+            v.push(SnapLevel { price: lo, label: "swing low".into() });
+        }
+    }
+    v
+}
 
 // ── Author identity (playbook attribution) ──────────────────────────────────
 // The local user's handle, stamped on plays they create so shared plays are
@@ -2710,6 +2757,8 @@ pub(crate) struct Chart {
     pub(crate) next_play_line_id: u32,
     pub(crate) dragging_play_line: Option<u32>,
     pub(crate) play_click_to_set: Option<super::PlayLineKind>, // click-on-chart fills price
+    /// Label of the level the dragged play line is currently snapped to (HUD).
+    pub(crate) play_snap_label: Option<String>,
     // Measure tool (shift+drag)
     pub(crate) measure: MeasureState,
     pub(crate) dom: DomPanelState,
@@ -3047,6 +3096,7 @@ impl Chart {
             trigger_setup: TriggerSetup::default(), trigger_levels: vec![], next_trigger_id: 1, dragging_trigger: None, editing_trigger: None, pending_und_order: None,
             widget_cache_bar_count: 0, widget_cache: None,
             play_lines: vec![], next_play_line_id: 1, dragging_play_line: None, play_click_to_set: None,
+            play_snap_label: None,
             measure: MeasureState::default(), dom: DomPanelState::default(),
             pending_symbol_change: None, pending_timeframe_change: None,
             undo_stack: vec![], redo_stack: vec![], drag_drawing_snapshot: None,

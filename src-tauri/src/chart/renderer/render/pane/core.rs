@@ -9921,19 +9921,25 @@ fn render_chart_pane(
         if resp.drag_stopped() { chart.dragging_order = None; }
     }
 
-    // 1a-play: Play line drag (in progress)
+    // 1a-play: Play line drag (in progress) — magnetically snaps to key levels
+    // (gamma walls, round numbers, swing hi/lo) so dragging feels intelligent.
     if let Some(pl_id) = chart.dragging_play_line {
         event_consumed = true;
         if resp.dragged_by(egui::PointerButton::Primary) {
             if let Some(pos) = hover_pos {
-                let new_price = pos_to_price(pos);
+                let raw = pos_to_price(pos);
+                // Candidates computed before the mutable borrow of play_lines.
+                let cands = crate::chart_renderer::gpu::snap_candidates(chart);
+                let tol = crate::chart_renderer::snap_tolerance(raw);
+                let (snapped, label) = crate::chart_renderer::snap_price(raw, &cands, tol);
                 if let Some(pl) = chart.play_lines.iter_mut().find(|p| p.id == pl_id) {
-                    pl.price = new_price;
+                    pl.price = snapped;
                 }
+                chart.play_snap_label = label; // HUD readout ("snapped: call wall")
             }
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
         }
-        if resp.drag_stopped() { chart.dragging_play_line = None; }
+        if resp.drag_stopped() { chart.dragging_play_line = None; chart.play_snap_label = None; }
     }
 
     // 1a-bis: Alert line drag (in progress)
