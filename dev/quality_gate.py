@@ -111,10 +111,19 @@ def collect():
             continue
         text = "".join(lines)
         area = area_of(r)
-        n_unwrap = len(UNWRAP_RE.findall(text))
+        # unwrap/expect are PANIC-RISK metrics — they only matter in production
+        # code. `.unwrap()` in a #[cfg(test)] module is idiomatic (a failing
+        # unwrap IS the test failure) and must not count against the release
+        # budget. Rust convention puts test modules at the end of the file, so
+        # truncate at the first #[cfg(test)] for these two counts.
+        prod = text
+        cut = text.find("#[cfg(test)]")
+        if cut != -1:
+            prod = text[:cut]
+        n_unwrap = len(UNWRAP_RE.findall(prod))
         if n_unwrap:
             counts["unwrap_by_dir"][area] = counts["unwrap_by_dir"].get(area, 0) + n_unwrap
-        counts["expect_total"] += len(EXPECT_RE.findall(text))
+        counts["expect_total"] += len(EXPECT_RE.findall(prod))
         counts["dead_code_allows"] += len(DEAD_RE.findall(text))
         if r.startswith("chart/renderer/ui/") or r == "chart/renderer/gpu.rs":
             counts["ui_direct_mutation"] += len(MUT_RE.findall(text))

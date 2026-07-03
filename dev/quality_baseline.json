@@ -1,9 +1,9 @@
 {
   "dead_code_allows": 46,
-  "expect_total": 257,
+  "expect_total": 60,
   "file_loc": {
-    "chart/renderer/gpu.rs": 10776,
-    "chart/renderer/render/pane/core.rs": 12949,
+    "chart/renderer/gpu.rs": 10784,
+    "chart/renderer/render/pane/core.rs": 12969,
     "chart/renderer/trading/order_manager.rs": 5254,
     "chart/renderer/ui/chart_widgets.rs": 3120,
     "chart/renderer/ui/style.rs": 3302,
@@ -11,14 +11,13 @@
   },
   "ui_direct_mutation": 533,
   "unwrap_by_dir": {
-    "chart_other": 64,
-    "data": 89,
+    "chart_other": 9,
+    "data": 11,
     "dev_inspector": 78,
-    "misc": 44,
+    "misc": 7,
     "render": 4,
-    "state": 86,
-    "trading": 14,
-    "ui": 25,
-    "ui_kit": 31
+    "state": 1,
+    "ui": 15,
+    "ui_kit": 8
   }
 }

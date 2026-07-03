@@ -1458,3 +1458,221 @@ pub struct DivergenceMarker {
     pub confidence: f32,       // 0-1
 }
 
+
+// ─── Pure-engine unit tests (audit G5) ──────────────────────────────────────
+// grade_play / arm_branches / snap_price / resolve_level_expr / option_payoff_at
+// are the highest-consequence pure functions in the app (they decide grading,
+// snapping, option P&L, and inline-level math) yet previously had ZERO unit
+// tests — only end-to-end coverage via the dev_inspector harness. These are
+// table-driven direct tests of the logic.
+#[cfg(test)]
+mod engine_tests {
+    use super::*;
+
+    fn mk_play(dir: PlayDirection, entry: f32, target: f32, stop: f32, status: PlayStatus) -> Play {
+        Play {
+            id: "t".into(), title: "t".into(), symbol: "SPY".into(),
+            direction: dir, play_type: PlayType::Directional,
+            entry_price: entry, entry_low: entry, entry_high: entry, invalidation: None,
+            target_price: target, stop_price: stop,
+            targets: vec![], scale_ins: vec![], spread_legs: vec![],
+            contract: String::new(), quantity: 0, status,
+            author: String::new(), notes: String::new(),
+            entry_note: String::new(), stop_note: String::new(),
+            created_at: 0, risk_reward: 0.0, tags: vec![], template_name: None,
+            origin: PlayOrigin::default(), trigger: EntryTrigger::Market,
+            branches: vec![], legs: vec![],
+            activated_at: None, resolved_at: None, expiry: None,
+        }
+    }
+    fn leg(long: bool, call: bool, strike: f32, premium: f32, qty: u32) -> SpreadLeg {
+        SpreadLeg {
+            contract: "x".into(),
+            side: if long { PlayDirection::Long } else { PlayDirection::Short },
+            price: premium, quantity: qty, strike, is_call: call, expiry: String::new(),
+        }
+    }
+    fn approx(a: f32, b: f32) { assert!((a - b).abs() < 1e-3, "expected {b}, got {a}"); }
+
+    // ── option payoff / net debit ──
+    #[test]
+    fn long_call_payoff_is_intrinsic_minus_debit() {
+        let legs = [leg(true, true, 450.0, 2.0, 1)]; // buy 1x 450C @ $2.00 -> debit $200
+        approx(option_net_debit(&legs), 200.0);
+        approx(option_payoff_at(&legs, 445.0), -200.0);        // OTM -> lose the debit
+        approx(option_payoff_at(&legs, 452.0), 200.0 - 200.0); // ITM $2 = $200, net 0 (breakeven)
+        approx(option_payoff_at(&legs, 460.0), 1000.0 - 200.0); // $10 = $1000, net $800
+    }
+    #[test]
+    fn short_put_credit_and_payoff() {
+        let legs = [leg(false, false, 100.0, 1.5, 2)]; // sell 2x 100P @ $1.50 -> credit $300
+        approx(option_net_debit(&legs), -300.0);
+        approx(option_payoff_at(&legs, 105.0), 300.0);          // worthless -> keep credit
+        approx(option_payoff_at(&legs, 98.0), -400.0 + 300.0);  // $2 x2 x100 owed = -$400, +credit
+    }
+    #[test]
+    fn vertical_spread_debit_and_capped_payoff() {
+        // Bull call spread: buy 450C @3, sell 455C @1 -> net debit $200; max profit $300.
+        let legs = [leg(true, true, 450.0, 3.0, 1), leg(false, true, 455.0, 1.0, 1)];
+        approx(option_net_debit(&legs), 200.0);
+        approx(option_payoff_at(&legs, 445.0), -200.0);  // both OTM -> lose debit
+        approx(option_payoff_at(&legs, 460.0), 300.0);   // capped: (10-5)*100 - 200
+        approx(option_payoff_at(&legs, 465.0), 300.0);   // still capped
+    }
+
+    // ── inline level expression resolver ──
+    #[test]
+    fn expr_numbers_refs_and_arithmetic() {
+        let ctx = ExprCtx { entry: 100.0, stop: 96.0, target: 110.0, atr: 2.0, vwap: 101.0,
+            price: 102.0, callwall: 120.0, putwall: 90.0, flip: 105.0 };
+        approx(resolve_level_expr("100", &ctx).unwrap(), 100.0);
+        approx(resolve_level_expr("=entry", &ctx).unwrap(), 100.0);          // leading = stripped
+        approx(resolve_level_expr("entry+2*atr", &ctx).unwrap(), 104.0);     // precedence
+        approx(resolve_level_expr("(entry+stop)/2", &ctx).unwrap(), 98.0);   // parens
+        approx(resolve_level_expr("CALLWALL", &ctx).unwrap(), 120.0);        // case-insensitive
+        approx(resolve_level_expr("r", &ctx).unwrap(), 4.0);                 // R = |entry-stop|
+        approx(resolve_level_expr("3R", &ctx).unwrap(), 12.0);              // NR shorthand = 3*R
+        approx(resolve_level_expr("entry-1.5*r", &ctx).unwrap(), 94.0);
+    }
+    #[test]
+    fn expr_rejects_bad_input() {
+        let ctx = ExprCtx::default();
+        assert!(resolve_level_expr("1/0", &ctx).is_none());        // div by zero
+        assert!(resolve_level_expr("bogus", &ctx).is_none());      // unknown ref
+        assert!(resolve_level_expr("1+", &ctx).is_none());         // incomplete
+        assert!(resolve_level_expr("(1+2", &ctx).is_none());       // unbalanced paren
+        assert!(resolve_level_expr("1 2", &ctx).is_none());        // trailing garbage
+    }
+    #[test]
+    fn parse_risk_multiple_only_bare_nr() {
+        approx(parse_risk_multiple("3R").unwrap(), 3.0);
+        approx(parse_risk_multiple("=1.5r").unwrap(), 1.5);
+        assert!(parse_risk_multiple("entry+3*R").is_none()); // full expr -> None (caller evaluates)
+        assert!(parse_risk_multiple("3").is_none());
+    }
+
+    // ── sizing ──
+    #[test]
+    fn suggested_size_is_risk_based_and_safe() {
+        // $50k account, 1% risk = $500 budget; $2 stop distance -> 250 shares.
+        assert_eq!(suggested_size(100.0, 98.0, 50_000.0, 0.01), 250);
+        assert_eq!(suggested_size(100.0, 100.0, 50_000.0, 0.01), 0); // zero stop dist -> 0 (no div-by-0)
+        assert_eq!(suggested_size(100.0, 98.0, 0.0, 0.01), 0);       // no account -> 0
+        approx(dollar_risk(100.0, 98.0, 250), 500.0);
+    }
+
+    // ── snap ──
+    #[test]
+    fn snap_price_picks_nearest_within_tolerance() {
+        let cands = vec![
+            SnapLevel { price: 100.0, label: "a".into() },
+            SnapLevel { price: 105.0, label: "b".into() },
+        ];
+        let (p, l) = snap_price(100.4, &cands, 1.0);
+        approx(p, 100.0); assert_eq!(l.as_deref(), Some("a"));      // within tol -> snap
+        let (p2, l2) = snap_price(102.6, &cands, 1.0);
+        approx(p2, 102.6); assert!(l2.is_none());                  // 2.6/2.4 away, tol 1.0 -> no snap
+        let (p3, l3) = snap_price(104.9, &cands, 1.0);
+        approx(p3, 105.0); assert_eq!(l3.as_deref(), Some("b"));    // nearest is b
+    }
+    #[test]
+    fn snap_idempotent_on_a_candidate() {
+        let cands = vec![SnapLevel { price: 100.0, label: "a".into() }];
+        let (p1, _) = snap_price(100.0, &cands, 0.5);
+        let (p2, _) = snap_price(p1, &cands, 0.5);
+        approx(p1, 100.0); approx(p2, 100.0); // snapping a snapped price is stable
+    }
+    #[test]
+    fn round_step_and_tolerance_scale_with_price() {
+        approx(round_step(1500.0), 10.0);
+        approx(round_step(300.0), 5.0);
+        approx(round_step(100.0), 1.0);
+        approx(round_step(5.0), 0.1);
+        assert!(snap_tolerance(1000.0) > snap_tolerance(10.0)); // scales with magnitude
+        approx(snap_tolerance(1.0), 0.01);                       // min a cent
+    }
+
+    // ── grade_play lifecycle ──
+    #[test]
+    fn long_activates_then_wins() {
+        let mut p = mk_play(PlayDirection::Long, 100.0, 110.0, 95.0, PlayStatus::Draft);
+        p.trigger = EntryTrigger::Stop; // breakout through entry
+        assert!(grade_play(&mut p, 101.0, 10)); // price >= entry -> Active
+        assert!(matches!(p.status, PlayStatus::Active));
+        assert_eq!(p.activated_at, Some(10));
+        assert!(grade_play(&mut p, 110.0, 20)); // >= target -> Won
+        assert!(matches!(p.status, PlayStatus::Won));
+        assert_eq!(p.resolved_at, Some(20));
+    }
+    #[test]
+    fn long_active_stops_out() {
+        let mut p = mk_play(PlayDirection::Long, 100.0, 110.0, 95.0, PlayStatus::Active);
+        assert!(grade_play(&mut p, 94.0, 5)); // <= stop -> Lost
+        assert!(matches!(p.status, PlayStatus::Lost));
+    }
+    #[test]
+    fn short_wins_and_loses_on_correct_sides() {
+        let mut won = mk_play(PlayDirection::Short, 100.0, 90.0, 105.0, PlayStatus::Active);
+        assert!(grade_play(&mut won, 90.0, 1));
+        assert!(matches!(won.status, PlayStatus::Won)); // short target is BELOW
+        let mut lost = mk_play(PlayDirection::Short, 100.0, 90.0, 105.0, PlayStatus::Active);
+        assert!(grade_play(&mut lost, 105.0, 1));
+        assert!(matches!(lost.status, PlayStatus::Lost)); // short stop is ABOVE
+    }
+    #[test]
+    fn gap_through_resolves_in_one_call() {
+        // Draft with Market trigger: a single price past target activates AND wins.
+        let mut p = mk_play(PlayDirection::Long, 100.0, 110.0, 95.0, PlayStatus::Draft);
+        p.trigger = EntryTrigger::Market;
+        assert!(grade_play(&mut p, 111.0, 1));
+        assert!(matches!(p.status, PlayStatus::Won));
+    }
+    #[test]
+    fn limit_trigger_activates_on_pullback_not_breakout() {
+        let mut p = mk_play(PlayDirection::Long, 100.0, 110.0, 95.0, PlayStatus::Draft);
+        p.trigger = EntryTrigger::Limit; // long limit = fill on pullback TO/below entry
+        assert!(!grade_play(&mut p, 101.0, 1)); // above entry -> not filled
+        assert!(matches!(p.status, PlayStatus::Draft));
+        assert!(grade_play(&mut p, 99.0, 2));   // pulled back to entry -> Active
+        assert!(matches!(p.status, PlayStatus::Active));
+    }
+    #[test]
+    fn expiry_resolves_open_play() {
+        let mut p = mk_play(PlayDirection::Long, 100.0, 110.0, 95.0, PlayStatus::Active);
+        p.expiry = Some(100);
+        assert!(grade_play(&mut p, 101.0, 100)); // now >= expiry
+        assert!(matches!(p.status, PlayStatus::Expired));
+    }
+    #[test]
+    fn terminal_play_does_not_regrade() {
+        let mut p = mk_play(PlayDirection::Long, 100.0, 110.0, 95.0, PlayStatus::Won);
+        assert!(!grade_play(&mut p, 50.0, 999)); // already resolved -> no change
+        assert!(matches!(p.status, PlayStatus::Won));
+    }
+
+    // ── arm_branches ──
+    #[test]
+    fn first_matching_branch_arms_and_adopts_levels() {
+        let mut p = mk_play(PlayDirection::Long, 0.0, 0.0, 0.0, PlayStatus::Draft);
+        p.branches = vec![
+            PlayBranch { above: true, level: 105.0, direction: PlayDirection::Long,
+                entry: 105.0, target: 115.0, stop: 100.0, armed: false },
+            PlayBranch { above: false, level: 95.0, direction: PlayDirection::Short,
+                entry: 95.0, target: 85.0, stop: 100.0, armed: false },
+        ];
+        assert!(arm_branches(&mut p, 106.0)); // crosses the "above 105" branch
+        assert!(p.branches[0].armed);
+        assert!(matches!(p.direction, PlayDirection::Long));
+        approx(p.entry_price, 105.0); approx(p.target_price, 115.0); approx(p.stop_price, 100.0);
+        approx(p.risk_reward, 2.0); // (115-105)/(105-100)
+        assert!(!arm_branches(&mut p, 90.0)); // already armed -> no re-arm
+    }
+    #[test]
+    fn no_branch_arms_when_untriggered() {
+        let mut p = mk_play(PlayDirection::Long, 0.0, 0.0, 0.0, PlayStatus::Draft);
+        p.branches = vec![PlayBranch { above: true, level: 105.0, direction: PlayDirection::Long,
+            entry: 105.0, target: 115.0, stop: 100.0, armed: false }];
+        assert!(!arm_branches(&mut p, 104.0)); // below the level -> nothing arms
+        assert!(!p.branches[0].armed);
+    }
+}
