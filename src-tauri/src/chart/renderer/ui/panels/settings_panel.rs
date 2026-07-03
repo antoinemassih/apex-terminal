@@ -238,8 +238,7 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                     .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                     .min_size(egui::vec2(btn_w, btn_h))
                     .show(ui, t).clicked() {
-                    watchlist.density_override = None;
-                    crate::chart_renderer::ui::style::set_density_override(None);
+                    commands::push(AppCommand::SetDensityOverride(None));
                 }
                 for &mode in DensityMode::all() {
                     let active = cur_override == Some(mode);
@@ -247,8 +246,7 @@ fn draw_appearance(ui: &mut egui::Ui, watchlist: &mut Watchlist, chart: &mut Cha
                         .corner_radius(crate::chart_renderer::ui::style::current().r_sm as f32)
                         .min_size(egui::vec2(btn_w, btn_h))
                         .show(ui, t).clicked() {
-                        watchlist.density_override = Some(mode);
-                        crate::chart_renderer::ui::style::set_density_override(Some(mode));
+                        commands::push(AppCommand::SetDensityOverride(Some(mode)));
                     }
                 }
             });

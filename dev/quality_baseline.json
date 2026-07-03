@@ -9,7 +9,7 @@
     "chart/renderer/ui/style.rs": 3302,
     "foundation/design_inspector.rs": 3304
   },
-  "ui_direct_mutation": 536,
+  "ui_direct_mutation": 534,
   "unwrap_by_dir": {
     "chart_other": 64,
     "data": 89,

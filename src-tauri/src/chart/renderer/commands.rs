@@ -388,6 +388,12 @@ pub enum AppCommand {
     /// Set account equity + risk-per-trade fraction (drives sizing + portfolio risk).
     #[cfg(debug_assertions)]
     SetAccountRisk { account: f32, risk_pct: f32 },
+
+    /// Set the density appearance override (None = inherit the ambient default).
+    /// Command-bus migration REFERENCE (WS-E E1): the reducer arm does BOTH the
+    /// field write and the global style-cache side-effect that settings_panel
+    /// used to do inline. See docs/COMMAND_BUS_MIGRATION.md.
+    SetDensityOverride(Option<crate::ui_kit::style::DensityMode>),
 }
 
 // ─── CommandQueue (thread-local, drained per frame) ────────────────────────
@@ -1156,6 +1162,13 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
         AppCommand::SetAccountRisk { account, risk_pct } => {
             watchlist.account_size = account.max(0.0);
             watchlist.risk_pct = risk_pct.clamp(0.0, 1.0);
+        }
+
+        AppCommand::SetDensityOverride(mode) => {
+            watchlist.density_override = mode;
+            // Side-effect that used to live inline in settings_panel — now
+            // atomic with the field write inside the reducer.
+            crate::chart_renderer::ui::style::set_density_override(mode);
         }
 
         #[cfg(debug_assertions)]
