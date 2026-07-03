@@ -2677,6 +2677,11 @@ pub(crate) struct Chart {
     pub(crate) gamma_flow_active: bool,
     /// `short_posture.posture` string (e.g. `hold_press`). Empty when absent.
     pub(crate) gamma_posture: String,
+    /// F3 (audit): true when the current gamma_levels are SYNTHETIC placeholders
+    /// (the :8412 feed was unavailable), false when they came from the real feed.
+    /// Drives the "SYNTHETIC" chart badge so a trader is never misled into
+    /// treating fabricated GEX walls as real. Not persisted (runtime-derived).
+    pub(crate) gamma_synthetic: bool,
     /// Continuation-gauge HOLD/EXIT markers (signal feed). Shown with the gamma
     /// overlay; refreshed for the date currently loaded on the chart.
     pub(crate) continuation_signals: Vec<ContinuationMarker>,
@@ -2857,12 +2862,15 @@ impl Chart {
                     if let Some(last_bar) = self.bars.last() {
                         self.gamma_hvl = last_bar.close;
                     }
+                    self.gamma_synthetic = false; // real feed data
                     return;
                 }
             }
         }
         // Feed unavailable — synthesize placeholder levels. Works even when bars
-        // are empty (falls back to a sensible default price).
+        // are empty (falls back to a sensible default price). F3: mark synthetic
+        // so the overlay shows a "SYNTHETIC" badge.
+        self.gamma_synthetic = true;
         let price = self.bars.last().map(|b| b.close).filter(|&p| p > 0.0).unwrap_or(500.0);
         let step = if price > 200.0 { 5.0 } else if price > 50.0 { 2.5 } else { 1.0 };
         let mut levels: Vec<GammaLevel> = vec![];
@@ -2964,7 +2972,7 @@ impl Chart {
             symbol_overlays: vec![], overlay_editing: false, overlay_editing_idx: None, overlay_input: String::new(),
             show_gamma: false, hit_highlight: false, hit_highlights: vec![], hit_cooldowns: vec![],
             show_events: false, event_markers: vec![],
-            show_strikes_overlay: false, overlay_calls: vec![], overlay_puts: vec![], overlay_chain_symbol: String::new(), overlay_chain_loading: false, overlay_chain_placeholder: false, floating_order_panes: vec![], gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0, gamma_ppe: None, gamma_iv_rising: None, gamma_flow_active: false, gamma_posture: String::new(), continuation_signals: vec![],
+            show_strikes_overlay: false, overlay_calls: vec![], overlay_puts: vec![], overlay_chain_symbol: String::new(), overlay_chain_loading: false, overlay_chain_placeholder: false, floating_order_panes: vec![], gamma_levels: vec![], gamma_call_wall: 0.0, gamma_put_wall: 0.0, gamma_zero: 0.0, gamma_hvl: 0.0, gamma_ppe: None, gamma_iv_rising: None, gamma_flow_active: false, gamma_posture: String::new(), gamma_synthetic: false, continuation_signals: vec![],
             fundamentals: FundamentalData::default(), show_analyst_targets: false,
             show_pe_band: false, show_insider_trades: false, insider_trades: vec![],
             show_corp_actions: false, corp_actions: vec![],

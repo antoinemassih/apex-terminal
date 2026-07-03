@@ -990,6 +990,7 @@ pub fn end_frame(
                 // Gamma / strikes overlays.
                 "show_gamma":         p.show_gamma,
                 "gamma_level_count":  p.gamma_levels.len(),
+                "gamma_synthetic":    p.gamma_synthetic, // F3: fabricated-vs-real GEX
                 "gamma_call_wall":    p.gamma_call_wall,
                 "gamma_put_wall":     p.gamma_put_wall,
                 "gamma_zero":         p.gamma_zero,

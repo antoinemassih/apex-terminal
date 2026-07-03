@@ -3022,6 +3022,26 @@ fn render_chart_pane(
         let zero_y = py(chart.gamma_zero);
         let price_y = py(last_price);
 
+        // F3 (audit): SYNTHETIC badge — these gamma_levels are FABRICATED
+        // placeholders (the :8412 GEX feed was unavailable). Warn the trader so
+        // real vs. synthetic walls are never confused. Top-right, clear of the
+        // STABLE/VOLATILE territory label at top-left.
+        if chart.gamma_synthetic {
+            let txt = "SYNTHETIC";
+            let font = mono_xs_plus();
+            let col = t.warn;
+            let g = painter.layout_no_wrap(txt.to_string(), font.clone(), col);
+            let bx = rect.right() - g.size().x - 16.0;
+            let by = rect.top() + pt + 8.0;
+            painter.rect_filled(egui::Rect::from_min_size(
+                egui::pos2(bx - 5.0, by - 3.0), g.size() + egui::vec2(10.0, 6.0)),
+                4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
+            painter.rect_stroke(egui::Rect::from_min_size(
+                egui::pos2(bx - 5.0, by - 3.0), g.size() + egui::vec2(10.0, 6.0)),
+                4.0, egui::Stroke::new(0.5, color_alpha(col, 100)), egui::StrokeKind::Outside);
+            painter.text(egui::pos2(bx, by + g.size().y / 2.0), egui::Align2::LEFT_CENTER, txt, font, col);
+        }
+
         // Gamma territory label (top-left of pane)
         if chart.gamma_zero > 0.0 && last_price > 0.0 {
             let above_zero = last_price > chart.gamma_zero;

@@ -60,6 +60,12 @@
           }
         },
         {
+          "state_field_equals": {
+            "path": "panes.0.gamma_synthetic",
+            "value": true
+          }
+        },
+        {
           "gamma_structure_sane": {
             "pane": 0
           }
