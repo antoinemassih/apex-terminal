@@ -11,6 +11,7 @@
 //! - Render thread processes commands between frames (non-blocking)
 
 pub mod gpu;
+pub(crate) mod playbook_store; // WS-E E2: extracted from gpu.rs (playbook persistence/sharing)
 pub mod bug_anchor;
 #[cfg(feature = "design-mode")]
 pub mod inspector_window;

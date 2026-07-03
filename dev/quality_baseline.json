@@ -2,14 +2,14 @@
   "dead_code_allows": 46,
   "expect_total": 257,
   "file_loc": {
-    "chart/renderer/gpu.rs": 10981,
+    "chart/renderer/gpu.rs": 10776,
     "chart/renderer/render/pane/core.rs": 12949,
     "chart/renderer/trading/order_manager.rs": 5254,
     "chart/renderer/ui/chart_widgets.rs": 3120,
     "chart/renderer/ui/style.rs": 3302,
     "foundation/design_inspector.rs": 3304
   },
-  "ui_direct_mutation": 534,
+  "ui_direct_mutation": 533,
   "unwrap_by_dir": {
     "chart_other": 64,
     "data": 89,
