@@ -7943,40 +7943,43 @@ fn render_chart_pane(
 
     // ── Play lines on chart (companion for play editor) ────────────
     if !chart.play_lines.is_empty() {
-        // Zone bands: entry→T1 (green), T1→T2 (teal), T2→T3 (cyan), entry→stop (red)
+        // Zone bands (G1: theme-tokenized). entry→T1 = reward (t.bull), extended
+        // targets T1→T2→T3 = accent at fading alpha, entry→stop = risk (t.bear).
+        // Previously hardcoded green/teal/cyan/red rgba — the whole play overlay
+        // now reskins with the active theme (its lines already used tokens).
         let entry_price = chart.play_lines.iter().find(|l| l.kind == crate::chart_renderer::PlayLineKind::Entry).map(|l| l.price);
         let target_price = chart.play_lines.iter().find(|l| l.kind == crate::chart_renderer::PlayLineKind::Target).map(|l| l.price);
         let t2_price = chart.play_lines.iter().find(|l| l.kind == crate::chart_renderer::PlayLineKind::Target2).map(|l| l.price);
         let t3_price = chart.play_lines.iter().find(|l| l.kind == crate::chart_renderer::PlayLineKind::Target3).map(|l| l.price);
         let stop_price = chart.play_lines.iter().find(|l| l.kind == crate::chart_renderer::PlayLineKind::Stop).map(|l| l.price);
 
-        // Entry → T1 (green)
+        // Entry → T1 (reward = bull)
         if let (Some(ep), Some(tp)) = (entry_price, target_price) {
             let (y1, y2) = (py(ep), py(tp));
             painter.rect_filled(egui::Rect::from_min_max(
                 egui::pos2(rect.left(), y1.min(y2)), egui::pos2(rect.left() + cw, y1.max(y2))),
-                0.0, egui::Color32::from_rgba_unmultiplied(46, 204, 113, 12));
+                0.0, color_alpha(t.bull, 12));
         }
-        // T1 → T2 (teal — slightly different shade)
+        // T1 → T2 (extended target = accent)
         if let (Some(tp), Some(t2)) = (target_price, t2_price) {
             let (y1, y2) = (py(tp), py(t2));
             painter.rect_filled(egui::Rect::from_min_max(
                 egui::pos2(rect.left(), y1.min(y2)), egui::pos2(rect.left() + cw, y1.max(y2))),
-                0.0, egui::Color32::from_rgba_unmultiplied(26, 188, 156, 10));
+                0.0, color_alpha(t.accent, 10));
         }
-        // T2 → T3 (cyan — another shade)
+        // T2 → T3 (further extended = accent, fainter)
         if let (Some(t2), Some(t3)) = (t2_price, t3_price) {
             let (y1, y2) = (py(t2), py(t3));
             painter.rect_filled(egui::Rect::from_min_max(
                 egui::pos2(rect.left(), y1.min(y2)), egui::pos2(rect.left() + cw, y1.max(y2))),
-                0.0, egui::Color32::from_rgba_unmultiplied(52, 152, 219, 10));
+                0.0, color_alpha(t.accent, 8));
         }
-        // Entry → Stop (red)
+        // Entry → Stop (risk = bear)
         if let (Some(ep), Some(sp)) = (entry_price, stop_price) {
             let (y1, y2) = (py(ep), py(sp));
             painter.rect_filled(egui::Rect::from_min_max(
                 egui::pos2(rect.left(), y1.min(y2)), egui::pos2(rect.left() + cw, y1.max(y2))),
-                0.0, egui::Color32::from_rgba_unmultiplied(231, 76, 60, 10));
+                0.0, color_alpha(t.bear, 10));
         }
 
         // R:R connector + label
@@ -7990,7 +7993,7 @@ fn render_chart_pane(
                 let end = (dy + 3.0).min(ty_y.max(sy_y));
                 painter.line_segment(
                     [egui::pos2(cx_x, dy), egui::pos2(cx_x, end)],
-                    egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(100, 140, 255, 100)));
+                    egui::Stroke::new(1.0, color_alpha(t.accent, 100)));
                 dy += 6.0;
             }
             // Ticks
@@ -8008,19 +8011,19 @@ fn render_chart_pane(
                     let rr = reward / risk;
                     let mid_y = (ty_y + sy_y) / 2.0;
                     let rr_text = format!("R:R {:.1}:1", rr);
-                    let rr_galley = painter.layout_no_wrap(rr_text.clone(), mono_2xs(), egui::Color32::from_rgb(100, 140, 255));
+                    let rr_galley = painter.layout_no_wrap(rr_text.clone(), mono_2xs(), t.accent);
                     let rr_bg = egui::Rect::from_min_size(
                         egui::pos2(cx_x - rr_galley.size().x / 2.0 - 3.0, mid_y - rr_galley.size().y / 2.0 - 2.0),
                         egui::vec2(rr_galley.size().x + 6.0, rr_galley.size().y + 4.0));
                     painter.rect_filled(rr_bg, 3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
                     painter.text(egui::pos2(cx_x, mid_y), egui::Align2::CENTER_CENTER, &rr_text,
-                        mono_2xs(), egui::Color32::from_rgb(100, 140, 255));
+                        mono_2xs(), t.accent);
                 }
             }
         }
 
         // Individual play lines
-        let play_color_base = egui::Color32::from_rgb(100, 140, 255); // blue
+        let play_color_base = t.accent; // G1: was hardcoded blue — now theme accent
         for pl in &chart.play_lines {
             let y = py(pl.price);
             if y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
