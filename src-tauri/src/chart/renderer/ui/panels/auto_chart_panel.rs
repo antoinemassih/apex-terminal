@@ -8,6 +8,7 @@
 
 use super::super::super::gpu::{Chart, Theme, Watchlist};
 use crate::chart_renderer::ui::panels::side_panel_shell::{RailSlot, SidePanelShell, Width};
+use crate::ui_kit::widgets::{Button, Checkbox}; // WS-G G3: design-system primitives
 use egui;
 
 /// Record a panel control into the dev-inspector widget-tree so the harness can
@@ -64,32 +65,32 @@ pub(crate) fn draw(
             let before = cfg.clone();
 
             ui.add_space(6.0);
-            let r = ui.checkbox(&mut cfg.enabled, "Auto-charting ON");
+            let r = Checkbox::new(&mut cfg.enabled).label("Auto-charting ON").show(ui, t);
             rec_ctrl("auto_chart.enabled", "checkbox", "Auto-charting ON", &r, ui, cfg.enabled.to_string());
             ui.separator();
             if cfg.enabled {
                 ui.label("Window of operation");
                 let r = ui.add(egui::Slider::new(&mut cfg.window, 100..=2000).text("bars back"));
                 rec_ctrl("auto_chart.window", "slider", "bars back", &r, ui, cfg.window.to_string());
-                let r = ui.checkbox(&mut cfg.anchored_only, "Anchored only (no floating starts)");
+                let r = Checkbox::new(&mut cfg.anchored_only).label("Anchored only (no floating starts)").show(ui, t);
                 rec_ctrl("auto_chart.anchored_only", "checkbox", "Anchored only", &r, ui, cfg.anchored_only.to_string());
                 ui.separator();
                 ui.label("Layers");
-                let r = ui.checkbox(&mut cfg.trendlines, "Trendlines");
+                let r = Checkbox::new(&mut cfg.trendlines).label("Trendlines").show(ui, t);
                 rec_ctrl("auto_chart.trendlines", "checkbox", "Trendlines", &r, ui, cfg.trendlines.to_string());
-                let r = ui.checkbox(&mut cfg.channels, "Channels");
+                let r = Checkbox::new(&mut cfg.channels).label("Channels").show(ui, t);
                 rec_ctrl("auto_chart.channels", "checkbox", "Channels", &r, ui, cfg.channels.to_string());
-                let r = ui.checkbox(&mut cfg.levels, "Levels");
+                let r = Checkbox::new(&mut cfg.levels).label("Levels").show(ui, t);
                 rec_ctrl("auto_chart.levels", "checkbox", "Levels", &r, ui, cfg.levels.to_string());
-                let r = ui.checkbox(&mut cfg.patterns, "Chart patterns");
+                let r = Checkbox::new(&mut cfg.patterns).label("Chart patterns").show(ui, t);
                 rec_ctrl("auto_chart.patterns", "checkbox", "Chart patterns", &r, ui, cfg.patterns.to_string());
-                let r = ui.checkbox(&mut cfg.candles, "Candlesticks");
+                let r = Checkbox::new(&mut cfg.candles).label("Candlesticks").show(ui, t);
                 rec_ctrl("auto_chart.candles", "checkbox", "Candlesticks", &r, ui, cfg.candles.to_string());
                 ui.separator();
                 ui.label("Pivot method");
                 ui.horizontal(|ui| {
                     for m in ["hybrid", "atr", "percent"] {
-                        let r = ui.selectable_label(cfg.pivot_mode == m, m);
+                        let r = Button::toggle(m, cfg.pivot_mode == m).show(ui, t);
                         rec_ctrl(&format!("auto_chart.pivot.{m}"), "toggle", m, &r, ui, (cfg.pivot_mode == m).to_string());
                         if r.clicked() { cfg.pivot_mode = m.to_string(); }
                     }
@@ -108,7 +109,7 @@ pub(crate) fn draw(
                 ui.label("Extend lines");
                 ui.horizontal(|ui| {
                     for e in ["none", "right", "both", "left"] {
-                        let r = ui.selectable_label(cfg.extend == e, e);
+                        let r = Button::toggle(e, cfg.extend == e).show(ui, t);
                         rec_ctrl(&format!("auto_chart.extend.{e}"), "toggle", e, &r, ui, (cfg.extend == e).to_string());
                         if r.clicked() { cfg.extend = e.to_string(); }
                     }
@@ -126,7 +127,7 @@ pub(crate) fn draw(
                     ("bayesian", "Bayesian"),
                 ] {
                     let mut on = cfg.methods.iter().any(|m| m == id);
-                    if ui.checkbox(&mut on, label).changed() {
+                    if Checkbox::new(&mut on).label(label).show(ui, t).changed() {
                         if on {
                             cfg.methods.push(id.to_string());
                         } else {
@@ -150,12 +151,12 @@ pub(crate) fn draw(
                 if !drawings.is_empty() {
                     ui.separator();
                     ui.label(format!("Active drawings ({})", drawings.len()));
-                    let red = egui::Color32::from_rgb(200, 60, 60);
+                    let red = t.bear;
                     egui::ScrollArea::vertical()
                         .id_source("drawings_scroll")
                         .max_height(180.0)
                         .show(ui, |ui| {
-                            let green = egui::Color32::from_rgb(60, 180, 80);
+                            let green = t.bull;
                             for (id, method, dtype) in &drawings {
                                 ui.horizontal(|ui| {
                                     ui.label(
