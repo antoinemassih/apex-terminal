@@ -2261,9 +2261,9 @@ fn render_chart_pane(
                 let buy_w = bar_w * (level.buy_vol / level.total_vol.max(0.001));
                 let sell_w = bar_w - buy_w;
                 painter.rect_filled(egui::Rect::from_min_size(egui::pos2(rect.left(), y - h/2.0), egui::vec2(sell_w, h)),
-                    0.0, egui::Color32::from_rgba_unmultiplied(231, 76, 60, 40));
+                    0.0, color_alpha(t.bear, 40));
                 painter.rect_filled(egui::Rect::from_min_size(egui::pos2(rect.left() + sell_w, y - h/2.0), egui::vec2(buy_w, h)),
-                    0.0, egui::Color32::from_rgba_unmultiplied(46, 204, 113, 40));
+                    0.0, color_alpha(t.bull, 40));
                 // Dark-pool overlay: purple sub-bar from the left edge sized to
                 // the off-exchange (FINRA TRF) share of this level's volume, so
                 // you can see how much of each price node traded off-exchange.
@@ -2278,7 +2278,7 @@ fn render_chart_pane(
             let poc_y = py(vp.poc_price);
             if poc_y.is_finite() {
                 painter.line_segment([egui::pos2(rect.left(), poc_y), egui::pos2(rect.left()+cw, poc_y)],
-                    egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(255, 193, 37, 180)));
+                    egui::Stroke::new(1.0, color_alpha(t.gold, 180)));
             }
         }
     }
@@ -2295,20 +2295,20 @@ fn render_chart_pane(
                 let norm = if vp.max_vol > 0.0 { level.total_vol / vp.max_vol } else { 0.0 };
                 let alpha = (norm * 60.0) as u8;
                 let delta = level.buy_vol - level.sell_vol;
-                let color = if delta >= 0.0 { egui::Color32::from_rgba_unmultiplied(46, 204, 113, alpha) }
-                            else { egui::Color32::from_rgba_unmultiplied(231, 76, 60, alpha) };
+                let color = if delta >= 0.0 { color_alpha(t.bull, alpha) } // G1: was hardcoded green
+                            else { color_alpha(t.bear, alpha) };           // G1: was hardcoded red
                 painter.rect_filled(egui::Rect::from_min_size(egui::pos2(rect.left(), y), egui::vec2(cw, h)), 0.0, color);
             }
             let poc_y = py(vp.poc_price);
             if poc_y.is_finite() {
                 painter.line_segment([egui::pos2(rect.left(), poc_y), egui::pos2(rect.left()+cw, poc_y)],
-                    egui::Stroke::new(1.5, egui::Color32::from_rgba_unmultiplied(255, 193, 37, 160)));
+                    egui::Stroke::new(1.5, color_alpha(t.gold, 160)));
             }
             let vah_y = py(vp.vah); let val_y = py(vp.val);
             if vah_y.is_finite() && val_y.is_finite() {
                 let va_rect = egui::Rect::from_min_max(
                     egui::pos2(rect.left(), vah_y.min(val_y)), egui::pos2(rect.left()+cw, vah_y.max(val_y)));
-                painter.rect_stroke(va_rect, 0.0, egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(255, 193, 37, 60)), egui::StrokeKind::Outside);
+                painter.rect_stroke(va_rect, 0.0, egui::Stroke::new(0.5, color_alpha(t.gold, 60)), egui::StrokeKind::Outside);
             }
         }
     }
@@ -2330,24 +2330,24 @@ fn render_chart_pane(
                 let buy_w = bar_w * buy_frac;
                 let sell_w = bar_w - buy_w;
                 painter.rect_filled(egui::Rect::from_min_size(egui::pos2(strip_x + strip_w - bar_w, y), egui::vec2(sell_w, h)),
-                    0.0, egui::Color32::from_rgba_unmultiplied(231, 76, 60, 100));
+                    0.0, color_alpha(t.bear, 100));
                 painter.rect_filled(egui::Rect::from_min_size(egui::pos2(strip_x + strip_w - buy_w, y), egui::vec2(buy_w, h)),
-                    0.0, egui::Color32::from_rgba_unmultiplied(46, 204, 113, 100));
+                    0.0, color_alpha(t.bull, 100));
             }
             let poc_y = py(vp.poc_price);
             if poc_y.is_finite() {
                 painter.line_segment([egui::pos2(strip_x, poc_y), egui::pos2(strip_x+strip_w, poc_y)],
-                    egui::Stroke::new(1.5, egui::Color32::from_rgba_unmultiplied(255, 193, 37, 200)));
+                    egui::Stroke::new(1.5, color_alpha(t.gold, 200)));
                 painter.text(egui::pos2(strip_x - 2.0, poc_y), egui::Align2::RIGHT_CENTER, "POC",
-                    mono_3xs(), egui::Color32::from_rgba_unmultiplied(255, 193, 37, 180));
+                    mono_3xs(), color_alpha(t.gold, 180));
             }
             for (price, label) in [(vp.vah, "VAH"), (vp.val, "VAL")] {
                 let y = py(price);
                 if y.is_finite() {
                     painter.line_segment([egui::pos2(strip_x, y), egui::pos2(strip_x+strip_w, y)],
-                        egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(255, 193, 37, 80)));
+                        egui::Stroke::new(0.5, color_alpha(t.gold, 80)));
                     painter.text(egui::pos2(strip_x - 2.0, y), egui::Align2::RIGHT_CENTER, label,
-                        mono_3xs(), egui::Color32::from_rgba_unmultiplied(255, 193, 37, 100));
+                        mono_3xs(), color_alpha(t.gold, 100));
                 }
             }
         }
@@ -2355,12 +2355,12 @@ fn render_chart_pane(
 
     if chart.vp.mode == VolumeProfileMode::Clean {
         if let Some(ref vp) = chart.vp.data {
-            let gold = egui::Color32::from_rgb(255, 193, 37);
+            let gold = t.gold; // G1: was hardcoded, use theme token
             let vah_y = py(vp.vah); let val_y = py(vp.val);
             if vah_y.is_finite() && val_y.is_finite() {
                 painter.rect_filled(
                     egui::Rect::from_min_max(egui::pos2(rect.left(), vah_y.min(val_y)), egui::pos2(rect.left()+cw, vah_y.max(val_y))),
-                    0.0, egui::Color32::from_rgba_unmultiplied(255, 193, 37, 10));
+                    0.0, color_alpha(t.gold, 10));
                 dashed_line(&painter, egui::pos2(rect.left(), vah_y), egui::pos2(rect.left()+cw, vah_y),
                     egui::Stroke::new(0.5, color_alpha(gold, 60)), LineStyle::Dashed);
                 dashed_line(&painter, egui::pos2(rect.left(), val_y), egui::pos2(rect.left()+cw, val_y),
@@ -2900,9 +2900,11 @@ fn render_chart_pane(
     if chart.show_vwap_bands && chart.vwap_data.len() == n {
         let start_v = vs.floor() as usize;
         let end_v = (start_v + chart.vc as usize + 8).min(n);
-        let vwap_color = egui::Color32::from_rgb(33, 150, 243);
-        let band1_color = egui::Color32::from_rgba_unmultiplied(33, 150, 243, 30);
-        let band2_color = egui::Color32::from_rgba_unmultiplied(33, 150, 243, 15);
+        // G1: VWAP + σ bands were hardcoded material-blue — now theme accent so
+        // the analytical overlay reskins with the active theme.
+        let vwap_color = t.accent;
+        let band1_color = color_alpha(t.accent, 30);
+        let band2_color = color_alpha(t.accent, 15);
         // ±2σ fill
         for i in start_v..end_v.saturating_sub(1) {
             if chart.vwap_upper2[i].is_nan() || chart.vwap_upper2[i+1].is_nan() { continue; }
@@ -2936,7 +2938,7 @@ fn render_chart_pane(
                 if data[i].is_nan() || data[i+1].is_nan() { continue; }
                 painter.line_segment(
                     [egui::pos2(bx(i as f32), py(data[i])), egui::pos2(bx((i+1) as f32), py(data[i+1]))],
-                    egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(33, 150, 243, alpha)));
+                    egui::Stroke::new(0.5, color_alpha(t.accent, alpha)));
             }
         }
         // Label at right edge
