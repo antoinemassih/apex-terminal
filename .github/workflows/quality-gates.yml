@@ -1,0 +1,123 @@
+name: Quality Gates
+
+# Audit remediation gates (WS-B). Three CI-runnable checks that stop the
+# codebase from regressing while the WS-C..G work lands:
+#   • quality-ratchet — dev/quality_gate.py: unwrap budget / file-size ceiling /
+#     dead-code / command-bus-bypass counts (fail-on-increase).
+#   • clippy-deny     — the [lints.clippy] deny table (todo/unimplemented/
+#     dbg_macro must stay at zero in a live-money app).
+#   • build-matrix    — the app must compile on all three feature configs, not
+#     just the default one, so the legacy render path and design-mode don't rot.
+#
+# NOT here (by design): the 1,065-scenario corpus gate and the ux_audit gate.
+# Both drive the REAL windowed GPU app + the debug-only dev_inspector HTTP
+# server, which a headless ubuntu runner cannot host. They run as a local /
+# self-hosted pre-merge gate — see scripts/corpus_gate.sh.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  quality-ratchet:
+    name: Ratchets (unwrap / size / dead-code / bus-bypass)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Run quality ratchets
+        run: python dev/quality_gate.py
+
+  clippy-deny:
+    name: Clippy deny table (no todo!/unimplemented!/dbg!)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust (stable) + clippy
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Install system deps (Tauri/wgpu build prerequisites)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev libgtk-3-dev
+      - name: Create placeholder sidecar binaries (for tauri-build)
+        run: |
+          mkdir -p src-tauri/binaries
+          touch src-tauri/binaries/ococo-api-aarch64-apple-darwin
+          touch src-tauri/binaries/ococo-api-x86_64-pc-windows-msvc.exe
+          touch src-tauri/binaries/ococo-api-x86_64-unknown-linux-gnu
+      # This job enforces ONLY the restriction lints from the [lints.clippy]
+      # table (todo / unimplemented / dbg_macro = deny; unwrap/expect = warn).
+      # `-A clippy::all` silences clippy's default-deny CORRECTNESS/suspicious
+      # group so this job does not fail on pre-existing correctness debt
+      # (invisible-unicode, raw-ptr-deref, bad deprecated-semver — that debt is
+      # connectivity-ci.yml's scope). Crucially, todo/unimplemented/dbg_macro/
+      # unwrap are `restriction` lints, NOT part of clippy::all, so `-A
+      # clippy::all` does not touch them — the table's deny/warn levels survive
+      # and this job still ERRORS if a todo!()/dbg!() reappears. No `-D warnings`
+      # (that would promote the ~670 grandfathered unwrap warns to errors).
+      - name: cargo clippy (deny table — no todo!/unimplemented!/dbg!)
+        working-directory: src-tauri
+        run: cargo clippy --lib --no-deps -- -A clippy::all
+
+  build-matrix:
+    name: Build matrix (default / no-default-features / design-mode)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: default
+            flags: ""
+            allow_fail: false
+          - name: no-default-features (legacy egui render path)
+            flags: "--no-default-features"
+            allow_fail: false
+          # design-mode is KNOWN-BROKEN as of the WS-B audit: this very gate
+          # caught that design_inspector.rs (3,318 LOC, non-default feature) has
+          # bit-rotted against the current token schema — removed ColorScheme
+          # `accent_alts`, removed AlphaTokens `scrim`, `THEMES` visibility, and
+          # a toml linkage error (~8 errors). Fixing it is a "finish-or-delete
+          # the design-mode feature" decision tracked as a follow-up; until then
+          # this leg is non-blocking so it reports the rot without wedging every
+          # PR. Flip allow_fail to false once repaired. (Mirrors the
+          # continue-on-error idiom in connectivity-ci.yml.)
+          - name: design-mode (design_inspector, non-default) [KNOWN-BROKEN]
+            flags: "--features design-mode"
+            allow_fail: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Install system deps (Tauri/wgpu build prerequisites)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev libgtk-3-dev
+      - name: Create placeholder sidecar binaries (for tauri-build)
+        run: |
+          mkdir -p src-tauri/binaries
+          touch src-tauri/binaries/ococo-api-aarch64-apple-darwin
+          touch src-tauri/binaries/ococo-api-x86_64-pc-windows-msvc.exe
+          touch src-tauri/binaries/ococo-api-x86_64-unknown-linux-gnu
+      - name: cargo check --lib ${{ matrix.flags }}
+        working-directory: src-tauri
+        continue-on-error: ${{ matrix.allow_fail }}
+        run: cargo check --lib ${{ matrix.flags }}

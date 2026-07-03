@@ -109,6 +109,26 @@ serial_test = "3"
 proptest = "1"
 mockito = "1"
 
+# ─── Lints (audit B1) ────────────────────────────────────────────────────────
+# Two tiers:
+#  • DENY: patterns the audit confirmed are currently absent (0 occurrences) and
+#    that must never re-enter — a debug print or a todo!()/unimplemented!() stub
+#    shipping in a live-money app is a release blocker. These are deny-level in
+#    the table, so a plain `cargo clippy` ERRORS (exit 1) if one reappears — no
+#    `-D warnings` needed (that would also promote the ~670 grandfathered
+#    unwrap warns below and break the build).
+#  • WARN: unwrap_used / expect_used are surfaced for visibility but NOT denied
+#    here — there are ~670 grandfathered sites. Their *count* is ratcheted by
+#    dev/quality_gate.py (fail-on-increase), which is the pragmatic gate. New
+#    code should carry `#[allow(clippy::unwrap_used)] // <reason>` only with a
+#    justification, or better, avoid the unwrap.
+[lints.clippy]
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+unwrap_used = "warn"
+expect_used = "warn"
+
 [[example]]
 name = "font_showcase"
 path = "examples/font_showcase.rs"
