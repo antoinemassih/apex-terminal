@@ -919,6 +919,7 @@ let _ = ctx;
                 changed |= drag_u8(ui, "strong (80)", &mut tokens.alpha.strong);
                 changed |= drag_u8(ui, "active (100)", &mut tokens.alpha.active);
                 changed |= drag_u8(ui, "heavy (120)", &mut tokens.alpha.heavy);
+                changed |= drag_u8(ui, "scrim (140)", &mut tokens.alpha.scrim);
                 changed |= drag_u8(ui, "solid (200)", &mut tokens.alpha.solid);
             }
             Category::Shadow => {
@@ -1509,25 +1510,10 @@ fn two_axis_color_editor(ui: &mut egui::Ui, c: &mut ColorScheme) {
         two_axis_rgba(ui, "warn",    &mut c.warn);
         two_axis_rgba(ui, "shadow",  &mut c.shadow);
     });
-
-    // ── Accent alts ───────────────────────────────────────────────────────────
-    two_axis_section(ui, "Accent Alts", hdr, |ui| {
-        let mut remove_idx: Option<usize> = None;
-        for (i, alt) in c.accent_alts.iter_mut().enumerate() {
-            ui.horizontal(|ui| {
-                two_axis_rgba(ui, &format!("alt[{i}]"), alt);
-                if ui.small_button("−").clicked() {
-                    remove_idx = Some(i);
-                }
-            });
-        }
-        if let Some(i) = remove_idx {
-            c.accent_alts.remove(i);
-        }
-        if ui.small_button("+ Add alt").clicked() {
-            c.accent_alts.push([99, 102, 241, 255]);
-        }
-    });
+    // NOTE: the "Accent Alts" editor was removed — `ColorScheme.accent_alts`
+    // (a Vec of alternate accents) no longer exists in the token schema. The
+    // single `accent` above is now the source of truth. (audit WS-B design-mode
+    // repair.)
 }
 
 // ── Two-axis editor sub-helpers ───────────────────────────────────────────────

@@ -72,7 +72,7 @@ pub struct RadiusTokens { pub xs: f32, pub sm: f32, pub md: f32, pub lg: f32 }
 pub struct StrokeTokens { pub hair: f32, pub thin: f32, pub medium: f32, pub std: f32, pub bold: f32, pub thick: f32, pub heavy: f32, pub xheavy: f32 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AlphaTokens { pub faint: u8, pub ghost: u8, pub soft: u8, pub subtle: u8, pub tint: u8, pub muted: u8, pub line: u8, pub dim: u8, pub strong: u8, pub active: u8, pub heavy: u8, pub solid: u8 }
+pub struct AlphaTokens { pub faint: u8, pub ghost: u8, pub soft: u8, pub subtle: u8, pub tint: u8, pub muted: u8, pub line: u8, pub dim: u8, pub strong: u8, pub active: u8, pub heavy: u8, pub scrim: u8, pub solid: u8 }
 #[cfg(feature = "design-mode")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShadowTokens { pub offset: f32, pub alpha: u8, pub spread: f32, pub gradient: [u8; 3] }
@@ -313,7 +313,7 @@ impl Default for DesignTokens {
             spacing: SpacingTokens { xs: 4.0, xs_mid: 6.0, sm: 8.0, md: 12.0, lg: 16.0, xl: 20.0, xxl: 24.0, xxxl: 32.0 },
             radius: RadiusTokens { xs: 2.0, sm: 4.0, md: 6.0, lg: 12.0 },
             stroke: StrokeTokens { hair: 0.3, thin: 0.5, medium: 0.8, std: 1.0, bold: 1.5, thick: 2.0, heavy: 2.5, xheavy: 5.0 },
-            alpha: AlphaTokens { faint: 10, ghost: 15, soft: 20, subtle: 40, tint: 48, muted: 60, line: 80, dim: 60, strong: 80, active: 100, heavy: 120, solid: 200 },
+            alpha: AlphaTokens { faint: 10, ghost: 15, soft: 20, subtle: 40, tint: 48, muted: 60, line: 80, dim: 60, strong: 80, active: 100, heavy: 120, scrim: 140, solid: 200 },
             shadow: ShadowTokens { offset: 2.0, alpha: 60, spread: 4.0, gradient: [20, 12, 4] },
             toolbar: ToolbarTokens { height: 36.0, height_compact: 28.0, btn_min_height: 24.0, btn_padding_x: 7.0, right_controls_width: 150.0 },
             panel: PanelTokens { margin_x: 10.0, margin_top: 10.0, margin_bottom: 8.0, compact_margin_x: 8.0, compact_margin_top: 8.0, compact_margin_bottom: 6.0, width_sm: 240.0, width_md: 260.0, width_default: 280.0, width_lg: 300.0, width_xl: 320.0, order_width_compact: 230.0, order_width_advanced: 300.0, tooltip_width_sm: 160.0, tooltip_width_md: 220.0, content_width_lg: 520.0, content_width_xl: 680.0 },

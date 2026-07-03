@@ -512,7 +512,12 @@ pub(crate) const fn element_overlay(bg: egui::Color32, a: u8) -> egui::Color32 {
 ///
 /// Do NOT add new runtime call sites against this. Use `get_theme(idx)` or
 /// `get_all_themes()` instead, which read the live store.
-#[cfg(test)]
+///
+/// Also compiled under `design-mode`: the design inspector's "Reset all to
+/// defaults" and save-to-source features treat this const as the default-theme
+/// ground truth (it edits the `THEMES_BEGIN/END` markers below). Kept out of
+/// normal release builds.
+#[cfg(any(test, feature = "design-mode"))]
 pub(crate) const THEMES: &[Theme] = &[
     Theme { name: "Midnight",    bg: rgb(14,16,21),   bull: rgb(62,120,180),  bear: rgb(180,65,58),   dim: rgb(100,105,115), toolbar_bg: rgb(10,12,17),  toolbar_border: hairline_border(rgb(14,16,21)), border_variant: hairline_border_variant(rgb(14,16,21)),  accent: rgb(62,120,180),  text: rgb(220,220,230),  warn: rgb(255,191,  0), notification_red: rgb(231, 76, 60), gold: rgb(255,193, 37), shadow_color: rgb(0,0,0),       overlay_text: rgb(240,240,250), rrg_leading: rgb(56,203,137), rrg_improving: rgb(74,158,255), rrg_weakening: rgb(230,200,50), rrg_lagging: rgb(224,82,82), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(3,5,9,12), text_muted: rgb(180,180,195), hud_bg: rgba_pre(12,12,18,230), hud_border: rgb(50,52,64), },
     Theme { name: "Nord",        bg: rgb(38,44,56),   bull: rgb(163,190,140), bear: rgb(191,97,106),  dim: rgb(129,161,193), toolbar_bg: rgb(32,38,50),  toolbar_border: hairline_border(rgb(38,44,56)), border_variant: hairline_border_variant(rgb(38,44,56)),  accent: rgb(136,192,208), text: rgb(220,220,230),  warn: rgb(235,203,139), notification_red: rgb(191, 97,106), gold: rgb(235,203,139), shadow_color: rgb(0,0,0),       overlay_text: rgb(236,239,244), rrg_leading: rgb(163,190,140), rrg_improving: rgb(136,192,208), rrg_weakening: rgb(235,203,139), rrg_lagging: rgb(191,97,106), cmd_palette: CMD_PALETTE_DEFAULT, pinned_row_tint: rgba_pre(5,7,9,14), text_muted: rgb(175,180,190), hud_bg: rgba_pre(30,34,46,230), hud_border: rgb(60,66,80), },

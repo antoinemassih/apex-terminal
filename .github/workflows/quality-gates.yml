@@ -85,18 +85,15 @@ jobs:
           - name: no-default-features (legacy egui render path)
             flags: "--no-default-features"
             allow_fail: false
-          # design-mode is KNOWN-BROKEN as of the WS-B audit: this very gate
-          # caught that design_inspector.rs (3,318 LOC, non-default feature) has
-          # bit-rotted against the current token schema — removed ColorScheme
-          # `accent_alts`, removed AlphaTokens `scrim`, `THEMES` visibility, and
-          # a toml linkage error (~8 errors). Fixing it is a "finish-or-delete
-          # the design-mode feature" decision tracked as a follow-up; until then
-          # this leg is non-blocking so it reports the rot without wedging every
-          # PR. Flip allow_fail to false once repaired. (Mirrors the
-          # continue-on-error idiom in connectivity-ci.yml.)
-          - name: design-mode (design_inspector, non-default) [KNOWN-BROKEN]
+          # design-mode was bit-rotted (caught by this very gate on WS-B) and
+          # REPAIRED in the same workstream: the toml optional dep was misfiled
+          # under the macOS-only target section (so dep:toml never activated on
+          # Windows/Linux); THEMES is now compiled under design-mode too; the
+          # obsolete accent_alts editor was removed; AlphaTokens.scrim restored.
+          # Now blocking again — a future regression must fail CI.
+          - name: design-mode (design_inspector, non-default)
             flags: "--features design-mode"
-            allow_fail: true
+            allow_fail: false
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust (stable)

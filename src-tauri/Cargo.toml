@@ -22,6 +22,11 @@ path = "src/playground_main.rs"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Design mode (optional) — hot-reloadable design tokens (TOML save/load). Must be
+# platform-agnostic: it was previously misfiled under the macOS-only target
+# section, so `design-mode`'s `dep:toml` silently didn't activate on Windows/
+# Linux and the feature failed to compile there (audit WS-B build-matrix catch).
+toml = { version = "1", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "native-tls", "gzip"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net", "io-util", "time"] }
 tokio-tungstenite = "0.24"
@@ -89,9 +94,6 @@ objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage", "NSResponder"] }
 objc2-foundation = { version = "0.3", features = ["NSData", "NSString"] }
 libloading = "0.8"
-
-# Design mode (optional) — hot-reloadable design tokens
-toml = { version = "0.8", optional = true }
 
 [features]
 default = ["gpu_chart_v2"]
