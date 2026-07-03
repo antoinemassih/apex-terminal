@@ -331,8 +331,8 @@ impl Broker for LiveBroker {
     #[tracing::instrument(skip(self, args), level = "debug", fields(symbol = %args.symbol, side = %args.side, qty = args.qty, client_order_id = %args.client_order_id))]
     fn submit(&self, args: &SubmitArgs) -> Result<String, String> {
         Self::refuse_if_paper("submit")?;
-        let client = reqwest::blocking::Client::new();
-        let con_id = Self::resolve_con_id(&client, args.symbol)
+        let client = crate::foundation::http::blocking_client();
+        let con_id = Self::resolve_con_id(client, args.symbol)
             .ok_or_else(|| format!("conId lookup failed for {}", args.symbol))?;
 
         let order_type = match args.order_type_idx {
@@ -379,7 +379,7 @@ impl Broker for LiveBroker {
 
     #[tracing::instrument(skip(self), level = "debug", fields(backend_id))]
     fn cancel(&self, backend_id: &str, _client_order_id: &str) -> Result<(), String> {
-        let client = reqwest::blocking::Client::new();
+        let client = crate::foundation::http::blocking_client();
         client.delete(format!("{}/orders/{}", APEXIB_URL, backend_id))
             .timeout(std::time::Duration::from_secs(5)).send()
             .map(|_| ())
@@ -388,7 +388,7 @@ impl Broker for LiveBroker {
 
     #[tracing::instrument(skip(self, args), level = "debug", fields(backend_id = %args.backend_id, new_price = ?args.new_price, kind = ?args.kind, version = args.modify_version))]
     fn modify(&self, args: &ModifyArgs) -> Result<(), String> {
-        let client = reqwest::blocking::Client::new();
+        let client = crate::foundation::http::blocking_client();
         let np = args.new_price.to_f32();
         let body = match args.kind {
             ModifyKind::Stop => serde_json::json!({
@@ -411,7 +411,7 @@ impl Broker for LiveBroker {
         &self,
         client_order_id: &str,
     ) -> Result<Option<BrokerOrderState>, ApiError> {
-        let client = reqwest::blocking::Client::new();
+        let client = crate::foundation::http::blocking_client();
         let url = format!("{}/orders/by-client-id/{}", APEXIB_URL, client_order_id);
         // Wave 12b: transport failures bubble up as `ApiError::Network`. The
         // orphan-recovery caller treats `Err` as "leave it alone" so a flaky
@@ -461,7 +461,7 @@ impl Broker for LiveBroker {
     }
 
     fn cancel_all(&self, symbol: &str) -> Result<usize, ApiError> {
-        let client = reqwest::blocking::Client::new();
+        let client = crate::foundation::http::blocking_client();
         // Wave 12b: lifted from `OrderManager::cancel_all`. The bulk
         // endpoint is `DELETE /orders` with an optional `?symbol=` filter.
         // Backend doesn't currently echo a count, so we return 0 — callers
@@ -496,7 +496,7 @@ impl Broker for LiveBroker {
     }
 
     fn resolve_contract(&self, symbol: &str) -> Result<ContractDetails, ApiError> {
-        let client = reqwest::blocking::Client::new();
+        let client = crate::foundation::http::blocking_client();
         // Wave 12b: lifted from `OrderManager::check_margin`. Currently only
         // calls the `/contract/{symbol}` endpoint — margin numbers live on
         // `/orders/0/margin` and are fetched by the caller separately for now.
@@ -531,21 +531,21 @@ impl Broker for LiveBroker {
     }
 
     fn kill(&self) -> Result<(), String> {
-        let client = reqwest::blocking::Client::new();
+        let client = crate::foundation::http::blocking_client();
         client.post(format!("{}/risk/kill", APEXIB_URL))
             .timeout(std::time::Duration::from_secs(10)).send()
             .map(|_| ())
             .map_err(|e| format!("kill http: {e}"))
     }
     fn halt(&self) -> Result<(), String> {
-        let client = reqwest::blocking::Client::new();
+        let client = crate::foundation::http::blocking_client();
         client.post(format!("{}/risk/halt", APEXIB_URL))
             .timeout(std::time::Duration::from_secs(5)).send()
             .map(|_| ())
             .map_err(|e| format!("halt http: {e}"))
     }
     fn resume(&self) -> Result<(), String> {
-        let client = reqwest::blocking::Client::new();
+        let client = crate::foundation::http::blocking_client();
         client.post(format!("{}/risk/resume", APEXIB_URL))
             .timeout(std::time::Duration::from_secs(5)).send()
             .map(|_| ())
@@ -557,8 +557,8 @@ impl Broker for LiveBroker {
     #[tracing::instrument(skip(self, args), level = "debug", fields(symbol = %args.symbol, qty = args.qty, tp = args.take_profit_price, sl = args.stop_loss_price))]
     fn submit_bracket(&self, args: &BracketSubmitArgs) -> Result<BracketSubmitResponse, String> {
         Self::refuse_if_paper("submit_bracket")?;
-        let client = reqwest::blocking::Client::new();
-        let con_id = Self::resolve_con_id(&client, &args.symbol)
+        let client = crate::foundation::http::blocking_client();
+        let con_id = Self::resolve_con_id(client, &args.symbol)
             .ok_or_else(|| format!("[bracket] no conId for {}", args.symbol))?;
 
         let mut entry_leg = serde_json::json!({"orderType": args.entry_order_type});
@@ -598,10 +598,10 @@ impl Broker for LiveBroker {
     #[tracing::instrument(skip(self, args), level = "debug", fields(oca_group = %args.oca_group, n_legs = args.legs.len()))]
     fn submit_oco(&self, args: &OcoSubmitArgs) -> Result<OcoSubmitResponse, String> {
         Self::refuse_if_paper("submit_oco")?;
-        let client = reqwest::blocking::Client::new();
+        let client = crate::foundation::http::blocking_client();
         let mut oco_orders = Vec::new();
         for leg in &args.legs {
-            let con_id = match Self::resolve_con_id(&client, &leg.symbol) {
+            let con_id = match Self::resolve_con_id(client, &leg.symbol) {
                 Some(c) => c, None => continue,
             };
             let mut order_json = serde_json::json!({
@@ -642,8 +642,8 @@ impl Broker for LiveBroker {
     #[tracing::instrument(skip(self, args), level = "debug", fields(symbol = %args.symbol, qty = args.qty, n_conds = args.conditions.len()))]
     fn submit_conditional(&self, args: &ConditionalSubmitArgs) -> Result<String, String> {
         Self::refuse_if_paper("submit_conditional")?;
-        let client = reqwest::blocking::Client::new();
-        let con_id = Self::resolve_con_id(&client, &args.symbol)
+        let client = crate::foundation::http::blocking_client();
+        let con_id = Self::resolve_con_id(client, &args.symbol)
             .ok_or_else(|| format!("[conditional] no conId for {}", args.symbol))?;
         let conds_json: Vec<serde_json::Value> = args.conditions.iter().map(|c| {
             serde_json::json!({
@@ -679,7 +679,7 @@ impl Broker for LiveBroker {
     #[tracing::instrument(skip(self, args), level = "debug", fields(underlying = %args.underlying, strike = args.strike, qty = args.qty))]
     fn submit_options_trigger(&self, args: &OptionsTriggerArgs) -> Result<OptionsTriggerResponse, String> {
         Self::refuse_if_paper("submit_options_trigger")?;
-        let client = reqwest::blocking::Client::new();
+        let client = crate::foundation::http::blocking_client();
         let body = serde_json::json!({
             "underlying": args.underlying,
             "optionType": args.option_type,
@@ -707,7 +707,7 @@ impl Broker for LiveBroker {
     #[tracing::instrument(skip(self, args), level = "debug", fields(symbol = %args.symbol, n_legs = args.legs.len(), qty = args.qty))]
     fn submit_combo(&self, args: &ComboSubmitArgs) -> Result<String, String> {
         Self::refuse_if_paper("submit_combo")?;
-        let client = reqwest::blocking::Client::new();
+        let client = crate::foundation::http::blocking_client();
         let legs_json: Vec<serde_json::Value> = args.legs.iter().map(|l| {
             serde_json::json!({
                 "conId": l.con_id,

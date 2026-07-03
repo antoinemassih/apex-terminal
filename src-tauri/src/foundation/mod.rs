@@ -1,6 +1,7 @@
 pub mod shortcuts;
 pub mod guard;
 pub mod time;
+pub mod http;
 pub mod monitoring;
 pub mod frame_profiler;
 pub mod perf_log;
