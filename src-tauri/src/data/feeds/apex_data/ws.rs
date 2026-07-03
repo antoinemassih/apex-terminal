@@ -682,12 +682,12 @@ where
     // `/api/ws` (or similar) — replace the path with `/api/replay/:id/stream`.
     let base = apex_ws_url();
     let url = build_replay_url(&base, &replay_id);
-    eprintln!("[apex_data.ws.replay] connect {url}");
+    report(ErrorLevel::Info, "apex_data.ws.replay", "replay_connect", format!("connect {url}"));
 
     let mut req = match url.clone().into_client_request() {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("[apex_data.ws.replay] bad url: {e}");
+            report(ErrorLevel::Error, "apex_data.ws.replay", "replay_bad_url", format!("bad url: {e}"));
             on_frame(super::types::ReplayEvent::new_error(format!("bad url: {e}")));
             return;
         }
@@ -724,18 +724,18 @@ where
     let ws = match conn_result {
         Ok(ws) => ws,
         Err(e) => {
-            eprintln!("[apex_data.ws.replay] connect failed: {e}");
+            report(ErrorLevel::Warn, "apex_data.ws.replay", "replay_connect_failed", format!("connect failed: {e}"));
             on_frame(super::types::ReplayEvent::new_error(format!("connect: {e}")));
             return;
         }
     };
-    eprintln!("[apex_data.ws.replay] connected ({replay_id})");
+    report(ErrorLevel::Info, "apex_data.ws.replay", "replay_connected", format!("connected ({replay_id})"));
 
     let (_tx_ws, mut rx_ws) = ws.split();
 
     loop {
         if stop.load(std::sync::atomic::Ordering::SeqCst) {
-            eprintln!("[apex_data.ws.replay] stop requested ({replay_id})");
+            report(ErrorLevel::Info, "apex_data.ws.replay", "replay_stop", format!("stop requested ({replay_id})"));
             break;
         }
         // Bound the recv so the stop flag is observed within ~250ms even
@@ -744,21 +744,21 @@ where
         let next = tokio::time::timeout(Duration::from_millis(250), rx_ws.next()).await;
         match next {
             Err(_) => continue,                                   // timeout — re-check stop flag
-            Ok(None) => { eprintln!("[apex_data.ws.replay] stream ended"); break; }
+            Ok(None) => { report(ErrorLevel::Info, "apex_data.ws.replay", "replay_stream_end", "stream ended"); break; }
             Ok(Some(Err(e))) => {
-                eprintln!("[apex_data.ws.replay] recv error: {e}");
+                report(ErrorLevel::Warn, "apex_data.ws.replay", "replay_recv_error", format!("recv error: {e}"));
                 on_frame(super::types::ReplayEvent::new_error(format!("recv: {e}")));
                 break;
             }
             Ok(Some(Ok(msg))) => match msg {
-                Message::Close(_) => { eprintln!("[apex_data.ws.replay] close"); break; }
+                Message::Close(_) => { report(ErrorLevel::Info, "apex_data.ws.replay", "replay_close", "close"); break; }
                 Message::Binary(bytes) => handle_replay_bytes(&bytes, &on_frame),
                 Message::Text(text)    => handle_replay_text(&text, &on_frame),
                 _ => {}
             },
         }
     }
-    eprintln!("[apex_data.ws.replay] closed ({replay_id})");
+    report(ErrorLevel::Info, "apex_data.ws.replay", "replay_closed", format!("closed ({replay_id})"));
 }
 
 /// Build the replay stream URL by reusing the live WS host:port and swapping
@@ -785,7 +785,7 @@ fn handle_replay_text<F>(text: &str, on_frame: &Arc<F>)
 where F: Fn(super::types::ReplayEvent) + Send + Sync + 'static {
     match serde_json::from_str::<InEnvelope>(text) {
         Ok(env) => dispatch_replay(env, on_frame),
-        Err(e) => eprintln!("[apex_data.ws.replay] bad json frame: {e}"),
+        Err(e) => report(ErrorLevel::Warn, "apex_data.ws.replay", "replay_bad_json", format!("bad json frame: {e}")),
     }
 }
 
@@ -799,7 +799,7 @@ where F: Fn(super::types::ReplayEvent) + Send + Sync + 'static {
                     dispatch_replay(env, on_frame); return;
                 }
             }
-            eprintln!("[apex_data.ws.replay] bad msgpack frame");
+            report(ErrorLevel::Warn, "apex_data.ws.replay", "replay_bad_msgpack", "bad msgpack frame");
         }
     }
 }

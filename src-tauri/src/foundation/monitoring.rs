@@ -961,7 +961,30 @@ fn format_prometheus(snap: &Snapshot) -> String {
     // Uptime
     metric!("apex_uptime_seconds", "Application uptime", "counter", snap.uptime_secs);
 
+    // F1 (audit): reported-error counters off the errors_sink chokepoint. One
+    // series per (level, source, code) — this is where broker submit/reject
+    // failures (source="order_manager"), feed disconnects/parse errors, cache
+    // errors, and every other reported fault become alertable. Example rule:
+    //   rate(apex_errors_total{source="order_manager",level="error"}[5m]) > 0
+    let error_counts = crate::data::connectivity::errors_sink::counts_snapshot();
+    if !error_counts.is_empty() {
+        o.push_str("# HELP apex_errors_total Reported errors by level/source/code (errors_sink)\n");
+        o.push_str("# TYPE apex_errors_total counter\n");
+        for (level, source, code, n) in &error_counts {
+            o.push_str(&format!(
+                "apex_errors_total{{level=\"{}\",source=\"{}\",code=\"{}\"}} {}\n",
+                level, prom_escape(source), prom_escape(code), n
+            ));
+        }
+    }
+
     o
+}
+
+/// Escape a Prometheus label value (backslash, double-quote, newline) so a
+/// stray character in a source/code string can't corrupt the exposition format.
+fn prom_escape(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', " ")
 }
 
 /// Format jank events as JSON for the /jank endpoint.

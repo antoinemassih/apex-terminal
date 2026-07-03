@@ -13,7 +13,7 @@
 //! Draining returns and clears the current buffer, so successive calls see
 //! only new errors.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 use std::time::SystemTime;
 
@@ -41,6 +41,35 @@ fn buffer() -> &'static Mutex<VecDeque<ReportedError>> {
     B.get_or_init(|| Mutex::new(VecDeque::with_capacity(CAP)))
 }
 
+/// Monotonic per-(level, source, code) counters (audit F1). Every `report()`
+/// bumps one — so broker rejects (source="order_manager"), feed failures
+/// (source="apex_data"/…), cache errors, etc. all become alertable Prometheus
+/// series via `counts_snapshot()` → `monitoring::format_prometheus`. Cardinality
+/// is bounded (a fixed vocabulary of source/code pairs), unlike the ring buffer
+/// which is drained; these counters only ever increase, which is what
+/// rate()/increase() alerting needs.
+fn counters() -> &'static Mutex<HashMap<(&'static str, String, String), u64>> {
+    static C: std::sync::OnceLock<Mutex<HashMap<(&'static str, String, String), u64>>> = std::sync::OnceLock::new();
+    C.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn level_str(level: ErrorLevel) -> &'static str {
+    match level {
+        ErrorLevel::Info => "info",
+        ErrorLevel::Warn => "warn",
+        ErrorLevel::Error => "error",
+        ErrorLevel::Critical => "critical",
+    }
+}
+
+/// Snapshot of the (level, source, code, count) counters for Prometheus export.
+pub fn counts_snapshot() -> Vec<(&'static str, String, String, u64)> {
+    counters()
+        .lock()
+        .map(|g| g.iter().map(|((l, s, c), n)| (*l, s.clone(), c.clone(), *n)).collect())
+        .unwrap_or_default()
+}
+
 /// Push an error onto the global sink.
 ///
 /// Side effects: emits a tracing event and (for level >= Warn) routes a
@@ -62,6 +91,15 @@ pub fn report(level: ErrorLevel, source: &str, code: &str, message: impl Into<St
             g.pop_front();
         }
         g.push_back(rec);
+    }
+
+    // F1: bump the monotonic Prometheus counter for this (level, source, code)
+    // BEFORE the Info early-return below, so info-level feed reconnects are
+    // observable too. `source`/`code` are borrowed &str here; only owned on the
+    // first sighting of a new pair.
+    if let Ok(mut c) = counters().lock() {
+        let key = (level_str(level), source.to_string(), code.to_string());
+        *c.entry(key).or_insert(0) += 1;
     }
 
     // Mirror to tracing so file/stderr logs capture the same event.
@@ -107,6 +145,37 @@ mod tests {
     fn lock_tests() -> std::sync::MutexGuard<'static, ()> {
         static M: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
         M.get_or_init(|| Mutex::new(())).lock().unwrap()
+    }
+
+    #[test]
+    fn counters_increment_per_level_source_code() {
+        let _g = lock_tests();
+        // Unique code so this test is independent of the global monotonic map.
+        let code = "f1_counter_probe";
+        let before = counts_snapshot().into_iter()
+            .find(|(l, s, c, _)| *l == "warn" && s == "feedX" && c == code)
+            .map(|(_, _, _, n)| n).unwrap_or(0);
+        report(ErrorLevel::Warn, "feedX", code, "boom");
+        report(ErrorLevel::Warn, "feedX", code, "boom again");
+        let after = counts_snapshot().into_iter()
+            .find(|(l, s, c, _)| *l == "warn" && s == "feedX" && c == code)
+            .map(|(_, _, _, n)| n).unwrap_or(0);
+        assert_eq!(after - before, 2, "counter must bump once per report()");
+    }
+
+    #[test]
+    fn info_level_is_counted_even_though_silent() {
+        let _g = lock_tests();
+        // Info returns before the toast but must still be counted (F1).
+        let code = "f1_info_probe";
+        let before = counts_snapshot().into_iter()
+            .find(|(l, _, c, _)| *l == "info" && c == code)
+            .map(|(_, _, _, n)| n).unwrap_or(0);
+        report(ErrorLevel::Info, "srcInfo", code, "silent but counted");
+        let after = counts_snapshot().into_iter()
+            .find(|(l, _, c, _)| *l == "info" && c == code)
+            .map(|(_, _, _, n)| n).unwrap_or(0);
+        assert_eq!(after - before, 1);
     }
 
     #[test]
