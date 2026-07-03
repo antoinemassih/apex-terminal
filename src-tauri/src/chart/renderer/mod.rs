@@ -13,6 +13,7 @@
 pub mod gpu;
 pub(crate) mod playbook_store;  // WS-E E2: playbook persistence/sharing extracted from gpu.rs
 pub(crate) mod theme_registry;  // WS-E E2: live theme store extracted from gpu.rs
+pub(crate) mod pane_ops;        // WS-E E2: pane layout OPS from gpu.rs (distinct from pane_layout TYPE module below)
 pub mod bug_anchor;
 #[cfg(feature = "design-mode")]
 pub mod inspector_window;
