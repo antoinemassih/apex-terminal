@@ -27,10 +27,7 @@ static STARTED: OnceLock<()> = OnceLock::new();
 static SINCE_MS: AtomicI64 = AtomicI64::new(0);
 
 fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+    crate::foundation::time::now_ms()
 }
 
 /// Which interception events to surface as badges (default: the actionable ones).

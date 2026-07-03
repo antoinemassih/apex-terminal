@@ -31,10 +31,7 @@ fn active() -> &'static Mutex<Option<(String, String)>> {
 }
 
 fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+    crate::foundation::time::now_ms()
 }
 
 /// Point the live-drawing trigger at the active chart symbol/timeframe. Cheap;

@@ -3,9 +3,10 @@
 
 pub mod order_manager;
 
-// Wave 3 lifecycle modules — declared (not all wired into the live order
-// path yet) so the journal/WAL is reachable from UI panels.
-#[allow(dead_code)] pub(crate) mod types;
+// Wave 3 lifecycle modules — the journal/WAL is reachable from UI panels and
+// the live submit/recover path (journal::append). The dead `types` module (a
+// 4th duplicate of OrderSide/OrderStatus/OrderState — the live copies live in
+// mod.rs + order_manager.rs) was deleted in the WS-C migration cleanup.
 #[allow(dead_code)] pub(crate) mod journal;
 pub(crate) mod snapshot;
 pub(crate) mod inflight;

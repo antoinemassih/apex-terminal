@@ -32,10 +32,7 @@ fn reconnect_flag() -> &'static Arc<AtomicBool> {
 /// Epoch milliseconds. Shared with the renderer's live-vs-mock gate so the
 /// staleness window uses one clock.
 pub fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+    crate::foundation::time::now_ms()
 }
 
 /// Point the DOM feed at `symbol` (the chart symbol). Trips a reconnect only if

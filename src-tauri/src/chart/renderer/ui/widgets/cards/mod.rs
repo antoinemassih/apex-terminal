@@ -13,25 +13,13 @@
 
 #![allow(dead_code, unused_imports)]
 
-pub mod earnings_card { pub use crate::chart::renderer::ui::lists::cards::earnings_card::*; }
-pub mod event_card { pub use crate::chart::renderer::ui::lists::cards::event_card::*; }
+// WS-C cleanup: the Wave-5 façade re-exports (earnings/event/news/play/
+// playbook/signal/stat/trade) were deleted — never adopted, 0 call sites. Only
+// `metric_card` survives (used by spread_panel) plus the base `Card` builder
+// below (used by script_panel).
 pub mod metric_card { pub use crate::chart::renderer::ui::lists::cards::metric_card::*; }
-pub mod news_card { pub use crate::chart::renderer::ui::lists::cards::news_card::*; }
-pub mod play_card { pub use crate::chart::renderer::ui::lists::cards::play_card::*; }
-pub mod playbook_card { pub use crate::chart::renderer::ui::lists::cards::playbook_card::*; }
-pub mod signal_card { pub use crate::chart::renderer::ui::lists::cards::signal_card::*; }
-pub mod stat_card { pub use crate::chart::renderer::ui::lists::cards::stat_card::*; }
-pub mod trade_card { pub use crate::chart::renderer::ui::lists::cards::trade_card::*; }
 
-pub use earnings_card::EarningsCard;
-pub use event_card::EventCard;
 pub use metric_card::MetricCard;
-pub use news_card::NewsCard;
-pub use play_card::{PlayCard, PlayCardResponse};
-pub use playbook_card::PlaybookCard;
-pub use signal_card::SignalCard;
-pub use stat_card::StatCard;
-pub use trade_card::TradeCard;
 
 use egui::{Color32, RichText, Stroke, Ui};
 use super::super::style::*;

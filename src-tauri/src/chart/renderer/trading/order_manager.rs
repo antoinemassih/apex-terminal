@@ -3265,7 +3265,7 @@ fn reconcile_with_ib_inner(mgr: &mut OrderManager, ib_orders: &[super::IbOrder])
 }
 
 fn epoch_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
+    crate::foundation::time::now_ms_u64()
 }
 
 /// Return the current calendar day as days-since-Unix-epoch (UTC).
