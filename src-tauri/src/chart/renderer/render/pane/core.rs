@@ -2125,9 +2125,9 @@ fn render_chart_pane(
                 let norm = delta / max_delta;
                 let bar_h = norm.abs() * vol_h / 2.0;
                 let (color, bar_top) = if delta >= 0.0 {
-                    (egui::Color32::from_rgba_unmultiplied(46, 204, 113, 140), zero_y - bar_h)
+                    (color_alpha(t.bull, 140), zero_y - bar_h)
                 } else {
-                    (egui::Color32::from_rgba_unmultiplied(231, 76, 60, 140), zero_y)
+                    (color_alpha(t.bear, 140), zero_y)
                 };
                 let bw = (bs * 0.7).max(1.0);
                 painter.rect_filled(
@@ -2968,9 +2968,9 @@ fn render_chart_pane(
                 let bullish = v0a > v0b;
                 let alpha = 15 + k as u8 * 5;
                 let color = if bullish {
-                    egui::Color32::from_rgba_unmultiplied(46, 204, 113, alpha)
+                    color_alpha(t.bull, alpha)
                 } else {
-                    egui::Color32::from_rgba_unmultiplied(231, 76, 60, alpha)
+                    color_alpha(t.bear, alpha)
                 };
                 let pts = vec![
                     egui::pos2(bx(i as f32), py(v0a)), egui::pos2(bx((i+1) as f32), py(v1a)),
@@ -3184,7 +3184,7 @@ fn render_chart_pane(
         // HVL — Highest Volume Level (gold diamond marker)
         let hvl_y = py(chart.gamma_hvl);
         if hvl_y.is_finite() && hvl_y > rect.top() + pt && hvl_y < rect.top() + pt + ch {
-            let gold = egui::Color32::from_rgb(255, 193, 37);
+            let gold = t.gold;
             let sz = 6.0;
             let diamond = vec![
                 egui::pos2(rect.left() + cw - 16.0, hvl_y - sz),
@@ -3933,9 +3933,9 @@ fn render_chart_pane(
             if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
             let alpha = (40 + (*touches as u8).min(6) * 15).min(120);
             let col = if *is_res {
-                egui::Color32::from_rgba_unmultiplied(231, 76, 60, alpha)
+                color_alpha(t.bear, alpha)
             } else {
-                egui::Color32::from_rgba_unmultiplied(46, 204, 113, alpha)
+                color_alpha(t.bull, alpha)
             };
             dashed_line(&painter, egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y),
                 egui::Stroke::new(0.5, col), LineStyle::Dotted);
@@ -4037,8 +4037,8 @@ fn render_chart_pane(
                     let alpha = if is_boundary { 150 } else if is_key { 80 } else { 45 };
                     let label_alpha = if is_boundary { 230 } else if is_key { 180 } else { 120 };
                     let lw = if is_boundary { 1.5 } else { 0.5 };
-                    let line_col = egui::Color32::from_rgba_unmultiplied(255, 193, 37, alpha);
-                    let label_col = egui::Color32::from_rgba_unmultiplied(255, 193, 37, label_alpha);
+                    let line_col = color_alpha(t.gold, alpha);
+                    let label_col = color_alpha(t.gold, label_alpha);
                     if is_boundary {
                         // Solid line for 0% and 100%
                         painter.line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y)],
@@ -4279,9 +4279,9 @@ fn render_chart_pane(
                     if sa0.is_nan() || sb0.is_nan() || sa1.is_nan() || sb1.is_nan() { continue; }
                     let bullish = sa0 > sb0;
                     let cloud_col = if bullish {
-                        egui::Color32::from_rgba_unmultiplied(46, 204, 113, 22)
+                        color_alpha(t.bull, 22)
                     } else {
-                        egui::Color32::from_rgba_unmultiplied(231, 76, 60, 22)
+                        color_alpha(t.bear, 22)
                     };
                     let pts = vec![egui::pos2(bx(i as f32), py(sa0)), egui::pos2(bx((i+1) as f32), py(sa1)),
                         egui::pos2(bx((i+1) as f32), py(sb1)), egui::pos2(bx(i as f32), py(sb0))];
@@ -6086,7 +6086,7 @@ fn render_chart_pane(
             };
             if let Some(bp) = bell_pos {
                 if bp.x.is_finite() && bp.y.is_finite() && bp.x.abs() < 50000.0 && bp.y.abs() < 50000.0 {
-                    painter.circle_filled(bp + egui::vec2(-8.0, -8.0), 3.0, egui::Color32::from_rgb(255, 193, 37));
+                    painter.circle_filled(bp + egui::vec2(-8.0, -8.0), 3.0, t.gold);
                 }
             }
         }
@@ -6209,9 +6209,9 @@ fn render_chart_pane(
                             let dist = ((v0 + v1) / 2.0 - 50.0).abs() / 50.0;
                             let alpha = (dist * 40.0).min(30.0) as u8;
                             let fill_col = if above {
-                                egui::Color32::from_rgba_unmultiplied(46, 204, 113, alpha)
+                                color_alpha(t.bull, alpha)
                             } else {
-                                egui::Color32::from_rgba_unmultiplied(231, 76, 60, alpha)
+                                color_alpha(t.bear, alpha)
                             };
                             let pts = vec![egui::pos2(x0, y0), egui::pos2(x1, y1), egui::pos2(x1, fifty_y), egui::pos2(x0, fifty_y)];
                             painter.add(egui::Shape::convex_polygon(pts, fill_col, egui::Stroke::NONE));
@@ -6276,11 +6276,11 @@ fn render_chart_pane(
                             let y = osc_y(h);
                             let bw = (bs * 0.4).max(1.0);
                             let c = if h >= 0.0 {
-                                if h >= prev_h { egui::Color32::from_rgba_unmultiplied(46, 204, 113, 200) }
-                                else { egui::Color32::from_rgba_unmultiplied(46, 204, 113, 80) }
+                                if h >= prev_h { color_alpha(t.bull, 200) }
+                                else { color_alpha(t.bull, 80) }
                             } else {
-                                if h <= prev_h { egui::Color32::from_rgba_unmultiplied(231, 76, 60, 200) }
-                                else { egui::Color32::from_rgba_unmultiplied(231, 76, 60, 80) }
+                                if h <= prev_h { color_alpha(t.bear, 200) }
+                                else { color_alpha(t.bear, 80) }
                             };
                             let top = y.min(zero_y);
                             let bot = y.max(zero_y);
@@ -6481,9 +6481,9 @@ fn render_chart_pane(
                 let y1 = cvd_py(chart.cvd_data[i+1]);
                 let rising = chart.cvd_data[i+1] > chart.cvd_data[i];
                 let color = if rising {
-                    egui::Color32::from_rgba_unmultiplied(46, 204, 113, 200)
+                    color_alpha(t.bull, 200)
                 } else {
-                    egui::Color32::from_rgba_unmultiplied(231, 76, 60, 200)
+                    color_alpha(t.bear, 200)
                 };
                 painter.line_segment([egui::pos2(bx(i as f32), y0), egui::pos2(bx((i+1) as f32), y1)],
                     egui::Stroke::new(1.5, color));
@@ -7095,9 +7095,9 @@ fn render_chart_pane(
             if current_y.is_finite() {
                 let profit = (is_long && last > entry_price) || (!is_long && last < entry_price);
                 let fill_col = if profit {
-                    egui::Color32::from_rgba_unmultiplied(46, 204, 113, 15)
+                    color_alpha(t.bull, 15)
                 } else {
-                    egui::Color32::from_rgba_unmultiplied(231, 76, 60, 15)
+                    color_alpha(t.bear, 15)
                 };
                 painter.rect_filled(egui::Rect::from_min_max(
                     egui::pos2(rect.left(), entry_y.min(current_y)),
