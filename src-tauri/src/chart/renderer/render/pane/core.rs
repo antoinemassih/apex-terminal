@@ -2249,39 +2249,8 @@ fn render_chart_pane(
         }
     }
 
-    if chart.vp.mode == VolumeProfileMode::Classic {
-        if let Some(ref vp) = chart.vp.data {
-            let max_bar_width = cw * 0.25;
-            for level in &vp.levels {
-                let y = py(level.price);
-                let h = (py(level.price - vp.price_step / 2.0) - py(level.price + vp.price_step / 2.0)).abs().max(1.0);
-                if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
-                let norm = if vp.max_vol > 0.0 { level.total_vol / vp.max_vol } else { 0.0 };
-                let bar_w = norm * max_bar_width;
-                let buy_w = bar_w * (level.buy_vol / level.total_vol.max(0.001));
-                let sell_w = bar_w - buy_w;
-                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(rect.left(), y - h/2.0), egui::vec2(sell_w, h)),
-                    0.0, color_alpha(t.bear, 40));
-                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(rect.left() + sell_w, y - h/2.0), egui::vec2(buy_w, h)),
-                    0.0, color_alpha(t.bull, 40));
-                // Dark-pool overlay: purple sub-bar from the left edge sized to
-                // the off-exchange (FINRA TRF) share of this level's volume, so
-                // you can see how much of each price node traded off-exchange.
-                // Only present on the real VAP profile (0 on the bar-derived one).
-                if level.off_exchange > 0.0 && vp.max_vol > 0.0 {
-                    let dp_w = (level.off_exchange / vp.max_vol) * max_bar_width;
-                    painter.rect_filled(
-                        egui::Rect::from_min_size(egui::pos2(rect.left(), y - h/2.0), egui::vec2(dp_w, h)),
-                        0.0, egui::Color32::from_rgba_unmultiplied(155, 89, 182, 95));
-                }
-            }
-            let poc_y = py(vp.poc_price);
-            if poc_y.is_finite() {
-                painter.line_segment([egui::pos2(rect.left(), poc_y), egui::pos2(rect.left()+cw, poc_y)],
-                    egui::Stroke::new(1.0, color_alpha(t.gold, 180)));
-            }
-        }
-    }
+    // Classic volume profile (extracted to render_volume_profile_classic, WS-E E4).
+    render_volume_profile_classic(&painter, chart, rect, cw, ch, pt, t, &py);
 
     if chart.vp.mode == VolumeProfileMode::Heatmap {
         if let Some(ref vp) = chart.vp.data {
@@ -2897,58 +2866,8 @@ fn render_chart_pane(
     }
 
     // Session VWAP + standard deviation bands
-    if chart.show_vwap_bands && chart.vwap_data.len() == n {
-        let start_v = vs.floor() as usize;
-        let end_v = (start_v + chart.vc as usize + 8).min(n);
-        // G1: VWAP + σ bands were hardcoded material-blue — now theme accent so
-        // the analytical overlay reskins with the active theme.
-        let vwap_color = t.accent;
-        let band1_color = color_alpha(t.accent, 30);
-        let band2_color = color_alpha(t.accent, 15);
-        // ±2σ fill
-        for i in start_v..end_v.saturating_sub(1) {
-            if chart.vwap_upper2[i].is_nan() || chart.vwap_upper2[i+1].is_nan() { continue; }
-            let x0 = bx(i as f32); let x1 = bx((i+1) as f32);
-            let pts = vec![
-                egui::pos2(x0, py(chart.vwap_upper2[i])), egui::pos2(x1, py(chart.vwap_upper2[i+1])),
-                egui::pos2(x1, py(chart.vwap_lower2[i+1])), egui::pos2(x0, py(chart.vwap_lower2[i])),
-            ];
-            painter.add(egui::Shape::convex_polygon(pts, band2_color, egui::Stroke::NONE));
-        }
-        // ±1σ fill
-        for i in start_v..end_v.saturating_sub(1) {
-            if chart.vwap_upper1[i].is_nan() || chart.vwap_upper1[i+1].is_nan() { continue; }
-            let x0 = bx(i as f32); let x1 = bx((i+1) as f32);
-            let pts = vec![
-                egui::pos2(x0, py(chart.vwap_upper1[i])), egui::pos2(x1, py(chart.vwap_upper1[i+1])),
-                egui::pos2(x1, py(chart.vwap_lower1[i+1])), egui::pos2(x0, py(chart.vwap_lower1[i])),
-            ];
-            painter.add(egui::Shape::convex_polygon(pts, band1_color, egui::Stroke::NONE));
-        }
-        // VWAP line
-        for i in start_v..end_v.saturating_sub(1) {
-            if chart.vwap_data[i].is_nan() || chart.vwap_data[i+1].is_nan() { continue; }
-            painter.line_segment(
-                [egui::pos2(bx(i as f32), py(chart.vwap_data[i])), egui::pos2(bx((i+1) as f32), py(chart.vwap_data[i+1]))],
-                egui::Stroke::new(1.5, vwap_color));
-        }
-        // ±1σ and ±2σ band lines
-        for (data, alpha) in [(&chart.vwap_upper1, 50u8), (&chart.vwap_lower1, 50u8), (&chart.vwap_upper2, 30u8), (&chart.vwap_lower2, 30u8)] {
-            for i in start_v..end_v.saturating_sub(1) {
-                if data[i].is_nan() || data[i+1].is_nan() { continue; }
-                painter.line_segment(
-                    [egui::pos2(bx(i as f32), py(data[i])), egui::pos2(bx((i+1) as f32), py(data[i+1]))],
-                    egui::Stroke::new(0.5, color_alpha(t.accent, alpha)));
-            }
-        }
-        // Label at right edge
-        if let Some(&last_vwap) = chart.vwap_data.last() {
-            if !last_vwap.is_nan() {
-                painter.text(egui::pos2(rect.left()+cw+3.0, py(last_vwap)), egui::Align2::LEFT_CENTER,
-                    &format!("VWAP {:.2}", last_vwap), mono_3xs(), vwap_color);
-            }
-        }
-    }
+    // Session VWAP + σ bands (extracted to render_vwap_overlay, WS-E E4).
+    render_vwap_overlay(&painter, chart, rect, cw, t, n, vs, &py, &bx);
 
     span_begin("indicator_paint");
     // ── MA Ribbon (6 EMAs) ───────────────────────────────────────────────
@@ -12990,4 +12909,120 @@ fn render_gamma_overlay(
             painter.text(egui::pos2(rect.left() + cw - 26.0, hvl_y), egui::Align2::RIGHT_CENTER,
                 &format!("HVL {:.2}", chart.gamma_hvl), mono_xs_plus(), gold);
         }
+}
+
+/// Session VWAP + std-dev bands overlay (WS-E E4: extracted from
+/// render_chart_pane). Pure draw pass. `py`/`bx` are the pane transforms
+/// passed as `impl Fn` (static dispatch, zero-overhead). Verbatim move.
+#[allow(clippy::too_many_arguments)]
+fn render_vwap_overlay(
+    painter: &egui::Painter,
+    chart: &Chart,
+    rect: egui::Rect,
+    cw: f32,
+    t: &Theme,
+    n: usize,
+    vs: f32,
+    py: impl Fn(f32) -> f32,
+    bx: impl Fn(f32) -> f32,
+) {
+    if !chart.show_vwap_bands || chart.vwap_data.len() != n { return; }
+        let start_v = vs.floor() as usize;
+        let end_v = (start_v + chart.vc as usize + 8).min(n);
+        // G1: VWAP + σ bands were hardcoded material-blue — now theme accent so
+        // the analytical overlay reskins with the active theme.
+        let vwap_color = t.accent;
+        let band1_color = color_alpha(t.accent, 30);
+        let band2_color = color_alpha(t.accent, 15);
+        // ±2σ fill
+        for i in start_v..end_v.saturating_sub(1) {
+            if chart.vwap_upper2[i].is_nan() || chart.vwap_upper2[i+1].is_nan() { continue; }
+            let x0 = bx(i as f32); let x1 = bx((i+1) as f32);
+            let pts = vec![
+                egui::pos2(x0, py(chart.vwap_upper2[i])), egui::pos2(x1, py(chart.vwap_upper2[i+1])),
+                egui::pos2(x1, py(chart.vwap_lower2[i+1])), egui::pos2(x0, py(chart.vwap_lower2[i])),
+            ];
+            painter.add(egui::Shape::convex_polygon(pts, band2_color, egui::Stroke::NONE));
+        }
+        // ±1σ fill
+        for i in start_v..end_v.saturating_sub(1) {
+            if chart.vwap_upper1[i].is_nan() || chart.vwap_upper1[i+1].is_nan() { continue; }
+            let x0 = bx(i as f32); let x1 = bx((i+1) as f32);
+            let pts = vec![
+                egui::pos2(x0, py(chart.vwap_upper1[i])), egui::pos2(x1, py(chart.vwap_upper1[i+1])),
+                egui::pos2(x1, py(chart.vwap_lower1[i+1])), egui::pos2(x0, py(chart.vwap_lower1[i])),
+            ];
+            painter.add(egui::Shape::convex_polygon(pts, band1_color, egui::Stroke::NONE));
+        }
+        // VWAP line
+        for i in start_v..end_v.saturating_sub(1) {
+            if chart.vwap_data[i].is_nan() || chart.vwap_data[i+1].is_nan() { continue; }
+            painter.line_segment(
+                [egui::pos2(bx(i as f32), py(chart.vwap_data[i])), egui::pos2(bx((i+1) as f32), py(chart.vwap_data[i+1]))],
+                egui::Stroke::new(1.5, vwap_color));
+        }
+        // ±1σ and ±2σ band lines
+        for (data, alpha) in [(&chart.vwap_upper1, 50u8), (&chart.vwap_lower1, 50u8), (&chart.vwap_upper2, 30u8), (&chart.vwap_lower2, 30u8)] {
+            for i in start_v..end_v.saturating_sub(1) {
+                if data[i].is_nan() || data[i+1].is_nan() { continue; }
+                painter.line_segment(
+                    [egui::pos2(bx(i as f32), py(data[i])), egui::pos2(bx((i+1) as f32), py(data[i+1]))],
+                    egui::Stroke::new(0.5, color_alpha(t.accent, alpha)));
+            }
+        }
+        // Label at right edge
+        if let Some(&last_vwap) = chart.vwap_data.last() {
+            if !last_vwap.is_nan() {
+                painter.text(egui::pos2(rect.left()+cw+3.0, py(last_vwap)), egui::Align2::LEFT_CENTER,
+                    &format!("VWAP {:.2}", last_vwap), mono_3xs(), vwap_color);
+            }
+        }
+}
+
+/// Classic volume-profile draw (WS-E E4: extracted from render_chart_pane).
+/// Pure draw pass over chart.vp.data. Verbatim move (static-dispatch py).
+#[allow(clippy::too_many_arguments)]
+fn render_volume_profile_classic(
+    painter: &egui::Painter,
+    chart: &Chart,
+    rect: egui::Rect,
+    cw: f32,
+    ch: f32,
+    pt: f32,
+    t: &Theme,
+    py: impl Fn(f32) -> f32,
+) {
+    if chart.vp.mode == VolumeProfileMode::Classic {
+        if let Some(ref vp) = chart.vp.data {
+            let max_bar_width = cw * 0.25;
+            for level in &vp.levels {
+                let y = py(level.price);
+                let h = (py(level.price - vp.price_step / 2.0) - py(level.price + vp.price_step / 2.0)).abs().max(1.0);
+                if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
+                let norm = if vp.max_vol > 0.0 { level.total_vol / vp.max_vol } else { 0.0 };
+                let bar_w = norm * max_bar_width;
+                let buy_w = bar_w * (level.buy_vol / level.total_vol.max(0.001));
+                let sell_w = bar_w - buy_w;
+                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(rect.left(), y - h/2.0), egui::vec2(sell_w, h)),
+                    0.0, color_alpha(t.bear, 40));
+                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(rect.left() + sell_w, y - h/2.0), egui::vec2(buy_w, h)),
+                    0.0, color_alpha(t.bull, 40));
+                // Dark-pool overlay: purple sub-bar from the left edge sized to
+                // the off-exchange (FINRA TRF) share of this level's volume, so
+                // you can see how much of each price node traded off-exchange.
+                // Only present on the real VAP profile (0 on the bar-derived one).
+                if level.off_exchange > 0.0 && vp.max_vol > 0.0 {
+                    let dp_w = (level.off_exchange / vp.max_vol) * max_bar_width;
+                    painter.rect_filled(
+                        egui::Rect::from_min_size(egui::pos2(rect.left(), y - h/2.0), egui::vec2(dp_w, h)),
+                        0.0, egui::Color32::from_rgba_unmultiplied(155, 89, 182, 95));
+                }
+            }
+            let poc_y = py(vp.poc_price);
+            if poc_y.is_finite() {
+                painter.line_segment([egui::pos2(rect.left(), poc_y), egui::pos2(rect.left()+cw, poc_y)],
+                    egui::Stroke::new(1.0, color_alpha(t.gold, 180)));
+            }
+        }
+    }
 }
