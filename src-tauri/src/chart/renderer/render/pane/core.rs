@@ -2872,65 +2872,12 @@ fn render_chart_pane(
     span_begin("indicator_paint");
     // ── MA Ribbon (6 EMAs) ───────────────────────────────────────────────
     if chart.show_ma_ribbon && !chart.hide_all_indicators {
-        let ribbon_periods = [8_usize, 13, 21, 34, 55, 89];
-        let closes_v: Vec<f32> = chart.bars.iter().map(|b| b.close).collect();
-        let emas: Vec<Vec<f32>> = ribbon_periods.iter().map(|&p| compute_ema(&closes_v, p)).collect();
-        let start = vs.floor() as usize;
-        let end_idx = (start + chart.vc as usize + 8).min(n);
-        for k in 0..emas.len().saturating_sub(1) {
-            for i in start..end_idx.saturating_sub(1) {
-                let v0a = emas[k].get(i).copied().unwrap_or(f32::NAN);
-                let v0b = emas[k+1].get(i).copied().unwrap_or(f32::NAN);
-                let v1a = emas[k].get(i+1).copied().unwrap_or(f32::NAN);
-                let v1b = emas[k+1].get(i+1).copied().unwrap_or(f32::NAN);
-                if v0a.is_nan() || v0b.is_nan() || v1a.is_nan() || v1b.is_nan() { continue; }
-                let bullish = v0a > v0b;
-                let alpha = 15 + k as u8 * 5;
-                let color = if bullish {
-                    color_alpha(t.bull, alpha)
-                } else {
-                    color_alpha(t.bear, alpha)
-                };
-                let pts = vec![
-                    egui::pos2(bx(i as f32), py(v0a)), egui::pos2(bx((i+1) as f32), py(v1a)),
-                    egui::pos2(bx((i+1) as f32), py(v1b)), egui::pos2(bx(i as f32), py(v0b)),
-                ];
-                painter.add(egui::Shape::convex_polygon(pts, color, egui::Stroke::NONE));
-            }
-        }
+        render_ma_ribbon_overlay(&painter, chart, t, vs, n, &py, &bx);
     }
 
     // ── Prev Close / Session Open lines ──────────────────────────────────
     if chart.show_prev_close && !chart.timestamps.is_empty() {
-        let mut prev_close: Option<f32> = None;
-        let mut session_open: Option<f32> = None;
-        for i in (1..chart.bars.len()).rev() {
-            if i >= chart.timestamps.len() { continue; }
-            let gap = chart.timestamps[i] - chart.timestamps[i-1];
-            if gap > 14400 {
-                prev_close = Some(chart.bars[i-1].close);
-                session_open = Some(chart.bars[i].open);
-                break;
-            }
-        }
-        if let Some(pc) = prev_close {
-            let y = py(pc);
-            if y.is_finite() {
-                dashed_line(&painter, egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y),
-                    egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(200, 200, 200, 80)), LineStyle::Dashed);
-                painter.text(egui::pos2(rect.left()+cw+3.0, y), egui::Align2::LEFT_CENTER,
-                    &format!("PC {:.2}", pc), mono_3xs(), color_alpha(t.text,80));
-            }
-        }
-        if let Some(so) = session_open {
-            let y = py(so);
-            if y.is_finite() {
-                dashed_line(&painter, egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y),
-                    egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(100, 180, 255, 60)), LineStyle::Dotted);
-                painter.text(egui::pos2(rect.left()+cw+3.0, y), egui::Align2::LEFT_CENTER,
-                    &format!("SO {:.2}", so), mono_3xs(), egui::Color32::from_rgba_unmultiplied(100, 180, 255, 60));
-            }
-        }
+        render_prev_close_overlay(&painter, chart, rect, cw, t, &py);
     }
 
     // ── Auto Support/Resistance ───────────────────────────────────────────
@@ -2958,76 +2905,7 @@ fn render_chart_pane(
 
     // ── Event Markers Overlay ─────────────────────────────────────────────
     if chart.show_events && !chart.event_markers.is_empty() && !chart.timestamps.is_empty() {
-        let hover_pos = ui.input(|i| i.pointer.hover_pos());
-        let chart_top = rect.top() + pt;
-        let chart_bot = chart_top + ch;
-        let marker_y = chart_top + 10.0;
-        let mut hovered_tooltip: Option<(egui::Pos2, String, String, egui::Color32)> = None;
-
-        for em in &chart.event_markers {
-            let bar_f = SignalDrawing::time_to_bar(em.time, &chart.timestamps);
-            let x = bx(bar_f);
-            if x < rect.left() - 5.0 || x > rect.left() + cw + 5.0 { continue; }
-
-            let is_earnings = em.event_type == 0;
-            let base_col = match em.event_type {
-                0 => { // Earnings — color by beat/miss
-                    match em.impact { 1 => t.bull, -1 => t.bear, _ => t.accent }
-                }
-                1 => COLOR_PROFIT_GREEN,  // dividend
-                2 => egui::Color32::from_rgb(52, 152, 219),  // split
-                3 => egui::Color32::from_rgb(243, 156, 18),  // economic
-                _ => t.accent,
-            };
-
-            dashed_line(&painter, egui::pos2(x, chart_top), egui::pos2(x, chart_bot),
-                egui::Stroke::new(if is_earnings { 1.0 } else { 0.7 }, color_alpha(base_col, if is_earnings { 70 } else { 50 })),
-                LineStyle::Dashed);
-
-            let sq_sz = if is_earnings { 9.0 } else { 7.0 };
-            let sq_rect = egui::Rect::from_center_size(egui::pos2(x, marker_y), egui::vec2(sq_sz, sq_sz));
-            painter.rect_filled(sq_rect, if is_earnings { 3.0 } else { 2.0 }, color_alpha(base_col, 200));
-
-            // Impact indicator
-            let impact_col = match em.impact {
-                1 => t.bull, -1 => t.bear, _ => t.dim,
-            };
-            if is_earnings {
-                // Show beat/miss arrow instead of dot
-                let arrow_icon = match em.impact { 1 => "\u{25B2}", -1 => "\u{25BC}", _ => "\u{25C6}" };
-                painter.text(egui::pos2(x, marker_y + sq_sz + 3.0), egui::Align2::CENTER_TOP,
-                    arrow_icon, egui::FontId::proportional(7.0), impact_col);
-            } else {
-                painter.circle_filled(egui::pos2(x, marker_y + sq_sz + 2.0), 2.0, color_alpha(impact_col, 160));
-            }
-
-            let label_icon = match em.event_type {
-                0 => "E", 1 => "$", 2 => "S", 3 => "F", _ => "?",
-            };
-            painter.text(egui::pos2(x, marker_y + sq_sz + (if is_earnings { 12.0 } else { 7.0 })), egui::Align2::CENTER_TOP,
-                label_icon, mono_3xs(), color_alpha(base_col, 180));
-
-            if let Some(hp) = hover_pos {
-                if (hp.x - x).abs() < 8.0 && hp.y > chart_top && hp.y < chart_bot {
-                    hovered_tooltip = Some((egui::pos2(x, marker_y + sq_sz + 18.0), em.label.clone(), em.details.clone(), base_col));
-                }
-            }
-        }
-
-        if let Some((pos, label, details, col)) = hovered_tooltip {
-            let font = mono_xs();
-            let label_galley = painter.layout_no_wrap(label.clone(), font.clone(), col);
-            let detail_galley = painter.layout_no_wrap(details.clone(), font.clone(), t.dim);
-            let w = label_galley.size().x.max(detail_galley.size().x) + 16.0;
-            let h = label_galley.size().y + detail_galley.size().y + 12.0;
-            let mut tip_rect = egui::Rect::from_min_size(egui::pos2(pos.x - w / 2.0, pos.y), egui::vec2(w, h));
-            if tip_rect.right() > rect.left() + cw { tip_rect = tip_rect.translate(egui::vec2(rect.left() + cw - tip_rect.right(), 0.0)); }
-            if tip_rect.left() < rect.left() { tip_rect = tip_rect.translate(egui::vec2(rect.left() - tip_rect.left(), 0.0)); }
-            painter.rect_filled(tip_rect, 4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 235));
-            painter.rect_stroke(tip_rect, 4.0, egui::Stroke::new(0.5, color_alpha(col, 80)), egui::StrokeKind::Outside);
-            painter.text(egui::pos2(tip_rect.left() + 8.0, tip_rect.top() + 4.0), egui::Align2::LEFT_TOP, &label, font.clone(), col);
-            painter.text(egui::pos2(tip_rect.left() + 8.0, tip_rect.top() + 4.0 + label_galley.size().y + 2.0), egui::Align2::LEFT_TOP, &details, font, t.dim);
-        }
+        render_events_overlay(&painter, chart, rect, cw, ch, pt, t, ui, &bx);
     }
 
     // ── Dark Pool Overlay ────────────────────────────────────────────────
@@ -3525,52 +3403,7 @@ fn render_chart_pane(
     }
 
     if chart.show_auto_sr && n > 20 {
-        // Cached: the pivot scan (O(n*lookback)) + cluster (O(n^2)) recomputed
-        // every frame is expensive. The scan excludes the last `lookback` bars,
-        // so bar count alone is a sound cache key. (Audit PF2.)
-        let clustered: Vec<(f32, usize, bool)> = AUTO_SR_CACHE.with(|c| {
-            let mut cache = c.borrow_mut();
-            let entry = cache.entry(pane_idx).or_insert((usize::MAX, Vec::new()));
-            if entry.0 != n {
-                let lookback = 10;
-                let mut levels: Vec<(f32, bool)> = vec![];
-                for i in lookback..n.saturating_sub(lookback) {
-                    let is_pivot_high = (1..=lookback).all(|j| chart.bars[i].high >= chart.bars[i-j].high && chart.bars[i].high >= chart.bars[i+j].high);
-                    let is_pivot_low = (1..=lookback).all(|j| chart.bars[i].low <= chart.bars[i-j].low && chart.bars[i].low <= chart.bars[i+j].low);
-                    if is_pivot_high { levels.push((chart.bars[i].high, true)); }
-                    if is_pivot_low { levels.push((chart.bars[i].low, false)); }
-                }
-                levels.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-                let mut clustered: Vec<(f32, usize, bool)> = vec![];
-                for (price, is_res) in &levels {
-                    let merged = clustered.iter_mut().find(|(p, _, _)| (*price - *p).abs() / p.max(0.001) < 0.003);
-                    if let Some(existing) = merged {
-                        existing.0 = (existing.0 * existing.1 as f32 + *price) / (existing.1 + 1) as f32;
-                        existing.1 += 1;
-                    } else {
-                        clustered.push((*price, 1, *is_res));
-                    }
-                }
-                *entry = (n, clustered);
-            }
-            entry.1.clone()
-        });
-        for (price, touches, is_res) in &clustered {
-            if *touches < 2 { continue; }
-            let y = py(*price);
-            if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
-            let alpha = (40 + (*touches as u8).min(6) * 15).min(120);
-            let col = if *is_res {
-                color_alpha(t.bear, alpha)
-            } else {
-                color_alpha(t.bull, alpha)
-            };
-            dashed_line(&painter, egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y),
-                egui::Stroke::new(0.5, col), LineStyle::Dotted);
-            painter.text(egui::pos2(rect.left()+cw+3.0, y), egui::Align2::LEFT_CENTER,
-                &format!("{}{:.2} ({}x)", if *is_res { "R " } else { "S " }, price, touches),
-                mono_3xs(), col);
-        }
+        render_auto_sr_overlay(&painter, chart, rect, cw, ch, pt, t, n, pane_idx, &py);
     }
 
     // ── Swing Legs overlay — measures from most recent pivot to current price ──
@@ -13065,5 +12898,204 @@ fn render_darkpool_overlay(
                 galley.size() + egui::vec2(8.0, 4.0)),
                 3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
             painter.text(egui::pos2(lx, ly), egui::Align2::LEFT_CENTER, &vol_label, label_font, line_col);
+        }
+}
+
+/// render_auto_sr_overlay (WS-E E4: extracted from render_chart_pane). Verbatim; guard stays at call site.
+#[allow(clippy::too_many_arguments)]
+fn render_auto_sr_overlay(
+    painter: &egui::Painter, chart: &Chart, rect: egui::Rect, cw: f32, ch: f32, pt: f32, t: &Theme, n: usize, pane_idx: usize, py: impl Fn(f32) -> f32
+) {
+        // Cached: the pivot scan (O(n*lookback)) + cluster (O(n^2)) recomputed
+        // every frame is expensive. The scan excludes the last `lookback` bars,
+        // so bar count alone is a sound cache key. (Audit PF2.)
+        let clustered: Vec<(f32, usize, bool)> = AUTO_SR_CACHE.with(|c| {
+            let mut cache = c.borrow_mut();
+            let entry = cache.entry(pane_idx).or_insert((usize::MAX, Vec::new()));
+            if entry.0 != n {
+                let lookback = 10;
+                let mut levels: Vec<(f32, bool)> = vec![];
+                for i in lookback..n.saturating_sub(lookback) {
+                    let is_pivot_high = (1..=lookback).all(|j| chart.bars[i].high >= chart.bars[i-j].high && chart.bars[i].high >= chart.bars[i+j].high);
+                    let is_pivot_low = (1..=lookback).all(|j| chart.bars[i].low <= chart.bars[i-j].low && chart.bars[i].low <= chart.bars[i+j].low);
+                    if is_pivot_high { levels.push((chart.bars[i].high, true)); }
+                    if is_pivot_low { levels.push((chart.bars[i].low, false)); }
+                }
+                levels.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+                let mut clustered: Vec<(f32, usize, bool)> = vec![];
+                for (price, is_res) in &levels {
+                    let merged = clustered.iter_mut().find(|(p, _, _)| (*price - *p).abs() / p.max(0.001) < 0.003);
+                    if let Some(existing) = merged {
+                        existing.0 = (existing.0 * existing.1 as f32 + *price) / (existing.1 + 1) as f32;
+                        existing.1 += 1;
+                    } else {
+                        clustered.push((*price, 1, *is_res));
+                    }
+                }
+                *entry = (n, clustered);
+            }
+            entry.1.clone()
+        });
+        for (price, touches, is_res) in &clustered {
+            if *touches < 2 { continue; }
+            let y = py(*price);
+            if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
+            let alpha = (40 + (*touches as u8).min(6) * 15).min(120);
+            let col = if *is_res {
+                color_alpha(t.bear, alpha)
+            } else {
+                color_alpha(t.bull, alpha)
+            };
+            dashed_line(&painter, egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y),
+                egui::Stroke::new(0.5, col), LineStyle::Dotted);
+            painter.text(egui::pos2(rect.left()+cw+3.0, y), egui::Align2::LEFT_CENTER,
+                &format!("{}{:.2} ({}x)", if *is_res { "R " } else { "S " }, price, touches),
+                mono_3xs(), col);
+        }
+}
+
+/// render_events_overlay (WS-E E4: extracted from render_chart_pane). Verbatim; guard stays at call site.
+#[allow(clippy::too_many_arguments)]
+fn render_events_overlay(
+    painter: &egui::Painter, chart: &Chart, rect: egui::Rect, cw: f32, ch: f32, pt: f32, t: &Theme, ui: &mut egui::Ui, bx: impl Fn(f32) -> f32
+) {
+        let hover_pos = ui.input(|i| i.pointer.hover_pos());
+        let chart_top = rect.top() + pt;
+        let chart_bot = chart_top + ch;
+        let marker_y = chart_top + 10.0;
+        let mut hovered_tooltip: Option<(egui::Pos2, String, String, egui::Color32)> = None;
+
+        for em in &chart.event_markers {
+            let bar_f = SignalDrawing::time_to_bar(em.time, &chart.timestamps);
+            let x = bx(bar_f);
+            if x < rect.left() - 5.0 || x > rect.left() + cw + 5.0 { continue; }
+
+            let is_earnings = em.event_type == 0;
+            let base_col = match em.event_type {
+                0 => { // Earnings — color by beat/miss
+                    match em.impact { 1 => t.bull, -1 => t.bear, _ => t.accent }
+                }
+                1 => COLOR_PROFIT_GREEN,  // dividend
+                2 => egui::Color32::from_rgb(52, 152, 219),  // split
+                3 => egui::Color32::from_rgb(243, 156, 18),  // economic
+                _ => t.accent,
+            };
+
+            dashed_line(&painter, egui::pos2(x, chart_top), egui::pos2(x, chart_bot),
+                egui::Stroke::new(if is_earnings { 1.0 } else { 0.7 }, color_alpha(base_col, if is_earnings { 70 } else { 50 })),
+                LineStyle::Dashed);
+
+            let sq_sz = if is_earnings { 9.0 } else { 7.0 };
+            let sq_rect = egui::Rect::from_center_size(egui::pos2(x, marker_y), egui::vec2(sq_sz, sq_sz));
+            painter.rect_filled(sq_rect, if is_earnings { 3.0 } else { 2.0 }, color_alpha(base_col, 200));
+
+            // Impact indicator
+            let impact_col = match em.impact {
+                1 => t.bull, -1 => t.bear, _ => t.dim,
+            };
+            if is_earnings {
+                // Show beat/miss arrow instead of dot
+                let arrow_icon = match em.impact { 1 => "\u{25B2}", -1 => "\u{25BC}", _ => "\u{25C6}" };
+                painter.text(egui::pos2(x, marker_y + sq_sz + 3.0), egui::Align2::CENTER_TOP,
+                    arrow_icon, egui::FontId::proportional(7.0), impact_col);
+            } else {
+                painter.circle_filled(egui::pos2(x, marker_y + sq_sz + 2.0), 2.0, color_alpha(impact_col, 160));
+            }
+
+            let label_icon = match em.event_type {
+                0 => "E", 1 => "$", 2 => "S", 3 => "F", _ => "?",
+            };
+            painter.text(egui::pos2(x, marker_y + sq_sz + (if is_earnings { 12.0 } else { 7.0 })), egui::Align2::CENTER_TOP,
+                label_icon, mono_3xs(), color_alpha(base_col, 180));
+
+            if let Some(hp) = hover_pos {
+                if (hp.x - x).abs() < 8.0 && hp.y > chart_top && hp.y < chart_bot {
+                    hovered_tooltip = Some((egui::pos2(x, marker_y + sq_sz + 18.0), em.label.clone(), em.details.clone(), base_col));
+                }
+            }
+        }
+
+        if let Some((pos, label, details, col)) = hovered_tooltip {
+            let font = mono_xs();
+            let label_galley = painter.layout_no_wrap(label.clone(), font.clone(), col);
+            let detail_galley = painter.layout_no_wrap(details.clone(), font.clone(), t.dim);
+            let w = label_galley.size().x.max(detail_galley.size().x) + 16.0;
+            let h = label_galley.size().y + detail_galley.size().y + 12.0;
+            let mut tip_rect = egui::Rect::from_min_size(egui::pos2(pos.x - w / 2.0, pos.y), egui::vec2(w, h));
+            if tip_rect.right() > rect.left() + cw { tip_rect = tip_rect.translate(egui::vec2(rect.left() + cw - tip_rect.right(), 0.0)); }
+            if tip_rect.left() < rect.left() { tip_rect = tip_rect.translate(egui::vec2(rect.left() - tip_rect.left(), 0.0)); }
+            painter.rect_filled(tip_rect, 4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 235));
+            painter.rect_stroke(tip_rect, 4.0, egui::Stroke::new(0.5, color_alpha(col, 80)), egui::StrokeKind::Outside);
+            painter.text(egui::pos2(tip_rect.left() + 8.0, tip_rect.top() + 4.0), egui::Align2::LEFT_TOP, &label, font.clone(), col);
+            painter.text(egui::pos2(tip_rect.left() + 8.0, tip_rect.top() + 4.0 + label_galley.size().y + 2.0), egui::Align2::LEFT_TOP, &details, font, t.dim);
+        }
+}
+
+/// render_prev_close_overlay (WS-E E4: extracted from render_chart_pane). Verbatim; guard stays at call site.
+#[allow(clippy::too_many_arguments)]
+fn render_prev_close_overlay(
+    painter: &egui::Painter, chart: &Chart, rect: egui::Rect, cw: f32, t: &Theme, py: impl Fn(f32) -> f32
+) {
+        let mut prev_close: Option<f32> = None;
+        let mut session_open: Option<f32> = None;
+        for i in (1..chart.bars.len()).rev() {
+            if i >= chart.timestamps.len() { continue; }
+            let gap = chart.timestamps[i] - chart.timestamps[i-1];
+            if gap > 14400 {
+                prev_close = Some(chart.bars[i-1].close);
+                session_open = Some(chart.bars[i].open);
+                break;
+            }
+        }
+        if let Some(pc) = prev_close {
+            let y = py(pc);
+            if y.is_finite() {
+                dashed_line(&painter, egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y),
+                    egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(200, 200, 200, 80)), LineStyle::Dashed);
+                painter.text(egui::pos2(rect.left()+cw+3.0, y), egui::Align2::LEFT_CENTER,
+                    &format!("PC {:.2}", pc), mono_3xs(), color_alpha(t.text,80));
+            }
+        }
+        if let Some(so) = session_open {
+            let y = py(so);
+            if y.is_finite() {
+                dashed_line(&painter, egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y),
+                    egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(100, 180, 255, 60)), LineStyle::Dotted);
+                painter.text(egui::pos2(rect.left()+cw+3.0, y), egui::Align2::LEFT_CENTER,
+                    &format!("SO {:.2}", so), mono_3xs(), egui::Color32::from_rgba_unmultiplied(100, 180, 255, 60));
+            }
+        }
+}
+
+/// render_ma_ribbon_overlay (WS-E E4: extracted from render_chart_pane). Verbatim; guard stays at call site.
+#[allow(clippy::too_many_arguments)]
+fn render_ma_ribbon_overlay(
+    painter: &egui::Painter, chart: &Chart, t: &Theme, vs: f32, n: usize, py: impl Fn(f32) -> f32, bx: impl Fn(f32) -> f32
+) {
+        let ribbon_periods = [8_usize, 13, 21, 34, 55, 89];
+        let closes_v: Vec<f32> = chart.bars.iter().map(|b| b.close).collect();
+        let emas: Vec<Vec<f32>> = ribbon_periods.iter().map(|&p| compute_ema(&closes_v, p)).collect();
+        let start = vs.floor() as usize;
+        let end_idx = (start + chart.vc as usize + 8).min(n);
+        for k in 0..emas.len().saturating_sub(1) {
+            for i in start..end_idx.saturating_sub(1) {
+                let v0a = emas[k].get(i).copied().unwrap_or(f32::NAN);
+                let v0b = emas[k+1].get(i).copied().unwrap_or(f32::NAN);
+                let v1a = emas[k].get(i+1).copied().unwrap_or(f32::NAN);
+                let v1b = emas[k+1].get(i+1).copied().unwrap_or(f32::NAN);
+                if v0a.is_nan() || v0b.is_nan() || v1a.is_nan() || v1b.is_nan() { continue; }
+                let bullish = v0a > v0b;
+                let alpha = 15 + k as u8 * 5;
+                let color = if bullish {
+                    color_alpha(t.bull, alpha)
+                } else {
+                    color_alpha(t.bear, alpha)
+                };
+                let pts = vec![
+                    egui::pos2(bx(i as f32), py(v0a)), egui::pos2(bx((i+1) as f32), py(v1a)),
+                    egui::pos2(bx((i+1) as f32), py(v1b)), egui::pos2(bx(i as f32), py(v0b)),
+                ];
+                painter.add(egui::Shape::convex_polygon(pts, color, egui::Stroke::NONE));
+            }
         }
 }
