@@ -1,6 +1,6 @@
 [package]
 name = "_scaffold"
-version = "0.9.7-5"
+version = "0.10.0"
 description = "Apex Terminal — native GPU trading app"
 authors = ["you"]
 edition = "2021"
