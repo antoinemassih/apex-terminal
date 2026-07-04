@@ -7348,102 +7348,8 @@ fn render_chart_pane(
         }
     }
 
-    // ── OCO/Trigger bracket bands with connectors & R:R ─────────────────
-    {
-        let active_orders: Vec<&OrderLevel> = chart.orders.iter().filter(|o| o.status != OrderStatus::Cancelled && o.status != OrderStatus::Executed).collect();
-        for order in &active_orders {
-            if let Some(pair_id) = order.pair_id {
-                if let Some(pair) = active_orders.iter().find(|o| o.id == pair_id) {
-                    // Only draw once (from higher-id order to avoid double-draw)
-                    if order.id > pair.id {
-                        let y1 = py(order.price);
-                        let y2 = py(pair.price);
-                        // Identify target vs stop in the OCO pair
-                        let (target_order, stop_order) = if matches!(order.side, OrderSide::OcoTarget) {
-                            (*order, *pair)
-                        } else if matches!(pair.side, OrderSide::OcoTarget) {
-                            (*pair, *order)
-                        } else {
-                            (*order, *pair)
-                        };
-                        let is_oco = matches!(order.side, OrderSide::OcoTarget | OrderSide::OcoStop)
-                            || matches!(pair.side, OrderSide::OcoTarget | OrderSide::OcoStop);
-                        if is_oco {
-                            let tp_y = py(target_order.price);
-                            let sl_y = py(stop_order.price);
-                            // Green-tinted zone (profit zone: between midpoint and TP)
-                            let mid_price = (target_order.price + stop_order.price) / 2.0;
-                            let mid_y = py(mid_price);
-                            painter.rect_filled(egui::Rect::from_min_max(
-                                egui::pos2(rect.left(), tp_y.min(mid_y)), egui::pos2(rect.left() + cw, tp_y.max(mid_y))),
-                                0.0, color_alpha(t.bull, 12));
-                            // Red-tinted zone (loss zone: between midpoint and SL)
-                            painter.rect_filled(egui::Rect::from_min_max(
-                                egui::pos2(rect.left(), sl_y.min(mid_y)), egui::pos2(rect.left() + cw, sl_y.max(mid_y))),
-                                0.0, color_alpha(t.bear, 12));
-                            // Vertical dotted connector line on right side of chart
-                            let connector_x = rect.left() + cw - 20.0;
-                            let top_y = y1.min(y2);
-                            let bot_y = y1.max(y2);
-                            {
-                                let mut dy = top_y;
-                                while dy < bot_y {
-                                    let end = (dy + 3.0).min(bot_y);
-                                    painter.line_segment(
-                                        [egui::pos2(connector_x, dy), egui::pos2(connector_x, end)],
-                                        egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(167, 139, 250, 120)));
-                                    dy += 6.0;
-                                }
-                            }
-                            // Small horizontal ticks at each end of the connector
-                            painter.line_segment(
-                                [egui::pos2(connector_x - 4.0, tp_y), egui::pos2(connector_x + 4.0, tp_y)],
-                                egui::Stroke::new(1.0, color_alpha(t.bull, 180)));
-                            painter.line_segment(
-                                [egui::pos2(connector_x - 4.0, sl_y), egui::pos2(connector_x + 4.0, sl_y)],
-                                egui::Stroke::new(1.0, color_alpha(t.bear, 180)));
-                            // R:R ratio label at midpoint of connector
-                            let reward = (target_order.price - mid_price).abs();
-                            let risk = (stop_order.price - mid_price).abs();
-                            if risk > 0.0 {
-                                let rr = reward / risk;
-                                let rr_text = format!("R:R {:.1}:1", rr);
-                                let rr_font = mono_2xs();
-                                let rr_galley = painter.layout_no_wrap(rr_text.clone(), rr_font.clone(), egui::Color32::from_rgb(167, 139, 250));
-                                let rr_bg_rect = egui::Rect::from_min_size(
-                                    egui::pos2(connector_x - rr_galley.size().x / 2.0 - 3.0, mid_y - rr_galley.size().y / 2.0 - 2.0),
-                                    egui::vec2(rr_galley.size().x + 6.0, rr_galley.size().y + 4.0));
-                                painter.rect_filled(rr_bg_rect, 3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
-                                painter.text(egui::pos2(connector_x, mid_y), egui::Align2::CENTER_CENTER, &rr_text, rr_font,
-                                    egui::Color32::from_rgb(167, 139, 250));
-                            }
-                        } else {
-                            // Non-OCO bracket (trigger pairs) — single color band
-                            let band_color = match order.side {
-                                OrderSide::TriggerBuy | OrderSide::TriggerSell => egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 12),
-                                _ => egui::Color32::TRANSPARENT,
-                            };
-                            painter.rect_filled(egui::Rect::from_min_max(
-                                egui::pos2(rect.left(), y1.min(y2)), egui::pos2(rect.left() + cw, y1.max(y2))),
-                                0.0, band_color);
-                            // Vertical dotted connector for triggers too
-                            let connector_x = rect.left() + cw - 20.0;
-                            {
-                                let mut dy = y1.min(y2);
-                                while dy < y1.max(y2) {
-                                    let end = (dy + 3.0).min(y1.max(y2));
-                                    painter.line_segment(
-                                        [egui::pos2(connector_x, dy), egui::pos2(connector_x, end)],
-                                        egui::Stroke::new(0.8, egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 80)));
-                                    dy += 6.0;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    // OCO/trigger bracket bands (extracted to render_oco_bracket_bands, WS-E E4).
+    render_oco_bracket_bands(&painter, chart, rect, cw, t, &py);
 
     // ── Order lines on chart ──────────────────────────────────────────────
     let use_gpu_orders: bool = cfg!(feature = "gpu_chart_v2");
@@ -7684,155 +7590,8 @@ fn render_chart_pane(
     }
 
     // ── Play lines on chart (companion for play editor) ────────────
-    if !chart.play_lines.is_empty() {
-        // Zone bands (G1: theme-tokenized). entry→T1 = reward (t.bull), extended
-        // targets T1→T2→T3 = accent at fading alpha, entry→stop = risk (t.bear).
-        // Previously hardcoded green/teal/cyan/red rgba — the whole play overlay
-        // now reskins with the active theme (its lines already used tokens).
-        let entry_price = chart.play_lines.iter().find(|l| l.kind == crate::chart_renderer::PlayLineKind::Entry).map(|l| l.price);
-        let target_price = chart.play_lines.iter().find(|l| l.kind == crate::chart_renderer::PlayLineKind::Target).map(|l| l.price);
-        let t2_price = chart.play_lines.iter().find(|l| l.kind == crate::chart_renderer::PlayLineKind::Target2).map(|l| l.price);
-        let t3_price = chart.play_lines.iter().find(|l| l.kind == crate::chart_renderer::PlayLineKind::Target3).map(|l| l.price);
-        let stop_price = chart.play_lines.iter().find(|l| l.kind == crate::chart_renderer::PlayLineKind::Stop).map(|l| l.price);
-
-        // Entry → T1 (reward = bull)
-        if let (Some(ep), Some(tp)) = (entry_price, target_price) {
-            let (y1, y2) = (py(ep), py(tp));
-            painter.rect_filled(egui::Rect::from_min_max(
-                egui::pos2(rect.left(), y1.min(y2)), egui::pos2(rect.left() + cw, y1.max(y2))),
-                0.0, color_alpha(t.bull, 12));
-        }
-        // T1 → T2 (extended target = accent)
-        if let (Some(tp), Some(t2)) = (target_price, t2_price) {
-            let (y1, y2) = (py(tp), py(t2));
-            painter.rect_filled(egui::Rect::from_min_max(
-                egui::pos2(rect.left(), y1.min(y2)), egui::pos2(rect.left() + cw, y1.max(y2))),
-                0.0, color_alpha(t.accent, 10));
-        }
-        // T2 → T3 (further extended = accent, fainter)
-        if let (Some(t2), Some(t3)) = (t2_price, t3_price) {
-            let (y1, y2) = (py(t2), py(t3));
-            painter.rect_filled(egui::Rect::from_min_max(
-                egui::pos2(rect.left(), y1.min(y2)), egui::pos2(rect.left() + cw, y1.max(y2))),
-                0.0, color_alpha(t.accent, 8));
-        }
-        // Entry → Stop (risk = bear)
-        if let (Some(ep), Some(sp)) = (entry_price, stop_price) {
-            let (y1, y2) = (py(ep), py(sp));
-            painter.rect_filled(egui::Rect::from_min_max(
-                egui::pos2(rect.left(), y1.min(y2)), egui::pos2(rect.left() + cw, y1.max(y2))),
-                0.0, color_alpha(t.bear, 10));
-        }
-
-        // R:R connector + label
-        if let (Some(tp), Some(sp)) = (target_price, stop_price) {
-            let ty_y = py(tp);
-            let sy_y = py(sp);
-            let cx_x = rect.left() + cw - 30.0;
-            // Dotted connector
-            let mut dy = ty_y.min(sy_y);
-            while dy < ty_y.max(sy_y) {
-                let end = (dy + 3.0).min(ty_y.max(sy_y));
-                painter.line_segment(
-                    [egui::pos2(cx_x, dy), egui::pos2(cx_x, end)],
-                    egui::Stroke::new(1.0, color_alpha(t.accent, 100)));
-                dy += 6.0;
-            }
-            // Ticks
-            painter.line_segment(
-                [egui::pos2(cx_x - 4.0, ty_y), egui::pos2(cx_x + 4.0, ty_y)],
-                egui::Stroke::new(1.0, color_alpha(t.bull, 180)));
-            painter.line_segment(
-                [egui::pos2(cx_x - 4.0, sy_y), egui::pos2(cx_x + 4.0, sy_y)],
-                egui::Stroke::new(1.0, color_alpha(t.bear, 180)));
-            // R:R label
-            if let Some(ep) = entry_price {
-                let reward = (tp - ep).abs();
-                let risk = (sp - ep).abs();
-                if risk > 0.0 {
-                    let rr = reward / risk;
-                    let mid_y = (ty_y + sy_y) / 2.0;
-                    let rr_text = format!("R:R {:.1}:1", rr);
-                    let rr_galley = painter.layout_no_wrap(rr_text.clone(), mono_2xs(), t.accent);
-                    let rr_bg = egui::Rect::from_min_size(
-                        egui::pos2(cx_x - rr_galley.size().x / 2.0 - 3.0, mid_y - rr_galley.size().y / 2.0 - 2.0),
-                        egui::vec2(rr_galley.size().x + 6.0, rr_galley.size().y + 4.0));
-                    painter.rect_filled(rr_bg, 3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
-                    painter.text(egui::pos2(cx_x, mid_y), egui::Align2::CENTER_CENTER, &rr_text,
-                        mono_2xs(), t.accent);
-                }
-            }
-        }
-
-        // Individual play lines
-        let play_color_base = t.accent; // G1: was hardcoded blue — now theme accent
-        for pl in &chart.play_lines {
-            let y = py(pl.price);
-            if y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
-
-            let line_color = match pl.kind {
-                crate::chart_renderer::PlayLineKind::Entry => play_color_base,
-                crate::chart_renderer::PlayLineKind::Target | crate::chart_renderer::PlayLineKind::Target2 | crate::chart_renderer::PlayLineKind::Target3 => t.bull,
-                crate::chart_renderer::PlayLineKind::Stop => t.bear,
-            };
-
-            // Dashed line (longer dashes than orders for distinction)
-            let dash_color = egui::Color32::from_rgba_unmultiplied(line_color.r(), line_color.g(), line_color.b(), 150);
-            let mut dx = rect.left();
-            while dx < rect.left() + cw {
-                let end = (dx + 8.0).min(rect.left() + cw);
-                painter.line_segment([egui::pos2(dx, y), egui::pos2(end, y)], egui::Stroke::new(1.0, dash_color));
-                dx += 14.0;
-            }
-
-            // Badge: [E/T/S] [PRICE] [PLAY]
-            let kind_label = pl.kind.short();
-            let price_d = if pl.price >= 10.0 { 2 } else { 4 };
-            let price_str = format!("{:.1$}", pl.price, price_d);
-            let dark = t.bg;
-            let badge_h = 20.0;
-
-            let kind_w = if kind_label.len() > 1 { 24.0 } else { 18.0 };
-            let price_w = price_str.len() as f32 * 8.0 + 10.0;
-            let label_w = 32.0; // "PLAY"
-            let total_w = kind_w + price_w + label_w;
-            let bx = rect.left() + cw * 0.50 - total_w * 0.5;
-            let by = y - badge_h * 0.5;
-
-            let badge_hovered = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p|
-                egui::Rect::from_min_size(egui::pos2(bx, by), egui::vec2(total_w, badge_h)).contains(p));
-            let hb: u8 = if badge_hovered { 30 } else { 0 };
-
-            // Kind section
-            let kind_rect = egui::Rect::from_min_size(egui::pos2(bx, by), egui::vec2(kind_w, badge_h));
-            painter.rect_filled(kind_rect, egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 },
-                egui::Color32::from_rgba_unmultiplied(line_color.r(), line_color.g(), line_color.b(), 220u8.saturating_add(hb)));
-            painter.text(kind_rect.center(), egui::Align2::CENTER_CENTER, kind_label,
-                mono_xs_plus(), dark);
-
-            // Price section
-            let price_rect = egui::Rect::from_min_size(egui::pos2(kind_rect.right(), by), egui::vec2(price_w, badge_h));
-            painter.rect_filled(price_rect, 0.0,
-                egui::Color32::from_rgba_unmultiplied(line_color.r(), line_color.g(), line_color.b(), 180u8.saturating_add(hb)));
-            painter.text(price_rect.center(), egui::Align2::CENTER_CENTER, &price_str,
-                mono_xs(), dark);
-
-            // "PLAY" label section
-            let play_rect = egui::Rect::from_min_size(egui::pos2(price_rect.right(), by), egui::vec2(label_w, badge_h));
-            painter.rect_filled(play_rect, egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 },
-                egui::Color32::from_rgba_unmultiplied(line_color.r(), line_color.g(), line_color.b(), 140u8.saturating_add(hb)));
-            painter.text(play_rect.center(), egui::Align2::CENTER_CENTER, "PLAY",
-                mono_3xs(), dark);
-
-            // Y-axis price label
-            let axis_rect = egui::Rect::from_min_size(egui::pos2(rect.left() + cw + 1.0, y - 8.0), egui::vec2(pr - 2.0, 16.0));
-            painter.rect_filled(axis_rect, 2.0, line_color);
-            painter.text(axis_rect.center(), egui::Align2::CENTER_CENTER, &price_str,
-                mono_2xs(), dark);
-
-            if badge_hovered { ui.ctx().set_cursor_icon(egui::CursorIcon::Grab); }
-        }
-    }
+    // Play-lines overlay (extracted to render_play_lines_overlay, WS-E E4).
+    render_play_lines_overlay(&painter, chart, rect, cw, ch, pt, pr, t, ui, &py);
 
     // ── Trailing stop distance visualization ─────────────────────────
     for order in &chart.orders {
@@ -13025,4 +12784,264 @@ fn render_volume_profile_classic(
             }
         }
     }
+}
+
+/// Play-lines overlay: zone bands + R:R connector + Entry/Target/Stop lines +
+/// badges (WS-E E4: extracted from render_chart_pane). Pure draw. Verbatim.
+#[allow(clippy::too_many_arguments)]
+fn render_play_lines_overlay(
+    painter: &egui::Painter, chart: &Chart, rect: egui::Rect,
+    cw: f32, ch: f32, pt: f32, pr: f32, t: &Theme,
+    ui: &mut egui::Ui, py: impl Fn(f32) -> f32,
+) {
+    if chart.play_lines.is_empty() { return; }
+        // Zone bands (G1: theme-tokenized). entry→T1 = reward (t.bull), extended
+        // targets T1→T2→T3 = accent at fading alpha, entry→stop = risk (t.bear).
+        // Previously hardcoded green/teal/cyan/red rgba — the whole play overlay
+        // now reskins with the active theme (its lines already used tokens).
+        let entry_price = chart.play_lines.iter().find(|l| l.kind == crate::chart_renderer::PlayLineKind::Entry).map(|l| l.price);
+        let target_price = chart.play_lines.iter().find(|l| l.kind == crate::chart_renderer::PlayLineKind::Target).map(|l| l.price);
+        let t2_price = chart.play_lines.iter().find(|l| l.kind == crate::chart_renderer::PlayLineKind::Target2).map(|l| l.price);
+        let t3_price = chart.play_lines.iter().find(|l| l.kind == crate::chart_renderer::PlayLineKind::Target3).map(|l| l.price);
+        let stop_price = chart.play_lines.iter().find(|l| l.kind == crate::chart_renderer::PlayLineKind::Stop).map(|l| l.price);
+
+        // Entry → T1 (reward = bull)
+        if let (Some(ep), Some(tp)) = (entry_price, target_price) {
+            let (y1, y2) = (py(ep), py(tp));
+            painter.rect_filled(egui::Rect::from_min_max(
+                egui::pos2(rect.left(), y1.min(y2)), egui::pos2(rect.left() + cw, y1.max(y2))),
+                0.0, color_alpha(t.bull, 12));
+        }
+        // T1 → T2 (extended target = accent)
+        if let (Some(tp), Some(t2)) = (target_price, t2_price) {
+            let (y1, y2) = (py(tp), py(t2));
+            painter.rect_filled(egui::Rect::from_min_max(
+                egui::pos2(rect.left(), y1.min(y2)), egui::pos2(rect.left() + cw, y1.max(y2))),
+                0.0, color_alpha(t.accent, 10));
+        }
+        // T2 → T3 (further extended = accent, fainter)
+        if let (Some(t2), Some(t3)) = (t2_price, t3_price) {
+            let (y1, y2) = (py(t2), py(t3));
+            painter.rect_filled(egui::Rect::from_min_max(
+                egui::pos2(rect.left(), y1.min(y2)), egui::pos2(rect.left() + cw, y1.max(y2))),
+                0.0, color_alpha(t.accent, 8));
+        }
+        // Entry → Stop (risk = bear)
+        if let (Some(ep), Some(sp)) = (entry_price, stop_price) {
+            let (y1, y2) = (py(ep), py(sp));
+            painter.rect_filled(egui::Rect::from_min_max(
+                egui::pos2(rect.left(), y1.min(y2)), egui::pos2(rect.left() + cw, y1.max(y2))),
+                0.0, color_alpha(t.bear, 10));
+        }
+
+        // R:R connector + label
+        if let (Some(tp), Some(sp)) = (target_price, stop_price) {
+            let ty_y = py(tp);
+            let sy_y = py(sp);
+            let cx_x = rect.left() + cw - 30.0;
+            // Dotted connector
+            let mut dy = ty_y.min(sy_y);
+            while dy < ty_y.max(sy_y) {
+                let end = (dy + 3.0).min(ty_y.max(sy_y));
+                painter.line_segment(
+                    [egui::pos2(cx_x, dy), egui::pos2(cx_x, end)],
+                    egui::Stroke::new(1.0, color_alpha(t.accent, 100)));
+                dy += 6.0;
+            }
+            // Ticks
+            painter.line_segment(
+                [egui::pos2(cx_x - 4.0, ty_y), egui::pos2(cx_x + 4.0, ty_y)],
+                egui::Stroke::new(1.0, color_alpha(t.bull, 180)));
+            painter.line_segment(
+                [egui::pos2(cx_x - 4.0, sy_y), egui::pos2(cx_x + 4.0, sy_y)],
+                egui::Stroke::new(1.0, color_alpha(t.bear, 180)));
+            // R:R label
+            if let Some(ep) = entry_price {
+                let reward = (tp - ep).abs();
+                let risk = (sp - ep).abs();
+                if risk > 0.0 {
+                    let rr = reward / risk;
+                    let mid_y = (ty_y + sy_y) / 2.0;
+                    let rr_text = format!("R:R {:.1}:1", rr);
+                    let rr_galley = painter.layout_no_wrap(rr_text.clone(), mono_2xs(), t.accent);
+                    let rr_bg = egui::Rect::from_min_size(
+                        egui::pos2(cx_x - rr_galley.size().x / 2.0 - 3.0, mid_y - rr_galley.size().y / 2.0 - 2.0),
+                        egui::vec2(rr_galley.size().x + 6.0, rr_galley.size().y + 4.0));
+                    painter.rect_filled(rr_bg, 3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
+                    painter.text(egui::pos2(cx_x, mid_y), egui::Align2::CENTER_CENTER, &rr_text,
+                        mono_2xs(), t.accent);
+                }
+            }
+        }
+
+        // Individual play lines
+        let play_color_base = t.accent; // G1: was hardcoded blue — now theme accent
+        for pl in &chart.play_lines {
+            let y = py(pl.price);
+            if y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
+
+            let line_color = match pl.kind {
+                crate::chart_renderer::PlayLineKind::Entry => play_color_base,
+                crate::chart_renderer::PlayLineKind::Target | crate::chart_renderer::PlayLineKind::Target2 | crate::chart_renderer::PlayLineKind::Target3 => t.bull,
+                crate::chart_renderer::PlayLineKind::Stop => t.bear,
+            };
+
+            // Dashed line (longer dashes than orders for distinction)
+            let dash_color = egui::Color32::from_rgba_unmultiplied(line_color.r(), line_color.g(), line_color.b(), 150);
+            let mut dx = rect.left();
+            while dx < rect.left() + cw {
+                let end = (dx + 8.0).min(rect.left() + cw);
+                painter.line_segment([egui::pos2(dx, y), egui::pos2(end, y)], egui::Stroke::new(1.0, dash_color));
+                dx += 14.0;
+            }
+
+            // Badge: [E/T/S] [PRICE] [PLAY]
+            let kind_label = pl.kind.short();
+            let price_d = if pl.price >= 10.0 { 2 } else { 4 };
+            let price_str = format!("{:.1$}", pl.price, price_d);
+            let dark = t.bg;
+            let badge_h = 20.0;
+
+            let kind_w = if kind_label.len() > 1 { 24.0 } else { 18.0 };
+            let price_w = price_str.len() as f32 * 8.0 + 10.0;
+            let label_w = 32.0; // "PLAY"
+            let total_w = kind_w + price_w + label_w;
+            let bx = rect.left() + cw * 0.50 - total_w * 0.5;
+            let by = y - badge_h * 0.5;
+
+            let badge_hovered = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p|
+                egui::Rect::from_min_size(egui::pos2(bx, by), egui::vec2(total_w, badge_h)).contains(p));
+            let hb: u8 = if badge_hovered { 30 } else { 0 };
+
+            // Kind section
+            let kind_rect = egui::Rect::from_min_size(egui::pos2(bx, by), egui::vec2(kind_w, badge_h));
+            painter.rect_filled(kind_rect, egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 },
+                egui::Color32::from_rgba_unmultiplied(line_color.r(), line_color.g(), line_color.b(), 220u8.saturating_add(hb)));
+            painter.text(kind_rect.center(), egui::Align2::CENTER_CENTER, kind_label,
+                mono_xs_plus(), dark);
+
+            // Price section
+            let price_rect = egui::Rect::from_min_size(egui::pos2(kind_rect.right(), by), egui::vec2(price_w, badge_h));
+            painter.rect_filled(price_rect, 0.0,
+                egui::Color32::from_rgba_unmultiplied(line_color.r(), line_color.g(), line_color.b(), 180u8.saturating_add(hb)));
+            painter.text(price_rect.center(), egui::Align2::CENTER_CENTER, &price_str,
+                mono_xs(), dark);
+
+            // "PLAY" label section
+            let play_rect = egui::Rect::from_min_size(egui::pos2(price_rect.right(), by), egui::vec2(label_w, badge_h));
+            painter.rect_filled(play_rect, egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 },
+                egui::Color32::from_rgba_unmultiplied(line_color.r(), line_color.g(), line_color.b(), 140u8.saturating_add(hb)));
+            painter.text(play_rect.center(), egui::Align2::CENTER_CENTER, "PLAY",
+                mono_3xs(), dark);
+
+            // Y-axis price label
+            let axis_rect = egui::Rect::from_min_size(egui::pos2(rect.left() + cw + 1.0, y - 8.0), egui::vec2(pr - 2.0, 16.0));
+            painter.rect_filled(axis_rect, 2.0, line_color);
+            painter.text(axis_rect.center(), egui::Align2::CENTER_CENTER, &price_str,
+                mono_2xs(), dark);
+
+            if badge_hovered { ui.ctx().set_cursor_icon(egui::CursorIcon::Grab); }
+        }
+}
+
+/// OCO/trigger bracket bands + connectors + R:R (WS-E E4: extracted from
+/// render_chart_pane). Pure draw over chart.orders. Verbatim.
+#[allow(clippy::too_many_arguments)]
+fn render_oco_bracket_bands(
+    painter: &egui::Painter, chart: &Chart, rect: egui::Rect,
+    cw: f32, t: &Theme, py: impl Fn(f32) -> f32,
+) {
+        let active_orders: Vec<&OrderLevel> = chart.orders.iter().filter(|o| o.status != OrderStatus::Cancelled && o.status != OrderStatus::Executed).collect();
+        for order in &active_orders {
+            if let Some(pair_id) = order.pair_id {
+                if let Some(pair) = active_orders.iter().find(|o| o.id == pair_id) {
+                    // Only draw once (from higher-id order to avoid double-draw)
+                    if order.id > pair.id {
+                        let y1 = py(order.price);
+                        let y2 = py(pair.price);
+                        // Identify target vs stop in the OCO pair
+                        let (target_order, stop_order) = if matches!(order.side, OrderSide::OcoTarget) {
+                            (*order, *pair)
+                        } else if matches!(pair.side, OrderSide::OcoTarget) {
+                            (*pair, *order)
+                        } else {
+                            (*order, *pair)
+                        };
+                        let is_oco = matches!(order.side, OrderSide::OcoTarget | OrderSide::OcoStop)
+                            || matches!(pair.side, OrderSide::OcoTarget | OrderSide::OcoStop);
+                        if is_oco {
+                            let tp_y = py(target_order.price);
+                            let sl_y = py(stop_order.price);
+                            // Green-tinted zone (profit zone: between midpoint and TP)
+                            let mid_price = (target_order.price + stop_order.price) / 2.0;
+                            let mid_y = py(mid_price);
+                            painter.rect_filled(egui::Rect::from_min_max(
+                                egui::pos2(rect.left(), tp_y.min(mid_y)), egui::pos2(rect.left() + cw, tp_y.max(mid_y))),
+                                0.0, color_alpha(t.bull, 12));
+                            // Red-tinted zone (loss zone: between midpoint and SL)
+                            painter.rect_filled(egui::Rect::from_min_max(
+                                egui::pos2(rect.left(), sl_y.min(mid_y)), egui::pos2(rect.left() + cw, sl_y.max(mid_y))),
+                                0.0, color_alpha(t.bear, 12));
+                            // Vertical dotted connector line on right side of chart
+                            let connector_x = rect.left() + cw - 20.0;
+                            let top_y = y1.min(y2);
+                            let bot_y = y1.max(y2);
+                            {
+                                let mut dy = top_y;
+                                while dy < bot_y {
+                                    let end = (dy + 3.0).min(bot_y);
+                                    painter.line_segment(
+                                        [egui::pos2(connector_x, dy), egui::pos2(connector_x, end)],
+                                        egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(167, 139, 250, 120)));
+                                    dy += 6.0;
+                                }
+                            }
+                            // Small horizontal ticks at each end of the connector
+                            painter.line_segment(
+                                [egui::pos2(connector_x - 4.0, tp_y), egui::pos2(connector_x + 4.0, tp_y)],
+                                egui::Stroke::new(1.0, color_alpha(t.bull, 180)));
+                            painter.line_segment(
+                                [egui::pos2(connector_x - 4.0, sl_y), egui::pos2(connector_x + 4.0, sl_y)],
+                                egui::Stroke::new(1.0, color_alpha(t.bear, 180)));
+                            // R:R ratio label at midpoint of connector
+                            let reward = (target_order.price - mid_price).abs();
+                            let risk = (stop_order.price - mid_price).abs();
+                            if risk > 0.0 {
+                                let rr = reward / risk;
+                                let rr_text = format!("R:R {:.1}:1", rr);
+                                let rr_font = mono_2xs();
+                                let rr_galley = painter.layout_no_wrap(rr_text.clone(), rr_font.clone(), egui::Color32::from_rgb(167, 139, 250));
+                                let rr_bg_rect = egui::Rect::from_min_size(
+                                    egui::pos2(connector_x - rr_galley.size().x / 2.0 - 3.0, mid_y - rr_galley.size().y / 2.0 - 2.0),
+                                    egui::vec2(rr_galley.size().x + 6.0, rr_galley.size().y + 4.0));
+                                painter.rect_filled(rr_bg_rect, 3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
+                                painter.text(egui::pos2(connector_x, mid_y), egui::Align2::CENTER_CENTER, &rr_text, rr_font,
+                                    egui::Color32::from_rgb(167, 139, 250));
+                            }
+                        } else {
+                            // Non-OCO bracket (trigger pairs) — single color band
+                            let band_color = match order.side {
+                                OrderSide::TriggerBuy | OrderSide::TriggerSell => egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 12),
+                                _ => egui::Color32::TRANSPARENT,
+                            };
+                            painter.rect_filled(egui::Rect::from_min_max(
+                                egui::pos2(rect.left(), y1.min(y2)), egui::pos2(rect.left() + cw, y1.max(y2))),
+                                0.0, band_color);
+                            // Vertical dotted connector for triggers too
+                            let connector_x = rect.left() + cw - 20.0;
+                            {
+                                let mut dy = y1.min(y2);
+                                while dy < y1.max(y2) {
+                                    let end = (dy + 3.0).min(y1.max(y2));
+                                    painter.line_segment(
+                                        [egui::pos2(connector_x, dy), egui::pos2(connector_x, end)],
+                                        egui::Stroke::new(0.8, egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 80)));
+                                    dy += 6.0;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 }
