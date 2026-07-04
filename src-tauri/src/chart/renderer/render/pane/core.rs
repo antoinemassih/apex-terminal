@@ -3031,120 +3031,8 @@ fn render_chart_pane(
     }
 
     // ── Dark Pool Overlay ────────────────────────────────────────────────
-    if chart.show_darkpool && !chart.darkpool_prints.is_empty() && !chart.bars.is_empty() && !chart.timestamps.is_empty() {
-        let dp_vs = chart.vs;
-        let dp_ts = &chart.timestamps;
-        let dp_bars_len = chart.bars.len();
-        let dp_vis_start = dp_vs.floor().max(0.0) as usize;
-        let dp_vis_end = (dp_vis_start + chart.vc as usize + 2).min(dp_bars_len);
-
-        // Aggregate volume at each price level for level lines
-        let mut price_volume: std::collections::BTreeMap<i64, (f32, u64)> = std::collections::BTreeMap::new();
-
-        for dp_print in &chart.darkpool_prints {
-            // Find closest bar by timestamp
-            let mut best_idx: Option<usize> = None;
-            let mut best_dist = i64::MAX;
-            match dp_ts.binary_search(&dp_print.time) {
-                Ok(i) => { best_idx = Some(i); }
-                Err(i) => {
-                    if i < dp_ts.len() && (dp_ts[i] - dp_print.time).abs() < best_dist {
-                        best_dist = (dp_ts[i] - dp_print.time).abs();
-                        best_idx = Some(i);
-                    }
-                    if i > 0 && (dp_ts[i - 1] - dp_print.time).abs() < best_dist {
-                        best_idx = Some(i - 1);
-                    }
-                }
-            }
-
-            let bar_idx = match best_idx {
-                Some(i) => i,
-                None => continue,
-            };
-
-            // Skip if not in visible range
-            if bar_idx < dp_vis_start || bar_idx >= dp_vis_end { continue; }
-
-            let cx = bx(bar_idx as f32);
-            let cy = py(dp_print.price);
-            if !cy.is_finite() || cy < rect.top() + pt || cy > rect.top() + pt + ch { continue; }
-
-            // Circle radius: log10(size) scaled, clamped [4, 20]
-            let radius = ((dp_print.size as f32).log10() * 2.0).clamp(4.0, 20.0);
-
-            // Color by side
-            let (fill_col, stroke_col) = match dp_print.side {
-                1 => (
-                    egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 80),
-                    egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 160),
-                ),
-                -1 => (
-                    egui::Color32::from_rgba_unmultiplied(t.bear.r(), t.bear.g(), t.bear.b(), 80),
-                    egui::Color32::from_rgba_unmultiplied(t.bear.r(), t.bear.g(), t.bear.b(), 160),
-                ),
-                _ => (
-                    egui::Color32::from_rgba_unmultiplied(t.dim.r(), t.dim.g(), t.dim.b(), 60),
-                    egui::Color32::from_rgba_unmultiplied(t.dim.r(), t.dim.g(), t.dim.b(), 100),
-                ),
-            };
-
-            // Outer glow for large prints
-            if radius > 8.0 {
-                painter.circle_filled(egui::pos2(cx, cy), radius + 3.0,
-                    egui::Color32::from_rgba_unmultiplied(fill_col.r(), fill_col.g(), fill_col.b(), 25));
-            }
-
-            // Main circle
-            painter.circle_filled(egui::pos2(cx, cy), radius, fill_col);
-            painter.circle_stroke(egui::pos2(cx, cy), radius, egui::Stroke::new(1.0, stroke_col));
-
-            // Size label inside large circles
-            if radius > 10.0 {
-                let label = if dp_print.size >= 1_000_000 {
-                    format!("{:.1}M", dp_print.size as f32 / 1_000_000.0)
-                } else {
-                    format!("{}K", dp_print.size / 1000)
-                };
-                painter.text(egui::pos2(cx, cy), egui::Align2::CENTER_CENTER,
-                    &label, mono_3xs(),
-                    color_alpha(t.text,200));
-            }
-
-            // Aggregate for level lines (bucket by price rounded to 2 decimal places)
-            let key = (dp_print.price * 100.0) as i64;
-            let entry = price_volume.entry(key).or_insert((dp_print.price, 0u64));
-            entry.1 += dp_print.size;
-        }
-
-        // Draw horizontal dashed lines at prices with large aggregate dark pool volume
-        let volume_threshold = 200_000u64;
-        for (_key, (level_price, total_vol)) in &price_volume {
-            if *total_vol < volume_threshold { continue; }
-            let ly = py(*level_price);
-            if !ly.is_finite() || ly < rect.top() + pt || ly > rect.top() + pt + ch { continue; }
-
-            let line_alpha = (40.0 + (*total_vol as f32 / 500_000.0 * 60.0).min(60.0)) as u8;
-            let line_col = egui::Color32::from_rgba_unmultiplied(180, 140, 255, line_alpha);
-            dashed_line(&painter, egui::pos2(rect.left(), ly), egui::pos2(rect.left() + cw, ly),
-                egui::Stroke::new(1.0, line_col), LineStyle::Dashed);
-
-            // Right-edge label showing aggregate volume
-            let vol_label = if *total_vol >= 1_000_000 {
-                format!("DP {:.1}M", *total_vol as f32 / 1_000_000.0)
-            } else {
-                format!("DP {}K", total_vol / 1000)
-            };
-            let label_font = mono_xs();
-            let galley = painter.layout_no_wrap(vol_label.clone(), label_font.clone(), line_col);
-            let lx = rect.left() + cw - galley.size().x - 8.0;
-            painter.rect_filled(egui::Rect::from_min_size(
-                egui::pos2(lx - 4.0, ly - galley.size().y / 2.0 - 2.0),
-                galley.size() + egui::vec2(8.0, 4.0)),
-                3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
-            painter.text(egui::pos2(lx, ly), egui::Align2::LEFT_CENTER, &vol_label, label_font, line_col);
-        }
-    }
+    // Dark-pool prints overlay (extracted to render_darkpool_overlay, WS-E E4).
+    render_darkpool_overlay(&painter, chart, rect, cw, ch, pt, t, &py, &bx);
 
     // ── Hit-test highlighting: flash indicators/drawings when current price touches ──
     if chart.hit_highlight && n > 1 {
@@ -7667,132 +7555,8 @@ fn render_chart_pane(
     // below (hit_alert_line, chart.dragging_alert). This block only paints.
     // Click hitboxes for PLACE/X are stashed in thread-locals and handled in
     // the same priority-0 block that processes other overlay clicks.
-    {
-        let placed_color = COLOR_AMBER; // amber = placed
-        let draft_color  = t.bear; // red = draft (needs attention)
-        let hover_pos = ui.input(|i| i.pointer.hover_pos());
-        ALERT_BADGE_HITS.with(|h| h.borrow_mut().clear());
-        let alert_ids: Vec<u32> = chart.price_alerts.iter()
-            .filter(|a| !a.triggered && a.symbol == chart.symbol)
-            .map(|a| a.id).collect();
-        for &aid in &alert_ids {
-            let alert = match chart.price_alerts.iter().find(|a| a.id == aid) {
-                Some(a) => a,
-                None => continue,
-            };
-            let is_draft = alert.draft;
-            let alert_color = if is_draft { draft_color } else { placed_color };
-            let y = py(alert.price);
-            if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
-
-            // Hover/drag feedback based on chart state
-            let is_dragging = chart.dragging_alert == Some(aid);
-            let is_hovered = hover_pos.map_or(false, |p| (p.y - y).abs() <= 10.0 && p.x >= rect.left() && p.x <= rect.left() + cw);
-
-            // Line: drafts = red dashed, placed = amber dashed
-            let base_alpha = if is_draft { 220 } else { 180 };
-            let dash_col = egui::Color32::from_rgba_unmultiplied(
-                alert_color.r(), alert_color.g(), alert_color.b(),
-                if is_hovered || is_dragging { 255 } else { base_alpha });
-            let mut dx = rect.left();
-            let (dash, gap) = if is_draft { (6.0, 4.0) } else { (5.0, 4.0) };
-            let line_width = if is_draft { 1.5 } else { 1.0 };
-            while dx < rect.left() + cw {
-                let end_x = (dx + dash).min(rect.left() + cw);
-                painter.line_segment([egui::pos2(dx, y), egui::pos2(end_x, y)],
-                    egui::Stroke::new(if is_hovered { line_width + 0.5 } else { line_width }, dash_col));
-                dx += dash + gap;
-            }
-
-            // Drag handle pill at center of line — visual grab target
-            {
-                let cx = rect.left() + cw / 2.0;
-                let (pill_w, pill_h) = if is_hovered || is_dragging { (12.0, 7.0) } else { (8.0, 5.0) };
-                let pill_rect = egui::Rect::from_center_size(
-                    egui::pos2(cx, y),
-                    egui::vec2(pill_w, pill_h));
-                // Solid fill in alert color, slightly darker border
-                painter.rect_filled(pill_rect, pill_h / 2.0, alert_color);
-                painter.rect_stroke(pill_rect, pill_h / 2.0,
-                    egui::Stroke::new(crate::chart_renderer::ui::style::stroke_thin(),
-                        crate::chart_renderer::ui::style::shadow_color_alpha(t, 120)),
-                    egui::StrokeKind::Outside);
-                // 3 dots for a "grab handle" visual cue
-                let dot_col = egui::Color32::from_rgba_unmultiplied(255, 255, 255, 180);
-                painter.circle_filled(egui::pos2(cx - 2.0, y), 0.7, dot_col);
-                painter.circle_filled(egui::pos2(cx,       y), 0.7, dot_col);
-                painter.circle_filled(egui::pos2(cx + 2.0, y), 0.7, dot_col);
-            }
-
-            // Badge
-            let dir_arrow = if alert.above { "\u{25B2}" } else { "\u{25BC}" };
-            let d = if alert.price >= 10.0 { 2 } else { 4 };
-            let label_font = egui::FontId::monospace(if is_draft { 10.0 } else { 9.0 });
-
-            if is_draft {
-                // ── DRAFT: big red badge with solid fill + PLACE + X buttons ──
-                let label_text = format!("DRAFT {} {:.prec$}", dir_arrow, alert.price, prec = d);
-                let galley = painter.layout_no_wrap(label_text.clone(), label_font.clone(), egui::Color32::WHITE);
-                let place_w = 42.0; let x_w = 20.0; let pad = 8.0;
-                let badge_h = galley.size().y + 10.0;
-                let badge_w = galley.size().x + pad * 2.0 + place_w + x_w + 6.0;
-                let lx = rect.left() + cw - badge_w - 4.0;
-                let badge_rect = egui::Rect::from_min_size(egui::pos2(lx, y - badge_h / 2.0), egui::vec2(badge_w, badge_h));
-                painter.rect_filled(badge_rect, 4.0, alert_color);
-                painter.rect_stroke(badge_rect, 4.0,
-                    egui::Stroke::new(1.0, t.bear), egui::StrokeKind::Outside);
-                painter.text(egui::pos2(lx + pad, y), egui::Align2::LEFT_CENTER, &label_text, label_font, egui::Color32::WHITE);
-
-                // PLACE button
-                let place_rect = egui::Rect::from_min_size(
-                    egui::pos2(badge_rect.right() - place_w - x_w - 4.0, badge_rect.top() + 3.0),
-                    egui::vec2(place_w, badge_h - 6.0));
-                let place_hover = hover_pos.map_or(false, |p| place_rect.contains(p));
-                let place_bg = if place_hover { egui::Color32::WHITE }
-                    else { egui::Color32::from_rgba_unmultiplied(255, 255, 255, 230) };
-                painter.rect_filled(place_rect, 3.0, place_bg);
-                let place_fg = if place_hover { alert_color } else { t.bear };
-                painter.text(place_rect.center(), egui::Align2::CENTER_CENTER, "PLACE", mono_xs(), place_fg);
-
-                // X cancel
-                let x_rect = egui::Rect::from_min_size(
-                    egui::pos2(badge_rect.right() - x_w - 2.0, badge_rect.top() + 3.0),
-                    egui::vec2(x_w, badge_h - 6.0));
-                let x_hover = hover_pos.map_or(false, |p| x_rect.contains(p));
-                if x_hover { painter.rect_filled(x_rect, crate::chart_renderer::ui::style::radius_sm(), crate::chart_renderer::ui::style::shadow_color_alpha(t, 80)); }
-                painter.text(x_rect.center(), egui::Align2::CENTER_CENTER, "\u{00D7}",
-                    mono_md_plus(), egui::Color32::WHITE);
-
-                // Stash rects for the priority-0 click handler
-                ALERT_BADGE_HITS.with(|h| h.borrow_mut().push(AlertBadgeHit {
-                    alert_id: aid, is_draft: true, place_rect, x_rect, drag_line_y: y,
-                }));
-            } else {
-                // ── PLACED: amber compact badge with X ──
-                let label_text = format!("Alert {} {:.prec$}", dir_arrow, alert.price, prec = d);
-                let galley = painter.layout_no_wrap(label_text.clone(), label_font.clone(), alert_color);
-                let lx = rect.left() + cw - galley.size().x - 24.0;
-                let badge_rect = egui::Rect::from_min_size(
-                    egui::pos2(lx - 4.0, y - galley.size().y / 2.0 - 2.0),
-                    egui::vec2(galley.size().x + 24.0, galley.size().y + 4.0));
-                painter.rect_filled(badge_rect, 3.0, egui::Color32::from_rgba_unmultiplied(
-                    t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
-                painter.rect_stroke(badge_rect, 3.0, egui::Stroke::new(0.5, alert_color), egui::StrokeKind::Outside);
-                painter.text(egui::pos2(lx, y), egui::Align2::LEFT_CENTER, &label_text, label_font, alert_color);
-                let x_rect = egui::Rect::from_min_size(
-                    egui::pos2(badge_rect.right() - 16.0, badge_rect.top() + 2.0),
-                    egui::vec2(14.0, badge_rect.height() - 4.0));
-                let x_hover = hover_pos.map_or(false, |p| x_rect.contains(p));
-                painter.text(x_rect.center(), egui::Align2::CENTER_CENTER, "\u{00D7}",
-                    mono_xs_plus(),
-                    if x_hover { alert_color } else { alert_color.gamma_multiply(0.6) });
-                ALERT_BADGE_HITS.with(|h| h.borrow_mut().push(AlertBadgeHit {
-                    alert_id: aid, is_draft: false,
-                    place_rect: egui::Rect::NOTHING, x_rect, drag_line_y: y,
-                }));
-            }
-        }
-    }
+    // Price-alert lines (extracted to render_price_alert_lines, WS-E E4).
+    render_price_alert_lines(&painter, chart, rect, cw, ch, pt, t, ui, &py);
 
     // ── Order edit popup (double-click) ──────────────────────────────────
     if let Some(edit_id) = chart.editing_order {
@@ -13043,5 +12807,263 @@ fn render_oco_bracket_bands(
                     }
                 }
             }
+        }
+}
+
+/// Price-alert lines overlay (WS-E E4: extracted from render_chart_pane).
+/// Interactive — draggable alert lines + badges (uses ui for hit-testing).
+/// Verbatim move; py passed as static-dispatch impl Fn.
+#[allow(clippy::too_many_arguments)]
+fn render_price_alert_lines(
+    painter: &egui::Painter, chart: &Chart, rect: egui::Rect,
+    cw: f32, ch: f32, pt: f32, t: &Theme,
+    ui: &mut egui::Ui, py: impl Fn(f32) -> f32,
+) {
+        let placed_color = COLOR_AMBER; // amber = placed
+        let draft_color  = t.bear; // red = draft (needs attention)
+        let hover_pos = ui.input(|i| i.pointer.hover_pos());
+        ALERT_BADGE_HITS.with(|h| h.borrow_mut().clear());
+        let alert_ids: Vec<u32> = chart.price_alerts.iter()
+            .filter(|a| !a.triggered && a.symbol == chart.symbol)
+            .map(|a| a.id).collect();
+        for &aid in &alert_ids {
+            let alert = match chart.price_alerts.iter().find(|a| a.id == aid) {
+                Some(a) => a,
+                None => continue,
+            };
+            let is_draft = alert.draft;
+            let alert_color = if is_draft { draft_color } else { placed_color };
+            let y = py(alert.price);
+            if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
+
+            // Hover/drag feedback based on chart state
+            let is_dragging = chart.dragging_alert == Some(aid);
+            let is_hovered = hover_pos.map_or(false, |p| (p.y - y).abs() <= 10.0 && p.x >= rect.left() && p.x <= rect.left() + cw);
+
+            // Line: drafts = red dashed, placed = amber dashed
+            let base_alpha = if is_draft { 220 } else { 180 };
+            let dash_col = egui::Color32::from_rgba_unmultiplied(
+                alert_color.r(), alert_color.g(), alert_color.b(),
+                if is_hovered || is_dragging { 255 } else { base_alpha });
+            let mut dx = rect.left();
+            let (dash, gap) = if is_draft { (6.0, 4.0) } else { (5.0, 4.0) };
+            let line_width = if is_draft { 1.5 } else { 1.0 };
+            while dx < rect.left() + cw {
+                let end_x = (dx + dash).min(rect.left() + cw);
+                painter.line_segment([egui::pos2(dx, y), egui::pos2(end_x, y)],
+                    egui::Stroke::new(if is_hovered { line_width + 0.5 } else { line_width }, dash_col));
+                dx += dash + gap;
+            }
+
+            // Drag handle pill at center of line — visual grab target
+            {
+                let cx = rect.left() + cw / 2.0;
+                let (pill_w, pill_h) = if is_hovered || is_dragging { (12.0, 7.0) } else { (8.0, 5.0) };
+                let pill_rect = egui::Rect::from_center_size(
+                    egui::pos2(cx, y),
+                    egui::vec2(pill_w, pill_h));
+                // Solid fill in alert color, slightly darker border
+                painter.rect_filled(pill_rect, pill_h / 2.0, alert_color);
+                painter.rect_stroke(pill_rect, pill_h / 2.0,
+                    egui::Stroke::new(crate::chart_renderer::ui::style::stroke_thin(),
+                        crate::chart_renderer::ui::style::shadow_color_alpha(t, 120)),
+                    egui::StrokeKind::Outside);
+                // 3 dots for a "grab handle" visual cue
+                let dot_col = egui::Color32::from_rgba_unmultiplied(255, 255, 255, 180);
+                painter.circle_filled(egui::pos2(cx - 2.0, y), 0.7, dot_col);
+                painter.circle_filled(egui::pos2(cx,       y), 0.7, dot_col);
+                painter.circle_filled(egui::pos2(cx + 2.0, y), 0.7, dot_col);
+            }
+
+            // Badge
+            let dir_arrow = if alert.above { "\u{25B2}" } else { "\u{25BC}" };
+            let d = if alert.price >= 10.0 { 2 } else { 4 };
+            let label_font = egui::FontId::monospace(if is_draft { 10.0 } else { 9.0 });
+
+            if is_draft {
+                // ── DRAFT: big red badge with solid fill + PLACE + X buttons ──
+                let label_text = format!("DRAFT {} {:.prec$}", dir_arrow, alert.price, prec = d);
+                let galley = painter.layout_no_wrap(label_text.clone(), label_font.clone(), egui::Color32::WHITE);
+                let place_w = 42.0; let x_w = 20.0; let pad = 8.0;
+                let badge_h = galley.size().y + 10.0;
+                let badge_w = galley.size().x + pad * 2.0 + place_w + x_w + 6.0;
+                let lx = rect.left() + cw - badge_w - 4.0;
+                let badge_rect = egui::Rect::from_min_size(egui::pos2(lx, y - badge_h / 2.0), egui::vec2(badge_w, badge_h));
+                painter.rect_filled(badge_rect, 4.0, alert_color);
+                painter.rect_stroke(badge_rect, 4.0,
+                    egui::Stroke::new(1.0, t.bear), egui::StrokeKind::Outside);
+                painter.text(egui::pos2(lx + pad, y), egui::Align2::LEFT_CENTER, &label_text, label_font, egui::Color32::WHITE);
+
+                // PLACE button
+                let place_rect = egui::Rect::from_min_size(
+                    egui::pos2(badge_rect.right() - place_w - x_w - 4.0, badge_rect.top() + 3.0),
+                    egui::vec2(place_w, badge_h - 6.0));
+                let place_hover = hover_pos.map_or(false, |p| place_rect.contains(p));
+                let place_bg = if place_hover { egui::Color32::WHITE }
+                    else { egui::Color32::from_rgba_unmultiplied(255, 255, 255, 230) };
+                painter.rect_filled(place_rect, 3.0, place_bg);
+                let place_fg = if place_hover { alert_color } else { t.bear };
+                painter.text(place_rect.center(), egui::Align2::CENTER_CENTER, "PLACE", mono_xs(), place_fg);
+
+                // X cancel
+                let x_rect = egui::Rect::from_min_size(
+                    egui::pos2(badge_rect.right() - x_w - 2.0, badge_rect.top() + 3.0),
+                    egui::vec2(x_w, badge_h - 6.0));
+                let x_hover = hover_pos.map_or(false, |p| x_rect.contains(p));
+                if x_hover { painter.rect_filled(x_rect, crate::chart_renderer::ui::style::radius_sm(), crate::chart_renderer::ui::style::shadow_color_alpha(t, 80)); }
+                painter.text(x_rect.center(), egui::Align2::CENTER_CENTER, "\u{00D7}",
+                    mono_md_plus(), egui::Color32::WHITE);
+
+                // Stash rects for the priority-0 click handler
+                ALERT_BADGE_HITS.with(|h| h.borrow_mut().push(AlertBadgeHit {
+                    alert_id: aid, is_draft: true, place_rect, x_rect, drag_line_y: y,
+                }));
+            } else {
+                // ── PLACED: amber compact badge with X ──
+                let label_text = format!("Alert {} {:.prec$}", dir_arrow, alert.price, prec = d);
+                let galley = painter.layout_no_wrap(label_text.clone(), label_font.clone(), alert_color);
+                let lx = rect.left() + cw - galley.size().x - 24.0;
+                let badge_rect = egui::Rect::from_min_size(
+                    egui::pos2(lx - 4.0, y - galley.size().y / 2.0 - 2.0),
+                    egui::vec2(galley.size().x + 24.0, galley.size().y + 4.0));
+                painter.rect_filled(badge_rect, 3.0, egui::Color32::from_rgba_unmultiplied(
+                    t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
+                painter.rect_stroke(badge_rect, 3.0, egui::Stroke::new(0.5, alert_color), egui::StrokeKind::Outside);
+                painter.text(egui::pos2(lx, y), egui::Align2::LEFT_CENTER, &label_text, label_font, alert_color);
+                let x_rect = egui::Rect::from_min_size(
+                    egui::pos2(badge_rect.right() - 16.0, badge_rect.top() + 2.0),
+                    egui::vec2(14.0, badge_rect.height() - 4.0));
+                let x_hover = hover_pos.map_or(false, |p| x_rect.contains(p));
+                painter.text(x_rect.center(), egui::Align2::CENTER_CENTER, "\u{00D7}",
+                    mono_xs_plus(),
+                    if x_hover { alert_color } else { alert_color.gamma_multiply(0.6) });
+                ALERT_BADGE_HITS.with(|h| h.borrow_mut().push(AlertBadgeHit {
+                    alert_id: aid, is_draft: false,
+                    place_rect: egui::Rect::NOTHING, x_rect, drag_line_y: y,
+                }));
+            }
+        }
+}
+
+/// Dark-pool prints overlay (WS-E E4: extracted from render_chart_pane).
+/// Pure per-bar draw. Verbatim; py/bx as static-dispatch impl Fn.
+#[allow(clippy::too_many_arguments)]
+fn render_darkpool_overlay(
+    painter: &egui::Painter, chart: &Chart, rect: egui::Rect,
+    cw: f32, ch: f32, pt: f32, t: &Theme,
+    py: impl Fn(f32) -> f32, bx: impl Fn(f32) -> f32,
+) {
+    if !(chart.show_darkpool && !chart.darkpool_prints.is_empty() && !chart.bars.is_empty() && !chart.timestamps.is_empty()) { return; }
+        let dp_vs = chart.vs;
+        let dp_ts = &chart.timestamps;
+        let dp_bars_len = chart.bars.len();
+        let dp_vis_start = dp_vs.floor().max(0.0) as usize;
+        let dp_vis_end = (dp_vis_start + chart.vc as usize + 2).min(dp_bars_len);
+
+        // Aggregate volume at each price level for level lines
+        let mut price_volume: std::collections::BTreeMap<i64, (f32, u64)> = std::collections::BTreeMap::new();
+
+        for dp_print in &chart.darkpool_prints {
+            // Find closest bar by timestamp
+            let mut best_idx: Option<usize> = None;
+            let mut best_dist = i64::MAX;
+            match dp_ts.binary_search(&dp_print.time) {
+                Ok(i) => { best_idx = Some(i); }
+                Err(i) => {
+                    if i < dp_ts.len() && (dp_ts[i] - dp_print.time).abs() < best_dist {
+                        best_dist = (dp_ts[i] - dp_print.time).abs();
+                        best_idx = Some(i);
+                    }
+                    if i > 0 && (dp_ts[i - 1] - dp_print.time).abs() < best_dist {
+                        best_idx = Some(i - 1);
+                    }
+                }
+            }
+
+            let bar_idx = match best_idx {
+                Some(i) => i,
+                None => continue,
+            };
+
+            // Skip if not in visible range
+            if bar_idx < dp_vis_start || bar_idx >= dp_vis_end { continue; }
+
+            let cx = bx(bar_idx as f32);
+            let cy = py(dp_print.price);
+            if !cy.is_finite() || cy < rect.top() + pt || cy > rect.top() + pt + ch { continue; }
+
+            // Circle radius: log10(size) scaled, clamped [4, 20]
+            let radius = ((dp_print.size as f32).log10() * 2.0).clamp(4.0, 20.0);
+
+            // Color by side
+            let (fill_col, stroke_col) = match dp_print.side {
+                1 => (
+                    egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 80),
+                    egui::Color32::from_rgba_unmultiplied(t.bull.r(), t.bull.g(), t.bull.b(), 160),
+                ),
+                -1 => (
+                    egui::Color32::from_rgba_unmultiplied(t.bear.r(), t.bear.g(), t.bear.b(), 80),
+                    egui::Color32::from_rgba_unmultiplied(t.bear.r(), t.bear.g(), t.bear.b(), 160),
+                ),
+                _ => (
+                    egui::Color32::from_rgba_unmultiplied(t.dim.r(), t.dim.g(), t.dim.b(), 60),
+                    egui::Color32::from_rgba_unmultiplied(t.dim.r(), t.dim.g(), t.dim.b(), 100),
+                ),
+            };
+
+            // Outer glow for large prints
+            if radius > 8.0 {
+                painter.circle_filled(egui::pos2(cx, cy), radius + 3.0,
+                    egui::Color32::from_rgba_unmultiplied(fill_col.r(), fill_col.g(), fill_col.b(), 25));
+            }
+
+            // Main circle
+            painter.circle_filled(egui::pos2(cx, cy), radius, fill_col);
+            painter.circle_stroke(egui::pos2(cx, cy), radius, egui::Stroke::new(1.0, stroke_col));
+
+            // Size label inside large circles
+            if radius > 10.0 {
+                let label = if dp_print.size >= 1_000_000 {
+                    format!("{:.1}M", dp_print.size as f32 / 1_000_000.0)
+                } else {
+                    format!("{}K", dp_print.size / 1000)
+                };
+                painter.text(egui::pos2(cx, cy), egui::Align2::CENTER_CENTER,
+                    &label, mono_3xs(),
+                    color_alpha(t.text,200));
+            }
+
+            // Aggregate for level lines (bucket by price rounded to 2 decimal places)
+            let key = (dp_print.price * 100.0) as i64;
+            let entry = price_volume.entry(key).or_insert((dp_print.price, 0u64));
+            entry.1 += dp_print.size;
+        }
+
+        // Draw horizontal dashed lines at prices with large aggregate dark pool volume
+        let volume_threshold = 200_000u64;
+        for (_key, (level_price, total_vol)) in &price_volume {
+            if *total_vol < volume_threshold { continue; }
+            let ly = py(*level_price);
+            if !ly.is_finite() || ly < rect.top() + pt || ly > rect.top() + pt + ch { continue; }
+
+            let line_alpha = (40.0 + (*total_vol as f32 / 500_000.0 * 60.0).min(60.0)) as u8;
+            let line_col = egui::Color32::from_rgba_unmultiplied(180, 140, 255, line_alpha);
+            dashed_line(&painter, egui::pos2(rect.left(), ly), egui::pos2(rect.left() + cw, ly),
+                egui::Stroke::new(1.0, line_col), LineStyle::Dashed);
+
+            // Right-edge label showing aggregate volume
+            let vol_label = if *total_vol >= 1_000_000 {
+                format!("DP {:.1}M", *total_vol as f32 / 1_000_000.0)
+            } else {
+                format!("DP {}K", total_vol / 1000)
+            };
+            let label_font = mono_xs();
+            let galley = painter.layout_no_wrap(vol_label.clone(), label_font.clone(), line_col);
+            let lx = rect.left() + cw - galley.size().x - 8.0;
+            painter.rect_filled(egui::Rect::from_min_size(
+                egui::pos2(lx - 4.0, ly - galley.size().y / 2.0 - 2.0),
+                galley.size() + egui::vec2(8.0, 4.0)),
+                3.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
+            painter.text(egui::pos2(lx, ly), egui::Align2::LEFT_CENTER, &vol_label, label_font, line_col);
         }
 }
