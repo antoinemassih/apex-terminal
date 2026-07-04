@@ -6886,8 +6886,8 @@ fn render_chart_pane(
         if y_high > rect.bottom() || y_low < rect.top() { continue; }
 
         let zone_color = match zone.zone_type.as_str() {
-            "demand" | "order_block" => egui::Color32::from_rgb(56, 203, 137),
-            "supply" => egui::Color32::from_rgb(224, 82, 82),
+            "demand" | "order_block" => t.bull,
+            "supply" => t.bear,
             "fvg" => egui::Color32::from_rgb(90, 120, 220),
             "breaker" => egui::Color32::from_rgb(210, 150, 40),
             _ => egui::Color32::from_rgb(100, 100, 110),
@@ -6987,12 +6987,12 @@ fn render_chart_pane(
             // Green zone: entry to target
             painter.rect_filled(
                 egui::Rect::from_min_max(egui::pos2(rect.left(), zone_top), egui::pos2(rect.right(), mid_y)),
-                0.0, color_alpha(egui::Color32::from_rgb(56, 203, 137), 6),
+                0.0, color_alpha(t.bull, 6),
             );
             // Red zone: entry to stop
             painter.rect_filled(
                 egui::Rect::from_min_max(egui::pos2(rect.left(), mid_y), egui::pos2(rect.right(), zone_bot)),
-                0.0, color_alpha(egui::Color32::from_rgb(224, 82, 82), 6),
+                0.0, color_alpha(t.bear, 6),
             );
         }
 
@@ -7003,11 +7003,11 @@ fn render_chart_pane(
         }
         if target_y > rect.top() && target_y < rect.bottom() {
             dashed_line(&painter, egui::pos2(rect.left(), target_y), egui::pos2(rect.right(), target_y),
-                egui::Stroke::new(0.8, color_alpha(egui::Color32::from_rgb(56, 203, 137), 80)), LineStyle::Dotted);
+                egui::Stroke::new(0.8, color_alpha(t.bull, 80)), LineStyle::Dotted);
         }
         if stop_y > rect.top() && stop_y < rect.bottom() {
             dashed_line(&painter, egui::pos2(rect.left(), stop_y), egui::pos2(rect.right(), stop_y),
-                egui::Stroke::new(0.8, color_alpha(egui::Color32::from_rgb(224, 82, 82), 80)), LineStyle::Dotted);
+                egui::Stroke::new(0.8, color_alpha(t.bear, 80)), LineStyle::Dotted);
         }
 
         // Price labels on the right edge (price axis)
