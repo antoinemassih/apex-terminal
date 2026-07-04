@@ -3016,187 +3016,8 @@ fn render_chart_pane(
 
     // ── Auto Support/Resistance ───────────────────────────────────────────
     // ── Gamma Levels Overlay (GEX) ────────────────────────────────────────
-    if chart.show_gamma && !chart.gamma_levels.is_empty() {
-        let max_gex = chart.gamma_levels.iter().map(|l| l.exposure.abs()).fold(0.0_f32, f32::max).max(1.0);
-        let max_bar_w = cw * 0.12; // max band width as fraction of chart width
-
-        let last_price = chart.bars.last().map_or(0.0, |b| b.close);
-        let zero_y = py(chart.gamma_zero);
-        let price_y = py(last_price);
-
-        // F3 (audit): SYNTHETIC badge — these gamma_levels are FABRICATED
-        // placeholders (the :8412 GEX feed was unavailable). Warn the trader so
-        // real vs. synthetic walls are never confused. Top-right, clear of the
-        // STABLE/VOLATILE territory label at top-left.
-        if chart.gamma_synthetic {
-            let txt = "SYNTHETIC";
-            let font = mono_xs_plus();
-            let col = t.warn;
-            let g = painter.layout_no_wrap(txt.to_string(), font.clone(), col);
-            let bx = rect.right() - g.size().x - 16.0;
-            let by = rect.top() + pt + 8.0;
-            painter.rect_filled(egui::Rect::from_min_size(
-                egui::pos2(bx - 5.0, by - 3.0), g.size() + egui::vec2(10.0, 6.0)),
-                4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
-            painter.rect_stroke(egui::Rect::from_min_size(
-                egui::pos2(bx - 5.0, by - 3.0), g.size() + egui::vec2(10.0, 6.0)),
-                4.0, egui::Stroke::new(0.5, color_alpha(col, 100)), egui::StrokeKind::Outside);
-            painter.text(egui::pos2(bx, by + g.size().y / 2.0), egui::Align2::LEFT_CENTER, txt, font, col);
-        }
-
-        // Gamma territory label (top-left of pane)
-        if chart.gamma_zero > 0.0 && last_price > 0.0 {
-            let above_zero = last_price > chart.gamma_zero;
-            let dist = (last_price - chart.gamma_zero).abs();
-            let pct = dist / chart.gamma_zero * 100.0;
-            let (label, col) = if above_zero {
-                ("STABLE", egui::Color32::from_rgb(40, 200, 230))
-            } else {
-                ("VOLATILE", egui::Color32::from_rgb(240, 160, 40))
-            };
-            let arrow = if above_zero { "\u{2191}" } else { "\u{2193}" };
-            let info = format!("{} {}  {:.2} ({:.2}%) to 0\u{03B3}", arrow, label, dist, pct);
-            let font = mono_xs_plus();
-            let galley = painter.layout_no_wrap(info.clone(), font.clone(), col);
-            let lx = rect.left() + 8.0;
-            let ly = rect.top() + pt + 8.0;
-            painter.rect_filled(egui::Rect::from_min_size(
-                egui::pos2(lx - 5.0, ly - 3.0), galley.size() + egui::vec2(10.0, 6.0)),
-                4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
-            painter.rect_stroke(egui::Rect::from_min_size(
-                egui::pos2(lx - 5.0, ly - 3.0), galley.size() + egui::vec2(10.0, 6.0)),
-                4.0, egui::Stroke::new(0.5, color_alpha(col, 60)), egui::StrokeKind::Outside);
-            painter.text(egui::pos2(lx, ly + galley.size().y / 2.0), egui::Align2::LEFT_CENTER, &info, font, col);
-
-            // ── Flow layer (PPE) — second badge under the regime badge ───────
-            // Live only during market hours; off-hours the feed sets
-            // flow.active=false and we draw nothing.
-            if chart.gamma_flow_active {
-                if let Some(ppe) = chart.gamma_ppe {
-                    // PPE > 1.20 = real put selling (bullish-for-floor), cyan.
-                    // PPE < 0.85 = fake/thin selling (no floor), amber.
-                    let ppe_col = if ppe >= 1.20 {
-                        egui::Color32::from_rgb(40, 200, 230)
-                    } else if ppe <= 0.85 {
-                        egui::Color32::from_rgb(240, 160, 40)
-                    } else {
-                        egui::Color32::from_rgb(170, 170, 180)
-                    };
-                    let iv = match chart.gamma_iv_rising {
-                        Some(true) => "  \u{2191}IV",
-                        Some(false) => "  \u{2193}IV",
-                        None => "",
-                    };
-                    let posture = if chart.gamma_posture.is_empty() {
-                        String::new()
-                    } else {
-                        format!("  \u{00B7} {}", chart.gamma_posture.replace('_', " "))
-                    };
-                    let flow_info = format!("PPE {:.2}{}{}", ppe, iv, posture);
-                    let ffont = mono_xs_plus();
-                    let fg = painter.layout_no_wrap(flow_info.clone(), ffont.clone(), ppe_col);
-                    // Place directly beneath the regime badge.
-                    let fy = ly + galley.size().y + 12.0;
-                    painter.rect_filled(egui::Rect::from_min_size(
-                        egui::pos2(lx - 5.0, fy - 3.0), fg.size() + egui::vec2(10.0, 6.0)),
-                        4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
-                    painter.rect_stroke(egui::Rect::from_min_size(
-                        egui::pos2(lx - 5.0, fy - 3.0), fg.size() + egui::vec2(10.0, 6.0)),
-                        4.0, egui::Stroke::new(0.5, color_alpha(ppe_col, 60)), egui::StrokeKind::Outside);
-                    painter.text(egui::pos2(lx, fy + fg.size().y / 2.0), egui::Align2::LEFT_CENTER, &flow_info, ffont, ppe_col);
-                }
-            }
-        }
-
-        // Gamma bands at each level
-        for l in &chart.gamma_levels {
-            let (price, gex) = (l.price, l.exposure);
-            let y = py(price);
-            if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
-            let norm = gex.abs() / max_gex;
-            let band_w = norm * max_bar_w;
-            let band_h = 3.0 + norm * 4.0; // thicker bands for stronger levels
-
-            let (color, glow_color) = if gex > 0.0 {
-                // Positive gamma: cyan/blue — stabilizing, magnetic
-                let alpha = (30.0 + norm * 80.0) as u8;
-                let glow_alpha = (10.0 + norm * 30.0) as u8;
-                (egui::Color32::from_rgba_unmultiplied(40, 180, 220, alpha),
-                 egui::Color32::from_rgba_unmultiplied(40, 180, 220, glow_alpha))
-            } else {
-                // Negative gamma: amber/orange — accelerating, volatile
-                let alpha = (30.0 + norm * 80.0) as u8;
-                let glow_alpha = (10.0 + norm * 30.0) as u8;
-                (egui::Color32::from_rgba_unmultiplied(240, 160, 40, alpha),
-                 egui::Color32::from_rgba_unmultiplied(240, 160, 40, glow_alpha))
-            };
-
-            // Glow/aura (wider, more transparent)
-            if norm > 0.2 {
-                painter.rect_filled(egui::Rect::from_center_size(
-                    egui::pos2(rect.left() + band_w / 2.0, y), egui::vec2(band_w * 1.5, band_h * 2.5)),
-                    band_h, glow_color);
-            }
-            // Main band (from left edge, width proportional to magnitude)
-            painter.rect_filled(egui::Rect::from_min_size(
-                egui::pos2(rect.left(), y - band_h / 2.0), egui::vec2(band_w, band_h)),
-                2.0, color);
-        }
-
-        // Key levels: Call Wall (prominent cyan line)
-        let cw_y = py(chart.gamma_call_wall);
-        if cw_y.is_finite() && cw_y > rect.top() + pt && cw_y < rect.top() + pt + ch {
-            let cyan = egui::Color32::from_rgb(40, 200, 230);
-            let label_font = mono_xs_plus();
-            painter.line_segment([egui::pos2(rect.left(), cw_y), egui::pos2(rect.left() + cw, cw_y)],
-                egui::Stroke::new(2.0, color_alpha(cyan, 160)));
-            let cw_label = format!("CALL WALL  {:.2}", chart.gamma_call_wall);
-            let galley = painter.layout_no_wrap(cw_label.clone(), label_font.clone(), cyan);
-            let lx = rect.left() + cw - galley.size().x - 8.0;
-            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(lx - 6.0, cw_y - galley.size().y / 2.0 - 3.0), galley.size() + egui::vec2(12.0, 6.0)),
-                4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 230));
-            painter.text(egui::pos2(lx, cw_y), egui::Align2::LEFT_CENTER, &cw_label, label_font.clone(), cyan);
-        }
-
-        // Put Wall (prominent amber line)
-        let pw_y = py(chart.gamma_put_wall);
-        if pw_y.is_finite() && pw_y > rect.top() + pt && pw_y < rect.top() + pt + ch {
-            let amber = egui::Color32::from_rgb(240, 160, 40);
-            let label_font = mono_xs_plus();
-            painter.line_segment([egui::pos2(rect.left(), pw_y), egui::pos2(rect.left() + cw, pw_y)],
-                egui::Stroke::new(2.0, color_alpha(amber, 160)));
-            let pw_label = format!("PUT WALL  {:.2}", chart.gamma_put_wall);
-            let galley = painter.layout_no_wrap(pw_label.clone(), label_font.clone(), amber);
-            let lx = rect.left() + cw - galley.size().x - 8.0;
-            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(lx - 6.0, pw_y - galley.size().y / 2.0 - 3.0), galley.size() + egui::vec2(12.0, 6.0)),
-                4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 230));
-            painter.text(egui::pos2(lx, pw_y), egui::Align2::LEFT_CENTER, &pw_label, label_font.clone(), amber);
-        }
-
-        // Zero Gamma line (dashed white)
-        if zero_y.is_finite() && zero_y > rect.top() + pt && zero_y < rect.top() + pt + ch {
-            dashed_line(&painter, egui::pos2(rect.left(), zero_y), egui::pos2(rect.left() + cw, zero_y),
-                egui::Stroke::new(1.0, color_alpha(t.text,70)), LineStyle::Dashed);
-            painter.text(egui::pos2(rect.left() + 8.0, zero_y - 10.0), egui::Align2::LEFT_BOTTOM,
-                "ZERO GAMMA", mono_xs_plus(), color_alpha(t.text,100));
-        }
-
-        // HVL — Highest Volume Level (gold diamond marker)
-        let hvl_y = py(chart.gamma_hvl);
-        if hvl_y.is_finite() && hvl_y > rect.top() + pt && hvl_y < rect.top() + pt + ch {
-            let gold = t.gold;
-            let sz = 6.0;
-            let diamond = vec![
-                egui::pos2(rect.left() + cw - 16.0, hvl_y - sz),
-                egui::pos2(rect.left() + cw - 16.0 + sz, hvl_y),
-                egui::pos2(rect.left() + cw - 16.0, hvl_y + sz),
-                egui::pos2(rect.left() + cw - 16.0 - sz, hvl_y),
-            ];
-            painter.add(egui::Shape::convex_polygon(diamond, gold, egui::Stroke::NONE));
-            painter.text(egui::pos2(rect.left() + cw - 26.0, hvl_y), egui::Align2::RIGHT_CENTER,
-                &format!("HVL {:.2}", chart.gamma_hvl), mono_xs_plus(), gold);
-        }
-    }
+    // Gamma/GEX overlay (extracted to render_gamma_overlay, WS-E E4).
+    render_gamma_overlay(&painter, chart, rect, cw, ch, pt, t, &py);
 
     // ── Continuation-gauge markers (HOLD/EXIT at down-thrust stalls) ──────
     // Shown with the gamma overlay. Green "H" = HOLD/continuation lean, red "X" =
@@ -12971,4 +12792,202 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
     }
 
     span_end(); // draw_chart.tail
+}
+
+
+/// Gamma/GEX levels overlay (WS-E E4: extracted from render_chart_pane to
+/// shrink the god-function). Pure draw pass — reads chart.gamma_* and paints.
+/// `py` is the price->y transform closure from the caller. Zero behavior change
+/// (verbatim move); same machine code, so no render-perf impact.
+#[allow(clippy::too_many_arguments)]
+fn render_gamma_overlay(
+    painter: &egui::Painter,
+    chart: &Chart,
+    rect: egui::Rect,
+    cw: f32,
+    ch: f32,
+    pt: f32,
+    t: &Theme,
+    py: impl Fn(f32) -> f32,
+) {
+    if !chart.show_gamma || chart.gamma_levels.is_empty() { return; }
+        let max_gex = chart.gamma_levels.iter().map(|l| l.exposure.abs()).fold(0.0_f32, f32::max).max(1.0);
+        let max_bar_w = cw * 0.12; // max band width as fraction of chart width
+
+        let last_price = chart.bars.last().map_or(0.0, |b| b.close);
+        let zero_y = py(chart.gamma_zero);
+        let price_y = py(last_price);
+
+        // F3 (audit): SYNTHETIC badge — these gamma_levels are FABRICATED
+        // placeholders (the :8412 GEX feed was unavailable). Warn the trader so
+        // real vs. synthetic walls are never confused. Top-right, clear of the
+        // STABLE/VOLATILE territory label at top-left.
+        if chart.gamma_synthetic {
+            let txt = "SYNTHETIC";
+            let font = mono_xs_plus();
+            let col = t.warn;
+            let g = painter.layout_no_wrap(txt.to_string(), font.clone(), col);
+            let bx = rect.right() - g.size().x - 16.0;
+            let by = rect.top() + pt + 8.0;
+            painter.rect_filled(egui::Rect::from_min_size(
+                egui::pos2(bx - 5.0, by - 3.0), g.size() + egui::vec2(10.0, 6.0)),
+                4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
+            painter.rect_stroke(egui::Rect::from_min_size(
+                egui::pos2(bx - 5.0, by - 3.0), g.size() + egui::vec2(10.0, 6.0)),
+                4.0, egui::Stroke::new(0.5, color_alpha(col, 100)), egui::StrokeKind::Outside);
+            painter.text(egui::pos2(bx, by + g.size().y / 2.0), egui::Align2::LEFT_CENTER, txt, font, col);
+        }
+
+        // Gamma territory label (top-left of pane)
+        if chart.gamma_zero > 0.0 && last_price > 0.0 {
+            let above_zero = last_price > chart.gamma_zero;
+            let dist = (last_price - chart.gamma_zero).abs();
+            let pct = dist / chart.gamma_zero * 100.0;
+            let (label, col) = if above_zero {
+                ("STABLE", egui::Color32::from_rgb(40, 200, 230))
+            } else {
+                ("VOLATILE", egui::Color32::from_rgb(240, 160, 40))
+            };
+            let arrow = if above_zero { "\u{2191}" } else { "\u{2193}" };
+            let info = format!("{} {}  {:.2} ({:.2}%) to 0\u{03B3}", arrow, label, dist, pct);
+            let font = mono_xs_plus();
+            let galley = painter.layout_no_wrap(info.clone(), font.clone(), col);
+            let lx = rect.left() + 8.0;
+            let ly = rect.top() + pt + 8.0;
+            painter.rect_filled(egui::Rect::from_min_size(
+                egui::pos2(lx - 5.0, ly - 3.0), galley.size() + egui::vec2(10.0, 6.0)),
+                4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
+            painter.rect_stroke(egui::Rect::from_min_size(
+                egui::pos2(lx - 5.0, ly - 3.0), galley.size() + egui::vec2(10.0, 6.0)),
+                4.0, egui::Stroke::new(0.5, color_alpha(col, 60)), egui::StrokeKind::Outside);
+            painter.text(egui::pos2(lx, ly + galley.size().y / 2.0), egui::Align2::LEFT_CENTER, &info, font, col);
+
+            // ── Flow layer (PPE) — second badge under the regime badge ───────
+            // Live only during market hours; off-hours the feed sets
+            // flow.active=false and we draw nothing.
+            if chart.gamma_flow_active {
+                if let Some(ppe) = chart.gamma_ppe {
+                    // PPE > 1.20 = real put selling (bullish-for-floor), cyan.
+                    // PPE < 0.85 = fake/thin selling (no floor), amber.
+                    let ppe_col = if ppe >= 1.20 {
+                        egui::Color32::from_rgb(40, 200, 230)
+                    } else if ppe <= 0.85 {
+                        egui::Color32::from_rgb(240, 160, 40)
+                    } else {
+                        egui::Color32::from_rgb(170, 170, 180)
+                    };
+                    let iv = match chart.gamma_iv_rising {
+                        Some(true) => "  \u{2191}IV",
+                        Some(false) => "  \u{2193}IV",
+                        None => "",
+                    };
+                    let posture = if chart.gamma_posture.is_empty() {
+                        String::new()
+                    } else {
+                        format!("  \u{00B7} {}", chart.gamma_posture.replace('_', " "))
+                    };
+                    let flow_info = format!("PPE {:.2}{}{}", ppe, iv, posture);
+                    let ffont = mono_xs_plus();
+                    let fg = painter.layout_no_wrap(flow_info.clone(), ffont.clone(), ppe_col);
+                    // Place directly beneath the regime badge.
+                    let fy = ly + galley.size().y + 12.0;
+                    painter.rect_filled(egui::Rect::from_min_size(
+                        egui::pos2(lx - 5.0, fy - 3.0), fg.size() + egui::vec2(10.0, 6.0)),
+                        4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 220));
+                    painter.rect_stroke(egui::Rect::from_min_size(
+                        egui::pos2(lx - 5.0, fy - 3.0), fg.size() + egui::vec2(10.0, 6.0)),
+                        4.0, egui::Stroke::new(0.5, color_alpha(ppe_col, 60)), egui::StrokeKind::Outside);
+                    painter.text(egui::pos2(lx, fy + fg.size().y / 2.0), egui::Align2::LEFT_CENTER, &flow_info, ffont, ppe_col);
+                }
+            }
+        }
+
+        // Gamma bands at each level
+        for l in &chart.gamma_levels {
+            let (price, gex) = (l.price, l.exposure);
+            let y = py(price);
+            if !y.is_finite() || y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
+            let norm = gex.abs() / max_gex;
+            let band_w = norm * max_bar_w;
+            let band_h = 3.0 + norm * 4.0; // thicker bands for stronger levels
+
+            let (color, glow_color) = if gex > 0.0 {
+                // Positive gamma: cyan/blue — stabilizing, magnetic
+                let alpha = (30.0 + norm * 80.0) as u8;
+                let glow_alpha = (10.0 + norm * 30.0) as u8;
+                (egui::Color32::from_rgba_unmultiplied(40, 180, 220, alpha),
+                 egui::Color32::from_rgba_unmultiplied(40, 180, 220, glow_alpha))
+            } else {
+                // Negative gamma: amber/orange — accelerating, volatile
+                let alpha = (30.0 + norm * 80.0) as u8;
+                let glow_alpha = (10.0 + norm * 30.0) as u8;
+                (egui::Color32::from_rgba_unmultiplied(240, 160, 40, alpha),
+                 egui::Color32::from_rgba_unmultiplied(240, 160, 40, glow_alpha))
+            };
+
+            // Glow/aura (wider, more transparent)
+            if norm > 0.2 {
+                painter.rect_filled(egui::Rect::from_center_size(
+                    egui::pos2(rect.left() + band_w / 2.0, y), egui::vec2(band_w * 1.5, band_h * 2.5)),
+                    band_h, glow_color);
+            }
+            // Main band (from left edge, width proportional to magnitude)
+            painter.rect_filled(egui::Rect::from_min_size(
+                egui::pos2(rect.left(), y - band_h / 2.0), egui::vec2(band_w, band_h)),
+                2.0, color);
+        }
+
+        // Key levels: Call Wall (prominent cyan line)
+        let cw_y = py(chart.gamma_call_wall);
+        if cw_y.is_finite() && cw_y > rect.top() + pt && cw_y < rect.top() + pt + ch {
+            let cyan = egui::Color32::from_rgb(40, 200, 230);
+            let label_font = mono_xs_plus();
+            painter.line_segment([egui::pos2(rect.left(), cw_y), egui::pos2(rect.left() + cw, cw_y)],
+                egui::Stroke::new(2.0, color_alpha(cyan, 160)));
+            let cw_label = format!("CALL WALL  {:.2}", chart.gamma_call_wall);
+            let galley = painter.layout_no_wrap(cw_label.clone(), label_font.clone(), cyan);
+            let lx = rect.left() + cw - galley.size().x - 8.0;
+            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(lx - 6.0, cw_y - galley.size().y / 2.0 - 3.0), galley.size() + egui::vec2(12.0, 6.0)),
+                4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 230));
+            painter.text(egui::pos2(lx, cw_y), egui::Align2::LEFT_CENTER, &cw_label, label_font.clone(), cyan);
+        }
+
+        // Put Wall (prominent amber line)
+        let pw_y = py(chart.gamma_put_wall);
+        if pw_y.is_finite() && pw_y > rect.top() + pt && pw_y < rect.top() + pt + ch {
+            let amber = egui::Color32::from_rgb(240, 160, 40);
+            let label_font = mono_xs_plus();
+            painter.line_segment([egui::pos2(rect.left(), pw_y), egui::pos2(rect.left() + cw, pw_y)],
+                egui::Stroke::new(2.0, color_alpha(amber, 160)));
+            let pw_label = format!("PUT WALL  {:.2}", chart.gamma_put_wall);
+            let galley = painter.layout_no_wrap(pw_label.clone(), label_font.clone(), amber);
+            let lx = rect.left() + cw - galley.size().x - 8.0;
+            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(lx - 6.0, pw_y - galley.size().y / 2.0 - 3.0), galley.size() + egui::vec2(12.0, 6.0)),
+                4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 230));
+            painter.text(egui::pos2(lx, pw_y), egui::Align2::LEFT_CENTER, &pw_label, label_font.clone(), amber);
+        }
+
+        // Zero Gamma line (dashed white)
+        if zero_y.is_finite() && zero_y > rect.top() + pt && zero_y < rect.top() + pt + ch {
+            dashed_line(&painter, egui::pos2(rect.left(), zero_y), egui::pos2(rect.left() + cw, zero_y),
+                egui::Stroke::new(1.0, color_alpha(t.text,70)), LineStyle::Dashed);
+            painter.text(egui::pos2(rect.left() + 8.0, zero_y - 10.0), egui::Align2::LEFT_BOTTOM,
+                "ZERO GAMMA", mono_xs_plus(), color_alpha(t.text,100));
+        }
+
+        // HVL — Highest Volume Level (gold diamond marker)
+        let hvl_y = py(chart.gamma_hvl);
+        if hvl_y.is_finite() && hvl_y > rect.top() + pt && hvl_y < rect.top() + pt + ch {
+            let gold = t.gold;
+            let sz = 6.0;
+            let diamond = vec![
+                egui::pos2(rect.left() + cw - 16.0, hvl_y - sz),
+                egui::pos2(rect.left() + cw - 16.0 + sz, hvl_y),
+                egui::pos2(rect.left() + cw - 16.0, hvl_y + sz),
+                egui::pos2(rect.left() + cw - 16.0 - sz, hvl_y),
+            ];
+            painter.add(egui::Shape::convex_polygon(diamond, gold, egui::Stroke::NONE));
+            painter.text(egui::pos2(rect.left() + cw - 26.0, hvl_y), egui::Align2::RIGHT_CENTER,
+                &format!("HVL {:.2}", chart.gamma_hvl), mono_xs_plus(), gold);
+        }
 }
