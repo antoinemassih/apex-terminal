@@ -6665,70 +6665,11 @@ fn render_chart_pane(
         }
     }
 
-    // Insider Trade markers on chart
-    if chart.show_insider_trades && !chart.insider_trades.is_empty() && !chart.timestamps.is_empty() {
-        for trade in &chart.insider_trades {
-            // Find the closest bar to this trade date
-            let bar_idx = chart.timestamps.partition_point(|&ts| ts < trade.date);
-            if bar_idx >= chart.bars.len() { continue; }
-            let x = rect.left() + (bar_idx as f32 - chart.vs) * bs;
-            if x < rect.left() || x > rect.left() + cw { continue; }
+    // Insider Trade markers on chart (extracted to render_insider_trades_overlay, WS-E E4).
+    render_insider_trades_overlay(&painter, chart, rect, cw, pt, ch, bs, t);
 
-            let is_buy = trade.shares > 0;
-            let color = if is_buy { t.bull } else { t.bear };
-            let y_base = rect.top() + pt + ch - 2.0;
-
-            // Arrow marker at bottom of chart
-            let arrow_h = 10.0;
-            if is_buy {
-                // Up arrow
-                painter.line_segment([egui::pos2(x, y_base), egui::pos2(x, y_base - arrow_h)],
-                    egui::Stroke::new(1.5, color));
-                painter.line_segment([egui::pos2(x - 3.0, y_base - arrow_h + 3.0), egui::pos2(x, y_base - arrow_h)],
-                    egui::Stroke::new(1.5, color));
-                painter.line_segment([egui::pos2(x + 3.0, y_base - arrow_h + 3.0), egui::pos2(x, y_base - arrow_h)],
-                    egui::Stroke::new(1.5, color));
-            } else {
-                // Down arrow
-                painter.line_segment([egui::pos2(x, y_base - arrow_h), egui::pos2(x, y_base)],
-                    egui::Stroke::new(1.5, color));
-                painter.line_segment([egui::pos2(x - 3.0, y_base - 3.0), egui::pos2(x, y_base)],
-                    egui::Stroke::new(1.5, color));
-                painter.line_segment([egui::pos2(x + 3.0, y_base - 3.0), egui::pos2(x, y_base)],
-                    egui::Stroke::new(1.5, color));
-            }
-            // Small label
-            let label = if is_buy { "B" } else { "S" };
-            painter.text(egui::pos2(x, y_base - arrow_h - 4.0), egui::Align2::CENTER_BOTTOM,
-                label, mono_4xs(), color);
-        }
-    }
-
-    // ── Corporate actions (dividends / splits) — bottom-axis markers ────────
-    if chart.show_corp_actions && !chart.corp_actions.is_empty() && !chart.timestamps.is_empty() {
-        let y_base = rect.top() + pt + ch - 2.0;
-        for ca in &chart.corp_actions {
-            let bar_idx = chart.timestamps.partition_point(|&ts| ts < ca.date);
-            if bar_idx >= chart.bars.len() { continue; }
-            let x = rect.left() + (bar_idx as f32 - chart.vs) * bs;
-            if x < rect.left() || x > rect.left() + cw { continue; }
-            // Dividend = accent "D" tag; split = warn "S" tag. Dashed riser so
-            // it reads as an event marker, not a price level.
-            let col = if ca.is_split { t.warn } else { t.accent };
-            let tag = if ca.is_split { "S" } else { "D" };
-            let top = y_base - 14.0;
-            dashed_line(&painter, egui::pos2(x, y_base), egui::pos2(x, top),
-                egui::Stroke::new(1.0, color_alpha(col, 150)), LineStyle::Dashed);
-            // Small filled chip with the tag glyph.
-            let chip = egui::Rect::from_center_size(egui::pos2(x, top - 4.0), egui::vec2(11.0, 11.0));
-            painter.rect_filled(chip, 2.0, color_alpha(col, 220));
-            painter.text(chip.center(), egui::Align2::CENTER_CENTER, tag, mono_4xs(),
-                crate::chart_renderer::ui::style::contrast_fg(col));
-            // Value label above the chip (e.g. "$0.25" / "10:1").
-            painter.text(egui::pos2(x, top - 11.0), egui::Align2::CENTER_BOTTOM,
-                &ca.label, mono_4xs(), color_alpha(col, 200));
-        }
-    }
+    // ── Corporate actions (dividends / splits) — extracted to render_corp_actions_overlay, WS-E E4 ──
+    render_corp_actions_overlay(&painter, chart, rect, cw, pt, ch, bs, t);
 
     // OCO/trigger bracket bands (extracted to render_oco_bracket_bands, WS-E E4).
     render_oco_bracket_bands(&painter, chart, rect, cw, t, &py);
@@ -13184,4 +13125,83 @@ fn render_hit_highlight_overlay(
         // re-runs hit detection. (Audit PF1: the unconditional repaint that
         // was here pinned the app at 100% CPU whenever hit_highlight was on.)
         if !chart.hit_highlights.is_empty() { ctx.request_repaint(); }
+}
+
+// ── E4 extracted overlay: insider-trade markers ─────────────────────────────
+// Verbatim move of the `if chart.show_insider_trades { … }` block out of
+// render_chart_pane. Pure draw (chart: &Chart). Bottom-axis buy/sell arrows.
+#[allow(clippy::too_many_arguments)]
+fn render_insider_trades_overlay(
+    painter: &egui::Painter, chart: &Chart, rect: egui::Rect, cw: f32, pt: f32, ch: f32, bs: f32, t: &Theme,
+) {
+    if chart.show_insider_trades && !chart.insider_trades.is_empty() && !chart.timestamps.is_empty() {
+        for trade in &chart.insider_trades {
+            // Find the closest bar to this trade date
+            let bar_idx = chart.timestamps.partition_point(|&ts| ts < trade.date);
+            if bar_idx >= chart.bars.len() { continue; }
+            let x = rect.left() + (bar_idx as f32 - chart.vs) * bs;
+            if x < rect.left() || x > rect.left() + cw { continue; }
+
+            let is_buy = trade.shares > 0;
+            let color = if is_buy { t.bull } else { t.bear };
+            let y_base = rect.top() + pt + ch - 2.0;
+
+            // Arrow marker at bottom of chart
+            let arrow_h = 10.0;
+            if is_buy {
+                // Up arrow
+                painter.line_segment([egui::pos2(x, y_base), egui::pos2(x, y_base - arrow_h)],
+                    egui::Stroke::new(1.5, color));
+                painter.line_segment([egui::pos2(x - 3.0, y_base - arrow_h + 3.0), egui::pos2(x, y_base - arrow_h)],
+                    egui::Stroke::new(1.5, color));
+                painter.line_segment([egui::pos2(x + 3.0, y_base - arrow_h + 3.0), egui::pos2(x, y_base - arrow_h)],
+                    egui::Stroke::new(1.5, color));
+            } else {
+                // Down arrow
+                painter.line_segment([egui::pos2(x, y_base - arrow_h), egui::pos2(x, y_base)],
+                    egui::Stroke::new(1.5, color));
+                painter.line_segment([egui::pos2(x - 3.0, y_base - 3.0), egui::pos2(x, y_base)],
+                    egui::Stroke::new(1.5, color));
+                painter.line_segment([egui::pos2(x + 3.0, y_base - 3.0), egui::pos2(x, y_base)],
+                    egui::Stroke::new(1.5, color));
+            }
+            // Small label
+            let label = if is_buy { "B" } else { "S" };
+            painter.text(egui::pos2(x, y_base - arrow_h - 4.0), egui::Align2::CENTER_BOTTOM,
+                label, mono_4xs(), color);
+        }
+    }
+}
+
+// ── E4 extracted overlay: corporate-action markers (dividends / splits) ─────
+// Verbatim move of the `if chart.show_corp_actions { … }` block. Pure draw.
+// `dashed_line` takes painter by reference (param is already &Painter).
+#[allow(clippy::too_many_arguments)]
+fn render_corp_actions_overlay(
+    painter: &egui::Painter, chart: &Chart, rect: egui::Rect, cw: f32, pt: f32, ch: f32, bs: f32, t: &Theme,
+) {
+    if chart.show_corp_actions && !chart.corp_actions.is_empty() && !chart.timestamps.is_empty() {
+        let y_base = rect.top() + pt + ch - 2.0;
+        for ca in &chart.corp_actions {
+            let bar_idx = chart.timestamps.partition_point(|&ts| ts < ca.date);
+            if bar_idx >= chart.bars.len() { continue; }
+            let x = rect.left() + (bar_idx as f32 - chart.vs) * bs;
+            if x < rect.left() || x > rect.left() + cw { continue; }
+            // Dividend = accent "D" tag; split = warn "S" tag. Dashed riser so
+            // it reads as an event marker, not a price level.
+            let col = if ca.is_split { t.warn } else { t.accent };
+            let tag = if ca.is_split { "S" } else { "D" };
+            let top = y_base - 14.0;
+            dashed_line(painter, egui::pos2(x, y_base), egui::pos2(x, top),
+                egui::Stroke::new(1.0, color_alpha(col, 150)), LineStyle::Dashed);
+            // Small filled chip with the tag glyph.
+            let chip = egui::Rect::from_center_size(egui::pos2(x, top - 4.0), egui::vec2(11.0, 11.0));
+            painter.rect_filled(chip, 2.0, color_alpha(col, 220));
+            painter.text(chip.center(), egui::Align2::CENTER_CENTER, tag, mono_4xs(),
+                crate::chart_renderer::ui::style::contrast_fg(col));
+            // Value label above the chip (e.g. "$0.25" / "10:1").
+            painter.text(egui::pos2(x, top - 11.0), egui::Align2::CENTER_BOTTOM,
+                &ca.label, mono_4xs(), color_alpha(col, 200));
+        }
+    }
 }
