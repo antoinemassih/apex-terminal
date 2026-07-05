@@ -2110,30 +2110,8 @@ fn render_chart_pane(
         let vol_h = vol_bottom - vol_top;
 
         if chart.show_delta_volume && chart.delta_data.len() == n {
-            // Delta volume bars — positive above midline, negative below
-            let start_d = vs as usize;
-            let end_d = (start_d + chart.vc as usize + 8).min(n);
-            let max_delta = chart.delta_data[start_d..end_d].iter()
-                .map(|d| d.abs()).fold(0.0_f32, f32::max).max(1.0);
-            let zero_y = vol_top + vol_h / 2.0;
-            painter.line_segment(
-                [egui::pos2(rect.left(), zero_y), egui::pos2(rect.left()+cw, zero_y)],
-                egui::Stroke::new(style::stroke_thin(), color_alpha(t.text,25)));
-            for i in start_d..end_d {
-                let x = bx(i as f32);
-                let delta = chart.delta_data[i];
-                let norm = delta / max_delta;
-                let bar_h = norm.abs() * vol_h / 2.0;
-                let (color, bar_top) = if delta >= 0.0 {
-                    (color_alpha(t.bull, 140), zero_y - bar_h)
-                } else {
-                    (color_alpha(t.bear, 140), zero_y)
-                };
-                let bw = (bs * 0.7).max(1.0);
-                painter.rect_filled(
-                    egui::Rect::from_min_size(egui::pos2(x - bw/2.0, bar_top), egui::vec2(bw, bar_h)),
-                    0.0, color);
-            }
+            // Delta volume bars (extracted to render_delta_volume_overlay, WS-E E4).
+            render_delta_volume_overlay(&painter, chart, rect, cw, vs, n, vol_top, vol_h, bs, t, &bx);
         } else {
             // Standard volume bars
             let mut mv: f32 = 0.0;
@@ -2888,20 +2866,8 @@ fn render_chart_pane(
     // ── Continuation-gauge markers (HOLD/EXIT at down-thrust stalls) ──────
     // Shown with the gamma overlay. Green "H" = HOLD/continuation lean, red "X" =
     // EXIT/reversal lean; brighter = STRONG band. Lane sits just above the axis.
-    if chart.show_gamma && !chart.continuation_signals.is_empty() && !chart.timestamps.is_empty() {
-        let lane_y = rect.top() + pt + ch - 14.0;
-        for m in &chart.continuation_signals {
-            let x = bx(SignalDrawing::time_to_bar(m.time, &chart.timestamps));
-            if x < rect.left() - 5.0 || x > rect.left() + cw + 5.0 { continue; }
-            let base = if m.hold { t.bull } else { t.bear };
-            let col = color_alpha(base, if m.strong { 235 } else { 120 });
-            painter.circle_filled(egui::pos2(x, lane_y), if m.strong { 3.5 } else { 2.5 }, col);
-            painter.text(egui::pos2(x, lane_y + 4.0), egui::Align2::CENTER_TOP,
-                if m.hold { "H" } else { "X" }, mono_3xs(), col);
-        }
-        painter.text(egui::pos2(rect.left() + 6.0, lane_y - 6.0), egui::Align2::LEFT_BOTTOM,
-            "CONTINUATION", mono_3xs(), color_alpha(t.text, 90));
-    }
+    // Continuation-gauge markers (extracted to render_continuation_signals_overlay, WS-E E4).
+    render_continuation_signals_overlay(&painter, chart, rect, cw, pt, ch, t, &bx);
 
     // ── Event Markers Overlay ─────────────────────────────────────────────
     if chart.show_events && !chart.event_markers.is_empty() && !chart.timestamps.is_empty() {
@@ -5758,67 +5724,8 @@ fn render_chart_pane(
         render_cvd_overlay(&painter, chart, rect, cw, t, vs, osc_top, osc_bottom, n, &bx);
     }
 
-        // ── Divergence lines on oscillator pane ──
-        if chart.show_divergences && !chart.divergence_markers.is_empty() {
-            for dm in &chart.divergence_markers {
-                if dm.confidence < 0.3 { continue; }
-                let x0 = bx(dm.start_bar as f32);
-                let x1 = bx(dm.end_bar as f32);
-                if x1 < rect.left() - 10.0 || x0 > rect.left() + cw + 10.0 { continue; }
-
-                // Find matching oscillator indicator to get values at bar indices
-                let ind_name_upper = dm.indicator.to_uppercase();
-                if let Some(ind) = chart.indicators.iter().find(|i| {
-                    i.visible && i.kind.label().to_uppercase().starts_with(&ind_name_upper)
-                }) {
-                    let v0 = ind.values.get(dm.start_bar as usize).copied().unwrap_or(f32::NAN);
-                    let v1 = ind.values.get(dm.end_bar as usize).copied().unwrap_or(f32::NAN);
-                    if v0.is_nan() || v1.is_nan() { continue; }
-
-                    // Compute osc_y range for this indicator
-                    let (osc_min_d, osc_max_d) = match ind.kind {
-                        IndicatorType::RSI | IndicatorType::Stochastic | IndicatorType::ADX => (0.0, 100.0),
-                        IndicatorType::WilliamsR => (-100.0, 0.0),
-                        _ => {
-                            let mut lo = f32::MAX; let mut hi = f32::MIN;
-                            for i in (vs as u32)..(vs as u32 + total as u32).min(ind.values.len() as u32) {
-                                if let Some(&v) = ind.values.get(i as usize) { if !v.is_nan() { lo = lo.min(v); hi = hi.max(v); } }
-                            }
-                            if lo >= hi { (lo - 1.0, hi + 1.0) } else { let pad = (hi - lo) * 0.1; (lo - pad, hi + pad) }
-                        }
-                    };
-                    let osc_y_d = |v: f32| -> f32 { osc_top + (osc_max_d - v) / (osc_max_d - osc_min_d) * osc_height };
-
-                    let y0 = osc_y_d(v0);
-                    let y1 = osc_y_d(v1);
-                    let is_bullish = dm.div_type.contains("bullish");
-                    let is_hidden = dm.div_type.contains("hidden");
-                    let color = if is_bullish { t.bull } else { t.bear };
-                    let alpha = (180.0 * dm.confidence.clamp(0.3, 1.0)) as u8;
-                    let line_color = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha);
-                    let stroke_w = if is_hidden { 1.0 } else { 1.5 };
-
-                    if is_hidden {
-                        let steps = ((x1 - x0).abs() / 5.0) as usize;
-                        for s in (0..steps.max(1)).step_by(2) {
-                            let t0 = s as f32 / steps.max(1) as f32;
-                            let t1 = ((s + 1) as f32 / steps.max(1) as f32).min(1.0);
-                            painter.line_segment(
-                                [egui::pos2(x0 + (x1 - x0) * t0, y0 + (y1 - y0) * t0),
-                                 egui::pos2(x0 + (x1 - x0) * t1, y0 + (y1 - y0) * t1)],
-                                egui::Stroke::new(stroke_w, line_color));
-                        }
-                    } else {
-                        dashed_line(&painter, egui::pos2(x0, y0), egui::pos2(x1, y1),
-                            egui::Stroke::new(stroke_w, line_color), crate::chart_renderer::LineStyle::Dashed);
-                    }
-
-                    // Small circles at indicator values
-                    painter.circle_filled(egui::pos2(x0, y0), 2.5, line_color);
-                    painter.circle_filled(egui::pos2(x1, y1), 2.5, line_color);
-                }
-            }
-        }
+        // Divergence lines on oscillator pane (extracted to render_divergence_lines_overlay, WS-E E4).
+        render_divergence_lines_overlay(&painter, chart, rect, cw, t, vs, total, osc_top, osc_height, &bx);
 
         // Oscillator click interaction — allocate rect over the whole panel
         let osc_rect = egui::Rect::from_min_size(egui::pos2(rect.left(), osc_top), egui::vec2(cw, osc_height));
@@ -13202,6 +13109,135 @@ fn render_corp_actions_overlay(
             // Value label above the chip (e.g. "$0.25" / "10:1").
             painter.text(egui::pos2(x, top - 11.0), egui::Align2::CENTER_BOTTOM,
                 &ca.label, mono_4xs(), color_alpha(col, 200));
+        }
+    }
+}
+
+// ── E4 extracted overlay: continuation-gauge markers (HOLD/EXIT at stalls) ──
+// Verbatim move of the `if chart.show_gamma && !continuation_signals … {` block.
+// Pure draw; uses the per-bar `bx` geometry closure.
+#[allow(clippy::too_many_arguments)]
+fn render_continuation_signals_overlay(
+    painter: &egui::Painter, chart: &Chart, rect: egui::Rect, cw: f32, pt: f32, ch: f32, t: &Theme,
+    bx: impl Fn(f32) -> f32,
+) {
+    if chart.show_gamma && !chart.continuation_signals.is_empty() && !chart.timestamps.is_empty() {
+        let lane_y = rect.top() + pt + ch - 14.0;
+        for m in &chart.continuation_signals {
+            let x = bx(SignalDrawing::time_to_bar(m.time, &chart.timestamps));
+            if x < rect.left() - 5.0 || x > rect.left() + cw + 5.0 { continue; }
+            let base = if m.hold { t.bull } else { t.bear };
+            let col = color_alpha(base, if m.strong { 235 } else { 120 });
+            painter.circle_filled(egui::pos2(x, lane_y), if m.strong { 3.5 } else { 2.5 }, col);
+            painter.text(egui::pos2(x, lane_y + 4.0), egui::Align2::CENTER_TOP,
+                if m.hold { "H" } else { "X" }, mono_3xs(), col);
+        }
+        painter.text(egui::pos2(rect.left() + 6.0, lane_y - 6.0), egui::Align2::LEFT_BOTTOM,
+            "CONTINUATION", mono_3xs(), color_alpha(t.text, 90));
+    }
+}
+
+// ── E4 extracted overlay: delta-volume bars (IF-branch of the volume path) ──
+// Verbatim move of ONLY the `if chart.show_delta_volume { … }` branch — the
+// standard-volume `else` (GPU vol_mesh/fill_quads core path) stays inline in
+// render_chart_pane. Guard remains at the call site (this fn is the branch body).
+#[allow(clippy::too_many_arguments)]
+fn render_delta_volume_overlay(
+    painter: &egui::Painter, chart: &Chart, rect: egui::Rect, cw: f32, vs: f32, n: usize,
+    vol_top: f32, vol_h: f32, bs: f32, t: &Theme, bx: impl Fn(f32) -> f32,
+) {
+    // Delta volume bars — positive above midline, negative below
+    let start_d = vs as usize;
+    let end_d = (start_d + chart.vc as usize + 8).min(n);
+    let max_delta = chart.delta_data[start_d..end_d].iter()
+        .map(|d| d.abs()).fold(0.0_f32, f32::max).max(1.0);
+    let zero_y = vol_top + vol_h / 2.0;
+    painter.line_segment(
+        [egui::pos2(rect.left(), zero_y), egui::pos2(rect.left()+cw, zero_y)],
+        egui::Stroke::new(style::stroke_thin(), color_alpha(t.text,25)));
+    for i in start_d..end_d {
+        let x = bx(i as f32);
+        let delta = chart.delta_data[i];
+        let norm = delta / max_delta;
+        let bar_h = norm.abs() * vol_h / 2.0;
+        let (color, bar_top) = if delta >= 0.0 {
+            (color_alpha(t.bull, 140), zero_y - bar_h)
+        } else {
+            (color_alpha(t.bear, 140), zero_y)
+        };
+        let bw = (bs * 0.7).max(1.0);
+        painter.rect_filled(
+            egui::Rect::from_min_size(egui::pos2(x - bw/2.0, bar_top), egui::vec2(bw, bar_h)),
+            0.0, color);
+    }
+}
+
+// ── E4 extracted overlay: divergence lines on the oscillator pane ───────────
+// Verbatim move of the `if chart.show_divergences { … }` block. Reads
+// chart.indicators to map bar→osc-y; `dashed_line` takes painter by reference.
+#[allow(clippy::too_many_arguments)]
+fn render_divergence_lines_overlay(
+    painter: &egui::Painter, chart: &Chart, rect: egui::Rect, cw: f32, t: &Theme,
+    vs: f32, total: u32, osc_top: f32, osc_height: f32, bx: impl Fn(f32) -> f32,
+) {
+    if chart.show_divergences && !chart.divergence_markers.is_empty() {
+        for dm in &chart.divergence_markers {
+            if dm.confidence < 0.3 { continue; }
+            let x0 = bx(dm.start_bar as f32);
+            let x1 = bx(dm.end_bar as f32);
+            if x1 < rect.left() - 10.0 || x0 > rect.left() + cw + 10.0 { continue; }
+
+            // Find matching oscillator indicator to get values at bar indices
+            let ind_name_upper = dm.indicator.to_uppercase();
+            if let Some(ind) = chart.indicators.iter().find(|i| {
+                i.visible && i.kind.label().to_uppercase().starts_with(&ind_name_upper)
+            }) {
+                let v0 = ind.values.get(dm.start_bar as usize).copied().unwrap_or(f32::NAN);
+                let v1 = ind.values.get(dm.end_bar as usize).copied().unwrap_or(f32::NAN);
+                if v0.is_nan() || v1.is_nan() { continue; }
+
+                // Compute osc_y range for this indicator
+                let (osc_min_d, osc_max_d) = match ind.kind {
+                    IndicatorType::RSI | IndicatorType::Stochastic | IndicatorType::ADX => (0.0, 100.0),
+                    IndicatorType::WilliamsR => (-100.0, 0.0),
+                    _ => {
+                        let mut lo = f32::MAX; let mut hi = f32::MIN;
+                        for i in (vs as u32)..(vs as u32 + total as u32).min(ind.values.len() as u32) {
+                            if let Some(&v) = ind.values.get(i as usize) { if !v.is_nan() { lo = lo.min(v); hi = hi.max(v); } }
+                        }
+                        if lo >= hi { (lo - 1.0, hi + 1.0) } else { let pad = (hi - lo) * 0.1; (lo - pad, hi + pad) }
+                    }
+                };
+                let osc_y_d = |v: f32| -> f32 { osc_top + (osc_max_d - v) / (osc_max_d - osc_min_d) * osc_height };
+
+                let y0 = osc_y_d(v0);
+                let y1 = osc_y_d(v1);
+                let is_bullish = dm.div_type.contains("bullish");
+                let is_hidden = dm.div_type.contains("hidden");
+                let color = if is_bullish { t.bull } else { t.bear };
+                let alpha = (180.0 * dm.confidence.clamp(0.3, 1.0)) as u8;
+                let line_color = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha);
+                let stroke_w = if is_hidden { 1.0 } else { 1.5 };
+
+                if is_hidden {
+                    let steps = ((x1 - x0).abs() / 5.0) as usize;
+                    for s in (0..steps.max(1)).step_by(2) {
+                        let t0 = s as f32 / steps.max(1) as f32;
+                        let t1 = ((s + 1) as f32 / steps.max(1) as f32).min(1.0);
+                        painter.line_segment(
+                            [egui::pos2(x0 + (x1 - x0) * t0, y0 + (y1 - y0) * t0),
+                             egui::pos2(x0 + (x1 - x0) * t1, y0 + (y1 - y0) * t1)],
+                            egui::Stroke::new(stroke_w, line_color));
+                    }
+                } else {
+                    dashed_line(painter, egui::pos2(x0, y0), egui::pos2(x1, y1),
+                        egui::Stroke::new(stroke_w, line_color), crate::chart_renderer::LineStyle::Dashed);
+                }
+
+                // Small circles at indicator values
+                painter.circle_filled(egui::pos2(x0, y0), 2.5, line_color);
+                painter.circle_filled(egui::pos2(x1, y1), 2.5, line_color);
+            }
         }
     }
 }
