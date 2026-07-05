@@ -124,17 +124,17 @@ pub(crate) fn draw(
         if let Some(action) = crate::foundation::shortcuts::registry().read().unwrap().matches(ctx) {
             match action {
                 "command_palette.open" | "command_palette.open.alt" => {
-                    watchlist.cmd_palette_open = !watchlist.cmd_palette_open;
-                    if watchlist.cmd_palette_open {
-                        watchlist.cmd_palette_query.clear();
-                        watchlist.cmd_palette_results.clear();
-                        watchlist.cmd_palette_sel = 0;
-                        watchlist.cmd_palette_ai_mode = false;
+                    watchlist.cmd_palette.open = !watchlist.cmd_palette.open;
+                    if watchlist.cmd_palette.open {
+                        watchlist.cmd_palette.query.clear();
+                        watchlist.cmd_palette.results.clear();
+                        watchlist.cmd_palette.sel = 0;
+                        watchlist.cmd_palette.ai_mode = false;
                     }
                 }
-                "modal.dismiss" if watchlist.cmd_palette_open => {
-                    if watchlist.cmd_palette_ai_mode { watchlist.cmd_palette_ai_mode = false; }
-                    else { watchlist.cmd_palette_open = false; }
+                "modal.dismiss" if watchlist.cmd_palette.open => {
+                    if watchlist.cmd_palette.ai_mode { watchlist.cmd_palette.ai_mode = false; }
+                    else { watchlist.cmd_palette.open = false; }
                 }
                 _ => {}
             }
@@ -144,9 +144,9 @@ pub(crate) fn draw(
     // by the REAL open state every frame (including while closing) so it eases
     // OUT too, not just in — then we bail once fully collapsed.
     let appear = crate::ui_kit::widgets::motion::ease_bool(
-        ctx, egui::Id::new("cmd_palette_appear"), watchlist.cmd_palette_open,
+        ctx, egui::Id::new("cmd_palette_appear"), watchlist.cmd_palette.open,
         crate::ui_kit::widgets::motion::MED);
-    if !watchlist.cmd_palette_open && appear < 0.01 { return; }
+    if !watchlist.cmd_palette.open && appear < 0.01 { return; }
 
     let screen = ctx.screen_rect();
     let pal_w = 640.0_f32;
@@ -165,7 +165,7 @@ pub(crate) fn draw(
                 egui::Color32::from_rgba_unmultiplied(s.r(), s.g(), s.b(), scrim_a));
         });
 
-    let ai_mode = watchlist.cmd_palette_ai_mode;
+    let ai_mode = watchlist.cmd_palette.ai_mode;
 
     // Small downward settle as it appears (rises into place on close).
     let pal_y_anim = pal_y - (1.0 - appear) * 6.0;
@@ -187,7 +187,7 @@ pub(crate) fn draw(
         let pal_rect = wr.response.rect;
         if ctx.input(|i| i.pointer.any_pressed()) {
             if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
-                if !pal_rect.contains(pos) { watchlist.cmd_palette_open = false; }
+                if !pal_rect.contains(pos) { watchlist.cmd_palette.open = false; }
             }
         }
     }
@@ -212,7 +212,7 @@ fn draw_normal_mode(
     // Header
     ui.horizontal(|ui| {
         ui.add(BodyLabel::new("⌕").size(font_lg()).color(t.dim));
-        let te = Input::new(&mut watchlist.cmd_palette_query)
+        let te = Input::new(&mut watchlist.cmd_palette.query)
             .width(pal_w - 180.0)
             .font_size(font_lg())
             .proportional(true)
@@ -222,12 +222,12 @@ fn draw_normal_mode(
         te.request_focus(ui.ctx());
 
         if ui.input(|i| i.key_pressed(egui::Key::Tab)) {
-            watchlist.cmd_palette_ai_mode = true; return;
+            watchlist.cmd_palette.ai_mode = true; return;
         }
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.add(KitButton::new("✦ Gemma 4").variant(Variant::Secondary).simple_treatment(true).size(Size::Sm).fg(Category::Ai.color(t))).clicked() {
-                watchlist.cmd_palette_ai_mode = true;
+                watchlist.cmd_palette.ai_mode = true;
             }
         });
     });
@@ -251,14 +251,14 @@ fn draw_normal_mode(
     ui.add_space(gap_sm()); ui.separator(); ui.add_space(gap_sm());
 
     // ── Build results ───────────────────────────────────────────────────
-    let raw = watchlist.cmd_palette_query.trim().to_string();
+    let raw = watchlist.cmd_palette.query.trim().to_string();
 
     // `?` help / AI jump
     if raw == "?" || raw.starts_with("? ") == false && raw.starts_with('?') && raw.len() > 1 {
         // `?foo` style
     }
     if raw == "?" {
-        watchlist.cmd_palette_ai_mode = true; return;
+        watchlist.cmd_palette.ai_mode = true; return;
     }
 
     // ── Help modes: `? widgets`, `? overlays`, `? themes`, `? timeframes` ──
@@ -289,7 +289,7 @@ fn draw_normal_mode(
 
     if q.is_empty() && !is_chain {
         // Empty query: recent + clipboard + context suggestions
-        let recent = watchlist.cmd_palette_recent.clone();
+        let recent = watchlist.cmd_palette.recent.clone();
         for id in recent.iter().take(6) {
             let label = pretty_label_for_id(id, watchlist).unwrap_or_else(|| id.clone());
             results.push((id.clone(), format!("{} {label}", Icon::ARROW_COUNTER_CLOCKWISE), Category::Recent.label().into(), 0));
@@ -328,7 +328,7 @@ fn draw_normal_mode(
     } else {
         // Frecency context: last 10 of recent get a position bonus;
         // position 0 (most recent) = +300, position 9 = +30.
-        let recent_10: Vec<&String> = watchlist.cmd_palette_recent.iter().take(10).collect();
+        let recent_10: Vec<&String> = watchlist.cmd_palette.recent.iter().take(10).collect();
         let recent_bonus = |id: &str| -> i32 {
             if let Some(pos) = recent_10.iter().position(|r| r.as_str() == id) {
                 // Linear decay: 300 at pos 0, 30 at pos 9
@@ -347,7 +347,7 @@ fn draw_normal_mode(
             let hay = format!("{} {} {}", e.label, e.id, e.desc);
             if let Some(s) = fuzzy_score(&q, &hay) {
                 // Frecency: recent position (primary after fuzzy) + frequency (secondary)
-                let freq_bonus = *watchlist.cmd_palette_freq.get(&e.id).unwrap_or(&0) as i32 * 5;
+                let freq_bonus = *watchlist.cmd_palette.freq.get(&e.id).unwrap_or(&0) as i32 * 5;
                 let rec_bonus = recent_bonus(&e.id);
                 results.push((e.id.clone(), e.label.clone(), e.cat.label().into(), s + rec_bonus + freq_bonus));
             }
@@ -360,7 +360,7 @@ fn draw_normal_mode(
         if allow_symbols && !q.is_empty() {
             for si in crate::ui_kit::symbols::search_symbols(&q.to_uppercase(), 12) {
                 let sym_id = format!("sym:{}", si.symbol);
-                let freq_bonus = *watchlist.cmd_palette_freq.get(&sym_id).unwrap_or(&0) as i32 * 5;
+                let freq_bonus = *watchlist.cmd_palette.freq.get(&sym_id).unwrap_or(&0) as i32 * 5;
                 let rec_bonus = recent_bonus(&sym_id);
                 results.push((
                     sym_id,
@@ -386,30 +386,30 @@ fn draw_normal_mode(
         results.truncate(40);
     }
 
-    watchlist.cmd_palette_results = results.iter().map(|r| (r.0.clone(), r.1.clone(), r.2.clone())).collect();
+    watchlist.cmd_palette.results = results.iter().map(|r| (r.0.clone(), r.1.clone(), r.2.clone())).collect();
 
     // Keyboard nav
-    let n = watchlist.cmd_palette_results.len() as i32;
+    let n = watchlist.cmd_palette.results.len() as i32;
     let nav_down = ui.input(|i| i.key_pressed(egui::Key::ArrowDown)
         || (i.key_pressed(egui::Key::J) && !i.modifiers.any()));
     let nav_up = ui.input(|i| i.key_pressed(egui::Key::ArrowUp)
         || (i.key_pressed(egui::Key::K) && !i.modifiers.any()));
     let jump_end = ui.input(|i| i.modifiers.shift && i.key_pressed(egui::Key::G));
     let jump_start = ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::G));
-    if nav_down { watchlist.cmd_palette_sel = ((watchlist.cmd_palette_sel + 1).min(n - 1)).max(0); }
-    if nav_up   { watchlist.cmd_palette_sel = (watchlist.cmd_palette_sel - 1).max(0); }
-    if jump_end   && n > 0 { watchlist.cmd_palette_sel = n - 1; }
-    if jump_start && n > 0 { watchlist.cmd_palette_sel = 0; }
+    if nav_down { watchlist.cmd_palette.sel = ((watchlist.cmd_palette.sel + 1).min(n - 1)).max(0); }
+    if nav_up   { watchlist.cmd_palette.sel = (watchlist.cmd_palette.sel - 1).max(0); }
+    if jump_end   && n > 0 { watchlist.cmd_palette.sel = n - 1; }
+    if jump_start && n > 0 { watchlist.cmd_palette.sel = 0; }
 
     let mut execute_idx: Option<usize> = None;
     if ui.input(|i| i.key_pressed(egui::Key::Enter)) && n > 0 {
-        execute_idx = Some(watchlist.cmd_palette_sel.max(0) as usize);
+        execute_idx = Some(watchlist.cmd_palette.sel.max(0) as usize);
     }
 
     // Results + preview
     if n > 0 {
-        let sel_idx = watchlist.cmd_palette_sel.max(0).min(n - 1) as usize;
-        let selected = watchlist.cmd_palette_results.get(sel_idx).cloned();
+        let sel_idx = watchlist.cmd_palette.sel.max(0).min(n - 1) as usize;
+        let selected = watchlist.cmd_palette.results.get(sel_idx).cloned();
 
         ui.horizontal_top(|ui| {
             ui.vertical(|ui| {
@@ -419,12 +419,12 @@ fn draw_normal_mode(
                     .auto_shrink([false, true])
                     .id_salt("cmd_palette_results")
                     .show(ui, |ui| {
-                        let entries = watchlist.cmd_palette_results.clone();
+                        let entries = watchlist.cmd_palette.results.clone();
                         // Last 5 items in recent list: show a "•" recency dot.
-                        let recent_5: Vec<String> = watchlist.cmd_palette_recent
+                        let recent_5: Vec<String> = watchlist.cmd_palette.recent
                             .iter().take(5).cloned().collect();
                         for (ri, (id, label, cat_label)) in entries.iter().enumerate() {
-                            let is_sel = ri as i32 == watchlist.cmd_palette_sel;
+                            let is_sel = ri as i32 == watchlist.cmd_palette.sel;
                             let is_recent = recent_5.contains(id);
                             let row_h = 26.0;
                             let (rect, resp) = ui.allocate_exact_size(
@@ -475,7 +475,7 @@ fn draw_normal_mode(
                             }
 
                             if resp.clicked() { execute_idx = Some(ri); }
-                            if resp.hovered() { watchlist.cmd_palette_sel = ri as i32; }
+                            if resp.hovered() { watchlist.cmd_palette.sel = ri as i32; }
                         }
                     });
             });
@@ -507,19 +507,19 @@ fn draw_normal_mode(
         hint(ui, "then", "chain");
         hint(ui, "Esc", "close");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.add(BodyLabel::new(&format!("{} results", watchlist.cmd_palette_results.len())).size(font_sm()).color(t.dim));
+            ui.add(BodyLabel::new(&format!("{} results", watchlist.cmd_palette.results.len())).size(font_sm()).color(t.dim));
         });
     });
 
     // Execute
     if let Some(idx) = execute_idx {
-        let entry = watchlist.cmd_palette_results.get(idx).cloned();
+        let entry = watchlist.cmd_palette.results.get(idx).cloned();
         if let Some((id, _label, _cat)) = entry {
             execute(&id, watchlist, panes, layout, active_pane);
-            watchlist.cmd_palette_recent.retain(|r| r != &id);
-            watchlist.cmd_palette_recent.insert(0, id.clone());
-            watchlist.cmd_palette_recent.truncate(50);
-            *watchlist.cmd_palette_freq.entry(id.clone()).or_insert(0) += 1;
+            watchlist.cmd_palette.recent.retain(|r| r != &id);
+            watchlist.cmd_palette.recent.insert(0, id.clone());
+            watchlist.cmd_palette.recent.truncate(50);
+            *watchlist.cmd_palette.freq.entry(id.clone()).or_insert(0) += 1;
 
             // Chain: run remaining steps
             if is_chain {
@@ -531,8 +531,8 @@ fn draw_normal_mode(
                 }
             }
 
-            if !watchlist.cmd_palette_ai_mode {
-                watchlist.cmd_palette_open = false;
+            if !watchlist.cmd_palette.ai_mode {
+                watchlist.cmd_palette.open = false;
             }
         }
     }

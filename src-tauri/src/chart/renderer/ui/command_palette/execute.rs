@@ -14,10 +14,10 @@ pub(super) fn execute(
 ) {
     let ap = *active_pane;
 
-    if id == "ai:chat" { watchlist.cmd_palette_ai_mode = true; return; }
+    if id == "ai:chat" { watchlist.cmd_palette.ai_mode = true; return; }
     if id == "dyn:reorganize" {
-        watchlist.cmd_palette_ai_mode = true;
-        watchlist.cmd_palette_ai_input =
+        watchlist.cmd_palette.ai_mode = true;
+        watchlist.cmd_palette.ai_input =
             "Reorganize the layout for the current task (Dynamic UI placeholder — Gemma 2B)".into();
         return;
     }

@@ -1048,20 +1048,20 @@ pub(crate) fn render(
                 // Search / command palette — icon-only ToolbarBtn.
                 {
                     use crate::ui_kit::widgets::{Tooltip, Kbd};
-                    let search_resp = toolbar_btn(ui, Icon::MAGNIFYING_GLASS, watchlist.cmd_palette_open, t);
+                    let search_resp = toolbar_btn(ui, Icon::MAGNIFYING_GLASS, watchlist.cmd_palette.open, t);
                     #[cfg(debug_assertions)]
                     crate::dev_inspector::record(
                         crate::dev_inspector::WidgetRecord::from_response("toolbar.search_btn", "button", "Search", &search_resp, ui)
                             .with_style("toolbar")
                     );
-                    paint_nav_col_tint(ui, tb_rect, search_resp.rect, t, search_resp.hovered(), watchlist.cmd_palette_open, "right_search");
+                    paint_nav_col_tint(ui, tb_rect, search_resp.rect, t, search_resp.hovered(), watchlist.cmd_palette.open, "right_search");
                     Tooltip::rich(|ui, theme| {
                         ui.label(egui::RichText::new("Search").size(font_sm()).strong().color(theme.text()));
                         ui.label(egui::RichText::new("Search & command palette").size(font_xs()).color(theme.dim()));
                         ui.add(Kbd::new("Cmd+K"));
                     }).show(ui, &search_resp, t);
                     if search_resp.clicked() {
-                        watchlist.cmd_palette_open = !watchlist.cmd_palette_open;
+                        watchlist.cmd_palette.open = !watchlist.cmd_palette.open;
                     }
                 }
 

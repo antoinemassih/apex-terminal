@@ -197,7 +197,7 @@ pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &mut Watchl
     // P2 (command-palette-frecency): persist frecency data.  Prune freq to
     // the top 200 by count before saving to keep the file bounded.
     {
-        let mut freq = watchlist.cmd_palette_freq.clone();
+        let mut freq = watchlist.cmd_palette.freq.clone();
         if freq.len() > 200 {
             let mut pairs: Vec<_> = freq.iter().map(|(k, &v)| (k.clone(), v)).collect();
             pairs.sort_by(|a, b| b.1.cmp(&a.1));
@@ -205,7 +205,7 @@ pub(crate) fn save_state(panes: &[Chart], layout: Layout, watchlist: &mut Watchl
             freq = pairs.into_iter().collect();
         }
         let ps = crate::state::CmdPaletteState {
-            recent: watchlist.cmd_palette_recent.clone(),
+            recent: watchlist.cmd_palette.recent.clone(),
             freq,
         };
         if let Err(e) = crate::state::save(&cmd_palette_state_path(), &ps) {

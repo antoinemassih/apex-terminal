@@ -5637,6 +5637,36 @@ pub(crate) struct DiscordState {
     pub(crate) messages_loading: bool,
 }
 
+/// Command-palette state (WS-E E3, Watchlist-split slice 6). Grouped out of the
+/// Watchlist god-struct: 8 cmd_palette_* fields. `recent`+`freq` are persisted
+/// separately (cmd_palette_state.json via workspace_persist — field reads only).
+/// Explicit Default (sel = -1 = no selection).
+pub(crate) struct CmdPaletteState {
+    pub(crate) open: bool,
+    pub(crate) query: String,
+    pub(crate) results: Vec<(String, String, String)>,
+    pub(crate) sel: i32,
+    pub(crate) recent: Vec<String>,
+    pub(crate) freq: std::collections::HashMap<String, u32>,
+    pub(crate) ai_mode: bool,
+    pub(crate) ai_input: String,
+}
+
+impl Default for CmdPaletteState {
+    fn default() -> Self {
+        Self {
+            open: false,
+            query: String::new(),
+            results: vec![],
+            sel: -1,
+            recent: vec![],
+            freq: std::collections::HashMap::new(),
+            ai_mode: false,
+            ai_input: String::new(),
+        }
+    }
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -5867,14 +5897,8 @@ pub(crate) struct Watchlist {
     /// fresh id. `0` is reserved (used as a sentinel for "uninitialized").
     pub(crate) next_pane_id: u64,
     // Command palette
-    pub(crate) cmd_palette_open: bool,
-    pub(crate) cmd_palette_query: String,
-    pub(crate) cmd_palette_results: Vec<(String, String, String)>, // (id, name, category)
-    pub(crate) cmd_palette_sel: i32, // selected result index (-1 = none)
-    pub(crate) cmd_palette_recent: Vec<String>, // recent symbol/command ids (most-recent first)
-    pub(crate) cmd_palette_freq: std::collections::HashMap<String, u32>, // frequency counter
-    pub(crate) cmd_palette_ai_mode: bool, // AI chat overlay (Gemma 4 placeholder)
-    pub(crate) cmd_palette_ai_input: String,
+    /// Command-palette state (WS-E E3 slice 6) — was 8 flat `cmd_palette_*` fields.
+    pub(crate) cmd_palette: CmdPaletteState,
     // Layout favorites (shown as buttons in toolbar; rest in dropdown)
     pub(crate) layout_favorites: Vec<String>,
     pub(crate) layout_dropdown_open: bool,
@@ -6143,9 +6167,7 @@ impl Watchlist {
                pane_ids: Vec::new(),
                next_pane_id: 1, // 0 reserved as sentinel
 
-               cmd_palette_open: false, cmd_palette_query: String::new(), cmd_palette_results: vec![], cmd_palette_sel: -1,
-               cmd_palette_recent: vec![], cmd_palette_freq: std::collections::HashMap::new(),
-               cmd_palette_ai_mode: false, cmd_palette_ai_input: String::new(),
+               cmd_palette: CmdPaletteState::default(),
                layout_favorites: vec!["1".into(), "2".into(), "2H".into(), "3".into(), "4".into()],
                layout_dropdown_open: false, layout_dropdown_pos: egui::Pos2::ZERO, dragging_tab: None,
                timeframe_favorites: vec!["1m".into(), "5m".into(), "15m".into(), "30m".into(), "1h".into(), "4h".into(), "1d".into(), "1wk".into()],
@@ -7867,8 +7889,8 @@ impl App {
         if let Some(ps) =
             crate::state::load::<crate::state::CmdPaletteState>(&cmd_palette_state_path())
         {
-            wl.cmd_palette_recent = ps.recent;
-            wl.cmd_palette_freq = ps.freq;
+            wl.cmd_palette.recent = ps.recent;
+            wl.cmd_palette.freq = ps.freq;
         }
         // Load persisted hotkeys (override defaults)
         load_hotkeys(&mut wl.hotkeys);

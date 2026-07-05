@@ -23,7 +23,7 @@ pub(super) fn draw_ai_mode(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
         ui.add_space(gap_lg());
         ui.add(BodyLabel::new("placeholder").size(font_sm()).italics(true).color(t.dim));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.add(KitButton::new("← back").variant(Variant::Secondary).simple_treatment(true).fg(t.dim)).clicked() { watchlist.cmd_palette_ai_mode = false; }
+            if ui.add(KitButton::new("← back").variant(Variant::Secondary).simple_treatment(true).fg(t.dim)).clicked() { watchlist.cmd_palette.ai_mode = false; }
         });
     });
 
@@ -38,7 +38,7 @@ pub(super) fn draw_ai_mode(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
         ui.label(egui::RichText::new(hint).size(font_md()).monospace().color(color_subtle(t.text)));
     }
     ui.add_space(gap_xl());
-    let te = Input::new(&mut watchlist.cmd_palette_ai_input)
+    let te = Input::new(&mut watchlist.cmd_palette.ai_input)
         .multiline(true)
         .width(pal_w - 16.0)
         .placeholder("Ask anything — Gemma 4 will answer (coming soon)…")
