@@ -5717,6 +5717,21 @@ impl Default for ChainState {
     }
 }
 
+/// Order-ledger panel state (WS-E E3, Watchlist-split slice 8). Grouped out of
+/// the Watchlist god-struct: 6 order_ledger_* fields. `open`/`view`/`filter`
+/// mirror the persisted SidebarState flags (kept flat there). All Default.
+#[derive(Default)]
+pub(crate) struct OrderLedgerState {
+    pub(crate) open: bool,
+    pub(crate) view: u8,    // 0=Active, 1=Journal, 2=All
+    pub(crate) filter: u8,  // index into LedgerFilter
+    pub(crate) search: String,
+    /// P2: per-symbol sub-section expanded state — keys are symbol strings. Ephemeral.
+    pub(crate) sym_expanded: std::collections::HashMap<String, bool>,
+    /// P2: pending bulk-cancel confirmation (Some(symbol) = inline confirm row). Ephemeral.
+    pub(crate) pending_bulk_cancel: Option<String>,
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -5768,19 +5783,9 @@ pub(crate) struct Watchlist {
     pub(crate) shared_x_axis: bool,
     pub(crate) shared_y_axis: bool,
     pub(crate) hotkeys: Vec<HotKey>,
-    // Order ledger panel state (wave 3b)
-    pub(crate) order_ledger_open: bool,
-    pub(crate) order_ledger_view: u8,    // 0=Active, 1=Journal, 2=All
-    pub(crate) order_ledger_filter: u8,  // index into LedgerFilter
-    pub(crate) order_ledger_search: String,
-    /// P2: per-symbol sub-section expanded state — keys are symbol strings.
-    /// Not persisted (ephemeral UI state).
-    pub(crate) order_ledger_sym_expanded: std::collections::HashMap<String, bool>,
-    /// P2: pending bulk-cancel confirmation. When `Some(symbol)`, the ledger
-    /// renders an inline confirm row asking the user to confirm before cancelling.
-    /// Set on "Cancel all" button click; cleared on confirm or dismiss.
-    /// Not persisted (ephemeral UI state).
-    pub(crate) order_ledger_pending_bulk_cancel: Option<String>,
+    // Order ledger panel state (wave 3b; WS-E E3 slice 8) — was 6 flat
+    // `order_ledger_*` fields, now grouped into OrderLedgerState.
+    pub(crate) order_ledger: OrderLedgerState,
     /// Order System Health panel — operator observability for the order
     /// subsystem. Toggled via Ctrl+Shift+O. See
     /// `chart::renderer::ui::panels::order_health_panel`.
@@ -6142,9 +6147,7 @@ impl Watchlist {
                dragging: None, drag_start_pos: None, drop_target: None, drag_confirmed: false,
                renaming_section: None, rename_buf: String::new(),
                hotkey_editor_open: false, hotkey_editing_id: None, hotkeys: default_hotkeys(),
-               order_ledger_open: false, order_ledger_view: 0, order_ledger_filter: 0, order_ledger_search: String::new(),
-               order_ledger_sym_expanded: std::collections::HashMap::new(),
-               order_ledger_pending_bulk_cancel: None,
+               order_ledger: OrderLedgerState::default(),
                order_health_open: false,
                bottom_dock_tab: 0,
                rail_col_width: 400.0, bottom_dock_height: 240.0,
@@ -6553,9 +6556,9 @@ impl Watchlist {
         let settings_open = self.settings_open;
         let orders_panel_open = self.orders_panel_open;
         let order_entry_open = self.order_entry_open;
-        let order_ledger_open = self.order_ledger_open;
-        let order_ledger_view = self.order_ledger_view;
-        let order_ledger_filter = self.order_ledger_filter;
+        let order_ledger_open = self.order_ledger.open;
+        let order_ledger_view = self.order_ledger.view;
+        let order_ledger_filter = self.order_ledger.filter;
         let order_health_open = self.order_health_open;
         let bottom_dock_tab = self.bottom_dock_tab;
         let rail_col_width = self.rail_col_width;
@@ -6637,9 +6640,9 @@ impl Watchlist {
         self.settings_open = snap.settings_open;
         self.orders_panel_open = snap.orders_panel_open;
         self.order_entry_open = snap.order_entry_open;
-        self.order_ledger_open = snap.order_ledger_open;
-        self.order_ledger_view = snap.order_ledger_view;
-        self.order_ledger_filter = snap.order_ledger_filter;
+        self.order_ledger.open = snap.order_ledger_open;
+        self.order_ledger.view = snap.order_ledger_view;
+        self.order_ledger.filter = snap.order_ledger_filter;
         self.order_health_open = snap.order_health_open;
         self.bottom_dock_tab = snap.bottom_dock_tab;
         self.rail_col_width = snap.rail_col_width;

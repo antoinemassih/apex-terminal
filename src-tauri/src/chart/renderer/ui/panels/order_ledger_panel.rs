@@ -80,11 +80,11 @@ impl LedgerView {
 }
 
 /// Top-level draw entry. Mirrors the shape of `journal_panel::draw` /
-/// `alerts_panel::draw`. Only renders when `watchlist.order_ledger_open`.
+/// `alerts_panel::draw`. Only renders when `watchlist.order_ledger.open`.
 /// Rail registration — see [`super::right_rail`].
 pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
     id: "order_ledger",
-    is_open: |w| w.order_ledger_open,
+    is_open: |w| w.order_ledger.open,
     render: |cx, slot| draw(cx.ctx, cx.watchlist, cx.panes, cx.t, Some(slot)),
 };
 
@@ -95,7 +95,7 @@ pub(crate) fn draw(
     t: &Theme,
     slot: Option<super::side_panel_shell::RailSlot>,
 ) {
-    if !watchlist.order_ledger_open { return; }
+    if !watchlist.order_ledger.open { return; }
 
     let pane_h    = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
     let pane_font = watchlist.pane_header_size.title_font();
@@ -141,7 +141,7 @@ pub(crate) fn draw(
             ui.horizontal(|ui| {
                 ui.add(MonospaceCode::new("View").size_px(font_sm()).color(t.dim));
                 for v in LedgerView::all() {
-                    let active = watchlist.order_ledger_view == v as u8;
+                    let active = watchlist.order_ledger.view == v as u8;
                     let bg = if active { tint(t, Tone::Accent, alpha_strong()) } else { tint(t, Tone::Border, alpha_ghost()) };
                     let fg = if active { t.accent } else { t.dim };
                     let resp = ui.add(egui::Label::new(
@@ -154,7 +154,7 @@ pub(crate) fn draw(
             });
             ui.add_space(gap_xs());
 
-            let view = match watchlist.order_ledger_view {
+            let view = match watchlist.order_ledger.view {
                 0 => LedgerView::Active, 1 => LedgerView::Journal, _ => LedgerView::All,
             };
 
@@ -181,7 +181,7 @@ pub(crate) fn draw(
                 // Seed expanded state for any new symbols before we enter the
                 // scroll area closure (avoids entry API inside nested borrows).
                 for sym in &symbols {
-                    watchlist.order_ledger_sym_expanded
+                    watchlist.order_ledger.sym_expanded
                         .entry(sym.clone())
                         .or_insert(true);
                 }
@@ -209,7 +209,7 @@ pub(crate) fn draw(
                                 let working_count = sym_rows.len();
 
                                 // Safety: we pre-seeded all entries above.
-                                let expanded = watchlist.order_ledger_sym_expanded
+                                let expanded = watchlist.order_ledger.sym_expanded
                                     .get_mut(sym)
                                     .expect("pre-seeded above");
 
@@ -295,11 +295,11 @@ pub(crate) fn draw(
                 // Apply the trampoline: a "Cancel all" button was clicked inside
                 // the scroll area — set the pending confirmation symbol.
                 if let Some(sym) = cancel_all_clicked.into_inner() {
-                    watchlist.order_ledger_pending_bulk_cancel = Some(sym);
+                    watchlist.order_ledger.pending_bulk_cancel = Some(sym);
                 }
 
                 // ── Inline confirmation for pending bulk cancel ───────────
-                if let Some(pending_sym) = watchlist.order_ledger_pending_bulk_cancel.clone() {
+                if let Some(pending_sym) = watchlist.order_ledger.pending_bulk_cancel.clone() {
                     let working = order_manager::working_count_for_symbol(&pending_sym);
                     draw_bulk_cancel_confirm(ui, t, watchlist, &pending_sym, working);
                 }
@@ -316,7 +316,7 @@ pub(crate) fn draw(
 
                 // Filter chips
                 ui.horizontal(|ui| {
-                    let cur = LedgerFilter::all()[watchlist.order_ledger_filter as usize % 5];
+                    let cur = LedgerFilter::all()[watchlist.order_ledger.filter as usize % 5];
                     for (i, f) in LedgerFilter::all().iter().enumerate() {
                         let active = *f == cur;
                         let bg = if active { tint(t, Tone::Accent, alpha_strong()) } else { tint(t, Tone::Border, alpha_ghost()) };
@@ -333,7 +333,7 @@ pub(crate) fn draw(
                 // Search box
                 ui.horizontal(|ui| {
                     ui.add(MonospaceCode::new("Find").size_px(font_xs()).color(t.dim));
-                    Input::new(&mut watchlist.order_ledger_search)
+                    Input::new(&mut watchlist.order_ledger.search)
                         .placeholder("symbol or client-id")
                         .size(KitSize::Sm)
                         .min_width(ui.available_width().min(180.0))
@@ -342,8 +342,8 @@ pub(crate) fn draw(
                 });
                 ui.add_space(gap_xs());
 
-                let filter = LedgerFilter::all()[watchlist.order_ledger_filter as usize % 5];
-                let q = watchlist.order_ledger_search.trim().to_ascii_lowercase();
+                let filter = LedgerFilter::all()[watchlist.order_ledger.filter as usize % 5];
+                let q = watchlist.order_ledger.search.trim().to_ascii_lowercase();
 
                 let rows: Vec<&JournalEvent> = events.iter()
                     .filter(|e| filter.matches(e))
@@ -475,7 +475,7 @@ fn draw_bulk_cancel_confirm(
                         .fg(t.dim)
                         .show(ui, t).clicked()
                     {
-                        watchlist.order_ledger_pending_bulk_cancel = None;
+                        watchlist.order_ledger.pending_bulk_cancel = None;
                     }
 
                     // Cancel all (confirm — the dangerous action)
@@ -494,7 +494,7 @@ fn draw_bulk_cancel_confirm(
                                     if n == 1 { "" } else { "s" }, sym),
                             );
                         }
-                        watchlist.order_ledger_pending_bulk_cancel = None;
+                        watchlist.order_ledger.pending_bulk_cancel = None;
                     }
                 });
             });
