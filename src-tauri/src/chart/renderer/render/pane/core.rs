@@ -2914,149 +2914,7 @@ fn render_chart_pane(
 
     // ── Hit-test highlighting: flash indicators/drawings when current price touches ──
     if chart.hit_highlight && n > 1 {
-        let last_bar = &chart.bars[n - 1];
-        let price_h = last_bar.high;
-        let price_l = last_bar.low;
-        let price_range = (price_h - price_l).max(0.01);
-        // Generous threshold: 50% of candle range OR 0.3% of price, whichever is larger
-        let touch_threshold = (price_range * 0.5).max(last_bar.close * 0.003);
-        let now_inst = std::time::Instant::now();
-        let flash_duration = std::time::Duration::from_millis(800);
-
-        // Check overlay indicators (MAs, BB bands, etc.)
-        for ind in &chart.indicators {
-            if !ind.visible || ind.kind.category() != IndicatorCategory::Overlay { continue; }
-            // Check primary line (MA value at last bar)
-            if let Some(&val) = ind.values.get(n - 1) {
-                if !val.is_nan() && val >= price_l - touch_threshold && val <= price_h + touch_threshold {
-                    // Hit detected — register if not already tracked
-                    let key = ind.id;
-                    let on_cd = chart.hit_cooldowns.iter().any(|(k, bar)| *k == key && (n - 1).saturating_sub(*bar) < 10);
-                    if !on_cd && !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
-                        chart.hit_highlights.push((key, now_inst));
-                        chart.hit_cooldowns.push((key, n - 1));
-                    }
-                }
-            }
-            // Check upper band (BB/KC)
-            if let Some(&val) = ind.values2.get(n - 1) {
-                if !val.is_nan() && val >= price_l - touch_threshold && val <= price_h + touch_threshold {
-                    let key = ind.id + 10000;
-                    let on_cd = chart.hit_cooldowns.iter().any(|(k, bar)| *k == key && (n - 1).saturating_sub(*bar) < 10);
-                    if !on_cd && !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
-                        chart.hit_highlights.push((key, now_inst));
-                        chart.hit_cooldowns.push((key, n - 1));
-                    }
-                }
-            }
-            // Check lower band
-            if let Some(&val) = ind.values3.get(n - 1) {
-                if !val.is_nan() && val >= price_l - touch_threshold && val <= price_h + touch_threshold {
-                    let key = ind.id + 20000;
-                    let on_cd = chart.hit_cooldowns.iter().any(|(k, bar)| *k == key && (n - 1).saturating_sub(*bar) < 10);
-                    if !on_cd && !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
-                        chart.hit_highlights.push((key, now_inst));
-                        chart.hit_cooldowns.push((key, n - 1));
-                    }
-                }
-            }
-        }
-
-        // Check trendlines
-        for (di, drawing) in chart.drawings.iter().enumerate() {
-            if let crate::chart_renderer::DrawingKind::TrendLine { price0, time0, price1, time1 } = &drawing.kind {
-                // Interpolate trendline price at the last bar's timestamp
-                if let Some(&last_ts) = chart.timestamps.last() {
-                    let t0 = *time0 as f64; let t1 = *time1 as f64; let tc = last_ts as f64;
-                    if (t1 - t0).abs() > 1.0 {
-                        let frac = (tc - t0) / (t1 - t0);
-                        let trend_price = *price0 + (*price1 - *price0) * frac as f32;
-                        if trend_price >= price_l - touch_threshold && trend_price <= price_h + touch_threshold {
-                            let key = 50000 + di as u32;
-                            let on_cd = chart.hit_cooldowns.iter().any(|(k, bar)| *k == key && (n - 1).saturating_sub(*bar) < 10);
-                            if !on_cd && !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
-                                chart.hit_highlights.push((key, now_inst));
-                                chart.hit_cooldowns.push((key, n - 1));
-                            }
-                        }
-                    }
-                }
-            }
-            // HLine check
-            if let crate::chart_renderer::DrawingKind::HLine { price } = &drawing.kind {
-                if *price >= price_l - touch_threshold && *price <= price_h + touch_threshold {
-                    let key = 50000 + di as u32;
-                    let on_cd = chart.hit_cooldowns.iter().any(|(k, bar)| *k == key && (n - 1).saturating_sub(*bar) < 10);
-                    if !on_cd && !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
-                        chart.hit_highlights.push((key, now_inst));
-                        chart.hit_cooldowns.push((key, n - 1));
-                    }
-                }
-            }
-        }
-
-        // GC expired highlights and old cooldowns
-        chart.hit_highlights.retain(|(_, t)| t.elapsed() < flash_duration);
-        chart.hit_cooldowns.retain(|(_, bar)| (n - 1).saturating_sub(*bar) < 20);
-
-        // Render flash: draw the indicator/drawing line AGAIN on top in white at 3x thickness
-        let start_i = vs as u32;
-        for &(key, ref hit_time) in &chart.hit_highlights {
-            let elapsed = hit_time.elapsed().as_secs_f32();
-            let alpha = ((1.0 - elapsed / 0.8) * 255.0).clamp(0.0, 255.0) as u8;
-            if alpha < 5 { continue; }
-            let flash_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha);
-
-            if key < 50000 {
-                // Indicator — trace the actual polyline
-                let (ind_id, vals_idx) = if key < 10000 { (key, 0u8) }
-                    else if key < 20000 { (key - 10000, 1) }
-                    else { (key - 20000, 2) };
-                if let Some(ind) = chart.indicators.iter().find(|i| i.id == ind_id) {
-                    let vals = match vals_idx { 1 => &ind.values2, 2 => &ind.values3, _ => &ind.values };
-                    let mut pts: Vec<egui::Pos2> = Vec::new();
-                    for i in start_i..end {
-                        if let Some(&v) = vals.get(i as usize) {
-                            if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); }
-                        }
-                    }
-                    if pts.len() > 1 {
-                        painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness * 2.0, flash_color)));
-                    }
-                }
-            } else {
-                // Drawing — HLine or TrendLine
-                let di = (key - 50000) as usize;
-                if let Some(drawing) = chart.drawings.get(di) {
-                    match &drawing.kind {
-                        crate::chart_renderer::DrawingKind::HLine { price } => {
-                            let fy = py(*price);
-                            if fy.is_finite() {
-                                painter.line_segment([egui::pos2(rect.left(), fy), egui::pos2(rect.left() + cw, fy)],
-                                    egui::Stroke::new(drawing.thickness * 2.0, flash_color));
-                            }
-                        }
-                        crate::chart_renderer::DrawingKind::TrendLine { price0, time0, price1, time1 } => {
-                            let bar0 = SignalDrawing::time_to_bar(*time0, &chart.timestamps);
-                            let bar1 = SignalDrawing::time_to_bar(*time1, &chart.timestamps);
-                            let x0 = bx(bar0); let y0 = py(*price0);
-                            let x1 = bx(bar1); let y1 = py(*price1);
-                            if y0.is_finite() && y1.is_finite() {
-                                painter.line_segment([egui::pos2(x0, y0), egui::pos2(x1, y1)],
-                                    egui::Stroke::new(drawing.thickness * 2.0, flash_color));
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-
-        // Repaint only while a flash is animating; otherwise let the pane
-        // idle — the next price tick wakes the UI via wake_native_ui() and
-        // re-runs hit detection. (Audit PF1: the unconditional repaint that
-        // was here pinned the app at 100% CPU whenever hit_highlight was on.)
-        if !chart.hit_highlights.is_empty() { ctx.request_repaint(); }
+        render_hit_highlight_overlay(&painter, chart, rect, cw, t, vs, n, ctx, end, &py, &bx);
     }
 
     // (hit flash rendered as white overlay on top of the indicator line)
@@ -6040,79 +5898,8 @@ fn render_chart_pane(
     // ── Signal drawings (auto-generated trendlines from server) ──────────
     if !chart.hide_signal_drawings && !chart.signal_drawings.is_empty() {
         let rejected = crate::chart_renderer::gpu::auto_draw_config().rejected_drawings;
-        for sd in &chart.signal_drawings {
-            // Skip user-rejected drawings.
-            if rejected.contains(&sd.id) { continue; }
-            // Per-method filter: skip lines whose detection_method is toggled off.
-            if chart.hidden_signal_methods.iter().any(|m| m == &sd.detection_method) { continue; }
-            let color = hex_to_color(&sd.color, sd.opacity);
-            let stroke = egui::Stroke::new(sd.thickness, color);
-            match sd.drawing_type.as_str() {
-                "trendline" if sd.points.len() >= 2 => {
-                    let b0 = SignalDrawing::time_to_bar(sd.points[0].0, &chart.timestamps);
-                    let b1 = SignalDrawing::time_to_bar(sd.points[1].0, &chart.timestamps);
-                    let mut p0 = egui::pos2(bx(b0), py(sd.points[0].1));
-                    let mut p1 = egui::pos2(bx(b1), py(sd.points[1].1));
-                    // Extend along the line's slope to the chart edge(s) when requested.
-                    if (sd.extend_left || sd.extend_right) && (p1.x - p0.x).abs() > 0.5 {
-                        let m = (p1.y - p0.y) / (p1.x - p0.x);
-                        if sd.extend_right { let x = rect.left() + cw; p1 = egui::pos2(x, p0.y + m * (x - p0.x)); }
-                        if sd.extend_left  { let x = rect.left();      p0 = egui::pos2(x, p0.y + m * (x - p0.x)); }
-                    }
-                    match sd.line_style {
-                        LineStyle::Solid => { painter.line_segment([p0, p1], stroke); }
-                        _ => {
-                            let (dash, gap) = if sd.line_style == LineStyle::Dashed { (6.0, 3.0) } else { (2.0, 2.0) };
-                            let dir = p1 - p0; let len = dir.length();
-                            if len > 1.0 { let norm = dir / len; let mut d = 0.0;
-                                while d < len { let a = p0 + norm * d; let b = p0 + norm * (d+dash).min(len);
-                                    painter.line_segment([a, b], stroke); d += dash + gap; }
-                            }
-                        }
-                    }
-                    // Strength indicator — small dot at midpoint, size = strength
-                    if sd.strength > 0.0 {
-                        let mid = egui::pos2((p0.x+p1.x)/2.0, (p0.y+p1.y)/2.0);
-                        painter.circle_filled(mid, 2.0 + sd.strength * 3.0, color);
-                    }
-                }
-                "hline" if !sd.points.is_empty() => {
-                    let y = py(sd.points[0].1);
-                    match sd.line_style {
-                        LineStyle::Solid => { painter.line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y)], stroke); }
-                        _ => {
-                            let mut dx = rect.left(); while dx < rect.left()+cw {
-                                painter.line_segment([egui::pos2(dx, y), egui::pos2((dx+6.0).min(rect.left()+cw), y)], stroke); dx += 10.0;
-                            }
-                        }
-                    }
-                }
-                "hzone" if sd.points.len() >= 2 => {
-                    let y0 = py(sd.points[0].1); let y1 = py(sd.points[1].1);
-                    let fill = hex_to_color(&sd.color, sd.opacity * 0.15);
-                    painter.rect_filled(egui::Rect::from_min_max(egui::pos2(rect.left(), y0.min(y1)), egui::pos2(rect.left()+cw, y0.max(y1))), 0.0, fill);
-                    painter.line_segment([egui::pos2(rect.left(), y0), egui::pos2(rect.left()+cw, y0)], stroke);
-                    painter.line_segment([egui::pos2(rect.left(), y1), egui::pos2(rect.left()+cw, y1)], stroke);
-                }
-                // Candlestick markers: a small triangle at the bar (up = bullish
-                // below the candle, down = bearish above it).
-                "marker_up" | "marker_down" if !sd.points.is_empty() => {
-                    let up = sd.drawing_type == "marker_up";
-                    let bx_pos = bx(SignalDrawing::time_to_bar(sd.points[0].0, &chart.timestamps));
-                    let y = py(sd.points[0].1);
-                    let s = 5.0_f32;
-                    let off = if up { 8.0 } else { -8.0 };
-                    let tip = egui::pos2(bx_pos, y + off);
-                    let (a, b) = if up {
-                        (egui::pos2(bx_pos - s, y + off + s), egui::pos2(bx_pos + s, y + off + s))
-                    } else {
-                        (egui::pos2(bx_pos - s, y + off - s), egui::pos2(bx_pos + s, y + off - s))
-                    };
-                    painter.add(egui::Shape::convex_polygon(vec![tip, a, b], color, egui::Stroke::NONE));
-                }
-                _ => {}
-            }
-        }
+    // render_signal_drawings_overlay (WS-E E4).
+    render_signal_drawings_overlay(&painter, chart, rect, cw, &py, &bx);
     }
 
     // ── Divergence overlays (price chart lines) ────────────────────────
@@ -6301,42 +6088,8 @@ fn render_chart_pane(
     if chart.show_change_points {
         let ts_ref = if chart.candle_mode == CandleMode::Standard { &chart.timestamps } else { &chart.alt.timestamps };
         let bars_ref = if chart.candle_mode == CandleMode::Standard { &chart.bars } else { &chart.alt.bars };
-        for cp in &chart.change_points {
-            let (cp_time, cp_type, cp_conf) = (&cp.time, &cp.kind, &cp.confidence);
-            let bar_f = SignalDrawing::time_to_bar(*cp_time, ts_ref);
-            let x = bx(bar_f);
-            if x < rect.left() || x > rect.left() + cw { continue; }
-            let cp_color = match cp_type.as_str() {
-                "volume" => egui::Color32::from_rgb(90, 160, 235),
-                "directional" => egui::Color32::from_rgb(230, 186, 57),
-                "volatility" => egui::Color32::from_rgb(170, 100, 230),
-                "institutional" => egui::Color32::from_rgb(230, 140, 40),
-                _ => egui::Color32::from_rgb(130, 130, 140),
-            };
-            let alpha = ((cp_conf * 80.0) as u8).saturating_add(40);
-
-            // Small diamond marker at the bottom of the chart area
-            let dy = rect.bottom() - 8.0;
-            let sz = 4.0;
-            let diamond = vec![
-                egui::pos2(x, dy - sz),
-                egui::pos2(x + sz, dy),
-                egui::pos2(x, dy + sz),
-                egui::pos2(x - sz, dy),
-            ];
-            painter.add(egui::Shape::convex_polygon(diamond, color_alpha(cp_color, alpha), egui::Stroke::NONE));
-
-            // Very thin vertical line — only on the candle body, not full height
-            let bar_idx = bar_f.round() as usize;
-            if let Some(bar) = bars_ref.get(bar_idx) {
-                let y_top = py(bar.high) - 3.0;
-                let y_bot = py(bar.low) + 3.0;
-                painter.line_segment(
-                    [egui::pos2(x, y_top), egui::pos2(x, y_bot)],
-                    egui::Stroke::new(0.5, color_alpha(cp_color, alpha / 2)),
-                );
-            }
-        }
+    // render_change_points_overlay (WS-E E4).
+    render_change_points_overlay(&painter, chart, rect, cw, &py, &bx);
     }
 
     // ── Trade plan — floating card + subtle chart lines ──────────────────
@@ -13155,4 +12908,280 @@ fn render_trigger_levels(
         painter.text(tag_rect.center(), egui::Align2::CENTER_CENTER,
             &format!("{:.2}", tl.trigger_price), mono_xs(), egui::Color32::WHITE);
     }
+}
+
+/// render_change_points_overlay (WS-E E4: extracted from render_chart_pane). Pure draw, verbatim.
+#[allow(clippy::too_many_arguments)]
+fn render_change_points_overlay(
+    painter: &egui::Painter, chart: &Chart, rect: egui::Rect, cw: f32, py: impl Fn(f32) -> f32, bx: impl Fn(f32) -> f32
+) {
+    let bars_ref = if chart.candle_mode == CandleMode::Standard { &chart.bars } else { &chart.alt.bars };
+    let ts_ref = if chart.candle_mode == CandleMode::Standard { &chart.timestamps } else { &chart.alt.timestamps };
+        for cp in &chart.change_points {
+            let (cp_time, cp_type, cp_conf) = (&cp.time, &cp.kind, &cp.confidence);
+            let bar_f = SignalDrawing::time_to_bar(*cp_time, ts_ref);
+            let x = bx(bar_f);
+            if x < rect.left() || x > rect.left() + cw { continue; }
+            let cp_color = match cp_type.as_str() {
+                "volume" => egui::Color32::from_rgb(90, 160, 235),
+                "directional" => egui::Color32::from_rgb(230, 186, 57),
+                "volatility" => egui::Color32::from_rgb(170, 100, 230),
+                "institutional" => egui::Color32::from_rgb(230, 140, 40),
+                _ => egui::Color32::from_rgb(130, 130, 140),
+            };
+            let alpha = ((cp_conf * 80.0) as u8).saturating_add(40);
+
+            // Small diamond marker at the bottom of the chart area
+            let dy = rect.bottom() - 8.0;
+            let sz = 4.0;
+            let diamond = vec![
+                egui::pos2(x, dy - sz),
+                egui::pos2(x + sz, dy),
+                egui::pos2(x, dy + sz),
+                egui::pos2(x - sz, dy),
+            ];
+            painter.add(egui::Shape::convex_polygon(diamond, color_alpha(cp_color, alpha), egui::Stroke::NONE));
+
+            // Very thin vertical line — only on the candle body, not full height
+            let bar_idx = bar_f.round() as usize;
+            if let Some(bar) = bars_ref.get(bar_idx) {
+                let y_top = py(bar.high) - 3.0;
+                let y_bot = py(bar.low) + 3.0;
+                painter.line_segment(
+                    [egui::pos2(x, y_top), egui::pos2(x, y_bot)],
+                    egui::Stroke::new(0.5, color_alpha(cp_color, alpha / 2)),
+                );
+            }
+        }
+}
+
+/// render_signal_drawings_overlay (WS-E E4: extracted from render_chart_pane). Pure draw, verbatim.
+#[allow(clippy::too_many_arguments)]
+fn render_signal_drawings_overlay(
+    painter: &egui::Painter, chart: &Chart, rect: egui::Rect, cw: f32, py: impl Fn(f32) -> f32, bx: impl Fn(f32) -> f32
+) {
+    let rejected = crate::chart_renderer::gpu::auto_draw_config().rejected_drawings;
+        for sd in &chart.signal_drawings {
+            // Skip user-rejected drawings.
+            if rejected.contains(&sd.id) { continue; }
+            // Per-method filter: skip lines whose detection_method is toggled off.
+            if chart.hidden_signal_methods.iter().any(|m| m == &sd.detection_method) { continue; }
+            let color = hex_to_color(&sd.color, sd.opacity);
+            let stroke = egui::Stroke::new(sd.thickness, color);
+            match sd.drawing_type.as_str() {
+                "trendline" if sd.points.len() >= 2 => {
+                    let b0 = SignalDrawing::time_to_bar(sd.points[0].0, &chart.timestamps);
+                    let b1 = SignalDrawing::time_to_bar(sd.points[1].0, &chart.timestamps);
+                    let mut p0 = egui::pos2(bx(b0), py(sd.points[0].1));
+                    let mut p1 = egui::pos2(bx(b1), py(sd.points[1].1));
+                    // Extend along the line's slope to the chart edge(s) when requested.
+                    if (sd.extend_left || sd.extend_right) && (p1.x - p0.x).abs() > 0.5 {
+                        let m = (p1.y - p0.y) / (p1.x - p0.x);
+                        if sd.extend_right { let x = rect.left() + cw; p1 = egui::pos2(x, p0.y + m * (x - p0.x)); }
+                        if sd.extend_left  { let x = rect.left();      p0 = egui::pos2(x, p0.y + m * (x - p0.x)); }
+                    }
+                    match sd.line_style {
+                        LineStyle::Solid => { painter.line_segment([p0, p1], stroke); }
+                        _ => {
+                            let (dash, gap) = if sd.line_style == LineStyle::Dashed { (6.0, 3.0) } else { (2.0, 2.0) };
+                            let dir = p1 - p0; let len = dir.length();
+                            if len > 1.0 { let norm = dir / len; let mut d = 0.0;
+                                while d < len { let a = p0 + norm * d; let b = p0 + norm * (d+dash).min(len);
+                                    painter.line_segment([a, b], stroke); d += dash + gap; }
+                            }
+                        }
+                    }
+                    // Strength indicator — small dot at midpoint, size = strength
+                    if sd.strength > 0.0 {
+                        let mid = egui::pos2((p0.x+p1.x)/2.0, (p0.y+p1.y)/2.0);
+                        painter.circle_filled(mid, 2.0 + sd.strength * 3.0, color);
+                    }
+                }
+                "hline" if !sd.points.is_empty() => {
+                    let y = py(sd.points[0].1);
+                    match sd.line_style {
+                        LineStyle::Solid => { painter.line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y)], stroke); }
+                        _ => {
+                            let mut dx = rect.left(); while dx < rect.left()+cw {
+                                painter.line_segment([egui::pos2(dx, y), egui::pos2((dx+6.0).min(rect.left()+cw), y)], stroke); dx += 10.0;
+                            }
+                        }
+                    }
+                }
+                "hzone" if sd.points.len() >= 2 => {
+                    let y0 = py(sd.points[0].1); let y1 = py(sd.points[1].1);
+                    let fill = hex_to_color(&sd.color, sd.opacity * 0.15);
+                    painter.rect_filled(egui::Rect::from_min_max(egui::pos2(rect.left(), y0.min(y1)), egui::pos2(rect.left()+cw, y0.max(y1))), 0.0, fill);
+                    painter.line_segment([egui::pos2(rect.left(), y0), egui::pos2(rect.left()+cw, y0)], stroke);
+                    painter.line_segment([egui::pos2(rect.left(), y1), egui::pos2(rect.left()+cw, y1)], stroke);
+                }
+                // Candlestick markers: a small triangle at the bar (up = bullish
+                // below the candle, down = bearish above it).
+                "marker_up" | "marker_down" if !sd.points.is_empty() => {
+                    let up = sd.drawing_type == "marker_up";
+                    let bx_pos = bx(SignalDrawing::time_to_bar(sd.points[0].0, &chart.timestamps));
+                    let y = py(sd.points[0].1);
+                    let s = 5.0_f32;
+                    let off = if up { 8.0 } else { -8.0 };
+                    let tip = egui::pos2(bx_pos, y + off);
+                    let (a, b) = if up {
+                        (egui::pos2(bx_pos - s, y + off + s), egui::pos2(bx_pos + s, y + off + s))
+                    } else {
+                        (egui::pos2(bx_pos - s, y + off - s), egui::pos2(bx_pos + s, y + off - s))
+                    };
+                    painter.add(egui::Shape::convex_polygon(vec![tip, a, b], color, egui::Stroke::NONE));
+                }
+                _ => {}
+            }
+        }
+}
+
+/// render_hit_highlight_overlay (WS-E E4: extracted from render_chart_pane). Pure draw, verbatim.
+#[allow(clippy::too_many_arguments)]
+fn render_hit_highlight_overlay(
+    painter: &egui::Painter, chart: &mut Chart, rect: egui::Rect, cw: f32, t: &Theme, vs: f32, n: usize, ctx: &egui::Context, end: u32, py: impl Fn(f32) -> f32, bx: impl Fn(f32) -> f32
+) {
+        let last_bar = &chart.bars[n - 1];
+        let price_h = last_bar.high;
+        let price_l = last_bar.low;
+        let price_range = (price_h - price_l).max(0.01);
+        // Generous threshold: 50% of candle range OR 0.3% of price, whichever is larger
+        let touch_threshold = (price_range * 0.5).max(last_bar.close * 0.003);
+        let now_inst = std::time::Instant::now();
+        let flash_duration = std::time::Duration::from_millis(800);
+
+        // Check overlay indicators (MAs, BB bands, etc.)
+        for ind in &chart.indicators {
+            if !ind.visible || ind.kind.category() != IndicatorCategory::Overlay { continue; }
+            // Check primary line (MA value at last bar)
+            if let Some(&val) = ind.values.get(n - 1) {
+                if !val.is_nan() && val >= price_l - touch_threshold && val <= price_h + touch_threshold {
+                    // Hit detected — register if not already tracked
+                    let key = ind.id;
+                    let on_cd = chart.hit_cooldowns.iter().any(|(k, bar)| *k == key && (n - 1).saturating_sub(*bar) < 10);
+                    if !on_cd && !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
+                        chart.hit_highlights.push((key, now_inst));
+                        chart.hit_cooldowns.push((key, n - 1));
+                    }
+                }
+            }
+            // Check upper band (BB/KC)
+            if let Some(&val) = ind.values2.get(n - 1) {
+                if !val.is_nan() && val >= price_l - touch_threshold && val <= price_h + touch_threshold {
+                    let key = ind.id + 10000;
+                    let on_cd = chart.hit_cooldowns.iter().any(|(k, bar)| *k == key && (n - 1).saturating_sub(*bar) < 10);
+                    if !on_cd && !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
+                        chart.hit_highlights.push((key, now_inst));
+                        chart.hit_cooldowns.push((key, n - 1));
+                    }
+                }
+            }
+            // Check lower band
+            if let Some(&val) = ind.values3.get(n - 1) {
+                if !val.is_nan() && val >= price_l - touch_threshold && val <= price_h + touch_threshold {
+                    let key = ind.id + 20000;
+                    let on_cd = chart.hit_cooldowns.iter().any(|(k, bar)| *k == key && (n - 1).saturating_sub(*bar) < 10);
+                    if !on_cd && !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
+                        chart.hit_highlights.push((key, now_inst));
+                        chart.hit_cooldowns.push((key, n - 1));
+                    }
+                }
+            }
+        }
+
+        // Check trendlines
+        for (di, drawing) in chart.drawings.iter().enumerate() {
+            if let crate::chart_renderer::DrawingKind::TrendLine { price0, time0, price1, time1 } = &drawing.kind {
+                // Interpolate trendline price at the last bar's timestamp
+                if let Some(&last_ts) = chart.timestamps.last() {
+                    let t0 = *time0 as f64; let t1 = *time1 as f64; let tc = last_ts as f64;
+                    if (t1 - t0).abs() > 1.0 {
+                        let frac = (tc - t0) / (t1 - t0);
+                        let trend_price = *price0 + (*price1 - *price0) * frac as f32;
+                        if trend_price >= price_l - touch_threshold && trend_price <= price_h + touch_threshold {
+                            let key = 50000 + di as u32;
+                            let on_cd = chart.hit_cooldowns.iter().any(|(k, bar)| *k == key && (n - 1).saturating_sub(*bar) < 10);
+                            if !on_cd && !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
+                                chart.hit_highlights.push((key, now_inst));
+                                chart.hit_cooldowns.push((key, n - 1));
+                            }
+                        }
+                    }
+                }
+            }
+            // HLine check
+            if let crate::chart_renderer::DrawingKind::HLine { price } = &drawing.kind {
+                if *price >= price_l - touch_threshold && *price <= price_h + touch_threshold {
+                    let key = 50000 + di as u32;
+                    let on_cd = chart.hit_cooldowns.iter().any(|(k, bar)| *k == key && (n - 1).saturating_sub(*bar) < 10);
+                    if !on_cd && !chart.hit_highlights.iter().any(|(k, t)| *k == key && t.elapsed() < flash_duration) {
+                        chart.hit_highlights.push((key, now_inst));
+                        chart.hit_cooldowns.push((key, n - 1));
+                    }
+                }
+            }
+        }
+
+        // GC expired highlights and old cooldowns
+        chart.hit_highlights.retain(|(_, t)| t.elapsed() < flash_duration);
+        chart.hit_cooldowns.retain(|(_, bar)| (n - 1).saturating_sub(*bar) < 20);
+
+        // Render flash: draw the indicator/drawing line AGAIN on top in white at 3x thickness
+        let start_i = vs as u32;
+        for &(key, ref hit_time) in &chart.hit_highlights {
+            let elapsed = hit_time.elapsed().as_secs_f32();
+            let alpha = ((1.0 - elapsed / 0.8) * 255.0).clamp(0.0, 255.0) as u8;
+            if alpha < 5 { continue; }
+            let flash_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha);
+
+            if key < 50000 {
+                // Indicator — trace the actual polyline
+                let (ind_id, vals_idx) = if key < 10000 { (key, 0u8) }
+                    else if key < 20000 { (key - 10000, 1) }
+                    else { (key - 20000, 2) };
+                if let Some(ind) = chart.indicators.iter().find(|i| i.id == ind_id) {
+                    let vals = match vals_idx { 1 => &ind.values2, 2 => &ind.values3, _ => &ind.values };
+                    let mut pts: Vec<egui::Pos2> = Vec::new();
+                    for i in start_i..end {
+                        if let Some(&v) = vals.get(i as usize) {
+                            if !v.is_nan() { pts.push(egui::pos2(bx(i as f32), py(v))); }
+                        }
+                    }
+                    if pts.len() > 1 {
+                        painter.add(egui::Shape::line(pts, egui::Stroke::new(ind.thickness * 2.0, flash_color)));
+                    }
+                }
+            } else {
+                // Drawing — HLine or TrendLine
+                let di = (key - 50000) as usize;
+                if let Some(drawing) = chart.drawings.get(di) {
+                    match &drawing.kind {
+                        crate::chart_renderer::DrawingKind::HLine { price } => {
+                            let fy = py(*price);
+                            if fy.is_finite() {
+                                painter.line_segment([egui::pos2(rect.left(), fy), egui::pos2(rect.left() + cw, fy)],
+                                    egui::Stroke::new(drawing.thickness * 2.0, flash_color));
+                            }
+                        }
+                        crate::chart_renderer::DrawingKind::TrendLine { price0, time0, price1, time1 } => {
+                            let bar0 = SignalDrawing::time_to_bar(*time0, &chart.timestamps);
+                            let bar1 = SignalDrawing::time_to_bar(*time1, &chart.timestamps);
+                            let x0 = bx(bar0); let y0 = py(*price0);
+                            let x1 = bx(bar1); let y1 = py(*price1);
+                            if y0.is_finite() && y1.is_finite() {
+                                painter.line_segment([egui::pos2(x0, y0), egui::pos2(x1, y1)],
+                                    egui::Stroke::new(drawing.thickness * 2.0, flash_color));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        // Repaint only while a flash is animating; otherwise let the pane
+        // idle — the next price tick wakes the UI via wake_native_ui() and
+        // re-runs hit detection. (Audit PF1: the unconditional repaint that
+        // was here pinned the app at 100% CPU whenever hit_highlight was on.)
+        if !chart.hit_highlights.is_empty() { ctx.request_repaint(); }
 }

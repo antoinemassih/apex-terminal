@@ -1,0 +1,240 @@
+{
+  "schema": 1,
+  "generator": "apex-figma-extract (REST)",
+  "colorCollection": {
+    "name": "ColorScheme",
+    "defaultMode": "Imported",
+    "modes": [
+      "Imported"
+    ],
+    "meta": {
+      "Imported": {
+        "id": "imported",
+        "name": "Imported",
+        "is_dark": true
+      }
+    }
+  },
+  "styleCollection": {
+    "name": "StyleSystem",
+    "defaultMode": "Imported",
+    "modes": [
+      "Imported"
+    ],
+    "meta": {
+      "Imported": {
+        "id": "imported",
+        "name": "Imported",
+        "is_dark": true
+      }
+    }
+  },
+  "variables": [
+    {
+      "collection": "ColorScheme",
+      "name": "bg",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Imported": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 0.4
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "surface",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Imported": {
+          "r": 0.050980392156862744,
+          "g": 0.050980392156862744,
+          "b": 0.050980392156862744,
+          "a": 1
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "text",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Imported": {
+          "r": 1,
+          "g": 1,
+          "b": 1,
+          "a": 1
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "dim",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Imported": {
+          "r": 0.4,
+          "g": 0.4,
+          "b": 0.4,
+          "a": 0.6
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "border",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Imported": {
+          "r": 0.11764705882352941,
+          "g": 0.12156862745098039,
+          "b": 0.10980392156862745,
+          "a": 1
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "accent",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Imported": {
+          "r": 0.47843137254901963,
+          "g": 0.6352941176470588,
+          "b": 0.9686274509803922,
+          "a": 0.6
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "bull",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Imported": {
+          "r": 0.1803921568627451,
+          "g": 0.8,
+          "b": 0.44313725490196076,
+          "a": 1
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "bear",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Imported": {
+          "r": 0.9529411764705882,
+          "g": 0.5450980392156862,
+          "b": 0.6588235294117647,
+          "a": 0.12
+        }
+      }
+    },
+    {
+      "collection": "ColorScheme",
+      "name": "warn",
+      "type": "COLOR",
+      "valuesByMode": {
+        "Imported": {
+          "r": 0.9019607843137255,
+          "g": 0.8588235294117647,
+          "b": 0.4549019607843137,
+          "a": 1
+        }
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/size_xs",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Imported": 8
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/size_sm",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Imported": 10
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/size_md",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Imported": 11
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/size_lg",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Imported": 13
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/size_xl",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Imported": 15
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "typography/family_ui",
+      "type": "STRING",
+      "valuesByMode": {
+        "Imported": "Roboto Mono"
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "radii/none",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Imported": 0
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "radii/xs",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Imported": 2
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "radii/sm",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Imported": 3.5
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "radii/md",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Imported": 6.5
+      }
+    },
+    {
+      "collection": "StyleSystem",
+      "name": "radii/lg",
+      "type": "FLOAT",
+      "valuesByMode": {
+        "Imported": 10
+      }
+    }
+  ],
+  "components": {}
+}
