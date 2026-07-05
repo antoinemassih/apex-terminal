@@ -849,7 +849,7 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
             watchlist.hotkey_editor_open = false;
             watchlist.order_entry_open = false;
             watchlist.orders_panel_open = false;
-            watchlist.chain_select_mode = false;
+            watchlist.chain.select_mode = false;
         }
 
         // ── Dev Inspector — subsystem drivers ─────────────────────────────

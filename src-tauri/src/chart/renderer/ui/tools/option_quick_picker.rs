@@ -2,7 +2,7 @@
 //! already-active options tab. Lets the user switch to a different strike
 //! or expiry without leaving the chart pane.
 //!
-//! Data source: reuses `watchlist.chain_0dte` / `chain_far_dte` (the same
+//! Data source: reuses `watchlist.chain.near` / `chain_far_dte` (the same
 //! data the Watchlist CHAIN tab uses), fetched via `fetch_chain_background`.
 
 use egui;
@@ -132,9 +132,9 @@ pub(crate) fn draw(
                                     egui::FontId::monospace(font_sm()), t.text);
                                 if prev_resp.clicked() {
                                     // Find the next-lower strike in the current type's chain
-                                    let rows = if cur_is_call { &watchlist.chain_0dte.calls } else { &watchlist.chain_0dte.puts };
+                                    let rows = if cur_is_call { &watchlist.chain.near.calls } else { &watchlist.chain.near.puts };
                                     let rows = if current_dte == 0 { rows }
-                                        else if cur_is_call { &watchlist.chain_far.calls } else { &watchlist.chain_far.puts };
+                                        else if cur_is_call { &watchlist.chain.far.calls } else { &watchlist.chain.far.puts };
                                     let mut sorted: Vec<f32> = rows.iter().map(|r| r.strike).collect();
                                     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
                                     if let Some(&lower) = sorted.iter().rev().find(|&&s| s < cur_strike) {
@@ -158,9 +158,9 @@ pub(crate) fn draw(
                                     format!("Next Strike {}", Icon::CARET_RIGHT),
                                     egui::FontId::monospace(font_sm()), t.text);
                                 if next_resp.clicked() {
-                                    let rows = if cur_is_call { &watchlist.chain_0dte.calls } else { &watchlist.chain_0dte.puts };
+                                    let rows = if cur_is_call { &watchlist.chain.near.calls } else { &watchlist.chain.near.puts };
                                     let rows = if current_dte == 0 { rows }
-                                        else if cur_is_call { &watchlist.chain_far.calls } else { &watchlist.chain_far.puts };
+                                        else if cur_is_call { &watchlist.chain.far.calls } else { &watchlist.chain.far.puts };
                                     let mut sorted: Vec<f32> = rows.iter().map(|r| r.strike).collect();
                                     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
                                     if let Some(&higher) = sorted.iter().find(|&&s| s > cur_strike) {
@@ -183,15 +183,15 @@ pub(crate) fn draw(
                         separator(ui, tint(t, Tone::Border, alpha_muted()));
 
                         // ── Chain rows ──
-                        // Source: watchlist.chain_0dte when current_dte == 0, else chain_far
-                        if current_dte != 0 && watchlist.chain_far_dte != current_dte {
-                            watchlist.chain_far_dte = current_dte;
+                        // Source: watchlist.chain.near when current_dte == 0, else chain_far
+                        if current_dte != 0 && watchlist.chain.far_dte != current_dte {
+                            watchlist.chain.far_dte = current_dte;
                             fetch_chain_background(underlying.clone(), 15, current_dte, spot);
                         }
                         let chain_ref = if current_dte == 0 {
-                            &watchlist.chain_0dte
+                            &watchlist.chain.near
                         } else {
-                            &watchlist.chain_far
+                            &watchlist.chain.far
                         };
                         let (calls, puts) = (&chain_ref.calls, &chain_ref.puts);
 
@@ -271,9 +271,9 @@ pub(crate) fn draw(
         // Handle strike click → swap the contract on this pane (not a split).
         if let Some((strike, is_call)) = pending_load {
             let rows = if current_dte == 0 {
-                if is_call { &watchlist.chain_0dte.calls } else { &watchlist.chain_0dte.puts }
+                if is_call { &watchlist.chain.near.calls } else { &watchlist.chain.near.puts }
             } else {
-                if is_call { &watchlist.chain_far.calls } else { &watchlist.chain_far.puts }
+                if is_call { &watchlist.chain.far.calls } else { &watchlist.chain.far.puts }
             };
             let occ = rows.iter()
                 .find(|r| (r.strike - strike).abs() < 0.01)

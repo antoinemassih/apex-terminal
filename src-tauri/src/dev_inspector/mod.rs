@@ -896,7 +896,7 @@ pub fn end_frame(
     }
     if watchlist.settings_open      { open_dialogs.push("settings".into()); }
     if watchlist.hotkey_editor_open { open_dialogs.push("hotkey_editor".into()); }
-    if watchlist.chain_select_mode  { open_dialogs.push("chain_select".into()); }
+    if watchlist.chain.select_mode  { open_dialogs.push("chain_select".into()); }
     if watchlist.order_entry_open   { open_dialogs.push("order_entry".into()); }
     if watchlist.orders_panel_open  { open_dialogs.push("orders_panel".into()); }
 

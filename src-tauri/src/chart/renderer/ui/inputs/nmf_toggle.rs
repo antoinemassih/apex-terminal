@@ -5,7 +5,7 @@
 //!
 //! # Example
 //! ```ignore
-//! NmfToggle::new(&mut watchlist.chain_0_nmf).theme(t).show(ui);
+//! NmfToggle::new(&mut watchlist.chain.near_nmf).theme(t).show(ui);
 //! ```
 
 #![allow(dead_code)]

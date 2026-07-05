@@ -1129,7 +1129,7 @@ fn render_chart_pane(
                             }
                         } else {
                             // ── Option body: DTE nav + chain table ──
-                            // Reuses watchlist.chain_0dte / chain_far data, same source
+                            // Reuses watchlist.chain.near / chain_far data, same source
                             // as the floating option_quick_picker.
                             const DTE_LIST: &[i32] = &[0, 1, 2, 3, 7, 14, 30, 60];
                             let dte_label = |dte: i32| -> String {
@@ -1189,13 +1189,13 @@ fn render_chart_pane(
                             });
 
                             // Refresh chain data if DTE changed
-                            if current_dte != 0 && watchlist.chain_far_dte != current_dte {
-                                watchlist.chain_far_dte = current_dte;
+                            if current_dte != 0 && watchlist.chain.far_dte != current_dte {
+                                watchlist.chain.far_dte = current_dte;
                                 fetch_chain_background(underlying.clone(), 15, current_dte, spot);
                             }
 
                             // Chain table
-                            let chain_ref = if current_dte == 0 { &watchlist.chain_0dte } else { &watchlist.chain_far };
+                            let chain_ref = if current_dte == 0 { &watchlist.chain.near } else { &watchlist.chain.far };
                             let (calls, puts) = (&chain_ref.calls, &chain_ref.puts);
                             let mut pending_load: Option<(f32, bool)> = None;
 
@@ -1305,8 +1305,8 @@ fn render_chart_pane(
                             // Apply selected contract
                             if let Some((strike, is_call)) = pending_load {
                                 let rows = if current_dte == 0 {
-                                    if is_call { &watchlist.chain_0dte.calls } else { &watchlist.chain_0dte.puts }
-                                } else if is_call { &watchlist.chain_far.calls } else { &watchlist.chain_far.puts };
+                                    if is_call { &watchlist.chain.near.calls } else { &watchlist.chain.near.puts }
+                                } else if is_call { &watchlist.chain.far.calls } else { &watchlist.chain.far.puts };
                                 let occ = rows.iter()
                                     .find(|r| (r.strike - strike).abs() < 0.01)
                                     .map(|r| r.contract.clone())
@@ -9833,11 +9833,11 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
             }
         }
 
-        // Chain-delta cache → watchlist.chain_0dte/chain_far refresh.
+        // Chain-delta cache → watchlist.chain.near/chain_far refresh.
         // chain_delta arrives every 5s; re-derive the displayed grids from the
         // local cache (spec §5.4.d bootstrap pattern: REST once, WS merge forever).
         {
-            let sym = watchlist.chain_symbol.clone();
+            let sym = watchlist.chain.symbol.clone();
             if !sym.is_empty() {
                 let cached = crate::apex_data::live_state::get_chain(&sym);
                 // Keep the chain live. ApexData's chaindelta frames are sparse
@@ -9847,21 +9847,21 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                 // for every strike regardless of delta timing — and the WS merges
                 // still fill the gaps. Debounced via chain_last_fetch; also covers
                 // the initial bootstrap and SPX/NDX symbols not pre-fetched.
-                let due = watchlist.chain_last_fetch
+                let due = watchlist.chain.last_fetch
                     .map(|t| t.elapsed() > std::time::Duration::from_secs(6))
                     .unwrap_or(true);
                 if due {
-                    watchlist.chain_last_fetch = Some(std::time::Instant::now());
+                    watchlist.chain.last_fetch = Some(std::time::Instant::now());
                     if cached.is_empty() {
                         // Bootstrap: full path (REST + 0DTE backfill + fallbacks).
-                        watchlist.chain_loading = true;
-                        let hint = if watchlist.chain_underlying_price > 0.0 {
-                            watchlist.chain_underlying_price
+                        watchlist.chain.loading = true;
+                        let hint = if watchlist.chain.underlying_price > 0.0 {
+                            watchlist.chain.underlying_price
                         } else {
                             crate::apex_data::live_state::get_snapshot(&sym)
                                 .map(|s| s.last as f32).unwrap_or(0.0)
                         };
-                        fetch_chain_background(sym.clone(), watchlist.chain_num_strikes, 0, hint);
+                        fetch_chain_background(sym.clone(), watchlist.chain.num_strikes, 0, hint);
                     } else {
                         // Ongoing: lightweight REST re-seed for fresh quotes
                         // (fetch_chain_background would short-circuit on the cache).
@@ -9874,13 +9874,13 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                     // then handles its own windowing (count / pct / sigma) and the
                     // prev/next-strike buttons can walk the full ladder.
                     let ns = 0usize;
-                    let hint = if watchlist.chain_underlying_price > 0.0 {
-                        watchlist.chain_underlying_price
+                    let hint = if watchlist.chain.underlying_price > 0.0 {
+                        watchlist.chain.underlying_price
                     } else {
                         crate::apex_data::live_state::get_snapshot(&sym)
                             .map(|s| s.last as f32).unwrap_or(0.0)
                     };
-                    let far_dte = watchlist.chain_far_dte;
+                    let far_dte = watchlist.chain.far_dte;
                     // 0DTE expiry rule: pick the most recent trading day whose options
                     // are "active" — today during/after pre-market on a weekday, else
                     // the previous trading day (Sat→Fri, Sun→Fri, weekday<4amET→prev).
@@ -9905,8 +9905,8 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                             strike, last, bid, ask, volume: vol, oi, iv, itm, contract,
                         }).collect()
                     };
-                    watchlist.chain_0dte = crate::chart_renderer::gpu::OptionChain { calls: to_rows(c0), puts: to_rows(p0) };
-                    watchlist.chain_far  = crate::chart_renderer::gpu::OptionChain { calls: to_rows(cf), puts: to_rows(pf) };
+                    watchlist.chain.near = crate::chart_renderer::gpu::OptionChain { calls: to_rows(c0), puts: to_rows(p0) };
+                    watchlist.chain.far  = crate::chart_renderer::gpu::OptionChain { calls: to_rows(cf), puts: to_rows(pf) };
                     // Live NBBO overlay: the REST/delta cache only refreshes
                     // every ~6s, but the per-contract `quotes` WS pushes bid/ask
                     // sub-second. Overlay the freshest live quote onto each row so
@@ -9920,10 +9920,10 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                             }
                         }
                     };
-                    overlay_live(&mut watchlist.chain_0dte.calls);
-                    overlay_live(&mut watchlist.chain_0dte.puts);
-                    overlay_live(&mut watchlist.chain_far.calls);
-                    overlay_live(&mut watchlist.chain_far.puts);
+                    overlay_live(&mut watchlist.chain.near.calls);
+                    overlay_live(&mut watchlist.chain.near.puts);
+                    overlay_live(&mut watchlist.chain.far.calls);
+                    overlay_live(&mut watchlist.chain.far.puts);
                     // Throttled log: emit only when the summary changes or
                     // ≥5s elapsed. Was firing every frame at 60+ Hz.
                     {
@@ -9932,21 +9932,21 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                         let m = LAST.get_or_init(|| Mutex::new((String::new(), std::time::Instant::now() - std::time::Duration::from_secs(60))));
                         let key = format!("{}:{}c/{}p:{}c/{}p:{:.2}:{}",
                             sym,
-                            watchlist.chain_0dte.calls.len(), watchlist.chain_0dte.puts.len(),
-                            watchlist.chain_far.calls.len(), watchlist.chain_far.puts.len(),
+                            watchlist.chain.near.calls.len(), watchlist.chain.near.puts.len(),
+                            watchlist.chain.far.calls.len(), watchlist.chain.far.puts.len(),
                             spot0, cached.len());
                         let mut g = m.lock().unwrap();
                         if g.0 != key || g.1.elapsed() >= std::time::Duration::from_secs(5) {
                             crate::apex_log!("chain.refresh",
                                 "{}: 0DTE={}c/{}p, far(dte={})={}c/{}p, spot={:.2}, cache={} rows",
-                                sym, watchlist.chain_0dte.calls.len(), watchlist.chain_0dte.puts.len(),
-                                far_dte, watchlist.chain_far.calls.len(), watchlist.chain_far.puts.len(),
+                                sym, watchlist.chain.near.calls.len(), watchlist.chain.near.puts.len(),
+                                far_dte, watchlist.chain.far.calls.len(), watchlist.chain.far.puts.len(),
                                 spot0, cached.len());
                             g.0 = key; g.1 = std::time::Instant::now();
                         }
                     }
-                    if spot0 > 0.0 { watchlist.chain_underlying_price = spot0; }
-                    watchlist.chain_loading = false;
+                    if spot0 > 0.0 { watchlist.chain.underlying_price = spot0; }
+                    watchlist.chain.loading = false;
                 }
             }
         }
@@ -9963,9 +9963,9 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
                 contracts.insert(p.option_contract.clone());
             }
             if p.symbol.is_empty() { continue; }
-            let spot = watchlist.chain_underlying_price;
-            let calls = if !watchlist.chain_0dte.calls.is_empty() { &watchlist.chain_0dte.calls }
-                        else { &watchlist.chain_far.calls };
+            let spot = watchlist.chain.underlying_price;
+            let calls = if !watchlist.chain.near.calls.is_empty() { &watchlist.chain.near.calls }
+                        else { &watchlist.chain.far.calls };
             if let Some(atm) = calls.iter()
                 .min_by(|a, b| (a.strike - spot).abs()
                     .partial_cmp(&((b.strike - spot).abs()))
@@ -10026,8 +10026,8 @@ pub(crate) fn draw_chart(ctx: &egui::Context, panes: &mut Vec<Chart>, active_pan
         // chain's bid/ask tick sub-second off the quotes WS instead of waiting
         // for the ~6s REST re-seed. The grid render overlays these per row.
         {
-            let spot_hint = watchlist.chain_underlying_price;
-            for ch in [&watchlist.chain_0dte, &watchlist.chain_far] {
+            let spot_hint = watchlist.chain.underlying_price;
+            for ch in [&watchlist.chain.near, &watchlist.chain.far] {
                 for r in ch.calls.iter().chain(ch.puts.iter()) {
                     if !r.contract.starts_with("O:") { continue; }
                     if spot_hint > 0.0 && (r.strike - spot_hint).abs() > spot_hint * 0.08 { continue; }

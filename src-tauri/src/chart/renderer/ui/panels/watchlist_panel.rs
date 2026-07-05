@@ -1488,18 +1488,18 @@ if is_spawn || watchlist.open {
                 // ── CHAIN TAB ───────────────────────────────────────────
                 WatchlistTab::Chain => {
                     // Chain price: prefer IB underlying price, then watchlist, then chart, then fallback
-                    let chain_price = if watchlist.chain_underlying_price > 0.0 {
-                        watchlist.chain_underlying_price
+                    let chain_price = if watchlist.chain.underlying_price > 0.0 {
+                        watchlist.chain.underlying_price
                     } else {
-                        watchlist.find_item(&watchlist.chain_symbol).map(|i| i.price)
-                            .or_else(|| panes.iter().find(|p| p.symbol == watchlist.chain_symbol).and_then(|p| p.bars.last().map(|b| b.close)))
+                        watchlist.find_item(&watchlist.chain.symbol).map(|i| i.price)
+                            .or_else(|| panes.iter().find(|p| p.symbol == watchlist.chain.symbol).and_then(|p| p.bars.last().map(|b| b.close)))
                             .unwrap_or(0.0)
                     };
-                    if watchlist.chain_0dte.calls.is_empty() && !watchlist.chain_loading {
-                        let ns = watchlist.chain_num_strikes;
-                        let sym = watchlist.chain_symbol.clone();
-                        let far_dte = watchlist.chain_far_dte;
-                        watchlist.chain_loading = true;
+                    if watchlist.chain.near.calls.is_empty() && !watchlist.chain.loading {
+                        let ns = watchlist.chain.num_strikes;
+                        let sym = watchlist.chain.symbol.clone();
+                        let far_dte = watchlist.chain.far_dte;
+                        watchlist.chain.loading = true;
                         // Wave 5: mirror the legacy boolean into the central
                         // InFlightRegistry. The boolean stays authoritative for
                         // the other ~6 sites; this is the proof-of-concept that
@@ -1515,7 +1515,7 @@ if is_spawn || watchlist.open {
                                 std::time::Duration::from_secs(10),
                             );
                         }
-                        watchlist.chain_last_fetch = Some(std::time::Instant::now());
+                        watchlist.chain.last_fetch = Some(std::time::Instant::now());
                         fetch_chain_background(sym.clone(), ns, 0, chain_price);
                         fetch_chain_background(sym, ns, far_dte, chain_price);
                     }
@@ -1524,7 +1524,7 @@ if is_spawn || watchlist.open {
                     // When the real upstream chain is unavailable we render a
                     // Black-Scholes synthesized chain so the panel isn't empty.
                     // Surface it loudly so the user doesn't trade off fake bids.
-                    if watchlist.chain_0dte_placeholder || watchlist.chain_far_placeholder {
+                    if watchlist.chain.near_placeholder || watchlist.chain.far_placeholder {
                         let strip_h = 18.0;
                         let avail = ui.available_width();
                         let (strip_rect, _) = ui.allocate_exact_size(
@@ -1551,24 +1551,24 @@ if is_spawn || watchlist.open {
                         let dte_opts: Vec<(i32, &str)> = dte_values.iter().zip(dte_labels.iter())
                             .map(|(d, l)| (*d, l.as_str())).collect();
                         dim_label(ui, "DTE", t.dim);
-                        let mut cur_dte = watchlist.chain_far_dte;
+                        let mut cur_dte = watchlist.chain.far_dte;
                         if super::super::inputs::select::Dropdown::new("far_dte")
                             .options(&dte_opts)
                             .width(100.0)
                             .theme(t)
                             .show(ui, &mut cur_dte)
                         {
-                            watchlist.chain_far_dte = cur_dte;
-                            let sym = watchlist.chain_symbol.clone();
-                            watchlist.chain_loading = true;
-                            fetch_chain_background(sym, watchlist.chain_num_strikes, cur_dte, chain_price);
+                            watchlist.chain.far_dte = cur_dte;
+                            let sym = watchlist.chain.symbol.clone();
+                            watchlist.chain.loading = true;
+                            fetch_chain_background(sym, watchlist.chain.num_strikes, cur_dte, chain_price);
                         }
                         // Select mode toggle
-                        let sel_active = watchlist.chain_select_mode;
+                        let sel_active = watchlist.chain.select_mode;
                         let sel_lbl: String = if sel_active { format!("{} sel", Icon::CHECK) } else { "sel".into() };
                         if ui.add(Button::new(sel_lbl.as_str()).variant(Variant::Chip).size(Size::Sm)
                             .active(sel_active)).clicked() {
-                            watchlist.chain_select_mode = !watchlist.chain_select_mode;
+                            watchlist.chain.select_mode = !watchlist.chain.select_mode;
                         }
                         // Spread Builder shortcut
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1584,9 +1584,9 @@ if is_spawn || watchlist.open {
                     ui.horizontal(|ui| {
                         let has_focus = ui.memory(|m| m.has_focus(egui::Id::new("chain_sym_edit")));
                         let input_bg = if has_focus { tint(t, Tone::Border, alpha_dim()) } else { tint(t, Tone::Border, alpha_ghost()) };
-                        let sym_resp = Input::new(&mut watchlist.chain_sym_input)
+                        let sym_resp = Input::new(&mut watchlist.chain.sym_input)
                             .id(egui::Id::new("chain_sym_edit"))
-                            .placeholder(watchlist.chain_symbol.clone())
+                            .placeholder(watchlist.chain.symbol.clone())
                             .width(70.0)
                             .font_size(14.0)
                             .text_color(t.accent)
@@ -1594,7 +1594,7 @@ if is_spawn || watchlist.open {
                             .margin(egui::Margin::symmetric(gap_sm() as i8, gap_xs() as i8))
                             .show(ui, t);
                         if !has_focus {
-                            let display_text = if watchlist.chain_sym_input.is_empty() { &watchlist.chain_symbol } else { &watchlist.chain_sym_input };
+                            let display_text = if watchlist.chain.sym_input.is_empty() { &watchlist.chain.symbol } else { &watchlist.chain.sym_input };
                             let r = sym_resp.response.rect;
                             ui.painter().text(egui::pos2(r.left() + 6.0, r.center().y), egui::Align2::LEFT_CENTER,
                                 display_text, mono_lg(), t.accent);
@@ -1605,36 +1605,36 @@ if is_spawn || watchlist.open {
                             ui.add(MonospaceCode::new(&format!("${:.2}", chain_price)).size_px(font_lg()).color(t.text));
                         }
                         // Search — static immediate + ApexIB background
-                        if sym_resp.response.changed() && !watchlist.chain_sym_input.is_empty() {
-                            watchlist.search_results = crate::ui_kit::symbols::search_symbols(&watchlist.chain_sym_input, 5)
+                        if sym_resp.response.changed() && !watchlist.chain.sym_input.is_empty() {
+                            watchlist.search_results = crate::ui_kit::symbols::search_symbols(&watchlist.chain.sym_input, 5)
                                 .iter().map(|s| (s.symbol.to_string(), s.name.to_string())).collect();
                             // Also fire ApexIB search in background
-                            fetch_search_background(watchlist.chain_sym_input.clone(), "chain".to_string());
+                            fetch_search_background(watchlist.chain.sym_input.clone(), "chain".to_string());
                         }
-                        if ui.input(|i| i.key_pressed(egui::Key::Enter)) && !watchlist.chain_sym_input.is_empty() {
-                            watchlist.chain_symbol = watchlist.chain_sym_input.trim().to_uppercase();
-                            watchlist.chain_sym_input.clear();
+                        if ui.input(|i| i.key_pressed(egui::Key::Enter)) && !watchlist.chain.sym_input.is_empty() {
+                            watchlist.chain.symbol = watchlist.chain.sym_input.trim().to_uppercase();
+                            watchlist.chain.sym_input.clear();
                             watchlist.search_results.clear();
-                            watchlist.chain_0dte = crate::chart_renderer::gpu::OptionChain::default();
-                            watchlist.chain_underlying_price = 0.0; // reset price for new symbol
-                            watchlist.chain_center_offset = 0;
-                            watchlist.chain_loading = false;
+                            watchlist.chain.near = crate::chart_renderer::gpu::OptionChain::default();
+                            watchlist.chain.underlying_price = 0.0; // reset price for new symbol
+                            watchlist.chain.center_offset = 0;
+                            watchlist.chain.loading = false;
                         }
                     });
                     // Search suggestions popup
-                    if !watchlist.chain_sym_input.is_empty() && !watchlist.search_results.is_empty() {
+                    if !watchlist.chain.sym_input.is_empty() && !watchlist.search_results.is_empty() {
                         PopupFrame::new().colors(t.toolbar_bg, t.toolbar_border).ctx(ctx).build().show(ui, |ui| {
                             for (sym, name) in watchlist.search_results.clone() {
                                 let chain_sugg_lbl = format!("{} {}", sym, name);
                                 if ui.add(Button::new(chain_sugg_lbl.as_str()).variant(Variant::Ghost).size(Size::Sm)
                                     .full_width(true).min_size(egui::vec2(ui.available_width(), row_height_compact()))).clicked() {
-                                    watchlist.chain_symbol = sym;
-                                    watchlist.chain_sym_input.clear();
+                                    watchlist.chain.symbol = sym;
+                                    watchlist.chain.sym_input.clear();
                                     watchlist.search_results.clear();
-                                    watchlist.chain_0dte = crate::chart_renderer::gpu::OptionChain::default();
-                                    watchlist.chain_underlying_price = 0.0;
-                                    watchlist.chain_center_offset = 0;
-                                    watchlist.chain_loading = false;
+                                    watchlist.chain.near = crate::chart_renderer::gpu::OptionChain::default();
+                                    watchlist.chain.underlying_price = 0.0;
+                                    watchlist.chain.center_offset = 0;
+                                    watchlist.chain.loading = false;
                                 }
                             }
                         });
@@ -1649,7 +1649,7 @@ if is_spawn || watchlist.open {
                     ui.add_space(gap_sm());
 
                     // Loading indicator — canonical PanelLoading.
-                    if watchlist.chain_loading {
+                    if watchlist.chain.loading {
                         PanelLoading::new().reason("Loading chain").show(ui, t);
                     }
 
@@ -1776,7 +1776,7 @@ if is_spawn || watchlist.open {
                     };
 
                     // ── Helper to render one expiry block ──
-                    let chain_frozen = watchlist.chain_frozen;
+                    let chain_frozen = watchlist.chain.frozen;
                     // Per-chain controls passed as parameters to render_block
 
                     let render_block = |ui: &mut egui::Ui, dte: i32, calls: &[OptionRow], puts: &[OptionRow], sym: &str, price: f32, saved: &mut Vec<SavedOption>, select_mode: bool, w: f32, num_strikes: usize, center_offset: i32, strike_mode: StrikeMode, nmf: u8| {
@@ -1940,20 +1940,20 @@ if is_spawn || watchlist.open {
                     let scroll_w = ui.available_width();
                     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                         // min_width removed — was preventing sidebar resize
-                        let sym = watchlist.chain_symbol.clone();
-                        let sel = watchlist.chain_select_mode;
-                        let calls_0 = watchlist.chain_0dte.calls.clone();
-                        let puts_0 = watchlist.chain_0dte.puts.clone();
-                        let calls_f = watchlist.chain_far.calls.clone();
-                        let puts_f = watchlist.chain_far.puts.clone();
-                        let far_dte = watchlist.chain_far_dte;
+                        let sym = watchlist.chain.symbol.clone();
+                        let sel = watchlist.chain.select_mode;
+                        let calls_0 = watchlist.chain.near.calls.clone();
+                        let puts_0 = watchlist.chain.near.puts.clone();
+                        let calls_f = watchlist.chain.far.calls.clone();
+                        let puts_f = watchlist.chain.far.puts.clone();
+                        let far_dte = watchlist.chain.far_dte;
 
                         // Per-chain controls: 0DTE
                         ui.horizontal(|ui| {
                             dim_label(ui, "0DTE", t.dim);
                             // Mode dropdown (Count, %, StdDev)
                             {
-                                let sm_header = match watchlist.chain_0_strike_mode {
+                                let sm_header = match watchlist.chain.near_strike_mode {
                                     StrikeMode::Count => "Cnt".into(),
                                     StrikeMode::Pct(i) => format!("{}%", PCT_OPTIONS.get(i as usize).unwrap_or(&1.0)),
                                     StrikeMode::StdDev => "σ".into(),
@@ -1971,35 +1971,35 @@ if is_spawn || watchlist.open {
                                     .font_size(8.0)
                                     .selected_text(sm_header)
                                     .theme(t)
-                                    .show(ui, &mut watchlist.chain_0_strike_mode);
+                                    .show(ui, &mut watchlist.chain.near_strike_mode);
                             }
                             // Count ± (always visible)
-                            if ui.add(Button::new("-").variant(Variant::Ghost).size(Size::Sm)).clicked() { watchlist.chain_0_num_strikes = watchlist.chain_0_num_strikes.saturating_sub(1).max(1); }
-                            ui.add(MonospaceCode::new(&format!("{}", watchlist.chain_0_num_strikes)).size_px(font_xs()).color(t.dim));
-                            if ui.add(Button::new("+").variant(Variant::Ghost).size(Size::Sm)).clicked() { watchlist.chain_0_num_strikes += 1; }
+                            if ui.add(Button::new("-").variant(Variant::Ghost).size(Size::Sm)).clicked() { watchlist.chain.near_num_strikes = watchlist.chain.near_num_strikes.saturating_sub(1).max(1); }
+                            ui.add(MonospaceCode::new(&format!("{}", watchlist.chain.near_num_strikes)).size_px(font_xs()).color(t.dim));
+                            if ui.add(Button::new("+").variant(Variant::Ghost).size(Size::Sm)).clicked() { watchlist.chain.near_num_strikes += 1; }
                             // Near / Mid / Far toggles
-                            NmfToggle::new(&mut watchlist.chain_0_nmf).theme(t).show(ui);
+                            NmfToggle::new(&mut watchlist.chain.near_nmf).theme(t).show(ui);
                             // Freeze + arrows
-                            let fr_icon_0 = if watchlist.chain_0_frozen { Icon::PAUSE } else { Icon::PLAY };
-                            let r = ui.add(Button::icon(fr_icon_0).variant(Variant::MutedIcon).active(watchlist.chain_0_frozen).size(Size::Sm).placement(IconPlacement::PanelHeader));
+                            let fr_icon_0 = if watchlist.chain.near_frozen { Icon::PAUSE } else { Icon::PLAY };
+                            let r = ui.add(Button::icon(fr_icon_0).variant(Variant::MutedIcon).active(watchlist.chain.near_frozen).size(Size::Sm).placement(IconPlacement::PanelHeader));
                             Tooltip::new("Freeze strikes").show(ui, &r, t);
                             if r.clicked() {
-                                watchlist.chain_0_frozen = !watchlist.chain_0_frozen;
-                                if !watchlist.chain_0_frozen { watchlist.chain_0_offset = 0; }
+                                watchlist.chain.near_frozen = !watchlist.chain.near_frozen;
+                                if !watchlist.chain.near_frozen { watchlist.chain.near_offset = 0; }
                             }
-                            if watchlist.chain_0_frozen {
+                            if watchlist.chain.near_frozen {
                                 let r = ui.add(Button::icon(Icon::ARROW_FAT_UP).variant(Variant::MutedIcon).size(Size::Sm).placement(IconPlacement::PanelHeader));
                                 Tooltip::new("Shift strikes up").show(ui, &r, t);
-                                if r.clicked() { watchlist.chain_0_offset += 1; }
+                                if r.clicked() { watchlist.chain.near_offset += 1; }
                                 let r = ui.add(Button::icon(Icon::ARROW_FAT_DOWN).variant(Variant::MutedIcon).size(Size::Sm).placement(IconPlacement::PanelHeader));
                                 Tooltip::new("Shift strikes down").show(ui, &r, t);
-                                if r.clicked() { watchlist.chain_0_offset -= 1; }
+                                if r.clicked() { watchlist.chain.near_offset -= 1; }
                             }
                         });
-                        let ns_0 = watchlist.chain_0_num_strikes;
-                        let off_0 = watchlist.chain_0_offset;
-                        let sm_0 = watchlist.chain_0_strike_mode;
-                        let nmf_0 = watchlist.chain_0_nmf;
+                        let ns_0 = watchlist.chain.near_num_strikes;
+                        let off_0 = watchlist.chain.near_offset;
+                        let sm_0 = watchlist.chain.near_strike_mode;
+                        let nmf_0 = watchlist.chain.near_nmf;
                         render_block(ui, 0, &calls_0, &puts_0, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w, ns_0, off_0, sm_0, nmf_0);
 
                         ui.add_space(gap_md());
@@ -2013,7 +2013,7 @@ if is_spawn || watchlist.open {
                         ui.horizontal(|ui| {
                             dim_label(ui, &format!("{}DTE", far_dte), t.dim);
                             {
-                                let sm_header = match watchlist.chain_far_strike_mode {
+                                let sm_header = match watchlist.chain.far_strike_mode {
                                     StrikeMode::Count => "Cnt".into(),
                                     StrikeMode::Pct(i) => format!("{}%", PCT_OPTIONS.get(i as usize).unwrap_or(&1.0)),
                                     StrikeMode::StdDev => "σ".into(),
@@ -2031,32 +2031,32 @@ if is_spawn || watchlist.open {
                                     .font_size(8.0)
                                     .selected_text(sm_header)
                                     .theme(t)
-                                    .show(ui, &mut watchlist.chain_far_strike_mode);
+                                    .show(ui, &mut watchlist.chain.far_strike_mode);
                             }
-                            if ui.add(Button::new("-").variant(Variant::Ghost).size(Size::Sm)).clicked() { watchlist.chain_far_num_strikes = watchlist.chain_far_num_strikes.saturating_sub(1).max(1); }
-                            ui.add(MonospaceCode::new(&format!("{}", watchlist.chain_far_num_strikes)).size_px(font_xs()).color(t.dim));
-                            if ui.add(Button::new("+").variant(Variant::Ghost).size(Size::Sm)).clicked() { watchlist.chain_far_num_strikes += 1; }
-                            NmfToggle::new(&mut watchlist.chain_far_nmf).theme(t).show(ui);
-                            let fr_icon_far = if watchlist.chain_far_frozen { Icon::PAUSE } else { Icon::PLAY };
-                            let r = ui.add(Button::icon(fr_icon_far).variant(Variant::MutedIcon).active(watchlist.chain_far_frozen).size(Size::Sm).placement(IconPlacement::PanelHeader));
+                            if ui.add(Button::new("-").variant(Variant::Ghost).size(Size::Sm)).clicked() { watchlist.chain.far_num_strikes = watchlist.chain.far_num_strikes.saturating_sub(1).max(1); }
+                            ui.add(MonospaceCode::new(&format!("{}", watchlist.chain.far_num_strikes)).size_px(font_xs()).color(t.dim));
+                            if ui.add(Button::new("+").variant(Variant::Ghost).size(Size::Sm)).clicked() { watchlist.chain.far_num_strikes += 1; }
+                            NmfToggle::new(&mut watchlist.chain.far_nmf).theme(t).show(ui);
+                            let fr_icon_far = if watchlist.chain.far_frozen { Icon::PAUSE } else { Icon::PLAY };
+                            let r = ui.add(Button::icon(fr_icon_far).variant(Variant::MutedIcon).active(watchlist.chain.far_frozen).size(Size::Sm).placement(IconPlacement::PanelHeader));
                             Tooltip::new("Freeze strikes").show(ui, &r, t);
                             if r.clicked() {
-                                watchlist.chain_far_frozen = !watchlist.chain_far_frozen;
-                                if !watchlist.chain_far_frozen { watchlist.chain_far_offset = 0; }
+                                watchlist.chain.far_frozen = !watchlist.chain.far_frozen;
+                                if !watchlist.chain.far_frozen { watchlist.chain.far_offset = 0; }
                             }
-                            if watchlist.chain_far_frozen {
+                            if watchlist.chain.far_frozen {
                                 let r = ui.add(Button::icon(Icon::ARROW_FAT_UP).variant(Variant::MutedIcon).size(Size::Sm).placement(IconPlacement::PanelHeader));
                                 Tooltip::new("Shift strikes up").show(ui, &r, t);
-                                if r.clicked() { watchlist.chain_far_offset += 1; }
+                                if r.clicked() { watchlist.chain.far_offset += 1; }
                                 let r = ui.add(Button::icon(Icon::ARROW_FAT_DOWN).variant(Variant::MutedIcon).size(Size::Sm).placement(IconPlacement::PanelHeader));
                                 Tooltip::new("Shift strikes down").show(ui, &r, t);
-                                if r.clicked() { watchlist.chain_far_offset -= 1; }
+                                if r.clicked() { watchlist.chain.far_offset -= 1; }
                             }
                         });
-                        let ns_f = watchlist.chain_far_num_strikes;
-                        let off_f = watchlist.chain_far_offset;
-                        let sm_f = watchlist.chain_far_strike_mode;
-                        let nmf_f = watchlist.chain_far_nmf;
+                        let ns_f = watchlist.chain.far_num_strikes;
+                        let off_f = watchlist.chain.far_offset;
+                        let sm_f = watchlist.chain.far_strike_mode;
+                        let nmf_f = watchlist.chain.far_nmf;
                         render_block(ui, far_dte, &calls_f, &puts_f, &sym, chain_price, &mut watchlist.saved_options, sel, scroll_w, ns_f, off_f, sm_f, nmf_f);
                     });
                     // Normal click: just open option chart (no watchlist add).

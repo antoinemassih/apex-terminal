@@ -4449,7 +4449,7 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                 }
             }
             ChartCommand::ChainData { symbol, dte, underlying_price, calls, puts, placeholder } => {
-                if *symbol == watchlist.chain_symbol {
+                if *symbol == watchlist.chain.symbol {
                     let to_rows = |data: &[(f32,f32,f32,f32,i32,i32,f32,bool,String)]| -> Vec<OptionRow> {
                         data.iter().map(|(strike,last,bid,ask,vol,oi,iv,itm,contract)| OptionRow {
                             strike: *strike, last: *last, bid: *bid, ask: *ask,
@@ -4457,13 +4457,13 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                         }).collect()
                     };
                     if *dte == 0 {
-                        watchlist.chain_0dte = OptionChain { calls: to_rows(calls), puts: to_rows(puts) };
-                        watchlist.chain_0dte_placeholder = *placeholder;
+                        watchlist.chain.near = OptionChain { calls: to_rows(calls), puts: to_rows(puts) };
+                        watchlist.chain.near_placeholder = *placeholder;
                     } else {
-                        watchlist.chain_far = OptionChain { calls: to_rows(calls), puts: to_rows(puts) };
-                        watchlist.chain_far_placeholder = *placeholder;
+                        watchlist.chain.far = OptionChain { calls: to_rows(calls), puts: to_rows(puts) };
+                        watchlist.chain.far_placeholder = *placeholder;
                     }
-                    watchlist.chain_loading = false;
+                    watchlist.chain.loading = false;
                     // Wave 5: mirror the legacy boolean into the InFlightRegistry
                     // by completing any matching outstanding chain request.
                     let kind = crate::state::InFlightKind::OptionsChain {
@@ -4472,10 +4472,10 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                     if let Some(id) = watchlist.inflight.dedup_kind(&kind) {
                         watchlist.inflight.complete(id);
                     }
-                    if *underlying_price > 0.0 { watchlist.chain_underlying_price = *underlying_price; }
+                    if *underlying_price > 0.0 { watchlist.chain.underlying_price = *underlying_price; }
                     eprintln!("[chain] Loaded {} calls + {} puts for {} dte={} price={:.2}",
-                        if *dte == 0 { watchlist.chain_0dte.calls.len() } else { watchlist.chain_far.calls.len() },
-                        if *dte == 0 { watchlist.chain_0dte.puts.len()  } else { watchlist.chain_far.puts.len()  },
+                        if *dte == 0 { watchlist.chain.near.calls.len() } else { watchlist.chain.far.calls.len() },
+                        if *dte == 0 { watchlist.chain.near.puts.len()  } else { watchlist.chain.far.puts.len()  },
                         symbol, dte, underlying_price);
                 }
             }
@@ -4508,7 +4508,7 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
                         }
                     }
                 } else if source == "chain" && !query.is_empty()
-                    && watchlist.chain_sym_input.to_lowercase().starts_with(&query.to_lowercase()) {
+                    && watchlist.chain.sym_input.to_lowercase().starts_with(&query.to_lowercase()) {
                     for (sym, name) in results {
                         if !watchlist.search_results.iter().any(|(s, _)| s == sym) {
                             watchlist.search_results.push((sym.clone(), name.clone()));
@@ -5667,6 +5667,56 @@ impl Default for CmdPaletteState {
     }
 }
 
+/// Options-chain state (WS-E E3, Watchlist-split slice 7). Grouped out of the
+/// Watchlist god-struct: 24 chain_* fields. SEMANTIC RENAME (the flat names
+/// couldn't strip cleanly — `chain_0dte`/`chain_0_*` start with a digit): the
+/// near/0-DTE chain is `near` + `near_*`; the far-dated chain is `far` + `far_*`;
+/// shared/legacy fields keep their names. Not synced/persisted (runtime + fetch).
+pub(crate) struct ChainState {
+    pub(crate) symbol: String,
+    pub(crate) sym_input: String,
+    pub(crate) num_strikes: usize, // legacy fallback
+    pub(crate) far_dte: i32,
+    pub(crate) near: OptionChain,  // was chain_0dte
+    pub(crate) far: OptionChain,
+    /// True when `near` / `far` rows are locally-synthesized Black-Scholes
+    /// placeholder data (real upstream unavailable).
+    pub(crate) near_placeholder: bool, // was chain_0dte_placeholder
+    pub(crate) far_placeholder: bool,
+    pub(crate) select_mode: bool,
+    pub(crate) loading: bool, // true while fetching chain from ApexIB
+    pub(crate) underlying_price: f32, // real-time underlying price from IB chain response
+    pub(crate) frozen: bool, // legacy fallback
+    pub(crate) center_offset: i32, // legacy fallback
+    // Per-chain independent controls
+    pub(crate) near_num_strikes: usize, // was chain_0_num_strikes
+    pub(crate) near_frozen: bool,
+    pub(crate) near_offset: i32,
+    pub(crate) near_strike_mode: StrikeMode,
+    pub(crate) near_nmf: u8, // 0=near, 1=mid, 2=far
+    pub(crate) far_num_strikes: usize,
+    pub(crate) far_frozen: bool,
+    pub(crate) far_offset: i32,
+    pub(crate) far_strike_mode: StrikeMode,
+    pub(crate) far_nmf: u8,
+    pub(crate) last_fetch: Option<std::time::Instant>, // debounce chain refetches
+}
+
+impl Default for ChainState {
+    fn default() -> Self {
+        Self {
+            symbol: "SPY".into(), sym_input: String::new(), num_strikes: 10, far_dte: 1,
+            near: OptionChain::default(), far: OptionChain::default(),
+            near_placeholder: false, far_placeholder: false,
+            select_mode: false, loading: false, underlying_price: 0.0,
+            frozen: false, center_offset: 0,
+            near_num_strikes: 10, near_frozen: false, near_offset: 0, near_strike_mode: StrikeMode::Count, near_nmf: 0,
+            far_num_strikes: 10, far_frozen: false, far_offset: 0, far_strike_mode: StrikeMode::Count, far_nmf: 0,
+            last_fetch: None,
+        }
+    }
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -5810,34 +5860,8 @@ pub(crate) struct Watchlist {
     #[allow(dead_code)]
     pub(crate) alert_query: String,
     pub(crate) alerts_panel_open: bool,
-    // Options chain
-    pub(crate) chain_symbol: String,
-    pub(crate) chain_sym_input: String,
-    pub(crate) chain_num_strikes: usize, // legacy fallback
-    pub(crate) chain_far_dte: i32,
-    pub(crate) chain_0dte: OptionChain,
-    pub(crate) chain_far:  OptionChain,
-    /// True when chain_0dte / chain_far rows are locally-synthesized
-    /// Black-Scholes placeholder data (real upstream unavailable).
-    pub(crate) chain_0dte_placeholder: bool,
-    pub(crate) chain_far_placeholder: bool,
-    pub(crate) chain_select_mode: bool,
-    pub(crate) chain_loading: bool, // true while fetching chain from ApexIB
-    pub(crate) chain_underlying_price: f32, // real-time underlying price from IB chain response
-    pub(crate) chain_frozen: bool, // legacy fallback
-    pub(crate) chain_center_offset: i32, // legacy fallback
-    // Per-chain independent controls
-    pub(crate) chain_0_num_strikes: usize,
-    pub(crate) chain_0_frozen: bool,
-    pub(crate) chain_0_offset: i32,
-    pub(crate) chain_0_strike_mode: StrikeMode,
-    pub(crate) chain_0_nmf: u8, // 0=near, 1=mid, 2=far
-    pub(crate) chain_far_num_strikes: usize,
-    pub(crate) chain_far_frozen: bool,
-    pub(crate) chain_far_offset: i32,
-    pub(crate) chain_far_strike_mode: StrikeMode,
-    pub(crate) chain_far_nmf: u8,
-    pub(crate) chain_last_fetch: Option<std::time::Instant>, // debounce chain refetches
+    // Options chain (WS-E E3 slice 7) — was 24 flat `chain_*` fields.
+    pub(crate) chain: ChainState,
     // Saved options
     pub(crate) saved_options: Vec<SavedOption>,
     pub(crate) dte_filter: i32,
@@ -6144,11 +6168,7 @@ impl Watchlist {
                wl_columns_open: false,
                filter_open: false, filter_text: String::new(), filter_preset: "All".into(), filter_min_change: -999.0, filter_max_change: 999.0, custom_filters: vec![],
                orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(), alerts_panel_open: false,
-               chain_symbol: "SPY".into(), chain_sym_input: String::new(), chain_num_strikes: 10, chain_far_dte: 1,
-               chain_0dte: OptionChain::default(), chain_far: OptionChain::default(),
-               chain_select_mode: false, chain_loading: false, chain_last_fetch: None, chain_frozen: false, chain_center_offset: 0, chain_underlying_price: 0.0, chain_0dte_placeholder: false, chain_far_placeholder: false,
-               chain_0_num_strikes: 10, chain_0_frozen: false, chain_0_offset: 0, chain_0_strike_mode: StrikeMode::Count, chain_0_nmf: 0,
-               chain_far_num_strikes: 10, chain_far_frozen: false, chain_far_offset: 0, chain_far_strike_mode: StrikeMode::Count, chain_far_nmf: 0,
+               chain: ChainState::default(),
                saved_options: vec![], dte_filter: -1,
                heat_index: "Watchlist".into(), heat_collapsed: std::collections::HashSet::new(), heat_cols: 2, heat_sort: 0,
                active_workspace: "Default".into(), pending_workspace_load: None, workspace_save_name: String::new(),
@@ -8147,7 +8167,7 @@ impl ApplicationHandler for App {
                         }
                         ChartCommand::ChainData { ref symbol, dte, underlying_price, ref calls, ref puts, placeholder } => {
                             let _ = underlying_price;
-                            if *symbol == cw.watchlist.chain_symbol {
+                            if *symbol == cw.watchlist.chain.symbol {
                                 let to_rows = |data: &[(f32,f32,f32,f32,i32,i32,f32,bool,String)]| -> Vec<OptionRow> {
                                     data.iter().map(|(strike,last,bid,ask,vol,oi,iv,itm,contract)| OptionRow {
                                         strike: *strike, last: *last, bid: *bid, ask: *ask,
@@ -8155,13 +8175,13 @@ impl ApplicationHandler for App {
                                     }).collect()
                                 };
                                 if dte == 0 {
-                                    cw.watchlist.chain_0dte = OptionChain { calls: to_rows(calls), puts: to_rows(puts) };
-                                    cw.watchlist.chain_0dte_placeholder = placeholder;
+                                    cw.watchlist.chain.near = OptionChain { calls: to_rows(calls), puts: to_rows(puts) };
+                                    cw.watchlist.chain.near_placeholder = placeholder;
                                 } else {
-                                    cw.watchlist.chain_far = OptionChain { calls: to_rows(calls), puts: to_rows(puts) };
-                                    cw.watchlist.chain_far_placeholder = placeholder;
+                                    cw.watchlist.chain.far = OptionChain { calls: to_rows(calls), puts: to_rows(puts) };
+                                    cw.watchlist.chain.far_placeholder = placeholder;
                                 }
-                                cw.watchlist.chain_loading = false;
+                                cw.watchlist.chain.loading = false;
                             }
                         }
                         ChartCommand::SearchResults { ref query, ref results, ref source } => {
@@ -8175,7 +8195,7 @@ impl ApplicationHandler for App {
                                     }
                                 }
                             } else if source == "chain" && !query.is_empty()
-                                && cw.watchlist.chain_sym_input.to_lowercase().starts_with(&query.to_lowercase()) {
+                                && cw.watchlist.chain.sym_input.to_lowercase().starts_with(&query.to_lowercase()) {
                                 for (sym, name) in results {
                                     if !cw.watchlist.search_results.iter().any(|(s, _)| s == sym) {
                                         cw.watchlist.search_results.push((sym.clone(), name.clone()));
