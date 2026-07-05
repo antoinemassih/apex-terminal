@@ -109,7 +109,6 @@ use crate::chart_renderer::gpu::{
 use crate::chart_renderer::ui::style::{
     color_alpha, color_subtle, color_muted, color_half, color_dim, color_very_dim, hex_to_color, segmented_control,
     contrast_fg,
-    dialog_window_themed,
     alpha_faint, alpha_ghost, alpha_soft, alpha_muted, alpha_dim, alpha_strong, alpha_heavy,
     BTN_ICON_SM, BTN_ICON_LG,
     icon_sm,

@@ -846,65 +846,11 @@ fn label_is_icon_only(s: &str) -> bool {
 
 // ─── Dialog / popup windows ───────────────────────────────────────────────────
 
-/// Standard popup window frame — dark background, no title bar.
-pub fn popup_frame(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, fill: Color32, border_color: Option<Color32>) -> egui::Window<'static> {
-    let mut frame = egui::Frame::popup(&ctx.style()).fill(fill).inner_margin(gap_lg());
-    if let Some(bc) = border_color {
-        frame = frame.stroke(Stroke::new(stroke_std(), bc));
-    }
-    egui::Window::new(id.to_string())
-        .fixed_pos(pos).fixed_size(egui::vec2(width, 0.0))
-        .title_bar(false).frame(frame)
-}
-
-/// Application-quality dialog window — zero inner padding, RADIUS_LG corners.
-///
-/// Fill and border now resolve from the active theme so light themes receive
-/// appropriate surface colors instead of the former hardcoded dark values.
-pub fn dialog_window(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, border_color: Option<Color32>) -> egui::Window<'static> {
-    let t = crate::chart_renderer::theme_impl::active_theme(ctx);
-    let fill = t.toolbar_bg;
-    let border = border_color.unwrap_or(tint(&t, Tone::Border, 80));
-    egui::Window::new(id.to_string())
-        .fixed_pos(pos).fixed_size(egui::vec2(width, 0.0))
-        .title_bar(false)
-        .frame(egui::Frame::popup(&ctx.style()).fill(fill).inner_margin(0.0)
-            .stroke(Stroke::new(stroke_std(), border)).corner_radius(radius_lg()))
-}
-
-/// Theme-aware dialog window — rich shadow when shadows_enabled, flat hairline when not (#16).
-pub fn dialog_window_themed(ctx: &egui::Context, id: &str, pos: egui::Pos2, width: f32, toolbar_bg: Color32, toolbar_border: Color32, border_color: Option<Color32>) -> egui::Window<'static> {
-    let st = current();
-    let t = crate::chart_renderer::theme_impl::active_theme(ctx);
-    let border = border_color.unwrap_or(color_alpha(toolbar_border, alpha_strong()));
-    let corner_r = if st.r_lg == 0 { 0.0 } else { radius_lg() };
-    let shadow = if st.shadows_enabled {
-        egui::epaint::Shadow {
-            offset: [0, 8],
-            blur: 28,
-            spread: 2,
-            color: shadow_color_alpha(&t, 80),
-        }
-    } else if st.card_floating_shadow {
-        egui::epaint::Shadow {
-            offset: [0, 3],
-            blur: 8,
-            spread: 0,
-            color: shadow_color_alpha(&t, st.card_floating_shadow_alpha),
-        }
-    } else {
-        egui::epaint::Shadow::NONE
-    };
-    egui::Window::new(id.to_string())
-        .fixed_pos(pos).fixed_size(egui::vec2(width, 0.0))
-        .title_bar(false)
-        .frame(egui::Frame::popup(&ctx.style())
-            .fill(toolbar_bg)
-            .inner_margin(0.0)
-            .stroke(Stroke::new(st.stroke_std, border))
-            .corner_radius(corner_r)
-            .shadow(shadow))
-}
+// ─── popup_frame / dialog_window / dialog_window_themed — DELETED (WS-G G2) ──
+// The last raw dialog-window factories. Every dialog now builds its chrome via
+// ui_kit::Modal (FrameKind::DialogWindow replicates the themed frame + shadow
+// these produced — see modal.rs), so all three had zero call sites. Retiring
+// them removes the "two ways to make a dialog" ambiguity the audit flagged.
 
 /// Dialog header bar — auto-darkened bg, FONT_LG title, X close. Returns true if closed.
 pub fn dialog_header(ui: &mut egui::Ui, title: &str, dim: Color32) -> bool {

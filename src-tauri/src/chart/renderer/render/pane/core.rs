@@ -26,7 +26,7 @@ use crate::chart_renderer::{ui, compute, LineStyle, Bar, ChartCommand,
 use crate::chart_renderer::ui::style::{
     hex_to_color, dashed_line, draw_line_rgba, section_label, dim_label, color_alpha,
     separator, status_badge, order_card, close_button,
-    dialog_window_themed, dialog_header, dialog_separator_shadow, dialog_section,
+    dialog_header, dialog_separator_shadow, dialog_section,
     paint_tooltip_shadow, tooltip_frame, stat_row, segmented_control,
     paint_chrome_tile_button, ChromeTileState, chrome_tile_fg,
     FONT_LG, FONT_MD, FONT_SM, STROKE_THIN, STROKE_STD,
