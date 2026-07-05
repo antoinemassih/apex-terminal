@@ -1365,6 +1365,10 @@ pub(crate) fn render(
     // ── overlay_manager
     crate::chart_renderer::ui::tools::overlay_manager::draw(ctx, watchlist, panes, ap, t);
 
+    // ── Keyboard-shortcut cheatsheet (F1) — WS-G G4. Reads the central
+    // shortcuts registry; renders via ui_kit::Modal. Cheap no-op when closed.
+    crate::chart_renderer::ui::tools::shortcuts_help::draw(ctx, t);
+
     // ── Group manager popup ────────────────────────────────────────────────────
     // Migrated from the raw `dialog_window_themed` factory to the canonical Modal
     // shell so it gets the same scrim + entry/exit animation + draggable header +

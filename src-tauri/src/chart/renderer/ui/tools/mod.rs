@@ -13,6 +13,7 @@ pub mod chart_interaction_menu;
 pub mod order_entry_panel;
 pub mod pending_order_toasts;
 pub mod notification;
+pub mod shortcuts_help;
 
 pub use order_edit_dialog::*;
 pub use order_entry_panel::*;

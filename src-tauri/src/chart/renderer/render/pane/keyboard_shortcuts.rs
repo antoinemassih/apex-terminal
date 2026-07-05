@@ -101,7 +101,20 @@ pub(super) fn handle_keyboard_shortcuts(
                 description: "Resume trading",
                 category: "Trading",
             });
+            register(ShortcutEntry {
+                shortcut: shortcut(egui::Key::F1),
+                action: "help.shortcuts",
+                description: "Show keyboard shortcuts",
+                category: "General",
+            });
         });
+    }
+
+    // F1 — toggle the keyboard-shortcut cheatsheet (WS-G G4). The caller is
+    // active-pane-gated (runs once/frame), so a plain toggle is race-free.
+    // No modifiers so Ctrl/Alt+F1 don't trip it.
+    if ui.input(|i| i.key_pressed(egui::Key::F1) && i.modifiers.is_none()) {
+        crate::chart_renderer::ui::tools::shortcuts_help::toggle(ctx);
     }
     if ui.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
         if !chart.selected_ids.is_empty() {
