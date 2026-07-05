@@ -5522,6 +5522,32 @@ impl Default for PlayEditorState {
     }
 }
 
+/// Scripting/backtesting panel state (WS-E E3, Watchlist-split slice 2).
+/// Grouped out of the Watchlist god-struct: 6 fields for the script editor +
+/// backtest output. Not persisted. Explicit Default mirrors the seeds
+/// (result_tab = Output).
+pub(crate) struct ScriptState {
+    pub(crate) open: bool,
+    pub(crate) source: String,
+    pub(crate) output: String,
+    pub(crate) ai_prompt: String,
+    pub(crate) result_tab: super::ui::panels::script_panel::ScriptResultTab,
+    pub(crate) backtest: Option<super::ui::panels::script_panel::BacktestResult>,
+}
+
+impl Default for ScriptState {
+    fn default() -> Self {
+        Self {
+            open: false,
+            source: String::new(),
+            output: String::new(),
+            ai_prompt: String::new(),
+            result_tab: super::ui::panels::script_panel::ScriptResultTab::Output,
+            backtest: None,
+        }
+    }
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -5841,12 +5867,9 @@ pub(crate) struct Watchlist {
     pub(crate) maximized_pane: Option<usize>, // Some(idx) = pane shown fullscreen
     pub(crate) spread_state: super::ui::panels::spread_panel::SpreadState,
     // Scripting / Backtesting panel
-    pub(crate) script_open: bool,
-    pub(crate) script_source: String,
-    pub(crate) script_output: String,
-    pub(crate) script_ai_prompt: String,
-    pub(crate) script_result_tab: super::ui::panels::script_panel::ScriptResultTab,
-    pub(crate) script_backtest: Option<super::ui::panels::script_panel::BacktestResult>,
+    /// Scripting/backtesting panel state (WS-E E3 slice 2) — was 6 flat
+    /// `script_*` fields, now grouped into ScriptState.
+    pub(crate) script: ScriptState,
     pub(crate) scanner_new_name: String,
     pub(crate) scanner_new_min_change: f32,
     pub(crate) scanner_new_max_change: f32,
@@ -6124,12 +6147,7 @@ impl Watchlist {
                scanner_filter_popup_open: false,
                spread_open: false, maximized_pane: None,
                spread_state: super::ui::panels::spread_panel::SpreadState::default(),
-               script_open: false,
-               script_source: String::new(),
-               script_output: String::new(),
-               script_ai_prompt: String::new(),
-               script_result_tab: super::ui::panels::script_panel::ScriptResultTab::Output,
-               script_backtest: None,
+               script: ScriptState::default(),
                screenshot_open: false,
                screenshot_entries: super::ui::panels::screenshot_panel::load_screenshots(),
                charts_library_open: false,
@@ -6485,7 +6503,7 @@ impl Watchlist {
         let scanner_open = self.scanner_open;
         let scanner_builder_open = self.scanner_builder_open;
         let spread_open = self.spread_open;
-        let script_open = self.script_open;
+        let script_open = self.script.open;
         let screenshot_open = self.screenshot_open;
         let rrg_open = self.rrg_open;
         let analysis_open = self.analysis_open;
@@ -6569,7 +6587,7 @@ impl Watchlist {
         self.scanner_open = snap.scanner_open;
         self.scanner_builder_open = snap.scanner_builder_open;
         self.spread_open = snap.spread_open;
-        self.script_open = snap.script_open;
+        self.script.open = snap.script_open;
         self.screenshot_open = snap.screenshot_open;
         self.rrg_open = snap.rrg_open;
         self.analysis_open = snap.analysis_open;

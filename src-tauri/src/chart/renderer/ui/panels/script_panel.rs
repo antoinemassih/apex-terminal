@@ -134,7 +134,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme, show_save:
         ui.horizontal(|ui| {
             ui.add(MonospaceCode::new("\u{2728}").xs().color(t.accent));
             ui.add_space(gap_xs());
-            Input::new(&mut watchlist.script_ai_prompt)
+            Input::new(&mut watchlist.script.ai_prompt)
                 .min_width(w - 36.0)
                 .size(KitSize::Sm)
                 .placeholder("Describe your indicator or strategy...")
@@ -148,7 +148,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme, show_save:
             for (name, source) in PRESETS {
                 let btn = Button::new(*name).variant(Variant::Chip).size(Size::Xs)
                     .show(ui, t);
-                if btn.clicked() { watchlist.script_source = source.to_string(); }
+                if btn.clicked() { watchlist.script.source = source.to_string(); }
                 if btn.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             }
         });
@@ -156,7 +156,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme, show_save:
 
     // ── Editor ────────────────────────────────────────────────
     PanelSection::new("EDITOR").show(ui, t, |ui, t| {
-        TextArea::new(&mut watchlist.script_source)
+        TextArea::new(&mut watchlist.script.source)
             .min_rows(8)
             .max_rows(10)
             .monospace(true)
@@ -168,44 +168,44 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme, show_save:
     PanelSection::new("ACTIONS").show(ui, t, |ui, t| {
         ui.horizontal(|ui| {
             if action_button(ui, "\u{25B6} Run", t.bull, t).clicked() {
-                if watchlist.script_source.is_empty() {
-                    watchlist.script_output = "Error: No script to run.".to_string();
+                if watchlist.script.source.is_empty() {
+                    watchlist.script.output = "Error: No script to run.".to_string();
                 } else {
-                    watchlist.script_output = format!(
+                    watchlist.script.output = format!(
                         "Evaluating: {}\n\n--- Output ---\nScript parsed successfully.\nBars processed: 1,240\nSignals generated: 47",
-                        watchlist.script_source
+                        watchlist.script.source
                     );
                 }
-                watchlist.script_result_tab = ScriptResultTab::Output;
+                watchlist.script.result_tab = ScriptResultTab::Output;
             }
             ui.add_space(gap_xs());
             if action_button(ui, "\u{1F4CA} Backtest", t.accent, t).clicked() {
                 let result = mock_backtest();
                 let mut out = String::new();
-                out.push_str(&format!("Backtesting: {}\n", watchlist.script_source));
+                out.push_str(&format!("Backtesting: {}\n", watchlist.script.source));
                 out.push_str(&format!("Period: 252 bars | {} trades\n\n", result.trades.len()));
                 out.push_str(&format!("Total P&L:      ${:.2}\n", result.total_pnl));
                 out.push_str(&format!("Win Rate:       {:.1}%\n", result.win_rate));
                 out.push_str(&format!("Profit Factor:  {:.2}\n", result.profit_factor));
                 out.push_str(&format!("Max Drawdown:   {:.2}%\n", result.max_drawdown));
                 out.push_str(&format!("Sharpe Ratio:   {:.2}\n", result.sharpe));
-                watchlist.script_output = out;
-                watchlist.script_backtest = Some(result);
-                watchlist.script_result_tab = ScriptResultTab::Backtest;
+                watchlist.script.output = out;
+                watchlist.script.backtest = Some(result);
+                watchlist.script.result_tab = ScriptResultTab::Backtest;
             }
             if show_save {
                 ui.add_space(gap_xs());
                 if action_button(ui, "Save", t.dim, t).clicked() {
-                    watchlist.script_output = "Script saved. (placeholder — persistence coming soon)".to_string();
-                    watchlist.script_result_tab = ScriptResultTab::Output;
+                    watchlist.script.output = "Script saved. (placeholder — persistence coming soon)".to_string();
+                    watchlist.script.result_tab = ScriptResultTab::Output;
                 }
             }
             ui.add_space(gap_xs());
             if action_button(ui, "Clear", color_subtle(t.bear), t).clicked() {
-                watchlist.script_source.clear();
-                watchlist.script_ai_prompt.clear();
-                watchlist.script_output.clear();
-                watchlist.script_backtest = None;
+                watchlist.script.source.clear();
+                watchlist.script.ai_prompt.clear();
+                watchlist.script.output.clear();
+                watchlist.script.backtest = None;
             }
         });
     });
@@ -214,9 +214,9 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme, show_save:
     PanelSection::new("RESULT")
         .show(ui, t, |ui, t| {
             ui.horizontal(|ui| {
-                result_tab_btn(ui, "Output", ScriptResultTab::Output, &mut watchlist.script_result_tab, t);
+                result_tab_btn(ui, "Output", ScriptResultTab::Output, &mut watchlist.script.result_tab, t);
                 ui.add_space(gap_xs());
-                result_tab_btn(ui, "Backtest", ScriptResultTab::Backtest, &mut watchlist.script_result_tab, t);
+                result_tab_btn(ui, "Backtest", ScriptResultTab::Backtest, &mut watchlist.script.result_tab, t);
             });
             ui.add_space(gap_xs());
 
@@ -224,7 +224,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme, show_save:
                 .id_salt("script_results")
                 .show(ui, |ui| {
                     ui.set_min_width(w - 4.0);
-                    match watchlist.script_result_tab {
+                    match watchlist.script.result_tab {
                         ScriptResultTab::Output => draw_output_tab(ui, watchlist, t),
                         ScriptResultTab::Backtest => draw_backtest_tab(ui, watchlist, w, t),
                     }
@@ -243,12 +243,12 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
 /// Rail registration — see [`super::right_rail`].
 pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
     id: "script",
-    is_open: |w| w.script_open,
+    is_open: |w| w.script.open,
     render: |cx, slot| draw(cx.ctx, cx.watchlist, cx.t, Some(slot)),
 };
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme, slot: Option<super::side_panel_shell::RailSlot>) {
-    if !watchlist.script_open { return; }
+    if !watchlist.script.open { return; }
 
     let resp = SidePanelShell::new("apex_script", "APEX SCRIPT")
         .width(Width::Wide)
@@ -267,14 +267,14 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme, sl
 
 fn draw_output_tab(ui: &mut egui::Ui, watchlist: &Watchlist, t: &Theme) {
     let m = 10.0;
-    if watchlist.script_output.is_empty() {
+    if watchlist.script.output.is_empty() {
         ui.add_space(gap_xl());
         ui.vertical_centered(|ui| {
             ui.add(MonospaceCode::new("Run a script or backtest to see results here.").xs().color(t.dim).gamma(0.4));
         });
     } else {
         ui.add_space(gap_xs());
-        let is_error = watchlist.script_output.starts_with("Error");
+        let is_error = watchlist.script.output.starts_with("Error");
         let (card_bg, card_border) = if is_error {
             (tint(t, Tone::Bear, 18), tint(t, Tone::Bear, alpha_line()))
         } else {
@@ -284,7 +284,7 @@ fn draw_output_tab(ui: &mut egui::Ui, watchlist: &Watchlist, t: &Theme) {
         ui.horizontal(|ui| {
             ui.add_space(m);
             Card::new().colors(card_bg, card_border).show(ui, |ui| {
-                ui.add(MonospaceCode::new(&watchlist.script_output).xs().color(text_color));
+                ui.add(MonospaceCode::new(&watchlist.script.output).xs().color(text_color));
             });
         });
     }
@@ -295,7 +295,7 @@ fn draw_output_tab(ui: &mut egui::Ui, watchlist: &Watchlist, t: &Theme) {
 
 fn draw_backtest_tab(ui: &mut egui::Ui, watchlist: &Watchlist, w: f32, t: &Theme) {
     let m = 8.0;
-    let result = match &watchlist.script_backtest {
+    let result = match &watchlist.script.backtest {
         Some(r) => r,
         None => {
             ui.add_space(gap_xl());
