@@ -5732,6 +5732,48 @@ pub(crate) struct OrderLedgerState {
     pub(crate) pending_bulk_cancel: Option<String>,
 }
 
+/// Heatmap display config (WS-E E3, Watchlist-split slice 9). 4 heat_* fields.
+/// Not synced/persisted. Explicit Default (index "Watchlist", cols 2).
+pub(crate) struct HeatState {
+    pub(crate) index: String,
+    pub(crate) collapsed: std::collections::HashSet<String>,
+    pub(crate) cols: u8,
+    pub(crate) sort: i8,
+}
+
+impl Default for HeatState {
+    fn default() -> Self {
+        Self { index: "Watchlist".into(), collapsed: std::collections::HashSet::new(), cols: 2, sort: 0 }
+    }
+}
+
+/// ProvenancePane state (WS-E E3, Watchlist-split slice 9). 2 provenance_*
+/// fields. `open` mirrors the persisted SidebarState flag (kept flat there).
+#[derive(Default)]
+pub(crate) struct ProvenanceState {
+    pub(crate) open: bool,
+    pub(crate) active_lineage: Option<String>,
+}
+
+/// Analysis sidebar state (WS-E E3, Watchlist-split slice 9). 3 analysis_*
+/// fields (auto_chart_open stays a separate Watchlist field). `open` mirrors
+/// the persisted SidebarState flag. Explicit Default (tab = Rrg, one split).
+pub(crate) struct AnalysisState {
+    pub(crate) open: bool,
+    pub(crate) tab: crate::chart_renderer::AnalysisTab,
+    pub(crate) splits: Vec<SplitSection<crate::chart_renderer::AnalysisTab>>,
+}
+
+impl Default for AnalysisState {
+    fn default() -> Self {
+        Self {
+            open: false,
+            tab: crate::chart_renderer::AnalysisTab::Rrg,
+            splits: vec![SplitSection::new(crate::chart_renderer::AnalysisTab::Rrg, 1.0)],
+        }
+    }
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -5848,11 +5890,8 @@ pub(crate) struct Watchlist {
     pub(crate) custom_filters: Vec<CustomFilter>,
     pub(crate) filter_min_change: f32,
     pub(crate) filter_max_change: f32,
-    // Heatmap
-    pub(crate) heat_index: String,
-    pub(crate) heat_collapsed: std::collections::HashSet<String>,
-    pub(crate) heat_cols: u8, // 1, 2, or 3 columns
-    pub(crate) heat_sort: i8, // 0=default, 1=gainers first, -1=losers first
+    // Heatmap (WS-E E3 slice 9) — was 4 flat heat_* fields.
+    pub(crate) heat: HeatState,
     // Orders
     pub(crate) orders_panel_open: bool,
     pub(crate) order_entry_open: bool,
@@ -6001,10 +6040,9 @@ pub(crate) struct Watchlist {
     /// RRG panel state (WS-E E3 slice 4) — was 5 flat `rrg_*` fields.
     pub(crate) rrg: RrgState,
     // Analysis sidebar — subdivided sections (each has its own tab)
-    pub(crate) analysis_open: bool,
+    /// Analysis sidebar state (WS-E E3 slice 9) — was analysis_open/tab/splits.
+    pub(crate) analysis: AnalysisState,
     pub(crate) auto_chart_open: bool, // Auto-Charting side panel
-    pub(crate) analysis_tab: crate::chart_renderer::AnalysisTab, // default tab for new sections
-    pub(crate) analysis_splits: Vec<SplitSection<crate::chart_renderer::AnalysisTab>>,
     // Signals sidebar — subdivided sections
     pub(crate) signals_panel_open: bool,
     pub(crate) signals_tab: crate::chart_renderer::SignalsTab,
@@ -6028,12 +6066,9 @@ pub(crate) struct Watchlist {
     pub(crate) book_tab: crate::chart_renderer::BookTab,
     // ── SOTA UX (Agent A) — ProvenancePane state ────────────────────────────
     /// Whether the ProvenancePane (right side panel, evidence DAG) is open.
-    /// Opens automatically when a SignalsPanel 🔍 button fires
-    /// `provenance_pane::request_open(lineage_id)`.
-    pub(crate) provenance_open: bool,
-    /// lineage_id currently rendered in the ProvenancePane (the root of the
-    /// evidence DAG). `None` shows the "no signal selected" empty state.
-    pub(crate) provenance_active_lineage: Option<String>,
+    /// ProvenancePane state (WS-E E3 slice 9) — was provenance_open +
+    /// provenance_active_lineage, now grouped into ProvenanceState.
+    pub(crate) provenance: ProvenanceState,
     // Wave 5: cross-pane event bus. Replaces ad-hoc pull-based pane
     // iteration for link-group + broadcast propagation. Listeners are
     // registered at construction time. See `state::subscriptions`.
@@ -6173,7 +6208,7 @@ impl Watchlist {
                orders_panel_open: false, order_entry_open: false, selected_order_ids: vec![], positions: vec![], alerts: vec![], next_alert_id: 1, alert_query: String::new(), alerts_panel_open: false,
                chain: ChainState::default(),
                saved_options: vec![], dte_filter: -1,
-               heat_index: "Watchlist".into(), heat_collapsed: std::collections::HashSet::new(), heat_cols: 2, heat_sort: 0,
+               heat: HeatState::default(),
                active_workspace: "Default".into(), pending_workspace_load: None, workspace_save_name: String::new(),
                workspace_nav_expanded: false, pending_new_blank: false,
                workspace_rename_target: None, workspace_rename_buf: String::new(),
@@ -6226,10 +6261,8 @@ impl Watchlist {
                screenshot_entries: super::ui::panels::screenshot_panel::load_screenshots(),
                charts_library_open: false,
                rrg: RrgState::default(),
-               analysis_open: false,
+               analysis: AnalysisState::default(),
                auto_chart_open: false,
-               analysis_tab: crate::chart_renderer::AnalysisTab::Rrg,
-               analysis_splits: vec![SplitSection::new(crate::chart_renderer::AnalysisTab::Rrg, 1.0)],
                signals_panel_open: false,
                signals_tab: crate::chart_renderer::SignalsTab::Alerts,
                signals_splits: vec![SplitSection::new(crate::chart_renderer::SignalsTab::Alerts, 1.0)],
@@ -6244,8 +6277,7 @@ impl Watchlist {
                journal_entries: generate_placeholder_journal(),
                journal_page: 0,
                book_tab: crate::chart_renderer::BookTab::Book,
-               provenance_open: false,
-               provenance_active_lineage: None,
+               provenance: ProvenanceState::default(),
                // Wave 12c: queue-backed bus. Publishers push events; the
                // render loop (`App::about_to_wait`) drains and applies them
                // to sibling panes once per frame. See `state::subscriptions`
@@ -6579,7 +6611,7 @@ impl Watchlist {
         let script_open = self.script.open;
         let screenshot_open = self.screenshot_open;
         let rrg_open = self.rrg.open;
-        let analysis_open = self.analysis_open;
+        let analysis_open = self.analysis.open;
         let auto_chart_open = self.auto_chart_open;
         let signals_panel_open = self.signals_panel_open;
         let indicators_panel_open = self.indicators_panel_open;
@@ -6587,7 +6619,7 @@ impl Watchlist {
         let feed_panel_open = self.feed_panel_open;
         let playbook_panel_open = self.playbook_panel_open;
         let journal_panel_open = self.journal_panel_open;
-        let provenance_open = self.provenance_open;
+        let provenance_open = self.provenance.open;
         let replay_pane_open = self.replay_pane_open;
         let hotkey_editor_open = self.hotkey_editor_open;
         self.sidebar_state_store.update(|s| {
@@ -6663,7 +6695,7 @@ impl Watchlist {
         self.script.open = snap.script_open;
         self.screenshot_open = snap.screenshot_open;
         self.rrg.open = snap.rrg_open;
-        self.analysis_open = snap.analysis_open;
+        self.analysis.open = snap.analysis_open;
         self.auto_chart_open = snap.auto_chart_open;
         self.signals_panel_open = snap.signals_panel_open;
         self.indicators_panel_open = snap.indicators_panel_open;
@@ -6671,7 +6703,7 @@ impl Watchlist {
         self.feed_panel_open = snap.feed_panel_open;
         self.playbook_panel_open = snap.playbook_panel_open;
         self.journal_panel_open = snap.journal_panel_open;
-        self.provenance_open = snap.provenance_open;
+        self.provenance.open = snap.provenance_open;
         self.replay_pane_open = snap.replay_pane_open;
         self.hotkey_editor_open = snap.hotkey_editor_open;
     }

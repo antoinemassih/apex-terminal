@@ -14,7 +14,7 @@ use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width,
 /// Rail registration — Analysis is now a standard `SidePanelShell::tabs` panel.
 pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
     id: "analysis",
-    is_open: |w| w.analysis_open,
+    is_open: |w| w.analysis.open,
     render: |cx, slot| { draw(cx.ctx, cx.watchlist, cx.panes, cx.active_pane, cx.t, Some(slot), None); },
 };
 
@@ -42,7 +42,7 @@ pub(crate) fn draw(
 ) -> bool {
     let is_spawn = instance_tab.is_some();
     let mut spawn_close = false;
-    if !is_spawn && !watchlist.analysis_open { return false; }
+    if !is_spawn && !watchlist.analysis.open { return false; }
 
     let mut pending_symbol: Option<String> = None;
 
@@ -51,7 +51,7 @@ pub(crate) fn draw(
 
     let mut active = match instance_tab.as_deref() {
         Some(v) => analysis_tab_from_u8(*v),
-        None => watchlist.analysis_splits.first().map(|s| s.tab).unwrap_or(AnalysisTab::Rrg),
+        None => watchlist.analysis.splits.first().map(|s| s.tab).unwrap_or(AnalysisTab::Rrg),
     };
     let tabs = [
         (AnalysisTab::Rrg,         "RRG",         None),
@@ -99,8 +99,8 @@ pub(crate) fn draw(
 
     // Persist the active tab to its owner (instance store or base panel).
     if let Some(it) = instance_tab { *it = analysis_tab_to_u8(active); }
-    else if let Some(s) = watchlist.analysis_splits.first_mut() { s.tab = active; }
-    else { watchlist.analysis_splits.push(SplitSection { tab: active, frac: 1.0 }); }
+    else if let Some(s) = watchlist.analysis.splits.first_mut() { s.tab = active; }
+    else { watchlist.analysis.splits.push(SplitSection { tab: active, frac: 1.0 }); }
     if resp.close_clicked {
         if is_spawn { spawn_close = true; }
         else { watchlist.update_sidebar_state(|s| s.analysis_open = false); }

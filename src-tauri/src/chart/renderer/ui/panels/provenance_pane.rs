@@ -10,7 +10,7 @@
 //! Architecture
 //! - `ProvenancePane` UI state lives in the static `STATE` Mutex. There's
 //!   one pane in the layout — open/close + active lineage live in
-//!   `Watchlist.provenance_open` / `Watchlist.provenance_active_lineage`.
+//!   `Watchlist.provenance.open` / `Watchlist.provenance.active_lineage`.
 //! - Fetches go out on background threads (REST client is blocking); results
 //!   land back via the static `RESULTS` mpsc receiver, drained at the top of
 //!   each frame.
@@ -280,14 +280,14 @@ fn now_ms() -> i64 {
 // ── Draw ────────────────────────────────────────────────────────────────────
 
 /// Render the pane. Mirrors the panel kit pattern (e.g. `news_panel::draw`):
-/// gated on `watchlist.provenance_open`, owns its own state via static
-/// runtime. Reads `watchlist.provenance_active_lineage` to know the root.
+/// gated on `watchlist.provenance.open`, owns its own state via static
+/// runtime. Reads `watchlist.provenance.active_lineage` to know the root.
 /// Rail registration — see [`super::right_rail`]. Note: [`pump`] must still be
 /// called every frame (even when closed) from `top_nav` so external lineage
 /// requests can auto-open the panel; the rail only renders it once open.
 pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
     id: "provenance",
-    is_open: |w| w.provenance_open,
+    is_open: |w| w.provenance.open,
     render: |cx, slot| draw(cx.ctx, cx.watchlist, cx.t, Some(slot)),
 };
 
@@ -313,12 +313,12 @@ pub(crate) fn pump(watchlist: &mut Watchlist) {
                 spawn_fetch(req.lineage_id.clone(), depth, mode);
             }
         }
-        watchlist.provenance_active_lineage = Some(req.lineage_id);
+        watchlist.provenance.active_lineage = Some(req.lineage_id);
     }
 }
 
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme, slot: Option<super::side_panel_shell::RailSlot>) {
-    if !watchlist.provenance_open { return; }
+    if !watchlist.provenance.open { return; }
 
     let pane_h    = crate::chart_renderer::gpu::pane_tabs_header_h(watchlist);
     let pane_font = watchlist.pane_header_size.title_font();
@@ -336,7 +336,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme, sl
 }
 
 fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
-    let active = watchlist.provenance_active_lineage.clone();
+    let active = watchlist.provenance.active_lineage.clone();
 
     let Some(active_id) = active else {
         ui.add_space(gap_lg());
@@ -507,7 +507,7 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
             {
                 if let Ok(mut s) = runtime().state.lock() { s.depth = d; }
                 // Re-fetch root with new depth.
-                if let Some(id) = watchlist.provenance_active_lineage.clone() {
+                if let Some(id) = watchlist.provenance.active_lineage.clone() {
                     let mode = runtime().state.lock().ok().map(|s| s.mode).unwrap_or_default();
                     spawn_fetch(id, d, mode);
                 }
@@ -522,7 +522,7 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
             if let Ok(mut s) = runtime().state.lock() {
                 s.mode = match s.mode { ProvenanceMode::Tree => ProvenanceMode::Dag, ProvenanceMode::Dag => ProvenanceMode::Tree };
             }
-            if let Some(id) = watchlist.provenance_active_lineage.clone() {
+            if let Some(id) = watchlist.provenance.active_lineage.clone() {
                 let (d, m) = {
                     let s = runtime().state.lock().ok();
                     s.as_ref().map(|s| (s.depth, s.mode)).unwrap_or((DEFAULT_DEPTH, ProvenanceMode::Tree))
@@ -534,7 +534,7 @@ fn draw_inner(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
             if KitButton::new("copy JSON").variant(KitVariant::Ghost).size(KitSize::Xs)
                 .fg(t.dim).min_size(egui::vec2(0.0, 18.0)).show(ui, t).clicked()
             {
-                let id_opt = watchlist.provenance_active_lineage.clone();
+                let id_opt = watchlist.provenance.active_lineage.clone();
                 if let Some(id) = id_opt {
                     let json = runtime().state.lock().ok().and_then(|s| {
                         match s.cache.get(&id)? {

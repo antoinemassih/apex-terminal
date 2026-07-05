@@ -1158,6 +1158,16 @@ pub(crate) fn render(
                         if resp.clicked() { watchlist.update_sidebar_state(|s| s.$field = !s.$field); }
                         nav_divider!(ui, resp);
                     }};
+                    // WS-E E3: variant for fields moved into a Watchlist sub-struct — the
+                    // display value ($wl expr, e.g. `watchlist.analysis.open`) differs from
+                    // the still-flat SidebarState field ($sfield ident, e.g. `analysis_open`).
+                    ($icon:expr, $lbl:expr, $wl:expr, $sfield:ident, $tip:expr, $tint:expr) => {{
+                        let resp = toolbar_btn(ui, &nav_label($icon, $lbl), $wl, t);
+                        Tooltip::new($tip).show(ui, &resp, t);
+                        paint_nav_col_tint(ui, tb_rect, resp.rect, t, resp.hovered(), $wl, $tint);
+                        if resp.clicked() { watchlist.update_sidebar_state(|s| s.$sfield = !s.$sfield); }
+                        nav_divider!(ui, resp);
+                    }};
                 }
 
                 panel_toggle!(Icon::NEWSPAPER,      "Feed",       feed_panel_open,       "Feed (News, Discord, Screenshots)",           "right_feed");
@@ -1188,7 +1198,7 @@ pub(crate) fn render(
                     nav_divider!(ui, resp);
                 }
                 panel_toggle!(Icon::CURRENCY_DOLLAR, "Orders",     orders_panel_open,     "Orders Panel",                                "right_orders");
-                panel_toggle!(Icon::CHART_LINE,      "Analysis",   analysis_open,         "Analysis Sidebar",                            "right_analysis");
+                panel_toggle!(Icon::CHART_LINE,      "Analysis",   watchlist.analysis.open, analysis_open, "Analysis Sidebar",              "right_analysis");
                 panel_toggle!(Icon::CHART_LINE,      "Auto-Chart", auto_chart_open,       "Auto-Charting (lines, levels, patterns, tuning)", "right_autochart");
                 panel_toggle!(Icon::PULSE,           "Indicators", indicators_panel_open, "Indicators (Active + Library + Tools)",       "right_indicators");
 

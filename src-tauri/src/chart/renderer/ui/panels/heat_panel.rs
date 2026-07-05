@@ -56,15 +56,15 @@ pub(crate) fn render_heat_panel(
     // Index preset dropdown + expand/collapse
     ui.horizontal(|ui| {
         {
-            let mut cur: &'static str = HEAT_OPTS.iter().map(|&(v, _)| v).find(|&s| s == watchlist.heat_index.as_str()).unwrap_or("Watchlist");
+            let mut cur: &'static str = HEAT_OPTS.iter().map(|&(v, _)| v).find(|&s| s == watchlist.heat.index.as_str()).unwrap_or("Watchlist");
             if super::super::inputs::select::Dropdown::new("heat_idx")
                 .options(HEAT_OPTS)
                 .width(100.0)
                 .theme(t)
                 .show(ui, &mut cur)
             {
-                watchlist.heat_index = cur.to_string();
-                watchlist.heat_collapsed.clear();
+                watchlist.heat.index = cur.to_string();
+                watchlist.heat.collapsed.clear();
             }
         }
         // Expand / Collapse / Columns / Sort — all with hover cursor
@@ -75,13 +75,13 @@ pub(crate) fn render_heat_panel(
             if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             resp.on_hover_text(tip).clicked()
         };
-        if hbtn(ui, Icon::PLUS, t.dim, "Expand all") { watchlist.heat_collapsed.clear(); }
-        if hbtn(ui, Icon::MINUS, t.dim, "Collapse all") { watchlist.heat_collapsed.insert("__collapse_all__".into()); }
-        let col_label = format!("{}c", watchlist.heat_cols);
-        if hbtn(ui, &col_label, t.dim, "Toggle 1/2/3 columns") { watchlist.heat_cols = match watchlist.heat_cols { 1 => 2, 2 => 3, _ => 1 }; }
-        let sort_label = match watchlist.heat_sort { 1 => Icon::ARROW_FAT_UP, -1 => Icon::ARROW_FAT_DOWN, _ => Icon::DOTS_THREE };
-        let sort_col = if watchlist.heat_sort != 0 { t.accent } else { t.dim };
-        if hbtn(ui, sort_label, sort_col, "Sort: gainers / losers / default") { watchlist.heat_sort = match watchlist.heat_sort { 0 => 1, 1 => -1, _ => 0 }; }
+        if hbtn(ui, Icon::PLUS, t.dim, "Expand all") { watchlist.heat.collapsed.clear(); }
+        if hbtn(ui, Icon::MINUS, t.dim, "Collapse all") { watchlist.heat.collapsed.insert("__collapse_all__".into()); }
+        let col_label = format!("{}c", watchlist.heat.cols);
+        if hbtn(ui, &col_label, t.dim, "Toggle 1/2/3 columns") { watchlist.heat.cols = match watchlist.heat.cols { 1 => 2, 2 => 3, _ => 1 }; }
+        let sort_label = match watchlist.heat.sort { 1 => Icon::ARROW_FAT_UP, -1 => Icon::ARROW_FAT_DOWN, _ => Icon::DOTS_THREE };
+        let sort_col = if watchlist.heat.sort != 0 { t.accent } else { t.dim };
+        if hbtn(ui, sort_label, sort_col, "Sort: gainers / losers / default") { watchlist.heat.sort = match watchlist.heat.sort { 0 => 1, 1 => -1, _ => 0 }; }
     });
     ui.add_space(gap_xs());
 
@@ -96,7 +96,7 @@ pub(crate) fn render_heat_panel(
     // Build the (sector_label, [symbols]) groups from the cached universes.
     // For preset indexes other than the watchlist, an empty cache means the
     // refresh thread hasn't populated us yet — render a placeholder.
-    let preset_groups: Option<Vec<(String, Vec<String>)>> = match watchlist.heat_index.as_str() {
+    let preset_groups: Option<Vec<(String, Vec<String>)>> = match watchlist.heat.index.as_str() {
         "S&P 500" => Some(
             SP500_SECTOR_UNIVERSES.iter()
                 .map(|(name, label)| (label.to_string(), crate::watchlist_db::cached_universe(name)))
@@ -141,8 +141,8 @@ pub(crate) fn render_heat_panel(
 
             // Group by sector and render with dividers
             // Configurable N-column layout with click-to-chart
-            let num_cols = watchlist.heat_cols.max(1) as usize;
-            let heat_sort = watchlist.heat_sort;
+            let num_cols = watchlist.heat.cols.max(1) as usize;
+            let heat_sort = watchlist.heat.sort;
             // render_sector_items extracted to HeatmapGrid widget
 
             // Render grouped by sector
@@ -154,12 +154,12 @@ pub(crate) fn render_heat_panel(
                 groups.last_mut().unwrap().1.push(item);
             }
             // Handle collapse-all
-            if watchlist.heat_collapsed.contains("__collapse_all__") {
-                watchlist.heat_collapsed.remove("__collapse_all__");
-                for (s, _) in &groups { watchlist.heat_collapsed.insert(s.clone()); }
+            if watchlist.heat.collapsed.contains("__collapse_all__") {
+                watchlist.heat.collapsed.remove("__collapse_all__");
+                for (s, _) in &groups { watchlist.heat.collapsed.insert(s.clone()); }
             }
             for (sector, items) in &groups {
-                let is_collapsed = watchlist.heat_collapsed.contains(sector);
+                let is_collapsed = watchlist.heat.collapsed.contains(sector);
                 // Sector avg change
                 let avg_chg: f32 = if items.is_empty() { 0.0 } else {
                     items.iter().map(|i| i.1).sum::<f32>() / items.len() as f32
@@ -178,8 +178,8 @@ pub(crate) fn render_heat_panel(
                         .min_size(egui::vec2(ui.available_width(), row_height_default()))
                         .frameless(true));
                     if header_btn.clicked() {
-                        if is_collapsed { watchlist.heat_collapsed.remove(sector); }
-                        else { watchlist.heat_collapsed.insert(sector.clone()); }
+                        if is_collapsed { watchlist.heat.collapsed.remove(sector); }
+                        else { watchlist.heat.collapsed.insert(sector.clone()); }
                     }
                     ui.add_space(gap_xs());
                 }
