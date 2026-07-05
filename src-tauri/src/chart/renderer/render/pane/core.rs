@@ -3928,31 +3928,8 @@ fn render_chart_pane(
     // Drawings (with selection highlight + endpoint handles)
     // Clamp helper — prevents extreme coordinates from causing massive tessellation allocations
     // ── Trigger level lines (options conditional orders on underlying) ──
-    for tl in &chart.trigger_levels {
-        let y = py(tl.trigger_price);
-        if !y.is_finite() || y.abs() > 50000.0 { continue; }
-        let is_buy = tl.side == OrderSide::Buy;
-        let color = if is_buy { t.bull } else { t.bear };
-        let alpha = if tl.submitted { 180 } else { 255 };
-        let label = format!("{} {} {} {:.2} x{}", Icon::LIGHTNING,
-            if is_buy { "BUY" } else { "SELL" }, tl.option_type, tl.trigger_price, tl.qty);
-        let status = if tl.submitted { " LIVE" } else { " DRAFT" };
-        // Dashed line
-        dashed_line(&painter, egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y),
-            egui::Stroke::new(1.5, color_alpha(color, alpha)), LineStyle::Dashed);
-        // Label on the left
-        painter.text(egui::pos2(rect.left() + 4.0, y - 12.0), egui::Align2::LEFT_BOTTOM,
-            &label, mono_xs(), color_alpha(color, alpha));
-        // Status badge on the right
-        painter.text(egui::pos2(rect.left() + cw - 4.0, y - 12.0), egui::Align2::RIGHT_BOTTOM,
-            status, mono_2xs(), color_alpha(color, 120));
-        // Y-axis price tag
-        let tag_w = 54.0;
-        let tag_rect = egui::Rect::from_min_size(egui::pos2(rect.left() + cw, y - 8.0), egui::vec2(tag_w, 16.0));
-        painter.rect_filled(tag_rect, 2.0, color_alpha(color, alpha));
-        painter.text(tag_rect.center(), egui::Align2::CENTER_CENTER,
-            &format!("{:.2}", tl.trigger_price), mono_xs(), egui::Color32::WHITE);
-    }
+    // Trigger-level lines (extracted to render_trigger_levels, WS-E E4).
+    render_trigger_levels(&painter, chart, rect, cw, t, &py);
 
     let clamp_pt = |p: egui::Pos2| -> egui::Pos2 {
         let margin = 10000.0;
@@ -7008,235 +6985,8 @@ fn render_chart_pane(
     // Track whether any order on screen is pulsing so we can request a smooth
     // ~30Hz repaint at the bottom of the loop (avoids a per-pane repaint storm
     // when nothing is animating).
-    let mut any_pulsing_order = false;
-    // Time used for pulse phase. Read once per pane to keep all pulses in sync.
-    let pulse_time = ui.ctx().input(|i| i.time);
-    for order in &chart.orders {
-        // Terminal cancel/reject: never draw. Filled is kept briefly as a ghost.
-        if order.status == OrderStatus::Cancelled { continue; }
-        // OrderState::Rejected maps to legacy Cancelled, but be defensive.
-        if matches!(order.state, OrderState::Cancelled | OrderState::Rejected) { continue; }
-        let y = py(order.price);
-        if y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
-        let base_color = order.color(t.bull, t.bear);
-        let is_draft = order.status == OrderStatus::Draft;
-        let dark = t.bg;
-        let badge_h = 24.0;
-
-        // ── State-aware visual style ─────────────────────────────────────
-        // Pending* → pulsing amber outline (~1Hz)
-        // Unknown  → pulsing red    outline (~2Hz, more urgent)
-        // Filled   → dim dotted ghost
-        // PartialFill → dashed (existing) + fill pip later
-        // Working  → solid line
-        // Draft    → existing low-alpha dashed
-        let is_pending = matches!(order.state,
-            OrderState::PendingSubmit | OrderState::PendingCancel | OrderState::PendingModify);
-        let is_unknown = matches!(order.state, OrderState::Unknown);
-        let is_partial = matches!(order.state, OrderState::PartialFill);
-        let is_filled  = matches!(order.state, OrderState::Filled);
-        let is_working = matches!(order.state, OrderState::Working);
-
-        // Pulse coefficient in [0.5, 1.0] — sin-driven; 1Hz for pending, 2Hz for unknown.
-        let pulse = |hz: f64| -> f32 {
-            let phase = (pulse_time * std::f64::consts::TAU * hz).sin() as f32;
-            // Map [-1,1] -> [0.5, 1.0]
-            0.5 + 0.5 * (phase * 0.5 + 0.5)
-        };
-
-        // Effective line color and dashing pattern per state.
-        // (color, alpha, dash_w, gap_w, line_thickness)
-        let (line_color, dash_alpha, dash_w_px, gap_w_px, line_th) = if is_unknown {
-            any_pulsing_order = true;
-            let p = pulse(2.0);
-            (t.bear.gamma_multiply(p), 220u8, 4.0_f32, 4.0_f32, 1.5_f32)
-        } else if is_pending {
-            any_pulsing_order = true;
-            let p = pulse(1.0);
-            (t.warn.gamma_multiply(p), 220u8, 5.0_f32, 5.0_f32, 1.5_f32)
-        } else if is_filled {
-            // Ghost: very dim dotted
-            (base_color, 80u8, 2.0_f32, 4.0_f32, 1.0_f32)
-        } else if is_partial {
-            // Dashed (longer dashes than working) + fill pip drawn below
-            (base_color, 220u8, 8.0_f32, 4.0_f32, 1.0_f32)
-        } else if is_working {
-            // Solid: dash_w == stride collapses gaps
-            (base_color, 220u8, 1.0_f32, 0.0_f32, 1.0_f32)
-        } else {
-            // Draft / fallback — keep historical dashed-light look
-            let a = if is_draft { 120u8 } else { 200u8 };
-            (base_color, a, 6.0_f32, 4.0_f32, 1.0_f32)
-        };
-        let dash_color = egui::Color32::from_rgba_unmultiplied(
-            line_color.r(), line_color.g(), line_color.b(), dash_alpha);
-
-        if use_gpu_orders {
-            #[cfg(feature = "gpu_chart_v2")]
-            {
-                use crate::chart::renderer_gpu::LineSegment;
-                let stride_px = dash_w_px + gap_w_px;
-                if is_working || stride_px <= 0.0 {
-                    // Solid: single segment across the visible band
-                    let lc = _drawing_c32(dash_color);
-                    let th = line_th * drawing_ppp;
-                    chart.gpu_render_params.line_segments.push(LineSegment {
-                        start_slot: edge_left_slot, start_val: order.price,
-                        end_slot:   edge_right_slot, end_val:   order.price,
-                        color: lc, thickness: th,
-                        dash_period_px: 0.0, dash_duty: 1.0,
-                    });
-                } else {
-                    let dash_w_slot = dash_w_px / bs;
-                    let stride_slot = stride_px / bs;
-                    let lc = _drawing_c32(dash_color);
-                    let th = line_th * drawing_ppp;
-                    let mut s = edge_left_slot;
-                    while s < edge_right_slot {
-                        let e = (s + dash_w_slot).min(edge_right_slot);
-                        chart.gpu_render_params.line_segments.push(LineSegment {
-                            start_slot: s, start_val: order.price,
-                            end_slot:   e, end_val:   order.price,
-                            color: lc, thickness: th,
-                            dash_period_px: 0.0, dash_duty: 1.0,
-                        });
-                        s += stride_slot;
-                    }
-                }
-            }
-        } else {
-            let stride_px = dash_w_px + gap_w_px;
-            if is_working || stride_px <= 0.0 {
-                painter.line_segment(
-                    [egui::pos2(rect.left(), y), egui::pos2(rect.left() + cw, y)],
-                    egui::Stroke::new(line_th, dash_color));
-            } else {
-                let mut dx = rect.left();
-                while dx < rect.left() + cw {
-                    let end = (dx + dash_w_px).min(rect.left() + cw);
-                    painter.line_segment([egui::pos2(dx, y), egui::pos2(end, y)],
-                        egui::Stroke::new(line_th, dash_color));
-                    dx += stride_px;
-                }
-            }
-        }
-
-        // PartialFill: small filled pip on the line at the fill ratio.
-        if is_partial {
-            let ratio = order.filled_ratio.clamp(0.0, 1.0);
-            let pip_x = rect.left() + cw * ratio;
-            painter.circle_filled(egui::pos2(pip_x, y), 3.0, line_color);
-            painter.circle_stroke(egui::pos2(pip_x, y), 4.5,
-                egui::Stroke::new(1.0,
-                    egui::Color32::from_rgba_unmultiplied(line_color.r(), line_color.g(), line_color.b(), 160)));
-        }
-
-        // Badge color stays anchored to the side palette (Buy=green/Sell=red)
-        // for legibility — only the line itself reflects the lifecycle state.
-        // For Filled ghosts, dim the badge palette too.
-        let color = if is_filled { base_color.gamma_multiply(0.4) } else { base_color };
-
-        // ── Badge: [B/S] [QTY] [notional] [DRAFT/LIVE] [SEND?] [X] ──
-        let side_ch = match order.side {
-            OrderSide::Buy | OrderSide::TriggerBuy => "B",
-            OrderSide::Sell | OrderSide::TriggerSell => "S",
-            OrderSide::Stop | OrderSide::OcoStop => "S",
-            OrderSide::OcoTarget => "T",
-        };
-        let qty_str = format!("{}", order.qty);
-        let notional_str = fmt_notional(order.notional());
-        // Surface the lifecycle state in the badge label so the operator can
-        // disambiguate at a glance (especially the pending/unknown variants).
-        let status_label = match order.state {
-            OrderState::Draft         => "DRAFT",
-            OrderState::PendingSubmit => "SEND…",
-            OrderState::PendingCancel => "CXL…",
-            OrderState::PendingModify => "MOD…",
-            OrderState::Working       => "LIVE",
-            OrderState::PartialFill   => "PART",
-            OrderState::Filled        => "FILL",
-            OrderState::Unknown       => "??",
-            // Cancelled/Rejected are filtered out above; default just in case.
-            OrderState::Cancelled | OrderState::Rejected => "X",
-        };
-        let side_w = 20.0;
-        let qty_w = qty_str.len() as f32 * 9.0 + 12.0;
-        let notional_w = notional_str.len() as f32 * 9.0 + 12.0;
-        let status_w = status_label.len() as f32 * 6.0 + 8.0;
-        let send_w = if is_draft { 38.0 } else { 0.0 };
-        let x_btn_w = 22.0;
-        let total_w = side_w + qty_w + notional_w + status_w + send_w + x_btn_w + 4.0;
-        // Position badge ~60% from left (shifted 40px left from 2/3)
-        let bx = rect.left() + cw * 0.60 - total_w * 0.5;
-        let by = y - badge_h * 0.5;
-        let badge_alpha: u8 = 220;
-
-        // Check hover on entire badge for pointer + hover highlight
-        let full_badge = egui::Rect::from_min_size(egui::pos2(bx, by), egui::vec2(total_w, badge_h));
-        let badge_hovered = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| full_badge.contains(p));
-        if badge_hovered { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-        let hover_boost: u8 = if badge_hovered { 30 } else { 0 };
-
-        // Side letter section
-        let side_rect = egui::Rect::from_min_size(egui::pos2(bx, by), egui::vec2(side_w, badge_h));
-        let side_bg = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), badge_alpha.saturating_add(20).saturating_add(hover_boost));
-        painter.rect_filled(side_rect, egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 }, side_bg);
-        painter.text(side_rect.center(), egui::Align2::CENTER_CENTER, side_ch, mono_xs(), dark);
-
-        // Qty section
-        let qty_rect = egui::Rect::from_min_size(egui::pos2(side_rect.right(), by), egui::vec2(qty_w, badge_h));
-        painter.rect_filled(qty_rect, 0.0, egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), badge_alpha.saturating_add(hover_boost)));
-        painter.text(qty_rect.center(), egui::Align2::CENTER_CENTER, &qty_str, mono_md(), dark);
-
-        // Notional section
-        let not_rect = egui::Rect::from_min_size(egui::pos2(qty_rect.right(), by), egui::vec2(notional_w, badge_h));
-        painter.rect_filled(not_rect, 0.0, egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), badge_alpha.saturating_sub(10).saturating_add(hover_boost)));
-        painter.text(not_rect.center(), egui::Align2::CENTER_CENTER, &notional_str, mono_md(), dark);
-
-        // Status section (DRAFT / LIVE)
-        let status_rect = egui::Rect::from_min_size(egui::pos2(not_rect.right(), by), egui::vec2(status_w, badge_h));
-        painter.rect_filled(status_rect, 0.0, egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), badge_alpha.saturating_sub(40).saturating_add(hover_boost)));
-        painter.text(status_rect.center(), egui::Align2::CENTER_CENTER, status_label, mono_3xs(), dark);
-
-        // SEND button for drafts (clickable, with hover)
-        if is_draft {
-            let send_rect = egui::Rect::from_min_size(egui::pos2(status_rect.right(), by), egui::vec2(send_w, badge_h));
-            let send_hovered = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| send_rect.contains(p));
-            let send_bg = if send_hovered {
-                egui::Color32::from_rgba_unmultiplied(t.accent.r(), t.accent.g(), t.accent.b(), 180)
-            } else {
-                egui::Color32::from_rgba_unmultiplied(t.accent.r(), t.accent.g(), t.accent.b(), 120)
-            };
-            painter.rect_filled(send_rect, 0.0, send_bg);
-            painter.text(send_rect.center(), egui::Align2::CENTER_CENTER, "SEND", mono_2xs(), egui::Color32::WHITE);
-            if send_hovered { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-        }
-
-        // X cancel button (hover state)
-        let x_start = if is_draft { status_rect.right() + send_w } else { status_rect.right() };
-        let x_rect = egui::Rect::from_min_size(egui::pos2(x_start, by), egui::vec2(x_btn_w, badge_h));
-        let x_hovered = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| x_rect.contains(p));
-        let x_bg_alpha = if x_hovered { 160 } else { 80 };
-        painter.rect_filled(x_rect, egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 },
-            color_alpha(t.bear, x_bg_alpha));
-        painter.text(x_rect.center(), egui::Align2::CENTER_CENTER, Icon::X, mono_xs(),
-            if x_hovered { crate::chart_renderer::ui::style::contrast_fg(t.bear) } else { t.bear });
-        if x_hovered { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-
-        // Price label — outside badge, slightly above the line, right of badge
-        let price_d = if order.price >= 10.0 { 2 } else { 4 };
-        chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.1$}", order.price, price_d);
-        painter.text(
-            egui::pos2(full_badge.right() + 6.0, y - 11.0),
-            egui::Align2::LEFT_BOTTOM, &chart.fmt_buf, mono_xs(),
-            egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 200));
-
-        // Y-axis price label
-        let axis_rect = egui::Rect::from_min_size(egui::pos2(rect.left() + cw + 1.0, y - 9.0), egui::vec2(pr - 2.0, 18.0));
-        painter.rect_filled(axis_rect, 2.0, color);
-        painter.text(egui::pos2(axis_rect.center().x, axis_rect.center().y), egui::Align2::CENTER_CENTER,
-            &chart.fmt_buf, mono_xs(), dark);
-    }
+    // Order lines overlay (extracted to render_order_lines, WS-E E4).
+    let any_pulsing_order = render_order_lines(&painter, chart, rect, cw, ch, pt, pr, t, bs, use_gpu_orders, drawing_ppp, edge_left_slot, edge_right_slot, ui, &py, &_drawing_c32);
     if any_pulsing_order {
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(33));
     }
@@ -13131,4 +12881,278 @@ fn render_cvd_overlay(
             }
             painter.text(egui::pos2(rect.left() + 4.0, osc_top + 2.0), egui::Align2::LEFT_TOP,
                 "CVD", mono_2xs(), color_alpha(t.text,120));
+}
+
+/// Order lines overlay: draggable order price lines + badges + pulse (WS-E E4:
+/// extracted from render_chart_pane). Interactive (ui hit-test). Returns whether
+/// any order is pulsing (drives the pane repaint). pulse_time computed internally.
+#[allow(clippy::too_many_arguments)]
+fn render_order_lines(
+    painter: &egui::Painter, chart: &mut Chart, rect: egui::Rect,
+    cw: f32, ch: f32, pt: f32, pr: f32, t: &Theme, bs: f32,
+    use_gpu_orders: bool, drawing_ppp: f32, edge_left_slot: f32, edge_right_slot: f32,
+    ui: &mut egui::Ui, py: impl Fn(f32) -> f32, _drawing_c32: impl Fn(egui::Color32) -> [f32; 4],
+) -> bool {
+    let mut any_pulsing_order = false;
+    // Time used for pulse phase. Read once per pane to keep all pulses in sync.
+    let pulse_time = ui.ctx().input(|i| i.time);
+    for order in &chart.orders {
+        // Terminal cancel/reject: never draw. Filled is kept briefly as a ghost.
+        if order.status == OrderStatus::Cancelled { continue; }
+        // OrderState::Rejected maps to legacy Cancelled, but be defensive.
+        if matches!(order.state, OrderState::Cancelled | OrderState::Rejected) { continue; }
+        let y = py(order.price);
+        if y < rect.top() + pt || y > rect.top() + pt + ch { continue; }
+        let base_color = order.color(t.bull, t.bear);
+        let is_draft = order.status == OrderStatus::Draft;
+        let dark = t.bg;
+        let badge_h = 24.0;
+
+        // ── State-aware visual style ─────────────────────────────────────
+        // Pending* → pulsing amber outline (~1Hz)
+        // Unknown  → pulsing red    outline (~2Hz, more urgent)
+        // Filled   → dim dotted ghost
+        // PartialFill → dashed (existing) + fill pip later
+        // Working  → solid line
+        // Draft    → existing low-alpha dashed
+        let is_pending = matches!(order.state,
+            OrderState::PendingSubmit | OrderState::PendingCancel | OrderState::PendingModify);
+        let is_unknown = matches!(order.state, OrderState::Unknown);
+        let is_partial = matches!(order.state, OrderState::PartialFill);
+        let is_filled  = matches!(order.state, OrderState::Filled);
+        let is_working = matches!(order.state, OrderState::Working);
+
+        // Pulse coefficient in [0.5, 1.0] — sin-driven; 1Hz for pending, 2Hz for unknown.
+        let pulse = |hz: f64| -> f32 {
+            let phase = (pulse_time * std::f64::consts::TAU * hz).sin() as f32;
+            // Map [-1,1] -> [0.5, 1.0]
+            0.5 + 0.5 * (phase * 0.5 + 0.5)
+        };
+
+        // Effective line color and dashing pattern per state.
+        // (color, alpha, dash_w, gap_w, line_thickness)
+        let (line_color, dash_alpha, dash_w_px, gap_w_px, line_th) = if is_unknown {
+            any_pulsing_order = true;
+            let p = pulse(2.0);
+            (t.bear.gamma_multiply(p), 220u8, 4.0_f32, 4.0_f32, 1.5_f32)
+        } else if is_pending {
+            any_pulsing_order = true;
+            let p = pulse(1.0);
+            (t.warn.gamma_multiply(p), 220u8, 5.0_f32, 5.0_f32, 1.5_f32)
+        } else if is_filled {
+            // Ghost: very dim dotted
+            (base_color, 80u8, 2.0_f32, 4.0_f32, 1.0_f32)
+        } else if is_partial {
+            // Dashed (longer dashes than working) + fill pip drawn below
+            (base_color, 220u8, 8.0_f32, 4.0_f32, 1.0_f32)
+        } else if is_working {
+            // Solid: dash_w == stride collapses gaps
+            (base_color, 220u8, 1.0_f32, 0.0_f32, 1.0_f32)
+        } else {
+            // Draft / fallback — keep historical dashed-light look
+            let a = if is_draft { 120u8 } else { 200u8 };
+            (base_color, a, 6.0_f32, 4.0_f32, 1.0_f32)
+        };
+        let dash_color = egui::Color32::from_rgba_unmultiplied(
+            line_color.r(), line_color.g(), line_color.b(), dash_alpha);
+
+        if use_gpu_orders {
+            #[cfg(feature = "gpu_chart_v2")]
+            {
+                use crate::chart::renderer_gpu::LineSegment;
+                let stride_px = dash_w_px + gap_w_px;
+                if is_working || stride_px <= 0.0 {
+                    // Solid: single segment across the visible band
+                    let lc = _drawing_c32(dash_color);
+                    let th = line_th * drawing_ppp;
+                    chart.gpu_render_params.line_segments.push(LineSegment {
+                        start_slot: edge_left_slot, start_val: order.price,
+                        end_slot:   edge_right_slot, end_val:   order.price,
+                        color: lc, thickness: th,
+                        dash_period_px: 0.0, dash_duty: 1.0,
+                    });
+                } else {
+                    let dash_w_slot = dash_w_px / bs;
+                    let stride_slot = stride_px / bs;
+                    let lc = _drawing_c32(dash_color);
+                    let th = line_th * drawing_ppp;
+                    let mut s = edge_left_slot;
+                    while s < edge_right_slot {
+                        let e = (s + dash_w_slot).min(edge_right_slot);
+                        chart.gpu_render_params.line_segments.push(LineSegment {
+                            start_slot: s, start_val: order.price,
+                            end_slot:   e, end_val:   order.price,
+                            color: lc, thickness: th,
+                            dash_period_px: 0.0, dash_duty: 1.0,
+                        });
+                        s += stride_slot;
+                    }
+                }
+            }
+        } else {
+            let stride_px = dash_w_px + gap_w_px;
+            if is_working || stride_px <= 0.0 {
+                painter.line_segment(
+                    [egui::pos2(rect.left(), y), egui::pos2(rect.left() + cw, y)],
+                    egui::Stroke::new(line_th, dash_color));
+            } else {
+                let mut dx = rect.left();
+                while dx < rect.left() + cw {
+                    let end = (dx + dash_w_px).min(rect.left() + cw);
+                    painter.line_segment([egui::pos2(dx, y), egui::pos2(end, y)],
+                        egui::Stroke::new(line_th, dash_color));
+                    dx += stride_px;
+                }
+            }
+        }
+
+        // PartialFill: small filled pip on the line at the fill ratio.
+        if is_partial {
+            let ratio = order.filled_ratio.clamp(0.0, 1.0);
+            let pip_x = rect.left() + cw * ratio;
+            painter.circle_filled(egui::pos2(pip_x, y), 3.0, line_color);
+            painter.circle_stroke(egui::pos2(pip_x, y), 4.5,
+                egui::Stroke::new(1.0,
+                    egui::Color32::from_rgba_unmultiplied(line_color.r(), line_color.g(), line_color.b(), 160)));
+        }
+
+        // Badge color stays anchored to the side palette (Buy=green/Sell=red)
+        // for legibility — only the line itself reflects the lifecycle state.
+        // For Filled ghosts, dim the badge palette too.
+        let color = if is_filled { base_color.gamma_multiply(0.4) } else { base_color };
+
+        // ── Badge: [B/S] [QTY] [notional] [DRAFT/LIVE] [SEND?] [X] ──
+        let side_ch = match order.side {
+            OrderSide::Buy | OrderSide::TriggerBuy => "B",
+            OrderSide::Sell | OrderSide::TriggerSell => "S",
+            OrderSide::Stop | OrderSide::OcoStop => "S",
+            OrderSide::OcoTarget => "T",
+        };
+        let qty_str = format!("{}", order.qty);
+        let notional_str = fmt_notional(order.notional());
+        // Surface the lifecycle state in the badge label so the operator can
+        // disambiguate at a glance (especially the pending/unknown variants).
+        let status_label = match order.state {
+            OrderState::Draft         => "DRAFT",
+            OrderState::PendingSubmit => "SEND…",
+            OrderState::PendingCancel => "CXL…",
+            OrderState::PendingModify => "MOD…",
+            OrderState::Working       => "LIVE",
+            OrderState::PartialFill   => "PART",
+            OrderState::Filled        => "FILL",
+            OrderState::Unknown       => "??",
+            // Cancelled/Rejected are filtered out above; default just in case.
+            OrderState::Cancelled | OrderState::Rejected => "X",
+        };
+        let side_w = 20.0;
+        let qty_w = qty_str.len() as f32 * 9.0 + 12.0;
+        let notional_w = notional_str.len() as f32 * 9.0 + 12.0;
+        let status_w = status_label.len() as f32 * 6.0 + 8.0;
+        let send_w = if is_draft { 38.0 } else { 0.0 };
+        let x_btn_w = 22.0;
+        let total_w = side_w + qty_w + notional_w + status_w + send_w + x_btn_w + 4.0;
+        // Position badge ~60% from left (shifted 40px left from 2/3)
+        let bx = rect.left() + cw * 0.60 - total_w * 0.5;
+        let by = y - badge_h * 0.5;
+        let badge_alpha: u8 = 220;
+
+        // Check hover on entire badge for pointer + hover highlight
+        let full_badge = egui::Rect::from_min_size(egui::pos2(bx, by), egui::vec2(total_w, badge_h));
+        let badge_hovered = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| full_badge.contains(p));
+        if badge_hovered { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+        let hover_boost: u8 = if badge_hovered { 30 } else { 0 };
+
+        // Side letter section
+        let side_rect = egui::Rect::from_min_size(egui::pos2(bx, by), egui::vec2(side_w, badge_h));
+        let side_bg = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), badge_alpha.saturating_add(20).saturating_add(hover_boost));
+        painter.rect_filled(side_rect, egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 }, side_bg);
+        painter.text(side_rect.center(), egui::Align2::CENTER_CENTER, side_ch, mono_xs(), dark);
+
+        // Qty section
+        let qty_rect = egui::Rect::from_min_size(egui::pos2(side_rect.right(), by), egui::vec2(qty_w, badge_h));
+        painter.rect_filled(qty_rect, 0.0, egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), badge_alpha.saturating_add(hover_boost)));
+        painter.text(qty_rect.center(), egui::Align2::CENTER_CENTER, &qty_str, mono_md(), dark);
+
+        // Notional section
+        let not_rect = egui::Rect::from_min_size(egui::pos2(qty_rect.right(), by), egui::vec2(notional_w, badge_h));
+        painter.rect_filled(not_rect, 0.0, egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), badge_alpha.saturating_sub(10).saturating_add(hover_boost)));
+        painter.text(not_rect.center(), egui::Align2::CENTER_CENTER, &notional_str, mono_md(), dark);
+
+        // Status section (DRAFT / LIVE)
+        let status_rect = egui::Rect::from_min_size(egui::pos2(not_rect.right(), by), egui::vec2(status_w, badge_h));
+        painter.rect_filled(status_rect, 0.0, egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), badge_alpha.saturating_sub(40).saturating_add(hover_boost)));
+        painter.text(status_rect.center(), egui::Align2::CENTER_CENTER, status_label, mono_3xs(), dark);
+
+        // SEND button for drafts (clickable, with hover)
+        if is_draft {
+            let send_rect = egui::Rect::from_min_size(egui::pos2(status_rect.right(), by), egui::vec2(send_w, badge_h));
+            let send_hovered = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| send_rect.contains(p));
+            let send_bg = if send_hovered {
+                egui::Color32::from_rgba_unmultiplied(t.accent.r(), t.accent.g(), t.accent.b(), 180)
+            } else {
+                egui::Color32::from_rgba_unmultiplied(t.accent.r(), t.accent.g(), t.accent.b(), 120)
+            };
+            painter.rect_filled(send_rect, 0.0, send_bg);
+            painter.text(send_rect.center(), egui::Align2::CENTER_CENTER, "SEND", mono_2xs(), egui::Color32::WHITE);
+            if send_hovered { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+        }
+
+        // X cancel button (hover state)
+        let x_start = if is_draft { status_rect.right() + send_w } else { status_rect.right() };
+        let x_rect = egui::Rect::from_min_size(egui::pos2(x_start, by), egui::vec2(x_btn_w, badge_h));
+        let x_hovered = ui.input(|i| i.pointer.hover_pos()).map_or(false, |p| x_rect.contains(p));
+        let x_bg_alpha = if x_hovered { 160 } else { 80 };
+        painter.rect_filled(x_rect, egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 },
+            color_alpha(t.bear, x_bg_alpha));
+        painter.text(x_rect.center(), egui::Align2::CENTER_CENTER, Icon::X, mono_xs(),
+            if x_hovered { crate::chart_renderer::ui::style::contrast_fg(t.bear) } else { t.bear });
+        if x_hovered { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+
+        // Price label — outside badge, slightly above the line, right of badge
+        let price_d = if order.price >= 10.0 { 2 } else { 4 };
+        chart.fmt_buf.clear(); let _ = write!(chart.fmt_buf, "{:.1$}", order.price, price_d);
+        painter.text(
+            egui::pos2(full_badge.right() + 6.0, y - 11.0),
+            egui::Align2::LEFT_BOTTOM, &chart.fmt_buf, mono_xs(),
+            egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 200));
+
+        // Y-axis price label
+        let axis_rect = egui::Rect::from_min_size(egui::pos2(rect.left() + cw + 1.0, y - 9.0), egui::vec2(pr - 2.0, 18.0));
+        painter.rect_filled(axis_rect, 2.0, color);
+        painter.text(egui::pos2(axis_rect.center().x, axis_rect.center().y), egui::Align2::CENTER_CENTER,
+            &chart.fmt_buf, mono_xs(), dark);
+    }
+    any_pulsing_order
+}
+
+/// Trigger-level lines overlay (WS-E E4: extracted from render_chart_pane).
+#[allow(clippy::too_many_arguments)]
+fn render_trigger_levels(
+    painter: &egui::Painter, chart: &Chart, rect: egui::Rect, cw: f32, t: &Theme, py: impl Fn(f32) -> f32,
+) {
+    for tl in &chart.trigger_levels {
+        let y = py(tl.trigger_price);
+        if !y.is_finite() || y.abs() > 50000.0 { continue; }
+        let is_buy = tl.side == OrderSide::Buy;
+        let color = if is_buy { t.bull } else { t.bear };
+        let alpha = if tl.submitted { 180 } else { 255 };
+        let label = format!("{} {} {} {:.2} x{}", Icon::LIGHTNING,
+            if is_buy { "BUY" } else { "SELL" }, tl.option_type, tl.trigger_price, tl.qty);
+        let status = if tl.submitted { " LIVE" } else { " DRAFT" };
+        // Dashed line
+        dashed_line(&painter, egui::pos2(rect.left(), y), egui::pos2(rect.left()+cw, y),
+            egui::Stroke::new(1.5, color_alpha(color, alpha)), LineStyle::Dashed);
+        // Label on the left
+        painter.text(egui::pos2(rect.left() + 4.0, y - 12.0), egui::Align2::LEFT_BOTTOM,
+            &label, mono_xs(), color_alpha(color, alpha));
+        // Status badge on the right
+        painter.text(egui::pos2(rect.left() + cw - 4.0, y - 12.0), egui::Align2::RIGHT_BOTTOM,
+            status, mono_2xs(), color_alpha(color, 120));
+        // Y-axis price tag
+        let tag_w = 54.0;
+        let tag_rect = egui::Rect::from_min_size(egui::pos2(rect.left() + cw, y - 8.0), egui::vec2(tag_w, 16.0));
+        painter.rect_filled(tag_rect, 2.0, color_alpha(color, alpha));
+        painter.text(tag_rect.center(), egui::Align2::CENTER_CENTER,
+            &format!("{:.2}", tl.trigger_price), mono_xs(), egui::Color32::WHITE);
+    }
 }
