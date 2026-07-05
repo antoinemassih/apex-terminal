@@ -5920,38 +5920,8 @@ fn render_chart_pane(
 
         // CVD (Cumulative Volume Delta) in oscillator panel
         if chart.show_cvd && chart.cvd_data.len() == n {
-            let start_c = vs.floor() as usize;
-            let end_c = (start_c + chart.vc as usize + 8).min(n);
-            let mut cvd_min = f32::MAX;
-            let mut cvd_max = f32::MIN;
-            for i in start_c..end_c {
-                let v = chart.cvd_data[i];
-                if cvd_min > v { cvd_min = v; }
-                if cvd_max < v { cvd_max = v; }
-            }
-            if cvd_max <= cvd_min { cvd_max = cvd_min + 1.0; }
-            let cvd_range = cvd_max - cvd_min;
-            let cvd_py = |v: f32| -> f32 { osc_bottom - (v - cvd_min) / cvd_range * (osc_bottom - osc_top) };
-            let zero_y = cvd_py(0.0_f32);
-            if zero_y >= osc_top && zero_y <= osc_bottom {
-                painter.line_segment([egui::pos2(rect.left(), zero_y), egui::pos2(rect.left()+cw, zero_y)],
-                    egui::Stroke::new(style::stroke_thin(), color_alpha(t.text,30)));
-            }
-            for i in start_c..end_c.saturating_sub(1) {
-                let y0 = cvd_py(chart.cvd_data[i]);
-                let y1 = cvd_py(chart.cvd_data[i+1]);
-                let rising = chart.cvd_data[i+1] > chart.cvd_data[i];
-                let color = if rising {
-                    color_alpha(t.bull, 200)
-                } else {
-                    color_alpha(t.bear, 200)
-                };
-                painter.line_segment([egui::pos2(bx(i as f32), y0), egui::pos2(bx((i+1) as f32), y1)],
-                    egui::Stroke::new(1.5, color));
-            }
-            painter.text(egui::pos2(rect.left() + 4.0, osc_top + 2.0), egui::Align2::LEFT_TOP,
-                "CVD", mono_2xs(), color_alpha(t.text,120));
-        }
+        render_cvd_overlay(&painter, chart, rect, cw, t, vs, osc_top, osc_bottom, n, &bx);
+    }
 
         // ── Divergence lines on oscillator pane ──
         if chart.show_divergences && !chart.divergence_markers.is_empty() {
@@ -6239,46 +6209,7 @@ fn render_chart_pane(
 
     // ── Candlestick pattern labels (from ApexSignals) ────────────────────
     if chart.show_pattern_labels && !chart.pattern_labels.is_empty() {
-        let bars_ref = if chart.candle_mode == CandleMode::Standard { &chart.bars } else { &chart.alt.bars };
-        let ts_ref = if chart.candle_mode == CandleMode::Standard { &chart.timestamps } else { &chart.alt.timestamps };
-        for pl in &chart.pattern_labels {
-            let bar_f = SignalDrawing::time_to_bar(pl.time, ts_ref);
-            let x = bx(bar_f);
-            if x < rect.left() - 5.0 || x > rect.left() + cw + 5.0 { continue; }
-            let bar_idx = bar_f.round() as usize;
-            let (bar_low, bar_high) = if let Some(bar) = bars_ref.get(bar_idx) {
-                (bar.low, bar.high)
-            } else { continue; };
-            let alpha = (180.0 * pl.confidence.clamp(0.3, 1.0)) as u8;
-            if pl.bullish {
-                // Green upward triangle below bar's low
-                let base_y = py(bar_low) + 4.0;
-                let tri_col = color_alpha(t.bull, alpha);
-                let tri = vec![
-                    egui::pos2(x, base_y),
-                    egui::pos2(x - 4.0, base_y + 7.0),
-                    egui::pos2(x + 4.0, base_y + 7.0),
-                ];
-                painter.add(egui::Shape::convex_polygon(tri, tri_col, egui::Stroke::NONE));
-                // Abbreviated label below triangle
-                let abbrev: &str = if pl.label.len() > 3 { &pl.label[..3] } else { &pl.label };
-                painter.text(egui::pos2(x, base_y + 10.0), egui::Align2::CENTER_TOP,
-                    abbrev, mono_3xs(), color_alpha(t.bull, alpha));
-            } else {
-                // Red downward triangle above bar's high
-                let base_y = py(bar_high) - 4.0;
-                let tri_col = color_alpha(t.bear, alpha);
-                let tri = vec![
-                    egui::pos2(x, base_y),
-                    egui::pos2(x - 4.0, base_y - 7.0),
-                    egui::pos2(x + 4.0, base_y - 7.0),
-                ];
-                painter.add(egui::Shape::convex_polygon(tri, tri_col, egui::Stroke::NONE));
-                let abbrev: &str = if pl.label.len() > 3 { &pl.label[..3] } else { &pl.label };
-                painter.text(egui::pos2(x, base_y - 10.0), egui::Align2::CENTER_BOTTOM,
-                    abbrev, mono_3xs(), color_alpha(t.bear, alpha));
-            }
-        }
+        render_pattern_labels_overlay(&painter, chart, rect, cw, t, &py, &bx);
     }
 
     // ── Demo signal data (toggled by chart.signal_demo flag) ───────────
@@ -7815,276 +7746,8 @@ fn render_chart_pane(
                 // large readable cards. Alternates left/right. Highlights POC,
                 // heaviest buy/sell, and absorption levels.
                 if chart.show_footprint {
-                    if let Some(bar_data) = chart.bars.get(bar_idx) {
-                        let bar_x = bx(bar_idx as f32);
-                        let bar_range = bar_data.high - bar_data.low;
-                        if bar_range > 0.0 && bar_data.volume > 0.0 {
-                            let num_levels = 8;
-                            let micro = bar_micro_profile(bar_data, num_levels);
-                            let is_bull = bar_data.close >= bar_data.open;
-                            let total_weight: f32 = micro.iter().map(|m| m.1).sum();
-                            let bar_top_y = py(bar_data.high);
-                            let bar_bot_y = py(bar_data.low);
-
-                            // ── Compute all insights before rendering ──
-                            let total_weight: f32 = micro.iter().map(|m| m.1).sum();
-                            struct FpLevel { price: f32, vol: f32, buy: f32, sell: f32, delta: f32, buy_ratio: f32, imbalance: f32 }
-                            let fp_levels: Vec<FpLevel> = micro.iter().map(|(price, wf, br)| {
-                                let vol = bar_data.volume * wf / total_weight.max(0.001);
-                                let buy = vol * br; let sell = vol * (1.0 - br);
-                                let bigger = buy.max(sell); let smaller = buy.min(sell);
-                                let imbalance = if smaller > 0.0 { bigger / smaller } else { 10.0 };
-                                FpLevel { price: *price, vol, buy, sell, delta: buy - sell, buy_ratio: *br, imbalance }
-                            }).collect();
-
-                            let total_delta: f32 = fp_levels.iter().map(|l| l.delta).sum();
-                            let total_buy: f32 = fp_levels.iter().map(|l| l.buy).sum();
-                            let total_sell: f32 = fp_levels.iter().map(|l| l.sell).sum();
-                            let buy_pct = total_buy / (total_buy + total_sell).max(0.001) * 100.0;
-                            let conviction = (total_delta.abs() / bar_data.volume.max(0.001) * 100.0).min(100.0);
-                            let poc_idx = fp_levels.iter().enumerate().max_by(|a, b| a.1.vol.partial_cmp(&b.1.vol).unwrap_or(std::cmp::Ordering::Equal)).map(|(i,_)| i).unwrap_or(0);
-                            let max_buy_idx = fp_levels.iter().enumerate().max_by(|a, b| a.1.delta.partial_cmp(&b.1.delta).unwrap_or(std::cmp::Ordering::Equal)).map(|(i,_)| i).unwrap_or(0);
-                            let max_sell_idx = fp_levels.iter().enumerate().min_by(|a, b| a.1.delta.partial_cmp(&b.1.delta).unwrap_or(std::cmp::Ordering::Equal)).map(|(i,_)| i).unwrap_or(0);
-
-                            // Upper/lower half volume concentration
-                            let half = fp_levels.len() / 2;
-                            let upper_vol: f32 = fp_levels[half..].iter().map(|l| l.vol).sum();
-                            let lower_vol: f32 = fp_levels[..half].iter().map(|l| l.vol).sum();
-                            let upper_pct = upper_vol / (upper_vol + lower_vol).max(0.001) * 100.0;
-
-                            // Wick analysis
-                            let upper_wick = bar_data.high - bar_data.open.max(bar_data.close);
-                            let lower_wick = bar_data.open.min(bar_data.close) - bar_data.low;
-                            let body_size = (bar_data.close - bar_data.open).abs();
-                            let wick_insight = if upper_wick > body_size * 1.5 && upper_wick > lower_wick * 2.0 {
-                                Some(("REJECTION", "Long upper wick — sellers rejected higher prices", t.bear))
-                            } else if lower_wick > body_size * 1.5 && lower_wick > upper_wick * 2.0 {
-                                Some(("ABSORPTION", "Long lower wick — buyers absorbed selling", t.bull))
-                            } else if upper_wick > body_size && lower_wick > body_size {
-                                Some(("INDECISION", "Long wicks both sides — neither side in control", t.dim))
-                            } else { None };
-
-                            // Exhaustion: counter-trend volume at wick tips
-                            let top_level = fp_levels.last();
-                            let bot_level = fp_levels.first();
-                            let exhaustion = if is_bull {
-                                // Bull candle with heavy selling at the top = exhaustion
-                                top_level.map_or(false, |l| l.sell > l.buy * 1.3 && l.vol > bar_data.volume / num_levels as f32)
-                            } else {
-                                // Bear candle with heavy buying at the bottom = exhaustion
-                                bot_level.map_or(false, |l| l.buy > l.sell * 1.3 && l.vol > bar_data.volume / num_levels as f32)
-                            };
-
-                            // Trapped traders: high volume at wick extremes
-                            let trapped = if is_bull {
-                                bot_level.map_or(false, |l| l.sell > l.buy * 1.5 && l.vol > bar_data.volume / num_levels as f32 * 1.2)
-                            } else {
-                                top_level.map_or(false, |l| l.buy > l.sell * 1.5 && l.vol > bar_data.volume / num_levels as f32 * 1.2)
-                            };
-
-                            // RVOL for this bar
-                            let rvol = if bar_idx < chart.rvol_data.len() { chart.rvol_data[bar_idx] } else { 1.0 };
-
-                            // ── Header insights panel (across the top) ──
-                            let header_h = 68.0;
-                            let dim_w = 520.0;
-                            let dim_x = (bar_x - dim_w / 2.0).max(rect.left());
-                            let header_y = (bar_top_y - header_h - 16.0).max(rect.top() + pt + 2.0);
-                            let dim_top = header_y;
-                            let dim_bot = (bar_bot_y + 8.0).min(rect.top() + pt + ch);
-
-                            // Dim background behind the entire infographic area
-                            painter.rect_filled(egui::Rect::from_min_max(
-                                egui::pos2(dim_x, dim_top), egui::pos2(dim_x + dim_w, dim_bot)),
-                                0.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 190));
-
-                            // Header card
-                            let hdr_rect = egui::Rect::from_min_size(egui::pos2(dim_x + 4.0, header_y + 2.0), egui::vec2(dim_w - 8.0, header_h - 4.0));
-                            painter.rect_filled(hdr_rect, 4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 240));
-                            let dir_col = if is_bull { t.bull } else { t.bear };
-                            painter.rect_stroke(hdr_rect, 4.0, egui::Stroke::new(1.0, color_alpha(dir_col, 80)), egui::StrokeKind::Outside);
-
-                            let hx = hdr_rect.left() + 10.0;
-                            let hy = hdr_rect.top();
-                            let hdr_font = mono_md();
-                            let hdr_med = mono_xs();
-                            let hdr_sm = mono_xs_plus();
-
-                            // Row 1: Direction + Delta + Buy/Sell split + Conviction + RVOL
-                            let dir_label = if is_bull { "BULL" } else { "BEAR" };
-                            painter.text(egui::pos2(hx, hy + 14.0), egui::Align2::LEFT_CENTER, dir_label, hdr_font.clone(), dir_col);
-                            painter.text(egui::pos2(hx + 50.0, hy + 14.0), egui::Align2::LEFT_CENTER,
-                                &format!("\u{0394} {:+.0}", total_delta), hdr_font.clone(), dir_col);
-                            painter.text(egui::pos2(hx + 150.0, hy + 14.0), egui::Align2::LEFT_CENTER,
-                                &format!("Buy {:.0}%  Sell {:.0}%", buy_pct, 100.0 - buy_pct), hdr_med.clone(), color_alpha(t.text,180));
-                            // Conviction bar (visual)
-                            let conv_x = hx + 320.0;
-                            let conv_w = 80.0;
-                            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(conv_x, hy + 8.0), egui::vec2(conv_w, 12.0)),
-                                3.0, color_alpha(t.text,15));
-                            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(conv_x, hy + 8.0), egui::vec2(conv_w * conviction / 100.0, 12.0)),
-                                3.0, color_alpha(dir_col, if conviction > 60.0 { 150 } else { 60 }));
-                            painter.text(egui::pos2(conv_x + conv_w + 6.0, hy + 14.0), egui::Align2::LEFT_CENTER,
-                                &format!("{:.0}%", conviction), hdr_sm.clone(),
-                                if conviction > 60.0 { dir_col } else { t.dim });
-                            if rvol > 1.5 {
-                                painter.text(egui::pos2(hdr_rect.right() - 10.0, hy + 14.0), egui::Align2::RIGHT_CENTER,
-                                    &format!("{:.1}x vol", rvol), hdr_med.clone(),
-                                    if rvol > 2.5 { COLOR_AMBER } else { color_alpha(t.text,160) });
-                            }
-
-                            // Row 2: Volume concentration (visual bar) + POC price
-                            let conc_bar_x = hx;
-                            let conc_bar_w = 120.0;
-                            let conc_y = hy + 32.0;
-                            let upper_w = conc_bar_w * upper_pct / 100.0;
-                            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(conc_bar_x, conc_y), egui::vec2(upper_w, 10.0)),
-                                2.0, egui::Color32::from_rgba_unmultiplied(100, 180, 255, 80));
-                            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(conc_bar_x + upper_w, conc_y), egui::vec2(conc_bar_w - upper_w, 10.0)),
-                                2.0, egui::Color32::from_rgba_unmultiplied(180, 130, 255, 80));
-                            painter.text(egui::pos2(conc_bar_x + conc_bar_w + 6.0, conc_y + 5.0), egui::Align2::LEFT_CENTER,
-                                &format!("Upper {:.0}%  Lower {:.0}%", upper_pct, 100.0 - upper_pct), hdr_sm.clone(), color_alpha(t.text,130));
-                            painter.text(egui::pos2(hx + 320.0, conc_y + 5.0), egui::Align2::LEFT_CENTER,
-                                &format!("POC {:.2}", fp_levels[poc_idx].price), hdr_med.clone(), COLOR_AMBER);
-
-                            // Row 3: Insight tags (larger, pill-shaped)
-                            let mut tag_x = hx;
-                            let tag_y = hy + 52.0;
-                            let draw_tag = |painter: &egui::Painter, x: &mut f32, label: &str, col: egui::Color32| {
-                                let tag_font = egui::FontId::monospace(9.5);
-                                let galley = painter.layout_no_wrap(label.to_string(), tag_font.clone(), col);
-                                let tw = galley.size().x + 14.0;
-                                let th = 16.0;
-                                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(*x, tag_y - th / 2.0), egui::vec2(tw, th)),
-                                    th / 2.0, egui::Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 30));
-                                painter.rect_stroke(egui::Rect::from_min_size(egui::pos2(*x, tag_y - th / 2.0), egui::vec2(tw, th)),
-                                    th / 2.0, egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 60)), egui::StrokeKind::Outside);
-                                painter.text(egui::pos2(*x + tw / 2.0, tag_y), egui::Align2::CENTER_CENTER, label, tag_font, col);
-                                *x += tw + 6.0;
-                            };
-                            if exhaustion { draw_tag(&painter, &mut tag_x, "EXHAUSTION", COLOR_AMBER); }
-                            if trapped { draw_tag(&painter, &mut tag_x, "TRAPPED", egui::Color32::from_rgb(200, 100, 200)); }
-                            if let Some((label, _, col)) = wick_insight { draw_tag(&painter, &mut tag_x, label, col); }
-                            // Imbalance tags
-                            for l in &fp_levels {
-                                if l.imbalance > 2.5 {
-                                    let side = if l.buy > l.sell { "BUY" } else { "SELL" };
-                                    draw_tag(&painter, &mut tag_x, &format!("{:.0}:1 {} @ {:.2}", l.imbalance, side, l.price),
-                                        if l.buy > l.sell { t.bull } else { t.bear });
-                                    break; // only show strongest imbalance
-                                }
-                            }
-
-                            // Highlight the candle itself
-                            let candle_w = (bs * 0.8).max(4.0);
-                            painter.rect_stroke(egui::Rect::from_min_max(
-                                egui::pos2(bar_x - candle_w, bar_top_y - 2.0),
-                                egui::pos2(bar_x + candle_w, bar_bot_y + 2.0)),
-                                2.0, egui::Stroke::new(1.5, color_alpha(t.text,100)), egui::StrokeKind::Outside);
-
-                            let card_w = 200.0;
-                            let card_h = 48.0;
-                            let arm_len = 110.0;
-
-                            for (li, info) in fp_levels.iter().enumerate() {
-                                let y = py(info.price);
-                                if !y.is_finite() || y < rect.top() + pt + 5.0 || y > rect.top() + pt + ch - 5.0 { continue; }
-
-                                // Alternate left/right
-                                let go_left = li % 2 == 0;
-                                let card_x = if go_left { bar_x - arm_len - card_w } else { bar_x + arm_len };
-                                let elbow_x = if go_left { bar_x - candle_w - 4.0 } else { bar_x + candle_w + 4.0 };
-                                let arm_end_x = if go_left { card_x + card_w } else { card_x };
-
-                                // Callout line: horizontal from candle edge to card
-                                let line_col = color_alpha(t.text,60);
-                                painter.line_segment([egui::pos2(elbow_x, y), egui::pos2(arm_end_x, y)], egui::Stroke::new(1.0, line_col));
-                                // Dot at the candle connection point
-                                painter.circle_filled(egui::pos2(elbow_x, y), 3.5, color_alpha(t.text,100));
-                                painter.circle_stroke(egui::pos2(elbow_x, y), 3.5, egui::Stroke::new(0.5, color_alpha(t.text,40)));
-
-                                // Card background
-                                let card_rect = egui::Rect::from_min_size(egui::pos2(card_x, y - card_h / 2.0), egui::vec2(card_w, card_h));
-                                let is_poc = li == poc_idx;
-                                let is_max_buy = li == max_buy_idx && info.delta > 0.0;
-                                let is_max_sell = li == max_sell_idx && info.delta < 0.0;
-                                let card_border = if is_poc {
-                                    color_alpha(COLOR_AMBER, 120)
-                                } else if is_max_buy {
-                                    color_alpha(t.bull, 80)
-                                } else if is_max_sell {
-                                    color_alpha(t.bear, 80)
-                                } else {
-                                    color_alpha(t.toolbar_border, 40)
-                                };
-                                painter.rect_filled(card_rect, 6.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 245));
-                                painter.rect_stroke(card_rect, 6.0, egui::Stroke::new(if is_poc { 2.0 } else { 1.0 }, card_border), egui::StrokeKind::Outside);
-
-                                // Card content — bigger, more visual
-                                let font_price = mono_md();
-                                let font_vol = mono_xs();
-                                let font_delta = mono_xs_plus();
-                                let font_tag = mono_xs();
-                                let cx = card_x + 8.0;
-                                let cy = y - card_h / 2.0;
-
-                                // Line 1: Price (large, bright) + Tag
-                                painter.text(egui::pos2(cx, cy + 13.0), egui::Align2::LEFT_CENTER,
-                                    &format!("{:.2}", info.price), font_price.clone(), egui::Color32::WHITE);
-
-                                // Tag badge (POC / BUY / SELL / ABS) — right-aligned on line 1
-                                let absorption = info.vol > bar_data.volume / num_levels as f32 * 1.3 && info.delta.abs() < info.vol * 0.15;
-                                let (tag_text, tag_col) = if is_poc {
-                                    ("POC", COLOR_AMBER)
-                                } else if is_max_buy && info.delta > 0.0 {
-                                    ("BUY", t.bull)
-                                } else if is_max_sell && info.delta < 0.0 {
-                                    ("SELL", t.bear)
-                                } else if absorption {
-                                    ("ABS", egui::Color32::from_rgb(180, 160, 220))
-                                } else {
-                                    ("", egui::Color32::TRANSPARENT)
-                                };
-                                if !tag_text.is_empty() {
-                                    let tag_galley = painter.layout_no_wrap(tag_text.to_string(), font_tag.clone(), tag_col);
-                                    let tw = tag_galley.size().x + 10.0;
-                                    let tag_x = card_x + card_w - tw - 6.0;
-                                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(tag_x, cy + 5.0), egui::vec2(tw, 16.0)),
-                                        4.0, egui::Color32::from_rgba_unmultiplied(tag_col.r(), tag_col.g(), tag_col.b(), 30));
-                                    painter.text(egui::pos2(tag_x + tw / 2.0, cy + 13.0), egui::Align2::CENTER_CENTER,
-                                        tag_text, font_tag.clone(), tag_col);
-                                }
-
-                                // Line 2: Buy/Sell bar (tall, clear) + Delta (large)
-                                let bar_y = cy + 28.0;
-                                let bar_h = 12.0;
-                                let bar_total_w = card_w - 80.0;
-                                let buy_frac = info.buy_ratio;
-                                let sell_bar_w = bar_total_w * (1.0 - buy_frac);
-                                let buy_bar_w = bar_total_w * buy_frac;
-                                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx, bar_y), egui::vec2(sell_bar_w, bar_h)),
-                                    3.0, color_alpha(t.bear, 150));
-                                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx + sell_bar_w, bar_y), egui::vec2(buy_bar_w, bar_h)),
-                                    3.0, color_alpha(t.bull, 150));
-                                // Sell/Buy labels inside the bars (if wide enough)
-                                if sell_bar_w > 30.0 {
-                                    painter.text(egui::pos2(cx + sell_bar_w / 2.0, bar_y + bar_h / 2.0), egui::Align2::CENTER_CENTER,
-                                        &format!("{:.0}", info.sell), mono_2xs(), color_alpha(t.text,200));
-                                }
-                                if buy_bar_w > 30.0 {
-                                    painter.text(egui::pos2(cx + sell_bar_w + buy_bar_w / 2.0, bar_y + bar_h / 2.0), egui::Align2::CENTER_CENTER,
-                                        &format!("{:.0}", info.buy), mono_2xs(), color_alpha(t.text,200));
-                                }
-                                // Delta — large, right side
-                                let delta_col = if info.delta > 0.0 { t.bull } else { t.bear };
-                                painter.text(egui::pos2(card_x + card_w - 8.0, bar_y + bar_h / 2.0), egui::Align2::RIGHT_CENTER,
-                                    &format!("{:+.0}", info.delta), font_delta.clone(), delta_col);
-                            }
-
-                            // (Summary moved to header panel above)
-                        }
-                    }
-                }
+        render_footprint_overlay(&painter, chart, rect, ch, pt, t, bar_idx, bs, &py, &bx);
+    }
             }
         }
     }
@@ -8105,78 +7768,7 @@ fn render_chart_pane(
 
     // ── P&L equity curve (mini overlay) ──────────────────────────────────
     if chart.show_pnl_curve {
-        let pnl_h = 60.0_f32;
-        let pnl_top = rect.top() + pt + ch - pnl_h;
-        let pnl_bottom = rect.top() + pt + ch;
-        let pnl_rect = egui::Rect::from_min_max(
-            egui::pos2(rect.left(), pnl_top),
-            egui::pos2(rect.left() + cw, pnl_bottom),
-        );
-        // Subtle background
-        painter.rect_filled(pnl_rect, 0.0, egui::Color32::from_rgba_unmultiplied(t.bg.r(), t.bg.g(), t.bg.b(), 180));
-        painter.line_segment(
-            [egui::pos2(rect.left(), pnl_top), egui::pos2(rect.left() + cw, pnl_top)],
-            egui::Stroke::new(style::stroke_thin(), t.dim.gamma_multiply(0.3)));
-
-        // Real session equity curve from accumulated daily-P&L samples
-        // (populated by the account poller). Scaled symmetrically around zero so
-        // the mid-line reads as break-even.
-        let pnl_hist = crate::chart_renderer::trading::pnl_history();
-        if pnl_hist.len() >= 2 {
-            let mag = pnl_hist.iter().map(|&(_, v)| v.abs()).fold(1.0_f32, f32::max);
-            let span = 2.0 * mag;
-            let n = pnl_hist.len();
-            let last_v = pnl_hist.last().map(|&(_, v)| v).unwrap_or(0.0);
-            let line_col = if last_v >= 0.0 { t.bull } else { t.bear };
-            let pts: Vec<egui::Pos2> = pnl_hist.iter().enumerate().map(|(i, &(_, v))| {
-                let x = rect.left() + cw * (i as f32 / (n - 1) as f32);
-                let y = pnl_top + pnl_h * (1.0 - (v + mag) / span);
-                egui::pos2(x, y.clamp(pnl_top, pnl_bottom))
-            }).collect();
-            painter.add(egui::Shape::line(pts, egui::Stroke::new(style::stroke_thin(), line_col)));
-        }
-
-        // Value labels (Day / Unrealized) from the latest account snapshot.
-        if let Some((ref acct, _, _)) = account_data_cached {
-            let daily = acct.daily_pnl;
-            let unr = acct.unrealized_pnl;
-            let pnl_color = if daily >= 0.0 { t.bull } else { t.bear };
-            let unr_color = if unr >= 0.0 { t.bull } else { t.bear };
-            painter.text(
-                egui::pos2(rect.left() + 8.0, pnl_top + 14.0),
-                egui::Align2::LEFT_CENTER,
-                "P&L",
-                mono_xs(),
-                t.dim.gamma_multiply(0.5),
-            );
-            painter.text(
-                egui::pos2(rect.left() + 36.0, pnl_top + 14.0),
-                egui::Align2::LEFT_CENTER,
-                &format!("Day {:+.0}", daily),
-                mono_xs_plus(),
-                pnl_color,
-            );
-            painter.text(
-                egui::pos2(rect.left() + 110.0, pnl_top + 14.0),
-                egui::Align2::LEFT_CENTER,
-                &format!("Unr {:+.0}", unr),
-                mono_xs_plus(),
-                unr_color,
-            );
-            // Zero line
-            let zero_y = pnl_top + pnl_h / 2.0;
-            painter.line_segment(
-                [egui::pos2(rect.left(), zero_y), egui::pos2(rect.left() + cw, zero_y)],
-                egui::Stroke::new(style::stroke_hair(), t.dim.gamma_multiply(0.2)));
-        } else {
-            painter.text(
-                egui::pos2(pnl_rect.center().x, pnl_rect.center().y),
-                egui::Align2::CENTER_CENTER,
-                "P&L — no IB data",
-                mono_xs(),
-                t.dim.gamma_multiply(0.4),
-            );
-        }
+        render_pnl_curve_overlay(&painter, chart, rect, cw, ch, pt, t, account_data_cached);
     }
 
     span_begin("pane_chrome");
@@ -13098,4 +12690,445 @@ fn render_ma_ribbon_overlay(
                 painter.add(egui::Shape::convex_polygon(pts, color, egui::Stroke::NONE));
             }
         }
+}
+
+/// render_pnl_curve_overlay (WS-E E4: extracted from render_chart_pane). Verbatim; guard at call site.
+#[allow(clippy::too_many_arguments)]
+fn render_pnl_curve_overlay(
+    painter: &egui::Painter, chart: &Chart, rect: egui::Rect, cw: f32, ch: f32, pt: f32, t: &Theme,
+    account_data_cached: &Option<(AccountSummary, Vec<Position>, Vec<IbOrder>)>,
+) {
+        let pnl_h = 60.0_f32;
+        let pnl_top = rect.top() + pt + ch - pnl_h;
+        let pnl_bottom = rect.top() + pt + ch;
+        let pnl_rect = egui::Rect::from_min_max(
+            egui::pos2(rect.left(), pnl_top),
+            egui::pos2(rect.left() + cw, pnl_bottom),
+        );
+        // Subtle background
+        painter.rect_filled(pnl_rect, 0.0, egui::Color32::from_rgba_unmultiplied(t.bg.r(), t.bg.g(), t.bg.b(), 180));
+        painter.line_segment(
+            [egui::pos2(rect.left(), pnl_top), egui::pos2(rect.left() + cw, pnl_top)],
+            egui::Stroke::new(style::stroke_thin(), t.dim.gamma_multiply(0.3)));
+
+        // Real session equity curve from accumulated daily-P&L samples
+        // (populated by the account poller). Scaled symmetrically around zero so
+        // the mid-line reads as break-even.
+        let pnl_hist = crate::chart_renderer::trading::pnl_history();
+        if pnl_hist.len() >= 2 {
+            let mag = pnl_hist.iter().map(|&(_, v)| v.abs()).fold(1.0_f32, f32::max);
+            let span = 2.0 * mag;
+            let n = pnl_hist.len();
+            let last_v = pnl_hist.last().map(|&(_, v)| v).unwrap_or(0.0);
+            let line_col = if last_v >= 0.0 { t.bull } else { t.bear };
+            let pts: Vec<egui::Pos2> = pnl_hist.iter().enumerate().map(|(i, &(_, v))| {
+                let x = rect.left() + cw * (i as f32 / (n - 1) as f32);
+                let y = pnl_top + pnl_h * (1.0 - (v + mag) / span);
+                egui::pos2(x, y.clamp(pnl_top, pnl_bottom))
+            }).collect();
+            painter.add(egui::Shape::line(pts, egui::Stroke::new(style::stroke_thin(), line_col)));
+        }
+
+        // Value labels (Day / Unrealized) from the latest account snapshot.
+        if let Some((ref acct, _, _)) = account_data_cached {
+            let daily = acct.daily_pnl;
+            let unr = acct.unrealized_pnl;
+            let pnl_color = if daily >= 0.0 { t.bull } else { t.bear };
+            let unr_color = if unr >= 0.0 { t.bull } else { t.bear };
+            painter.text(
+                egui::pos2(rect.left() + 8.0, pnl_top + 14.0),
+                egui::Align2::LEFT_CENTER,
+                "P&L",
+                mono_xs(),
+                t.dim.gamma_multiply(0.5),
+            );
+            painter.text(
+                egui::pos2(rect.left() + 36.0, pnl_top + 14.0),
+                egui::Align2::LEFT_CENTER,
+                &format!("Day {:+.0}", daily),
+                mono_xs_plus(),
+                pnl_color,
+            );
+            painter.text(
+                egui::pos2(rect.left() + 110.0, pnl_top + 14.0),
+                egui::Align2::LEFT_CENTER,
+                &format!("Unr {:+.0}", unr),
+                mono_xs_plus(),
+                unr_color,
+            );
+            // Zero line
+            let zero_y = pnl_top + pnl_h / 2.0;
+            painter.line_segment(
+                [egui::pos2(rect.left(), zero_y), egui::pos2(rect.left() + cw, zero_y)],
+                egui::Stroke::new(style::stroke_hair(), t.dim.gamma_multiply(0.2)));
+        } else {
+            painter.text(
+                egui::pos2(pnl_rect.center().x, pnl_rect.center().y),
+                egui::Align2::CENTER_CENTER,
+                "P&L — no IB data",
+                mono_xs(),
+                t.dim.gamma_multiply(0.4),
+            );
+        }
+}
+
+/// render_footprint_overlay (WS-E E4: extracted from render_chart_pane). Verbatim; guard at call site.
+#[allow(clippy::too_many_arguments)]
+fn render_footprint_overlay(
+    painter: &egui::Painter, chart: &Chart, rect: egui::Rect, ch: f32, pt: f32, t: &Theme, bar_idx: usize, bs: f32, py: impl Fn(f32) -> f32, bx: impl Fn(f32) -> f32
+) {
+                    if let Some(bar_data) = chart.bars.get(bar_idx) {
+                        let bar_x = bx(bar_idx as f32);
+                        let bar_range = bar_data.high - bar_data.low;
+                        if bar_range > 0.0 && bar_data.volume > 0.0 {
+                            let num_levels = 8;
+                            let micro = bar_micro_profile(bar_data, num_levels);
+                            let is_bull = bar_data.close >= bar_data.open;
+                            let total_weight: f32 = micro.iter().map(|m| m.1).sum();
+                            let bar_top_y = py(bar_data.high);
+                            let bar_bot_y = py(bar_data.low);
+
+                            // ── Compute all insights before rendering ──
+                            let total_weight: f32 = micro.iter().map(|m| m.1).sum();
+                            struct FpLevel { price: f32, vol: f32, buy: f32, sell: f32, delta: f32, buy_ratio: f32, imbalance: f32 }
+                            let fp_levels: Vec<FpLevel> = micro.iter().map(|(price, wf, br)| {
+                                let vol = bar_data.volume * wf / total_weight.max(0.001);
+                                let buy = vol * br; let sell = vol * (1.0 - br);
+                                let bigger = buy.max(sell); let smaller = buy.min(sell);
+                                let imbalance = if smaller > 0.0 { bigger / smaller } else { 10.0 };
+                                FpLevel { price: *price, vol, buy, sell, delta: buy - sell, buy_ratio: *br, imbalance }
+                            }).collect();
+
+                            let total_delta: f32 = fp_levels.iter().map(|l| l.delta).sum();
+                            let total_buy: f32 = fp_levels.iter().map(|l| l.buy).sum();
+                            let total_sell: f32 = fp_levels.iter().map(|l| l.sell).sum();
+                            let buy_pct = total_buy / (total_buy + total_sell).max(0.001) * 100.0;
+                            let conviction = (total_delta.abs() / bar_data.volume.max(0.001) * 100.0).min(100.0);
+                            let poc_idx = fp_levels.iter().enumerate().max_by(|a, b| a.1.vol.partial_cmp(&b.1.vol).unwrap_or(std::cmp::Ordering::Equal)).map(|(i,_)| i).unwrap_or(0);
+                            let max_buy_idx = fp_levels.iter().enumerate().max_by(|a, b| a.1.delta.partial_cmp(&b.1.delta).unwrap_or(std::cmp::Ordering::Equal)).map(|(i,_)| i).unwrap_or(0);
+                            let max_sell_idx = fp_levels.iter().enumerate().min_by(|a, b| a.1.delta.partial_cmp(&b.1.delta).unwrap_or(std::cmp::Ordering::Equal)).map(|(i,_)| i).unwrap_or(0);
+
+                            // Upper/lower half volume concentration
+                            let half = fp_levels.len() / 2;
+                            let upper_vol: f32 = fp_levels[half..].iter().map(|l| l.vol).sum();
+                            let lower_vol: f32 = fp_levels[..half].iter().map(|l| l.vol).sum();
+                            let upper_pct = upper_vol / (upper_vol + lower_vol).max(0.001) * 100.0;
+
+                            // Wick analysis
+                            let upper_wick = bar_data.high - bar_data.open.max(bar_data.close);
+                            let lower_wick = bar_data.open.min(bar_data.close) - bar_data.low;
+                            let body_size = (bar_data.close - bar_data.open).abs();
+                            let wick_insight = if upper_wick > body_size * 1.5 && upper_wick > lower_wick * 2.0 {
+                                Some(("REJECTION", "Long upper wick — sellers rejected higher prices", t.bear))
+                            } else if lower_wick > body_size * 1.5 && lower_wick > upper_wick * 2.0 {
+                                Some(("ABSORPTION", "Long lower wick — buyers absorbed selling", t.bull))
+                            } else if upper_wick > body_size && lower_wick > body_size {
+                                Some(("INDECISION", "Long wicks both sides — neither side in control", t.dim))
+                            } else { None };
+
+                            // Exhaustion: counter-trend volume at wick tips
+                            let top_level = fp_levels.last();
+                            let bot_level = fp_levels.first();
+                            let exhaustion = if is_bull {
+                                // Bull candle with heavy selling at the top = exhaustion
+                                top_level.map_or(false, |l| l.sell > l.buy * 1.3 && l.vol > bar_data.volume / num_levels as f32)
+                            } else {
+                                // Bear candle with heavy buying at the bottom = exhaustion
+                                bot_level.map_or(false, |l| l.buy > l.sell * 1.3 && l.vol > bar_data.volume / num_levels as f32)
+                            };
+
+                            // Trapped traders: high volume at wick extremes
+                            let trapped = if is_bull {
+                                bot_level.map_or(false, |l| l.sell > l.buy * 1.5 && l.vol > bar_data.volume / num_levels as f32 * 1.2)
+                            } else {
+                                top_level.map_or(false, |l| l.buy > l.sell * 1.5 && l.vol > bar_data.volume / num_levels as f32 * 1.2)
+                            };
+
+                            // RVOL for this bar
+                            let rvol = if bar_idx < chart.rvol_data.len() { chart.rvol_data[bar_idx] } else { 1.0 };
+
+                            // ── Header insights panel (across the top) ──
+                            let header_h = 68.0;
+                            let dim_w = 520.0;
+                            let dim_x = (bar_x - dim_w / 2.0).max(rect.left());
+                            let header_y = (bar_top_y - header_h - 16.0).max(rect.top() + pt + 2.0);
+                            let dim_top = header_y;
+                            let dim_bot = (bar_bot_y + 8.0).min(rect.top() + pt + ch);
+
+                            // Dim background behind the entire infographic area
+                            painter.rect_filled(egui::Rect::from_min_max(
+                                egui::pos2(dim_x, dim_top), egui::pos2(dim_x + dim_w, dim_bot)),
+                                0.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 190));
+
+                            // Header card
+                            let hdr_rect = egui::Rect::from_min_size(egui::pos2(dim_x + 4.0, header_y + 2.0), egui::vec2(dim_w - 8.0, header_h - 4.0));
+                            painter.rect_filled(hdr_rect, 4.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 240));
+                            let dir_col = if is_bull { t.bull } else { t.bear };
+                            painter.rect_stroke(hdr_rect, 4.0, egui::Stroke::new(1.0, color_alpha(dir_col, 80)), egui::StrokeKind::Outside);
+
+                            let hx = hdr_rect.left() + 10.0;
+                            let hy = hdr_rect.top();
+                            let hdr_font = mono_md();
+                            let hdr_med = mono_xs();
+                            let hdr_sm = mono_xs_plus();
+
+                            // Row 1: Direction + Delta + Buy/Sell split + Conviction + RVOL
+                            let dir_label = if is_bull { "BULL" } else { "BEAR" };
+                            painter.text(egui::pos2(hx, hy + 14.0), egui::Align2::LEFT_CENTER, dir_label, hdr_font.clone(), dir_col);
+                            painter.text(egui::pos2(hx + 50.0, hy + 14.0), egui::Align2::LEFT_CENTER,
+                                &format!("\u{0394} {:+.0}", total_delta), hdr_font.clone(), dir_col);
+                            painter.text(egui::pos2(hx + 150.0, hy + 14.0), egui::Align2::LEFT_CENTER,
+                                &format!("Buy {:.0}%  Sell {:.0}%", buy_pct, 100.0 - buy_pct), hdr_med.clone(), color_alpha(t.text,180));
+                            // Conviction bar (visual)
+                            let conv_x = hx + 320.0;
+                            let conv_w = 80.0;
+                            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(conv_x, hy + 8.0), egui::vec2(conv_w, 12.0)),
+                                3.0, color_alpha(t.text,15));
+                            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(conv_x, hy + 8.0), egui::vec2(conv_w * conviction / 100.0, 12.0)),
+                                3.0, color_alpha(dir_col, if conviction > 60.0 { 150 } else { 60 }));
+                            painter.text(egui::pos2(conv_x + conv_w + 6.0, hy + 14.0), egui::Align2::LEFT_CENTER,
+                                &format!("{:.0}%", conviction), hdr_sm.clone(),
+                                if conviction > 60.0 { dir_col } else { t.dim });
+                            if rvol > 1.5 {
+                                painter.text(egui::pos2(hdr_rect.right() - 10.0, hy + 14.0), egui::Align2::RIGHT_CENTER,
+                                    &format!("{:.1}x vol", rvol), hdr_med.clone(),
+                                    if rvol > 2.5 { COLOR_AMBER } else { color_alpha(t.text,160) });
+                            }
+
+                            // Row 2: Volume concentration (visual bar) + POC price
+                            let conc_bar_x = hx;
+                            let conc_bar_w = 120.0;
+                            let conc_y = hy + 32.0;
+                            let upper_w = conc_bar_w * upper_pct / 100.0;
+                            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(conc_bar_x, conc_y), egui::vec2(upper_w, 10.0)),
+                                2.0, egui::Color32::from_rgba_unmultiplied(100, 180, 255, 80));
+                            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(conc_bar_x + upper_w, conc_y), egui::vec2(conc_bar_w - upper_w, 10.0)),
+                                2.0, egui::Color32::from_rgba_unmultiplied(180, 130, 255, 80));
+                            painter.text(egui::pos2(conc_bar_x + conc_bar_w + 6.0, conc_y + 5.0), egui::Align2::LEFT_CENTER,
+                                &format!("Upper {:.0}%  Lower {:.0}%", upper_pct, 100.0 - upper_pct), hdr_sm.clone(), color_alpha(t.text,130));
+                            painter.text(egui::pos2(hx + 320.0, conc_y + 5.0), egui::Align2::LEFT_CENTER,
+                                &format!("POC {:.2}", fp_levels[poc_idx].price), hdr_med.clone(), COLOR_AMBER);
+
+                            // Row 3: Insight tags (larger, pill-shaped)
+                            let mut tag_x = hx;
+                            let tag_y = hy + 52.0;
+                            let draw_tag = |painter: &egui::Painter, x: &mut f32, label: &str, col: egui::Color32| {
+                                let tag_font = egui::FontId::monospace(9.5);
+                                let galley = painter.layout_no_wrap(label.to_string(), tag_font.clone(), col);
+                                let tw = galley.size().x + 14.0;
+                                let th = 16.0;
+                                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(*x, tag_y - th / 2.0), egui::vec2(tw, th)),
+                                    th / 2.0, egui::Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 30));
+                                painter.rect_stroke(egui::Rect::from_min_size(egui::pos2(*x, tag_y - th / 2.0), egui::vec2(tw, th)),
+                                    th / 2.0, egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 60)), egui::StrokeKind::Outside);
+                                painter.text(egui::pos2(*x + tw / 2.0, tag_y), egui::Align2::CENTER_CENTER, label, tag_font, col);
+                                *x += tw + 6.0;
+                            };
+                            if exhaustion { draw_tag(&painter, &mut tag_x, "EXHAUSTION", COLOR_AMBER); }
+                            if trapped { draw_tag(&painter, &mut tag_x, "TRAPPED", egui::Color32::from_rgb(200, 100, 200)); }
+                            if let Some((label, _, col)) = wick_insight { draw_tag(&painter, &mut tag_x, label, col); }
+                            // Imbalance tags
+                            for l in &fp_levels {
+                                if l.imbalance > 2.5 {
+                                    let side = if l.buy > l.sell { "BUY" } else { "SELL" };
+                                    draw_tag(&painter, &mut tag_x, &format!("{:.0}:1 {} @ {:.2}", l.imbalance, side, l.price),
+                                        if l.buy > l.sell { t.bull } else { t.bear });
+                                    break; // only show strongest imbalance
+                                }
+                            }
+
+                            // Highlight the candle itself
+                            let candle_w = (bs * 0.8).max(4.0);
+                            painter.rect_stroke(egui::Rect::from_min_max(
+                                egui::pos2(bar_x - candle_w, bar_top_y - 2.0),
+                                egui::pos2(bar_x + candle_w, bar_bot_y + 2.0)),
+                                2.0, egui::Stroke::new(1.5, color_alpha(t.text,100)), egui::StrokeKind::Outside);
+
+                            let card_w = 200.0;
+                            let card_h = 48.0;
+                            let arm_len = 110.0;
+
+                            for (li, info) in fp_levels.iter().enumerate() {
+                                let y = py(info.price);
+                                if !y.is_finite() || y < rect.top() + pt + 5.0 || y > rect.top() + pt + ch - 5.0 { continue; }
+
+                                // Alternate left/right
+                                let go_left = li % 2 == 0;
+                                let card_x = if go_left { bar_x - arm_len - card_w } else { bar_x + arm_len };
+                                let elbow_x = if go_left { bar_x - candle_w - 4.0 } else { bar_x + candle_w + 4.0 };
+                                let arm_end_x = if go_left { card_x + card_w } else { card_x };
+
+                                // Callout line: horizontal from candle edge to card
+                                let line_col = color_alpha(t.text,60);
+                                painter.line_segment([egui::pos2(elbow_x, y), egui::pos2(arm_end_x, y)], egui::Stroke::new(1.0, line_col));
+                                // Dot at the candle connection point
+                                painter.circle_filled(egui::pos2(elbow_x, y), 3.5, color_alpha(t.text,100));
+                                painter.circle_stroke(egui::pos2(elbow_x, y), 3.5, egui::Stroke::new(0.5, color_alpha(t.text,40)));
+
+                                // Card background
+                                let card_rect = egui::Rect::from_min_size(egui::pos2(card_x, y - card_h / 2.0), egui::vec2(card_w, card_h));
+                                let is_poc = li == poc_idx;
+                                let is_max_buy = li == max_buy_idx && info.delta > 0.0;
+                                let is_max_sell = li == max_sell_idx && info.delta < 0.0;
+                                let card_border = if is_poc {
+                                    color_alpha(COLOR_AMBER, 120)
+                                } else if is_max_buy {
+                                    color_alpha(t.bull, 80)
+                                } else if is_max_sell {
+                                    color_alpha(t.bear, 80)
+                                } else {
+                                    color_alpha(t.toolbar_border, 40)
+                                };
+                                painter.rect_filled(card_rect, 6.0, egui::Color32::from_rgba_unmultiplied(t.toolbar_bg.r(), t.toolbar_bg.g(), t.toolbar_bg.b(), 245));
+                                painter.rect_stroke(card_rect, 6.0, egui::Stroke::new(if is_poc { 2.0 } else { 1.0 }, card_border), egui::StrokeKind::Outside);
+
+                                // Card content — bigger, more visual
+                                let font_price = mono_md();
+                                let font_vol = mono_xs();
+                                let font_delta = mono_xs_plus();
+                                let font_tag = mono_xs();
+                                let cx = card_x + 8.0;
+                                let cy = y - card_h / 2.0;
+
+                                // Line 1: Price (large, bright) + Tag
+                                painter.text(egui::pos2(cx, cy + 13.0), egui::Align2::LEFT_CENTER,
+                                    &format!("{:.2}", info.price), font_price.clone(), egui::Color32::WHITE);
+
+                                // Tag badge (POC / BUY / SELL / ABS) — right-aligned on line 1
+                                let absorption = info.vol > bar_data.volume / num_levels as f32 * 1.3 && info.delta.abs() < info.vol * 0.15;
+                                let (tag_text, tag_col) = if is_poc {
+                                    ("POC", COLOR_AMBER)
+                                } else if is_max_buy && info.delta > 0.0 {
+                                    ("BUY", t.bull)
+                                } else if is_max_sell && info.delta < 0.0 {
+                                    ("SELL", t.bear)
+                                } else if absorption {
+                                    ("ABS", egui::Color32::from_rgb(180, 160, 220))
+                                } else {
+                                    ("", egui::Color32::TRANSPARENT)
+                                };
+                                if !tag_text.is_empty() {
+                                    let tag_galley = painter.layout_no_wrap(tag_text.to_string(), font_tag.clone(), tag_col);
+                                    let tw = tag_galley.size().x + 10.0;
+                                    let tag_x = card_x + card_w - tw - 6.0;
+                                    painter.rect_filled(egui::Rect::from_min_size(egui::pos2(tag_x, cy + 5.0), egui::vec2(tw, 16.0)),
+                                        4.0, egui::Color32::from_rgba_unmultiplied(tag_col.r(), tag_col.g(), tag_col.b(), 30));
+                                    painter.text(egui::pos2(tag_x + tw / 2.0, cy + 13.0), egui::Align2::CENTER_CENTER,
+                                        tag_text, font_tag.clone(), tag_col);
+                                }
+
+                                // Line 2: Buy/Sell bar (tall, clear) + Delta (large)
+                                let bar_y = cy + 28.0;
+                                let bar_h = 12.0;
+                                let bar_total_w = card_w - 80.0;
+                                let buy_frac = info.buy_ratio;
+                                let sell_bar_w = bar_total_w * (1.0 - buy_frac);
+                                let buy_bar_w = bar_total_w * buy_frac;
+                                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx, bar_y), egui::vec2(sell_bar_w, bar_h)),
+                                    3.0, color_alpha(t.bear, 150));
+                                painter.rect_filled(egui::Rect::from_min_size(egui::pos2(cx + sell_bar_w, bar_y), egui::vec2(buy_bar_w, bar_h)),
+                                    3.0, color_alpha(t.bull, 150));
+                                // Sell/Buy labels inside the bars (if wide enough)
+                                if sell_bar_w > 30.0 {
+                                    painter.text(egui::pos2(cx + sell_bar_w / 2.0, bar_y + bar_h / 2.0), egui::Align2::CENTER_CENTER,
+                                        &format!("{:.0}", info.sell), mono_2xs(), color_alpha(t.text,200));
+                                }
+                                if buy_bar_w > 30.0 {
+                                    painter.text(egui::pos2(cx + sell_bar_w + buy_bar_w / 2.0, bar_y + bar_h / 2.0), egui::Align2::CENTER_CENTER,
+                                        &format!("{:.0}", info.buy), mono_2xs(), color_alpha(t.text,200));
+                                }
+                                // Delta — large, right side
+                                let delta_col = if info.delta > 0.0 { t.bull } else { t.bear };
+                                painter.text(egui::pos2(card_x + card_w - 8.0, bar_y + bar_h / 2.0), egui::Align2::RIGHT_CENTER,
+                                    &format!("{:+.0}", info.delta), font_delta.clone(), delta_col);
+                            }
+
+                            // (Summary moved to header panel above)
+                        }
+                    }
+}
+
+/// render_pattern_labels_overlay (WS-E E4: extracted from render_chart_pane). Verbatim; guard at call site.
+#[allow(clippy::too_many_arguments)]
+fn render_pattern_labels_overlay(
+    painter: &egui::Painter, chart: &Chart, rect: egui::Rect, cw: f32, t: &Theme, py: impl Fn(f32) -> f32, bx: impl Fn(f32) -> f32
+) {
+        let bars_ref = if chart.candle_mode == CandleMode::Standard { &chart.bars } else { &chart.alt.bars };
+        let ts_ref = if chart.candle_mode == CandleMode::Standard { &chart.timestamps } else { &chart.alt.timestamps };
+        for pl in &chart.pattern_labels {
+            let bar_f = SignalDrawing::time_to_bar(pl.time, ts_ref);
+            let x = bx(bar_f);
+            if x < rect.left() - 5.0 || x > rect.left() + cw + 5.0 { continue; }
+            let bar_idx = bar_f.round() as usize;
+            let (bar_low, bar_high) = if let Some(bar) = bars_ref.get(bar_idx) {
+                (bar.low, bar.high)
+            } else { continue; };
+            let alpha = (180.0 * pl.confidence.clamp(0.3, 1.0)) as u8;
+            if pl.bullish {
+                // Green upward triangle below bar's low
+                let base_y = py(bar_low) + 4.0;
+                let tri_col = color_alpha(t.bull, alpha);
+                let tri = vec![
+                    egui::pos2(x, base_y),
+                    egui::pos2(x - 4.0, base_y + 7.0),
+                    egui::pos2(x + 4.0, base_y + 7.0),
+                ];
+                painter.add(egui::Shape::convex_polygon(tri, tri_col, egui::Stroke::NONE));
+                // Abbreviated label below triangle
+                let abbrev: &str = if pl.label.len() > 3 { &pl.label[..3] } else { &pl.label };
+                painter.text(egui::pos2(x, base_y + 10.0), egui::Align2::CENTER_TOP,
+                    abbrev, mono_3xs(), color_alpha(t.bull, alpha));
+            } else {
+                // Red downward triangle above bar's high
+                let base_y = py(bar_high) - 4.0;
+                let tri_col = color_alpha(t.bear, alpha);
+                let tri = vec![
+                    egui::pos2(x, base_y),
+                    egui::pos2(x - 4.0, base_y - 7.0),
+                    egui::pos2(x + 4.0, base_y - 7.0),
+                ];
+                painter.add(egui::Shape::convex_polygon(tri, tri_col, egui::Stroke::NONE));
+                let abbrev: &str = if pl.label.len() > 3 { &pl.label[..3] } else { &pl.label };
+                painter.text(egui::pos2(x, base_y - 10.0), egui::Align2::CENTER_BOTTOM,
+                    abbrev, mono_3xs(), color_alpha(t.bear, alpha));
+            }
+        }
+}
+
+/// render_cvd_overlay (WS-E E4: extracted from render_chart_pane). Verbatim; guard at call site.
+#[allow(clippy::too_many_arguments)]
+fn render_cvd_overlay(
+    painter: &egui::Painter, chart: &Chart, rect: egui::Rect, cw: f32, t: &Theme, vs: f32, osc_top: f32, osc_bottom: f32, n: usize, bx: impl Fn(f32) -> f32
+) {
+            let start_c = vs.floor() as usize;
+            let end_c = (start_c + chart.vc as usize + 8).min(n);
+            let mut cvd_min = f32::MAX;
+            let mut cvd_max = f32::MIN;
+            for i in start_c..end_c {
+                let v = chart.cvd_data[i];
+                if cvd_min > v { cvd_min = v; }
+                if cvd_max < v { cvd_max = v; }
+            }
+            if cvd_max <= cvd_min { cvd_max = cvd_min + 1.0; }
+            let cvd_range = cvd_max - cvd_min;
+            let cvd_py = |v: f32| -> f32 { osc_bottom - (v - cvd_min) / cvd_range * (osc_bottom - osc_top) };
+            let zero_y = cvd_py(0.0_f32);
+            if zero_y >= osc_top && zero_y <= osc_bottom {
+                painter.line_segment([egui::pos2(rect.left(), zero_y), egui::pos2(rect.left()+cw, zero_y)],
+                    egui::Stroke::new(style::stroke_thin(), color_alpha(t.text,30)));
+            }
+            for i in start_c..end_c.saturating_sub(1) {
+                let y0 = cvd_py(chart.cvd_data[i]);
+                let y1 = cvd_py(chart.cvd_data[i+1]);
+                let rising = chart.cvd_data[i+1] > chart.cvd_data[i];
+                let color = if rising {
+                    color_alpha(t.bull, 200)
+                } else {
+                    color_alpha(t.bear, 200)
+                };
+                painter.line_segment([egui::pos2(bx(i as f32), y0), egui::pos2(bx((i+1) as f32), y1)],
+                    egui::Stroke::new(1.5, color));
+            }
+            painter.text(egui::pos2(rect.left() + 4.0, osc_top + 2.0), egui::Align2::LEFT_TOP,
+                "CVD", mono_2xs(), color_alpha(t.text,120));
 }
