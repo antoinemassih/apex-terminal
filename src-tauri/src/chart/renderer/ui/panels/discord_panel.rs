@@ -31,17 +31,17 @@ use crate::ui_kit::widgets::placement::Side;
 /// Drain background Discord results (textures, messages, guilds). Call before rendering.
 pub(crate) fn drain_background(ctx: &egui::Context, watchlist: &mut Watchlist) {
     // Check auth
-    if !watchlist.discord_authenticated {
+    if !watchlist.discord.authenticated {
         if let Some(auth) = crate::discord::get_auth() {
-            watchlist.discord_authenticated = true;
-            watchlist.discord_username = auth.username.clone();
-            watchlist.discord_user_id = auth.user_id.clone();
-            watchlist.discord_connecting = false;
+            watchlist.discord.authenticated = true;
+            watchlist.discord.username = auth.username.clone();
+            watchlist.discord.user_id = auth.user_id.clone();
+            watchlist.discord.connecting = false;
             crate::discord::fetch_guilds_bg();
         }
     }
     if let Some(guilds) = crate::discord::drain_guilds() {
-        watchlist.discord_guilds = guilds;
+        watchlist.discord.guilds = guilds;
     }
     for icon in crate::discord::drain_icons() {
         let pixels: Vec<egui::Color32> = icon.rgba.chunks_exact(4)
@@ -49,30 +49,30 @@ pub(crate) fn drain_background(ctx: &egui::Context, watchlist: &mut Watchlist) {
             .collect();
         let img = egui::ColorImage { size: [icon.width as usize, icon.height as usize], pixels };
         let tex = ctx.load_texture(format!("guild_{}", icon.guild_id), img, egui::TextureOptions::LINEAR);
-        watchlist.discord_guild_icons.insert(icon.guild_id, tex);
+        watchlist.discord.guild_icons.insert(icon.guild_id, tex);
     }
     if let Some(channels) = crate::discord::drain_channels() {
-        watchlist.discord_channels = channels;
-        watchlist.discord_channels_loading = false;
+        watchlist.discord.channels = channels;
+        watchlist.discord.channels_loading = false;
     }
     if let Some((msgs, is_append)) = crate::discord::drain_messages() {
         if is_append {
             for m in &msgs {
-                let is_own = m.author.id == watchlist.discord_user_id;
-                watchlist.discord_messages.push(DiscordMessage {
+                let is_own = m.author.id == watchlist.discord.user_id;
+                watchlist.discord.messages.push(DiscordMessage {
                     author: m.author.display_name().to_string(),
                     content: m.content.clone(),
                     timestamp: crate::discord::relative_time(&m.timestamp),
                     is_own,
                     has_chart: false,
                 });
-                watchlist.discord_last_msg_id = Some(m.id.clone());
+                watchlist.discord.last_msg_id = Some(m.id.clone());
             }
         } else {
-            watchlist.discord_messages.clear();
+            watchlist.discord.messages.clear();
             for m in &msgs {
-                let is_own = m.author.id == watchlist.discord_user_id;
-                watchlist.discord_messages.push(DiscordMessage {
+                let is_own = m.author.id == watchlist.discord.user_id;
+                watchlist.discord.messages.push(DiscordMessage {
                     author: m.author.display_name().to_string(),
                     content: m.content.clone(),
                     timestamp: crate::discord::relative_time(&m.timestamp),
@@ -80,33 +80,33 @@ pub(crate) fn drain_background(ctx: &egui::Context, watchlist: &mut Watchlist) {
                     has_chart: false,
                 });
             }
-            watchlist.discord_last_msg_id = msgs.last().map(|m| m.id.clone());
-            watchlist.discord_messages_loading = false;
+            watchlist.discord.last_msg_id = msgs.last().map(|m| m.id.clone());
+            watchlist.discord.messages_loading = false;
         }
     }
     if let Some(result) = crate::discord::drain_send() {
         if let Ok(msg) = result {
-            watchlist.discord_messages.push(DiscordMessage {
+            watchlist.discord.messages.push(DiscordMessage {
                 author: msg.author.display_name().to_string(),
                 content: msg.content.clone(),
                 timestamp: "now".into(),
-                is_own: msg.author.id == watchlist.discord_user_id,
+                is_own: msg.author.id == watchlist.discord.user_id,
                 has_chart: false,
             });
-            watchlist.discord_last_msg_id = Some(msg.id);
+            watchlist.discord.last_msg_id = Some(msg.id);
         }
     }
-    if watchlist.discord_selected_channel.is_some()
-        && !watchlist.discord_messages_loading
-        && watchlist.discord_last_msg_id.is_some()
+    if watchlist.discord.selected_channel.is_some()
+        && !watchlist.discord.messages_loading
+        && watchlist.discord.last_msg_id.is_some()
     {
-        let should_poll = watchlist.discord_poll_timer
+        let should_poll = watchlist.discord.poll_timer
             .map(|t| t.elapsed().as_secs_f32() > 5.0)
             .unwrap_or(false);
         if should_poll {
-            if let Some(ref ch_id) = watchlist.discord_selected_channel {
-                crate::discord::fetch_messages_bg(ch_id.clone(), watchlist.discord_last_msg_id.clone());
-                watchlist.discord_poll_timer = Some(std::time::Instant::now());
+            if let Some(ref ch_id) = watchlist.discord.selected_channel {
+                crate::discord::fetch_messages_bg(ch_id.clone(), watchlist.discord.last_msg_id.clone());
+                watchlist.discord.poll_timer = Some(std::time::Instant::now());
             }
         }
     }
@@ -115,12 +115,12 @@ pub(crate) fn drain_background(ctx: &egui::Context, watchlist: &mut Watchlist) {
 /// Standalone left-rail Discord panel. Uses SidePanelShell with the channel
 /// name as the dynamic title.
 pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
-    if !watchlist.discord_open { return; }
+    if !watchlist.discord.open { return; }
     drain_background(ctx, watchlist);
 
     // Title: channel name when a channel is open, otherwise "DISCORD".
-    let title_owned = if !watchlist.discord_channel.is_empty() {
-        watchlist.discord_channel.clone()
+    let title_owned = if !watchlist.discord.channel.is_empty() {
+        watchlist.discord.channel.clone()
     } else {
         "DISCORD".to_string()
     };
@@ -131,7 +131,7 @@ pub(crate) fn draw(ctx: &egui::Context, watchlist: &mut Watchlist, t: &Theme) {
         .show(ctx, t, |ui, t| {
             draw_body(ui, watchlist, t);
         });
-    if resp.close_clicked { watchlist.discord_open = false; }
+    if resp.close_clicked { watchlist.discord.open = false; }
 }
 
 /// Tab body content (no SidePanel wrapper). Used by feed_panel Discord tab.
@@ -145,7 +145,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
     let discord_blurple = super::super::style::discord_blurple();
     let panel_w = ui.available_width();
 
-    if !watchlist.discord_authenticated {
+    if !watchlist.discord.authenticated {
         // ── Not authenticated: Connect splash ──
         let avail = ui.available_size();
         ui.allocate_ui_with_layout(
@@ -159,7 +159,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                     PanelEmpty::new("Discord not configured")
                         .hint("Add discord.env with credentials")
                         .show(ui, t);
-                } else if watchlist.discord_connecting {
+                } else if watchlist.discord.connecting {
                     ui.add(widgets_text::MonospaceCode::new("Waiting for authorization...").xs().color(t.dim));
                     ui.add_space(gap_sm());
                     crate::ui_kit::widgets::Spinner::new().show(ui, t);
@@ -175,7 +175,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                         .corner_radius(current().r_lg as f32)
                         .min_size(egui::vec2(180.0, 36.0))
                     ).clicked() {
-                        watchlist.discord_connecting = true;
+                        watchlist.discord.connecting = true;
                         crate::discord::start_oauth2();
                     }
                     ui.add_space(gap_sm());
@@ -187,7 +187,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
     }
 
     // ── Authenticated: full Discord UI ──
-    let has_guilds = !watchlist.discord_guilds.is_empty();
+    let has_guilds = !watchlist.discord.guilds.is_empty();
 
     // Disconnect action (channel-name + close are provided by shell when
     // standalone; when embedded the parent feed_panel header carries the
@@ -203,18 +203,18 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
             Tooltip::new("Disconnect").show(ui, &r, t);
             if r.clicked() {
                 crate::discord::disconnect();
-                watchlist.discord_authenticated = false;
-                watchlist.discord_username.clear();
-                watchlist.discord_user_id.clear();
-                watchlist.discord_guilds.clear();
-                watchlist.discord_selected_guild = None;
-                watchlist.discord_channels.clear();
-                watchlist.discord_selected_channel = None;
-                watchlist.discord_channel.clear();
-                watchlist.discord_messages.clear();
-                watchlist.discord_guild_icons.clear();
-                watchlist.discord_last_msg_id = None;
-                watchlist.discord_poll_timer = None;
+                watchlist.discord.authenticated = false;
+                watchlist.discord.username.clear();
+                watchlist.discord.user_id.clear();
+                watchlist.discord.guilds.clear();
+                watchlist.discord.selected_guild = None;
+                watchlist.discord.channels.clear();
+                watchlist.discord.selected_channel = None;
+                watchlist.discord.channel.clear();
+                watchlist.discord.messages.clear();
+                watchlist.discord.guild_icons.clear();
+                watchlist.discord.last_msg_id = None;
+                watchlist.discord.poll_timer = None;
             }
         });
     });
@@ -231,22 +231,22 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
         egui::ScrollArea::horizontal().id_salt("guild_strip").show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.add_space(gap_sm());
-                let guild_entries: Vec<GuildEntry<'_>> = watchlist.discord_guilds.iter()
+                let guild_entries: Vec<GuildEntry<'_>> = watchlist.discord.guilds.iter()
                     .map(|g| GuildEntry { id: &g.id, name: &g.name })
                     .collect();
                 let mut clicked_guild: Option<String> = None;
-                GuildAvatarGrid::new(&guild_entries, &watchlist.discord_guild_icons)
-                    .selected(watchlist.discord_selected_guild.as_deref())
+                GuildAvatarGrid::new(&guild_entries, &watchlist.discord.guild_icons)
+                    .selected(watchlist.discord.selected_guild.as_deref())
                     .on_click(|id| { clicked_guild = Some(id.to_string()); })
                     .show(ui, t);
                 if let Some(id) = clicked_guild {
-                    watchlist.discord_selected_guild = Some(id.clone());
-                    watchlist.discord_channels.clear();
-                    watchlist.discord_selected_channel = None;
-                    watchlist.discord_messages.clear();
-                    watchlist.discord_last_msg_id = None;
-                    watchlist.discord_channel.clear();
-                    watchlist.discord_channels_loading = true;
+                    watchlist.discord.selected_guild = Some(id.clone());
+                    watchlist.discord.channels.clear();
+                    watchlist.discord.selected_channel = None;
+                    watchlist.discord.messages.clear();
+                    watchlist.discord.last_msg_id = None;
+                    watchlist.discord.channel.clear();
+                    watchlist.discord.channels_loading = true;
                     crate::discord::fetch_channels_bg(id);
                 }
                 ui.add_space(gap_xs());
@@ -260,7 +260,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
     // ── Content area ──
     let content_w = panel_w;
 
-    if watchlist.discord_selected_guild.is_none() {
+    if watchlist.discord.selected_guild.is_none() {
         let avail = ui.available_size();
         ui.allocate_ui_with_layout(
             egui::vec2(content_w, avail.y),
@@ -272,15 +272,15 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                     .show(ui, t);
             },
         );
-    } else if watchlist.discord_selected_channel.is_none() {
+    } else if watchlist.discord.selected_channel.is_none() {
         // Server selected, show channel list
-        if watchlist.discord_channels_loading {
+        if watchlist.discord.channels_loading {
             ui.horizontal(|ui| {
                 ui.add_space(gap_sm());
                 crate::ui_kit::widgets::Spinner::new().show(ui, t);
                 ui.add(widgets_text::MonospaceCode::new("Loading channels...").xs().color(t.dim));
             });
-        } else if watchlist.discord_channels.is_empty() {
+        } else if watchlist.discord.channels.is_empty() {
             // Bot not in this server — show invite button
             let avail = ui.available_size();
             ui.allocate_ui_with_layout(
@@ -303,7 +303,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                         .corner_radius(current().r_sm as f32)
                         .min_size(egui::vec2(160.0, row_height_tall()))
                     ).clicked() {
-                        let guild_id = watchlist.discord_selected_guild.as_deref().unwrap_or("");
+                        let guild_id = watchlist.discord.selected_guild.as_deref().unwrap_or("");
                         let url = format!(
                             "https://discord.com/oauth2/authorize?client_id=1492118514482417776&scope=bot&permissions=68608&guild_id={}",
                             guild_id
@@ -317,8 +317,8 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                         .variant(Variant::Ghost)
                         .size(Size::Xs)
                     ).clicked() {
-                        if let Some(ref gid) = watchlist.discord_selected_guild {
-                            watchlist.discord_channels_loading = true;
+                        if let Some(ref gid) = watchlist.discord.selected_guild {
+                            watchlist.discord.channels_loading = true;
                             crate::discord::fetch_channels_bg(gid.clone());
                         }
                     }
@@ -326,7 +326,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
             );
         } else {
             // Channel list — group by category, each category as a PanelSection.
-            let channels: Vec<_> = watchlist.discord_channels.clone();
+            let channels: Vec<_> = watchlist.discord.channels.clone();
             egui::ScrollArea::vertical().id_salt("discord_channels").show(ui, |ui| {
                 ui.set_min_width(content_w - 4.0);
                 // Pre-bucket channels into (category_name, [text_channels]).
@@ -365,12 +365,12 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                     });
                 }
                 if let Some((id, name)) = clicked_channel {
-                    watchlist.discord_selected_channel = Some(id.clone());
-                    watchlist.discord_channel = format!("# {}", name);
-                    watchlist.discord_messages.clear();
-                    watchlist.discord_last_msg_id = None;
-                    watchlist.discord_messages_loading = true;
-                    watchlist.discord_poll_timer = None;
+                    watchlist.discord.selected_channel = Some(id.clone());
+                    watchlist.discord.channel = format!("# {}", name);
+                    watchlist.discord.messages.clear();
+                    watchlist.discord.last_msg_id = None;
+                    watchlist.discord.messages_loading = true;
+                    watchlist.discord.poll_timer = None;
                     crate::discord::fetch_messages_bg(id, None);
                 }
             });
@@ -388,12 +388,12 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                 .fg(t.dim));
             Tooltip::new("Back to channels").show(ui, &r, t);
             if r.clicked() {
-                watchlist.discord_selected_channel = None;
-                watchlist.discord_messages.clear();
-                watchlist.discord_last_msg_id = None;
-                watchlist.discord_poll_timer = None;
+                watchlist.discord.selected_channel = None;
+                watchlist.discord.messages.clear();
+                watchlist.discord.last_msg_id = None;
+                watchlist.discord.poll_timer = None;
             }
-            ui.add(widgets_text::MonospaceCode::new(&watchlist.discord_channel).xs().color(t.dim));
+            ui.add(widgets_text::MonospaceCode::new(&watchlist.discord.channel).xs().color(t.dim));
         });
         ui.add_space(gap_xs());
 
@@ -406,7 +406,7 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
             .stick_to_bottom(true)
             .show(ui, |ui| {
                 ui.set_min_width(content_w - 4.0);
-                if watchlist.discord_messages_loading {
+                if watchlist.discord.messages_loading {
                     ui.add_space(gap_sm());
                     let row_w = (content_w - 24.0).max(80.0);
                     for _ in 0..5 {
@@ -423,12 +423,12 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                         });
                         ui.add_space(gap_xs());
                     }
-                } else if watchlist.discord_messages.is_empty() {
+                } else if watchlist.discord.messages.is_empty() {
                     ui.add_space(gap_sm());
                     PanelEmpty::new("No messages in this channel").show(ui, t);
                 }
                 let mut prev_author = String::new();
-                for msg in &watchlist.discord_messages {
+                for msg in &watchlist.discord.messages {
                     if msg.content.is_empty() { continue; }
                     let author_hash = msg.author.bytes().fold(0usize, |a, b| a.wrapping_mul(31).wrapping_add(b as usize));
                     let author_col = chat_author_color(author_hash);
@@ -471,10 +471,10 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
         ui.add_space(gap_xs());
         ui.horizontal(|ui| {
             ui.add_space(gap_sm());
-            let input = Input::new(&mut watchlist.discord_input)
+            let input = Input::new(&mut watchlist.discord.input)
                 .width(content_w - 60.0)
                 .text_color(t.text)
-                .placeholder(format!("Message {}...", watchlist.discord_channel))
+                .placeholder(format!("Message {}...", watchlist.discord.channel))
                 .show(ui, t);
             // WHITE foreground is intentional brand contrast on the Discord blurple fill.
             let send_clicked = ui.add(Button::new("Send")
@@ -486,20 +486,20 @@ fn draw_body(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
                 .min_size(egui::vec2(38.0, row_height_default()))
             ).clicked();
             if (send_clicked || (input.lost_focus && ui.input(|i| i.key_pressed(egui::Key::Enter))))
-                && !watchlist.discord_input.trim().is_empty()
+                && !watchlist.discord.input.trim().is_empty()
             {
-                let content = watchlist.discord_input.trim().to_string();
-                if let Some(ref ch_id) = watchlist.discord_selected_channel {
+                let content = watchlist.discord.input.trim().to_string();
+                if let Some(ref ch_id) = watchlist.discord.selected_channel {
                     crate::discord::send_message_bg(ch_id.clone(), content.clone());
-                    watchlist.discord_messages.push(DiscordMessage {
-                        author: watchlist.discord_username.clone(),
+                    watchlist.discord.messages.push(DiscordMessage {
+                        author: watchlist.discord.username.clone(),
                         content,
                         timestamp: "sending...".into(),
                         is_own: true,
                         has_chart: false,
                     });
                 }
-                watchlist.discord_input.clear();
+                watchlist.discord.input.clear();
             }
         });
         ui.add_space(gap_xs());

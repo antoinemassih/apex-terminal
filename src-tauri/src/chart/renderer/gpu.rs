@@ -5611,6 +5611,32 @@ impl Default for RrgState {
     }
 }
 
+/// Discord chat-panel state (WS-E E3, Watchlist-split slice 5). Grouped out of
+/// the Watchlist god-struct: 17 discord_* fields. The 9 persisted subset
+/// (open/input/channel/authenticated/username/user_id/selected_guild/
+/// selected_channel/last_msg_id) mirror the ChatState store (kept flat there);
+/// the rest are runtime cache. All field types impl Default → derive it.
+#[derive(Default)]
+pub(crate) struct DiscordState {
+    pub(crate) open: bool,
+    pub(crate) messages: Vec<DiscordMessage>,
+    pub(crate) input: String,
+    pub(crate) channel: String,
+    pub(crate) authenticated: bool,
+    pub(crate) username: String,
+    pub(crate) user_id: String,
+    pub(crate) guilds: Vec<crate::discord::DiscordGuild>,
+    pub(crate) selected_guild: Option<String>,
+    pub(crate) channels: Vec<crate::discord::DiscordChannel>,
+    pub(crate) selected_channel: Option<String>,
+    pub(crate) connecting: bool,
+    pub(crate) guild_icons: std::collections::HashMap<String, egui::TextureHandle>,
+    pub(crate) last_msg_id: Option<String>,
+    pub(crate) poll_timer: Option<std::time::Instant>,
+    pub(crate) channels_loading: bool,
+    pub(crate) messages_loading: bool,
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -5885,23 +5911,8 @@ pub(crate) struct Watchlist {
     pub(crate) widget_preset_name: String, // input buffer for naming a new preset
     pub(crate) pane_template_name: String, // input buffer for naming a new template
     // Discord chat panel
-    pub(crate) discord_open: bool,
-    pub(crate) discord_messages: Vec<DiscordMessage>,
-    pub(crate) discord_input: String,
-    pub(crate) discord_channel: String, // currently selected channel display name
-    pub(crate) discord_authenticated: bool,
-    pub(crate) discord_username: String,
-    pub(crate) discord_user_id: String,
-    pub(crate) discord_guilds: Vec<crate::discord::DiscordGuild>,
-    pub(crate) discord_selected_guild: Option<String>,
-    pub(crate) discord_channels: Vec<crate::discord::DiscordChannel>,
-    pub(crate) discord_selected_channel: Option<String>,
-    pub(crate) discord_connecting: bool,
-    pub(crate) discord_guild_icons: std::collections::HashMap<String, egui::TextureHandle>,
-    pub(crate) discord_last_msg_id: Option<String>,
-    pub(crate) discord_poll_timer: Option<std::time::Instant>,
-    pub(crate) discord_channels_loading: bool,
-    pub(crate) discord_messages_loading: bool,
+    /// Discord chat-panel state (WS-E E3 slice 5) — was 17 flat `discord_*` fields.
+    pub(crate) discord: DiscordState,
     // Time & Sales
     pub(crate) tape_open: bool,
     pub(crate) tape_entries: Vec<TapeRow>,
@@ -6150,23 +6161,7 @@ impl Watchlist {
                play_editor: PlayEditorState::default(),
                play_templates: vec![],
                widget_presets: vec![], widget_preset_name: String::new(),
-               discord_open: false,
-               discord_messages: vec![],
-               discord_input: String::new(),
-               discord_channel: String::new(),
-               discord_authenticated: false,
-               discord_username: String::new(),
-               discord_user_id: String::new(),
-               discord_guilds: vec![],
-               discord_selected_guild: None,
-               discord_channels: vec![],
-               discord_selected_channel: None,
-               discord_connecting: false,
-               discord_guild_icons: std::collections::HashMap::new(),
-               discord_last_msg_id: None,
-               discord_poll_timer: None,
-               discord_channels_loading: false,
-               discord_messages_loading: false,
+               discord: DiscordState::default(),
                tape_open: false,
                tape_entries: vec![],
                news_open: false,
@@ -6740,15 +6735,15 @@ impl Watchlist {
     /// Call this after any batch mutation to the flat discord/chat fields so
     /// the store stays in sync and the persist supervisor can write to disk.
     pub(crate) fn push_to_chat_store(&mut self) {
-        let discord_open = self.discord_open;
-        let discord_input = self.discord_input.clone();
-        let discord_channel = self.discord_channel.clone();
-        let discord_authenticated = self.discord_authenticated;
-        let discord_username = self.discord_username.clone();
-        let discord_user_id = self.discord_user_id.clone();
-        let discord_selected_guild = self.discord_selected_guild.clone();
-        let discord_selected_channel = self.discord_selected_channel.clone();
-        let discord_last_msg_id = self.discord_last_msg_id.clone();
+        let discord_open = self.discord.open;
+        let discord_input = self.discord.input.clone();
+        let discord_channel = self.discord.channel.clone();
+        let discord_authenticated = self.discord.authenticated;
+        let discord_username = self.discord.username.clone();
+        let discord_user_id = self.discord.user_id.clone();
+        let discord_selected_guild = self.discord.selected_guild.clone();
+        let discord_selected_channel = self.discord.selected_channel.clone();
+        let discord_last_msg_id = self.discord.last_msg_id.clone();
         self.chat_state_store.update(|s| {
             s.discord_open = discord_open;
             s.discord_input = discord_input;
@@ -6766,15 +6761,15 @@ impl Watchlist {
     /// Called at load time after `chat_state_store` is seeded from disk.
     pub(crate) fn sync_from_chat_store(&mut self) {
         let snap = self.chat_state_store.read().clone();
-        self.discord_open = snap.discord_open;
-        self.discord_input = snap.discord_input;
-        self.discord_channel = snap.discord_channel;
-        self.discord_authenticated = snap.discord_authenticated;
-        self.discord_username = snap.discord_username;
-        self.discord_user_id = snap.discord_user_id;
-        self.discord_selected_guild = snap.discord_selected_guild;
-        self.discord_selected_channel = snap.discord_selected_channel;
-        self.discord_last_msg_id = snap.discord_last_msg_id;
+        self.discord.open = snap.discord_open;
+        self.discord.input = snap.discord_input;
+        self.discord.channel = snap.discord_channel;
+        self.discord.authenticated = snap.discord_authenticated;
+        self.discord.username = snap.discord_username;
+        self.discord.user_id = snap.discord_user_id;
+        self.discord.selected_guild = snap.discord_selected_guild;
+        self.discord.selected_channel = snap.discord_selected_channel;
+        self.discord.last_msg_id = snap.discord_last_msg_id;
     }
 
     // ── Phase 3 (state): single-chokepoint flush helper ──────────────────────
