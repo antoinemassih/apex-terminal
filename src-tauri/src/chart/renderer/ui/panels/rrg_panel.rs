@@ -192,10 +192,10 @@ fn sector_color(symbol: &str) -> egui::Color32 {
 /// Draw the RRG panel content into `ui` (used by analysis_panel as a tab).
 pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &Theme) {
     // Use live data if available, otherwise demo
-    let sectors: &[RRGSector] = if watchlist.rrg_sectors.is_empty() {
+    let sectors: &[RRGSector] = if watchlist.rrg.sectors.is_empty() {
         &[]
     } else {
-        &watchlist.rrg_sectors
+        &watchlist.rrg.sectors
     };
     let use_demo = sectors.is_empty();
 
@@ -213,30 +213,30 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
         let rect = response.rect;
 
         draw_rrg_content(&painter, rect, sectors, use_demo, t,
-            watchlist.rrg_time_offset, watchlist.rrg_tail_length);
+            watchlist.rrg.time_offset, watchlist.rrg.tail_length);
 
         // Time slider
         ui.add_space(gap_xs());
         ui.horizontal(|ui| {
             ui.add(MonospaceCode::new("TIME").xs().color(tint(t, Tone::Dim, alpha_active())));
             ui.spacing_mut().slider_width = plot_size - 50.0;
-            Slider::new(&mut watchlist.rrg_time_offset, 0.0..=0.95)
+            Slider::new(&mut watchlist.rrg.time_offset, 0.0..=0.95)
                 .show_value(false)
                 .show(ui, t);
         });
         ui.horizontal(|ui| {
             ui.add(MonospaceCode::new("TAIL").xs().color(tint(t, Tone::Dim, alpha_active())));
             ui.spacing_mut().slider_width = plot_size - 50.0;
-            let mut tail = watchlist.rrg_tail_length as f32;
+            let mut tail = watchlist.rrg.tail_length as f32;
             if Slider::new(&mut tail, 1.0..=15.0).show_value(false).step(1.0).show(ui, t).changed() {
-                watchlist.rrg_tail_length = tail as usize;
+                watchlist.rrg.tail_length = tail as usize;
             }
         });
 
         // Cycle phase text at the bottom
         ui.add_space(gap_xs());
-        let phase = if !watchlist.rrg_cycle_phase.is_empty() {
-            watchlist.rrg_cycle_phase.as_str()
+        let phase = if !watchlist.rrg.cycle_phase.is_empty() {
+            watchlist.rrg.cycle_phase.as_str()
         } else {
             "LATE EXPANSION"
         };
@@ -271,7 +271,7 @@ pub(crate) fn draw_content(ui: &mut egui::Ui, watchlist: &mut Watchlist, t: &The
 /// Rail registration — see [`super::right_rail`].
 pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
     id: "rrg",
-    is_open: |w| w.rrg_open,
+    is_open: |w| w.rrg.open,
     render: |cx, slot| draw(cx.ctx, cx.watchlist, cx.t, Some(slot)),
 };
 
@@ -281,7 +281,7 @@ pub(crate) fn draw(
     t: &Theme,
     slot: Option<super::side_panel_shell::RailSlot>,
 ) {
-    if !watchlist.rrg_open { return; }
+    if !watchlist.rrg.open { return; }
 
     let resp = SidePanelShell::new("rrg_panel", "RRG")
         .width(Width::Medium)

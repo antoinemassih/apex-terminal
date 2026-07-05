@@ -1099,10 +1099,10 @@ pub fn end_frame(
     // ── Behavioral-oracle data (RRG sectors, scanner filter I/O) ──────────
     // RRG: effective sectors (real if populated, else the deterministic demo
     // set) with the raw inputs so the harness can verify quadrant classification.
-    let rrg_secs = if watchlist.rrg_sectors.is_empty() {
+    let rrg_secs = if watchlist.rrg.sectors.is_empty() {
         crate::chart_renderer::ui::panels::rrg_panel::demo_sectors()
     } else {
-        watchlist.rrg_sectors.clone()
+        watchlist.rrg.sectors.clone()
     };
     let rrg_sectors_json: Vec<serde_json::Value> = rrg_secs.iter().map(|s| serde_json::json!({
         "symbol":      s.symbol,
@@ -1159,8 +1159,8 @@ pub fn end_frame(
             "filtered": scan_filtered_json,
         },
         "rrg": {
-            "open":        watchlist.rrg_open,
-            "tail_length": watchlist.rrg_tail_length,
+            "open":        watchlist.rrg.open,
+            "tail_length": watchlist.rrg.tail_length,
             "sector_count": rrg_sectors_json.len(),
             // Behavioral oracle: each sector's inputs + classified quadrant.
             "sectors":     rrg_sectors_json,

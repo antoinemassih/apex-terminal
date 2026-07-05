@@ -5587,6 +5587,30 @@ impl Default for ScannerState {
     }
 }
 
+/// RRG (Relative Rotation Graph) panel state (WS-E E3, Watchlist-split slice 4).
+/// Grouped out of the Watchlist god-struct: 5 rrg_* panel fields. Distinct from
+/// the Theme's rrg_leading/improving/weakening/lagging QUADRANT COLORS (those
+/// stay on Theme). `open` mirrors the persisted SidebarState flag (kept flat).
+pub(crate) struct RrgState {
+    pub(crate) open: bool,
+    pub(crate) sectors: Vec<super::ui::panels::rrg_panel::RRGSector>,
+    pub(crate) cycle_phase: String,
+    pub(crate) time_offset: f32,
+    pub(crate) tail_length: usize,
+}
+
+impl Default for RrgState {
+    fn default() -> Self {
+        Self {
+            open: false,
+            sectors: vec![],
+            cycle_phase: String::new(),
+            time_offset: 0.0,
+            tail_length: 5,
+        }
+    }
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -5910,11 +5934,8 @@ pub(crate) struct Watchlist {
     /// Chart Library sidepane open state (transient — not persisted).
     pub(crate) charts_library_open: bool,
     // RRG (Relative Rotation Graph)
-    pub(crate) rrg_open: bool,
-    pub(crate) rrg_sectors: Vec<super::ui::panels::rrg_panel::RRGSector>,
-    pub(crate) rrg_cycle_phase: String,
-    pub(crate) rrg_time_offset: f32, // 0.0 = current, 1.0 = oldest history point
-    pub(crate) rrg_tail_length: usize, // how many tail points to show
+    /// RRG panel state (WS-E E3 slice 4) — was 5 flat `rrg_*` fields.
+    pub(crate) rrg: RrgState,
     // Analysis sidebar — subdivided sections (each has its own tab)
     pub(crate) analysis_open: bool,
     pub(crate) auto_chart_open: bool, // Auto-Charting side panel
@@ -6164,8 +6185,7 @@ impl Watchlist {
                screenshot_open: false,
                screenshot_entries: super::ui::panels::screenshot_panel::load_screenshots(),
                charts_library_open: false,
-               rrg_open: false, rrg_sectors: vec![], rrg_cycle_phase: String::new(),
-               rrg_time_offset: 0.0, rrg_tail_length: 5,
+               rrg: RrgState::default(),
                analysis_open: false,
                auto_chart_open: false,
                analysis_tab: crate::chart_renderer::AnalysisTab::Rrg,
@@ -6518,7 +6538,7 @@ impl Watchlist {
         let spread_open = self.spread_open;
         let script_open = self.script.open;
         let screenshot_open = self.screenshot_open;
-        let rrg_open = self.rrg_open;
+        let rrg_open = self.rrg.open;
         let analysis_open = self.analysis_open;
         let auto_chart_open = self.auto_chart_open;
         let signals_panel_open = self.signals_panel_open;
@@ -6602,7 +6622,7 @@ impl Watchlist {
         self.spread_open = snap.spread_open;
         self.script.open = snap.script_open;
         self.screenshot_open = snap.screenshot_open;
-        self.rrg_open = snap.rrg_open;
+        self.rrg.open = snap.rrg_open;
         self.analysis_open = snap.analysis_open;
         self.auto_chart_open = snap.auto_chart_open;
         self.signals_panel_open = snap.signals_panel_open;

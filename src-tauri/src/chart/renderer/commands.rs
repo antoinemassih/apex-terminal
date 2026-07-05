@@ -948,7 +948,7 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
 
         #[cfg(debug_assertions)]
         AppCommand::SetRrgTail { len } => {
-            watchlist.rrg_tail_length = len.clamp(1, 20);
+            watchlist.rrg.tail_length = len.clamp(1, 20);
         }
 
         #[cfg(debug_assertions)]
