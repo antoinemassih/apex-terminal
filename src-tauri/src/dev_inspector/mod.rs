@@ -1112,12 +1112,12 @@ pub fn end_frame(
     })).collect();
     // Scanner: raw pool + def[0] criteria + the app's filtered+sorted output, so
     // the harness can recompute the expected result and check filter/sort logic.
-    let scan_raw_json: Vec<serde_json::Value> = watchlist.scanner_results.iter().take(600)
+    let scan_raw_json: Vec<serde_json::Value> = watchlist.scanner.results.iter().take(600)
         .map(|r| serde_json::json!({"symbol": r.symbol, "price": r.price, "change_pct": r.change_pct, "volume": r.volume}))
         .collect();
-    let (scan_def0_json, scan_filtered_json) = match watchlist.scanner_defs.first() {
+    let (scan_def0_json, scan_filtered_json) = match watchlist.scanner.defs.first() {
         Some(d) => {
-            let filtered = crate::chart_renderer::ui::panels::scanner_panel::apply_scanner(d, &watchlist.scanner_results);
+            let filtered = crate::chart_renderer::ui::panels::scanner_panel::apply_scanner(d, &watchlist.scanner.results);
             (serde_json::json!({
                 "min_change": d.min_change, "max_change": d.max_change,
                 "min_volume": d.min_volume, "sort_by": format!("{:?}", d.sort_by), "limit": d.limit,
@@ -1149,9 +1149,9 @@ pub fn end_frame(
         "total_alert_count": panes.iter().map(|p| p.price_alerts.len()).sum::<usize>(),
         // ── Subsystem observability (scanner / RRG / heatmap) ──────────────
         "scanner": {
-            "open":         watchlist.scanner_open,
-            "result_count": watchlist.scanner_results.len(),
-            "def_count":    watchlist.scanner_defs.len(),
+            "open":         watchlist.scanner.open,
+            "result_count": watchlist.scanner.results.len(),
+            "def_count":    watchlist.scanner.defs.len(),
             "first_def_filtered_count": scan_filtered_json.len(),
             // Behavioral oracle I/O: raw pool + def[0] criteria + app's output.
             "raw":      scan_raw_json,

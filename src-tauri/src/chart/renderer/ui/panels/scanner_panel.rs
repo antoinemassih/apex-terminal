@@ -65,17 +65,17 @@ pub(crate) fn draw_content(
     panel_w: f32,
 ) {
     // ── Auto-fetch ──
-    let should_fetch = match watchlist.scanner_last_fetch {
+    let should_fetch = match watchlist.scanner.last_fetch {
         None => true,
         Some(last) => last.elapsed().as_secs() >= REFRESH_INTERVAL_SECS,
     };
-    if should_fetch && !watchlist.scanner_fetching {
-        watchlist.scanner_fetching = true;
-        watchlist.scanner_last_fetch = Some(std::time::Instant::now());
+    if should_fetch && !watchlist.scanner.fetching {
+        watchlist.scanner.fetching = true;
+        watchlist.scanner.last_fetch = Some(std::time::Instant::now());
         fetch_scanner_prices();
     }
-    if watchlist.scanner_fetching && !watchlist.scanner_results.is_empty() {
-        watchlist.scanner_fetching = false;
+    if watchlist.scanner.fetching && !watchlist.scanner.results.is_empty() {
+        watchlist.scanner.fetching = false;
     }
 
     let mut save_as_watchlist: Option<(String, Vec<ScanResult>)> = None;
@@ -89,12 +89,12 @@ pub(crate) fn draw_content(
     // as the shell title and skips this row.
     ui.horizontal(|ui| {
         ui.add(SectionLabel::new("SCANNERS").xs().color(t.accent));
-        if let Some(last) = watchlist.scanner_last_fetch {
+        if let Some(last) = watchlist.scanner.last_fetch {
             let elapsed = last.elapsed().as_secs();
             let remaining = if elapsed < REFRESH_INTERVAL_SECS { REFRESH_INTERVAL_SECS - elapsed } else { 0 };
             ui.add(MonospaceCode::new(&format!("{}s", remaining)).size_px(font_xs()).color(t.dim).gamma(0.4));
         }
-        if watchlist.scanner_fetching {
+        if watchlist.scanner.fetching {
             Spinner::new().size(KitSize::Sm).show(ui, t);
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -105,7 +105,7 @@ pub(crate) fn draw_content(
                 .show(ui, t);
             Tooltip::new("Refresh now").show(ui, &r, t);
             if r.clicked() {
-                watchlist.scanner_last_fetch = None;
+                watchlist.scanner.last_fetch = None;
             }
             let r = Button::icon(Icon::PLUS)
                 .variant(Variant::Ghost)
@@ -128,7 +128,7 @@ pub(crate) fn draw_content(
     {
         use crate::apex_data::types::MoverKind;
         let kinds = MoverKind::all();
-        let mut selected = watchlist.scanner_mover_tab.min(kinds.len().saturating_sub(1));
+        let mut selected = watchlist.scanner.mover_tab.min(kinds.len().saturating_sub(1));
 
         ui.horizontal_wrapped(|ui| {
             ui.add(SectionLabel::new("MOVERS").xs().color(t.accent));
@@ -141,12 +141,12 @@ pub(crate) fn draw_content(
                 let resp = ui.add(egui::Label::new(label).sense(egui::Sense::click()));
                 if resp.clicked() {
                     selected = i;
-                    watchlist.scanner_mover_tab = i;
+                    watchlist.scanner.mover_tab = i;
                 }
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.add(Button::new("Configure filters").variant(Variant::Secondary).simple_treatment(true).fg(t.dim).min_size(egui::vec2(110.0, 0.0))).clicked() {
-                    watchlist.scanner_filter_popup_open = !watchlist.scanner_filter_popup_open;
+                    watchlist.scanner.filter_popup_open = !watchlist.scanner.filter_popup_open;
                 }
             });
         });
@@ -209,12 +209,12 @@ pub(crate) fn draw_content(
                 });
             }
         }
-        if watchlist.scanner_filter_popup_open {
+        if watchlist.scanner.filter_popup_open {
             ui.group(|ui| {
                 ui.add(MonospaceCode::new("Custom filters").size_px(font_sm_tight()).strong(true).color(t.accent));
                 ui.add(MonospaceCode::new("Wave 12 — custom scan endpoint not yet exposed.").size_px(font_xs()).color(t.dim));
                 if ui.add(Button::new("Close").variant(Variant::Secondary).simple_treatment(true).fg(t.dim).min_size(egui::vec2(50.0, 0.0))).clicked() {
-                    watchlist.scanner_filter_popup_open = false;
+                    watchlist.scanner.filter_popup_open = false;
                 }
             });
         }
@@ -227,7 +227,7 @@ pub(crate) fn draw_content(
     // ── Custom scanner builder (collapsible) — now a PanelCard instead of
     //    `ui.group()` (which paints egui's default gray frame that matches
     //    nothing else in the app).
-    if watchlist.scanner_builder_open {
+    if watchlist.scanner.builder_open {
         PanelCard::new()
             .padding(gap_md())
             .show(ui, t, |ui, t| {
@@ -236,18 +236,18 @@ pub(crate) fn draw_content(
                 ui.add_space(gap_xs());
 
                 FormRow::new("Name").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
-                    Input::new(&mut watchlist.scanner_new_name)
+                    Input::new(&mut watchlist.scanner.new_name)
                         .min_width(panel_w - 60.0)
                         .size(KitSize::Xs)
                         .show(ui, t);
                 });
                 FormRow::new("Min %").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
-                    NumberStepper::new(&mut watchlist.scanner_new_min_change).range(-100.0_f32..=100.0).step(0.5).suffix("%").show(ui, t);
+                    NumberStepper::new(&mut watchlist.scanner.new_min_change).range(-100.0_f32..=100.0).step(0.5).suffix("%").show(ui, t);
                     ui.add(MonospaceCode::new("Max %").size_px(font_xs()).color(t.dim));
-                    NumberStepper::new(&mut watchlist.scanner_new_max_change).range(-100.0_f32..=100.0).step(0.5).suffix("%").show(ui, t);
+                    NumberStepper::new(&mut watchlist.scanner.new_max_change).range(-100.0_f32..=100.0).step(0.5).suffix("%").show(ui, t);
                 });
                 FormRow::new("Min Vol").gutter(36.0).label_color(t.dim).show(ui, t, |ui| {
-                    Input::new(&mut watchlist.scanner_new_min_volume)
+                    Input::new(&mut watchlist.scanner.new_min_volume)
                         .min_width(80.0)
                         .size(KitSize::Xs)
                         .placeholder("e.g. 1000000")
@@ -256,28 +256,28 @@ pub(crate) fn draw_content(
 
                 ui.horizontal(|ui| {
                     if Button::new("Create").variant(Variant::Secondary).simple_treatment(true).fg(t.accent).min_size(egui::vec2(60.0, 0.0)).show(ui, t).clicked() {
-                        let name = if watchlist.scanner_new_name.trim().is_empty() {
+                        let name = if watchlist.scanner.new_name.trim().is_empty() {
                             "Custom Scanner".to_string()
                         } else {
-                            watchlist.scanner_new_name.trim().to_string()
+                            watchlist.scanner.new_name.trim().to_string()
                         };
-                        let min_vol: u64 = watchlist.scanner_new_min_volume.trim()
+                        let min_vol: u64 = watchlist.scanner.new_min_volume.trim()
                             .replace(['_', ','], "")
                             .parse().unwrap_or(0);
-                        watchlist.scanner_defs.push(ScannerDef {
+                        watchlist.scanner.defs.push(ScannerDef {
                             name,
                             preset: None,
-                            min_change: watchlist.scanner_new_min_change,
-                            max_change: watchlist.scanner_new_max_change,
+                            min_change: watchlist.scanner.new_min_change,
+                            max_change: watchlist.scanner.new_max_change,
                             min_volume: min_vol,
                             sort_by: ScanSort::ChangeDesc,
                             limit: 20,
                             collapsed: false,
                         });
-                        watchlist.scanner_new_name.clear();
-                        watchlist.scanner_new_min_change = -999.0;
-                        watchlist.scanner_new_max_change = 999.0;
-                        watchlist.scanner_new_min_volume.clear();
+                        watchlist.scanner.new_name.clear();
+                        watchlist.scanner.new_min_change = -999.0;
+                        watchlist.scanner.new_max_change = 999.0;
+                        watchlist.scanner.new_min_volume.clear();
                         watchlist.update_sidebar_state(|s| s.scanner_builder_open = false);
                     }
                     if Button::new("Cancel").variant(Variant::Secondary).simple_treatment(true).fg(t.dim).min_size(egui::vec2(50.0, 0.0)).show(ui, t).clicked() {
@@ -291,8 +291,8 @@ pub(crate) fn draw_content(
     }
 
     // ── Scanner sections ──
-    let pool = watchlist.scanner_results.clone();
-    let num_scanners = watchlist.scanner_defs.len();
+    let pool = watchlist.scanner.results.clone();
+    let num_scanners = watchlist.scanner.defs.len();
 
     egui::ScrollArea::vertical()
         .id_salt("scanner_scroll")
@@ -319,7 +319,7 @@ pub(crate) fn draw_content(
             }
 
             for scanner_idx in 0..num_scanners {
-                let def = &watchlist.scanner_defs[scanner_idx];
+                let def = &watchlist.scanner.defs[scanner_idx];
                 let results = apply_scanner(def, &pool);
                 let result_count = results.len();
                 // Bridge collapse state: copy → pass &mut local → write back.
@@ -404,7 +404,7 @@ pub(crate) fn draw_content(
                     });
 
                 // Write back the (possibly toggled) expanded state.
-                watchlist.scanner_defs[scanner_idx].collapsed = !expanded;
+                watchlist.scanner.defs[scanner_idx].collapsed = !expanded;
             }
 
             ui.add_space(gap_xs());
@@ -445,8 +445,8 @@ pub(crate) fn draw_content(
     }
 
     if let Some(idx) = delete_scanner_idx {
-        if idx < watchlist.scanner_defs.len() {
-            watchlist.scanner_defs.remove(idx);
+        if idx < watchlist.scanner.defs.len() {
+            watchlist.scanner.defs.remove(idx);
         }
     }
 
@@ -458,7 +458,7 @@ pub(crate) fn draw_content(
 /// Rail registration — see [`super::right_rail`].
 pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
     id: "scanner",
-    is_open: |w| w.scanner_open,
+    is_open: |w| w.scanner.open,
     render: |cx, slot| draw(cx.ctx, cx.watchlist, cx.panes, cx.active_pane, cx.t, Some(slot)),
 };
 
@@ -470,7 +470,7 @@ pub(crate) fn draw(
     t: &Theme,
     slot: Option<super::side_panel_shell::RailSlot>,
 ) {
-    if !watchlist.scanner_open { return; }
+    if !watchlist.scanner.open { return; }
 
     let mut pending_symbol: Option<String> = None;
 

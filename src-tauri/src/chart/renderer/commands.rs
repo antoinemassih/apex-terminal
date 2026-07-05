@@ -938,7 +938,7 @@ fn dispatch(panes: &mut [Chart], watchlist: &mut Watchlist, cmd: AppCommand) {
                     volume: 1_000_000 + (i as u64) * 250_000,
                 });
             }
-            watchlist.scanner_results = rows;
+            watchlist.scanner.results = rows;
         }
 
         #[cfg(debug_assertions)]

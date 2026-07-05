@@ -4425,13 +4425,13 @@ pub(crate) fn route_commands(rx: &mpsc::Receiver<ChartCommand>, panes: &mut [Cha
             }
             ChartCommand::ScannerPrice { symbol, price, prev_close, volume } => {
                 // Update or insert into scanner results pool
-                if let Some(r) = watchlist.scanner_results.iter_mut().find(|r| r.symbol == *symbol) {
+                if let Some(r) = watchlist.scanner.results.iter_mut().find(|r| r.symbol == *symbol) {
                     r.price = *price;
                     r.volume = *volume;
                     r.change_pct = if *prev_close > 0.0 { (price - prev_close) / prev_close * 100.0 } else { 0.0 };
                 } else {
                     let change_pct = if *prev_close > 0.0 { (price - prev_close) / prev_close * 100.0 } else { 0.0 };
-                    watchlist.scanner_results.push(ScanResult {
+                    watchlist.scanner.results.push(ScanResult {
                         symbol: symbol.clone(), price: *price, change_pct, volume: *volume,
                     });
                 }
@@ -5548,6 +5548,45 @@ impl Default for ScriptState {
     }
 }
 
+/// Scanner + custom-scanner-builder state (WS-E E3, Watchlist-split slice 3).
+/// Grouped out of the Watchlist god-struct: 12 scanner_* fields (results pool,
+/// fetch state, builder form, movers tab). Explicit Default mirrors the seeds
+/// (3 preset defs; min/max change -999/999). `open`/`builder_open` also mirror
+/// the persisted SidebarState flags (which stay flat there).
+pub(crate) struct ScannerState {
+    pub(crate) open: bool,
+    pub(crate) defs: Vec<ScannerDef>,
+    pub(crate) results: Vec<ScanResult>,
+    pub(crate) last_fetch: Option<std::time::Instant>,
+    pub(crate) fetching: bool,
+    pub(crate) new_name: String,
+    pub(crate) new_min_change: f32,
+    pub(crate) new_max_change: f32,
+    pub(crate) new_min_volume: String,
+    pub(crate) builder_open: bool,
+    pub(crate) mover_tab: usize,
+    pub(crate) filter_popup_open: bool,
+}
+
+impl Default for ScannerState {
+    fn default() -> Self {
+        Self {
+            open: false,
+            defs: vec![ScannerDef::preset_gainers(), ScannerDef::preset_losers(), ScannerDef::preset_most_active()],
+            results: vec![],
+            last_fetch: None,
+            fetching: false,
+            new_name: String::new(),
+            new_min_change: -999.0,
+            new_max_change: 999.0,
+            new_min_volume: String::new(),
+            builder_open: false,
+            mover_tab: 0,
+            filter_popup_open: false,
+        }
+    }
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -5851,17 +5890,12 @@ pub(crate) struct Watchlist {
     /// Sentiment filter: -2=All, -1=Bearish, 0=Neutral, 1=Bullish. See
     /// `panels::news_panel::next_sentiment_filter`.
     pub(crate) news_sentiment_filter: i8,
-    // Scanner
-    pub(crate) scanner_open: bool,
-    pub(crate) scanner_defs: Vec<ScannerDef>,
-    pub(crate) scanner_results: Vec<ScanResult>, // raw bulk quote pool
-    pub(crate) scanner_last_fetch: Option<std::time::Instant>,
-    pub(crate) scanner_fetching: bool,
+    // Scanner (WS-E E3 slice 3) — 12 scanner_* fields grouped into ScannerState.
+    pub(crate) scanner: ScannerState,
     // Heatmap pane — cold-started from /api/stocks/grouped/:date.
     // Each cell: (symbol, change_pct, dollar_volume).
     pub(crate) heatmap_cells: Vec<(String, f32, f64)>,
     pub(crate) heatmap_last_fetch: Option<std::time::Instant>,
-    // Custom scanner builder
     // Spread Builder panel
     pub(crate) spread_open: bool,
     pub(crate) maximized_pane: Option<usize>, // Some(idx) = pane shown fullscreen
@@ -5870,16 +5904,6 @@ pub(crate) struct Watchlist {
     /// Scripting/backtesting panel state (WS-E E3 slice 2) — was 6 flat
     /// `script_*` fields, now grouped into ScriptState.
     pub(crate) script: ScriptState,
-    pub(crate) scanner_new_name: String,
-    pub(crate) scanner_new_min_change: f32,
-    pub(crate) scanner_new_max_change: f32,
-    pub(crate) scanner_new_min_volume: String, // string for text edit
-    pub(crate) scanner_builder_open: bool,
-    /// Wave 10 — selected movers tab for the projector-backed bucket selector
-    /// in scanner_panel. Index matches `MoverKind::all()`.
-    pub(crate) scanner_mover_tab: usize,
-    /// Wave 10 — popup gate for the deferred "Configure filters" custom scan.
-    pub(crate) scanner_filter_popup_open: bool,
     // Screenshot library
     pub(crate) screenshot_open: bool,
     pub(crate) screenshot_entries: Vec<super::ui::panels::screenshot_panel::ScreenshotEntry>,
@@ -6131,20 +6155,9 @@ impl Watchlist {
                news_items: vec![],
                news_filter_symbol: false,
                news_sentiment_filter: -2, // All
-               scanner_open: false,
-               scanner_defs: vec![ScannerDef::preset_gainers(), ScannerDef::preset_losers(), ScannerDef::preset_most_active()],
-               scanner_results: vec![],
-               scanner_last_fetch: None,
-               scanner_fetching: false,
+               scanner: ScannerState::default(),
                heatmap_cells: vec![],
                heatmap_last_fetch: None,
-               scanner_new_name: String::new(),
-               scanner_new_min_change: -999.0,
-               scanner_new_max_change: 999.0,
-               scanner_new_min_volume: String::new(),
-               scanner_builder_open: false,
-               scanner_mover_tab: 0,
-               scanner_filter_popup_open: false,
                spread_open: false, maximized_pane: None,
                spread_state: super::ui::panels::spread_panel::SpreadState::default(),
                script: ScriptState::default(),
@@ -6500,8 +6513,8 @@ impl Watchlist {
         let tape_open = self.tape_open;
         let news_open = self.news_open;
         let journal_open = self.journal_open;
-        let scanner_open = self.scanner_open;
-        let scanner_builder_open = self.scanner_builder_open;
+        let scanner_open = self.scanner.open;
+        let scanner_builder_open = self.scanner.builder_open;
         let spread_open = self.spread_open;
         let script_open = self.script.open;
         let screenshot_open = self.screenshot_open;
@@ -6584,8 +6597,8 @@ impl Watchlist {
         self.tape_open = snap.tape_open;
         self.news_open = snap.news_open;
         self.journal_open = snap.journal_open;
-        self.scanner_open = snap.scanner_open;
-        self.scanner_builder_open = snap.scanner_builder_open;
+        self.scanner.open = snap.scanner_open;
+        self.scanner.builder_open = snap.scanner_builder_open;
         self.spread_open = snap.spread_open;
         self.script.open = snap.script_open;
         self.screenshot_open = snap.screenshot_open;
@@ -8073,13 +8086,13 @@ impl ApplicationHandler for App {
                             cw.watchlist.set_stale(symbol, stale);
                         }
                         ChartCommand::ScannerPrice { ref symbol, price, prev_close, volume } => {
-                            if let Some(r) = cw.watchlist.scanner_results.iter_mut().find(|r| r.symbol == *symbol) {
+                            if let Some(r) = cw.watchlist.scanner.results.iter_mut().find(|r| r.symbol == *symbol) {
                                 r.price = price;
                                 r.volume = volume;
                                 r.change_pct = if prev_close > 0.0 { (price - prev_close) / prev_close * 100.0 } else { 0.0 };
                             } else {
                                 let change_pct = if prev_close > 0.0 { (price - prev_close) / prev_close * 100.0 } else { 0.0 };
-                                cw.watchlist.scanner_results.push(ScanResult {
+                                cw.watchlist.scanner.results.push(ScanResult {
                                     symbol: symbol.clone(), price, change_pct, volume,
                                 });
                             }
