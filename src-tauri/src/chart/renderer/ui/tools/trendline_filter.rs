@@ -5,7 +5,7 @@ use crate::ui_kit::sx::Tone;
 use super::super::style::*;
 use super::super::super::gpu::*;
 use super::super::components::text::MonospaceCode;
-use crate::ui_kit::widgets::Button;
+use crate::ui_kit::widgets::{Button, Checkbox};
 use crate::ui_kit::widgets::tokens::Variant;
 use crate::ui_kit::icons::Icon;
 use crate::monitoring::{span_begin, span_end};
@@ -38,21 +38,21 @@ if watchlist.trendline_filter_open {
             let (sym, tf) = { let c = &panes[ap]; (c.symbol.clone(), c.timeframe.clone()) };
             ui.horizontal(|ui| {
                 ui.add_space(m);
-                ui.checkbox(&mut cfg.enabled, "On");
-                ui.checkbox(&mut cfg.live_feed, "Live feed")
+                Checkbox::new(&mut cfg.enabled).label("On").show(ui, t);
+                Checkbox::new(&mut cfg.live_feed).label("Live feed").show(ui, t)
                     .on_hover_text("Use the apex-data unified drawing feed (updates live as the backend recomputes across the universe) instead of the tuned per-chart fetch");
             });
             if cfg.enabled {
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    ui.checkbox(&mut cfg.trendlines, "Trendlines");
-                    ui.checkbox(&mut cfg.channels, "Channels");
+                    Checkbox::new(&mut cfg.trendlines).label("Trendlines").show(ui, t);
+                    Checkbox::new(&mut cfg.channels).label("Channels").show(ui, t);
                 });
                 ui.horizontal(|ui| {
                     ui.add_space(m);
-                    ui.checkbox(&mut cfg.levels, "Levels");
-                    ui.checkbox(&mut cfg.patterns, "Patterns");
-                    ui.checkbox(&mut cfg.candles, "Candles");
+                    Checkbox::new(&mut cfg.levels).label("Levels").show(ui, t);
+                    Checkbox::new(&mut cfg.patterns).label("Patterns").show(ui, t);
+                    Checkbox::new(&mut cfg.candles).label("Candles").show(ui, t);
                 });
                 ui.horizontal(|ui| {
                     ui.add_space(m);
