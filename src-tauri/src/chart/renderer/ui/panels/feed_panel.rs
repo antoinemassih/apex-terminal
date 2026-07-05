@@ -14,7 +14,7 @@ use crate::chart_renderer::ui::panels::side_panel_shell::{SidePanelShell, Width,
 /// Rail registration — Feed is now a standard `SidePanelShell::tabs` panel.
 pub(crate) const RAIL: super::right_rail::RailPanelDef = super::right_rail::RailPanelDef {
     id: "feed",
-    is_open: |w| w.feed_panel_open,
+    is_open: |w| w.feed_panel.open,
     render: |cx, slot| { draw(cx.ctx, cx.watchlist, cx.panes, cx.active_pane, cx.t, Some(slot), None); },
 };
 
@@ -36,7 +36,7 @@ pub(crate) fn draw(
 ) -> bool {
     let is_spawn = instance_tab.is_some();
     let mut spawn_close = false;
-    if !is_spawn && !watchlist.feed_panel_open { return false; }
+    if !is_spawn && !watchlist.feed_panel.open { return false; }
 
     super::discord_panel::drain_background(ctx, watchlist);
     let active_symbol = if !panes.is_empty() { panes[ap].symbol.clone() } else { String::new() };
@@ -46,7 +46,7 @@ pub(crate) fn draw(
 
     let mut active = match instance_tab.as_deref() {
         Some(v) => feed_tab_from_u8(*v),
-        None => watchlist.feed_splits.first().map(|s| s.tab).unwrap_or(FeedTab::News),
+        None => watchlist.feed_panel.splits.first().map(|s| s.tab).unwrap_or(FeedTab::News),
     };
     let tabs = [
         (FeedTab::News,        "NEWS",        None),
@@ -79,8 +79,8 @@ pub(crate) fn draw(
 
     // Persist the active tab to its owner (instance store or base panel).
     if let Some(it) = instance_tab { *it = feed_tab_to_u8(active); }
-    else if let Some(s) = watchlist.feed_splits.first_mut() { s.tab = active; }
-    else { watchlist.feed_splits.push(SplitSection { tab: active, frac: 1.0 }); }
+    else if let Some(s) = watchlist.feed_panel.splits.first_mut() { s.tab = active; }
+    else { watchlist.feed_panel.splits.push(SplitSection { tab: active, frac: 1.0 }); }
     if resp.close_clicked {
         if is_spawn { spawn_close = true; }
         else { watchlist.update_sidebar_state(|s| s.feed_panel_open = false); }

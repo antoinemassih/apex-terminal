@@ -1170,7 +1170,7 @@ pub(crate) fn render(
                     }};
                 }
 
-                panel_toggle!(Icon::NEWSPAPER,      "Feed",       feed_panel_open,       "Feed (News, Discord, Screenshots)",           "right_feed");
+                panel_toggle!(Icon::NEWSPAPER,      "Feed",       watchlist.feed_panel.open, feed_panel_open, "Feed (News, Discord, Screenshots)",           "right_feed");
                 panel_toggle!(Icon::STAR,            "Playbook",   playbook_panel_open,   "Playbook (Trade Ideas)",                      "right_playbook");
 
                 // Chart Library uses direct assignment (not update_sidebar_state)

@@ -5774,6 +5774,26 @@ impl Default for AnalysisState {
     }
 }
 
+/// Feed sidebar-panel state (WS-E E3, Watchlist-split slice 10). 3 fields for
+/// the Feed sidebar (News/Discord/Screenshots). Named `feed_panel` (not `feed`)
+/// because Watchlist already has `feed: Vec<Play>` (the plays feed — different
+/// feature). `open` mirrors the persisted SidebarState flag. Default: tab News.
+pub(crate) struct FeedPanelState {
+    pub(crate) open: bool,
+    pub(crate) tab: crate::chart_renderer::FeedTab,
+    pub(crate) splits: Vec<SplitSection<crate::chart_renderer::FeedTab>>,
+}
+
+impl Default for FeedPanelState {
+    fn default() -> Self {
+        Self {
+            open: false,
+            tab: crate::chart_renderer::FeedTab::News,
+            splits: vec![SplitSection::new(crate::chart_renderer::FeedTab::News, 1.0)],
+        }
+    }
+}
+
 pub(crate) struct Watchlist {
     pub(crate) open: bool,
     /// User-defined link groups. Index 0 = group-id 1, index 1 = group-id 2, etc.
@@ -6053,9 +6073,8 @@ pub(crate) struct Watchlist {
     pub(crate) indicators_lib_collapsed: std::collections::HashSet<String>,
     pub(crate) indicators_section_fracs: [f32; 3],
     // Feed sidebar — subdivided sections
-    pub(crate) feed_panel_open: bool,
-    pub(crate) feed_tab: crate::chart_renderer::FeedTab,
-    pub(crate) feed_splits: Vec<SplitSection<crate::chart_renderer::FeedTab>>,
+    /// Feed sidebar-panel state (WS-E E3 slice 10) — was feed_panel_open/tab/splits.
+    pub(crate) feed_panel: FeedPanelState,
     // Playbook sidebar
     pub(crate) playbook_panel_open: bool,
     // Trade Journal
@@ -6269,9 +6288,7 @@ impl Watchlist {
                indicators_panel_open: false, indicators_panel_search: String::new(),
                indicators_lib_collapsed: std::collections::HashSet::new(),
                indicators_section_fracs: [0.18, 0.25, 0.57],
-               feed_panel_open: false,
-               feed_tab: crate::chart_renderer::FeedTab::News,
-               feed_splits: vec![SplitSection::new(crate::chart_renderer::FeedTab::News, 1.0)],
+               feed_panel: FeedPanelState::default(),
                playbook_panel_open: false,
                journal_panel_open: false,
                journal_entries: generate_placeholder_journal(),
@@ -6616,7 +6633,7 @@ impl Watchlist {
         let signals_panel_open = self.signals_panel_open;
         let indicators_panel_open = self.indicators_panel_open;
         let indicators_section_fracs = self.indicators_section_fracs;
-        let feed_panel_open = self.feed_panel_open;
+        let feed_panel_open = self.feed_panel.open;
         let playbook_panel_open = self.playbook_panel_open;
         let journal_panel_open = self.journal_panel_open;
         let provenance_open = self.provenance.open;
@@ -6700,7 +6717,7 @@ impl Watchlist {
         self.signals_panel_open = snap.signals_panel_open;
         self.indicators_panel_open = snap.indicators_panel_open;
         self.indicators_section_fracs = snap.indicators_section_fracs;
-        self.feed_panel_open = snap.feed_panel_open;
+        self.feed_panel.open = snap.feed_panel_open;
         self.playbook_panel_open = snap.playbook_panel_open;
         self.journal_panel_open = snap.journal_panel_open;
         self.provenance.open = snap.provenance_open;
